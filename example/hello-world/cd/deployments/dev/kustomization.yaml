@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: hello-world-dev
+
+labels:
+  - pairs:
+      environment: dev
+    includeSelectors: true
+    includeTemplates: true
+
+replacements:
+  - sourceValue: dev
+    targets:
+      - select:
+          kind: Rollout
+        fieldPaths:
+          - metadata.annotations.[dashboard.rollout.kuberik.com/description]
+        options:
+          delimiter: " "
+          index: 4
+      - select:
+          kind: ImageRepository
+          name: hello-world-manifests
+        fieldPaths:
+          - spec.image
+        options:
+          delimiter: "/"
+          index: 3
+      - select:
+          kind: OCIRepository
+          name: hello-world
+        fieldPaths:
+          - spec.url
+        options:
+          delimiter: "/"
+          index: 5

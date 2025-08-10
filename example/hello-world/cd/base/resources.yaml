@@ -1,0 +1,93 @@
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-world-manifests
+  annotations:
+    dashboard.rollout.kuberik.com/description: "Hello World manifests / __ENVIRONMENT__"
+spec:
+  releasesImagePolicy:
+    name: hello-world-manifests
+  versionHistoryLimit: 5
+  minBakeTime: 15s
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: hello-world-manifests
+spec:
+  image: registry.registry.svc.cluster.local/examples/hello-world/__ENVIRONMENT__/manifests
+  interval: 1s
+  insecure: true
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: hello-world-manifests
+spec:
+  imageRepositoryRef:
+    name: hello-world-manifests
+  filterTags:
+    pattern: "^main-(?P<timestamp>[0-9]+)-[a-f0-9]+$"
+    extract: "$timestamp"
+  policy:
+    alphabetical:
+      order: asc
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: hello-world
+  annotations:
+    rollout.kuberik.com/rollout: hello-world-manifests
+spec:
+  interval: 1s
+  url: oci://registry.registry.svc.cluster.local/examples/hello-world/__ENVIRONMENT__/manifests
+  insecure: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hello-world
+  annotations:
+    rollout.kuberik.com/hello-world-app.substitute: "HELLO_WORLD_VERSION"
+spec:
+  interval: 5m
+  prune: true
+  sourceRef:
+    kind: OCIRepository
+    name: hello-world
+---
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-world-app
+  annotations:
+    dashboard.rollout.kuberik.com/description: "Hello World app / __ENVIRONMENT__"
+spec:
+  releasesImagePolicy:
+    name: hello-world-app
+  versionHistoryLimit: 5
+  minBakeTime: 15s
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: hello-world-app
+spec:
+  image: registry.registry.svc.cluster.local/examples/hello-world/app
+  interval: 1s
+  insecure: true
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: hello-world-app
+spec:
+  imageRepositoryRef:
+    name: hello-world-app
+  filterTags:
+    pattern: "^main-(?P<timestamp>[0-9]+)-[a-f0-9]+$"
+    extract: "$timestamp"
+  policy:
+    alphabetical:
+      order: asc

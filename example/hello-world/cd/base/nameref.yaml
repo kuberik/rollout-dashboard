@@ -1,0 +1,9 @@
+nameReference:
+  - kind: ImagePolicy
+    fieldSpecs:
+      - kind: Rollout
+        path: spec/releasesImagePolicy/name
+  - kind: ImageRepository
+    fieldSpecs:
+      - kind: ImagePolicy
+        path: spec/imageRepositoryRef/name

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.24.2"
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          pnpm run build
+          rm -rf ../kodata
+          cp -r build ../kodata
+
+      - name: Set up ko
+        uses: ko-build/setup-ko@v0.9
+        with:
+          ko-version: "0.18.0"
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Test ko build
+        run: |
+          export KO_DOCKER_REPO=ko.local
+          export KO_DATA_PATH=kodata
+
+          # Test that ko can build the image (without pushing)
+          ko build --bare . --push=false
+
+      - name: Test kustomize build
+        run: |
+          # Test that kustomize can build the manifests
+          kustomize build deploy/prod
+
+      - name: Run Go tests
+        run: |
+          # Check if there are any Go test files
+          if find . -name "*_test.go" | grep -q .; then
+            go test -v ./...
+          else
+            echo "No Go test files found, skipping tests"
+          fi
+
+      - name: Run Go vet
+        run: go vet ./...

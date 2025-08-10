@@ -1,0 +1,97 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-world
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-python-script
+data:
+  app.py: |
+    import os
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    VERSION = os.environ.get("VERSION", "unknown")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(f"Hello, World!\nVersion: {VERSION}\n".encode())
+
+    if __name__ == "__main__":
+        port = int(os.environ.get("PORT", 8080))
+        server = HTTPServer(("", port), Handler)
+        print(f"Serving on port {port}")
+        server.serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-python
+  labels:
+    app: hello-python
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-python
+  template:
+    metadata:
+      labels:
+        app: hello-python
+    spec:
+      containers:
+        - name: python-server
+          image: registry.registry.svc.cluster.local/examples/hello-world/app:${HELLO_WORLD_VERSION}
+          command: ["python", "/app/app.py"]
+          env:
+            - name: VERSION
+              value: ${HELLO_WORLD_VERSION}
+            - name: PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: app-script
+              mountPath: /app/app.py
+              subPath: app.py
+      volumes:
+        - name: app-script
+          configMap:
+            name: hello-python-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-python
+  labels:
+    app: hello-python
+spec:
+  selector:
+    app: hello-python
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello-python
+  labels:
+    app: hello-python
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hello-python
+                port:
+                  number: 80

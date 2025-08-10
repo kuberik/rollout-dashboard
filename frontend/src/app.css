@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@config "../tailwind.config.js";
+
+@import 'tailwindcss';
+
+@plugin 'flowbite/plugin';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary-50: #fff5f2;
+  --color-primary-100: #fff1ee;
+  --color-primary-200: #ffe4de;
+  --color-primary-300: #ffd5cc;
+  --color-primary-400: #ffbcad;
+  --color-primary-500: #fe795d;
+  --color-primary-600: #ef562f;
+  --color-primary-700: #eb4f27;
+  --color-primary-800: #cc4522;
+  --color-primary-900: #a5371b;
+}
+
+@layer base {
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+}
+
+@source "../node_modules/flowbite-svelte/dist";
+
+.dark {
+
+  * {
+    scrollbar-color: #4b5563 #1f2937;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-800;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+}

@@ -1,0 +1,8 @@
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutGate
+metadata:
+  name: hello-world-manual-approval
+spec:
+  rolloutRef:
+    name: hello-world-app
+  allowedVersions: []
