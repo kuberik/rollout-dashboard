@@ -49,6 +49,12 @@ func NewClient() (*Client, error) {
 	}
 
 	scheme := runtime.NewScheme()
+
+	// Add core Kubernetes scheme (includes v1.Secret, v1.Pod, etc.)
+	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add core scheme: %w", err)
+	}
+
 	if err := rolloutv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add scheme: %w", err)
 	}
