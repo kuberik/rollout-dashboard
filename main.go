@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"encoding/json"
+	"bytes"
 
+	"github.com/docker/cli/cli/config"
+	"github.com/docker/cli/cli/config/configfile"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -16,6 +18,25 @@ import (
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
 )
+
+// dockerConfigKeychain implements authn.Keychain interface for Docker config JSON
+type dockerConfigKeychain struct {
+	config *configfile.ConfigFile
+}
+
+func (k *dockerConfigKeychain) Resolve(resource authn.Resource) (authn.Authenticator, error) {
+	// Find the registry in our config
+	for registry, auth := range k.config.AuthConfigs {
+		if resource.RegistryStr() == registry {
+			return authn.FromConfig(authn.AuthConfig{
+				Username: auth.Username,
+				Password: auth.Password,
+			}), nil
+		}
+	}
+	// Return anonymous authenticator if no match found
+	return authn.Anonymous, nil
+}
 
 func main() {
 	// Initialize Kubernetes client
@@ -221,18 +242,19 @@ func main() {
 					})
 					return
 				}
-				config := string(secret.Data[".dockerconfigjson"])
-				var auth authn.AuthConfig
-				err = json.Unmarshal([]byte(config), &auth)
+
+				// Parse Docker config JSON using the same approach as crane
+				reader := bytes.NewReader(secret.Data[".dockerconfigjson"])
+				configFile, err := config.LoadFromReader(reader)
 				if err != nil {
-					log.Printf("Error unmarshalling auth config: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{
-						"error": "Failed to unmarshall auth config",
-					})
+					log.Printf("Error loading Docker config: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse Docker config"})
 					return
 				}
 
-				opts = append(opts, crane.WithAuth(authn.FromConfig(auth)))
+				// Create a keychain that can resolve authentication for any registry
+				keychain := &dockerConfigKeychain{config: configFile}
+				opts = append(opts, crane.WithAuthFromKeychain(keychain))
 			}
 
 			// Get the image contents
@@ -299,14 +321,19 @@ func main() {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch secret"})
 					return
 				}
-				config := string(secret.Data[".dockerconfigjson"])
-				var auth authn.AuthConfig
-				if err := json.Unmarshal([]byte(config), &auth); err != nil {
-					log.Printf("Error unmarshalling auth config: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unmarshall auth config"})
+
+				// Parse Docker config JSON using the same approach as crane
+				reader := bytes.NewReader(secret.Data[".dockerconfigjson"])
+				configFile, err := config.LoadFromReader(reader)
+				if err != nil {
+					log.Printf("Error loading Docker config: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse Docker config"})
 					return
 				}
-				opts = append(opts, crane.WithAuth(authn.FromConfig(auth)))
+
+				// Create a keychain that can resolve authentication for any registry
+				keychain := &dockerConfigKeychain{config: configFile}
+				opts = append(opts, crane.WithAuthFromKeychain(keychain))
 			}
 
 			mediaType, err := oci.GetArtifactType(context.Background(), imageRepo.Spec.Image, version, opts...)
@@ -357,14 +384,19 @@ func main() {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch secret"})
 					return
 				}
-				config := string(secret.Data[".dockerconfigjson"])
-				var auth authn.AuthConfig
-				if err := json.Unmarshal([]byte(config), &auth); err != nil {
-					log.Printf("Error unmarshalling auth config: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unmarshall auth config"})
+
+				// Parse Docker config JSON using the same approach as crane
+				reader := bytes.NewReader(secret.Data[".dockerconfigjson"])
+				configFile, err := config.LoadFromReader(reader)
+				if err != nil {
+					log.Printf("Error loading Docker config: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse Docker config"})
 					return
 				}
-				opts = append(opts, crane.WithAuth(authn.FromConfig(auth)))
+
+				// Create a keychain that can resolve authentication for any registry
+				keychain := &dockerConfigKeychain{config: configFile}
+				opts = append(opts, crane.WithAuthFromKeychain(keychain))
 			}
 
 			annotations, err := oci.GetImageAnnotations(context.Background(), imageRepo.Spec.Image, version, opts...)
