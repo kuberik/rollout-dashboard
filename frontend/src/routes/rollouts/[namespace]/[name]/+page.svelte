@@ -617,24 +617,27 @@
 				Upcoming Release Candidates
 			</h4>
 			{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-				<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+				<div
+					class="grid gap-4"
+					style="grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));"
+				>
 					{#each rollout.status.releaseCandidates as version}
-						<Card class="max-w-full">
-							<div class="mb-3">
-								<div class="mb-2 flex items-center justify-between">
-									<h6 class="font-medium text-gray-900 dark:text-white">
+						<Card class="w-full min-w-full max-w-none overflow-hidden">
+							<div class="mb-3 w-full">
+								<div class="mb-2 flex w-full items-start justify-between gap-2">
+									<h6 class="min-w-0 flex-1 break-all font-medium text-gray-900 dark:text-white">
 										{annotations[version]?.['org.opencontainers.image.version'] || version}
 									</h6>
 									{#if rollout.status?.gatedReleaseCandidates?.includes(version)}
-										<Badge color="green" class="text-xs">Available</Badge>
+										<Badge color="green" class="flex-shrink-0 text-xs">Available</Badge>
 									{:else}
-										<Badge color="yellow" class="text-xs">Blocked</Badge>
+										<Badge color="yellow" class="flex-shrink-0 text-xs">Blocked</Badge>
 									{/if}
 								</div>
 
 								{#if annotations[version]?.['org.opencontainers.image.version']}
 									<div class="mb-2">
-										<Badge color="dark" class="text-xs">
+										<Badge color="dark" class="break-all font-mono text-xs">
 											{version}
 										</Badge>
 									</div>
