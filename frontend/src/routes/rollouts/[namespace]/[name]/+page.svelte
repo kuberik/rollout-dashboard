@@ -939,24 +939,8 @@
 															</div>
 															<div class="min-w-0 flex-1">
 																<Badge color="blue" class="text-xs">
-																	{(() => {
-																		const parts = resource.groupVersionKind.split('/');
-																		if (parts.length === 1) {
-																			return parts[0]; // Just the kind
-																		} else if (parts.length === 2) {
-																			return parts[0] && parts[1]
-																				? `${parts[0]}/${parts[1]}`
-																				: parts[0] || parts[1];
-																		} else if (parts.length === 3) {
-																			const [group, version, kind] = parts;
-																			const result = [];
-																			if (group) result.push(group);
-																			if (version) result.push(version);
-																			if (kind) result.push(kind);
-																			return result.join('/');
-																		}
-																		return resource.groupVersionKind;
-																	})()}
+																	{resource.groupVersionKind.split('/').pop() ||
+																		resource.groupVersionKind}
 																</Badge>
 																<div class="my-1 flex items-center space-x-2">
 																	<p
