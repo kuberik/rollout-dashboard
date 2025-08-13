@@ -81,8 +81,8 @@
 	{/if}
 </svelte:head>
 
-<Button color="light" size="sm" class="mb-1 mr-1" on:click={() => (showModal = true)}>
-	<CodeOutline class="mr-1 h-4 w-4" />
+<Button color="light" size="xs" on:click={() => (showModal = true)}>
+	<CodeOutline class="mr-1 h-3 w-3" />
 	View Source
 </Button>
 

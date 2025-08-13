@@ -801,40 +801,60 @@
 										{/if}
 									</div>
 								{/if}
-								<p class="py-2 text-base font-normal text-gray-500 dark:text-gray-400">
-									{#if mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
-										<SourceViewer
-											namespace={rollout.metadata?.namespace || ''}
-											name={rollout.metadata?.name || ''}
-											version={entry.version}
-										/>
-									{/if}
-									{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
+								<div class="py-2 text-base font-normal text-gray-500 dark:text-gray-400">
+									<div class="space-y-2 pt-3 dark:border-gray-700">
+										{#if mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
+											<SourceViewer
+												namespace={rollout.metadata?.namespace || ''}
+												name={rollout.metadata?.name || ''}
+												version={entry.version}
+											/>
+										{/if}
+										{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
+											<Button
+												color="light"
+												size="xs"
+												href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version}`}
+												class=""
+											>
+												<CodePullRequestSolid class="mr-1 h-3 w-3" />
+												Show diff
+											</Button>
+										{/if}
+										{#if entry.version !== rollout.status?.history[0]?.version}
+											<Button
+												color="light"
+												size="xs"
+												on:click={() => {
+													rollbackVersion = entry.version;
+													showRollbackModal = true;
+												}}
+												class=""
+											>
+												<ReplyOutline class="mr-1 h-3 w-3" />
+												Rollback
+											</Button>
+										{/if}
+										{#if annotations[entry.version]?.['org.opencontainers.image.source']}
+											<GitHubViewButton
+												sourceUrl={annotations[entry.version]['org.opencontainers.image.source']}
+												version={annotations[entry.version]?.['org.opencontainers.image.version'] ||
+													entry.version}
+												size="xs"
+												color="light"
+											/>
+										{/if}
 										<Button
+											size="xs"
 											color="light"
-											size="sm"
-											class="mb-1 mr-1"
-											href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version}`}
+											on:click={() => copyToClipboard(entry.version)}
+											class=""
 										>
-											<CodePullRequestSolid class="mr-1 h-4 w-4" />
-											Show diff
+											<ClipboardOutline class="mr-1 h-3 w-3" />
+											Copy Tag
 										</Button>
-									{/if}
-									{#if entry.version !== rollout.status?.history[0]?.version}
-										<Button
-											color="light"
-											size="sm"
-											class="mb-1"
-											on:click={() => {
-												rollbackVersion = entry.version;
-												showRollbackModal = true;
-											}}
-										>
-											<ReplyOutline class="mr-1 h-4 w-4" />
-											Rollback
-										</Button>
-									{/if}
-								</p>
+									</div>
+								</div>
 							</TimelineItem>
 						{/each}
 					</Timeline>
