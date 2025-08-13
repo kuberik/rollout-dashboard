@@ -644,17 +644,18 @@
 								{/if}
 								{#if annotations[version]?.['org.opencontainers.image.created']}
 									<div class="text-xs text-gray-500 dark:text-gray-500">
-										<div>
+										<div class="mb-1">
 											Created: {formatDate(
 												annotations[version]['org.opencontainers.image.created']
 											)}
 										</div>
-										<div class="text-gray-400 dark:text-gray-500">
+										<Badge color="dark" border>
+											<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 											{formatTimeAgo(
 												annotations[version]['org.opencontainers.image.created'],
 												$now
 											)}
-										</div>
+										</Badge>
 									</div>
 								{/if}
 							</div>
@@ -875,9 +876,10 @@
 												{getResourceStatus(kustomization).status}
 											</Badge>
 											{#if getLastTransitionTime(kustomization)}
-												<span class="text-xs text-gray-500 dark:text-gray-400">
+												<Badge color="dark" border>
+													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 													{formatTimeAgo(getLastTransitionTime(kustomization)!, $now)}
-												</span>
+												</Badge>
 											{/if}
 										</div>
 									</div>
@@ -999,9 +1001,10 @@
 												{getResourceStatus(ociRepository).status}
 											</Badge>
 											{#if getLastTransitionTime(ociRepository)}
-												<span class="text-xs text-gray-500 dark:text-gray-400">
+												<Badge color="dark" border>
+													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 													{formatTimeAgo(getLastTransitionTime(ociRepository)!, $now)}
-												</span>
+												</Badge>
 											{/if}
 										</div>
 									</div>
@@ -1067,14 +1070,17 @@
 										{#if annotations[version]?.['org.opencontainers.image.created']}
 											<div>
 												<span class="font-medium">Created:</span>
-												<div>
+												<div class="mb-1">
 													{formatDate(annotations[version]['org.opencontainers.image.created'])}
 												</div>
 												<div class="text-gray-500 dark:text-gray-500">
-													{formatTimeAgo(
-														annotations[version]['org.opencontainers.image.created'],
-														$now
-													)}
+													<Badge color="dark" border>
+														<ClockSolid class="me-1.5 h-2.5 w-2.5" />
+														{formatTimeAgo(
+															annotations[version]['org.opencontainers.image.created'],
+															$now
+														)}
+													</Badge>
 												</div>
 											</div>
 										{/if}
