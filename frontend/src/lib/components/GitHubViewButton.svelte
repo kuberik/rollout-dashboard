@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from 'flowbite-svelte';
-	import { CodeOutline } from 'flowbite-svelte-icons';
+	import { GithubSolid } from 'flowbite-svelte-icons';
 
 	export let sourceUrl: string;
 	export let version: string;
@@ -35,6 +35,6 @@
 </script>
 
 <Button {size} {color} on:click={openGitHubUrl} class="text-xs">
-	<CodeOutline class="mr-1 h-3 w-3" />
+	<GithubSolid class="mr-1 h-3 w-3" />
 	View on GitHub
 </Button>

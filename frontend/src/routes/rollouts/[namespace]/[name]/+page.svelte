@@ -32,7 +32,8 @@
 		CodeOutline,
 		DatabaseSolid,
 		ClockSolid,
-		PauseSolid
+		PauseSolid,
+		ClipboardOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -715,7 +716,7 @@
 								{/if}
 
 								<Button size="xs" color="light" on:click={() => copyToClipboard(version)} class="">
-									<CodeOutline class="mr-1 h-3 w-3" />
+									<ClipboardOutline class="mr-1 h-3 w-3" />
 									Copy Tag
 								</Button>
 							</div>
@@ -1129,7 +1130,7 @@
 											on:click={() => copyToClipboard(version)}
 											class="text-xs"
 										>
-											<CodeOutline class="mr-1 h-3 w-3" />
+											<ClipboardOutline class="mr-1 h-3 w-3" />
 											Copy Tag
 										</Button>
 									</div>
