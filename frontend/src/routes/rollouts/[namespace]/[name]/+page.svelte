@@ -34,7 +34,14 @@
 		ClockSolid,
 		PauseSolid
 	} from 'flowbite-svelte-icons';
-	import { formatTimeAgo, formatDuration, formatDate, getRolloutStatus } from '$lib/utils';
+	import {
+		formatTimeAgo,
+		formatDuration,
+		formatDate,
+		getRolloutStatus,
+		isFieldManagedByManager,
+		isFieldManagedByOtherManager
+	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import { fly } from 'svelte/transition';
@@ -77,34 +84,27 @@
 
 		// Check if dashboard is managing the wantedVersion field through managedFields
 		if (rollout.metadata?.managedFields) {
-			for (const field of rollout.metadata.managedFields) {
-				if (field.manager === 'rollout-dashboard') {
-					// Check if this field contains spec.wantedVersion
-					if (
-						field.fieldsV1 &&
-						typeof field.fieldsV1 === 'string' &&
-						field.fieldsV1.includes('spec') &&
-						field.fieldsV1.includes('wantedVersion')
-					) {
-						return true;
-					}
-				}
+			if (
+				isFieldManagedByManager(
+					rollout.metadata.managedFields,
+					'rollout-dashboard',
+					'spec.wantedVersion'
+				)
+			) {
+				return true;
 			}
 		}
 
 		// Check if any other manager is managing the wantedVersion field
 		if (rollout.metadata?.managedFields) {
-			for (const field of rollout.metadata.managedFields) {
-				if (field.manager !== 'rollout-dashboard' && field.manager !== '') {
-					if (
-						field.fieldsV1 &&
-						typeof field.fieldsV1 === 'string' &&
-						field.fieldsV1.includes('spec') &&
-						field.fieldsV1.includes('wantedVersion')
-					) {
-						return false; // Another manager is managing this field
-					}
-				}
+			if (
+				isFieldManagedByOtherManager(
+					rollout.metadata.managedFields,
+					'rollout-dashboard',
+					'spec.wantedVersion'
+				)
+			) {
+				return false; // Another manager is managing this field
 			}
 		}
 

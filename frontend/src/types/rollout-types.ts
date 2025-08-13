@@ -35,8 +35,8 @@ export interface components {
                 time?: string;
                 /** @description FieldsType is the discriminator for the different fields format and version */
                 fieldsType?: string;
-                /** @description FieldsV1 holds the first JSON version format */
-                fieldsV1?: string;
+                /** @description FieldsV1 holds the field ownership information in a structured format */
+                fieldsV1?: Record<string, never>;
             }[];
         };
         /** @description Rollout is the Schema for the rollouts API. */
@@ -253,7 +253,7 @@ export interface components {
                  * @description LastErrorTime is the timestamp of the most recent error state
                  */
                 lastErrorTime?: string;
-                /** @description Status indicates the health state of the check (e.g., 'Healthy', 'Unhealthy', 'Error') */
+                /** @description Status indicates the health state of the check (e.g., 'Healthy', 'Unhealthy', 'Pending') */
                 status?: string;
             };
         };

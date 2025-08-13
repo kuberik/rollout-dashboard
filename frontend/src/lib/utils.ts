@@ -59,3 +59,93 @@ export function getRolloutStatus(deployment: Rollout): { color: StatusColor; tex
         ? { color: 'green', text: 'Ready' }
         : { color: 'red', text: 'Error' };
 }
+
+/**
+ * Parses the fieldsV1 YAML-like structure and checks if a specific field path is managed
+ * @param fieldsV1 The fieldsV1 object from managedFields (already parsed from YAML)
+ * @param fieldPath The field path to check (e.g., "spec.wantedVersion")
+ * @returns true if the field path is managed, false otherwise
+ */
+export function isFieldManaged(fieldsV1: any, fieldPath: string): boolean {
+    if (!fieldsV1 || typeof fieldsV1 !== 'object') {
+        return false;
+    }
+
+    // Split the field path into parts
+    const pathParts = fieldPath.split('.');
+
+    // Navigate through the fieldsV1 object to check if the path exists
+    let current = fieldsV1;
+    for (const part of pathParts) {
+        if (current && typeof current === 'object') {
+            // Check for the field with 'f:' prefix
+            const fieldKey = `f:${part}`;
+            if (fieldKey in current) {
+                current = current[fieldKey];
+            } else {
+                // Debug logging for troubleshooting
+                console.debug(`Field path check failed at '${part}' in '${fieldPath}'. Available keys:`, Object.keys(current));
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+
+    // If we reach here, the field path exists in the managed fields
+    return true;
+}
+
+/**
+ * Checks if a specific field is managed by a specific manager
+ * @param managedFields Array of managed fields from metadata
+ * @param managerName The name of the manager to check
+ * @param fieldPath The field path to check (e.g., "spec.wantedVersion")
+ * @returns true if the field is managed by the specified manager, false otherwise
+ */
+export function isFieldManagedByManager(
+    managedFields: Array<{ manager?: string; fieldsV1?: any }>,
+    managerName: string,
+    fieldPath: string
+): boolean {
+    if (!managedFields || !Array.isArray(managedFields)) {
+        return false;
+    }
+
+    for (const field of managedFields) {
+        if (field.manager === managerName && field.fieldsV1) {
+            if (isFieldManaged(field.fieldsV1, fieldPath)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Checks if any field is managed by managers other than the specified one
+ * @param managedFields Array of managed fields from metadata
+ * @param managerName The name of the manager to exclude from the check
+ * @param fieldPath The field path to check (e.g., "spec.wantedVersion")
+ * @returns true if the field is managed by another manager, false otherwise
+ */
+export function isFieldManagedByOtherManager(
+    managedFields: Array<{ manager?: string; fieldsV1?: any }>,
+    managerName: string,
+    fieldPath: string
+): boolean {
+    if (!managedFields || !Array.isArray(managedFields)) {
+        return false;
+    }
+
+    for (const field of managedFields) {
+        if (field.manager && field.manager !== managerName && field.manager !== '' && field.fieldsV1) {
+            if (isFieldManaged(field.fieldsV1, fieldPath)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
