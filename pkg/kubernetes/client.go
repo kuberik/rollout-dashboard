@@ -341,7 +341,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(schema.GroupVersionKind{
 			Group:   objMetadata.GroupKind.Group,
-			Version: "v1", // Most resources use v1
+			Version: entry.Version,
 			Kind:    objMetadata.GroupKind.Kind,
 		})
 
@@ -350,7 +350,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 			fmt.Printf("Failed to get resource %s/%s: %v\n", objMetadata.Namespace, objMetadata.Name, err)
 			// Resource not found or error
 			managedResources = append(managedResources, ManagedResourceStatus{
-				GroupVersionKind: fmt.Sprintf("%s/v1/%s", objMetadata.GroupKind.Group, objMetadata.GroupKind.Kind),
+				GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
 				Name:             objMetadata.Name,
 				Namespace:        objMetadata.Namespace,
 				Status:           "NotFound",
@@ -364,7 +364,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 		if err != nil {
 			fmt.Printf("Failed to compute status for %s/%s: %v\n", objMetadata.Namespace, objMetadata.Name, err)
 			managedResources = append(managedResources, ManagedResourceStatus{
-				GroupVersionKind: fmt.Sprintf("%s/v1/%s", objMetadata.GroupKind.Group, objMetadata.GroupKind.Kind),
+				GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
 				Name:             objMetadata.Name,
 				Namespace:        objMetadata.Namespace,
 				Status:           "Error",
@@ -375,7 +375,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 
 		fmt.Printf("Successfully computed status for %s/%s: %s\n", objMetadata.Namespace, objMetadata.Name, result.Status)
 		managedResources = append(managedResources, ManagedResourceStatus{
-			GroupVersionKind: fmt.Sprintf("%s/v1/%s", objMetadata.GroupKind.Group, objMetadata.GroupKind.Kind),
+			GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
 			Name:             objMetadata.Name,
 			Namespace:        objMetadata.Namespace,
 			Status:           string(result.Status),
