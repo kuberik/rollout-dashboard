@@ -44,6 +44,7 @@
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
+	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import { fly } from 'svelte/transition';
 
 	let rollout: Rollout | null = null;
@@ -700,6 +701,15 @@
 									</Tooltip>
 								{/if}
 
+								{#if annotations[version]?.['org.opencontainers.image.source']}
+									<GitHubViewButton
+										sourceUrl={annotations[version]['org.opencontainers.image.source']}
+										version={annotations[version]?.['org.opencontainers.image.version'] || version}
+										size="xs"
+										color="light"
+									/>
+								{/if}
+
 								<Button size="xs" color="light" on:click={() => copyToClipboard(version)} class="">
 									<CodeOutline class="mr-1 h-3 w-3" />
 									Copy Tag
@@ -1096,45 +1106,13 @@
 									<!-- Action buttons -->
 									<div class="flex gap-2 pt-2">
 										{#if annotations[version]?.['org.opencontainers.image.source']}
-											<Button
+											<GitHubViewButton
+												sourceUrl={annotations[version]['org.opencontainers.image.source']}
+												version={annotations[version]?.['org.opencontainers.image.version'] ||
+													version}
 												size="xs"
 												color="light"
-												on:click={() => {
-													const sourceUrl = annotations[version]['org.opencontainers.image.source'];
-													const versionToShow =
-														annotations[version]?.['org.opencontainers.image.version'] || version;
-													// Convert to GitHub URL if it's a git URL
-													let githubUrl = sourceUrl;
-													if (sourceUrl.includes('github.com')) {
-														// If it's already a GitHub URL, append the version
-														githubUrl = sourceUrl.endsWith('/')
-															? sourceUrl + 'tree/' + versionToShow
-															: sourceUrl + '/tree/' + versionToShow;
-														window.open(githubUrl, '_blank');
-													} else if (sourceUrl.includes('git@github.com:')) {
-														// Convert SSH to HTTPS and append version
-														githubUrl =
-															sourceUrl.replace('git@github.com:', 'https://github.com/') +
-															'/tree/' +
-															versionToShow;
-														window.open(githubUrl, '_blank');
-													} else if (sourceUrl.includes('.git')) {
-														// Remove .git extension, append version
-														githubUrl = sourceUrl.replace('.git', '') + '/tree/' + versionToShow;
-														window.open(githubUrl, '_blank');
-													} else {
-														// Try to open as is with version
-														githubUrl = sourceUrl.endsWith('/')
-															? sourceUrl + 'tree/' + versionToShow
-															: sourceUrl + '/tree/' + versionToShow;
-														window.open(githubUrl, '_blank');
-													}
-												}}
-												class="text-xs"
-											>
-												<CodeOutline class="mr-1 h-3 w-3" />
-												View on GitHub
-											</Button>
+											/>
 										{/if}
 										<Button
 											size="xs"
