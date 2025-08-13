@@ -745,9 +745,7 @@
 		{#if rollout.status?.history}
 			<div class="mb-6">
 				<div class="flex items-center justify-between">
-					<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">
-						Deployment & Bake History
-					</h4>
+					<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Rollout History</h4>
 				</div>
 				<div class="overflow-x-auto">
 					<Timeline order="horizontal">
