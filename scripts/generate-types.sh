@@ -91,8 +91,8 @@ cat > $TEMP_DIR/schema.json << EOL
                   "description": "FieldsType is the discriminator for the different fields format and version"
                 },
                 "fieldsV1": {
-                  "type": "string",
-                  "description": "FieldsV1 holds the first JSON version format"
+                  "type": "object",
+                  "description": "FieldsV1 holds the field ownership information in a structured format"
                 }
               }
             },
