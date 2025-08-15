@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -299,11 +301,12 @@ func (c *Client) GetKustomization(ctx context.Context, namespace, name string) (
 }
 
 type ManagedResourceStatus struct {
-	GroupVersionKind string `json:"groupVersionKind"`
-	Name             string `json:"name"`
-	Namespace        string `json:"namespace"`
-	Status           string `json:"status"`
-	Message          string `json:"message"`
+	GroupVersionKind string    `json:"groupVersionKind"`
+	Name             string    `json:"name"`
+	Namespace        string    `json:"namespace"`
+	Status           string    `json:"status"`
+	Message          string    `json:"message"`
+	LastModified     time.Time `json:"lastModified"`
 }
 
 func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace, name string) ([]ManagedResourceStatus, error) {
@@ -355,8 +358,19 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 				Namespace:        objMetadata.Namespace,
 				Status:           "NotFound",
 				Message:          fmt.Sprintf("Resource not found: %v", err),
+				LastModified:     time.Time{},
 			})
 			continue
+		}
+
+		// Extract the latest time from managedFields
+		lastModified := time.Time{}
+		if managedFields := obj.GetManagedFields(); len(managedFields) > 0 {
+			for _, field := range managedFields {
+				if field.Time != nil && field.Time.Time.After(lastModified) {
+					lastModified = field.Time.Time
+				}
+			}
 		}
 
 		// Compute status using kstatus
@@ -369,6 +383,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 				Namespace:        objMetadata.Namespace,
 				Status:           "Error",
 				Message:          fmt.Sprintf("Error computing status: %v", err),
+				LastModified:     lastModified,
 			})
 			continue
 		}
@@ -380,9 +395,14 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 			Namespace:        objMetadata.Namespace,
 			Status:           string(result.Status),
 			Message:          result.Message,
+			LastModified:     lastModified,
 		})
 	}
 
-	fmt.Printf("Returning %d managed resources\n", len(managedResources))
+	// Sort managed resources by LastModified time (most recent first)
+	sort.Slice(managedResources, func(i, j int) bool {
+		return managedResources[i].LastModified.After(managedResources[j].LastModified)
+	})
+
 	return managedResources, nil
 }

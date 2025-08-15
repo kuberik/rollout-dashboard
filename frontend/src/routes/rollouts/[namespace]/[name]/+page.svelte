@@ -961,6 +961,17 @@
 																		{resource.message}
 																	</span>
 																{/if}
+																{#if resource.lastModified}
+																	<div
+																		class="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400"
+																	>
+																		<ClockSolid class="mr-1 h-3 w-3" />
+																		Last modified: {formatTimeAgo(
+																			new Date(resource.lastModified),
+																			$now
+																		)}
+																	</div>
+																{/if}
 															</div>
 														</div>
 													</Card>

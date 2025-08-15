@@ -4,4 +4,5 @@ export interface ManagedResourceStatus {
     namespace: string;
     status: string;
     message: string;
+    lastModified: string;
 }
