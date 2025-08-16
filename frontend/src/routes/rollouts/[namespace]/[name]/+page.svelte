@@ -41,7 +41,10 @@
 		formatDate,
 		getRolloutStatus,
 		isFieldManagedByManager,
-		isFieldManagedByOtherManager
+		isFieldManagedByOtherManager,
+		hasBypassGatesAnnotation,
+		getBypassGatesVersion,
+		isVersionBypassingGates
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
@@ -70,6 +73,10 @@
 
 	let showRollbackModal = false;
 	let rollbackVersion: string | null = null;
+
+	let showRemoveBypassModal = false;
+	let showAddBypassModal = false;
+	let selectedBypassVersion: string | null = null;
 
 	let autoRefreshIntervalId: number | null = null;
 
@@ -363,6 +370,90 @@
 		}
 	}
 
+	async function addBypassGates(version: string) {
+		if (!rollout) return;
+
+		try {
+			const response = await fetch(
+				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/bypass-gates`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ version })
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to add bypass-gates annotation');
+			}
+
+			await updateData();
+			showToast = true;
+			toastMessage = `Gates bypassed, version rolling out soon`;
+			toastType = 'success';
+			showAddBypassModal = false;
+			selectedBypassVersion = null;
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		} catch (e) {
+			console.error('Failed to add bypass-gates annotation:', e);
+			showToast = true;
+			toastMessage = e instanceof Error ? e.message : 'Failed to add bypass-gates annotation';
+			toastType = 'error';
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		}
+	}
+
+	async function removeBypassGates() {
+		if (!rollout) return;
+
+		try {
+			const response = await fetch(
+				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/bypass-gates`,
+				{
+					method: 'DELETE',
+					headers: {
+						'Content-Type': 'application/json'
+					}
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to remove bypass-gates annotation');
+			}
+
+			await updateData();
+			showToast = true;
+			toastMessage = 'Bypass-gates annotation removed successfully';
+			toastType = 'success';
+			showRemoveBypassModal = false;
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		} catch (e) {
+			console.error('Failed to remove bypass-gates annotation:', e);
+			showToast = true;
+			toastMessage = e instanceof Error ? e.message : 'Failed to remove bypass-gates annotation';
+			toastType = 'error';
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		}
+	}
+
 	function formatRevision(revision: string) {
 		let result = '';
 		if (revision.includes('@sha1:')) {
@@ -629,7 +720,9 @@
 									<h6 class="min-w-0 flex-1 break-all font-medium text-gray-900 dark:text-white">
 										{annotations[version]?.['org.opencontainers.image.version'] || version}
 									</h6>
-									{#if rollout.status?.gatedReleaseCandidates?.includes(version)}
+									{#if isVersionBypassingGates(rollout, version)}
+										<Badge color="blue" class="flex-shrink-0 text-xs">Gates Skipped</Badge>
+									{:else if rollout.status?.gatedReleaseCandidates?.includes(version)}
 										<Badge color="green" class="flex-shrink-0 text-xs">Available</Badge>
 									{:else}
 										<Badge color="yellow" class="flex-shrink-0 text-xs">Blocked</Badge>
@@ -663,10 +756,15 @@
 
 							{#if rollout.status?.gates && rollout.status.gates.length > 0}
 								<div class="space-y-2">
-									<p class="text-xs font-medium text-gray-700 dark:text-gray-300">Gate Status:</p>
+									<h3 class="text-xs font-medium text-gray-700 dark:text-gray-300">Gates:</h3>
 									{#each rollout.status.gates as gate}
 										<div class="flex items-center justify-between text-xs">
-											{#if gate.allowedVersions?.includes(version)}
+											{#if isVersionBypassingGates(rollout, version)}
+												<Badge color="blue" class="text-xs">
+													<CodePullRequestSolid class="mr-1 h-3 w-3" />
+													{gate.name} (Skipped)
+												</Badge>
+											{:else if gate.allowedVersions?.includes(version)}
 												<Badge color="green" class="text-xs">
 													<CheckCircleSolid class="mr-1 h-3 w-3" />
 													{gate.name}
@@ -705,6 +803,20 @@
 										conflicts.
 									</Tooltip>
 								{/if}
+
+								<!-- Bypass Gates Button for this version -->
+								<Button
+									size="xs"
+									color="blue"
+									disabled={hasBypassGatesAnnotation(rollout)}
+									on:click={() => {
+										selectedBypassVersion = version;
+										showAddBypassModal = true;
+									}}
+								>
+									<CodePullRequestSolid class="mr-1 h-3 w-3" />
+									Skip Gates
+								</Button>
 
 								{#if annotations[version]?.['org.opencontainers.image.source']}
 									<GitHubViewButton
@@ -966,10 +1078,7 @@
 																		class="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400"
 																	>
 																		<ClockSolid class="mr-1 h-3 w-3" />
-																		Last modified: {formatTimeAgo(
-																			new Date(resource.lastModified),
-																			$now
-																		)}
+																		Last modified: {formatTimeAgo(resource.lastModified, $now)}
 																	</div>
 																{/if}
 															</div>
@@ -1300,6 +1409,81 @@
 	</div>
 </Modal>
 
+<Modal bind:open={showAddBypassModal} title="Confirm Skip Gates">
+	<div class="space-y-4">
+		<Alert color="yellow" class="mb-4">
+			<div class="flex items-center">
+				<ExclamationCircleSolid class="mr-2 h-4 w-4" />
+				<p>
+					<span class="font-medium">Warning:</span> This will allow the rollout controller to bypass
+					gate checks for a specific version.
+				</p>
+			</div>
+		</Alert>
+		<div class="mb-3 text-center">
+			<Badge color="blue" class="px-3 py-1 text-base">{selectedBypassVersion}</Badge>
+		</div>
+		<p class="text-sm text-gray-600 dark:text-gray-400">
+			Are you sure you want to rollout this version of <b>{rollout?.metadata?.name}</b> now?
+		</p>
+		<p class="text-xs text-gray-500 dark:text-gray-400">
+			This will allow the rollout controller to deploy the selected version immediately without
+			waiting for gates to pass. Use this feature carefully as it may bypass important safety
+			checks.
+		</p>
+		<div class="flex justify-end gap-2">
+			<Button
+				color="light"
+				on:click={() => {
+					showAddBypassModal = false;
+					selectedBypassVersion = null;
+				}}
+			>
+				Cancel
+			</Button>
+			<Button
+				color="blue"
+				on:click={() => selectedBypassVersion && addBypassGates(selectedBypassVersion)}
+			>
+				Skip Gates
+			</Button>
+		</div>
+	</div>
+</Modal>
+
+<Modal bind:open={showRemoveBypassModal} title="Remove Gate Bypass">
+	<div class="space-y-4">
+		<Alert color="blue" class="mb-4">
+			<ExclamationCircleSolid class="h-4 w-4" />
+			<span class="font-medium">Info:</span> This will remove the gate bypass permission for a specific
+			version.
+		</Alert>
+		<p class="text-sm text-gray-600 dark:text-gray-400">
+			Are you sure you want to remove the gate bypass permission for version <b
+				>{selectedBypassVersion ||
+					(rollout ? getBypassGatesVersion(rollout) : null) ||
+					'unknown'}</b
+			>
+			from <b>{rollout?.metadata?.name}</b>?
+		</p>
+		<p class="text-xs text-gray-500 dark:text-gray-400">
+			This will restore normal gate checking behavior for the selected version.
+		</p>
+		<div class="flex justify-end gap-2">
+			<Button
+				color="light"
+				on:click={() => {
+					showRemoveBypassModal = false;
+					selectedBypassVersion = null;
+				}}
+			>
+				Cancel
+			</Button>
+			<Button color="red" on:click={removeBypassGates}>Remove Bypass</Button>
+		</div>
+	</div>
+</Modal>
+
 <Toast
 	transition={fly}
 	position="top-right"
@@ -1308,17 +1492,19 @@
 	align={false}
 	bind:toastStatus={showToast}
 >
-	<div
-		class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {toastType ===
-		'success'
-			? 'bg-green-100 text-green-500 dark:bg-green-800 dark:text-green-200'
-			: 'bg-red-100 text-red-500 dark:bg-red-800 dark:text-red-200'}"
-	>
-		{#if toastType === 'success'}
-			<CheckCircleSolid class="h-5 w-5" />
-		{:else}
-			<ExclamationCircleSolid class="h-5 w-5" />
-		{/if}
-	</div>
+	{#snippet icon()}
+		<div
+			class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {toastType ===
+			'success'
+				? 'bg-green-100 text-green-500 dark:bg-green-800 dark:text-green-200'
+				: 'bg-red-100 text-red-500 dark:bg-red-800 dark:text-red-200'}"
+		>
+			{#if toastType === 'success'}
+				<CheckCircleSolid class="h-5 w-5" />
+			{:else}
+				<ExclamationCircleSolid class="h-5 w-5" />
+			{/if}
+		</div>
+	{/snippet}
 	{toastMessage}
 </Toast>

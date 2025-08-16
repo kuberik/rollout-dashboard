@@ -192,6 +192,59 @@ func main() {
 			})
 		})
 
+		// Add bypass-gates annotation to rollout
+		api.POST("/rollouts/:namespace/:name/bypass-gates", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			var bypassRequest struct {
+				Version string `json:"version" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&bypassRequest); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "Invalid request body",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Add the bypass-gates annotation with the specific version
+			updatedRollout, err := k8sClient.AddBypassGatesAnnotation(context.Background(), namespace, name, bypassRequest.Version)
+			if err != nil {
+				log.Printf("Error adding bypass-gates annotation: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to add bypass-gates annotation",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rollout": updatedRollout,
+			})
+		})
+
+		// Remove bypass-gates annotation from rollout
+		api.DELETE("/rollouts/:namespace/:name/bypass-gates", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Remove the bypass-gates annotation
+			updatedRollout, err := k8sClient.RemoveBypassGatesAnnotation(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error removing bypass-gates annotation: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to remove bypass-gates annotation",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rollout": updatedRollout,
+			})
+		})
+
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
 			namespace := c.Param("namespace")
 			name := c.Param("name")

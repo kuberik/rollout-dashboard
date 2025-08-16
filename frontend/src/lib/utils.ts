@@ -149,3 +149,32 @@ export function isFieldManagedByOtherManager(
 
     return false;
 }
+
+/**
+ * Checks if a rollout has the bypass-gates annotation and returns the version
+ * @param rollout The rollout to check
+ * @returns The version that is bypassing gates, or null if no bypass is set
+ */
+export function getBypassGatesVersion(rollout: Rollout): string | null {
+    return rollout.metadata?.annotations?.['rollout.kuberik.com/bypass-gates'] || null;
+}
+
+/**
+ * Checks if a rollout has the bypass-gates annotation
+ * @param rollout The rollout to check
+ * @returns true if the bypass-gates annotation exists
+ */
+export function hasBypassGatesAnnotation(rollout: Rollout): boolean {
+    return getBypassGatesVersion(rollout) !== null;
+}
+
+/**
+ * Checks if a specific version is bypassing gates
+ * @param rollout The rollout to check
+ * @param version The version to check
+ * @returns true if the specified version is bypassing gates
+ */
+export function isVersionBypassingGates(rollout: Rollout, version: string): boolean {
+    const bypassVersion = getBypassGatesVersion(rollout);
+    return bypassVersion === version;
+}

@@ -142,6 +142,69 @@ func (c *Client) UpdateRolloutVersion(ctx context.Context, namespace, name strin
 	return updatedRollout, nil
 }
 
+// AddBypassGatesAnnotation adds the rollout.kuberik.com/bypass-gates annotation to a rollout
+// This allows the rollout to bypass gate checks for a specific version
+func (c *Client) AddBypassGatesAnnotation(ctx context.Context, namespace, name string, version string) (*rolloutv1alpha1.Rollout, error) {
+	// Create an unstructured patch object with only the annotation
+	patch := &unstructured.Unstructured{}
+	patch.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "kuberik.com",
+		Version: "v1alpha1",
+		Kind:    "Rollout",
+	})
+	patch.SetNamespace(namespace)
+	patch.SetName(name)
+
+	// Set the bypass-gates annotation with the specific version
+	patch.SetAnnotations(map[string]string{
+		"rollout.kuberik.com/bypass-gates": version,
+	})
+
+	// Use server-side apply to update only the annotation
+	if err := c.client.Patch(ctx, patch, client.Merge, client.FieldOwner("rollout-dashboard")); err != nil {
+		return nil, fmt.Errorf("failed to add bypass-gates annotation using server-side apply: %w", err)
+	}
+
+	// Get the updated rollout to return
+	updatedRollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, updatedRollout); err != nil {
+		return nil, fmt.Errorf("failed to get updated rollout: %w", err)
+	}
+
+	return updatedRollout, nil
+}
+
+// RemoveBypassGatesAnnotation removes the rollout.kuberik.com/bypass-gates annotation from a rollout
+func (c *Client) RemoveBypassGatesAnnotation(ctx context.Context, namespace, name string) (*rolloutv1alpha1.Rollout, error) {
+	// Create an unstructured patch object with only the annotation
+	patch := &unstructured.Unstructured{}
+	patch.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "kuberik.com",
+		Version: "v1alpha1",
+		Kind:    "Rollout",
+	})
+	patch.SetNamespace(namespace)
+	patch.SetName(name)
+
+	// Set the bypass-gates annotation to null to remove it
+	patch.SetAnnotations(map[string]string{
+		"rollout.kuberik.com/bypass-gates": "",
+	})
+
+	// Use server-side apply to update only the annotation
+	if err := c.client.Patch(ctx, patch, client.Merge, client.FieldOwner("rollout-dashboard")); err != nil {
+		return nil, fmt.Errorf("failed to remove bypass-gates annotation using server-side apply: %w", err)
+	}
+
+	// Get the updated rollout to return
+	updatedRollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, updatedRollout); err != nil {
+		return nil, fmt.Errorf("failed to get updated rollout: %w", err)
+	}
+
+	return updatedRollout, nil
+}
+
 func (c *Client) GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, secret); err != nil {
