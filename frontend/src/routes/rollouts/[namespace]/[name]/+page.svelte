@@ -709,10 +709,7 @@
 				Upcoming Release Candidates
 			</h4>
 			{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-				<div
-					class="grid gap-4"
-					style="grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));"
-				>
+				<div class="auto-fill-grid grid gap-4">
 					{#each rollout.status.releaseCandidates as version}
 						<Card class="w-full min-w-full max-w-none overflow-hidden">
 							<div class="mb-3 w-full">
@@ -1508,3 +1505,10 @@
 	{/snippet}
 	{toastMessage}
 </Toast>
+
+<style>
+	.auto-fill-grid {
+		grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+		justify-content: start;
+	}
+</style>
