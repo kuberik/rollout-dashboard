@@ -752,28 +752,36 @@
 							</div>
 
 							{#if rollout.status?.gates && rollout.status.gates.length > 0}
-								<div class="space-y-2">
-									<h3 class="text-xs font-medium text-gray-700 dark:text-gray-300">Gates:</h3>
-									{#each rollout.status.gates as gate}
-										<div class="flex items-center justify-between text-xs">
-											{#if isVersionBypassingGates(rollout, version)}
-												<Badge color="blue" class="text-xs">
-													<CodePullRequestSolid class="mr-1 h-3 w-3" />
-													{gate.name} (Skipped)
-												</Badge>
-											{:else if gate.allowedVersions?.includes(version)}
-												<Badge color="green" class="text-xs">
-													<CheckCircleSolid class="mr-1 h-3 w-3" />
-													{gate.name}
-												</Badge>
-											{:else}
-												<Badge color="red" class="text-xs">
-													<ExclamationCircleSolid class="mr-1 h-3 w-3" />
-													{gate.name}
-												</Badge>
-											{/if}
-										</div>
-									{/each}
+								<div
+									class="relative mt-4 rounded-lg border border-gray-300 p-4 dark:border-gray-600"
+								>
+									<div
+										class="absolute -top-2 left-3 bg-white px-2 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+									>
+										Gates
+									</div>
+									<div class="space-y-2">
+										{#each rollout.status.gates as gate}
+											<div class="flex items-center justify-between text-xs">
+												{#if isVersionBypassingGates(rollout, version)}
+													<Badge color="blue" class="text-xs">
+														<CodePullRequestSolid class="mr-1 h-3 w-3" />
+														{gate.name} (Skipped)
+													</Badge>
+												{:else if gate.allowedVersions?.includes(version)}
+													<Badge color="green" class="text-xs">
+														<CheckCircleSolid class="mr-1 h-3 w-3" />
+														{gate.name}
+													</Badge>
+												{:else}
+													<Badge color="red" class="text-xs">
+														<ExclamationCircleSolid class="mr-1 h-3 w-3" />
+														{gate.name}
+													</Badge>
+												{/if}
+											</div>
+										{/each}
+									</div>
 								</div>
 							{/if}
 
