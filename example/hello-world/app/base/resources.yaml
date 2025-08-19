@@ -35,7 +35,8 @@ metadata:
   labels:
     app: hello-python
 spec:
-  replicas: 1
+  minReadySeconds: 15
+  replicas: 2
   selector:
     matchLabels:
       app: hello-python
@@ -95,3 +96,23 @@ spec:
                 name: hello-python
                 port:
                   number: 80
+---
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMonitor
+metadata:
+  name: hello-python-monitor
+  namespace: hello-world
+  annotations:
+    kuberik.com/health-check: "true"
+  labels:
+    app.kubernetes.io/name: hello-python-monitor
+    app.kubernetes.io/part-of: rollout-dashboard
+    app.kubernetes.io/managed-by: kubectl
+    app: hello-python
+spec:
+  message: "Auto-generated monitor for hello-python"
+  query: "avg(last_1m):avg:system.cpu.idle{*} by {host} > 90"
+  tags:
+    - "env:dev"
+  type: metric alert
+  name: hello-python-monitor

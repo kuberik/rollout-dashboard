@@ -5,7 +5,8 @@
 		Rollout,
 		Kustomization,
 		OCIRepository,
-		ManagedResourceStatus
+		ManagedResourceStatus,
+		HealthCheck
 	} from '../../../../types';
 	import {
 		Card,
@@ -28,6 +29,7 @@
 		EditOutline,
 		CheckCircleSolid,
 		ExclamationCircleSolid,
+		InfoCircleSolid,
 		CloseOutline,
 		CodeOutline,
 		DatabaseSolid,
@@ -55,6 +57,7 @@
 	let kustomizations: Kustomization[] = [];
 	let ociRepositories: OCIRepository[] = [];
 	let managedResources: Record<string, ManagedResourceStatus[]> = {};
+	let healthChecks: HealthCheck[] = [];
 	let loading = true;
 	let hasLoaded = false;
 	let error: string | null = null;
@@ -192,6 +195,26 @@
 					})
 			);
 			managedResources = tempResources;
+
+			// Fetch health checks that match the rollout's health selector
+			if (rollout?.spec?.healthCheckSelector) {
+				try {
+					const healthChecksResponse = await fetch(
+						`/api/rollouts/${$page.params.namespace}/${$page.params.name}/health-checks`
+					);
+					if (healthChecksResponse.ok) {
+						const healthChecksData = await healthChecksResponse.json();
+						healthChecks = healthChecksData.healthChecks || [];
+
+						// Log namespace search information
+						if (healthChecksData.debug) {
+							console.log('Health checks search info:', healthChecksData.debug);
+						}
+					}
+				} catch (e) {
+					console.error('Failed to fetch health checks:', e);
+				}
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Unknown error occurred';
 		} finally {
@@ -703,6 +726,73 @@
 				{/if}
 			{/if}
 		</div>
+
+		{#if rollout.spec?.healthCheckSelector || healthChecks.length > 0}
+			<div class="mb-6">
+				<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Health Checks</h4>
+
+				{#if healthChecks.length > 0}
+					<div class="space-y-4">
+						{#each healthChecks as healthCheck ((healthCheck.metadata?.name, healthCheck.metadata?.namespace))}
+							<Card class="w-full">
+								<div class="flex items-center">
+									<div class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center">
+										{#if healthCheck.status?.status === 'Healthy'}
+											<CheckCircleSolid class="h-6 w-6 text-green-600 dark:text-green-400" />
+										{:else if healthCheck.status?.status === 'Unhealthy'}
+											<ExclamationCircleSolid class="h-6 w-6 text-red-600 dark:text-red-400" />
+										{:else if healthCheck.status?.status === 'Pending'}
+											<Spinner size="6" color="yellow" />
+										{:else}
+											<ExclamationCircleSolid class="h-6 w-6 text-gray-500 dark:text-gray-400" />
+										{/if}
+									</div>
+									<div class="min-w-0 flex-1">
+										<Badge color="blue" class="text-xs">
+											{#if healthCheck.metadata?.ownerReferences && healthCheck.metadata.ownerReferences.length > 0}
+												{healthCheck.metadata.ownerReferences[0].kind}
+											{:else}
+												HealthCheck
+											{/if}
+										</Badge>
+										<div class="my-1 flex items-center space-x-2">
+											<p class="truncate text-sm font-medium text-gray-900 dark:text-white">
+												{#if healthCheck.metadata?.ownerReferences && healthCheck.metadata.ownerReferences.length > 0}
+													{healthCheck.metadata.ownerReferences[0].name}
+												{:else}
+													{healthCheck.metadata?.name}
+												{/if}
+											</p>
+										</div>
+										{#if healthCheck.status?.lastErrorTime}
+											<span class="mt-1 block truncate text-xs text-red-600 dark:text-red-400">
+												Last Error: {formatTimeAgo(healthCheck.status.lastErrorTime, $now)}
+											</span>
+										{/if}
+									</div>
+								</div>
+							</Card>
+						{/each}
+					</div>
+				{:else if rollout.spec?.healthCheckSelector}
+					<Alert color="blue">
+						{#snippet icon()}<InfoCircleSolid class="h-5 w-5" />{/snippet}
+						No health checks were found that match the configured selector.
+					</Alert>
+				{:else}
+					<Alert color="blue" class="mb-4">
+						<div class="flex items-center">
+							<ExclamationCircleSolid class="mr-2 h-5 w-5" />
+							<span class="font-medium">No Health Check Selector Configured</span>
+						</div>
+						<p class="mt-2 text-sm">
+							This rollout doesn't have a health check selector configured. Health checks can be
+							used to validate deployment success.
+						</p>
+					</Alert>
+				{/if}
+			</div>
+		{/if}
 
 		<div class="mb-6">
 			<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">

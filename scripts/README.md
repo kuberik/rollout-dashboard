@@ -1,130 +1,225 @@
-# Development Environment Setup
+# Scripts
 
-This directory contains scripts to set up a development environment with Kind cluster and registry.
+This directory contains various scripts for setting up and managing the rollout dashboard.
 
-## Prerequisites
-
-- [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/) installed
-- [kubectl](https://kubernetes.io/docs/tasks/tools/) installed
-- [Docker](https://docs.docker.com/get-docker/) installed
-- [OpenSSL](https://www.openssl.org/) installed (usually pre-installed on macOS)
-
-## Scripts
-
-### `setup-kind-cluster.sh`
-
-This script sets up a complete Kind cluster with:
-
-1. **Kind Cluster**: Creates a 3-node cluster (1 control-plane, 2 workers)
-2. **Registry**: Deploys a Docker registry without TLS or authentication (insecure)
-3. **Certificates**: Generates self-signed certificates for the registry
-4. **Secrets**: Creates `registry-tls` secret in both `registry` and `rollout-dashboard` namespaces
-5. **Port Exposure**: Exposes registry port 5000 to host machine
-6. **Docker Configuration**: Configures Docker to trust the registry
-
-**Usage:**
-```bash
-./scripts/setup-kind-cluster.sh
-```
+## Available Scripts
 
 ### `setup-dev-environment.sh`
+Sets up the complete development environment including:
+- Kind cluster creation
+- Flux installation
+- CRD application
+- Frontend build and deployment
 
-This script sets up the complete development environment:
+### `setup-kind-cluster.sh`
+Creates a local Kind cluster for development.
 
-1. Checks if Kind cluster exists, creates it if not
-2. Installs Flux
-3. Deploys the rollout-dashboard application
-4. Configures TLS certificate mounting
-5. Applies example configurations
-6. Builds and pushes images
+### `build-and-push.sh`
+Builds and pushes the rollout dashboard image.
 
-**Usage:**
+### `create-kyverno-healthcheck-rule.sh`
+Creates a Kyverno ClusterPolicy that automatically generates and manages HealthCheck resources.
+
+### `create-datadogmonitor.sh`
+Creates an empty DataDogMonitor resource with basic configuration and proper labeling.
+
+## Kyverno HealthCheck Rule
+
+The `create-kyverno-healthcheck-rule.sh` script creates a Kyverno policy that:
+
+### Features
+- **Automatic Generation**: Creates HealthCheck resources for any resource labeled with `kuberik.com/health-check-classes`
+- **Dynamic Updates**: Automatically updates HealthCheck resources when upstream resources change
+- **SSA Generation**: Enables Server-Side Apply generation for efficient updates
+- **Smart Labeling**: Applies comprehensive labels for resource tracking and management
+
+### How It Works
+1. **Trigger**: Any resource with the `kuberik.com/health-check-classes` label
+2. **Action**: Generates a corresponding HealthCheck resource
+3. **Configuration**: Automatically configures health check parameters
+4. **Management**: Updates HealthCheck resources when source resources change
+
+### Usage
+
 ```bash
-./scripts/setup-dev-environment.sh
+# Make the script executable
+chmod +x scripts/create-kyverno-healthcheck-rule.sh
+
+# Run the script
+./scripts/create-kyverno-healthcheck-rule.sh
 ```
 
-### `cleanup-kind-cluster.sh`
+### Testing
 
-This script cleans up the development environment:
+After running the script, test it by creating a resource with the required label:
 
-1. Deletes the Kind cluster
-2. Removes generated certificates
-3. Cleans up host file entries
-4. Removes Docker CA certificate
-
-**Usage:**
 ```bash
-./scripts/cleanup-kind-cluster.sh
+# Create a test deployment with health check label
+kubectl run test-app --image=nginx --labels=kuberik.com/health-check-classes=http
+
+# Verify the HealthCheck was created
+kubectl get healthchecks
+kubectl describe healthcheck healthcheck-test-app
 ```
 
-## Registry Access
+### Prerequisites
 
-The registry is accessible at:
-- **From host**: `registry:5000` (added to /etc/hosts)
-- **From cluster**: `registry.registry.svc.cluster.local:5000`
+- Kubernetes cluster running
+- Kyverno installed in the cluster
+- kubectl configured and accessible
+- HealthCheck CRD available (`kuberik.com/v1alpha1`)
 
-**Note**: The registry is configured without authentication or TLS for development purposes. It runs as an insecure registry for easy testing and development.
+### Generated HealthCheck Configuration
 
-## Certificates
+The rule generates HealthCheck resources with:
+- **Default Settings**: 30s interval, 10s timeout, 3 retries
+- **Backoff Strategy**: Exponential backoff with 5s initial, 60s max
+- **Failure Handling**: 3 failure threshold, 1 success threshold
+- **Smart Naming**: `healthcheck-{resource-name}` pattern
+- **Comprehensive Labels**: Source tracking and management labels
 
-Certificates are stored in the `certs/` directory:
-- `ca.crt`: Certificate Authority certificate
-- `ca.key`: Certificate Authority private key
-- `server.crt`: Registry server certificate
-- `server.key`: Registry server private key
+### Customization
 
-## Docker Configuration
+To modify the default health check parameters, edit the script and adjust the values in the `data.spec` section:
 
-A Docker config file is created at `.docker/config.json` which is automatically used by the build scripts for registry access.
+```yaml
+interval: 30s          # Health check frequency
+timeout: 10s           # Individual check timeout
+retries: 3             # Number of retries
+failureThreshold: 3    # Consecutive failures before marking unhealthy
+successThreshold: 1    # Consecutive successes before marking healthy
+```
 
-## Troubleshooting
+### Troubleshooting
 
-### Registry Connection Issues
+1. **Rule not working**: Ensure Kyverno is installed and running
+2. **HealthCheck not created**: Check if the source resource has the correct label
+3. **Permission issues**: Verify Kyverno has permissions to create HealthCheck resources
+4. **CRD missing**: Ensure the HealthCheck CRD is installed before running the script
 
-If you can't connect to the registry:
+## DataDogMonitor Creation
 
-1. Check if the registry is running:
-   ```bash
-   kubectl get pods -n registry
-   ```
+The `create-datadogmonitor.sh` script creates empty DataDogMonitor resources for monitoring setup.
 
-2. Verify the service is accessible:
-   ```bash
-   kubectl get svc -n registry
-   ```
+### Features
+- **Quick Creation**: Rapidly creates DataDogMonitor resources with proper structure
+- **Flexible Naming**: Customizable monitor names and namespaces
+- **Proper Labeling**: Applies consistent labels for resource management
+- **Template Ready**: Creates monitors ready for query and threshold configuration
 
-3. Check if the port is exposed:
-   ```bash
-   netstat -an | grep 5000
-   ```
+### Usage
 
-### Certificate Issues
+```bash
+# Make the script executable
+chmod +x scripts/create-datadogmonitor.sh
 
-If you get certificate errors:
+# Create a monitor with default settings
+./scripts/create-datadogmonitor.sh
 
-1. Verify the secret exists:
-   ```bash
-   kubectl get secret registry-tls -n registry
-   kubectl get secret registry-tls -n rollout-dashboard
-   ```
+# Create a monitor in a specific namespace
+./scripts/create-datadogmonitor.sh my-namespace
 
-2. Regenerate certificates:
-   ```bash
-   ./scripts/cleanup-kind-cluster.sh
-   ./scripts/setup-kind-cluster.sh
-   ```
+# Create a monitor with custom name and namespace
+./scripts/create-datadogmonitor.sh my-namespace my-custom-monitor
+```
 
-### Docker Trust Issues
+### Prerequisites
 
-If Docker can't trust the registry:
+- Kubernetes cluster running
+- DataDog operator installed with CRDs
+- kubectl configured and accessible
+- DataDogMonitor CRD available (`datadoghq.com/v1`)
 
-1. Check if the CA certificate is in place:
-   ```bash
-   ls -la ~/.docker/ca.crt
-   ```
+### Generated Monitor Structure
 
-2. Restart Docker daemon:
-   ```bash
-   sudo systemctl restart docker  # Linux
-   # or restart Docker Desktop on macOS
-   ```
+The script creates monitors with:
+- **Basic Configuration**: Metric alert type with empty query
+- **Proper Metadata**: Namespace, labels, and annotations
+- **Default Thresholds**: Critical and warning set to 0 (configurable)
+- **Organizational Tags**: Environment and source tracking tags
+- **Ready for Customization**: Empty query field ready for your monitoring logic
+
+### YAML Templates
+
+For direct usage without scripts, use the YAML templates:
+
+```bash
+# Apply empty monitor template
+kubectl apply -f scripts/templates/empty-datadogmonitor.yaml
+
+# Apply example monitors
+kubectl apply -f scripts/templates/datadogmonitor-examples.yaml
+```
+
+### Monitor Types Supported
+
+The templates include examples for:
+- **Metric Alert**: Standard metric-based monitoring
+- **Service Check**: Service health monitoring
+- **Log Alert**: Log-based alerting
+- **APM Alert**: Application performance monitoring
+- **Composite**: Multi-condition monitoring
+- **Empty Template**: Ready for custom configuration
+
+### Customization
+
+After creation, customize your monitor:
+
+```bash
+# Edit the monitor directly
+kubectl edit datadogmonitor monitor-name -n namespace
+
+# Or apply updated YAML
+kubectl apply -f updated-monitor.yaml
+```
+
+### Common Configuration Fields
+
+```yaml
+spec:
+  query: "your:monitoring:query"           # Required: Your monitoring query
+  thresholds:
+    critical: 100                           # Critical threshold value
+    warning: 80                             # Warning threshold value
+  evaluationDelay: 60                       # Delay evaluation by N seconds
+  includeTags: true                         # Include tags in notifications
+  requireFullWindow: true                   # Require full evaluation window
+  notifyAudit: false                        # Notify on monitor changes
+  locked: false                             # Prevent editing
+  timeoutH: 0                               # Timeout in hours
+  newHostDelay: 300                         # Delay for new hosts
+  noDataTimeframe: 10                       # No data timeout
+  notifyNoData: false                       # Notify on no data
+  renotifyInterval: 0                       # Renotify interval
+  escalationMessage: ""                     # Escalation message
+  validate: true                            # Validate query syntax
+  restrictedRoles: []                       # Restricted access roles
+  priority: 1                               # Priority level
+```
+
+## Cleanup
+
+To remove the Kyverno rule:
+
+```bash
+kubectl delete clusterpolicy auto-healthcheck-generation
+```
+
+To remove generated HealthCheck resources:
+
+```bash
+kubectl delete healthchecks --selector=kuberik.com/auto-generated=true
+```
+
+To remove DataDogMonitor resources:
+
+```bash
+# Remove specific monitor
+kubectl delete datadogmonitor monitor-name -n namespace
+
+# Remove all monitors in namespace
+kubectl delete datadogmonitors --all -n namespace
+
+# Remove monitors by label
+kubectl delete datadogmonitors --selector=app.kubernetes.io/part-of=rollout-dashboard
+```

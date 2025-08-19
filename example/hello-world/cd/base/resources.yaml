@@ -9,6 +9,10 @@ spec:
     name: hello-world-manifests
   versionHistoryLimit: 5
   minBakeTime: 15s
+  healthCheckSelector:
+    selector:
+      matchLabels:
+        app: hello-world
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
@@ -68,6 +72,10 @@ spec:
     name: hello-world-app
   versionHistoryLimit: 5
   minBakeTime: 15s
+  healthCheckSelector:
+    selector:
+      matchLabels:
+        app: hello-world
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository

@@ -21,7 +21,9 @@ import (
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -468,4 +470,90 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 	})
 
 	return managedResources, nil
+}
+
+// GetHealthChecksBySelector returns health checks that match the given selector
+func (c *Client) GetHealthChecksBySelector(ctx context.Context, namespace string, selector *rolloutv1alpha1.HealthCheckSelectorConfig) ([]rolloutv1alpha1.HealthCheck, error) {
+	var healthChecks []rolloutv1alpha1.HealthCheck
+
+	// If no selector is provided, return empty list
+	if selector == nil {
+		return healthChecks, nil
+	}
+
+	// Determine which namespaces to search
+	var namespaces []string
+
+	if selector.NamespaceSelector != nil {
+		// Parse the namespace selector to find matching namespaces
+		nsSelector, err := metav1.LabelSelectorAsSelector(selector.NamespaceSelector)
+		if err != nil {
+			// If we can't parse the namespace selector, log the error and default to same namespace
+			fmt.Printf("Failed to parse namespace selector: %v, defaulting to same namespace\n", err)
+			namespaces = []string{namespace}
+		} else {
+			// Get all namespaces and filter by the selector
+			namespaceList := &corev1.NamespaceList{}
+			if err := c.client.List(ctx, namespaceList); err != nil {
+				fmt.Printf("Failed to list namespaces: %v, defaulting to same namespace\n", err)
+				namespaces = []string{namespace}
+			} else {
+				// Filter namespaces by the selector
+				for _, ns := range namespaceList.Items {
+					if nsSelector.Matches(labels.Set(ns.Labels)) {
+						namespaces = append(namespaces, ns.Name)
+					}
+				}
+			}
+		}
+	} else {
+		// No namespace selector specified, search only in the rollout's namespace
+		namespaces = []string{namespace}
+	}
+
+	// If no namespaces found, default to the rollout's namespace
+	if len(namespaces) == 0 {
+		namespaces = []string{namespace}
+	}
+
+	// Search in each namespace
+	for _, ns := range namespaces {
+		healthCheckList := &rolloutv1alpha1.HealthCheckList{}
+		if err := c.client.List(ctx, healthCheckList, client.InNamespace(ns)); err != nil {
+			fmt.Printf("Failed to list health checks in namespace %s: %v\n", ns, err)
+			continue // Skip this namespace if there's an error
+		}
+
+		// Filter health checks based on the selector
+		for _, hc := range healthCheckList.Items {
+			if matchesSelector(&hc, selector) {
+				healthChecks = append(healthChecks, hc)
+			}
+		}
+	}
+
+	return healthChecks, nil
+}
+
+// matchesSelector checks if a health check matches the given selector
+func matchesSelector(hc *rolloutv1alpha1.HealthCheck, selector *rolloutv1alpha1.HealthCheckSelectorConfig) bool {
+	if selector.Selector == nil {
+		return true // No selector means match all
+	}
+
+	// Convert the selector to a usable selector
+	sel, err := metav1.LabelSelectorAsSelector(selector.Selector)
+	if err != nil {
+		// If we can't parse the selector, log the error and return false
+		fmt.Printf("Failed to parse label selector: %v\n", err)
+		return false
+	}
+
+	// Handle nil labels case
+	if hc.Labels == nil {
+		hc.Labels = make(map[string]string)
+	}
+
+	// Check if the health check labels match the selector
+	return sel.Matches(labels.Set(hc.Labels))
 }

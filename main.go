@@ -529,6 +529,54 @@ func main() {
 				"hasInventory": kustomization.Status.Inventory != nil,
 			})
 		})
+
+		// New endpoint to fetch health checks for a rollout
+		api.GET("/rollouts/:namespace/:name/health-checks", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Get Rollout to get the health check selector
+			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching rollout: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch rollout",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Get health checks that match the rollout's health selector
+			healthChecks, err := k8sClient.GetHealthChecksBySelector(context.Background(), namespace, rollout.Spec.HealthCheckSelector)
+			if err != nil {
+				log.Printf("Error fetching health checks: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch health checks",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Add debug information about namespace search
+			debugInfo := gin.H{
+				"rolloutNamespace":       namespace,
+				"hasHealthCheckSelector": rollout.Spec.HealthCheckSelector != nil,
+			}
+
+			if rollout.Spec.HealthCheckSelector != nil {
+				debugInfo["hasNamespaceSelector"] = rollout.Spec.HealthCheckSelector.NamespaceSelector != nil
+				if rollout.Spec.HealthCheckSelector.NamespaceSelector != nil {
+					debugInfo["namespaceSelectorType"] = "configured"
+				} else {
+					debugInfo["namespaceSelectorType"] = "current namespace only"
+				}
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"healthChecks": healthChecks,
+				"debug":        debugInfo,
+			})
+		})
 	}
 
 	// Serve frontend

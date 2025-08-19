@@ -20,6 +20,21 @@ export interface components {
             labels?: {
                 [key: string]: string;
             };
+            /** @description List of objects depended by this object */
+            ownerReferences?: {
+                /** @description API version of the owner */
+                apiVersion?: string;
+                /** @description Kind of the owner */
+                kind?: string;
+                /** @description Name of the owner */
+                name?: string;
+                /** @description UID of the owner */
+                uid?: string;
+                /** @description If true, this reference points to the managing controller */
+                controller?: boolean;
+                /** @description If true, AND if the owner has the "foregroundDeletion" finalizer, then the owner cannot be deleted from the key-value store until this reference is removed */
+                blockOwnerDeletion?: boolean;
+            }[];
             /** @description ManagedFields maps workflow-id and version to the set of fields that are managed by that workflow */
             managedFields?: {
                 /** @description Manager is an identifier of the workflow managing these fields */
@@ -55,26 +70,52 @@ export interface components {
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description RolloutSpec defines the desired state of Rollout. */
             spec?: {
-                /** @description HealthCheckSelector specifies the label selector for matching HealthChecks */
+                /** @description HealthCheckSelector specifies how to select HealthChecks for this rollout */
                 healthCheckSelector?: {
-                    /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
-                    matchExpressions?: {
-                        /** @description key is the label key that the selector applies to. */
-                        key: string;
-                        /** @description operator represents a key's relationship to a set of values.
-                         *     Valid operators are In, NotIn, Exists and DoesNotExist. */
-                        operator: string;
-                        /** @description values is an array of string values. If the operator is In or NotIn,
-                         *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                         *     the values array must be empty. This array is replaced during a strategic
-                         *     merge patch. */
-                        values?: string[];
-                    }[];
-                    /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                     *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                     *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
-                    matchLabels?: {
-                        [key: string]: string;
+                    /** @description NamespaceSelector specifies the namespace selector for matching HealthChecks
+                     *     If not specified, only HealthChecks in the same namespace as the Rollout will be considered */
+                    namespaceSelector?: {
+                        /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
+                        matchExpressions?: {
+                            /** @description key is the label key that the selector applies to. */
+                            key: string;
+                            /** @description operator represents a key's relationship to a set of values.
+                             *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                            operator: string;
+                            /** @description values is an array of string values. If the operator is In or NotIn,
+                             *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                             *     the values array must be empty. This array is replaced during a strategic
+                             *     merge patch. */
+                            values?: string[];
+                        }[];
+                        /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                         *     map is equivalent to an element of matchExpressions, whose key field is "key", the
+                         *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                        matchLabels?: {
+                            [key: string]: string;
+                        };
+                    };
+                    /** @description Selector specifies the label selector for matching HealthChecks */
+                    selector?: {
+                        /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
+                        matchExpressions?: {
+                            /** @description key is the label key that the selector applies to. */
+                            key: string;
+                            /** @description operator represents a key's relationship to a set of values.
+                             *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                            operator: string;
+                            /** @description values is an array of string values. If the operator is In or NotIn,
+                             *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                             *     the values array must be empty. This array is replaced during a strategic
+                             *     merge patch. */
+                            values?: string[];
+                        }[];
+                        /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                         *     map is equivalent to an element of matchExpressions, whose key field is "key", the
+                         *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                        matchLabels?: {
+                            [key: string]: string;
+                        };
                     };
                 };
                 /** @description MaxBakeTime specifies the maximum time to wait for health checks before marking as failed
@@ -149,6 +190,8 @@ export interface components {
                 gates?: {
                     /** @description AllowedVersions is a list of versions that are allowed by the gate. */
                     allowedVersions?: string[];
+                    /** @description BypassGates indicates whether this gate was bypassed for the current deployment. */
+                    bypassGates?: boolean;
                     /** @description Message is a message describing the status of the gate. */
                     message?: string;
                     /** @description Name is the name of the gate. */

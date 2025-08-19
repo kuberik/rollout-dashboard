@@ -4,6 +4,11 @@ kind: Kustomization
 resources:
   - resources.yaml
 
+labels:
+  - pairs:
+      app: hello-world
+      kstatus.kuberik.io/createHealthCheck: "true"
+
 patches:
   - target: {}
     patch: |

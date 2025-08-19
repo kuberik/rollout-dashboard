@@ -12,10 +12,11 @@ fi
 kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
 
 # Apply rollout CRDs
-kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
-kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
-kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
-kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_kubestatuses.yaml
+# kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
+# kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
+# kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
+# kubectl apply -f https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_kubestatuses.yaml
+kubectl apply -f https://raw.githubusercontent.com/DataDog/datadog-operator/refs/heads/main/config/crd/bases/v1/datadoghq.com_datadogmonitors.yaml
 
 (cd frontend && npm run build; rm -rf ../kodata; cp -r build ../kodata)
 

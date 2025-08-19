@@ -7,3 +7,14 @@ resources:
 namespace: hello-world-dev
 commonLabels:
   environment: dev
+
+replacements:
+  - sourceValue: dev
+    targets:
+      - select:
+          kind: DatadogMonitor
+        fieldPaths:
+          - spec.tags.0
+        options:
+          delimiter: ":"
+          index: 1

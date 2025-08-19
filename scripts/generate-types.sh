@@ -14,10 +14,10 @@ if ! command -v openapi-typescript &> /dev/null; then
 fi
 
 # Download the CRDs
-curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
-curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
-curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
-curl -s -o $TEMP_DIR/kubestatus.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_kubestatuses.yaml
+curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_rollouts.yaml
+curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_rolloutgates.yaml
+curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_healthchecks.yaml
+curl -s -o $TEMP_DIR/kubestatus.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_kubestatuses.yaml
 curl -s -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
 curl -s -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
 
@@ -63,6 +63,39 @@ cat > $TEMP_DIR/schema.json << EOL
               "type": "string"
             },
             "description": "Map of string keys and values that can be used to organize and categorize resources"
+          },
+          "ownerReferences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "apiVersion": {
+                  "type": "string",
+                  "description": "API version of the owner"
+                },
+                "kind": {
+                  "type": "string",
+                  "description": "Kind of the owner"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Name of the owner"
+                },
+                "uid": {
+                  "type": "string",
+                  "description": "UID of the owner"
+                },
+                "controller": {
+                  "type": "boolean",
+                  "description": "If true, this reference points to the managing controller"
+                },
+                "blockOwnerDeletion": {
+                  "type": "boolean",
+                  "description": "If true, AND if the owner has the \"foregroundDeletion\" finalizer, then the owner cannot be deleted from the key-value store until this reference is removed"
+                }
+              }
+            },
+            "description": "List of objects depended by this object"
           },
           "managedFields": {
             "type": "array",
