@@ -11,6 +11,24 @@ The dashboard provides comprehensive gate management for Kubernetes rollouts:
 - **Bypass Gates**: Ability to temporarily bypass gate checks for emergency deployments
 - **Gate History**: Track which versions have passed through gates
 
+### Kustomization Association
+Kustomizations can be associated with rollouts using the annotation format:
+`rollout.kuberik.com/substitute.<variable>.from: <rollout>`
+
+This allows the dashboard to find related kustomizations that reference a specific rollout for variable substitution.
+
+**Example:**
+```yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hello-world
+  annotations:
+    rollout.kuberik.com/substitute.HELLO_WORLD_VERSION.from: "hello-world-app"
+```
+
+In this example, the kustomization `hello-world` is associated with the rollout `hello-world-app` and will receive the `HELLO_WORLD_VERSION` variable from that rollout.
+
 ### Bypass Gates Feature
 You can allow the rollout controller to bypass gate checks for a specific version by adding the `rollout.kuberik.com/bypass-gates` annotation with the version as the value:
 

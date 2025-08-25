@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -353,11 +354,16 @@ func (c *Client) GetKustomizationsByRolloutAnnotation(ctx context.Context, names
 	// or reference OCIRepositories that have rollout annotations
 	filteredKustomizations := &kustomizev1.KustomizationList{}
 	for _, kustomization := range kustomizations.Items {
-		// Check for rollout.kuberik.com/{rolloutName}.substitute annotation
-		annotationKey := fmt.Sprintf("rollout.kuberik.com/%s.substitute", rolloutName)
-		if _, exists := kustomization.Annotations[annotationKey]; exists {
-			filteredKustomizations.Items = append(filteredKustomizations.Items, kustomization)
-			continue
+		// Check for rollout.kuberik.com/substitute.<variable>.from: <rollout> annotation
+		// This format allows kustomizations to specify which rollout they get variables from
+		// Example: rollout.kuberik.com/substitute.HELLO_WORLD_VERSION.from: "hello-world-app"
+		for annotationKey, annotationValue := range kustomization.Annotations {
+			if strings.HasPrefix(annotationKey, "rollout.kuberik.com/substitute.") &&
+				strings.HasSuffix(annotationKey, ".from") &&
+				annotationValue == rolloutName {
+				filteredKustomizations.Items = append(filteredKustomizations.Items, kustomization)
+				break
+			}
 		}
 
 		// Check if this kustomization references an OCIRepository that has the rollout annotation

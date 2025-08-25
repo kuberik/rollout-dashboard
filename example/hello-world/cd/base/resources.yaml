@@ -53,7 +53,7 @@ kind: Kustomization
 metadata:
   name: hello-world
   annotations:
-    rollout.kuberik.com/hello-world-app.substitute: "HELLO_WORLD_VERSION"
+    rollout.kuberik.com/substitute.HELLO_WORLD_VERSION.from: "hello-world-app"
 spec:
   interval: 5m
   prune: true
