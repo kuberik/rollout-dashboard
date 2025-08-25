@@ -178,3 +178,26 @@ export function isVersionBypassingGates(rollout: Rollout, version: string): bool
     const bypassVersion = getBypassGatesVersion(rollout);
     return bypassVersion === version;
 }
+
+/**
+ * Checks if a rollout has a failed bake status and needs to be resumed
+ * @param rollout The rollout to check
+ * @returns true if the rollout has a failed bake status
+ */
+export function hasFailedBakeStatus(rollout: Rollout): boolean {
+    if (!rollout?.status?.history || rollout.status.history.length === 0) {
+        return false;
+    }
+
+    const lastDeployment = rollout.status.history[0];
+    return lastDeployment.bakeStatus === 'Failed';
+}
+
+/**
+ * Checks if a rollout has the unblock-failed annotation
+ * @param rollout The rollout to check
+ * @returns true if the unblock-failed annotation exists
+ */
+export function hasUnblockFailedAnnotation(rollout: Rollout): boolean {
+    return rollout.metadata?.annotations?.['rollout.kuberik.com/unblock-failed'] === 'true';
+}

@@ -245,6 +245,27 @@ func main() {
 			})
 		})
 
+		// Add unblock-failed annotation to rollout
+		api.POST("/rollouts/:namespace/:name/unblock-failed", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Add the unblock-failed annotation
+			updatedRollout, err := k8sClient.AddUnblockFailedAnnotation(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error adding unblock-failed annotation: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to add unblock-failed annotation",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rollout": updatedRollout,
+			})
+		})
+
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
 			namespace := c.Param("namespace")
 			name := c.Param("name")

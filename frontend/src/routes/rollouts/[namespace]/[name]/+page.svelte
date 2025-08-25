@@ -35,7 +35,8 @@
 		DatabaseSolid,
 		ClockSolid,
 		PauseSolid,
-		ClipboardOutline
+		ClipboardOutline,
+		PlaySolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -46,7 +47,9 @@
 		isFieldManagedByOtherManager,
 		hasBypassGatesAnnotation,
 		getBypassGatesVersion,
-		isVersionBypassingGates
+		isVersionBypassingGates,
+		hasFailedBakeStatus,
+		hasUnblockFailedAnnotation
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
@@ -80,6 +83,8 @@
 	let showRemoveBypassModal = false;
 	let showAddBypassModal = false;
 	let selectedBypassVersion: string | null = null;
+
+	let showResumeRolloutModal = false;
 
 	let autoRefreshIntervalId: number | null = null;
 
@@ -477,6 +482,48 @@
 		}
 	}
 
+	async function resumeRollout() {
+		if (!rollout) return;
+
+		try {
+			const response = await fetch(
+				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/unblock-failed`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					}
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to add unblock-failed annotation');
+			}
+
+			await updateData();
+			showToast = true;
+			toastMessage = 'Rollout resumed successfully';
+			toastType = 'success';
+			showResumeRolloutModal = false;
+			selectedVersion = null;
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		} catch (e) {
+			console.error('Failed to resume rollout:', e);
+			showToast = true;
+			toastMessage = e instanceof Error ? e.message : 'Failed to resume rollout';
+			toastType = 'error';
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		}
+	}
+
 	function formatRevision(revision: string) {
 		let result = '';
 		if (revision.includes('@sha1:')) {
@@ -625,6 +672,9 @@
 				{#if rollout.spec?.wantedVersion}
 					<Badge color="purple">Pinned</Badge>
 				{/if}
+				{#if hasUnblockFailedAnnotation(rollout)}
+					<Badge color="green">Resumed</Badge>
+				{/if}
 			</div>
 			<div class="flex items-center gap-2">
 				<Button
@@ -667,9 +717,24 @@
 						>
 					{/if}
 				{/if}
+				{#if hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
+					<Button
+						size="sm"
+						color="light"
+						on:click={() => {
+							selectedVersion = rollout?.status?.history?.[0]?.version || null;
+							showResumeRolloutModal = true;
+						}}
+					>
+						<PlaySolid class="h-4 w-4" />
+						Resume Rollout
+					</Button>
+					<Tooltip placement="bottom">Resume this rollout after a failed deployment bake</Tooltip>
+				{/if}
 			</div>
 
-			<!-- {#if rollout.status?.history?.[0]?.bakeStatus}
+			<!-- Bake status display commented out for now
+			{#if rollout.status?.history?.[0]?.bakeStatus}
 				<div class="mt-2">
 					<Badge
 						color={rollout.status.history[0].bakeStatus === 'Succeeded'
@@ -695,7 +760,8 @@
 						</span>
 					{/if}
 				</div>
-			{/if} -->
+			{/if}
+			-->
 		</div>
 
 		<div class="mb-6 grid grid-cols-6 gap-4">
@@ -1575,6 +1641,42 @@
 				Cancel
 			</Button>
 			<Button color="red" on:click={removeBypassGates}>Remove Bypass</Button>
+		</div>
+	</div>
+</Modal>
+
+<Modal bind:open={showResumeRolloutModal} title="Confirm Resume Rollout">
+	<div class="space-y-4">
+		<Alert color="yellow" class="mb-4">
+			<div class="flex items-center">
+				<ExclamationCircleSolid class="mr-2 h-4 w-4" />
+				<p>
+					<span class="font-medium">Warning:</span> This will resume the rollout process after a failed
+					deployment bake.
+				</p>
+			</div>
+		</Alert>
+		<p class="text-sm text-gray-600 dark:text-gray-400">
+			Are you sure you want to resume the rollout for <b>{rollout?.metadata?.name}</b>?
+		</p>
+		<p class="text-xs text-gray-500 dark:text-gray-400">
+			This will add the unblock-failed annotation to allow the rollout controller to resume
+			deployment of the failed version.
+		</p>
+		<div class="flex justify-end gap-2">
+			<Button
+				color="light"
+				on:click={() => {
+					showResumeRolloutModal = false;
+					selectedVersion = null;
+				}}
+			>
+				Cancel
+			</Button>
+			<Button color="blue" on:click={resumeRollout}>
+				<PlaySolid class="mr-1 h-3 w-3" />
+				Resume Rollout
+			</Button>
 		</div>
 	</div>
 </Modal>
