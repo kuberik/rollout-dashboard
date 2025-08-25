@@ -830,7 +830,7 @@
 												{/if}
 											</p>
 										</div>
-										{#if healthCheck.status?.lastErrorTime}
+										{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
 											<span class="mt-1 block truncate text-xs text-red-600 dark:text-red-400">
 												Last Error: {formatTimeAgo(healthCheck.status.lastErrorTime, $now)}
 											</span>
