@@ -21,7 +21,8 @@
 		Spinner,
 		Tooltip,
 		Listgroup,
-		ListgroupItem
+		ListgroupItem,
+		Toggle
 	} from 'flowbite-svelte';
 	import {
 		CodePullRequestSolid,
@@ -88,6 +89,9 @@
 
 	let autoRefreshIntervalId: number | null = null;
 
+	// Toggle for showing/hiding "current" resources
+	let showAlwaysReadyResources = false;
+
 	// Pagination variables
 	let currentPage = 1;
 	let itemsPerPage = 10;
@@ -138,6 +142,29 @@
 		(currentPage - 1) * itemsPerPage,
 		currentPage * itemsPerPage
 	);
+
+	// Computed property to filter managed resources based on toggle state
+	$: filteredManagedResources = (() => {
+		const filtered: Record<string, ManagedResourceStatus[]> = {};
+
+		for (const [kustomizationName, resources] of Object.entries(managedResources)) {
+			if (showAlwaysReadyResources) {
+				// Show all resources when toggle is on
+				filtered[kustomizationName] = resources;
+			} else {
+				// Hide resources with "resource is current" or "Resource is always ready" messages
+				filtered[kustomizationName] = resources.filter((resource) => {
+					const hasCurrentMessage = resource.message?.toLowerCase().includes('resource is current');
+					const hasAlwaysReadyMessage = resource.message
+						?.toLowerCase()
+						.includes('resource is always ready');
+					return !hasCurrentMessage && !hasAlwaysReadyMessage;
+				});
+			}
+		}
+
+		return filtered;
+	})();
 
 	function goToPage(page: number) {
 		if (page >= 1 && page <= totalPages) {
@@ -1183,70 +1210,88 @@
 
 									{#if managedResources[kustomization.metadata?.name || '']?.length > 0}
 										<div class="mt-4">
-											<h7 class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-												Managed Resources ({managedResources[kustomization.metadata?.name || '']
-													.length})
-											</h7>
-											<div class="flex flex-wrap gap-2">
-												{#each managedResources[kustomization.metadata?.name || ''] as resource (resource.groupVersionKind + '/' + (resource.namespace || '') + '/' + resource.name)}
-													<Card size="xs" class="min-w-0 flex-shrink-0 p-4 sm:p-4">
-														<div class="flex items-center">
-															<div
-																class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center"
-															>
-																{#if resource.status === 'InProgress'}
-																	<Spinner size="6" color="yellow" />
-																{:else if resource.status === 'Current'}
-																	<CheckCircleSolid
-																		class="h-6 w-6 text-green-600 dark:text-green-400"
-																	/>
-																{:else if resource.status === 'Failed' || resource.status === 'NotFound' || resource.status === 'Error'}
-																	<ExclamationCircleSolid
-																		class="h-6 w-6 text-red-600 dark:text-red-400"
-																	/>
-																{:else}
-																	<ExclamationCircleSolid
-																		class="h-6 w-6 text-gray-500 dark:text-gray-400"
-																	/>
-																{/if}
-															</div>
-															<div class="min-w-0 flex-1">
-																<Badge color="blue" class="text-xs">
-																	{resource.groupVersionKind.split('/').pop() ||
-																		resource.groupVersionKind}
-																</Badge>
-																<div class="my-1 flex items-center space-x-2">
-																	<p
-																		class="truncate text-sm font-medium text-gray-900 dark:text-white"
-																	>
-																		{#if resource.namespace}
-																			<span class="text-gray-500 dark:text-gray-400">
-																				{resource.namespace} /
-																			</span>
-																		{/if}
-																		{resource.name}
-																	</p>
-																</div>
-																{#if resource.message}
-																	<span
-																		class="mt-1 block truncate text-xs text-gray-600 dark:text-gray-400"
-																	>
-																		{resource.message}
-																	</span>
-																{/if}
-																{#if resource.lastModified}
-																	<div
-																		class="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400"
-																	>
-																		<ClockSolid class="mr-1 h-3 w-3" />
-																		Last modified: {formatTimeAgo(resource.lastModified, $now)}
-																	</div>
-																{/if}
-															</div>
-														</div>
-													</Card>
-												{/each}
+											<div class="mb-2 flex items-center justify-between">
+												<h7 class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+													Managed Resources ({filteredManagedResources[
+														kustomization.metadata?.name || ''
+													]?.length || 0})
+												</h7>
+												<div class="ml-4">
+													<Toggle bind:checked={showAlwaysReadyResources} color="blue">
+														Show All
+													</Toggle>
+												</div>
 											</div>
+											{#if filteredManagedResources[kustomization.metadata?.name || '']?.length > 0}
+												<div class="flex flex-wrap gap-2">
+													{#each filteredManagedResources[kustomization.metadata?.name || ''] as resource (resource.groupVersionKind + '/' + (resource.namespace || '') + '/' + resource.name)}
+														<Card size="xs" class="min-w-0 flex-shrink-0 p-4 sm:p-4">
+															<div class="flex items-center">
+																<div
+																	class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center"
+																>
+																	{#if resource.status === 'InProgress'}
+																		<Spinner size="6" color="yellow" />
+																	{:else if resource.status === 'Current'}
+																		<CheckCircleSolid
+																			class="h-6 w-6 text-green-600 dark:text-green-400"
+																		/>
+																	{:else if resource.status === 'Failed' || resource.status === 'NotFound' || resource.status === 'Error'}
+																		<ExclamationCircleSolid
+																			class="h-6 w-6 text-red-600 dark:text-red-400"
+																		/>
+																	{:else}
+																		<ExclamationCircleSolid
+																			class="h-6 w-6 text-gray-500 dark:text-gray-400"
+																		/>
+																	{/if}
+																</div>
+																<div class="min-w-0 flex-1">
+																	<Badge color="blue" class="text-xs">
+																		{resource.groupVersionKind.split('/').pop() ||
+																			resource.groupVersionKind}
+																	</Badge>
+																	<div class="my-1 flex items-center space-x-2">
+																		<p
+																			class="truncate text-sm font-medium text-gray-900 dark:text-white"
+																		>
+																			{#if resource.namespace}
+																				<span class="text-gray-500 dark:text-gray-400">
+																					{resource.namespace} /
+																				</span>
+																			{/if}
+																			{resource.name}
+																		</p>
+																	</div>
+																	{#if resource.message}
+																		<span
+																			class="mt-1 block truncate text-xs text-gray-600 dark:text-gray-400"
+																		>
+																			{resource.message}
+																		</span>
+																	{/if}
+																	{#if resource.lastModified}
+																		<div
+																			class="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400"
+																		>
+																			<ClockSolid class="mr-1 h-3 w-3" />
+																			Last modified: {formatTimeAgo(resource.lastModified, $now)}
+																		</div>
+																	{/if}
+																</div>
+															</div>
+														</Card>
+													{/each}
+												</div>
+											{:else}
+												<Alert color="blue" class="text-sm">
+													<InfoCircleSolid class="h-4 w-4" />
+													<span
+														>All managed resources have "resource is current" or "Resource is always
+														ready" status messages. Use the toggle above to view them.</span
+													>
+												</Alert>
+											{/if}
 										</div>
 									{/if}
 								</div>
