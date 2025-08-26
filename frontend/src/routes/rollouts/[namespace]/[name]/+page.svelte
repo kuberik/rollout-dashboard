@@ -891,9 +891,9 @@
 				<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Health Checks</h4>
 
 				{#if healthChecks.length > 0}
-					<div class="space-y-4">
+					<div class="auto-fill-grid-compact grid gap-4">
 						{#each healthChecks as healthCheck ((healthCheck.metadata?.name, healthCheck.metadata?.namespace))}
-							<Card class="w-full">
+							<Card class="w-full min-w-full max-w-none overflow-hidden">
 								<div class="flex items-center">
 									<div class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center">
 										{#if healthCheck.status?.status === 'Healthy'}
@@ -1282,16 +1282,16 @@
 														kustomization.metadata?.name || ''
 													]?.length || 0})
 												</h7>
-												<div class="ml-4">
+												<div class="mb-1 ml-4 mr-1">
 													<Toggle bind:checked={showAlwaysReadyResources} color="blue">
 														Show All
 													</Toggle>
 												</div>
 											</div>
 											{#if filteredManagedResources[kustomization.metadata?.name || '']?.length > 0}
-												<div class="flex flex-wrap gap-2">
+												<div class="auto-fill-grid-compact grid gap-4">
 													{#each filteredManagedResources[kustomization.metadata?.name || ''] as resource (resource.groupVersionKind + '/' + (resource.namespace || '') + '/' + resource.name)}
-														<Card size="xs" class="min-w-0 flex-shrink-0 p-4 sm:p-4">
+														<Card class="w-full min-w-full max-w-none overflow-hidden">
 															<div class="flex items-center">
 																<div
 																	class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center"
@@ -1869,6 +1869,11 @@
 <style>
 	.auto-fill-grid {
 		grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+		justify-content: start;
+	}
+
+	.auto-fill-grid-compact {
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 		justify-content: start;
 	}
 </style>
