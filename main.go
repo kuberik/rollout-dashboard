@@ -483,6 +483,70 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{"annotations": annotations})
 		})
 
+		// New endpoint to fetch all available tags from a repository
+		api.GET("/rollouts/:namespace/:name/tags", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Get Rollout to get the image policy reference
+			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching rollout: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch rollout"})
+				return
+			}
+
+			// Get the ImagePolicy referenced by the rollout
+			imagePolicyName := rollout.Spec.ReleasesImagePolicy.Name
+			imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, imagePolicyName)
+			if err != nil {
+				log.Printf("Error fetching image policy: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image policy"})
+				return
+			}
+
+			imageRepoName := imagePolicy.Spec.ImageRepositoryRef.Name
+			imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imageRepoName)
+			if err != nil {
+				log.Printf("Error fetching image repository: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image repository"})
+				return
+			}
+
+			var opts []crane.Option
+			if imageRepo.Spec.SecretRef != nil {
+				secret, err := k8sClient.GetSecret(context.Background(), namespace, imageRepo.Spec.SecretRef.Name)
+				if err != nil {
+					log.Printf("Error fetching secret: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch secret"})
+					return
+				}
+
+				// Parse Docker config JSON using the same approach as crane
+				reader := bytes.NewReader(secret.Data[".dockerconfigjson"])
+				configFile, err := config.LoadFromReader(reader)
+				if err != nil {
+					log.Printf("Error loading Docker config: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse Docker config"})
+					return
+				}
+
+				// Create a keychain that can resolve authentication for any registry
+				keychain := &dockerConfigKeychain{config: configFile}
+				opts = append(opts, crane.WithAuthFromKeychain(keychain))
+			}
+
+			// Get all tags from the repository
+			tags, err := oci.ListRepositoryTags(context.Background(), imageRepo.Spec.Image, opts...)
+			if err != nil {
+				log.Printf("Error fetching repository tags: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch repository tags"})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"tags": tags})
+		})
+
 		api.GET("/kustomizations/:namespace/:name/managed-resources", func(c *gin.Context) {
 			namespace := c.Param("namespace")
 			name := c.Param("name")

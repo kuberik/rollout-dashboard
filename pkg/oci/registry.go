@@ -121,3 +121,14 @@ func GetArtifactType(ctx context.Context, image, version string, opts ...crane.O
 	}
 	return m.MediaType, nil
 }
+
+// ListRepositoryTags returns all available tags from a Docker repository
+func ListRepositoryTags(ctx context.Context, image string, opts ...crane.Option) ([]string, error) {
+	// Use crane to list tags
+	tags, err := crane.ListTags(image, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repository tags: %w", err)
+	}
+
+	return tags, nil
+}

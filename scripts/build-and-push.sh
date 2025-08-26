@@ -63,24 +63,27 @@ cp -r example/hello-world/* $temp_dir
         version=$(git rev-parse HEAD)
         tag="main-$(git log --format=%ct -1 )-${version}"
 
-        docker buildx build --push \
-          -t "localhost:5001/examples/${OCI_ARTIFACT_NAME}/app:${tag}" \
-          .
         # Use crane to annotate the image with the desired annotations
-        crane mutate \
-          --annotation "org.opencontainers.image.version=${version}" \
-          --annotation "org.opencontainers.image.source=https://github.com/kuberik/rollout-example.git" \
-          --annotation "org.opencontainers.image.revision=${version}" \
-          --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-          --annotation "org.opencontainers.image.description=Hello World app" \
-          --annotation "org.opencontainers.image.licenses=MIT" \
-          --annotation "org.opencontainers.image.authors=Kuberik" \
-          --annotation "org.opencontainers.image.vendor=Kuberik" \
-          --annotation "org.opencontainers.image.url=https://kuberik.com" \
-          "localhost:5001/examples/${OCI_ARTIFACT_NAME}/app:${tag}"
+        for t in $tag $version; do
+          docker buildx build --push \
+            -t "localhost:5001/examples/${OCI_ARTIFACT_NAME}/app:${t}" \
+            .
+          crane mutate \
+            --annotation "org.opencontainers.image.version=${version}" \
+            --annotation "org.opencontainers.image.source=https://github.com/kuberik/rollout-example.git" \
+            --annotation "org.opencontainers.image.revision=${version}" \
+            --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --annotation "org.opencontainers.image.description=Hello World app" \
+            --annotation "org.opencontainers.image.licenses=MIT" \
+            --annotation "org.opencontainers.image.authors=Kuberik" \
+            --annotation "org.opencontainers.image.vendor=Kuberik" \
+            --annotation "org.opencontainers.image.url=https://kuberik.com" \
+            "localhost:5001/examples/${OCI_ARTIFACT_NAME}/app:${t}"
 
-        docker tag "localhost:5001/examples/${OCI_ARTIFACT_NAME}/app:${tag}" "registry.registry.svc.cluster.local/examples/${OCI_ARTIFACT_NAME}/app:${tag}"
-        kind load docker-image "registry.registry.svc.cluster.local/examples/${OCI_ARTIFACT_NAME}/app:${tag}" --name rollout-dev
+          docker tag "localhost:5001/examples/${OCI_ARTIFACT_NAME}/app:${t}" "registry.registry.svc.cluster.local/examples/${OCI_ARTIFACT_NAME}/app:${t}"
+          kind load docker-image "registry.registry.svc.cluster.local/examples/${OCI_ARTIFACT_NAME}/app:${t}" --name rollout-dev
+        done
+
 
         for env in $ENVIRONMENTS; do
             build_and_push $env
