@@ -666,3 +666,24 @@ func (c *Client) ReconcileAllFluxResources(ctx context.Context, namespace, rollo
 
 	return nil
 }
+
+// GetRolloutGatesByRolloutReference fetches RolloutGates that reference a specific rollout
+func (c *Client) GetRolloutGatesByRolloutReference(ctx context.Context, namespace, rolloutName string) (*rolloutv1alpha1.RolloutGateList, error) {
+	rolloutGates := &rolloutv1alpha1.RolloutGateList{}
+
+	// List all RolloutGates in the namespace
+	if err := c.client.List(ctx, rolloutGates, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list rollout gates: %w", err)
+	}
+
+	// Filter gates that reference the specific rollout
+	var filteredGates []rolloutv1alpha1.RolloutGate
+	for _, gate := range rolloutGates.Items {
+		if gate.Spec.RolloutRef.Name == rolloutName {
+			filteredGates = append(filteredGates, gate)
+		}
+	}
+
+	rolloutGates.Items = filteredGates
+	return rolloutGates, nil
+}

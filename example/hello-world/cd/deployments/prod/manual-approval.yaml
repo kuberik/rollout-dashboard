@@ -2,6 +2,9 @@ apiVersion: kuberik.com/v1alpha1
 kind: RolloutGate
 metadata:
   name: hello-world-manual-approval
+  annotations:
+    gate.kuberik.com/pretty-name: "Manual Approval Required"
+    gate.kuberik.com/description: "This gate requires manual approval from a team member before deployment can proceed to production."
 spec:
   rolloutRef:
     name: hello-world-app

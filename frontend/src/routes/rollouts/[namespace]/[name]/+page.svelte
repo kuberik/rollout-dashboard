@@ -62,6 +62,7 @@
 	let rollout: Rollout | null = null;
 	let kustomizations: Kustomization[] = [];
 	let ociRepositories: OCIRepository[] = [];
+	let rolloutGates: any[] = [];
 	let managedResources: Record<string, ManagedResourceStatus[]> = {};
 	let healthChecks: HealthCheck[] = [];
 	let loading = true;
@@ -103,6 +104,18 @@
 	let loadingAllTags = false;
 	let searchQuery = '';
 	let showAllTags = false;
+
+	// Function to get gate description from gate annotations
+	function getGateDescription(gate: any): string | null {
+		// Look for gate description in the gate's own annotations
+		return gate.metadata?.annotations?.['gate.kuberik.com/description'] || null;
+	}
+
+	// Function to get gate pretty name from gate annotations
+	function getGatePrettyName(gate: any): string | null {
+		// Look for gate pretty name in the gate's own annotations
+		return gate.metadata?.annotations?.['gate.kuberik.com/pretty-name'] || null;
+	}
 
 	// Computed property to determine if dashboard is managing the wantedVersion field
 	$: isDashboardManagingWantedVersion = (() => {
@@ -233,6 +246,9 @@
 			rollout = data.rollout;
 			kustomizations = data.kustomizations?.items || [];
 			ociRepositories = data.ociRepositories?.items || [];
+			rolloutGates = data.rolloutGates?.items || [];
+			console.log('Rollout gates fetched:', rolloutGates);
+			console.log('Rollout status gates:', rollout?.status?.gates);
 
 			if (rollout?.status?.history) {
 				const mediaTypePromises = rollout.status.history
@@ -1016,6 +1032,10 @@
 								{/if}
 							</div>
 
+							<!-- Debug info -->
+							<div class="mb-2 text-xs text-gray-500">
+								Status gates: {rollout?.status?.gates?.length || 0}, Rollout gates: {rolloutGates.length}
+							</div>
 							{#if rollout.status?.gates && rollout.status.gates.length > 0}
 								<div
 									class="relative mt-4 rounded-lg border border-gray-300 p-4 dark:border-gray-600"
@@ -1026,23 +1046,48 @@
 										Gates
 									</div>
 									<div class="space-y-2">
-										{#each rollout.status.gates as gate}
+										{#each rollout.status.gates as gateStatus}
+											{@const fullGate = rolloutGates.find(
+												(g) => g.metadata.name === gateStatus.name
+											)}
 											<div class="flex items-center justify-between text-xs">
 												{#if isVersionBypassingGates(rollout, version)}
 													<Badge color="blue" class="text-xs">
 														<CodePullRequestSolid class="mr-1 h-3 w-3" />
-														{gate.name} (Skipped)
+														{getGatePrettyName(fullGate) || gateStatus.name} (Skipped)
 													</Badge>
-												{:else if gate.allowedVersions?.includes(version)}
+												{:else if gateStatus.allowedVersions?.includes(version)}
 													<Badge color="green" class="text-xs">
 														<CheckCircleSolid class="mr-1 h-3 w-3" />
-														{gate.name}
+														{getGatePrettyName(fullGate) || gateStatus.name}
 													</Badge>
 												{:else}
-													<Badge color="red" class="text-xs">
+													<Badge
+														id="gate-{gateStatus.name}"
+														color="red"
+														class="cursor-help text-xs"
+													>
 														<ExclamationCircleSolid class="mr-1 h-3 w-3" />
-														{gate.name}
+														{getGatePrettyName(fullGate) || gateStatus.name}
 													</Badge>
+													<Tooltip
+														triggeredBy="#gate-{gateStatus.name}"
+														placement="top"
+														class="max-w-xs"
+													>
+														<div class="space-y-2">
+															{#if gateStatus.message}
+																<div class="text-sm">
+																	{gateStatus.message}
+																</div>
+															{/if}
+															{#if getGateDescription(fullGate)}
+																<div class="text-xs text-gray-500 dark:text-gray-400">
+																	{getGateDescription(fullGate)}
+																</div>
+															{/if}
+														</div>
+													</Tooltip>
 												{/if}
 											</div>
 										{/each}

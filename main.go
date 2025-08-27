@@ -154,10 +154,17 @@ func main() {
 				log.Printf("Error fetching OCI repositories: %v", err)
 			}
 
+			// Get associated RolloutGates that reference this rollout
+			rolloutGates, err := k8sClient.GetRolloutGatesByRolloutReference(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching rollout gates: %v", err)
+			}
+
 			c.JSON(http.StatusOK, gin.H{
 				"rollout":         rollout,
 				"kustomizations":  kustomizations,
 				"ociRepositories": ociRepositories,
+				"rolloutGates":    rolloutGates,
 			})
 		})
 
