@@ -37,7 +37,8 @@
 		ClockSolid,
 		PauseSolid,
 		ClipboardOutline,
-		PlaySolid
+		PlaySolid,
+		RefreshOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -608,6 +609,61 @@
 			console.error('Failed to resume rollout:', e);
 			showToast = true;
 			toastMessage = e instanceof Error ? e.message : 'Failed to resume rollout';
+			toastType = 'error';
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		}
+	}
+
+	async function reconcileFluxResources() {
+		if (!rollout) return;
+
+		// Add spinning animation to the icon
+		const icon = document.getElementById('reconcile-icon');
+		if (icon) {
+			icon.classList.add('animate-spin');
+			// Remove the spinning class after animation completes
+			setTimeout(() => {
+				icon.classList.remove('animate-spin');
+			}, 1000);
+		}
+
+		// Show immediate notification that reconciliation is starting
+		showToast = true;
+		toastMessage = 'Starting reconciliation of Flux resources...';
+		toastType = 'success';
+
+		try {
+			const response = await fetch(
+				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					}
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to reconcile Flux resources');
+			}
+
+			// Show success toast
+			showToast = true;
+			toastMessage = 'Successfully triggered reconciliation of all associated Flux resources';
+			toastType = 'success';
+
+			// Auto-dismiss toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		} catch (e) {
+			console.error('Failed to reconcile Flux resources:', e);
+			showToast = true;
+			toastMessage = e instanceof Error ? e.message : 'Failed to reconcile Flux resources';
 			toastType = 'error';
 
 			// Auto-dismiss toast after 3 seconds
@@ -1228,7 +1284,20 @@
 
 		{#if kustomizations.length > 0 || ociRepositories.length > 0}
 			<div class="mb-6">
-				<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Associated Resources</h4>
+				<div class="mb-4">
+					<h4 class="text-lg font-medium text-gray-900 dark:text-white">Associated Resources</h4>
+					<div class="mb-4 mt-3">
+						<Button
+							size="sm"
+							color="blue"
+							on:click={reconcileFluxResources}
+							class="flex items-center gap-2"
+						>
+							<RefreshOutline class="h-4 w-4" id="reconcile-icon" />
+							Reconcile Flux Resources
+						</Button>
+					</div>
+				</div>
 
 				{#if kustomizations.length > 0}
 					<div class="mb-4">
@@ -1845,7 +1914,7 @@
 	transition={fly}
 	position="top-right"
 	params={{ x: 200 }}
-	class="mt-20 rounded-lg"
+	class="fixed right-4 top-24 z-50 rounded-lg"
 	align={false}
 	bind:toastStatus={showToast}
 >

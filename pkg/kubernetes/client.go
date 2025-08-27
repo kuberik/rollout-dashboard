@@ -595,3 +595,74 @@ func matchesSelector(hc *rolloutv1alpha1.HealthCheck, selector *rolloutv1alpha1.
 	// Check if the health check labels match the selector
 	return sel.Matches(labels.Set(hc.Labels))
 }
+
+// ReconcileKustomization adds the reconcile annotation to trigger a reconciliation
+func (c *Client) ReconcileKustomization(ctx context.Context, namespace, name string) error {
+	kustomization := &kustomizev1.Kustomization{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, kustomization); err != nil {
+		return fmt.Errorf("failed to get kustomization: %w", err)
+	}
+
+	// Add the reconcile annotation with current timestamp
+	if kustomization.Annotations == nil {
+		kustomization.Annotations = make(map[string]string)
+	}
+	kustomization.Annotations["reconcile.fluxcd.io/requestedAt"] = fmt.Sprintf("%d", time.Now().Unix())
+
+	if err := c.client.Update(ctx, kustomization); err != nil {
+		return fmt.Errorf("failed to update kustomization: %w", err)
+	}
+
+	return nil
+}
+
+// ReconcileOCIRepository adds the reconcile annotation to trigger a reconciliation
+func (c *Client) ReconcileOCIRepository(ctx context.Context, namespace, name string) error {
+	ociRepository := &sourcev1.OCIRepository{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ociRepository); err != nil {
+		return fmt.Errorf("failed to get OCI repository: %w", err)
+	}
+
+	// Add the reconcile annotation with current timestamp
+	if ociRepository.Annotations == nil {
+		ociRepository.Annotations = make(map[string]string)
+	}
+	ociRepository.Annotations["reconcile.fluxcd.io/requestedAt"] = fmt.Sprintf("%d", time.Now().Unix())
+
+	if err := c.client.Update(ctx, ociRepository); err != nil {
+		return fmt.Errorf("failed to update OCI repository: %w", err)
+	}
+
+	return nil
+}
+
+// ReconcileAllFluxResources reconciles all associated Flux resources for a rollout
+func (c *Client) ReconcileAllFluxResources(ctx context.Context, namespace, rolloutName string) error {
+	// Get associated Kustomizations
+	kustomizations, err := c.GetKustomizationsByRolloutAnnotation(ctx, namespace, rolloutName)
+	if err != nil {
+		return fmt.Errorf("failed to get kustomizations: %w", err)
+	}
+
+	// Get associated OCIRepositories
+	ociRepositories, err := c.GetOCIRepositoriesByRolloutAnnotation(ctx, namespace, rolloutName)
+	if err != nil {
+		return fmt.Errorf("failed to get OCI repositories: %w", err)
+	}
+
+	// Reconcile all Kustomizations
+	for _, kustomization := range kustomizations.Items {
+		if err := c.ReconcileKustomization(ctx, kustomization.Namespace, kustomization.Name); err != nil {
+			return fmt.Errorf("failed to reconcile kustomization %s: %w", kustomization.Name, err)
+		}
+	}
+
+	// Reconcile all OCIRepositories
+	for _, ociRepository := range ociRepositories.Items {
+		if err := c.ReconcileOCIRepository(ctx, ociRepository.Namespace, ociRepository.Name); err != nil {
+			return fmt.Errorf("failed to reconcile OCI repository %s: %w", ociRepository.Name, err)
+		}
+	}
+
+	return nil
+}

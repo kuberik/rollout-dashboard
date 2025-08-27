@@ -266,6 +266,27 @@ func main() {
 			})
 		})
 
+		// Reconcile all associated Flux resources for a rollout
+		api.POST("/rollouts/:namespace/:name/reconcile", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Reconcile all associated Flux resources
+			err := k8sClient.ReconcileAllFluxResources(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error reconciling Flux resources: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to reconcile Flux resources",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Successfully triggered reconciliation of all associated Flux resources",
+			})
+		})
+
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
 			namespace := c.Param("namespace")
 			name := c.Param("name")
