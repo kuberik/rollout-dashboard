@@ -53,6 +53,7 @@ cp -r example/hello-world/* $temp_dir
     git remote add origin "https://github.com/kuberik/rollout-example.git"
 
     for count in {1..$count}; do
+        sleep 1
         (
             cd app/base
             kustomize edit set annotation "date:$(date +%s)"

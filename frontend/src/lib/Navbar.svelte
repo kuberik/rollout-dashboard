@@ -38,7 +38,7 @@
 		<div class="flex items-center space-x-3">
 			<button
 				class="rounded-lg bg-gray-100 p-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
-				on:click={() => theme.toggle()}
+				onclick={() => theme.toggle()}
 				aria-label="Toggle dark mode"
 			>
 				{#if currentTheme === 'dark'}

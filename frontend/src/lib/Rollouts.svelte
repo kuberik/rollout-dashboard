@@ -61,7 +61,7 @@
 <div class="flex w-full justify-center px-4 py-8 dark:bg-gray-900">
 	{#if loading}
 		<div class="mx-auto flex h-16 w-16 items-center justify-center">
-			<Spinner size="md" />
+			<Spinner size="8" />
 		</div>
 	{:else if error}
 		<Alert color="red" class="mb-4">
@@ -76,7 +76,7 @@
 					href="/rollouts/{deployment.metadata?.namespace}/{deployment.metadata?.name}"
 					class="block w-full"
 				>
-					<Card class="w-full max-w-full">
+					<Card class="w-full max-w-full p-2 sm:p-4 md:p-6">
 						<div class="flex flex-col gap-2">
 							<div class="flex items-center justify-between">
 								<h3 class="text-xl font-semibold text-gray-900 dark:text-white">

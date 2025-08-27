@@ -16,13 +16,13 @@
 		Timeline,
 		TimelineItem,
 		Modal,
-		Select,
 		Toast,
 		Spinner,
 		Tooltip,
 		Listgroup,
 		ListgroupItem,
-		Toggle
+		Toggle,
+		Clipboard
 	} from 'flowbite-svelte';
 	import {
 		CodePullRequestSolid,
@@ -36,9 +36,10 @@
 		DatabaseSolid,
 		ClockSolid,
 		PauseSolid,
-		ClipboardOutline,
 		PlaySolid,
-		RefreshOutline
+		RefreshOutline,
+		CheckOutline,
+		ClipboardCleanSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -685,7 +686,7 @@
 
 	function getResourceStatus(resource: Kustomization | OCIRepository) {
 		const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
-		if (!readyCondition) return { status: 'Unknown', color: 'dark' as const };
+		if (!readyCondition) return { status: 'Unknown', color: 'gray' as const };
 
 		switch (readyCondition.status) {
 			case 'True':
@@ -693,7 +694,7 @@
 			case 'False':
 				return { status: 'Failed', color: 'red' as const };
 			default:
-				return { status: 'Unknown', color: 'dark' as const };
+				return { status: 'Unknown', color: 'gray' as const };
 		}
 	}
 
@@ -733,47 +734,6 @@
 				return 'bg-gray-200 dark:bg-gray-700';
 			default:
 				return 'bg-gray-200 dark:bg-gray-700';
-		}
-	}
-
-	async function copyToClipboard(text: string) {
-		try {
-			await navigator.clipboard.writeText(text);
-
-			// Show success toast
-			toastType = 'success';
-			toastMessage = `Copied version to clipboard`;
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			// Fallback for older browsers
-			const textArea = document.createElement('textarea');
-			textArea.value = text;
-			document.body.appendChild(textArea);
-			textArea.select();
-			try {
-				document.execCommand('copy');
-
-				// Show success toast
-				toastType = 'success';
-				toastMessage = `Copied version to clipboard`;
-				showToast = true;
-				setTimeout(() => {
-					showToast = false;
-				}, 2000);
-			} catch (fallbackError) {
-				// Show error toast
-				toastType = 'error';
-				toastMessage = 'Failed to copy to clipboard';
-				showToast = true;
-				setTimeout(() => {
-					showToast = false;
-				}, 3000);
-			} finally {
-				document.body.removeChild(textArea);
-			}
 		}
 	}
 </script>
@@ -830,7 +790,7 @@
 					size="sm"
 					color="light"
 					disabled={!isDashboardManagingWantedVersion}
-					on:click={() => {
+					onclick={() => {
 						if (isDashboardManagingWantedVersion) {
 							showPinModal = true;
 						}
@@ -850,7 +810,7 @@
 						size="sm"
 						color="light"
 						disabled={!isDashboardManagingWantedVersion}
-						on:click={() => {
+						onclick={() => {
 							if (isDashboardManagingWantedVersion) {
 								showClearPinModal = true;
 							}
@@ -870,7 +830,7 @@
 					<Button
 						size="sm"
 						color="light"
-						on:click={() => {
+						onclick={() => {
 							selectedVersion = rollout?.status?.history?.[0]?.version || null;
 							showResumeRolloutModal = true;
 						}}
@@ -949,7 +909,7 @@
 				{#if healthChecks.length > 0}
 					<div class="auto-fill-grid-compact grid gap-4">
 						{#each healthChecks as healthCheck ((healthCheck.metadata?.name, healthCheck.metadata?.namespace))}
-							<Card class="w-full min-w-full max-w-none overflow-hidden">
+							<Card class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6">
 								<div class="flex items-center">
 									<div class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center">
 										{#if healthCheck.status?.status === 'Healthy'}
@@ -1016,7 +976,7 @@
 			{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 				<div class="auto-fill-grid grid gap-4">
 					{#each rollout.status.releaseCandidates as version}
-						<Card class="w-full min-w-full max-w-none overflow-hidden">
+						<Card class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6">
 							<div class="mb-3 w-full">
 								<div class="mb-2 flex w-full items-start justify-between gap-2">
 									<h6 class="min-w-0 flex-1 break-all font-medium text-gray-900 dark:text-white">
@@ -1033,7 +993,7 @@
 
 								{#if annotations[version]?.['org.opencontainers.image.version']}
 									<div class="mb-2">
-										<Badge color="dark" class="break-all font-mono text-xs">
+										<Badge color="gray" class="break-all font-mono text-xs">
 											{version}
 										</Badge>
 									</div>
@@ -1045,7 +1005,7 @@
 												annotations[version]['org.opencontainers.image.created']
 											)}
 										</div>
-										<Badge color="dark" border>
+										<Badge color="gray" border>
 											<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 											{formatTimeAgo(
 												annotations[version]['org.opencontainers.image.created'],
@@ -1095,7 +1055,7 @@
 									size="xs"
 									color="blue"
 									disabled={!isDashboardManagingWantedVersion}
-									on:click={() => {
+									onclick={() => {
 										if (isDashboardManagingWantedVersion) {
 											selectedVersion = version;
 											showReleaseCandidatePinModal = true;
@@ -1119,7 +1079,7 @@
 									size="xs"
 									color="blue"
 									disabled={hasBypassGatesAnnotation(rollout)}
-									on:click={() => {
+									onclick={() => {
 										selectedBypassVersion = version;
 										showAddBypassModal = true;
 									}}
@@ -1137,10 +1097,17 @@
 									/>
 								{/if}
 
-								<Button size="xs" color="light" on:click={() => copyToClipboard(version)} class="">
-									<ClipboardOutline class="mr-1 h-3 w-3" />
-									Copy Tag
-								</Button>
+								<Clipboard bind:value={version} size="xs" color="light" class="">
+									{#snippet children(success)}
+										{#if success}
+											<CheckOutline class="mr-1 h-3 w-3" />
+											Copied
+										{:else}
+											<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+											Copy Tag
+										{/if}
+									{/snippet}
+								</Clipboard>
 							</div>
 						</Card>
 					{/each}
@@ -1173,12 +1140,12 @@
 					<Timeline order="horizontal">
 						{#each rollout.status.history as entry, i ((entry.version, i))}
 							<TimelineItem
-								classLi="mr-4"
+								liClass="mr-4"
 								title={annotations[entry.version]?.['org.opencontainers.image.version'] ||
 									entry.version}
 								date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 							>
-								<svelte:fragment slot="icon">
+								{#snippet orientationSlot()}
 									<div class="flex items-center">
 										<div
 											class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-900 {getBakeStatusColor(
@@ -1192,10 +1159,10 @@
 										</div>
 										<div class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"></div>
 									</div>
-								</svelte:fragment>
+								{/snippet}
 								<span class="w-full"
 									>{#if annotations[entry.version]?.['org.opencontainers.image.revision']}
-										<Badge color="dark" class="mr-1">
+										<Badge color="gray" class="mr-1">
 											{formatRevision(
 												annotations[entry.version]['org.opencontainers.image.revision']
 											)}
@@ -1245,7 +1212,7 @@
 											<Button
 												color="light"
 												size="xs"
-												on:click={() => {
+												onclick={() => {
 													rollbackVersion = entry.version;
 													showRollbackModal = true;
 												}}
@@ -1264,15 +1231,17 @@
 												color="light"
 											/>
 										{/if}
-										<Button
-											size="xs"
-											color="light"
-											on:click={() => copyToClipboard(entry.version)}
-											class=""
-										>
-											<ClipboardOutline class="mr-1 h-3 w-3" />
-											Copy Tag
-										</Button>
+										<Clipboard bind:value={entry.version} size="xs" color="light" class="">
+											{#snippet children(success)}
+												{#if success}
+													<CheckOutline class="mr-1 h-3 w-3" />
+													Copied
+												{:else}
+													<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+													Copy Tag
+												{/if}
+											{/snippet}
+										</Clipboard>
 									</div>
 								</div>
 							</TimelineItem>
@@ -1290,7 +1259,7 @@
 						<Button
 							size="sm"
 							color="blue"
-							on:click={reconcileFluxResources}
+							onclick={reconcileFluxResources}
 							class="flex items-center gap-2"
 						>
 							<RefreshOutline class="h-4 w-4" id="reconcile-icon" />
@@ -1330,7 +1299,7 @@
 												{getResourceStatus(kustomization).status}
 											</Badge>
 											{#if getLastTransitionTime(kustomization)}
-												<Badge color="dark" border>
+												<Badge color="gray" border>
 													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 													{formatTimeAgo(getLastTransitionTime(kustomization)!, $now)}
 												</Badge>
@@ -1360,7 +1329,9 @@
 											{#if filteredManagedResources[kustomization.metadata?.name || '']?.length > 0}
 												<div class="auto-fill-grid-compact grid gap-4">
 													{#each filteredManagedResources[kustomization.metadata?.name || ''] as resource (resource.groupVersionKind + '/' + (resource.namespace || '') + '/' + resource.name)}
-														<Card class="w-full min-w-full max-w-none overflow-hidden">
+														<Card
+															class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6"
+														>
 															<div class="flex items-center">
 																<div
 																	class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center"
@@ -1465,7 +1436,7 @@
 												{getResourceStatus(ociRepository).status}
 											</Badge>
 											{#if getLastTransitionTime(ociRepository)}
-												<Badge color="dark" border>
+												<Badge color="gray" border>
 													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 													{formatTimeAgo(getLastTransitionTime(ociRepository)!, $now)}
 												</Badge>
@@ -1511,7 +1482,7 @@
 				<Toggle
 					bind:checked={showAllTags}
 					color="blue"
-					on:change={() => {
+					onchange={() => {
 						if (showAllTags && allRepositoryTags.length === 0) {
 							getAllRepositoryTags();
 						}
@@ -1529,7 +1500,7 @@
 			<h5 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
 				{showAllTags ? 'All Repository Versions' : 'Available Versions'}
 				{#if showAllTags}
-					<Badge color="dark" class="ml-2 text-xs">
+					<Badge color="gray" class="ml-2 text-xs">
 						{filteredVersionsForDisplay.length} total versions
 					</Badge>
 				{:else if rollout?.status?.availableReleases}
@@ -1543,7 +1514,7 @@
 					{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
 						{#if searchQuery === '' || version.toLowerCase().includes(searchQuery.toLowerCase())}
 							<ListgroupItem
-								on:click={() => {
+								onclick={() => {
 									selectedVersion = version;
 								}}
 								class="w-full cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 {selectedVersion ===
@@ -1578,7 +1549,7 @@
 														{formatDate(annotations[version]['org.opencontainers.image.created'])}
 													</div>
 													<div class="text-gray-500 dark:text-gray-500">
-														<Badge color="dark" border>
+														<Badge color="gray" border>
 															<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 															{formatTimeAgo(
 																annotations[version]['org.opencontainers.image.created'],
@@ -1633,15 +1604,17 @@
 													color="light"
 												/>
 											{/if}
-											<Button
-												size="xs"
-												color="light"
-												on:click={() => copyToClipboard(version)}
-												class="text-xs"
-											>
-												<ClipboardOutline class="mr-1 h-3 w-3" />
-												Copy Tag
-											</Button>
+											<Clipboard bind:value={version} size="xs" color="light" class="">
+												{#snippet children(success)}
+													{#if success}
+														<CheckOutline class="mr-1 h-3 w-3" />
+														Copied
+													{:else}
+														<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+														Copy Tag
+													{/if}
+												{/snippet}
+											</Clipboard>
 										</div>
 									</div>
 									<div class="w-6 flex-shrink-0">
@@ -1667,7 +1640,7 @@
 					<Button
 						size="sm"
 						color="light"
-						on:click={() => goToPage(currentPage - 1)}
+						onclick={() => goToPage(currentPage - 1)}
 						disabled={currentPage === 1}
 					>
 						Previous
@@ -1678,7 +1651,7 @@
 					<Button
 						size="sm"
 						color="light"
-						on:click={() => goToPage(currentPage + 1)}
+						onclick={() => goToPage(currentPage + 1)}
 						disabled={currentPage === (showAllTags ? totalUnifiedPages : totalPages)}
 					>
 						Next
@@ -1687,7 +1660,7 @@
 			{/if}
 			<Button
 				color="light"
-				on:click={() => {
+				onclick={() => {
 					showPinModal = false;
 					selectedVersion = null;
 					searchQuery = '';
@@ -1696,7 +1669,7 @@
 			>
 				Cancel
 			</Button>
-			<Button color="blue" disabled={!selectedVersion} on:click={() => submitPin()}>
+			<Button color="blue" disabled={!selectedVersion} onclick={() => submitPin()}>
 				Pin Version
 			</Button>
 		</div>
@@ -1718,13 +1691,13 @@
 		<div class="flex justify-end gap-2">
 			<Button
 				color="light"
-				on:click={() => {
+				onclick={() => {
 					showClearPinModal = false;
 				}}
 			>
 				Cancel
 			</Button>
-			<Button color="blue" on:click={clearPin}>Clear Pin</Button>
+			<Button color="blue" onclick={clearPin}>Clear Pin</Button>
 		</div>
 	</div>
 </Modal>
@@ -1737,7 +1710,7 @@
 		<div class="flex justify-end gap-2">
 			<Button
 				color="light"
-				on:click={() => {
+				onclick={() => {
 					showRollbackModal = false;
 					rollbackVersion = null;
 				}}
@@ -1746,7 +1719,7 @@
 			</Button>
 			<Button
 				color="blue"
-				on:click={async () => {
+				onclick={async () => {
 					await submitPin(rollbackVersion || undefined);
 					showRollbackModal = false;
 					rollbackVersion = null;
@@ -1778,7 +1751,7 @@
 		<div class="flex justify-end gap-2">
 			<Button
 				color="light"
-				on:click={() => {
+				onclick={() => {
 					showReleaseCandidatePinModal = false;
 					selectedVersion = null;
 				}}
@@ -1787,7 +1760,7 @@
 			</Button>
 			<Button
 				color="blue"
-				on:click={async () => {
+				onclick={async () => {
 					await submitPin(selectedVersion || undefined);
 					showReleaseCandidatePinModal = false;
 					selectedVersion = null;
@@ -1824,7 +1797,7 @@
 		<div class="flex justify-end gap-2">
 			<Button
 				color="light"
-				on:click={() => {
+				onclick={() => {
 					showAddBypassModal = false;
 					selectedBypassVersion = null;
 				}}
@@ -1833,7 +1806,7 @@
 			</Button>
 			<Button
 				color="blue"
-				on:click={() => selectedBypassVersion && addBypassGates(selectedBypassVersion)}
+				onclick={() => selectedBypassVersion && addBypassGates(selectedBypassVersion)}
 			>
 				Skip Gates
 			</Button>
@@ -1862,14 +1835,14 @@
 		<div class="flex justify-end gap-2">
 			<Button
 				color="light"
-				on:click={() => {
+				onclick={() => {
 					showRemoveBypassModal = false;
 					selectedBypassVersion = null;
 				}}
 			>
 				Cancel
 			</Button>
-			<Button color="red" on:click={removeBypassGates}>Remove Bypass</Button>
+			<Button color="red" onclick={removeBypassGates}>Remove Bypass</Button>
 		</div>
 	</div>
 </Modal>
@@ -1895,14 +1868,14 @@
 		<div class="flex justify-end gap-2">
 			<Button
 				color="light"
-				on:click={() => {
+				onclick={() => {
 					showResumeRolloutModal = false;
 					selectedVersion = null;
 				}}
 			>
 				Cancel
 			</Button>
-			<Button color="blue" on:click={resumeRollout}>
+			<Button color="blue" onclick={resumeRollout}>
 				<PlaySolid class="mr-1 h-3 w-3" />
 				Resume Rollout
 			</Button>
