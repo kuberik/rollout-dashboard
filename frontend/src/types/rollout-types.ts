@@ -220,6 +220,12 @@ export interface components {
                     /** @description BakeStatusMessage provides details about the bake state for this deployment
                      *     This field contains human-readable information about why the bake status is what it is. */
                     bakeStatusMessage?: string;
+                    /** @description Message provides a descriptive message about this deployment entry
+                     *     This field contains human-readable information about the deployment context.
+                     *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
+                     *     For manual deployments (when wantedVersion is specified), it can contain a custom message
+                     *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment". */
+                    message?: string;
                     /**
                      * Format: date-time
                      * @description Timestamp is the time when the deployment occurred.
@@ -300,48 +306,8 @@ export interface components {
                 status?: string;
             };
         };
-        /** @description KubeStatus is the Schema for the kubestatuses API. */
         KubeStatus: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
-             *     Servers should convert recognized schemas to the latest internal value, and
-             *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
-            apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
-             *     Servers may infer this from the endpoint the client submits requests to.
-             *     Cannot be updated.
-             *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
-            kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
-            /** @description KubeStatusSpec defines the desired state of KubeStatus. */
-            spec?: {
-                /** @description TargetRef references a namespace-local object whose status should be evaluated. */
-                targetRef: {
-                    /** @description APIVersion of the target object, e.g. "apps/v1" or "kustomize.toolkit.fluxcd.io/v1beta2" */
-                    apiVersion: string;
-                    /** @description Kind of the target object, e.g. "Deployment" or "Kustomization" */
-                    kind: string;
-                    /** @description Name of the target object in the same namespace as this KubeStatus */
-                    name: string;
-                };
-                /** @description Template customizes the generated HealthCheck metadata (labels/annotations). */
-                template?: {
-                    /** @description Metadata contains labels/annotations for the HealthCheck. */
-                    metadata?: {
-                        /** @description Annotations to set on the HealthCheck */
-                        annotations?: {
-                            [key: string]: string;
-                        };
-                        /** @description Labels to set on the HealthCheck */
-                        labels?: {
-                            [key: string]: string;
-                        };
-                    };
-                };
-            };
-            /** @description KubeStatusStatus defines the observed state of KubeStatus. */
-            status?: Record<string, never>;
         };
         /** @description Kustomization is the Schema for the kustomizations API. */
         Kustomization: {

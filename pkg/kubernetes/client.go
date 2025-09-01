@@ -106,8 +106,8 @@ func (c *Client) GetRollout(ctx context.Context, namespace, name string) (*rollo
 	return rollout, nil
 }
 
-func (c *Client) UpdateRolloutVersion(ctx context.Context, namespace, name string, version *string) (*rolloutv1alpha1.Rollout, error) {
-	// Create an unstructured patch object with only the spec.wantedVersion field
+func (c *Client) UpdateRolloutVersion(ctx context.Context, namespace, name string, version *string, explanation string) (*rolloutv1alpha1.Rollout, error) {
+	// Create an unstructured patch object with the spec.wantedVersion field and annotations
 	patch := &unstructured.Unstructured{}
 	patch.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   "kuberik.com",
@@ -129,7 +129,15 @@ func (c *Client) UpdateRolloutVersion(ctx context.Context, namespace, name strin
 		}
 	}
 
-	// Use server-side apply to update only the wantedVersion field
+	// Set annotations if explanation is provided
+	if explanation != "" {
+		annotations := map[string]string{
+			"rollout.kuberik.com/deployment-message": explanation,
+		}
+		patch.SetAnnotations(annotations)
+	}
+
+	// Use server-side apply to update the wantedVersion field and annotations
 	// This ensures proper field ownership and prevents conflicts
 	// If the dashboard doesn't own the field, the patch will fail naturally
 	if err := c.client.Patch(ctx, patch, client.Merge, client.FieldOwner("rollout-dashboard")); err != nil {

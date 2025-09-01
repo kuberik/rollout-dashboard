@@ -14,10 +14,10 @@ if ! command -v openapi-typescript &> /dev/null; then
 fi
 
 # Download the CRDs
-curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_rollouts.yaml
-curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_rolloutgates.yaml
-curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_healthchecks.yaml
-curl -s -o $TEMP_DIR/kubestatus.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/healthcheck-selector/config/crd/bases/kuberik.com_kubestatuses.yaml
+curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
+curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
+curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
+curl -s -o $TEMP_DIR/kubestatus.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_kubestatuses.yaml
 curl -s -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
 curl -s -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
 

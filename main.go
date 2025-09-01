@@ -173,7 +173,8 @@ func main() {
 			name := c.Param("name")
 
 			var pinRequest struct {
-				Version *string `json:"version"`
+				Version     *string `json:"version"`
+				Explanation string  `json:"explanation"`
 			}
 			if err := c.ShouldBindJSON(&pinRequest); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -183,8 +184,8 @@ func main() {
 				return
 			}
 
-			// Update the rollout with the new version
-			updatedRollout, err := k8sClient.UpdateRolloutVersion(context.Background(), namespace, name, pinRequest.Version)
+			// Update the rollout with the new version and explanation
+			updatedRollout, err := k8sClient.UpdateRolloutVersion(context.Background(), namespace, name, pinRequest.Version, pinRequest.Explanation)
 			if err != nil {
 				log.Printf("Error updating rollout: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{

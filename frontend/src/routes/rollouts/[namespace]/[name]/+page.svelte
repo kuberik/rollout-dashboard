@@ -22,7 +22,8 @@
 		Listgroup,
 		ListgroupItem,
 		Toggle,
-		Clipboard
+		Clipboard,
+		Blockquote
 	} from 'flowbite-svelte';
 	import {
 		CodePullRequestSolid,
@@ -39,7 +40,8 @@
 		PlaySolid,
 		RefreshOutline,
 		CheckOutline,
-		ClipboardCleanSolid
+		ClipboardCleanSolid,
+		MessageDotsOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -89,6 +91,13 @@
 	let selectedBypassVersion: string | null = null;
 
 	let showResumeRolloutModal = false;
+
+	// New variables for confirmation dialogs
+	let showConfirmationModal = false;
+	let confirmationAction: 'pin' | 'rollback' | 'skip-gates' = 'pin';
+	let pinExplanation = '';
+	let confirmationVersion = '';
+	let versionToConfirm: string | null = null;
 
 	let autoRefreshIntervalId: number | null = null;
 
@@ -344,7 +353,10 @@
 					headers: {
 						'Content-Type': 'application/json'
 					},
-					body: JSON.stringify({ version: pinVersion })
+					body: JSON.stringify({
+						version: pinVersion,
+						explanation: pinExplanation
+					})
 				}
 			);
 
@@ -441,6 +453,7 @@
 			}, 3000);
 		} finally {
 			showClearPinModal = false;
+			confirmationVersion = '';
 		}
 	}
 
@@ -534,6 +547,7 @@
 			toastType = 'success';
 			showAddBypassModal = false;
 			selectedBypassVersion = null;
+			confirmationVersion = '';
 
 			// Auto-dismiss toast after 3 seconds
 			setTimeout(() => {
@@ -795,12 +809,13 @@
 					{/if}
 				</Badge>
 				{#if rollout.spec?.wantedVersion}
-					<Badge color="purple">Pinned</Badge>
+					<Badge>Pinned</Badge>
 				{/if}
 				{#if hasUnblockFailedAnnotation(rollout)}
 					<Badge color="green">Resumed</Badge>
 				{/if}
 			</div>
+
 			<div class="flex items-center gap-2">
 				<Button
 					size="sm"
@@ -1102,8 +1117,11 @@
 									disabled={!isDashboardManagingWantedVersion}
 									onclick={() => {
 										if (isDashboardManagingWantedVersion) {
-											selectedVersion = version;
-											showReleaseCandidatePinModal = true;
+											confirmationAction = 'pin';
+											versionToConfirm = version;
+											// Clear any existing explanation for pin actions
+											pinExplanation = '';
+											showConfirmationModal = true;
 										}
 									}}
 									class=""
@@ -1185,7 +1203,7 @@
 					<Timeline order="horizontal">
 						{#each rollout.status.history as entry, i ((entry.version, i))}
 							<TimelineItem
-								liClass="mr-4"
+								liClass="mr-4 flex flex-col"
 								title={annotations[entry.version]?.['org.opencontainers.image.version'] ||
 									entry.version}
 								date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
@@ -1205,88 +1223,117 @@
 										<div class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"></div>
 									</div>
 								{/snippet}
-								<span class="w-full"
-									>{#if annotations[entry.version]?.['org.opencontainers.image.revision']}
-										<Badge color="gray" class="mr-1">
-											{formatRevision(
-												annotations[entry.version]['org.opencontainers.image.revision']
-											)}
-										</Badge>
-									{/if}</span
-								>
-
-								{#if entry.bakeStatus}
-									<div class="mt-2 space-y-1">
-										{#if entry.bakeStatusMessage}
-											<p class="text-xs text-gray-600 dark:text-gray-400">
-												{entry.bakeStatusMessage}
-											</p>
-										{/if}
-
-										{#if entry.bakeStartTime && entry.bakeEndTime}
-											<p class="text-xs text-gray-500 dark:text-gray-500">
-												Bake completed in {formatDuration(
-													entry.bakeStartTime,
-													new Date(entry.bakeEndTime)
-												)}
-											</p>
+								<div class="flex h-full flex-col">
+									<!-- Top content -->
+									<div class="flex-1">
+										<span class="w-full"
+											>{#if annotations[entry.version]?.['org.opencontainers.image.revision']}
+												<Badge color="gray" class="mr-1">
+													{formatRevision(
+														annotations[entry.version]['org.opencontainers.image.revision']
+													)}
+												</Badge>
+											{/if}</span
+										>
+										{#if entry.message}
+											<div class="mb-2 mt-2">
+												<Blockquote class="text-xs">
+													{entry.message}
+												</Blockquote>
+											</div>
 										{/if}
 									</div>
-								{/if}
-								<div class="py-2 text-base font-normal text-gray-500 dark:text-gray-400">
-									<div class="space-y-2 pt-3 dark:border-gray-700">
-										{#if mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
-											<SourceViewer
-												namespace={rollout.metadata?.namespace || ''}
-												name={rollout.metadata?.name || ''}
-												version={entry.version}
-											/>
-										{/if}
-										{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
-											<Button
-												color="light"
-												size="xs"
-												href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version}`}
-												class=""
-											>
-												<CodePullRequestSolid class="mr-1 h-3 w-3" />
-												Show diff
-											</Button>
-										{/if}
-										{#if entry.version !== rollout.status?.history[0]?.version}
-											<Button
-												color="light"
-												size="xs"
-												onclick={() => {
-													rollbackVersion = entry.version;
-													showRollbackModal = true;
-												}}
-												class=""
-											>
-												<ReplyOutline class="mr-1 h-3 w-3" />
-												Rollback
-											</Button>
-										{/if}
-										{#if annotations[entry.version]?.['org.opencontainers.image.source']}
-											<GitHubViewButton
-												sourceUrl={annotations[entry.version]['org.opencontainers.image.source']}
-												version={annotations[entry.version]?.['org.opencontainers.image.version'] ||
-													entry.version}
-												size="xs"
-												color="light"
-											/>
-										{/if}
-										<Clipboard bind:value={entry.version} size="xs" color="light" class="">
-											{#snippet children(success)}
-												{#if success}
-													<CheckOutline class="mr-1 h-3 w-3" />
-													Copied
-												{:else}
-													<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-													Copy Tag
+
+									<!-- Bottom content - buttons and bake status -->
+									<div class="mt-auto space-y-2">
+										{#if entry.bakeStatus}
+											<div class="space-y-1">
+												{#if entry.bakeStatusMessage}
+													<p class="text-xs text-gray-600 dark:text-gray-400">
+														{entry.bakeStatusMessage}
+													</p>
 												{/if}
-											{/snippet}
-										</Clipboard>
+
+												{#if entry.bakeStartTime && entry.bakeEndTime}
+													<p class="text-xs text-gray-500 dark:text-gray-500">
+														Bake completed in {formatDuration(
+															entry.bakeStartTime,
+															new Date(entry.bakeEndTime)
+														)}
+													</p>
+												{/if}
+											</div>
+										{/if}
+										<div class="space-y-2 pt-3 dark:border-gray-700">
+											{#if mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
+												<SourceViewer
+													namespace={rollout.metadata?.namespace || ''}
+													name={rollout.metadata?.name || ''}
+													version={entry.version}
+												/>
+											{/if}
+											{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
+												<Button
+													color="light"
+													size="xs"
+													href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version}`}
+													class=""
+												>
+													<CodePullRequestSolid class="mr-1 h-3 w-3" />
+													Show diff
+												</Button>
+											{/if}
+											{#if entry.version !== rollout.status?.history[0]?.version}
+												<Button
+													color="light"
+													size="xs"
+													onclick={() => {
+														confirmationAction = 'rollback';
+														versionToConfirm = entry.version;
+														// Generate default rollback message
+														const currentVersion = rollout?.status?.history?.[0]?.version;
+														const targetVersion = entry.version;
+														const currentVersionName =
+															currentVersion && annotations[currentVersion]
+																? annotations[currentVersion]['org.opencontainers.image.version'] ||
+																	currentVersion
+																: currentVersion || 'current';
+														const targetVersionName =
+															targetVersion && annotations[targetVersion]
+																? annotations[targetVersion]['org.opencontainers.image.version'] ||
+																	targetVersion
+																: targetVersion;
+														pinExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+														showConfirmationModal = true;
+													}}
+													class=""
+												>
+													<ReplyOutline class="mr-1 h-3 w-3" />
+													Rollback
+												</Button>
+											{/if}
+											{#if annotations[entry.version]?.['org.opencontainers.image.source']}
+												<GitHubViewButton
+													sourceUrl={annotations[entry.version]['org.opencontainers.image.source']}
+													version={annotations[entry.version]?.[
+														'org.opencontainers.image.version'
+													] || entry.version}
+													size="xs"
+													color="light"
+												/>
+											{/if}
+											<Clipboard bind:value={entry.version} size="xs" color="light" class="">
+												{#snippet children(success)}
+													{#if success}
+														<CheckOutline class="mr-1 h-3 w-3" />
+														Copied
+													{:else}
+														<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+														Copy Tag
+													{/if}
+												{/snippet}
+											</Clipboard>
+										</div>
 									</div>
 								</div>
 							</TimelineItem>
@@ -1625,7 +1672,7 @@
 												</Badge>
 											{/if}
 											{#if rollout?.spec?.wantedVersion === version}
-												<Badge color="purple" class="text-xs">
+												<Badge class="text-xs">
 													<CheckCircleSolid class="mr-1 h-3 w-3" />
 													Currently Pinned
 												</Badge>
@@ -1714,7 +1761,17 @@
 			>
 				Cancel
 			</Button>
-			<Button color="blue" disabled={!selectedVersion} onclick={() => submitPin()}>
+			<Button
+				color="blue"
+				disabled={!selectedVersion}
+				onclick={() => {
+					confirmationAction = 'pin';
+					versionToConfirm = selectedVersion;
+					// Clear any existing explanation for pin actions
+					pinExplanation = '';
+					showConfirmationModal = true;
+				}}
+			>
 				Pin Version
 			</Button>
 		</div>
@@ -1743,35 +1800,6 @@
 				Cancel
 			</Button>
 			<Button color="blue" onclick={clearPin}>Clear Pin</Button>
-		</div>
-	</div>
-</Modal>
-
-<Modal bind:open={showRollbackModal} title="Confirm Rollback">
-	<div class="space-y-4">
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to rollback to version <b>{rollbackVersion}</b>?
-		</p>
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showRollbackModal = false;
-					rollbackVersion = null;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="blue"
-				onclick={async () => {
-					await submitPin(rollbackVersion || undefined);
-					showRollbackModal = false;
-					rollbackVersion = null;
-				}}
-			>
-				Rollback
-			</Button>
 		</div>
 	</div>
 </Modal>
@@ -1831,6 +1859,25 @@
 		<div class="mb-3 text-center">
 			<Badge color="blue" class="px-3 py-1 text-base">{selectedBypassVersion}</Badge>
 		</div>
+
+		<div>
+			<label
+				for="bypass-confirmation"
+				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+			>
+				Type the version to confirm: <span class="font-bold text-gray-900 dark:text-white"
+					>{selectedBypassVersion}</span
+				>
+			</label>
+			<input
+				id="bypass-confirmation"
+				type="text"
+				bind:value={confirmationVersion}
+				placeholder="Enter version to confirm"
+				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+			/>
+		</div>
+
 		<p class="text-sm text-gray-600 dark:text-gray-400">
 			Are you sure you want to rollout this version of <b>{rollout?.metadata?.name}</b> now?
 		</p>
@@ -1845,12 +1892,14 @@
 				onclick={() => {
 					showAddBypassModal = false;
 					selectedBypassVersion = null;
+					confirmationVersion = '';
 				}}
 			>
 				Cancel
 			</Button>
 			<Button
 				color="blue"
+				disabled={confirmationVersion !== selectedBypassVersion}
 				onclick={() => selectedBypassVersion && addBypassGates(selectedBypassVersion)}
 			>
 				Skip Gates
@@ -1923,6 +1972,161 @@
 			<Button color="blue" onclick={resumeRollout}>
 				<PlaySolid class="mr-1 h-3 w-3" />
 				Resume Rollout
+			</Button>
+		</div>
+	</div>
+</Modal>
+
+<!-- Unified Confirmation Modal -->
+<Modal
+	bind:open={showConfirmationModal}
+	title={confirmationAction === 'rollback' ? 'Confirm Rollback' : 'Confirm Version Pin'}
+>
+	<div class="space-y-4">
+		{#if !isDashboardManagingWantedVersion && confirmationAction === 'pin'}
+			<Alert color="yellow" class="mb-4">
+				<ExclamationCircleSolid class="h-4 w-4" />
+				<span class="font-medium">Warning:</span> The dashboard is not currently managing the wantedVersion
+				field for this rollout. Setting a pin may conflict with other controllers or external systems.
+			</Alert>
+		{/if}
+
+		{#if confirmationAction === 'rollback'}
+			<Alert color="yellow" class="mb-4">
+				<ExclamationCircleSolid class="h-4 w-4" />
+				<span class="font-medium">Warning:</span> This will rollback to a previous version. Please ensure
+				this is the intended action.
+			</Alert>
+		{/if}
+
+		<!-- Version Display -->
+		<div class="mb-3 text-center">
+			<Badge color="blue" class="px-3 py-1 text-base">
+				{(versionToConfirm &&
+					annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
+					versionToConfirm}
+			</Badge>
+			{#if versionToConfirm && annotations[versionToConfirm]?.['org.opencontainers.image.version'] && annotations[versionToConfirm]?.['org.opencontainers.image.version'] !== versionToConfirm}
+				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+					Tag: {versionToConfirm}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Action-specific content -->
+		{#if confirmationAction === 'rollback'}
+			<div class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+				<p class="text-sm text-gray-600 dark:text-gray-400">
+					You are about to rollback <b>{rollout?.metadata?.name}</b> from version
+					<b
+						>{rollout?.status?.history?.[0]?.version
+							? annotations[rollout.status.history[0].version]?.[
+									'org.opencontainers.image.version'
+								] || rollout.status.history[0].version
+							: 'current'}</b
+					>
+					to version
+					<b
+						>{(versionToConfirm &&
+							annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
+							versionToConfirm}</b
+					>.
+				</p>
+			</div>
+		{/if}
+
+		<!-- Explanation field for all actions -->
+		<div>
+			<label
+				for="action-explanation"
+				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+			>
+				Explanation (Optional)
+			</label>
+			<textarea
+				id="action-explanation"
+				bind:value={pinExplanation}
+				placeholder={confirmationAction === 'pin'
+					? 'Provide a reason for pinning this version...'
+					: 'Provide a reason for this rollback...'}
+				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+				rows="3"
+			></textarea>
+		</div>
+
+		<!-- Version confirmation -->
+		<div>
+			<label
+				for="confirmation-version"
+				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+			>
+				Type the version to confirm: <span class="font-bold text-gray-900 dark:text-white"
+					>{(versionToConfirm &&
+						annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
+						versionToConfirm}</span
+				>
+			</label>
+			<input
+				id="confirmation-version"
+				type="text"
+				bind:value={confirmationVersion}
+				placeholder={`Enter ${versionToConfirm && annotations[versionToConfirm]?.['org.opencontainers.image.version'] ? 'version name' : 'version'} to confirm`}
+				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+			/>
+		</div>
+
+		<!-- Action-specific description -->
+		{#if confirmationAction === 'rollback'}
+			<p class="text-xs text-gray-500 dark:text-gray-400">
+				This action will immediately deploy the selected version and pin it to prevent automatic
+				deployment logic from changing it.
+			</p>
+		{:else}
+			<p class="text-xs text-gray-500 dark:text-gray-400">
+				This will immediately deploy version <b>{versionToConfirm}</b> and pin it, preventing automatic
+				deployment logic from changing it.
+			</p>
+		{/if}
+
+		<div class="flex justify-end gap-2">
+			<Button
+				color="light"
+				onclick={() => {
+					showConfirmationModal = false;
+					showPinModal = false;
+					selectedVersion = null;
+					versionToConfirm = null;
+					pinExplanation = '';
+					confirmationVersion = '';
+					searchQuery = '';
+					showAllTags = false;
+				}}
+			>
+				Cancel
+			</Button>
+			<Button
+				color="blue"
+				disabled={confirmationVersion !==
+					((versionToConfirm &&
+						annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
+						versionToConfirm)}
+				onclick={async () => {
+					if (confirmationAction === 'rollback') {
+						await submitPin(versionToConfirm || undefined);
+					} else {
+						await submitPin(versionToConfirm || undefined);
+					}
+					showConfirmationModal = false;
+					showPinModal = false;
+					selectedVersion = null;
+					versionToConfirm = null;
+					pinExplanation = '';
+					confirmationVersion = '';
+					searchQuery = '';
+					showAllTags = false;
+				}}
+			>
+				{confirmationAction === 'rollback' ? 'Rollback' : 'Pin Version'}
 			</Button>
 		</div>
 	</div>
