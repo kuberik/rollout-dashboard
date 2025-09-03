@@ -1391,6 +1391,12 @@
 											<Badge color={getResourceStatus(kustomization).color}>
 												{getResourceStatus(kustomization).status}
 											</Badge>
+											{#if kustomization.spec?.suspend}
+												<Badge color="yellow" border>
+													<PauseSolid class="me-1.5 h-2.5 w-2.5" />
+													Suspended
+												</Badge>
+											{/if}
 											{#if getLastTransitionTime(kustomization)}
 												<Badge color="gray" border>
 													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
