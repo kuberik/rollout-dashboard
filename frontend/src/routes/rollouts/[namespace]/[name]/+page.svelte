@@ -1203,6 +1203,7 @@
 					<Timeline order="horizontal">
 						{#each rollout.status.history as entry, i ((entry.version, i))}
 							<TimelineItem
+								h3Class="min-w-[300px]"
 								liClass="mr-4 flex flex-col"
 								title={annotations[entry.version]?.['org.opencontainers.image.version'] ||
 									entry.version}
