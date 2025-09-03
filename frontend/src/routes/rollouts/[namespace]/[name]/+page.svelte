@@ -319,8 +319,17 @@
 					console.error('Failed to fetch health checks:', e);
 				}
 			}
+
+			// Clear any previous error on successful fetch
+			error = null;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Unknown error occurred';
+			// Only set error on initial load, preserve stale data on subsequent failed fetches
+			if (!hasLoaded) {
+				error = e instanceof Error ? e.message : 'Unknown error occurred';
+			} else {
+				// Log the error but don't show it to the user to preserve stale data
+				console.error('Failed to fetch rollout data (preserving stale data):', e);
+			}
 		} finally {
 			loading = false;
 			hasLoaded = true;
