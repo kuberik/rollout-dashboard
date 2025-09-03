@@ -1858,7 +1858,16 @@
 			</div>
 		</Alert>
 		<div class="mb-3 text-center">
-			<Badge color="blue" class="px-3 py-1 text-base">{selectedBypassVersion}</Badge>
+			<Badge color="blue" class="px-3 py-1 text-base">
+				{(selectedBypassVersion &&
+					annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
+					selectedBypassVersion}
+			</Badge>
+			{#if selectedBypassVersion && annotations[selectedBypassVersion]?.['org.opencontainers.image.version'] && annotations[selectedBypassVersion]?.['org.opencontainers.image.version'] !== selectedBypassVersion}
+				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+					Tag: {selectedBypassVersion}
+				</div>
+			{/if}
 		</div>
 
 		<div>
@@ -1867,14 +1876,16 @@
 				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
 			>
 				Type the version to confirm: <span class="font-bold text-gray-900 dark:text-white"
-					>{selectedBypassVersion}</span
+					>{(selectedBypassVersion &&
+						annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
+						selectedBypassVersion}</span
 				>
 			</label>
 			<input
 				id="bypass-confirmation"
 				type="text"
 				bind:value={confirmationVersion}
-				placeholder="Enter version to confirm"
+				placeholder={`Enter ${selectedBypassVersion && annotations[selectedBypassVersion]?.['org.opencontainers.image.version'] ? 'version name' : 'version'} to confirm`}
 				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
 			/>
 		</div>
@@ -1900,7 +1911,10 @@
 			</Button>
 			<Button
 				color="blue"
-				disabled={confirmationVersion !== selectedBypassVersion}
+				disabled={confirmationVersion !==
+					((selectedBypassVersion &&
+						annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
+						selectedBypassVersion)}
 				onclick={() => selectedBypassVersion && addBypassGates(selectedBypassVersion)}
 			>
 				Skip Gates
@@ -1918,7 +1932,8 @@
 		</Alert>
 		<p class="text-sm text-gray-600 dark:text-gray-400">
 			Are you sure you want to remove the gate bypass permission for version <b
-				>{selectedBypassVersion ||
+				>{(selectedBypassVersion &&
+					annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
 					(rollout ? getBypassGatesVersion(rollout) : null) ||
 					'unknown'}</b
 			>
