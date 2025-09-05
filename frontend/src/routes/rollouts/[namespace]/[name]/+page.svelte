@@ -1055,11 +1055,6 @@
 									</div>
 								{/if}
 							</div>
-
-							<!-- Debug info -->
-							<div class="mb-2 text-xs text-gray-500">
-								Status gates: {rollout?.status?.gates?.length || 0}, Rollout gates: {rolloutGates.length}
-							</div>
 							{#if rollout.status?.gates && rollout.status.gates.length > 0}
 								<div
 									class="relative mt-4 rounded-lg border border-gray-300 p-4 dark:border-gray-600"
