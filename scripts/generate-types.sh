@@ -17,7 +17,6 @@ fi
 curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
 curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
 curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
-curl -s -o $TEMP_DIR/kubestatus.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_kubestatuses.yaml
 curl -s -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
 curl -s -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
 
@@ -25,7 +24,6 @@ curl -s -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd
 ROLLOUT_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/rollout.yaml)
 ROLLOUTGATE_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/rolloutgate.yaml)
 HEALTHCHECK_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/healthcheck.yaml)
-KUBESTATUS_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/kubestatus.yaml)
 KUSTOMIZATION_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/kustomization.yaml)
 OCIREPO_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/ocirepository.yaml)
 
@@ -136,7 +134,6 @@ cat > $TEMP_DIR/schema.json << EOL
       "Rollout": $(echo "$ROLLOUT_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "RolloutGate": $(echo "$ROLLOUTGATE_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "HealthCheck": $(echo "$HEALTHCHECK_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
-      "KubeStatus": $(echo "$KUBESTATUS_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "Kustomization": $(echo "$KUSTOMIZATION_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "OCIRepository": $(echo "$OCIREPO_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}')
     }
@@ -155,7 +152,6 @@ import type { ManagedResourceStatus as ManagedResourceStatusType } from './manag
 export type Rollout = components['schemas']['Rollout'];
 export type RolloutGate = components['schemas']['RolloutGate'];
 export type HealthCheck = components['schemas']['HealthCheck'];
-export type KubeStatus = components['schemas']['KubeStatus'];
 export type Kustomization = components['schemas']['Kustomization'];
 export type OCIRepository = components['schemas']['OCIRepository'];
 export type ManagedResourceStatus = ManagedResourceStatusType;

@@ -29,7 +29,7 @@
 			for (const r of rollouts) {
 				const ns = (r as any)?.metadata?.namespace;
 				const name = (r as any)?.metadata?.name;
-				const version = r.status?.history?.[0]?.version;
+				const version = r.status?.history?.[0]?.version?.tag;
 				if (!ns || !name || !version) continue;
 				const key = rolloutKey(r);
 				requests.push(
@@ -96,7 +96,7 @@
 										{annotationsByRollout[rolloutKey(deployment)]?.[
 											'org.opencontainers.image.version'
 										] ||
-											deployment.status?.history?.[0]?.version ||
+											deployment.status?.history?.[0]?.version?.tag ||
 											'Unknown'}
 									</Badge>
 								</div>

@@ -8,7 +8,6 @@ patches:
   - target:
       kind: Service
       name: rollout-dashboard
-      namespace: rollout-dashboard
     patch: |
       - op: replace
         path: /spec/ports/0/nodePort

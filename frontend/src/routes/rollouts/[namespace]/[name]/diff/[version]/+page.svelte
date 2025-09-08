@@ -61,12 +61,12 @@
 			}
 
 			// Find the current version and previous version in history
-			const currentIndex = rollout.status.history.findIndex((h) => h.version === version);
+			const currentIndex = rollout.status.history.findIndex((h) => h.version.tag === version);
 			if (currentIndex === -1 || currentIndex === rollout.status.history.length - 1) {
 				throw new Error('Version not found or no previous version to compare with');
 			}
 
-			const previousVersion = rollout.status.history[currentIndex + 1].version;
+			const previousVersion = rollout.status.history[currentIndex + 1].version.tag;
 
 			// Fetch manifests for both versions
 			const [currentManifest, previousManifest] = await Promise.all([

@@ -32,7 +32,7 @@ build_and_push() {
       "oci://localhost:5001/examples/${OCI_ARTIFACT_NAME}/${env}/manifests:${tag}" \
       --path "${temp_dir}" \
       --source="$(git config --get remote.origin.url)" \
-      --revision="$(git tag --points-at HEAD)@sha1:$(git rev-parse HEAD)" \
+      --revision="$(git tag --points-at HEAD)@$(git rev-parse HEAD)" \
        --annotations="org.opencontainers.image.version=${version}" \
     echo "Successfully pushed ${OCI_ARTIFACT_NAME}/${env}/manifests:${tag}"
     # echo "$temp_dir"

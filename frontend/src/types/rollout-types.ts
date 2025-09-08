@@ -150,7 +150,16 @@ export interface components {
             /** @description RolloutStatus defines the observed state of Rollout. */
             status?: {
                 /** @description AvailableReleases is a list of all releases available in the releases repository. */
-                availableReleases?: string[];
+                availableReleases?: {
+                    /** @description Digest is the image digest if available from the ImagePolicy. */
+                    digest?: string;
+                    /** @description Revision is the revision information extracted from OCI annotations if available. */
+                    revision?: string;
+                    /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
+                    tag: string;
+                    /** @description Version is the semantic version extracted from OCI annotations if available. */
+                    version?: string;
+                }[];
                 /** @description Conditions represents the current state of the rollout process. */
                 conditions?: {
                     /**
@@ -185,7 +194,16 @@ export interface components {
                 }[];
                 /** @description GatedReleaseCandidates is a list of release candidates that have passed through all gates.
                  *     This shows which versions are actually available for deployment after gate evaluation. */
-                gatedReleaseCandidates?: string[];
+                gatedReleaseCandidates?: {
+                    /** @description Digest is the image digest if available from the ImagePolicy. */
+                    digest?: string;
+                    /** @description Revision is the revision information extracted from OCI annotations if available. */
+                    revision?: string;
+                    /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
+                    tag: string;
+                    /** @description Version is the semantic version extracted from OCI annotations if available. */
+                    version?: string;
+                }[];
                 /** @description Gates summarizes the status of each gate relevant to this rollout. */
                 gates?: {
                     /** @description AllowedVersions is a list of versions that are allowed by the gate. */
@@ -231,12 +249,30 @@ export interface components {
                      * @description Timestamp is the time when the deployment occurred.
                      */
                     timestamp: string;
-                    /** @description Version is the version that was deployed. */
-                    version: string;
+                    /** @description Version is the version information that was deployed. */
+                    version: {
+                        /** @description Digest is the image digest if available from the ImagePolicy. */
+                        digest?: string;
+                        /** @description Revision is the revision information extracted from OCI annotations if available. */
+                        revision?: string;
+                        /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
+                        tag: string;
+                        /** @description Version is the semantic version extracted from OCI annotations if available. */
+                        version?: string;
+                    };
                 }[];
                 /** @description ReleaseCandidates is a list of releases that are candidates for the next deployment.
                  *     These are filtered from AvailableReleases based on deployment history and version ordering. */
-                releaseCandidates?: string[];
+                releaseCandidates?: {
+                    /** @description Digest is the image digest if available from the ImagePolicy. */
+                    digest?: string;
+                    /** @description Revision is the revision information extracted from OCI annotations if available. */
+                    revision?: string;
+                    /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
+                    tag: string;
+                    /** @description Version is the semantic version extracted from OCI annotations if available. */
+                    version?: string;
+                }[];
             };
         };
         /** @description RolloutGate is the Schema for the rolloutgates API. */
@@ -305,9 +341,6 @@ export interface components {
                 /** @description Status indicates the health state of the check (e.g., 'Healthy', 'Unhealthy', 'Pending') */
                 status?: string;
             };
-        };
-        KubeStatus: {
-            metadata?: components["schemas"]["KubernetesMetadata"];
         };
         /** @description Kustomization is the Schema for the kustomizations API. */
         Kustomization: {

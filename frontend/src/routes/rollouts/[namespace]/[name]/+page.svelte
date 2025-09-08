@@ -113,6 +113,7 @@
 	let loadingAllTags = false;
 	let searchQuery = '';
 	let showAllTags = false;
+	let clipboardValue = '';
 
 	// Function to get gate description from gate annotations
 	function getGateDescription(gate: any): string | null {
@@ -178,7 +179,7 @@
 		tag.toLowerCase().includes(searchQuery.toLowerCase())
 	);
 	$: nonStandardTags = allRepositoryTags.filter(
-		(tag) => !rollout?.status?.availableReleases?.includes(tag)
+		(tag) => !rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(tag)
 	);
 	$: filteredNonStandardTags = nonStandardTags.filter((tag) =>
 		tag.toLowerCase().includes(searchQuery.toLowerCase())
@@ -193,16 +194,19 @@
 		const standardReleases = [...availableReleases].reverse();
 
 		// Add additional tags that are not in available releases
-		const additionalTags = allRepositoryTags.filter((tag) => !availableReleases.includes(tag));
+		const additionalTags = allRepositoryTags.filter(
+			(tag) => !availableReleases.map((ar) => ar.tag).includes(tag)
+		);
 
 		// Combine: standard releases first, then additional tags
 		return [...standardReleases, ...additionalTags];
 	})();
 
 	// Filter the unified list based on search
-	$: filteredVersionsForDisplay = allVersionsForDisplay.filter(
-		(version) => searchQuery === '' || version.toLowerCase().includes(searchQuery.toLowerCase())
-	);
+	$: filteredVersionsForDisplay = allVersionsForDisplay.filter((version) => {
+		const versionTag = typeof version === 'string' ? version : version.tag;
+		return searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase());
+	});
 
 	// Pagination for the unified list
 	$: totalUnifiedPages = Math.ceil(filteredVersionsForDisplay.length / itemsPerPage);
@@ -261,14 +265,14 @@
 
 			if (rollout?.status?.history) {
 				const mediaTypePromises = rollout.status.history
-					.filter((entry) => !mediaTypes[entry.version])
-					.map((entry) => getMediaType(entry.version));
+					.filter((entry) => !mediaTypes[entry.version.tag])
+					.map((entry) => getMediaType(entry.version.tag));
 				await Promise.all(mediaTypePromises);
 
 				// Fetch annotations for all history and release candidate versions (deduplicated)
 				const allVersions = [
-					...(rollout.status.history?.map((entry) => entry.version) || []),
-					...(rollout.status.releaseCandidates || [])
+					...(rollout.status.history?.map((entry) => entry.version.tag) || []),
+					...(rollout.status.releaseCandidates?.map((rc) => rc.tag) || [])
 				];
 				const uniqueVersions = Array.from(new Set(allVersions));
 				const annotationPromises = uniqueVersions
@@ -387,7 +391,7 @@
 			setTimeout(async () => {
 				for (let i = 0; i < 10; i++) {
 					await updateData();
-					if (rollout?.status?.history?.[0]?.version === pinVersion) {
+					if (rollout?.status?.history?.[0]?.version.tag === pinVersion) {
 						break;
 					}
 				}
@@ -811,8 +815,9 @@
 				</Badge>
 				<Badge color="blue">
 					{#if rollout?.status?.history?.[0]}
-						{annotations[rollout.status.history[0].version]?.['org.opencontainers.image.version'] ||
-							rollout.status.history[0].version}
+						{annotations[rollout.status.history[0].version.tag]?.[
+							'org.opencontainers.image.version'
+						] || rollout.status.history[0].version.tag}
 					{:else}
 						Unknown
 					{/if}
@@ -871,7 +876,7 @@
 						size="sm"
 						color="light"
 						onclick={() => {
-							selectedVersion = rollout?.status?.history?.[0]?.version || null;
+							selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
 							showResumeRolloutModal = true;
 						}}
 					>
@@ -1015,7 +1020,8 @@
 			</h4>
 			{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 				<div class="auto-fill-grid grid gap-4">
-					{#each rollout.status.releaseCandidates as version}
+					{#each rollout.status.releaseCandidates as releaseCandidate}
+						{@const version = releaseCandidate.tag}
 						<Card class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6">
 							<div class="mb-3 w-full">
 								<div class="mb-2 flex w-full items-start justify-between gap-2">
@@ -1024,7 +1030,9 @@
 									</h6>
 									{#if isVersionBypassingGates(rollout, version)}
 										<Badge color="blue" class="flex-shrink-0 text-xs">Gates Skipped</Badge>
-									{:else if rollout.status?.gatedReleaseCandidates?.includes(version)}
+									{:else if rollout.status?.gatedReleaseCandidates
+										?.map((grc) => grc.tag)
+										.includes(version)}
 										<Badge color="green" class="flex-shrink-0 text-xs">Available</Badge>
 									{:else}
 										<Badge color="yellow" class="flex-shrink-0 text-xs">Blocked</Badge>
@@ -1164,7 +1172,7 @@
 									/>
 								{/if}
 
-								<Clipboard bind:value={version} size="xs" color="light" class="">
+								<Clipboard bind:value={releaseCandidate.tag} size="xs" color="light" class="">
 									{#snippet children(success)}
 										{#if success}
 											<CheckOutline class="mr-1 h-3 w-3" />
@@ -1205,12 +1213,12 @@
 				</div>
 				<div class="overflow-x-auto">
 					<Timeline order="horizontal">
-						{#each rollout.status.history as entry, i ((entry.version, i))}
+						{#each rollout.status.history as entry, i ((entry.version.tag, i))}
 							<TimelineItem
 								h3Class="min-w-[300px]"
 								liClass="mr-4 flex flex-col"
-								title={annotations[entry.version]?.['org.opencontainers.image.version'] ||
-									entry.version}
+								title={annotations[entry.version.tag]?.['org.opencontainers.image.version'] ||
+									entry.version.tag}
 								date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 							>
 								{#snippet orientationSlot()}
@@ -1232,10 +1240,10 @@
 									<!-- Top content -->
 									<div class="flex-1">
 										<span class="w-full"
-											>{#if annotations[entry.version]?.['org.opencontainers.image.revision']}
+											>{#if annotations[entry.version.tag]?.['org.opencontainers.image.revision']}
 												<Badge color="gray" class="mr-1">
 													{formatRevision(
-														annotations[entry.version]['org.opencontainers.image.revision']
+														annotations[entry.version.tag]['org.opencontainers.image.revision']
 													)}
 												</Badge>
 											{/if}</span
@@ -1270,34 +1278,34 @@
 											</div>
 										{/if}
 										<div class="space-y-2 pt-3 dark:border-gray-700">
-											{#if mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
+											{#if mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
 												<SourceViewer
 													namespace={rollout.metadata?.namespace || ''}
 													name={rollout.metadata?.name || ''}
-													version={entry.version}
+													version={entry.version.tag}
 												/>
 											{/if}
-											{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version] === 'application/vnd.cncf.flux.config.v1+json'}
+											{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
 												<Button
 													color="light"
 													size="xs"
-													href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version}`}
+													href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version.tag}`}
 													class=""
 												>
 													<CodePullRequestSolid class="mr-1 h-3 w-3" />
 													Show diff
 												</Button>
 											{/if}
-											{#if entry.version !== rollout.status?.history[0]?.version}
+											{#if entry.version.tag !== rollout.status?.history[0]?.version.tag}
 												<Button
 													color="light"
 													size="xs"
 													onclick={() => {
 														confirmationAction = 'rollback';
-														versionToConfirm = entry.version;
+														versionToConfirm = entry.version.tag;
 														// Generate default rollback message
-														const currentVersion = rollout?.status?.history?.[0]?.version;
-														const targetVersion = entry.version;
+														const currentVersion = rollout?.status?.history?.[0]?.version.tag;
+														const targetVersion = entry.version.tag;
 														const currentVersionName =
 															currentVersion && annotations[currentVersion]
 																? annotations[currentVersion]['org.opencontainers.image.version'] ||
@@ -1317,17 +1325,19 @@
 													Rollback
 												</Button>
 											{/if}
-											{#if annotations[entry.version]?.['org.opencontainers.image.source']}
+											{#if annotations[entry.version.tag]?.['org.opencontainers.image.source']}
 												<GitHubViewButton
-													sourceUrl={annotations[entry.version]['org.opencontainers.image.source']}
-													version={annotations[entry.version]?.[
+													sourceUrl={annotations[entry.version.tag][
+														'org.opencontainers.image.source'
+													]}
+													version={annotations[entry.version.tag]?.[
 														'org.opencontainers.image.version'
-													] || entry.version}
+													] || entry.version.tag}
 													size="xs"
 													color="light"
 												/>
 											{/if}
-											<Clipboard bind:value={entry.version} size="xs" color="light" class="">
+											<Clipboard bind:value={entry.version.tag} size="xs" color="light" class="">
 												{#snippet children(success)}
 													{#if success}
 														<CheckOutline class="mr-1 h-3 w-3" />
@@ -1615,13 +1625,15 @@
 			<Listgroup active class="max-h-64 overflow-y-auto">
 				{#if showAllTags ? filteredVersionsForDisplay.length > 0 : rollout?.status?.availableReleases}
 					{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
-						{#if searchQuery === '' || version.toLowerCase().includes(searchQuery.toLowerCase())}
+						{@const versionTag = typeof version === 'string' ? version : version.tag}
+						{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
+							{@const _ = clipboardValue = versionTag}
 							<ListgroupItem
 								onclick={() => {
-									selectedVersion = version;
+									selectedVersion = versionTag;
 								}}
 								class="w-full cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 {selectedVersion ===
-								version
+								versionTag
 									? 'border-2 border-blue-300 bg-blue-50 dark:border-blue-600 dark:bg-blue-900'
 									: 'border-2 border-transparent'}"
 							>
@@ -1630,13 +1642,14 @@
 										<div class="flex items-center justify-between">
 											<div class="flex-1">
 												<div class="font-medium text-gray-900 dark:text-white">
-													{annotations[version]?.['org.opencontainers.image.version'] || version}
+													{annotations[versionTag]?.['org.opencontainers.image.version'] ||
+														versionTag}
 												</div>
-												{#if annotations[version]?.['org.opencontainers.image.version']}
+												{#if annotations[versionTag]?.['org.opencontainers.image.version']}
 													<div class="text-xs text-gray-500 dark:text-gray-400">
 														Tag: <code
 															class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800"
-															>{version}</code
+															>{versionTag}</code
 														>
 													</div>
 												{/if}
@@ -1645,29 +1658,31 @@
 
 										<!-- Version details -->
 										<div class="grid grid-cols-2 gap-4 text-xs text-gray-600 dark:text-gray-400">
-											{#if annotations[version]?.['org.opencontainers.image.created']}
+											{#if annotations[versionTag]?.['org.opencontainers.image.created']}
 												<div>
 													<span class="font-medium">Created:</span>
 													<div class="mb-1">
-														{formatDate(annotations[version]['org.opencontainers.image.created'])}
+														{formatDate(
+															annotations[versionTag]['org.opencontainers.image.created']
+														)}
 													</div>
 													<div class="text-gray-500 dark:text-gray-500">
 														<Badge color="gray" border>
 															<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 															{formatTimeAgo(
-																annotations[version]['org.opencontainers.image.created'],
+																annotations[versionTag]['org.opencontainers.image.created'],
 																$now
 															)}
 														</Badge>
 													</div>
 												</div>
 											{/if}
-											{#if annotations[version]?.['org.opencontainers.image.revision']}
+											{#if annotations[versionTag]?.['org.opencontainers.image.revision']}
 												<div>
 													<span class="font-medium">Revision:</span>
 													<div class="font-mono">
 														{formatRevision(
-															annotations[version]['org.opencontainers.image.revision']
+															annotations[versionTag]['org.opencontainers.image.revision']
 														)}
 													</div>
 												</div>
@@ -1676,19 +1691,21 @@
 
 										<!-- Status indicators -->
 										<div class="flex flex-wrap gap-2">
-											{#if rollout?.status?.history?.[0]?.version === version}
+											{#if rollout?.status?.history?.[0]?.version.tag === versionTag}
 												<Badge color="green" class="text-xs">
 													<CheckCircleSolid class="mr-1 h-3 w-3" />
 													Currently Deployed
 												</Badge>
 											{/if}
-											{#if rollout?.spec?.wantedVersion === version}
+											{#if rollout?.spec?.wantedVersion === versionTag}
 												<Badge class="text-xs">
 													<CheckCircleSolid class="mr-1 h-3 w-3" />
 													Currently Pinned
 												</Badge>
 											{/if}
-											{#if showAllTags && !rollout?.status?.availableReleases?.includes(version)}
+											{#if showAllTags && !rollout?.status?.availableReleases
+													?.map((ar) => ar.tag)
+													.includes(versionTag)}
 												<Badge color="yellow" class="text-xs">
 													<ExclamationCircleSolid class="mr-1 h-3 w-3" />
 													Custom
@@ -1698,16 +1715,16 @@
 
 										<!-- Action buttons -->
 										<div class="flex gap-2 pt-2">
-											{#if annotations[version]?.['org.opencontainers.image.source']}
+											{#if annotations[versionTag]?.['org.opencontainers.image.source']}
 												<GitHubViewButton
-													sourceUrl={annotations[version]['org.opencontainers.image.source']}
-													version={annotations[version]?.['org.opencontainers.image.version'] ||
-														version}
+													sourceUrl={annotations[versionTag]['org.opencontainers.image.source']}
+													version={annotations[versionTag]?.['org.opencontainers.image.version'] ||
+														versionTag}
 													size="xs"
 													color="light"
 												/>
 											{/if}
-											<Clipboard bind:value={version} size="xs" color="light" class="">
+											<Clipboard bind:value={clipboardValue} size="xs" color="light" class="">
 												{#snippet children(success)}
 													{#if success}
 														<CheckOutline class="mr-1 h-3 w-3" />
@@ -1721,7 +1738,7 @@
 										</div>
 									</div>
 									<div class="w-6 flex-shrink-0">
-										{#if selectedVersion === version}
+										{#if selectedVersion === versionTag}
 											<CheckCircleSolid class="h-5 w-5 text-blue-600 dark:text-blue-400" />
 										{/if}
 									</div>
@@ -2045,10 +2062,10 @@
 				<p class="text-sm text-gray-600 dark:text-gray-400">
 					You are about to rollback <b>{rollout?.metadata?.name}</b> from version
 					<b
-						>{rollout?.status?.history?.[0]?.version
-							? annotations[rollout.status.history[0].version]?.[
+						>{rollout?.status?.history?.[0]?.version.tag
+							? annotations[rollout.status.history[0].version.tag]?.[
 									'org.opencontainers.image.version'
-								] || rollout.status.history[0].version
+								] || rollout.status.history[0].version.tag
 							: 'current'}</b
 					>
 					to version
