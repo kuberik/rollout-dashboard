@@ -733,6 +733,7 @@
 			deployExplanation = '';
 			deployConfirmationVersion = '';
 			isPinVersionMode = false;
+			showTimelineDrawer = false;
 		}
 	}
 
@@ -1012,18 +1013,24 @@
 						<h3 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Current Version</h3>
 						<div class="mb-4 flex items-center gap-3">
 							{#if latestEntry.bakeStatus === 'InProgress'}
-								<Spinner color="yellow" class="h-6 w-6" />
+								<Spinner color="yellow" class="h-8 w-8" />
 							{:else}
 								<svelte:component
 									this={getBakeStatusIcon(latestEntry.bakeStatus).icon}
-									class="h-6 w-6 {getBakeStatusIcon(latestEntry.bakeStatus).color}"
+									class="h-8 w-8 {getBakeStatusIcon(latestEntry.bakeStatus).color}"
 								/>
 							{/if}
 							<div>
 								<h3 class="text-lg font-semibold text-gray-900 dark:text-white">
 									{annotations[latestEntry.version.tag]?.['org.opencontainers.image.version'] ||
 										latestEntry.version.tag}
+									<Badge color="blue" class="ml-2 text-xs">
+										{formatRevision(
+											annotations[latestEntry.version.tag]['org.opencontainers.image.revision']
+										)}
+									</Badge>
 								</h3>
+
 								<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
 									<ClockSolid class="h-4 w-4" />
 									<span>Deployed {formatTimeAgo(latestEntry.timestamp, $now)}</span>
@@ -1056,20 +1063,23 @@
 											Waiting for health check to pass...
 										</div>
 									{/if}
+								{:else if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+									<div class="mt-1 text-sm text-green-600 dark:text-green-400">
+										Deployment completed successfully in {formatDuration(
+											latestEntry.bakeStartTime,
+											new Date(latestEntry.bakeEndTime)
+										)}
+									</div>
+								{:else if latestEntry.bakeStatus === 'Failed' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+									<div class="mt-1 text-sm text-red-600 dark:text-red-400">
+										Deployment failed after {formatDuration(
+											latestEntry.bakeStartTime,
+											new Date(latestEntry.bakeEndTime)
+										)}
+									</div>
 								{/if}
 							</div>
 						</div>
-
-						{#if annotations[latestEntry.version.tag]?.['org.opencontainers.image.revision']}
-							<div class="mb-3">
-								<Badge color="blue" class="text-xs">
-									<CodePullRequestSolid class="mr-1 h-3 w-3" />
-									{formatRevision(
-										annotations[latestEntry.version.tag]['org.opencontainers.image.revision']
-									)}
-								</Badge>
-							</div>
-						{/if}
 
 						{#if latestEntry.message}
 							<div class="mb-3">
@@ -1079,62 +1089,6 @@
 										{latestEntry.message}
 									</p>
 								</div>
-							</div>
-						{/if}
-
-						{#if latestEntry.bakeStatus}
-							<div class="mb-4">
-								<!-- <div class="mb-2 flex items-center justify-between">
-									<span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-										Bake Progress
-									</span>
-									<span class="text-sm text-gray-500 dark:text-gray-400">
-										{latestEntry.bakeStatus}
-									</span>
-					</div>
-
-								{#if latestEntry.bakeStatus === 'baking'}
-									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
-										<div
-											class="h-2.5 animate-pulse rounded-full bg-blue-600"
-											style="width: 75%"
-										></div>
-						</div>
-									<p class="text-sm text-blue-600 dark:text-blue-400">Baking in progress...</p>
-								{:else if latestEntry.bakeStatus === 'success'}
-									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
-										<div class="h-2.5 rounded-full bg-green-600" style="width: 100%"></div>
-									</div>
-									<p class="text-sm text-green-600 dark:text-green-400">
-										Bake completed successfully
-									</p>
-								{:else if latestEntry.bakeStatus === 'failed'}
-									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
-										<div class="h-2.5 rounded-full bg-red-600" style="width: 100%"></div>
-						</div>
-									<p class="text-sm text-red-600 dark:text-red-400">Bake failed</p>
-								{:else}
-									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
-										<div class="h-2.5 rounded-full bg-gray-400" style="width: 0%"></div>
-								</div>
-									<p class="text-sm text-gray-600 dark:text-gray-400">
-										Bake status: {latestEntry.bakeStatus}
-									</p>
-								{/if} -->
-
-								{#if latestEntry.bakeStatusMessage}
-									<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-										{latestEntry.bakeStatusMessage}
-									</p>
-								{/if}
-								{#if latestEntry.bakeStartTime && latestEntry.bakeEndTime}
-									<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-										Completed in {formatDuration(
-											latestEntry.bakeStartTime,
-											new Date(latestEntry.bakeEndTime)
-										)}
-									</p>
-								{/if}
 							</div>
 						{/if}
 
