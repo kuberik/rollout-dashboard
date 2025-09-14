@@ -107,4 +107,3 @@ npm run build
 - `GET /api/rollouts/:namespace/:name` - Get specific rollout details
 - `POST /api/rollouts/:namespace/:name/pin` - Pin a version to a rollout
 - `POST /api/rollouts/:namespace/:name/bypass-gates` - Add bypass-gates annotation
-- `DELETE /api/rollouts/:namespace/:name/bypass-gates` - Remove bypass-gates annotation

@@ -232,27 +232,6 @@ func main() {
 			})
 		})
 
-		// Remove bypass-gates annotation from rollout
-		api.DELETE("/rollouts/:namespace/:name/bypass-gates", func(c *gin.Context) {
-			namespace := c.Param("namespace")
-			name := c.Param("name")
-
-			// Remove the bypass-gates annotation
-			updatedRollout, err := k8sClient.RemoveBypassGatesAnnotation(context.Background(), namespace, name)
-			if err != nil {
-				log.Printf("Error removing bypass-gates annotation: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to remove bypass-gates annotation",
-					"details": err.Error(),
-				})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{
-				"rollout": updatedRollout,
-			})
-		})
-
 		// Add unblock-failed annotation to rollout
 		api.POST("/rollouts/:namespace/:name/unblock-failed", func(c *gin.Context) {
 			namespace := c.Param("namespace")

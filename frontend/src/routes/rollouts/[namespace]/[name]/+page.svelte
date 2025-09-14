@@ -76,7 +76,6 @@
 
 	let showPinModal = false;
 	let showClearPinModal = false;
-	let showReleaseCandidatePinModal = false;
 	let selectedVersion: string | null = null;
 
 	let showToast = false;
@@ -86,18 +85,16 @@
 	let showRollbackModal = false;
 	let rollbackVersion: string | null = null;
 
-	let showRemoveBypassModal = false;
-	let showAddBypassModal = false;
-	let selectedBypassVersion: string | null = null;
-
 	let showResumeRolloutModal = false;
 
-	// New variables for confirmation dialogs
-	let showConfirmationModal = false;
-	let confirmationAction: 'pin' | 'rollback' | 'skip-gates' = 'pin';
-	let pinExplanation = '';
-	let confirmationVersion = '';
-	let versionToConfirm: string | null = null;
+	// New variables for deploy modal
+	let showDeployModal = false;
+	let pinVersionToggle = false;
+	let deployExplanation = '';
+	let deployConfirmationVersion = '';
+
+	// New variables for pin version mode
+	let isPinVersionMode = false;
 
 	let autoRefreshIntervalId: number | null = null;
 
@@ -163,6 +160,17 @@
 		// Default to allowing management if no conflicts detected
 		return true;
 	})();
+
+	// Computed property to determine if rollout has an actively pinned version
+	$: hasActivelyPinnedVersion = rollout?.spec?.wantedVersion !== undefined;
+
+	// Computed property to determine if pin version toggle should be disabled
+	$: isPinVersionToggleDisabled = hasActivelyPinnedVersion;
+
+	// Update pinVersionToggle when rollout state changes
+	$: if (hasActivelyPinnedVersion) {
+		pinVersionToggle = true;
+	}
 
 	// Computed properties for pagination
 	$: reversedVersions = rollout?.status?.availableReleases
@@ -368,7 +376,7 @@
 					},
 					body: JSON.stringify({
 						version: pinVersion,
-						explanation: pinExplanation
+						explanation: deployExplanation
 					})
 				}
 			);
@@ -466,7 +474,6 @@
 			}, 3000);
 		} finally {
 			showClearPinModal = false;
-			confirmationVersion = '';
 		}
 	}
 
@@ -532,91 +539,6 @@
 			allRepositoryTags = [];
 		} finally {
 			loadingAllTags = false;
-		}
-	}
-
-	async function addBypassGates(version: string) {
-		if (!rollout) return;
-
-		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/bypass-gates`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({ version })
-				}
-			);
-
-			if (!response.ok) {
-				throw new Error('Failed to add bypass-gates annotation');
-			}
-
-			await updateData();
-			showToast = true;
-			toastMessage = `Gates bypassed, version rolling out soon`;
-			toastType = 'success';
-			showAddBypassModal = false;
-			selectedBypassVersion = null;
-			confirmationVersion = '';
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			console.error('Failed to add bypass-gates annotation:', e);
-			showToast = true;
-			toastMessage = e instanceof Error ? e.message : 'Failed to add bypass-gates annotation';
-			toastType = 'error';
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		}
-	}
-
-	async function removeBypassGates() {
-		if (!rollout) return;
-
-		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/bypass-gates`,
-				{
-					method: 'DELETE',
-					headers: {
-						'Content-Type': 'application/json'
-					}
-				}
-			);
-
-			if (!response.ok) {
-				throw new Error('Failed to remove bypass-gates annotation');
-			}
-
-			await updateData();
-			showToast = true;
-			toastMessage = 'Bypass-gates annotation removed successfully';
-			toastType = 'success';
-			showRemoveBypassModal = false;
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			console.error('Failed to remove bypass-gates annotation:', e);
-			showToast = true;
-			toastMessage = e instanceof Error ? e.message : 'Failed to remove bypass-gates annotation';
-			toastType = 'error';
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
 		}
 	}
 
@@ -714,6 +636,97 @@
 			setTimeout(() => {
 				showToast = false;
 			}, 3000);
+		}
+	}
+
+	async function handleDeploy() {
+		if (!rollout || !selectedVersion) return;
+
+		try {
+			if (pinVersionToggle) {
+				// Use pin version functionality
+				const response = await fetch(
+					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							version: selectedVersion,
+							explanation: deployExplanation
+						})
+					}
+				);
+
+				if (!response.ok) {
+					const errorData = await response.json().catch(() => ({}));
+					if (
+						response.status === 500 &&
+						errorData.details &&
+						errorData.details.includes('dashboard is not managing the wantedVersion field')
+					) {
+						throw new Error(
+							"Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
+						);
+					}
+					throw new Error('Failed to pin version');
+				}
+
+				// Refresh the data
+				setTimeout(async () => {
+					for (let i = 0; i < 10; i++) {
+						await updateData();
+						if (rollout?.status?.history?.[0]?.version.tag === selectedVersion) {
+							break;
+						}
+					}
+				}, 1000);
+
+				// Show success toast
+				toastType = 'success';
+				toastMessage = `Successfully pinned and deployed version`;
+			} else {
+				// Use skip gates functionality
+				const response = await fetch(
+					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/bypass-gates`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({ version: selectedVersion })
+					}
+				);
+
+				if (!response.ok) {
+					throw new Error('Failed to add bypass-gates annotation');
+				}
+
+				await updateData();
+				toastType = 'success';
+				toastMessage = `Gates bypassed, version rolling out soon`;
+			}
+
+			showToast = true;
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		} catch (e) {
+			// Show error toast
+			toastType = 'error';
+			toastMessage = e instanceof Error ? e.message : 'Failed to deploy version';
+			showToast = true;
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		} finally {
+			showDeployModal = false;
+			selectedVersion = null;
+			pinVersionToggle = false;
+			deployExplanation = '';
+			deployConfirmationVersion = '';
+			isPinVersionMode = false;
 		}
 	}
 
@@ -837,6 +850,7 @@
 					disabled={!isDashboardManagingWantedVersion}
 					onclick={() => {
 						if (isDashboardManagingWantedVersion) {
+							isPinVersionMode = true;
 							showPinModal = true;
 						}
 					}}
@@ -1126,42 +1140,30 @@
 								<Button
 									size="xs"
 									color="blue"
-									disabled={!isDashboardManagingWantedVersion}
+									disabled={!isDashboardManagingWantedVersion && !hasBypassGatesAnnotation(rollout)}
 									onclick={() => {
-										if (isDashboardManagingWantedVersion) {
-											confirmationAction = 'pin';
-											versionToConfirm = version;
-											// Clear any existing explanation for pin actions
-											pinExplanation = '';
-											showConfirmationModal = true;
-										}
+										selectedVersion = version;
+										showDeployModal = true;
 									}}
 									class=""
 								>
-									<EditOutline class="mr-1 h-3 w-3" />
-									Pin Version
+									<PlaySolid class="mr-1 h-3 w-3" />
+									Deploy
 								</Button>
-								{#if !isDashboardManagingWantedVersion}
+								{#if !isDashboardManagingWantedVersion && !hasBypassGatesAnnotation(rollout)}
+									<Tooltip placement="top" class="">
+										Deploy disabled: Version management is disabled and gates are already bypassed.
+									</Tooltip>
+								{:else if !isDashboardManagingWantedVersion}
 									<Tooltip placement="top" class="">
 										Version management disabled: This rollout's wantedVersion field is managed by
-										another controller or external system. The dashboard cannot pin it to prevent
-										conflicts.
+										another controller or external system. Only gate bypass is available.
+									</Tooltip>
+								{:else if hasBypassGatesAnnotation(rollout)}
+									<Tooltip placement="top" class="">
+										Gates already bypassed: Only version pinning is available.
 									</Tooltip>
 								{/if}
-
-								<!-- Bypass Gates Button for this version -->
-								<Button
-									size="xs"
-									color="blue"
-									disabled={hasBypassGatesAnnotation(rollout)}
-									onclick={() => {
-										selectedBypassVersion = version;
-										showAddBypassModal = true;
-									}}
-								>
-									<CodePullRequestSolid class="mr-1 h-3 w-3" />
-									Skip Gates
-								</Button>
 
 								{#if annotations[version]?.['org.opencontainers.image.source']}
 									<GitHubViewButton
@@ -1301,8 +1303,10 @@
 													color="light"
 													size="xs"
 													onclick={() => {
-														confirmationAction = 'rollback';
-														versionToConfirm = entry.version.tag;
+														// Set up rollback mode
+														isPinVersionMode = true;
+														selectedVersion = entry.version.tag;
+														pinVersionToggle = true;
 														// Generate default rollback message
 														const currentVersion = rollout?.status?.history?.[0]?.version.tag;
 														const targetVersion = entry.version.tag;
@@ -1316,8 +1320,8 @@
 																? annotations[targetVersion]['org.opencontainers.image.version'] ||
 																	targetVersion
 																: targetVersion;
-														pinExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-														showConfirmationModal = true;
+														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+														showDeployModal = true;
 													}}
 													class=""
 												>
@@ -1785,6 +1789,7 @@
 					selectedVersion = null;
 					searchQuery = '';
 					showAllTags = false;
+					isPinVersionMode = false;
 				}}
 			>
 				Cancel
@@ -1793,11 +1798,16 @@
 				color="blue"
 				disabled={!selectedVersion}
 				onclick={() => {
-					confirmationAction = 'pin';
-					versionToConfirm = selectedVersion;
-					// Clear any existing explanation for pin actions
-					pinExplanation = '';
-					showConfirmationModal = true;
+					if (isPinVersionMode) {
+						// In pin version mode, open deploy modal with toggle disabled and set to pin
+						pinVersionToggle = true;
+						showDeployModal = true;
+						showPinModal = false;
+					} else {
+						// Original behavior for other contexts - this should not happen anymore
+						// since we're using the unified deploy modal
+						console.warn('Unexpected call to old confirmation modal');
+					}
 				}}
 			>
 				Pin Version
@@ -1828,158 +1838,6 @@
 				Cancel
 			</Button>
 			<Button color="blue" onclick={clearPin}>Clear Pin</Button>
-		</div>
-	</div>
-</Modal>
-
-<Modal bind:open={showReleaseCandidatePinModal} title="Confirm Version Pin">
-	<div class="space-y-4">
-		{#if !isDashboardManagingWantedVersion}
-			<Alert color="yellow" class="mb-4">
-				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> The dashboard is not currently managing the wantedVersion
-				field for this rollout. Setting a pin may conflict with other controllers or external systems.
-			</Alert>
-		{/if}
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to set <b>{selectedVersion}</b> as the current version pin for
-			<b>{rollout?.metadata?.name}</b>?
-		</p>
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			This will immediately deploy this version and pin it, preventing automatic deployment logic
-			from changing it.
-		</p>
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showReleaseCandidatePinModal = false;
-					selectedVersion = null;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="blue"
-				onclick={async () => {
-					await submitPin(selectedVersion || undefined);
-					showReleaseCandidatePinModal = false;
-					selectedVersion = null;
-				}}
-			>
-				Set Pin
-			</Button>
-		</div>
-	</div>
-</Modal>
-
-<Modal bind:open={showAddBypassModal} title="Confirm Skip Gates">
-	<div class="space-y-4">
-		<Alert color="yellow" class="mb-4">
-			<div class="flex items-center">
-				<ExclamationCircleSolid class="mr-2 h-4 w-4" />
-				<p>
-					<span class="font-medium">Warning:</span> This will allow the rollout controller to bypass
-					gate checks for a specific version.
-				</p>
-			</div>
-		</Alert>
-		<div class="mb-3 text-center">
-			<Badge color="blue" class="px-3 py-1 text-base">
-				{(selectedBypassVersion &&
-					annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
-					selectedBypassVersion}
-			</Badge>
-			{#if selectedBypassVersion && annotations[selectedBypassVersion]?.['org.opencontainers.image.version'] && annotations[selectedBypassVersion]?.['org.opencontainers.image.version'] !== selectedBypassVersion}
-				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-					Tag: {selectedBypassVersion}
-				</div>
-			{/if}
-		</div>
-
-		<div>
-			<label
-				for="bypass-confirmation"
-				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-			>
-				Type the version to confirm: <span class="font-bold text-gray-900 dark:text-white"
-					>{(selectedBypassVersion &&
-						annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
-						selectedBypassVersion}</span
-				>
-			</label>
-			<input
-				id="bypass-confirmation"
-				type="text"
-				bind:value={confirmationVersion}
-				placeholder={`Enter ${selectedBypassVersion && annotations[selectedBypassVersion]?.['org.opencontainers.image.version'] ? 'version name' : 'version'} to confirm`}
-				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
-			/>
-		</div>
-
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to rollout this version of <b>{rollout?.metadata?.name}</b> now?
-		</p>
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			This will allow the rollout controller to deploy the selected version immediately without
-			waiting for gates to pass. Use this feature carefully as it may bypass important safety
-			checks.
-		</p>
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showAddBypassModal = false;
-					selectedBypassVersion = null;
-					confirmationVersion = '';
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="blue"
-				disabled={confirmationVersion !==
-					((selectedBypassVersion &&
-						annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
-						selectedBypassVersion)}
-				onclick={() => selectedBypassVersion && addBypassGates(selectedBypassVersion)}
-			>
-				Skip Gates
-			</Button>
-		</div>
-	</div>
-</Modal>
-
-<Modal bind:open={showRemoveBypassModal} title="Remove Gate Bypass">
-	<div class="space-y-4">
-		<Alert color="blue" class="mb-4">
-			<ExclamationCircleSolid class="h-4 w-4" />
-			<span class="font-medium">Info:</span> This will remove the gate bypass permission for a specific
-			version.
-		</Alert>
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to remove the gate bypass permission for version <b
-				>{(selectedBypassVersion &&
-					annotations[selectedBypassVersion]?.['org.opencontainers.image.version']) ||
-					(rollout ? getBypassGatesVersion(rollout) : null) ||
-					'unknown'}</b
-			>
-			from <b>{rollout?.metadata?.name}</b>?
-		</p>
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			This will restore normal gate checking behavior for the selected version.
-		</p>
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showRemoveBypassModal = false;
-					selectedBypassVersion = null;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button color="red" onclick={removeBypassGates}>Remove Bypass</Button>
 		</div>
 	</div>
 </Modal>
@@ -2020,78 +1878,97 @@
 	</div>
 </Modal>
 
-<!-- Unified Confirmation Modal -->
-<Modal
-	bind:open={showConfirmationModal}
-	title={confirmationAction === 'rollback' ? 'Confirm Rollback' : 'Confirm Version Pin'}
->
+<!-- Deploy Modal -->
+<Modal bind:open={showDeployModal} title="Deploy Version">
 	<div class="space-y-4">
-		{#if !isDashboardManagingWantedVersion && confirmationAction === 'pin'}
+		{#if rollout && !isDashboardManagingWantedVersion && hasBypassGatesAnnotation(rollout)}
 			<Alert color="yellow" class="mb-4">
 				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> The dashboard is not currently managing the wantedVersion
-				field for this rollout. Setting a pin may conflict with other controllers or external systems.
+				<span class="font-medium">Warning:</span> Version management is disabled and gates are already
+				bypassed. No deployment options are available.
 			</Alert>
-		{/if}
-
-		{#if confirmationAction === 'rollback'}
+		{:else if rollout && !isDashboardManagingWantedVersion}
 			<Alert color="yellow" class="mb-4">
 				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> This will rollback to a previous version. Please ensure
-				this is the intended action.
+				<span class="font-medium">Warning:</span> Version management is disabled. Only gate bypass is
+				available.
+			</Alert>
+		{:else if rollout && hasBypassGatesAnnotation(rollout)}
+			<Alert color="blue" class="mb-4">
+				<ExclamationCircleSolid class="h-4 w-4" />
+				<span class="font-medium">Info:</span> Gates are already bypassed. Only version pinning is available.
 			</Alert>
 		{/if}
 
 		<!-- Version Display -->
 		<div class="mb-3 text-center">
 			<Badge color="blue" class="px-3 py-1 text-base">
-				{(versionToConfirm &&
-					annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
-					versionToConfirm}
+				{(selectedVersion && annotations[selectedVersion]?.['org.opencontainers.image.version']) ||
+					selectedVersion}
 			</Badge>
-			{#if versionToConfirm && annotations[versionToConfirm]?.['org.opencontainers.image.version'] && annotations[versionToConfirm]?.['org.opencontainers.image.version'] !== versionToConfirm}
+			{#if selectedVersion && annotations[selectedVersion]?.['org.opencontainers.image.version'] && annotations[selectedVersion]?.['org.opencontainers.image.version'] !== selectedVersion}
 				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-					Tag: {versionToConfirm}
+					Tag: {selectedVersion}
 				</div>
 			{/if}
 		</div>
 
-		<!-- Action-specific content -->
-		{#if confirmationAction === 'rollback'}
-			<div class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
-				<p class="text-sm text-gray-600 dark:text-gray-400">
-					You are about to rollback <b>{rollout?.metadata?.name}</b> from version
-					<b
-						>{rollout?.status?.history?.[0]?.version.tag
-							? annotations[rollout.status.history[0].version.tag]?.[
-									'org.opencontainers.image.version'
-								] || rollout.status.history[0].version.tag
-							: 'current'}</b
-					>
-					to version
-					<b
-						>{(versionToConfirm &&
-							annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
-							versionToConfirm}</b
-					>.
-				</p>
+		<!-- Pin Version Toggle -->
+		{#if rollout && isDashboardManagingWantedVersion && !hasBypassGatesAnnotation(rollout)}
+			<div
+				class="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+			>
+				<div class="flex-1">
+					<div class="text-sm font-medium text-gray-700 dark:text-gray-300">Pin Version</div>
+					<p class="text-xs text-gray-500 dark:text-gray-400">
+						{#if isPinVersionMode}
+							Version pinning is enabled for this deployment.
+						{:else}
+							When enabled, this version will be pinned and prevent automatic deployment logic from
+							changing it.
+						{/if}
+					</p>
+				</div>
+				<Toggle
+					bind:checked={pinVersionToggle}
+					disabled={isPinVersionToggleDisabled || isPinVersionMode}
+					color="blue"
+				>
+					Pin Version
+				</Toggle>
+			</div>
+		{:else if rollout && isDashboardManagingWantedVersion && hasBypassGatesAnnotation(rollout)}
+			<div
+				class="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+			>
+				<div class="flex-1">
+					<div class="text-sm font-medium text-gray-700 dark:text-gray-300">Pin Version</div>
+					<p class="text-xs text-gray-500 dark:text-gray-400">
+						{#if isPinVersionMode}
+							Version pinning is enabled for this deployment.
+						{:else}
+							Version pinning is enabled because gates are already bypassed.
+						{/if}
+					</p>
+				</div>
+				<Toggle bind:checked={pinVersionToggle} disabled={true} color="blue">Pin Version</Toggle>
 			</div>
 		{/if}
 
-		<!-- Explanation field for all actions -->
+		<!-- Explanation field -->
 		<div>
 			<label
-				for="action-explanation"
+				for="deploy-explanation"
 				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
 			>
 				Explanation (Optional)
 			</label>
 			<textarea
-				id="action-explanation"
-				bind:value={pinExplanation}
-				placeholder={confirmationAction === 'pin'
+				id="deploy-explanation"
+				bind:value={deployExplanation}
+				placeholder={pinVersionToggle
 					? 'Provide a reason for pinning this version...'
-					: 'Provide a reason for this rollback...'}
+					: 'Provide a reason for bypassing gates...'}
 				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
 				rows="3"
 			></textarea>
@@ -2100,76 +1977,58 @@
 		<!-- Version confirmation -->
 		<div>
 			<label
-				for="confirmation-version"
+				for="deploy-confirmation-version"
 				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
 			>
 				Type the version to confirm: <span class="font-bold text-gray-900 dark:text-white"
-					>{(versionToConfirm &&
-						annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
-						versionToConfirm}</span
+					>{(selectedVersion &&
+						annotations[selectedVersion]?.['org.opencontainers.image.version']) ||
+						selectedVersion}</span
 				>
 			</label>
 			<input
-				id="confirmation-version"
+				id="deploy-confirmation-version"
 				type="text"
-				bind:value={confirmationVersion}
-				placeholder={`Enter ${versionToConfirm && annotations[versionToConfirm]?.['org.opencontainers.image.version'] ? 'version name' : 'version'} to confirm`}
+				bind:value={deployConfirmationVersion}
+				placeholder={`Enter ${selectedVersion && annotations[selectedVersion]?.['org.opencontainers.image.version'] ? 'version name' : 'version'} to confirm`}
 				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
 			/>
 		</div>
 
-		<!-- Action-specific description -->
-		{#if confirmationAction === 'rollback'}
-			<p class="text-xs text-gray-500 dark:text-gray-400">
-				This action will immediately deploy the selected version and pin it to prevent automatic
+		<!-- Action description -->
+		<p class="text-xs text-gray-500 dark:text-gray-400">
+			{#if pinVersionToggle}
+				This will immediately deploy version <b>{selectedVersion}</b> and pin it, preventing automatic
 				deployment logic from changing it.
-			</p>
-		{:else}
-			<p class="text-xs text-gray-500 dark:text-gray-400">
-				This will immediately deploy version <b>{versionToConfirm}</b> and pin it, preventing automatic
-				deployment logic from changing it.
-			</p>
-		{/if}
+			{:else}
+				This will bypass gate checks for version <b>{selectedVersion}</b>, allowing it to deploy
+				immediately.
+			{/if}
+		</p>
 
 		<div class="flex justify-end gap-2">
 			<Button
 				color="light"
 				onclick={() => {
-					showConfirmationModal = false;
-					showPinModal = false;
+					showDeployModal = false;
 					selectedVersion = null;
-					versionToConfirm = null;
-					pinExplanation = '';
-					confirmationVersion = '';
-					searchQuery = '';
-					showAllTags = false;
+					pinVersionToggle = false;
+					deployExplanation = '';
+					deployConfirmationVersion = '';
+					isPinVersionMode = false;
 				}}
 			>
 				Cancel
 			</Button>
 			<Button
 				color="blue"
-				disabled={confirmationVersion !==
-					((versionToConfirm &&
-						annotations[versionToConfirm]?.['org.opencontainers.image.version']) ||
-						versionToConfirm)}
-				onclick={async () => {
-					if (confirmationAction === 'rollback') {
-						await submitPin(versionToConfirm || undefined);
-					} else {
-						await submitPin(versionToConfirm || undefined);
-					}
-					showConfirmationModal = false;
-					showPinModal = false;
-					selectedVersion = null;
-					versionToConfirm = null;
-					pinExplanation = '';
-					confirmationVersion = '';
-					searchQuery = '';
-					showAllTags = false;
-				}}
+				disabled={deployConfirmationVersion !==
+					((selectedVersion &&
+						annotations[selectedVersion]?.['org.opencontainers.image.version']) ||
+						selectedVersion)}
+				onclick={handleDeploy}
 			>
-				{confirmationAction === 'rollback' ? 'Rollback' : 'Pin Version'}
+				Deploy
 			</Button>
 		</div>
 	</div>
