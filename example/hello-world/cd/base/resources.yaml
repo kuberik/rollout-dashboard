@@ -99,3 +99,15 @@ spec:
   policy:
     alphabetical:
       order: asc
+---
+apiVersion: kuberik.com/v1alpha1
+kind: HealthCheck
+metadata:
+  name: hello-world-kustomization-health-check
+  labels:
+    app: hello-world
+  annotations:
+    healthcheck.kuberik.com/kustomization: "hello-world"
+    kuberik.com/display-name: "Flux Deployment"
+spec:
+  class: "kustomization"

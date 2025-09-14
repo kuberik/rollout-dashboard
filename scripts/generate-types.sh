@@ -19,6 +19,7 @@ curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/
 curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
 curl -s -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
 curl -s -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
+curl -s -o $TEMP_DIR/kruise-rollout.yaml https://raw.githubusercontent.com/openkruise/charts/refs/tags/kruise-rollout-0.6.1/versions/kruise-rollout/0.6.1/templates/rollouts.kruise.io_rollouts.yaml
 
 # Extract the schemas and manually fix metadata
 ROLLOUT_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/rollout.yaml)
@@ -26,6 +27,7 @@ ROLLOUTGATE_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP
 HEALTHCHECK_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/healthcheck.yaml)
 KUSTOMIZATION_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/kustomization.yaml)
 OCIREPO_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/ocirepository.yaml)
+KRUISE_ROLLOUT_SCHEMA=$(yq -j eval '.spec.versions[1].schema.openAPIV3Schema' $TEMP_DIR/kruise-rollout.yaml)
 
 # Convert CRDs to OpenAPI schema with proper Kubernetes metadata
 cat > $TEMP_DIR/schema.json << EOL
@@ -135,7 +137,8 @@ cat > $TEMP_DIR/schema.json << EOL
       "RolloutGate": $(echo "$ROLLOUTGATE_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "HealthCheck": $(echo "$HEALTHCHECK_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "Kustomization": $(echo "$KUSTOMIZATION_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
-      "OCIRepository": $(echo "$OCIREPO_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}')
+      "OCIRepository": $(echo "$OCIREPO_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
+      "KruiseRollout": $(echo "$KRUISE_ROLLOUT_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}')
     }
   }
 }
@@ -154,5 +157,6 @@ export type RolloutGate = components['schemas']['RolloutGate'];
 export type HealthCheck = components['schemas']['HealthCheck'];
 export type Kustomization = components['schemas']['Kustomization'];
 export type OCIRepository = components['schemas']['OCIRepository'];
+export type KruiseRollout = components['schemas']['KruiseRollout'];
 export type ManagedResourceStatus = ManagedResourceStatusType;
 EOL

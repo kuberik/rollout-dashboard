@@ -274,6 +274,27 @@ func main() {
 			})
 		})
 
+		// Continue OpenKruise rollout
+		api.POST("/rollouts/:namespace/:name/continue", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Continue the OpenKruise rollout
+			updatedRollout, err := k8sClient.ContinueKruiseRollout(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error continuing kruise rollout: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to continue kruise rollout",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rollout": updatedRollout,
+			})
+		})
+
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
 			namespace := c.Param("namespace")
 			name := c.Param("name")

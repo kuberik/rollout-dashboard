@@ -65,6 +65,25 @@ spec:
           configMap:
             name: hello-python-script
 ---
+apiVersion: rollouts.kruise.io/v1beta1
+kind: Rollout
+metadata:
+  name: hello-python
+spec:
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-python
+  strategy:
+    canary:
+      steps:
+      - replicas: 1
+        # pause:
+        #   duration: 20
+      - replicas: 100%
+        # pause:
+        #   duration: 20
+---
 apiVersion: v1
 kind: Service
 metadata:

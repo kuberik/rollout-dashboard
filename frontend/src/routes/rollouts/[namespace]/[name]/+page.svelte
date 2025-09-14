@@ -6,7 +6,8 @@
 		Kustomization,
 		OCIRepository,
 		ManagedResourceStatus,
-		HealthCheck
+		HealthCheck,
+		KruiseRollout
 	} from '../../../../types';
 	import {
 		Card,
@@ -23,7 +24,10 @@
 		ListgroupItem,
 		Toggle,
 		Clipboard,
-		Blockquote
+		Blockquote,
+		Drawer,
+		StepIndicator,
+		Progressradial
 	} from 'flowbite-svelte';
 	import {
 		CodePullRequestSolid,
@@ -41,7 +45,8 @@
 		RefreshOutline,
 		CheckOutline,
 		ClipboardCleanSolid,
-		MessageDotsOutline
+		MessageDotsOutline,
+		CalendarWeekSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -95,6 +100,9 @@
 
 	// New variables for pin version mode
 	let isPinVersionMode = false;
+
+	// Drawer state
+	let showTimelineDrawer = false;
 
 	let autoRefreshIntervalId: number | null = null;
 
@@ -168,9 +176,7 @@
 	$: isPinVersionToggleDisabled = hasActivelyPinnedVersion;
 
 	// Update pinVersionToggle when rollout state changes
-	$: if (hasActivelyPinnedVersion) {
-		pinVersionToggle = true;
-	}
+	$: pinVersionToggle = hasActivelyPinnedVersion;
 
 	// Computed properties for pagination
 	$: reversedVersions = rollout?.status?.availableReleases
@@ -740,6 +746,47 @@
 		return result.substring(0, 7);
 	}
 
+	function parseDuration(duration: string): number {
+		// Parse Kubernetes duration format (e.g., "5m", "30s", "1h")
+		const match = duration.match(/^(\d+)([smhd])$/);
+		if (!match) return 0;
+
+		const value = parseInt(match[1]);
+		const unit = match[2];
+
+		switch (unit) {
+			case 's':
+				return value * 1000;
+			case 'm':
+				return value * 60 * 1000;
+			case 'h':
+				return value * 60 * 60 * 1000;
+			case 'd':
+				return value * 24 * 60 * 60 * 1000;
+			default:
+				return 0;
+		}
+	}
+
+	function formatDurationFromMs(milliseconds: number): string {
+		if (milliseconds <= 0) return '0s';
+
+		const seconds = Math.floor(milliseconds / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+
+		if (days > 0) {
+			return `${days}d ${hours % 24}h`;
+		} else if (hours > 0) {
+			return `${hours}h ${minutes % 60}m`;
+		} else if (minutes > 0) {
+			return `${minutes}m ${seconds % 60}s`;
+		} else {
+			return `${seconds}s`;
+		}
+	}
+
 	function getResourceStatus(resource: Kustomization | OCIRepository) {
 		const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
 		if (!readyCondition) return { status: 'Unknown', color: 'gray' as const };
@@ -792,11 +839,51 @@
 				return 'bg-gray-200 dark:bg-gray-700';
 		}
 	}
+
+	async function continueRollout(rolloutName: string, namespace: string) {
+		try {
+			const response = await fetch(`/api/rollouts/${namespace}/${rolloutName}/continue`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					currentStepState: 'StepReady'
+				})
+			});
+
+			if (!response.ok) {
+				throw new Error('Failed to continue rollout');
+			}
+
+			showToast = true;
+			toastMessage = `Successfully continued rollout ${rolloutName}`;
+			toastType = 'success';
+
+			// Auto-hide toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+
+			// Refresh the rollout data
+			await updateData();
+		} catch (error) {
+			console.error('Continue rollout error:', error);
+			showToast = true;
+			toastMessage = `Failed to continue rollout: ${error instanceof Error ? error.message : 'Unknown error'}`;
+			toastType = 'error';
+
+			// Auto-hide toast after 3 seconds
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		}
+	}
 </script>
 
-<div class="w-full px-4 py-8 dark:bg-gray-900">
+<div class="w-full dark:bg-gray-900">
 	{#if loading}
-		<div class="space-y-4">
+		<div class="space-y-4 p-4">
 			<div class="w-full">
 				<div class="h-8 w-48 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 			</div>
@@ -815,763 +902,1051 @@
 	{:else if !rollout}
 		<Alert color="yellow" class="mb-4">Release not found</Alert>
 	{:else}
-		<div class="mb-6">
-			<div class="flex items-center gap-4">
-				<h2 class="text-2xl font-bold text-gray-900 dark:text-white">
-					<span class="text-gray-500 dark:text-gray-400">{rollout.metadata?.namespace} / </span>
-					{rollout.metadata?.name}
-				</h2>
-			</div>
-			<div class="mb-4 mt-2 flex items-center gap-2">
-				<Badge color={getRolloutStatus(rollout).color}>
-					{getRolloutStatus(rollout).text}
-				</Badge>
-				<Badge color="blue">
-					{#if rollout?.status?.history?.[0]}
-						{annotations[rollout.status.history[0].version.tag]?.[
-							'org.opencontainers.image.version'
-						] || rollout.status.history[0].version.tag}
-					{:else}
-						Unknown
-					{/if}
-				</Badge>
-				{#if rollout.spec?.wantedVersion}
-					<Badge>Pinned</Badge>
-				{/if}
-				{#if hasUnblockFailedAnnotation(rollout)}
-					<Badge color="green">Resumed</Badge>
-				{/if}
-			</div>
-
-			<div class="flex items-center gap-2">
-				<Button
-					size="sm"
-					color="light"
-					disabled={!isDashboardManagingWantedVersion}
-					onclick={() => {
-						if (isDashboardManagingWantedVersion) {
-							isPinVersionMode = true;
-							showPinModal = true;
-						}
-					}}
-				>
-					<EditOutline class="h-4 w-4" />
-					Pin Version
-				</Button>
-				{#if !isDashboardManagingWantedVersion}
-					<Tooltip placement="bottom"
-						>Version management disabled: This rollout's wantedVersion field is managed by another
-						controller or external system. The dashboard cannot pin it to prevent conflicts.</Tooltip
-					>
-				{/if}
-				{#if rollout.spec?.wantedVersion}
-					<Button
-						size="sm"
-						color="light"
-						disabled={!isDashboardManagingWantedVersion}
-						onclick={() => {
-							if (isDashboardManagingWantedVersion) {
-								showClearPinModal = true;
-							}
-						}}
-					>
-						<CloseOutline class="h-4 w-4" />
-						Clear Pin
-					</Button>
-					{#if !isDashboardManagingWantedVersion}
-						<Tooltip placement="bottom"
-							>Version management disabled: This rollout's wantedVersion field is managed by another
-							controller or external system. The dashboard cannot pin it to prevent conflicts.</Tooltip
-						>
-					{/if}
-				{/if}
-				{#if hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
-					<Button
-						size="sm"
-						color="light"
-						onclick={() => {
-							selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
-							showResumeRolloutModal = true;
-						}}
-					>
-						<PlaySolid class="h-4 w-4" />
-						Resume Rollout
-					</Button>
-					<Tooltip placement="bottom">Resume this rollout after a failed deployment bake</Tooltip>
-				{/if}
-			</div>
-
-			<!-- Bake status display commented out for now
-			{#if rollout.status?.history?.[0]?.bakeStatus}
-				<div class="mt-2">
-					<Badge
-						color={rollout.status.history[0].bakeStatus === 'Succeeded'
-							? 'green'
-							: rollout.status.history[0].bakeStatus === 'Failed'
-								? 'red'
-								: rollout.status.history[0].bakeStatus === 'InProgress'
-									? 'yellow'
-									: rollout.status.history[0].bakeStatus === 'Cancelled'
-										? 'dark'
-										: 'dark'}
-						class="mr-2"
-					>
-						<svelte:component
-							this={getBakeStatusIcon(rollout.status.history[0].bakeStatus).icon}
-							class="mr-1 h-3 w-3"
-						/>
-						Bake: {rollout.status.history[0].bakeStatus}
-					</Badge>
-					{#if rollout.status.history[0].bakeStatusMessage}
-						<span class="text-sm text-gray-600 dark:text-gray-400">
-							{rollout.status.history[0].bakeStatusMessage}
-						</span>
-					{/if}
-				</div>
-			{/if}
-			-->
-		</div>
-
-		<div class="mb-6 grid grid-cols-6 gap-4">
-			<div>
-				<p class="text-sm text-gray-600 dark:text-gray-400">Releases Image Policy</p>
-				<p class="font-medium dark:text-white">
-					{rollout.spec?.releasesImagePolicy?.name}
-				</p>
-			</div>
-			<div>
-				<p class="text-sm text-gray-600 dark:text-gray-400">Version History Limit</p>
-				<p class="font-medium dark:text-white">
-					{rollout.spec?.versionHistoryLimit || 5}
-				</p>
-			</div>
-			{#if rollout.spec?.minBakeTime || rollout.spec?.maxBakeTime}
-				{#if rollout.spec?.minBakeTime}
-					<div>
-						<p class="text-sm text-gray-600 dark:text-gray-400">Minimum Bake Time</p>
-						<p class="font-medium dark:text-white">{rollout.spec.minBakeTime}</p>
-					</div>
-				{/if}
-				{#if rollout.spec?.maxBakeTime}
-					<div>
-						<p class="text-sm text-gray-600 dark:text-gray-400">Maximum Bake Time</p>
-						<p class="font-medium dark:text-white">{rollout.spec.maxBakeTime}</p>
-					</div>
-				{/if}
-			{/if}
-		</div>
-
-		{#if rollout.spec?.healthCheckSelector || healthChecks.length > 0}
-			<div class="mb-6">
-				<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Health Checks</h4>
-
-				{#if healthChecks.length > 0}
-					<div class="auto-fill-grid-compact grid gap-4">
-						{#each healthChecks as healthCheck ((healthCheck.metadata?.name, healthCheck.metadata?.namespace))}
-							<Card class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6">
-								<div class="flex items-center">
-									<div class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center">
-										{#if healthCheck.status?.status === 'Healthy'}
-											<CheckCircleSolid class="h-6 w-6 text-green-600 dark:text-green-400" />
-										{:else if healthCheck.status?.status === 'Unhealthy'}
-											<ExclamationCircleSolid class="h-6 w-6 text-red-600 dark:text-red-400" />
-										{:else if healthCheck.status?.status === 'Pending'}
-											<Spinner size="6" color="yellow" />
-										{:else}
-											<ExclamationCircleSolid class="h-6 w-6 text-gray-500 dark:text-gray-400" />
-										{/if}
-									</div>
-									<div class="min-w-0 flex-1">
-										<Badge color="blue" class="text-xs">
-											{#if healthCheck.metadata?.ownerReferences && healthCheck.metadata.ownerReferences.length > 0}
-												{healthCheck.metadata.ownerReferences[0].kind}
-											{:else}
-												HealthCheck
-											{/if}
-										</Badge>
-										<div class="my-1 flex items-center space-x-2">
-											<p class="truncate text-sm font-medium text-gray-900 dark:text-white">
-												{#if healthCheck.metadata?.ownerReferences && healthCheck.metadata.ownerReferences.length > 0}
-													{healthCheck.metadata.ownerReferences[0].name}
-												{:else}
-													{healthCheck.metadata?.name}
-												{/if}
-											</p>
-										</div>
-										{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
-											<span class="mt-1 block truncate text-xs text-red-600 dark:text-red-400">
-												Last Error: {formatTimeAgo(healthCheck.status.lastErrorTime, $now)}
-											</span>
-										{/if}
-									</div>
-								</div>
-							</Card>
-						{/each}
-					</div>
-				{:else if rollout.spec?.healthCheckSelector}
-					<Alert color="blue">
-						{#snippet icon()}<InfoCircleSolid class="h-5 w-5" />{/snippet}
-						No health checks were found that match the configured selector.
-					</Alert>
-				{:else}
-					<Alert color="blue" class="mb-4">
-						<div class="flex items-center">
-							<ExclamationCircleSolid class="mr-2 h-5 w-5" />
-							<span class="font-medium">No Health Check Selector Configured</span>
-						</div>
-						<p class="mt-2 text-sm">
-							This rollout doesn't have a health check selector configured. Health checks can be
-							used to validate deployment success.
-						</p>
-					</Alert>
-				{/if}
-			</div>
-		{/if}
-
-		<div class="mb-6">
-			<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">
-				Upcoming Release Candidates
-			</h4>
-			{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-				<div class="auto-fill-grid grid gap-4">
-					{#each rollout.status.releaseCandidates as releaseCandidate}
-						{@const version = releaseCandidate.tag}
-						<Card class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6">
-							<div class="mb-3 w-full">
-								<div class="mb-2 flex w-full items-start justify-between gap-2">
-									<h6 class="min-w-0 flex-1 break-all font-medium text-gray-900 dark:text-white">
-										{annotations[version]?.['org.opencontainers.image.version'] || version}
-									</h6>
-									{#if isVersionBypassingGates(rollout, version)}
-										<Badge color="blue" class="flex-shrink-0 text-xs">Gates Skipped</Badge>
-									{:else if rollout.status?.gatedReleaseCandidates
-										?.map((grc) => grc.tag)
-										.includes(version)}
-										<Badge color="green" class="flex-shrink-0 text-xs">Available</Badge>
-									{:else}
-										<Badge color="yellow" class="flex-shrink-0 text-xs">Blocked</Badge>
-									{/if}
-								</div>
-
-								{#if annotations[version]?.['org.opencontainers.image.version']}
-									<div class="mb-2">
-										<Badge color="gray" class="break-all font-mono text-xs">
-											{version}
-										</Badge>
-									</div>
-								{/if}
-								{#if annotations[version]?.['org.opencontainers.image.created']}
-									<div class="text-xs text-gray-500 dark:text-gray-500">
-										<div class="mb-1">
-											Created: {formatDate(
-												annotations[version]['org.opencontainers.image.created']
-											)}
-										</div>
-										<Badge color="gray" border>
-											<ClockSolid class="me-1.5 h-2.5 w-2.5" />
-											{formatTimeAgo(
-												annotations[version]['org.opencontainers.image.created'],
-												$now
-											)}
-										</Badge>
-									</div>
-								{/if}
-							</div>
-							{#if rollout.status?.gates && rollout.status.gates.length > 0}
-								<div
-									class="relative mt-4 rounded-lg border border-gray-300 p-4 dark:border-gray-600"
-								>
-									<div
-										class="absolute -top-2 left-3 bg-white px-2 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-									>
-										Gates
-									</div>
-									<div class="space-y-2">
-										{#each rollout.status.gates as gateStatus}
-											{@const fullGate = rolloutGates.find(
-												(g) => g.metadata.name === gateStatus.name
-											)}
-											<div class="flex items-center justify-between text-xs">
-												{#if isVersionBypassingGates(rollout, version)}
-													<Badge color="blue" class="text-xs">
-														<CodePullRequestSolid class="mr-1 h-3 w-3" />
-														{getGatePrettyName(fullGate) || gateStatus.name} (Skipped)
-													</Badge>
-												{:else if gateStatus.allowedVersions?.includes(version)}
-													<Badge color="green" class="text-xs">
-														<CheckCircleSolid class="mr-1 h-3 w-3" />
-														{getGatePrettyName(fullGate) || gateStatus.name}
-													</Badge>
-												{:else}
-													<Badge
-														id="gate-{gateStatus.name}"
-														color="red"
-														class="cursor-help text-xs"
-													>
-														<ExclamationCircleSolid class="mr-1 h-3 w-3" />
-														{getGatePrettyName(fullGate) || gateStatus.name}
-													</Badge>
-													<Tooltip
-														triggeredBy="#gate-{gateStatus.name}"
-														placement="top"
-														class="max-w-xs"
-													>
-														<div class="space-y-2">
-															{#if gateStatus.message}
-																<div class="text-sm">
-																	{gateStatus.message}
-																</div>
-															{/if}
-															{#if getGateDescription(fullGate)}
-																<div class="text-xs text-gray-500 dark:text-gray-400">
-																	{getGateDescription(fullGate)}
-																</div>
-															{/if}
-														</div>
-													</Tooltip>
-												{/if}
-											</div>
-										{/each}
-									</div>
-								</div>
-							{/if}
-
-							<div class="space-y-2 pt-3 dark:border-gray-700">
-								<Button
-									size="xs"
-									color="blue"
-									disabled={!isDashboardManagingWantedVersion && !hasBypassGatesAnnotation(rollout)}
-									onclick={() => {
-										selectedVersion = version;
-										showDeployModal = true;
-									}}
-									class=""
-								>
-									<PlaySolid class="mr-1 h-3 w-3" />
-									Deploy
-								</Button>
-								{#if !isDashboardManagingWantedVersion && !hasBypassGatesAnnotation(rollout)}
-									<Tooltip placement="top" class="">
-										Deploy disabled: Version management is disabled and gates are already bypassed.
-									</Tooltip>
-								{:else if !isDashboardManagingWantedVersion}
-									<Tooltip placement="top" class="">
-										Version management disabled: This rollout's wantedVersion field is managed by
-										another controller or external system. Only gate bypass is available.
-									</Tooltip>
-								{:else if hasBypassGatesAnnotation(rollout)}
-									<Tooltip placement="top" class="">
-										Gates already bypassed: Only version pinning is available.
-									</Tooltip>
-								{/if}
-
-								{#if annotations[version]?.['org.opencontainers.image.source']}
-									<GitHubViewButton
-										sourceUrl={annotations[version]['org.opencontainers.image.source']}
-										version={annotations[version]?.['org.opencontainers.image.version'] || version}
-										size="xs"
-										color="light"
-									/>
-								{/if}
-
-								<Clipboard bind:value={releaseCandidate.tag} size="xs" color="light" class="">
-									{#snippet children(success)}
-										{#if success}
-											<CheckOutline class="mr-1 h-3 w-3" />
-											Copied
-										{:else}
-											<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-											Copy Tag
-										{/if}
-									{/snippet}
-								</Clipboard>
-							</div>
-						</Card>
-					{/each}
-				</div>
-			{:else}
-				<Alert color="blue" class="mb-4">
-					<div class="flex items-center">
-						<ExclamationCircleSolid class="mr-2 h-5 w-5" />
-						<span class="font-medium">No Release Candidates Available</span>
-					</div>
-					<!-- <p class="mt-2 text-sm">
-						There are currently no release candidates available for this rollout. This could be due
-						to:
-					</p>
-					<ul class="mt-2 list-inside list-disc space-y-1 text-sm">
-						<li>No new versions have been published to the repository</li>
-						<li>All available versions are blocked by deployment gates</li>
-						<li>The rollout configuration needs to be updated</li>
-					</ul> -->
-				</Alert>
-			{/if}
-		</div>
-
-		{#if rollout.status?.history}
-			<div class="mb-6">
+		<!-- Main Layout: Full width content with drawer toggle -->
+		<div class="flex h-full flex-col">
+			<!-- Header with Timeline Toggle -->
+			<div
+				class="flex-shrink-0 border-b border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+			>
 				<div class="flex items-center justify-between">
-					<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Rollout History</h4>
-				</div>
-				<div class="overflow-x-auto">
-					<Timeline order="horizontal">
-						{#each rollout.status.history as entry, i ((entry.version.tag, i))}
-							<TimelineItem
-								h3Class="min-w-[300px]"
-								liClass="mr-4 flex flex-col"
-								title={annotations[entry.version.tag]?.['org.opencontainers.image.version'] ||
-									entry.version.tag}
-								date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
-							>
-								{#snippet orientationSlot()}
-									<div class="flex items-center">
-										<div
-											class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-900 {getBakeStatusColor(
-												entry.bakeStatus
-											)}"
-										>
-											<svelte:component
-												this={getBakeStatusIcon(entry.bakeStatus).icon}
-												class="h-4 w-4 {getBakeStatusIcon(entry.bakeStatus).color}"
-											/>
-										</div>
-										<div class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"></div>
-									</div>
-								{/snippet}
-								<div class="flex h-full flex-col">
-									<!-- Top content -->
-									<div class="flex-1">
-										<span class="w-full"
-											>{#if annotations[entry.version.tag]?.['org.opencontainers.image.revision']}
-												<Badge color="gray" class="mr-1">
-													{formatRevision(
-														annotations[entry.version.tag]['org.opencontainers.image.revision']
-													)}
-												</Badge>
-											{/if}</span
-										>
-										{#if entry.message}
-											<div class="mb-2 mt-2">
-												<Blockquote class="text-xs">
-													{entry.message}
-												</Blockquote>
-											</div>
-										{/if}
-									</div>
-
-									<!-- Bottom content - buttons and bake status -->
-									<div class="mt-auto space-y-2">
-										{#if entry.bakeStatus}
-											<div class="space-y-1">
-												{#if entry.bakeStatusMessage}
-													<p class="text-xs text-gray-600 dark:text-gray-400">
-														{entry.bakeStatusMessage}
-													</p>
-												{/if}
-
-												{#if entry.bakeStartTime && entry.bakeEndTime}
-													<p class="text-xs text-gray-500 dark:text-gray-500">
-														Bake completed in {formatDuration(
-															entry.bakeStartTime,
-															new Date(entry.bakeEndTime)
-														)}
-													</p>
-												{/if}
-											</div>
-										{/if}
-										<div class="space-y-2 pt-3 dark:border-gray-700">
-											{#if mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
-												<SourceViewer
-													namespace={rollout.metadata?.namespace || ''}
-													name={rollout.metadata?.name || ''}
-													version={entry.version.tag}
-												/>
-											{/if}
-											{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
-												<Button
-													color="light"
-													size="xs"
-													href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version.tag}`}
-													class=""
-												>
-													<CodePullRequestSolid class="mr-1 h-3 w-3" />
-													Show diff
-												</Button>
-											{/if}
-											{#if entry.version.tag !== rollout.status?.history[0]?.version.tag}
-												<Button
-													color="light"
-													size="xs"
-													onclick={() => {
-														// Set up rollback mode
-														isPinVersionMode = true;
-														selectedVersion = entry.version.tag;
-														pinVersionToggle = true;
-														// Generate default rollback message
-														const currentVersion = rollout?.status?.history?.[0]?.version.tag;
-														const targetVersion = entry.version.tag;
-														const currentVersionName =
-															currentVersion && annotations[currentVersion]
-																? annotations[currentVersion]['org.opencontainers.image.version'] ||
-																	currentVersion
-																: currentVersion || 'current';
-														const targetVersionName =
-															targetVersion && annotations[targetVersion]
-																? annotations[targetVersion]['org.opencontainers.image.version'] ||
-																	targetVersion
-																: targetVersion;
-														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-														showDeployModal = true;
-													}}
-													class=""
-												>
-													<ReplyOutline class="mr-1 h-3 w-3" />
-													Rollback
-												</Button>
-											{/if}
-											{#if annotations[entry.version.tag]?.['org.opencontainers.image.source']}
-												<GitHubViewButton
-													sourceUrl={annotations[entry.version.tag][
-														'org.opencontainers.image.source'
-													]}
-													version={annotations[entry.version.tag]?.[
-														'org.opencontainers.image.version'
-													] || entry.version.tag}
-													size="xs"
-													color="light"
-												/>
-											{/if}
-											<Clipboard bind:value={entry.version.tag} size="xs" color="light" class="">
-												{#snippet children(success)}
-													{#if success}
-														<CheckOutline class="mr-1 h-3 w-3" />
-														Copied
-													{:else}
-														<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-														Copy Tag
-													{/if}
-												{/snippet}
-											</Clipboard>
-										</div>
-									</div>
-								</div>
-							</TimelineItem>
-						{/each}
-					</Timeline>
-				</div>
-			</div>
-		{/if}
-
-		{#if kustomizations.length > 0 || ociRepositories.length > 0}
-			<div class="mb-6">
-				<div class="mb-4">
-					<h4 class="text-lg font-medium text-gray-900 dark:text-white">Associated Resources</h4>
-					<div class="mb-4 mt-3">
+					<div class="flex items-center gap-4">
+						<h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+							<span class="text-gray-500 dark:text-gray-400">{rollout.metadata?.namespace} / </span>
+							{rollout.metadata?.name}
+						</h2>
+						<div class="flex items-center gap-2">
+							<Badge color={getRolloutStatus(rollout).color}>
+								{getRolloutStatus(rollout).text}
+							</Badge>
+							<Badge color="blue">
+								{#if rollout?.status?.history?.[0]}
+									{annotations[rollout.status.history[0].version.tag]?.[
+										'org.opencontainers.image.version'
+									] || rollout.status.history[0].version.tag}
+								{:else}
+									Unknown
+								{/if}
+							</Badge>
+							{#if rollout.spec?.wantedVersion}
+								<Badge>Pinned</Badge>
+							{/if}
+							{#if hasUnblockFailedAnnotation(rollout)}
+								<Badge color="green">Resumed</Badge>
+							{/if}
+						</div>
+					</div>
+					<div class="flex items-center gap-2">
+						<Button size="sm" color="light" onclick={() => (showTimelineDrawer = true)}>
+							<CalendarWeekSolid class="h-4 w-4" />
+							View Timeline
+						</Button>
 						<Button
 							size="sm"
-							color="blue"
-							onclick={reconcileFluxResources}
-							class="flex items-center gap-2"
+							color="light"
+							disabled={!isDashboardManagingWantedVersion}
+							onclick={() => {
+								if (isDashboardManagingWantedVersion) {
+									isPinVersionMode = true;
+									showPinModal = true;
+								}
+							}}
 						>
-							<RefreshOutline class="h-4 w-4" id="reconcile-icon" />
-							Reconcile Flux Resources
+							<EditOutline class="h-4 w-4" />
+							Pin Version
 						</Button>
+						{#if !isDashboardManagingWantedVersion}
+							<Tooltip placement="bottom"
+								>Version management disabled: This rollout's wantedVersion field is managed by
+								another controller or external system. The dashboard cannot pin it to prevent
+								conflicts.</Tooltip
+							>
+						{/if}
+						{#if rollout.spec?.wantedVersion}
+							<Button
+								size="sm"
+								color="light"
+								disabled={!isDashboardManagingWantedVersion}
+								onclick={() => {
+									if (isDashboardManagingWantedVersion) {
+										showClearPinModal = true;
+									}
+								}}
+							>
+								<CloseOutline class="h-4 w-4" />
+								Clear Pin
+							</Button>
+							{#if !isDashboardManagingWantedVersion}
+								<Tooltip placement="bottom"
+									>Version management disabled: This rollout's wantedVersion field is managed by
+									another controller or external system. The dashboard cannot pin it to prevent
+									conflicts.</Tooltip
+								>
+							{/if}
+						{/if}
+						{#if hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
+							<Button
+								size="sm"
+								color="light"
+								onclick={() => {
+									selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
+									showResumeRolloutModal = true;
+								}}
+							>
+								<PlaySolid class="h-4 w-4" />
+								Resume Rollout
+							</Button>
+							<Tooltip placement="bottom"
+								>Resume this rollout after a failed deployment bake</Tooltip
+							>
+						{/if}
 					</div>
 				</div>
+			</div>
 
-				{#if kustomizations.length > 0}
-					<div class="mb-4">
-						<h5 class="text-md mb-2 flex items-center font-medium text-gray-700 dark:text-gray-300">
-							<CodeOutline class="mr-2 h-4 w-4" />
-							Kustomizations
-						</h5>
-						<div class="space-y-4">
-							{#each kustomizations as kustomization (kustomization.metadata?.name)}
-								<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-									<div class="mb-3 flex items-center justify-between">
-										<div class="flex items-center space-x-3">
-											<div>
-												<h6 class="font-medium text-gray-900 dark:text-white">
-													{kustomization.metadata?.name}
-												</h6>
-												<p class="text-sm text-gray-500 dark:text-gray-400">
-													Source: {kustomization.spec?.sourceRef?.kind}
-													{kustomization.spec?.sourceRef?.name}
-												</p>
-												{#if kustomization.spec?.interval}
-													<p class="text-sm text-gray-500 dark:text-gray-400">
-														Interval: {kustomization.spec.interval}
+			<!-- Main Content Area -->
+			<div class="flex-1 overflow-y-auto p-4">
+				<!-- Latest Deployment Display -->
+				{#if rollout.status?.history?.[0]}
+					{@const latestEntry = rollout.status.history[0]}
+					<div class="mb-6">
+						<h3 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Current Version</h3>
+						<div class="mb-4 flex items-center gap-3">
+							{#if latestEntry.bakeStatus === 'InProgress'}
+								<Spinner color="yellow" class="h-6 w-6" />
+							{:else}
+								<svelte:component
+									this={getBakeStatusIcon(latestEntry.bakeStatus).icon}
+									class="h-6 w-6 {getBakeStatusIcon(latestEntry.bakeStatus).color}"
+								/>
+							{/if}
+							<div>
+								<h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+									{annotations[latestEntry.version.tag]?.['org.opencontainers.image.version'] ||
+										latestEntry.version.tag}
+								</h3>
+								<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+									<ClockSolid class="h-4 w-4" />
+									<span>Deployed {formatTimeAgo(latestEntry.timestamp, $now)}</span>
+								</div>
+								{#if latestEntry.bakeStatus === 'InProgress' && rollout.spec?.minBakeTime}
+									{@const deploymentTime = new Date(latestEntry.timestamp).getTime()}
+									{@const currentTime = $now.getTime()}
+									{@const elapsedTime = currentTime - deploymentTime}
+									{@const minBakeTimeMs = parseDuration(rollout.spec.minBakeTime)}
+									{@const maxBakeTimeMs = rollout.spec.maxBakeTime
+										? parseDuration(rollout.spec.maxBakeTime)
+										: null}
+									{#if elapsedTime < minBakeTimeMs}
+										{@const remainingTime = minBakeTimeMs - elapsedTime}
+										<div class="mt-1 text-sm text-blue-600 dark:text-blue-400">
+											Waiting to mark the deployment as successful for at least {formatDurationFromMs(
+												remainingTime
+											)}
+										</div>
+									{:else if maxBakeTimeMs}
+										{@const timeoutTime = deploymentTime + maxBakeTimeMs}
+										{@const timeUntilTimeout = timeoutTime - currentTime}
+										<div class="mt-1 text-sm text-orange-600 dark:text-orange-400">
+											Will mark deployment as failed if health check don't pass in {formatDurationFromMs(
+												Math.max(timeUntilTimeout, 0)
+											)}
+										</div>
+									{:else}
+										<div class="mt-1 text-sm text-blue-600 dark:text-blue-400">
+											Waiting for health check to pass...
+										</div>
+									{/if}
+								{/if}
+							</div>
+						</div>
+
+						{#if annotations[latestEntry.version.tag]?.['org.opencontainers.image.revision']}
+							<div class="mb-3">
+								<Badge color="blue" class="text-xs">
+									<CodePullRequestSolid class="mr-1 h-3 w-3" />
+									{formatRevision(
+										annotations[latestEntry.version.tag]['org.opencontainers.image.revision']
+									)}
+								</Badge>
+							</div>
+						{/if}
+
+						{#if latestEntry.message}
+							<div class="mb-3">
+								<div class="flex items-start gap-2">
+									<MessageDotsOutline class="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+									<p class="text-sm italic text-gray-600 dark:text-gray-400">
+										{latestEntry.message}
+									</p>
+								</div>
+							</div>
+						{/if}
+
+						{#if latestEntry.bakeStatus}
+							<div class="mb-4">
+								<!-- <div class="mb-2 flex items-center justify-between">
+									<span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+										Bake Progress
+									</span>
+									<span class="text-sm text-gray-500 dark:text-gray-400">
+										{latestEntry.bakeStatus}
+									</span>
+					</div>
+
+								{#if latestEntry.bakeStatus === 'baking'}
+									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+										<div
+											class="h-2.5 animate-pulse rounded-full bg-blue-600"
+											style="width: 75%"
+										></div>
+						</div>
+									<p class="text-sm text-blue-600 dark:text-blue-400">Baking in progress...</p>
+								{:else if latestEntry.bakeStatus === 'success'}
+									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+										<div class="h-2.5 rounded-full bg-green-600" style="width: 100%"></div>
+									</div>
+									<p class="text-sm text-green-600 dark:text-green-400">
+										Bake completed successfully
+									</p>
+								{:else if latestEntry.bakeStatus === 'failed'}
+									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+										<div class="h-2.5 rounded-full bg-red-600" style="width: 100%"></div>
+						</div>
+									<p class="text-sm text-red-600 dark:text-red-400">Bake failed</p>
+								{:else}
+									<div class="mb-2 h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+										<div class="h-2.5 rounded-full bg-gray-400" style="width: 0%"></div>
+								</div>
+									<p class="text-sm text-gray-600 dark:text-gray-400">
+										Bake status: {latestEntry.bakeStatus}
+									</p>
+								{/if} -->
+
+								{#if latestEntry.bakeStatusMessage}
+									<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+										{latestEntry.bakeStatusMessage}
+									</p>
+								{/if}
+								{#if latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+									<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+										Completed in {formatDuration(
+											latestEntry.bakeStartTime,
+											new Date(latestEntry.bakeEndTime)
+										)}
+									</p>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- Action Buttons Row -->
+						<div class="flex flex-wrap gap-2">
+							{#if mediaTypes[latestEntry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
+								<SourceViewer
+									namespace={rollout.metadata?.namespace || ''}
+									name={rollout.metadata?.name || ''}
+									version={latestEntry.version.tag}
+								/>
+							{/if}
+							{#if annotations[latestEntry.version.tag]?.['org.opencontainers.image.source']}
+								<GitHubViewButton
+									sourceUrl={annotations[latestEntry.version.tag][
+										'org.opencontainers.image.source'
+									]}
+									version={annotations[latestEntry.version.tag]?.[
+										'org.opencontainers.image.version'
+									] || latestEntry.version.tag}
+									size="sm"
+									color="light"
+								/>
+							{/if}
+						</div>
+					</div>
+				{/if}
+
+				<!-- Health Checks Section -->
+				{#if rollout.spec?.healthCheckSelector || healthChecks.length > 0}
+					<div class="mb-6">
+						<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">Health Checks</h4>
+
+						{#if healthChecks.length > 0}
+							<div class="space-y-2">
+								{#each healthChecks as healthCheck ((healthCheck.metadata?.name, healthCheck.metadata?.namespace))}
+									<Card class="w-full min-w-full max-w-none overflow-hidden p-3">
+										<div class="flex items-center justify-between gap-4">
+											<!-- Left side: Status Icon + Status Badge + Name + Message -->
+											<div class="flex min-w-0 flex-1 items-center gap-4">
+												<!-- Status Icon and Status Badge -->
+												<div class="flex flex-shrink-0 items-center gap-2">
+													<div class="flex h-6 w-6 items-center justify-center">
+														{#if healthCheck.status?.status === 'Healthy'}
+															<CheckCircleSolid
+																class="h-5 w-5 text-green-600 dark:text-green-400"
+															/>
+														{:else if healthCheck.status?.status === 'Unhealthy'}
+															<ExclamationCircleSolid
+																class="h-5 w-5 text-red-600 dark:text-red-400"
+															/>
+														{:else if healthCheck.status?.status === 'Pending'}
+															<Spinner size="5" color="yellow" />
+														{:else}
+															<ExclamationCircleSolid
+																class="h-5 w-5 text-gray-500 dark:text-gray-400"
+															/>
+														{/if}
+													</div>
+													<!-- Status Badge -->
+													<Badge
+														color={healthCheck.status?.status === 'Healthy'
+															? 'green'
+															: healthCheck.status?.status === 'Unhealthy'
+																? 'red'
+																: 'yellow'}
+														size="small"
+													>
+														{healthCheck.status?.status || 'Unknown'}
+													</Badge>
+												</div>
+
+												<!-- Name -->
+												<div class="min-w-0">
+													<p class="text-sm font-medium text-gray-900 dark:text-white">
+														{healthCheck.metadata?.annotations?.['kuberik.com/display-name'] ||
+															healthCheck.metadata?.name}
 													</p>
+												</div>
+
+												<!-- Separator -->
+												{#if healthCheck.status?.message}
+													<div class="flex-shrink-0 text-gray-400 dark:text-gray-500">—</div>
+												{/if}
+
+												<!-- Message -->
+												{#if healthCheck.status?.message}
+													<div class="min-w-0 flex-1">
+														<p class="truncate text-xs text-gray-600 dark:text-gray-400">
+															{healthCheck.status.message}
+														</p>
+													</div>
+												{/if}
+
+												<!-- Last Error Time -->
+												{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
+													<div class="flex-shrink-0 text-xs text-red-600 dark:text-red-400">
+														Last Error: {formatTimeAgo(healthCheck.status.lastErrorTime, $now)}
+													</div>
 												{/if}
 											</div>
-										</div>
-										<div class="flex items-center space-x-2">
-											<Badge color={getResourceStatus(kustomization).color}>
-												{getResourceStatus(kustomization).status}
-											</Badge>
-											{#if kustomization.spec?.suspend}
-												<Badge color="yellow" border>
-													<PauseSolid class="me-1.5 h-2.5 w-2.5" />
-													Suspended
+
+											<!-- Right side: Class Badge -->
+											<div class="flex-shrink-0">
+												<Badge color="gray" size="small">
+													{healthCheck.spec?.class
+														? healthCheck.spec.class.charAt(0).toUpperCase() +
+															healthCheck.spec.class.slice(1)
+														: 'Unknown'}
 												</Badge>
+											</div>
+										</div>
+									</Card>
+								{/each}
+							</div>
+						{:else if rollout.spec?.healthCheckSelector}
+							<Alert color="blue">
+								{#snippet icon()}<InfoCircleSolid class="h-5 w-5" />{/snippet}
+								No health checks were found that match the configured selector.
+							</Alert>
+						{:else}
+							<Alert color="blue" class="mb-4">
+								<div class="flex items-center">
+									<ExclamationCircleSolid class="mr-2 h-5 w-5" />
+									<span class="font-medium">No Health Check Selector Configured</span>
+								</div>
+								<p class="mt-2 text-sm">
+									This rollout doesn't have a health check selector configured. Health checks can be
+									used to validate deployment success.
+								</p>
+							</Alert>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- OpenKruise Rollout Progress Section -->
+				{#if managedResources && Object.keys(managedResources).length > 0}
+					{@const openKruiseRollouts = Object.values(managedResources)
+						.flat()
+						.filter(
+							(resource) => resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout'
+						)}
+					{#if openKruiseRollouts.length > 0}
+						<div class="mb-6">
+							<div>
+								<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">
+									OpenKruise Rollout Progress
+								</h4>
+								<div class="auto-fill-grid grid gap-4">
+									{#each openKruiseRollouts as rolloutResource}
+										{@const kruiseRollout = rolloutResource.object as KruiseRollout}
+										{@const rolloutData = kruiseRollout?.status?.canaryStatus}
+										{@const canarySteps = kruiseRollout?.spec?.strategy?.canary?.steps}
+										{#if rolloutData && canarySteps && canarySteps.length > 0}
+											<Card class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6">
+												<div class="mb-3 flex items-center justify-between">
+													<div class="min-w-0 flex-1">
+														<div class="my-1 flex items-center space-x-2">
+															<p class="truncate text-sm font-medium text-gray-900 dark:text-white">
+																{#if rolloutResource.namespace}
+																	<span class="text-gray-500 dark:text-gray-400">
+																		{rolloutResource.namespace} /
+																	</span>
+																{/if}
+																{rolloutResource.name}
+															</p>
+														</div>
+													</div>
+													{#if rolloutData.currentStepState !== 'Completed'}
+														<Button
+															size="sm"
+															color="blue"
+															disabled={rolloutData.currentStepState !== 'StepPaused'}
+															onclick={() =>
+																continueRollout(rolloutResource.name, rolloutResource.namespace)}
+														>
+															{#if rolloutData.currentStepState !== 'StepPaused'}
+																<Spinner
+																	class="mr-2 inline-block h-4 w-4 align-middle"
+																	color="blue"
+																/>
+															{/if}
+															{rolloutData.currentStepState === 'StepPaused'
+																? 'Continue Rollout'
+																: 'Rolling out…'}
+														</Button>
+													{/if}
+												</div>
+
+												<div class="mb-3">
+													<StepIndicator
+														glow
+														currentStep={(rolloutData.currentStepIndex || 1) +
+															(rolloutData.currentStepState === 'Completed' ? 1 : 0)}
+														steps={canarySteps.map((step: any, index: number) =>
+															index === canarySteps.length - 1 &&
+															rolloutData.currentStepState === 'Completed'
+																? 'Completed'
+																: `Step ${index + 1}`
+														)}
+														color="blue"
+														size="sm"
+													/>
+												</div>
+											</Card>
+										{/if}
+									{/each}
+								</div>
+							</div>
+						</div>
+					{/if}
+				{/if}
+
+				<!-- Basic Information Section -->
+				<!-- <div class="mb-6 grid grid-cols-6 gap-4">
+					<div>
+						<p class="text-sm text-gray-600 dark:text-gray-400">Releases Image Policy</p>
+						<p class="font-medium dark:text-white">
+							{rollout.spec?.releasesImagePolicy?.name}
+						</p>
+					</div>
+					<div>
+						<p class="text-sm text-gray-600 dark:text-gray-400">Version History Limit</p>
+						<p class="font-medium dark:text-white">
+							{rollout.spec?.versionHistoryLimit || 5}
+						</p>
+					</div>
+					{#if rollout.spec?.minBakeTime || rollout.spec?.maxBakeTime}
+						{#if rollout.spec?.minBakeTime}
+							<div>
+								<p class="text-sm text-gray-600 dark:text-gray-400">Minimum Bake Time</p>
+								<p class="font-medium dark:text-white">{rollout.spec.minBakeTime}</p>
+							</div>
+						{/if}
+						{#if rollout.spec?.maxBakeTime}
+							<div>
+								<p class="text-sm text-gray-600 dark:text-gray-400">Maximum Bake Time</p>
+								<p class="font-medium dark:text-white">{rollout.spec.maxBakeTime}</p>
+							</div>
+						{/if}
+					{/if}
+				</div> -->
+
+				<div class="mb-6">
+					<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">
+						Upcoming Release Candidates
+					</h4>
+					{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+						<div class="auto-fill-grid grid gap-4">
+							{#each rollout.status.releaseCandidates as releaseCandidate}
+								{@const version = releaseCandidate.tag}
+								<Card class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6">
+									<div class="mb-3 w-full">
+										<div class="mb-2 flex w-full items-start justify-between gap-2">
+											<h6
+												class="min-w-0 flex-1 break-all font-medium text-gray-900 dark:text-white"
+											>
+												{annotations[version]?.['org.opencontainers.image.version'] || version}
+											</h6>
+											{#if isVersionBypassingGates(rollout, version)}
+												<Badge color="blue" class="flex-shrink-0 text-xs">Gates Skipped</Badge>
+											{:else if rollout.status?.gatedReleaseCandidates
+												?.map((grc) => grc.tag)
+												.includes(version)}
+												<Badge color="green" class="flex-shrink-0 text-xs">Available</Badge>
+											{:else}
+												<Badge color="yellow" class="flex-shrink-0 text-xs">Blocked</Badge>
 											{/if}
-											{#if getLastTransitionTime(kustomization)}
+										</div>
+
+										{#if annotations[version]?.['org.opencontainers.image.version']}
+											<div class="mb-2">
+												<Badge color="gray" class="break-all font-mono text-xs">
+													{version}
+												</Badge>
+											</div>
+										{/if}
+										{#if annotations[version]?.['org.opencontainers.image.created']}
+											<div class="text-xs text-gray-500 dark:text-gray-500">
+												<div class="mb-1">
+													Created: {formatDate(
+														annotations[version]['org.opencontainers.image.created']
+													)}
+												</div>
 												<Badge color="gray" border>
 													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
-													{formatTimeAgo(getLastTransitionTime(kustomization)!, $now)}
+													{formatTimeAgo(
+														annotations[version]['org.opencontainers.image.created'],
+														$now
+													)}
 												</Badge>
-											{/if}
-										</div>
-									</div>
-									{#if kustomization.status?.lastAppliedRevision}
-										<p class="mb-3 truncate text-sm text-gray-600 dark:text-gray-400">
-											Last applied: {kustomization.status.lastAppliedRevision}
-										</p>
-									{/if}
-
-									{#if managedResources[kustomization.metadata?.name || '']?.length > 0}
-										<div class="mt-4">
-											<div class="mb-2 flex items-center justify-between">
-												<h7 class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-													Managed Resources ({filteredManagedResources[
-														kustomization.metadata?.name || ''
-													]?.length || 0})
-												</h7>
-												<div class="mb-1 ml-4 mr-1">
-													<Toggle bind:checked={showAlwaysReadyResources} color="blue">
-														Show All
-													</Toggle>
-												</div>
 											</div>
-											{#if filteredManagedResources[kustomization.metadata?.name || '']?.length > 0}
-												<div class="auto-fill-grid-compact grid gap-4">
-													{#each filteredManagedResources[kustomization.metadata?.name || ''] as resource (resource.groupVersionKind + '/' + (resource.namespace || '') + '/' + resource.name)}
-														<Card
-															class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6"
-														>
-															<div class="flex items-center">
-																<div
-																	class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center"
-																>
-																	{#if resource.status === 'InProgress'}
-																		<Spinner size="6" color="yellow" />
-																	{:else if resource.status === 'Current'}
-																		<CheckCircleSolid
-																			class="h-6 w-6 text-green-600 dark:text-green-400"
-																		/>
-																	{:else if resource.status === 'Failed' || resource.status === 'NotFound' || resource.status === 'Error'}
-																		<ExclamationCircleSolid
-																			class="h-6 w-6 text-red-600 dark:text-red-400"
-																		/>
-																	{:else}
-																		<ExclamationCircleSolid
-																			class="h-6 w-6 text-gray-500 dark:text-gray-400"
-																		/>
+										{/if}
+									</div>
+									{#if rollout.status?.gates && rollout.status.gates.length > 0}
+										<div
+											class="relative mt-4 rounded-lg border border-gray-300 p-4 dark:border-gray-600"
+										>
+											<div
+												class="absolute -top-2 left-3 bg-white px-2 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+											>
+												Gates
+											</div>
+											<div class="space-y-2">
+												{#each rollout.status.gates as gateStatus}
+													{@const fullGate = rolloutGates.find(
+														(g) => g.metadata.name === gateStatus.name
+													)}
+													<div class="flex items-center justify-between text-xs">
+														{#if isVersionBypassingGates(rollout, version)}
+															<Badge color="blue" class="text-xs">
+																<CodePullRequestSolid class="mr-1 h-3 w-3" />
+																{getGatePrettyName(fullGate) || gateStatus.name} (Skipped)
+															</Badge>
+														{:else if gateStatus.allowedVersions?.includes(version)}
+															<Badge color="green" class="text-xs">
+																<CheckCircleSolid class="mr-1 h-3 w-3" />
+																{getGatePrettyName(fullGate) || gateStatus.name}
+															</Badge>
+														{:else}
+															<Badge
+																id="gate-{gateStatus.name}"
+																color="red"
+																class="cursor-help text-xs"
+															>
+																<ExclamationCircleSolid class="mr-1 h-3 w-3" />
+																{getGatePrettyName(fullGate) || gateStatus.name}
+															</Badge>
+															<Tooltip
+																triggeredBy="#gate-{gateStatus.name}"
+																placement="top"
+																class="max-w-xs"
+															>
+																<div class="space-y-2">
+																	{#if gateStatus.message}
+																		<div class="text-sm">
+																			{gateStatus.message}
+																		</div>
 																	{/if}
-																</div>
-																<div class="min-w-0 flex-1">
-																	<Badge color="blue" class="text-xs">
-																		{resource.groupVersionKind.split('/').pop() ||
-																			resource.groupVersionKind}
-																	</Badge>
-																	<div class="my-1 flex items-center space-x-2">
-																		<p
-																			class="truncate text-sm font-medium text-gray-900 dark:text-white"
-																		>
-																			{#if resource.namespace}
-																				<span class="text-gray-500 dark:text-gray-400">
-																					{resource.namespace} /
-																				</span>
-																			{/if}
-																			{resource.name}
-																		</p>
-																	</div>
-																	{#if resource.message}
-																		<span
-																			class="mt-1 block truncate text-xs text-gray-600 dark:text-gray-400"
-																		>
-																			{resource.message}
-																		</span>
-																	{/if}
-																	{#if resource.lastModified}
-																		<div
-																			class="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400"
-																		>
-																			<ClockSolid class="mr-1 h-3 w-3" />
-																			Last modified: {formatTimeAgo(resource.lastModified, $now)}
+																	{#if getGateDescription(fullGate)}
+																		<div class="text-xs text-gray-500 dark:text-gray-400">
+																			{getGateDescription(fullGate)}
 																		</div>
 																	{/if}
 																</div>
-															</div>
-														</Card>
-													{/each}
-												</div>
-											{:else}
-												<Alert color="blue" class="text-sm">
-													<InfoCircleSolid class="h-4 w-4" />
-													<span
-														>All managed resources have "resource is current" or "Resource is always
-														ready" status messages. Use the toggle above to view them.</span
-													>
-												</Alert>
-											{/if}
-										</div>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					</div>
-				{/if}
-
-				{#if ociRepositories.length > 0}
-					<div class="mb-4">
-						<h5 class="text-md mb-2 flex items-center font-medium text-gray-700 dark:text-gray-300">
-							<DatabaseSolid class="mr-2 h-4 w-4" />
-							OCI Repositories
-						</h5>
-						<div class="space-y-4">
-							{#each ociRepositories as ociRepository (ociRepository.metadata?.name)}
-								<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-									<div class="flex items-center justify-between">
-										<div class="flex items-center space-x-3">
-											<div>
-												<h6 class="font-medium text-gray-900 dark:text-white">
-													{ociRepository.metadata?.name}
-												</h6>
-												<p class="text-sm text-gray-500 dark:text-gray-400">
-													URL: {ociRepository.spec?.url}
-												</p>
-												{#if ociRepository.spec?.interval}
-													<p class="text-sm text-gray-500 dark:text-gray-400">
-														Interval: {ociRepository.spec.interval}
-													</p>
-												{/if}
+															</Tooltip>
+														{/if}
+													</div>
+												{/each}
 											</div>
 										</div>
-										<div class="flex items-center space-x-2">
-											<Badge color={getResourceStatus(ociRepository).color}>
-												{getResourceStatus(ociRepository).status}
-											</Badge>
-											{#if getLastTransitionTime(ociRepository)}
-												<Badge color="gray" border>
-													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
-													{formatTimeAgo(getLastTransitionTime(ociRepository)!, $now)}
-												</Badge>
-											{/if}
-										</div>
-									</div>
-									{#if ociRepository.status?.url}
-										<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-											Last observed URL: {ociRepository.status.url}
-										</p>
 									{/if}
-								</div>
+
+									<div class="space-y-2 pt-3 dark:border-gray-700">
+										<Button
+											size="xs"
+											color="blue"
+											disabled={!isDashboardManagingWantedVersion &&
+												!hasBypassGatesAnnotation(rollout)}
+											onclick={() => {
+												selectedVersion = version;
+												showDeployModal = true;
+											}}
+											class=""
+										>
+											Deploy
+										</Button>
+										{#if !isDashboardManagingWantedVersion && !hasBypassGatesAnnotation(rollout)}
+											<Tooltip placement="top" class="">
+												Deploy disabled: Version management is disabled and gates are already
+												bypassed.
+											</Tooltip>
+										{:else if !isDashboardManagingWantedVersion}
+											<Tooltip placement="top" class="">
+												Version management disabled: This rollout's wantedVersion field is managed
+												by another controller or external system. Only gate bypass is available.
+											</Tooltip>
+										{:else if hasBypassGatesAnnotation(rollout)}
+											<Tooltip placement="top" class="">
+												Gates already bypassed: Only version pinning is available.
+											</Tooltip>
+										{/if}
+
+										{#if annotations[version]?.['org.opencontainers.image.source']}
+											<GitHubViewButton
+												sourceUrl={annotations[version]['org.opencontainers.image.source']}
+												version={annotations[version]?.['org.opencontainers.image.version'] ||
+													version}
+												size="xs"
+												color="light"
+											/>
+										{/if}
+
+										<Clipboard bind:value={releaseCandidate.tag} size="xs" color="light" class="">
+											{#snippet children(success)}
+												{#if success}
+													<CheckOutline class="mr-1 h-3 w-3" />
+													Copied
+												{:else}
+													<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+													Copy Tag
+												{/if}
+											{/snippet}
+										</Clipboard>
+									</div>
+								</Card>
 							{/each}
 						</div>
+					{:else}
+						<Alert color="blue" class="mb-4">
+							<div class="flex items-center">
+								<ExclamationCircleSolid class="mr-2 h-5 w-5" />
+								<span class="font-medium">No Release Candidates Available</span>
+							</div>
+							<!-- <p class="mt-2 text-sm">
+								There are currently no release candidates available for this rollout. This could be due
+								to:
+							</p>
+							<ul class="mt-2 list-inside list-disc space-y-1 text-sm">
+								<li>No new versions have been published to the repository</li>
+								<li>All available versions are blocked by deployment gates</li>
+								<li>The rollout configuration needs to be updated</li>
+							</ul> -->
+						</Alert>
+					{/if}
+				</div>
+
+				{#if kustomizations.length > 0 || ociRepositories.length > 0}
+					<div class="mb-6">
+						<div class="mb-4">
+							<h4 class="text-lg font-medium text-gray-900 dark:text-white">
+								Associated Resources
+							</h4>
+							<div class="mb-4 mt-3">
+								<Button
+									size="sm"
+									color="blue"
+									onclick={reconcileFluxResources}
+									class="flex items-center gap-2"
+								>
+									<RefreshOutline class="h-4 w-4" id="reconcile-icon" />
+									Reconcile Flux Resources
+								</Button>
+							</div>
+						</div>
+
+						{#if kustomizations.length > 0}
+							<div class="mb-4">
+								<h5
+									class="text-md mb-2 flex items-center font-medium text-gray-700 dark:text-gray-300"
+								>
+									<CodeOutline class="mr-2 h-4 w-4" />
+									Kustomizations
+								</h5>
+								<div class="space-y-4">
+									{#each kustomizations as kustomization (kustomization.metadata?.name)}
+										<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+											<div class="mb-3 flex items-center justify-between">
+												<div class="flex items-center space-x-3">
+													<div>
+														<h6 class="font-medium text-gray-900 dark:text-white">
+															{kustomization.metadata?.name}
+														</h6>
+														<p class="text-sm text-gray-500 dark:text-gray-400">
+															Source: {kustomization.spec?.sourceRef?.kind}
+															{kustomization.spec?.sourceRef?.name}
+														</p>
+														{#if kustomization.spec?.interval}
+															<p class="text-sm text-gray-500 dark:text-gray-400">
+																Interval: {kustomization.spec.interval}
+															</p>
+														{/if}
+													</div>
+												</div>
+												<div class="flex items-center space-x-2">
+													<Badge color={getResourceStatus(kustomization).color}>
+														{getResourceStatus(kustomization).status}
+													</Badge>
+													{#if kustomization.spec?.suspend}
+														<Badge color="yellow" border>
+															<PauseSolid class="me-1.5 h-2.5 w-2.5" />
+															Suspended
+														</Badge>
+													{/if}
+													{#if getLastTransitionTime(kustomization)}
+														<Badge color="gray" border>
+															<ClockSolid class="me-1.5 h-2.5 w-2.5" />
+															{formatTimeAgo(getLastTransitionTime(kustomization)!, $now)}
+														</Badge>
+													{/if}
+												</div>
+											</div>
+											{#if kustomization.status?.lastAppliedRevision}
+												<p class="mb-3 truncate text-sm text-gray-600 dark:text-gray-400">
+													Last applied: {kustomization.status.lastAppliedRevision}
+												</p>
+											{/if}
+
+											{#if managedResources[kustomization.metadata?.name || '']?.length > 0}
+												<div class="mt-4">
+													<div class="mb-2 flex items-center justify-between">
+														<h7 class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+															Managed Resources ({filteredManagedResources[
+																kustomization.metadata?.name || ''
+															]?.length || 0})
+														</h7>
+														<div class="mb-1 ml-4 mr-1">
+															<Toggle bind:checked={showAlwaysReadyResources} color="blue">
+																Show All
+															</Toggle>
+														</div>
+													</div>
+													{#if filteredManagedResources[kustomization.metadata?.name || '']?.length > 0}
+														<div class="auto-fill-grid-compact grid gap-4">
+															{#each filteredManagedResources[kustomization.metadata?.name || ''] as resource (resource.groupVersionKind + '/' + (resource.namespace || '') + '/' + resource.name)}
+																<Card
+																	class="w-full min-w-full max-w-none overflow-hidden p-2 sm:p-4 md:p-6"
+																>
+																	<div class="flex items-center">
+																		<div
+																			class="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center"
+																		>
+																			{#if resource.status === 'InProgress'}
+																				<Spinner size="6" color="yellow" />
+																			{:else if resource.status === 'Current'}
+																				<CheckCircleSolid
+																					class="h-6 w-6 text-green-600 dark:text-green-400"
+																				/>
+																			{:else if resource.status === 'Failed' || resource.status === 'NotFound' || resource.status === 'Error'}
+																				<ExclamationCircleSolid
+																					class="h-6 w-6 text-red-600 dark:text-red-400"
+																				/>
+																			{:else}
+																				<ExclamationCircleSolid
+																					class="h-6 w-6 text-gray-500 dark:text-gray-400"
+																				/>
+																			{/if}
+																		</div>
+																		<div class="min-w-0 flex-1">
+																			<Badge color="blue" class="text-xs">
+																				{resource.groupVersionKind.split('/').pop() ||
+																					resource.groupVersionKind}
+																			</Badge>
+																			<div class="my-1 flex items-center space-x-2">
+																				<p
+																					class="truncate text-sm font-medium text-gray-900 dark:text-white"
+																				>
+																					{#if resource.namespace}
+																						<span class="text-gray-500 dark:text-gray-400">
+																							{resource.namespace} /
+																						</span>
+																					{/if}
+																					{resource.name}
+																				</p>
+																			</div>
+																			{#if resource.message}
+																				<span
+																					class="mt-1 block truncate text-xs text-gray-600 dark:text-gray-400"
+																				>
+																					{resource.message}
+																				</span>
+																			{/if}
+																			{#if resource.lastModified}
+																				<div
+																					class="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400"
+																				>
+																					<ClockSolid class="mr-1 h-3 w-3" />
+																					Last modified: {formatTimeAgo(
+																						resource.lastModified,
+																						$now
+																					)}
+																				</div>
+																			{/if}
+																		</div>
+																	</div>
+																</Card>
+															{/each}
+														</div>
+													{:else}
+														<Alert color="blue" class="text-sm">
+															<InfoCircleSolid class="h-4 w-4" />
+															<span
+																>All managed resources have "resource is current" or "Resource is
+																always ready" status messages. Use the toggle above to view them.</span
+															>
+														</Alert>
+													{/if}
+												</div>
+											{/if}
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
+						{#if ociRepositories.length > 0}
+							<div class="mb-4">
+								<h5
+									class="text-md mb-2 flex items-center font-medium text-gray-700 dark:text-gray-300"
+								>
+									<DatabaseSolid class="mr-2 h-4 w-4" />
+									OCI Repositories
+								</h5>
+								<div class="space-y-4">
+									{#each ociRepositories as ociRepository (ociRepository.metadata?.name)}
+										<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+											<div class="flex items-center justify-between">
+												<div class="flex items-center space-x-3">
+													<div>
+														<h6 class="font-medium text-gray-900 dark:text-white">
+															{ociRepository.metadata?.name}
+														</h6>
+														<p class="text-sm text-gray-500 dark:text-gray-400">
+															URL: {ociRepository.spec?.url}
+														</p>
+														{#if ociRepository.spec?.interval}
+															<p class="text-sm text-gray-500 dark:text-gray-400">
+																Interval: {ociRepository.spec.interval}
+															</p>
+														{/if}
+													</div>
+												</div>
+												<div class="flex items-center space-x-2">
+													<Badge color={getResourceStatus(ociRepository).color}>
+														{getResourceStatus(ociRepository).status}
+													</Badge>
+													{#if getLastTransitionTime(ociRepository)}
+														<Badge color="gray" border>
+															<ClockSolid class="me-1.5 h-2.5 w-2.5" />
+															{formatTimeAgo(getLastTransitionTime(ociRepository)!, $now)}
+														</Badge>
+													{/if}
+												</div>
+											</div>
+											{#if ociRepository.status?.url}
+												<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+													Last observed URL: {ociRepository.status.url}
+												</p>
+											{/if}
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
 					</div>
 				{/if}
 			</div>
-		{/if}
+		</div>
+
+		<!-- Timeline Drawer -->
+		<Drawer
+			bind:open={showTimelineDrawer}
+			placement="right"
+			class="z-4 w-min min-w-0 overflow-hidden"
+		>
+			<div class="flex h-full w-full min-w-0 flex-col">
+				<div class="flex-shrink-0 border-b border-gray-200 p-4 dark:border-gray-700">
+					<div class="flex items-center justify-between">
+						<h4 class="text-lg font-medium text-gray-900 dark:text-white">Rollout History</h4>
+					</div>
+				</div>
+				<div class="w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-0">
+					{#if rollout.status?.history}
+						<Timeline order="vertical" class="w-full min-w-0">
+							{#each rollout.status.history as entry, i ((entry.version.tag, i))}
+								<TimelineItem
+									h3Class="font-mono"
+									liClass="mr-4 flex flex-col"
+									title={annotations[entry.version.tag]?.['org.opencontainers.image.version'] ||
+										entry.version.tag}
+									date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
+								>
+									{#snippet orientationSlot()}
+										<span
+											class="absolute -start-3 flex h-6 w-6 items-center justify-center rounded-full bg-white ring-8 ring-white dark:bg-gray-800 dark:ring-gray-800"
+										>
+											<svelte:component
+												this={getBakeStatusIcon(entry.bakeStatus).icon}
+												class="h-6 w-6 {getBakeStatusIcon(entry.bakeStatus).color}"
+											/>
+										</span>
+									{/snippet}
+									<div class="flex h-full flex-col">
+										<!-- Top content -->
+										<div class="flex-1">
+											<span class="w-full"
+												>{#if annotations[entry.version.tag]?.['org.opencontainers.image.revision']}
+													<Badge color="gray" class="mr-1">
+														{formatRevision(
+															annotations[entry.version.tag]['org.opencontainers.image.revision']
+														)}
+													</Badge>
+												{/if}</span
+											>
+											{#if entry.message}
+												<div class="mb-2 mt-2">
+													<Blockquote class="text-xs">
+														{entry.message}
+													</Blockquote>
+												</div>
+											{/if}
+										</div>
+
+										<!-- Bottom content - buttons and bake status -->
+										<div class="mt-auto space-y-2">
+											{#if entry.bakeStatus}
+												<div class="space-y-1">
+													{#if entry.bakeStatusMessage}
+														<p class="text-xs text-gray-600 dark:text-gray-400">
+															{entry.bakeStatusMessage}
+														</p>
+													{/if}
+
+													{#if entry.bakeStartTime && entry.bakeEndTime}
+														<p class="text-xs text-gray-500 dark:text-gray-500">
+															Bake completed in {formatDuration(
+																entry.bakeStartTime,
+																new Date(entry.bakeEndTime)
+															)}
+														</p>
+													{/if}
+												</div>
+											{/if}
+											<div class="space-y-2 pt-3 dark:border-gray-700">
+												{#if mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
+													<SourceViewer
+														namespace={rollout.metadata?.namespace || ''}
+														name={rollout.metadata?.name || ''}
+														version={entry.version.tag}
+													/>
+												{/if}
+												{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
+													<Button
+														color="light"
+														size="xs"
+														href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version.tag}`}
+														class=""
+													>
+														<CodePullRequestSolid class="mr-1 h-3 w-3" />
+														Show diff
+													</Button>
+												{/if}
+												{#if entry.version.tag !== rollout.status?.history[0]?.version.tag}
+													<Button
+														color="light"
+														size="xs"
+														onclick={() => {
+															// Set up rollback mode
+															isPinVersionMode = true;
+															selectedVersion = entry.version.tag;
+															pinVersionToggle = true;
+															// Generate default rollback message
+															const currentVersion = rollout?.status?.history?.[0]?.version.tag;
+															const targetVersion = entry.version.tag;
+															const currentVersionName =
+																currentVersion && annotations[currentVersion]
+																	? annotations[currentVersion][
+																			'org.opencontainers.image.version'
+																		] || currentVersion
+																	: currentVersion || 'current';
+															const targetVersionName =
+																targetVersion && annotations[targetVersion]
+																	? annotations[targetVersion][
+																			'org.opencontainers.image.version'
+																		] || targetVersion
+																	: targetVersion;
+															deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+															showDeployModal = true;
+														}}
+														class=""
+													>
+														<ReplyOutline class="mr-1 h-3 w-3" />
+														Rollback
+													</Button>
+												{/if}
+												{#if annotations[entry.version.tag]?.['org.opencontainers.image.source']}
+													<GitHubViewButton
+														sourceUrl={annotations[entry.version.tag][
+															'org.opencontainers.image.source'
+														]}
+														version={annotations[entry.version.tag]?.[
+															'org.opencontainers.image.version'
+														] || entry.version.tag}
+														size="xs"
+														color="light"
+													/>
+												{/if}
+												<Clipboard bind:value={entry.version.tag} size="xs" color="light" class="">
+													{#snippet children(success)}
+														{#if success}
+															<CheckOutline class="mr-1 h-3 w-3" />
+															Copied
+														{:else}
+															<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+															Copy Tag
+														{/if}
+													{/snippet}
+												</Clipboard>
+											</div>
+										</div>
+									</div>
+								</TimelineItem>
+							{/each}
+						</Timeline>
+					{:else}
+						<div class="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
+							<p>No deployment history available</p>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</Drawer>
 	{/if}
 </div>
 

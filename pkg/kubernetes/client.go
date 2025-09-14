@@ -21,6 +21,7 @@ import (
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
+	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -71,6 +72,9 @@ func NewClient() (*Client, error) {
 	}
 	if err := sourcev1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add source scheme: %w", err)
+	}
+	if err := kruiserolloutv1beta1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add kruise rollout scheme: %w", err)
 	}
 
 	cl, err := client.New(config, client.Options{Scheme: scheme})
@@ -148,6 +152,39 @@ func (c *Client) UpdateRolloutVersion(ctx context.Context, namespace, name strin
 	updatedRollout := &rolloutv1alpha1.Rollout{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, updatedRollout); err != nil {
 		return nil, fmt.Errorf("failed to get updated rollout: %w", err)
+	}
+
+	return updatedRollout, nil
+}
+
+// ContinueKruiseRollout updates the currentStepState of an OpenKruise rollout to continue the rollout
+func (c *Client) ContinueKruiseRollout(ctx context.Context, namespace, name string) (*kruiserolloutv1beta1.Rollout, error) {
+	// Create an unstructured patch object with the status.currentStepState field
+	patch := &unstructured.Unstructured{}
+	patch.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "rollouts.kruise.io",
+		Version: "v1beta1",
+		Kind:    "Rollout",
+	})
+	patch.SetNamespace(namespace)
+	patch.SetName(name)
+
+	// Set the currentStepState to StepReady to continue the rollout
+	patch.Object["status"] = map[string]any{
+		"canaryStatus": map[string]any{
+			"currentStepState": kruiserolloutv1beta1.CanaryStepStateReady,
+		},
+	}
+
+	// Use server-side apply to update the status field
+	if err := c.client.Status().Patch(ctx, patch, client.Merge, client.FieldOwner("rollout-dashboard")); err != nil {
+		return nil, fmt.Errorf("failed to continue kruise rollout using server-side apply: %w", err)
+	}
+
+	// Get the updated rollout to return
+	updatedRollout := &kruiserolloutv1beta1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, updatedRollout); err != nil {
+		return nil, fmt.Errorf("failed to get updated kruise rollout: %w", err)
 	}
 
 	return updatedRollout, nil
@@ -381,12 +418,13 @@ func (c *Client) GetKustomization(ctx context.Context, namespace, name string) (
 }
 
 type ManagedResourceStatus struct {
-	GroupVersionKind string    `json:"groupVersionKind"`
-	Name             string    `json:"name"`
-	Namespace        string    `json:"namespace"`
-	Status           string    `json:"status"`
-	Message          string    `json:"message"`
-	LastModified     time.Time `json:"lastModified"`
+	GroupVersionKind string                     `json:"groupVersionKind"`
+	Name             string                     `json:"name"`
+	Namespace        string                     `json:"namespace"`
+	Status           string                     `json:"status"`
+	Message          string                     `json:"message"`
+	LastModified     time.Time                  `json:"lastModified"`
+	Object           *unstructured.Unstructured `json:"object"`
 }
 
 func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace, name string) ([]ManagedResourceStatus, error) {
@@ -439,6 +477,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 				Status:           "NotFound",
 				Message:          fmt.Sprintf("Resource not found: %v", err),
 				LastModified:     time.Time{},
+				Object:           nil, // Resource not found, so no object
 			})
 			continue
 		}
@@ -464,6 +503,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 				Status:           "Error",
 				Message:          fmt.Sprintf("Error computing status: %v", err),
 				LastModified:     lastModified,
+				Object:           obj, // Include the object even if status computation failed
 			})
 			continue
 		}
@@ -476,6 +516,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 			Status:           string(result.Status),
 			Message:          result.Message,
 			LastModified:     lastModified,
+			Object:           obj, // Include the full object
 		})
 	}
 

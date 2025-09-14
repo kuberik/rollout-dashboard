@@ -330,14 +330,24 @@ export interface components {
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description HealthCheckSpec defines the desired state of HealthCheck. */
-            spec?: Record<string, never>;
+            spec?: {
+                /** @description Class specifies the type of health check (e.g., 'kustomization') */
+                class?: string;
+            };
             /** @description HealthCheckStatus defines the observed state of HealthCheck. */
             status?: {
+                /**
+                 * Format: date-time
+                 * @description LastChangeTime is the timestamp when the health status last changed
+                 */
+                lastChangeTime?: string;
                 /**
                  * Format: date-time
                  * @description LastErrorTime is the timestamp of the most recent error state
                  */
                 lastErrorTime?: string;
+                /** @description Message provides additional details about the health status */
+                message?: string;
                 /** @description Status indicates the health state of the check (e.g., 'Healthy', 'Unhealthy', 'Pending') */
                 status?: string;
             };
@@ -913,6 +923,468 @@ export interface components {
                 };
                 /** @description URL is the download link for the artifact output of the last OCI Repository sync. */
                 url?: string;
+            };
+        };
+        /** @description Rollout is the Schema for the rollouts API */
+        KruiseRollout: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            metadata?: components["schemas"]["KubernetesMetadata"];
+            /** @description RolloutSpec defines the desired state of Rollout */
+            spec?: {
+                /**
+                 * @description if a rollout disabled, then the rollout would not watch changes of workload
+                 * @default false
+                 */
+                disabled: boolean;
+                /** @description rollout strategy */
+                strategy: {
+                    /** @description BlueGreenStrategy defines parameters for Blue Green Release */
+                    blueGreen?: {
+                        /** @description canary service will not be generated if DisableGenerateCanaryService is true */
+                        disableGenerateCanaryService?: boolean;
+                        /** @description FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods. Only when FailureThreshold are satisfied, Rollout can enter ready state. If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its FailureThreshold. Defaults to nil. */
+                        failureThreshold?: number | string;
+                        /** @description Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%) */
+                        steps?: {
+                            /** @description Matches define conditions used for matching incoming HTTP requests to the canary service. Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
+                             *      It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured. In such cases, Matches takes precedence. */
+                            matches?: {
+                                /** @description Headers specifies HTTP request header matchers. Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route. */
+                                headers?: {
+                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                     *      When a header is repeated in an HTTP request, it is implementation-specific behavior as to how this is represented. Generally, proxies should follow the guidance from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding processing a repeated header, with special handling for "Set-Cookie". */
+                                    name: string;
+                                    /**
+                                     * @description Type specifies how to match against the value of the header.
+                                     *      Support: Core (Exact)
+                                     *      Support: Implementation-specific (RegularExpression)
+                                     *      Since RegularExpression HeaderMatchType has implementation-specific conformance, implementations can support POSIX, PCRE or any other dialects of regular expressions. Please read the implementation's documentation to determine the supported dialect.
+                                     * @default Exact
+                                     * @enum {string}
+                                     */
+                                    type: "Exact" | "RegularExpression";
+                                    /** @description Value is the value of HTTP Header to be matched. */
+                                    value: string;
+                                }[];
+                                /** @description Path specifies a HTTP request path matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest - GatewayAPI: If path is defined, the whole HttpRouteMatch will be used as a standalone matcher */
+                                path?: {
+                                    /**
+                                     * @description Type specifies how to match against the path Value.
+                                     *      Support: Core (Exact, PathPrefix)
+                                     *      Support: Implementation-specific (RegularExpression)
+                                     * @default PathPrefix
+                                     * @enum {string}
+                                     */
+                                    type: "Exact" | "PathPrefix" | "RegularExpression";
+                                    /**
+                                     * @description Value of the HTTP path to match against.
+                                     * @default /
+                                     */
+                                    value: string;
+                                };
+                                /** @description QueryParams specifies HTTP query parameter matchers. Multiple match values are ANDed together, meaning, a request must match all the specified query parameters to select the route. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1 Header/Cookie > QueryParams - Gateway API */
+                                queryParams?: {
+                                    /** @description Name is the name of the HTTP query param to be matched. This must be an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
+                                     *      If multiple entries specify equivalent query param names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent query param name MUST be ignored.
+                                     *      If a query param is repeated in an HTTP request, the behavior is purposely left undefined, since different data planes have different capabilities. However, it is *recommended* that implementations should match against the first value of the param if the data plane supports it, as this behavior is expected in other load balancing contexts outside of the Gateway API.
+                                     *      Users SHOULD NOT route traffic based on repeated query params to guard themselves against potential differences in the implementations. */
+                                    name: string;
+                                    /**
+                                     * @description Type specifies how to match against the value of the query parameter.
+                                     *      Support: Extended (Exact)
+                                     *      Support: Implementation-specific (RegularExpression)
+                                     *      Since RegularExpression QueryParamMatchType has Implementation-specific conformance, implementations can support POSIX, PCRE or any other dialects of regular expressions. Please read the implementation's documentation to determine the supported dialect.
+                                     * @default Exact
+                                     * @enum {string}
+                                     */
+                                    type: "Exact" | "RegularExpression";
+                                    /** @description Value is the value of HTTP query param to be matched. */
+                                    value: string;
+                                }[];
+                            }[];
+                            /** @description Pause defines a pause stage for a rollout, manual or auto */
+                            pause?: {
+                                /**
+                                 * Format: int32
+                                 * @description Duration the amount of time to wait before moving to the next step.
+                                 */
+                                duration?: number;
+                            };
+                            /** @description Replicas is the number of expected canary pods in this batch it can be an absolute number (ex: 5) or a percentage of total pods. */
+                            replicas?: number | string;
+                            /** @description Set overwrites the request with the given header (name, value) before the action.
+                             *      Input: GET /foo HTTP/1.1 my-header: foo
+                             *      requestHeaderModifier: set: - name: "my-header" value: "bar"
+                             *      Output: GET /foo HTTP/1.1 my-header: bar */
+                            requestHeaderModifier?: {
+                                /** @description Add adds the given header(s) (name, value) to the request before the action. It appends to any existing values associated with the header name.
+                                 *      Input: GET /foo HTTP/1.1 my-header: foo
+                                 *      Config: add: - name: "my-header" value: "bar,baz"
+                                 *      Output: GET /foo HTTP/1.1 my-header: foo,bar,baz */
+                                add?: {
+                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    name: string;
+                                    /** @description Value is the value of HTTP Header to be matched. */
+                                    value: string;
+                                }[];
+                                /** @description Remove the given header(s) from the HTTP request before the action. The value of Remove is a list of HTTP header names. Note that the header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+                                 *      Input: GET /foo HTTP/1.1 my-header1: foo my-header2: bar my-header3: baz
+                                 *      Config: remove: ["my-header1", "my-header3"]
+                                 *      Output: GET /foo HTTP/1.1 my-header2: bar */
+                                remove?: string[];
+                                /** @description Set overwrites the request with the given header (name, value) before the action.
+                                 *      Input: GET /foo HTTP/1.1 my-header: foo
+                                 *      Config: set: - name: "my-header" value: "bar"
+                                 *      Output: GET /foo HTTP/1.1 my-header: bar */
+                                set?: {
+                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    name: string;
+                                    /** @description Value is the value of HTTP Header to be matched. */
+                                    value: string;
+                                }[];
+                            };
+                            /** @description Traffic indicate how many percentage of traffic the canary pods should receive Value is of string type and is a percentage, e.g. 5%. */
+                            traffic?: string;
+                        }[];
+                        /** @description TrafficRoutingRef is TrafficRouting's Name */
+                        trafficRoutingRef?: string;
+                        /** @description TrafficRoutings support ingress, gateway api and custom network resource(e.g. istio, apisix) to enable more fine-grained traffic routing and current only support one TrafficRouting */
+                        trafficRoutings?: {
+                            /** @description CustomNetworkRefs hold a list of custom providers to route traffic */
+                            customNetworkRefs?: {
+                                /** @description API Version of the referent */
+                                apiVersion: string;
+                                /** @description Kind of the referent */
+                                kind: string;
+                                /** @description Name of the referent */
+                                name: string;
+                            }[];
+                            /** @description Gateway holds Gateway specific configuration to route traffic Gateway configuration only supports >= v0.4.0 (v1alpha2). */
+                            gateway?: {
+                                /** @description HTTPRouteName refers to the name of an `HTTPRoute` resource in the same namespace as the `Rollout` */
+                                httpRouteName?: string;
+                            };
+                            /**
+                             * Format: int32
+                             * @description Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
+                             * @default 3
+                             */
+                            gracePeriodSeconds: number;
+                            /** @description Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb. */
+                            ingress?: {
+                                /** @description ClassType refers to the type of `Ingress`. current support nginx, aliyun-alb. default is nginx. */
+                                classType?: string;
+                                /** @description Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout` */
+                                name: string;
+                            };
+                            /** @description Service holds the name of a service which selects pods with stable version and don't select any pods with canary version. */
+                            service: string;
+                        }[];
+                    };
+                    /** @description CanaryStrategy defines parameters for a Replica Based Canary */
+                    canary?: {
+                        /** @description canary service will not be generated if DisableGenerateCanaryService is true */
+                        disableGenerateCanaryService?: boolean;
+                        /** @description If true, then it will create new deployment for canary, such as: workload-demo-canary. When user verifies that the canary version is ready, we will remove the canary deployment and release the deployment workload-demo in full. Current only support k8s native deployment */
+                        enableExtraWorkloadForCanary?: boolean;
+                        /** @description FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods. Only when FailureThreshold are satisfied, Rollout can enter ready state. If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its FailureThreshold. Defaults to nil. */
+                        failureThreshold?: number | string;
+                        /** @description PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata only support for canary deployment */
+                        patchPodTemplateMetadata?: {
+                            /** @description annotations */
+                            annotations?: {
+                                [key: string]: string;
+                            };
+                            /** @description labels */
+                            labels?: {
+                                [key: string]: string;
+                            };
+                        };
+                        /** @description Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%) */
+                        steps?: {
+                            /** @description Matches define conditions used for matching incoming HTTP requests to the canary service. Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
+                             *      It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured. In such cases, Matches takes precedence. */
+                            matches?: {
+                                /** @description Headers specifies HTTP request header matchers. Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route. */
+                                headers?: {
+                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                     *      When a header is repeated in an HTTP request, it is implementation-specific behavior as to how this is represented. Generally, proxies should follow the guidance from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding processing a repeated header, with special handling for "Set-Cookie". */
+                                    name: string;
+                                    /**
+                                     * @description Type specifies how to match against the value of the header.
+                                     *      Support: Core (Exact)
+                                     *      Support: Implementation-specific (RegularExpression)
+                                     *      Since RegularExpression HeaderMatchType has implementation-specific conformance, implementations can support POSIX, PCRE or any other dialects of regular expressions. Please read the implementation's documentation to determine the supported dialect.
+                                     * @default Exact
+                                     * @enum {string}
+                                     */
+                                    type: "Exact" | "RegularExpression";
+                                    /** @description Value is the value of HTTP Header to be matched. */
+                                    value: string;
+                                }[];
+                                /** @description Path specifies a HTTP request path matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest - GatewayAPI: If path is defined, the whole HttpRouteMatch will be used as a standalone matcher */
+                                path?: {
+                                    /**
+                                     * @description Type specifies how to match against the path Value.
+                                     *      Support: Core (Exact, PathPrefix)
+                                     *      Support: Implementation-specific (RegularExpression)
+                                     * @default PathPrefix
+                                     * @enum {string}
+                                     */
+                                    type: "Exact" | "PathPrefix" | "RegularExpression";
+                                    /**
+                                     * @description Value of the HTTP path to match against.
+                                     * @default /
+                                     */
+                                    value: string;
+                                };
+                                /** @description QueryParams specifies HTTP query parameter matchers. Multiple match values are ANDed together, meaning, a request must match all the specified query parameters to select the route. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1 Header/Cookie > QueryParams - Gateway API */
+                                queryParams?: {
+                                    /** @description Name is the name of the HTTP query param to be matched. This must be an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
+                                     *      If multiple entries specify equivalent query param names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent query param name MUST be ignored.
+                                     *      If a query param is repeated in an HTTP request, the behavior is purposely left undefined, since different data planes have different capabilities. However, it is *recommended* that implementations should match against the first value of the param if the data plane supports it, as this behavior is expected in other load balancing contexts outside of the Gateway API.
+                                     *      Users SHOULD NOT route traffic based on repeated query params to guard themselves against potential differences in the implementations. */
+                                    name: string;
+                                    /**
+                                     * @description Type specifies how to match against the value of the query parameter.
+                                     *      Support: Extended (Exact)
+                                     *      Support: Implementation-specific (RegularExpression)
+                                     *      Since RegularExpression QueryParamMatchType has Implementation-specific conformance, implementations can support POSIX, PCRE or any other dialects of regular expressions. Please read the implementation's documentation to determine the supported dialect.
+                                     * @default Exact
+                                     * @enum {string}
+                                     */
+                                    type: "Exact" | "RegularExpression";
+                                    /** @description Value is the value of HTTP query param to be matched. */
+                                    value: string;
+                                }[];
+                            }[];
+                            /** @description Pause defines a pause stage for a rollout, manual or auto */
+                            pause?: {
+                                /**
+                                 * Format: int32
+                                 * @description Duration the amount of time to wait before moving to the next step.
+                                 */
+                                duration?: number;
+                            };
+                            /** @description Replicas is the number of expected canary pods in this batch it can be an absolute number (ex: 5) or a percentage of total pods. */
+                            replicas?: number | string;
+                            /** @description Set overwrites the request with the given header (name, value) before the action.
+                             *      Input: GET /foo HTTP/1.1 my-header: foo
+                             *      requestHeaderModifier: set: - name: "my-header" value: "bar"
+                             *      Output: GET /foo HTTP/1.1 my-header: bar */
+                            requestHeaderModifier?: {
+                                /** @description Add adds the given header(s) (name, value) to the request before the action. It appends to any existing values associated with the header name.
+                                 *      Input: GET /foo HTTP/1.1 my-header: foo
+                                 *      Config: add: - name: "my-header" value: "bar,baz"
+                                 *      Output: GET /foo HTTP/1.1 my-header: foo,bar,baz */
+                                add?: {
+                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    name: string;
+                                    /** @description Value is the value of HTTP Header to be matched. */
+                                    value: string;
+                                }[];
+                                /** @description Remove the given header(s) from the HTTP request before the action. The value of Remove is a list of HTTP header names. Note that the header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+                                 *      Input: GET /foo HTTP/1.1 my-header1: foo my-header2: bar my-header3: baz
+                                 *      Config: remove: ["my-header1", "my-header3"]
+                                 *      Output: GET /foo HTTP/1.1 my-header2: bar */
+                                remove?: string[];
+                                /** @description Set overwrites the request with the given header (name, value) before the action.
+                                 *      Input: GET /foo HTTP/1.1 my-header: foo
+                                 *      Config: set: - name: "my-header" value: "bar"
+                                 *      Output: GET /foo HTTP/1.1 my-header: bar */
+                                set?: {
+                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    name: string;
+                                    /** @description Value is the value of HTTP Header to be matched. */
+                                    value: string;
+                                }[];
+                            };
+                            /** @description Traffic indicate how many percentage of traffic the canary pods should receive Value is of string type and is a percentage, e.g. 5%. */
+                            traffic?: string;
+                        }[];
+                        /** @description TrafficRoutingRef is TrafficRouting's Name */
+                        trafficRoutingRef?: string;
+                        /** @description TrafficRoutings support ingress, gateway api and custom network resource(e.g. istio, apisix) to enable more fine-grained traffic routing and current only support one TrafficRouting */
+                        trafficRoutings?: {
+                            /** @description CustomNetworkRefs hold a list of custom providers to route traffic */
+                            customNetworkRefs?: {
+                                /** @description API Version of the referent */
+                                apiVersion: string;
+                                /** @description Kind of the referent */
+                                kind: string;
+                                /** @description Name of the referent */
+                                name: string;
+                            }[];
+                            /** @description Gateway holds Gateway specific configuration to route traffic Gateway configuration only supports >= v0.4.0 (v1alpha2). */
+                            gateway?: {
+                                /** @description HTTPRouteName refers to the name of an `HTTPRoute` resource in the same namespace as the `Rollout` */
+                                httpRouteName?: string;
+                            };
+                            /**
+                             * Format: int32
+                             * @description Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
+                             * @default 3
+                             */
+                            gracePeriodSeconds: number;
+                            /** @description Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb. */
+                            ingress?: {
+                                /** @description ClassType refers to the type of `Ingress`. current support nginx, aliyun-alb. default is nginx. */
+                                classType?: string;
+                                /** @description Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout` */
+                                name: string;
+                            };
+                            /** @description Service holds the name of a service which selects pods with stable version and don't select any pods with canary version. */
+                            service: string;
+                        }[];
+                    };
+                    /** @description Paused indicates that the Rollout is paused. Default value is false */
+                    paused?: boolean;
+                };
+                /** @description INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file WorkloadRef contains enough information to let you identify a workload for Rollout Batch release of the bypass */
+                workloadRef: {
+                    /** @description API Version of the referent */
+                    apiVersion: string;
+                    /** @description Kind of the referent */
+                    kind: string;
+                    /** @description Name of the referent */
+                    name: string;
+                };
+            };
+            /** @description RolloutStatus defines the observed state of Rollout */
+            status?: {
+                /** @description BlueGreen describes the state of the blueGreen rollout */
+                blueGreenStatus?: {
+                    /**
+                     * Format: int32
+                     * @description CurrentStepIndex defines the current step of the rollout is on.
+                     */
+                    currentStepIndex?: number;
+                    currentStepState: string;
+                    /** @description FinalisingStep the step of finalising */
+                    finalisingStep: string;
+                    /** Format: date-time */
+                    lastUpdateTime?: string;
+                    message?: string;
+                    /**
+                     * Format: int32
+                     * @description NextStepIndex defines the next step of the rollout is on. In normal case, NextStepIndex is equal to CurrentStepIndex + 1 If the current step is the last step, NextStepIndex is equal to -1 Before the release, NextStepIndex is also equal to -1 0 is not used and won't appear in any case It is allowed to patch NextStepIndex by design, e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1 Patching it with a non-positive value is useless and meaningless, which will be corrected in the next reconciliation
+                     */
+                    nextStepIndex: number;
+                    /** @description ObservedRolloutID will record the newest spec.RolloutID if status.canaryRevision equals to workload.updateRevision */
+                    observedRolloutID?: string;
+                    /**
+                     * Format: int64
+                     * @description observedWorkloadGeneration is the most recent generation observed for this Rollout ref workload generation.
+                     */
+                    observedWorkloadGeneration?: number;
+                    /** @description pod template hash is used as service selector label */
+                    podTemplateHash: string;
+                    /** @description RolloutHash from rollout.spec object */
+                    rolloutHash?: string;
+                    /** @description StableRevision indicates the revision of stable pods */
+                    stableRevision?: string;
+                    /**
+                     * Format: int32
+                     * @description UpdatedReadyReplicas the numbers of updated ready pods
+                     */
+                    updatedReadyReplicas: number;
+                    /**
+                     * Format: int32
+                     * @description UpdatedReplicas the numbers of updated pods
+                     */
+                    updatedReplicas: number;
+                    /** @description UpdatedRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label */
+                    updatedRevision: string;
+                };
+                /** @description Canary describes the state of the canary rollout */
+                canaryStatus?: {
+                    /**
+                     * Format: int32
+                     * @description CanaryReadyReplicas the numbers of ready canary revision pods
+                     */
+                    canaryReadyReplicas: number;
+                    /**
+                     * Format: int32
+                     * @description CanaryReplicas the numbers of canary revision pods
+                     */
+                    canaryReplicas: number;
+                    /** @description CanaryRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label */
+                    canaryRevision: string;
+                    /**
+                     * Format: int32
+                     * @description CurrentStepIndex defines the current step of the rollout is on.
+                     */
+                    currentStepIndex?: number;
+                    currentStepState: string;
+                    /** @description FinalisingStep the step of finalising */
+                    finalisingStep: string;
+                    /** Format: date-time */
+                    lastUpdateTime?: string;
+                    message?: string;
+                    /**
+                     * Format: int32
+                     * @description NextStepIndex defines the next step of the rollout is on. In normal case, NextStepIndex is equal to CurrentStepIndex + 1 If the current step is the last step, NextStepIndex is equal to -1 Before the release, NextStepIndex is also equal to -1 0 is not used and won't appear in any case It is allowed to patch NextStepIndex by design, e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1 Patching it with a non-positive value is useless and meaningless, which will be corrected in the next reconciliation
+                     */
+                    nextStepIndex: number;
+                    /** @description ObservedRolloutID will record the newest spec.RolloutID if status.canaryRevision equals to workload.updateRevision */
+                    observedRolloutID?: string;
+                    /**
+                     * Format: int64
+                     * @description observedWorkloadGeneration is the most recent generation observed for this Rollout ref workload generation.
+                     */
+                    observedWorkloadGeneration?: number;
+                    /** @description pod template hash is used as service selector label */
+                    podTemplateHash: string;
+                    /** @description RolloutHash from rollout.spec object */
+                    rolloutHash?: string;
+                    /** @description StableRevision indicates the revision of stable pods */
+                    stableRevision?: string;
+                };
+                /** @description Conditions a list of conditions a rollout can have. */
+                conditions?: {
+                    /**
+                     * Format: date-time
+                     * @description Last time the condition transitioned from one status to another.
+                     */
+                    lastTransitionTime?: string;
+                    /**
+                     * Format: date-time
+                     * @description The last time this condition was updated.
+                     */
+                    lastUpdateTime?: string;
+                    /** @description A human readable message indicating details about the transition. */
+                    message: string;
+                    /** @description The reason for the condition's last transition. */
+                    reason: string;
+                    /** @description Phase of the condition, one of True, False, Unknown. */
+                    status: string;
+                    /** @description Type of rollout condition. */
+                    type: string;
+                }[];
+                /**
+                 * Format: int32
+                 * @description These two values will be synchronized with the same fileds in CanaryStatus or BlueGreeenStatus mainly used to provide info for kubectl get command
+                 */
+                currentStepIndex: number;
+                currentStepState: string;
+                /** @description Message provides details on why the rollout is in its current phase */
+                message?: string;
+                /**
+                 * Format: int64
+                 * @description observedGeneration is the most recent generation observed for this Rollout.
+                 */
+                observedGeneration?: number;
+                /** @description BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"` Phase is the rollout phase. */
+                phase?: string;
             };
         };
     };

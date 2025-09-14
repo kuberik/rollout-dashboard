@@ -12,7 +12,7 @@ fi
 kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
 helm repo add openkruise https://openkruise.github.io/charts/
 helm repo update
-helm install kruise-rollout openkruise/kruise-rollout --version 0.6.1
+helm upgrade kruise-rollout openkruise/kruise-rollout --version 0.6.1
 
 # Apply rollout CRDs
 kubectl apply -f https://raw.githubusercontent.com/DataDog/datadog-operator/refs/heads/main/config/crd/bases/v1/datadoghq.com_datadogmonitors.yaml

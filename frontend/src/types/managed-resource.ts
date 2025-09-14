@@ -5,4 +5,5 @@ export interface ManagedResourceStatus {
     status: string;
     message: string;
     lastModified: string;
+    object?: any;
 }
