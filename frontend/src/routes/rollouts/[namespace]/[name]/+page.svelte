@@ -78,6 +78,7 @@
 
 	let mediaTypes: Record<string, string> = {};
 	let annotations: Record<string, Record<string, string>> = {};
+	let loadingAnnotations: Record<string, boolean> = {};
 
 	let showPinModal = false;
 	let showClearPinModal = false;
@@ -281,18 +282,18 @@
 				const mediaTypePromises = rollout.status.history
 					.filter((entry) => !mediaTypes[entry.version.tag])
 					.map((entry) => getMediaType(entry.version.tag));
-				await Promise.all(mediaTypePromises);
+				// TODO: Don't await for now to optimize loading time.
+				Promise.all(mediaTypePromises);
 
-				// Fetch annotations for all history and release candidate versions (deduplicated)
-				const allVersions = [
-					...(rollout.status.history?.map((entry) => entry.version.tag) || []),
-					...(rollout.status.releaseCandidates?.map((rc) => rc.tag) || [])
-				];
-				const uniqueVersions = Array.from(new Set(allVersions));
-				const annotationPromises = uniqueVersions
-					.filter((version) => !annotations[version])
-					.map((version) => getAnnotations(version));
-				await Promise.all(annotationPromises);
+				// Only fetch annotations for release candidates (custom releases)
+				// Regular releases will use .revisions and .version fields from availableReleases
+				if (rollout.status.releaseCandidates) {
+					const releaseCandidateVersions = rollout.status.releaseCandidates.map((rc) => rc.tag);
+					const annotationPromises = releaseCandidateVersions
+						.filter((version) => !annotations[version])
+						.map((version) => getAnnotations(version));
+					await Promise.all(annotationPromises);
+				}
 			}
 
 			// Fetch managed resources for each Kustomization
@@ -509,6 +510,8 @@
 
 	async function getAnnotations(version: string) {
 		if (!rollout) return;
+		loadingAnnotations[version] = true;
+		loadingAnnotations = { ...loadingAnnotations };
 		try {
 			const response = await fetch(
 				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`
@@ -524,6 +527,34 @@
 			console.error(`Failed to fetch annotations for ${version}:`, e);
 			annotations[version] = {};
 			annotations = { ...annotations };
+		} finally {
+			loadingAnnotations[version] = false;
+			loadingAnnotations = { ...loadingAnnotations };
+		}
+	}
+
+	// Helper function to get display version from version object or annotations
+	function getDisplayVersion(versionInfo: {
+		version?: string;
+		revision?: string;
+		tag: string;
+	}): string {
+		return versionInfo.version || versionInfo.revision || versionInfo.tag;
+	}
+
+	// Helper function to get revision information from version object or annotations
+	function getRevisionInfo(versionInfo: { revision?: string; tag: string }): string | undefined {
+		return versionInfo.revision;
+	}
+
+	// Function to load annotations on demand for custom releases when displayed
+	async function loadAnnotationsOnDemand(versionTag: string): Promise<void> {
+		// Only load if not already loaded and this is not a regular release in history
+		const historyEntry = rollout?.status?.history?.find(
+			(entry) => entry.version.tag === versionTag
+		);
+		if (!historyEntry && !annotations[versionTag]) {
+			await getAnnotations(versionTag);
 		}
 	}
 
@@ -921,9 +952,7 @@
 							</Badge>
 							<Badge color="blue">
 								{#if rollout?.status?.history?.[0]}
-									{annotations[rollout.status.history[0].version.tag]?.[
-										'org.opencontainers.image.version'
-									] || rollout.status.history[0].version.tag}
+									{getDisplayVersion(rollout.status.history[0].version)}
 								{:else}
 									Unknown
 								{/if}
@@ -1022,13 +1051,12 @@
 							{/if}
 							<div>
 								<h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-									{annotations[latestEntry.version.tag]?.['org.opencontainers.image.version'] ||
-										latestEntry.version.tag}
-									<Badge color="blue" class="ml-2 text-xs">
-										{formatRevision(
-											annotations[latestEntry.version.tag]['org.opencontainers.image.revision']
-										)}
-									</Badge>
+									{getDisplayVersion(latestEntry.version)}
+									{#if getRevisionInfo(latestEntry.version)}
+										<Badge color="blue" class="ml-2 text-xs">
+											{formatRevision(getRevisionInfo(latestEntry.version)!)}
+										</Badge>
+									{/if}
 								</h3>
 
 								<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
@@ -1346,7 +1374,7 @@
 											<h6
 												class="min-w-0 flex-1 break-all font-medium text-gray-900 dark:text-white"
 											>
-												{annotations[version]?.['org.opencontainers.image.version'] || version}
+												{getDisplayVersion(releaseCandidate)}
 											</h6>
 											{#if isVersionBypassingGates(rollout, version)}
 												<Badge color="blue" class="flex-shrink-0 text-xs">Gates Skipped</Badge>
@@ -1359,7 +1387,7 @@
 											{/if}
 										</div>
 
-										{#if annotations[version]?.['org.opencontainers.image.version']}
+										{#if releaseCandidate.version && releaseCandidate.version !== version}
 											<div class="mb-2">
 												<Badge color="gray" class="break-all font-mono text-xs">
 													{version}
@@ -1472,11 +1500,14 @@
 											</Tooltip>
 										{/if}
 
-										{#if annotations[version]?.['org.opencontainers.image.source']}
+										{#if loadingAnnotations[version]}
+											<div
+												class="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
+											></div>
+										{:else if annotations[version]?.['org.opencontainers.image.source']}
 											<GitHubViewButton
 												sourceUrl={annotations[version]['org.opencontainers.image.source']}
-												version={annotations[version]?.['org.opencontainers.image.version'] ||
-													version}
+												version={getDisplayVersion(releaseCandidate)}
 												size="xs"
 												color="light"
 											/>
@@ -1757,8 +1788,7 @@
 								<TimelineItem
 									h3Class="font-mono"
 									liClass="mr-4 flex flex-col"
-									title={annotations[entry.version.tag]?.['org.opencontainers.image.version'] ||
-										entry.version.tag}
+									title={getDisplayVersion(entry.version)}
 									date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 								>
 									{#snippet orientationSlot()}
@@ -1775,11 +1805,9 @@
 										<!-- Top content -->
 										<div class="flex-1">
 											<span class="w-full"
-												>{#if annotations[entry.version.tag]?.['org.opencontainers.image.revision']}
+												>{#if getRevisionInfo(entry.version)}
 													<Badge color="gray" class="mr-1">
-														{formatRevision(
-															annotations[entry.version.tag]['org.opencontainers.image.revision']
-														)}
+														{formatRevision(getRevisionInfo(entry.version)!)}
 													</Badge>
 												{/if}</span
 											>
@@ -1869,9 +1897,7 @@
 														sourceUrl={annotations[entry.version.tag][
 															'org.opencontainers.image.source'
 														]}
-														version={annotations[entry.version.tag]?.[
-															'org.opencontainers.image.version'
-														] || entry.version.tag}
+														version={getDisplayVersion(entry.version)}
 														size="xs"
 														color="light"
 													/>
@@ -1960,7 +1986,8 @@
 					{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
 						{@const versionTag = typeof version === 'string' ? version : version.tag}
 						{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
-							{@const _ = clipboardValue = versionTag}
+							{@const _clipboard = clipboardValue = versionTag}
+							{@const _loadAnnotations = loadAnnotationsOnDemand(versionTag)}
 							<ListgroupItem
 								onclick={() => {
 									selectedVersion = versionTag;
@@ -1975,10 +2002,33 @@
 										<div class="flex items-center justify-between">
 											<div class="flex-1">
 												<div class="font-medium text-gray-900 dark:text-white">
-													{annotations[versionTag]?.['org.opencontainers.image.version'] ||
-														versionTag}
+													{#if loadingAnnotations[versionTag]}
+														<div
+															class="h-5 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
+														></div>
+													{:else}
+														{(() => {
+															// Check if this is a regular release in availableReleases
+															const availableRelease = rollout?.status?.availableReleases?.find(
+																(ar) => ar.tag === versionTag
+															);
+															if (availableRelease) {
+																return getDisplayVersion(availableRelease);
+															}
+															// Fall back to annotations for custom releases
+															return getDisplayVersion({
+																version:
+																	annotations[versionTag]?.['org.opencontainers.image.version'],
+																tag: versionTag
+															});
+														})()}
+													{/if}
 												</div>
-												{#if annotations[versionTag]?.['org.opencontainers.image.version']}
+												{#if (() => {
+													const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag);
+													const version = availableRelease?.version || annotations[versionTag]?.['org.opencontainers.image.version'];
+													return version && version !== versionTag;
+												})()}
 													<div class="text-xs text-gray-500 dark:text-gray-400">
 														Tag: <code
 															class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800"
@@ -1991,34 +2041,56 @@
 
 										<!-- Version details -->
 										<div class="grid grid-cols-2 gap-4 text-xs text-gray-600 dark:text-gray-400">
-											{#if annotations[versionTag]?.['org.opencontainers.image.created']}
-												<div>
-													<span class="font-medium">Created:</span>
-													<div class="mb-1">
-														{formatDate(
-															annotations[versionTag]['org.opencontainers.image.created']
-														)}
-													</div>
-													<div class="text-gray-500 dark:text-gray-500">
-														<Badge color="gray" border>
-															<ClockSolid class="me-1.5 h-2.5 w-2.5" />
-															{formatTimeAgo(
-																annotations[versionTag]['org.opencontainers.image.created'],
-																$now
+											{#if loadingAnnotations[versionTag]}
+												<div class="col-span-2 space-y-2">
+													<div
+														class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
+													></div>
+													<div
+														class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
+													></div>
+												</div>
+											{:else}
+												{#if annotations[versionTag]?.['org.opencontainers.image.created']}
+													<div>
+														<span class="font-medium">Created:</span>
+														<div class="mb-1">
+															{formatDate(
+																annotations[versionTag]['org.opencontainers.image.created']
 															)}
-														</Badge>
+														</div>
+														<div class="text-gray-500 dark:text-gray-500">
+															<Badge color="gray" border>
+																<ClockSolid class="me-1.5 h-2.5 w-2.5" />
+																{formatTimeAgo(
+																	annotations[versionTag]['org.opencontainers.image.created'],
+																	$now
+																)}
+															</Badge>
+														</div>
 													</div>
-												</div>
-											{/if}
-											{#if annotations[versionTag]?.['org.opencontainers.image.revision']}
-												<div>
-													<span class="font-medium">Revision:</span>
-													<div class="font-mono">
-														{formatRevision(
-															annotations[versionTag]['org.opencontainers.image.revision']
-														)}
+												{/if}
+												{#if (() => {
+													const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag);
+													return availableRelease?.revision || annotations[versionTag]?.['org.opencontainers.image.revision'];
+												})()}
+													<div>
+														<span class="font-medium">Revision:</span>
+														<div class="font-mono">
+															{formatRevision(
+																(() => {
+																	const availableRelease = rollout?.status?.availableReleases?.find(
+																		(ar) => ar.tag === versionTag
+																	);
+																	return (
+																		availableRelease?.revision ||
+																		annotations[versionTag]?.['org.opencontainers.image.revision']
+																	);
+																})()!
+															)}
+														</div>
 													</div>
-												</div>
+												{/if}
 											{/if}
 										</div>
 
@@ -2048,26 +2120,48 @@
 
 										<!-- Action buttons -->
 										<div class="flex gap-2 pt-2">
-											{#if annotations[versionTag]?.['org.opencontainers.image.source']}
-												<GitHubViewButton
-													sourceUrl={annotations[versionTag]['org.opencontainers.image.source']}
-													version={annotations[versionTag]?.['org.opencontainers.image.version'] ||
-														versionTag}
-													size="xs"
-													color="light"
-												/>
+											{#if loadingAnnotations[versionTag]}
+												<div class="flex gap-2">
+													<div
+														class="h-6 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
+													></div>
+													<div
+														class="h-6 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
+													></div>
+												</div>
+											{:else}
+												{#if annotations[versionTag]?.['org.opencontainers.image.source']}
+													<GitHubViewButton
+														sourceUrl={annotations[versionTag]['org.opencontainers.image.source']}
+														version={(() => {
+															const availableRelease = rollout?.status?.availableReleases?.find(
+																(ar) => ar.tag === versionTag
+															);
+															if (availableRelease) {
+																return getDisplayVersion(availableRelease);
+															}
+															return getDisplayVersion({
+																version:
+																	annotations[versionTag]?.['org.opencontainers.image.version'],
+																tag: versionTag
+															});
+														})()}
+														size="xs"
+														color="light"
+													/>
+												{/if}
+												<Clipboard bind:value={clipboardValue} size="xs" color="light" class="">
+													{#snippet children(success)}
+														{#if success}
+															<CheckOutline class="mr-1 h-3 w-3" />
+															Copied
+														{:else}
+															<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+															Copy Tag
+														{/if}
+													{/snippet}
+												</Clipboard>
 											{/if}
-											<Clipboard bind:value={clipboardValue} size="xs" color="light" class="">
-												{#snippet children(success)}
-													{#if success}
-														<CheckOutline class="mr-1 h-3 w-3" />
-														Copied
-													{:else}
-														<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-														Copy Tag
-													{/if}
-												{/snippet}
-											</Clipboard>
 										</div>
 									</div>
 									<div class="w-6 flex-shrink-0">
@@ -2232,10 +2326,26 @@
 		<!-- Version Display -->
 		<div class="mb-3 text-center">
 			<Badge color="blue" class="px-3 py-1 text-base">
-				{(selectedVersion && annotations[selectedVersion]?.['org.opencontainers.image.version']) ||
-					selectedVersion}
+				{selectedVersion
+					? (() => {
+							const availableRelease = rollout?.status?.availableReleases?.find(
+								(ar) => ar.tag === selectedVersion
+							);
+							if (availableRelease) {
+								return getDisplayVersion(availableRelease);
+							}
+							return getDisplayVersion({
+								version: annotations[selectedVersion]?.['org.opencontainers.image.version'],
+								tag: selectedVersion
+							});
+						})()
+					: ''}
 			</Badge>
-			{#if selectedVersion && annotations[selectedVersion]?.['org.opencontainers.image.version'] && annotations[selectedVersion]?.['org.opencontainers.image.version'] !== selectedVersion}
+			{#if selectedVersion && (() => {
+					const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === selectedVersion);
+					const version = availableRelease?.version || annotations[selectedVersion]?.['org.opencontainers.image.version'];
+					return version && version !== selectedVersion;
+				})()}
 				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
 					Tag: {selectedVersion}
 				</div>
@@ -2319,7 +2429,20 @@
 				id="deploy-confirmation-version"
 				type="text"
 				bind:value={deployConfirmationVersion}
-				placeholder={`Enter ${selectedVersion && annotations[selectedVersion]?.['org.opencontainers.image.version'] ? 'version name' : 'version'} to confirm`}
+				placeholder={`Enter ${
+					selectedVersion &&
+					(() => {
+						const availableRelease = rollout?.status?.availableReleases?.find(
+							(ar) => ar.tag === selectedVersion
+						);
+						return (
+							availableRelease?.version ||
+							annotations[selectedVersion]?.['org.opencontainers.image.version']
+						);
+					})()
+						? 'version name'
+						: 'version'
+				} to confirm`}
 				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
 			/>
 		</div>
@@ -2351,10 +2474,21 @@
 			</Button>
 			<Button
 				color="blue"
-				disabled={deployConfirmationVersion !==
-					((selectedVersion &&
-						annotations[selectedVersion]?.['org.opencontainers.image.version']) ||
-						selectedVersion)}
+				disabled={selectedVersion
+					? deployConfirmationVersion !==
+						(() => {
+							const availableRelease = rollout?.status?.availableReleases?.find(
+								(ar) => ar.tag === selectedVersion
+							);
+							if (availableRelease) {
+								return getDisplayVersion(availableRelease);
+							}
+							return getDisplayVersion({
+								version: annotations[selectedVersion!]?.['org.opencontainers.image.version'],
+								tag: selectedVersion!
+							});
+						})()
+					: true}
 				onclick={handleDeploy}
 			>
 				Deploy

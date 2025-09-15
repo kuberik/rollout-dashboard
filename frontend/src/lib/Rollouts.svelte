@@ -8,12 +8,6 @@
 	let rollouts: Rollout[] = [];
 	let loading = true;
 	let error: string | null = null;
-	let annotationsByRollout: Record<string, Record<string, string>> = {};
-	function rolloutKey(d: Rollout): string {
-		const ns = (d as any)?.metadata?.namespace || '';
-		const name = (d as any)?.metadata?.name || '';
-		return `${ns}/${name}`;
-	}
 
 	onMount(async () => {
 		try {
@@ -23,33 +17,6 @@
 			}
 			const data = await response.json();
 			rollouts = data.rollouts.items || [];
-
-			// Fetch annotations for each rollout's current version
-			const requests: Promise<void>[] = [];
-			for (const r of rollouts) {
-				const ns = (r as any)?.metadata?.namespace;
-				const name = (r as any)?.metadata?.name;
-				const version = r.status?.history?.[0]?.version?.tag;
-				if (!ns || !name || !version) continue;
-				const key = rolloutKey(r);
-				requests.push(
-					fetch(`/api/rollouts/${ns}/${name}/annotations/${version}`)
-						.then(async (res) => {
-							if (res.ok) {
-								const payload = await res.json();
-								annotationsByRollout[key] = payload.annotations || {};
-							} else {
-								annotationsByRollout[key] = {};
-							}
-							annotationsByRollout = { ...annotationsByRollout };
-						})
-						.catch(() => {
-							annotationsByRollout[key] = {};
-							annotationsByRollout = { ...annotationsByRollout };
-						})
-				);
-			}
-			await Promise.all(requests);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Unknown error occurred';
 		} finally {
@@ -93,11 +60,13 @@
 								<div class="flex items-center gap-2">
 									<span class="text-sm text-gray-500">Current version:</span>
 									<Badge color="blue">
-										{annotationsByRollout[rolloutKey(deployment)]?.[
-											'org.opencontainers.image.version'
-										] ||
-											deployment.status?.history?.[0]?.version?.tag ||
-											'Unknown'}
+										{(() => {
+											const historyEntry = deployment.status?.history?.[0];
+											if (!historyEntry?.version?.tag) return 'Unknown';
+
+											// Use version from history if available (regular release)
+											return historyEntry.version.version || historyEntry.version.tag;
+										})()}
 									</Badge>
 								</div>
 								<div class="text-sm text-gray-500">
