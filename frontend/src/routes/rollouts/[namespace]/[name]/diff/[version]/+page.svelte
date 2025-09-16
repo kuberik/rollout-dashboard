@@ -121,6 +121,11 @@
 </script>
 
 <svelte:head>
+	<title
+		>kuberik | {rollout?.metadata
+			? `${rollout.metadata.name} (${rollout.metadata.namespace}) - Diff v${version}`
+			: `Diff v${version}`}</title
+	>
 	{#if currentTheme === 'dark'}
 		<style>
 			:root {

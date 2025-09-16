@@ -964,6 +964,14 @@
 	}
 </script>
 
+<svelte:head>
+	<title
+		>kuberik | {rollout?.metadata
+			? `${rollout.metadata.name} (${rollout.metadata.namespace})`
+			: 'Rollout'}</title
+	>
+</svelte:head>
+
 <div class="w-full dark:bg-gray-900">
 	{#if loading}
 		<div class="space-y-4 p-4">
