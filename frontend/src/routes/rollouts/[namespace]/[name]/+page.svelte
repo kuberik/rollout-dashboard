@@ -995,7 +995,7 @@
 					</div>
 					<div class="flex items-center gap-2">
 						<Button size="sm" color="light" onclick={() => (showTimelineDrawer = true)}>
-							<ClockArrowOutline class="h-4 w-4" />
+							<ClockArrowOutline class="me-2 h-4 w-4" />
 							Rollout History
 						</Button>
 						<Button
@@ -1009,7 +1009,7 @@
 								}
 							}}
 						>
-							<EditOutline class="h-4 w-4" />
+							<EditOutline class="me-2 h-4 w-4" />
 							Pin Version
 						</Button>
 						{#if !isDashboardManagingWantedVersion}
@@ -1030,7 +1030,7 @@
 									}
 								}}
 							>
-								<CloseOutline class="h-4 w-4" />
+								<CloseOutline class="me-2 h-4 w-4" />
 								Clear Pin
 							</Button>
 							{#if !isDashboardManagingWantedVersion}
@@ -1411,7 +1411,7 @@
 
 				<div class="mb-6">
 					<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">
-						Upcoming Release Candidates
+						Available version upgrades
 					</h4>
 					{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 						<div class="auto-fill-grid grid gap-4">
