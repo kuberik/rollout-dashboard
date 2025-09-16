@@ -10,7 +10,7 @@ require (
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-containerregistry v0.20.6
-	github.com/kuberik/rollout-controller v0.3.1-0.20250916194700-4146a1702d4b
+	github.com/kuberik/rollout-controller v0.3.1-0.20250916205455-dbe5743d48fa
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	k8s.io/api v0.33.0
 	k8s.io/apimachinery v0.33.0

@@ -155,6 +155,11 @@ export interface components {
                 artifactType?: string;
                 /** @description AvailableReleases is a list of all releases available in the releases repository. */
                 availableReleases?: {
+                    /**
+                     * Format: date-time
+                     * @description Created is the creation timestamp extracted from OCI annotations if available.
+                     */
+                    created?: string;
                     /** @description Digest is the image digest if available from the ImagePolicy. */
                     digest?: string;
                     /** @description Revision is the revision information extracted from OCI annotations if available. */
@@ -199,6 +204,11 @@ export interface components {
                 /** @description GatedReleaseCandidates is a list of release candidates that have passed through all gates.
                  *     This shows which versions are actually available for deployment after gate evaluation. */
                 gatedReleaseCandidates?: {
+                    /**
+                     * Format: date-time
+                     * @description Created is the creation timestamp extracted from OCI annotations if available.
+                     */
+                    created?: string;
                     /** @description Digest is the image digest if available from the ImagePolicy. */
                     digest?: string;
                     /** @description Revision is the revision information extracted from OCI annotations if available. */
@@ -255,6 +265,11 @@ export interface components {
                     timestamp: string;
                     /** @description Version is the version information that was deployed. */
                     version: {
+                        /**
+                         * Format: date-time
+                         * @description Created is the creation timestamp extracted from OCI annotations if available.
+                         */
+                        created?: string;
                         /** @description Digest is the image digest if available from the ImagePolicy. */
                         digest?: string;
                         /** @description Revision is the revision information extracted from OCI annotations if available. */
@@ -268,6 +283,11 @@ export interface components {
                 /** @description ReleaseCandidates is a list of releases that are candidates for the next deployment.
                  *     These are filtered from AvailableReleases based on deployment history and version ordering. */
                 releaseCandidates?: {
+                    /**
+                     * Format: date-time
+                     * @description Created is the creation timestamp extracted from OCI annotations if available.
+                     */
+                    created?: string;
                     /** @description Digest is the image digest if available from the ImagePolicy. */
                     digest?: string;
                     /** @description Revision is the revision information extracted from OCI annotations if available. */

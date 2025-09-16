@@ -283,17 +283,17 @@
 			console.log('Rollout gates fetched:', rolloutGates);
 			console.log('Rollout status gates:', rollout?.status?.gates);
 
-			if (rollout?.status?.history) {
-				// Only fetch annotations for release candidates (custom releases)
-				// Regular releases will use .revisions and .version fields from availableReleases
-				if (rollout.status.releaseCandidates) {
-					const releaseCandidateVersions = rollout.status.releaseCandidates.map((rc) => rc.tag);
-					const annotationPromises = releaseCandidateVersions
-						.filter((version) => !annotations[version])
-						.map((version) => getAnnotations(version));
-					await Promise.all(annotationPromises);
-				}
-			}
+			// if (rollout?.status?.history) {
+			// 	// Only fetch annotations for release candidates (custom releases)
+			// 	// Regular releases will use .revisions and .version fields from availableReleases
+			// 	if (rollout.status.releaseCandidates) {
+			// 		const releaseCandidateVersions = rollout.status.releaseCandidates.map((rc) => rc.tag);
+			// 		const annotationPromises = releaseCandidateVersions
+			// 			.filter((version) => !annotations[version])
+			// 			.map((version) => getAnnotations(version));
+			// 		await Promise.all(annotationPromises);
+			// 	}
+			// }
 
 			// Fetch managed resources for each Kustomization
 			const tempResources: Record<string, ManagedResourceStatus[]> = {};
@@ -1443,19 +1443,14 @@
 												</Badge>
 											</div>
 										{/if}
-										{#if annotations[version]?.['org.opencontainers.image.created']}
+										{#if releaseCandidate.created}
 											<div class="text-xs text-gray-500 dark:text-gray-500">
 												<div class="mb-1">
-													Created: {formatDate(
-														annotations[version]['org.opencontainers.image.created']
-													)}
+													Created: {formatDate(releaseCandidate.created)}
 												</div>
 												<Badge color="gray" border>
 													<ClockSolid class="me-1.5 h-2.5 w-2.5" />
-													{formatTimeAgo(
-														annotations[version]['org.opencontainers.image.created'],
-														$now
-													)}
+													{formatTimeAgo(releaseCandidate.created, $now)}
 												</Badge>
 											</div>
 										{/if}
@@ -2098,19 +2093,39 @@
 													></div>
 												</div>
 											{:else}
-												{#if annotations[versionTag]?.['org.opencontainers.image.created']}
+												{#if (() => {
+													const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag);
+													return availableRelease?.created || annotations[versionTag]?.['org.opencontainers.image.created'];
+												})()}
 													<div>
 														<span class="font-medium">Created:</span>
 														<div class="mb-1">
 															{formatDate(
-																annotations[versionTag]['org.opencontainers.image.created']
+																(() => {
+																	const availableRelease = rollout?.status?.availableReleases?.find(
+																		(ar) => ar.tag === versionTag
+																	);
+																	return (
+																		availableRelease?.created ||
+																		annotations[versionTag]?.['org.opencontainers.image.created']
+																	);
+																})()
 															)}
 														</div>
 														<div class="text-gray-500 dark:text-gray-500">
 															<Badge color="gray" border>
 																<ClockSolid class="me-1.5 h-2.5 w-2.5" />
 																{formatTimeAgo(
-																	annotations[versionTag]['org.opencontainers.image.created'],
+																	(() => {
+																		const availableRelease =
+																			rollout?.status?.availableReleases?.find(
+																				(ar) => ar.tag === versionTag
+																			);
+																		return (
+																			availableRelease?.created ||
+																			annotations[versionTag]?.['org.opencontainers.image.created']
+																		);
+																	})(),
 																	$now
 																)}
 															</Badge>
