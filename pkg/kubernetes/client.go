@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+	k8sptr "k8s.io/utils/ptr"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -252,6 +253,40 @@ func (c *Client) AddUnblockFailedAnnotation(ctx context.Context, namespace, name
 	}
 
 	return updatedRollout, nil
+}
+
+// MarkDeploymentSuccessful marks the latest deployment as successful by updating the rollout status
+func (c *Client) MarkDeploymentSuccessful(ctx context.Context, namespace, name string, message string) (*rolloutv1alpha1.Rollout, error) {
+	// Get the current rollout to access the latest history entry
+	rollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
+		return nil, fmt.Errorf("failed to get rollout: %w", err)
+	}
+
+	// Check if there's a history entry to modify
+	if len(rollout.Status.History) == 0 {
+		return nil, fmt.Errorf("no deployment history found")
+	}
+
+	// Update the latest history entry to mark it as successful
+	latestEntry := &rollout.Status.History[0]
+	now := metav1.Now()
+	latestEntry.BakeStatus = k8sptr.To(rolloutv1alpha1.BakeStatusSucceeded)
+	latestEntry.BakeEndTime = &now
+
+	// Create status message with fixed prefix
+	statusMessage := "Deployment manually marked as successful by user"
+	if message != "" {
+		statusMessage = fmt.Sprintf("Deployment manually marked as successful by user: %s", message)
+	}
+	latestEntry.BakeStatusMessage = &statusMessage
+
+	// Update the rollout status
+	if err := c.client.Status().Update(ctx, rollout); err != nil {
+		return nil, fmt.Errorf("failed to update rollout status: %w", err)
+	}
+
+	return rollout, nil
 }
 
 func (c *Client) GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {

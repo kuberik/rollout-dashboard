@@ -253,6 +253,38 @@ func main() {
 			})
 		})
 
+		// Mark deployment as successful
+		api.POST("/rollouts/:namespace/:name/mark-successful", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			var markSuccessfulRequest struct {
+				Message string `json:"message"`
+			}
+			if err := c.ShouldBindJSON(&markSuccessfulRequest); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "Invalid request body",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Mark the deployment as successful
+			updatedRollout, err := k8sClient.MarkDeploymentSuccessful(context.Background(), namespace, name, markSuccessfulRequest.Message)
+			if err != nil {
+				log.Printf("Error marking deployment as successful: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to mark deployment as successful",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rollout": updatedRollout,
+			})
+		})
+
 		// Reconcile all associated Flux resources for a rollout
 		api.POST("/rollouts/:namespace/:name/reconcile", func(c *gin.Context) {
 			namespace := c.Param("namespace")
