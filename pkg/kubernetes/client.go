@@ -137,7 +137,7 @@ func (c *Client) UpdateRolloutVersion(ctx context.Context, namespace, name strin
 	// Set annotations if explanation is provided
 	if explanation != "" {
 		annotations := map[string]string{
-			"rollout.kuberik.com/deployment-message": explanation,
+			"rollout.kuberik.com/deploy-message": explanation,
 		}
 		patch.SetAnnotations(annotations)
 	}
@@ -244,7 +244,7 @@ func (c *Client) AddForceDeployAnnotation(ctx context.Context, namespace, name s
 
 	// Add message annotation if provided
 	if message != "" {
-		annotations["rollout.kuberik.com/force-deploy-message"] = message
+		annotations["rollout.kuberik.com/deploy-message"] = message
 	}
 
 	patch.SetAnnotations(annotations)
