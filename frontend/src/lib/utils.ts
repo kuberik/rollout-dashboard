@@ -151,6 +151,24 @@ export function isFieldManagedByOtherManager(
 }
 
 /**
+ * Checks if a rollout has the force-deploy annotation and returns the version
+ * @param rollout The rollout to check
+ * @returns The version that is being force deployed, or null if no force deploy is set
+ */
+export function getForceDeployVersion(rollout: Rollout): string | null {
+    return rollout.metadata?.annotations?.['rollout.kuberik.com/force-deploy'] || null;
+}
+
+/**
+ * Checks if a rollout has the force-deploy annotation
+ * @param rollout The rollout to check
+ * @returns true if the force-deploy annotation exists
+ */
+export function hasForceDeployAnnotation(rollout: Rollout): boolean {
+    return rollout.metadata?.annotations?.['rollout.kuberik.com/force-deploy'] !== undefined;
+}
+
+/**
  * Checks if a rollout has the bypass-gates annotation and returns the version
  * @param rollout The rollout to check
  * @returns The version that is bypassing gates, or null if no bypass is set
@@ -166,6 +184,17 @@ export function getBypassGatesVersion(rollout: Rollout): string | null {
  */
 export function hasBypassGatesAnnotation(rollout: Rollout): boolean {
     return getBypassGatesVersion(rollout) !== null;
+}
+
+/**
+ * Checks if a specific version is being force deployed
+ * @param rollout The rollout to check
+ * @param version The version to check
+ * @returns true if the specified version is being force deployed
+ */
+export function isVersionForceDeploying(rollout: Rollout, version: string): boolean {
+    const forceDeployVersion = getForceDeployVersion(rollout);
+    return forceDeployVersion === version;
 }
 
 /**

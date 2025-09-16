@@ -57,6 +57,9 @@
 		isFieldManagedByOtherManager,
 		hasBypassGatesAnnotation,
 		getBypassGatesVersion,
+		getForceDeployVersion,
+		hasForceDeployAnnotation,
+		isVersionForceDeploying,
 		isVersionBypassingGates,
 		hasFailedBakeStatus,
 		hasUnblockFailedAnnotation
@@ -768,25 +771,28 @@
 				toastType = 'success';
 				toastMessage = `Successfully pinned and deployed version`;
 			} else {
-				// Use skip gates functionality
+				// Use force deploy functionality
 				const response = await fetch(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/bypass-gates`,
+					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/force-deploy`,
 					{
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/json'
 						},
-						body: JSON.stringify({ version: selectedVersion })
+						body: JSON.stringify({
+							version: selectedVersion,
+							message: deployExplanation
+						})
 					}
 				);
 
 				if (!response.ok) {
-					throw new Error('Failed to add bypass-gates annotation');
+					throw new Error('Failed to add force-deploy annotation');
 				}
 
 				await updateData();
 				toastType = 'success';
-				toastMessage = `Gates bypassed, version rolling out soon`;
+				toastMessage = `Force deploy initiated, version rolling out soon`;
 			}
 
 			showToast = true;
@@ -1445,7 +1451,7 @@
 											>
 												{getDisplayVersion(releaseCandidate)}
 											</h6>
-											{#if isVersionBypassingGates(rollout, version)}
+											{#if isVersionForceDeploying(rollout, version)}
 												<Badge color="blue" class="flex-shrink-0 text-xs">Gates Skipped</Badge>
 											{:else if rollout.status?.gatedReleaseCandidates
 												?.map((grc) => grc.tag)
@@ -1495,7 +1501,7 @@
 														(g) => g.metadata.name === gateStatus.name
 													)}
 													<div class="flex items-center justify-between text-xs">
-														{#if isVersionBypassingGates(rollout, version)}
+														{#if isVersionForceDeploying(rollout, version)}
 															<Badge color="blue" class="text-xs">
 																<CodePullRequestSolid class="mr-1 h-3 w-3" />
 																{getGatePrettyName(fullGate) || gateStatus.name} (Skipped)
@@ -1544,7 +1550,7 @@
 											size="xs"
 											color="blue"
 											disabled={!isDashboardManagingWantedVersion &&
-												!hasBypassGatesAnnotation(rollout)}
+												!hasForceDeployAnnotation(rollout)}
 											onclick={() => {
 												selectedVersion = version;
 												showDeployModal = true;
@@ -1561,11 +1567,11 @@
 										{:else if !isDashboardManagingWantedVersion}
 											<Tooltip placement="top" class="">
 												Version management disabled: This rollout's wantedVersion field is managed
-												by another controller or external system. Only gate bypass is available.
+												by another controller or external system. Only force deploy is available.
 											</Tooltip>
-										{:else if hasBypassGatesAnnotation(rollout)}
+										{:else if hasForceDeployAnnotation(rollout)}
 											<Tooltip placement="top" class="">
-												Gates already bypassed: Only version pinning is available.
+												Force deploy already set: Only version pinning is available.
 											</Tooltip>
 										{/if}
 
@@ -2436,22 +2442,22 @@
 <!-- Deploy Modal -->
 <Modal bind:open={showDeployModal} title="Deploy Version">
 	<div class="space-y-4">
-		{#if rollout && !isDashboardManagingWantedVersion && hasBypassGatesAnnotation(rollout)}
+		{#if rollout && !isDashboardManagingWantedVersion && hasForceDeployAnnotation(rollout)}
 			<Alert color="yellow" class="mb-4">
 				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> Version management is disabled and gates are already
-				bypassed. No deployment options are available.
+				<span class="font-medium">Warning:</span> Version management is disabled and force deploy is
+				already set. No deployment options are available.
 			</Alert>
 		{:else if rollout && !isDashboardManagingWantedVersion}
 			<Alert color="yellow" class="mb-4">
 				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> Version management is disabled. Only gate bypass is
+				<span class="font-medium">Warning:</span> Version management is disabled. Only force deploy is
 				available.
 			</Alert>
-		{:else if rollout && hasBypassGatesAnnotation(rollout)}
+		{:else if rollout && hasForceDeployAnnotation(rollout)}
 			<Alert color="blue" class="mb-4">
 				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Info:</span> Gates are already bypassed. Only version pinning is available.
+				<span class="font-medium">Info:</span> Force deploy already set. Only version pinning is available.
 			</Alert>
 		{/if}
 
@@ -2485,7 +2491,7 @@
 		</div>
 
 		<!-- Pin Version Toggle -->
-		{#if rollout && isDashboardManagingWantedVersion && !hasBypassGatesAnnotation(rollout)}
+		{#if rollout && isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
 			<div
 				class="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700"
 			>
@@ -2508,7 +2514,7 @@
 					Pin Version
 				</Toggle>
 			</div>
-		{:else if rollout && isDashboardManagingWantedVersion && hasBypassGatesAnnotation(rollout)}
+		{:else if rollout && isDashboardManagingWantedVersion && hasForceDeployAnnotation(rollout)}
 			<div
 				class="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700"
 			>
@@ -2518,7 +2524,7 @@
 						{#if isPinVersionMode}
 							Version pinning is enabled for this deployment.
 						{:else}
-							Version pinning is enabled because gates are already bypassed.
+							Version pinning is enabled because force deploy is already set.
 						{/if}
 					</p>
 				</div>
@@ -2539,7 +2545,7 @@
 				bind:value={deployExplanation}
 				placeholder={pinVersionToggle
 					? 'Provide a reason for pinning this version...'
-					: 'Provide a reason for bypassing gates...'}
+					: 'Provide a reason for force deploying...'}
 				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
 				rows="3"
 			></textarea>
@@ -2585,8 +2591,7 @@
 				This will immediately deploy version <b>{selectedVersion}</b> and pin it, preventing automatic
 				deployment logic from changing it.
 			{:else}
-				This will bypass gate checks for version <b>{selectedVersion}</b>, allowing it to deploy
-				immediately.
+				This will force deploy version <b>{selectedVersion}</b>, allowing it to deploy immediately.
 			{/if}
 		</p>
 

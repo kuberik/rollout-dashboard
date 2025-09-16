@@ -223,6 +223,46 @@ func (c *Client) AddBypassGatesAnnotation(ctx context.Context, namespace, name s
 	return updatedRollout, nil
 }
 
+// AddForceDeployAnnotation adds the rollout.kuberik.com/force-deploy annotation to a rollout
+// This allows the rollout to force deploy a specific version
+// Optionally includes a message explaining why the force deploy was triggered
+func (c *Client) AddForceDeployAnnotation(ctx context.Context, namespace, name string, version string, message string) (*rolloutv1alpha1.Rollout, error) {
+	// Create an unstructured patch object with only the annotation
+	patch := &unstructured.Unstructured{}
+	patch.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "kuberik.com",
+		Version: "v1alpha1",
+		Kind:    "Rollout",
+	})
+	patch.SetNamespace(namespace)
+	patch.SetName(name)
+
+	// Set the force-deploy annotation with the specific version
+	annotations := map[string]string{
+		"rollout.kuberik.com/force-deploy": version,
+	}
+
+	// Add message annotation if provided
+	if message != "" {
+		annotations["rollout.kuberik.com/force-deploy-message"] = message
+	}
+
+	patch.SetAnnotations(annotations)
+
+	// Use server-side apply to update only the annotation
+	if err := c.client.Patch(ctx, patch, client.Merge, client.FieldOwner("rollout-dashboard")); err != nil {
+		return nil, fmt.Errorf("failed to add force-deploy annotation using server-side apply: %w", err)
+	}
+
+	// Get the updated rollout to return
+	updatedRollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, updatedRollout); err != nil {
+		return nil, fmt.Errorf("failed to get updated rollout: %w", err)
+	}
+
+	return updatedRollout, nil
+}
+
 // AddUnblockFailedAnnotation adds the rollout.kuberik.com/unblock-failed annotation to a rollout
 // This allows the rollout to resume after a failed bake
 func (c *Client) AddUnblockFailedAnnotation(ctx context.Context, namespace, name string) (*rolloutv1alpha1.Rollout, error) {

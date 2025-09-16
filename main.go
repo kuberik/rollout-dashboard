@@ -200,6 +200,39 @@ func main() {
 			})
 		})
 
+		// Add force-deploy annotation to rollout
+		api.POST("/rollouts/:namespace/:name/force-deploy", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			var forceDeployRequest struct {
+				Version string `json:"version" binding:"required"`
+				Message string `json:"message"`
+			}
+			if err := c.ShouldBindJSON(&forceDeployRequest); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "Invalid request body",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Add the force-deploy annotation with the specific version and optional message
+			updatedRollout, err := k8sClient.AddForceDeployAnnotation(context.Background(), namespace, name, forceDeployRequest.Version, forceDeployRequest.Message)
+			if err != nil {
+				log.Printf("Error adding force-deploy annotation: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to add force-deploy annotation",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rollout": updatedRollout,
+			})
+		})
+
 		// Add bypass-gates annotation to rollout
 		api.POST("/rollouts/:namespace/:name/bypass-gates", func(c *gin.Context) {
 			namespace := c.Param("namespace")
