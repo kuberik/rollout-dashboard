@@ -40,6 +40,7 @@
 		CodeOutline,
 		DatabaseSolid,
 		ClockSolid,
+		ClockArrowOutline,
 		PauseSolid,
 		PlaySolid,
 		RefreshOutline,
@@ -1017,8 +1018,8 @@
 					</div>
 					<div class="flex items-center gap-2">
 						<Button size="sm" color="light" onclick={() => (showTimelineDrawer = true)}>
-							<CalendarWeekSolid class="h-4 w-4" />
-							View Timeline
+							<ClockArrowOutline class="h-4 w-4" />
+							Rollout History
 						</Button>
 						<Button
 							size="sm"
