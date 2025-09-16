@@ -10,7 +10,7 @@ require (
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-containerregistry v0.20.6
-	github.com/kuberik/rollout-controller v0.3.1-0.20250913155022-481f61a05fa9
+	github.com/kuberik/rollout-controller v0.3.1-0.20250916194700-4146a1702d4b
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	k8s.io/api v0.33.0
 	k8s.io/apimachinery v0.33.0
@@ -92,7 +92,7 @@ require (
 	k8s.io/cli-runtime v0.30.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
-	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e // indirect
+	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
 	sigs.k8s.io/gateway-api v0.7.1 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/kustomize/api v0.15.0 // indirect

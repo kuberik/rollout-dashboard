@@ -80,7 +80,6 @@
 	let hasLoaded = false;
 	let error: string | null = null;
 
-	let mediaTypes: Record<string, string> = {};
 	let annotations: Record<string, Record<string, string>> = {};
 	let loadingAnnotations: Record<string, boolean> = {};
 
@@ -285,12 +284,6 @@
 			console.log('Rollout status gates:', rollout?.status?.gates);
 
 			if (rollout?.status?.history) {
-				const mediaTypePromises = rollout.status.history
-					.filter((entry) => !mediaTypes[entry.version.tag])
-					.map((entry) => getMediaType(entry.version.tag));
-				// TODO: Don't await for now to optimize loading time.
-				Promise.all(mediaTypePromises);
-
 				// Only fetch annotations for release candidates (custom releases)
 				// Regular releases will use .revisions and .version fields from availableReleases
 				if (rollout.status.releaseCandidates) {
@@ -487,30 +480,6 @@
 			}, 3000);
 		} finally {
 			showClearPinModal = false;
-		}
-	}
-
-	async function getMediaType(version: string) {
-		if (!rollout) return;
-		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mediatype/${version}`
-			);
-			if (response.ok) {
-				const data = await response.json();
-				if (data.mediaType) {
-					mediaTypes[version] = data.mediaType;
-				} else {
-					mediaTypes[version] = 'unknown';
-				}
-			} else {
-				mediaTypes[version] = 'error';
-			}
-			mediaTypes = { ...mediaTypes };
-		} catch (e) {
-			console.error(`Failed to fetch media type for ${version}:`, e);
-			mediaTypes[version] = 'error';
-			mediaTypes = { ...mediaTypes };
 		}
 	}
 
@@ -1206,21 +1175,17 @@
 
 						<!-- Action Buttons Row -->
 						<div class="flex flex-wrap gap-2">
-							{#if mediaTypes[latestEntry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
+							{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 								<SourceViewer
 									namespace={rollout.metadata?.namespace || ''}
 									name={rollout.metadata?.name || ''}
 									version={latestEntry.version.tag}
 								/>
 							{/if}
-							{#if annotations[latestEntry.version.tag]?.['org.opencontainers.image.source']}
+							{#if rollout?.status?.source}
 								<GitHubViewButton
-									sourceUrl={annotations[latestEntry.version.tag][
-										'org.opencontainers.image.source'
-									]}
-									version={annotations[latestEntry.version.tag]?.[
-										'org.opencontainers.image.version'
-									] || latestEntry.version.tag}
+									sourceUrl={rollout.status.source}
+									version={getDisplayVersion(latestEntry.version)}
 									size="sm"
 									color="light"
 								/>
@@ -1588,9 +1553,9 @@
 											<div
 												class="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
 											></div>
-										{:else if annotations[version]?.['org.opencontainers.image.source']}
+										{:else if rollout?.status?.source}
 											<GitHubViewButton
-												sourceUrl={annotations[version]['org.opencontainers.image.source']}
+												sourceUrl={rollout.status.source}
 												version={getDisplayVersion(releaseCandidate)}
 												size="xs"
 												color="light"
@@ -1925,14 +1890,14 @@
 												</div>
 											{/if}
 											<div class="space-y-2 pt-3 dark:border-gray-700">
-												{#if mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
+												{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 													<SourceViewer
 														namespace={rollout.metadata?.namespace || ''}
 														name={rollout.metadata?.name || ''}
 														version={entry.version.tag}
 													/>
 												{/if}
-												{#if i < rollout.status.history.length - 1 && mediaTypes[entry.version.tag] === 'application/vnd.cncf.flux.config.v1+json'}
+												{#if i < rollout.status.history.length - 1 && rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 													<Button
 														color="light"
 														size="xs"
@@ -1976,11 +1941,9 @@
 														Rollback
 													</Button>
 												{/if}
-												{#if annotations[entry.version.tag]?.['org.opencontainers.image.source']}
+												{#if rollout?.status?.source}
 													<GitHubViewButton
-														sourceUrl={annotations[entry.version.tag][
-															'org.opencontainers.image.source'
-														]}
+														sourceUrl={rollout.status.source}
 														version={getDisplayVersion(entry.version)}
 														size="xs"
 														color="light"
@@ -2214,9 +2177,9 @@
 													></div>
 												</div>
 											{:else}
-												{#if annotations[versionTag]?.['org.opencontainers.image.source']}
+												{#if rollout?.status?.source}
 													<GitHubViewButton
-														sourceUrl={annotations[versionTag]['org.opencontainers.image.source']}
+														sourceUrl={rollout.status.source}
 														version={(() => {
 															const availableRelease = rollout?.status?.availableReleases?.find(
 																(ar) => ar.tag === versionTag

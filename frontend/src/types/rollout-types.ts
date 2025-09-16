@@ -149,6 +149,10 @@ export interface components {
             };
             /** @description RolloutStatus defines the observed state of Rollout. */
             status?: {
+                /** @description ArtifactType is the media/artifact type of the image extracted from the manifest.
+                 *     This includes OCI artifact types, container image types, and other media types.
+                 *     This field is set once for the entire rollout based on the latest available release. */
+                artifactType?: string;
                 /** @description AvailableReleases is a list of all releases available in the releases repository. */
                 availableReleases?: {
                     /** @description Digest is the image digest if available from the ImagePolicy. */
@@ -273,6 +277,10 @@ export interface components {
                     /** @description Version is the semantic version extracted from OCI annotations if available. */
                     version?: string;
                 }[];
+                /** @description Source is the source information extracted from OCI annotations.
+                 *     This typically contains the repository URL or source code location.
+                 *     This field is set once for the entire rollout based on the latest available release. */
+                source?: string;
             };
         };
         /** @description RolloutGate is the Schema for the rolloutgates API. */
