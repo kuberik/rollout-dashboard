@@ -1576,7 +1576,7 @@
 						<Alert color="blue" class="mb-4">
 							<div class="flex items-center">
 								<ExclamationCircleSolid class="mr-2 h-5 w-5" />
-								<span class="font-medium">No Release Candidates Available</span>
+								<span class="font-medium">No version upgrades available</span>
 							</div>
 							<!-- <p class="mt-2 text-sm">
 								There are currently no release candidates available for this rollout. This could be due
