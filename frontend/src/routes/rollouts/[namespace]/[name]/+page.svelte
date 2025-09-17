@@ -1379,36 +1379,6 @@
 					{/if}
 				{/if}
 
-				<!-- Basic Information Section -->
-				<!-- <div class="mb-6 grid grid-cols-6 gap-4">
-					<div>
-						<p class="text-sm text-gray-600 dark:text-gray-400">Releases Image Policy</p>
-						<p class="font-medium dark:text-white">
-							{rollout.spec?.releasesImagePolicy?.name}
-						</p>
-					</div>
-					<div>
-						<p class="text-sm text-gray-600 dark:text-gray-400">Version History Limit</p>
-						<p class="font-medium dark:text-white">
-							{rollout.spec?.versionHistoryLimit || 5}
-						</p>
-					</div>
-					{#if rollout.spec?.minBakeTime || rollout.spec?.maxBakeTime}
-						{#if rollout.spec?.minBakeTime}
-							<div>
-								<p class="text-sm text-gray-600 dark:text-gray-400">Minimum Bake Time</p>
-								<p class="font-medium dark:text-white">{rollout.spec.minBakeTime}</p>
-							</div>
-						{/if}
-						{#if rollout.spec?.maxBakeTime}
-							<div>
-								<p class="text-sm text-gray-600 dark:text-gray-400">Maximum Bake Time</p>
-								<p class="font-medium dark:text-white">{rollout.spec.maxBakeTime}</p>
-							</div>
-						{/if}
-					{/if}
-				</div> -->
-
 				<div class="mb-6">
 					<h4 class="mb-4 text-lg font-medium text-gray-900 dark:text-white">
 						Available version upgrades
@@ -1578,15 +1548,6 @@
 								<ExclamationCircleSolid class="mr-2 h-5 w-5" />
 								<span class="font-medium">No version upgrades available</span>
 							</div>
-							<!-- <p class="mt-2 text-sm">
-								There are currently no release candidates available for this rollout. This could be due
-								to:
-							</p>
-							<ul class="mt-2 list-inside list-disc space-y-1 text-sm">
-								<li>No new versions have been published to the repository</li>
-								<li>All available versions are blocked by deployment gates</li>
-								<li>The rollout configuration needs to be updated</li>
-							</ul> -->
 						</Alert>
 					{/if}
 				</div>
