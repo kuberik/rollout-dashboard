@@ -2541,9 +2541,19 @@
 				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
 			>
 				Type the version to confirm: <span class="font-bold text-gray-900 dark:text-white"
-					>{(selectedVersion &&
-						annotations[selectedVersion]?.['org.opencontainers.image.version']) ||
-						selectedVersion}</span
+					>{selectedVersion &&
+						(() => {
+							const availableRelease = rollout?.status?.availableReleases?.find(
+								(ar) => ar.tag === selectedVersion
+							);
+							if (availableRelease) {
+								return getDisplayVersion(availableRelease);
+							}
+							return getDisplayVersion({
+								version: annotations[selectedVersion]?.['org.opencontainers.image.version'],
+								tag: selectedVersion
+							});
+						})()}</span
 				>
 			</label>
 			<input
