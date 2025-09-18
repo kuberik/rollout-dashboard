@@ -2025,7 +2025,7 @@
 						{@const versionTag = typeof version === 'string' ? version : version.tag}
 						{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
 							{@const _clipboard = clipboardValue = versionTag}
-							{@const _loadAnnotations = loadAnnotationsOnDemand(versionTag)}
+							{#await loadAnnotationsOnDemand(versionTag)}{/await}
 							<ListgroupItem
 								onclick={() => {
 									selectedVersion = versionTag;
