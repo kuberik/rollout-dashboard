@@ -184,6 +184,13 @@
 	// Update pinVersionToggle when rollout state changes
 	$: pinVersionToggle = hasActivelyPinnedVersion;
 
+	// Computed property to determine if current version is custom (not in available releases)
+	$: isCurrentVersionCustom = (() => {
+		if (!rollout?.status?.history?.[0] || !rollout?.status?.availableReleases) return false;
+		const currentVersionTag = rollout.status.history[0].version.tag;
+		return !rollout.status.availableReleases.some((ar) => ar.tag === currentVersionTag);
+	})();
+
 	// Computed properties for pagination
 	$: reversedVersions = rollout?.status?.availableReleases
 		? [...rollout.status.availableReleases].reverse()
@@ -1110,6 +1117,9 @@
 											{formatRevision(getRevisionInfo(latestEntry.version)!)}
 										</Badge>
 									{/if}
+									{#if isCurrentVersionCustom}
+										<Badge color="yellow" class="ml-2 text-xs">Custom</Badge>
+									{/if}
 								</h3>
 
 								<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
@@ -1135,13 +1145,13 @@
 										{@const timeoutTime = deploymentTime + maxBakeTimeMs}
 										{@const timeUntilTimeout = timeoutTime - currentTime}
 										<div class="mt-1 text-sm text-orange-600 dark:text-orange-400">
-											Will mark deployment as failed if health check don't pass in {formatDurationFromMs(
+											Will mark deployment as failed if health checks don't pass in {formatDurationFromMs(
 												Math.max(timeUntilTimeout, 0)
 											)}
 										</div>
 									{:else}
 										<div class="mt-1 text-sm text-blue-600 dark:text-blue-400">
-											Waiting for health check to pass...
+											Waiting for health checks to pass...
 										</div>
 									{/if}
 								{:else if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
@@ -1542,6 +1552,31 @@
 								</Card>
 							{/each}
 						</div>
+					{:else if isCurrentVersionCustom}
+						<Alert color="yellow" class="mb-4">
+							<div class="flex items-center gap-3">
+								<InfoCircleSolid class="h-5 w-5" />
+								<span class="text-lg font-medium">Current version is custom</span>
+							</div>
+							<p class="mb-4 mt-2 text-sm">
+								The currently deployed version is not in the available releases list. This means
+								it's a custom version that was manually deployed. To change to a different version,
+								you need to manually deploy another version.
+							</p>
+							<div class="flex gap-2">
+								<Button
+									size="xs"
+									color="light"
+									onclick={() => {
+										isPinVersionMode = true;
+										showPinModal = true;
+									}}
+								>
+									<EditOutline class="me-2 h-4 w-4" />
+									Change Version
+								</Button>
+							</div>
+						</Alert>
 					{:else}
 						<Alert color="blue" class="mb-4">
 							<div class="flex items-center">
