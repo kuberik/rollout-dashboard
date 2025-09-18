@@ -531,11 +531,11 @@
 
 	// Function to load annotations on demand for custom releases when displayed
 	async function loadAnnotationsOnDemand(versionTag: string): Promise<void> {
-		// Only load if not already loaded and this is not a regular release in history
-		const historyEntry = rollout?.status?.history?.find(
-			(entry) => entry.version.tag === versionTag
+		// Only load if not already loaded and this is not a regular release
+		const availableReleaseEntry = rollout?.status?.availableReleases?.find(
+			(entry) => entry?.tag === versionTag
 		);
-		if (!historyEntry && !annotations[versionTag]) {
+		if (!availableReleaseEntry && !annotations[versionTag]) {
 			await getAnnotations(versionTag);
 		}
 	}
