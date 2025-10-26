@@ -999,55 +999,6 @@
 							{/if}
 						</div>
 					</div>
-					<div class="flex items-center gap-2">
-						<Button size="sm" color="light" onclick={() => (showTimelineDrawer = true)}>
-							<ClockArrowOutline class="me-2 h-4 w-4" />
-							Rollout History
-						</Button>
-						<Button
-							size="sm"
-							color="light"
-							disabled={!isDashboardManagingWantedVersion}
-							onclick={() => {
-								if (isDashboardManagingWantedVersion) {
-									isPinVersionMode = true;
-									showPinModal = true;
-								}
-							}}
-						>
-							<EditOutline class="me-2 h-4 w-4" />
-							Pin Version
-						</Button>
-						{#if !isDashboardManagingWantedVersion}
-							<Tooltip placement="bottom"
-								>Version management disabled: This rollout's wantedVersion field is managed by
-								another controller or external system. The dashboard cannot pin it to prevent
-								conflicts.</Tooltip
-							>
-						{/if}
-						{#if rollout.spec?.wantedVersion}
-							<Button
-								size="sm"
-								color="light"
-								disabled={!isDashboardManagingWantedVersion}
-								onclick={() => {
-									if (isDashboardManagingWantedVersion) {
-										showClearPinModal = true;
-									}
-								}}
-							>
-								<CloseOutline class="me-2 h-4 w-4" />
-								Clear Pin
-							</Button>
-							{#if !isDashboardManagingWantedVersion}
-								<Tooltip placement="bottom"
-									>Version management disabled: This rollout's wantedVersion field is managed by
-									another controller or external system. The dashboard cannot pin it to prevent
-									conflicts.</Tooltip
-								>
-							{/if}
-						{/if}
-					</div>
 				</div>
 			</div>
 
@@ -1316,6 +1267,60 @@
 
 							<!-- Action Buttons -->
 							<div class="flex flex-wrap gap-3">
+								<Button
+									size="sm"
+									color="light"
+									class="text-xs"
+									onclick={() => (showTimelineDrawer = true)}
+								>
+									<ClockArrowOutline class="me-2 h-4 w-4" />
+									Rollout History
+								</Button>
+								<Button
+									size="sm"
+									color="light"
+									class="text-xs"
+									disabled={!isDashboardManagingWantedVersion}
+									onclick={() => {
+										if (isDashboardManagingWantedVersion) {
+											isPinVersionMode = true;
+											showPinModal = true;
+										}
+									}}
+								>
+									<EditOutline class="me-2 h-4 w-4" />
+									Pin Version
+								</Button>
+								{#if !isDashboardManagingWantedVersion}
+									<Tooltip placement="bottom"
+										>Version management disabled: This rollout's wantedVersion field is managed by
+										another controller or external system. The dashboard cannot pin it to prevent
+										conflicts.</Tooltip
+									>
+								{/if}
+								{#if rollout.spec?.wantedVersion}
+									<Button
+										size="sm"
+										color="light"
+										class="text-xs"
+										disabled={!isDashboardManagingWantedVersion}
+										onclick={() => {
+											if (isDashboardManagingWantedVersion) {
+												showClearPinModal = true;
+											}
+										}}
+									>
+										<CloseOutline class="me-2 h-4 w-4" />
+										Clear Pin
+									</Button>
+									{#if !isDashboardManagingWantedVersion}
+										<Tooltip placement="bottom"
+											>Version management disabled: This rollout's wantedVersion field is managed by
+											another controller or external system. The dashboard cannot pin it to prevent
+											conflicts.</Tooltip
+										>
+									{/if}
+								{/if}
 								{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 									<SourceViewer
 										namespace={rollout.metadata?.namespace || ''}
