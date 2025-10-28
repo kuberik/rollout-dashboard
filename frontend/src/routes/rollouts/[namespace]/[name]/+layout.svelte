@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import type { Rollout } from '../../../../types';
 	import { Sidebar, SidebarGroup, SidebarItem, Badge } from 'flowbite-svelte';
-	import { ClockSolid, ClockArrowOutline } from 'flowbite-svelte-icons';
+	import { ObjectsColumnSolid, ClockArrowOutline } from 'flowbite-svelte-icons';
 	import { getRolloutStatus, getDisplayVersion, hasUnblockFailedAnnotation } from '$lib/utils';
 	import { invalidateAll } from '$app/navigation';
 
@@ -33,14 +33,14 @@
 
 <div class="flex h-full overflow-hidden">
 	<!-- Sidebar -->
-	<Sidebar position="static" activeUrl={$page.url.pathname} class="w-48 flex-shrink-0">
+	<Sidebar position="static" activeUrl={$page.url.pathname} class="w-54 flex-shrink-0">
 		<SidebarGroup>
 			<SidebarItem
-				label="Dashboard"
+				label="Overview"
 				href={`/rollouts/${$page.params.namespace}/${$page.params.name}`}
 			>
 				{#snippet icon()}
-					<ClockSolid
+					<ObjectsColumnSolid
 						class="h-5 w-5 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
 					/>
 				{/snippet}
