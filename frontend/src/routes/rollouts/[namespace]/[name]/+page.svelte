@@ -28,7 +28,10 @@
 		Blockquote,
 		Drawer,
 		StepIndicator,
-		Progressradial
+		Progressradial,
+		Sidebar,
+		SidebarGroup,
+		SidebarItem
 	} from 'flowbite-svelte';
 	import {
 		CodePullRequestSolid,
@@ -65,7 +68,8 @@
 		isVersionForceDeploying,
 		isVersionBypassingGates,
 		hasFailedBakeStatus,
-		hasUnblockFailedAnnotation
+		hasUnblockFailedAnnotation,
+		getDisplayVersion
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
@@ -73,15 +77,17 @@
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import { fly } from 'svelte/transition';
 
-	let rollout: Rollout | null = null;
+	export let data;
+	$: rollout = data.rollout;
+	$: loading = data.loading;
+	$: error = data.error;
+
 	let kustomizations: Kustomization[] = [];
 	let ociRepositories: OCIRepository[] = [];
 	let rolloutGates: any[] = [];
 	let managedResources: Record<string, ManagedResourceStatus[]> = {};
 	let healthChecks: HealthCheck[] = [];
-	let loading = true;
 	let hasLoaded = false;
-	let error: string | null = null;
 
 	let annotations: Record<string, Record<string, string>> = {};
 	let loadingAnnotations: Record<string, boolean> = {};
@@ -273,16 +279,18 @@
 	}
 
 	async function updateData() {
-		if (!hasLoaded) {
-			loading = true;
+		// Wait for rollout to be loaded from layout
+		if (!rollout || loading) {
+			return;
 		}
+
 		try {
 			const response = await fetch(`/api/rollouts/${$page.params.namespace}/${$page.params.name}`);
 			if (!response.ok) {
 				throw new Error('Failed to fetch rollout details');
 			}
 			const data = await response.json();
-			rollout = data.rollout;
+			// rollout is already set from parent layout, don't overwrite it
 			kustomizations = data.kustomizations?.items || [];
 			ociRepositories = data.ociRepositories?.items || [];
 			rolloutGates = data.rolloutGates?.items || [];
@@ -355,13 +363,16 @@
 				console.error('Failed to fetch rollout data (preserving stale data):', e);
 			}
 		} finally {
-			loading = false;
-			hasLoaded = true;
+			// loading is managed by parent layout
 		}
 	}
 
+	$: if (rollout && !loading && !hasLoaded) {
+		updateData();
+		hasLoaded = true;
+	}
+
 	onMount(async () => {
-		await updateData();
 		autoRefreshIntervalId = window.setInterval(() => {
 			updateData();
 		}, 5000);
@@ -512,15 +523,6 @@
 			loadingAnnotations[version] = false;
 			loadingAnnotations = { ...loadingAnnotations };
 		}
-	}
-
-	// Helper function to get display version from version object or annotations
-	function getDisplayVersion(versionInfo: {
-		version?: string;
-		revision?: string;
-		tag: string;
-	}): string {
-		return versionInfo.version || versionInfo.revision || versionInfo.tag;
 	}
 
 	// Helper function to get revision information from version object or annotations
@@ -947,7 +949,7 @@
 	>
 </svelte:head>
 
-<div class="w-full dark:bg-gray-900">
+<div class="h-full w-full dark:bg-gray-900">
 	{#if loading}
 		<div class="space-y-4 p-4">
 			<div class="w-full">
@@ -968,337 +970,281 @@
 	{:else if !rollout}
 		<Alert color="yellow" class="mb-4">Release not found</Alert>
 	{:else}
-		<!-- Main Layout: Full width content with drawer toggle -->
-		<div class="flex h-full flex-col">
-			<!-- Header with Timeline Toggle -->
-			<div
-				class="flex-shrink-0 border-b border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
-			>
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-4">
-						<h2 class="text-2xl font-bold text-gray-900 dark:text-white">
-							<span class="text-gray-500 dark:text-gray-400">{rollout.metadata?.namespace} / </span>
-							{rollout.metadata?.name}
-						</h2>
-						<div class="flex items-center gap-2">
-							<Badge color={getRolloutStatus(rollout).color}>
-								{getRolloutStatus(rollout).text}
-							</Badge>
-							<Badge color="blue">
-								{#if rollout?.status?.history?.[0]}
-									{getDisplayVersion(rollout.status.history[0].version)}
-								{:else}
-									Unknown
-								{/if}
-							</Badge>
-							{#if rollout.spec?.wantedVersion}
-								<Badge>Pinned</Badge>
-							{/if}
-							{#if hasUnblockFailedAnnotation(rollout)}
-								<Badge color="green">Resumed</Badge>
-							{/if}
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Main Content Area -->
-			<div class="w-full flex-1 overflow-y-auto p-4">
-				<!-- Failed Deployment Alert -->
-				{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
-					<Alert color="gray" class="border-1 mb-4 border-red-600 dark:border-red-400">
-						<div class="flex items-center gap-3">
-							<ExclamationCircleSolid class="h-5 w-5 text-red-600 dark:text-red-400" />
-							<span class="text-lg font-medium text-red-600 dark:text-red-400"
-								>Deployment Failed</span
-							>
-						</div>
-						<p class="mb-4 mt-2 text-sm">
-							The latest deployment has failed. You can resume the rollout, mark it as successful,
-							or deploy another version to fix the issue.
-						</p>
-						<div class="flex gap-2">
-							<Button
-								size="xs"
-								color="light"
-								onclick={() => {
-									selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
-									showResumeRolloutModal = true;
-								}}
-							>
-								<PlaySolid class="me-2 h-4 w-4" />
-								Resume Rollout
-							</Button>
-							<Button
-								size="xs"
-								outline
-								color="light"
-								onclick={() => {
-									selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
-									showMarkSuccessfulModal = true;
-								}}
-							>
-								<CheckCircleSolid class="me-2 h-4 w-4" />
-								Mark Successful
-							</Button>
-						</div>
-					</Alert>
-				{/if}
-
-				<!-- Dashboard Grid -->
-				<div class="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-2">
-					<!-- Current Version Card -->
-					{#if rollout.status?.history?.[0]}
-						{@const latestEntry = rollout.status.history[0]}
-						<Card class="w-full max-w-none p-6 lg:col-span-2">
-							<!-- Header Section -->
-							<div class="mb-6">
-								<div class="flex items-center justify-between">
-									<h3 class="text-xl font-bold text-gray-900 dark:text-white">Current Version</h3>
-									<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-										<ClockSolid class="h-4 w-4" />
-										<span>Deployed {formatTimeAgo(latestEntry.timestamp, $now)}</span>
-									</div>
-								</div>
+		<!-- Main Layout: Sidebar and content side by side -->
+		<div class="flex h-full overflow-hidden">
+			<!-- Content -->
+			<div class="flex flex-1 flex-col overflow-hidden">
+				<!-- Content Area -->
+				<div class="flex-1 overflow-y-auto p-4">
+					<!-- Failed Deployment Alert -->
+					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
+						<Alert color="gray" class="border-1 mb-4 border-red-600 dark:border-red-400">
+							<div class="flex items-center gap-3">
+								<ExclamationCircleSolid class="h-5 w-5 text-red-600 dark:text-red-400" />
+								<span class="text-lg font-medium text-red-600 dark:text-red-400"
+									>Deployment Failed</span
+								>
 							</div>
+							<p class="mb-4 mt-2 text-sm">
+								The latest deployment has failed. You can resume the rollout, mark it as successful,
+								or deploy another version to fix the issue.
+							</p>
+							<div class="flex gap-2">
+								<Button
+									size="xs"
+									color="light"
+									onclick={() => {
+										selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
+										showResumeRolloutModal = true;
+									}}
+								>
+									<PlaySolid class="me-2 h-4 w-4" />
+									Resume Rollout
+								</Button>
+								<Button
+									size="xs"
+									outline
+									color="light"
+									onclick={() => {
+										selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
+										showMarkSuccessfulModal = true;
+									}}
+								>
+									<CheckCircleSolid class="me-2 h-4 w-4" />
+									Mark Successful
+								</Button>
+							</div>
+						</Alert>
+					{/if}
 
-							<!-- Version Display Section -->
-							<div class="mb-6">
-								<div class="flex items-center gap-4">
-									<!-- Status Icon -->
-									<div
-										class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
-									>
-										{#if latestEntry.bakeStatus === 'InProgress'}
-											<Spinner color="yellow" size="6" />
-										{:else}
-											<svelte:component
-												this={getBakeStatusIcon(latestEntry.bakeStatus).icon}
-												class="h-6 w-6 {getBakeStatusIcon(latestEntry.bakeStatus).color}"
-											/>
-										{/if}
-									</div>
-
-									<!-- Version Info -->
-									<div class="flex-1">
-										<h4 class="text-2xl font-bold text-gray-900 dark:text-white">
-											{getDisplayVersion(latestEntry.version)}
-										</h4>
-										<div class="mt-1 flex items-center gap-2">
-											{#if getRevisionInfo(latestEntry.version)}
-												<Badge color="blue" size="small">
-													{formatRevision(getRevisionInfo(latestEntry.version)!)}
-												</Badge>
-											{/if}
-											{#if isCurrentVersionCustom}
-												<Badge color="yellow" size="small">Custom</Badge>
-											{/if}
-											<Badge
-												color={latestEntry.bakeStatus === 'Succeeded'
-													? 'green'
-													: latestEntry.bakeStatus === 'Failed'
-														? 'red'
-														: 'yellow'}
-												size="small"
-											>
-												{latestEntry.bakeStatus}
-											</Badge>
+					<!-- Dashboard Grid -->
+					<div class="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-2">
+						<!-- Current Version Card -->
+						{#if rollout.status?.history?.[0]}
+							{@const latestEntry = rollout.status.history[0]}
+							<Card class="w-full max-w-none p-6 lg:col-span-2">
+								<!-- Header Section -->
+								<div class="mb-6">
+									<div class="flex items-center justify-between">
+										<h3 class="text-xl font-bold text-gray-900 dark:text-white">Current Version</h3>
+										<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+											<ClockSolid class="h-4 w-4" />
+											<span>Deployed {formatTimeAgo(latestEntry.timestamp, $now)}</span>
 										</div>
 									</div>
 								</div>
-							</div>
 
-							<!-- Deployment Timeline -->
-							<div class="mb-6">
-								<h5 class="mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-									Deployment Timeline
-								</h5>
+								<!-- Version Display Section -->
+								<div class="mb-6">
+									<div class="flex items-center gap-4">
+										<!-- Status Icon -->
+										<div
+											class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
+										>
+											{#if latestEntry.bakeStatus === 'InProgress'}
+												<Spinner color="yellow" size="6" />
+											{:else}
+												<svelte:component
+													this={getBakeStatusIcon(latestEntry.bakeStatus).icon}
+													class="h-6 w-6 {getBakeStatusIcon(latestEntry.bakeStatus).color}"
+												/>
+											{/if}
+										</div>
 
-								<Timeline order="horizontal" class="w-full">
-									<!-- Started -->
-									<TimelineItem
-										title="Started"
-										date={formatTimeAgo(latestEntry.timestamp, $now)}
-										class="min-w-0 flex-1"
-									>
-										{#snippet orientationSlot()}
-											<div class="flex items-center">
-												<div
-													class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-200 ring-0 ring-white sm:ring-8 dark:bg-blue-900 dark:ring-gray-800"
+										<!-- Version Info -->
+										<div class="flex-1">
+											<h4 class="text-2xl font-bold text-gray-900 dark:text-white">
+												{getDisplayVersion(latestEntry.version)}
+											</h4>
+											<div class="mt-1 flex items-center gap-2">
+												{#if getRevisionInfo(latestEntry.version)}
+													<Badge color="blue" size="small">
+														{formatRevision(getRevisionInfo(latestEntry.version)!)}
+													</Badge>
+												{/if}
+												{#if isCurrentVersionCustom}
+													<Badge color="yellow" size="small">Custom</Badge>
+												{/if}
+												<Badge
+													color={latestEntry.bakeStatus === 'Succeeded'
+														? 'green'
+														: latestEntry.bakeStatus === 'Failed'
+															? 'red'
+															: 'yellow'}
+													size="small"
 												>
-													<ClockSolid class="h-4 w-4 text-blue-600 dark:text-blue-400" />
-												</div>
-												<div class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"></div>
+													{latestEntry.bakeStatus}
+												</Badge>
 											</div>
-										{/snippet}
-										{#if latestEntry.message}
-											<Blockquote class="mt-2 break-words text-sm text-gray-600 dark:text-gray-400">
-												"{latestEntry.message}"
-											</Blockquote>
-										{/if}
-									</TimelineItem>
+										</div>
+									</div>
+								</div>
 
-									<!-- Deployed -->
-									{#if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+								<!-- Deployment Timeline -->
+								<div class="mb-6">
+									<h5 class="mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+										Deployment Timeline
+									</h5>
+
+									<Timeline order="horizontal" class="w-full">
+										<!-- Started -->
 										<TimelineItem
-											title="Deployed"
-											date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
+											title="Started"
+											date={formatTimeAgo(latestEntry.timestamp, $now)}
 											class="min-w-0 flex-1"
 										>
 											{#snippet orientationSlot()}
 												<div class="flex items-center">
 													<div
-														class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-200 ring-0 ring-white sm:ring-8 dark:bg-green-900 dark:ring-gray-800"
+														class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-200 ring-0 ring-white sm:ring-8 dark:bg-blue-900 dark:ring-gray-800"
 													>
-														<CheckCircleSolid class="h-4 w-4 text-green-600 dark:text-green-400" />
+														<ClockSolid class="h-4 w-4 text-blue-600 dark:text-blue-400" />
 													</div>
 													<div
 														class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
 													></div>
 												</div>
 											{/snippet}
-											<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-												Completed after {formatDuration(
-													latestEntry.bakeStartTime,
-													new Date(latestEntry.bakeEndTime)
-												)}
-												{#if latestEntry.bakeStatusMessage}
-													<br />
-													{latestEntry.bakeStatusMessage}
-												{/if}
-											</div>
+											{#if latestEntry.message}
+												<Blockquote
+													class="mt-2 break-words text-sm text-gray-600 dark:text-gray-400"
+												>
+													"{latestEntry.message}"
+												</Blockquote>
+											{/if}
 										</TimelineItem>
-									{:else if latestEntry.bakeStatus === 'Failed' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
-										<TimelineItem
-											title="Deployment failed"
-											date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
-											class="min-w-0 flex-1"
-										>
-											{#snippet orientationSlot()}
-												<div class="flex items-center">
-													<div
-														class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-200 ring-0 ring-white sm:ring-8 dark:bg-red-900 dark:ring-gray-800"
-													>
-														<ExclamationCircleSolid
-															class="h-4 w-4 text-red-600 dark:text-red-400"
-														/>
-													</div>
-													<div
-														class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-													></div>
-												</div>
-											{/snippet}
-											<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-												Failed after {formatDuration(
-													latestEntry.bakeStartTime,
-													new Date(latestEntry.bakeEndTime)
-												)}
-												{#if latestEntry.bakeStatusMessage}
-													<br />
-													{latestEntry.bakeStatusMessage}
-												{/if}
-											</div>
-										</TimelineItem>
-									{:else if latestEntry.bakeStatus === 'InProgress'}
-										<TimelineItem
-											title="Baking..."
-											date={rollout.spec?.minBakeTime
-												? (() => {
-														const deploymentTime = new Date(latestEntry.timestamp).getTime();
-														const currentTime = $now.getTime();
-														const elapsedTime = currentTime - deploymentTime;
-														const minBakeTimeMs = parseDuration(rollout.spec.minBakeTime);
-														const maxBakeTimeMs = rollout.spec.maxBakeTime
-															? parseDuration(rollout.spec.maxBakeTime)
-															: null;
-														if (elapsedTime < minBakeTimeMs) {
-															const remainingTime = minBakeTimeMs - elapsedTime;
-															return `Waiting to mark the deployment as successful for at least ${formatDurationFromMs(remainingTime)}`;
-														} else if (maxBakeTimeMs) {
-															const timeoutTime = deploymentTime + maxBakeTimeMs;
-															const timeUntilTimeout = timeoutTime - currentTime;
-															return `Will mark deployment as failed if health checks don't pass in ${formatDurationFromMs(Math.max(timeUntilTimeout, 0))}`;
-														} else {
-															return 'Waiting for health checks to pass...';
-														}
-													})()
-												: 'Waiting for deployment to complete...'}
-											class="min-w-0 flex-1"
-										>
-											{#snippet orientationSlot()}
-												<div class="flex items-center">
-													<div
-														class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {latestEntry.bakeStatus ===
-														'InProgress'
-															? 'bg-yellow-200 dark:bg-yellow-900'
-															: healthChecks.every((hc) => hc.status?.status === 'Healthy')
-																? 'bg-green-200 dark:bg-green-900'
-																: healthChecks.some((hc) => hc.status?.status === 'Unhealthy')
-																	? 'bg-red-200 dark:bg-red-900'
-																	: 'bg-yellow-200 dark:bg-yellow-900'}"
-													>
-														{#if latestEntry.bakeStatus === 'InProgress'}
-															<Spinner size="4" color="yellow" />
-														{:else if healthChecks.every((hc) => hc.status?.status === 'Healthy')}
+
+										<!-- Deployed -->
+										{#if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+											<TimelineItem
+												title="Deployed"
+												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
+												class="min-w-0 flex-1"
+											>
+												{#snippet orientationSlot()}
+													<div class="flex items-center">
+														<div
+															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-200 ring-0 ring-white sm:ring-8 dark:bg-green-900 dark:ring-gray-800"
+														>
 															<CheckCircleSolid
 																class="h-4 w-4 text-green-600 dark:text-green-400"
 															/>
-														{:else if healthChecks.some((hc) => hc.status?.status === 'Unhealthy')}
+														</div>
+														<div
+															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+														></div>
+													</div>
+												{/snippet}
+												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+													Completed after {formatDuration(
+														latestEntry.bakeStartTime,
+														new Date(latestEntry.bakeEndTime)
+													)}
+													{#if latestEntry.bakeStatusMessage}
+														<br />
+														{latestEntry.bakeStatusMessage}
+													{/if}
+												</div>
+											</TimelineItem>
+										{:else if latestEntry.bakeStatus === 'Failed' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+											<TimelineItem
+												title="Deployment failed"
+												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
+												class="min-w-0 flex-1"
+											>
+												{#snippet orientationSlot()}
+													<div class="flex items-center">
+														<div
+															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-200 ring-0 ring-white sm:ring-8 dark:bg-red-900 dark:ring-gray-800"
+														>
 															<ExclamationCircleSolid
 																class="h-4 w-4 text-red-600 dark:text-red-400"
 															/>
-														{:else}
-															<ClockSolid class="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-														{/if}
+														</div>
+														<div
+															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+														></div>
 													</div>
-													<div
-														class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-													></div>
+												{/snippet}
+												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+													Failed after {formatDuration(
+														latestEntry.bakeStartTime,
+														new Date(latestEntry.bakeEndTime)
+													)}
+													{#if latestEntry.bakeStatusMessage}
+														<br />
+														{latestEntry.bakeStatusMessage}
+													{/if}
 												</div>
-											{/snippet}
-											<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-												{latestEntry.bakeStatusMessage || 'Baking in progress...'}
-											</div>
-											<div></div>
-										</TimelineItem>
-									{/if}
-								</Timeline>
-							</div>
+											</TimelineItem>
+										{:else if latestEntry.bakeStatus === 'InProgress'}
+											<TimelineItem
+												title="Baking..."
+												date={rollout.spec?.minBakeTime
+													? (() => {
+															const deploymentTime = new Date(latestEntry.timestamp).getTime();
+															const currentTime = $now.getTime();
+															const elapsedTime = currentTime - deploymentTime;
+															const minBakeTimeMs = parseDuration(rollout.spec.minBakeTime);
+															const maxBakeTimeMs = rollout.spec.maxBakeTime
+																? parseDuration(rollout.spec.maxBakeTime)
+																: null;
+															if (elapsedTime < minBakeTimeMs) {
+																const remainingTime = minBakeTimeMs - elapsedTime;
+																return `Waiting to mark the deployment as successful for at least ${formatDurationFromMs(remainingTime)}`;
+															} else if (maxBakeTimeMs) {
+																const timeoutTime = deploymentTime + maxBakeTimeMs;
+																const timeUntilTimeout = timeoutTime - currentTime;
+																return `Will mark deployment as failed if health checks don't pass in ${formatDurationFromMs(Math.max(timeUntilTimeout, 0))}`;
+															} else {
+																return 'Waiting for health checks to pass...';
+															}
+														})()
+													: 'Waiting for deployment to complete...'}
+												class="min-w-0 flex-1"
+											>
+												{#snippet orientationSlot()}
+													<div class="flex items-center">
+														<div
+															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {latestEntry.bakeStatus ===
+															'InProgress'
+																? 'bg-yellow-200 dark:bg-yellow-900'
+																: healthChecks.every((hc) => hc.status?.status === 'Healthy')
+																	? 'bg-green-200 dark:bg-green-900'
+																	: healthChecks.some((hc) => hc.status?.status === 'Unhealthy')
+																		? 'bg-red-200 dark:bg-red-900'
+																		: 'bg-yellow-200 dark:bg-yellow-900'}"
+														>
+															{#if latestEntry.bakeStatus === 'InProgress'}
+																<Spinner size="4" color="yellow" />
+															{:else if healthChecks.every((hc) => hc.status?.status === 'Healthy')}
+																<CheckCircleSolid
+																	class="h-4 w-4 text-green-600 dark:text-green-400"
+																/>
+															{:else if healthChecks.some((hc) => hc.status?.status === 'Unhealthy')}
+																<ExclamationCircleSolid
+																	class="h-4 w-4 text-red-600 dark:text-red-400"
+																/>
+															{:else}
+																<ClockSolid class="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+															{/if}
+														</div>
+														<div
+															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+														></div>
+													</div>
+												{/snippet}
+												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+													{latestEntry.bakeStatusMessage || 'Baking in progress...'}
+												</div>
+												<div></div>
+											</TimelineItem>
+										{/if}
+									</Timeline>
+								</div>
 
-							<!-- Action Buttons -->
-							<div class="flex flex-wrap gap-3">
-								<Button
-									size="sm"
-									color="light"
-									class="text-xs"
-									onclick={() => (showTimelineDrawer = true)}
-								>
-									<ClockArrowOutline class="me-2 h-4 w-4" />
-									Rollout History
-								</Button>
-								<Button
-									size="sm"
-									color="light"
-									class="text-xs"
-									disabled={!isDashboardManagingWantedVersion}
-									onclick={() => {
-										if (isDashboardManagingWantedVersion) {
-											isPinVersionMode = true;
-											showPinModal = true;
-										}
-									}}
-								>
-									<EditOutline class="me-2 h-4 w-4" />
-									Pin Version
-								</Button>
-								{#if !isDashboardManagingWantedVersion}
-									<Tooltip placement="bottom"
-										>Version management disabled: This rollout's wantedVersion field is managed by
-										another controller or external system. The dashboard cannot pin it to prevent
-										conflicts.</Tooltip
-									>
-								{/if}
-								{#if rollout.spec?.wantedVersion}
+								<!-- Action Buttons -->
+								<div class="flex flex-wrap gap-3">
 									<Button
 										size="sm"
 										color="light"
@@ -1306,12 +1252,13 @@
 										disabled={!isDashboardManagingWantedVersion}
 										onclick={() => {
 											if (isDashboardManagingWantedVersion) {
-												showClearPinModal = true;
+												isPinVersionMode = true;
+												showPinModal = true;
 											}
 										}}
 									>
-										<CloseOutline class="me-2 h-4 w-4" />
-										Clear Pin
+										<EditOutline class="me-2 h-4 w-4" />
+										Pin Version
 									</Button>
 									{#if !isDashboardManagingWantedVersion}
 										<Tooltip placement="bottom"
@@ -1320,579 +1267,609 @@
 											conflicts.</Tooltip
 										>
 									{/if}
-								{/if}
-								{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
-									<SourceViewer
-										namespace={rollout.metadata?.namespace || ''}
-										name={rollout.metadata?.name || ''}
-										version={latestEntry.version.tag}
-									/>
-								{/if}
-								{#if rollout?.status?.source}
-									<GitHubViewButton
-										sourceUrl={rollout.status.source}
-										version={getDisplayVersion(latestEntry.version)}
-										size="sm"
-										color="light"
-									/>
-								{/if}
-							</div>
-						</Card>
-					{/if}
-
-					<!-- Health Checks Card -->
-					{#if healthChecks.length > 0}
-						<Card class="w-full max-w-none p-6">
-							<div class="mb-4 flex items-center justify-between">
-								<h4 class="text-lg font-medium text-gray-900 dark:text-white">Health Checks</h4>
-								<div class="flex items-center gap-2">
-									<Badge color="blue" size="small">
-										{healthChecks.filter((hc) => hc.status?.status === 'Healthy')
-											.length}/{healthChecks.length} healthy
-									</Badge>
-								</div>
-							</div>
-							{#if healthChecks.filter((hc) => hc.status?.status !== 'Healthy').length > 0}
-								<div class="space-y-0">
-									{#each healthChecks.filter((hc) => hc.status?.status !== 'Healthy') as healthCheck (healthCheck.metadata?.name + '/' + healthCheck.metadata?.namespace)}
-										<div class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700">
-											<div class="flex items-center justify-between">
-												<div class="flex items-center gap-3">
-													<div class="flex h-8 w-8 items-center justify-center">
-														{#if healthCheck.status?.status === 'Healthy'}
-															<CheckCircleSolid
-																class="h-5 w-5 text-green-600 dark:text-green-400"
-															/>
-														{:else if healthCheck.status?.status === 'Unhealthy'}
-															<ExclamationCircleSolid
-																class="h-5 w-5 text-red-600 dark:text-red-400"
-															/>
-														{:else if healthCheck.status?.status === 'Pending'}
-															<Spinner size="6" color="yellow" />
-														{:else}
-															<ExclamationCircleSolid
-																class="h-5 w-5 text-gray-500 dark:text-gray-400"
-															/>
-														{/if}
-													</div>
-													<div class="min-w-0 flex-1">
-														<h3 class="truncate text-sm font-medium text-gray-900 dark:text-white">
-															{healthCheck.metadata?.annotations?.['kuberik.com/display-name'] ||
-																healthCheck.metadata?.name}
-														</h3>
-														{#if healthCheck.spec?.class}
-															<p class="text-xs text-gray-500 dark:text-gray-400">
-																{healthCheck.spec.class.charAt(0).toUpperCase() +
-																	healthCheck.spec.class.slice(1)}
-															</p>
-														{/if}
-													</div>
-												</div>
-												<div class="flex items-center gap-2">
-													{#if healthCheck.status?.lastChangeTime}
-														<div class="text-xs text-gray-500 dark:text-gray-400">
-															{formatTimeAgo(healthCheck.status.lastChangeTime, $now)}
-														</div>
-													{/if}
-													<Badge
-														color={healthCheck.status?.status === 'Healthy'
-															? 'green'
-															: healthCheck.status?.status === 'Unhealthy'
-																? 'red'
-																: 'yellow'}
-														size="small"
-														class="cursor-help"
-													>
-														{healthCheck.status?.status || 'Unknown'}
-													</Badge>
-													<Popover class="max-w-sm">
-														<div class="p-4">
-															<div class="mb-3">
-																<div class="mb-2 flex items-center gap-2">
-																	{#if healthCheck.status?.status === 'Healthy'}
-																		<CheckCircleSolid
-																			class="h-4 w-4 text-green-600 dark:text-green-400"
-																		/>
-																	{:else if healthCheck.status?.status === 'Unhealthy'}
-																		<ExclamationCircleSolid
-																			class="h-4 w-4 text-red-600 dark:text-red-400"
-																		/>
-																	{:else if healthCheck.status?.status === 'Pending'}
-																		<Spinner size="4" color="yellow" />
-																	{:else}
-																		<ExclamationCircleSolid
-																			class="h-4 w-4 text-gray-500 dark:text-gray-400"
-																		/>
-																	{/if}
-																	<h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-																		{healthCheck.metadata?.annotations?.[
-																			'kuberik.com/display-name'
-																		] || healthCheck.metadata?.name}
-																	</h4>
-																</div>
-																<Badge
-																	color={healthCheck.status?.status === 'Healthy'
-																		? 'green'
-																		: healthCheck.status?.status === 'Unhealthy'
-																			? 'red'
-																			: 'yellow'}
-																	size="small"
-																	class="text-xs"
-																>
-																	{healthCheck.status?.status || 'Unknown'}
-																</Badge>
-															</div>
-
-															{#if healthCheck.status?.message}
-																<div class="mb-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
-																	<p
-																		class="text-xs leading-relaxed text-gray-700 dark:text-gray-300"
-																	>
-																		{healthCheck.status.message}
-																	</p>
-																</div>
-															{/if}
-
-															<div class="space-y-2 text-xs">
-																{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
-																	<div
-																		class="flex items-center gap-2 text-red-600 dark:text-red-400"
-																	>
-																		<ClockSolid class="h-3 w-3" />
-																		<span
-																			>Last Error: {formatTimeAgo(
-																				healthCheck.status.lastErrorTime,
-																				$now
-																			)}</span
-																		>
-																	</div>
-																{/if}
-																{#if healthCheck.spec?.class}
-																	<div
-																		class="flex items-center gap-2 text-gray-600 dark:text-gray-400"
-																	>
-																		<DatabaseSolid class="h-3 w-3" />
-																		<span
-																			>Class: {healthCheck.spec.class.charAt(0).toUpperCase() +
-																				healthCheck.spec.class.slice(1)}</span
-																		>
-																	</div>
-																{/if}
-																{#if healthCheck.status?.lastChangeTime}
-																	<div
-																		class="flex items-center gap-2 text-gray-600 dark:text-gray-400"
-																	>
-																		<ClockSolid class="h-3 w-3" />
-																		<span
-																			>Last Change: {formatTimeAgo(
-																				healthCheck.status.lastChangeTime,
-																				$now
-																			)}</span
-																		>
-																	</div>
-																{/if}
-															</div>
-														</div>
-													</Popover>
-												</div>
-											</div>
-
-											{#if healthCheck.status?.message}
-												<div class="ml-11 mt-2">
-													<p class="mb-1 text-xs text-gray-600 dark:text-gray-400">
-														{healthCheck.status.message}
-													</p>
-												</div>
-											{/if}
-											{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
-												<div class="ml-11 mt-1">
-													<div
-														class="flex items-center gap-1 text-xs text-red-600 dark:text-red-400"
-													>
-														<ExclamationCircleSolid class="h-3 w-3" />
-														<span
-															>Error {formatTimeAgo(healthCheck.status.lastErrorTime, $now)}</span
-														>
-													</div>
-												</div>
-											{/if}
-										</div>
-									{/each}
-								</div>
-							{:else}
-								<div class="flex items-center justify-center py-8">
-									<div class="text-center">
-										<div class="mb-2 flex items-center justify-center">
-											<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
-										</div>
-										<p class="text-sm font-medium text-gray-900 dark:text-white">
-											All {healthChecks.length} health checks are healthy
-										</p>
-									</div>
-								</div>
-							{/if}
-						</Card>
-					{/if}
-
-					<!-- Kubernetes Resources Status Card -->
-					{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
-						<Card class="w-full max-w-none p-6">
-							<div class="mb-4 flex items-center justify-between">
-								<h4 class="text-lg font-medium text-gray-900 dark:text-white">
-									Kubernetes Resources Status
-								</h4>
-								<Button
-									size="sm"
-									color="blue"
-									onclick={reconcileFluxResources}
-									class="flex items-center gap-2"
-								>
-									<RefreshOutline class="h-4 w-4" id="reconcile-icon" />
-									Reconcile Flux Resources
-								</Button>
-							</div>
-
-							<div class="space-y-4">
-								{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
-									{@const allResources = [
-										...kustomizations.map((k) => ({
-											name: k.metadata?.name,
-											namespace: k.metadata?.namespace,
-											status: getResourceStatus(k).status,
-											message: k.status?.lastAppliedRevision
-												? `Last applied: ${k.status.lastAppliedRevision}`
-												: undefined,
-											lastModified: getLastTransitionTime(k),
-											groupVersionKind: 'Kustomization',
-											type: 'Kustomization'
-										})),
-										...ociRepositories.map((r) => ({
-											name: r.metadata?.name,
-											namespace: r.metadata?.namespace,
-											status: getResourceStatus(r).status,
-											message: r.status?.url ? `URL: ${r.status.url}` : undefined,
-											lastModified: getLastTransitionTime(r),
-											groupVersionKind: 'OCIRepository',
-											type: 'OCIRepository'
-										})),
-										...Object.values(filteredManagedResources)
-											.flat()
-											.map((r) => ({
-												...r,
-												type: r.groupVersionKind?.split('/').pop() || 'Resource'
-											}))
-									]}
-									{@const pendingResources = allResources.filter(
-										(r) =>
-											r.status === 'Failed' ||
-											r.status === 'Error' ||
-											r.status === 'InProgress' ||
-											r.status === 'Pending' ||
-											r.status === 'Unhealthy'
-									)}
-									{@const healthyResources = allResources.filter(
-										(r) =>
-											r.status === 'Ready' ||
-											r.status === 'Healthy' ||
-											r.status === 'Succeeded' ||
-											r.status === 'Current'
-									)}
-
-									{#if pendingResources.length > 0}
-										<div>
-											{#each pendingResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
-												<ResourceCard {resource} resourceType={resource.type} showRich={true} />
-											{/each}
-										</div>
+									{#if rollout.spec?.wantedVersion}
+										<Button
+											size="sm"
+											color="light"
+											class="text-xs"
+											disabled={!isDashboardManagingWantedVersion}
+											onclick={() => {
+												if (isDashboardManagingWantedVersion) {
+													showClearPinModal = true;
+												}
+											}}
+										>
+											<CloseOutline class="me-2 h-4 w-4" />
+											Clear Pin
+										</Button>
+										{#if !isDashboardManagingWantedVersion}
+											<Tooltip placement="bottom"
+												>Version management disabled: This rollout's wantedVersion field is managed
+												by another controller or external system. The dashboard cannot pin it to
+												prevent conflicts.</Tooltip
+											>
+										{/if}
 									{/if}
-
-									{#if healthyResources.length > 0 && pendingResources.length === 0}
-										<div class="flex items-center justify-center py-8">
-											<div class="text-center">
-												<div class="mb-2 flex items-center justify-center">
-													<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
-												</div>
-												<p class="text-sm font-medium text-gray-900 dark:text-white">
-													All {allResources.length} resources are healthy
-												</p>
-											</div>
-										</div>
-									{:else if healthyResources.length > 0}
-										<div class="mt-4 rounded-lg bg-green-50 p-3 dark:bg-green-900/20">
-											<div class="flex items-center gap-2">
-												<CheckCircleSolid class="h-4 w-4 text-green-600 dark:text-green-400" />
-												<span class="text-sm font-medium text-green-800 dark:text-green-200">
-													{healthyResources.length} out of {allResources.length} resources are healthy
-												</span>
-											</div>
-										</div>
+									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
+										<SourceViewer
+											namespace={rollout.metadata?.namespace || ''}
+											name={rollout.metadata?.name || ''}
+											version={latestEntry.version.tag}
+										/>
 									{/if}
-								{/if}
-							</div>
-						</Card>
-					{/if}
+									{#if rollout?.status?.source}
+										<GitHubViewButton
+											sourceUrl={rollout.status.source}
+											version={getDisplayVersion(latestEntry.version)}
+											size="sm"
+											color="light"
+										/>
+									{/if}
+								</div>
+							</Card>
+						{/if}
 
-					<!-- OpenKruise Rollout Progress Card -->
-					{#if managedResources && Object.keys(managedResources).length > 0}
-						{@const openKruiseRollouts = Object.values(managedResources)
-							.flat()
-							.filter(
-								(resource) => resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout'
-							)}
-						{#if openKruiseRollouts.length > 0}
+						<!-- Health Checks Card -->
+						{#if healthChecks.length > 0}
 							<Card class="w-full max-w-none p-6">
 								<div class="mb-4 flex items-center justify-between">
-									<h4 class="text-lg font-medium text-gray-900 dark:text-white">
-										OpenKruise Rollout Progress
-									</h4>
-									<Badge color="blue" size="small">{openKruiseRollouts.length}</Badge>
+									<h4 class="text-lg font-medium text-gray-900 dark:text-white">Health Checks</h4>
+									<div class="flex items-center gap-2">
+										<Badge color="blue" size="small">
+											{healthChecks.filter((hc) => hc.status?.status === 'Healthy')
+												.length}/{healthChecks.length} healthy
+										</Badge>
+									</div>
 								</div>
-								<div>
-									{#each openKruiseRollouts as rolloutResource}
-										{@const kruiseRollout = rolloutResource.object as KruiseRollout}
-										{@const rolloutData = kruiseRollout?.status?.canaryStatus}
-										{@const canarySteps = kruiseRollout?.spec?.strategy?.canary?.steps}
-										{#if rolloutData && canarySteps && canarySteps.length > 0}
+								{#if healthChecks.filter((hc) => hc.status?.status !== 'Healthy').length > 0}
+									<div class="space-y-0">
+										{#each healthChecks.filter((hc) => hc.status?.status !== 'Healthy') as healthCheck (healthCheck.metadata?.name + '/' + healthCheck.metadata?.namespace)}
 											<div
 												class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700"
 											>
 												<div class="flex items-center justify-between">
 													<div class="flex items-center gap-3">
 														<div class="flex h-8 w-8 items-center justify-center">
-															<DatabaseSolid class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+															{#if healthCheck.status?.status === 'Healthy'}
+																<CheckCircleSolid
+																	class="h-5 w-5 text-green-600 dark:text-green-400"
+																/>
+															{:else if healthCheck.status?.status === 'Unhealthy'}
+																<ExclamationCircleSolid
+																	class="h-5 w-5 text-red-600 dark:text-red-400"
+																/>
+															{:else if healthCheck.status?.status === 'Pending'}
+																<Spinner size="6" color="yellow" />
+															{:else}
+																<ExclamationCircleSolid
+																	class="h-5 w-5 text-gray-500 dark:text-gray-400"
+																/>
+															{/if}
 														</div>
 														<div class="min-w-0 flex-1">
-															<h6
+															<h3
 																class="truncate text-sm font-medium text-gray-900 dark:text-white"
 															>
-																{#if rolloutResource.namespace}
-																	<span class="text-gray-500 dark:text-gray-400">
-																		{rolloutResource.namespace} /
-																	</span>
-																{/if}
-																{rolloutResource.name}
-															</h6>
-															<p class="text-xs text-gray-500 dark:text-gray-400">
-																Step {rolloutData.currentStepIndex || 1} of {canarySteps.length}
-															</p>
+																{healthCheck.metadata?.annotations?.['kuberik.com/display-name'] ||
+																	healthCheck.metadata?.name}
+															</h3>
+															{#if healthCheck.spec?.class}
+																<p class="text-xs text-gray-500 dark:text-gray-400">
+																	{healthCheck.spec.class.charAt(0).toUpperCase() +
+																		healthCheck.spec.class.slice(1)}
+																</p>
+															{/if}
 														</div>
 													</div>
 													<div class="flex items-center gap-2">
-														<Badge
-															color={rolloutData.currentStepState === 'Completed'
-																? 'green'
-																: rolloutData.currentStepState === 'StepPaused'
-																	? 'yellow'
-																	: 'blue'}
-															size="small"
-														>
-															{rolloutData.currentStepState === 'Completed'
-																? 'Completed'
-																: rolloutData.currentStepState === 'StepPaused'
-																	? 'Paused'
-																	: 'In Progress'}
-														</Badge>
-														{#if rolloutData.currentStepState !== 'Completed'}
-															<Button
-																size="xs"
-																color="blue"
-																disabled={rolloutData.currentStepState !== 'StepPaused'}
-																onclick={() =>
-																	continueRollout(rolloutResource.name, rolloutResource.namespace)}
-															>
-																{#if rolloutData.currentStepState !== 'StepPaused'}
-																	<Spinner
-																		class="mr-1 inline-block h-3 w-3 align-middle"
-																		color="blue"
-																	/>
-																{/if}
-																{rolloutData.currentStepState === 'StepPaused'
-																	? 'Continue'
-																	: 'Rolling out…'}
-															</Button>
+														{#if healthCheck.status?.lastChangeTime}
+															<div class="text-xs text-gray-500 dark:text-gray-400">
+																{formatTimeAgo(healthCheck.status.lastChangeTime, $now)}
+															</div>
 														{/if}
-													</div>
-												</div>
-
-												<div class="ml-11 mt-2">
-													<StepIndicator
-														glow
-														currentStep={(rolloutData.currentStepIndex || 1) +
-															(rolloutData.currentStepState === 'Completed' ? 1 : 0)}
-														steps={canarySteps.map((step: any, index: number) =>
-															index === canarySteps.length - 1 &&
-															rolloutData.currentStepState === 'Completed'
-																? 'Completed'
-																: `Step ${index + 1}`
-														)}
-														color="blue"
-														size="sm"
-													/>
-												</div>
-											</div>
-										{/if}
-									{/each}
-								</div>
-							</Card>
-						{/if}
-					{/if}
-
-					<!-- Available Versions Card -->
-					<Card class="w-full max-w-none p-6 lg:col-span-2">
-						<div class="mb-4 flex items-center justify-between">
-							<h4 class="text-lg font-medium text-gray-900 dark:text-white">
-								Available Version Upgrades
-							</h4>
-							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-								<Badge color="blue" size="small">{rollout.status.releaseCandidates.length}</Badge>
-							{/if}
-						</div>
-						{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-							<div>
-								{#each rollout.status.releaseCandidates as releaseCandidate}
-									{@const version = releaseCandidate.tag}
-									<div class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700">
-										<div class="flex items-center justify-between">
-											<div class="flex items-center gap-3">
-												<div class="flex h-8 w-8 items-center justify-center">
-													<CodeOutline class="h-5 w-5 text-gray-500 dark:text-gray-400" />
-												</div>
-												<div class="min-w-0 flex-1">
-													<h6 class="truncate text-sm font-medium text-gray-900 dark:text-white">
-														{getDisplayVersion(releaseCandidate)}
-													</h6>
-													{#if releaseCandidate.version && releaseCandidate.version !== version}
-														<p class="text-xs text-gray-500 dark:text-gray-400">
-															Tag: {version}
-														</p>
-													{/if}
-													{#if releaseCandidate.created}
-														<p class="text-xs text-gray-500 dark:text-gray-400">
-															Created {formatTimeAgo(releaseCandidate.created, $now)}
-														</p>
-													{/if}
-												</div>
-											</div>
-											<div class="flex items-center gap-2">
-												{#if isVersionForceDeploying(rollout, version)}
-													<Badge color="blue" size="small">Gates Skipped</Badge>
-												{:else if rollout.status?.gatedReleaseCandidates
-													?.map((grc) => grc.tag)
-													.includes(version)}
-													<Badge color="green" size="small">Available</Badge>
-												{:else}
-													{@const blockingGates = getBlockingGates(version)}
-													{#if blockingGates.length > 0}
-														<Badge color="yellow" size="small" class="cursor-help">
-															Blocked
-															<QuestionCircleOutline class="ml-1 h-3 w-3" />
+														<Badge
+															color={healthCheck.status?.status === 'Healthy'
+																? 'green'
+																: healthCheck.status?.status === 'Unhealthy'
+																	? 'red'
+																	: 'yellow'}
+															size="small"
+															class="cursor-help"
+														>
+															{healthCheck.status?.status || 'Unknown'}
 														</Badge>
-														<Popover class="max-w-sm" title="Blocked by Gates">
-															<div class="p-3">
-																<div class="space-y-2">
-																	{#each blockingGates as gate}
-																		<div class="flex items-start gap-2">
-																			<ExclamationCircleSolid
-																				class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
+														<Popover class="max-w-sm">
+															<div class="p-4">
+																<div class="mb-3">
+																	<div class="mb-2 flex items-center gap-2">
+																		{#if healthCheck.status?.status === 'Healthy'}
+																			<CheckCircleSolid
+																				class="h-4 w-4 text-green-600 dark:text-green-400"
 																			/>
-																			<div class="min-w-0 flex-1">
-																				<p
-																					class="text-sm font-medium text-gray-900 dark:text-white"
-																				>
-																					{getGatePrettyName(gate) ||
-																						gate.metadata?.name ||
-																						'Unknown Gate'}
-																				</p>
-																				{#if getGateDescription(gate)}
-																					<p class="text-xs text-gray-600 dark:text-gray-400">
-																						{getGateDescription(gate)}
-																					</p>
-																				{/if}
-																				{#if gate.status?.status}
-																					<p class="text-xs text-yellow-600 dark:text-yellow-400">
-																						Status: {gate.status.status}
-																					</p>
-																				{/if}
-																			</div>
+																		{:else if healthCheck.status?.status === 'Unhealthy'}
+																			<ExclamationCircleSolid
+																				class="h-4 w-4 text-red-600 dark:text-red-400"
+																			/>
+																		{:else if healthCheck.status?.status === 'Pending'}
+																			<Spinner size="4" color="yellow" />
+																		{:else}
+																			<ExclamationCircleSolid
+																				class="h-4 w-4 text-gray-500 dark:text-gray-400"
+																			/>
+																		{/if}
+																		<h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+																			{healthCheck.metadata?.annotations?.[
+																				'kuberik.com/display-name'
+																			] || healthCheck.metadata?.name}
+																		</h4>
+																	</div>
+																	<Badge
+																		color={healthCheck.status?.status === 'Healthy'
+																			? 'green'
+																			: healthCheck.status?.status === 'Unhealthy'
+																				? 'red'
+																				: 'yellow'}
+																		size="small"
+																		class="text-xs"
+																	>
+																		{healthCheck.status?.status || 'Unknown'}
+																	</Badge>
+																</div>
+
+																{#if healthCheck.status?.message}
+																	<div class="mb-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+																		<p
+																			class="text-xs leading-relaxed text-gray-700 dark:text-gray-300"
+																		>
+																			{healthCheck.status.message}
+																		</p>
+																	</div>
+																{/if}
+
+																<div class="space-y-2 text-xs">
+																	{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
+																		<div
+																			class="flex items-center gap-2 text-red-600 dark:text-red-400"
+																		>
+																			<ClockSolid class="h-3 w-3" />
+																			<span
+																				>Last Error: {formatTimeAgo(
+																					healthCheck.status.lastErrorTime,
+																					$now
+																				)}</span
+																			>
 																		</div>
-																	{/each}
+																	{/if}
+																	{#if healthCheck.spec?.class}
+																		<div
+																			class="flex items-center gap-2 text-gray-600 dark:text-gray-400"
+																		>
+																			<DatabaseSolid class="h-3 w-3" />
+																			<span
+																				>Class: {healthCheck.spec.class.charAt(0).toUpperCase() +
+																					healthCheck.spec.class.slice(1)}</span
+																			>
+																		</div>
+																	{/if}
+																	{#if healthCheck.status?.lastChangeTime}
+																		<div
+																			class="flex items-center gap-2 text-gray-600 dark:text-gray-400"
+																		>
+																			<ClockSolid class="h-3 w-3" />
+																			<span
+																				>Last Change: {formatTimeAgo(
+																					healthCheck.status.lastChangeTime,
+																					$now
+																				)}</span
+																			>
+																		</div>
+																	{/if}
 																</div>
 															</div>
 														</Popover>
-													{:else}
-														<Badge color="yellow" size="small">Blocked</Badge>
-													{/if}
+													</div>
+												</div>
+
+												{#if healthCheck.status?.message}
+													<div class="ml-11 mt-2">
+														<p class="mb-1 text-xs text-gray-600 dark:text-gray-400">
+															{healthCheck.status.message}
+														</p>
+													</div>
 												{/if}
-												<Button
-													size="xs"
-													color="blue"
-													disabled={!isDashboardManagingWantedVersion &&
-														!hasForceDeployAnnotation(rollout)}
-													onclick={() => {
-														selectedVersion = version;
-														showDeployModal = true;
-													}}
-												>
-													Deploy
-												</Button>
-												{#if rollout?.status?.source}
-													<GitHubViewButton
-														sourceUrl={rollout.status.source}
-														version={getDisplayVersion(releaseCandidate)}
-														size="xs"
-														color="light"
-													/>
+												{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
+													<div class="ml-11 mt-1">
+														<div
+															class="flex items-center gap-1 text-xs text-red-600 dark:text-red-400"
+														>
+															<ExclamationCircleSolid class="h-3 w-3" />
+															<span
+																>Error {formatTimeAgo(healthCheck.status.lastErrorTime, $now)}</span
+															>
+														</div>
+													</div>
 												{/if}
-												<Clipboard bind:value={releaseCandidate.tag} size="xs" color="light">
-													{#snippet children(success)}
-														{#if success}
-															<CheckOutline class="mr-1 h-3 w-3" />
-															Copied
-														{:else}
-															<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-															Copy Tag
-														{/if}
-													{/snippet}
-												</Clipboard>
 											</div>
+										{/each}
+									</div>
+								{:else}
+									<div class="flex items-center justify-center py-8">
+										<div class="text-center">
+											<div class="mb-2 flex items-center justify-center">
+												<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
+											</div>
+											<p class="text-sm font-medium text-gray-900 dark:text-white">
+												All {healthChecks.length} health checks are healthy
+											</p>
 										</div>
 									</div>
-								{/each}
-							</div>
-						{:else if isCurrentVersionCustom}
-							<Alert color="yellow">
-								<div class="flex items-center gap-3">
-									<InfoCircleSolid class="h-5 w-5" />
-									<span class="text-lg font-medium">Current version is custom</span>
-								</div>
-								<p class="mb-4 mt-2 text-sm">
-									The currently deployed version is not in the available releases list. This means
-									it's a custom version that was manually deployed. To change to a different
-									version, you need to manually deploy another version.
-								</p>
-								<div class="flex gap-2">
+								{/if}
+							</Card>
+						{/if}
+
+						<!-- Kubernetes Resources Status Card -->
+						{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
+							<Card class="w-full max-w-none p-6">
+								<div class="mb-4 flex items-center justify-between">
+									<h4 class="text-lg font-medium text-gray-900 dark:text-white">
+										Kubernetes Resources Status
+									</h4>
 									<Button
-										size="xs"
-										color="light"
-										onclick={() => {
-											isPinVersionMode = true;
-											showPinModal = true;
-										}}
+										size="sm"
+										color="blue"
+										onclick={reconcileFluxResources}
+										class="flex items-center gap-2"
 									>
-										<EditOutline class="me-2 h-4 w-4" />
-										Change Version
+										<RefreshOutline class="h-4 w-4" id="reconcile-icon" />
+										Reconcile Flux Resources
 									</Button>
 								</div>
-							</Alert>
-						{:else}
-							<Alert color="blue">
-								<div class="flex items-center">
-									<ExclamationCircleSolid class="mr-2 h-5 w-5" />
-									<span class="font-medium">No version upgrades available</span>
+
+								<div class="space-y-4">
+									{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
+										{@const allResources = [
+											...kustomizations.map((k) => ({
+												name: k.metadata?.name,
+												namespace: k.metadata?.namespace,
+												status: getResourceStatus(k).status,
+												message: k.status?.lastAppliedRevision
+													? `Last applied: ${k.status.lastAppliedRevision}`
+													: undefined,
+												lastModified: getLastTransitionTime(k),
+												groupVersionKind: 'Kustomization',
+												type: 'Kustomization'
+											})),
+											...ociRepositories.map((r) => ({
+												name: r.metadata?.name,
+												namespace: r.metadata?.namespace,
+												status: getResourceStatus(r).status,
+												message: r.status?.url ? `URL: ${r.status.url}` : undefined,
+												lastModified: getLastTransitionTime(r),
+												groupVersionKind: 'OCIRepository',
+												type: 'OCIRepository'
+											})),
+											...Object.values(filteredManagedResources)
+												.flat()
+												.map((r) => ({
+													...r,
+													type: r.groupVersionKind?.split('/').pop() || 'Resource'
+												}))
+										]}
+										{@const pendingResources = allResources.filter(
+											(r) =>
+												r.status === 'Failed' ||
+												r.status === 'Error' ||
+												r.status === 'InProgress' ||
+												r.status === 'Pending' ||
+												r.status === 'Unhealthy'
+										)}
+										{@const healthyResources = allResources.filter(
+											(r) =>
+												r.status === 'Ready' ||
+												r.status === 'Healthy' ||
+												r.status === 'Succeeded' ||
+												r.status === 'Current'
+										)}
+
+										{#if pendingResources.length > 0}
+											<div>
+												{#each pendingResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
+													<ResourceCard {resource} resourceType={resource.type} showRich={true} />
+												{/each}
+											</div>
+										{/if}
+
+										{#if healthyResources.length > 0 && pendingResources.length === 0}
+											<div class="flex items-center justify-center py-8">
+												<div class="text-center">
+													<div class="mb-2 flex items-center justify-center">
+														<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
+													</div>
+													<p class="text-sm font-medium text-gray-900 dark:text-white">
+														All {allResources.length} resources are healthy
+													</p>
+												</div>
+											</div>
+										{:else if healthyResources.length > 0}
+											<div class="mt-4 rounded-lg bg-green-50 p-3 dark:bg-green-900/20">
+												<div class="flex items-center gap-2">
+													<CheckCircleSolid class="h-4 w-4 text-green-600 dark:text-green-400" />
+													<span class="text-sm font-medium text-green-800 dark:text-green-200">
+														{healthyResources.length} out of {allResources.length} resources are healthy
+													</span>
+												</div>
+											</div>
+										{/if}
+									{/if}
 								</div>
-							</Alert>
+							</Card>
 						{/if}
-					</Card>
+
+						<!-- OpenKruise Rollout Progress Card -->
+						{#if managedResources && Object.keys(managedResources).length > 0}
+							{@const openKruiseRollouts = Object.values(managedResources)
+								.flat()
+								.filter(
+									(resource) => resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout'
+								)}
+							{#if openKruiseRollouts.length > 0}
+								<Card class="w-full max-w-none p-6">
+									<div class="mb-4 flex items-center justify-between">
+										<h4 class="text-lg font-medium text-gray-900 dark:text-white">
+											OpenKruise Rollout Progress
+										</h4>
+										<Badge color="blue" size="small">{openKruiseRollouts.length}</Badge>
+									</div>
+									<div>
+										{#each openKruiseRollouts as rolloutResource}
+											{@const kruiseRollout = rolloutResource.object as KruiseRollout}
+											{@const rolloutData = kruiseRollout?.status?.canaryStatus}
+											{@const canarySteps = kruiseRollout?.spec?.strategy?.canary?.steps}
+											{#if rolloutData && canarySteps && canarySteps.length > 0}
+												<div
+													class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700"
+												>
+													<div class="flex items-center justify-between">
+														<div class="flex items-center gap-3">
+															<div class="flex h-8 w-8 items-center justify-center">
+																<DatabaseSolid class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+															</div>
+															<div class="min-w-0 flex-1">
+																<h6
+																	class="truncate text-sm font-medium text-gray-900 dark:text-white"
+																>
+																	{#if rolloutResource.namespace}
+																		<span class="text-gray-500 dark:text-gray-400">
+																			{rolloutResource.namespace} /
+																		</span>
+																	{/if}
+																	{rolloutResource.name}
+																</h6>
+																<p class="text-xs text-gray-500 dark:text-gray-400">
+																	Step {rolloutData.currentStepIndex || 1} of {canarySteps.length}
+																</p>
+															</div>
+														</div>
+														<div class="flex items-center gap-2">
+															<Badge
+																color={rolloutData.currentStepState === 'Completed'
+																	? 'green'
+																	: rolloutData.currentStepState === 'StepPaused'
+																		? 'yellow'
+																		: 'blue'}
+																size="small"
+															>
+																{rolloutData.currentStepState === 'Completed'
+																	? 'Completed'
+																	: rolloutData.currentStepState === 'StepPaused'
+																		? 'Paused'
+																		: 'In Progress'}
+															</Badge>
+															{#if rolloutData.currentStepState !== 'Completed'}
+																<Button
+																	size="xs"
+																	color="blue"
+																	disabled={rolloutData.currentStepState !== 'StepPaused'}
+																	onclick={() =>
+																		continueRollout(
+																			rolloutResource.name,
+																			rolloutResource.namespace
+																		)}
+																>
+																	{#if rolloutData.currentStepState !== 'StepPaused'}
+																		<Spinner
+																			class="mr-1 inline-block h-3 w-3 align-middle"
+																			color="blue"
+																		/>
+																	{/if}
+																	{rolloutData.currentStepState === 'StepPaused'
+																		? 'Continue'
+																		: 'Rolling out…'}
+																</Button>
+															{/if}
+														</div>
+													</div>
+
+													<div class="ml-11 mt-2">
+														<StepIndicator
+															glow
+															currentStep={(rolloutData.currentStepIndex || 1) +
+																(rolloutData.currentStepState === 'Completed' ? 1 : 0)}
+															steps={canarySteps.map((step: any, index: number) =>
+																index === canarySteps.length - 1 &&
+																rolloutData.currentStepState === 'Completed'
+																	? 'Completed'
+																	: `Step ${index + 1}`
+															)}
+															color="blue"
+															size="sm"
+														/>
+													</div>
+												</div>
+											{/if}
+										{/each}
+									</div>
+								</Card>
+							{/if}
+						{/if}
+
+						<!-- Available Versions Card -->
+						<Card class="w-full max-w-none p-6 lg:col-span-2">
+							<div class="mb-4 flex items-center justify-between">
+								<h4 class="text-lg font-medium text-gray-900 dark:text-white">
+									Available Version Upgrades
+								</h4>
+								{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+									<Badge color="blue" size="small">{rollout.status.releaseCandidates.length}</Badge>
+								{/if}
+							</div>
+							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+								<div>
+									{#each rollout.status.releaseCandidates as releaseCandidate}
+										{@const version = releaseCandidate.tag}
+										<div class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700">
+											<div class="flex items-center justify-between">
+												<div class="flex items-center gap-3">
+													<div class="flex h-8 w-8 items-center justify-center">
+														<CodeOutline class="h-5 w-5 text-gray-500 dark:text-gray-400" />
+													</div>
+													<div class="min-w-0 flex-1">
+														<h6 class="truncate text-sm font-medium text-gray-900 dark:text-white">
+															{getDisplayVersion(releaseCandidate)}
+														</h6>
+														{#if releaseCandidate.version && releaseCandidate.version !== version}
+															<p class="text-xs text-gray-500 dark:text-gray-400">
+																Tag: {version}
+															</p>
+														{/if}
+														{#if releaseCandidate.created}
+															<p class="text-xs text-gray-500 dark:text-gray-400">
+																Created {formatTimeAgo(releaseCandidate.created, $now)}
+															</p>
+														{/if}
+													</div>
+												</div>
+												<div class="flex items-center gap-2">
+													{#if isVersionForceDeploying(rollout, version)}
+														<Badge color="blue" size="small">Gates Skipped</Badge>
+													{:else if rollout.status?.gatedReleaseCandidates
+														?.map((grc) => grc.tag)
+														.includes(version)}
+														<Badge color="green" size="small">Available</Badge>
+													{:else}
+														{@const blockingGates = getBlockingGates(version)}
+														{#if blockingGates.length > 0}
+															<Badge color="yellow" size="small" class="cursor-help">
+																Blocked
+																<QuestionCircleOutline class="ml-1 h-3 w-3" />
+															</Badge>
+															<Popover class="max-w-sm" title="Blocked by Gates">
+																<div class="p-3">
+																	<div class="space-y-2">
+																		{#each blockingGates as gate}
+																			<div class="flex items-start gap-2">
+																				<ExclamationCircleSolid
+																					class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
+																				/>
+																				<div class="min-w-0 flex-1">
+																					<p
+																						class="text-sm font-medium text-gray-900 dark:text-white"
+																					>
+																						{getGatePrettyName(gate) ||
+																							gate.metadata?.name ||
+																							'Unknown Gate'}
+																					</p>
+																					{#if getGateDescription(gate)}
+																						<p class="text-xs text-gray-600 dark:text-gray-400">
+																							{getGateDescription(gate)}
+																						</p>
+																					{/if}
+																					{#if gate.status?.status}
+																						<p class="text-xs text-yellow-600 dark:text-yellow-400">
+																							Status: {gate.status.status}
+																						</p>
+																					{/if}
+																				</div>
+																			</div>
+																		{/each}
+																	</div>
+																</div>
+															</Popover>
+														{:else}
+															<Badge color="yellow" size="small">Blocked</Badge>
+														{/if}
+													{/if}
+													<Button
+														size="xs"
+														color="blue"
+														disabled={!isDashboardManagingWantedVersion &&
+															!hasForceDeployAnnotation(rollout)}
+														onclick={() => {
+															selectedVersion = version;
+															showDeployModal = true;
+														}}
+													>
+														Deploy
+													</Button>
+													{#if rollout?.status?.source}
+														<GitHubViewButton
+															sourceUrl={rollout.status.source}
+															version={getDisplayVersion(releaseCandidate)}
+															size="xs"
+															color="light"
+														/>
+													{/if}
+													<Clipboard bind:value={releaseCandidate.tag} size="xs" color="light">
+														{#snippet children(success)}
+															{#if success}
+																<CheckOutline class="mr-1 h-3 w-3" />
+																Copied
+															{:else}
+																<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+																Copy Tag
+															{/if}
+														{/snippet}
+													</Clipboard>
+												</div>
+											</div>
+										</div>
+									{/each}
+								</div>
+							{:else if isCurrentVersionCustom}
+								<Alert color="yellow">
+									<div class="flex items-center gap-3">
+										<InfoCircleSolid class="h-5 w-5" />
+										<span class="text-lg font-medium">Current version is custom</span>
+									</div>
+									<p class="mb-4 mt-2 text-sm">
+										The currently deployed version is not in the available releases list. This means
+										it's a custom version that was manually deployed. To change to a different
+										version, you need to manually deploy another version.
+									</p>
+									<div class="flex gap-2">
+										<Button
+											size="xs"
+											color="light"
+											onclick={() => {
+												isPinVersionMode = true;
+												showPinModal = true;
+											}}
+										>
+											<EditOutline class="me-2 h-4 w-4" />
+											Change Version
+										</Button>
+									</div>
+								</Alert>
+							{:else}
+								<Alert color="blue">
+									<div class="flex items-center">
+										<ExclamationCircleSolid class="mr-2 h-5 w-5" />
+										<span class="font-medium">No version upgrades available</span>
+									</div>
+								</Alert>
+							{/if}
+						</Card>
+					</div>
 				</div>
 			</div>
 		</div>

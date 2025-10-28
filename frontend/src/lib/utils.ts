@@ -230,3 +230,12 @@ export function hasFailedBakeStatus(rollout: Rollout): boolean {
 export function hasUnblockFailedAnnotation(rollout: Rollout): boolean {
     return rollout.metadata?.annotations?.['rollout.kuberik.com/unblock-failed'] === 'true';
 }
+
+// Helper function to get display version from version object or annotations
+export function getDisplayVersion(versionInfo: {
+    version?: string;
+    revision?: string;
+    tag: string;
+}): string {
+    return versionInfo.version || versionInfo.revision || versionInfo.tag;
+}
