@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Rollout } from '../../types';
-	import { Modal, Alert, Badge, Button, Toggle, Toast } from 'flowbite-svelte';
+	import { Modal, Alert, Badge, Button, Toggle, Toast, Tooltip } from 'flowbite-svelte';
 	import { ExclamationCircleSolid, CheckCircleSolid } from 'flowbite-svelte-icons';
 	import {
 		hasForceDeployAnnotation,
@@ -30,10 +30,7 @@
 	let localToastType: 'success' | 'error' = 'success';
 
 	$: pinVersionToggle = isPinVersionMode || rollout?.spec?.wantedVersion !== undefined;
-	$: isPinVersionToggleDisabled =
-		isPinVersionMode ||
-		rollout?.spec?.wantedVersion !== undefined ||
-		hasForceDeployAnnotation(rollout as any);
+	$: isPinVersionToggleDisabled = isPinVersionMode || hasForceDeployAnnotation(rollout as any);
 
 	function getDisplayVersion(): string {
 		if (!selectedVersionTag) return '';
@@ -44,43 +41,37 @@
 		if (!rollout || !selectedVersionTag) return;
 
 		try {
-			if (pinVersionToggle) {
-				const response = await fetch(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
-					{
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ version: selectedVersionTag, explanation: deployExplanation })
-					}
-				);
-				if (!response.ok) {
-					const errorData = await response.json().catch(() => ({}));
-					if (
-						response.status === 500 &&
-						errorData.details &&
-						errorData.details.includes('dashboard is not managing the wantedVersion field')
-					) {
-						throw new Error(
-							"Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
-						);
-					}
-					throw new Error('Failed to pin version');
+			const response = await fetch(
+				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/change-version`,
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						version: selectedVersionTag,
+						pin: pinVersionToggle,
+						message: deployExplanation
+					})
 				}
-				notifySuccess('Successfully pinned and deployed version');
-			} else {
-				const response = await fetch(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/force-deploy`,
-					{
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ version: selectedVersionTag, message: deployExplanation })
-					}
-				);
-				if (!response.ok) {
-					throw new Error('Failed to add force-deploy annotation');
+			);
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				if (
+					pinVersionToggle &&
+					response.status === 500 &&
+					errorData.details &&
+					errorData.details.includes('dashboard is not managing the wantedVersion field')
+				) {
+					throw new Error(
+						"Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
+					);
 				}
-				notifySuccess('Force deploy initiated, version rolling out soon');
+				throw new Error('Failed to change version');
 			}
+			notifySuccess(
+				pinVersionToggle
+					? 'Successfully pinned and deployed version'
+					: 'Force deploy initiated, version rolling out soon'
+			);
 
 			// Close and reset
 			open = false;
@@ -152,9 +143,21 @@
 						{/if}
 					</p>
 				</div>
-				<Toggle bind:checked={pinVersionToggle} disabled={isPinVersionToggleDisabled} color="blue">
-					Pin Version
-				</Toggle>
+				<div class="flex items-center">
+					<Toggle
+						bind:checked={pinVersionToggle}
+						disabled={isPinVersionToggleDisabled}
+						color="blue"
+					>
+						Pin Version
+					</Toggle>
+					{#if isPinVersionMode}
+						<Tooltip placement="top"
+							>Pin-only: The selected version is older than the current version, so you must pin to
+							roll back.</Tooltip
+						>
+					{/if}
+				</div>
 			</div>
 		{/if}
 

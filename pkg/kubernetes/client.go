@@ -263,6 +263,54 @@ func (c *Client) AddForceDeployAnnotation(ctx context.Context, namespace, name s
 	return updatedRollout, nil
 }
 
+// ChangeVersion updates the rollout version with an option to pin or unpin atomically.
+// When pin is true, it sets spec.wantedVersion to the version and optionally sets a deploy message.
+// When pin is false, it adds the force-deploy annotation for the version and clears spec.wantedVersion
+// in the same server-side apply operation, optionally setting a deploy message.
+func (c *Client) ChangeVersion(ctx context.Context, namespace, name string, version string, pin bool, message string) (*rolloutv1alpha1.Rollout, error) {
+	patch := &unstructured.Unstructured{}
+	patch.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "kuberik.com",
+		Version: "v1alpha1",
+		Kind:    "Rollout",
+	})
+	patch.SetNamespace(namespace)
+	patch.SetName(name)
+
+	annotations := map[string]string{}
+	if message != "" {
+		annotations["rollout.kuberik.com/deploy-message"] = message
+	}
+
+	if pin {
+		// Pin: set wantedVersion to the specified version
+		patch.Object["spec"] = map[string]any{
+			"wantedVersion": version,
+		}
+	} else {
+		// Unpin with change: add force-deploy annotation and clear wantedVersion
+		annotations["rollout.kuberik.com/force-deploy"] = version
+		patch.Object["spec"] = map[string]any{
+			"wantedVersion": nil,
+		}
+	}
+
+	if len(annotations) > 0 {
+		patch.SetAnnotations(annotations)
+	}
+
+	if err := c.client.Patch(ctx, patch, client.Merge, client.FieldOwner("rollout-dashboard")); err != nil {
+		return nil, fmt.Errorf("failed to change version using server-side apply: %w", err)
+	}
+
+	updatedRollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, updatedRollout); err != nil {
+		return nil, fmt.Errorf("failed to get updated rollout: %w", err)
+	}
+
+	return updatedRollout, nil
+}
+
 // AddUnblockFailedAnnotation adds the rollout.kuberik.com/unblock-failed annotation to a rollout
 // This allows the rollout to resume after a failed bake
 func (c *Client) AddUnblockFailedAnnotation(ctx context.Context, namespace, name string) (*rolloutv1alpha1.Rollout, error) {

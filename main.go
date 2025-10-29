@@ -265,6 +265,39 @@ func main() {
 			})
 		})
 
+		// Change version (pin or unpin + force-deploy) atomically
+		api.POST("/rollouts/:namespace/:name/change-version", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			var req struct {
+				Version string `json:"version" binding:"required"`
+				Pin     bool   `json:"pin"`
+				Message string `json:"message"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "Invalid request body",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			updatedRollout, err := k8sClient.ChangeVersion(context.Background(), namespace, name, req.Version, req.Pin, req.Message)
+			if err != nil {
+				log.Printf("Error changing version: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to change version",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rollout": updatedRollout,
+			})
+		})
+
 		// Add unblock-failed annotation to rollout
 		api.POST("/rollouts/:namespace/:name/unblock-failed", func(c *gin.Context) {
 			namespace := c.Param("namespace")

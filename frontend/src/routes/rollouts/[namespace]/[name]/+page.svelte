@@ -94,7 +94,7 @@
 	let loadingAnnotations: Record<string, boolean> = {};
 
 	let showPinModal = false;
-	let showClearPinModal = false;
+	// removed Clear Pin functionality
 	let selectedVersion: string | null = null;
 
 	let showToast = false;
@@ -213,21 +213,27 @@
 		return true;
 	})();
 
-	// Computed property to determine if rollout has an actively pinned version
-	$: hasActivelyPinnedVersion = rollout?.spec?.wantedVersion !== undefined;
-
-	// Computed property to determine if pin version toggle should be disabled
-	$: isPinVersionToggleDisabled = hasActivelyPinnedVersion;
-
-	// Update pinVersionToggle when rollout state changes
-	$: pinVersionToggle = hasActivelyPinnedVersion;
-
 	// Computed property to determine if current version is custom (not in available releases)
 	$: isCurrentVersionCustom = (() => {
 		if (!rollout?.status?.history?.[0] || !rollout?.status?.availableReleases) return false;
 		const currentVersionTag = rollout.status.history[0].version.tag;
 		return !rollout.status.availableReleases.some((ar) => ar.tag === currentVersionTag);
 	})();
+
+	function isOlderThanCurrent(selectedTag: string): boolean {
+		const currentTag = rollout?.status?.history?.[0]?.version?.tag;
+		const releases = rollout?.status?.availableReleases;
+		if (!currentTag || !releases) return false;
+		const currentIdx = releases.findIndex((r) => r.tag === currentTag);
+		const selectedIdx = releases.findIndex((r) => r.tag === selectedTag);
+		if (currentIdx === -1 || selectedIdx === -1) return false;
+		// In availableReleases, higher index is newer; lower is older
+		return selectedIdx < currentIdx;
+	}
+
+	function toTag(version: any): string {
+		return typeof version === 'string' ? version : version?.tag;
+	}
 
 	// Computed properties for pagination
 	$: reversedVersions = rollout?.status?.availableReleases
@@ -463,57 +469,6 @@
 		}
 	}
 
-	async function clearPin() {
-		if (!rollout) return;
-
-		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({ version: null })
-				}
-			);
-
-			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
-				if (
-					response.status === 500 &&
-					errorData.details &&
-					errorData.details.includes('dashboard is not managing the wantedVersion field')
-				) {
-					throw new Error(
-						"Cannot clear pin: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
-					);
-				}
-				throw new Error('Failed to clear version pin');
-			}
-
-			// Refresh the data
-			await updateData();
-
-			// Show success toast
-			toastType = 'success';
-			toastMessage = 'Successfully cleared version pin';
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			// Show error toast
-			toastType = 'error';
-			toastMessage = e instanceof Error ? e.message : 'Failed to clear version pin';
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} finally {
-			showClearPinModal = false;
-		}
-	}
-
 	async function getAnnotations(version: string) {
 		if (!rollout) return;
 		loadingAnnotations[version] = true;
@@ -712,101 +667,6 @@
 			setTimeout(() => {
 				showToast = false;
 			}, 3000);
-		}
-	}
-
-	async function handleDeploy() {
-		if (!rollout || !selectedVersion) return;
-
-		try {
-			if (pinVersionToggle) {
-				// Use pin version functionality
-				const response = await fetch(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
-					{
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json'
-						},
-						body: JSON.stringify({
-							version: selectedVersion,
-							explanation: deployExplanation
-						})
-					}
-				);
-
-				if (!response.ok) {
-					const errorData = await response.json().catch(() => ({}));
-					if (
-						response.status === 500 &&
-						errorData.details &&
-						errorData.details.includes('dashboard is not managing the wantedVersion field')
-					) {
-						throw new Error(
-							"Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
-						);
-					}
-					throw new Error('Failed to pin version');
-				}
-
-				// Refresh the data
-				setTimeout(async () => {
-					for (let i = 0; i < 10; i++) {
-						await updateData();
-						if (rollout?.status?.history?.[0]?.version.tag === selectedVersion) {
-							break;
-						}
-					}
-				}, 1000);
-
-				// Show success toast
-				toastType = 'success';
-				toastMessage = `Successfully pinned and deployed version`;
-			} else {
-				// Use force deploy functionality
-				const response = await fetch(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/force-deploy`,
-					{
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json'
-						},
-						body: JSON.stringify({
-							version: selectedVersion,
-							message: deployExplanation
-						})
-					}
-				);
-
-				if (!response.ok) {
-					throw new Error('Failed to add force-deploy annotation');
-				}
-
-				await updateData();
-				toastType = 'success';
-				toastMessage = `Force deploy initiated, version rolling out soon`;
-			}
-
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			// Show error toast
-			toastType = 'error';
-			toastMessage = e instanceof Error ? e.message : 'Failed to deploy version';
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} finally {
-			showDeployModal = false;
-			selectedVersion = null;
-			pinVersionToggle = false;
-			deployExplanation = '';
-			deployConfirmationVersion = '';
-			isPinVersionMode = false;
-			showTimelineDrawer = false;
 		}
 	}
 
@@ -1378,13 +1238,13 @@
 										disabled={!isDashboardManagingWantedVersion}
 										onclick={() => {
 											if (isDashboardManagingWantedVersion) {
-												isPinVersionMode = true;
+												isPinVersionMode = false;
 												showPinModal = true;
 											}
 										}}
 									>
 										<EditOutline class="me-2 h-4 w-4" />
-										Pin Version
+										Change Version
 									</Button>
 									{#if !isDashboardManagingWantedVersion}
 										<Tooltip placement="bottom"
@@ -1393,29 +1253,7 @@
 											conflicts.</Tooltip
 										>
 									{/if}
-									{#if rollout.spec?.wantedVersion}
-										<Button
-											size="sm"
-											color="light"
-											class="text-xs"
-											disabled={!isDashboardManagingWantedVersion}
-											onclick={() => {
-												if (isDashboardManagingWantedVersion) {
-													showClearPinModal = true;
-												}
-											}}
-										>
-											<CloseOutline class="me-2 h-4 w-4" />
-											Clear Pin
-										</Button>
-										{#if !isDashboardManagingWantedVersion}
-											<Tooltip placement="bottom"
-												>Version management disabled: This rollout's wantedVersion field is managed
-												by another controller or external system. The dashboard cannot pin it to
-												prevent conflicts.</Tooltip
-											>
-										{/if}
-									{/if}
+
 									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 										<SourceViewer
 											namespace={rollout.metadata?.namespace || ''}
@@ -1776,6 +1614,7 @@
 														<Badge color="green" size="small">Available</Badge>
 													{:else}
 														{@const blockingGates = getBlockingGates(version)}
+														{console.log('blockingGates', blockingGates)}
 														{#if blockingGates.length > 0}
 															<Badge color="yellow" size="small" class="cursor-help">
 																Blocked
@@ -2354,46 +2193,17 @@
 				color="blue"
 				disabled={!selectedVersion}
 				onclick={() => {
-					if (isPinVersionMode) {
-						// In pin version mode, open deploy modal with toggle disabled and set to pin
-						pinVersionToggle = true;
-						showDeployModal = true;
-						showPinModal = false;
-					} else {
-						// Original behavior for other contexts - this should not happen anymore
-						// since we're using the unified deploy modal
-						console.warn('Unexpected call to old confirmation modal');
-					}
+					if (!selectedVersion) return;
+					const tag = toTag(selectedVersion);
+					const mustPin = isOlderThanCurrent(tag);
+					isPinVersionMode = mustPin; // disables toggle in DeployModal when true
+					pinVersionToggle = mustPin; // default to pin if older; allow user toggle if newer
+					showDeployModal = true;
+					showPinModal = false;
 				}}
 			>
-				Pin Version
+				Change Version
 			</Button>
-		</div>
-	</div>
-</Modal>
-
-<Modal bind:open={showClearPinModal} title="Clear Pin">
-	<div class="space-y-4">
-		{#if !isDashboardManagingWantedVersion}
-			<Alert color="yellow" class="mb-4">
-				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> The dashboard is not currently managing the wantedVersion
-				field for this rollout. Clearing the pin may conflict with other controllers or external systems.
-			</Alert>
-		{/if}
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to clear the version pin for {rollout?.metadata?.name}?
-		</p>
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showClearPinModal = false;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button color="blue" onclick={clearPin}>Clear Pin</Button>
 		</div>
 	</div>
 </Modal>
