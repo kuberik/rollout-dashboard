@@ -74,6 +74,7 @@
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
+	import DeployModal from '$lib/components/DeployModal.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import { fly } from 'svelte/transition';
 
@@ -133,6 +134,18 @@
 	let searchQuery = '';
 	let showAllTags = false;
 	let clipboardValue = '';
+
+	// Selected version display label (for modal confirmation)
+	$: selectedVersionDisplay = (() => {
+		if (!selectedVersion) return null;
+		const availableRelease = rollout?.status?.availableReleases?.find(
+			(ar) => ar.tag === selectedVersion
+		);
+		if (availableRelease) {
+			return getDisplayVersion(availableRelease);
+		}
+		return selectedVersion;
+	})();
 
 	// Function to get gate description from gate annotations
 	function getGateDescription(gate: any): string | null {
@@ -2484,210 +2497,25 @@
 	</div>
 </Modal>
 
-<!-- Deploy Modal -->
-<Modal bind:open={showDeployModal} title="Deploy Version">
-	<div class="space-y-4">
-		{#if rollout && !isDashboardManagingWantedVersion && hasForceDeployAnnotation(rollout)}
-			<Alert color="yellow" class="mb-4">
-				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> Version management is disabled and force deploy is
-				already set. No deployment options are available.
-			</Alert>
-		{:else if rollout && !isDashboardManagingWantedVersion}
-			<Alert color="yellow" class="mb-4">
-				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> Version management is disabled. Only force deploy is
-				available.
-			</Alert>
-		{:else if rollout && hasForceDeployAnnotation(rollout)}
-			<Alert color="blue" class="mb-4">
-				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Info:</span> Force deploy already set. Only version pinning is available.
-			</Alert>
-		{/if}
-
-		<!-- Version Display -->
-		<div class="mb-3 text-center">
-			<Badge color="blue" class="px-3 py-1 text-base">
-				{selectedVersion
-					? (() => {
-							const availableRelease = rollout?.status?.availableReleases?.find(
-								(ar) => ar.tag === selectedVersion
-							);
-							if (availableRelease) {
-								return getDisplayVersion(availableRelease);
-							}
-							return getDisplayVersion({
-								version: annotations[selectedVersion]?.['org.opencontainers.image.version'],
-								tag: selectedVersion
-							});
-						})()
-					: ''}
-			</Badge>
-			{#if selectedVersion && (() => {
-					const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === selectedVersion);
-					const version = availableRelease?.version || annotations[selectedVersion]?.['org.opencontainers.image.version'];
-					return version && version !== selectedVersion;
-				})()}
-				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-					Tag: {selectedVersion}
-				</div>
-			{/if}
-		</div>
-
-		<!-- Pin Version Toggle -->
-		{#if rollout && isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
-			<div
-				class="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700"
-			>
-				<div class="flex-1">
-					<div class="text-sm font-medium text-gray-700 dark:text-gray-300">Pin Version</div>
-					<p class="text-xs text-gray-500 dark:text-gray-400">
-						{#if isPinVersionMode}
-							Version pinning is enabled for this deployment.
-						{:else}
-							When enabled, this version will be pinned and prevent automatic deployment logic from
-							changing it.
-						{/if}
-					</p>
-				</div>
-				<Toggle
-					bind:checked={pinVersionToggle}
-					disabled={isPinVersionToggleDisabled || isPinVersionMode}
-					color="blue"
-				>
-					Pin Version
-				</Toggle>
-			</div>
-		{:else if rollout && isDashboardManagingWantedVersion && hasForceDeployAnnotation(rollout)}
-			<div
-				class="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700"
-			>
-				<div class="flex-1">
-					<div class="text-sm font-medium text-gray-700 dark:text-gray-300">Pin Version</div>
-					<p class="text-xs text-gray-500 dark:text-gray-400">
-						{#if isPinVersionMode}
-							Version pinning is enabled for this deployment.
-						{:else}
-							Version pinning is enabled because force deploy is already set.
-						{/if}
-					</p>
-				</div>
-				<Toggle bind:checked={pinVersionToggle} disabled={true} color="blue">Pin Version</Toggle>
-			</div>
-		{/if}
-
-		<!-- Explanation field -->
-		<div>
-			<label
-				for="deploy-explanation"
-				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-			>
-				Explanation (Optional)
-			</label>
-			<textarea
-				id="deploy-explanation"
-				bind:value={deployExplanation}
-				placeholder={pinVersionToggle
-					? 'Provide a reason for pinning this version...'
-					: 'Provide a reason for force deploying...'}
-				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
-				rows="3"
-			></textarea>
-		</div>
-
-		<!-- Version confirmation -->
-		<div>
-			<label
-				for="deploy-confirmation-version"
-				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-			>
-				Type the version to confirm: <span class="font-bold text-gray-900 dark:text-white"
-					>{selectedVersion &&
-						(() => {
-							const availableRelease = rollout?.status?.availableReleases?.find(
-								(ar) => ar.tag === selectedVersion
-							);
-							if (availableRelease) {
-								return getDisplayVersion(availableRelease);
-							}
-							return getDisplayVersion({
-								version: annotations[selectedVersion]?.['org.opencontainers.image.version'],
-								tag: selectedVersion
-							});
-						})()}</span
-				>
-			</label>
-			<input
-				id="deploy-confirmation-version"
-				type="text"
-				bind:value={deployConfirmationVersion}
-				placeholder={`Enter ${
-					selectedVersion &&
-					(() => {
-						const availableRelease = rollout?.status?.availableReleases?.find(
-							(ar) => ar.tag === selectedVersion
-						);
-						return (
-							availableRelease?.version ||
-							annotations[selectedVersion]?.['org.opencontainers.image.version']
-						);
-					})()
-						? 'version name'
-						: 'version'
-				} to confirm`}
-				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
-			/>
-		</div>
-
-		<!-- Action description -->
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			{#if pinVersionToggle}
-				This will immediately deploy version <b>{selectedVersion}</b> and pin it, preventing automatic
-				deployment logic from changing it.
-			{:else}
-				This will force deploy version <b>{selectedVersion}</b>, allowing it to deploy immediately.
-			{/if}
-		</p>
-
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showDeployModal = false;
-					selectedVersion = null;
-					pinVersionToggle = false;
-					deployExplanation = '';
-					deployConfirmationVersion = '';
-					isPinVersionMode = false;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="blue"
-				disabled={selectedVersion
-					? deployConfirmationVersion !==
-						(() => {
-							const availableRelease = rollout?.status?.availableReleases?.find(
-								(ar) => ar.tag === selectedVersion
-							);
-							if (availableRelease) {
-								return getDisplayVersion(availableRelease);
-							}
-							return getDisplayVersion({
-								version: annotations[selectedVersion!]?.['org.opencontainers.image.version'],
-								tag: selectedVersion!
-							});
-						})()
-					: true}
-				onclick={handleDeploy}
-			>
-				Deploy
-			</Button>
-		</div>
-	</div>
-</Modal>
+<DeployModal
+	bind:open={showDeployModal}
+	{rollout}
+	selectedVersionTag={selectedVersion}
+	{selectedVersionDisplay}
+	{isPinVersionMode}
+	onSuccess={(m) => {
+		toastType = 'success';
+		toastMessage = m;
+		showToast = true;
+		setTimeout(() => (showToast = false), 3000);
+	}}
+	onError={(m) => {
+		toastType = 'error';
+		toastMessage = m;
+		showToast = true;
+		setTimeout(() => (showToast = false), 3000);
+	}}
+/>
 
 <Toast
 	transition={fly}

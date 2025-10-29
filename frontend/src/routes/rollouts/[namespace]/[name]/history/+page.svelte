@@ -15,18 +15,25 @@
 		ClockSolid,
 		CheckOutline,
 		ClipboardCleanSolid,
-		CodePullRequestSolid
+		CodePullRequestSolid,
+		UndoOutline
 	} from 'flowbite-svelte-icons';
 	import { formatTimeAgo, formatDuration } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
+	import DeployModal from '$lib/components/DeployModal.svelte';
 
 	// Get props from parent layout
 	export let data;
 	$: rollout = data.rollout;
 	$: loading = data.loading;
 	$: error = data.error;
+
+	// Local state for deploy modal (rollback)
+	let showDeployModal = false;
+	let selectedVersionTag: string | null = null;
+	let selectedVersionDisplay: string | null = null;
 
 	function getBakeStatusIcon(bakeStatus?: string) {
 		switch (bakeStatus) {
@@ -174,6 +181,20 @@
 											Show diff
 										</Button>
 									{/if}
+									{#if entry.version.tag !== rollout.status?.history[0]?.version.tag}
+										<Button
+											color="light"
+											size="xs"
+											onclick={() => {
+												selectedVersionTag = entry.version.tag;
+												selectedVersionDisplay = getDisplayVersion(entry.version);
+												showDeployModal = true;
+											}}
+										>
+											<UndoOutline class="mr-1 h-3 w-3" />
+											Rollback
+										</Button>
+									{/if}
 									{#if rollout?.status?.source}
 										<GitHubViewButton
 											sourceUrl={rollout.status.source}
@@ -204,5 +225,13 @@
 				<p>No deployment history available</p>
 			</div>
 		{/if}
+
+		<DeployModal
+			bind:open={showDeployModal}
+			{rollout}
+			{selectedVersionTag}
+			{selectedVersionDisplay}
+			isPinVersionMode={true}
+		/>
 	</div>
 {/if}
