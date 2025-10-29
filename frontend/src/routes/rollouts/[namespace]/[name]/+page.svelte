@@ -1091,7 +1091,7 @@
 										<TimelineItem
 											title="Started"
 											date={formatTimeAgo(latestEntry.timestamp, $now)}
-											class="min-w-0 flex-1"
+											class="min-w-0 flex-1 pr-3"
 										>
 											{#snippet orientationSlot()}
 												<div class="flex items-center">
@@ -1114,12 +1114,124 @@
 											{/if}
 										</TimelineItem>
 
+										<!-- OpenKruise Rollout Progress (during baking and after completion) -->
+										{@const openKruiseRollouts = Object.values(managedResources)
+											.flat()
+											.filter(
+												(resource) =>
+													resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout'
+											)}
+										{#if openKruiseRollouts.length > 0 && (latestEntry.bakeStatus === 'InProgress' || latestEntry.bakeStatus === 'Succeeded')}
+											{#each openKruiseRollouts as rolloutResource}
+												{@const kruiseRollout = rolloutResource.object as KruiseRollout}
+												{@const rolloutData = kruiseRollout?.status?.canaryStatus}
+												{@const canarySteps = kruiseRollout?.spec?.strategy?.canary?.steps}
+												{#if rolloutData && canarySteps && canarySteps.length > 0}
+													{@const isCompleted =
+														rolloutData.currentStepState === 'Completed' &&
+														latestEntry.bakeStatus === 'Succeeded'}
+													<TimelineItem
+														title="Rollout Progress"
+														date="Step {rolloutData.currentStepIndex || 1} of {canarySteps.length}"
+														class="min-w-0 flex-1 pr-3"
+													>
+														{#snippet orientationSlot()}
+															<div class="flex items-center">
+																<div
+																	class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {rolloutData.currentStepState ===
+																	'Completed'
+																		? 'bg-green-200 dark:bg-green-900'
+																		: rolloutData.currentStepState === 'StepPaused'
+																			? 'bg-yellow-200 dark:bg-yellow-900'
+																			: 'bg-blue-200 dark:bg-blue-900'}"
+																>
+																	{#if rolloutData.currentStepState === 'Completed'}
+																		<CheckCircleSolid
+																			class="h-4 w-4 text-green-600 dark:text-green-400"
+																		/>
+																	{:else if rolloutData.currentStepState === 'StepPaused'}
+																		<PauseSolid
+																			class="h-4 w-4 text-yellow-600 dark:text-yellow-400"
+																		/>
+																	{:else}
+																		<Spinner size="4" color="blue" />
+																	{/if}
+																</div>
+																<div
+																	class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+																></div>
+															</div>
+														{/snippet}
+														<div class="mt-2 space-y-2">
+															<div class="flex items-center justify-between gap-2">
+																<div class="flex items-center gap-2">
+																	<Badge
+																		color={rolloutData.currentStepState === 'Completed'
+																			? 'green'
+																			: rolloutData.currentStepState === 'StepPaused'
+																				? 'yellow'
+																				: 'blue'}
+																		size="small"
+																	>
+																		{rolloutData.currentStepState === 'Completed'
+																			? 'Completed'
+																			: rolloutData.currentStepState === 'StepPaused'
+																				? 'Paused'
+																				: 'In Progress'}
+																	</Badge>
+																	{#if rolloutResource.namespace}
+																		<span class="text-xs text-gray-500 dark:text-gray-400">
+																			{rolloutResource.namespace} /
+																		</span>
+																	{/if}
+																	<span
+																		class="text-xs font-medium text-gray-700 dark:text-gray-300"
+																	>
+																		{rolloutResource.name}
+																	</span>
+																</div>
+																{#if rolloutData.currentStepState === 'StepPaused'}
+																	<Button
+																		size="xs"
+																		color="blue"
+																		onclick={() =>
+																			continueRollout(
+																				rolloutResource.name,
+																				rolloutResource.namespace
+																			)}
+																	>
+																		<PlaySolid class="mr-1 h-3 w-3" />
+																		Continue
+																	</Button>
+																{/if}
+															</div>
+															{#if !isCompleted}
+																<StepIndicator
+																	glow
+																	currentStep={(rolloutData.currentStepIndex || 1) +
+																		(rolloutData.currentStepState === 'Completed' ? 1 : 0)}
+																	steps={canarySteps.map((step: any, index: number) =>
+																		index === canarySteps.length - 1 &&
+																		rolloutData.currentStepState === 'Completed'
+																			? 'Completed'
+																			: `Step ${index + 1}`
+																	)}
+																	color="blue"
+																	size="sm"
+																/>
+															{/if}
+														</div>
+													</TimelineItem>
+												{/if}
+											{/each}
+										{/if}
+
 										<!-- Deployed -->
 										{#if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
 											<TimelineItem
 												title="Deployed"
 												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
-												class="min-w-0 flex-1"
+												class="min-w-0 flex-1 pr-3"
 											>
 												{#snippet orientationSlot()}
 													<div class="flex items-center">
@@ -1150,7 +1262,7 @@
 											<TimelineItem
 												title="Deployment failed"
 												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
-												class="min-w-0 flex-1"
+												class="min-w-0 flex-1 pr-3"
 											>
 												{#snippet orientationSlot()}
 													<div class="flex items-center">
@@ -1201,7 +1313,7 @@
 															}
 														})()
 													: 'Waiting for deployment to complete...'}
-												class="min-w-0 flex-1"
+												class="min-w-0 flex-1 pr-3"
 											>
 												{#snippet orientationSlot()}
 													<div class="flex items-center">
@@ -1605,8 +1717,8 @@
 							</Card>
 						{/if}
 
-						<!-- OpenKruise Rollout Progress Card -->
-						{#if managedResources && Object.keys(managedResources).length > 0}
+						<!-- OpenKruise Rollout Progress Card (only show when NOT in baking stage) -->
+						{#if managedResources && Object.keys(managedResources).length > 0 && rollout.status?.history?.[0]?.bakeStatus !== 'InProgress'}
 							{@const openKruiseRollouts = Object.values(managedResources)
 								.flat()
 								.filter(
