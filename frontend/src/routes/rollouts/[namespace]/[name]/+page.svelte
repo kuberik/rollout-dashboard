@@ -367,12 +367,13 @@
 		}
 	}
 
-	$: if (rollout && !loading && !hasLoaded) {
-		updateData();
-		hasLoaded = true;
-	}
-
 	onMount(async () => {
+		// Perform initial client-side fetch to avoid SSR relative fetch errors
+		if (rollout && !loading && !hasLoaded) {
+			await updateData();
+			hasLoaded = true;
+		}
+
 		autoRefreshIntervalId = window.setInterval(() => {
 			updateData();
 		}, 5000);
