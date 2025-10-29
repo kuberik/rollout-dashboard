@@ -143,7 +143,7 @@
 								{/if}
 								{#if entry.message}
 									<Blockquote class="mt-2 text-sm">
-										{entry.message}
+										"{entry.message}"
 									</Blockquote>
 								{/if}
 							</div>
