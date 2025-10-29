@@ -127,7 +127,10 @@
 							>
 								<svelte:component
 									this={getBakeStatusIcon(entry.bakeStatus).icon}
-									class="h-6 w-6 {getBakeStatusIcon(entry.bakeStatus).color}"
+									color={entry.bakeStatus === 'InProgress' ? 'yellow' : undefined}
+									class="h-6 w-6 {entry.bakeStatus === 'InProgress'
+										? 'undefined'
+										: getBakeStatusIcon(entry.bakeStatus).color}"
 								/>
 							</span>
 						{/snippet}
