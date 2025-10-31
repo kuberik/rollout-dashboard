@@ -1,6 +1,9 @@
+<svelte:options runes={true} />
+
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
+	import { get } from 'svelte/store';
 	import type {
 		Rollout,
 		Kustomization,
@@ -78,65 +81,86 @@
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import { fly } from 'svelte/transition';
 
-	export let data;
-	$: rollout = data.rollout;
-	$: loading = data.loading;
-	$: error = data.error;
+	import { createQuery } from '@tanstack/svelte-query';
 
-	let kustomizations: Kustomization[] = [];
-	let ociRepositories: OCIRepository[] = [];
-	let rolloutGates: any[] = [];
-	let managedResources: Record<string, ManagedResourceStatus[]> = {};
-	let healthChecks: HealthCheck[] = [];
-	let hasLoaded = false;
+	// Params (runes)
+	const namespace = $derived(get(page).params.namespace as string);
+	const name = $derived(get(page).params.name as string);
 
-	let annotations: Record<string, Record<string, string>> = {};
-	let loadingAnnotations: Record<string, boolean> = {};
+	// Query for rollout
+	const rolloutQuery = createQuery(() => ({
+		queryKey: ['rollout', namespace, name],
+		queryFn: async (): Promise<{ rollout: Rollout | null }> => {
+			const res = await fetch(`/api/rollouts/${namespace}/${name}`);
+			if (!res.ok) {
+				if (res.status === 404) {
+					return { rollout: null };
+				}
+				throw new Error('Failed to load rollout');
+			}
+			return await res.json();
+		}
+	}));
 
-	let showPinModal = false;
+	// Maintain existing local vars used throughout
+	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	const loading = $derived(rolloutQuery.isLoading);
+	let error: string | null = $state(null);
+
+	let kustomizations = $state<Kustomization[]>([]);
+	let ociRepositories = $state<OCIRepository[]>([]);
+	let rolloutGates = $state<any[]>([]);
+	let managedResources = $state<Record<string, ManagedResourceStatus[]>>({});
+	let healthChecks = $state<HealthCheck[]>([]);
+	let hasLoaded = $state(false);
+
+	let annotations = $state<Record<string, Record<string, string>>>({});
+	let loadingAnnotations = $state<Record<string, boolean>>({});
+
+	let showPinModal = $state(false);
 	// removed Clear Pin functionality
-	let selectedVersion: string | null = null;
+	let selectedVersion = $state<string | null>(null);
 
-	let showToast = false;
-	let toastMessage = '';
-	let toastType: 'success' | 'error' = 'success';
+	let showToast = $state(false);
+	let toastMessage = $state('');
+	let toastType = $state<'success' | 'error'>('success');
 
-	let showRollbackModal = false;
-	let rollbackVersion: string | null = null;
+	let showRollbackModal = $state(false);
+	let rollbackVersion = $state<string | null>(null);
 
-	let showResumeRolloutModal = false;
-	let showMarkSuccessfulModal = false;
-	let markSuccessfulMessage = '';
+	let showResumeRolloutModal = $state(false);
+	let showMarkSuccessfulModal = $state(false);
+	let markSuccessfulMessage = $state('');
 
 	// New variables for deploy modal
-	let showDeployModal = false;
-	let pinVersionToggle = false;
-	let deployExplanation = '';
-	let deployConfirmationVersion = '';
+	let showDeployModal = $state(false);
+	let pinVersionToggle = $state(false);
+	let deployExplanation = $state('');
+	let deployConfirmationVersion = $state('');
 
 	// New variables for pin version mode
-	let isPinVersionMode = false;
+	let isPinVersionMode = $state(false);
 
 	// Drawer state
-	let showTimelineDrawer = false;
+	let showTimelineDrawer = $state(false);
 
 	let autoRefreshIntervalId: number | null = null;
 
 	// Toggle for showing/hiding "current" resources
 
 	// Pagination variables
-	let currentPage = 1;
+	let currentPage = $state(1);
 	let itemsPerPage = 10;
 
 	// New variables for all repository tags
-	let allRepositoryTags: string[] = [];
-	let loadingAllTags = false;
-	let searchQuery = '';
-	let showAllTags = false;
-	let clipboardValue = '';
+	let allRepositoryTags = $state<string[]>([]);
+	let loadingAllTags = $state(false);
+	let searchQuery = $state('');
+	let showAllTags = $state(false);
+	let clipboardValue = $state('');
 
 	// Selected version display label (for modal confirmation)
-	$: selectedVersionDisplay = (() => {
+	function selectedVersionDisplay(): string | null {
 		if (!selectedVersion) return null;
 		const availableRelease = rollout?.status?.availableReleases?.find(
 			(ar) => ar.tag === selectedVersion
@@ -145,7 +169,7 @@
 			return getDisplayVersion(availableRelease);
 		}
 		return selectedVersion;
-	})();
+	}
 
 	// Function to get gate description from gate annotations
 	function getGateDescription(gate: any): string | null {
@@ -177,7 +201,7 @@
 	}
 
 	// Computed property to determine if dashboard is managing the wantedVersion field
-	$: isDashboardManagingWantedVersion = (() => {
+	const isDashboardManagingWantedVersion = $derived.by(() => {
 		if (!rollout) return false;
 
 		// If no wantedVersion is set, dashboard can manage it
@@ -211,14 +235,14 @@
 
 		// Default to allowing management if no conflicts detected
 		return true;
-	})();
+	});
 
 	// Computed property to determine if current version is custom (not in available releases)
-	$: isCurrentVersionCustom = (() => {
+	const isCurrentVersionCustom = $derived.by(() => {
 		if (!rollout?.status?.history?.[0] || !rollout?.status?.availableReleases) return false;
 		const currentVersionTag = rollout.status.history[0].version.tag;
 		return !rollout.status.availableReleases.some((ar) => ar.tag === currentVersionTag);
-	})();
+	});
 
 	function isOlderThanCurrent(selectedTag: string): boolean {
 		const currentTag = rollout?.status?.history?.[0]?.version?.tag;
@@ -236,28 +260,29 @@
 	}
 
 	// Computed properties for pagination
-	$: reversedVersions = rollout?.status?.availableReleases
-		? [...rollout.status.availableReleases].reverse()
-		: [];
-	$: totalPages = Math.ceil(reversedVersions.length / itemsPerPage);
-	$: paginatedVersions = reversedVersions.slice(
-		(currentPage - 1) * itemsPerPage,
-		currentPage * itemsPerPage
+	const reversedVersions = $derived(
+		rollout?.status?.availableReleases ? [...rollout.status.availableReleases].reverse() : []
+	);
+	const totalPages = $derived(Math.ceil(reversedVersions.length / itemsPerPage));
+	const paginatedVersions = $derived(
+		reversedVersions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 	);
 
 	// Computed properties for all tags filtering and display
-	$: filteredAllTags = allRepositoryTags.filter((tag) =>
-		tag.toLowerCase().includes(searchQuery.toLowerCase())
+	const filteredAllTags = $derived(
+		allRepositoryTags.filter((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
 	);
-	$: nonStandardTags = allRepositoryTags.filter(
-		(tag) => !rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(tag)
+	const nonStandardTags = $derived(
+		allRepositoryTags.filter(
+			(tag) => !rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(tag)
+		)
 	);
-	$: filteredNonStandardTags = nonStandardTags.filter((tag) =>
-		tag.toLowerCase().includes(searchQuery.toLowerCase())
+	const filteredNonStandardTags = $derived(
+		nonStandardTags.filter((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
 	);
 
 	// Unified list of all versions for display
-	$: allVersionsForDisplay = (() => {
+	const allVersionsForDisplay = $derived.by(() => {
 		const availableReleases = rollout?.status?.availableReleases;
 		if (!availableReleases) return [];
 
@@ -271,23 +296,24 @@
 
 		// Combine: standard releases first, then additional tags
 		return [...standardReleases, ...additionalTags];
-	})();
-
-	// Filter the unified list based on search
-	$: filteredVersionsForDisplay = allVersionsForDisplay.filter((version) => {
-		const versionTag = typeof version === 'string' ? version : version.tag;
-		return searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase());
 	});
 
+	// Filter the unified list based on search
+	const filteredVersionsForDisplay = $derived(
+		allVersionsForDisplay.filter((version) => {
+			const versionTag = typeof version === 'string' ? version : version.tag;
+			return searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase());
+		})
+	);
+
 	// Pagination for the unified list
-	$: totalUnifiedPages = Math.ceil(filteredVersionsForDisplay.length / itemsPerPage);
-	$: paginatedUnifiedVersions = filteredVersionsForDisplay.slice(
-		(currentPage - 1) * itemsPerPage,
-		currentPage * itemsPerPage
+	const totalUnifiedPages = $derived(Math.ceil(filteredVersionsForDisplay.length / itemsPerPage));
+	const paginatedUnifiedVersions = $derived(
+		filteredVersionsForDisplay.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 	);
 
 	// Computed property to filter managed resources - now always shows all resources
-	$: filteredManagedResources = managedResources;
+	const filteredManagedResources = $derived(managedResources);
 
 	function goToPage(page: number) {
 		const maxPages = showAllTags ? totalUnifiedPages : totalPages;
@@ -918,10 +944,8 @@
 											{#if latestEntry.bakeStatus === 'InProgress'}
 												<Spinner color="yellow" size="6" />
 											{:else}
-												<svelte:component
-													this={getBakeStatusIcon(latestEntry.bakeStatus).icon}
-													class="h-6 w-6 {getBakeStatusIcon(latestEntry.bakeStatus).color}"
-												/>
+												{@const { icon: Icon, color } = getBakeStatusIcon(latestEntry.bakeStatus)}
+												<Icon class="h-6 w-6 {color}" />
 											{/if}
 										</div>
 
@@ -1754,13 +1778,11 @@
 									date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 								>
 									{#snippet orientationSlot()}
+										{@const { icon: Icon, color } = getBakeStatusIcon(entry.bakeStatus)}
 										<span
 											class="absolute -start-3 flex h-6 w-6 items-center justify-center rounded-full bg-white ring-8 ring-white dark:bg-gray-800 dark:ring-gray-800"
 										>
-											<svelte:component
-												this={getBakeStatusIcon(entry.bakeStatus).icon}
-												class="h-6 w-6 {getBakeStatusIcon(entry.bakeStatus).color}"
-											/>
+											<Icon class="h-6 w-6 {color}" />
 										</span>
 									{/snippet}
 									<div class="flex h-full flex-col">
@@ -2311,7 +2333,7 @@
 	bind:open={showDeployModal}
 	{rollout}
 	selectedVersionTag={selectedVersion}
-	{selectedVersionDisplay}
+	selectedVersionDisplay={selectedVersionDisplay()}
 	{isPinVersionMode}
 	onSuccess={(m) => {
 		toastType = 'success';

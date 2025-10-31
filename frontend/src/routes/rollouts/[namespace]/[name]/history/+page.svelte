@@ -24,16 +24,38 @@
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import DeployModal from '$lib/components/DeployModal.svelte';
 
-	// Get props from parent layout
-	export let data;
-	$: rollout = data.rollout;
-	$: loading = data.loading;
-	$: error = data.error;
+	import { page } from '$app/stores';
+	import { get } from 'svelte/store';
+	import { createQuery } from '@tanstack/svelte-query';
+
+	// Params (runes)
+	const namespace = $derived(get(page).params.namespace as string);
+	const name = $derived(get(page).params.name as string);
+
+	// Query for rollout
+	const rolloutQuery = createQuery(() => ({
+		queryKey: ['rollout', namespace, name],
+		queryFn: async (): Promise<{ rollout: Rollout | null }> => {
+			const res = await fetch(`/api/rollouts/${namespace}/${name}`);
+			if (!res.ok) {
+				if (res.status === 404) {
+					return { rollout: null };
+				}
+				throw new Error('Failed to load rollout');
+			}
+			return await res.json();
+		}
+	}));
+
+	// Derive local vars used in template
+	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	const loading = $derived(rolloutQuery.isLoading);
+	const error = $derived(rolloutQuery.isError ? (rolloutQuery.error as Error).message : null);
 
 	// Local state for deploy modal (rollback)
-	let showDeployModal = false;
-	let selectedVersionTag: string | null = null;
-	let selectedVersionDisplay: string | null = null;
+	let showDeployModal = $state(false);
+	let selectedVersionTag = $state<string | null>(null);
+	let selectedVersionDisplay = $state<string | null>(null);
 
 	function getBakeStatusIcon(bakeStatus?: string) {
 		switch (bakeStatus) {

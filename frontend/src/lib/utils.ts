@@ -164,8 +164,8 @@ export function getForceDeployVersion(rollout: Rollout): string | null {
  * @param rollout The rollout to check
  * @returns true if the force-deploy annotation exists
  */
-export function hasForceDeployAnnotation(rollout: Rollout): boolean {
-    return rollout.metadata?.annotations?.['rollout.kuberik.com/force-deploy'] !== undefined;
+export function hasForceDeployAnnotation(rollout?: Rollout): boolean {
+    return rollout?.metadata?.annotations?.['rollout.kuberik.com/force-deploy'] !== undefined;
 }
 
 /**
