@@ -87,10 +87,15 @@
 	const namespace = $derived(get(page).params.namespace as string);
 	const name = $derived(get(page).params.name as string);
 
-	// Query for rollout
+	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
 	const rolloutQuery = createQuery(() => ({
 		queryKey: ['rollout', namespace, name],
-		queryFn: async (): Promise<{ rollout: Rollout | null }> => {
+		queryFn: async (): Promise<{
+			rollout: Rollout | null;
+			kustomizations?: { items: Kustomization[] };
+			ociRepositories?: { items: OCIRepository[] };
+			rolloutGates?: { items: any[] };
+		}> => {
 			const res = await fetch(`/api/rollouts/${namespace}/${name}`);
 			if (!res.ok) {
 				if (res.status === 404) {
@@ -112,7 +117,81 @@
 	let rolloutGates = $state<any[]>([]);
 	let managedResources = $state<Record<string, ManagedResourceStatus[]>>({});
 	let healthChecks = $state<HealthCheck[]>([]);
-	let hasLoaded = $state(false);
+
+	// Map data from query response to state
+	$effect(() => {
+		if (rolloutQuery.data) {
+			kustomizations = rolloutQuery.data.kustomizations?.items || [];
+			ociRepositories = rolloutQuery.data.ociRepositories?.items || [];
+			rolloutGates = rolloutQuery.data.rolloutGates?.items || [];
+		}
+	});
+
+	// Fetch managed resources when kustomizations change
+	$effect(() => {
+		const currentKustomizations = kustomizations;
+		if (!currentKustomizations || currentKustomizations.length === 0) {
+			managedResources = {};
+			return;
+		}
+
+		const tempResources: Record<string, ManagedResourceStatus[]> = {};
+		Promise.all(
+			currentKustomizations
+				.filter((kustomization) => Boolean(kustomization.metadata?.name))
+				.map(async (kustomization) => {
+					const name = kustomization.metadata!.name as string;
+					const kustomizationNamespace = kustomization.metadata?.namespace || namespace;
+					try {
+						const resourcesResponse = await fetch(
+							`/api/kustomizations/${kustomizationNamespace}/${name}/managed-resources`
+						);
+						if (resourcesResponse.ok) {
+							const resourcesData = await resourcesResponse.json();
+							tempResources[name] = resourcesData.managedResources || [];
+						}
+					} catch (e) {
+						console.error(`Failed to fetch managed resources for ${name}:`, e);
+					}
+				})
+		).then(() => {
+			// Only update if kustomizations haven't changed
+			if (kustomizations === currentKustomizations) {
+				managedResources = { ...tempResources };
+			}
+		});
+	});
+
+	// Fetch health checks when rollout or healthCheckSelector changes
+	$effect(() => {
+		const currentRollout = rollout;
+		if (!currentRollout?.spec?.healthCheckSelector) {
+			healthChecks = [];
+			return;
+		}
+
+		fetch(`/api/rollouts/${namespace}/${name}/health-checks`)
+			.then((healthChecksResponse) => {
+				if (healthChecksResponse.ok) {
+					return healthChecksResponse.json();
+				}
+				return null;
+			})
+			.then((healthChecksData) => {
+				// Only update if rollout hasn't changed
+				if (healthChecksData && rollout === currentRollout) {
+					healthChecks = healthChecksData.healthChecks || [];
+
+					// Log namespace search information
+					if (healthChecksData.debug) {
+						console.log('Health checks search info:', healthChecksData.debug);
+					}
+				}
+			})
+			.catch((e) => {
+				console.error('Failed to fetch health checks:', e);
+			});
+	});
 
 	let annotations = $state<Record<string, Record<string, string>>>({});
 	let loadingAnnotations = $state<Record<string, boolean>>({});
@@ -144,8 +223,6 @@
 	// Drawer state
 	let showTimelineDrawer = $state(false);
 
-	let autoRefreshIntervalId: number | null = null;
-
 	// Toggle for showing/hiding "current" resources
 
 	// Pagination variables
@@ -157,7 +234,6 @@
 	let loadingAllTags = $state(false);
 	let searchQuery = $state('');
 	let showAllTags = $state(false);
-	let clipboardValue = $state('');
 
 	// Selected version display label (for modal confirmation)
 	function selectedVersionDisplay(): string | null {
@@ -323,113 +399,8 @@
 		}
 	}
 
-	async function updateData() {
-		// Wait for rollout to be loaded from layout
-		if (!rollout || loading) {
-			return;
-		}
-
-		try {
-			const response = await fetch(`/api/rollouts/${$page.params.namespace}/${$page.params.name}`);
-			if (!response.ok) {
-				throw new Error('Failed to fetch rollout details');
-			}
-			const data = await response.json();
-			// rollout is already set from parent layout, don't overwrite it
-			kustomizations = data.kustomizations?.items || [];
-			ociRepositories = data.ociRepositories?.items || [];
-			rolloutGates = data.rolloutGates?.items || [];
-			console.log('Rollout gates fetched:', rolloutGates);
-			console.log('Rollout status gates:', rollout?.status?.gates);
-
-			// if (rollout?.status?.history) {
-			// 	// Only fetch annotations for release candidates (custom releases)
-			// 	// Regular releases will use .revisions and .version fields from availableReleases
-			// 	if (rollout.status.releaseCandidates) {
-			// 		const releaseCandidateVersions = rollout.status.releaseCandidates.map((rc) => rc.tag);
-			// 		const annotationPromises = releaseCandidateVersions
-			// 			.filter((version) => !annotations[version])
-			// 			.map((version) => getAnnotations(version));
-			// 		await Promise.all(annotationPromises);
-			// 	}
-			// }
-
-			// Fetch managed resources for each Kustomization
-			const tempResources: Record<string, ManagedResourceStatus[]> = {};
-			await Promise.all(
-				kustomizations
-					.filter((kustomization) => Boolean(kustomization.metadata?.name))
-					.map(async (kustomization) => {
-						const name = kustomization.metadata!.name as string;
-						const namespace = kustomization.metadata?.namespace || $page.params.namespace;
-						try {
-							const resourcesResponse = await fetch(
-								`/api/kustomizations/${namespace}/${name}/managed-resources`
-							);
-							if (resourcesResponse.ok) {
-								const resourcesData = await resourcesResponse.json();
-								tempResources[name] = resourcesData.managedResources || [];
-							}
-						} catch (e) {
-							console.error(`Failed to fetch managed resources for ${name}:`, e);
-						}
-					})
-			);
-			managedResources = tempResources;
-
-			// Fetch health checks that match the rollout's health selector
-			if (rollout?.spec?.healthCheckSelector) {
-				try {
-					const healthChecksResponse = await fetch(
-						`/api/rollouts/${$page.params.namespace}/${$page.params.name}/health-checks`
-					);
-					if (healthChecksResponse.ok) {
-						const healthChecksData = await healthChecksResponse.json();
-						healthChecks = healthChecksData.healthChecks || [];
-
-						// Log namespace search information
-						if (healthChecksData.debug) {
-							console.log('Health checks search info:', healthChecksData.debug);
-						}
-					}
-				} catch (e) {
-					console.error('Failed to fetch health checks:', e);
-				}
-			}
-
-			// Clear any previous error on successful fetch
-			error = null;
-		} catch (e) {
-			// Only set error on initial load, preserve stale data on subsequent failed fetches
-			if (!hasLoaded) {
-				error = e instanceof Error ? e.message : 'Unknown error occurred';
-			} else {
-				// Log the error but don't show it to the user to preserve stale data
-				console.error('Failed to fetch rollout data (preserving stale data):', e);
-			}
-		} finally {
-			// loading is managed by parent layout
-		}
-	}
-
-	onMount(async () => {
-		// Perform initial client-side fetch to avoid SSR relative fetch errors
-		if (rollout && !loading && !hasLoaded) {
-			await updateData();
-			hasLoaded = true;
-		}
-
-		autoRefreshIntervalId = window.setInterval(() => {
-			updateData();
-		}, 5000);
-	});
-
-	onDestroy(() => {
-		if (autoRefreshIntervalId) {
-			clearInterval(autoRefreshIntervalId);
-			autoRefreshIntervalId = null;
-		}
-	});
+	// Note: Data fetching is handled by rolloutQuery with automatic refetch via layout's refetchInterval
+	// Dependent data (managedResources, healthChecks) is fetched via $effect when parent data changes
 
 	async function submitPin(version?: string) {
 		const pinVersion = version ?? selectedVersion;
@@ -467,7 +438,7 @@
 			// Refresh the data
 			setTimeout(async () => {
 				for (let i = 0; i < 10; i++) {
-					await updateData();
+					await rolloutQuery.refetch();
 					if (rollout?.status?.history?.[0]?.version.tag === pinVersion) {
 						break;
 					}
@@ -575,7 +546,7 @@
 				throw new Error('Failed to add unblock-failed annotation');
 			}
 
-			await updateData();
+			await rolloutQuery.refetch();
 			showToast = true;
 			toastMessage = 'Rollout resumed successfully';
 			toastType = 'success';
@@ -618,7 +589,7 @@
 				throw new Error('Failed to mark deployment as successful');
 			}
 
-			await updateData();
+			await rolloutQuery.refetch();
 			showToast = true;
 			toastMessage = 'Deployment marked as successful';
 			toastType = 'success';
@@ -826,7 +797,7 @@
 			}, 3000);
 
 			// Refresh the rollout data
-			await updateData();
+			await rolloutQuery.refetch();
 		} catch (error) {
 			console.error('Continue rollout error:', error);
 			showToast = true;
@@ -1960,7 +1931,6 @@
 					{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
 						{@const versionTag = typeof version === 'string' ? version : version.tag}
 						{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
-							{@const _clipboard = clipboardValue = versionTag}
 							{#await loadAnnotationsOnDemand(versionTag)}{/await}
 							<ListgroupItem
 								onclick={() => {
@@ -2144,7 +2114,7 @@
 														color="light"
 													/>
 												{/if}
-												<Clipboard bind:value={clipboardValue} size="xs" color="light" class="">
+												<Clipboard value={versionTag} size="xs" color="light" class="">
 													{#snippet children(success)}
 														{#if success}
 															<CheckOutline class="mr-1 h-3 w-3" />
