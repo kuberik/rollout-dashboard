@@ -898,10 +898,6 @@
 								<div class="mb-6">
 									<div class="flex items-center justify-between">
 										<h3 class="text-xl font-bold text-gray-900 dark:text-white">Current Version</h3>
-										<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-											<ClockSolid class="h-4 w-4" />
-											<span>Deployed {formatTimeAgo(latestEntry.timestamp, $now)}</span>
-										</div>
 									</div>
 								</div>
 
