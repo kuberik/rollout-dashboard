@@ -979,6 +979,106 @@
 											{/if}
 										</TimelineItem>
 
+										<!-- Kustomization Manifest Application Status -->
+										{#if kustomizations.length > 0}
+											{@const kustomizationStatuses = kustomizations.map((k) => {
+												const readyCondition = k.status?.conditions?.find(
+													(c) => c.type === 'Ready'
+												);
+												const isReady = readyCondition?.status === 'True';
+												const hasAppliedRevision = Boolean(k.status?.lastAppliedRevision);
+												const readyStatus = readyCondition?.status || 'Unknown';
+												return {
+													name: k.metadata?.name || 'Unknown',
+													namespace: k.metadata?.namespace || namespace,
+													isReady,
+													hasAppliedRevision,
+													readyStatus,
+													lastTransitionTime: readyCondition?.lastTransitionTime,
+													message: readyCondition?.message,
+													lastAppliedRevision: k.status?.lastAppliedRevision
+												};
+											})}
+											{@const allKustomizationsReady = kustomizationStatuses.every(
+												(ks) => ks.isReady && ks.hasAppliedRevision
+											)}
+											{@const anyKustomizationFailed = kustomizationStatuses.some(
+												(ks) => ks.readyStatus === 'False'
+											)}
+											{@const latestTransitionTime = kustomizationStatuses
+												.map((ks) => ks.lastTransitionTime)
+												.filter(Boolean)
+												.sort()
+												.reverse()[0]}
+											<TimelineItem
+												title={allKustomizationsReady
+													? 'Manifests Applied'
+													: anyKustomizationFailed
+														? 'Manifests Application Failed'
+														: 'Manifests Applying...'}
+												date={latestTransitionTime
+													? formatTimeAgo(latestTransitionTime, $now)
+													: 'In progress'}
+												class="min-w-0 flex-1 pr-3"
+											>
+												{#snippet orientationSlot()}
+													<div class="flex items-center">
+														<div
+															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {allKustomizationsReady
+																? 'bg-green-200 dark:bg-green-900'
+																: anyKustomizationFailed
+																	? 'bg-red-200 dark:bg-red-900'
+																	: 'bg-yellow-200 dark:bg-yellow-900'}"
+														>
+															{#if allKustomizationsReady}
+																<CheckCircleSolid
+																	class="h-4 w-4 text-green-600 dark:text-green-400"
+																/>
+															{:else if anyKustomizationFailed}
+																<ExclamationCircleSolid
+																	class="h-4 w-4 text-red-600 dark:text-red-400"
+																/>
+															{:else}
+																<Spinner size="4" color="yellow" />
+															{/if}
+														</div>
+														<div
+															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+														></div>
+													</div>
+												{/snippet}
+												<div class="mt-1 space-y-1">
+													{#each kustomizationStatuses as ks}
+														<div class="flex items-center gap-2 text-sm">
+															{#if ks.isReady && ks.hasAppliedRevision}
+																<CheckCircleSolid
+																	class="h-3 w-3 text-green-600 dark:text-green-400"
+																/>
+															{:else if !ks.isReady || !ks.hasAppliedRevision}
+																<ExclamationCircleSolid
+																	class="h-3 w-3 text-red-600 dark:text-red-400"
+																/>
+															{:else}
+																<Spinner size="4" color="yellow" />
+															{/if}
+															<span class="text-gray-600 dark:text-gray-400">
+																{ks.namespace}
+																<span class="text-gray-500 dark:text-gray-400">/</span>
+																<span class="font-medium text-gray-700 dark:text-gray-300"
+																	>{ks.name}</span
+																>
+															</span>
+														</div>
+														{#if ks.message && (!ks.isReady || !ks.hasAppliedRevision)}
+															<div class="ml-5 text-xs text-gray-500 dark:text-gray-400">
+																{ks.message}
+															</div>
+														{/if}
+													{/each}
+												</div>
+											</TimelineItem>
+										{/if}
+
 										<!-- OpenKruise Rollout Progress (during baking and after completion) -->
 										{@const openKruiseRollouts = Object.values(managedResources)
 											.flat()
@@ -1030,29 +1130,23 @@
 														<div class="mt-2 space-y-2">
 															<div class="flex items-center justify-between gap-2">
 																<div class="flex items-center gap-2">
-																	<Badge
-																		color={rolloutData.currentStepState === 'Completed'
-																			? 'green'
-																			: rolloutData.currentStepState === 'StepPaused'
-																				? 'yellow'
-																				: 'blue'}
-																		size="small"
-																	>
-																		{rolloutData.currentStepState === 'Completed'
-																			? 'Completed'
-																			: rolloutData.currentStepState === 'StepPaused'
-																				? 'Paused'
-																				: 'In Progress'}
-																	</Badge>
-																	{#if rolloutResource.namespace}
-																		<span class="text-xs text-gray-500 dark:text-gray-400">
-																			{rolloutResource.namespace} /
-																		</span>
+																	{#if rolloutData.currentStepState === 'Completed'}
+																		<CheckCircleSolid
+																			class="h-3 w-3 text-green-600 dark:text-green-400"
+																		/>
+																	{:else if rolloutData.currentStepState === 'StepPaused'}
+																		<PauseSolid
+																			class="h-3 w-3 text-yellow-600 dark:text-yellow-400"
+																		/>
+																	{:else}
+																		<Spinner size="4" color="yellow" />
 																	{/if}
-																	<span
-																		class="text-xs font-medium text-gray-700 dark:text-gray-300"
-																	>
-																		{rolloutResource.name}
+																	<span class="text-sm text-gray-600 dark:text-gray-400">
+																		{rolloutResource.namespace}
+																		<span class="text-gray-500 dark:text-gray-400">/</span>
+																		<span class="font-medium text-gray-700 dark:text-gray-300"
+																			>{rolloutResource.name}</span
+																		>
 																	</span>
 																</div>
 																{#if rolloutData.currentStepState === 'StepPaused'}
