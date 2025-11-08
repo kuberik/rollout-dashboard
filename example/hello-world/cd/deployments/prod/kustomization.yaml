@@ -39,3 +39,17 @@ replacements:
         options:
           delimiter: "/"
           index: 5
+      - select:
+          kind: GitHubDeployment
+        fieldPaths:
+          - spec.environment
+        options:
+          create: true
+patches:
+  - patch: |-
+      apiVersion: github.kuberik.com/v1alpha1
+      kind: GitHubDeployment
+      metadata:
+        name: hello-world-app
+      spec:
+        dependencies: ["staging"]

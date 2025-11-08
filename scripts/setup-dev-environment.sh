@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
+set -x
 
 SCRIPT_DIR=$(dirname "$0")
-
+GITHUB_TOKEN=${GITHUB_TOKEN:-$(gh auth token)}
 # Check if Kind cluster exists, if not run the setup script
 if ! kind get clusters | grep -q rollout-dev; then
     "${SCRIPT_DIR}/setup-kind-cluster.sh"
@@ -22,8 +23,11 @@ kubectl apply -f https://raw.githubusercontent.com/DataDog/datadog-operator/refs
 kustomize build deploy/dev | KIND_CLUSTER_NAME=rollout-dev KO_DOCKER_REPO=kind.local ko apply -f -
 
 "${SCRIPT_DIR}"/build-and-push.sh "${env}"
+GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
 SCRIPT_DIR=$(dirname "$0")
 for env in dev prod staging; do
+  kubectl -n hello-world-${env} create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
+  kubectl -n hello-world-${env} create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
   kustomize build "example/hello-world/app/deployments/${env}" | kubectl apply -f -
   kustomize build "example/hello-world/cd/deployments/${env}" | kubectl apply -f -
 done

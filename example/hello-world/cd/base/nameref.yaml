@@ -7,3 +7,7 @@ nameReference:
     fieldSpecs:
       - kind: ImagePolicy
         path: spec/imageRepositoryRef/name
+  - kind: GitHubDeployment
+    fieldSpecs:
+      - kind: Rollout
+        path: spec/rolloutRef/name

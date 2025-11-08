@@ -17,3 +17,8 @@ patches:
         value: ${HELLO_WORLD_VERSION}
 
 namespace: hello-world
+
+configMapGenerator:
+  - name: hello-world-app-env
+    files:
+      - app.env

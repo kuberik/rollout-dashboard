@@ -47,7 +47,7 @@ spec:
     spec:
       containers:
         - name: python-server
-          image: registry.registry.svc.cluster.local/examples/hello-world/app:${HELLO_WORLD_VERSION}
+          image: ghcr.io/littlechimera/hello-world/app:${HELLO_WORLD_VERSION}
           command: ["python", "/app/app.py"]
           env:
             - name: VERSION

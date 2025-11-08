@@ -19,9 +19,10 @@ kind: ImageRepository
 metadata:
   name: hello-world-manifests
 spec:
-  image: registry.registry.svc.cluster.local/examples/hello-world/__ENVIRONMENT__/manifests
-  interval: 1s
-  insecure: true
+  image: ghcr.io/littlechimera/hello-world/__ENVIRONMENT__/manifests
+  interval: 60s
+  secretRef:
+    name: github-registry-credentials
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
@@ -44,9 +45,10 @@ metadata:
   annotations:
     rollout.kuberik.com/rollout: hello-world-manifests
 spec:
-  interval: 1s
-  url: oci://registry.registry.svc.cluster.local/examples/hello-world/__ENVIRONMENT__/manifests
-  insecure: true
+  interval: 60s
+  url: oci://ghcr.io/littlechimera/hello-world/__ENVIRONMENT__/manifests
+  secretRef:
+    name: github-registry-credentials
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -82,9 +84,10 @@ kind: ImageRepository
 metadata:
   name: hello-world-app
 spec:
-  image: registry.registry.svc.cluster.local/examples/hello-world/app
-  interval: 1s
-  insecure: true
+  image: ghcr.io/littlechimera/hello-world/app
+  interval: 60s
+  secretRef:
+    name: github-registry-credentials
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
@@ -111,3 +114,20 @@ metadata:
     kuberik.com/display-name: "Flux Deployment"
 spec:
   class: "kustomization"
+---
+apiVersion: github.kuberik.com/v1alpha1
+kind: GitHubDeployment
+metadata:
+  name: hello-world-app
+spec:
+  # Reference to the Rollout that this GitHubDeployment manages
+  rolloutRef:
+    name: hello-world-app
+
+  # GitHub repository configuration
+  # TODO: parametrize
+  repository: "LittleChimera/rollout-example"
+  deploymentName: "hello-world-app"
+
+  # GitHub token configuration
+  githubTokenSecret: "github-token"
