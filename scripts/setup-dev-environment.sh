@@ -13,7 +13,7 @@ fi
 kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
 helm repo add openkruise https://openkruise.github.io/charts/
 helm repo update
-helm upgrade kruise-rollout openkruise/kruise-rollout --version 0.6.1
+helm template openkruise/kruise-rollout --version 0.6.1 | kubectl apply -f -
 
 # Apply rollout CRDs
 kubectl apply -f https://raw.githubusercontent.com/DataDog/datadog-operator/refs/heads/main/config/crd/bases/v1/datadoghq.com_datadogmonitors.yaml
@@ -26,8 +26,8 @@ kustomize build deploy/dev | KIND_CLUSTER_NAME=rollout-dev KO_DOCKER_REPO=kind.l
 GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
 SCRIPT_DIR=$(dirname "$0")
 for env in dev prod staging; do
-  kubectl -n hello-world-${env} create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
-  kubectl -n hello-world-${env} create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
   kustomize build "example/hello-world/app/deployments/${env}" | kubectl apply -f -
   kustomize build "example/hello-world/cd/deployments/${env}" | kubectl apply -f -
+  kubectl -n hello-world-${env} create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
+  kubectl -n hello-world-${env} create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
 done
