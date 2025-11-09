@@ -144,15 +144,13 @@
 						date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 					>
 						{#snippet orientationSlot()}
+							{@const { icon: Icon, color: iconColor } = getBakeStatusIcon(entry.bakeStatus)}
 							<span
 								class="absolute -start-3 flex h-6 w-6 items-center justify-center rounded-full bg-white ring-8 ring-white dark:bg-gray-800 dark:ring-gray-800"
 							>
-								<svelte:component
-									this={getBakeStatusIcon(entry.bakeStatus).icon}
+								<Icon
 									color={entry.bakeStatus === 'InProgress' ? 'yellow' : undefined}
-									class="h-6 w-6 {entry.bakeStatus === 'InProgress'
-										? 'undefined'
-										: getBakeStatusIcon(entry.bakeStatus).color}"
+									class="h-6 w-6 {entry.bakeStatus === 'InProgress' ? '' : iconColor}"
 								/>
 							</span>
 						{/snippet}
