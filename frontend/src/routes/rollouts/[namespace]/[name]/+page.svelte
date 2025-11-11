@@ -1005,7 +1005,7 @@
 												return null;
 											})
 											.filter((r): r is NonNullable<typeof r> => r !== null)}
-										{#if validRollouts.length > 0 && (latestEntry.bakeStatus === 'InProgress' || latestEntry.bakeStatus === 'Succeeded')}
+										{#if validRollouts.length > 0}
 											{@const allRolloutsCompleted = validRollouts.every((r) => r.isCompleted)}
 											{@const anyRolloutPaused = validRollouts.some(
 												(r) => r.rolloutData.currentStepState === 'StepPaused'
@@ -1131,6 +1131,40 @@
 													)}
 													{#if latestEntry.bakeStatusMessage}
 														<br />
+														{latestEntry.bakeStatusMessage}
+													{/if}
+												</div>
+											</TimelineItem>
+										{:else if latestEntry.bakeStatus === 'Pending' || !latestEntry.bakeStatus || latestEntry.bakeStatus === 'None'}
+											<TimelineItem
+												title="Bake"
+												date={'TODO: display timeout countdown'}
+												class="min-w-0 flex-1 pr-3"
+											>
+												{#snippet orientationSlot()}
+													<div class="flex items-center">
+														<div
+															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 ring-0 ring-white sm:ring-8 dark:bg-gray-700 dark:ring-gray-800"
+														>
+															<ClockSolid class="h-4 w-4 text-gray-600 dark:text-gray-400" />
+														</div>
+														<div
+															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+														></div>
+													</div>
+												{/snippet}
+												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+													{#if latestEntry.bakeEndTime && latestEntry.bakeStartTime}
+														Completed after {formatDuration(
+															latestEntry.bakeStartTime,
+															new Date(latestEntry.bakeEndTime)
+														)}
+														<br />
+													{:else if latestEntry.bakeStartTime}
+														Baking in progress...
+														<br />
+													{/if}
+													{#if latestEntry.bakeStatusMessage}
 														{latestEntry.bakeStatusMessage}
 													{/if}
 												</div>
