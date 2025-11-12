@@ -1138,7 +1138,20 @@
 										{:else if latestEntry.bakeStatus === 'Pending' || !latestEntry.bakeStatus || latestEntry.bakeStatus === 'None'}
 											<TimelineItem
 												title="Bake"
-												date={'TODO: display timeout countdown'}
+												date={rollout.spec?.deployTimeout
+													? (() => {
+															const deploymentTime = new Date(latestEntry.timestamp).getTime();
+															const currentTime = $now.getTime();
+															const deployTimeoutMs = parseDuration(rollout.spec.deployTimeout);
+															const timeoutTime = deploymentTime + deployTimeoutMs;
+															const timeUntilTimeout = timeoutTime - currentTime;
+															if (timeUntilTimeout > 0) {
+																return `Will timeout in ${formatDurationFromMs(timeUntilTimeout)}`;
+															} else {
+																return 'Timed out';
+															}
+														})()
+													: 'Waiting for bake to start...'}
 												class="min-w-0 flex-1 pr-3"
 											>
 												{#snippet orientationSlot()}
@@ -1169,7 +1182,7 @@
 													{/if}
 												</div>
 											</TimelineItem>
-										{:else if latestEntry.bakeStatus === 'Failed' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+										{:else if latestEntry.bakeStatus === 'Failed' && latestEntry.bakeEndTime}
 											<TimelineItem
 												title="Deployment failed"
 												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
@@ -1191,7 +1204,7 @@
 												{/snippet}
 												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
 													Failed after {formatDuration(
-														latestEntry.bakeStartTime,
+														latestEntry.bakeStartTime || latestEntry.timestamp,
 														new Date(latestEntry.bakeEndTime)
 													)}
 													{#if latestEntry.bakeStatusMessage}
