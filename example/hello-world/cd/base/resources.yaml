@@ -8,7 +8,7 @@ spec:
   releasesImagePolicy:
     name: hello-world-manifests
   versionHistoryLimit: 5
-  minBakeTime: 15s
+  bakeTime: 15s
   healthCheckSelector:
     selector:
       matchLabels:
@@ -73,7 +73,7 @@ spec:
   releasesImagePolicy:
     name: hello-world-app
   versionHistoryLimit: 5
-  minBakeTime: 15s
+  bakeTime: 15s
   healthCheckSelector:
     selector:
       matchLabels:

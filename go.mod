@@ -2,6 +2,8 @@ module github.com/kuberik/rollout-dashboard
 
 go 1.24.2
 
+replace github.com/kuberik/rollout-controller => ../rollout-controller
+
 require (
 	github.com/docker/cli v28.4.0+incompatible
 	github.com/fluxcd/image-reflector-controller/api v0.35.2

@@ -70,6 +70,15 @@ export interface components {
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description RolloutSpec defines the desired state of Rollout. */
             spec?: {
+                /** @description BakeTime specifies how long to wait after bake starts before marking as successful
+                 *     If no errors happen within the bake time, the rollout is baked successfully.
+                 *     If not specified, no bake time is enforced. */
+                bakeTime?: string;
+                /** @description DeployTimeout specifies the maximum time to wait for bake to start before marking as failed
+                 *     If bake doesn't start within deployTimeout (i.e., health checks don't become healthy),
+                 *     the rollout should be marked as failed.
+                 *     If not specified, the rollout will wait indefinitely for bake to start. */
+                deployTimeout?: string;
                 /** @description HealthCheckSelector specifies how to select HealthChecks for this rollout */
                 healthCheckSelector?: {
                     /** @description NamespaceSelector specifies the namespace selector for matching HealthChecks
@@ -118,13 +127,9 @@ export interface components {
                         };
                     };
                 };
-                /** @description MaxBakeTime specifies the maximum time to wait for health checks before marking as failed
-                 *     This is the maximum time the rollout will wait for health checks to pass before failing.
-                 *     If not specified, the rollout will wait indefinitely. Must be greater than MinBakeTime if both are specified. */
+                /** @description DEPRECATED: Use BakeTime instead. */
                 maxBakeTime?: string;
-                /** @description MinBakeTime specifies how long to wait after deployment before marking as successful
-                 *     This is the minimum time that must pass before the rollout can be considered successful,
-                 *     even if all health checks are passing. If not specified, no minimum wait time is enforced. */
+                /** @description DEPRECATED: Use BakeTime instead. */
                 minBakeTime?: string;
                 /** @description ReleasesImagePolicy specifies the ImagePolicy that provides available releases */
                 releasesImagePolicy: {
@@ -252,6 +257,11 @@ export interface components {
                     /** @description BakeStatusMessage provides details about the bake state for this deployment
                      *     This field contains human-readable information about why the bake status is what it is. */
                     bakeStatusMessage?: string;
+                    /**
+                     * Format: int64
+                     * @description ID is a unique auto-incrementing identifier for this history entry.
+                     */
+                    id?: number;
                     /** @description Message provides a descriptive message about this deployment entry
                      *     This field contains human-readable information about the deployment context.
                      *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
