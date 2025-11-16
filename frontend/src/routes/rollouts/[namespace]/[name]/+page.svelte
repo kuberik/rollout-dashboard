@@ -1104,7 +1104,7 @@
 										{/if}
 
 										<!-- Baked -->
-										{#if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeStartTime && latestEntry.bakeEndTime}
+										{#if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeEndTime}
 											<TimelineItem
 												title="Baked"
 												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
@@ -1126,7 +1126,7 @@
 												{/snippet}
 												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
 													Completed after {formatDuration(
-														latestEntry.bakeStartTime,
+														latestEntry.bakeStartTime || latestEntry.timestamp,
 														new Date(latestEntry.bakeEndTime)
 													)}
 													{#if latestEntry.bakeStatusMessage}
