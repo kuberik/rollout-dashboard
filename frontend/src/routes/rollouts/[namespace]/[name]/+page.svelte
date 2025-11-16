@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import type {
 		Rollout,
@@ -84,8 +84,8 @@
 	import { createQuery } from '@tanstack/svelte-query';
 
 	// Params (runes)
-	const namespace = $derived(get(page).params.namespace as string);
-	const name = $derived(get(page).params.name as string);
+	const namespace = $derived(page.params.namespace as string);
+	const name = $derived(page.params.name as string);
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
 	const rolloutQuery = createQuery(() => ({
