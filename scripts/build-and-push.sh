@@ -18,7 +18,7 @@ ENVIRONMENTS="dev staging prod"
 
 # Get GitHub username and set up repository
 GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
-REPO_NAME="${GITHUB_USER}/rollout-example"
+REPO_NAME="${GITHUB_USER}/kuberik-testing"
 REGISTRY="ghcr.io/${GITHUB_USER}"
 
 # Authenticate Docker with GitHub Container Registry
@@ -62,13 +62,7 @@ trap "rm -rf $temp_dir" EXIT
 
 (
     cd $temp_dir
-    git init
-    git config user.name "kuberik demo"
-    git config user.email "kuberik@kuberik.com"
-    git branch -M main
-    # Configure git to use GitHub token for authentication
-    git remote add origin "https://$(gh auth token)@github.com/${REPO_NAME}.git" 2>/dev/null || git remote set-url origin "https://$(gh auth token)@github.com/${REPO_NAME}.git"
-    git pull origin main
+    gh repo clone $REPO_NAME .
     cp -r $PROJECT_ROOT/example/hello-world/* .
     git add .
     git commit -m "Initial commit"

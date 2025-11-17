@@ -126,7 +126,7 @@ spec:
 
   # GitHub repository configuration
   # TODO: parametrize
-  repository: "LittleChimera/rollout-example"
+  repository: "LittleChimera/kuberik-testing"
   deploymentName: "hello-world-app"
 
   # GitHub token configuration
