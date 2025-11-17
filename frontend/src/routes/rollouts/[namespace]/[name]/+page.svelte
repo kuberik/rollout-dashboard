@@ -997,9 +997,7 @@
 														kruiseRollout,
 														rolloutData,
 														canarySteps,
-														isCompleted:
-															rolloutData.currentStepState === 'Completed' &&
-															latestEntry.bakeStatus === 'Succeeded'
+														isCompleted: kruiseRollout.status?.currentStepState === 'Completed'
 													};
 												}
 												return null;
@@ -1216,27 +1214,20 @@
 										{:else if latestEntry.bakeStatus === 'InProgress'}
 											<TimelineItem
 												title="Baking"
-												date={rollout.spec?.minBakeTime
+												date={rollout.spec?.bakeTime
 													? (() => {
 															const deploymentTime = new Date(latestEntry.timestamp).getTime();
 															const currentTime = $now.getTime();
 															const elapsedTime = currentTime - deploymentTime;
-															const minBakeTimeMs = parseDuration(rollout.spec.minBakeTime);
-															const maxBakeTimeMs = rollout.spec.maxBakeTime
-																? parseDuration(rollout.spec.maxBakeTime)
-																: null;
-															if (elapsedTime < minBakeTimeMs) {
-																const remainingTime = minBakeTimeMs - elapsedTime;
-																return `Waiting to mark the deployment as successful for at least ${formatDurationFromMs(remainingTime)}`;
-															} else if (maxBakeTimeMs) {
-																const timeoutTime = deploymentTime + maxBakeTimeMs;
-																const timeUntilTimeout = timeoutTime - currentTime;
-																return `Will mark deployment as failed if health checks don't pass in ${formatDurationFromMs(Math.max(timeUntilTimeout, 0))}`;
+															const bakeTimeMs = parseDuration(rollout.spec.bakeTime);
+															if (elapsedTime < bakeTimeMs) {
+																const remainingTime = bakeTimeMs - elapsedTime;
+																return `Waiting for at least ${formatDurationFromMs(remainingTime)}`;
 															} else {
-																return 'Waiting for health checks to pass...';
+																return 'Baking in progress...';
 															}
 														})()
-													: 'Waiting for deployment to complete...'}
+													: 'Waiting for bake to start...'}
 												class="min-w-0 flex-1 pr-3"
 											>
 												{#snippet orientationSlot()}

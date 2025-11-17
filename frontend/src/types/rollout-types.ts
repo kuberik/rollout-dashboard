@@ -127,10 +127,6 @@ export interface components {
                         };
                     };
                 };
-                /** @description DEPRECATED: Use BakeTime instead. */
-                maxBakeTime?: string;
-                /** @description DEPRECATED: Use BakeTime instead. */
-                minBakeTime?: string;
                 /** @description ReleasesImagePolicy specifies the ImagePolicy that provides available releases */
                 releasesImagePolicy: {
                     /**
