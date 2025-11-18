@@ -1211,7 +1211,19 @@
 													{/if}
 												</div>
 											</TimelineItem>
-										{:else if latestEntry.bakeStatus === 'InProgress'}
+										{:else if latestEntry.bakeStatus === 'InProgress' && latestEntry.bakeStartTime}
+											{@const bakeProgress = rollout.spec?.bakeTime
+												? (() => {
+														const bakeStartTime = new Date(latestEntry.bakeStartTime).getTime();
+														const currentTime = $now.getTime();
+														const elapsedTime = currentTime - bakeStartTime;
+														const bakeTimeMs = parseDuration(rollout.spec.bakeTime);
+														if (bakeTimeMs > 0) {
+															return Math.min(100, Math.max(0, (elapsedTime / bakeTimeMs) * 100));
+														}
+														return 0;
+													})()
+												: 0}
 											<TimelineItem
 												title="Baking"
 												date={rollout.spec?.bakeTime
@@ -1261,10 +1273,29 @@
 														></div>
 													</div>
 												{/snippet}
-												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-													{latestEntry.bakeStatusMessage || 'Baking in progress...'}
+												<div class="mt-1 space-y-2">
+													<div class="text-sm text-gray-600 dark:text-gray-400">
+														{latestEntry.bakeStatusMessage || 'Baking in progress...'}
+													</div>
+													{#if rollout.spec?.bakeTime}
+														<div class="w-full">
+															<div class="mb-1 flex items-center justify-between text-xs">
+																<span class="text-gray-600 dark:text-gray-400">Bake Progress</span>
+																<span class="font-medium text-gray-700 dark:text-gray-300">
+																	{Math.round(bakeProgress)}%
+																</span>
+															</div>
+															<div
+																class="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+															>
+																<div
+																	class="h-full rounded-full bg-yellow-500 transition-all duration-300 ease-out dark:bg-yellow-600"
+																	style="width: {bakeProgress}%"
+																></div>
+															</div>
+														</div>
+													{/if}
 												</div>
-												<div></div>
 											</TimelineItem>
 										{/if}
 									</Timeline>

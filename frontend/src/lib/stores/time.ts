@@ -1,6 +1,6 @@
 import { readable } from 'svelte/store';
 
 export const now = readable<Date>(new Date(), (set) => {
-    const interval = setInterval(() => set(new Date()), 1000);
+    const interval = setInterval(() => set(new Date()), 100);
     return () => clearInterval(interval);
 });
