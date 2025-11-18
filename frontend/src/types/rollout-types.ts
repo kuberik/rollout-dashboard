@@ -202,6 +202,9 @@ export interface components {
                     /** @description type of condition in CamelCase or in foo.example.com/CamelCase. */
                     type: string;
                 }[];
+                /** @description Description is the description of the image extracted from OCI annotations.
+                 *     This field is set once for the entire rollout based on the latest available release. */
+                description?: string;
                 /** @description GatedReleaseCandidates is a list of release candidates that have passed through all gates.
                  *     This shows which versions are actually available for deployment after gate evaluation. */
                 gatedReleaseCandidates?: {
@@ -253,6 +256,16 @@ export interface components {
                     /** @description BakeStatusMessage provides details about the bake state for this deployment
                      *     This field contains human-readable information about why the bake status is what it is. */
                     bakeStatusMessage?: string;
+                    /** @description FailedHealthChecks contains all health checks that failed during bake.
+                     *     This field is populated when bake fails due to health check errors. */
+                    failedHealthChecks?: {
+                        /** @description Message is the error message from the health check. */
+                        message?: string;
+                        /** @description Name is the name of the health check. */
+                        name: string;
+                        /** @description Namespace is the namespace of the health check. */
+                        namespace: string;
+                    }[];
                     /**
                      * Format: int64
                      * @description ID is a unique auto-incrementing identifier for this history entry.
@@ -307,6 +320,9 @@ export interface components {
                  *     This typically contains the repository URL or source code location.
                  *     This field is set once for the entire rollout based on the latest available release. */
                 source?: string;
+                /** @description Title is the title of the image extracted from OCI annotations.
+                 *     This field is set once for the entire rollout based on the latest available release. */
+                title?: string;
             };
         };
         /** @description RolloutGate is the Schema for the rolloutgates API. */

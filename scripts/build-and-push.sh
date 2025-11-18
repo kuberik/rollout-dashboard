@@ -50,6 +50,8 @@ build_and_push() {
       --source="$(git config --get remote.origin.url)" \
       --revision="$(git rev-parse HEAD)" \
       --annotations="org.opencontainers.image.version=${version}" \
+      --annotations="org.opencontainers.image.title=Hello World manifests / ${env}" \
+      --annotations="org.opencontainers.image.description=Hello World manifests / ${env}" \
     echo "Successfully pushed ${OCI_ARTIFACT_NAME}/${env}/manifests:${tag}"
     # echo "$temp_dir"
     # exit 0
@@ -93,7 +95,8 @@ trap "rm -rf $temp_dir" EXIT
             --annotation "org.opencontainers.image.source=https://github.com/${REPO_NAME}.git" \
             --annotation "org.opencontainers.image.revision=${version}" \
             --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --annotation "org.opencontainers.image.description=Hello World app" \
+            --annotation "org.opencontainers.image.title=Hello World app" \
+            --annotation "org.opencontainers.image.description=This app is a simple hello world app" \
             --annotation "org.opencontainers.image.licenses=MIT" \
             --annotation "org.opencontainers.image.authors=Kuberik" \
             --annotation "org.opencontainers.image.vendor=Kuberik" \
