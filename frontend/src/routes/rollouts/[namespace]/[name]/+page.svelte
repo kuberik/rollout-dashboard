@@ -79,6 +79,7 @@
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import DeployModal from '$lib/components/DeployModal.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
+	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import { fly } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
@@ -207,7 +208,6 @@
 	let showRollbackModal = $state(false);
 	let rollbackVersion = $state<string | null>(null);
 
-	let showResumeRolloutModal = $state(false);
 	let showMarkSuccessfulModal = $state(false);
 	let markSuccessfulMessage = $state('');
 
@@ -245,6 +245,18 @@
 			return getDisplayVersion(availableRelease);
 		}
 		return selectedVersion;
+	}
+
+	// Helper function to map failed health checks to full health checks
+	function findFullHealthCheck(
+		failedHC: { name: string; namespace?: string },
+		allHealthChecks: HealthCheck[]
+	): HealthCheck | undefined {
+		return allHealthChecks.find(
+			(hc) =>
+				hc.metadata?.name === failedHC.name &&
+				(!failedHC.namespace || hc.metadata?.namespace === failedHC.namespace)
+		);
 	}
 
 	// Function to get gate description from gate annotations
@@ -466,6 +478,59 @@
 		}
 	}
 
+	async function clearPin() {
+		if (!rollout) return;
+
+		try {
+			const response = await fetch(
+				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						version: null,
+						explanation: ''
+					})
+				}
+			);
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				if (
+					response.status === 500 &&
+					errorData.details &&
+					errorData.details.includes('dashboard is not managing the wantedVersion field')
+				) {
+					throw new Error(
+						"Cannot clear pin: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
+					);
+				}
+				throw new Error('Failed to clear pin');
+			}
+
+			// Refresh the data
+			await rolloutQuery.refetch();
+
+			// Show success toast
+			toastType = 'success';
+			toastMessage = 'Successfully cleared version pin';
+			showToast = true;
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		} catch (e) {
+			// Show error toast
+			toastType = 'error';
+			toastMessage = e instanceof Error ? e.message : 'Failed to clear pin';
+			showToast = true;
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
+		}
+	}
+
 	async function getAnnotations(version: string) {
 		if (!rollout) return;
 		loadingAnnotations[version] = true;
@@ -525,48 +590,6 @@
 			allRepositoryTags = [];
 		} finally {
 			loadingAllTags = false;
-		}
-	}
-
-	async function resumeRollout() {
-		if (!rollout) return;
-
-		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/unblock-failed`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					}
-				}
-			);
-
-			if (!response.ok) {
-				throw new Error('Failed to add unblock-failed annotation');
-			}
-
-			await rolloutQuery.refetch();
-			showToast = true;
-			toastMessage = 'Rollout resumed successfully';
-			toastType = 'success';
-			showResumeRolloutModal = false;
-			selectedVersion = null;
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			console.error('Failed to resume rollout:', e);
-			showToast = true;
-			toastMessage = e instanceof Error ? e.message : 'Failed to resume rollout';
-			toastType = 'error';
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
 		}
 	}
 
@@ -815,7 +838,7 @@
 <svelte:head>
 	<title
 		>kuberik | {rollout?.metadata
-			? `${rollout.metadata.name} (${rollout.metadata.namespace})`
+			? `${rollout.status?.title || rollout.metadata.name} (${rollout.metadata.namespace})`
 			: 'Rollout'}</title
 	>
 </svelte:head>
@@ -849,32 +872,42 @@
 				<div class="flex-1 overflow-y-auto p-4">
 					<!-- Failed Deployment Alert -->
 					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
-						<Alert color="gray" class="border-1 mb-4 border-red-600 dark:border-red-400">
+						{@const latestEntry = rollout.status?.history?.[0]}
+						{@const failedHealthChecks = latestEntry?.failedHealthChecks || []}
+						<Alert color="red" class="mb-4">
 							<div class="flex items-center gap-3">
 								<ExclamationCircleSolid class="h-5 w-5 text-red-600 dark:text-red-400" />
 								<span class="text-lg font-medium text-red-600 dark:text-red-400"
 									>Deployment Failed</span
 								>
 							</div>
-							<p class="mb-4 mt-2 text-sm">
-								The latest deployment has failed. You can resume the rollout, mark it as successful,
-								or deploy another version to fix the issue.
+							<p class="mb-3 mt-2 text-sm">
+								The latest deployment has failed
+								{#if failedHealthChecks.length > 0}
+									with {failedHealthChecks.length} failed health check{failedHealthChecks.length > 1
+										? 's'
+										: ''}.
+								{/if}
+								Automated rollouts are paused until you manually mark this version as successful or change
+								to another version.
 							</p>
-							<div class="flex gap-2">
+							{#if failedHealthChecks.length > 0}
+								<div class="mb-4">
+									<div class="flex flex-wrap gap-1.5">
+										{#each failedHealthChecks as failedHC, index}
+											<HealthCheckBadge
+												failedHealthCheck={failedHC}
+												fullHealthCheck={findFullHealthCheck(failedHC, healthChecks)}
+												{index}
+												prefix="failed-hc-alert"
+											/>
+										{/each}
+									</div>
+								</div>
+							{/if}
+							<div class="flex flex-wrap gap-2">
 								<Button
 									size="xs"
-									color="light"
-									onclick={() => {
-										selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
-										showResumeRolloutModal = true;
-									}}
-								>
-									<PlaySolid class="me-2 h-4 w-4" />
-									Resume Rollout
-								</Button>
-								<Button
-									size="xs"
-									outline
 									color="light"
 									onclick={() => {
 										selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
@@ -884,6 +917,47 @@
 									<CheckCircleSolid class="me-2 h-4 w-4" />
 									Mark Successful
 								</Button>
+								<Button
+									size="xs"
+									color="light"
+									disabled={!isDashboardManagingWantedVersion}
+									onclick={() => {
+										if (isDashboardManagingWantedVersion) {
+											isPinVersionMode = false;
+											showPinModal = true;
+										}
+									}}
+								>
+									<EditOutline class="me-2 h-4 w-4" />
+									Change Version
+								</Button>
+								{#if rollout?.status?.history && rollout.status.history.length > 1}
+									<Button
+										size="xs"
+										color="light"
+										disabled={!isDashboardManagingWantedVersion}
+										onclick={() => {
+											if (
+												isDashboardManagingWantedVersion &&
+												rollout?.status?.history &&
+												rollout.status.history.length > 1
+											) {
+												const previousVersion = rollout.status.history[1];
+												isPinVersionMode = true;
+												selectedVersion = previousVersion.version.tag;
+												pinVersionToggle = true;
+												const currentVersion = rollout.status.history[0].version;
+												const currentVersionName = getDisplayVersion(currentVersion);
+												const targetVersionName = getDisplayVersion(previousVersion.version);
+												deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+												showDeployModal = true;
+											}
+										}}
+									>
+										<ReplyOutline class="me-2 h-4 w-4" />
+										Rollback
+									</Button>
+								{/if}
 							</div>
 						</Alert>
 					{/if}
@@ -940,6 +1014,9 @@
 												>
 													{latestEntry.bakeStatus}
 												</Badge>
+												{#if rollout.spec?.wantedVersion}
+													<Badge size="small">Pinned</Badge>
+												{/if}
 											</div>
 										</div>
 									</div>
@@ -1181,6 +1258,7 @@
 												</div>
 											</TimelineItem>
 										{:else if latestEntry.bakeStatus === 'Failed' && latestEntry.bakeEndTime}
+											{@const failedHealthChecks = latestEntry.failedHealthChecks || []}
 											<TimelineItem
 												title="Deployment failed"
 												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
@@ -1208,6 +1286,25 @@
 													{#if latestEntry.bakeStatusMessage}
 														<br />
 														{latestEntry.bakeStatusMessage}
+													{/if}
+													{#if failedHealthChecks.length > 0}
+														<div class="mt-2">
+															<p
+																class="mb-1.5 text-xs font-medium text-gray-900 dark:text-gray-100"
+															>
+																Failed Health Checks ({failedHealthChecks.length}):
+															</p>
+															<div class="flex flex-wrap gap-1.5">
+																{#each failedHealthChecks as failedHC, index}
+																	<HealthCheckBadge
+																		failedHealthCheck={failedHC}
+																		fullHealthCheck={findFullHealthCheck(failedHC, healthChecks)}
+																		{index}
+																		prefix="failed-hc-timeline"
+																	/>
+																{/each}
+															</div>
+														</div>
 													{/if}
 												</div>
 											</TimelineItem>
@@ -1303,6 +1400,14 @@
 
 								<!-- Action Buttons -->
 								<div class="flex flex-wrap gap-3">
+									{#if rollout?.status?.source}
+										<GitHubViewButton
+											sourceUrl={rollout.status.source}
+											version={getDisplayVersion(latestEntry.version)}
+											size="sm"
+											color="light"
+										/>
+									{/if}
 									<Button
 										size="sm"
 										color="light"
@@ -1325,20 +1430,39 @@
 											conflicts.</Tooltip
 										>
 									{/if}
-
+									{#if rollout?.status?.history && rollout.status.history.length > 1}
+										<Button
+											size="sm"
+											color="light"
+											class="text-xs"
+											disabled={!isDashboardManagingWantedVersion}
+											onclick={() => {
+												if (
+													isDashboardManagingWantedVersion &&
+													rollout?.status?.history &&
+													rollout.status.history.length > 1
+												) {
+													const previousVersion = rollout.status.history[1];
+													isPinVersionMode = true;
+													selectedVersion = previousVersion.version.tag;
+													pinVersionToggle = true;
+													const currentVersion = rollout.status.history[0].version;
+													const currentVersionName = getDisplayVersion(currentVersion);
+													const targetVersionName = getDisplayVersion(previousVersion.version);
+													deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+													showDeployModal = true;
+												}
+											}}
+										>
+											<ReplyOutline class="me-2 h-4 w-4" />
+											Rollback
+										</Button>
+									{/if}
 									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 										<SourceViewer
 											namespace={rollout.metadata?.namespace || ''}
 											name={rollout.metadata?.name || ''}
 											version={latestEntry.version.tag}
-										/>
-									{/if}
-									{#if rollout?.status?.source}
-										<GitHubViewButton
-											sourceUrl={rollout.status.source}
-											version={getDisplayVersion(latestEntry.version)}
-											size="sm"
-											color="light"
 										/>
 									{/if}
 								</div>
@@ -1410,99 +1534,9 @@
 																	? 'red'
 																	: 'yellow'}
 															size="small"
-															class="cursor-help"
 														>
 															{healthCheck.status?.status || 'Unknown'}
 														</Badge>
-														<Popover class="max-w-sm">
-															<div class="p-4">
-																<div class="mb-3">
-																	<div class="mb-2 flex items-center gap-2">
-																		{#if healthCheck.status?.status === 'Healthy'}
-																			<CheckCircleSolid
-																				class="h-4 w-4 text-green-600 dark:text-green-400"
-																			/>
-																		{:else if healthCheck.status?.status === 'Unhealthy'}
-																			<ExclamationCircleSolid
-																				class="h-4 w-4 text-red-600 dark:text-red-400"
-																			/>
-																		{:else if healthCheck.status?.status === 'Pending'}
-																			<Spinner size="4" color="yellow" />
-																		{:else}
-																			<ExclamationCircleSolid
-																				class="h-4 w-4 text-gray-500 dark:text-gray-400"
-																			/>
-																		{/if}
-																		<h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-																			{healthCheck.metadata?.annotations?.[
-																				'kuberik.com/display-name'
-																			] || healthCheck.metadata?.name}
-																		</h4>
-																	</div>
-																	<Badge
-																		color={healthCheck.status?.status === 'Healthy'
-																			? 'green'
-																			: healthCheck.status?.status === 'Unhealthy'
-																				? 'red'
-																				: 'yellow'}
-																		size="small"
-																		class="text-xs"
-																	>
-																		{healthCheck.status?.status || 'Unknown'}
-																	</Badge>
-																</div>
-
-																{#if healthCheck.status?.message}
-																	<div class="mb-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
-																		<p
-																			class="text-xs leading-relaxed text-gray-700 dark:text-gray-300"
-																		>
-																			{healthCheck.status.message}
-																		</p>
-																	</div>
-																{/if}
-
-																<div class="space-y-2 text-xs">
-																	{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
-																		<div
-																			class="flex items-center gap-2 text-red-600 dark:text-red-400"
-																		>
-																			<ClockSolid class="h-3 w-3" />
-																			<span
-																				>Last Error: {formatTimeAgo(
-																					healthCheck.status.lastErrorTime,
-																					$now
-																				)}</span
-																			>
-																		</div>
-																	{/if}
-																	{#if healthCheck.spec?.class}
-																		<div
-																			class="flex items-center gap-2 text-gray-600 dark:text-gray-400"
-																		>
-																			<DatabaseSolid class="h-3 w-3" />
-																			<span
-																				>Class: {healthCheck.spec.class.charAt(0).toUpperCase() +
-																					healthCheck.spec.class.slice(1)}</span
-																			>
-																		</div>
-																	{/if}
-																	{#if healthCheck.status?.lastChangeTime}
-																		<div
-																			class="flex items-center gap-2 text-gray-600 dark:text-gray-400"
-																		>
-																			<ClockSolid class="h-3 w-3" />
-																			<span
-																				>Last Change: {formatTimeAgo(
-																					healthCheck.status.lastChangeTime,
-																					$now
-																				)}</span
-																			>
-																		</div>
-																	{/if}
-																</div>
-															</div>
-														</Popover>
 													</div>
 												</div>
 
@@ -1651,6 +1685,26 @@
 									<Badge color="blue" size="small">{rollout.status.releaseCandidates.length}</Badge>
 								{/if}
 							</div>
+							{#if rollout.spec?.wantedVersion}
+								<Alert color="yellow" class="mb-4">
+									<div class="flex items-center justify-between gap-3">
+										<div class="flex items-center gap-2">
+											<PauseSolid class="h-4 w-4" />
+											<span class="text-sm"
+												>Automated upgrades are paused because the rollout is pinned to a version.</span
+											>
+										</div>
+										<Button
+											size="xs"
+											color="light"
+											disabled={!isDashboardManagingWantedVersion}
+											onclick={clearPin}
+										>
+											Clear pin
+										</Button>
+									</div>
+								</Alert>
+							{/if}
 							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 								<div>
 									{#each rollout.status.releaseCandidates as releaseCandidate}
@@ -1678,12 +1732,10 @@
 													</div>
 												</div>
 												<div class="flex items-center gap-2">
-													{#if isVersionForceDeploying(rollout, version)}
-														<Badge color="blue" size="small">Gates Skipped</Badge>
-													{:else if rollout.status?.gatedReleaseCandidates
+													{#if rollout.status?.gatedReleaseCandidates
 														?.map((grc) => grc.tag)
 														.includes(version)}
-														<Badge color="green" size="small">Available</Badge>
+														<Badge color="green" size="small">Ready</Badge>
 													{:else}
 														{@const blockingGates = getBlockingGates(version)}
 														{console.log('blockingGates', blockingGates)}
@@ -2272,42 +2324,6 @@
 				}}
 			>
 				Change Version
-			</Button>
-		</div>
-	</div>
-</Modal>
-
-<Modal bind:open={showResumeRolloutModal} title="Confirm Resume Rollout">
-	<div class="space-y-4">
-		<Alert color="yellow" class="mb-4">
-			<div class="flex items-center">
-				<ExclamationCircleSolid class="mr-2 h-4 w-4" />
-				<p>
-					<span class="font-medium">Warning:</span> This will resume the rollout process after a failed
-					deployment bake.
-				</p>
-			</div>
-		</Alert>
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to resume the rollout for <b>{rollout?.metadata?.name}</b>?
-		</p>
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			This will add the unblock-failed annotation to allow the rollout controller to resume
-			deployment of the failed version.
-		</p>
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showResumeRolloutModal = false;
-					selectedVersion = null;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button color="blue" onclick={resumeRollout}>
-				<PlaySolid class="mr-1 h-3 w-3" />
-				Resume Rollout
 			</Button>
 		</div>
 	</div>

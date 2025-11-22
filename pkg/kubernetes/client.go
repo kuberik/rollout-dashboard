@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -368,6 +369,28 @@ func (c *Client) MarkDeploymentSuccessful(ctx context.Context, namespace, name s
 		statusMessage = fmt.Sprintf("Deployment manually marked as successful by user: %s", message)
 	}
 	latestEntry.BakeStatusMessage = &statusMessage
+
+	// Update the Ready condition
+	readyConditionMessage := "Deployment manually marked as successful by user"
+	if message != "" {
+		readyConditionMessage = fmt.Sprintf("Deployment manually marked as successful by user: %s", message)
+	}
+
+	// Initialize conditions slice if nil
+	if rollout.Status.Conditions == nil {
+		rollout.Status.Conditions = []metav1.Condition{}
+	}
+
+	// Use meta.SetStatusCondition to update the Ready condition
+	// This handles finding/updating/creating the condition and managing LastTransitionTime correctly
+	meta.SetStatusCondition(&rollout.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "DeploymentMarkedSuccessful",
+		Message:            readyConditionMessage,
+		ObservedGeneration: rollout.Generation,
+		LastTransitionTime: metav1.Now(),
+	})
 
 	// Update the rollout status
 	if err := c.client.Status().Update(ctx, rollout); err != nil {
