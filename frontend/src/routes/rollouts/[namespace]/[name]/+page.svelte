@@ -211,6 +211,8 @@
 	let showMarkSuccessfulModal = $state(false);
 	let markSuccessfulMessage = $state('');
 
+	let showClearPinModal = $state(false);
+
 	// New variables for deploy modal
 	let showDeployModal = $state(false);
 	let pinVersionToggle = $state(false);
@@ -1698,7 +1700,9 @@
 											size="xs"
 											color="light"
 											disabled={!isDashboardManagingWantedVersion}
-											onclick={clearPin}
+											onclick={() => {
+												showClearPinModal = true;
+											}}
 										>
 											Clear pin
 										</Button>
@@ -2387,6 +2391,59 @@
 			<Button color="green" onclick={() => markDeploymentSuccessful(markSuccessfulMessage)}>
 				<CheckCircleSolid class="mr-1 h-3 w-3" />
 				Mark Successful
+			</Button>
+		</div>
+	</div>
+</Modal>
+
+<Modal bind:open={showClearPinModal} title="Clear Version Pin">
+	<div class="space-y-4">
+		<Alert color="yellow" class="mb-4">
+			<div class="flex items-center">
+				<ExclamationCircleSolid class="mr-2 h-4 w-4" />
+				<p>
+					<span class="font-medium">Clear Pin:</span> This will remove the version pin and allow automated
+					upgrades to resume.
+				</p>
+			</div>
+		</Alert>
+		<p class="text-sm text-gray-600 dark:text-gray-400">
+			Are you sure you want to clear the version pin for <b>{rollout?.metadata?.name}</b>?
+		</p>
+		<p class="text-xs text-gray-500 dark:text-gray-400">
+			Once cleared, the rollout will resume automated upgrades based on available release
+			candidates.
+		</p>
+		{#if !isDashboardManagingWantedVersion}
+			<Alert color="yellow" class="mt-3">
+				<div class="flex items-center">
+					<ExclamationCircleSolid class="mr-2 h-4 w-4" />
+					<p class="text-sm">
+						<span class="font-medium">Warning:</span> The dashboard is not currently managing the wantedVersion
+						field for this rollout. Clearing the pin may conflict with other controllers or external
+						systems.
+					</p>
+				</div>
+			</Alert>
+		{/if}
+
+		<div class="flex justify-end gap-2">
+			<Button
+				color="light"
+				onclick={() => {
+					showClearPinModal = false;
+				}}
+			>
+				Cancel
+			</Button>
+			<Button
+				color="blue"
+				onclick={() => {
+					showClearPinModal = false;
+					clearPin();
+				}}
+			>
+				Clear Pin
 			</Button>
 		</div>
 	</div>
