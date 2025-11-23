@@ -83,8 +83,6 @@ export function isFieldManaged(fieldsV1: any, fieldPath: string): boolean {
             if (fieldKey in current) {
                 current = current[fieldKey];
             } else {
-                // Debug logging for troubleshooting
-                console.debug(`Field path check failed at '${part}' in '${fieldPath}'. Available keys:`, Object.keys(current));
                 return false;
             }
         } else {

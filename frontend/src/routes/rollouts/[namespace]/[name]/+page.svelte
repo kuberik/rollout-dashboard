@@ -182,11 +182,6 @@
 				// Only update if rollout hasn't changed
 				if (healthChecksData && rollout === currentRollout) {
 					healthChecks = healthChecksData.healthChecks || [];
-
-					// Log namespace search information
-					if (healthChecksData.debug) {
-						console.log('Health checks search info:', healthChecksData.debug);
-					}
 				}
 			})
 			.catch((e) => {
