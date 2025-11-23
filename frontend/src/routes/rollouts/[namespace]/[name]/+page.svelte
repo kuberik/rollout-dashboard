@@ -1398,24 +1398,26 @@
 														<div class="w-full">
 															<div class="mb-1 flex items-center justify-between text-xs">
 																<span class="text-gray-600 dark:text-gray-400">Bake Progress</span>
-																<div class="flex items-center gap-2">
-																	<span class="text-gray-500 dark:text-gray-400">
+																<span class="font-medium text-gray-700 dark:text-gray-300">
+																	{Math.round(bakeProgress)}%
+																</span>
+															</div>
+															<div class="relative">
+																<div
+																	class="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+																>
+																	<div
+																		class="h-full rounded-full bg-yellow-500 transition-all duration-300 ease-out dark:bg-yellow-600"
+																		style="width: {bakeProgress}%"
+																	></div>
+																</div>
+																<div class="mt-0.5 flex justify-end">
+																	<span class="text-xs text-gray-500 dark:text-gray-400">
 																		{remainingTime > 0
 																			? `${formatDurationFromMs(remainingTime)} remaining`
 																			: 'Baking complete'}
 																	</span>
-																	<span class="font-medium text-gray-700 dark:text-gray-300">
-																		{Math.round(bakeProgress)}%
-																	</span>
 																</div>
-															</div>
-															<div
-																class="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
-															>
-																<div
-																	class="h-full rounded-full bg-yellow-500 transition-all duration-300 ease-out dark:bg-yellow-600"
-																	style="width: {bakeProgress}%"
-																></div>
 															</div>
 														</div>
 													{/if}
