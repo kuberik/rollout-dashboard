@@ -29,7 +29,6 @@
 		Toggle,
 		Clipboard,
 		Blockquote,
-		Drawer,
 		StepIndicator,
 		Progressradial,
 		Sidebar,
@@ -1888,7 +1887,7 @@
 															color="light"
 														/>
 													{/if}
-													<Clipboard bind:value={releaseCandidate.tag} size="xs" color="light">
+													<Clipboard value={releaseCandidate.tag} size="xs" color="light">
 														{#snippet children(success)}
 															{#if success}
 																<CheckOutline class="mr-1 h-3 w-3" />
