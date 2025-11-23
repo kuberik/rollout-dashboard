@@ -1388,12 +1388,26 @@
 														{latestEntry.bakeStatusMessage || 'Baking in progress...'}
 													</div>
 													{#if rollout.spec?.bakeTime}
+														{@const remainingTime = (() => {
+															const bakeStartTime = new Date(latestEntry.bakeStartTime).getTime();
+															const currentTime = $now.getTime();
+															const elapsedTime = currentTime - bakeStartTime;
+															const bakeTimeMs = parseDuration(rollout.spec.bakeTime);
+															return Math.max(0, bakeTimeMs - elapsedTime);
+														})()}
 														<div class="w-full">
 															<div class="mb-1 flex items-center justify-between text-xs">
 																<span class="text-gray-600 dark:text-gray-400">Bake Progress</span>
-																<span class="font-medium text-gray-700 dark:text-gray-300">
-																	{Math.round(bakeProgress)}%
-																</span>
+																<div class="flex items-center gap-2">
+																	<span class="text-gray-500 dark:text-gray-400">
+																		{remainingTime > 0
+																			? `${formatDurationFromMs(remainingTime)} remaining`
+																			: 'Baking complete'}
+																	</span>
+																	<span class="font-medium text-gray-700 dark:text-gray-300">
+																		{Math.round(bakeProgress)}%
+																	</span>
+																</div>
 															</div>
 															<div
 																class="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
