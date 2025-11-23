@@ -71,6 +71,12 @@
 					<!-- Rollouts in this namespace -->
 					<div class="flex flex-col gap-4">
 						{#each namespaceRollouts as deployment}
+							{@const upgradeCount = deployment.status?.releaseCandidates?.length || 0}
+							{@const hasUpgrades = upgradeCount > 0}
+							{@const isLatest =
+								!hasUpgrades &&
+								deployment.status?.availableReleases &&
+								deployment.status.availableReleases.length > 0}
 							<a
 								href="/rollouts/{deployment.metadata?.namespace}/{deployment.metadata?.name}"
 								class="block w-full"
@@ -93,9 +99,18 @@
 													</p>
 												{/if}
 											</div>
-											<Badge color={getRolloutStatus(deployment).color}>
-												{getRolloutStatus(deployment).text}
-											</Badge>
+											<div class="flex items-center gap-2">
+												<Badge color={getRolloutStatus(deployment).color}>
+													{getRolloutStatus(deployment).text}
+												</Badge>
+												{#if hasUpgrades}
+													<Badge color="orange" size="small">
+														{upgradeCount} upgrade{upgradeCount > 1 ? 's' : ''}
+													</Badge>
+												{:else if isLatest}
+													<Badge color="blue" size="small">Latest</Badge>
+												{/if}
+											</div>
 										</div>
 										<div class="flex flex-col gap-1">
 											<div class="flex items-center gap-2">
