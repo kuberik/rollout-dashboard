@@ -1596,7 +1596,7 @@
 												<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
 											</div>
 											<p class="text-sm font-medium text-gray-900 dark:text-white">
-												All {healthChecks.length} health checks are healthy
+												All health checks are healthy
 											</p>
 										</div>
 									</div>
@@ -1611,15 +1611,46 @@
 									<h4 class="text-lg font-medium text-gray-900 dark:text-white">
 										Kubernetes Resources Status
 									</h4>
-									<Button
-										size="sm"
-										color="blue"
-										onclick={reconcileFluxResources}
-										class="flex items-center gap-2"
-									>
-										<RefreshOutline class="h-4 w-4" id="reconcile-icon" />
-										Reconcile Flux Resources
-									</Button>
+									{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
+										{@const allResources = [
+											...kustomizations.map((k) => ({
+												name: k.metadata?.name,
+												namespace: k.metadata?.namespace,
+												status: getResourceStatus(k).status,
+												message: k.status?.lastAppliedRevision
+													? `Last applied: ${k.status.lastAppliedRevision}`
+													: undefined,
+												lastModified: getLastTransitionTime(k),
+												groupVersionKind: 'Kustomization',
+												type: 'Kustomization'
+											})),
+											...ociRepositories.map((r) => ({
+												name: r.metadata?.name,
+												namespace: r.metadata?.namespace,
+												status: getResourceStatus(r).status,
+												message: r.status?.url ? `URL: ${r.status.url}` : undefined,
+												lastModified: getLastTransitionTime(r),
+												groupVersionKind: 'OCIRepository',
+												type: 'OCIRepository'
+											})),
+											...Object.values(filteredManagedResources)
+												.flat()
+												.map((r) => ({
+													...r,
+													type: r.groupVersionKind?.split('/').pop() || 'Resource'
+												}))
+										]}
+										{@const healthyResources = allResources.filter(
+											(r) =>
+												r.status === 'Ready' ||
+												r.status === 'Healthy' ||
+												r.status === 'Succeeded' ||
+												r.status === 'Current'
+										)}
+										<Badge color="blue" size="small">
+											{healthyResources.length}/{allResources.length} healthy
+										</Badge>
+									{/if}
 								</div>
 
 								<div class="space-y-4">
@@ -1683,17 +1714,8 @@
 														<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
 													</div>
 													<p class="text-sm font-medium text-gray-900 dark:text-white">
-														All {allResources.length} resources are healthy
+														All resources are healthy
 													</p>
-												</div>
-											</div>
-										{:else if healthyResources.length > 0}
-											<div class="mt-4 rounded-lg bg-green-50 p-3 dark:bg-green-900/20">
-												<div class="flex items-center gap-2">
-													<CheckCircleSolid class="h-4 w-4 text-green-600 dark:text-green-400" />
-													<span class="text-sm font-medium text-green-800 dark:text-green-200">
-														{healthyResources.length} out of {allResources.length} resources are healthy
-													</span>
 												</div>
 											</div>
 										{/if}
