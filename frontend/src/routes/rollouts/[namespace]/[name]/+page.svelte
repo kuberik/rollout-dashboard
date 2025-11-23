@@ -275,19 +275,30 @@
 
 	// Function to get gates blocking a specific version
 	function getBlockingGates(version: string): any[] {
-		if (!rolloutGates || rolloutGates.length === 0) return [];
+		if (!rollout?.status?.gates || rollout.status.gates.length === 0) return [];
 
-		// Filter gates that are blocking this version
-		// This is a simplified implementation - you might need to adjust based on your gate data structure
-		return rolloutGates.filter((gate) => {
-			// Check if this gate is blocking the version
-			// This logic might need to be adjusted based on how gates store their blocking information
-			const gateStatus = gate.status;
-			if (!gateStatus) return false;
+		// Filter gates that are blocking this specific version
+		const blockingGates = rollout.status.gates.filter((gate) => {
+			// If gate has allowedVersions, check if this version is in the allowed list
+			// A gate can be passing but still blocking if the version is not in allowedVersions
+			if (Array.isArray(gate.allowedVersions)) {
+				// Version is blocked if it's NOT in the allowedVersions list (regardless of passing status)
+				return !gate.allowedVersions.includes(version);
+			}
 
-			// Check if gate is not passed/approved for this version
-			return gateStatus.status !== 'Passed' && gateStatus.status !== 'Approved';
+			// If gate doesn't have allowedVersions, check the passing status
+			// If gate is not passing, it's blocking
+			return gate.passing === false;
 		});
+
+		// Map to full gate objects from rolloutGates for display (name, description, etc.)
+		return blockingGates
+			.map((gateStatus) => {
+				// Find the corresponding full gate object
+				const fullGate = rolloutGates.find((g) => g.metadata?.name === gateStatus.name);
+				return fullGate || null;
+			})
+			.filter((gate): gate is any => gate !== null);
 	}
 
 	// Computed property to determine if dashboard is managing the wantedVersion field
@@ -1742,7 +1753,6 @@
 														<Badge color="green" size="small">Ready</Badge>
 													{:else}
 														{@const blockingGates = getBlockingGates(version)}
-														{console.log('blockingGates', blockingGates)}
 														{#if blockingGates.length > 0}
 															<Badge color="yellow" size="small" class="cursor-help">
 																Blocked
