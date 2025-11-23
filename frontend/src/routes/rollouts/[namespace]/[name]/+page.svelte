@@ -80,7 +80,7 @@
 	import DeployModal from '$lib/components/DeployModal.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
-	import { fly } from 'svelte/transition';
+	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
 
@@ -915,6 +915,7 @@
 							{/if}
 							<div class="flex flex-wrap gap-2">
 								<Button
+									id="mark-successful-btn"
 									size="xs"
 									color="light"
 									onclick={() => {
@@ -925,7 +926,18 @@
 									<CheckCircleSolid class="me-2 h-4 w-4" />
 									Mark Successful
 								</Button>
+								<Tooltip
+									triggeredBy="#mark-successful-btn"
+									placement="bottom"
+									class="max-w-xs"
+									transition={blur}
+									transitionParams={{ duration: 300 }}
+								>
+									Mark this deployment as successful to resume automated rollouts. Use when issues
+									are resolved or you want to manually override the failure status.
+								</Tooltip>
 								<Button
+									id="change-version-btn"
 									size="xs"
 									color="light"
 									disabled={!isDashboardManagingWantedVersion}
@@ -939,8 +951,25 @@
 									<EditOutline class="me-2 h-4 w-4" />
 									Change Version
 								</Button>
+								<Tooltip
+									triggeredBy="#change-version-btn"
+									placement="bottom"
+									class="max-w-xs"
+									transition={blur}
+									transitionParams={{ duration: 300 }}
+								>
+									Deploy a different version to replace the failed deployment. Choose from available
+									releases or any version in the repository.
+									{#if !isDashboardManagingWantedVersion}
+										<br />
+										<span class="text-yellow-600 dark:text-yellow-400">
+											Disabled: dashboard is not managing the wantedVersion field.
+										</span>
+									{/if}
+								</Tooltip>
 								{#if rollout?.status?.history && rollout.status.history.length > 1}
 									<Button
+										id="rollback-btn"
 										size="xs"
 										color="light"
 										disabled={!isDashboardManagingWantedVersion}
@@ -965,6 +994,21 @@
 										<ReplyOutline class="me-2 h-4 w-4" />
 										Rollback
 									</Button>
+									<Tooltip
+										triggeredBy="#rollback-btn"
+										placement="bottom"
+										class="max-w-xs"
+										transition={blur}
+										transitionParams={{ duration: 300 }}
+									>
+										Revert to the previous version that was deployed before this one.
+										{#if !isDashboardManagingWantedVersion}
+											<br />
+											<span class="text-yellow-600 dark:text-yellow-400">
+												Disabled: dashboard is not managing the wantedVersion field.
+											</span>
+										{/if}
+									</Tooltip>
 								{/if}
 							</div>
 						</Alert>
