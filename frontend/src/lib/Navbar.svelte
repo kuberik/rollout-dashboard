@@ -222,7 +222,6 @@
 							</button>
 							<Dropdown
 								simple
-								{activeUrl}
 								placement="bottom-start"
 								triggeredBy="#rollout-dropdown-trigger"
 								trigger="hover"
