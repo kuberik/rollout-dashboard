@@ -67,7 +67,6 @@
 					<!-- Namespace Header -->
 					<div class="mb-4 flex items-center gap-2">
 						<h2 class="text-2xl font-bold text-gray-900 dark:text-white">{namespace}</h2>
-						<Badge color="gray" size="small">{namespaceRollouts.length}</Badge>
 					</div>
 					<!-- Rollouts in this namespace -->
 					<div class="flex flex-col gap-4">
@@ -90,7 +89,7 @@
 												{/if}
 												{#if deployment.status?.title && deployment.metadata?.name}
 													<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-														{deployment.metadata.namespace}/{deployment.metadata.name}
+														{deployment.metadata.namespace} / {deployment.metadata.name}
 													</p>
 												{/if}
 											</div>
