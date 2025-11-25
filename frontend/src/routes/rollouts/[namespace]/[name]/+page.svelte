@@ -874,6 +874,22 @@
 			<div class="flex flex-1 flex-col overflow-hidden">
 				<!-- Content Area -->
 				<div class="flex-1 overflow-y-auto p-4">
+					{#if rollout.status?.title || rollout.status?.description}
+						<Card class="mb-4 w-full max-w-none p-6">
+							<div class="flex flex-col gap-2">
+								{#if rollout.status?.title}
+									<h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+										{rollout.status.title}
+									</h2>
+								{/if}
+								{#if rollout.status?.description}
+									<p class="text-sm text-gray-600 dark:text-gray-400">
+										{rollout.status.description}
+									</p>
+								{/if}
+							</div>
+						</Card>
+					{/if}
 					<!-- Failed Deployment Alert -->
 					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
 						{@const latestEntry = rollout.status?.history?.[0]}
@@ -1018,9 +1034,7 @@
 							<Card class="w-full max-w-none p-6 lg:col-span-2">
 								<!-- Header Section -->
 								<div class="mb-6">
-									<div class="flex items-center justify-between">
-										<h3 class="text-xl font-bold text-gray-900 dark:text-white">Current Version</h3>
-									</div>
+									<h3 class="text-xl font-bold text-gray-900 dark:text-white">Current Version</h3>
 								</div>
 
 								<!-- Version Display Section -->
@@ -1064,6 +1078,14 @@
 												</Badge>
 												{#if rollout.spec?.wantedVersion}
 													<Badge size="small">Pinned</Badge>
+												{/if}
+												{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+													<Badge color="orange" size="small">
+														{rollout.status.releaseCandidates.length} upgrade{rollout.status
+															.releaseCandidates.length > 1
+															? 's'
+															: ''}
+													</Badge>
 												{/if}
 											</div>
 										</div>
