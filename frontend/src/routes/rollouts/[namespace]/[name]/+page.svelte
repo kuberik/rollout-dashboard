@@ -874,22 +874,6 @@
 			<div class="flex flex-1 flex-col overflow-hidden">
 				<!-- Content Area -->
 				<div class="flex-1 overflow-y-auto p-4">
-					{#if rollout.status?.title || rollout.status?.description}
-						<Card class="mb-4 w-full max-w-none p-6">
-							<div class="flex flex-col gap-2">
-								{#if rollout.status?.title}
-									<h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-										{rollout.status.title}
-									</h2>
-								{/if}
-								{#if rollout.status?.description}
-									<p class="text-sm text-gray-600 dark:text-gray-400">
-										{rollout.status.description}
-									</p>
-								{/if}
-							</div>
-						</Card>
-					{/if}
 					<!-- Failed Deployment Alert -->
 					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
 						{@const latestEntry = rollout.status?.history?.[0]}
@@ -1024,6 +1008,22 @@
 								{/if}
 							</div>
 						</Alert>
+					{/if}
+					{#if rollout.status?.title || rollout.status?.description}
+						<Card class="mb-4 w-full max-w-none p-6">
+							<div class="flex flex-col gap-2">
+								{#if rollout.status?.title}
+									<h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+										{rollout.status.title}
+									</h2>
+								{/if}
+								{#if rollout.status?.description}
+									<p class="text-sm text-gray-600 dark:text-gray-400">
+										{rollout.status.description}
+									</p>
+								{/if}
+							</div>
+						</Card>
 					{/if}
 
 					<!-- Dashboard Grid -->
