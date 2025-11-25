@@ -3,7 +3,7 @@
 <script lang="ts">
 	import type { Rollout } from '../types';
 	import { Badge, Spinner, Alert, Card } from 'flowbite-svelte';
-	import { formatTimeAgo } from '$lib/utils';
+	import { formatTimeAgo, getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { getBakeStatusIcon } from '$lib/bake-status';
 	import { ClockSolid } from 'flowbite-svelte-icons';
@@ -76,8 +76,12 @@
 								deployment.status?.availableReleases &&
 								deployment.status.availableReleases.length > 0}
 							{@const latestEntry = deployment.status?.history?.[0]}
+							{@const versionLabel = latestEntry?.version
+								? getDisplayVersion(latestEntry.version)
+								: null}
 							{@const bakeStatus = latestEntry?.bakeStatus}
 							{@const { icon: StatusIcon, color: iconColor } = getBakeStatusIcon(bakeStatus)}
+							{@const showStatusBadges = hasUpgrades || isLatest || Boolean(versionLabel)}
 							<a
 								href="/rollouts/{deployment.metadata?.namespace}/{deployment.metadata?.name}"
 								class="block w-full"
@@ -100,13 +104,6 @@
 														<h3 class="text-xl font-semibold text-gray-900 dark:text-white">
 															{deployment.metadata?.name}
 														</h3>
-														{#if hasUpgrades}
-															<Badge color="orange" size="small">
-																{upgradeCount} upgrade{upgradeCount > 1 ? 's' : ''}
-															</Badge>
-														{:else if isLatest}
-															<Badge color="blue" size="small">Latest</Badge>
-														{/if}
 													</div>
 													{#if deployment.status?.title}
 														<p class="text-sm text-gray-500 dark:text-gray-400">
@@ -124,6 +121,22 @@
 												</Badge>
 											</div>
 										</div>
+										{#if showStatusBadges}
+											<div class="flex flex-wrap items-center gap-2">
+												{#if hasUpgrades}
+													<Badge color="orange" size="small">
+														{upgradeCount} upgrade{upgradeCount > 1 ? 's' : ''}
+													</Badge>
+												{:else if isLatest}
+													<Badge color="blue" size="small">Latest</Badge>
+												{/if}
+												{#if versionLabel}
+													<Badge color="blue" size="small">
+														{versionLabel}
+													</Badge>
+												{/if}
+											</div>
+										{/if}
 										{#if deployment.status?.description}
 											<p class="text-sm text-gray-600 dark:text-gray-400">
 												{deployment.status.description}
