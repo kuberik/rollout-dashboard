@@ -120,7 +120,7 @@
 						<BreadcrumbItem>
 							<div class="flex items-center gap-1.5">
 								<div class="flex flex-col items-start">
-									<span class="font-mono text-sm text-gray-900 dark:text-white">
+									<span class="text-sm text-gray-900 dark:text-white">
 										{rollout.metadata?.namespace}
 									</span>
 									<span class="text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -182,9 +182,7 @@
 																		class="flex items-center justify-between gap-2 whitespace-nowrap"
 																	>
 																		<div class="flex flex-col leading-tight">
-																			<span
-																				class="font-mono text-xs text-gray-900 dark:text-gray-100"
-																			>
+																			<span class="text-xs text-gray-900 dark:text-gray-100">
 																				{r.metadata?.name}
 																			</span>
 																			{#if r.status?.title}
@@ -215,7 +213,7 @@
 						<BreadcrumbItem>
 							<div class="flex items-center gap-1.5">
 								<div class="flex flex-col items-start">
-									<span class="font-mono text-sm text-gray-900 dark:text-white">
+									<span class="text-sm text-gray-900 dark:text-white">
 										{rollout.metadata?.name}
 									</span>
 									<span class="text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -250,7 +248,7 @@
 												>
 													<div class="flex items-center justify-between gap-2 whitespace-nowrap">
 														<div class="flex flex-col leading-tight">
-															<span class="font-mono text-xs text-gray-900 dark:text-gray-100">
+															<span class="text-xs text-gray-900 dark:text-gray-100">
 																{r.metadata?.name}
 															</span>
 															{#if r.status?.title}
