@@ -123,7 +123,9 @@
 									<span class="text-sm text-gray-900 dark:text-white">
 										{rollout.metadata?.namespace}
 									</span>
-									<span class="text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+									<span
+										class="ml-2 text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500"
+									>
 										namespace
 									</span>
 								</div>
@@ -139,9 +141,8 @@
 									<Dropdown
 										simple
 										{activeUrl}
-										placement="bottom-start"
+										placement="bottom"
 										triggeredBy="#namespace-dropdown-trigger"
-										trigger="hover"
 										class="w-64"
 									>
 										{#if allRolloutsQuery.isLoading}
@@ -151,56 +152,54 @@
 												{@const rollouts = rolloutsByNamespace[ns] || []}
 												{@const namespaceTriggerId = `namespace-rollout-trigger-${ns.replace(/[^a-zA-Z0-9]/g, '-')}`}
 												{#if rollouts.length > 0}
-													<div class="relative">
-														<button
-															id={namespaceTriggerId}
-															type="button"
-															class="flex w-full items-center justify-between rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-															onclick={(e: MouseEvent) => e.preventDefault()}
-														>
-															<span class="flex-1 text-left">{ns}</span>
-															<ChevronRightOutline
-																class="ml-2 h-4 w-4 text-gray-500 dark:text-gray-400"
-															/>
-														</button>
-														<Dropdown
-															simple
-															placement="right-start"
-															triggeredBy={`#${namespaceTriggerId}`}
-															trigger="hover"
-															class="w-64"
-														>
-															{#each rollouts as r}
-																<DropdownItem
-																	href="/rollouts/{r.metadata?.namespace}/{r.metadata?.name}"
-																	class={r.metadata?.name === name &&
-																	r.metadata?.namespace === namespace
-																		? 'bg-blue-50 dark:bg-blue-900'
-																		: ''}
+													<DropdownItem
+														id={namespaceTriggerId}
+														role="button"
+														liClass="relative"
+														class="flex w-full items-center justify-between text-sm text-gray-700 dark:text-gray-200"
+														onclick={(e: MouseEvent) => e.preventDefault()}
+													>
+														<span class="flex-1 text-left">{ns}</span>
+														<ChevronRightOutline
+															class="ml-2 h-4 w-4 text-gray-500 dark:text-gray-400"
+														/>
+													</DropdownItem>
+													<Dropdown
+														simple
+														placement="right-start"
+														triggeredBy={`#${namespaceTriggerId}`}
+														class="w-64"
+													>
+														{#each rollouts as r}
+															<DropdownItem
+																href="/rollouts/{r.metadata?.namespace}/{r.metadata?.name}"
+																class={r.metadata?.name === name &&
+																r.metadata?.namespace === namespace
+																	? 'bg-blue-50 dark:bg-blue-900'
+																	: ''}
+															>
+																<div
+																	class="flex items-center justify-between gap-2 whitespace-nowrap"
 																>
-																	<div
-																		class="flex items-center justify-between gap-2 whitespace-nowrap"
-																	>
-																		<div class="flex flex-col leading-tight">
-																			<span class="text-xs text-gray-900 dark:text-gray-100">
-																				{r.metadata?.name}
+																	<div class="flex flex-col leading-tight">
+																		<span class="text-xs text-gray-900 dark:text-gray-100">
+																			{r.metadata?.name}
+																		</span>
+																		{#if r.status?.title}
+																			<span class="text-[11px] text-gray-500 dark:text-gray-400">
+																				{r.status.title}
 																			</span>
-																			{#if r.status?.title}
-																				<span class="text-[11px] text-gray-500 dark:text-gray-400">
-																					{r.status.title}
-																				</span>
-																			{/if}
-																		</div>
-																		{#if r.metadata?.name === name && r.metadata?.namespace === namespace}
-																			<CheckOutline
-																				class="h-4 w-4 text-blue-600 dark:text-blue-400"
-																			/>
 																		{/if}
 																	</div>
-																</DropdownItem>
-															{/each}
-														</Dropdown>
-													</div>
+																	{#if r.metadata?.name === name && r.metadata?.namespace === namespace}
+																		<CheckOutline
+																			class="h-4 w-4 text-blue-600 dark:text-blue-400"
+																		/>
+																	{/if}
+																</div>
+															</DropdownItem>
+														{/each}
+													</Dropdown>
 												{/if}
 											{/each}
 										{:else}
@@ -216,7 +215,9 @@
 									<span class="text-sm text-gray-900 dark:text-white">
 										{rollout.metadata?.name}
 									</span>
-									<span class="text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+									<span
+										class="ml-2 text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500"
+									>
 										name
 									</span>
 								</div>
@@ -231,9 +232,8 @@
 									</button>
 									<Dropdown
 										simple
-										placement="bottom-start"
+										placement="bottom"
 										triggeredBy="#rollout-dropdown-trigger"
-										trigger="hover"
 										class="w-64"
 									>
 										{#if allRolloutsQuery.isLoading}
