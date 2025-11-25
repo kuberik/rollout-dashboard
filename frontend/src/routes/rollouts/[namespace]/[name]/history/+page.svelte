@@ -27,25 +27,19 @@
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
+	import { rolloutQueryOptions } from '$lib/api/rollouts';
 
 	// Params (runes)
 	const namespace = $derived(get(page).params.namespace as string);
 	const name = $derived(get(page).params.name as string);
 
 	// Query for rollout
-	const rolloutQuery = createQuery(() => ({
-		queryKey: ['rollout', namespace, name],
-		queryFn: async (): Promise<{ rollout: Rollout | null }> => {
-			const res = await fetch(`/api/rollouts/${namespace}/${name}`);
-			if (!res.ok) {
-				if (res.status === 404) {
-					return { rollout: null };
-				}
-				throw new Error('Failed to load rollout');
-			}
-			return await res.json();
-		}
-	}));
+	const rolloutQuery = createQuery(() =>
+		rolloutQueryOptions({
+			namespace,
+			name
+		})
+	);
 
 	// Derive local vars used in template
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);

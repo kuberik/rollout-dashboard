@@ -73,6 +73,7 @@
 		hasUnblockFailedAnnotation,
 		getDisplayVersion
 	} from '$lib/utils';
+	import { getBakeStatusIcon } from '$lib/bake-status';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -82,30 +83,19 @@
 	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
+	import { rolloutQueryOptions } from '$lib/api/rollouts';
 
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
-	const rolloutQuery = createQuery(() => ({
-		queryKey: ['rollout', namespace, name],
-		queryFn: async (): Promise<{
-			rollout: Rollout | null;
-			kustomizations?: { items: Kustomization[] };
-			ociRepositories?: { items: OCIRepository[] };
-			rolloutGates?: { items: any[] };
-		}> => {
-			const res = await fetch(`/api/rollouts/${namespace}/${name}`);
-			if (!res.ok) {
-				if (res.status === 404) {
-					return { rollout: null };
-				}
-				throw new Error('Failed to load rollout');
-			}
-			return await res.json();
-		}
-	}));
+	const rolloutQuery = createQuery(() =>
+		rolloutQueryOptions({
+			namespace,
+			name
+		})
+	);
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
@@ -762,23 +752,6 @@
 	function getLastTransitionTime(resource: Kustomization | OCIRepository) {
 		const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
 		return readyCondition?.lastTransitionTime;
-	}
-
-	function getBakeStatusIcon(bakeStatus?: string) {
-		switch (bakeStatus) {
-			case 'Succeeded':
-				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
-			case 'Failed':
-				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
-			case 'InProgress':
-				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
-			case 'Cancelled':
-				return { icon: CloseOutline, color: 'text-gray-600 dark:text-gray-400' };
-			case 'None':
-				return { icon: PauseSolid, color: 'text-gray-600 dark:text-gray-400' };
-			default:
-				return { icon: ClockSolid, color: 'text-gray-600 dark:text-gray-400' };
-		}
 	}
 
 	function getBakeStatusColor(bakeStatus?: string) {

@@ -9,6 +9,7 @@
 	import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
 	import { ColorSchemeType } from 'diff2html/lib/types';
 	import 'diff2html/bundles/css/diff2html.min.css';
+	import { fetchRollout } from '$lib/api/rollouts';
 
 	let rollout: Rollout | null = null;
 	let loading = true;
@@ -32,7 +33,7 @@
 
 	onMount(async () => {
 		theme.init();
-		await fetchRollout();
+		await loadRolloutDiff();
 	});
 
 	function renderDiff(targetElement: HTMLElement, patch: string) {
@@ -47,13 +48,9 @@
 		diff2htmlUi.highlightCode();
 	}
 
-	async function fetchRollout() {
+	async function loadRolloutDiff() {
 		try {
-			const response = await fetch(`/api/rollouts/${namespace}/${name}`);
-			if (!response.ok) {
-				throw new Error('Failed to fetch rollout details');
-			}
-			const data = await response.json();
+			const data = await fetchRollout(namespace as string, name as string);
 			rollout = data.rollout;
 
 			if (!rollout?.status?.history) {

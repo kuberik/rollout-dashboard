@@ -25,6 +25,7 @@
 	} from 'flowbite-svelte-icons';
 	import { getRolloutStatus } from '$lib/utils';
 	import { createQuery } from '@tanstack/svelte-query';
+	import { rolloutsListQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 
@@ -43,36 +44,26 @@
 	const activeUrl = $derived(page.url.pathname);
 
 	// Query for rollout data when on rollout detail page
-	const rolloutQuery = createQuery(() => ({
-		queryKey: ['rollout', namespace, name],
-		queryFn: async (): Promise<{ rollout: Rollout | null }> => {
-			if (!namespace || !name) return { rollout: null };
-			const res = await fetch(`/api/rollouts/${namespace}/${name}`);
-			if (!res.ok) {
-				if (res.status === 404) {
-					return { rollout: null };
-				}
-				throw new Error('Failed to load rollout');
+	const rolloutQuery = createQuery(() =>
+		rolloutQueryOptions({
+			namespace: namespace || '',
+			name: name || '',
+			options: {
+				refetchInterval: 5000,
+				enabled: isRolloutPage && !!namespace && !!name
 			}
-			return await res.json();
-		},
-		refetchInterval: 5000,
-		enabled: isRolloutPage && !!namespace && !!name
-	}));
+		})
+	);
 
 	// Query to fetch all rollouts for the dropdown
-	const allRolloutsQuery = createQuery(() => ({
-		queryKey: ['rollouts', 'all'],
-		queryFn: async (): Promise<{ rollouts: { items: Rollout[] } }> => {
-			const res = await fetch('/api/rollouts');
-			if (!res.ok) {
-				throw new Error('Failed to fetch rollouts');
+	const allRolloutsQuery = createQuery(() =>
+		rolloutsListQueryOptions({
+			options: {
+				staleTime: 30000,
+				enabled: isRolloutPage
 			}
-			return await res.json();
-		},
-		staleTime: 30000,
-		enabled: isRolloutPage
-	}));
+		})
+	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);

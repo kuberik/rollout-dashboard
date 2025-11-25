@@ -1,22 +1,28 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import type { Rollout } from '../types';
 	import { Badge, Spinner, Alert, Card } from 'flowbite-svelte';
 	import { formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import {
-		ClockSolid,
-		CheckCircleSolid,
-		ExclamationCircleSolid,
-		PauseSolid,
-		CloseOutline
-	} from 'flowbite-svelte-icons';
+	import { getBakeStatusIcon } from '$lib/bake-status';
+	import { ClockSolid } from 'flowbite-svelte-icons';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 
-	let rollouts = $state<Rollout[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
+	const rolloutsQuery = createQuery(() =>
+		rolloutsListQueryOptions({
+			options: { staleTime: 30000 }
+		})
+	);
+
+	const rollouts = $derived<Rollout[]>(rolloutsQuery.data?.rollouts?.items || []);
+	const loading = $derived(rolloutsQuery.isLoading);
+	const error = $derived(
+		rolloutsQuery.isError
+			? (rolloutsQuery.error as Error).message || 'Unknown error occurred'
+			: null
+	);
 
 	// Group rollouts by namespace
 	const rolloutsByNamespace = $derived.by(() => {
@@ -38,38 +44,6 @@
 				},
 				{} as Record<string, Rollout[]>
 			);
-	});
-
-	function getBakeStatusIcon(bakeStatus?: string) {
-		switch (bakeStatus) {
-			case 'Succeeded':
-				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
-			case 'Failed':
-				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
-			case 'InProgress':
-				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
-			case 'Cancelled':
-				return { icon: CloseOutline, color: 'text-gray-600 dark:text-gray-400' };
-			case 'None':
-				return { icon: PauseSolid, color: 'text-gray-600 dark:text-gray-400' };
-			default:
-				return { icon: ClockSolid, color: 'text-gray-600 dark:text-gray-400' };
-		}
-	}
-
-	onMount(async () => {
-		try {
-			const response = await fetch('/api/rollouts');
-			if (!response.ok) {
-				throw new Error('Failed to fetch rollouts');
-			}
-			const data = await response.json();
-			rollouts = data.rollouts.items || [];
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Unknown error occurred';
-		} finally {
-			loading = false;
-		}
 	});
 </script>
 
