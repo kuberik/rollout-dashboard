@@ -1820,75 +1820,88 @@
 									{#each rollout.status.releaseCandidates as releaseCandidate}
 										{@const version = releaseCandidate.tag}
 										<div class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700">
-											<div class="flex items-center justify-between">
-												<div class="flex items-center gap-3">
+											<div
+												class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+											>
+												<div class="flex flex-1 items-center gap-3">
 													<div class="flex h-8 w-8 items-center justify-center">
 														<CodeOutline class="h-5 w-5 text-gray-500 dark:text-gray-400" />
 													</div>
 													<div class="min-w-0 flex-1">
-														<h6 class="truncate text-sm font-medium text-gray-900 dark:text-white">
-															{getDisplayVersion(releaseCandidate)}
-														</h6>
-														{#if releaseCandidate.version && releaseCandidate.version !== version}
-															<p class="text-xs text-gray-500 dark:text-gray-400">
-																Tag: {version}
-															</p>
-														{/if}
-														{#if releaseCandidate.created}
-															<p class="text-xs text-gray-500 dark:text-gray-400">
-																Created {formatTimeAgo(releaseCandidate.created, $now)}
-															</p>
-														{/if}
-													</div>
-												</div>
-												<div class="flex items-center gap-2">
-													{#if rollout.status?.gatedReleaseCandidates
-														?.map((grc) => grc.tag)
-														.includes(version)}
-														<Badge color="green" size="small">Ready</Badge>
-													{:else}
-														{@const blockingGates = getBlockingGates(version)}
-														{#if blockingGates.length > 0}
-															<Badge color="yellow" size="small" class="cursor-help">
-																Blocked
-																<QuestionCircleOutline class="ml-1 h-3 w-3" />
-															</Badge>
-															<Popover class="max-w-sm" title="Blocked by Gates">
-																<div class="p-3">
-																	<div class="space-y-2">
-																		{#each blockingGates as gate}
-																			<div class="flex items-start gap-2">
-																				<ExclamationCircleSolid
-																					class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
-																				/>
-																				<div class="min-w-0 flex-1">
-																					<p
-																						class="text-sm font-medium text-gray-900 dark:text-white"
-																					>
-																						{getGatePrettyName(gate) ||
-																							gate.metadata?.name ||
-																							'Unknown Gate'}
-																					</p>
-																					{#if getGateDescription(gate)}
-																						<p class="text-xs text-gray-600 dark:text-gray-400">
-																							{getGateDescription(gate)}
-																						</p>
-																					{/if}
-																					{#if gate.status?.status}
-																						<p class="text-xs text-yellow-600 dark:text-yellow-400">
-																							Status: {gate.status.status}
-																						</p>
-																					{/if}
+														<div class="flex flex-col gap-1">
+															<h6
+																class="truncate text-sm font-medium text-gray-900 dark:text-white"
+															>
+																{getDisplayVersion(releaseCandidate)}
+															</h6>
+															<div class="flex flex-wrap items-center gap-2">
+																{#if rollout.status?.gatedReleaseCandidates
+																	?.map((grc) => grc.tag)
+																	.includes(version)}
+																	<Badge color="green" size="small">Ready</Badge>
+																{:else}
+																	{@const blockingGates = getBlockingGates(version)}
+																	{#if blockingGates.length > 0}
+																		<Badge color="yellow" size="small" class="cursor-help">
+																			Blocked
+																			<QuestionCircleOutline class="ml-1 h-3 w-3" />
+																		</Badge>
+																		<Popover class="max-w-sm" title="Blocked by Gates">
+																			<div class="p-3">
+																				<div class="space-y-2">
+																					{#each blockingGates as gate}
+																						<div class="flex items-start gap-2">
+																							<ExclamationCircleSolid
+																								class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
+																							/>
+																							<div class="min-w-0 flex-1">
+																								<p
+																									class="text-sm font-medium text-gray-900 dark:text-white"
+																								>
+																									{getGatePrettyName(gate) ||
+																										gate.metadata?.name ||
+																										'Unknown Gate'}
+																								</p>
+																								{#if getGateDescription(gate)}
+																									<p
+																										class="text-xs text-gray-600 dark:text-gray-400"
+																									>
+																										{getGateDescription(gate)}
+																									</p>
+																								{/if}
+																								{#if gate.status?.status}
+																									<p
+																										class="text-xs text-yellow-600 dark:text-yellow-400"
+																									>
+																										Status: {gate.status.status}
+																									</p>
+																								{/if}
+																							</div>
+																						</div>
+																					{/each}
 																				</div>
 																			</div>
-																		{/each}
-																	</div>
-																</div>
-															</Popover>
-														{:else}
-															<Badge color="yellow" size="small">Blocked</Badge>
-														{/if}
-													{/if}
+																		</Popover>
+																	{:else}
+																		<Badge color="yellow" size="small">Blocked</Badge>
+																	{/if}
+																{/if}
+																{#if releaseCandidate.created}
+																	<Badge
+																		color="gray"
+																		border
+																		size="small"
+																		class="flex items-center gap-1"
+																	>
+																		<ClockSolid class="h-3 w-3" />
+																		{formatTimeAgo(releaseCandidate.created, $now)}
+																	</Badge>
+																{/if}
+															</div>
+														</div>
+													</div>
+												</div>
+												<div class="flex flex-wrap items-center gap-2 sm:justify-end">
 													<Button
 														size="xs"
 														color="blue"

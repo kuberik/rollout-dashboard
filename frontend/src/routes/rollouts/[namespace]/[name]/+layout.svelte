@@ -5,6 +5,8 @@
 	import { Sidebar, SidebarGroup, SidebarItem } from 'flowbite-svelte';
 	import { ObjectsColumnSolid, ClockArrowOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
+	import type { Rollout } from '../../../../types';
+	import { createQuery } from '@tanstack/svelte-query';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -12,6 +14,24 @@
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
 	const activeUrl = $derived(page.url.pathname);
+
+	// Query for rollout data
+	const rolloutQuery = createQuery(() => ({
+		queryKey: ['rollout', namespace, name],
+		queryFn: async (): Promise<{ rollout: Rollout | null }> => {
+			const res = await fetch(`/api/rollouts/${namespace}/${name}`);
+			if (!res.ok) {
+				if (res.status === 404) {
+					return { rollout: null };
+				}
+				throw new Error('Failed to load rollout');
+			}
+			return await res.json();
+		},
+		refetchInterval: 5000
+	}));
+
+	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 </script>
 
 <div class="flex h-full overflow-hidden">

@@ -3,10 +3,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Rollout } from '../types';
-	import { Badge, Spinner, Alert, Card, Timeline, TimelineItem } from 'flowbite-svelte';
-	import { formatTimeAgo, getRolloutStatus, getDisplayVersion } from '$lib/utils';
+	import { Badge, Spinner, Alert, Card } from 'flowbite-svelte';
+	import { formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import { ClockSolid } from 'flowbite-svelte-icons';
+	import {
+		ClockSolid,
+		CheckCircleSolid,
+		ExclamationCircleSolid,
+		PauseSolid,
+		CloseOutline
+	} from 'flowbite-svelte-icons';
 
 	let rollouts = $state<Rollout[]>([]);
 	let loading = $state(true);
@@ -33,6 +39,23 @@
 				{} as Record<string, Rollout[]>
 			);
 	});
+
+	function getBakeStatusIcon(bakeStatus?: string) {
+		switch (bakeStatus) {
+			case 'Succeeded':
+				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
+			case 'Failed':
+				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
+			case 'InProgress':
+				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
+			case 'Cancelled':
+				return { icon: CloseOutline, color: 'text-gray-600 dark:text-gray-400' };
+			case 'None':
+				return { icon: PauseSolid, color: 'text-gray-600 dark:text-gray-400' };
+			default:
+				return { icon: ClockSolid, color: 'text-gray-600 dark:text-gray-400' };
+		}
+	}
 
 	onMount(async () => {
 		try {
@@ -78,60 +101,60 @@
 								!hasUpgrades &&
 								deployment.status?.availableReleases &&
 								deployment.status.availableReleases.length > 0}
+							{@const latestEntry = deployment.status?.history?.[0]}
+							{@const bakeStatus = latestEntry?.bakeStatus}
+							{@const { icon: StatusIcon, color: iconColor } = getBakeStatusIcon(bakeStatus)}
 							<a
 								href="/rollouts/{deployment.metadata?.namespace}/{deployment.metadata?.name}"
 								class="block w-full"
 							>
 								<Card class="w-full max-w-full p-2 sm:p-4 md:p-6">
-									<div class="flex flex-col gap-2">
-										<div class="flex items-start justify-between gap-2">
-											<div class="min-w-0 flex-1">
-												<div class="flex flex-wrap items-baseline gap-2">
-													<h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-														{deployment.metadata?.name}
-													</h3>
-													{#if deployment.status?.title}
-														<span class="text-sm text-gray-500 dark:text-gray-400">
-															{deployment.status.title}
-														</span>
+									<div class="flex flex-col gap-3">
+										<div class="flex flex-wrap items-start justify-between gap-4">
+											<div class="flex flex-1 items-start gap-4">
+												<div
+													class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
+												>
+													{#if bakeStatus === 'InProgress'}
+														<Spinner color="yellow" size="6" />
+													{:else}
+														<StatusIcon class={`h-6 w-6 ${iconColor}`} />
 													{/if}
 												</div>
-												{#if deployment.status?.description}
-													<p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-														{deployment.status.description}
-													</p>
-												{/if}
+												<div class="min-w-0 flex-1">
+													<div class="flex flex-wrap items-center gap-2">
+														<h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+															{deployment.metadata?.name}
+														</h3>
+														{#if hasUpgrades}
+															<Badge color="orange" size="small">
+																{upgradeCount} upgrade{upgradeCount > 1 ? 's' : ''}
+															</Badge>
+														{:else if isLatest}
+															<Badge color="blue" size="small">Latest</Badge>
+														{/if}
+													</div>
+													{#if deployment.status?.title}
+														<p class="text-sm text-gray-500 dark:text-gray-400">
+															{deployment.status.title}
+														</p>
+													{/if}
+												</div>
 											</div>
-											<div class="flex items-center gap-2">
-												<Badge color={getRolloutStatus(deployment).color}>
-													{getRolloutStatus(deployment).text}
+											<div class="flex flex-wrap items-center justify-end gap-2">
+												<Badge color="gray" border class="flex items-center gap-1">
+													<ClockSolid class="h-3 w-3" />
+													{deployment.status?.history?.length
+														? formatTimeAgo(deployment.status?.history[0].timestamp, $now)
+														: 'Never'}
 												</Badge>
-												{#if hasUpgrades}
-													<Badge color="orange" size="small">
-														{upgradeCount} upgrade{upgradeCount > 1 ? 's' : ''}
-													</Badge>
-												{:else if isLatest}
-													<Badge color="blue" size="small">Latest</Badge>
-												{/if}
 											</div>
 										</div>
-										<div class="flex flex-wrap items-center gap-2">
-											<Badge color="blue">
-												{(() => {
-													const historyEntry = deployment.status?.history?.[0];
-													if (!historyEntry?.version) {
-														return historyEntry?.version?.tag || 'Unknown';
-													}
-													return getDisplayVersion(historyEntry.version);
-												})()}
-											</Badge>
-											<Badge color="gray" class="flex items-center gap-1">
-												<ClockSolid class="h-3 w-3" />
-												{deployment.status?.history?.length
-													? formatTimeAgo(deployment.status?.history[0].timestamp, $now)
-													: 'Never'}
-											</Badge>
-										</div>
+										{#if deployment.status?.description}
+											<p class="text-sm text-gray-600 dark:text-gray-400">
+												{deployment.status.description}
+											</p>
+										{/if}
 									</div>
 								</Card>
 							</a>

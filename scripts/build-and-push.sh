@@ -96,7 +96,7 @@ trap "rm -rf $temp_dir" EXIT
             --annotation "org.opencontainers.image.revision=${version}" \
             --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --annotation "org.opencontainers.image.title=Hello World app" \
-            --annotation "org.opencontainers.image.description=This app is a simple hello world app" \
+            --annotation "org.opencontainers.image.description=This app is a simple hello world app. It is used to test the rollout controller. It is not meant to be used in production. Have fun!" \
             --annotation "org.opencontainers.image.licenses=MIT" \
             --annotation "org.opencontainers.image.authors=Kuberik" \
             --annotation "org.opencontainers.image.vendor=Kuberik" \
