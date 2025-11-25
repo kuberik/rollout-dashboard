@@ -4,8 +4,9 @@
 	import { onMount } from 'svelte';
 	import type { Rollout } from '../types';
 	import { Badge, Spinner, Alert, Card, Timeline, TimelineItem } from 'flowbite-svelte';
-	import { formatTimeAgo, getRolloutStatus } from '$lib/utils';
+	import { formatTimeAgo, getRolloutStatus, getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { ClockSolid } from 'flowbite-svelte-icons';
 
 	let rollouts = $state<Rollout[]>([]);
 	let loading = $state(true);
@@ -85,17 +86,19 @@
 									<div class="flex flex-col gap-2">
 										<div class="flex items-start justify-between gap-2">
 											<div class="min-w-0 flex-1">
-												<h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-													{deployment.status?.title || deployment.metadata?.name}
-												</h3>
+												<div class="flex flex-wrap items-baseline gap-2">
+													<h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+														{deployment.metadata?.name}
+													</h3>
+													{#if deployment.status?.title}
+														<span class="text-sm text-gray-500 dark:text-gray-400">
+															{deployment.status.title}
+														</span>
+													{/if}
+												</div>
 												{#if deployment.status?.description}
 													<p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
 														{deployment.status.description}
-													</p>
-												{/if}
-												{#if deployment.status?.title && deployment.metadata?.name}
-													<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-														{deployment.metadata.namespace} / {deployment.metadata.name}
 													</p>
 												{/if}
 											</div>
@@ -112,24 +115,22 @@
 												{/if}
 											</div>
 										</div>
-										<div class="flex flex-col gap-1">
-											<div class="flex items-center gap-2">
-												<span class="text-sm text-gray-500">Current version:</span>
-												<Badge color="blue">
-													{(() => {
-														const historyEntry = deployment.status?.history?.[0];
-														if (!historyEntry?.version?.tag) return 'Unknown';
-
-														// Use version from history if available (regular release)
-														return historyEntry.version.version || historyEntry.version.tag;
-													})()}
-												</Badge>
-											</div>
-											<div class="text-sm text-gray-500">
-												Last deployment: {deployment.status?.history?.length
+										<div class="flex flex-wrap items-center gap-2">
+											<Badge color="blue">
+												{(() => {
+													const historyEntry = deployment.status?.history?.[0];
+													if (!historyEntry?.version) {
+														return historyEntry?.version?.tag || 'Unknown';
+													}
+													return getDisplayVersion(historyEntry.version);
+												})()}
+											</Badge>
+											<Badge color="gray" class="flex items-center gap-1">
+												<ClockSolid class="h-3 w-3" />
+												{deployment.status?.history?.length
 													? formatTimeAgo(deployment.status?.history[0].timestamp, $now)
 													: 'Never'}
-											</div>
+											</Badge>
 										</div>
 									</div>
 								</Card>
