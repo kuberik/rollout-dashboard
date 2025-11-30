@@ -28,6 +28,7 @@
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { getBakeStatusIcon } from '$lib/bake-status';
 
 	// Params (runes)
 	const namespace = $derived(get(page).params.namespace as string);
@@ -50,19 +51,6 @@
 	let showDeployModal = $state(false);
 	let selectedVersionTag = $state<string | null>(null);
 	let selectedVersionDisplay = $state<string | null>(null);
-
-	function getBakeStatusIcon(bakeStatus?: string) {
-		switch (bakeStatus) {
-			case 'Succeeded':
-				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
-			case 'Failed':
-				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
-			case 'InProgress':
-				return { icon: Spinner, color: 'text-yellow-600 dark:text-yellow-400' };
-			default:
-				return { icon: ClockSolid, color: 'text-gray-500 dark:text-gray-400' };
-		}
-	}
 
 	function getDisplayVersion(versionInfo: {
 		version?: string;
