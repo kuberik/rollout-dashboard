@@ -3,7 +3,8 @@ import type {
     Rollout,
     Kustomization,
     OCIRepository,
-    RolloutGate
+    RolloutGate,
+    Environment
 } from '../../types';
 
 export type RolloutResponse = {
@@ -11,6 +12,7 @@ export type RolloutResponse = {
     kustomizations?: { items: Kustomization[] };
     ociRepositories?: { items: OCIRepository[] };
     rolloutGates?: { items: RolloutGate[] };
+    environment?: Environment;
 };
 
 export type RolloutsListResponse = {

@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  tcp-proxy:
+    image: alpine/socat
+    container_name: tcp-proxy
+    command: "TCP-LISTEN:443,fork,reuseaddr TCP:host.docker.internal:5173"
+    ports:
+      - "443:443"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

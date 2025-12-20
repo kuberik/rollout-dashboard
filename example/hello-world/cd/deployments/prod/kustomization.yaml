@@ -40,16 +40,18 @@ replacements:
           delimiter: "/"
           index: 5
       - select:
-          kind: GitHubDeployment
+          kind: Environment
         fieldPaths:
           - spec.environment
         options:
           create: true
 patches:
   - patch: |-
-      apiVersion: github.kuberik.com/v1alpha1
-      kind: GitHubDeployment
+      apiVersion: environments.kuberik.com/v1alpha1
+      kind: Environment
       metadata:
         name: hello-world-app
       spec:
-        dependencies: ["staging"]
+        relationship:
+          environment: staging
+          type: After

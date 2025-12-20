@@ -402,6 +402,214 @@ export interface components {
                 status?: string;
             };
         };
+        /** @description Environment is the Schema for the environments API */
+        Environment: {
+            /** @description APIVersion defines the versioned schema of this representation of an object.
+             *     Servers should convert recognized schemas to the latest internal value, and
+             *     may reject unrecognized values.
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents.
+             *     Servers may infer this from the endpoint the client submits requests to.
+             *     Cannot be updated.
+             *     In CamelCase.
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            metadata?: components["schemas"]["KubernetesMetadata"];
+            /** @description spec defines the desired state of Environment */
+            spec: {
+                /** @description Backend contains backend-specific configuration */
+                backend: {
+                    /** @description Project is the project identifier (backend-specific format, e.g., "owner/repo" for GitHub) */
+                    project: string;
+                    /** @description Secret is the name of the Kubernetes Secret containing the backend authentication token */
+                    secret?: string;
+                    /**
+                     * @description Type specifies the backend to use (e.g., "github")
+                     * @enum {string}
+                     */
+                    type: "github";
+                };
+                /** @description Environment is the environment name (e.g., "production", "staging") */
+                environment?: string;
+                /** @description Name is the name of the GitHub deployment (the "kuberik" prefix will be automatically added for GitHub backend if not already present) */
+                name: string;
+                /** @description Relationship defines how this environment relates to another environment */
+                relationship?: {
+                    /** @description Environment is the environment name this environment relates to */
+                    environment: string;
+                    /**
+                     * @description Type is the type of relationship: "After" or "Parallel"
+                     * @enum {string}
+                     */
+                    type: "After" | "Parallel";
+                };
+                /** @description RequeueInterval specifies how often the controller should reconcile this Environment
+                 *     If not specified, defaults to 1 minute. Must be a valid duration string (e.g., "1m", "30s", "5m"). */
+                requeueInterval?: string;
+                /** @description RolloutRef is a reference to the Rollout that this Environment manages */
+                rolloutRef: {
+                    /**
+                     * @description Name of the referent.
+                     *     This field is effectively required, but due to backwards compatibility is
+                     *     allowed to be empty. Instances of this type with an empty value here are
+                     *     almost certainly wrong.
+                     *     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                     * @default
+                     */
+                    name: string;
+                };
+            };
+            /** @description status defines the observed state of Environment */
+            status?: {
+                /** @description conditions represent the current state of the Environment resource.
+                 *     Each condition has a unique type and reflects the status of a specific aspect of the resource.
+                 *
+                 *     Standard condition types include:
+                 *     - "Available": the resource is fully functional
+                 *     - "Progressing": the resource is being created or updated
+                 *     - "Degraded": the resource failed to reach or maintain its desired state
+                 *
+                 *     The status of each condition is one of True, False, or Unknown. */
+                conditions?: {
+                    /**
+                     * Format: date-time
+                     * @description lastTransitionTime is the last time the condition transitioned from one status to another.
+                     *     This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                     */
+                    lastTransitionTime: string;
+                    /** @description message is a human readable message indicating details about the transition.
+                     *     This may be an empty string. */
+                    message: string;
+                    /**
+                     * Format: int64
+                     * @description observedGeneration represents the .metadata.generation that the condition was set based upon.
+                     *     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                     *     with respect to the current state of the instance.
+                     */
+                    observedGeneration?: number;
+                    /** @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                     *     Producers of specific condition types may define expected values and meanings for this field,
+                     *     and whether the values are considered a guaranteed API.
+                     *     The value should be a CamelCase string.
+                     *     This field may not be empty. */
+                    reason: string;
+                    /**
+                     * @description status of the condition, one of True, False, Unknown.
+                     * @enum {string}
+                     */
+                    status: "True" | "False" | "Unknown";
+                    /** @description type of condition in CamelCase or in foo.example.com/CamelCase. */
+                    type: string;
+                }[];
+                /** @description CurrentVersion is the current version being deployed */
+                currentVersion?: string;
+                /**
+                 * Format: int64
+                 * @description DeploymentID is the ID of the deployment (backend-specific)
+                 */
+                deploymentId?: number;
+                /** @description DeploymentStatuses tracks deployment statuses per version and environment.
+                 *     Only versions that are relevant based on environment relationships are tracked. */
+                deploymentStatuses?: {
+                    /**
+                     * Format: date-time
+                     * @description BakeEndTime is the time when the bake period ended for this deployment
+                     *     This is when the bake process completed (either successfully or with failure).
+                     */
+                    bakeEndTime?: string;
+                    /**
+                     * Format: date-time
+                     * @description BakeStartTime is the time when the bake period started for this deployment
+                     *     This is when the rollout controller began monitoring the deployment for stability.
+                     */
+                    bakeStartTime?: string;
+                    /** @description BakeStatus tracks the bake state for this deployment (e.g., None, InProgress, Succeeded, Failed, Cancelled)
+                     *     The bake process ensures that the deployment is stable and healthy before marking as successful. */
+                    bakeStatus?: string;
+                    /** @description BakeStatusMessage provides details about the bake state for this deployment
+                     *     This field contains human-readable information about why the bake status is what it is. */
+                    bakeStatusMessage?: string;
+                    /**
+                     * Format: date-time
+                     * @description DeployTime is the time when the deployment occurred
+                     *     This is when the rollout controller initiated the deployment.
+                     */
+                    deployTime?: string;
+                    /** @description Environment is the environment name (e.g., "production", "staging") */
+                    environment: string;
+                    /**
+                     * Format: int64
+                     * @description ID is a unique auto-incrementing identifier for this history entry.
+                     */
+                    id?: number;
+                    /** @description Message provides a descriptive message about this deployment entry
+                     *     This field contains human-readable information about the deployment context.
+                     *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
+                     *     For manual deployments (when wantedVersion is specified), it can contain a custom message
+                     *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment". */
+                    message?: string;
+                    /**
+                     * Format: date-time
+                     * @description Timestamp is the time when the deployment occurred.
+                     */
+                    timestamp: string;
+                    /** @description Version is the version information that was deployed. */
+                    version: {
+                        /**
+                         * Format: date-time
+                         * @description Created is the creation timestamp extracted from OCI annotations if available.
+                         */
+                        created?: string;
+                        /** @description Digest is the image digest if available from the ImagePolicy. */
+                        digest?: string;
+                        /** @description Revision is the revision information extracted from OCI annotations if available. */
+                        revision?: string;
+                        /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
+                        tag: string;
+                        /** @description Version is the semantic version extracted from OCI annotations if available. */
+                        version?: string;
+                    };
+                }[];
+                /** @description DeploymentURL is the URL of the deployment (backend-specific) */
+                deploymentUrl?: string;
+                /** @description EnvironmentInfos tracks deployment information for each environment.
+                 *     Each environment has environment URL and relationships (not per version). */
+                environmentInfos?: {
+                    /** @description Environment is the environment name */
+                    environment: string;
+                    /** @description EnvironmentURL is the URL of the actual deployed environment (e.g., dashboard URL) */
+                    environmentUrl?: string;
+                    /** @description Relationship defines how this environment relates to another environment */
+                    relationship?: {
+                        /** @description Environment is the environment name this environment relates to */
+                        environment: string;
+                        /**
+                         * @description Type is the type of relationship: "After" or "Parallel"
+                         * @enum {string}
+                         */
+                        type: "After" | "Parallel";
+                    };
+                }[];
+                /**
+                 * Format: date-time
+                 * @description LastSyncTime is the last time the deployment was synchronized
+                 */
+                lastSyncTime?: string;
+                /** @description RolloutGateRef is a reference to the RolloutGate that was created/updated */
+                rolloutGateRef?: {
+                    /**
+                     * @description Name of the referent.
+                     *     This field is effectively required, but due to backwards compatibility is
+                     *     allowed to be empty. Instances of this type with an empty value here are
+                     *     almost certainly wrong.
+                     *     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                     * @default
+                     */
+                    name: string;
+                };
+            };
+        };
         /** @description Kustomization is the Schema for the kustomizations API. */
         Kustomization: {
             /** @description APIVersion defines the versioned schema of this representation of an object.
@@ -1444,5 +1652,13 @@ export interface components {
     headers: never;
     pathItems: never;
 }
+export type SchemaKubernetesMetadata = components['schemas']['KubernetesMetadata'];
+export type SchemaRollout = components['schemas']['Rollout'];
+export type SchemaRolloutGate = components['schemas']['RolloutGate'];
+export type SchemaHealthCheck = components['schemas']['HealthCheck'];
+export type SchemaEnvironment = components['schemas']['Environment'];
+export type SchemaKustomization = components['schemas']['Kustomization'];
+export type SchemaOciRepository = components['schemas']['OCIRepository'];
+export type SchemaKruiseRollout = components['schemas']['KruiseRollout'];
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;

@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { Sidebar, SidebarGroup, SidebarItem } from 'flowbite-svelte';
-	import { ObjectsColumnSolid, ClockArrowOutline } from 'flowbite-svelte-icons';
+	import { ObjectsColumnSolid, ClockArrowOutline, LayersSolid } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import type { Rollout } from '../../../../types';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -48,6 +48,13 @@
 			<SidebarItem label="History" href={`/rollouts/${namespace}/${name}/history`}>
 				{#snippet icon()}
 					<ClockArrowOutline
+						class="h-5 w-5 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
+					/>
+				{/snippet}
+			</SidebarItem>
+			<SidebarItem label="Environments" href={`/rollouts/${namespace}/${name}/environments`}>
+				{#snippet icon()}
+					<LayersSolid
 						class="h-5 w-5 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
 					/>
 				{/snippet}

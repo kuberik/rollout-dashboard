@@ -115,19 +115,16 @@ metadata:
 spec:
   class: "kustomization"
 ---
-apiVersion: github.kuberik.com/v1alpha1
-kind: GitHubDeployment
+apiVersion: environments.kuberik.com/v1alpha1
+kind: Environment
 metadata:
   name: hello-world-app
 spec:
-  # Reference to the Rollout that this GitHubDeployment manages
+  # Reference to the Rollout that this Deployment manages
   rolloutRef:
     name: hello-world-app
-
-  # GitHub repository configuration
-  # TODO: parametrize
-  repository: "LittleChimera/kuberik-testing"
-  deploymentName: "hello-world-app"
-
-  # GitHub token configuration
-  githubTokenSecret: "github-token"
+  backend:
+    type: github
+    project: "LittleChimera/kuberik-testing"
+    secret: "github-token"
+  name: "hello-world-app"

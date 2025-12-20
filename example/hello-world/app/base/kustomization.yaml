@@ -22,3 +22,6 @@ configMapGenerator:
   - name: hello-world-app-env
     files:
       - app.env
+
+configurations:
+  - nameref.yaml

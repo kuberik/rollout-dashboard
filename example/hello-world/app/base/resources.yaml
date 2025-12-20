@@ -78,11 +78,88 @@ spec:
     canary:
       steps:
       - replicas: 1
+        traffic: 20%
         # pause:
         #   duration: 20
       - replicas: 100%
         # pause:
         #   duration: 20
+      trafficRoutings:
+        - service: hello-python
+          gateway:
+            httpRouteName: hello-python
+---
+apiVersion: rollout.kuberik.com/v1alpha1
+kind: RolloutTest
+metadata:
+  name: hello-python-test
+  labels:
+    app: hello-python
+spec:
+  rolloutName: hello-python
+  stepIndex: 1
+  jobTemplate:
+    backoffLimit: 1
+    template:
+      spec:
+        restartPolicy: Never
+        containers:
+          - name: hello-python-test
+            image: ghcr.io/littlechimera/hello-world/app:${HELLO_WORLD_VERSION}
+            command: ["python", "/app/test.py"]
+            env:
+              - name: VERSION
+                value: ${HELLO_WORLD_VERSION}
+              - name: PORT
+                value: "8080"
+            ports:
+              - containerPort: 8080
+            volumeMounts:
+              - name: app-test-script
+                mountPath: /app/test.py
+                subPath: test.py
+        volumes:
+          - name: app-test-script
+            configMap:
+              name: hello-python-test-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-python-test-script
+data:
+  test.py: |
+    import os
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    VERSION = os.environ.get("VERSION", "unknown")
+    if VERSION == "unknown":
+      print("Version is unknown")
+      exit(1)
+
+    import http.client
+
+    def main():
+      service_host = os.environ.get("SERVICE_HOST", "hello-python")
+      service_port = int(os.environ.get("PORT", "8080"))
+      try:
+        conn = http.client.HTTPConnection(service_host, service_port, timeout=5)
+        conn.request("GET", "/")
+        resp = conn.getresponse()
+        body = resp.read().decode("utf-8")
+        print("Response:", resp.status, body)
+        if resp.status != 200:
+          print("Request failed")
+          exit(2)
+        conn.close()
+        if VERSION not in body:
+          print("Version not found in response")
+          exit(3)
+      except Exception as e:
+        print("Request error:", e)
+        exit(3)
+
+    if __name__ == "__main__":
+      main()
 ---
 apiVersion: v1
 kind: Service
@@ -98,23 +175,38 @@ spec:
       port: 80
       targetPort: 8080
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
 metadata:
-  name: hello-python
+  name: hello-python-gateway
+  namespace: hello-world
   labels:
     app: hello-python
 spec:
+  gatewayClassName: envoy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hello-python
+  namespace: hello-world
+  labels:
+    app: hello-python
+spec:
+  parentRefs:
+    - name: hello-python-gateway
   rules:
-    - http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: hello-python
-                port:
-                  number: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: hello-python
+          port: 80
 ---
 apiVersion: datadoghq.com/v1alpha1
 kind: DatadogMonitor

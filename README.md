@@ -107,3 +107,18 @@ npm run build
 - `GET /api/rollouts/:namespace/:name` - Get specific rollout details
 - `POST /api/rollouts/:namespace/:name/pin` - Pin a version to a rollout
 - `POST /api/rollouts/:namespace/:name/bypass-gates` - Add bypass-gates annotation
+
+## Kubernetes Exposure via Gateway API
+
+- The dashboard `Service` now remains `ClusterIP` and traffic is routed through Gateway API resources (`Gateway` and `HTTPRoute`) defined in `deploy/base/gateway.yaml`. TLS is terminated by the Gateway, so make sure a secret named `rollout-dashboard-tls` exists in the `kuberik-system` namespace:
+
+```bash
+kubectl create secret tls rollout-dashboard-tls \
+  --namespace kuberik-system \
+  --cert tls.crt \
+  --key tls.key
+```
+
+- Update the hostnames inside `deploy/base/gateway.yaml` (or patch them per environment) so they match the certificate's Subject Alternative Names.
+
+- For local testing with Kind, run `scripts/setup-dev-environment.sh`. The script installs Envoy Gateway which implements the Gateway API and exposes the dashboard via Gateway resources. Add the chosen hostname to `/etc/hosts` if it is not already resolvable.

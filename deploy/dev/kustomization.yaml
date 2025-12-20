@@ -3,15 +3,3 @@ kind: Kustomization
 
 resources:
   - ../base
-
-patches:
-  - target:
-      kind: Service
-      name: rollout-dashboard
-    patch: |
-      - op: replace
-        path: /spec/ports/0/nodePort
-        value: 30951
-      - op: replace
-        path: /spec/type
-        value: NodePort

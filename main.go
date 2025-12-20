@@ -160,11 +160,37 @@ func main() {
 				log.Printf("Error fetching rollout gates: %v", err)
 			}
 
+			// Get associated KuberikEnvironment that references this rollout
+			environment, err := k8sClient.GetEnvironmentByRolloutReference(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching environment: %v", err)
+			}
+
 			c.JSON(http.StatusOK, gin.H{
 				"rollout":         rollout,
 				"kustomizations":  kustomizations,
 				"ociRepositories": ociRepositories,
 				"rolloutGates":    rolloutGates,
+				"environment":     environment,
+			})
+		})
+
+		api.GET("/rollouts/:namespace/:name/environments", func(c *gin.Context) {
+			namespace := c.Param("namespace")
+
+			// Get all Environments in the namespace
+			environments, err := k8sClient.GetEnvironments(context.Background(), namespace)
+			if err != nil {
+				log.Printf("Error fetching environments: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch environments",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"environments": environments,
 			})
 		})
 

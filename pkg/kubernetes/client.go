@@ -22,6 +22,7 @@ import (
 	imagereflectorv1beta2 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
+	envv1alpha1 "github.com/kuberik/environment-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -61,6 +62,10 @@ func NewClient() (*Client, error) {
 	// Add core Kubernetes scheme (includes v1.Secret, v1.Pod, etc.)
 	if err := corev1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add core scheme: %w", err)
+	}
+
+	if err := envv1alpha1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add environment scheme: %w", err)
 	}
 
 	if err := rolloutv1alpha1.AddToScheme(scheme); err != nil {
@@ -850,4 +855,36 @@ func (c *Client) GetRolloutGatesByRolloutReference(ctx context.Context, namespac
 
 	rolloutGates.Items = filteredGates
 	return rolloutGates, nil
+}
+
+// GetEnvironmentByRolloutReference fetches Environment that references a specific rollout
+func (c *Client) GetEnvironmentByRolloutReference(ctx context.Context, namespace, rolloutName string) (*envv1alpha1.Environment, error) {
+	// List all Environments in the namespace
+	environments := &envv1alpha1.EnvironmentList{}
+
+	if err := c.client.List(ctx, environments, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list environments: %w", err)
+	}
+
+	// Filter environments that reference the specific rollout
+	for _, environment := range environments.Items {
+		if environment.Spec.RolloutRef.Name == rolloutName {
+			// Return the first matching environment
+			envCopy := environment
+			return &envCopy, nil
+		}
+	}
+
+	return nil, nil // No environment found, but not an error
+}
+
+// GetEnvironments fetches all Environments in a namespace
+func (c *Client) GetEnvironments(ctx context.Context, namespace string) (*envv1alpha1.EnvironmentList, error) {
+	environments := &envv1alpha1.EnvironmentList{}
+
+	if err := c.client.List(ctx, environments, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list environments: %w", err)
+	}
+
+	return environments, nil
 }

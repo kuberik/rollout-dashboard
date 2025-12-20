@@ -10,8 +10,13 @@
 		OCIRepository,
 		ManagedResourceStatus,
 		HealthCheck,
-		KruiseRollout
+		KruiseRollout,
+		Environment
 	} from '../../../../types';
+	import type {
+		EnvironmentStatusEntry,
+		EnvironmentInfo
+	} from '../../../../types/environment-types';
 	import {
 		Card,
 		Badge,
@@ -83,7 +88,7 @@
 	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { rolloutQueryOptions, type RolloutResponse } from '$lib/api/rollouts';
 
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
@@ -337,8 +342,121 @@
 		return selectedIdx < currentIdx;
 	}
 
-	function toTag(version: any): string {
-		return typeof version === 'string' ? version : version?.tag;
+	function toTag(version: string | { tag: string } | undefined): string {
+		return typeof version === 'string' ? version : (version?.tag ?? '');
+	}
+
+	// Helper function to get dependency status for a version
+	function getDependencyStatus(versionTag: string): string | null {
+		const environment = rolloutQuery.data?.environment;
+		if (!environment?.status?.environmentInfos || !environment?.status?.deploymentStatuses) {
+			return null;
+		}
+
+		// Get current environment from namespace
+		const parts = namespace.split('-');
+		const currentEnv = parts[parts.length - 1] || namespace;
+
+		// Find current environment info
+		const currentEnvInfo = environment.status.environmentInfos.find(
+			(e: EnvironmentInfo) => e.environment === currentEnv
+		);
+		const currentDeps: string[] = [];
+		if (currentEnvInfo?.relationship?.type === 'After') {
+			currentDeps.push(currentEnvInfo.relationship.environment);
+		}
+		if (currentDeps.length === 0) {
+			return null;
+		}
+
+		// Find the release candidate, history entry, or available release to get all version identifiers
+		if (!rollout) return null;
+		const releaseCandidate = rollout.status?.releaseCandidates?.find((rc) => rc.tag === versionTag);
+		const historyEntry = rollout.status?.history?.find(
+			(entry) => entry.version?.tag === versionTag
+		);
+		const availableRelease = rollout.status?.availableReleases?.find((ar) => ar.tag === versionTag);
+
+		// Collect all possible version identifiers to match against
+		const versionIdentifiers = new Set<string>();
+		versionIdentifiers.add(versionTag);
+		if (releaseCandidate?.digest) versionIdentifiers.add(releaseCandidate.digest);
+		if (releaseCandidate?.revision) versionIdentifiers.add(releaseCandidate.revision);
+		if (historyEntry?.version?.tag) versionIdentifiers.add(historyEntry.version.tag);
+		if (historyEntry?.version?.digest) versionIdentifiers.add(historyEntry.version.digest);
+		if (historyEntry?.version?.revision) versionIdentifiers.add(historyEntry.version.revision);
+		if (availableRelease?.digest) versionIdentifiers.add(availableRelease.digest);
+		if (availableRelease?.revision) versionIdentifiers.add(availableRelease.revision);
+
+		// Get deployment statuses for this version in dependencies
+		// Match by any of the version identifiers
+		const depStatuses = environment.status.deploymentStatuses.filter(
+			(s: EnvironmentStatusEntry) => {
+				if (!currentDeps.includes(s.environment)) return false;
+				const versionStr = getDisplayVersion(s.version);
+				return (
+					versionIdentifiers.has(versionStr) ||
+					versionIdentifiers.has(s.version.tag) ||
+					versionIdentifiers.has(s.version.digest || '') ||
+					versionIdentifiers.has(s.version.revision || '')
+				);
+			}
+		);
+
+		if (depStatuses.length === 0) {
+			return null;
+		}
+
+		// Helper function to derive status from bakeStatus
+		const getDeploymentStatus = (entry: EnvironmentStatusEntry | undefined): string => {
+			if (!entry) return 'unknown';
+			const bakeStatus = entry.bakeStatus?.toLowerCase();
+			if (bakeStatus === 'succeeded') return 'success';
+			if (bakeStatus === 'failed') return 'failure';
+			if (bakeStatus === 'inprogress' || bakeStatus === 'in_progress') return 'in_progress';
+			if (bakeStatus === 'pending' || bakeStatus === 'none') return 'pending';
+			return 'inactive';
+		};
+
+		// Determine combined status
+		const statuses = depStatuses.map((s: EnvironmentStatusEntry) => getDeploymentStatus(s));
+		if (statuses.some((s: string) => s === 'failure')) return 'failure';
+		if (statuses.some((s: string) => s === 'in_progress' || s === 'pending')) return 'in_progress';
+		if (statuses.every((s: string) => s === 'success')) return 'success';
+		if (statuses.some((s: string) => s === 'inactive')) return 'inactive';
+		return 'unknown';
+	}
+
+	function getStatusIcon(status: string | null) {
+		if (!status) return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
+		switch (status.toLowerCase()) {
+			case 'success':
+				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
+			case 'failure':
+				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
+			case 'in_progress':
+			case 'pending':
+				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
+			default:
+				return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
+		}
+	}
+
+	function getStatusColor(status: string | null): 'green' | 'red' | 'yellow' | 'gray' {
+		if (!status) return 'gray';
+		switch (status.toLowerCase()) {
+			case 'success':
+				return 'green';
+			case 'failure':
+				return 'red';
+			case 'in_progress':
+			case 'pending':
+				return 'yellow';
+			case 'inactive':
+				return 'gray';
+			default:
+				return 'gray';
+		}
 	}
 
 	// Computed properties for pagination
@@ -847,7 +965,7 @@
 			<div class="flex flex-1 flex-col overflow-hidden">
 				<!-- Content Area -->
 				<div class="flex-1 overflow-y-auto p-4">
-					<!-- Failed Deployment Alert -->
+					<!-- Failed Environment Deployment Alert -->
 					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
 						{@const latestEntry = rollout.status?.history?.[0]}
 						{@const failedHealthChecks = latestEntry?.failedHealthChecks || []}
@@ -982,19 +1100,45 @@
 							</div>
 						</Alert>
 					{/if}
-					{#if rollout.status?.title || rollout.status?.description}
+					{#if rollout.status?.title || rollout.status?.description || rolloutQuery.data?.environment}
+						{@const environment = rolloutQuery.data?.environment}
+						{@const currentEnvInfo = environment?.status?.environmentInfos?.find(
+							(e: EnvironmentInfo) => {
+								const parts = namespace.split('-');
+								const currentEnv = parts[parts.length - 1] || namespace;
+								return e.environment === currentEnv;
+							}
+						)}
 						<Card class="mb-4 w-full max-w-none p-6">
 							<div class="flex flex-col gap-2">
-								{#if rollout.status?.title}
-									<h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-										{rollout.status.title}
-									</h2>
-								{/if}
-								{#if rollout.status?.description}
-									<p class="text-sm text-gray-600 dark:text-gray-400">
-										{rollout.status.description}
-									</p>
-								{/if}
+								<div class="flex items-center justify-between gap-4">
+									<div class="flex-1">
+										{#if rollout.status?.title}
+											<h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+												{rollout.status.title}
+											</h2>
+										{/if}
+										{#if rollout.status?.description}
+											<p class="text-sm text-gray-600 dark:text-gray-400">
+												{rollout.status.description}
+											</p>
+										{/if}
+									</div>
+									{#if currentEnvInfo}
+										<div class="flex items-center">
+											<span
+												class="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
+											>
+												Environment
+											</span>
+											<span
+												class="inline-flex items-center rounded-r-lg border border-gray-300 bg-blue-500 px-3 py-1.5 text-sm font-semibold text-white dark:border-gray-600"
+											>
+												{currentEnvInfo.environment || 'N/A'}
+											</span>
+										</div>
+									{/if}
+								</div>
 							</div>
 						</Card>
 					{/if}
@@ -1068,7 +1212,7 @@
 								<!-- Deployment Timeline -->
 								<div class="mb-6">
 									<h5 class="mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-										Deployment Timeline
+										Environment Deployment Timeline
 									</h5>
 
 									<Timeline order="horizontal" class="w-full">
@@ -1858,6 +2002,19 @@
 																	{:else}
 																		<Badge color="yellow" size="small">Blocked</Badge>
 																	{/if}
+																{/if}
+																{#if getDependencyStatus(version)}
+																	{@const depStatus = getDependencyStatus(version)}
+																	{@const depStatusInfo = getStatusIcon(depStatus)}
+																	{@const DepStatusIcon = depStatusInfo.icon}
+																	<Badge
+																		color={getStatusColor(depStatus)}
+																		size="small"
+																		class="flex items-center gap-1"
+																	>
+																		<DepStatusIcon class="h-3 w-3" />
+																		Dep: {depStatus}
+																	</Badge>
 																{/if}
 																{#if releaseCandidate.created}
 																	<Badge
