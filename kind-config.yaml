@@ -1,11 +1,24 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    metadata:
+      name: config
+    apiServer:
+      extraArgs:
+        oidc-issuer-url: https://dex-server:10443/dex
+        oidc-client-id: kubernetes
+        oidc-username-claim: email
+        oidc-groups-claim: groups
+        oidc-ca-file: /usr/local/share/ca-certificates/dex-ca.crt
 nodes:
   - role: control-plane
     extraPortMappings:
-      - containerPort: 30950
-        hostPort: 5001
-        protocol: TCP
       - containerPort: 30951
         hostPort: 8080
         protocol: TCP
+    extraMounts:
+      # Mount the CA certificate for HTTPS
+      - hostPath: /tmp/dex-ca.crt
+        containerPath: /usr/local/share/ca-certificates/dex-ca.crt

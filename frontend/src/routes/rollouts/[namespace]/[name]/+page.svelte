@@ -85,6 +85,7 @@
 	import DeployModal from '$lib/components/DeployModal.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
+	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
 	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
@@ -349,7 +350,7 @@
 	// Helper function to get dependency status for a version
 	function getDependencyStatus(versionTag: string): string | null {
 		const environment = rolloutQuery.data?.environment;
-		if (!environment?.status?.environmentInfos || !environment?.status?.deploymentStatuses) {
+		if (!environment?.status?.environmentInfos) {
 			return null;
 		}
 
@@ -361,70 +362,55 @@
 		const currentEnvInfo = environment.status.environmentInfos.find(
 			(e: EnvironmentInfo) => e.environment === currentEnv
 		);
-		const currentDeps: string[] = [];
-		if (currentEnvInfo?.relationship?.type === 'After') {
-			currentDeps.push(currentEnvInfo.relationship.environment);
+		const depEnv =
+			currentEnvInfo?.relationship?.type === 'After'
+				? currentEnvInfo.relationship.environment
+				: null;
+		if (!depEnv) {
+			return null;
 		}
-		if (currentDeps.length === 0) {
+
+		// Find the dependency environment info
+		const depEnvInfo = environment.status.environmentInfos.find(
+			(e: EnvironmentInfo) => e.environment === depEnv
+		);
+		if (!depEnvInfo?.history) {
 			return null;
 		}
 
 		// Find the release candidate, history entry, or available release to get all version identifiers
 		if (!rollout) return null;
-		const releaseCandidate = rollout.status?.releaseCandidates?.find((rc) => rc.tag === versionTag);
 		const historyEntry = rollout.status?.history?.find(
 			(entry) => entry.version?.tag === versionTag
 		);
 		const availableRelease = rollout.status?.availableReleases?.find((ar) => ar.tag === versionTag);
 
 		// Collect all possible version identifiers to match against
-		const versionIdentifiers = new Set<string>();
-		versionIdentifiers.add(versionTag);
-		if (releaseCandidate?.digest) versionIdentifiers.add(releaseCandidate.digest);
-		if (releaseCandidate?.revision) versionIdentifiers.add(releaseCandidate.revision);
-		if (historyEntry?.version?.tag) versionIdentifiers.add(historyEntry.version.tag);
-		if (historyEntry?.version?.digest) versionIdentifiers.add(historyEntry.version.digest);
-		if (historyEntry?.version?.revision) versionIdentifiers.add(historyEntry.version.revision);
-		if (availableRelease?.digest) versionIdentifiers.add(availableRelease.digest);
-		if (availableRelease?.revision) versionIdentifiers.add(availableRelease.revision);
+		const versionIdentifiers = new Set<string>([versionTag]);
+		if (historyEntry?.version) {
+			if (historyEntry.version.digest) versionIdentifiers.add(historyEntry.version.digest);
+			if (historyEntry.version.revision) versionIdentifiers.add(historyEntry.version.revision);
+		}
+		if (availableRelease) {
+			if (availableRelease.digest) versionIdentifiers.add(availableRelease.digest);
+			if (availableRelease.revision) versionIdentifiers.add(availableRelease.revision);
+		}
 
-		// Get deployment statuses for this version in dependencies
-		// Match by any of the version identifiers
-		const depStatuses = environment.status.deploymentStatuses.filter(
-			(s: EnvironmentStatusEntry) => {
-				if (!currentDeps.includes(s.environment)) return false;
-				const versionStr = getDisplayVersion(s.version);
-				return (
-					versionIdentifiers.has(versionStr) ||
-					versionIdentifiers.has(s.version.tag) ||
-					versionIdentifiers.has(s.version.digest || '') ||
-					versionIdentifiers.has(s.version.revision || '')
-				);
-			}
+		// Find matching deployment history entry in the dependency environment
+		// EnvironmentInfo.history contains DeploymentHistoryEntry objects with bakeStatus
+		const matchingEntry = depEnvInfo.history.find(
+			(entry: EnvironmentStatusEntry) =>
+				versionIdentifiers.has(entry.version.tag) ||
+				(entry.version.digest && versionIdentifiers.has(entry.version.digest)) ||
+				(entry.version.revision && versionIdentifiers.has(entry.version.revision))
 		);
 
-		if (depStatuses.length === 0) {
+		if (!matchingEntry) {
 			return null;
 		}
 
-		// Helper function to derive status from bakeStatus
-		const getDeploymentStatus = (entry: EnvironmentStatusEntry | undefined): string => {
-			if (!entry) return 'unknown';
-			const bakeStatus = entry.bakeStatus?.toLowerCase();
-			if (bakeStatus === 'succeeded') return 'success';
-			if (bakeStatus === 'failed') return 'failure';
-			if (bakeStatus === 'inprogress' || bakeStatus === 'in_progress') return 'in_progress';
-			if (bakeStatus === 'pending' || bakeStatus === 'none') return 'pending';
-			return 'inactive';
-		};
-
-		// Determine combined status
-		const statuses = depStatuses.map((s: EnvironmentStatusEntry) => getDeploymentStatus(s));
-		if (statuses.some((s: string) => s === 'failure')) return 'failure';
-		if (statuses.some((s: string) => s === 'in_progress' || s === 'pending')) return 'in_progress';
-		if (statuses.every((s: string) => s === 'success')) return 'success';
-		if (statuses.some((s: string) => s === 'inactive')) return 'inactive';
-		return 'unknown';
+		// Return bakeStatus directly from DeploymentHistoryEntry
+		return matchingEntry.bakeStatus || null;
 	}
 
 	function getStatusIcon(status: string | null) {
@@ -870,23 +856,6 @@
 	function getLastTransitionTime(resource: Kustomization | OCIRepository) {
 		const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
 		return readyCondition?.lastTransitionTime;
-	}
-
-	function getBakeStatusColor(bakeStatus?: string) {
-		switch (bakeStatus) {
-			case 'Succeeded':
-				return 'bg-green-200 dark:bg-green-900';
-			case 'Failed':
-				return 'bg-red-200 dark:bg-red-900';
-			case 'InProgress':
-				return 'bg-yellow-200 dark:bg-yellow-900';
-			case 'Cancelled':
-				return 'bg-gray-200 dark:bg-gray-700';
-			case 'None':
-				return 'bg-gray-200 dark:bg-gray-700';
-			default:
-				return 'bg-gray-200 dark:bg-gray-700';
-		}
 	}
 
 	async function continueRollout(rolloutName: string, namespace: string) {
@@ -2004,17 +1973,29 @@
 																	{/if}
 																{/if}
 																{#if getDependencyStatus(version)}
-																	{@const depStatus = getDependencyStatus(version)}
-																	{@const depStatusInfo = getStatusIcon(depStatus)}
-																	{@const DepStatusIcon = depStatusInfo.icon}
-																	<Badge
-																		color={getStatusColor(depStatus)}
-																		size="small"
-																		class="flex items-center gap-1"
-																	>
-																		<DepStatusIcon class="h-3 w-3" />
-																		Dep: {depStatus}
-																	</Badge>
+																	{@const depBakeStatus = getDependencyStatus(version)}
+																	{#if depBakeStatus}
+																		{@const depStatusInfo = getBakeStatusIcon(
+																			depBakeStatus ?? undefined
+																		)}
+																		{@const DepStatusIcon = depStatusInfo.icon}
+																		{@const valueColor =
+																			depBakeStatus === 'Succeeded'
+																				? 'green'
+																				: depBakeStatus === 'Failed'
+																					? 'red'
+																					: depBakeStatus === 'InProgress'
+																						? 'yellow'
+																						: 'gray'}
+																		<JoinedBadge
+																			label="Dependency"
+																			value={depBakeStatus}
+																			icon={DepStatusIcon}
+																			iconColor={depStatusInfo.color}
+																			{valueColor}
+																			size="small"
+																		/>
+																	{/if}
 																{/if}
 																{#if releaseCandidate.created}
 																	<Badge

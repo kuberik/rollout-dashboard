@@ -509,68 +509,6 @@ export interface components {
                  * @description DeploymentID is the ID of the deployment (backend-specific)
                  */
                 deploymentId?: number;
-                /** @description DeploymentStatuses tracks deployment statuses per version and environment.
-                 *     Only versions that are relevant based on environment relationships are tracked. */
-                deploymentStatuses?: {
-                    /**
-                     * Format: date-time
-                     * @description BakeEndTime is the time when the bake period ended for this deployment
-                     *     This is when the bake process completed (either successfully or with failure).
-                     */
-                    bakeEndTime?: string;
-                    /**
-                     * Format: date-time
-                     * @description BakeStartTime is the time when the bake period started for this deployment
-                     *     This is when the rollout controller began monitoring the deployment for stability.
-                     */
-                    bakeStartTime?: string;
-                    /** @description BakeStatus tracks the bake state for this deployment (e.g., None, InProgress, Succeeded, Failed, Cancelled)
-                     *     The bake process ensures that the deployment is stable and healthy before marking as successful. */
-                    bakeStatus?: string;
-                    /** @description BakeStatusMessage provides details about the bake state for this deployment
-                     *     This field contains human-readable information about why the bake status is what it is. */
-                    bakeStatusMessage?: string;
-                    /**
-                     * Format: date-time
-                     * @description DeployTime is the time when the deployment occurred
-                     *     This is when the rollout controller initiated the deployment.
-                     */
-                    deployTime?: string;
-                    /** @description Environment is the environment name (e.g., "production", "staging") */
-                    environment: string;
-                    /**
-                     * Format: int64
-                     * @description ID is a unique auto-incrementing identifier for this history entry.
-                     */
-                    id?: number;
-                    /** @description Message provides a descriptive message about this deployment entry
-                     *     This field contains human-readable information about the deployment context.
-                     *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
-                     *     For manual deployments (when wantedVersion is specified), it can contain a custom message
-                     *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment". */
-                    message?: string;
-                    /**
-                     * Format: date-time
-                     * @description Timestamp is the time when the deployment occurred.
-                     */
-                    timestamp: string;
-                    /** @description Version is the version information that was deployed. */
-                    version: {
-                        /**
-                         * Format: date-time
-                         * @description Created is the creation timestamp extracted from OCI annotations if available.
-                         */
-                        created?: string;
-                        /** @description Digest is the image digest if available from the ImagePolicy. */
-                        digest?: string;
-                        /** @description Revision is the revision information extracted from OCI annotations if available. */
-                        revision?: string;
-                        /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
-                        tag: string;
-                        /** @description Version is the semantic version extracted from OCI annotations if available. */
-                        version?: string;
-                    };
-                }[];
                 /** @description DeploymentURL is the URL of the deployment (backend-specific) */
                 deploymentUrl?: string;
                 /** @description EnvironmentInfos tracks deployment information for each environment.
@@ -580,6 +518,65 @@ export interface components {
                     environment: string;
                     /** @description EnvironmentURL is the URL of the actual deployed environment (e.g., dashboard URL) */
                     environmentUrl?: string;
+                    /** @description History contains deployment history entries for this environment */
+                    history?: {
+                        /**
+                         * Format: date-time
+                         * @description BakeEndTime is the time when the bake period ended for this deployment
+                         *     This is when the bake process completed (either successfully or with failure).
+                         */
+                        bakeEndTime?: string;
+                        /**
+                         * Format: date-time
+                         * @description BakeStartTime is the time when the bake period started for this deployment
+                         *     This is when the rollout controller began monitoring the deployment for stability.
+                         */
+                        bakeStartTime?: string;
+                        /** @description BakeStatus tracks the bake state for this deployment (e.g., None, InProgress, Succeeded, Failed, Cancelled)
+                         *     The bake process ensures that the deployment is stable and healthy before marking as successful. */
+                        bakeStatus?: string;
+                        /** @description BakeStatusMessage provides details about the bake state for this deployment
+                         *     This field contains human-readable information about why the bake status is what it is. */
+                        bakeStatusMessage?: string;
+                        /**
+                         * Format: date-time
+                         * @description DeployTime is the time when the deployment occurred
+                         *     This is when the rollout controller initiated the deployment.
+                         */
+                        deployTime?: string;
+                        /**
+                         * Format: int64
+                         * @description ID is a unique auto-incrementing identifier for this history entry.
+                         */
+                        id?: number;
+                        /** @description Message provides a descriptive message about this deployment entry
+                         *     This field contains human-readable information about the deployment context.
+                         *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
+                         *     For manual deployments (when wantedVersion is specified), it can contain a custom message
+                         *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment". */
+                        message?: string;
+                        /**
+                         * Format: date-time
+                         * @description Timestamp is the time when the deployment occurred.
+                         */
+                        timestamp: string;
+                        /** @description Version is the version information that was deployed. */
+                        version: {
+                            /**
+                             * Format: date-time
+                             * @description Created is the creation timestamp extracted from OCI annotations if available.
+                             */
+                            created?: string;
+                            /** @description Digest is the image digest if available from the ImagePolicy. */
+                            digest?: string;
+                            /** @description Revision is the revision information extracted from OCI annotations if available. */
+                            revision?: string;
+                            /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
+                            tag: string;
+                            /** @description Version is the semantic version extracted from OCI annotations if available. */
+                            version?: string;
+                        };
+                    }[];
                     /** @description Relationship defines how this environment relates to another environment */
                     relationship?: {
                         /** @description Environment is the environment name this environment relates to */
@@ -593,9 +590,9 @@ export interface components {
                 }[];
                 /**
                  * Format: date-time
-                 * @description LastSyncTime is the last time the deployment was synchronized
+                 * @description LastStatusChangeTime is the last time the status was updated (only updated when status changes)
                  */
-                lastSyncTime?: string;
+                lastStatusChangeTime?: string;
                 /** @description RolloutGateRef is a reference to the RolloutGate that was created/updated */
                 rolloutGateRef?: {
                     /**

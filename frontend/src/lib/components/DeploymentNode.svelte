@@ -3,18 +3,14 @@
 <script lang="ts">
 	import { Handle, Position } from '@xyflow/svelte';
 	import { Badge } from 'flowbite-svelte';
-	import {
-		ArrowUpRightFromSquareOutline,
-		CheckCircleSolid,
-		ExclamationCircleSolid,
-		ClockSolid
-	} from 'flowbite-svelte-icons';
+	import { ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
+	import { getBakeStatusIcon } from '$lib/bake-status';
 
 	interface Props {
 		data: {
 			environment: string;
 			currentVersion: string;
-			deploymentStatus: string;
+			bakeStatus?: string;
 			environmentInfo?: {
 				environment: string;
 				deploymentUrl?: string;
@@ -41,43 +37,20 @@
 		// versionIndex is lower for newer versions (newest = 0)
 		// So if envVersionIdx < currentEnvIdx, the environment is ahead
 		// If envVersionIdx > currentEnvIdx, the environment is behind
-		const diff = data.versionIndex - data.currentEnvironmentVersionIndex;
+		const diff = data.currentEnvironmentVersionIndex - data.versionIndex;
 		return diff;
 	});
 
-	const statusColor = (status: string) => {
-		switch (status?.toLowerCase()) {
-			case 'success':
-				return 'green';
-			case 'failure':
-				return 'red';
-			case 'in_progress':
-			case 'pending':
-				return 'yellow';
-			case 'inactive':
-				return 'gray';
-			default:
-				return 'gray';
-		}
-	};
-
-	const getStatusIcon = (status: string) => {
-		switch (status?.toLowerCase()) {
-			case 'success':
-				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
-			case 'failure':
-				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
-			case 'in_progress':
-			case 'pending':
-				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
-			default:
-				return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
-		}
-	};
-
 	// Compute status info for the badge
-	const statusInfo = $derived(getStatusIcon(data.deploymentStatus));
+	const statusInfo = $derived(getBakeStatusIcon(data.bakeStatus));
 	const StatusIcon = $derived(statusInfo.icon);
+
+	// Construct environments URL from base environmentUrl
+	const environmentsUrl = $derived.by(() => {
+		if (!data.environmentInfo?.environmentUrl) return null;
+		// Append /environments to the base rollout URL
+		return `${data.environmentInfo.environmentUrl}/environments`;
+	});
 </script>
 
 <div
@@ -87,60 +60,79 @@
 		: '--env-bg-color-light: rgb(243, 244, 246); --env-bg-color-dark: rgb(31, 41, 55);'}
 >
 	<div
-		class="node-border w-[400px] rounded-xl border-2 bg-white p-4 text-gray-900 shadow-xl transition-all dark:bg-gray-900 dark:text-white"
+		class="node-border w-[320px] rounded-lg border-2 bg-white text-gray-900 shadow-lg transition-all dark:bg-gray-900 dark:text-white"
+		class:ring-2={data.isCurrentEnvironment}
+		class:ring-blue-400={data.isCurrentEnvironment}
+		class:dark:ring-blue-600={data.isCurrentEnvironment}
 	>
 		<Handle type="target" position={Position.Top} />
 
-		<!-- Environment name inside box at the top -->
+		<!-- Status indicator bar at top -->
 		<div
-			class="mb-3 flex items-center justify-between border-b border-gray-200 pb-2 dark:border-gray-700"
-		>
-			<h3
-				class="text-sm font-semibold"
-				class:text-blue-700={data.isCurrentEnvironment}
-				class:dark:text-blue-300={data.isCurrentEnvironment}
-				class:text-gray-700={!data.isCurrentEnvironment}
-				class:dark:text-gray-300={!data.isCurrentEnvironment}
-			>
-				{data.environment}
-			</h3>
-			{#if !data.isCurrentEnvironment && data.environmentInfo?.environmentUrl}
-				<a
-					href={data.environmentInfo.environmentUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-					title="Open environment in new window"
-				>
-					<span>Open</span>
-					<ArrowUpRightFromSquareOutline class="h-3.5 w-3.5" />
-				</a>
-			{/if}
-		</div>
+			class="h-1 rounded-t-md"
+			class:bg-green-500={data.bakeStatus === 'Succeeded'}
+			class:bg-red-500={data.bakeStatus === 'Failed'}
+			class:bg-yellow-500={data.bakeStatus === 'InProgress'}
+			class:bg-gray-400={!data.bakeStatus ||
+				data.bakeStatus === 'None' ||
+				data.bakeStatus === 'Cancelled'}
+		></div>
 
-		<!-- Badge-only compact style -->
-		<div class="flex flex-wrap items-center gap-2 text-xs">
-			<Badge
-				color="gray"
-				size="small"
-				class="flex items-center gap-1.5 bg-gray-100 font-mono dark:bg-gray-800"
-			>
-				<StatusIcon class="h-3 w-3 flex-shrink-0 {statusInfo.color}" />
-				<span class="break-all text-gray-900 dark:text-gray-100" title={data.currentVersion}
-					>{data.currentVersion}</span
+		<div class="p-3">
+			<!-- Header: Environment name and Open link -->
+			<div class="mb-2.5 flex items-center justify-between">
+				<h3
+					class="text-xs font-medium uppercase tracking-wide"
+					class:text-blue-600={data.isCurrentEnvironment}
+					class:dark:text-blue-400={data.isCurrentEnvironment}
+					class:text-gray-500={!data.isCurrentEnvironment}
+					class:dark:text-gray-400={!data.isCurrentEnvironment}
 				>
-			</Badge>
-			{#if versionDifference !== null && versionDifference !== 0}
-				<Badge
-					color={versionDifference < 0 ? 'green' : 'yellow'}
-					size="small"
-					class="font-semibold"
-				>
-					{versionDifference < 0
-						? `${Math.abs(versionDifference)} ahead`
-						: `${versionDifference} behind`}
-				</Badge>
-			{/if}
+					{data.environment}
+				</h3>
+				{#if !data.isCurrentEnvironment && environmentsUrl}
+					<a
+						href={environmentsUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="flex items-center gap-1 text-[10px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+						title="Open environment in new window"
+					>
+						<ArrowUpRightFromSquareOutline class="h-3 w-3" />
+					</a>
+				{/if}
+			</div>
+
+			<!-- Version display with status icon -->
+			<div class="flex items-start gap-2">
+				<!-- Status icon -->
+				<div class="mt-0.5 flex-shrink-0">
+					<StatusIcon class="h-4 w-4 {statusInfo.color}" />
+				</div>
+
+				<!-- Version and difference -->
+				<div class="min-w-0 flex-1">
+					<div class="flex items-baseline gap-2">
+						<span
+							class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-gray-100"
+							title={data.currentVersion}
+						>
+							{data.currentVersion}
+						</span>
+						{#if versionDifference !== null && versionDifference !== 0}
+							<Badge
+								color={versionDifference < 0 ? 'green' : 'yellow'}
+								size="small"
+								class="flex-shrink-0 whitespace-nowrap text-[10px] font-medium"
+							>
+								{versionDifference < 0
+									? `+${Math.abs(versionDifference)}`
+									: `-${versionDifference}`}
+							</Badge>
+						{/if}
+					</div>
+				</div>
+			</div>
 		</div>
 
 		<Handle type="source" position={Position.Bottom} />

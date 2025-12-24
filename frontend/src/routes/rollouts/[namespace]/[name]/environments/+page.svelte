@@ -18,6 +18,9 @@
 		EnvironmentStatusEntry,
 		EnvironmentInfo
 	} from '../../../../../types/environment-types';
+
+	// Flattened entry with environment field added
+	type DeploymentStatusWithEnv = EnvironmentStatusEntry & { environment: string };
 	// @ts-ignore - dagre types may not be available
 	import dagre from 'dagre';
 
@@ -39,13 +42,34 @@
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
 	const environment = $derived(rolloutQuery.data?.environment);
 
-	const deploymentStatuses = $derived(environment?.status?.deploymentStatuses ?? []);
 	const environmentInfos = $derived(environment?.status?.environmentInfos ?? []);
+
+	// Flatten history entries from all environmentInfos, adding environment field
+	const deploymentStatuses = $derived.by(() => {
+		const statuses: DeploymentStatusWithEnv[] = [];
+		environmentInfos.forEach((envInfo: EnvironmentInfo) => {
+			if (envInfo.history) {
+				envInfo.history.forEach((entry: EnvironmentStatusEntry) => {
+					statuses.push({ ...entry, environment: envInfo.environment });
+				});
+			}
+		});
+		return statuses;
+	});
 
 	// Get current environment from namespace (e.g., hello-world-dev -> dev)
 	const currentEnvironment = $derived.by(() => {
 		const parts = namespace.split('-');
 		return parts[parts.length - 1] || namespace;
+	});
+
+	// Get available versions from rollout (for version index calculation)
+	const availableVersions = $derived.by(() => {
+		if (!rollout?.status?.availableReleases || rollout.status.availableReleases.length === 0) {
+			return [];
+		}
+		// availableReleases are already sorted newest first
+		return rollout.status.availableReleases.map((ar) => getDisplayVersion(ar));
 	});
 
 	// Collect all unique versions across all environments and sort them
@@ -57,7 +81,7 @@
 			{ version: string; id: number; environments: Set<string> }
 		>();
 
-		deploymentStatuses.forEach((status: EnvironmentStatusEntry) => {
+		deploymentStatuses.forEach((status: DeploymentStatusWithEnv) => {
 			const versionStr = getDisplayVersion(status.version);
 			if (!versionMap.has(versionStr)) {
 				versionMap.set(versionStr, {
@@ -80,18 +104,21 @@
 		const envInfos = environmentInfos;
 
 		// Global version index (newest first) to compare environments
+		// Use availableVersions from rollout, not deploymentStatuses
 		const versionIndex = new Map<string, number>();
-		allVersions.forEach((v, idx) => {
-			versionIndex.set(v.version, idx);
+		availableVersions.forEach((version, idx) => {
+			versionIndex.set(version, idx);
 		});
 
 		// Helper: get current version for an environment
 		const getCurrentForEnv = (env: string): string | null => {
 			const envStatuses = deploymentStatuses
-				.filter((s: EnvironmentStatusEntry) => s.environment === env)
-				.sort((a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) => (b.id || 0) - (a.id || 0));
+				.filter((s: DeploymentStatusWithEnv) => s.environment === env)
+				.sort(
+					(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
+				);
 			const currentStatus =
-				envStatuses.find((s: EnvironmentStatusEntry) => getDeploymentStatus(s) !== 'inactive') ||
+				envStatuses.find((s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None') ||
 				envStatuses[0];
 			return currentStatus ? getDisplayVersion(currentStatus.version) : null;
 		};
@@ -156,15 +183,15 @@
 				if (!envInfo) return;
 
 				const envStatuses = deploymentStatuses
-					.filter((s: EnvironmentStatusEntry) => s.environment === depEnv)
+					.filter((s: DeploymentStatusWithEnv) => s.environment === depEnv)
 					.sort(
-						(a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) => (b.id || 0) - (a.id || 0)
+						(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
 					);
 				const currentStatus =
-					envStatuses.find((s: EnvironmentStatusEntry) => getDeploymentStatus(s) !== 'inactive') ||
-					envStatuses[0];
+					envStatuses.find(
+						(s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None'
+					) || envStatuses[0];
 				const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : 'N/A';
-				const deploymentStatus = getDeploymentStatus(currentStatus);
 				const envVersionIdx =
 					currentVersion !== 'N/A' ? versionIndex.get(currentVersion) : undefined;
 
@@ -177,7 +204,7 @@
 					data: {
 						environment: depEnv,
 						currentVersion,
-						deploymentStatus,
+						bakeStatus: currentStatus?.bakeStatus,
 						environmentInfo: envInfo,
 						isCurrentEnvironment: false,
 						versionIndex: envVersionIdx,
@@ -193,13 +220,14 @@
 		);
 		if (currentEnvInfo) {
 			const envStatuses = deploymentStatuses
-				.filter((s: EnvironmentStatusEntry) => s.environment === currentEnvironment)
-				.sort((a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) => (b.id || 0) - (a.id || 0));
+				.filter((s: DeploymentStatusWithEnv) => s.environment === currentEnvironment)
+				.sort(
+					(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
+				);
 			const currentStatus =
-				envStatuses.find((s: EnvironmentStatusEntry) => getDeploymentStatus(s) !== 'inactive') ||
+				envStatuses.find((s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None') ||
 				envStatuses[0];
 			const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : 'N/A';
-			const deploymentStatus = getDeploymentStatus(currentStatus);
 			const envVersionIdx = currentVersion !== 'N/A' ? versionIndex.get(currentVersion) : undefined;
 
 			nodeMap.set(currentEnvironment, {
@@ -211,7 +239,7 @@
 				data: {
 					environment: currentEnvironment,
 					currentVersion,
-					deploymentStatus,
+					bakeStatus: currentStatus?.bakeStatus,
 					environmentInfo: currentEnvInfo,
 					isCurrentEnvironment: true,
 					versionIndex: envVersionIdx,
@@ -238,15 +266,15 @@
 				if (!envInfo) return;
 
 				const envStatuses = deploymentStatuses
-					.filter((s: EnvironmentStatusEntry) => s.environment === depEnv)
+					.filter((s: DeploymentStatusWithEnv) => s.environment === depEnv)
 					.sort(
-						(a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) => (b.id || 0) - (a.id || 0)
+						(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
 					);
 				const currentStatus =
-					envStatuses.find((s: EnvironmentStatusEntry) => getDeploymentStatus(s) !== 'inactive') ||
-					envStatuses[0];
+					envStatuses.find(
+						(s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None'
+					) || envStatuses[0];
 				const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : 'N/A';
-				const deploymentStatus = getDeploymentStatus(currentStatus);
 				const envVersionIdx =
 					currentVersion !== 'N/A' ? versionIndex.get(currentVersion) : undefined;
 
@@ -259,7 +287,7 @@
 					data: {
 						environment: depEnv,
 						currentVersion,
-						deploymentStatus,
+						bakeStatus: currentStatus?.bakeStatus,
 						environmentInfo: envInfo,
 						isCurrentEnvironment: false,
 						versionIndex: envVersionIdx,
@@ -277,8 +305,8 @@
 		if (node.type === 'simple') {
 			return { width: 120, height: 80 };
 		}
-		// deployment node
-		return { width: 400, height: 150 };
+		// deployment node - fixed width for consistent layout alignment
+		return { width: 320, height: 110 };
 	}
 
 	// Apply dagre layout to nodes
@@ -293,7 +321,7 @@
 		// Create dagre graph
 		const g = new dagre.graphlib.Graph();
 		g.setDefaultEdgeLabel(() => ({}));
-		g.setGraph({ rankdir: 'TB', nodesep: 50, ranksep: 200 });
+		g.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 120 });
 
 		// Add nodes to dagre graph
 		nodes.forEach((node) => {
@@ -441,12 +469,12 @@
 			.map((envInfo: EnvironmentInfo) => {
 				const env = envInfo.environment;
 				const statuses = deploymentStatuses
-					.filter((s: EnvironmentStatusEntry) => s.environment === env)
+					.filter((s: DeploymentStatusWithEnv) => s.environment === env)
 					.sort(
-						(a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) => (b.id || 0) - (a.id || 0)
+						(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
 					);
 				const currentStatus =
-					statuses.find((s: EnvironmentStatusEntry) => getDeploymentStatus(s) !== 'inactive') ||
+					statuses.find((s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None') ||
 					statuses[0];
 				const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : null;
 				const idx = currentVersion
@@ -465,10 +493,12 @@
 
 		environmentInfos.forEach((envInfo: EnvironmentInfo) => {
 			const envStatuses = deploymentStatuses
-				.filter((s: EnvironmentStatusEntry) => s.environment === envInfo.environment)
-				.sort((a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) => (b.id || 0) - (a.id || 0));
+				.filter((s: DeploymentStatusWithEnv) => s.environment === envInfo.environment)
+				.sort(
+					(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
+				);
 			const currentStatus =
-				envStatuses.find((s: EnvironmentStatusEntry) => getDeploymentStatus(s) !== 'inactive') ||
+				envStatuses.find((s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None') ||
 				envStatuses[0];
 			if (currentStatus) {
 				const versionStr = getDisplayVersion(currentStatus.version);
@@ -490,13 +520,15 @@
 		const result: {
 			currentVersion: string | null;
 			deployed: Array<{ version: string; bakeStatus?: string }>;
-			eligible: Array<{ version: string; dependencyStatus: string }>;
-			uneligible: Array<{ version: string }>;
+			upcoming: Array<{
+				version: string;
+				dependencyBakeStatus?: string;
+				state: 'not-available' | 'failed' | 'cancelled' | 'succeeded' | 'evaluating';
+			}>;
 		} = {
 			currentVersion: null,
 			deployed: [],
-			eligible: [],
-			uneligible: []
+			upcoming: []
 		};
 
 		if (!environmentInfos || environmentInfos.length === 0 || allVersions.length === 0) {
@@ -514,10 +546,10 @@
 
 		// Current environment statuses
 		const envStatuses = deploymentStatuses
-			.filter((s: EnvironmentStatusEntry) => s.environment === currentEnvironment)
-			.sort((a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) => (b.id || 0) - (a.id || 0));
+			.filter((s: DeploymentStatusWithEnv) => s.environment === currentEnvironment)
+			.sort((a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0));
 		const currentStatus =
-			envStatuses.find((s: EnvironmentStatusEntry) => getDeploymentStatus(s) !== 'inactive') ||
+			envStatuses.find((s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None') ||
 			envStatuses[0];
 		if (!currentStatus) {
 			return result;
@@ -530,127 +562,111 @@
 		if (currentIdx === -1) return result;
 
 		// Deployed versions (history) for the current environment, including current
-		// Match with rollout history to get bakeStatus
+		// Use bakeStatus directly from environmentInfo history, not from rollout history
 		const seen = new Set<string>();
 		for (const s of envStatuses) {
 			const versionStr = getDisplayVersion(s.version);
 			if (!versionStr || seen.has(versionStr)) continue;
 			seen.add(versionStr);
 
-			// Find matching entry in rollout history by version tag, digest, or revision
-			const historyEntry = rollout?.status?.history?.find(
-				(entry) =>
-					entry.version?.tag === s.version.tag ||
-					entry.version?.digest === s.version.digest ||
-					entry.version?.revision === s.version.revision
-			);
-
+			// Use bakeStatus directly from the environment history entry
 			result.deployed.push({
 				version: versionStr,
-				bakeStatus: historyEntry?.bakeStatus || s.bakeStatus
+				bakeStatus: s.bakeStatus
 			});
 			if (result.deployed.length >= 6) break;
 		}
 
-		// Upcoming newer versions (relative to current) partitioned into eligible / uneligible
-		for (
-			let i = currentIdx - 1;
-			i >= 0 && result.eligible.length + result.uneligible.length < 10;
-			i--
-		) {
-			const candidate = allVersions[i];
-			if (!candidate) continue;
+		// Upcoming newer versions (relative to current)
+		// Only show versions that are strictly newer than current (i < currentIdx)
+		// AND are in releaseCandidates
+		// Iterate from newest (index 0) to currentIdx - 1 to maintain newest-first order
 
-			const version = candidate.version;
+		// Build a set of release candidate versions for quick lookup
+		const releaseCandidateVersions = new Set<string>();
+		if (rollout?.status?.releaseCandidates) {
+			rollout.status.releaseCandidates.forEach((rc) => {
+				const versionStr = getDisplayVersion(rc);
+				releaseCandidateVersions.add(versionStr);
+			});
+		}
 
-			// Check deployments of this version in direct dependencies
-			const depStatuses = deploymentStatuses.filter(
-				(s: EnvironmentStatusEntry) =>
-					currentDeps.includes(s.environment) && getDisplayVersion(s.version) === version
-			);
+		if (currentIdx > 0) {
+			for (let i = 0; i < currentIdx && result.upcoming.length < 10; i++) {
+				const candidate = allVersions[i];
+				if (!candidate) continue;
 
-			// Determine combined status from dependencies
-			const statuses = depStatuses.map((s: EnvironmentStatusEntry) => getDeploymentStatus(s));
-			let combinedStatus = 'unknown';
-			if (statuses.some((s: string) => s === 'failure')) combinedStatus = 'failure';
-			else if (statuses.some((s: string) => s === 'in_progress' || s === 'pending'))
-				combinedStatus = 'in_progress';
-			else if (statuses.every((s: string) => s === 'success')) combinedStatus = 'success';
-			else if (statuses.some((s: string) => s === 'inactive')) combinedStatus = 'inactive';
+				const version = candidate.version;
 
-			// "Eligible" = deployed successfully to all direct dependencies
-			const allDepsSucceeded =
-				currentDeps.length > 0 &&
-				currentDeps.every((dep) =>
-					depStatuses.some(
-						(s: EnvironmentStatusEntry) =>
-							s.environment === dep && getDeploymentStatus(s) === 'success'
-					)
+				// Only include versions that are in releaseCandidates
+				if (!releaseCandidateVersions.has(version)) continue;
+
+				// Check deployments of this version in direct dependencies
+				const depStatuses = deploymentStatuses.filter(
+					(s: DeploymentStatusWithEnv) =>
+						currentDeps.includes(s.environment) && getDisplayVersion(s.version) === version
 				);
 
-			if (allDepsSucceeded) {
-				result.eligible.push({ version, dependencyStatus: combinedStatus });
-			} else {
-				// "Uneligible" = newer but not yet fully deployed to direct dependencies
-				result.uneligible.push({ version });
+				// Determine state based on dependency statuses
+				let state: 'not-available' | 'failed' | 'cancelled' | 'succeeded' | 'evaluating';
+				let combinedBakeStatus: string | undefined;
+
+				if (currentDeps.length === 0) {
+					// No dependencies, so it's available
+					state = 'succeeded';
+					combinedBakeStatus = 'Succeeded';
+				} else if (depStatuses.length === 0) {
+					// Not yet available in any dependency
+					state = 'not-available';
+					combinedBakeStatus = undefined;
+				} else {
+					// Determine combined bakeStatus from dependencies
+					const bakeStatuses = depStatuses
+						.map((s: EnvironmentStatusEntry) => s.bakeStatus)
+						.filter(Boolean);
+
+					if (bakeStatuses.some((bs) => bs === 'Failed')) {
+						state = 'failed';
+						combinedBakeStatus = 'Failed';
+					} else if (bakeStatuses.some((bs) => bs === 'Cancelled')) {
+						state = 'cancelled';
+						combinedBakeStatus = 'Cancelled';
+					} else if (
+						currentDeps.every((dep) =>
+							depStatuses.some(
+								(s: DeploymentStatusWithEnv) =>
+									s.environment === dep && s.bakeStatus === 'Succeeded'
+							)
+						)
+					) {
+						// All dependencies have succeeded
+						state = 'succeeded';
+						combinedBakeStatus = 'Succeeded';
+					} else if (bakeStatuses.some((bs) => bs === 'InProgress')) {
+						state = 'evaluating';
+						combinedBakeStatus = 'InProgress';
+					} else {
+						// Some other status or not all dependencies have this version
+						state = 'evaluating';
+						combinedBakeStatus = bakeStatuses[0] || 'None';
+					}
+				}
+
+				result.upcoming.push({ version, dependencyBakeStatus: combinedBakeStatus, state });
 			}
 		}
 
 		return result;
 	});
-
-	// Helper function to derive status from bakeStatus
-	function getDeploymentStatus(entry: EnvironmentStatusEntry | undefined): string {
-		if (!entry) return 'unknown';
-		const bakeStatus = entry.bakeStatus?.toLowerCase();
-		if (bakeStatus === 'succeeded') return 'success';
-		if (bakeStatus === 'failed') return 'failure';
-		if (bakeStatus === 'inprogress' || bakeStatus === 'in_progress') return 'in_progress';
-		if (bakeStatus === 'pending' || bakeStatus === 'none') return 'pending';
-		// If no bakeStatus, consider it inactive (old deployment)
-		return 'inactive';
-	}
-
-	function getStatusIcon(status: string) {
-		switch (status?.toLowerCase()) {
-			case 'success':
-				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
-			case 'failure':
-				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
-			case 'in_progress':
-			case 'pending':
-				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
-			default:
-				return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
-		}
-	}
-
-	function getStatusColor(status: string) {
-		switch (status?.toLowerCase()) {
-			case 'success':
-				return 'green';
-			case 'failure':
-				return 'red';
-			case 'in_progress':
-			case 'pending':
-				return 'yellow';
-			case 'inactive':
-				return 'gray';
-			default:
-				return 'gray';
-		}
-	}
-
-	function getStatusDotColor(status: string | null | undefined): string {
-		if (!status) return 'bg-gray-300 dark:bg-gray-700';
-		const s = status.toLowerCase();
-		if (s === 'success') return 'bg-green-500';
-		if (s === 'failure') return 'bg-red-500';
-		if (s === 'in_progress' || s === 'pending') return 'bg-yellow-400';
-		if (s === 'inactive') return 'bg-gray-400';
-		return 'bg-slate-400';
-	}
 </script>
+
+<svelte:head>
+	<title
+		>kuberik | {rollout?.metadata
+			? `${rollout.metadata.name} (${rollout.metadata.namespace}) - Environments`
+			: 'Environments'}</title
+	>
+</svelte:head>
 
 <div class="flex h-full w-full flex-col p-4">
 	{#if rolloutQuery.isLoading}
@@ -682,100 +698,60 @@
 						Shows how versions relate to the current environment and its direct dependencies.
 					</p>
 
-					<!-- Newer but uneligible versions (blocked) -->
+					<!-- Upcoming versions -->
 					<div class="mb-4">
 						<div class="mb-1 flex items-center justify-between">
 							<div
 								class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
 							>
-								Newer but blocked
-							</div>
-							<div class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
-								<span
-									class="h-2.5 w-2.5 rounded-full border border-gray-400 bg-gray-100 opacity-60 dark:border-gray-600 dark:bg-gray-800"
-								></span>
-								<span>disabled = not yet in all dependencies</span>
+								Upcoming
 							</div>
 						</div>
-						{#if versionSummary.uneligible.length === 0}
+						{#if versionSummary.upcoming.length === 0}
 							<div class="text-xs text-gray-400 dark:text-gray-500">
-								No newer versions blocked by dependencies.
+								No newer versions available.
 							</div>
 						{:else}
 							<div class="space-y-1.5">
-								{#each versionSummary.uneligible as v}
-									<div
-										class="flex flex-col gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs opacity-60 dark:border-gray-700 dark:bg-gray-800/60"
-									>
-										<div
-											class="break-all font-mono text-[11px] text-gray-900 dark:text-gray-100"
-											title={v.version}
-										>
-											{v.version}
-										</div>
-										<div class="flex items-center justify-between">
-											<div class="text-[11px] text-gray-500 dark:text-gray-400">
-												Newer than current, but missing in at least one dependency.
-											</div>
-											<div class="flex flex-wrap gap-1">
-												{#each environments as env}
-													{@const current = currentVersionsByEnv.get(env)}
-													{#if current === v.version}
-														{@const envStatus = deploymentStatuses
-															.filter(
-																(s: EnvironmentStatusEntry) =>
-																	s.environment === env &&
-																	getDisplayVersion(s.version) === v.version
-															)
-															.sort(
-																(a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) =>
-																	(b.id || 0) - (a.id || 0)
-															)[0]}
-														{@const envStatusInfo = getStatusIcon(getDeploymentStatus(envStatus))}
-														{@const StatusIcon = envStatusInfo.icon}
-														<span
-															class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-														>
-															<StatusIcon class="h-2.5 w-2.5 {envStatusInfo.color}" />
-															{env}
-														</span>
-													{/if}
-												{/each}
-											</div>
-										</div>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</div>
-
-					<!-- Upcoming eligible versions -->
-					<div class="mb-4">
-						<div class="mb-1 flex items-center justify-between">
-							<div
-								class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
-							>
-								Upcoming (eligible)
-							</div>
-							<div class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
-								<span class="h-2.5 w-2.5 rounded-full border border-blue-500"></span>
-								<span>hollow = ready in all dependencies</span>
-							</div>
-						</div>
-						{#if versionSummary.eligible.length === 0}
-							<div class="text-xs text-gray-400 dark:text-gray-500">
-								No newer versions fully deployed to all direct dependencies.
-							</div>
-						{:else}
-							<div class="space-y-1.5">
-								{#each versionSummary.eligible as v}
-									{@const isDisabled = v.dependencyStatus !== 'success'}
-									{@const statusInfo = getStatusIcon(v.dependencyStatus)}
+								{#each versionSummary.upcoming as v}
+									{@const isDisabled =
+										v.state === 'not-available' || v.state === 'failed' || v.state === 'cancelled'}
+									{@const statusInfo = getBakeStatusIcon(v.dependencyBakeStatus)}
 									{@const StatusIcon = statusInfo.icon}
+									{@const badgeColor = statusInfo.color.includes('green')
+										? 'green'
+										: statusInfo.color.includes('red')
+											? 'red'
+											: statusInfo.color.includes('yellow')
+												? 'yellow'
+												: 'gray'}
+									{@const borderColor =
+										v.state === 'succeeded'
+											? 'border-blue-400 dark:border-blue-500'
+											: v.state === 'failed'
+												? 'border-red-400 dark:border-red-500'
+												: v.state === 'cancelled'
+													? 'border-gray-400 dark:border-gray-500'
+													: v.state === 'evaluating'
+														? 'border-yellow-400 dark:border-yellow-500'
+														: 'border-gray-300 dark:border-gray-600'}
+									{@const bgColor =
+										v.state === 'succeeded' ? 'bg-transparent' : 'bg-gray-50 dark:bg-gray-800/60'}
+									{@const message =
+										v.state === 'succeeded'
+											? 'Ready to deploy'
+											: v.state === 'failed'
+												? 'Failed in dependencies'
+												: v.state === 'cancelled'
+													? 'Cancelled in dependencies'
+													: v.state === 'evaluating'
+														? 'Under evaluation'
+														: 'Not yet available in dependencies'}
 									<div
-										class="flex flex-col gap-2 rounded-md border border-dashed border-blue-400 bg-transparent px-2 py-1.5 text-xs dark:border-blue-500"
+										class="flex flex-col gap-2 rounded-md border px-2 py-1.5 text-xs {borderColor} {bgColor}"
 										class:opacity-60={isDisabled}
 										class:cursor-not-allowed={isDisabled}
+										class:border-dashed={v.state === 'succeeded'}
 									>
 										<div
 											class="break-all font-mono text-[11px] text-gray-900 dark:text-gray-100"
@@ -787,15 +763,13 @@
 											<div
 												class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"
 											>
-												<span>Newer than current, eligible to roll out.</span>
-												<Badge
-													color={getStatusColor(v.dependencyStatus)}
-													size="small"
-													class="flex items-center gap-1"
-												>
-													<StatusIcon class="h-2.5 w-2.5" />
-													{v.dependencyStatus}
-												</Badge>
+												<span>{message}</span>
+												{#if v.dependencyBakeStatus}
+													<Badge color={badgeColor} size="small" class="flex items-center gap-1">
+														<StatusIcon class="h-2.5 w-2.5" />
+														{v.dependencyBakeStatus}
+													</Badge>
+												{/if}
 											</div>
 											<div class="flex flex-wrap gap-1">
 												{#each environments as env}
@@ -803,15 +777,15 @@
 													{#if current === v.version}
 														{@const envStatus = deploymentStatuses
 															.filter(
-																(s: EnvironmentStatusEntry) =>
+																(s: DeploymentStatusWithEnv) =>
 																	s.environment === env &&
 																	getDisplayVersion(s.version) === v.version
 															)
 															.sort(
-																(a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) =>
+																(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
 																	(b.id || 0) - (a.id || 0)
 															)[0]}
-														{@const envStatusInfo = getStatusIcon(getDeploymentStatus(envStatus))}
+														{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
 														{@const StatusIcon = envStatusInfo.icon}
 														<span
 															class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
@@ -875,14 +849,14 @@
 												{#if current === v.version}
 													{@const envStatus = deploymentStatuses
 														.filter(
-															(s: EnvironmentStatusEntry) =>
+															(s: DeploymentStatusWithEnv) =>
 																s.environment === env && getDisplayVersion(s.version) === v.version
 														)
 														.sort(
-															(a: EnvironmentStatusEntry, b: EnvironmentStatusEntry) =>
+															(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
 																(b.id || 0) - (a.id || 0)
 														)[0]}
-													{@const envStatusInfo = getStatusIcon(getDeploymentStatus(envStatus))}
+													{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
 													{@const StatusIcon = envStatusInfo.icon}
 													<span
 														class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
