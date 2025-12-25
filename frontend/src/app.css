@@ -66,3 +66,41 @@
     @apply bg-gray-500;
   }
 }
+
+/* Animated gradient border */
+@property --border-angle {
+  inherits: false;
+  initial-value: 0deg;
+  syntax: '<angle>';
+}
+
+@keyframes border {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
+.animate-border {
+  animation: border 4s linear infinite;
+}
+
+/* Neon border animation */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes gradient-rotate {
+  from {
+    --angle: 0deg;
+  }
+
+  to {
+    --angle: 360deg;
+  }
+}
+
+.animate-gradient-rotate {
+  animation: gradient-rotate 3s linear infinite;
+}

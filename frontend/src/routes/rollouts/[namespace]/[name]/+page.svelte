@@ -1097,18 +1097,12 @@
 										{/if}
 									</div>
 									{#if currentEnvInfo}
-										<div class="flex items-center">
-											<span
-												class="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
-											>
-												Environment
-											</span>
-											<span
-												class="inline-flex items-center rounded-r-lg border border-gray-300 bg-blue-500 px-3 py-1.5 text-sm font-semibold text-white dark:border-gray-600"
-											>
-												{currentEnvInfo.environment || 'N/A'}
-											</span>
-										</div>
+										<JoinedBadge
+											label="Environment"
+											value={currentEnvInfo.environment || 'N/A'}
+											valueColor="blue"
+											large
+										/>
 									{/if}
 								</div>
 							</div>
@@ -1987,7 +1981,6 @@
 																		icon={DepStatusIcon}
 																		iconColor={depStatusInfo.color}
 																		{valueColor}
-																		size="small"
 																	/>
 																{/if}
 															{/if}

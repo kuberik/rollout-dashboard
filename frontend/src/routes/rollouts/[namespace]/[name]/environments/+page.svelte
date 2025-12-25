@@ -2,7 +2,8 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { SvelteFlow, Background } from '@xyflow/svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { SvelteFlow, Background, useSvelteFlow } from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { Card, Badge, Spinner, Alert } from 'flowbite-svelte';
@@ -10,11 +11,14 @@
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
-		ChevronDownOutline
+		ChevronDownOutline,
+		ArrowLeftOutline,
+		ArrowRightOutline
 	} from 'flowbite-svelte-icons';
-	import type { Node, Edge } from '@xyflow/svelte';
+	import type { Node, Edge, SvelteFlowProvider } from '@xyflow/svelte';
 	import DeploymentNode from '$lib/components/DeploymentNode.svelte';
 	import SimpleNode from '$lib/components/SimpleNode.svelte';
+	import NeonBorder from '$lib/components/NeonBorder.svelte';
 	import { rolloutQueryOptions, type RolloutResponse } from '$lib/api/rollouts';
 	import { getBakeStatusIcon } from '$lib/bake-status';
 	import { getDisplayVersion } from '$lib/utils';
@@ -718,6 +722,26 @@
 			)[0];
 		return status?.bakeStatus;
 	};
+
+	// Access the flow API
+	const { fitView } = useSvelteFlow();
+
+	// Svelte 5 effect to handle the resize event
+	$effect(() => {
+		const handleResize = () => {
+			// Small delay to allow the container to settle
+			requestAnimationFrame(() => {
+				fitView({ duration: 100, padding: 0.2, minZoom: 0.5, maxZoom: 1 });
+			});
+		};
+
+		window.addEventListener('resize', handleResize);
+
+		// Cleanup function (replaces onDestroy)
+		return () => {
+			window.removeEventListener('resize', handleResize);
+		};
+	});
 </script>
 
 <svelte:head>
@@ -746,249 +770,286 @@
 		</Card>
 	{:else}
 		<div
-			class="flex w-full flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+			class="grid w-full flex-1 grid-cols-[minmax(min-content,30%)_1fr] overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
 		>
-			<!-- Environment-Version Status Table -->
-			{#if tableVersions.length > 0 && graphEnvironments.length > 0}
-				<div class="border-b border-gray-200 px-2 pb-2 pt-4 dark:border-gray-700">
-					<div class="overflow-x-auto">
-						<table class="w-full text-xs">
-							<thead>
-								<tr>
-									<th
-										class="sticky left-0 z-10 bg-white px-1.5 py-1 text-left text-[10px] font-semibold text-gray-700 dark:bg-gray-900 dark:text-gray-300"
+			<!-- Left: version list focused on current rollout -->
+			<div class="overflow-y-auto border-r border-gray-200 p-4 dark:border-gray-700">
+				<h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">Version Status</h3>
+				<p class="mb-3 text-xs text-gray-600 dark:text-gray-400">
+					Shows how versions relate to the current environment and its direct dependencies.
+				</p>
+
+				<!-- Upcoming versions -->
+				<div class="mb-4">
+					<div class="mb-1 flex items-center justify-between">
+						<div
+							class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
+						>
+							Upcoming
+						</div>
+					</div>
+					{#if versionSummary.upcoming.length === 0}
+						<div class="text-xs text-gray-400 dark:text-gray-500">No newer versions available.</div>
+					{:else}
+						<div class="w-full space-y-2">
+							{#each versionSummary.upcoming as v}
+								{@const isDisabled =
+									v.state === 'not-available' || v.state === 'failed' || v.state === 'cancelled'}
+								{@const statusInfo = getBakeStatusIcon(v.dependencyBakeStatus)}
+								{@const StatusIcon = statusInfo.icon}
+								{@const badgeLabel =
+									v.state === 'succeeded'
+										? 'Ready'
+										: v.state === 'failed'
+											? 'Failed'
+											: v.state === 'cancelled'
+												? 'Cancelled'
+												: v.state === 'evaluating'
+													? 'Evaluating'
+													: 'Not available'}
+								{@const badgeColor =
+									v.state === 'succeeded'
+										? 'green'
+										: v.state === 'failed'
+											? 'red'
+											: v.state === 'cancelled'
+												? 'gray'
+												: v.state === 'evaluating'
+													? 'yellow'
+													: 'gray'}
+								{@const borderColor =
+									v.state === 'succeeded'
+										? 'border-blue-400 dark:border-blue-500'
+										: v.state === 'failed'
+											? 'border-red-400 dark:border-red-500'
+											: v.state === 'cancelled'
+												? 'border-gray-400 dark:border-gray-500'
+												: v.state === 'evaluating'
+													? 'border-yellow-400 dark:border-yellow-500'
+													: 'border-gray-300 dark:border-gray-600'}
+								{@const bgColor =
+									v.state === 'succeeded'
+										? 'bg-blue-50/50 dark:bg-blue-900/10'
+										: v.state === 'failed'
+											? 'bg-red-50/50 dark:bg-red-900/10'
+											: v.state === 'cancelled'
+												? 'bg-gray-50 dark:bg-gray-800/60'
+												: v.state === 'evaluating'
+													? 'bg-yellow-50/50 dark:bg-yellow-900/10'
+													: 'bg-gray-50 dark:bg-gray-800/60'}
+								<NeonBorder
+									active={hoveredVersion === v.version}
+									colors={['#1e40af', '#3b82f6', '#1e40af']}
+								>
+									<Card
+										class="relative max-w-full border-2 border-red-100 p-0 {borderColor} {hoveredVersion !==
+										v.version
+											? bgColor
+											: ''} {isDisabled ? 'cursor-not-allowed opacity-60' : ''} {v.state ===
+											'succeeded' && hoveredVersion !== v.version
+											? 'border-dashed'
+											: ''}"
+										onmouseenter={() => (hoveredVersion = v.version)}
+										onmouseleave={() => (hoveredVersion = null)}
 									>
-										Environment
-									</th>
-									{#each tableVersions as version}
-										<th
-											class="min-w-[1.5rem] px-0.5 py-1 text-center"
-											onmouseenter={() => (hoveredVersion = version)}
-											onmouseleave={() => (hoveredVersion = null)}
-										>
-											<div class="h-4">
-												{#if hoveredVersion === version}
-													<ChevronDownOutline class="mx-auto h-4 w-4 text-blue-500" />
+										<div class="flex min-h-[2.5rem] items-center px-2.5 py-2">
+											<!-- Version number with status icon and badge -->
+											<div class="flex min-w-0 flex-1 items-center gap-2">
+												<div class="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center">
+													{#if v.dependencyBakeStatus}
+														<StatusIcon class="h-3.5 w-3.5 {statusInfo.color}" />
+													{:else}
+														<div
+															class="h-3.5 w-3.5 rounded-full border-2 border-gray-300 dark:border-gray-600"
+														></div>
+													{/if}
+												</div>
+												<div
+													class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
+													title={v.version}
+												>
+													{v.version}
+												</div>
+											</div>
+											<Badge
+												color={badgeColor}
+												size="small"
+												class="ml-3 flex flex-shrink-0 items-center gap-1"
+											>
+												{#if v.dependencyBakeStatus}
+													<StatusIcon class="h-2.5 w-2.5" />
 												{/if}
+												{badgeLabel}
+											</Badge>
+										</div>
+									</Card>
+								</NeonBorder>
+							{/each}
+						</div>
+					{/if}
+				</div>
+
+				<!-- Deployed versions (including current) -->
+				<div>
+					<div
+						class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
+					>
+						Deployed
+					</div>
+					{#if versionSummary.deployed.length === 0}
+						<div class="text-xs text-gray-400 dark:text-gray-500">
+							No deployments for this environment yet.
+						</div>
+					{:else}
+						<div class="w-full space-y-2">
+							{#each versionSummary.deployed as v}
+								{@const isCurrent = versionSummary.currentVersion === v.version}
+								{@const statusInfo = v.bakeStatus
+									? getBakeStatusIcon(v.bakeStatus)
+									: getBakeStatusIcon('None')}
+								{@const StatusIcon = statusInfo.icon}
+								<NeonBorder
+									active={hoveredVersion === v.version}
+									colors={['#1e40af', '#3b82f6', '#1e40af']}
+								>
+									<Card
+										class="relative max-w-full border-2 p-0 {isCurrent
+											? 'border-blue-200 dark:border-blue-700'
+											: 'border-gray-200 dark:border-gray-700'} {hoveredVersion !== v.version
+											? isCurrent
+												? 'bg-blue-50/50 dark:bg-blue-900/20'
+												: 'bg-gray-50 dark:bg-gray-800/60'
+											: ''}"
+										onmouseenter={() => (hoveredVersion = v.version)}
+										onmouseleave={() => (hoveredVersion = null)}
+									>
+										<div class="flex min-h-[2.5rem] items-center px-2.5 py-2">
+											<!-- Version number with status icon -->
+											<div class="flex min-w-0 flex-1 items-center gap-2">
+												<div class="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+													<BakeStatusIcon bakeStatus={v.bakeStatus} size="small" />
+												</div>
+												<div
+													class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
+													title={v.version}
+												>
+													{v.version}
+												</div>
+											</div>
+											{#if isCurrent}
+												<Badge color="blue" size="small" class="ml-3 flex-shrink-0">Current</Badge>
+											{/if}
+										</div>
+									</Card>
+								</NeonBorder>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Right: dots table and dependency graph -->
+			<div class="flex flex-1 flex-col overflow-hidden">
+				<!-- Environment-Version Status Table -->
+				{#if tableVersions.length > 0 && graphEnvironments.length > 0}
+					<div class="border-b border-gray-200 px-2 pb-2 pt-4 dark:border-gray-700">
+						<div class="overflow-x-auto">
+							<table class="w-full text-xs">
+								<thead>
+									<tr>
+										<th
+											class="sticky left-0 z-10 bg-white px-1 py-0.5 text-left text-[9px] font-semibold text-gray-700 dark:bg-gray-900 dark:text-gray-300"
+										>
+											Environment
+										</th>
+										<!-- Older indicator column -->
+										<th class="w-12 px-1 py-0.5 text-center">
+											<div class="flex items-center justify-center gap-0.5">
+												<ArrowLeftOutline class="h-3 w-3 text-gray-400 dark:text-gray-500" />
+												<span class="text-[9px] font-medium text-gray-500 dark:text-gray-400"
+													>Older</span
+												>
 											</div>
 										</th>
-									{/each}
-								</tr>
-							</thead>
-							<tbody>
-								{#each graphEnvironments as env}
-									<tr>
-										<td
-											class="sticky left-0 z-10 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-300"
-										>
-											{env}
-										</td>
 										{#each tableVersions as version}
-											{@const status = getVersionStatusInEnv(version, env)}
-											{@const statusInfo = getBakeStatusIcon(status)}
-											<td
-												class="min-w-[1.5rem] px-0.5 py-0.5 text-center"
+											<th
+												class="min-w-[0.75rem] px-0 py-0.5 text-center"
 												onmouseenter={() => (hoveredVersion = version)}
 												onmouseleave={() => (hoveredVersion = null)}
 											>
-												{#if status}
-													{@const dotColor = statusInfo.color.includes('green')
-														? 'green'
-														: statusInfo.color.includes('red')
-															? 'red'
-															: statusInfo.color.includes('yellow')
-																? 'yellow'
-																: 'gray'}
-													<div
-														class="mx-auto h-2 w-2 rounded-full transition-all {dotColor === 'green'
-															? 'bg-green-500'
-															: dotColor === 'red'
-																? 'bg-red-500'
-																: dotColor === 'yellow'
-																	? 'bg-yellow-500'
-																	: 'bg-gray-400'} {hoveredVersion === version
-															? `pulse-glow-${dotColor}`
-															: ''}"
-														title="{env}: {status}"
-													></div>
-												{/if}
-											</td>
+												<div class="h-3">
+													{#if hoveredVersion === version}
+														<ChevronDownOutline
+															class="mx-auto h-3 w-3 animate-bounce text-blue-500"
+														/>
+													{/if}
+												</div>
+											</th>
 										{/each}
+										<!-- Newer indicator column -->
+										<th class="w-12 px-1 py-0.5 text-center">
+											<div class="flex items-center justify-center gap-0.5">
+												<span class="text-[9px] font-medium text-gray-500 dark:text-gray-400"
+													>Newer</span
+												>
+												<ArrowRightOutline class="h-3 w-3 text-gray-400 dark:text-gray-500" />
+											</div>
+										</th>
 									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
-				</div>
-			{/if}
-
-			<div class="flex h-full w-full flex-1 overflow-hidden">
-				<!-- Left: version list focused on current rollout -->
-				<div
-					class="min-w-sm max-w-md overflow-y-auto border-r border-gray-200 p-4 dark:border-gray-700"
-				>
-					<h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">Version Status</h3>
-					<p class="mb-3 text-xs text-gray-600 dark:text-gray-400">
-						Shows how versions relate to the current environment and its direct dependencies.
-					</p>
-
-					<!-- Upcoming versions -->
-					<div class="mb-4">
-						<div class="mb-1 flex items-center justify-between">
-							<div
-								class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
-							>
-								Upcoming
-							</div>
-						</div>
-						{#if versionSummary.upcoming.length === 0}
-							<div class="text-xs text-gray-400 dark:text-gray-500">
-								No newer versions available.
-							</div>
-						{:else}
-							<div class="space-y-2">
-								{#each versionSummary.upcoming as v}
-									{@const isDisabled =
-										v.state === 'not-available' || v.state === 'failed' || v.state === 'cancelled'}
-									{@const statusInfo = getBakeStatusIcon(v.dependencyBakeStatus)}
-									{@const StatusIcon = statusInfo.icon}
-									{@const badgeLabel =
-										v.state === 'succeeded'
-											? 'Ready'
-											: v.state === 'failed'
-												? 'Failed'
-												: v.state === 'cancelled'
-													? 'Cancelled'
-													: v.state === 'evaluating'
-														? 'Evaluating'
-														: 'Not available'}
-									{@const badgeColor =
-										v.state === 'succeeded'
-											? 'green'
-											: v.state === 'failed'
-												? 'red'
-												: v.state === 'cancelled'
-													? 'gray'
-													: v.state === 'evaluating'
-														? 'yellow'
-														: 'gray'}
-									{@const borderColor =
-										v.state === 'succeeded'
-											? 'border-blue-400 dark:border-blue-500'
-											: v.state === 'failed'
-												? 'border-red-400 dark:border-red-500'
-												: v.state === 'cancelled'
-													? 'border-gray-400 dark:border-gray-500'
-													: v.state === 'evaluating'
-														? 'border-yellow-400 dark:border-yellow-500'
-														: 'border-gray-300 dark:border-gray-600'}
-									{@const bgColor =
-										v.state === 'succeeded'
-											? 'bg-blue-50/50 dark:bg-blue-900/10'
-											: v.state === 'failed'
-												? 'bg-red-50/50 dark:bg-red-900/10'
-												: v.state === 'cancelled'
-													? 'bg-gray-50 dark:bg-gray-800/60'
-													: v.state === 'evaluating'
-														? 'bg-yellow-50/50 dark:bg-yellow-900/10'
-														: 'bg-gray-50 dark:bg-gray-800/60'}
-									<div
-										role="presentation"
-										class="flex rounded-lg border px-2.5 py-2 {borderColor} {bgColor}"
-										class:opacity-60={isDisabled}
-										class:cursor-not-allowed={isDisabled}
-										class:border-dashed={v.state === 'succeeded'}
-										class:ring-2={hoveredVersion === v.version}
-										class:ring-blue-400={hoveredVersion === v.version}
-										onmouseenter={() => (hoveredVersion = v.version)}
-										onmouseleave={() => (hoveredVersion = null)}
-									>
-										<!-- Version number with status icon and badge -->
-										<div class="flex flex-1 items-center gap-2">
-											<div class="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center">
-												{#if v.dependencyBakeStatus}
-													<StatusIcon class="h-3.5 w-3.5 {statusInfo.color}" />
-												{:else}
-													<div
-														class="h-3.5 w-3.5 rounded-full border-2 border-gray-300 dark:border-gray-600"
-													></div>
-												{/if}
-											</div>
-											<div
-												class="break-all font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
-												title={v.version}
+								</thead>
+								<tbody>
+									{#each graphEnvironments as env}
+										<tr>
+											<td
+												class="sticky left-0 z-10 bg-white px-1 py-0.5 text-[9px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-300"
 											>
-												{v.version}
-											</div>
-										</div>
-										<Badge
-											color={badgeColor}
-											size="small"
-											class="flex flex-shrink-0 items-center gap-1"
-										>
-											{#if v.dependencyBakeStatus}
-												<StatusIcon class="h-2.5 w-2.5" />
-											{/if}
-											{badgeLabel}
-										</Badge>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</div>
-
-					<!-- Deployed versions (including current) -->
-					<div>
-						<div
-							class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
-						>
-							Deployed
+												{env}
+											</td>
+											<!-- Empty cell for older indicator -->
+											<td class="w-12 px-1 py-0.5"></td>
+											{#each tableVersions as version}
+												{@const status = getVersionStatusInEnv(version, env)}
+												{@const statusInfo = getBakeStatusIcon(status)}
+												<td
+													class="min-w-[0.75rem] px-0 py-0.5 text-center"
+													onmouseenter={() => (hoveredVersion = version)}
+													onmouseleave={() => (hoveredVersion = null)}
+												>
+													{#if status}
+														{@const dotColor = statusInfo.color.includes('green')
+															? 'green'
+															: statusInfo.color.includes('red')
+																? 'red'
+																: statusInfo.color.includes('yellow')
+																	? 'yellow'
+																	: 'gray'}
+														<div
+															class="mx-auto h-1.5 w-1.5 rounded-full transition-all {dotColor ===
+															'green'
+																? 'bg-green-500'
+																: dotColor === 'red'
+																	? 'bg-red-500'
+																	: dotColor === 'yellow'
+																		? 'bg-yellow-500'
+																		: 'bg-gray-400'} {hoveredVersion === version
+																? `pulse-glow-${dotColor}`
+																: ''}"
+															title="{env}: {status}"
+														></div>
+													{/if}
+												</td>
+											{/each}
+											<!-- Empty cell for newer indicator -->
+											<td class="w-12 px-1 py-0.5"></td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
 						</div>
-						{#if versionSummary.deployed.length === 0}
-							<div class="text-xs text-gray-400 dark:text-gray-500">
-								No deployments for this environment yet.
-							</div>
-						{:else}
-							<div class="space-y-2">
-								{#each versionSummary.deployed as v}
-									{@const isCurrent = versionSummary.currentVersion === v.version}
-									{@const statusInfo = v.bakeStatus
-										? getBakeStatusIcon(v.bakeStatus)
-										: getBakeStatusIcon('None')}
-									{@const StatusIcon = statusInfo.icon}
-									<div
-										role="presentation"
-										class="flex rounded-lg border px-2.5 py-2 {isCurrent
-											? 'border-blue-200 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-900/20'
-											: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60'}"
-										class:ring-2={hoveredVersion === v.version}
-										class:ring-blue-400={hoveredVersion === v.version}
-										onmouseenter={() => (hoveredVersion = v.version)}
-										onmouseleave={() => (hoveredVersion = null)}
-									>
-										<!-- Version number with status icon -->
-										<div class="flex flex-1 items-center gap-2">
-											<div class="flex h-4 w-4 flex-shrink-0 items-center justify-center">
-												<BakeStatusIcon bakeStatus={v.bakeStatus} size="small" />
-											</div>
-											<div
-												class="break-all font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
-												title={v.version}
-											>
-												{v.version}
-											</div>
-										</div>
-										{#if isCurrent}
-											<Badge color="blue" size="small" class="flex-shrink-0">Current</Badge>
-										{/if}
-									</div>
-								{/each}
-							</div>
-						{/if}
 					</div>
-				</div>
+				{/if}
 
-				<!-- Right: dependency graph -->
+				<!-- Dependency graph -->
 				<div class="flex-1 overflow-auto">
 					<SvelteFlow
 						nodes={layoutedNodes}
@@ -1152,5 +1213,28 @@
 
 	.pulse-glow-gray {
 		animation: pulse-glow-gray 1s ease-in-out infinite;
+	}
+
+	/* Gradient border using background layers - Cruip implementation */
+	:global(.gradient-border) {
+		border: 2px solid transparent !important;
+		background-color: transparent !important;
+		background-image: none !important;
+		background:
+			linear-gradient(var(--bg-color, white), var(--bg-color, white)) padding-box,
+			conic-gradient(from var(--border-angle), #1e40af 0deg, #3b82f6 180deg, #1e40af 360deg)
+				border-box !important;
+		background-clip: padding-box, border-box !important;
+	}
+
+	:global(.dark .gradient-border) {
+		background-color: transparent !important;
+		background-image: none !important;
+		background:
+			linear-gradient(var(--bg-color-dark, rgb(17, 24, 39)), var(--bg-color-dark, rgb(17, 24, 39)))
+				padding-box,
+			conic-gradient(from var(--border-angle), #1e40af 0deg, #3b82f6 180deg, #1e40af 360deg)
+				border-box !important;
+		background-clip: padding-box, border-box !important;
 	}
 </style>
