@@ -15,8 +15,9 @@ docker compose -f "${PROJECT_ROOT}/docker-compose.socat.yaml" down
 # delete the test repository
 gh repo delete LittleChimera/kuberik-testing --yes || true
 
-docker stop dex-server
-docker rm dex-server
+docker stop dex-server || true
+docker rm dex-server || true
 rm -rf "${SCRIPT_DIR}/dex-certs"
+rm -rf ~/.kube/cache/oidc-login
 
 echo "Cleanup complete!"

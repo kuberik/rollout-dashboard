@@ -64,15 +64,12 @@ kubectl create clusterrolebinding oidc-admin \
   --user=admin@example.com \
   --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
 
-# Set the context to use OIDC user
-echo "Setting kubectl context to use OIDC authentication..."
-kubectl config set-context --current --user=oidc
 
 echo ""
 echo "✓ kubectl is now configured to use OIDC authentication"
 echo ""
 echo "You can test it with:"
-echo "  kubectl cluster-info"
+echo "  kubectl --user oidc get po"
 echo ""
 echo "Note: You'll be prompted to authenticate with Dex when accessing the cluster."
 echo "Default credentials: admin@example.com / password"

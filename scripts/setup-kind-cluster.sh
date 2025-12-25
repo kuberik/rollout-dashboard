@@ -45,14 +45,6 @@ if command -v kubectl oidc-login &> /dev/null; then
     echo ""
     echo "Configuring kubectl for OIDC authentication..."
     "${SCRIPT_DIR}/setup-kubectl-oidc.sh"
-
-    echo ""
-    echo "Testing OIDC authentication..."
-    if kubectl cluster-info &> /dev/null; then
-        echo "✓ OIDC authentication configured and tested successfully!"
-    else
-        echo "⚠ OIDC authentication configured but test failed. You may need to authenticate."
-    fi
 else
     echo ""
     echo "kubectl oidc-login not found. Skipping kubectl OIDC configuration."

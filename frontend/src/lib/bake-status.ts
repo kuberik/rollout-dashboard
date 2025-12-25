@@ -5,7 +5,8 @@ import {
     ExclamationCircleSolid,
     ClockSolid,
     PauseSolid,
-    CloseOutline
+    CloseOutline,
+    RefreshOutline
 } from 'flowbite-svelte-icons';
 
 type BakeStatusIconComponent = Component<SVGAttributes<SVGElement> & { color?: string }>;
@@ -23,6 +24,8 @@ export function getBakeStatusIcon(bakeStatus?: string): BakeStatusIconConfig {
             return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
         case 'InProgress':
             return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
+        case 'Deploying':
+            return { icon: RefreshOutline, color: 'text-blue-600 dark:text-blue-400' };
         case 'Cancelled':
             return { icon: CloseOutline, color: 'text-gray-600 dark:text-gray-400' };
         case 'None':

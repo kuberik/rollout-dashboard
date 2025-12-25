@@ -28,6 +28,12 @@
 	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	const environment = $derived(rolloutQuery.data?.environment);
+
+	// Check if rollout has environment specified
+	const hasEnvironment = $derived(
+		environment?.status?.environmentInfos && environment.status.environmentInfos.length > 0
+	);
 </script>
 
 <div class="flex h-full overflow-hidden">
@@ -52,13 +58,15 @@
 					/>
 				{/snippet}
 			</SidebarItem>
-			<SidebarItem label="Environments" href={`/rollouts/${namespace}/${name}/environments`}>
-				{#snippet icon()}
-					<LayersSolid
-						class="h-5 w-5 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
-					/>
-				{/snippet}
-			</SidebarItem>
+			{#if hasEnvironment}
+				<SidebarItem label="Environments" href={`/rollouts/${namespace}/${name}/environments`}>
+					{#snippet icon()}
+						<LayersSolid
+							class="h-5 w-5 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
+						/>
+					{/snippet}
+				</SidebarItem>
+			{/if}
 		</SidebarGroup>
 	</Sidebar>
 

@@ -13,6 +13,7 @@
 	import { rolloutQueryOptions, type RolloutResponse } from '$lib/api/rollouts';
 	import { getBakeStatusIcon } from '$lib/bake-status';
 	import { getDisplayVersion } from '$lib/utils';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import type { Rollout } from '../../../../../types';
 	import type {
 		EnvironmentStatusEntry,
@@ -21,8 +22,7 @@
 
 	// Flattened entry with environment field added
 	type DeploymentStatusWithEnv = EnvironmentStatusEntry & { environment: string };
-	// @ts-ignore - dagre types may not be available
-	import dagre from 'dagre';
+	import * as dagre from '@dagrejs/dagre';
 
 	// Params
 	const namespace = $derived(page.params.namespace as string);
@@ -773,26 +773,28 @@
 											</div>
 											<div class="flex flex-wrap gap-1">
 												{#each environments as env}
-													{@const current = currentVersionsByEnv.get(env)}
-													{#if current === v.version}
-														{@const envStatus = deploymentStatuses
-															.filter(
-																(s: DeploymentStatusWithEnv) =>
-																	s.environment === env &&
-																	getDisplayVersion(s.version) === v.version
-															)
-															.sort(
-																(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
-																	(b.id || 0) - (a.id || 0)
-															)[0]}
-														{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
-														{@const StatusIcon = envStatusInfo.icon}
-														<span
-															class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-														>
-															<StatusIcon class="h-2.5 w-2.5 {envStatusInfo.color}" />
-															{env}
-														</span>
+													{#if env !== currentEnvironment}
+														{@const current = currentVersionsByEnv.get(env)}
+														{#if current === v.version}
+															{@const envStatus = deploymentStatuses
+																.filter(
+																	(s: DeploymentStatusWithEnv) =>
+																		s.environment === env &&
+																		getDisplayVersion(s.version) === v.version
+																)
+																.sort(
+																	(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
+																		(b.id || 0) - (a.id || 0)
+																)[0]}
+															{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
+															{@const StatusIcon = envStatusInfo.icon}
+															<span
+																class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
+															>
+																<StatusIcon class="h-2.5 w-2.5 {envStatusInfo.color}" />
+																{env}
+															</span>
+														{/if}
 													{/if}
 												{/each}
 											</div>
@@ -829,11 +831,7 @@
 									>
 										<div class="flex items-center gap-2">
 											<div class="flex h-3 w-3 flex-shrink-0 items-center justify-center">
-												{#if v.bakeStatus === 'InProgress'}
-													<Spinner color="yellow" size="4" class="h-3 w-3" />
-												{:else}
-													<StatusIcon class="h-3 w-3 {statusInfo.color}" />
-												{/if}
+												<BakeStatusIcon bakeStatus={v.bakeStatus} size="small" />
 											</div>
 											<div
 												class="break-all font-mono text-xs text-gray-900 dark:text-gray-100"
@@ -845,25 +843,28 @@
 										<!-- Environments where this version is active -->
 										<div class="flex flex-wrap gap-1">
 											{#each environments as env}
-												{@const current = currentVersionsByEnv.get(env)}
-												{#if current === v.version}
-													{@const envStatus = deploymentStatuses
-														.filter(
-															(s: DeploymentStatusWithEnv) =>
-																s.environment === env && getDisplayVersion(s.version) === v.version
-														)
-														.sort(
-															(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
-																(b.id || 0) - (a.id || 0)
-														)[0]}
-													{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
-													{@const StatusIcon = envStatusInfo.icon}
-													<span
-														class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-													>
-														<StatusIcon class="h-2.5 w-2.5 {envStatusInfo.color}" />
-														{env}
-													</span>
+												{#if env !== currentEnvironment}
+													{@const current = currentVersionsByEnv.get(env)}
+													{#if current === v.version}
+														{@const envStatus = deploymentStatuses
+															.filter(
+																(s: DeploymentStatusWithEnv) =>
+																	s.environment === env &&
+																	getDisplayVersion(s.version) === v.version
+															)
+															.sort(
+																(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
+																	(b.id || 0) - (a.id || 0)
+															)[0]}
+														{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
+														{@const StatusIcon = envStatusInfo.icon}
+														<span
+															class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
+														>
+															<StatusIcon class="h-2.5 w-2.5 {envStatusInfo.color}" />
+															{env}
+														</span>
+													{/if}
 												{/if}
 											{/each}
 										</div>

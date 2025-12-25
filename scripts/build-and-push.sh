@@ -36,6 +36,7 @@ fi
 build_and_push() {
     local env=$1
     local version=$(git rev-parse HEAD)
+    local version_short=$(git rev-parse --short HEAD)
     local tag="main-$(git log --format=%ct -1 )-${version}"
     temp_dir=$(mktemp -d)
 
@@ -49,7 +50,7 @@ build_and_push() {
       --path "${temp_dir}" \
       --source="$(git config --get remote.origin.url)" \
       --revision="$(git rev-parse HEAD)" \
-      --annotations="org.opencontainers.image.version=${version}" \
+      --annotations="org.opencontainers.image.version=${version_short}" \
       --annotations="org.opencontainers.image.title=Hello World manifests / ${env}" \
       --annotations="org.opencontainers.image.description=Hello World manifests / ${env}" \
     echo "Successfully pushed ${OCI_ARTIFACT_NAME}/${env}/manifests:${tag}"
@@ -83,25 +84,26 @@ trap "rm -rf $temp_dir" EXIT
         git push -u origin "$branch" 2>/dev/null
 
         version=$(git rev-parse HEAD)
+        version_short=$(git rev-parse --short HEAD)
         tag="main-$(git log --format=%ct -1 )-${version}"
 
         # Use crane to annotate the image with the desired annotations
         for t in $tag $version; do
           docker buildx build --push \
+            --platform linux/amd64 \
+            --provenance true \
+            --annotation "index:org.opencontainers.image.version=${version_short}" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/${REPO_NAME}.git" \
+            --annotation "index:org.opencontainers.image.revision=${version}" \
+            --annotation "index:org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --annotation "index:org.opencontainers.image.title=Hello World app" \
+            --annotation "index:org.opencontainers.image.description=This app is a simple hello world app. It is used to test the rollout controller. It is not meant to be used in production. Have fun!" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
+            --annotation "index:org.opencontainers.image.authors=Kuberik" \
+            --annotation "index:org.opencontainers.image.vendor=Kuberik" \
+            --annotation "index:org.opencontainers.image.url=https://kuberik.com" \
             -t "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}" \
             .
-          crane mutate \
-            --annotation "org.opencontainers.image.version=${version}" \
-            --annotation "org.opencontainers.image.source=https://github.com/${REPO_NAME}.git" \
-            --annotation "org.opencontainers.image.revision=${version}" \
-            --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --annotation "org.opencontainers.image.title=Hello World app" \
-            --annotation "org.opencontainers.image.description=This app is a simple hello world app. It is used to test the rollout controller. It is not meant to be used in production. Have fun!" \
-            --annotation "org.opencontainers.image.licenses=MIT" \
-            --annotation "org.opencontainers.image.authors=Kuberik" \
-            --annotation "org.opencontainers.image.vendor=Kuberik" \
-            --annotation "org.opencontainers.image.url=https://kuberik.com" \
-            "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}"
 
           kind load docker-image "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}" --name rollout-dev
         done

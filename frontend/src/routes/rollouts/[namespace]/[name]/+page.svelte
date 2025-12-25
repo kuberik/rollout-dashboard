@@ -86,6 +86,7 @@
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
@@ -1130,12 +1131,7 @@
 										<div
 											class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
 										>
-											{#if latestEntry.bakeStatus === 'InProgress'}
-												<Spinner color="yellow" size="6" />
-											{:else}
-												{@const { icon: Icon, color } = getBakeStatusIcon(latestEntry.bakeStatus)}
-												<Icon class="h-6 w-6 {color}" />
-											{/if}
+											<BakeStatusIcon bakeStatus={latestEntry.bakeStatus} size="medium" />
 										</div>
 
 										<!-- Version Info -->
@@ -1157,7 +1153,11 @@
 														? 'green'
 														: latestEntry.bakeStatus === 'Failed'
 															? 'red'
-															: 'yellow'}
+															: latestEntry.bakeStatus === 'Deploying'
+																? 'blue'
+																: latestEntry.bakeStatus === 'InProgress'
+																	? 'yellow'
+																	: 'gray'}
 													size="small"
 												>
 													{latestEntry.bakeStatus}
@@ -1181,7 +1181,7 @@
 								<!-- Deployment Timeline -->
 								<div class="mb-6">
 									<h5 class="mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-										Environment Deployment Timeline
+										Deployment Timeline
 									</h5>
 
 									<Timeline order="horizontal" class="w-full">
@@ -1532,7 +1532,9 @@
 													</div>
 													{#if rollout.spec?.bakeTime}
 														{@const remainingTime = (() => {
-															const bakeStartTime = new Date(latestEntry.bakeStartTime).getTime();
+															const bakeStartTime = latestEntry.bakeStartTime
+																? new Date(latestEntry.bakeStartTime).getTime()
+																: new Date(latestEntry.timestamp).getTime();
 															const currentTime = $now.getTime();
 															const elapsedTime = currentTime - bakeStartTime;
 															const bakeTimeMs = parseDuration(rollout.spec.bakeTime);
@@ -1564,6 +1566,28 @@
 															</div>
 														</div>
 													{/if}
+												</div>
+											</TimelineItem>
+										{:else if latestEntry.bakeStatus === 'Deploying'}
+											<TimelineItem
+												title="Deploying"
+												date="Deployment in progress..."
+												class="min-w-0 flex-1 pr-3"
+											>
+												{#snippet orientationSlot()}
+													<div class="flex items-center">
+														<div
+															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-200 ring-0 ring-white sm:ring-8 dark:bg-blue-900 dark:ring-gray-800"
+														>
+															<Spinner size="4" color="blue" />
+														</div>
+														<div
+															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+														></div>
+													</div>
+												{/snippet}
+												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+													{latestEntry.bakeStatusMessage || 'Deployment in progress...'}
 												</div>
 											</TimelineItem>
 										{/if}

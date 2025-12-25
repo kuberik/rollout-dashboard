@@ -28,6 +28,7 @@
 		"@tailwindcss/vite": "^4.1.12",
 		"@testing-library/jest-dom": "^6.6.3",
 		"@testing-library/svelte": "^5.2.8",
+		"@types/dagre": "^0.7.53",
 		"@types/diff": "^7.0.2",
 		"diff": "^7.0.0",
 		"eslint": "^9.34.0",
@@ -53,11 +54,11 @@
 		"vitest": "^3.2.4"
 	},
 	"dependencies": {
+		"@dagrejs/dagre": "^1.1.8",
 		"@inlang/paraglide-js": "^2.0.0",
 		"@tanstack/svelte-query": "^6.0.3",
 		"@types/js-yaml": "^4.0.9",
 		"@xyflow/svelte": "^1.4.2",
-		"dagre": "^0.8.5",
 		"diff2html": "^3.4.51",
 		"js-yaml": "^4.1.0",
 		"jsondiffpatch": "^0.7.3"

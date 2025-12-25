@@ -29,6 +29,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { getBakeStatusIcon } from '$lib/bake-status';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 
 	// Params (runes)
 	const namespace = $derived(get(page).params.namespace as string);
@@ -126,14 +127,10 @@
 						date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 					>
 						{#snippet orientationSlot()}
-							{@const { icon: Icon, color: iconColor } = getBakeStatusIcon(entry.bakeStatus)}
 							<span
 								class="absolute -start-3 flex h-6 w-6 items-center justify-center rounded-full bg-white ring-8 ring-white dark:bg-gray-800 dark:ring-gray-800"
 							>
-								<Icon
-									color={entry.bakeStatus === 'InProgress' ? 'yellow' : undefined}
-									class="h-6 w-6 {entry.bakeStatus === 'InProgress' ? '' : iconColor}"
-								/>
+								<BakeStatusIcon bakeStatus={entry.bakeStatus} size="medium" />
 							</span>
 						{/snippet}
 						<div class="flex h-full flex-col space-y-3">

@@ -4,7 +4,7 @@
 	import { Handle, Position } from '@xyflow/svelte';
 	import { Badge } from 'flowbite-svelte';
 	import { ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
-	import { getBakeStatusIcon } from '$lib/bake-status';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 
 	interface Props {
 		data: {
@@ -41,10 +41,6 @@
 		return diff;
 	});
 
-	// Compute status info for the badge
-	const statusInfo = $derived(getBakeStatusIcon(data.bakeStatus));
-	const StatusIcon = $derived(statusInfo.icon);
-
 	// Construct environments URL from base environmentUrl
 	const environmentsUrl = $derived.by(() => {
 		if (!data.environmentInfo?.environmentUrl) return null;
@@ -67,70 +63,55 @@
 	>
 		<Handle type="target" position={Position.Top} />
 
-		<!-- Status indicator bar at top -->
-		<div
-			class="h-1 rounded-t-md"
-			class:bg-green-500={data.bakeStatus === 'Succeeded'}
-			class:bg-red-500={data.bakeStatus === 'Failed'}
-			class:bg-yellow-500={data.bakeStatus === 'InProgress'}
-			class:bg-gray-400={!data.bakeStatus ||
-				data.bakeStatus === 'None' ||
-				data.bakeStatus === 'Cancelled'}
-		></div>
-
-		<div class="p-3">
-			<!-- Header: Environment name and Open link -->
-			<div class="mb-2.5 flex items-center justify-between">
-				<h3
-					class="text-xs font-medium uppercase tracking-wide"
-					class:text-blue-600={data.isCurrentEnvironment}
-					class:dark:text-blue-400={data.isCurrentEnvironment}
-					class:text-gray-500={!data.isCurrentEnvironment}
-					class:dark:text-gray-400={!data.isCurrentEnvironment}
-				>
-					{data.environment}
-				</h3>
-				{#if !data.isCurrentEnvironment && environmentsUrl}
-					<a
-						href={environmentsUrl}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="flex items-center gap-1 text-[10px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-						title="Open environment in new window"
-					>
-						<ArrowUpRightFromSquareOutline class="h-3 w-3" />
-					</a>
-				{/if}
+		<div class="flex items-center gap-3 p-3">
+			<!-- Large status icon -->
+			<div class="flex-shrink-0">
+				<BakeStatusIcon bakeStatus={data.bakeStatus} size="large" />
 			</div>
 
-			<!-- Version display with status icon -->
-			<div class="flex items-start gap-2">
-				<!-- Status icon -->
-				<div class="mt-0.5 flex-shrink-0">
-					<StatusIcon class="h-4 w-4 {statusInfo.color}" />
+			<!-- Content: Environment name and version -->
+			<div class="min-w-0 flex-1">
+				<!-- Environment name as small label -->
+				<div class="mb-1 flex items-center justify-between">
+					<h3
+						class="text-[10px] font-medium uppercase tracking-wide"
+						class:text-blue-600={data.isCurrentEnvironment}
+						class:dark:text-blue-400={data.isCurrentEnvironment}
+						class:text-gray-500={!data.isCurrentEnvironment}
+						class:dark:text-gray-400={!data.isCurrentEnvironment}
+					>
+						{data.environment}
+					</h3>
+					{#if !data.isCurrentEnvironment && environmentsUrl}
+						<a
+							href={environmentsUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="flex items-center gap-1 text-[10px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+							title="Open environment in new window"
+						>
+							<ArrowUpRightFromSquareOutline class="h-3 w-3" />
+						</a>
+					{/if}
 				</div>
 
-				<!-- Version and difference -->
-				<div class="min-w-0 flex-1">
-					<div class="flex items-baseline gap-2">
-						<span
-							class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-gray-100"
-							title={data.currentVersion}
+				<!-- Version as main text -->
+				<div class="flex items-baseline gap-2">
+					<span
+						class="truncate font-mono text-base font-semibold text-gray-900 dark:text-gray-100"
+						title={data.currentVersion}
+					>
+						{data.currentVersion}
+					</span>
+					{#if versionDifference !== null && versionDifference !== 0}
+						<Badge
+							color={versionDifference < 0 ? 'green' : 'yellow'}
+							size="small"
+							class="flex-shrink-0 whitespace-nowrap text-[10px] font-medium"
 						>
-							{data.currentVersion}
-						</span>
-						{#if versionDifference !== null && versionDifference !== 0}
-							<Badge
-								color={versionDifference < 0 ? 'green' : 'yellow'}
-								size="small"
-								class="flex-shrink-0 whitespace-nowrap text-[10px] font-medium"
-							>
-								{versionDifference < 0
-									? `+${Math.abs(versionDifference)}`
-									: `-${versionDifference}`}
-							</Badge>
-						{/if}
-					</div>
+							{versionDifference < 0 ? `+${Math.abs(versionDifference)}` : `-${versionDifference}`}
+						</Badge>
+					{/if}
 				</div>
 			</div>
 		</div>

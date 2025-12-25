@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR=$(dirname "$0")
 PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 OUTPUT_DIR="${PROJECT_ROOT}/scripts/dex-certs"
-DEX_VERSION="v2.21.0"
+DEX_VERSION="v2.44.0"
 
 # Check if certificates exist
 if [ ! -f "${OUTPUT_DIR}/dex-ca.crt" ] || [ ! -f "${OUTPUT_DIR}/dex-server.crt" ] || [ ! -f "${OUTPUT_DIR}/dex-server.key" ]; then
@@ -42,21 +42,13 @@ docker run -d --name dex-server -p 10443:10443 \
   -v "${OUTPUT_DIR}/dex-server.crt:/dex-server.crt:ro" \
   -v "${OUTPUT_DIR}/dex-server.key:/dex-server.key:ro" \
   -v "${DEX_CONFIG}:/dex.yaml:ro" \
-  "quay.io/dexidp/dex:${DEX_VERSION}" serve /dex.yaml
+  "ghcr.io/dexidp/dex:${DEX_VERSION}" dex serve /dex.yaml
 
 # Wait for Dex to be ready
 echo "Waiting for Dex to be ready..."
 sleep 3
 
-# Get Dex container IP
-DEX_IP=$(docker inspect -f '{{.NetworkSettings.IPAddress}}' dex-server)
-if [ -z "$DEX_IP" ]; then
-    echo "Error: Could not get Dex container IP address"
-    exit 1
-fi
-
 echo ""
 echo "Dex server started successfully!"
-echo "Dex container IP: ${DEX_IP}"
 echo "Dex hostname: ${DEX_HOST}"
 echo "Dex is accessible at: https://${DEX_HOST}:10443/dex"
