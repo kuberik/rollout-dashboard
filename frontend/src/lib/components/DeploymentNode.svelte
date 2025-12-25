@@ -20,6 +20,8 @@
 			isCurrentEnvironment?: boolean;
 			versionIndex?: number;
 			currentEnvironmentVersionIndex?: number;
+			hoveredVersion?: string | null;
+			onVersionHover?: (version: string | null) => void;
 		};
 	}
 
@@ -56,10 +58,17 @@
 		: '--env-bg-color-light: rgb(243, 244, 246); --env-bg-color-dark: rgb(31, 41, 55);'}
 >
 	<div
+		role="presentation"
 		class="node-border w-[320px] rounded-lg border-2 bg-white text-gray-900 shadow-lg transition-all dark:bg-gray-900 dark:text-white"
-		class:ring-2={data.isCurrentEnvironment}
-		class:ring-blue-400={data.isCurrentEnvironment}
-		class:dark:ring-blue-600={data.isCurrentEnvironment}
+		class:ring-2={data.isCurrentEnvironment || data.hoveredVersion === data.currentVersion}
+		class:ring-blue-400={data.isCurrentEnvironment && data.hoveredVersion !== data.currentVersion}
+		class:ring-blue-500={data.hoveredVersion === data.currentVersion}
+		class:ring-4={data.hoveredVersion === data.currentVersion}
+		class:dark:ring-blue-600={data.isCurrentEnvironment &&
+			data.hoveredVersion !== data.currentVersion}
+		class:dark:ring-blue-500={data.hoveredVersion === data.currentVersion}
+		onmouseenter={() => data.onVersionHover?.(data.currentVersion)}
+		onmouseleave={() => data.onVersionHover?.(null)}
 	>
 		<Handle type="target" position={Position.Top} />
 

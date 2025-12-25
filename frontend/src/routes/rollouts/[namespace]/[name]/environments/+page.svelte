@@ -6,7 +6,12 @@
 	import '@xyflow/svelte/dist/style.css';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { Card, Badge, Spinner, Alert } from 'flowbite-svelte';
-	import { CheckCircleSolid, ExclamationCircleSolid, ClockSolid } from 'flowbite-svelte-icons';
+	import {
+		CheckCircleSolid,
+		ExclamationCircleSolid,
+		ClockSolid,
+		ChevronDownOutline
+	} from 'flowbite-svelte-icons';
 	import type { Node, Edge } from '@xyflow/svelte';
 	import DeploymentNode from '$lib/components/DeploymentNode.svelte';
 	import SimpleNode from '$lib/components/SimpleNode.svelte';
@@ -208,7 +213,11 @@
 						environmentInfo: envInfo,
 						isCurrentEnvironment: false,
 						versionIndex: envVersionIdx,
-						currentEnvironmentVersionIndex: currentEnvIdx
+						currentEnvironmentVersionIndex: currentEnvIdx,
+						hoveredVersion,
+						onVersionHover: (version: string | null) => {
+							hoveredVersion = version;
+						}
 					}
 				});
 			});
@@ -243,7 +252,11 @@
 					environmentInfo: currentEnvInfo,
 					isCurrentEnvironment: true,
 					versionIndex: envVersionIdx,
-					currentEnvironmentVersionIndex: currentEnvIdx
+					currentEnvironmentVersionIndex: currentEnvIdx,
+					hoveredVersion,
+					onVersionHover: (version: string | null) => {
+						hoveredVersion = version;
+					}
 				}
 			});
 		}
@@ -291,13 +304,25 @@
 						environmentInfo: envInfo,
 						isCurrentEnvironment: false,
 						versionIndex: envVersionIdx,
-						currentEnvironmentVersionIndex: currentEnvIdx
+						currentEnvironmentVersionIndex: currentEnvIdx,
+						hoveredVersion,
+						onVersionHover: (version: string | null) => {
+							hoveredVersion = version;
+						}
 					}
 				});
 			});
 		}
 
 		return Array.from(nodeMap.values());
+	});
+
+	// Environments shown in the graph (excluding start/end nodes)
+	const graphEnvironments = $derived.by(() => {
+		return nodes
+			.filter((node) => node.type === 'deployment')
+			.map((node) => node.data.environment as string)
+			.filter(Boolean);
 	});
 
 	// Helper function to get node dimensions
@@ -658,6 +683,41 @@
 
 		return result;
 	});
+
+	// Hover state for version highlighting
+	let hoveredVersion = $state<string | null>(null);
+
+	// All versions for the table (upcoming + deployed, oldest first for left-to-right display)
+	const tableVersions = $derived.by(() => {
+		const versions: string[] = [];
+		// Add upcoming versions (newest first)
+		versionSummary.upcoming.forEach((v) => {
+			if (!versions.includes(v.version)) {
+				versions.push(v.version);
+			}
+		});
+		// Add deployed versions (newest first)
+		versionSummary.deployed.forEach((v) => {
+			if (!versions.includes(v.version)) {
+				versions.push(v.version);
+			}
+		});
+		// Reverse to show oldest on left, newest on right
+		return versions.reverse();
+	});
+
+	// Get status for a version in an environment
+	const getVersionStatusInEnv = (version: string, env: string): string | undefined => {
+		const status = deploymentStatuses
+			.filter(
+				(s: DeploymentStatusWithEnv) =>
+					s.environment === env && getDisplayVersion(s.version) === version
+			)
+			.sort(
+				(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
+			)[0];
+		return status?.bakeStatus;
+	};
 </script>
 
 <svelte:head>
@@ -686,9 +746,83 @@
 		</Card>
 	{:else}
 		<div
-			class="flex w-full flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+			class="flex w-full flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
 		>
-			<div class="flex h-full w-full">
+			<!-- Environment-Version Status Table -->
+			{#if tableVersions.length > 0 && graphEnvironments.length > 0}
+				<div class="border-b border-gray-200 px-2 pb-2 pt-4 dark:border-gray-700">
+					<div class="overflow-x-auto">
+						<table class="w-full text-xs">
+							<thead>
+								<tr>
+									<th
+										class="sticky left-0 z-10 bg-white px-1.5 py-1 text-left text-[10px] font-semibold text-gray-700 dark:bg-gray-900 dark:text-gray-300"
+									>
+										Environment
+									</th>
+									{#each tableVersions as version}
+										<th
+											class="min-w-[1.5rem] px-0.5 py-1 text-center"
+											onmouseenter={() => (hoveredVersion = version)}
+											onmouseleave={() => (hoveredVersion = null)}
+										>
+											<div class="h-4">
+												{#if hoveredVersion === version}
+													<ChevronDownOutline class="mx-auto h-4 w-4 text-blue-500" />
+												{/if}
+											</div>
+										</th>
+									{/each}
+								</tr>
+							</thead>
+							<tbody>
+								{#each graphEnvironments as env}
+									<tr>
+										<td
+											class="sticky left-0 z-10 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-300"
+										>
+											{env}
+										</td>
+										{#each tableVersions as version}
+											{@const status = getVersionStatusInEnv(version, env)}
+											{@const statusInfo = getBakeStatusIcon(status)}
+											<td
+												class="min-w-[1.5rem] px-0.5 py-0.5 text-center"
+												onmouseenter={() => (hoveredVersion = version)}
+												onmouseleave={() => (hoveredVersion = null)}
+											>
+												{#if status}
+													{@const dotColor = statusInfo.color.includes('green')
+														? 'green'
+														: statusInfo.color.includes('red')
+															? 'red'
+															: statusInfo.color.includes('yellow')
+																? 'yellow'
+																: 'gray'}
+													<div
+														class="mx-auto h-2 w-2 rounded-full transition-all {dotColor === 'green'
+															? 'bg-green-500'
+															: dotColor === 'red'
+																? 'bg-red-500'
+																: dotColor === 'yellow'
+																	? 'bg-yellow-500'
+																	: 'bg-gray-400'} {hoveredVersion === version
+															? `pulse-glow-${dotColor}`
+															: ''}"
+														title="{env}: {status}"
+													></div>
+												{/if}
+											</td>
+										{/each}
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{/if}
+
+			<div class="flex h-full w-full flex-1 overflow-hidden">
 				<!-- Left: version list focused on current rollout -->
 				<div
 					class="min-w-sm max-w-md overflow-y-auto border-r border-gray-200 p-4 dark:border-gray-700"
@@ -712,19 +846,32 @@
 								No newer versions available.
 							</div>
 						{:else}
-							<div class="space-y-1.5">
+							<div class="space-y-2">
 								{#each versionSummary.upcoming as v}
 									{@const isDisabled =
 										v.state === 'not-available' || v.state === 'failed' || v.state === 'cancelled'}
 									{@const statusInfo = getBakeStatusIcon(v.dependencyBakeStatus)}
 									{@const StatusIcon = statusInfo.icon}
-									{@const badgeColor = statusInfo.color.includes('green')
-										? 'green'
-										: statusInfo.color.includes('red')
-											? 'red'
-											: statusInfo.color.includes('yellow')
-												? 'yellow'
-												: 'gray'}
+									{@const badgeLabel =
+										v.state === 'succeeded'
+											? 'Ready'
+											: v.state === 'failed'
+												? 'Failed'
+												: v.state === 'cancelled'
+													? 'Cancelled'
+													: v.state === 'evaluating'
+														? 'Evaluating'
+														: 'Not available'}
+									{@const badgeColor =
+										v.state === 'succeeded'
+											? 'green'
+											: v.state === 'failed'
+												? 'red'
+												: v.state === 'cancelled'
+													? 'gray'
+													: v.state === 'evaluating'
+														? 'yellow'
+														: 'gray'}
 									{@const borderColor =
 										v.state === 'succeeded'
 											? 'border-blue-400 dark:border-blue-500'
@@ -736,69 +883,54 @@
 														? 'border-yellow-400 dark:border-yellow-500'
 														: 'border-gray-300 dark:border-gray-600'}
 									{@const bgColor =
-										v.state === 'succeeded' ? 'bg-transparent' : 'bg-gray-50 dark:bg-gray-800/60'}
-									{@const message =
 										v.state === 'succeeded'
-											? 'Ready to deploy'
+											? 'bg-blue-50/50 dark:bg-blue-900/10'
 											: v.state === 'failed'
-												? 'Failed in dependencies'
+												? 'bg-red-50/50 dark:bg-red-900/10'
 												: v.state === 'cancelled'
-													? 'Cancelled in dependencies'
+													? 'bg-gray-50 dark:bg-gray-800/60'
 													: v.state === 'evaluating'
-														? 'Under evaluation'
-														: 'Not yet available in dependencies'}
+														? 'bg-yellow-50/50 dark:bg-yellow-900/10'
+														: 'bg-gray-50 dark:bg-gray-800/60'}
 									<div
-										class="flex flex-col gap-2 rounded-md border px-2 py-1.5 text-xs {borderColor} {bgColor}"
+										role="presentation"
+										class="flex rounded-lg border px-2.5 py-2 {borderColor} {bgColor}"
 										class:opacity-60={isDisabled}
 										class:cursor-not-allowed={isDisabled}
 										class:border-dashed={v.state === 'succeeded'}
+										class:ring-2={hoveredVersion === v.version}
+										class:ring-blue-400={hoveredVersion === v.version}
+										onmouseenter={() => (hoveredVersion = v.version)}
+										onmouseleave={() => (hoveredVersion = null)}
 									>
-										<div
-											class="break-all font-mono text-[11px] text-gray-900 dark:text-gray-100"
-											title={v.version}
-										>
-											{v.version}
-										</div>
-										<div class="flex items-center justify-between">
-											<div
-												class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"
-											>
-												<span>{message}</span>
+										<!-- Version number with status icon and badge -->
+										<div class="flex flex-1 items-center gap-2">
+											<div class="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center">
 												{#if v.dependencyBakeStatus}
-													<Badge color={badgeColor} size="small" class="flex items-center gap-1">
-														<StatusIcon class="h-2.5 w-2.5" />
-														{v.dependencyBakeStatus}
-													</Badge>
+													<StatusIcon class="h-3.5 w-3.5 {statusInfo.color}" />
+												{:else}
+													<div
+														class="h-3.5 w-3.5 rounded-full border-2 border-gray-300 dark:border-gray-600"
+													></div>
 												{/if}
 											</div>
-											<div class="flex flex-wrap gap-1">
-												{#each environments as env}
-													{#if env !== currentEnvironment}
-														{@const current = currentVersionsByEnv.get(env)}
-														{#if current === v.version}
-															{@const envStatus = deploymentStatuses
-																.filter(
-																	(s: DeploymentStatusWithEnv) =>
-																		s.environment === env &&
-																		getDisplayVersion(s.version) === v.version
-																)
-																.sort(
-																	(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
-																		(b.id || 0) - (a.id || 0)
-																)[0]}
-															{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
-															{@const StatusIcon = envStatusInfo.icon}
-															<span
-																class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-															>
-																<StatusIcon class="h-2.5 w-2.5 {envStatusInfo.color}" />
-																{env}
-															</span>
-														{/if}
-													{/if}
-												{/each}
+											<div
+												class="break-all font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
+												title={v.version}
+											>
+												{v.version}
 											</div>
 										</div>
+										<Badge
+											color={badgeColor}
+											size="small"
+											class="flex flex-shrink-0 items-center gap-1"
+										>
+											{#if v.dependencyBakeStatus}
+												<StatusIcon class="h-2.5 w-2.5" />
+											{/if}
+											{badgeLabel}
+										</Badge>
 									</div>
 								{/each}
 							</div>
@@ -817,57 +949,38 @@
 								No deployments for this environment yet.
 							</div>
 						{:else}
-							<div class="space-y-1.5">
+							<div class="space-y-2">
 								{#each versionSummary.deployed as v}
+									{@const isCurrent = versionSummary.currentVersion === v.version}
 									{@const statusInfo = v.bakeStatus
 										? getBakeStatusIcon(v.bakeStatus)
 										: getBakeStatusIcon('None')}
 									{@const StatusIcon = statusInfo.icon}
 									<div
-										class="flex flex-col gap-2 rounded-md border px-2 py-1.5 text-xs {versionSummary.currentVersion ===
-										v.version
-											? 'border-blue-500'
+										role="presentation"
+										class="flex rounded-lg border px-2.5 py-2 {isCurrent
+											? 'border-blue-200 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-900/20'
 											: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60'}"
+										class:ring-2={hoveredVersion === v.version}
+										class:ring-blue-400={hoveredVersion === v.version}
+										onmouseenter={() => (hoveredVersion = v.version)}
+										onmouseleave={() => (hoveredVersion = null)}
 									>
-										<div class="flex items-center gap-2">
-											<div class="flex h-3 w-3 flex-shrink-0 items-center justify-center">
+										<!-- Version number with status icon -->
+										<div class="flex flex-1 items-center gap-2">
+											<div class="flex h-4 w-4 flex-shrink-0 items-center justify-center">
 												<BakeStatusIcon bakeStatus={v.bakeStatus} size="small" />
 											</div>
 											<div
-												class="break-all font-mono text-xs text-gray-900 dark:text-gray-100"
+												class="break-all font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
 												title={v.version}
 											>
 												{v.version}
 											</div>
 										</div>
-										<!-- Environments where this version is active -->
-										<div class="flex flex-wrap gap-1">
-											{#each environments as env}
-												{#if env !== currentEnvironment}
-													{@const current = currentVersionsByEnv.get(env)}
-													{#if current === v.version}
-														{@const envStatus = deploymentStatuses
-															.filter(
-																(s: DeploymentStatusWithEnv) =>
-																	s.environment === env &&
-																	getDisplayVersion(s.version) === v.version
-															)
-															.sort(
-																(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) =>
-																	(b.id || 0) - (a.id || 0)
-															)[0]}
-														{@const envStatusInfo = getBakeStatusIcon(envStatus?.bakeStatus)}
-														{@const StatusIcon = envStatusInfo.icon}
-														<span
-															class="flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-														>
-															<StatusIcon class="h-2.5 w-2.5 {envStatusInfo.color}" />
-															{env}
-														</span>
-													{/if}
-												{/if}
-											{/each}
-										</div>
+										{#if isCurrent}
+											<Badge color="blue" size="small" class="flex-shrink-0">Current</Badge>
+										{/if}
 									</div>
 								{/each}
 							</div>
@@ -955,5 +1068,89 @@
 
 	:global(.svelte-flow__background) {
 		pointer-events: none !important;
+	}
+
+	/* Pulse glow animation for hovered dots - green */
+	@keyframes pulse-glow-green {
+		0%,
+		100% {
+			box-shadow:
+				0 0 0 0 rgba(34, 197, 94, 0.9),
+				0 0 0 0 rgba(34, 197, 94, 0.5);
+			transform: scale(1);
+		}
+		50% {
+			box-shadow:
+				0 0 0 6px rgba(34, 197, 94, 0),
+				0 0 0 3px rgba(34, 197, 94, 0.3);
+			transform: scale(1.3);
+		}
+	}
+
+	/* Pulse glow animation for hovered dots - red */
+	@keyframes pulse-glow-red {
+		0%,
+		100% {
+			box-shadow:
+				0 0 0 0 rgba(239, 68, 68, 0.9),
+				0 0 0 0 rgba(239, 68, 68, 0.5);
+			transform: scale(1);
+		}
+		50% {
+			box-shadow:
+				0 0 0 6px rgba(239, 68, 68, 0),
+				0 0 0 3px rgba(239, 68, 68, 0.3);
+			transform: scale(1.3);
+		}
+	}
+
+	/* Pulse glow animation for hovered dots - yellow */
+	@keyframes pulse-glow-yellow {
+		0%,
+		100% {
+			box-shadow:
+				0 0 0 0 rgba(234, 179, 8, 0.9),
+				0 0 0 0 rgba(234, 179, 8, 0.5);
+			transform: scale(1);
+		}
+		50% {
+			box-shadow:
+				0 0 0 6px rgba(234, 179, 8, 0),
+				0 0 0 3px rgba(234, 179, 8, 0.3);
+			transform: scale(1.3);
+		}
+	}
+
+	/* Pulse glow animation for hovered dots - gray */
+	@keyframes pulse-glow-gray {
+		0%,
+		100% {
+			box-shadow:
+				0 0 0 0 rgba(156, 163, 175, 0.9),
+				0 0 0 0 rgba(156, 163, 175, 0.5);
+			transform: scale(1);
+		}
+		50% {
+			box-shadow:
+				0 0 0 6px rgba(156, 163, 175, 0),
+				0 0 0 3px rgba(156, 163, 175, 0.3);
+			transform: scale(1.3);
+		}
+	}
+
+	.pulse-glow-green {
+		animation: pulse-glow-green 1s ease-in-out infinite;
+	}
+
+	.pulse-glow-red {
+		animation: pulse-glow-red 1s ease-in-out infinite;
+	}
+
+	.pulse-glow-yellow {
+		animation: pulse-glow-yellow 1s ease-in-out infinite;
+	}
+
+	.pulse-glow-gray {
+		animation: pulse-glow-gray 1s ease-in-out infinite;
 	}
 </style>

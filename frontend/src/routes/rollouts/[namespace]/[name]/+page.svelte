@@ -59,7 +59,9 @@
 		ClipboardCleanSolid,
 		MessageDotsOutline,
 		CalendarWeekSolid,
-		QuestionCircleOutline
+		QuestionCircleOutline,
+		HeartSolid,
+		CubesStackedSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -1669,11 +1671,16 @@
 						{#if healthChecks.length > 0}
 							<Card class="w-full max-w-none p-6">
 								<div class="mb-4 flex items-center justify-between">
-									<h4 class="text-lg font-medium text-gray-900 dark:text-white">Health Checks</h4>
+									<h4
+										class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
+									>
+										<HeartSolid class="h-5 w-5" />
+										Health Checks
+									</h4>
 									<div class="flex items-center gap-2">
 										<Badge color="blue" size="small">
-											{healthChecks.filter((hc) => hc.status?.status === 'Healthy')
-												.length}/{healthChecks.length} healthy
+											{healthChecks.filter((hc) => hc.status?.status === 'Healthy').length} / {healthChecks.length}
+											healthy
 										</Badge>
 									</div>
 								</div>
@@ -1777,7 +1784,10 @@
 						{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
 							<Card class="w-full max-w-none p-6">
 								<div class="mb-4 flex items-center justify-between">
-									<h4 class="text-lg font-medium text-gray-900 dark:text-white">
+									<h4
+										class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
+									>
+										<CubesStackedSolid class="h-5 w-5" />
 										Kubernetes Resources Status
 									</h4>
 									{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
@@ -1817,7 +1827,7 @@
 												r.status === 'Current'
 										)}
 										<Badge color="blue" size="small">
-											{healthyResources.length}/{allResources.length} healthy
+											{healthyResources.length} / {allResources.length} healthy
 										</Badge>
 									{/if}
 								</div>
@@ -1896,7 +1906,10 @@
 						<!-- Available Versions Card -->
 						<Card class="w-full max-w-none p-6 lg:col-span-2">
 							<div class="mb-4 flex items-center justify-between">
-								<h4 class="text-lg font-medium text-gray-900 dark:text-white">
+								<h4
+									class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
+								>
+									<CodeOutline class="h-5 w-5" />
 									Available Version Upgrades
 								</h4>
 								{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
@@ -1933,109 +1946,55 @@
 											<div
 												class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
 											>
-												<div class="flex flex-1 items-center gap-3">
-													<div class="flex h-8 w-8 items-center justify-center">
-														<CodeOutline class="h-5 w-5 text-gray-500 dark:text-gray-400" />
-													</div>
-													<div class="min-w-0 flex-1">
-														<div class="flex flex-col gap-1">
-															<h6
-																class="truncate text-sm font-medium text-gray-900 dark:text-white"
-															>
-																{getDisplayVersion(releaseCandidate)}
-															</h6>
-															<div class="flex flex-wrap items-center gap-2">
-																{#if rollout.status?.gatedReleaseCandidates
-																	?.map((grc) => grc.tag)
-																	.includes(version)}
-																	<Badge color="green" size="small">Ready</Badge>
-																{:else}
-																	{@const blockingGates = getBlockingGates(version)}
-																	{#if blockingGates.length > 0}
-																		<Badge color="yellow" size="small" class="cursor-help">
-																			Blocked
-																			<QuestionCircleOutline class="ml-1 h-3 w-3" />
-																		</Badge>
-																		<Popover class="max-w-sm" title="Blocked by Gates">
-																			<div class="p-3">
-																				<div class="space-y-2">
-																					{#each blockingGates as gate}
-																						<div class="flex items-start gap-2">
-																							<ExclamationCircleSolid
-																								class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
-																							/>
-																							<div class="min-w-0 flex-1">
-																								<p
-																									class="text-sm font-medium text-gray-900 dark:text-white"
-																								>
-																									{getGatePrettyName(gate) ||
-																										gate.metadata?.name ||
-																										'Unknown Gate'}
-																								</p>
-																								{#if getGateDescription(gate)}
-																									<p
-																										class="text-xs text-gray-600 dark:text-gray-400"
-																									>
-																										{getGateDescription(gate)}
-																									</p>
-																								{/if}
-																								{#if gate.status?.status}
-																									<p
-																										class="text-xs text-yellow-600 dark:text-yellow-400"
-																									>
-																										Status: {gate.status.status}
-																									</p>
-																								{/if}
-																							</div>
-																						</div>
-																					{/each}
-																				</div>
-																			</div>
-																		</Popover>
-																	{:else}
-																		<Badge color="yellow" size="small">Blocked</Badge>
-																	{/if}
-																{/if}
-																{#if getDependencyStatus(version)}
-																	{@const depBakeStatus = getDependencyStatus(version)}
-																	{#if depBakeStatus}
-																		{@const depStatusInfo = getBakeStatusIcon(
-																			depBakeStatus ?? undefined
-																		)}
-																		{@const DepStatusIcon = depStatusInfo.icon}
-																		{@const valueColor =
-																			depBakeStatus === 'Succeeded'
-																				? 'green'
-																				: depBakeStatus === 'Failed'
-																					? 'red'
-																					: depBakeStatus === 'InProgress'
-																						? 'yellow'
-																						: 'gray'}
-																		<JoinedBadge
-																			label="Dependency"
-																			value={depBakeStatus}
-																			icon={DepStatusIcon}
-																			iconColor={depStatusInfo.color}
-																			{valueColor}
-																			size="small"
-																		/>
-																	{/if}
-																{/if}
-																{#if releaseCandidate.created}
-																	<Badge
-																		color="gray"
-																		border
+												<div class="flex items-center gap-3">
+													<!-- Version and time stacked vertically -->
+													<div class="flex flex-col gap-1">
+														<!-- Version row -->
+														<h6 class="truncate text-sm font-medium text-gray-900 dark:text-white">
+															{getDisplayVersion(releaseCandidate)}
+														</h6>
+														<!-- Time and Dependency row -->
+														<div class="flex flex-wrap items-center gap-2">
+															{#if releaseCandidate.created}
+																<Badge
+																	color="gray"
+																	border
+																	size="small"
+																	class="flex items-center gap-1"
+																>
+																	<ClockSolid class="h-3 w-3" />
+																	{formatTimeAgo(releaseCandidate.created, $now)}
+																</Badge>
+															{/if}
+															{#if getDependencyStatus(version)}
+																{@const depBakeStatus = getDependencyStatus(version)}
+																{#if depBakeStatus}
+																	{@const depStatusInfo = getBakeStatusIcon(
+																		depBakeStatus ?? undefined
+																	)}
+																	{@const DepStatusIcon = depStatusInfo.icon}
+																	{@const valueColor =
+																		depBakeStatus === 'Succeeded'
+																			? 'green'
+																			: depBakeStatus === 'Failed'
+																				? 'red'
+																				: depBakeStatus === 'InProgress'
+																					? 'yellow'
+																					: 'gray'}
+																	<JoinedBadge
+																		label="Dependency"
+																		value={depBakeStatus}
+																		icon={DepStatusIcon}
+																		iconColor={depStatusInfo.color}
+																		{valueColor}
 																		size="small"
-																		class="flex items-center gap-1"
-																	>
-																		<ClockSolid class="h-3 w-3" />
-																		{formatTimeAgo(releaseCandidate.created, $now)}
-																	</Badge>
+																	/>
 																{/if}
-															</div>
+															{/if}
 														</div>
 													</div>
 												</div>
+												<!-- Action buttons on the right -->
 												<div class="flex flex-wrap items-center gap-2 sm:justify-end">
 													<Button
 														size="xs"
@@ -2068,6 +2027,54 @@
 															{/if}
 														{/snippet}
 													</Clipboard>
+													<!-- Blocked/Ready badge - far right -->
+													{#if rollout.status?.gatedReleaseCandidates
+														?.map((grc) => grc.tag)
+														.includes(version)}
+														<Badge color="green" size="small">Ready</Badge>
+													{:else}
+														{@const blockingGates = getBlockingGates(version)}
+														{#if blockingGates.length > 0}
+															<Badge color="yellow" size="small" class="cursor-help">
+																Blocked
+																<QuestionCircleOutline class="ml-1 h-3 w-3" />
+															</Badge>
+															<Popover class="max-w-sm" title="Blocked by Gates">
+																<div class="p-3">
+																	<div class="space-y-2">
+																		{#each blockingGates as gate}
+																			<div class="flex items-start gap-2">
+																				<ExclamationCircleSolid
+																					class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
+																				/>
+																				<div class="min-w-0 flex-1">
+																					<p
+																						class="text-sm font-medium text-gray-900 dark:text-white"
+																					>
+																						{getGatePrettyName(gate) ||
+																							gate.metadata?.name ||
+																							'Unknown Gate'}
+																					</p>
+																					{#if getGateDescription(gate)}
+																						<p class="text-xs text-gray-600 dark:text-gray-400">
+																							{getGateDescription(gate)}
+																						</p>
+																					{/if}
+																					{#if gate.status?.status}
+																						<p class="text-xs text-yellow-600 dark:text-yellow-400">
+																							Status: {gate.status.status}
+																						</p>
+																					{/if}
+																				</div>
+																			</div>
+																		{/each}
+																	</div>
+																</div>
+															</Popover>
+														{:else}
+															<Badge color="yellow" size="small">Blocked</Badge>
+														{/if}
+													{/if}
 												</div>
 											</div>
 										</div>
