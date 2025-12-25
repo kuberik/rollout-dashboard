@@ -13,7 +13,8 @@
 		ClockSolid,
 		ChevronDownOutline,
 		ArrowLeftOutline,
-		ArrowRightOutline
+		ArrowRightOutline,
+		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
 	import type { Node, Edge, SvelteFlowProvider } from '@xyflow/svelte';
 	import DeploymentNode from '$lib/components/DeploymentNode.svelte';
@@ -723,6 +724,59 @@
 		return status?.bakeStatus;
 	};
 
+	// Get version difference for a version relative to current environment's version
+	const getVersionDifferenceForVersion = (version: string): number | null => {
+		const currentEnvVersion = currentVersionsByEnv.get(currentEnvironment);
+		if (!currentEnvVersion) return null;
+
+		// If this is the current version, return null (will be marked as "Current")
+		if (version === currentEnvVersion) return null;
+
+		const versionIndex = new Map<string, number>();
+		availableVersions.forEach((v, idx) => {
+			versionIndex.set(v, idx);
+		});
+
+		const versionIdx = versionIndex.get(version);
+		const currentEnvIdx = versionIndex.get(currentEnvVersion);
+		if (versionIdx === undefined || currentEnvIdx === undefined) return null;
+
+		// versionIndex is lower for newer versions (newest = 0)
+		// So if versionIdx < currentEnvIdx, the version is ahead (newer)
+		// If versionIdx > currentEnvIdx, the version is behind (older)
+		return currentEnvIdx - versionIdx;
+	};
+
+	// Get version difference for an environment (like in DeploymentNode)
+	const getVersionDifference = (env: string): number | null => {
+		if (env === currentEnvironment) return null;
+		const envVersion = currentVersionsByEnv.get(env);
+		const currentEnvVersion = currentVersionsByEnv.get(currentEnvironment);
+		if (!envVersion || !currentEnvVersion) return null;
+
+		const versionIndex = new Map<string, number>();
+		availableVersions.forEach((v, idx) => {
+			versionIndex.set(v, idx);
+		});
+
+		const envVersionIdx = versionIndex.get(envVersion);
+		const currentEnvIdx = versionIndex.get(currentEnvVersion);
+		if (envVersionIdx === undefined || currentEnvIdx === undefined) return null;
+
+		// versionIndex is lower for newer versions (newest = 0)
+		// So if envVersionIdx < currentEnvIdx, the environment is ahead
+		// If envVersionIdx > currentEnvIdx, the environment is behind
+		return currentEnvIdx - envVersionIdx;
+	};
+
+	// Get environment URL
+	const getEnvironmentUrl = (env: string): string | null => {
+		if (env === currentEnvironment) return null;
+		const envInfo = environmentInfos.find((ei: EnvironmentInfo) => ei.environment === env);
+		if (!envInfo?.environmentUrl) return null;
+		return `${envInfo.environmentUrl}/environments`;
+	};
+
 	// Access the flow API
 	const { fitView } = useSvelteFlow();
 
@@ -853,17 +907,8 @@
 										onmouseleave={() => (hoveredVersion = null)}
 									>
 										<div class="flex min-h-[2.5rem] items-center px-2.5 py-2">
-											<!-- Version number with status icon and badge -->
+											<!-- Version number with badge -->
 											<div class="flex min-w-0 flex-1 items-center gap-2">
-												<div class="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center">
-													{#if v.dependencyBakeStatus}
-														<StatusIcon class="h-3.5 w-3.5 {statusInfo.color}" />
-													{:else}
-														<div
-															class="h-3.5 w-3.5 rounded-full border-2 border-gray-300 dark:border-gray-600"
-														></div>
-													{/if}
-												</div>
 												<div
 													class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
 													title={v.version}
@@ -876,9 +921,6 @@
 												size="small"
 												class="ml-3 flex flex-shrink-0 items-center gap-1"
 											>
-												{#if v.dependencyBakeStatus}
-													<StatusIcon class="h-2.5 w-2.5" />
-												{/if}
 												{badgeLabel}
 											</Badge>
 										</div>
@@ -949,102 +991,141 @@
 			</div>
 
 			<!-- Right: dots table and dependency graph -->
-			<div class="flex flex-1 flex-col overflow-hidden">
+			<div class="flex flex-1 flex-col">
 				<!-- Environment-Version Status Table -->
 				{#if tableVersions.length > 0 && graphEnvironments.length > 0}
-					<div class="border-b border-gray-200 px-2 pb-2 pt-4 dark:border-gray-700">
-						<div class="overflow-x-auto">
-							<table class="w-full text-xs">
-								<thead>
-									<tr>
-										<th
-											class="sticky left-0 z-10 bg-white px-1 py-0.5 text-left text-[9px] font-semibold text-gray-700 dark:bg-gray-900 dark:text-gray-300"
-										>
-											Environment
-										</th>
-										<!-- Older indicator column -->
-										<th class="w-12 px-1 py-0.5 text-center">
-											<div class="flex items-center justify-center gap-0.5">
-												<ArrowLeftOutline class="h-3 w-3 text-gray-400 dark:text-gray-500" />
-												<span class="text-[9px] font-medium text-gray-500 dark:text-gray-400"
-													>Older</span
+					<div class="border-b border-gray-200 px-3 pb-3 pt-5 dark:border-gray-700">
+						<div class="flex w-full text-sm">
+							<!-- Left: Environment column -->
+							<div class="min-w-[120px] flex-1">
+								<div class="px-2 py-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+									Environment
+								</div>
+								{#each graphEnvironments as env}
+									{@const envUrl = getEnvironmentUrl(env)}
+									<div class="px-2 py-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+										<div class="flex items-center gap-1.5">
+											<span class="uppercase">{env}</span>
+											{#if envUrl}
+												<a
+													href={envUrl}
+													target="_blank"
+													rel="noopener noreferrer"
+													class="flex items-center text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+													title="Open environment in new window"
 												>
-											</div>
-										</th>
-										{#each tableVersions as version}
-											<th
-												class="min-w-[0.75rem] px-0 py-0.5 text-center"
-												onmouseenter={() => (hoveredVersion = version)}
-												onmouseleave={() => (hoveredVersion = null)}
-											>
-												<div class="h-3">
+													<ArrowUpRightFromSquareOutline class="h-3 w-3" />
+												</a>
+											{/if}
+										</div>
+									</div>
+								{/each}
+							</div>
+							<!-- Right: Scrollable version columns -->
+							<div class="w-fit">
+								<!-- Header row -->
+								<div
+									class="grid w-full text-xs font-semibold text-gray-700 dark:text-gray-300"
+									style="grid-template-columns: 3rem repeat({tableVersions.length}, minmax(4rem, 1fr)) 3rem;"
+								>
+									<!-- Older indicator column -->
+									<div class="px-1 py-1 text-center">
+										<div class="flex items-center justify-center gap-0.5">
+											<ArrowLeftOutline class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+											<span class="font-medium text-gray-500 dark:text-gray-400">Older</span>
+										</div>
+									</div>
+									{#each tableVersions as version}
+										{@const versionDiff = getVersionDifferenceForVersion(version)}
+										{@const isCurrentVersion =
+											version === currentVersionsByEnv.get(currentEnvironment)}
+										<div
+											role="presentation"
+											class="px-1 py-1 text-center"
+											onmouseenter={() => (hoveredVersion = version)}
+											onmouseleave={() => (hoveredVersion = null)}
+										>
+											<div class="flex flex-col items-center gap-1">
+												<div class="h-4">
 													{#if hoveredVersion === version}
 														<ChevronDownOutline
-															class="mx-auto h-3 w-3 animate-bounce text-blue-500"
+															class="mx-auto h-4 w-4 animate-bounce text-blue-500"
 														/>
 													{/if}
 												</div>
-											</th>
-										{/each}
-										<!-- Newer indicator column -->
-										<th class="w-12 px-1 py-0.5 text-center">
-											<div class="flex items-center justify-center gap-0.5">
-												<span class="text-[9px] font-medium text-gray-500 dark:text-gray-400"
-													>Newer</span
-												>
-												<ArrowRightOutline class="h-3 w-3 text-gray-400 dark:text-gray-500" />
+												{#if isCurrentVersion}
+													<Badge
+														color="blue"
+														size="small"
+														class="whitespace-nowrap text-[10px] font-medium"
+													>
+														Current
+													</Badge>
+												{:else if versionDiff !== null && versionDiff !== 0}
+													<Badge
+														color={versionDiff < 0 ? 'green' : 'yellow'}
+														size="small"
+														class="whitespace-nowrap text-[10px] font-medium"
+													>
+														{versionDiff < 0 ? `+${Math.abs(versionDiff)}` : `-${versionDiff}`}
+													</Badge>
+												{/if}
 											</div>
-										</th>
-									</tr>
-								</thead>
-								<tbody>
-									{#each graphEnvironments as env}
-										<tr>
-											<td
-												class="sticky left-0 z-10 bg-white px-1 py-0.5 text-[9px] font-medium text-gray-700 dark:bg-gray-900 dark:text-gray-300"
-											>
-												{env}
-											</td>
-											<!-- Empty cell for older indicator -->
-											<td class="w-12 px-1 py-0.5"></td>
-											{#each tableVersions as version}
-												{@const status = getVersionStatusInEnv(version, env)}
-												{@const statusInfo = getBakeStatusIcon(status)}
-												<td
-													class="min-w-[0.75rem] px-0 py-0.5 text-center"
-													onmouseenter={() => (hoveredVersion = version)}
-													onmouseleave={() => (hoveredVersion = null)}
-												>
-													{#if status}
-														{@const dotColor = statusInfo.color.includes('green')
-															? 'green'
-															: statusInfo.color.includes('red')
-																? 'red'
-																: statusInfo.color.includes('yellow')
-																	? 'yellow'
-																	: 'gray'}
-														<div
-															class="mx-auto h-1.5 w-1.5 rounded-full transition-all {dotColor ===
-															'green'
-																? 'bg-green-500'
-																: dotColor === 'red'
-																	? 'bg-red-500'
-																	: dotColor === 'yellow'
-																		? 'bg-yellow-500'
-																		: 'bg-gray-400'} {hoveredVersion === version
-																? `pulse-glow-${dotColor}`
-																: ''}"
-															title="{env}: {status}"
-														></div>
-													{/if}
-												</td>
-											{/each}
-											<!-- Empty cell for newer indicator -->
-											<td class="w-12 px-1 py-0.5"></td>
-										</tr>
+										</div>
 									{/each}
-								</tbody>
-							</table>
+									<!-- Newer indicator column -->
+									<div class="px-1 py-1 text-center">
+										<div class="flex items-center justify-center gap-0.5">
+											<span class="font-medium text-gray-500 dark:text-gray-400">Newer</span>
+											<ArrowRightOutline class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+										</div>
+									</div>
+								</div>
+								<!-- Body rows -->
+								{#each graphEnvironments as env}
+									<div
+										class="grid w-full"
+										style="grid-template-columns: 3rem repeat({tableVersions.length}, minmax(4rem, 1fr)) 3rem;"
+									>
+										<!-- Empty cell for older indicator -->
+										<div class="px-1 py-1"></div>
+										{#each tableVersions as version}
+											{@const status = getVersionStatusInEnv(version, env)}
+											{@const statusInfo = getBakeStatusIcon(status)}
+											<div
+												role="presentation"
+												class="px-1 py-1 text-center"
+												onmouseenter={() => (hoveredVersion = version)}
+												onmouseleave={() => (hoveredVersion = null)}
+											>
+												{#if status}
+													{@const dotColor = statusInfo.color.includes('green')
+														? 'green'
+														: statusInfo.color.includes('red')
+															? 'red'
+															: statusInfo.color.includes('yellow')
+																? 'yellow'
+																: 'gray'}
+													<div
+														class="mx-auto h-2 w-2 rounded-full transition-all {dotColor === 'green'
+															? 'bg-green-500'
+															: dotColor === 'red'
+																? 'bg-red-500'
+																: dotColor === 'yellow'
+																	? 'bg-yellow-500'
+																	: 'bg-gray-400'} {hoveredVersion === version
+															? `pulse-glow-${dotColor}`
+															: ''}"
+														title="{env}: {status}"
+													></div>
+												{/if}
+											</div>
+										{/each}
+										<!-- Empty cell for newer indicator -->
+										<div class="px-1 py-1"></div>
+									</div>
+								{/each}
+							</div>
 						</div>
 					</div>
 				{/if}
