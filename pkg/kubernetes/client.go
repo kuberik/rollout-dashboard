@@ -184,10 +184,17 @@ func (c *Client) UpdateRolloutVersion(ctx context.Context, namespace, name strin
 	}
 
 	// Set annotations if explanation is provided
+	annotations := map[string]string{}
 	if explanation != "" {
-		annotations := map[string]string{
-			"rollout.kuberik.com/deploy-message": explanation,
-		}
+		annotations["rollout.kuberik.com/deploy-message"] = explanation
+	}
+
+	// Get user info and set deploy-user annotation if available and not a service account
+	if username, isServiceAccount, err := c.GetCurrentUserIdentity(ctx); err == nil && !isServiceAccount && username != "" {
+		annotations["rollout.kuberik.com/deploy-user"] = username
+	}
+
+	if len(annotations) > 0 {
 		patch.SetAnnotations(annotations)
 	}
 
@@ -296,6 +303,11 @@ func (c *Client) AddForceDeployAnnotation(ctx context.Context, namespace, name s
 		annotations["rollout.kuberik.com/deploy-message"] = message
 	}
 
+	// Get user info and set deploy-user annotation if available and not a service account
+	if username, isServiceAccount, err := c.GetCurrentUserIdentity(ctx); err == nil && !isServiceAccount && username != "" {
+		annotations["rollout.kuberik.com/deploy-user"] = username
+	}
+
 	patch.SetAnnotations(annotations)
 
 	// Use server-side apply to update only the annotation
@@ -329,6 +341,11 @@ func (c *Client) ChangeVersion(ctx context.Context, namespace, name string, vers
 	annotations := map[string]string{}
 	if message != "" {
 		annotations["rollout.kuberik.com/deploy-message"] = message
+	}
+
+	// Get user info and set deploy-user annotation if available and not a service account
+	if username, isServiceAccount, err := c.GetCurrentUserIdentity(ctx); err == nil && !isServiceAccount && username != "" {
+		annotations["rollout.kuberik.com/deploy-user"] = username
 	}
 
 	if pin {

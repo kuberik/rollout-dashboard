@@ -247,7 +247,7 @@ func main() {
 			}
 
 			// Update the rollout with the new version and explanation
-			updatedRollout, err := k8sClient.UpdateRolloutVersion(context.Background(), namespace, name, pinRequest.Version, explanation)
+			updatedRollout, err := k8sClient.UpdateRolloutVersion(c.Request.Context(), namespace, name, pinRequest.Version, explanation)
 			if err != nil {
 				log.Printf("Error updating rollout: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{
@@ -300,7 +300,7 @@ func main() {
 			}
 
 			// Add the force-deploy annotation with the specific version and optional message
-			updatedRollout, err := k8sClient.AddForceDeployAnnotation(context.Background(), namespace, name, forceDeployRequest.Version, message)
+			updatedRollout, err := k8sClient.AddForceDeployAnnotation(c.Request.Context(), namespace, name, forceDeployRequest.Version, message)
 			if err != nil {
 				log.Printf("Error adding force-deploy annotation: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{
@@ -394,7 +394,7 @@ func main() {
 				}
 			}
 
-			updatedRollout, err := k8sClient.ChangeVersion(context.Background(), namespace, name, req.Version, req.Pin, message)
+			updatedRollout, err := k8sClient.ChangeVersion(c.Request.Context(), namespace, name, req.Version, req.Pin, message)
 			if err != nil {
 				log.Printf("Error changing version: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{
