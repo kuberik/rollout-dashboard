@@ -56,6 +56,7 @@
 	let showDeployModal = $state(false);
 	let selectedVersionTag = $state<string | null>(null);
 	let selectedVersionDisplay = $state<string | null>(null);
+	let deployExplanation = $state('');
 
 	function getDisplayVersion(versionInfo: {
 		version?: string;
@@ -324,6 +325,12 @@
 															onclick={() => {
 																selectedVersionTag = entry.version.tag;
 																selectedVersionDisplay = getDisplayVersion(entry.version);
+																if (rollout?.status?.history && rollout.status.history.length > 0) {
+																	const currentVersion = rollout.status.history[0].version;
+																	const currentVersionName = getDisplayVersion(currentVersion);
+																	const targetVersionName = getDisplayVersion(entry.version);
+																	deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+																}
 																showDeployModal = true;
 															}}
 														>
@@ -377,6 +384,7 @@
 			{selectedVersionTag}
 			{selectedVersionDisplay}
 			isPinVersionMode={true}
+			initialExplanation={deployExplanation}
 		/>
 	{/if}
 </div>
