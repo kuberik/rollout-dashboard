@@ -13,7 +13,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-containerregistry v0.20.6
 	github.com/kuberik/environment-controller v0.0.0
-	github.com/kuberik/rollout-controller v0.5.0
+	github.com/kuberik/rollout-controller v0.5.1-0.20251226192013-e2abaa863f57
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	k8s.io/api v0.34.1
 	k8s.io/apimachinery v0.34.1

@@ -61,7 +61,9 @@
 		CalendarWeekSolid,
 		QuestionCircleOutline,
 		HeartSolid,
-		CubesStackedSolid
+		CubesStackedSolid,
+		UserSolid,
+		CogSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -1223,6 +1225,22 @@
 													></div>
 												</div>
 											{/snippet}
+											{#if latestEntry.triggeredBy}
+												<div
+													class="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+												>
+													{#if latestEntry.triggeredBy.kind === 'User'}
+														<UserSolid class="h-3 w-3" />
+													{:else}
+														<CogSolid class="h-3 w-3" />
+													{/if}
+													<span>
+														Triggered by {latestEntry.triggeredBy.kind === 'User'
+															? latestEntry.triggeredBy.name
+															: 'System'}
+													</span>
+												</div>
+											{/if}
 											{#if latestEntry.message}
 												<Blockquote
 													class="mt-2 break-words text-sm text-gray-600 dark:text-gray-400"

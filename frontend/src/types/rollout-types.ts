@@ -282,6 +282,23 @@ export interface components {
                      * @description Timestamp is the time when the deployment occurred.
                      */
                     timestamp: string;
+                    /** @description TriggeredBy indicates what triggered this deployment.
+                     *     Kind can be "User" for manual deployments triggered by a user, or "System" for automatic deployments.
+                     *     Name contains the name of the user or system that triggered the deployment.
+                     *     For user-triggered deployments, this is extracted from the "rollout.kuberik.com/deploy-user" annotation.
+                     *     For system-triggered deployments, this is typically "rollout-controller". */
+                    triggeredBy?: {
+                        /**
+                         * @description Kind indicates the type of trigger: "User" for manual deployments triggered by a user,
+                         *     or "System" for automatic deployments triggered by the rollout controller.
+                         * @enum {string}
+                         */
+                        kind: "User" | "System";
+                        /** @description Name contains the name of the user or system that triggered the deployment.
+                         *     For user-triggered deployments, this is extracted from the "rollout.kuberik.com/deploy-user" annotation.
+                         *     For system-triggered deployments, this is typically "rollout-controller". */
+                        name: string;
+                    };
                     /** @description Version is the version information that was deployed. */
                     version: {
                         /**

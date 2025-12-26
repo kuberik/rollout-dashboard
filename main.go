@@ -237,15 +237,6 @@ func main() {
 				}
 			}
 
-			// Append user information to the explanation if available and not a service account
-			if userInfo, err := k8sClient.FormatUserInfo(c.Request.Context()); err == nil && userInfo != "" {
-				if explanation != "" {
-					explanation = explanation + "\n" + userInfo
-				} else {
-					explanation = userInfo
-				}
-			}
-
 			// Update the rollout with the new version and explanation
 			updatedRollout, err := k8sClient.UpdateRolloutVersion(c.Request.Context(), namespace, name, pinRequest.Version, explanation)
 			if err != nil {
@@ -288,15 +279,6 @@ func main() {
 			message := forceDeployRequest.Message
 			if message == "" {
 				message = fmt.Sprintf("Force deploy version %s", forceDeployRequest.Version)
-			}
-
-			// Append user information to the message if available and not a service account
-			if userInfo, err := k8sClient.FormatUserInfo(c.Request.Context()); err == nil && userInfo != "" {
-				if message != "" {
-					message = message + "\n" + userInfo
-				} else {
-					message = userInfo
-				}
 			}
 
 			// Add the force-deploy annotation with the specific version and optional message
@@ -382,15 +364,6 @@ func main() {
 					message = "Pinned version"
 				} else {
 					message = "Force deploy"
-				}
-			}
-
-			// Append user information to the message if available and not a service account
-			if userInfo, err := k8sClient.FormatUserInfo(c.Request.Context()); err == nil && userInfo != "" {
-				if message != "" {
-					message = message + "\n" + userInfo
-				} else {
-					message = userInfo
 				}
 			}
 

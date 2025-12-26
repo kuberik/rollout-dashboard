@@ -18,7 +18,9 @@
 		CheckOutline,
 		ClipboardCleanSolid,
 		CodePullRequestSolid,
-		UndoOutline
+		UndoOutline,
+		UserSolid,
+		CogSolid
 	} from 'flowbite-svelte-icons';
 	import { formatTimeAgo, formatDuration, formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
@@ -237,6 +239,22 @@
 															<ClockSolid class="h-3 w-3" />
 															<span>{formatDate(entry.timestamp)}</span>
 														</div>
+														{#if entry.triggeredBy}
+															<div
+																class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+															>
+																{#if entry.triggeredBy.kind === 'User'}
+																	<UserSolid class="h-3 w-3" />
+																{:else}
+																	<CogSolid class="h-3 w-3" />
+																{/if}
+																<span>
+																	Triggered by {entry.triggeredBy.kind === 'User'
+																		? entry.triggeredBy.name
+																		: 'System'}
+																</span>
+															</div>
+														{/if}
 														{#if entry.message}
 															<Blockquote
 																class="break-words text-sm text-gray-600 dark:text-gray-400"
