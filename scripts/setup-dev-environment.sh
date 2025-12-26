@@ -13,7 +13,7 @@ fi
 kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
 helm repo add openkruise https://openkruise.github.io/charts/
 helm repo update
-helm template openkruise/kruise-rollout --version 0.6.1 | kubectl apply -f -
+helm template openkruise/kruise-rollout --version 0.6.2 | kubectl apply -f -
 
 kubectl create ns envoy-gateway-system -o yaml --dry-run=client | kubectl apply -f -
 kubectl apply --server-side --force-conflicts -f https://github.com/envoyproxy/gateway/releases/download/v1.6.0/install.yaml
