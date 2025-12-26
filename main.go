@@ -238,20 +238,12 @@ func main() {
 			}
 
 			// Append user information to the explanation if available and not a service account
-			log.Printf("[Pin Debug] Original explanation: %q", explanation)
 			if userInfo, err := k8sClient.FormatUserInfo(c.Request.Context()); err == nil && userInfo != "" {
-				log.Printf("[Pin Debug] User info retrieved: %q", userInfo)
 				if explanation != "" {
 					explanation = explanation + "\n" + userInfo
 				} else {
 					explanation = userInfo
 				}
-				log.Printf("[Pin Debug] Final explanation with user info: %q", explanation)
-			} else if err != nil {
-				// Log error but don't fail the request
-				log.Printf("[Pin Debug] Warning: Failed to get user identity: %v", err)
-			} else {
-				log.Printf("[Pin Debug] User info is empty (likely service account or no user info available)")
 			}
 
 			// Update the rollout with the new version and explanation
@@ -299,20 +291,12 @@ func main() {
 			}
 
 			// Append user information to the message if available and not a service account
-			log.Printf("[Force Deploy Debug] Original message: %q", message)
 			if userInfo, err := k8sClient.FormatUserInfo(c.Request.Context()); err == nil && userInfo != "" {
-				log.Printf("[Force Deploy Debug] User info retrieved: %q", userInfo)
 				if message != "" {
 					message = message + "\n" + userInfo
 				} else {
 					message = userInfo
 				}
-				log.Printf("[Force Deploy Debug] Final message with user info: %q", message)
-			} else if err != nil {
-				// Log error but don't fail the request
-				log.Printf("[Force Deploy Debug] Warning: Failed to get user identity: %v", err)
-			} else {
-				log.Printf("[Force Deploy Debug] User info is empty (likely service account or no user info available)")
 			}
 
 			// Add the force-deploy annotation with the specific version and optional message
@@ -402,20 +386,12 @@ func main() {
 			}
 
 			// Append user information to the message if available and not a service account
-			log.Printf("[Deploy Debug] Original message: %q", message)
 			if userInfo, err := k8sClient.FormatUserInfo(c.Request.Context()); err == nil && userInfo != "" {
-				log.Printf("[Deploy Debug] User info retrieved: %q", userInfo)
 				if message != "" {
 					message = message + "\n" + userInfo
 				} else {
 					message = userInfo
 				}
-				log.Printf("[Deploy Debug] Final message with user info: %q", message)
-			} else if err != nil {
-				// Log error but don't fail the request
-				log.Printf("[Deploy Debug] Warning: Failed to get user identity: %v", err)
-			} else {
-				log.Printf("[Deploy Debug] User info is empty (likely service account or no user info available)")
 			}
 
 			updatedRollout, err := k8sClient.ChangeVersion(context.Background(), namespace, name, req.Version, req.Pin, message)
