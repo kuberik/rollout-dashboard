@@ -2595,6 +2595,7 @@
 	selectedVersionTag={selectedVersion}
 	selectedVersionDisplay={selectedVersionDisplay()}
 	{isPinVersionMode}
+	initialExplanation={deployExplanation}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;

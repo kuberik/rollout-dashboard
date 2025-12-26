@@ -1,3 +1,5 @@
+<svelte:options runes={true} />
+
 <script lang="ts">
 	import type { Rollout } from '../../types';
 	import { Modal, Alert, Badge, Button, Toggle, Toast, Tooltip } from 'flowbite-svelte';
@@ -7,30 +9,60 @@
 		getDisplayVersion as utilsGetDisplayVersion
 	} from '$lib/utils';
 
-	export let open: boolean;
-	export let rollout: Rollout | null;
-	export let selectedVersionTag: string | null;
-	// Optional nicer display version (e.g., semver) if caller has it; falls back to tag
-	export let selectedVersionDisplay: string | null = null;
-	// If true, force pin mode and disable toggle (used for rollback)
-	export let isPinVersionMode = false;
+	interface Props {
+		open: boolean;
+		rollout: Rollout | null;
+		selectedVersionTag: string | null;
+		// Optional nicer display version (e.g., semver) if caller has it; falls back to tag
+		selectedVersionDisplay?: string | null;
+		// If true, force pin mode and disable toggle (used for rollback)
+		isPinVersionMode?: boolean;
+		// Optional initial explanation (e.g., for rollback)
+		initialExplanation?: string;
+		// Callbacks
+		onSuccess?: (message: string) => void;
+		onError?: (message: string) => void;
+	}
 
-	// Callbacks
-	export let onSuccess: (message: string) => void = () => {};
-	export let onError: (message: string) => void = () => {};
+	let {
+		open = $bindable(),
+		rollout,
+		selectedVersionTag,
+		selectedVersionDisplay = null,
+		isPinVersionMode = false,
+		initialExplanation = '',
+		onSuccess = () => {},
+		onError = () => {}
+	}: Props = $props();
 
 	// Internal form state
-	let pinVersionToggle = false;
-	let deployExplanation = '';
-	let deployConfirmationVersion = '';
+	let pinVersionToggle = $state(false);
+	let deployExplanation = $state('');
+	let deployConfirmationVersion = $state('');
+
+	// Set initial explanation when modal opens or initialExplanation changes
+	$effect(() => {
+		if (open && initialExplanation) {
+			deployExplanation = initialExplanation;
+		}
+	});
 
 	// Toast (fallback if parent doesn't provide callbacks)
-	let showLocalToast = false;
-	let localToastMessage = '';
-	let localToastType: 'success' | 'error' = 'success';
+	let showLocalToast = $state(false);
+	let localToastMessage = $state('');
+	let localToastType = $state<'success' | 'error'>('success');
 
-	$: pinVersionToggle = isPinVersionMode || rollout?.spec?.wantedVersion !== undefined;
-	$: isPinVersionToggleDisabled = isPinVersionMode || hasForceDeployAnnotation(rollout as any);
+	const pinVersionToggleComputed = $derived(
+		isPinVersionMode || rollout?.spec?.wantedVersion !== undefined
+	);
+	const isPinVersionToggleDisabled = $derived(
+		isPinVersionMode || hasForceDeployAnnotation(rollout as any)
+	);
+
+	// Sync computed value to state
+	$effect(() => {
+		pinVersionToggle = pinVersionToggleComputed;
+	});
 
 	function getDisplayVersion(): string {
 		if (!selectedVersionTag) return '';

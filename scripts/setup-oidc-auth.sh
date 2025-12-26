@@ -111,6 +111,7 @@ spec:
       name: rollout-dashboard-oidc
     redirectURL: ${DASHBOARD_URL}/oauth2/callback
     logoutPath: /oauth2/sign_out
+    forwardAccessToken: true
     cookieNames:
       accessToken: ${ACCESS_TOKEN_COOKIE}
       idToken: ${ID_TOKEN_COOKIE}

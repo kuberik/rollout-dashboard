@@ -19,75 +19,86 @@ func ExtractTokenMiddleware() gin.HandlerFunc {
 		var token string
 		var tokenSource string
 
-		// Envoy Gateway OIDC stores tokens in cookies with configurable names
-		// Default cookie names are "access_token" and "id_token" (as configured in SecurityPolicy)
-		// Kubernetes API server requires ID token (JWT) for OIDC authentication, not access token
+		// With forwardAccessToken: true in SecurityPolicy, Envoy Gateway forwards the access token
+		// in the standard Authorization header. This is the preferred method.
+		// Fallback to cookies if Authorization header is not present.
 		accessTokenCookie := "access_token"
 		idTokenCookie := "id_token"
 
-		// Use ID token for Kubernetes API calls (required - it's a verifiable JWT)
-		if cookie, err := c.Cookie(idTokenCookie); err == nil && cookie != "" {
-			token = cookie
-			tokenSource = "id_token cookie"
-			log.Printf("[OIDC Debug] ID token extracted from %s cookie (length: %d)", idTokenCookie, len(token))
-			// Log full token for debugging (temporary)
-			log.Printf("[OIDC Debug] Full ID token: %s", cookie)
+		// First, try Authorization header (preferred when forwardAccessToken is enabled)
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			log.Printf("[OIDC Debug] Authorization header present: %s...", authHeader[:min(20, len(authHeader))])
+			// Extract Bearer token
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				token = parts[1]
+				tokenSource = "Authorization header"
+				log.Printf("[OIDC Debug] Token extracted from Authorization header (length: %d)", len(token))
+				// Log full token for debugging
+				log.Printf("[OIDC Debug] Full Authorization header token: %s", token)
+			} else {
+				log.Printf("[OIDC Debug] Authorization header format not recognized (prefix: %s)", parts[0])
+				log.Printf("[OIDC Debug] Full Authorization header: %s", authHeader)
+			}
 		} else {
-			log.Printf("[OIDC Debug] %s cookie not found or empty (error: %v)", idTokenCookie, err)
+			log.Printf("[OIDC Debug] No Authorization header found")
 		}
 
-		// Also log access token for comparison (temporary debugging)
-		if accessCookie, err := c.Cookie(accessTokenCookie); err == nil && accessCookie != "" {
-			log.Printf("[OIDC Debug] Full access token: %s", accessCookie)
-		}
-
-		// Fallback to access token if ID token not found (shouldn't happen, but just in case)
-		if token == "" {
-			if cookie, err := c.Cookie(accessTokenCookie); err == nil && cookie != "" {
-				token = cookie
-				tokenSource = "access_token cookie"
-				log.Printf("[OIDC Debug] Access token extracted from %s cookie (length: %d) - note: ID token preferred for K8s API", accessTokenCookie, len(token))
-			} else {
-				log.Printf("[OIDC Debug] %s cookie not found or empty (error: %v)", accessTokenCookie, err)
-			}
-		}
-
-		// Fallback to Authorization header if cookies not found
-		if token == "" {
-			authHeader := c.GetHeader("Authorization")
-			if authHeader != "" {
-				log.Printf("[OIDC Debug] Authorization header present: %s...", authHeader[:min(20, len(authHeader))])
-				// Extract Bearer token
-				parts := strings.SplitN(authHeader, " ", 2)
-				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-					token = parts[1]
-					tokenSource = "Authorization header"
-					log.Printf("[OIDC Debug] Token extracted from Authorization header (length: %d)", len(token))
-				} else {
-					log.Printf("[OIDC Debug] Authorization header format not recognized (prefix: %s)", parts[0])
-				}
-			} else {
-				log.Printf("[OIDC Debug] No Authorization header found")
-			}
-		}
-
-		// Log all cookies for debugging
+		// Check and log all cookies for debugging
 		cookies := c.Request.Cookies()
 		if len(cookies) > 0 {
 			log.Printf("[OIDC Debug] Request has %d cookies:", len(cookies))
 			for _, cookie := range cookies {
 				log.Printf("[OIDC Debug]   Cookie: %s (value length: %d)", cookie.Name, len(cookie.Value))
+				// Log full cookie values for token-related cookies
+				if cookie.Name == idTokenCookie || cookie.Name == accessTokenCookie {
+					log.Printf("[OIDC Debug]   Full %s cookie value: %s", cookie.Name, cookie.Value)
+				}
 			}
 		} else {
 			log.Printf("[OIDC Debug] No cookies in request")
 		}
 
+		// Fallback to ID token cookie if Authorization header not found
+		// Kubernetes API server requires ID token (JWT) for OIDC authentication
+		if token == "" {
+			if cookie, err := c.Cookie(idTokenCookie); err == nil && cookie != "" {
+				token = cookie
+				tokenSource = "id_token cookie"
+				log.Printf("[OIDC Debug] ID token extracted from %s cookie (length: %d)", idTokenCookie, len(token))
+				// Log full token for debugging
+				log.Printf("[OIDC Debug] Full ID token from cookie: %s", cookie)
+			} else {
+				log.Printf("[OIDC Debug] %s cookie not found or empty (error: %v)", idTokenCookie, err)
+			}
+		}
+
+		// Fallback to access token cookie if ID token not found
+		if token == "" {
+			if cookie, err := c.Cookie(accessTokenCookie); err == nil && cookie != "" {
+				token = cookie
+				tokenSource = "access_token cookie"
+				log.Printf("[OIDC Debug] Access token extracted from %s cookie (length: %d) - note: ID token preferred for K8s API", accessTokenCookie, len(token))
+				// Log full token for debugging
+				log.Printf("[OIDC Debug] Full access token from cookie: %s", cookie)
+			} else {
+				log.Printf("[OIDC Debug] %s cookie not found or empty (error: %v)", accessTokenCookie, err)
+			}
+		}
+
 		// Log all headers that might contain tokens
-		log.Printf("[OIDC Debug] Checking headers:")
+		log.Printf("[OIDC Debug] Checking all relevant headers:")
 		for name, values := range c.Request.Header {
-			if strings.Contains(strings.ToLower(name), "auth") || strings.Contains(strings.ToLower(name), "token") || strings.Contains(strings.ToLower(name), "cookie") {
+			nameLower := strings.ToLower(name)
+			if strings.Contains(nameLower, "auth") || strings.Contains(nameLower, "token") || strings.Contains(nameLower, "cookie") {
 				for _, value := range values {
-					log.Printf("[OIDC Debug]   %s: %s...", name, value[:min(50, len(value))])
+					// Log full header value for Authorization header
+					if nameLower == "authorization" {
+						log.Printf("[OIDC Debug]   %s: %s", name, value)
+					} else {
+						log.Printf("[OIDC Debug]   %s: %s...", name, value[:min(50, len(value))])
+					}
 				}
 			}
 		}
