@@ -64,6 +64,21 @@ kubectl create clusterrolebinding oidc-admin \
   --user=admin@example.com \
   --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
 
+kubectl create clusterrolebinding oidc-view \
+  --clusterrole=view \
+  --user=admin@example.com \
+  --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
+
+kubectl create clusterrolebinding oidc-rollout-viewer \
+  --clusterrole=rollout-controller-rollout-viewer-role \
+  --user=admin@example.com \
+  --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
+
+kubectl -n hello-world-prod create rolebinding oidc-admin \
+  --clusterrole=cluster-admin \
+  --user=admin@example.com \
+  --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
+
 
 echo ""
 echo "✓ kubectl is now configured to use OIDC authentication"

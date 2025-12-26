@@ -34,26 +34,69 @@ import (
 
 type Client struct {
 	client client.Client
+	config *rest.Config // Store REST config for SelfSubjectAccessReview
 }
 
+// NewClient creates a Kubernetes client using service account credentials (in-cluster) or kubeconfig
 func NewClient() (*Client, error) {
+	return NewClientWithToken("")
+}
+
+// NewClientWithToken creates a Kubernetes client using the provided OIDC token
+// If token is empty, falls back to service account credentials (in-cluster) or kubeconfig
+func NewClientWithToken(token string) (*Client, error) {
 	var config *rest.Config
 	var err error
 
-	// First try in-cluster config
-	config, err = rest.InClusterConfig()
-	if err != nil {
-		// If in-cluster config fails, try local kubeconfig
-		var kubeconfig string
-		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = filepath.Join(home, ".kube", "config")
-		} else {
-			kubeconfig = os.Getenv("KUBECONFIG")
+	// If token is provided, use it for authentication
+	if token != "" {
+		// First try in-cluster config to get the API server URL and CA
+		inClusterConfig, err := rest.InClusterConfig()
+		if err != nil {
+			// If in-cluster config fails, try local kubeconfig
+			var kubeconfig string
+			if home := homedir.HomeDir(); home != "" {
+				kubeconfig = filepath.Join(home, ".kube", "config")
+			} else {
+				kubeconfig = os.Getenv("KUBECONFIG")
+			}
+
+			inClusterConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
+			}
 		}
 
-		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		// Create config with OIDC token
+		config = &rest.Config{
+			Host:            inClusterConfig.Host,
+			APIPath:         inClusterConfig.APIPath,
+			ContentConfig:   inClusterConfig.ContentConfig,
+			BearerToken:     token,
+			BearerTokenFile: "", // Clear BearerTokenFile when using BearerToken
+			TLSClientConfig: inClusterConfig.TLSClientConfig,
+			UserAgent:       inClusterConfig.UserAgent,
+			QPS:             inClusterConfig.QPS,
+			Burst:           inClusterConfig.Burst,
+			Timeout:         inClusterConfig.Timeout,
+		}
+	} else {
+		// No token provided, use default authentication (service account or kubeconfig)
+		// First try in-cluster config
+		config, err = rest.InClusterConfig()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
+			// If in-cluster config fails, try local kubeconfig
+			var kubeconfig string
+			if home := homedir.HomeDir(); home != "" {
+				kubeconfig = filepath.Join(home, ".kube", "config")
+			} else {
+				kubeconfig = os.Getenv("KUBECONFIG")
+			}
+
+			config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
+			}
 		}
 	}
 
@@ -89,7 +132,7 @@ func NewClient() (*Client, error) {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return &Client{client: cl}, nil
+	return &Client{client: cl, config: config}, nil
 }
 
 func (c *Client) GetRollouts(ctx context.Context, namespace string) (*rolloutv1alpha1.RolloutList, error) {

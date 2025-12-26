@@ -15,6 +15,10 @@ helm repo add openkruise https://openkruise.github.io/charts/
 helm repo update
 helm template openkruise/kruise-rollout --version 0.6.1 | kubectl apply -f -
 
+kubectl create ns envoy-gateway-system -o yaml --dry-run=client | kubectl apply -f -
+kubectl apply --server-side --force-conflicts -f https://github.com/envoyproxy/gateway/releases/download/v1.6.0/install.yaml
+kubectl wait --for=condition=Available --timeout=300s deployment/envoy-gateway -n envoy-gateway-system
+
 kubectl create ns cert-manager -o yaml --dry-run=client | kubectl apply -f -
 helm template cert-manager oci://quay.io/jetstack/charts/cert-manager --namespace cert-manager \
   --set config.apiVersion="controller.config.cert-manager.io/v1alpha1" \
@@ -22,9 +26,28 @@ helm template cert-manager oci://quay.io/jetstack/charts/cert-manager --namespac
   --set installCRDs="true" \
   --set config.enableGatewayAPI=true | kubectl apply -f -
 
-kubectl create ns envoy-gateway-system -o yaml --dry-run=client | kubectl apply -f -
-kubectl apply --server-side --force-conflicts -f https://github.com/envoyproxy/gateway/releases/download/v1.6.0/install.yaml
-kubectl wait --for=condition=Available --timeout=300s deployment/envoy-gateway -n envoy-gateway-system
+kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
+
+helm template trust-manager oci://quay.io/jetstack/charts/trust-manager \
+  --namespace cert-manager | kubectl apply -f -
+
+kubectl wait --for=condition=Available --timeout=300s deployment/trust-manager -n cert-manager
+
+kubectl apply -f - <<EOF
+apiVersion: trust.cert-manager.io/v1alpha1
+kind: Bundle
+metadata:
+  name: custom-ca  # The bundle name will also be used for the target
+spec:
+  sources:
+  - useDefaultCAs: true
+  - configMap:
+      name: "dex-ca-cert"
+      key: "ca.crt"
+  target:
+    configMap:
+      key: "ca-certificates.crt"
+EOF
 
 # Apply rollout CRDs
 kubectl apply -f https://raw.githubusercontent.com/DataDog/datadog-operator/refs/heads/main/config/crd/bases/v1/datadoghq.com_datadogmonitors.yaml
@@ -76,6 +99,23 @@ spec:
                   port: 443
                   protocol: TCP
                   nodePort: 30951
+      envoyDeployment:
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: envoy
+                    volumeMounts:
+                    - name: custom-ca
+                      mountPath: /etc/ssl/certs/ca-certificates.crt # Overrides system bundle
+                      subPath: ca-certificates.crt
+                  volumes:
+                  - name: custom-ca
+                    configMap:
+                      name: custom-ca
 EOF
 
 # Create Gateway

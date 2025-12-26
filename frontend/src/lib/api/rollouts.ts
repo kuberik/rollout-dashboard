@@ -75,3 +75,46 @@ export function rolloutsListQueryOptions({
         ...options
     };
 }
+
+export type PermissionsResponse = {
+    permissions: {
+        update: boolean;
+        patch: boolean;
+    };
+    resource: {
+        apiGroup: string;
+        kind: string;
+        name: string;
+        namespace: string;
+    };
+};
+
+export async function fetchRolloutPermissions(
+    namespace: string,
+    name: string
+): Promise<PermissionsResponse> {
+    const res = await fetch(`/api/rollouts/${namespace}/${name}/permissions/all`);
+    if (!res.ok) {
+        throw new Error('Failed to load permissions');
+    }
+    return (await res.json()) as PermissionsResponse;
+}
+
+export const rolloutPermissionsQueryKey = (namespace: string, name: string) =>
+    ['rollout-permissions', namespace, name] as const;
+
+export function rolloutPermissionsQueryOptions({
+    namespace,
+    name,
+    options
+}: {
+    namespace: string;
+    name: string;
+    options?: QueryOverrides<PermissionsResponse>;
+}): CreateQueryOptions<PermissionsResponse, Error> {
+    return {
+        queryKey: rolloutPermissionsQueryKey(namespace, name),
+        queryFn: () => fetchRolloutPermissions(namespace, name),
+        ...options
+    };
+}

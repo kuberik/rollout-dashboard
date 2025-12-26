@@ -92,7 +92,11 @@
 	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutQueryOptions, type RolloutResponse } from '$lib/api/rollouts';
+	import {
+		rolloutQueryOptions,
+		type RolloutResponse,
+		rolloutPermissionsQueryOptions
+	} from '$lib/api/rollouts';
 
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
@@ -105,6 +109,20 @@
 			name
 		})
 	);
+
+	// Query for permissions - checks if user can update/patch rollouts
+	const permissionsQuery = createQuery(() =>
+		rolloutPermissionsQueryOptions({
+			namespace,
+			name
+		})
+	);
+
+	// Derived permissions state
+	const canUpdate = $derived(permissionsQuery.data?.permissions?.update ?? false);
+	const canPatch = $derived(permissionsQuery.data?.permissions?.patch ?? false);
+	// Most actions require update permission, but some (like force-deploy, bypass-gates) use patch
+	const canModify = $derived(canUpdate || canPatch);
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
@@ -973,18 +991,20 @@
 								</div>
 							{/if}
 							<div class="flex flex-wrap gap-2">
-								<Button
-									id="mark-successful-btn"
-									size="xs"
-									color="light"
-									onclick={() => {
-										selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
-										showMarkSuccessfulModal = true;
-									}}
-								>
-									<CheckCircleSolid class="me-2 h-4 w-4" />
-									Mark Successful
-								</Button>
+								{#if canUpdate}
+									<Button
+										id="mark-successful-btn"
+										size="xs"
+										color="light"
+										onclick={() => {
+											selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
+											showMarkSuccessfulModal = true;
+										}}
+									>
+										<CheckCircleSolid class="me-2 h-4 w-4" />
+										Mark Successful
+									</Button>
+								{/if}
 								<Tooltip
 									triggeredBy="#mark-successful-btn"
 									placement="bottom"
@@ -995,21 +1015,23 @@
 									Mark this deployment as successful to resume automated rollouts. Use when issues
 									are resolved or you want to manually override the failure status.
 								</Tooltip>
-								<Button
-									id="change-version-btn"
-									size="xs"
-									color="light"
-									disabled={!isDashboardManagingWantedVersion}
-									onclick={() => {
-										if (isDashboardManagingWantedVersion) {
-											isPinVersionMode = false;
-											showPinModal = true;
-										}
-									}}
-								>
-									<EditOutline class="me-2 h-4 w-4" />
-									Change Version
-								</Button>
+								{#if canModify}
+									<Button
+										id="change-version-btn"
+										size="xs"
+										color="light"
+										disabled={!isDashboardManagingWantedVersion}
+										onclick={() => {
+											if (isDashboardManagingWantedVersion) {
+												isPinVersionMode = false;
+												showPinModal = true;
+											}
+										}}
+									>
+										<EditOutline class="me-2 h-4 w-4" />
+										Change Version
+									</Button>
+								{/if}
 								<Tooltip
 									triggeredBy="#change-version-btn"
 									placement="bottom"
@@ -1027,32 +1049,34 @@
 									{/if}
 								</Tooltip>
 								{#if rollout?.status?.history && rollout.status.history.length > 1}
-									<Button
-										id="rollback-btn"
-										size="xs"
-										color="light"
-										disabled={!isDashboardManagingWantedVersion}
-										onclick={() => {
-											if (
-												isDashboardManagingWantedVersion &&
-												rollout?.status?.history &&
-												rollout.status.history.length > 1
-											) {
-												const previousVersion = rollout.status.history[1];
-												isPinVersionMode = true;
-												selectedVersion = previousVersion.version.tag;
-												pinVersionToggle = true;
-												const currentVersion = rollout.status.history[0].version;
-												const currentVersionName = getDisplayVersion(currentVersion);
-												const targetVersionName = getDisplayVersion(previousVersion.version);
-												deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-												showDeployModal = true;
-											}
-										}}
-									>
-										<ReplyOutline class="me-2 h-4 w-4" />
-										Rollback
-									</Button>
+									{#if canModify}
+										<Button
+											id="rollback-btn"
+											size="xs"
+											color="light"
+											disabled={!isDashboardManagingWantedVersion}
+											onclick={() => {
+												if (
+													isDashboardManagingWantedVersion &&
+													rollout?.status?.history &&
+													rollout.status.history.length > 1
+												) {
+													const previousVersion = rollout.status.history[1];
+													isPinVersionMode = true;
+													selectedVersion = previousVersion.version.tag;
+													pinVersionToggle = true;
+													const currentVersion = rollout.status.history[0].version;
+													const currentVersionName = getDisplayVersion(currentVersion);
+													const targetVersionName = getDisplayVersion(previousVersion.version);
+													deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+													showDeployModal = true;
+												}
+											}}
+										>
+											<ReplyOutline class="me-2 h-4 w-4" />
+											Rollback
+										</Button>
+									{/if}
 									<Tooltip
 										triggeredBy="#rollback-btn"
 										placement="bottom"
@@ -1295,18 +1319,20 @@
 																	</span>
 																</div>
 																{#if rollout.rolloutData.currentStepState === 'StepPaused'}
-																	<Button
-																		size="xs"
-																		color="blue"
-																		onclick={() =>
-																			continueRollout(
-																				rollout.rolloutResource.name,
-																				rollout.rolloutResource.namespace
-																			)}
-																	>
-																		<PlaySolid class="mr-1 h-3 w-3" />
-																		Continue
-																	</Button>
+																	{#if canUpdate}
+																		<Button
+																			size="xs"
+																			color="blue"
+																			onclick={() =>
+																				continueRollout(
+																					rollout.rolloutResource.name,
+																					rollout.rolloutResource.namespace
+																				)}
+																		>
+																			<PlaySolid class="mr-1 h-3 w-3" />
+																			Continue
+																		</Button>
+																	{/if}
 																{/if}
 															</div>
 															{#if !rollout.isCompleted}
@@ -1600,21 +1626,23 @@
 											color="light"
 										/>
 									{/if}
-									<Button
-										size="sm"
-										color="light"
-										class="text-xs"
-										disabled={!isDashboardManagingWantedVersion}
-										onclick={() => {
-											if (isDashboardManagingWantedVersion) {
-												isPinVersionMode = false;
-												showPinModal = true;
-											}
-										}}
-									>
-										<EditOutline class="me-2 h-4 w-4" />
-										Change Version
-									</Button>
+									{#if canModify}
+										<Button
+											size="sm"
+											color="light"
+											class="text-xs"
+											disabled={!isDashboardManagingWantedVersion}
+											onclick={() => {
+												if (isDashboardManagingWantedVersion) {
+													isPinVersionMode = false;
+													showPinModal = true;
+												}
+											}}
+										>
+											<EditOutline class="me-2 h-4 w-4" />
+											Change Version
+										</Button>
+									{/if}
 									{#if !isDashboardManagingWantedVersion}
 										<Tooltip placement="bottom"
 											>Version management disabled: This rollout's wantedVersion field is managed by
@@ -1623,32 +1651,34 @@
 										>
 									{/if}
 									{#if rollout?.status?.history && rollout.status.history.length > 1}
-										<Button
-											size="sm"
-											color="light"
-											class="text-xs"
-											disabled={!isDashboardManagingWantedVersion}
-											onclick={() => {
-												if (
-													isDashboardManagingWantedVersion &&
-													rollout?.status?.history &&
-													rollout.status.history.length > 1
-												) {
-													const previousVersion = rollout.status.history[1];
-													isPinVersionMode = true;
-													selectedVersion = previousVersion.version.tag;
-													pinVersionToggle = true;
-													const currentVersion = rollout.status.history[0].version;
-													const currentVersionName = getDisplayVersion(currentVersion);
-													const targetVersionName = getDisplayVersion(previousVersion.version);
-													deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-													showDeployModal = true;
-												}
-											}}
-										>
-											<ReplyOutline class="me-2 h-4 w-4" />
-											Rollback
-										</Button>
+										{#if canModify}
+											<Button
+												size="sm"
+												color="light"
+												class="text-xs"
+												disabled={!isDashboardManagingWantedVersion}
+												onclick={() => {
+													if (
+														isDashboardManagingWantedVersion &&
+														rollout?.status?.history &&
+														rollout.status.history.length > 1
+													) {
+														const previousVersion = rollout.status.history[1];
+														isPinVersionMode = true;
+														selectedVersion = previousVersion.version.tag;
+														pinVersionToggle = true;
+														const currentVersion = rollout.status.history[0].version;
+														const currentVersionName = getDisplayVersion(currentVersion);
+														const targetVersionName = getDisplayVersion(previousVersion.version);
+														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+														showDeployModal = true;
+													}
+												}}
+											>
+												<ReplyOutline class="me-2 h-4 w-4" />
+												Rollback
+											</Button>
+										{/if}
 									{/if}
 									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 										<SourceViewer
@@ -1919,16 +1949,18 @@
 												>Automated upgrades are paused because the rollout is pinned to a version.</span
 											>
 										</div>
-										<Button
-											size="xs"
-											color="light"
-											disabled={!isDashboardManagingWantedVersion}
-											onclick={() => {
-												showClearPinModal = true;
-											}}
-										>
-											Clear pin
-										</Button>
+										{#if canModify}
+											<Button
+												size="xs"
+												color="light"
+												disabled={!isDashboardManagingWantedVersion}
+												onclick={() => {
+													showClearPinModal = true;
+												}}
+											>
+												Clear pin
+											</Button>
+										{/if}
 									</div>
 								</Alert>
 							{/if}
@@ -1989,18 +2021,20 @@
 												</div>
 												<!-- Action buttons on the right -->
 												<div class="flex flex-wrap items-center gap-2 sm:justify-end">
-													<Button
-														size="xs"
-														color="blue"
-														disabled={!isDashboardManagingWantedVersion &&
-															!hasForceDeployAnnotation(rollout)}
-														onclick={() => {
-															selectedVersion = version;
-															showDeployModal = true;
-														}}
-													>
-														Deploy
-													</Button>
+													{#if canModify}
+														<Button
+															size="xs"
+															color="blue"
+															disabled={!isDashboardManagingWantedVersion &&
+																!hasForceDeployAnnotation(rollout)}
+															onclick={() => {
+																selectedVersion = version;
+																showDeployModal = true;
+															}}
+														>
+															Deploy
+														</Button>
+													{/if}
 													{#if rollout?.status?.source}
 														<GitHubViewButton
 															sourceUrl={rollout.status.source}

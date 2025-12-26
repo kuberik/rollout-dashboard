@@ -13,6 +13,16 @@ staticClients:
       - http://localhost:8000
     name: kubernetes
     secret: kubernetes-client-secret
+    # Trust rollout-dashboard so it can request tokens on behalf of kubernetes
+    # This allows the dashboard to get tokens with audience "kubernetes"
+    # See: https://dexidp.io/docs/configuration/custom-scopes-claims-clients/#cross-client-trust-and-authorized-party
+    trustedPeers:
+    - rollout-dashboard
+  - id: rollout-dashboard
+    redirectURIs:
+      - https://DASHBOARD_URL_PLACEHOLDER:8080/oauth2/callback
+    name: Rollout Dashboard
+    secret: rollout-dashboard-secret
 # Enable local password database
 enablePasswordDB: true
 # Allow password grants with local users

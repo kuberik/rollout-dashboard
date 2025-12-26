@@ -25,6 +25,19 @@ sed "s|dex-server|${DEX_HOST}|g" "${PROJECT_ROOT}/kind-config.yaml" > "${KIND_CO
 echo "Creating Kind cluster with OIDC configuration..."
 echo "Dex hostname: ${DEX_HOST}"
 kind create cluster --name rollout-dev --config "${KIND_CONFIG_TMP}"
+
+kubectl create ns cert-manager -o yaml --dry-run=client | kubectl apply -f -
+kubectl -n cert-manager create configmap custom-ca-bundle --from-file=ca-certificates.crt=/tmp/dex-ca.crt
+
+SCRIPT_DIR=$(dirname "$0")
+PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
+OUTPUT_DIR="${SCRIPT_DIR}/dex-certs"
+
+kubectl create configmap dex-ca-cert \
+  --from-file=ca.crt="${OUTPUT_DIR}/dex-ca.crt" \
+  -n cert-manager \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 docker compose -f "${SCRIPT_DIR}/../docker-compose.socat.yaml" up --wait
 
 # Wait for cluster to be ready

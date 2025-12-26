@@ -22,3 +22,9 @@ nodes:
       # Mount the CA certificate for HTTPS
       - hostPath: /tmp/dex-ca.crt
         containerPath: /usr/local/share/ca-certificates/dex-ca.crt
+      - hostPath: /tmp/dex-ca.crt
+        containerPath: /usr/share/ca-certificates/mozilla/dex-ca.crt
+      - hostPath: /tmp/dex-ca.crt
+        containerPath: /usr/share/ca-certificates/dex-ca.crt
+      - hostPath: /tmp/dex-ca.crt
+        containerPath: /etc/ssl/certs/dex-ca.crt

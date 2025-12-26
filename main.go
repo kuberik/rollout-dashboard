@@ -15,7 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
-	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
+	"github.com/kuberik/rollout-dashboard/pkg/auth"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
 )
 
@@ -39,14 +39,10 @@ func (k *dockerConfigKeychain) Resolve(resource authn.Resource) (authn.Authentic
 }
 
 func main() {
-	// Initialize Kubernetes client
-	k8sClient, err := kubernetes.NewClient()
-	if err != nil {
-		log.Printf("Failed to initialize Kubernetes client: %v", err)
-		os.Exit(1)
-	}
-
 	r := gin.Default()
+
+	// Apply token extraction middleware to all routes
+	r.Use(auth.ExtractTokenMiddleware())
 
 	// API routes under /api prefix
 	api := r.Group("/api")
@@ -58,6 +54,11 @@ func main() {
 		})
 
 		api.GET("/rollouts", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.DefaultQuery("namespace", "all")
 
 			// Get Rollouts
@@ -128,6 +129,11 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -176,6 +182,11 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name/environments", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 
 			// Get all Environments in the namespace
@@ -195,6 +206,11 @@ func main() {
 		})
 
 		api.POST("/rollouts/:namespace/:name/pin", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -228,6 +244,11 @@ func main() {
 
 		// Add force-deploy annotation to rollout
 		api.POST("/rollouts/:namespace/:name/force-deploy", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -261,6 +282,11 @@ func main() {
 
 		// Add bypass-gates annotation to rollout
 		api.POST("/rollouts/:namespace/:name/bypass-gates", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -293,6 +319,11 @@ func main() {
 
 		// Change version (pin or unpin + force-deploy) atomically
 		api.POST("/rollouts/:namespace/:name/change-version", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -326,6 +357,11 @@ func main() {
 
 		// Add unblock-failed annotation to rollout
 		api.POST("/rollouts/:namespace/:name/unblock-failed", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -347,6 +383,11 @@ func main() {
 
 		// Mark deployment as successful
 		api.POST("/rollouts/:namespace/:name/mark-successful", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -379,6 +420,11 @@ func main() {
 
 		// Reconcile all associated Flux resources for a rollout
 		api.POST("/rollouts/:namespace/:name/reconcile", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -400,6 +446,11 @@ func main() {
 
 		// Continue OpenKruise rollout
 		api.POST("/rollouts/:namespace/:name/continue", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -420,6 +471,11 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 			version := c.Param("version")
@@ -513,6 +569,11 @@ func main() {
 
 		// New endpoint to fetch the media type for a given version
 		api.GET("/rollouts/:namespace/:name/mediatype/:version", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 			version := c.Param("version")
@@ -574,6 +635,11 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name/annotations/:version", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 			version := c.Param("version")
@@ -638,6 +704,11 @@ func main() {
 
 		// New endpoint to fetch all available tags from a repository
 		api.GET("/rollouts/:namespace/:name/tags", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -701,6 +772,11 @@ func main() {
 		})
 
 		api.GET("/kustomizations/:namespace/:name/managed-resources", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -748,6 +824,11 @@ func main() {
 		})
 
 		api.GET("/kustomizations/:namespace/:name/test", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
@@ -769,7 +850,83 @@ func main() {
 		})
 
 		// New endpoint to fetch health checks for a rollout
+		// Check permissions for a rollout action
+		api.GET("/rollouts/:namespace/:name/permissions", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+			verb := c.DefaultQuery("verb", "update") // Default to "update" for most actions
+
+			allowed, err := k8sClient.CheckRolloutPermission(context.Background(), verb, namespace, name)
+			if err != nil {
+				log.Printf("Error checking permission: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to check permission",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"allowed": allowed,
+				"verb":    verb,
+				"resource": gin.H{
+					"apiGroup":  "kuberik.com",
+					"kind":      "Rollout",
+					"name":      name,
+					"namespace": namespace,
+				},
+			})
+		})
+
+		// Check permissions for all common rollout actions
+		api.GET("/rollouts/:namespace/:name/permissions/all", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Check permissions for all common actions
+			actions := map[string]string{
+				"update": "update", // For pin, change-version, mark-successful, unblock-failed
+				"patch":  "patch",  // For force-deploy, bypass-gates (annotation updates)
+			}
+
+			permissions := make(map[string]bool)
+			for action, verb := range actions {
+				allowed, err := k8sClient.CheckRolloutPermission(context.Background(), verb, namespace, name)
+				if err != nil {
+					log.Printf("Error checking permission for %s: %v", action, err)
+					permissions[action] = false
+				} else {
+					permissions[action] = allowed
+				}
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"permissions": permissions,
+				"resource": gin.H{
+					"apiGroup":  "kuberik.com",
+					"kind":      "Rollout",
+					"name":      name,
+					"namespace": namespace,
+				},
+			})
+		})
+
 		api.GET("/rollouts/:namespace/:name/health-checks", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
