@@ -1492,12 +1492,14 @@
 																		{@const completedTests = relevantTests.filter(
 																			(t) =>
 																				t.status?.phase === 'Succeeded' ||
-																				t.status?.phase === 'Failed'
+																				t.status?.phase === 'Failed' ||
+																				t.status?.phase === 'Cancelled'
 																		)}
 																		{@const runningTests = relevantTests.filter(
 																			(t) =>
 																				t.status?.phase !== 'Succeeded' &&
-																				t.status?.phase !== 'Failed'
+																				t.status?.phase !== 'Failed' &&
+																				t.status?.phase !== 'Cancelled'
 																		)}
 																		<div
 																			class="text-xs font-semibold text-gray-600 dark:text-gray-400"
@@ -1517,7 +1519,9 @@
 																							? 'blue'
 																							: phase === 'Pending'
 																								? 'yellow'
-																								: 'gray'}
+																								: phase === 'Cancelled'
+																									? 'gray'
+																									: 'gray'}
 																						size="small"
 																						class="flex min-w-[120px] items-center gap-1"
 																					>
@@ -1525,6 +1529,8 @@
 																							<Spinner size="4" color="blue" />
 																						{:else if phase === 'Pending'}
 																							<ClockArrowOutline class="h-3 w-3" />
+																						{:else if phase === 'Cancelled'}
+																							<CloseOutline class="h-3 w-3" />
 																						{:else}
 																							<ClockSolid class="h-3 w-3" />
 																						{/if}
@@ -1555,7 +1561,11 @@
 																				{@const testStepIndex = test.spec?.stepIndex}
 																				<div class="flex items-center gap-2">
 																					<Badge
-																						color={phase === 'Succeeded' ? 'green' : 'red'}
+																						color={phase === 'Succeeded'
+																							? 'green'
+																							: phase === 'Cancelled'
+																								? 'gray'
+																								: 'red'}
 																						size="small"
 																						class="flex min-w-[120px] items-center gap-1"
 																					>
@@ -1563,6 +1573,8 @@
 																							<CheckCircleSolid class="h-3 w-3" />
 																						{:else if phase === 'Failed'}
 																							<ExclamationCircleSolid class="h-3 w-3" />
+																						{:else if phase === 'Cancelled'}
+																							<CloseOutline class="h-3 w-3" />
 																						{/if}
 																						<span class="capitalize">
 																							{phase || 'Unknown'}

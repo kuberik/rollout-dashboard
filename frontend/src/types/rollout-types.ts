@@ -6260,7 +6260,7 @@ export interface components {
                  * @description Phase represents the current phase of the RolloutTest
                  * @enum {string}
                  */
-                phase?: "WaitingForStep" | "Pending" | "Running" | "Succeeded" | "Failed";
+                phase?: "WaitingForStep" | "Pending" | "Running" | "Succeeded" | "Failed" | "Cancelled";
                 /**
                  * Format: int32
                  * @description RetryCount is the number of times the job has been retried (from job status)
