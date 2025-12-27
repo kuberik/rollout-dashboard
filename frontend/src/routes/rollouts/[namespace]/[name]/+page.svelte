@@ -1296,7 +1296,7 @@
 																? 'bg-green-200 dark:bg-green-900'
 																: anyRolloutPaused
 																	? 'bg-yellow-200 dark:bg-yellow-900'
-																	: 'bg-yellow-200 dark:bg-yellow-900'}"
+																	: 'bg-blue-200 dark:bg-blue-900'}"
 														>
 															{#if allRolloutsCompleted}
 																<CheckCircleSolid
@@ -1305,7 +1305,7 @@
 															{:else if anyRolloutPaused}
 																<PauseSolid class="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
 															{:else}
-																<Spinner size="4" color="yellow" />
+																<Spinner size="4" color="blue" />
 															{/if}
 														</div>
 														<div
@@ -1341,7 +1341,7 @@
 																				class="h-3 w-3 text-yellow-600 dark:text-yellow-400"
 																			/>
 																		{:else}
-																			<Spinner size="4" color="yellow" />
+																			<Spinner size="4" color="blue" />
 																		{/if}
 																		<span class="text-sm text-gray-600 dark:text-gray-400">
 																			{rollout.rolloutResource.namespace}
@@ -1759,7 +1759,7 @@
 														<div
 															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {latestEntry.bakeStatus ===
 															'InProgress'
-																? 'bg-yellow-200 dark:bg-yellow-900'
+																? 'bg-white dark:bg-gray-800'
 																: healthChecks.every((hc) => hc.status?.status === 'Healthy')
 																	? 'bg-green-200 dark:bg-green-900'
 																	: healthChecks.some((hc) => hc.status?.status === 'Unhealthy')
@@ -1767,7 +1767,7 @@
 																		: 'bg-yellow-200 dark:bg-yellow-900'}"
 														>
 															{#if latestEntry.bakeStatus === 'InProgress'}
-																<Spinner size="4" color="yellow" />
+																<Spinner type="pulse" size="8" color="yellow" />
 															{:else if healthChecks.every((hc) => hc.status?.status === 'Healthy')}
 																<CheckCircleSolid
 																	class="h-4 w-4 text-green-600 dark:text-green-400"
