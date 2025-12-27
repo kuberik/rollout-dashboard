@@ -1406,7 +1406,7 @@
 													{/if}
 												</div>
 											</TimelineItem>
-										{:else if latestEntry.bakeStatus === 'Pending' || !latestEntry.bakeStatus || latestEntry.bakeStatus === 'None'}
+										{:else if latestEntry.bakeStatus === 'Pending' || latestEntry.bakeStatus === 'Deploying' || !latestEntry.bakeStatus || latestEntry.bakeStatus === 'None'}
 											<TimelineItem
 												title="Bake"
 												date={rollout.spec?.deployTimeout
@@ -1606,28 +1606,6 @@
 															</div>
 														</div>
 													{/if}
-												</div>
-											</TimelineItem>
-										{:else if latestEntry.bakeStatus === 'Deploying'}
-											<TimelineItem
-												title="Deploying"
-												date="Deployment in progress..."
-												class="min-w-0 flex-1 pr-3"
-											>
-												{#snippet orientationSlot()}
-													<div class="flex items-center">
-														<div
-															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-200 ring-0 ring-white sm:ring-8 dark:bg-blue-900 dark:ring-gray-800"
-														>
-															<Spinner size="4" color="blue" />
-														</div>
-														<div
-															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-														></div>
-													</div>
-												{/snippet}
-												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-													{latestEntry.bakeStatusMessage || 'Deployment in progress...'}
 												</div>
 											</TimelineItem>
 										{/if}
