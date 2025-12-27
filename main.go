@@ -173,12 +173,34 @@ func main() {
 				log.Printf("Error fetching environment: %v", err)
 			}
 
+			// Try to get the KruiseRollout (may not exist)
+			// Note: We use interface{} since we don't import kruiserolloutv1beta1 in main.go
+			var kruiseRollout interface{}
+			kruiseRolloutObj, err := k8sClient.GetKruiseRollout(context.Background(), namespace, name)
+			if err != nil {
+				// KruiseRollout might not exist, that's okay
+				kruiseRollout = nil
+			} else {
+				kruiseRollout = kruiseRolloutObj
+			}
+
+			// Get all RolloutTests in the namespace (they will be filtered by rollout name in frontend)
+			// We fetch all tests and let the frontend filter by the actual KruiseRollout name
+			rolloutTests, err := k8sClient.GetAllRolloutTests(context.Background(), namespace)
+			if err != nil {
+				log.Printf("Error fetching rollout tests: %v", err)
+				// Continue without rollout tests if there's an error
+				rolloutTests = nil
+			}
+
 			c.JSON(http.StatusOK, gin.H{
 				"rollout":         rollout,
 				"kustomizations":  kustomizations,
 				"ociRepositories": ociRepositories,
 				"rolloutGates":    rolloutGates,
 				"environment":     environment,
+				"kruiseRollout":   kruiseRollout,
+				"rolloutTests":    rolloutTests,
 			})
 		})
 
@@ -203,6 +225,44 @@ func main() {
 
 			c.JSON(http.StatusOK, gin.H{
 				"environments": environments,
+			})
+		})
+
+		// Get RolloutTests for a KruiseRollout
+		api.GET("/rollouts/:namespace/:name/rollout-tests", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Get RolloutTests that reference this KruiseRollout
+			rolloutTests, err := k8sClient.GetRolloutTestsByRolloutName(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching rollout tests: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch rollout tests",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Try to get the KruiseRollout to get current step info
+			// Note: We use interface{} since we don't import kruiserolloutv1beta1 in main.go
+			var kruiseRollout interface{}
+			kruiseRolloutObj, err := k8sClient.GetKruiseRollout(context.Background(), namespace, name)
+			if err != nil {
+				// KruiseRollout might not exist, that's okay
+				kruiseRollout = nil
+			} else {
+				kruiseRollout = kruiseRolloutObj
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rolloutTests":  rolloutTests,
+				"kruiseRollout": kruiseRollout,
 			})
 		})
 

@@ -4,7 +4,9 @@ import type {
     Kustomization,
     OCIRepository,
     RolloutGate,
-    Environment
+    Environment,
+    RolloutTest,
+    KruiseRollout
 } from '../../types';
 
 export type RolloutResponse = {
@@ -13,6 +15,8 @@ export type RolloutResponse = {
     ociRepositories?: { items: OCIRepository[] };
     rolloutGates?: { items: RolloutGate[] };
     environment?: Environment;
+    kruiseRollout?: KruiseRollout | null;
+    rolloutTests?: { items: RolloutTest[] };
 };
 
 export type RolloutsListResponse = {
@@ -115,6 +119,44 @@ export function rolloutPermissionsQueryOptions({
     return {
         queryKey: rolloutPermissionsQueryKey(namespace, name),
         queryFn: () => fetchRolloutPermissions(namespace, name),
+        ...options
+    };
+}
+
+export type RolloutTestsResponse = {
+    rolloutTests: { items: RolloutTest[] };
+    kruiseRollout?: KruiseRollout | null;
+};
+
+export async function fetchRolloutTests(
+    namespace: string,
+    name: string
+): Promise<RolloutTestsResponse> {
+    const res = await fetch(`/api/rollouts/${namespace}/${name}/rollout-tests`);
+    if (!res.ok) {
+        if (res.status === 404) {
+            return { rolloutTests: { items: [] } };
+        }
+        throw new Error('Failed to load rollout tests');
+    }
+    return (await res.json()) as RolloutTestsResponse;
+}
+
+export const rolloutTestsQueryKey = (namespace: string, name: string) =>
+    ['rollout-tests', namespace, name] as const;
+
+export function rolloutTestsQueryOptions({
+    namespace,
+    name,
+    options
+}: {
+    namespace: string;
+    name: string;
+    options?: QueryOverrides<RolloutTestsResponse>;
+}): CreateQueryOptions<RolloutTestsResponse, Error> {
+    return {
+        queryKey: rolloutTestsQueryKey(namespace, name),
+        queryFn: () => fetchRolloutTests(namespace, name),
         ...options
     };
 }

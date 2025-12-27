@@ -11,7 +11,8 @@
 		ManagedResourceStatus,
 		HealthCheck,
 		KruiseRollout,
-		Environment
+		Environment,
+		RolloutTest
 	} from '../../../../types';
 	import type {
 		EnvironmentStatusEntry,
@@ -1314,44 +1315,159 @@
 												{/snippet}
 												<div class="mt-2 space-y-3">
 													{#each validRollouts as rollout}
+														{@const allRolloutTests = rolloutQuery.data?.rolloutTests?.items || []}
+														{@const rolloutTests = allRolloutTests.filter(
+															(test: RolloutTest) =>
+																test.spec?.rolloutName === rollout.rolloutResource.name
+														)}
+														{@const kruiseRolloutFromApi = rollout.kruiseRollout}
+														{@const currentStepIndex = rollout.rolloutData.currentStepIndex}
+														{@const isRolloutCompleted = rollout.isCompleted}
+														{@const relevantTests = isRolloutCompleted
+															? rolloutTests
+															: rolloutTests.filter(
+																	(test: RolloutTest) => test.spec.stepIndex === currentStepIndex
+																)}
 														<div class="space-y-2">
-															<div class="flex items-center justify-between gap-2">
-																<div class="flex items-center gap-2">
-																	{#if rollout.rolloutData.currentStepState === 'Completed'}
-																		<CheckCircleSolid
-																			class="h-3 w-3 text-green-600 dark:text-green-400"
-																		/>
-																	{:else if rollout.rolloutData.currentStepState === 'StepPaused'}
-																		<PauseSolid
-																			class="h-3 w-3 text-yellow-600 dark:text-yellow-400"
-																		/>
-																	{:else}
-																		<Spinner size="4" color="yellow" />
+															<div class="space-y-1.5">
+																<div class="flex items-center justify-between gap-2">
+																	<div class="flex items-center gap-2">
+																		{#if rollout.rolloutData.currentStepState === 'Completed'}
+																			<CheckCircleSolid
+																				class="h-3 w-3 text-green-600 dark:text-green-400"
+																			/>
+																		{:else if rollout.rolloutData.currentStepState === 'StepPaused'}
+																			<PauseSolid
+																				class="h-3 w-3 text-yellow-600 dark:text-yellow-400"
+																			/>
+																		{:else}
+																			<Spinner size="4" color="yellow" />
+																		{/if}
+																		<span class="text-sm text-gray-600 dark:text-gray-400">
+																			{rollout.rolloutResource.namespace}
+																			<span class="text-gray-500 dark:text-gray-400">/</span>
+																			<span class="font-medium text-gray-700 dark:text-gray-300"
+																				>{rollout.rolloutResource.name}</span
+																			>
+																		</span>
+																	</div>
+																	{#if rollout.rolloutData.currentStepState === 'StepPaused'}
+																		{@const annotations =
+																			kruiseRolloutFromApi?.metadata?.annotations || {}}
+																		{@const maxWaitKey = `rollout.kuberik.io/step-${currentStepIndex}-max-wait`}
+																		{@const minWaitAfterSuccessKey = `rollout.kuberik.io/step-${currentStepIndex}-min-wait-after-success`}
+																		{@const readyAtKey = `internal.rollout.kuberik.io/step-${currentStepIndex}-ready-at`}
+																		{@const maxWait = annotations[maxWaitKey]}
+																		{@const minWaitAfterSuccess =
+																			annotations[minWaitAfterSuccessKey]}
+																		{@const readyAt = annotations[readyAtKey]}
+																		{@const stalledCondition =
+																			kruiseRolloutFromApi?.status?.conditions?.find(
+																				(c) => c.type === 'Stalled' && c.status === 'True'
+																			)}
+																		{#if readyAt}
+																			{@const readyAtTime = new Date(readyAt).getTime()}
+																			{@const currentTime = $now.getTime()}
+																			{@const elapsedSinceReady = currentTime - readyAtTime}
+																			{@const maxWaitMs = maxWait ? parseDuration(maxWait) : 0}
+																			{@const minWaitAfterSuccessMs = minWaitAfterSuccess
+																				? parseDuration(minWaitAfterSuccess)
+																				: 0}
+																			{@const minWaitProgress =
+																				minWaitAfterSuccessMs > 0
+																					? Math.min(
+																							100,
+																							(elapsedSinceReady / minWaitAfterSuccessMs) * 100
+																						)
+																					: 0}
+																			{@const remainingMinWait =
+																				minWaitAfterSuccessMs > 0
+																					? Math.max(0, minWaitAfterSuccessMs - elapsedSinceReady)
+																					: 0}
+																			{@const maxWaitDeadline = readyAtTime + maxWaitMs}
+																			{@const timeUntilMaxWait =
+																				maxWaitMs > 0
+																					? Math.max(0, maxWaitDeadline - currentTime)
+																					: 0}
+																			{@const isMaxWaitExceeded =
+																				maxWaitMs > 0 && currentTime > maxWaitDeadline}
+																			{@const isMinWaitComplete =
+																				minWaitAfterSuccessMs > 0 &&
+																				elapsedSinceReady >= minWaitAfterSuccessMs}
+																			<div class="flex items-center gap-2">
+																				{#if canUpdate}
+																					<div class="relative inline-block">
+																						<Button
+																							size="xs"
+																							color={isMinWaitComplete ? 'green' : 'blue'}
+																							class="relative overflow-hidden"
+																							disabled={isMinWaitComplete}
+																							onclick={() =>
+																								continueRollout(
+																									rollout.rolloutResource.name,
+																									rollout.rolloutResource.namespace
+																								)}
+																						>
+																							{#if minWaitAfterSuccessMs > 0 && !isMinWaitComplete}
+																								<!-- Progress overlay -->
+																								<div
+																									class="absolute inset-0 bg-blue-600 transition-all duration-300 ease-out dark:bg-blue-700"
+																									style="width: {minWaitProgress}%"
+																								></div>
+																								<!-- Content with relative positioning to stay above progress -->
+																								<span class="relative z-10 flex items-center">
+																									<PlaySolid class="mr-1 h-3 w-3" />
+																									Continue
+																									<span class="ml-2 text-xs opacity-90">
+																										{formatDurationFromMs(remainingMinWait)}
+																									</span>
+																								</span>
+																							{:else if isMinWaitComplete}
+																								<CheckCircleSolid class="mr-1 h-3 w-3" />
+																								Ready
+																							{:else}
+																								<PlaySolid class="mr-1 h-3 w-3" />
+																								Continue
+																							{/if}
+																						</Button>
+																					</div>
+																				{/if}
+																				{#if maxWaitMs > 0}
+																					{@const timeoutTooltip = isMaxWaitExceeded
+																						? 'Timeout exceeded'
+																						: `Timeout in ${formatDurationFromMs(timeUntilMaxWait)}`}
+																					<span title={timeoutTooltip}>
+																						{#if isMaxWaitExceeded}
+																							<ExclamationCircleSolid
+																								class="h-3 w-3 text-red-500 dark:text-red-400"
+																							/>
+																						{:else}
+																							<ClockSolid
+																								class="h-3 w-3 text-gray-500 dark:text-gray-400"
+																							/>
+																						{/if}
+																					</span>
+																				{/if}
+																				{#if stalledCondition}
+																					<Badge color="red" size="small">Stalled</Badge>
+																				{/if}
+																			</div>
+																		{:else if canUpdate}
+																			<Button
+																				size="xs"
+																				color="blue"
+																				onclick={() =>
+																					continueRollout(
+																						rollout.rolloutResource.name,
+																						rollout.rolloutResource.namespace
+																					)}
+																			>
+																				<PlaySolid class="mr-1 h-3 w-3" />
+																				Continue
+																			</Button>
+																		{/if}
 																	{/if}
-																	<span class="text-sm text-gray-600 dark:text-gray-400">
-																		{rollout.rolloutResource.namespace}
-																		<span class="text-gray-500 dark:text-gray-400">/</span>
-																		<span class="font-medium text-gray-700 dark:text-gray-300"
-																			>{rollout.rolloutResource.name}</span
-																		>
-																	</span>
 																</div>
-																{#if rollout.rolloutData.currentStepState === 'StepPaused'}
-																	{#if canUpdate}
-																		<Button
-																			size="xs"
-																			color="blue"
-																			onclick={() =>
-																				continueRollout(
-																					rollout.rolloutResource.name,
-																					rollout.rolloutResource.namespace
-																				)}
-																		>
-																			<PlaySolid class="mr-1 h-3 w-3" />
-																			Continue
-																		</Button>
-																	{/if}
-																{/if}
 															</div>
 															{#if !rollout.isCompleted}
 																<StepIndicator
@@ -1367,6 +1483,109 @@
 																	color="blue"
 																	size="sm"
 																/>
+															{/if}
+															{#if relevantTests.length > 0 || (kruiseRolloutFromApi && currentStepIndex !== undefined && !isRolloutCompleted)}
+																<div
+																	class="mt-2 space-y-2 border-t border-gray-200 pt-2 dark:border-gray-700"
+																>
+																	{#if relevantTests.length > 0}
+																		{@const completedTests = relevantTests.filter(
+																			(t) =>
+																				t.status?.phase === 'Succeeded' ||
+																				t.status?.phase === 'Failed'
+																		)}
+																		{@const runningTests = relevantTests.filter(
+																			(t) =>
+																				t.status?.phase !== 'Succeeded' &&
+																				t.status?.phase !== 'Failed'
+																		)}
+																		<div
+																			class="text-xs font-semibold text-gray-600 dark:text-gray-400"
+																		>
+																			Rollout Tests
+																		</div>
+																		<div class="flex flex-col gap-2">
+																			{#each runningTests as test}
+																				{@const phase = test.status?.phase}
+																				{@const retryCount = test.status?.retryCount || 0}
+																				{@const activePods = test.status?.activePods || 0}
+																				{@const succeededPods = test.status?.succeededPods || 0}
+																				{@const failedPods = test.status?.failedPods || 0}
+																				<div class="flex items-center gap-2">
+																					<Badge
+																						color={phase === 'Running'
+																							? 'blue'
+																							: phase === 'Pending'
+																								? 'yellow'
+																								: 'gray'}
+																						size="small"
+																						class="flex min-w-[120px] items-center gap-1"
+																					>
+																						{#if phase === 'Running'}
+																							<Spinner size="4" color="blue" />
+																						{:else if phase === 'Pending'}
+																							<ClockArrowOutline class="h-3 w-3" />
+																						{:else}
+																							<ClockSolid class="h-3 w-3" />
+																						{/if}
+																						<span class="capitalize">
+																							{phase === 'WaitingForStep'
+																								? 'Waiting'
+																								: phase || 'Unknown'}
+																						</span>
+																					</Badge>
+																					<span class="text-xs text-gray-600 dark:text-gray-400">
+																						{test.metadata?.name || 'Unknown'}
+																					</span>
+																					{#if retryCount > 0}
+																						<Badge color="orange" size="small">
+																							{retryCount} retr{retryCount === 1 ? 'y' : 'ies'}
+																						</Badge>
+																					{/if}
+																					{#if phase === 'Running' && activePods > 0}
+																						<span class="text-xs text-gray-500 dark:text-gray-500">
+																							{activePods} active
+																						</span>
+																					{/if}
+																				</div>
+																			{/each}
+																			{#each completedTests as test}
+																				{@const phase = test.status?.phase}
+																				{@const retryCount = test.status?.retryCount || 0}
+																				{@const testStepIndex = test.spec?.stepIndex}
+																				<div class="flex items-center gap-2">
+																					<Badge
+																						color={phase === 'Succeeded' ? 'green' : 'red'}
+																						size="small"
+																						class="flex min-w-[120px] items-center gap-1"
+																					>
+																						{#if phase === 'Succeeded'}
+																							<CheckCircleSolid class="h-3 w-3" />
+																						{:else if phase === 'Failed'}
+																							<ExclamationCircleSolid class="h-3 w-3" />
+																						{/if}
+																						<span class="capitalize">
+																							{phase || 'Unknown'}
+																						</span>
+																					</Badge>
+																					<span class="text-xs text-gray-600 dark:text-gray-400">
+																						{test.metadata?.name || 'Unknown'}
+																					</span>
+																					{#if isRolloutCompleted && testStepIndex !== undefined}
+																						<span class="text-xs text-gray-500 dark:text-gray-400">
+																							(Step {testStepIndex})
+																						</span>
+																					{/if}
+																					{#if retryCount > 0}
+																						<Badge color="orange" size="small">
+																							{retryCount} retr{retryCount === 1 ? 'y' : 'ies'}
+																						</Badge>
+																					{/if}
+																				</div>
+																			{/each}
+																		</div>
+																	{/if}
+																</div>
 															{/if}
 														</div>
 													{/each}

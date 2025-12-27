@@ -13,11 +13,22 @@ if ! command -v openapi-typescript &> /dev/null; then
   npm install -g openapi-typescript
 fi
 
+local_crds=true
+
+if [ "$local_crds" = true ]; then
+  cp ../rollout-controller/config/crd/bases/kuberik.com_rollouts.yaml $TEMP_DIR/rollout.yaml
+  cp ../rollout-controller/config/crd/bases/kuberik.com_rolloutgates.yaml $TEMP_DIR/rolloutgate.yaml
+  cp ../rollout-controller/config/crd/bases/kuberik.com_healthchecks.yaml $TEMP_DIR/healthcheck.yaml
+  cp ../environment-controller/config/crd/bases/environments.kuberik.com_environments.yaml $TEMP_DIR/environment.yaml
+  cp ../openkruise-controller/config/crd/bases/rollout.kuberik.com_rollouttests.yaml $TEMP_DIR/rollouttest.yaml
+else
 # Download the CRDs
-curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
-curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
-curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
-curl -s -o $TEMP_DIR/environment.yaml https://raw.githubusercontent.com/kuberik/environment-controller/main/config/crd/bases/environments.kuberik.com_environments.yaml
+  curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
+  curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
+  curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
+  curl -s -o $TEMP_DIR/environment.yaml https://raw.githubusercontent.com/kuberik/environment-controller/main/config/crd/bases/environments.kuberik.com_environments.yaml
+  curl -s -o $TEMP_DIR/rollouttest.yaml https://raw.githubusercontent.com/kuberik/openkruise-controller/main/config/crd/bases/rollout.kuberik.com_rollouttests.yaml
+fi
 curl -s -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
 curl -s -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
 curl -s -o $TEMP_DIR/kruise-rollout.yaml https://raw.githubusercontent.com/openkruise/charts/refs/tags/kruise-rollout-0.6.1/versions/kruise-rollout/0.6.1/templates/rollouts.kruise.io_rollouts.yaml
@@ -27,6 +38,7 @@ ROLLOUT_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR
 ROLLOUTGATE_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/rolloutgate.yaml)
 HEALTHCHECK_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/healthcheck.yaml)
 ENVIRONMENT_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/environment.yaml)
+ROLLOUTTEST_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/rollouttest.yaml)
 KUSTOMIZATION_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/kustomization.yaml)
 OCIREPO_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/ocirepository.yaml)
 KRUISE_ROLLOUT_SCHEMA=$(yq -j eval '.spec.versions[1].schema.openAPIV3Schema' $TEMP_DIR/kruise-rollout.yaml)
@@ -139,6 +151,7 @@ cat > $TEMP_DIR/schema.json << EOL
       "RolloutGate": $(echo "$ROLLOUTGATE_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "HealthCheck": $(echo "$HEALTHCHECK_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "Environment": $(echo "$ENVIRONMENT_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
+      "RolloutTest": $(echo "$ROLLOUTTEST_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "Kustomization": $(echo "$KUSTOMIZATION_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "OCIRepository": $(echo "$OCIREPO_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "KruiseRollout": $(echo "$KRUISE_ROLLOUT_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}')
@@ -159,6 +172,7 @@ export type Rollout = components['schemas']['Rollout'];
 export type RolloutGate = components['schemas']['RolloutGate'];
 export type HealthCheck = components['schemas']['HealthCheck'];
 export type Environment = components['schemas']['Environment'];
+export type RolloutTest = components['schemas']['RolloutTest'];
 export type Kustomization = components['schemas']['Kustomization'];
 export type OCIRepository = components['schemas']['OCIRepository'];
 export type KruiseRollout = components['schemas']['KruiseRollout'];

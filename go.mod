@@ -1,25 +1,28 @@
 module github.com/kuberik/rollout-dashboard
 
-go 1.25
+go 1.25.0
 
 replace github.com/kuberik/environment-controller => ../environment-controller
+
+replace github.com/kuberik/openkruise-controller => ../openkruise-controller
 
 require (
 	github.com/docker/cli v28.4.0+incompatible
 	github.com/fluxcd/image-reflector-controller/api v0.35.2
-	github.com/fluxcd/kustomize-controller/api v1.6.1
-	github.com/fluxcd/source-controller/api v1.6.2
+	github.com/fluxcd/kustomize-controller/api v1.7.3
+	github.com/fluxcd/source-controller/api v1.7.4
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-containerregistry v0.20.6
 	github.com/kuberik/environment-controller v0.0.0
+	github.com/kuberik/openkruise-controller v0.0.0-20251227190345-7753c50fb249
 	github.com/kuberik/rollout-controller v0.5.1-0.20251226192013-e2abaa863f57
 	github.com/openkruise/kruise-rollout-api v0.6.0
-	k8s.io/api v0.34.1
-	k8s.io/apimachinery v0.34.1
-	k8s.io/client-go v0.34.1
+	k8s.io/api v0.34.2
+	k8s.io/apimachinery v0.34.2
+	k8s.io/client-go v0.34.2
 	sigs.k8s.io/cli-utils v0.37.2
-	sigs.k8s.io/controller-runtime v0.22.1
+	sigs.k8s.io/controller-runtime v0.22.4
 )
 
 require (
@@ -39,9 +42,9 @@ require (
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
-	github.com/fluxcd/pkg/apis/acl v0.7.0 // indirect
-	github.com/fluxcd/pkg/apis/kustomize v1.10.0 // indirect
-	github.com/fluxcd/pkg/apis/meta v1.12.0 // indirect
+	github.com/fluxcd/pkg/apis/acl v0.9.0 // indirect
+	github.com/fluxcd/pkg/apis/kustomize v1.14.0 // indirect
+	github.com/fluxcd/pkg/apis/meta v1.23.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.0.0 // indirect
@@ -84,20 +87,20 @@ require (
 	github.com/xlab/treeprint v1.2.0 // indirect
 	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
 	golang.org/x/arch v0.16.0 // indirect
-	golang.org/x/crypto v0.41.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/term v0.34.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/term v0.35.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 	gopkg.in/evanphx/json-patch.v5 v5.6.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.34.1 // indirect
+	k8s.io/apiextensions-apiserver v0.34.2 // indirect
 	k8s.io/cli-runtime v0.30.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250814151709-d7b6acb124c3 // indirect

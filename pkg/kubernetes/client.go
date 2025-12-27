@@ -23,6 +23,7 @@ import (
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	envv1alpha1 "github.com/kuberik/environment-controller/api/v1alpha1"
+	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -109,6 +110,10 @@ func NewClientWithToken(token string) (*Client, error) {
 
 	if err := envv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add environment scheme: %w", err)
+	}
+
+	if err := openkruisev1alpha1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add openkruise scheme: %w", err)
 	}
 
 	if err := rolloutv1alpha1.AddToScheme(scheme); err != nil {
@@ -915,6 +920,48 @@ func (c *Client) GetRolloutGatesByRolloutReference(ctx context.Context, namespac
 
 	rolloutGates.Items = filteredGates
 	return rolloutGates, nil
+}
+
+// GetKruiseRollout fetches a KruiseRollout by name and namespace
+func (c *Client) GetKruiseRollout(ctx context.Context, namespace, name string) (*kruiserolloutv1beta1.Rollout, error) {
+	rollout := &kruiserolloutv1beta1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
+		return nil, fmt.Errorf("failed to get kruise rollout: %w", err)
+	}
+	return rollout, nil
+}
+
+// GetAllRolloutTests fetches all RolloutTests in a namespace
+func (c *Client) GetAllRolloutTests(ctx context.Context, namespace string) (*openkruisev1alpha1.RolloutTestList, error) {
+	rolloutTests := &openkruisev1alpha1.RolloutTestList{}
+
+	// List all RolloutTests in the namespace
+	if err := c.client.List(ctx, rolloutTests, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list rollout tests: %w", err)
+	}
+
+	return rolloutTests, nil
+}
+
+// GetRolloutTestsByRolloutName fetches RolloutTests that reference a specific KruiseRollout by name
+func (c *Client) GetRolloutTestsByRolloutName(ctx context.Context, namespace, rolloutName string) (*openkruisev1alpha1.RolloutTestList, error) {
+	rolloutTests := &openkruisev1alpha1.RolloutTestList{}
+
+	// List all RolloutTests in the namespace
+	if err := c.client.List(ctx, rolloutTests, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list rollout tests: %w", err)
+	}
+
+	// Filter tests that reference the specific rollout
+	var filteredTests []openkruisev1alpha1.RolloutTest
+	for _, test := range rolloutTests.Items {
+		if test.Spec.RolloutName == rolloutName {
+			filteredTests = append(filteredTests, test)
+		}
+	}
+
+	rolloutTests.Items = filteredTests
+	return rolloutTests, nil
 }
 
 // GetEnvironmentByRolloutReference fetches Environment that references a specific rollout
