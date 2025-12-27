@@ -36,7 +36,7 @@
 				style="background: conic-gradient(from var(--angle), {colors.join(',')});"
 			></div>
 		{/if}
-		<div class="relative {rounded}">
+		<div class="relative {rounded} bg-white dark:bg-gray-900">
 			{#if children}
 				{@render children()}
 			{/if}
