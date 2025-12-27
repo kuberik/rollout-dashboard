@@ -136,8 +136,10 @@ data:
     # ///
     import os
     import requests
+    import time
 
     def main():
+      time.sleep(15)
       service_host = os.environ.get("SERVICE_HOST", "hello-python-canary")
       service_port = int(os.environ.get("PORT", "80"))
       url = f"http://{service_host}:{service_port}/"
