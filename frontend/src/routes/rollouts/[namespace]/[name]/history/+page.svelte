@@ -190,20 +190,21 @@
 								{#each rollout.status.history as entry, i ((entry.version.tag, i))}
 									{@const isCurrent = i === 0}
 									<TimelineItem
-										h3Class="font-mono ml-2"
+										color="gray"
+										h3Class="font-mono ml-4"
 										liClass="mr-4"
 										title={getDisplayVersion(entry.version)}
 										date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 									>
 										{#snippet orientationSlot()}
 											<span
-												class="absolute -start-3 flex h-6 w-6 items-center justify-center rounded-full bg-white ring-8 ring-white transition-all duration-200 dark:bg-gray-800 dark:ring-gray-800"
+												class="absolute -left-4 flex h-6 w-6 items-center justify-center rounded-full bg-white ring-8 ring-white transition-all duration-200 dark:bg-gray-800 dark:ring-gray-800"
 											>
 												<BakeStatusIcon bakeStatus={entry.bakeStatus} size="medium" />
 											</span>
 										{/snippet}
 										<div
-											class="group relative flex h-full flex-col gap-4 rounded-lg p-4 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+											class="group relative flex h-full flex-col gap-4 rounded-lg p-4 pl-4 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"
 										>
 											<!-- Two-column layout for better space usage -->
 											<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">

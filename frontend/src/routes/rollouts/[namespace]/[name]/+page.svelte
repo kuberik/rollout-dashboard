@@ -2144,7 +2144,7 @@
 	{/if}
 </div>
 
-<Modal bind:open={showPinModal} title="Pin Version">
+<Modal bind:open={showPinModal} title="Change Version">
 	<div class="space-y-4">
 		{#if !isDashboardManagingWantedVersion}
 			<Alert color="yellow" class="mb-4">
@@ -2202,15 +2202,25 @@
 						{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
 							{#await loadAnnotationsOnDemand(versionTag)}{/await}
 							<ListgroupItem
-								onclick={() => {
-									selectedVersion = versionTag;
-								}}
 								class="w-full cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 {selectedVersion ===
 								versionTag
 									? 'border-2 border-blue-300 bg-blue-50 dark:border-blue-600 dark:bg-blue-900'
 									: 'border-2 border-transparent'}"
 							>
-								<div class="flex w-full items-center justify-between">
+								<div
+									class="flex w-full items-center justify-between"
+									onclick={() => {
+										selectedVersion = versionTag;
+									}}
+									role="button"
+									tabindex="0"
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											selectedVersion = versionTag;
+										}
+									}}
+								>
 									<div class="flex-1 space-y-2 pr-4">
 										<div class="flex items-center justify-between">
 											<div class="flex-1">

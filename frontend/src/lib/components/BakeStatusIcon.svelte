@@ -29,7 +29,12 @@
 </script>
 
 {#if bakeStatus === 'InProgress'}
-	<Spinner color="yellow" size={spinnerSizes[size]} class="{sizeClasses[size]} {className}" />
+	<Spinner
+		type="pulse"
+		color="yellow"
+		size={spinnerSizes[size]}
+		class="{sizeClasses[size]} {className}"
+	/>
 {:else if bakeStatus === 'Deploying'}
 	<Spinner color="blue" size={spinnerSizes[size]} class="{sizeClasses[size]} {className}" />
 {:else}
