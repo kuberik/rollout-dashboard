@@ -5,7 +5,7 @@
 	import { Badge, Spinner, Alert, Card } from 'flowbite-svelte';
 	import { formatTimeAgo, getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import { getBakeStatusIcon } from '$lib/bake-status';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { ClockSolid } from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
@@ -80,7 +80,6 @@
 								? getDisplayVersion(latestEntry.version)
 								: null}
 							{@const bakeStatus = latestEntry?.bakeStatus}
-							{@const { icon: StatusIcon, color: iconColor } = getBakeStatusIcon(bakeStatus)}
 							{@const showStatusBadges = hasUpgrades || isLatest || Boolean(versionLabel)}
 							<a
 								href="/rollouts/{deployment.metadata?.namespace}/{deployment.metadata?.name}"
@@ -93,11 +92,7 @@
 												<div
 													class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
 												>
-													{#if bakeStatus === 'InProgress'}
-														<Spinner color="yellow" size="6" />
-													{:else}
-														<StatusIcon class={`h-6 w-6 ${iconColor}`} />
-													{/if}
+													<BakeStatusIcon {bakeStatus} size="medium" />
 												</div>
 												<div class="min-w-0 flex-1">
 													<div class="flex flex-wrap items-center gap-2">
