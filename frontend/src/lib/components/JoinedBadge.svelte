@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { Badge } from 'flowbite-svelte';
+	import { ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
 	import type { Component } from 'svelte';
 	import type { SVGAttributes } from 'svelte/elements';
 
@@ -12,11 +13,21 @@
 		iconColor?: string;
 		valueColor?: 'green' | 'red' | 'yellow' | 'blue' | 'gray' | 'purple' | 'pink' | 'indigo';
 		large?: boolean;
+		href?: string;
 	}
 
-	let { label, value, icon, iconColor = '', valueColor = 'gray', large = false }: Props = $props();
+	let {
+		label,
+		value,
+		icon,
+		iconColor = '',
+		valueColor = 'gray',
+		large = false,
+		href
+	}: Props = $props();
 
 	const Icon = $derived(icon);
+	const hasLink = $derived(!!href);
 </script>
 
 <div class="inline-flex items-center">
@@ -29,7 +40,16 @@
 	</Badge>
 
 	<!-- Right part: Value -->
-	<Badge color={valueColor} {large} class="flex items-center gap-1 rounded-l-none">
-		{value}
-	</Badge>
+	{#if hasLink}
+		<a {href} target="_blank" rel="noopener noreferrer" class="inline-flex items-center">
+			<Badge color={valueColor} {large} class="flex items-center gap-1 rounded-l-none">
+				{value}
+				<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0" />
+			</Badge>
+		</a>
+	{:else}
+		<Badge color={valueColor} {large} class="flex items-center gap-1 rounded-l-none">
+			{value}
+		</Badge>
+	{/if}
 </div>

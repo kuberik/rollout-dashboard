@@ -18,6 +18,12 @@ replacements:
         options:
           delimiter: ":"
           index: 1
+      - select:
+          kind: Deployment
+        fieldPaths:
+          - spec.template.spec.containers.0.env.[name=DD_ENV].value
+        options:
+          create: true
 
 patches:
   - target:

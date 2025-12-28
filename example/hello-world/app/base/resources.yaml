@@ -54,6 +54,9 @@ spec:
               value: ${HELLO_WORLD_VERSION}
             - name: PORT
               value: "8080"
+            - name: DD_SERVICE
+              value: hello-python
+            - name: DD_ENV
           ports:
             - containerPort: 8080
           volumeMounts:

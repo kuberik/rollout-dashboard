@@ -94,6 +94,7 @@
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
@@ -575,6 +576,50 @@
 		} else {
 			return [...new Set(ingressURLs)];
 		}
+	});
+
+	// Extract Datadog service info from managed resources (deployments with DD_SERVICE and DD_ENV)
+	const datadogServiceInfo = $derived.by(() => {
+		const allResources = Object.values(filteredManagedResources).flat();
+
+		for (const resource of allResources) {
+			const gvk = resource.groupVersionKind || '';
+			// Check if it's a Deployment
+			if (gvk.includes('apps/v1') && gvk.includes('Deployment') && resource.object) {
+				const deployment = resource.object;
+				const containers = deployment.spec?.template?.spec?.containers || [];
+
+				// Check all containers for DD_SERVICE and DD_ENV
+				for (const container of containers) {
+					const env = container.env || [];
+					let ddService: string | null = null;
+					let ddEnv: string | null = null;
+
+					for (const envVar of env) {
+						if (envVar.name === 'DD_SERVICE' && envVar.value) {
+							ddService = envVar.value;
+						}
+						if (envVar.name === 'DD_ENV' && envVar.value) {
+							ddEnv = envVar.value;
+						}
+					}
+
+					// If we found both, return the service info
+					if (ddService && ddEnv) {
+						// Build Datadog APM service URL
+						// Format: https://app.datadoghq.com/apm/service/{service_name}?env={env_name}
+						const datadogUrl = `https://app.datadoghq.com/apm/service:${encodeURIComponent(ddService)}?env=${encodeURIComponent(ddEnv)}`;
+						return {
+							service: ddService,
+							env: ddEnv,
+							url: datadogUrl
+						};
+					}
+				}
+			}
+		}
+
+		return null;
 	});
 
 	function goToPage(page: number) {
@@ -1190,14 +1235,27 @@
 											</div>
 										{/if}
 									</div>
-									{#if currentEnvInfo}
-										<JoinedBadge
-											label="Environment"
-											value={currentEnvInfo.environment || 'N/A'}
-											valueColor="blue"
-											large
-										/>
-									{/if}
+									<div class="flex items-center gap-2">
+										{#if datadogServiceInfo}
+											<JoinedBadge
+												label="Datadog"
+												value={datadogServiceInfo.service}
+												valueColor="purple"
+												large
+												href={datadogServiceInfo.url}
+												icon={DatadogLogo}
+												iconColor="text-white"
+											/>
+										{/if}
+										{#if currentEnvInfo}
+											<JoinedBadge
+												label="Environment"
+												value={currentEnvInfo.environment || 'N/A'}
+												valueColor="blue"
+												large
+											/>
+										{/if}
+									</div>
 								</div>
 							</div>
 						</Card>
