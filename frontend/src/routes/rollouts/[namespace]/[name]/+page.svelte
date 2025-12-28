@@ -359,6 +359,13 @@
 		return !rollout.status.availableReleases.some((ar) => ar.tag === currentVersionTag);
 	});
 
+	// Computed property to determine if pinned version (wantedVersion) is custom
+	const isPinnedVersionCustom = $derived.by(() => {
+		if (!rollout?.spec?.wantedVersion || !rollout?.status?.availableReleases) return false;
+		const pinnedVersionTag = toTag(rollout.spec.wantedVersion);
+		return isSelectedVersionCustom(pinnedVersionTag);
+	});
+
 	function isOlderThanCurrent(selectedTag: string): boolean {
 		const currentTag = rollout?.status?.history?.[0]?.version?.tag;
 		const releases = rollout?.status?.availableReleases;
@@ -2292,7 +2299,7 @@
 									<Badge color="blue" size="small">{rollout.status.releaseCandidates.length}</Badge>
 								{/if}
 							</div>
-							{#if rollout.spec?.wantedVersion}
+							{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 								<Alert color="yellow" class="mb-4">
 									<div class="flex items-center justify-between gap-3">
 										<div class="flex items-center gap-2">
