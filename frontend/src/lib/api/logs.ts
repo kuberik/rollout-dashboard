@@ -206,8 +206,8 @@ export function logsStreamQueryOptions({
 				}
 				// Limit to MAX_LOGS, dropping oldest
 				const newLogs = [...acc, chunk];
-				if (newLogs.length > 10000) {
-					return newLogs.slice(-10000);
+				if (newLogs.length > 1000) {
+					return newLogs.slice(-1000);
 				}
 				return newLogs;
 			},

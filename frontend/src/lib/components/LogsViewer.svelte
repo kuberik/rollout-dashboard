@@ -1,7 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { Button, Spinner, Badge } from 'flowbite-svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { Button, Spinner, Badge, Toggle } from 'flowbite-svelte';
 	import { ClipboardCleanSolid } from 'flowbite-svelte-icons';
 	import VirtualList from '@humanspeak/svelte-virtual-list';
 	import iwanthue from 'iwanthue';
@@ -25,6 +26,12 @@
 
 	// Pod colors using iwanthue
 	let podColors = $state<Map<string, string>>(new Map());
+
+	// Auto-scroll state
+	let autoScroll = $state(true);
+	let virtualListContainer: HTMLElement | null = $state(null);
+	let isUserScrolling = $state(false);
+	let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Handle pods updates from the stream
 	function handlePodsUpdate(newPods: PodInfo[]) {
@@ -114,6 +121,7 @@
 			pod: string;
 			container: string;
 			type: string;
+			timestamp: number;
 			index: number;
 		}> = [];
 		filteredLogs.forEach((log, index) => {
@@ -122,10 +130,76 @@
 				pod: log.pod,
 				container: log.container,
 				type: log.type,
+				timestamp: log.timestamp || Date.now(),
 				index
 			});
 		});
 		return result;
+	});
+
+	// Format timestamp for display
+	function formatTimestamp(timestamp: number): string {
+		const date = new Date(timestamp);
+		return date.toLocaleTimeString('en-US', {
+			hour12: false,
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			fractionalSecondDigits: 3
+		});
+	}
+
+	// Scroll to bottom
+	function scrollToBottom() {
+		if (virtualListContainer) {
+			virtualListContainer.scrollTop = virtualListContainer.scrollHeight;
+		}
+	}
+
+	// Handle scroll events to detect user scrolling
+	function handleScroll() {
+		if (!virtualListContainer) return;
+
+		// Check if user is near the bottom (within 50px)
+		const isNearBottom =
+			virtualListContainer.scrollHeight -
+				virtualListContainer.scrollTop -
+				virtualListContainer.clientHeight <
+			50;
+
+		// If user scrolled away from bottom, disable auto-scroll
+		if (!isNearBottom && autoScroll) {
+			autoScroll = false;
+		}
+
+		// Mark that user is scrolling
+		isUserScrolling = true;
+		if (scrollTimeout) {
+			clearTimeout(scrollTimeout);
+		}
+		scrollTimeout = setTimeout(() => {
+			isUserScrolling = false;
+		}, 150);
+	}
+
+	// Auto-scroll when new logs arrive (if enabled)
+	let previousLogCount = $state(0);
+	$effect(() => {
+		const currentCount = allLogLines.length;
+		if (autoScroll && currentCount > previousLogCount && !isUserScrolling) {
+			// Use requestAnimationFrame to ensure DOM is updated
+			requestAnimationFrame(() => {
+				scrollToBottom();
+			});
+		}
+		previousLogCount = currentCount;
+	});
+
+	// Cleanup on destroy
+	onDestroy(() => {
+		if (scrollTimeout) {
+			clearTimeout(scrollTimeout);
+		}
 	});
 </script>
 
@@ -142,6 +216,11 @@
 			{/if}
 		</div>
 		<div class="flex items-center gap-2">
+			<!-- Auto-scroll toggle -->
+			<div class="flex items-center gap-2">
+				<Toggle bind:checked={autoScroll} />
+				<span class="text-sm text-gray-700 dark:text-gray-300">Follow logs</span>
+			</div>
 			<!-- Pod filter dropdown -->
 			<select
 				bind:value={selectedPod}
@@ -182,22 +261,26 @@
 		<div
 			class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-gray-900 dark:bg-gray-950"
 		>
-			<div class="h-full w-full">
-				<VirtualList items={allLogLines}>
-					{#snippet renderItem(item, index)}
-						{@const logItem = item as (typeof allLogLines)[0]}
+			<div
+				class="h-full w-full overflow-y-auto"
+				bind:this={virtualListContainer}
+				onscroll={handleScroll}
+			>
+				<div class="font-mono text-sm text-gray-100">
+					{#each allLogLines as logItem (logItem.index)}
 						{@const podColor = getPodColor(logItem.pod)}
-						<div
-							class="px-4 py-1 font-mono text-sm text-gray-100 hover:bg-gray-800"
-							style="height:20px"
-						>
-							<span class="text-gray-500">{index + 1}</span>
-							<span class="mx-2 font-semibold" style="color: {podColor}">{logItem.pod}</span>
-							<span class="mx-2 text-green-400">{logItem.container}</span>
-							<span class="text-gray-300">{logItem.line}</span>
+						<div class="flex items-start px-4 py-1 hover:bg-gray-800">
+							<span class="shrink-0 text-gray-500">{formatTimestamp(logItem.timestamp)}</span>
+							<span class="mx-2 shrink-0 font-semibold" style="color: {podColor}"
+								>{logItem.pod}</span
+							>
+							<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
+							<span class="min-w-0 whitespace-pre-wrap break-words text-gray-300"
+								>{logItem.line}</span
+							>
 						</div>
-					{/snippet}
-				</VirtualList>
+					{/each}
+				</div>
 			</div>
 		</div>
 	{/if}
