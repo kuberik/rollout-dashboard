@@ -380,6 +380,11 @@
 		return selectedIdx < currentIdx;
 	}
 
+	function isSelectedVersionCustom(selectedTag: string): boolean {
+		if (!rollout?.status?.availableReleases) return false;
+		return !rollout.status.availableReleases.some((ar) => ar.tag === selectedTag);
+	}
+
 	function toTag(version: string | { tag: string } | undefined): string {
 		return typeof version === 'string' ? version : (version?.tag ?? '');
 	}
@@ -2344,6 +2349,10 @@
 																!hasForceDeployAnnotation(rollout)}
 															onclick={() => {
 																selectedVersion = version;
+																const isCustom = isSelectedVersionCustom(version);
+																const mustPin = isOlderThanCurrent(version) || isCustom;
+																isPinVersionMode = mustPin;
+																pinVersionToggle = mustPin;
 																showDeployModal = true;
 															}}
 														>
@@ -2785,9 +2794,10 @@
 				onclick={() => {
 					if (!selectedVersion) return;
 					const tag = toTag(selectedVersion);
-					const mustPin = isOlderThanCurrent(tag);
+					const isCustom = isSelectedVersionCustom(tag);
+					const mustPin = isOlderThanCurrent(tag) || isCustom;
 					isPinVersionMode = mustPin; // disables toggle in DeployModal when true
-					pinVersionToggle = mustPin; // default to pin if older; allow user toggle if newer
+					pinVersionToggle = mustPin; // default to pin if older or custom; allow user toggle if newer
 					showDeployModal = true;
 					showPinModal = false;
 				}}
