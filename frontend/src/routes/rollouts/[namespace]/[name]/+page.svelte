@@ -64,7 +64,8 @@
 		HeartSolid,
 		CubesStackedSolid,
 		UserSolid,
-		CogSolid
+		CogSolid,
+		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -81,7 +82,8 @@
 		isVersionBypassingGates,
 		hasFailedBakeStatus,
 		hasUnblockFailedAnnotation,
-		getDisplayVersion
+		getDisplayVersion,
+		extractURLFromGatewayOrIngress
 	} from '$lib/utils';
 	import { getBakeStatusIcon } from '$lib/bake-status';
 	import { now } from '$lib/stores/time';
@@ -168,7 +170,18 @@
 						);
 						if (resourcesResponse.ok) {
 							const resourcesData = await resourcesResponse.json();
-							tempResources[name] = resourcesData.managedResources || [];
+							const resources = resourcesData.managedResources || [];
+							console.log(`[Overview] Fetched managed resources for ${name}:`, {
+								count: resources.length,
+								resources: resources.map((r: any) => ({
+									name: r.name,
+									namespace: r.namespace,
+									groupVersionKind: r.groupVersionKind,
+									type: r.groupVersionKind?.split('/').pop(),
+									hasObject: !!r.object
+								}))
+							});
+							tempResources[name] = resources;
 						}
 					} catch (e) {
 						console.error(`Failed to fetch managed resources for ${name}:`, e);
@@ -523,7 +536,67 @@
 	);
 
 	// Computed property to filter managed resources - now always shows all resources
-	const filteredManagedResources = $derived(managedResources);
+	const filteredManagedResources = $derived.by(() => {
+		console.log('[Overview] filteredManagedResources derived:', {
+			keys: Object.keys(managedResources),
+			totalResources: Object.values(managedResources).flat().length,
+			resources: Object.values(managedResources)
+				.flat()
+				.map((r: any) => ({
+					name: r.name,
+					namespace: r.namespace,
+					groupVersionKind: r.groupVersionKind,
+					type: r.groupVersionKind?.split('/').pop(),
+					hasObject: !!r.object
+				}))
+		});
+		return managedResources;
+	});
+
+	// Extract URLs from gateway/ingress resources for display in title card
+	// Prefer HTTPRoute hostnames over Gateway hostnames (like the Go code does)
+	const gatewayIngressURLs = $derived.by(() => {
+		const allResources = Object.values(filteredManagedResources).flat();
+		const httpRouteURLs: string[] = [];
+		const gatewayURLs: string[] = [];
+		const ingressURLs: string[] = [];
+
+		// First pass: collect HTTPRoute URLs (preferred)
+		for (const resource of allResources) {
+			const gvk = resource.groupVersionKind || '';
+			if (gvk.includes('gateway.networking.k8s.io')) {
+				const kind = gvk.split('/').pop() || '';
+				if (kind === 'HTTPRoute') {
+					const url = extractURLFromGatewayOrIngress(resource, gvk);
+					if (url) {
+						httpRouteURLs.push(url);
+					}
+				} else if (kind === 'Gateway') {
+					const url = extractURLFromGatewayOrIngress(resource, gvk);
+					if (url) {
+						gatewayURLs.push(url);
+					}
+				}
+			} else if (
+				gvk.includes('networking.k8s.io') &&
+				(gvk.includes('Ingress') || gvk.split('/').pop() === 'Ingress')
+			) {
+				const url = extractURLFromGatewayOrIngress(resource, gvk);
+				if (url) {
+					ingressURLs.push(url);
+				}
+			}
+		}
+
+		// Prefer HTTPRoute URLs, then Gateway URLs (only if no HTTPRoute URLs), then Ingress URLs
+		if (httpRouteURLs.length > 0) {
+			return [...new Set(httpRouteURLs)];
+		} else if (gatewayURLs.length > 0) {
+			return [...new Set(gatewayURLs)];
+		} else {
+			return [...new Set(ingressURLs)];
+		}
+	});
 
 	function goToPage(page: number) {
 		const maxPages = showAllTags ? totalUnifiedPages : totalPages;
@@ -1099,7 +1172,7 @@
 							</div>
 						</Alert>
 					{/if}
-					{#if rollout.status?.title || rollout.status?.description || rolloutQuery.data?.environment}
+					{#if rollout.status?.title || rollout.status?.description || rolloutQuery.data?.environment || gatewayIngressURLs.length > 0}
 						{@const environment = rolloutQuery.data?.environment}
 						{@const currentEnvInfo = environment?.status?.environmentInfos?.find(
 							(e: EnvironmentInfo) => {
@@ -1121,6 +1194,21 @@
 											<p class="text-sm text-gray-600 dark:text-gray-400">
 												{rollout.status.description}
 											</p>
+										{/if}
+										{#if gatewayIngressURLs.length > 0}
+											<div class="mt-2 flex flex-wrap items-center gap-2">
+												{#each gatewayIngressURLs as url}
+													<a
+														href={url}
+														target="_blank"
+														rel="noopener noreferrer"
+														class="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+													>
+														<ArrowUpRightFromSquareOutline class="h-4 w-4" />
+														{url}
+													</a>
+												{/each}
+											</div>
 										{/if}
 									</div>
 									{#if currentEnvInfo}

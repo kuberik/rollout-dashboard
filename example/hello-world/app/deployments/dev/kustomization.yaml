@@ -18,3 +18,19 @@ replacements:
         options:
           delimiter: ":"
           index: 1
+
+patches:
+  - target:
+      kind: Gateway
+      name: hello-python-gateway
+    patch: |
+      - op: replace
+        path: /spec/listeners/0/hostname
+        value: hello-python.dev.example.com
+  - target:
+      kind: HTTPRoute
+      name: hello-python
+    patch: |
+      - op: replace
+        path: /spec/hostnames/0
+        value: hello-python.dev.example.com

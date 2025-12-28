@@ -237,3 +237,117 @@ export function getDisplayVersion(versionInfo: {
 }): string {
     return versionInfo.version || versionInfo.revision || versionInfo.tag;
 }
+
+/**
+ * Extracts URL from gateway or ingress API resources
+ * @param resource The managed resource with object field
+ * @param groupVersionKind The groupVersionKind string (e.g., "networking.k8s.io/v1/Ingress")
+ * @returns The URL string or null if not found
+ */
+export function extractURLFromGatewayOrIngress(resource: any, groupVersionKind: string): string | null {
+    console.log('[extractURLFromGatewayOrIngress] Called with:', {
+        hasResource: !!resource,
+        hasObject: !!resource?.object,
+        groupVersionKind,
+        resourceName: resource?.name,
+        resourceNamespace: resource?.namespace
+    });
+
+    if (!resource?.object) {
+        console.log('[extractURLFromGatewayOrIngress] No object field, returning null');
+        return null;
+    }
+
+    const obj = resource.object;
+    const kind = groupVersionKind?.split('/').pop() || '';
+    console.log('[extractURLFromGatewayOrIngress] Processing:', { kind, groupVersionKind, objKeys: Object.keys(obj || {}) });
+
+    // Handle Gateway API resources
+    if (groupVersionKind?.includes('gateway.networking.k8s.io')) {
+        console.log('[extractURLFromGatewayOrIngress] Detected Gateway API resource');
+        // Gateway resource
+        if (kind === 'Gateway') {
+            console.log('[extractURLFromGatewayOrIngress] Processing Gateway resource');
+            // Check status.addresses for hostname
+            if (obj.status?.addresses && Array.isArray(obj.status.addresses)) {
+                console.log('[extractURLFromGatewayOrIngress] Found status.addresses:', obj.status.addresses);
+                for (const addr of obj.status.addresses) {
+                    if (addr.type === 'Hostname' && addr.value) {
+                        // Determine scheme from listeners
+                        let scheme = 'https';
+                        if (obj.spec?.listeners && Array.isArray(obj.spec.listeners)) {
+                            const httpListener = obj.spec.listeners.find((l: any) => l.protocol === 'HTTP');
+                            if (httpListener) {
+                                scheme = 'http';
+                            }
+                        }
+                        const url = `${scheme}://${addr.value}`;
+                        console.log('[extractURLFromGatewayOrIngress] Found URL from status.addresses:', url);
+                        return url;
+                    }
+                }
+            }
+            // Fallback: check spec.listeners for hostname
+            if (obj.spec?.listeners && Array.isArray(obj.spec.listeners)) {
+                console.log('[extractURLFromGatewayOrIngress] Checking spec.listeners:', obj.spec.listeners);
+                for (const listener of obj.spec.listeners) {
+                    if (listener.hostname) {
+                        const scheme = listener.protocol === 'HTTP' ? 'http' : 'https';
+                        const url = `${scheme}://${listener.hostname}`;
+                        console.log('[extractURLFromGatewayOrIngress] Found URL from spec.listeners:', url);
+                        return url;
+                    }
+                }
+            }
+            console.log('[extractURLFromGatewayOrIngress] No URL found in Gateway resource');
+        }
+        // HTTPRoute resource
+        if (kind === 'HTTPRoute') {
+            console.log('[extractURLFromGatewayOrIngress] Processing HTTPRoute resource');
+            // Check spec.hostnames
+            if (obj.spec?.hostnames && Array.isArray(obj.spec.hostnames) && obj.spec.hostnames.length > 0) {
+                const hostname = obj.spec.hostnames[0];
+                const url = `https://${hostname}`;
+                console.log('[extractURLFromGatewayOrIngress] Found URL from spec.hostnames:', url);
+                // Try to determine scheme from parent gateway or default to https
+                return url;
+            }
+            console.log('[extractURLFromGatewayOrIngress] No hostnames found in HTTPRoute resource');
+        }
+    }
+
+    // Handle Ingress resources (networking.k8s.io)
+    if (groupVersionKind?.includes('networking.k8s.io') && kind === 'Ingress') {
+        console.log('[extractURLFromGatewayOrIngress] Processing Ingress resource');
+        // Check status.loadBalancer.ingress for hostname or IP
+        if (obj.status?.loadBalancer?.ingress && Array.isArray(obj.status.loadBalancer.ingress)) {
+            console.log('[extractURLFromGatewayOrIngress] Found status.loadBalancer.ingress:', obj.status.loadBalancer.ingress);
+            for (const ingress of obj.status.loadBalancer.ingress) {
+                const hostname = ingress.hostname || ingress.ip;
+                if (hostname) {
+                    // Determine scheme from TLS
+                    const scheme = obj.spec?.tls && obj.spec.tls.length > 0 ? 'https' : 'http';
+                    const url = `${scheme}://${hostname}`;
+                    console.log('[extractURLFromGatewayOrIngress] Found URL from status.loadBalancer.ingress:', url);
+                    return url;
+                }
+            }
+        }
+        // Fallback: check spec.rules for hostname
+        if (obj.spec?.rules && Array.isArray(obj.spec.rules)) {
+            console.log('[extractURLFromGatewayOrIngress] Checking spec.rules:', obj.spec.rules);
+            for (const rule of obj.spec.rules) {
+                if (rule.host) {
+                    const scheme = obj.spec?.tls && obj.spec.tls.length > 0 ? 'https' : 'http';
+                    const url = `${scheme}://${rule.host}`;
+                    console.log('[extractURLFromGatewayOrIngress] Found URL from spec.rules:', url);
+                    return url;
+                }
+            }
+        }
+        console.log('[extractURLFromGatewayOrIngress] No URL found in Ingress resource');
+    }
+
+    console.log('[extractURLFromGatewayOrIngress] No matching resource type, returning null');
+    return null;
+}
