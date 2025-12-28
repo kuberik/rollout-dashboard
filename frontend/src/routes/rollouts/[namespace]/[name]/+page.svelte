@@ -170,18 +170,7 @@
 						);
 						if (resourcesResponse.ok) {
 							const resourcesData = await resourcesResponse.json();
-							const resources = resourcesData.managedResources || [];
-							console.log(`[Overview] Fetched managed resources for ${name}:`, {
-								count: resources.length,
-								resources: resources.map((r: any) => ({
-									name: r.name,
-									namespace: r.namespace,
-									groupVersionKind: r.groupVersionKind,
-									type: r.groupVersionKind?.split('/').pop(),
-									hasObject: !!r.object
-								}))
-							});
-							tempResources[name] = resources;
+							tempResources[name] = resourcesData.managedResources || [];
 						}
 					} catch (e) {
 						console.error(`Failed to fetch managed resources for ${name}:`, e);
@@ -541,22 +530,7 @@
 	);
 
 	// Computed property to filter managed resources - now always shows all resources
-	const filteredManagedResources = $derived.by(() => {
-		console.log('[Overview] filteredManagedResources derived:', {
-			keys: Object.keys(managedResources),
-			totalResources: Object.values(managedResources).flat().length,
-			resources: Object.values(managedResources)
-				.flat()
-				.map((r: any) => ({
-					name: r.name,
-					namespace: r.namespace,
-					groupVersionKind: r.groupVersionKind,
-					type: r.groupVersionKind?.split('/').pop(),
-					hasObject: !!r.object
-				}))
-		});
-		return managedResources;
-	});
+	const filteredManagedResources = $derived(managedResources);
 
 	// Extract URLs from gateway/ingress resources for display in title card
 	// Prefer HTTPRoute hostnames over Gateway hostnames (like the Go code does)
