@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,6 +12,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -34,8 +36,14 @@ import (
 )
 
 type Client struct {
-	client client.Client
-	config *rest.Config // Store REST config for SelfSubjectAccessReview
+	client    client.Client
+	config    *rest.Config // Store REST config for SelfSubjectAccessReview
+	clientset *kubernetes.Clientset
+}
+
+// GetClientset returns the Kubernetes clientset for direct API access
+func (c *Client) GetClientset() *kubernetes.Clientset {
+	return c.clientset
 }
 
 // NewClient creates a Kubernetes client using service account credentials (in-cluster) or kubeconfig
@@ -137,7 +145,13 @@ func NewClientWithToken(token string) (*Client, error) {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return &Client{client: cl, config: config}, nil
+	// Create Kubernetes clientset for pod logs
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	return &Client{client: cl, config: config, clientset: clientset}, nil
 }
 
 func (c *Client) GetRollouts(ctx context.Context, namespace string) (*rolloutv1alpha1.RolloutList, error) {
@@ -994,4 +1008,98 @@ func (c *Client) GetEnvironments(ctx context.Context, namespace string) (*envv1a
 	}
 
 	return environments, nil
+}
+
+// GetPodsBySelector lists pods matching the given label selector
+func (c *Client) GetPodsBySelector(ctx context.Context, namespace string, selector labels.Selector) (*corev1.PodList, error) {
+	pods := &corev1.PodList{}
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabelsSelector{Selector: selector},
+	}
+	if err := c.client.List(ctx, pods, opts...); err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+	return pods, nil
+}
+
+// GetAllPods lists all pods in a namespace
+func (c *Client) GetAllPods(ctx context.Context, namespace string) (*corev1.PodList, error) {
+	pods := &corev1.PodList{}
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+	if err := c.client.List(ctx, pods, opts...); err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+	return pods, nil
+}
+
+// GetPodsByOwnerReference lists pods owned by a specific resource (by UID)
+func (c *Client) GetPodsByOwnerReference(ctx context.Context, namespace string, ownerUID string) (*corev1.PodList, error) {
+	pods := &corev1.PodList{}
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+	if err := c.client.List(ctx, pods, opts...); err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	// Filter pods by owner reference
+	filteredPods := &corev1.PodList{}
+	for _, pod := range pods.Items {
+		for _, ownerRef := range pod.OwnerReferences {
+			if string(ownerRef.UID) == ownerUID {
+				filteredPods.Items = append(filteredPods.Items, pod)
+				break
+			}
+		}
+	}
+	return filteredPods, nil
+}
+
+// GetPodsByJobName lists pods owned by a job
+func (c *Client) GetPodsByJobName(ctx context.Context, namespace, jobName string) (*corev1.PodList, error) {
+	// Get the job first to get its UID
+	job := &unstructured.Unstructured{}
+	job.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "batch",
+		Version: "v1",
+		Kind:    "Job",
+	})
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: jobName}, job); err != nil {
+		return nil, fmt.Errorf("failed to get job: %w", err)
+	}
+
+	jobUID := string(job.GetUID())
+	return c.GetPodsByOwnerReference(ctx, namespace, jobUID)
+}
+
+// GetPodLogs retrieves logs from a pod
+func (c *Client) GetPodLogs(ctx context.Context, namespace, podName, containerName string, tailLines *int64, follow bool) (string, error) {
+	if c.clientset == nil {
+		return "", fmt.Errorf("clientset not initialized")
+	}
+
+	opts := &corev1.PodLogOptions{
+		Container: containerName,
+		Follow:    follow,
+	}
+	if tailLines != nil {
+		opts.TailLines = tailLines
+	}
+
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, opts)
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to stream logs: %w", err)
+	}
+	defer stream.Close()
+
+	logs, err := io.ReadAll(stream)
+	if err != nil {
+		return "", fmt.Errorf("failed to read logs: %w", err)
+	}
+
+	return string(logs), nil
 }

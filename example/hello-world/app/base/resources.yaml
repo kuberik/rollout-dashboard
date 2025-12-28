@@ -60,6 +60,15 @@ spec:
             - name: app-script
               mountPath: /app/app.py
               subPath: app.py
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 1
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 3
       volumes:
         - name: app-script
           configMap:

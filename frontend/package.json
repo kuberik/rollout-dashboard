@@ -55,6 +55,7 @@
 	},
 	"dependencies": {
 		"@dagrejs/dagre": "^1.1.8",
+		"@humanspeak/svelte-virtual-list": "^0.3.6",
 		"@inlang/paraglide-js": "^2.0.0",
 		"@tanstack/svelte-query": "^6.0.3",
 		"@types/js-yaml": "^4.0.9",

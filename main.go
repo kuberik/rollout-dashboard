@@ -1,14 +1,20 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"bytes"
+
+	"sync"
 
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/config/configfile"
@@ -16,8 +22,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
+	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // dockerConfigKeychain implements authn.Keychain interface for Docker config JSON
@@ -1058,6 +1069,451 @@ func main() {
 				"healthChecks": healthChecks,
 				"debug":        debugInfo,
 			})
+		})
+
+		// Stream pod logs using Server-Sent Events
+		api.GET("/rollouts/:namespace/:name/pods/logs", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+			filterType := c.DefaultQuery("type", "")
+			podName := c.Query("pod")
+			containerName := c.DefaultQuery("container", "")
+
+			log.Printf("[Stream Logs] Starting stream for %s/%s, filterType=%s", namespace, name, filterType)
+
+			// Set headers for SSE
+			c.Header("Content-Type", "text/event-stream")
+			c.Header("Cache-Control", "no-cache")
+			c.Header("Connection", "keep-alive")
+			c.Header("X-Accel-Buffering", "no")
+			// Prevent timeout - set a very long timeout or disable it
+			c.Writer.Header().Set("X-Timeout", "0")
+
+			// If specific pod is requested, stream only that pod
+			if podName != "" {
+				clientset := k8sClient.GetClientset()
+				if clientset == nil {
+					c.SSEvent("error", "Clientset not available")
+					return
+				}
+
+				opts := &corev1.PodLogOptions{
+					Container: containerName,
+					Follow:    true,
+				}
+
+				req := clientset.CoreV1().Pods(namespace).GetLogs(podName, opts)
+				stream, err := req.Stream(context.Background())
+				if err != nil {
+					c.SSEvent("error", fmt.Sprintf("Failed to stream logs: %v", err))
+					return
+				}
+				defer stream.Close()
+
+				scanner := bufio.NewScanner(stream)
+				for scanner.Scan() {
+					if c.Request.Context().Err() != nil {
+						return
+					}
+					line := scanner.Text()
+					if line != "" {
+						logLine := map[string]string{
+							"pod":       podName,
+							"container": containerName,
+							"type":      filterType,
+							"line":      line,
+						}
+						if jsonBytes, err := json.Marshal(logLine); err == nil {
+							c.SSEvent("log", string(jsonBytes))
+							c.Writer.Flush()
+						}
+					}
+				}
+				return
+			}
+
+			// Get the rollout to find current version tag
+			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("[Stream Logs] Error fetching rollout: %v", err)
+				c.SSEvent("error", fmt.Sprintf("Failed to fetch rollout: %v", err))
+				return
+			}
+
+			var currentVersionTag string
+			if len(rollout.Status.History) > 0 {
+				currentVersionTag = rollout.Status.History[0].Version.Tag
+			}
+			log.Printf("[Stream Logs] Rollout: %s/%s, Current version tag: %s, Filter type: %s", namespace, name, currentVersionTag, filterType)
+
+			// Helper function to check if pod contains version tag
+			containsVersionTag := func(pod *corev1.Pod, versionTag string) bool {
+				if versionTag == "" {
+					return true
+				}
+				for key, value := range pod.Labels {
+					if strings.Contains(key, versionTag) || strings.Contains(value, versionTag) {
+						return true
+					}
+				}
+				for key, value := range pod.Annotations {
+					if strings.Contains(key, versionTag) || strings.Contains(value, versionTag) {
+						return true
+					}
+				}
+				for _, container := range pod.Spec.Containers {
+					if strings.Contains(container.Image, versionTag) {
+						return true
+					}
+				}
+				return false
+			}
+
+			type PodInfo struct {
+				Name      string `json:"name"`
+				Namespace string `json:"namespace"`
+				Type      string `json:"type"`
+			}
+			allPods := make([]PodInfo, 0)
+
+			// Get pods from deployments in kustomization inventory
+			if filterType == "" || filterType == "pod" {
+				log.Printf("[Stream Logs] Fetching kustomizations for pods")
+				kustomizations, err := k8sClient.GetKustomizationsByRolloutAnnotation(context.Background(), namespace, name)
+				if err != nil {
+					log.Printf("[Stream Logs] Error fetching kustomizations: %v", err)
+				} else if kustomizations == nil {
+					log.Printf("[Stream Logs] No kustomizations found")
+				} else {
+					log.Printf("[Stream Logs] Found %d kustomizations", len(kustomizations.Items))
+				}
+				if err == nil && kustomizations != nil {
+					for _, kustomization := range kustomizations.Items {
+						log.Printf("[Stream Logs] Processing kustomization: %s/%s", kustomization.Namespace, kustomization.Name)
+						managedResources, err := k8sClient.GetKustomizationManagedResources(context.Background(), kustomization.Namespace, kustomization.Name)
+						if err != nil {
+							log.Printf("[Stream Logs] Error fetching managed resources: %v", err)
+							continue
+						}
+						log.Printf("[Stream Logs] Found %d managed resources", len(managedResources))
+
+						for _, resource := range managedResources {
+							if strings.Contains(resource.GroupVersionKind, "apps/v1/Deployment") {
+								log.Printf("[Stream Logs] Found Deployment: %s/%s", resource.Namespace, resource.Name)
+								obj := resource.Object
+								if obj != nil {
+									// Unmarshal to Deployment to get selector
+									var deployment appsv1.Deployment
+									if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &deployment); err != nil {
+										log.Printf("[Stream Logs] Error unmarshaling deployment: %v", err)
+										continue
+									}
+
+									// Get selector labels (these are what pods actually have)
+									selectorLabels := deployment.Spec.Selector.MatchLabels
+									log.Printf("[Stream Logs] Deployment selector labels: %v", selectorLabels)
+
+									allPodsList, err := k8sClient.GetAllPods(context.Background(), resource.Namespace)
+									if err != nil {
+										log.Printf("[Stream Logs] Error fetching pods: %v", err)
+									} else {
+										log.Printf("[Stream Logs] Found %d total pods in namespace %s", len(allPodsList.Items), resource.Namespace)
+									}
+									if err == nil {
+										matchedCount := 0
+										for _, pod := range allPodsList.Items {
+											podMatches := true
+											for key, value := range selectorLabels {
+												if pod.Labels[key] != value {
+													podMatches = false
+													break
+												}
+											}
+											if podMatches {
+												matchedCount++
+												if containsVersionTag(&pod, currentVersionTag) {
+													log.Printf("[Stream Logs] Pod %s matches version tag %s", pod.Name, currentVersionTag)
+													allPods = append(allPods, PodInfo{
+														Name:      pod.Name,
+														Namespace: pod.Namespace,
+														Type:      "pod",
+													})
+												} else {
+													log.Printf("[Stream Logs] Pod %s does not match version tag %s", pod.Name, currentVersionTag)
+												}
+											}
+										}
+										log.Printf("[Stream Logs] Matched %d pods by selector labels, %d matched version tag", matchedCount, len(allPods))
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Get pods from RolloutTest jobs (from kustomize inventory)
+			if filterType == "" || filterType == "test" {
+				log.Printf("[Stream Logs] Fetching rollout tests from kustomize inventory")
+				kustomizations, err := k8sClient.GetKustomizationsByRolloutAnnotation(context.Background(), namespace, name)
+				if err == nil && kustomizations != nil {
+					for _, kustomization := range kustomizations.Items {
+						managedResources, err := k8sClient.GetKustomizationManagedResources(context.Background(), kustomization.Namespace, kustomization.Name)
+						if err != nil {
+							log.Printf("[Stream Logs] Error fetching managed resources for tests: %v", err)
+							continue
+						}
+
+						for _, resource := range managedResources {
+							// Look for RolloutTest resources
+							if strings.Contains(resource.GroupVersionKind, "RolloutTest") {
+								log.Printf("[Stream Logs] Found RolloutTest: %s/%s", resource.Namespace, resource.Name)
+								obj := resource.Object
+								if obj != nil {
+									// Get the RolloutTest to find its job
+									var rolloutTest openkruisev1alpha1.RolloutTest
+									if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &rolloutTest); err != nil {
+										log.Printf("[Stream Logs] Error unmarshaling RolloutTest: %v", err)
+										continue
+									}
+
+									if rolloutTest.Status.JobName != "" {
+										jobName := rolloutTest.Status.JobName
+										log.Printf("[Stream Logs] Processing test job: %s", jobName)
+										// Query pods directly by batch.kubernetes.io/job-name label instead of fetching the job (which may be cleaned up)
+										selector, err := labels.Parse(fmt.Sprintf("batch.kubernetes.io/job-name=%s", jobName))
+										if err != nil {
+											log.Printf("[Stream Logs] Error creating selector for job %s: %v", jobName, err)
+										} else {
+											pods, err := k8sClient.GetPodsBySelector(context.Background(), namespace, selector)
+											if err != nil {
+												log.Printf("[Stream Logs] Error fetching pods for job %s: %v", jobName, err)
+											} else if pods == nil {
+												log.Printf("[Stream Logs] No pods found for job %s", jobName)
+											} else {
+												log.Printf("[Stream Logs] Found %d pods for job %s", len(pods.Items), jobName)
+												for _, pod := range pods.Items {
+													allPods = append(allPods, PodInfo{
+														Name:      pod.Name,
+														Namespace: pod.Namespace,
+														Type:      "test",
+													})
+												}
+											}
+										}
+									} else {
+										log.Printf("[Stream Logs] RolloutTest %s/%s has no job name in status", resource.Namespace, resource.Name)
+									}
+								}
+							}
+						}
+					}
+				} else if err != nil {
+					log.Printf("[Stream Logs] Error fetching kustomizations for tests: %v", err)
+				}
+			}
+
+			log.Printf("[Stream Logs] Total pods found: %d", len(allPods))
+			// Send initial pods list
+			if podsJSON, err := json.Marshal(allPods); err == nil {
+				c.SSEvent("pods", string(podsJSON))
+				c.Writer.Flush()
+			} else {
+				log.Printf("[Stream Logs] Error marshaling pods: %v", err)
+			}
+
+			// Stream logs from all pods concurrently
+			clientset := k8sClient.GetClientset()
+			if clientset == nil {
+				c.SSEvent("error", "Clientset not available")
+				return
+			}
+
+			// Use request context - it stays alive as long as the SSE connection is open
+			// Don't create a child context that gets cancelled
+			ctx := c.Request.Context()
+
+			// Use a wait group to track goroutines
+			var wg sync.WaitGroup
+
+			// Get all pods to stream from
+			type StreamPod struct {
+				Pod       *corev1.Pod
+				PodType   string
+				Container string
+			}
+			streamPods := make([]StreamPod, 0)
+			for _, podInfo := range allPods {
+				pods, err := k8sClient.GetAllPods(context.Background(), podInfo.Namespace)
+				if err != nil {
+					log.Printf("[Stream Logs] Error fetching pods for namespace %s: %v", podInfo.Namespace, err)
+					continue
+				}
+				for _, pod := range pods.Items {
+					if pod.Name == podInfo.Name {
+						log.Printf("[Stream Logs] Found pod %s with %d containers", pod.Name, len(pod.Spec.Containers))
+						for _, container := range pod.Spec.Containers {
+							streamPods = append(streamPods, StreamPod{
+								Pod:       &pod,
+								PodType:   podInfo.Type,
+								Container: container.Name,
+							})
+						}
+						break
+					}
+				}
+			}
+
+			log.Printf("[Stream Logs] Starting streams for %d pod/container combinations", len(streamPods))
+
+			// Channel to serialize all SSE writes (Gin context is not thread-safe)
+			type sseMessage struct {
+				event string
+				data  string
+			}
+			sseChan := make(chan sseMessage, 1000)
+
+			// Single goroutine to handle all SSE writes
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case msg, ok := <-sseChan:
+						if !ok {
+							return
+						}
+						// Serialize all SSE writes through this single goroutine
+						func() {
+							defer func() {
+								if r := recover(); r != nil {
+									log.Printf("[Stream Logs] Panic while sending SSE event (connection closed): %v", r)
+								}
+							}()
+							c.SSEvent(msg.event, msg.data)
+							if c.Writer != nil {
+								c.Writer.Flush()
+							}
+						}()
+					}
+				}
+			}()
+
+			// Stream from each pod/container in a goroutine
+			for _, streamPod := range streamPods {
+				wg.Add(1)
+				go func(sp StreamPod) {
+					defer wg.Done()
+					log.Printf("[Stream Logs] Starting stream for pod %s container %s", sp.Pod.Name, sp.Container)
+					// Use background context for the log stream itself, but check request context for cancellation
+					streamCtx := context.Background()
+					opts := &corev1.PodLogOptions{
+						Container: sp.Container,
+						Follow:    true,
+					}
+					req := clientset.CoreV1().Pods(sp.Pod.Namespace).GetLogs(sp.Pod.Name, opts)
+					stream, err := req.Stream(streamCtx)
+					if err != nil {
+						log.Printf("[Stream Logs] Error streaming logs for pod %s container %s: %v", sp.Pod.Name, sp.Container, err)
+						return
+					}
+					defer stream.Close()
+
+					lineCount := 0
+					scanner := bufio.NewScanner(stream)
+					for scanner.Scan() {
+						// Check if request context is cancelled (client disconnected)
+						select {
+						case <-ctx.Done():
+							log.Printf("[Stream Logs] Request context cancelled for pod %s container %s", sp.Pod.Name, sp.Container)
+							return
+						default:
+						}
+
+						line := scanner.Text()
+						if line != "" {
+							lineCount++
+							if lineCount%100 == 0 {
+								log.Printf("[Stream Logs] Streamed %d lines from pod %s container %s", lineCount, sp.Pod.Name, sp.Container)
+							}
+							logLine := map[string]string{
+								"pod":       sp.Pod.Name,
+								"container": sp.Container,
+								"type":      sp.PodType,
+								"line":      line,
+							}
+							if jsonBytes, err := json.Marshal(logLine); err == nil {
+								// Send to channel instead of writing directly
+								select {
+								case <-ctx.Done():
+									return
+								case sseChan <- sseMessage{event: "log", data: string(jsonBytes)}:
+									// Successfully queued
+								default:
+									// Channel full, skip this line to avoid blocking
+									log.Printf("[Stream Logs] SSE channel full, dropping log line from pod %s", sp.Pod.Name)
+								}
+							} else {
+								log.Printf("[Stream Logs] Error marshaling log line: %v", err)
+							}
+						}
+					}
+					if err := scanner.Err(); err != nil {
+						log.Printf("[Stream Logs] Scanner error for pod %s container %s: %v", sp.Pod.Name, sp.Container, err)
+					}
+					log.Printf("[Stream Logs] Finished streaming from pod %s container %s (total lines: %d)", sp.Pod.Name, sp.Container, lineCount)
+				}(streamPod)
+			}
+
+			// Keep connection alive with periodic pings while waiting for context cancellation
+			// Use shorter interval to prevent timeouts
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+
+			// Keep sending keepalive pings until context is cancelled
+			// This loop keeps the connection alive
+			for {
+				select {
+				case <-ctx.Done():
+					log.Printf("[Stream Logs] Connection closed, context cancelled")
+					goto cleanup
+				case <-ticker.C:
+					// Send keepalive ping through the channel
+					select {
+					case <-ctx.Done():
+						log.Printf("[Stream Logs] Connection closed, context cancelled")
+						goto cleanup
+					case sseChan <- sseMessage{event: "ping", data: "keepalive"}:
+						// Successfully queued
+					default:
+						// Channel full, skip keepalive but don't exit
+					}
+				}
+			}
+		cleanup:
+			// Close the SSE channel to signal the writer goroutine to stop
+			close(sseChan)
+
+			// Wait a bit for goroutines to finish, but don't block forever
+			done := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+
+			select {
+			case <-done:
+				log.Printf("[Stream Logs] All streams finished")
+			case <-time.After(5 * time.Second):
+				log.Printf("[Stream Logs] Timeout waiting for streams to finish")
+			}
 		})
 	}
 

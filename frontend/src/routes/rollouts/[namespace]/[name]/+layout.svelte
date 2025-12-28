@@ -3,7 +3,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { Sidebar, SidebarGroup, SidebarItem } from 'flowbite-svelte';
-	import { ObjectsColumnSolid, ClockArrowOutline, LayersSolid } from 'flowbite-svelte-icons';
+	import {
+		ObjectsColumnSolid,
+		ClockArrowOutline,
+		LayersSolid,
+		TerminalOutline
+	} from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import type { Rollout } from '../../../../types';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -69,6 +74,13 @@
 						{/snippet}
 					</SidebarItem>
 				{/if}
+				<SidebarItem label="Logs" href={`/rollouts/${namespace}/${name}/logs`}>
+					{#snippet icon()}
+						<TerminalOutline
+							class="h-5 w-5 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
+						/>
+					{/snippet}
+				</SidebarItem>
 			</SidebarGroup>
 		</Sidebar>
 

@@ -11,6 +11,9 @@ importers:
       '@dagrejs/dagre':
         specifier: ^1.1.8
         version: 1.1.8
+      '@humanspeak/svelte-virtual-list':
+        specifier: ^0.3.6
+        version: 0.3.6(svelte@5.46.1)
       '@inlang/paraglide-js':
         specifier: ^2.0.0
         version: 2.0.11
@@ -426,6 +429,11 @@ packages:
   '@humanfs/node@0.16.6':
     resolution: {integrity: sha512-YuI2ZHQL78Q5HbhDiBA1X4LmYdXCKCMQIfw0pw7piHJwyREFebJUvrQN4cMssyES6x+vfUbx1CIpaQUKYdQZOw==}
     engines: {node: '>=18.18.0'}
+
+  '@humanspeak/svelte-virtual-list@0.3.6':
+    resolution: {integrity: sha512-ls5FicD5b8nXi87GG7mj9nIoTkIl0M/JkmmE21KWnTabtDRnqEjZ7kOsU3ZEAWc0/HW8PlRwF50yqKwpaLeBMw==}
+    peerDependencies:
+      svelte: ^5.0.0
 
   '@humanwhocodes/module-importer@1.0.1':
     resolution: {integrity: sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA==}
@@ -2638,6 +2646,11 @@ snapshots:
     dependencies:
       '@humanfs/core': 0.19.1
       '@humanwhocodes/retry': 0.3.1
+
+  '@humanspeak/svelte-virtual-list@0.3.6(svelte@5.46.1)':
+    dependencies:
+      esm-env: 1.2.2
+      svelte: 5.46.1
 
   '@humanwhocodes/module-importer@1.0.1': {}
 
