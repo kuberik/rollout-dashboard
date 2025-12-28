@@ -191,8 +191,8 @@
 									{@const isCurrent = i === 0}
 									<TimelineItem
 										color="gray"
-										h3Class="font-mono ml-4"
-										liClass="mr-4"
+										class="mr-4"
+										classes={{ h3: 'font-mono ml-4' }}
 										title={getDisplayVersion(entry.version)}
 										date="Deployed {formatTimeAgo(entry.timestamp, $now)}"
 									>
@@ -350,7 +350,7 @@
 															color="light"
 														/>
 													{/if}
-													<Clipboard bind:value={entry.version.tag} size="xs" color="light">
+													<Clipboard value={entry.version.tag} size="xs" color="light">
 														{#snippet children(success)}
 															{#if success}
 																<CheckOutline class="mr-1 h-3 w-3" />

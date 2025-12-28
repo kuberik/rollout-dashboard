@@ -1,4 +1,4 @@
-import type { QueryOptions, QueryKey } from '@tanstack/svelte-query';
+import type { QueryKey, QueryObserverOptions } from '@tanstack/svelte-query';
 import type {
     Rollout,
     Kustomization,
@@ -24,7 +24,7 @@ export type RolloutsListResponse = {
 };
 
 type QueryOverrides<TData> = Omit<
-    QueryOptions<TData, Error, TData, QueryKey>,
+    QueryObserverOptions<TData, Error, TData, TData, QueryKey>,
     'queryKey' | 'queryFn'
 >;
 
@@ -60,7 +60,7 @@ export function rolloutQueryOptions({
     namespace: string;
     name: string;
     options?: QueryOverrides<RolloutResponse>;
-}): QueryOptions<RolloutResponse, Error> {
+}) {
     return {
         queryKey: rolloutQueryKey(namespace, name),
         queryFn: () => fetchRollout(namespace, name),
@@ -72,7 +72,7 @@ export function rolloutsListQueryOptions({
     options
 }: {
     options?: QueryOverrides<RolloutsListResponse>;
-} = {}): QueryOptions<RolloutsListResponse, Error> {
+} = {}) {
     return {
         queryKey: rolloutsListQueryKey,
         queryFn: () => fetchRolloutsList(),
@@ -115,7 +115,7 @@ export function rolloutPermissionsQueryOptions({
     namespace: string;
     name: string;
     options?: QueryOverrides<PermissionsResponse>;
-}): QueryOptions<PermissionsResponse, Error> {
+}) {
     return {
         queryKey: rolloutPermissionsQueryKey(namespace, name),
         queryFn: () => fetchRolloutPermissions(namespace, name),
@@ -153,7 +153,7 @@ export function rolloutTestsQueryOptions({
     namespace: string;
     name: string;
     options?: QueryOverrides<RolloutTestsResponse>;
-}): QueryOptions<RolloutTestsResponse, Error> {
+}) {
     return {
         queryKey: rolloutTestsQueryKey(namespace, name),
         queryFn: () => fetchRolloutTests(namespace, name),
