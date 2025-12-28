@@ -49,7 +49,6 @@ async function* createLogsStream(
 	onPodsUpdate?: (pods: PodInfo[]) => void
 ): AsyncGenerator<LogLine, void, unknown> {
 	const url = createLogsStreamUrl(namespace, name, filterType, since);
-	console.log('[Logs Stream] Creating EventSource for:', url);
 
 	let logCount = 0;
 	let lastLogTime = Date.now();
@@ -58,11 +57,10 @@ async function* createLogsStream(
 	const eventSource = createEventSource({
 		url,
 		onConnect: () => {
-			console.log('[Logs Stream] EventSource connected, readyState:', eventSource.readyState);
 			lastActivityCheck = Date.now();
 		},
 		onDisconnect: () => {
-			console.log('[Logs Stream] EventSource disconnected');
+			// Connection closed
 		}
 	});
 
@@ -71,13 +69,6 @@ async function* createLogsStream(
 		const now = Date.now();
 		const timeSinceLastLog = now - lastLogTime;
 		const timeSinceLastActivity = now - lastActivityCheck;
-
-		console.log('[Logs Stream] Activity check:', {
-			readyState: eventSource.readyState,
-			timeSinceLastLog: `${timeSinceLastLog}ms`,
-			timeSinceLastActivity: `${timeSinceLastActivity}ms`,
-			totalLogsReceived: logCount
-		});
 
 		// If no activity for 60 seconds, log warning
 		if (timeSinceLastLog > 60000) {
@@ -100,7 +91,6 @@ async function* createLogsStream(
 				// Handle pods events
 				if (event === 'pods') {
 					try {
-						console.log('[Logs Stream] Received pods event');
 						const pods = JSON.parse(data) as PodInfo[];
 						if (onPodsUpdate) {
 							onPodsUpdate(pods);
@@ -113,7 +103,6 @@ async function* createLogsStream(
 
 				// Handle ping events (keepalive)
 				if (event === 'ping') {
-					console.log('[Logs Stream] Received ping (keepalive)');
 					continue;
 				}
 
@@ -134,16 +123,12 @@ async function* createLogsStream(
 						logCount++;
 						lastLogTime = Date.now();
 
-						if (logCount <= 10 || logCount % 100 === 0) {
-							console.log(`[Logs Stream] Received log event #${logCount}`);
-						}
-
 						const logLine = JSON.parse(data) as LogLine;
 						if (!logLine.timestamp) {
 							logLine.timestamp = Date.now();
 						}
 
-						// Yield directly - no queue needed!
+						// Yield directly - the reducer will handle limiting
 						yield logLine;
 					} catch (err) {
 						console.error('[Logs Stream] Error parsing log line:', err);
@@ -152,7 +137,6 @@ async function* createLogsStream(
 			}
 			// Iterator ended (connection dropped), but eventSource may reconnect
 			// Wait a moment and check if it reconnected
-			console.log('[Logs Stream] Iterator ended, checking for reconnection...');
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 			// Check if eventSource is still active (not manually closed)
 			if (eventSource.readyState === 'open' || eventSource.readyState === 'connecting') {
@@ -167,7 +151,6 @@ async function* createLogsStream(
 			// Check if eventSource is still active
 			if (eventSource.readyState === 'open' || eventSource.readyState === 'connecting') {
 				// Wait a bit for reconnection and continue
-				console.log('[Logs Stream] Waiting for reconnection after error...');
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 				continue;
 			} else {
@@ -176,8 +159,9 @@ async function* createLogsStream(
 			}
 		}
 	}
-	console.log('[Logs Stream] Stream ended, total logs yielded:', logCount);
 }
+
+const MAX_LOGS = 1000;
 
 export function logsStreamQueryOptions({
 	namespace,
@@ -204,12 +188,25 @@ export function logsStreamQueryOptions({
 				if (!chunk.timestamp) {
 					chunk.timestamp = Date.now();
 				}
-				// Limit to MAX_LOGS, dropping oldest
-				const newLogs = [...acc, chunk];
-				if (newLogs.length > 1000) {
-					return newLogs.slice(-1000);
+
+				// If we're way over the limit (e.g., from a large batch), aggressively trim
+				if (acc.length > MAX_LOGS * 1.5) {
+					// Drop down to MAX_LOGS immediately, keeping only the most recent
+					const result = [...acc.slice(-MAX_LOGS), chunk].slice(-MAX_LOGS);
+					return result;
 				}
-				return newLogs;
+
+				// If we're at or over the limit, drop oldest and add new one
+				if (acc.length >= MAX_LOGS) {
+					// Drop oldest and add new one - ALWAYS create a completely new array
+					// This ensures streamedQuery detects the change even when length stays the same
+					const result = [...acc.slice(1), chunk];
+					return result;
+				}
+
+				// Otherwise, just append
+				const result = [...acc, chunk];
+				return result;
 			},
 			initialValue: [] as LogLine[]
 		}),

@@ -67,8 +67,6 @@ func (ls *LogStreamer) Start() error {
 		return fmt.Errorf("failed to discover pods: %w", err)
 	}
 
-	log.Printf("[Stream Logs] Discovered %d pods", len(pods))
-
 	// Send initial pods list
 	if err := ls.sendPodsList(pods); err != nil {
 		return fmt.Errorf("failed to send initial pods list: %w", err)
@@ -108,9 +106,7 @@ func (ls *LogStreamer) Stop() {
 
 	select {
 	case <-done:
-		log.Printf("[Stream Logs] All streams finished")
 	case <-time.After(5 * time.Second):
-		log.Printf("[Stream Logs] Timeout waiting for streams to finish")
 	}
 }
 
@@ -141,11 +137,8 @@ func (ls *LogStreamer) startStreamingPod(sp StreamPod) {
 
 // streamPodLogs streams logs from a single pod/container
 func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
-	log.Printf("[Stream Logs] Starting stream for pod %s container %s", sp.Pod.Name, sp.Container)
-
 	clientset := ls.client.GetClientset()
 	if clientset == nil {
-		log.Printf("[Stream Logs] Clientset not available for pod %s", sp.Pod.Name)
 		return
 	}
 
@@ -155,26 +148,26 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 	}
 
 	if ls.sinceTime != nil {
+		// Reconnection: only get logs since the last seen timestamp
 		sinceTime := metav1.NewTime(*ls.sinceTime)
 		opts.SinceTime = &sinceTime
+	} else {
+		// Initial connection: limit to most recent 1000 lines to avoid sending too much history
+		// The frontend only keeps 1000 logs anyway, so there's no point sending more
+		tailLines := int64(1000)
+		opts.TailLines = &tailLines
 	}
 
 	req := clientset.CoreV1().Pods(sp.Pod.Namespace).GetLogs(sp.Pod.Name, opts)
-	log.Printf("[Stream Logs] Requesting log stream for pod %s container %s (follow=%v, sinceTime=%v)", sp.Pod.Name, sp.Container, opts.Follow, opts.SinceTime != nil)
 	stream, err := req.Stream(context.Background())
 	if err != nil {
-		log.Printf("[Stream Logs] Error streaming logs for pod %s container %s: %v", sp.Pod.Name, sp.Container, err)
 		return
 	}
 	defer stream.Close()
-	log.Printf("[Stream Logs] Successfully opened log stream for pod %s container %s", sp.Pod.Name, sp.Container)
 
 	lineCount := 0
 	lastLineTime := time.Now()
 	scanner := bufio.NewScanner(stream)
-
-	// Log when we start scanning
-	log.Printf("[Stream Logs] Starting to scan logs for pod %s container %s", sp.Pod.Name, sp.Container)
 
 	// Monitor for stuck scanner (no data for 30 seconds)
 	scannerStuck := make(chan bool, 1)
@@ -188,10 +181,7 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 			case <-ticker.C:
 				timeSinceLastLine := time.Since(lastLineTime)
 				if timeSinceLastLine > 30*time.Second && lineCount == 0 {
-					log.Printf("[Stream Logs] WARNING: Scanner appears stuck - no lines read for %v from pod %s container %s", timeSinceLastLine, sp.Pod.Name, sp.Container)
 					scannerStuck <- true
-				} else if timeSinceLastLine > 60*time.Second {
-					log.Printf("[Stream Logs] WARNING: No new lines for %v from pod %s container %s (total lines: %d)", timeSinceLastLine, sp.Pod.Name, sp.Container, lineCount)
 				}
 			}
 		}
@@ -200,7 +190,6 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 	for scanner.Scan() {
 		select {
 		case <-ls.ctx.Done():
-			log.Printf("[Stream Logs] Context cancelled for pod %s container %s", sp.Pod.Name, sp.Container)
 			return
 		default:
 		}
@@ -212,11 +201,6 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 
 		lineCount++
 		lastLineTime = time.Now()
-
-		// Log first few lines and then every 100
-		if lineCount <= 5 || lineCount%100 == 0 {
-			log.Printf("[Stream Logs] Read line #%d from pod %s container %s: %s (first 50 chars)", lineCount, sp.Pod.Name, sp.Container, truncateString(line, 50))
-		}
 
 		logLine := map[string]string{
 			"pod":       sp.Pod.Name,
@@ -232,28 +216,16 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 
 		select {
 		case <-ls.ctx.Done():
-			log.Printf("[Stream Logs] Context cancelled while sending log from pod %s container %s", sp.Pod.Name, sp.Container)
 			return
 		case ls.sseChan <- SSEMessage{Event: "log", Data: string(jsonBytes)}:
 			// Successfully sent to channel
-			if lineCount <= 5 {
-				log.Printf("[Stream Logs] Successfully queued line #%d to SSE channel for pod %s", lineCount, sp.Pod.Name)
-			}
 		default:
-			log.Printf("[Stream Logs] WARNING: SSE channel full (capacity: %d), dropping log line from pod %s container %s", cap(ls.sseChan), sp.Pod.Name, sp.Container)
+			// SSE channel full, dropping log line
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Printf("[Stream Logs] Scanner error for pod %s container %s: %v", sp.Pod.Name, sp.Container, err)
-	}
-
-	timeSinceLastLine := time.Since(lastLineTime)
-	log.Printf("[Stream Logs] Finished streaming from pod %s container %s (total lines: %d, time since last line: %v)", sp.Pod.Name, sp.Container, lineCount, timeSinceLastLine)
-
-	// If we read 0 lines, that's suspicious
-	if lineCount == 0 {
-		log.Printf("[Stream Logs] WARNING: No lines were read from pod %s container %s - pod may not be producing logs or stream may have closed immediately", sp.Pod.Name, sp.Container)
+		// Scanner error
 	}
 }
 
@@ -280,13 +252,11 @@ func (ls *LogStreamer) startPeriodicDiscovery() {
 func (ls *LogStreamer) discoverAndAddNewPods() {
 	newPods, err := ls.discovery.Discover(ls.ctx)
 	if err != nil {
-		log.Printf("[Stream Logs] Error discovering new pods: %v", err)
 		return
 	}
 
 	streamPods, err := ls.convertToStreamPods(newPods)
 	if err != nil {
-		log.Printf("[Stream Logs] Error converting new pods: %v", err)
 		return
 	}
 
@@ -304,15 +274,13 @@ func (ls *LogStreamer) discoverAndAddNewPods() {
 		return
 	}
 
-	log.Printf("[Stream Logs] Found %d new pod/container combinations, starting streams", len(newStreamPods))
-
 	for _, sp := range newStreamPods {
 		ls.startStreamingPod(sp)
 	}
 
 	// Send updated pods list
 	if err := ls.sendPodsList(newPods); err != nil {
-		log.Printf("[Stream Logs] Error sending updated pods list: %v", err)
+		// Error sending updated pods list
 	}
 }
 
@@ -323,7 +291,6 @@ func (ls *LogStreamer) convertToStreamPods(podInfos []PodInfo) ([]StreamPod, err
 	for _, podInfo := range podInfos {
 		pods, err := ls.client.GetAllPods(ls.ctx, podInfo.Namespace)
 		if err != nil {
-			log.Printf("[Stream Logs] Error fetching pods for namespace %s: %v", podInfo.Namespace, err)
 			continue
 		}
 
@@ -367,11 +334,10 @@ func (ls *LogStreamer) sendPodsList(pods []PodInfo) error {
 func (ls *LogStreamer) SendKeepalive() {
 	select {
 	case <-ls.ctx.Done():
-		log.Printf("[Stream Logs] Context cancelled, cannot send keepalive")
 		return
 	case ls.sseChan <- SSEMessage{Event: "ping", Data: "keepalive"}:
-		log.Printf("[Stream Logs] Sent keepalive ping")
+		// Keepalive sent
 	default:
-		log.Printf("[Stream Logs] WARNING: SSE channel full, cannot send keepalive")
+		// SSE channel full, cannot send keepalive
 	}
 }

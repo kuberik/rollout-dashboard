@@ -1083,8 +1083,6 @@ func main() {
 			podName := c.Query("pod")
 			containerName := c.DefaultQuery("container", "")
 
-			log.Printf("[Stream Logs] Starting stream for %s/%s, filterType=%s", namespace, name, filterType)
-
 			// Set headers for SSE
 			c.Header("Content-Type", sse.ContentType)
 			c.Header("Cache-Control", "no-cache")
@@ -1181,14 +1179,12 @@ func main() {
 			// Monitor request context for client disconnection
 			go func() {
 				<-requestCtx.Done()
-				log.Printf("[Stream Logs] Request context cancelled (client disconnected), cancelling stream context")
 				cancel()
 			}()
 
 			// Get the rollout to find current version tag
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
-				log.Printf("[Stream Logs] Error fetching rollout: %v", err)
 				sse.Encode(c.Writer, sse.Event{
 					Event: "error",
 					Data:  fmt.Sprintf("Failed to fetch rollout: %v", err),
@@ -1203,7 +1199,6 @@ func main() {
 			if len(rollout.Status.History) > 0 {
 				currentVersionTag = rollout.Status.History[0].Version.Tag
 			}
-			log.Printf("[Stream Logs] Rollout: %s/%s, Current version tag: %s, Filter type: %s", namespace, name, currentVersionTag, filterType)
 
 			// Parse since timestamp if provided
 			var sinceTime *time.Time
@@ -1235,7 +1230,6 @@ func main() {
 			sseChan := streamer.GetSSEChannel()
 			var wg sync.WaitGroup
 			var messagesSent int64
-			var lastFlushTime = time.Now()
 
 			wg.Add(1)
 			go func() {
@@ -1243,74 +1237,38 @@ func main() {
 				for {
 					select {
 					case <-ctx.Done():
-						log.Printf("[Stream Logs] SSE writer goroutine: context cancelled, total messages sent: %d", messagesSent)
 						return
 					case msg, ok := <-sseChan:
 						if !ok {
-							log.Printf("[Stream Logs] SSE writer goroutine: channel closed, total messages sent: %d", messagesSent)
 							return
 						}
 						func() {
 							defer func() {
 								if r := recover(); r != nil {
-									log.Printf("[Stream Logs] Panic while sending SSE event: %v", r)
+									// Panic while sending SSE event
 								}
 							}()
 							messagesSent++
-							if messagesSent <= 20 || messagesSent%100 == 0 {
-								// Truncate data for logging (first 100 chars)
-								dataPreview := msg.Data
-								if len(dataPreview) > 100 {
-									dataPreview = dataPreview[:100] + "..."
-								}
-								log.Printf("[Stream Logs] SSE writer: sending message #%d, event: '%s', data preview: %s, channel length: %d/%d", messagesSent, msg.Event, dataPreview, len(sseChan), cap(sseChan))
-							}
 
 							// Use gin-contrib/sse for proper SSE encoding
 							if err := sse.Encode(c.Writer, sse.Event{
 								Event: msg.Event,
 								Data:  msg.Data,
 							}); err != nil {
-								log.Printf("[Stream Logs] Error encoding SSE event: %v", err)
 								return
 							}
 
 							// Flush every message to ensure real-time delivery
 							if flusher, ok := c.Writer.(http.Flusher); ok {
 								flusher.Flush()
-								if messagesSent <= 20 {
-									log.Printf("[Stream Logs] SSE writer: flushed message #%d (event: '%s') via http.Flusher", messagesSent, msg.Event)
-								}
-								lastFlushTime = time.Now()
-							} else {
-								log.Printf("[Stream Logs] WARNING: ResponseWriter does not implement http.Flusher for message #%d", messagesSent)
 							}
 						}()
 					}
 				}
 			}()
 
-			// Monitor flush activity
-			go func() {
-				ticker := time.NewTicker(30 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-						timeSinceLastFlush := time.Since(lastFlushTime)
-						if timeSinceLastFlush > 60*time.Second {
-							log.Printf("[Stream Logs] WARNING: No flush activity for %v, messages sent: %d, channel length: %d", timeSinceLastFlush, messagesSent, len(sseChan))
-						} else {
-							log.Printf("[Stream Logs] Flush monitor: last flush %v ago, messages sent: %d, channel length: %d", timeSinceLastFlush, messagesSent, len(sseChan))
-						}
-					}
-				}
-			}()
 
 			// Send initial keepalive immediately to establish connection
-			log.Printf("[Stream Logs] Sending initial keepalive")
 			streamer.SendKeepalive()
 
 			// Keepalive ticker - send every 10 seconds to prevent timeouts
@@ -1322,11 +1280,9 @@ func main() {
 			for {
 				select {
 				case <-ctx.Done():
-					log.Printf("[Stream Logs] Connection closed, context cancelled (keepalives sent: %d)", keepaliveCount)
 					return
 				case <-ticker.C:
 					keepaliveCount++
-					log.Printf("[Stream Logs] Sending keepalive #%d", keepaliveCount)
 					streamer.SendKeepalive()
 				}
 			}

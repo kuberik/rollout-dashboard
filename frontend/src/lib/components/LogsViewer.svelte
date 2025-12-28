@@ -29,7 +29,7 @@
 
 	// Auto-scroll state
 	let autoScroll = $state(true);
-	let virtualListContainer: HTMLElement | null = $state(null);
+	let virtualListRef: any = $state(null);
 	let isUserScrolling = $state(false);
 	let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -114,27 +114,49 @@
 		return Array.from(podMap.values());
 	});
 
-	// Flatten for virtual list
-	const allLogLines = $derived.by(() => {
-		const result: Array<{
+	// Flatten for virtual list - use $state with batched updates to avoid frequent recalculations
+	let allLogLines = $state<
+		Array<{
 			line: string;
 			pod: string;
 			container: string;
 			type: string;
 			timestamp: number;
 			index: number;
-		}> = [];
-		filteredLogs.forEach((log, index) => {
-			result.push({
-				line: log.line,
-				pod: log.pod,
-				container: log.container,
-				type: log.type,
-				timestamp: log.timestamp || Date.now(),
-				index
+		}>
+	>([]);
+
+	// Batch updates using requestAnimationFrame and only update when data actually changes
+	let updateScheduled = false;
+	let prevLogsLength = 0;
+	let prevLastTimestamp: number | null = null;
+
+	$effect(() => {
+		// Track filteredLogs to detect changes
+		const logs = filteredLogs;
+		const currentLength = logs.length;
+		const lastLog = logs[currentLength - 1];
+		const lastTimestamp = lastLog?.timestamp || null;
+
+		// Only schedule update if length changed or last log changed
+		const hasChanged = currentLength !== prevLogsLength || lastTimestamp !== prevLastTimestamp;
+
+		if (hasChanged && !updateScheduled) {
+			updateScheduled = true;
+			requestAnimationFrame(() => {
+				allLogLines = logs.map((log, index) => ({
+					line: log.line,
+					pod: log.pod,
+					container: log.container,
+					type: log.type,
+					timestamp: log.timestamp || Date.now(),
+					index
+				}));
+				prevLogsLength = currentLength;
+				prevLastTimestamp = lastTimestamp;
+				updateScheduled = false;
 			});
-		});
-		return result;
+		}
 	});
 
 	// Format timestamp for display
@@ -151,48 +173,107 @@
 
 	// Scroll to bottom
 	function scrollToBottom() {
-		if (virtualListContainer) {
-			virtualListContainer.scrollTop = virtualListContainer.scrollHeight;
-		}
+		if (!virtualListRef || allLogLines.length === 0) return;
+
+		// Scroll to the last item using VirtualList's scroll API
+		const lastIndex = allLogLines.length - 1;
+		isAutoScrolling = true;
+		virtualListRef.scroll({ index: lastIndex, smoothScroll: false, align: 'bottom' });
+		// Reset flag after a short delay
+		setTimeout(() => {
+			isAutoScrolling = false;
+		}, 100);
 	}
 
-	// Handle scroll events to detect user scrolling
-	function handleScroll() {
-		if (!virtualListContainer) return;
-
-		// Check if user is near the bottom (within 50px)
-		const isNearBottom =
-			virtualListContainer.scrollHeight -
-				virtualListContainer.scrollTop -
-				virtualListContainer.clientHeight <
-			50;
-
-		// If user scrolled away from bottom, disable auto-scroll
-		if (!isNearBottom && autoScroll) {
-			autoScroll = false;
-		}
-
-		// Mark that user is scrolling
-		isUserScrolling = true;
-		if (scrollTimeout) {
-			clearTimeout(scrollTimeout);
-		}
-		scrollTimeout = setTimeout(() => {
-			isUserScrolling = false;
-		}, 150);
-	}
+	// Track if we're currently auto-scrolling to avoid detecting it as user scrolling
+	let isAutoScrolling = $state(false);
 
 	// Auto-scroll when new logs arrive (if enabled)
 	let previousLogCount = $state(0);
+	let previousLastTimestamp = $state<number | null>(null);
 	$effect(() => {
-		const currentCount = allLogLines.length;
-		if (autoScroll && currentCount > previousLogCount && !isUserScrolling) {
+		// Track allLogLines to detect changes
+		const logs = allLogLines;
+		const currentCount = logs.length;
+		const lastLog = logs[currentCount - 1];
+		const lastTimestamp = lastLog?.timestamp || null;
+
+		// Check if logs changed (count increased OR last timestamp changed)
+		const logsChanged = currentCount > previousLogCount || lastTimestamp !== previousLastTimestamp;
+
+		if (autoScroll && logsChanged && !isUserScrolling && !isAutoScrolling) {
 			// Use requestAnimationFrame to ensure DOM is updated
 			requestAnimationFrame(() => {
 				scrollToBottom();
 			});
 		}
+
 		previousLogCount = currentCount;
+		previousLastTimestamp = lastTimestamp;
+	});
+
+	// Listen for scroll events on the VirtualList viewport to detect user scrolling
+	onMount(() => {
+		if (!virtualListRef) return;
+
+		// Find the viewport element created by VirtualList
+		const findViewport = () => {
+			// VirtualList creates a viewport element, we need to find it
+			// It's typically the scrollable container
+			const container = virtualListRef as any;
+			if (container?.$el) {
+				const viewport =
+					container.$el.querySelector('[class*="viewport"]') || container.$el.firstElementChild;
+				return viewport;
+			}
+			return null;
+		};
+
+		// Wait for VirtualList to render
+		const setupScrollListener = () => {
+			const viewport = findViewport();
+			if (viewport && viewport instanceof HTMLElement) {
+				const handleScroll = () => {
+					if (isAutoScrolling) return; // Ignore our own scrolls
+
+					// Check if user is near the bottom (within 50px)
+					const isNearBottom =
+						viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 50;
+
+					// If user scrolled away from bottom, disable auto-scroll
+					if (!isNearBottom && autoScroll) {
+						autoScroll = false;
+					}
+
+					// Mark that user is scrolling
+					isUserScrolling = true;
+					if (scrollTimeout) {
+						clearTimeout(scrollTimeout);
+					}
+					scrollTimeout = setTimeout(() => {
+						isUserScrolling = false;
+					}, 150);
+				};
+
+				viewport.addEventListener('scroll', handleScroll);
+				return () => {
+					viewport.removeEventListener('scroll', handleScroll);
+				};
+			}
+			return null;
+		};
+
+		// Try immediately, then retry after a short delay
+		let cleanup = setupScrollListener();
+		if (!cleanup) {
+			setTimeout(() => {
+				cleanup = setupScrollListener();
+			}, 100);
+		}
+
+		return () => {
+			if (cleanup) cleanup();
+		};
 	});
 
 	// Cleanup on destroy
@@ -261,27 +342,30 @@
 		<div
 			class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-gray-900 dark:bg-gray-950"
 		>
-			<div
-				class="h-full w-full overflow-y-auto"
-				bind:this={virtualListContainer}
-				onscroll={handleScroll}
+			<VirtualList
+				items={allLogLines}
+				viewportClass="h-full w-full overflow-y-auto"
+				containerClass="h-full w-full"
+				bind:this={virtualListRef}
 			>
-				<div class="font-mono text-sm text-gray-100">
-					{#each allLogLines as logItem (logItem.index)}
-						{@const podColor = getPodColor(logItem.pod)}
-						<div class="flex items-start px-4 py-1 hover:bg-gray-800">
-							<span class="shrink-0 text-gray-500">{formatTimestamp(logItem.timestamp)}</span>
-							<span class="mx-2 shrink-0 font-semibold" style="color: {podColor}"
-								>{logItem.pod}</span
-							>
-							<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
-							<span class="min-w-0 whitespace-pre-wrap break-words text-gray-300"
-								>{logItem.line}</span
-							>
-						</div>
-					{/each}
-				</div>
-			</div>
+				{#snippet renderItem(logItem: {
+					line: string;
+					pod: string;
+					container: string;
+					type: string;
+					timestamp: number;
+					index: number;
+				})}
+					{@const podColor = getPodColor(logItem.pod)}
+					<div class="flex items-start px-4 py-1 font-mono text-sm text-gray-100 hover:bg-gray-800">
+						<span class="shrink-0 text-gray-500">{formatTimestamp(logItem.timestamp)}</span>
+						<span class="mx-2 shrink-0 font-semibold" style="color: {podColor}">{logItem.pod}</span>
+						<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
+						<span class="min-w-0 whitespace-pre-wrap break-words text-gray-300">{logItem.line}</span
+						>
+					</div>
+				{/snippet}
+			</VirtualList>
 		</div>
 	{/if}
 
