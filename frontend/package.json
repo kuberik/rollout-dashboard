@@ -61,6 +61,8 @@
 		"@types/js-yaml": "^4.0.9",
 		"@xyflow/svelte": "^1.4.2",
 		"diff2html": "^3.4.51",
+		"eventsource-client": "^1.2.0",
+		"iwanthue": "^2.0.0",
 		"js-yaml": "^4.1.0",
 		"jsondiffpatch": "^0.7.3"
 	},

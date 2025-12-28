@@ -1,24 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import { Button, Spinner, Badge } from 'flowbite-svelte';
-	import { RefreshOutline, ClipboardCleanSolid } from 'flowbite-svelte-icons';
+	import { ClipboardCleanSolid } from 'flowbite-svelte-icons';
 	import VirtualList from '@humanspeak/svelte-virtual-list';
-	import LogParserWorker from '$lib/workers/logParser.worker?worker';
-
-	interface LogLine {
-		pod: string;
-		container: string;
-		type: string; // "pod" or "test"
-		line: string;
-	}
-
-	interface PodInfo {
-		name: string;
-		namespace: string;
-		type: string; // "pod" or "test"
-	}
+	import iwanthue from 'iwanthue';
+	import { createQuery } from '@tanstack/svelte-query';
+	import type { LogLine, PodInfo } from '$lib/api/logs';
+	import { logsStreamQueryOptions } from '$lib/api/logs';
 
 	interface Props {
 		namespace: string;
@@ -30,15 +19,42 @@
 
 	let selectedPod = $state<string | null>(null);
 	let pods = $state<PodInfo[]>([]);
-	let logs = $state<LogLine[]>([]);
-	let isLoading = $state(true);
-	let error = $state<string | null>(null);
-	let eventSource: EventSource | null = null;
-	let logParserWorker: Worker | null = null;
 
-	// Batch log updates to reduce reactive updates
-	let logBuffer: LogLine[] = [];
-	let batchTimer: ReturnType<typeof setInterval> | null = null;
+	// Track known pods for color generation
+	let knownPodNames = $state<Set<string>>(new Set());
+
+	// Pod colors using iwanthue
+	let podColors = $state<Map<string, string>>(new Map());
+
+	// Handle pods updates from the stream
+	function handlePodsUpdate(newPods: PodInfo[]) {
+		const newPodNames = new Set(newPods.map((p) => p.name));
+		const hasNewPods = Array.from(newPodNames).some((name) => !knownPodNames.has(name));
+
+		if (hasNewPods) {
+			knownPodNames = newPodNames;
+		}
+
+		pods = newPods;
+		knownPodNames = newPodNames;
+	}
+
+	// Create streaming query
+	const logsQuery = createQuery(() =>
+		logsStreamQueryOptions({
+			namespace,
+			name,
+			filterType,
+			onPodsUpdate: handlePodsUpdate
+		})
+	);
+
+	// Derived state from query
+	const logs = $derived(logsQuery.data || []);
+	const isLoading = $derived(logsQuery.isPending || logsQuery.isFetching);
+	const error = $derived(
+		logsQuery.isError ? (logsQuery.error as Error)?.message || 'Unknown error' : null
+	);
 
 	function copyToClipboard() {
 		const text = filteredLogs.map((log) => log.line).join('\n');
@@ -47,124 +63,32 @@
 		});
 	}
 
-	function flushLogBuffer() {
-		if (logBuffer.length > 0) {
-			// Batch update: add all buffered logs at once
-			logs = [...logs, ...logBuffer];
-			logBuffer = [];
-		}
-	}
+	function getPodColor(podName: string): string {
+		if (!podColors.has(podName)) {
+			// Generate colors for all known pods at once for consistency
+			const allPods = Array.from(knownPodNames);
 
-	function startStreaming() {
-		if (eventSource) {
-			eventSource.close();
-		}
+			// iwanthue requires at least 2 colors, so handle edge cases
+			if (allPods.length === 0) {
+				return '#ffffff';
+			} else if (allPods.length === 1) {
+				// For a single pod, use a default color
+				podColors.set(podName, '#3b82f6'); // blue
+				return '#3b82f6';
+			}
 
-		// Clear any existing batch timer
-		if (batchTimer) {
-			clearInterval(batchTimer);
-			batchTimer = null;
-		}
-
-		// Start batch timer to flush logs every second
-		batchTimer = setInterval(() => {
-			flushLogBuffer();
-		}, 1000);
-
-		// Create or reuse web worker for JSON parsing
-		if (!logParserWorker) {
-			logParserWorker = new LogParserWorker();
-
-			// Handle messages from worker
-			logParserWorker.onmessage = (e: MessageEvent) => {
-				const { type, data, error: workerError } = e.data;
-
-				if (type === 'log') {
-					// Add to buffer instead of directly to logs
-					logBuffer.push(data as LogLine);
-				} else if (type === 'pods') {
-					pods = data as PodInfo[];
-				} else if (type === 'error') {
-					console.error('Worker parsing error:', workerError);
+			const palette = iwanthue(allPods.length, {
+				seed: 42, // Fixed seed for consistent colors
+				colorSpace: 'default'
+			});
+			allPods.forEach((pod, idx) => {
+				if (!podColors.has(pod)) {
+					podColors.set(pod, palette[idx]);
 				}
-			};
-
-			logParserWorker.onerror = (err) => {
-				console.error('Worker error:', err);
-			};
+			});
 		}
-
-		isLoading = true;
-		error = null;
-
-		const params = new URLSearchParams();
-		if (filterType) {
-			params.set('type', filterType);
-		}
-
-		const url = `/api/rollouts/${namespace}/${name}/pods/logs?${params.toString()}`;
-		eventSource = new EventSource(url);
-
-		eventSource.onopen = () => {
-			isLoading = false;
-		};
-
-		eventSource.addEventListener('pods', (e) => {
-			// Offload JSON parsing to worker
-			if (logParserWorker) {
-				logParserWorker.postMessage({ type: 'parsePods', data: e.data });
-			}
-		});
-
-		eventSource.addEventListener('log', (e) => {
-			// Offload JSON parsing to worker
-			if (logParserWorker) {
-				logParserWorker.postMessage({ type: 'parseLog', data: e.data });
-			}
-		});
-
-		eventSource.addEventListener('error', (e: Event) => {
-			const errorData = (e as MessageEvent).data;
-			if (errorData) {
-				try {
-					const errorObj = JSON.parse(errorData);
-					error = errorObj.error || errorData;
-				} catch {
-					error = errorData;
-				}
-			} else {
-				error = 'Connection error';
-			}
-			isLoading = false;
-		});
-
-		eventSource.onerror = () => {
-			if (eventSource?.readyState === EventSource.CLOSED) {
-				isLoading = false;
-			}
-		};
+		return podColors.get(podName) || '#ffffff';
 	}
-
-	onMount(() => {
-		startStreaming();
-	});
-
-	onDestroy(() => {
-		if (eventSource) {
-			eventSource.close();
-			eventSource = null;
-		}
-		if (batchTimer) {
-			clearInterval(batchTimer);
-			batchTimer = null;
-		}
-		// Flush any remaining logs before destroying
-		flushLogBuffer();
-		if (logParserWorker) {
-			logParserWorker.terminate();
-			logParserWorker = null;
-		}
-	});
 
 	// Filter logs by selected pod
 	const filteredLogs = $derived.by(() => {
@@ -245,7 +169,7 @@
 			<div class="text-center">
 				<p class="text-red-600 dark:text-red-400">Failed to load logs</p>
 				<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{error}</p>
-				<Button class="mt-4" onclick={() => startStreaming()}>Retry</Button>
+				<Button class="mt-4" onclick={() => logsQuery.refetch()}>Retry</Button>
 			</div>
 		</div>
 	{:else if allLogLines.length === 0}
@@ -262,12 +186,13 @@
 				<VirtualList items={allLogLines}>
 					{#snippet renderItem(item, index)}
 						{@const logItem = item as (typeof allLogLines)[0]}
+						{@const podColor = getPodColor(logItem.pod)}
 						<div
 							class="px-4 py-1 font-mono text-sm text-gray-100 hover:bg-gray-800"
 							style="height:20px"
 						>
 							<span class="text-gray-500">{index + 1}</span>
-							<span class="mx-2 text-blue-400">{logItem.pod}</span>
+							<span class="mx-2 font-semibold" style="color: {podColor}">{logItem.pod}</span>
 							<span class="mx-2 text-green-400">{logItem.container}</span>
 							<span class="text-gray-300">{logItem.line}</span>
 						</div>

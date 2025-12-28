@@ -116,6 +116,12 @@ spec:
                   - name: custom-ca
                     configMap:
                       name: custom-ca
+  telemetry:
+    accessLog:
+      disable: false
+  # Note: For SSE timeout configuration, we rely on HTTPRoute timeouts
+  # and annotations. The merge field can be used for advanced Envoy config
+  # but requires careful structure matching Envoy's xDS API.
 EOF
 
 # Create Gateway
@@ -164,6 +170,9 @@ kind: HTTPRoute
 metadata:
   name: rollout-dashboard
   namespace: kuberik-system
+  annotations:
+    # Disable buffering for SSE endpoints
+    gateway.envoyproxy.io/response-buffering: "false"
 spec:
   parentRefs:
     - name: rollout-dashboard-gateway
@@ -175,6 +184,8 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      timeouts:
+        backendRequest: 0s  # No timeout for backend requests (SSE connections)
       backendRefs:
         - name: rollout-dashboard
           port: 80

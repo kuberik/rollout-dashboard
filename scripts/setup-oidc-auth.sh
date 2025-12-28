@@ -130,6 +130,9 @@ kind: HTTPRoute
 metadata:
   name: rollout-dashboard
   namespace: kuberik-system
+  annotations:
+    # Disable buffering for SSE endpoints
+    gateway.envoyproxy.io/response-buffering: "false"
 spec:
   parentRefs:
     - name: rollout-dashboard-gateway
@@ -141,6 +144,8 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      timeouts:
+        backendRequest: 0s  # No timeout for backend requests (SSE connections)
       backendRefs:
         - name: rollout-dashboard
           port: 80
