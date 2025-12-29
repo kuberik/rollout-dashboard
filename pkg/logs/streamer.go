@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +20,39 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// parseKubernetesLogTimestamp parses the RFC3339 timestamp prefix from Kubernetes log lines
+// Format: "2025-12-29T18:38:25.123456789Z <log content>"
+// Returns the timestamp in milliseconds and the log content without the timestamp prefix
+func parseKubernetesLogTimestamp(line string) (int64, string) {
+	// Kubernetes timestamps are RFC3339Nano format at the start of the line
+	// Find the space after the timestamp (or end of line if no space)
+	spaceIdx := strings.IndexByte(line, ' ')
+	if spaceIdx == -1 {
+		// No space found, try to parse the entire line as timestamp
+		if t, err := time.Parse(time.RFC3339Nano, line); err == nil {
+			return t.UnixMilli(), ""
+		}
+		return 0, line
+	}
+
+	// Try to parse the prefix as RFC3339Nano
+	timestampStr := line[:spaceIdx]
+	if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
+		// Successfully parsed, return timestamp and remaining log content
+		logContent := strings.TrimSpace(line[spaceIdx:])
+		return t.UnixMilli(), logContent
+	}
+
+	// Try RFC3339 format (without nanoseconds)
+	if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+		logContent := strings.TrimSpace(line[spaceIdx:])
+		return t.UnixMilli(), logContent
+	}
+
+	// Not a Kubernetes timestamp format, return original line
+	return 0, line
 }
 
 // StreamPod represents a pod/container combination to stream logs from
@@ -142,8 +176,9 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 	}
 
 	opts := &corev1.PodLogOptions{
-		Container: sp.Container,
-		Follow:    true,
+		Container:  sp.Container,
+		Follow:     true,
+		Timestamps: true, // Enable Kubernetes-provided timestamps
 	}
 
 	if ls.sinceTime != nil {
@@ -200,15 +235,22 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 		lineCount++
 		lastLineTime = time.Now()
 
-		// Use current time as timestamp (in milliseconds)
-		now := time.Now()
+		// Parse Kubernetes-provided timestamp from the log line
+		// Format: "2025-12-29T18:38:25.123456789Z <log content>"
+		timestamp, logContent := parseKubernetesLogTimestamp(line)
+
+		// If timestamp parsing failed, use current time as fallback
+		if timestamp == 0 {
+			timestamp = time.Now().UnixMilli()
+			logContent = line // Use original line if we couldn't parse timestamp
+		}
 
 		logLine := map[string]interface{}{
 			"pod":       sp.Pod.Name,
 			"container": sp.Container,
 			"type":      sp.PodType,
-			"line":      line,
-			"timestamp": now.UnixMilli(),
+			"line":      logContent, // Send log content without Kubernetes timestamp prefix
+			"timestamp": timestamp,
 		}
 
 		jsonBytes, err := json.Marshal(logLine)

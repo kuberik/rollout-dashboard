@@ -272,15 +272,20 @@ export function logsStreamQueryOptions({
 					}
 				}
 
-				// Add all logs at once
+				// Combine accumulator and new logs
 				let result = [...acc, ...logsToAdd];
 
-				// If we're way over the limit, aggressively trim
-				if (result.length > MAX_LOGS * 1.5) {
-					// Drop down to MAX_LOGS immediately, keeping only the most recent
-					result = result.slice(-MAX_LOGS);
-				} else if (result.length > MAX_LOGS) {
-					// Drop oldest logs to stay at MAX_LOGS
+				// Sort by timestamp (with pod name as secondary key for stability)
+				// This ensures logs from different pods are always in chronological order
+				// Since we're batching (reducer called less frequently), sorting is acceptable
+				result.sort((a, b) => {
+					const tsDiff = (a.timestamp || 0) - (b.timestamp || 0);
+					if (tsDiff !== 0) return tsDiff;
+					return (a.pod || '').localeCompare(b.pod || '');
+				});
+
+				// Trim to MAX_LOGS, keeping the most recent (last items after sorting)
+				if (result.length > MAX_LOGS) {
 					result = result.slice(-MAX_LOGS);
 				}
 
