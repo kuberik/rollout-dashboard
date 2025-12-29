@@ -272,8 +272,31 @@ export function logsStreamQueryOptions({
 					}
 				}
 
-				// Combine accumulator and new logs
-				let result = [...acc, ...logsToAdd];
+				// Track the latest timestamp for each stream (pod:container combination)
+				// This prevents adding old logs on reconnects
+				const streamLatestTimestamp = new Map<string, number>();
+				for (const log of acc) {
+					const streamKey = `${log.pod}:${log.container}`;
+					const currentLatest = streamLatestTimestamp.get(streamKey) || 0;
+					const logTimestamp = log.timestamp || 0;
+					if (logTimestamp > currentLatest) {
+						streamLatestTimestamp.set(streamKey, logTimestamp);
+					}
+				}
+
+				// Filter out logs that are older than the latest timestamp for their stream
+				const filteredLogs = logsToAdd.filter((log) => {
+					const streamKey = `${log.pod}:${log.container}`;
+					const latestTimestamp = streamLatestTimestamp.get(streamKey);
+					const logTimestamp = log.timestamp || 0;
+
+					// If we have a latest timestamp for this stream, only include logs >= that timestamp
+					// If no previous logs for this stream, include all logs
+					return latestTimestamp === undefined || logTimestamp >= latestTimestamp;
+				});
+
+				// Combine accumulator and filtered new logs
+				let result = [...acc, ...filteredLogs];
 
 				// Sort by timestamp (with pod name as secondary key for stability)
 				// This ensures logs from different pods are always in chronological order
