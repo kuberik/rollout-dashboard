@@ -152,7 +152,6 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 		opts.SinceTime = &sinceTime
 	} else {
 		// Initial connection: limit to most recent 1000 lines to avoid sending too much history
-		// The frontend only keeps 1000 logs anyway, so there's no point sending more
 		tailLines := int64(1000)
 		opts.TailLines = &tailLines
 	}

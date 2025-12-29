@@ -98,6 +98,12 @@ async function* createLogsStream(
 	let lastLogTime = Date.now();
 	let lastActivityCheck = Date.now();
 
+	// Batch log lines to reduce UI updates
+	const logBatch: LogLine[] = [];
+	const BATCH_SIZE = 1000; // Yield batches of 50 logs
+	const BATCH_TIMEOUT = 100; // Or every 100ms, whichever comes first
+	let lastBatchFlush = Date.now();
+
 	const eventSource = createEventSource({
 		url,
 		onConnect: () => {
@@ -165,7 +171,7 @@ async function* createLogsStream(
 					}
 				}
 
-				// Handle log events - parse and format in worker
+				// Handle log events - parse and format in worker, then batch
 				if (event === 'log') {
 					try {
 						logCount++;
@@ -178,12 +184,31 @@ async function* createLogsStream(
 							worker.postMessage({ type: 'parseLog', data });
 						});
 
-						// Yield directly - the reducer will handle limiting
-						yield logLine;
+						// Add to batch
+						logBatch.push(logLine);
+
+						// Flush batch if it reaches the size limit or timeout
+						const now = Date.now();
+						const shouldFlush =
+							logBatch.length >= BATCH_SIZE || now - lastBatchFlush >= BATCH_TIMEOUT;
+
+						if (shouldFlush && logBatch.length > 0) {
+							// Yield the entire batch as an array
+							// The reducer will handle it as a single update
+							yield logBatch as any; // Yield array, reducer will handle it
+							logBatch.length = 0; // Clear the batch
+							lastBatchFlush = now;
+						}
 					} catch (err) {
 						console.error('[Logs Stream] Error parsing log line:', err);
 					}
 				}
+			}
+
+			// Flush any remaining logs in the batch before reconnecting
+			if (logBatch.length > 0) {
+				yield logBatch as any; // Yield array, reducer will handle it
+				logBatch.length = 0;
 			}
 			// Iterator ended (connection dropped), but eventSource may reconnect
 			// Wait a moment and check if it reconnected
@@ -236,29 +261,29 @@ export function logsStreamQueryOptions({
 				return createLogsStream(namespace, name, filterType, since, onPodsUpdate);
 			},
 			refetchMode: 'append', // Append new logs to existing ones
-			reducer: (acc: LogLine[], chunk: LogLine) => {
-				// Add timestamp if missing
-				if (!chunk.timestamp) {
-					chunk.timestamp = Date.now();
+			reducer: (acc: LogLine[], chunk: LogLine | LogLine[]) => {
+				// Handle both single logs and batches (arrays)
+				const logsToAdd = Array.isArray(chunk) ? chunk : [chunk];
+
+				// Add timestamp if missing for each log
+				for (const log of logsToAdd) {
+					if (!log.timestamp) {
+						log.timestamp = Date.now();
+					}
 				}
 
-				// If we're way over the limit (e.g., from a large batch), aggressively trim
-				if (acc.length > MAX_LOGS * 1.5) {
+				// Add all logs at once
+				let result = [...acc, ...logsToAdd];
+
+				// If we're way over the limit, aggressively trim
+				if (result.length > MAX_LOGS * 1.5) {
 					// Drop down to MAX_LOGS immediately, keeping only the most recent
-					const result = [...acc.slice(-MAX_LOGS), chunk].slice(-MAX_LOGS);
-					return result;
+					result = result.slice(-MAX_LOGS);
+				} else if (result.length > MAX_LOGS) {
+					// Drop oldest logs to stay at MAX_LOGS
+					result = result.slice(-MAX_LOGS);
 				}
 
-				// If we're at or over the limit, drop oldest and add new one
-				if (acc.length >= MAX_LOGS) {
-					// Drop oldest and add new one - ALWAYS create a completely new array
-					// This ensures streamedQuery detects the change even when length stays the same
-					const result = [...acc.slice(1), chunk];
-					return result;
-				}
-
-				// Otherwise, just append
-				const result = [...acc, chunk];
 				return result;
 			},
 			initialValue: [] as LogLine[]
