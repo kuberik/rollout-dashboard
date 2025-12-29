@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -202,11 +201,15 @@ func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
 		lineCount++
 		lastLineTime = time.Now()
 
-		logLine := map[string]string{
+		// Use current time as timestamp (in milliseconds)
+		now := time.Now()
+
+		logLine := map[string]interface{}{
 			"pod":       sp.Pod.Name,
 			"container": sp.Container,
 			"type":      sp.PodType,
 			"line":      line,
+			"timestamp": now.UnixMilli(),
 		}
 
 		jsonBytes, err := json.Marshal(logLine)

@@ -1267,7 +1267,6 @@ func main() {
 				}
 			}()
 
-
 			// Send initial keepalive immediately to establish connection
 			streamer.SendKeepalive()
 

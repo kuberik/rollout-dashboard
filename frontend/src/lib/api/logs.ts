@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/svelte-query';
 import type { QueryFunctionContext } from '@tanstack/svelte-query';
 import { experimental_streamedQuery as streamedQuery } from '@tanstack/svelte-query';
 import { createEventSource } from 'eventsource-client';
+import LogParserWorker from '../workers/logParser.worker?worker';
 
 // Log streaming API types and utilities
 export interface LogLine {
@@ -10,6 +11,7 @@ export interface LogLine {
 	type: string; // "pod" or "test"
 	line: string;
 	timestamp?: number;
+	formattedTimestamp?: string; // Pre-formatted timestamp from backend
 }
 
 export interface PodInfo {
@@ -50,6 +52,48 @@ async function* createLogsStream(
 ): AsyncGenerator<LogLine, void, unknown> {
 	const url = createLogsStreamUrl(namespace, name, filterType, since);
 
+	// Create web worker for parsing and formatting
+	const worker = new LogParserWorker();
+	const logPromises = new Map<string, {
+		resolve: (value: LogLine) => void;
+		reject: (error: Error) => void;
+	}>();
+	const podPromises = new Map<string, {
+		resolve: (value: PodInfo[]) => void;
+		reject: (error: Error) => void;
+	}>();
+
+	worker.onmessage = (e: MessageEvent) => {
+		const { type, data, error } = e.data;
+		if (type === 'error') {
+			// Reject all pending promises
+			for (const { reject } of logPromises.values()) {
+				reject(new Error(error));
+			}
+			for (const { reject } of podPromises.values()) {
+				reject(new Error(error));
+			}
+			logPromises.clear();
+			podPromises.clear();
+			return;
+		}
+		if (type === 'log') {
+			// Find and resolve the first pending log promise
+			for (const [key, { resolve }] of logPromises.entries()) {
+				resolve(data as LogLine);
+				logPromises.delete(key);
+				break;
+			}
+		} else if (type === 'pods') {
+			// Find and resolve the first pending pods promise
+			for (const [key, { resolve }] of podPromises.entries()) {
+				resolve(data as PodInfo[]);
+				podPromises.delete(key);
+				break;
+			}
+		}
+	};
+
 	let logCount = 0;
 	let lastLogTime = Date.now();
 	let lastActivityCheck = Date.now();
@@ -88,10 +132,14 @@ async function* createLogsStream(
 			for await (const { data, event } of eventSource) {
 				lastActivityCheck = Date.now();
 
-				// Handle pods events
+				// Handle pods events - parse in worker
 				if (event === 'pods') {
 					try {
-						const pods = JSON.parse(data) as PodInfo[];
+						const promiseId = `pods-${Date.now()}-${Math.random()}`;
+						const pods = await new Promise<PodInfo[]>((resolve, reject) => {
+							podPromises.set(promiseId, { resolve, reject });
+							worker.postMessage({ type: 'parsePods', data });
+						});
 						if (onPodsUpdate) {
 							onPodsUpdate(pods);
 						}
@@ -117,16 +165,18 @@ async function* createLogsStream(
 					}
 				}
 
-				// Handle log events - yield them directly!
+				// Handle log events - parse and format in worker
 				if (event === 'log') {
 					try {
 						logCount++;
 						lastLogTime = Date.now();
 
-						const logLine = JSON.parse(data) as LogLine;
-						if (!logLine.timestamp) {
-							logLine.timestamp = Date.now();
-						}
+						// Parse and format timestamp in worker
+						const promiseId = `log-${Date.now()}-${Math.random()}`;
+						const logLine = await new Promise<LogLine>((resolve, reject) => {
+							logPromises.set(promiseId, { resolve, reject });
+							worker.postMessage({ type: 'parseLog', data });
+						});
 
 						// Yield directly - the reducer will handle limiting
 						yield logLine;
@@ -159,9 +209,12 @@ async function* createLogsStream(
 			}
 		}
 	}
+
+	// Cleanup worker
+	worker.terminate();
 }
 
-const MAX_LOGS = 1000;
+const MAX_LOGS = 10000;
 
 export function logsStreamQueryOptions({
 	namespace,

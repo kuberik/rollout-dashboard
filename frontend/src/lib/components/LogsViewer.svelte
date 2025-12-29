@@ -98,6 +98,8 @@
 	}
 
 	// Filter logs by selected pod
+	// Using $derived.by() - Svelte handles optimization automatically
+	// The filter operation is lightweight, so frequent updates are acceptable
 	const filteredLogs = $derived.by(() => {
 		if (selectedPod === null) return logs;
 		return logs.filter((log) => log.pod === selectedPod);
@@ -114,62 +116,18 @@
 		return Array.from(podMap.values());
 	});
 
-	// Flatten for virtual list - use $state with batched updates to avoid frequent recalculations
-	let allLogLines = $state<
-		Array<{
-			line: string;
-			pod: string;
-			container: string;
-			type: string;
-			timestamp: number;
-			index: number;
-		}>
-	>([]);
-
-	// Batch updates using requestAnimationFrame and only update when data actually changes
-	let updateScheduled = false;
-	let prevLogsLength = 0;
-	let prevLastTimestamp: number | null = null;
-
-	$effect(() => {
-		// Track filteredLogs to detect changes
-		const logs = filteredLogs;
-		const currentLength = logs.length;
-		const lastLog = logs[currentLength - 1];
-		const lastTimestamp = lastLog?.timestamp || null;
-
-		// Only schedule update if length changed or last log changed
-		const hasChanged = currentLength !== prevLogsLength || lastTimestamp !== prevLastTimestamp;
-
-		if (hasChanged && !updateScheduled) {
-			updateScheduled = true;
-			requestAnimationFrame(() => {
-				allLogLines = logs.map((log, index) => ({
-					line: log.line,
-					pod: log.pod,
-					container: log.container,
-					type: log.type,
-					timestamp: log.timestamp || Date.now(),
-					index
-				}));
-				prevLogsLength = currentLength;
-				prevLastTimestamp = lastTimestamp;
-				updateScheduled = false;
-			});
-		}
+	// Flatten for virtual list - formatted timestamp comes from web worker
+	const allLogLines = $derived.by(() => {
+		return filteredLogs.map((log, index) => ({
+			line: log.line,
+			pod: log.pod,
+			container: log.container,
+			type: log.type,
+			timestamp: log.timestamp || Date.now(),
+			formattedTimestamp: log.formattedTimestamp || '', // Always provided by worker
+			index
+		}));
 	});
-
-	// Format timestamp for display
-	function formatTimestamp(timestamp: number): string {
-		const date = new Date(timestamp);
-		return date.toLocaleTimeString('en-US', {
-			hour12: false,
-			hour: '2-digit',
-			minute: '2-digit',
-			second: '2-digit',
-			fractionalSecondDigits: 3
-		});
-	}
 
 	// Scroll to bottom
 	function scrollToBottom() {
@@ -354,11 +312,12 @@
 					container: string;
 					type: string;
 					timestamp: number;
+					formattedTimestamp: string;
 					index: number;
 				})}
 					{@const podColor = getPodColor(logItem.pod)}
 					<div class="flex items-start px-4 py-1 font-mono text-sm text-gray-100 hover:bg-gray-800">
-						<span class="shrink-0 text-gray-500">{formatTimestamp(logItem.timestamp)}</span>
+						<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
 						<span class="mx-2 shrink-0 font-semibold" style="color: {podColor}">{logItem.pod}</span>
 						<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
 						<span class="min-w-0 whitespace-pre-wrap break-words text-gray-300">{logItem.line}</span
