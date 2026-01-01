@@ -128,6 +128,14 @@ async function* createLogsStream(
 
 	let shouldContinue = true;
 
+	// Cleanup function to close resources
+	const cleanup = () => {
+		shouldContinue = false;
+		clearInterval(activityMonitor);
+		eventSource.close();
+		worker.terminate();
+	};
+
 	// Keep iterating even after disconnections
 	// When Envoy times out, the iterator ends, but eventsource-client will reconnect.
 	// We need to continue iterating after reconnection.
@@ -316,7 +324,7 @@ export function logsStreamQueryOptions({
 			},
 			initialValue: [] as LogLine[]
 		}),
-		refetchOnMount: false,
+		refetchOnMount: true, // Always refetch when component mounts to restart stream
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false
 	});

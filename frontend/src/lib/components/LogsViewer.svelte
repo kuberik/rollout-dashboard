@@ -14,7 +14,7 @@
 	import { CloseOutline, ChevronDownOutline } from 'flowbite-svelte-icons';
 	import VirtualList from '@humanspeak/svelte-virtual-list';
 	import iwanthue from 'iwanthue';
-	import { createQuery } from '@tanstack/svelte-query';
+	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import type { LogLine, PodInfo } from '$lib/api/logs';
 	import { logsStreamQueryOptions } from '$lib/api/logs';
 
@@ -65,8 +65,11 @@
 		knownPodNames = newPodNames;
 	}
 
+	// Get query client for resetting query state
+	const queryClient = useQueryClient();
+
 	// Create streaming query
-	const logsQuery = createQuery(() =>
+	const logsQueryOptions = $derived(
 		logsStreamQueryOptions({
 			namespace,
 			name,
@@ -74,6 +77,13 @@
 			onPodsUpdate: handlePodsUpdate
 		})
 	);
+	const logsQuery = createQuery(() => logsQueryOptions);
+
+	// Reset logs state when component mounts (navigating to logs page)
+	onMount(() => {
+		// Simply reset the query data to empty array for a clean slate
+		queryClient.setQueryData(logsQueryOptions.queryKey, []);
+	});
 
 	// Derived state from query
 	const logs = $derived(logsQuery.data || []);
