@@ -85,7 +85,6 @@
 		getDisplayVersion,
 		extractURLFromGatewayOrIngress
 	} from '$lib/utils';
-	import { getBakeStatusIcon } from '$lib/bake-status';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -1273,9 +1272,11 @@
 												valueColor="purple"
 												large
 												href={datadogServiceInfo.url}
-												icon={DatadogLogo}
-												iconColor="text-white"
-											/>
+											>
+												{#snippet icon()}
+													<DatadogLogo class="h-3 w-3 flex-shrink-0 text-white" />
+												{/snippet}
+											</JoinedBadge>
 										{/if}
 										{#if currentEnvInfo}
 											<JoinedBadge
@@ -2377,10 +2378,6 @@
 															{#if getDependencyStatus(version)}
 																{@const depBakeStatus = getDependencyStatus(version)}
 																{#if depBakeStatus}
-																	{@const depStatusInfo = getBakeStatusIcon(
-																		depBakeStatus ?? undefined
-																	)}
-																	{@const DepStatusIcon = depStatusInfo.icon}
 																	{@const valueColor =
 																		depBakeStatus === 'Succeeded'
 																			? 'green'
@@ -2388,14 +2385,18 @@
 																				? 'red'
 																				: depBakeStatus === 'InProgress'
 																					? 'yellow'
-																					: 'gray'}
+																					: depBakeStatus === 'Deploying'
+																						? 'blue'
+																						: 'gray'}
 																	<JoinedBadge
 																		label="Dependency"
 																		value={depBakeStatus}
-																		icon={DepStatusIcon}
-																		iconColor={depStatusInfo.color}
 																		{valueColor}
-																	/>
+																	>
+																		{#snippet icon()}
+																			<BakeStatusIcon bakeStatus={depBakeStatus} size="small" />
+																		{/snippet}
+																	</JoinedBadge>
 																{/if}
 															{/if}
 														</div>

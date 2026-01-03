@@ -32,7 +32,6 @@
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
-	import { getBakeStatusIcon } from '$lib/bake-status';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 
 	// Params (runes)

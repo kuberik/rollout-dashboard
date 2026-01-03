@@ -2,7 +2,14 @@
 
 <script lang="ts">
 	import { Spinner } from 'flowbite-svelte';
-	import { getBakeStatusIcon } from '$lib/bake-status';
+	import {
+		CheckCircleSolid,
+		ExclamationCircleSolid,
+		ClockSolid,
+		PauseSolid,
+		CloseOutline,
+		RefreshOutline
+	} from 'flowbite-svelte-icons';
 
 	interface Props {
 		bakeStatus?: string;
@@ -24,7 +31,26 @@
 		large: '8'
 	};
 
-	const statusInfo = $derived(getBakeStatusIcon(bakeStatus));
+	function getStatusConfig(status?: string) {
+		switch (status) {
+			case 'Succeeded':
+				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
+			case 'Failed':
+				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
+			case 'InProgress':
+				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
+			case 'Deploying':
+				return { icon: RefreshOutline, color: 'text-blue-600 dark:text-blue-400' };
+			case 'Cancelled':
+				return { icon: CloseOutline, color: 'text-gray-600 dark:text-gray-400' };
+			case 'None':
+				return { icon: PauseSolid, color: 'text-gray-600 dark:text-gray-400' };
+			default:
+				return { icon: ClockSolid, color: 'text-gray-600 dark:text-gray-400' };
+		}
+	}
+
+	const statusInfo = $derived(getStatusConfig(bakeStatus));
 	const Icon = $derived(statusInfo.icon);
 </script>
 

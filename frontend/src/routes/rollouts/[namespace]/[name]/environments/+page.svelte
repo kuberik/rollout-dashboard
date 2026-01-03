@@ -21,7 +21,6 @@
 	import SimpleNode from '$lib/components/SimpleNode.svelte';
 	import NeonBorder from '$lib/components/NeonBorder.svelte';
 	import { rolloutQueryOptions, type RolloutResponse } from '$lib/api/rollouts';
-	import { getBakeStatusIcon } from '$lib/bake-status';
 	import { getDisplayVersion } from '$lib/utils';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import type { Rollout } from '../../../../../types';
@@ -849,8 +848,6 @@
 							{#each versionSummary.upcoming as v}
 								{@const isDisabled =
 									v.state === 'not-available' || v.state === 'failed' || v.state === 'cancelled'}
-								{@const statusInfo = getBakeStatusIcon(v.dependencyBakeStatus)}
-								{@const StatusIcon = statusInfo.icon}
 								{@const badgeLabel =
 									v.state === 'succeeded'
 										? 'Ready'
@@ -946,10 +943,6 @@
 						<div class="w-full space-y-2">
 							{#each versionSummary.deployed as v}
 								{@const isCurrent = versionSummary.currentVersion === v.version}
-								{@const statusInfo = v.bakeStatus
-									? getBakeStatusIcon(v.bakeStatus)
-									: getBakeStatusIcon('None')}
-								{@const StatusIcon = statusInfo.icon}
 								<NeonBorder
 									active={hoveredVersion === v.version}
 									colors={['#1e40af', '#3b82f6', '#1e40af']}
@@ -1091,7 +1084,7 @@
 										<div class="px-1 py-1"></div>
 										{#each tableVersions as version}
 											{@const status = getVersionStatusInEnv(version, env)}
-											{@const statusInfo = getBakeStatusIcon(status)}
+
 											<div
 												role="presentation"
 												class="px-1 py-1 text-center"
@@ -1099,13 +1092,14 @@
 												onmouseleave={() => (hoveredVersion = null)}
 											>
 												{#if status}
-													{@const dotColor = statusInfo.color.includes('green')
-														? 'green'
-														: statusInfo.color.includes('red')
-															? 'red'
-															: statusInfo.color.includes('yellow')
-																? 'yellow'
-																: 'gray'}
+													{@const dotColor =
+														status === 'Succeeded'
+															? 'green'
+															: status === 'Failed'
+																? 'red'
+																: status === 'InProgress'
+																	? 'yellow'
+																	: 'gray'}
 													<div
 														class="mx-auto h-2 w-2 rounded-full transition-all {dotColor === 'green'
 															? 'bg-green-500'
