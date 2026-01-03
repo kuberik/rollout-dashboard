@@ -40,24 +40,52 @@
 	let deployExplanation = $state('');
 	let deployConfirmationVersion = $state('');
 
-	// Set initial explanation when modal opens or initialExplanation changes
-	$effect(() => {
-		if (open && initialExplanation) {
-			deployExplanation = initialExplanation;
-		}
-	});
-
 	// Toast (fallback if parent doesn't provide callbacks)
 	let showLocalToast = $state(false);
 	let localToastMessage = $state('');
 	let localToastType = $state<'success' | 'error'>('success');
 
-	const pinVersionToggleComputed = $derived(
-		isPinVersionMode || rollout?.spec?.wantedVersion !== undefined
-	);
-	const isPinVersionToggleDisabled = $derived(
-		isPinVersionMode || hasForceDeployAnnotation(rollout as any)
-	);
+	// Reset form state when modal closes or selection changes
+	$effect(() => {
+		// Just referencing open and selectedVersionTag to trigger the effect
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		open;
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		selectedVersionTag;
+
+		deployExplanation = '';
+		deployConfirmationVersion = '';
+		pinVersionToggle = pinVersionToggleComputed;
+
+		if (open && initialExplanation) {
+			deployExplanation = initialExplanation;
+		}
+	});
+
+	// Pin logic evaluation
+	const isOlderThanCurrent = $derived.by(() => {
+		if (!rollout || !selectedVersionTag) return false;
+		const currentTag = rollout.status?.history?.[0]?.version?.tag;
+		const releases = rollout.status?.availableReleases;
+		if (!currentTag || !releases) return false;
+		const currentIdx = releases.findIndex((r) => r.tag === currentTag);
+		const selectedIdx = releases.findIndex((r) => r.tag === selectedVersionTag);
+		if (currentIdx === -1 || selectedIdx === -1) return false;
+		return selectedIdx < currentIdx;
+	});
+
+	const isCustomVersion = $derived.by(() => {
+		if (!rollout || !selectedVersionTag) return false;
+		const releases = rollout.status?.availableReleases;
+		if (!releases) return true;
+		return !releases.some((ar) => ar.tag === selectedVersionTag);
+	});
+
+	const mustPin = $derived(isPinVersionMode || isOlderThanCurrent || isCustomVersion);
+
+	const pinVersionToggleComputed = $derived(mustPin || rollout?.spec?.wantedVersion !== undefined);
+
+	const isPinVersionToggleDisabled = $derived(mustPin || hasForceDeployAnnotation(rollout as any));
 
 	// Sync computed value to state
 	$effect(() => {

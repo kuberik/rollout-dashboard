@@ -251,6 +251,29 @@
 	let searchQuery = $state('');
 	let showAllTags = $state(false);
 
+	// Reset state when rollout changes
+	$effect(() => {
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		namespace;
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		name;
+		searchQuery = '';
+		showAllTags = false;
+		currentPage = 1;
+		selectedVersion = null;
+		isPinVersionMode = false;
+	});
+
+	// Reset state when modals close
+	$effect(() => {
+		if (!showPinModal && !showDeployModal) {
+			selectedVersion = null;
+			searchQuery = '';
+			showAllTags = false;
+			isPinVersionMode = false;
+		}
+	});
+
 	// Selected version display label (for modal confirmation)
 	function selectedVersionDisplay(): string | null {
 		if (!selectedVersion) return null;
@@ -2833,11 +2856,6 @@
 				disabled={!selectedVersion}
 				onclick={() => {
 					if (!selectedVersion) return;
-					const tag = toTag(selectedVersion);
-					const isCustom = isSelectedVersionCustom(tag);
-					const mustPin = isOlderThanCurrent(tag) || isCustom;
-					isPinVersionMode = mustPin; // disables toggle in DeployModal when true
-					pinVersionToggle = mustPin; // default to pin if older or custom; allow user toggle if newer
 					showDeployModal = true;
 					showPinModal = false;
 				}}
