@@ -2380,44 +2380,7 @@
 												</div>
 												<!-- Action buttons on the right -->
 												<div class="flex flex-wrap items-center gap-2 sm:justify-end">
-													{#if canModify}
-														<Button
-															size="xs"
-															color="blue"
-															disabled={!isDashboardManagingWantedVersion &&
-																!hasForceDeployAnnotation(rollout)}
-															onclick={() => {
-																selectedVersion = version;
-																const isCustom = isSelectedVersionCustom(version);
-																const mustPin = isOlderThanCurrent(version) || isCustom;
-																isPinVersionMode = mustPin;
-																pinVersionToggle = mustPin;
-																showDeployModal = true;
-															}}
-														>
-															Deploy
-														</Button>
-													{/if}
-													{#if rollout?.status?.source}
-														<GitHubViewButton
-															sourceUrl={rollout.status.source}
-															version={getDisplayVersion(releaseCandidate)}
-															size="xs"
-															color="light"
-														/>
-													{/if}
-													<Clipboard value={releaseCandidate.tag} size="xs" color="light">
-														{#snippet children(success)}
-															{#if success}
-																<CheckOutline class="mr-1 h-3 w-3" />
-																Copied
-															{:else}
-																<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-																Copy Tag
-															{/if}
-														{/snippet}
-													</Clipboard>
-													<!-- Blocked/Ready badge - far right -->
+													<!-- Blocked/Ready badge - first -->
 													{#if rollout.status?.gatedReleaseCandidates
 														?.map((grc) => grc.tag)
 														.includes(version)}
@@ -2465,6 +2428,44 @@
 															<Badge color="yellow" size="small">Blocked</Badge>
 														{/if}
 													{/if}
+
+													{#if canModify}
+														<Button
+															size="xs"
+															color="blue"
+															disabled={!isDashboardManagingWantedVersion &&
+																!hasForceDeployAnnotation(rollout)}
+															onclick={() => {
+																selectedVersion = version;
+																const isCustom = isSelectedVersionCustom(version);
+																const mustPin = isOlderThanCurrent(version) || isCustom;
+																isPinVersionMode = mustPin;
+																pinVersionToggle = mustPin;
+																showDeployModal = true;
+															}}
+														>
+															Deploy
+														</Button>
+													{/if}
+													{#if rollout?.status?.source}
+														<GitHubViewButton
+															sourceUrl={rollout.status.source}
+															version={getDisplayVersion(releaseCandidate)}
+															size="xs"
+															color="light"
+														/>
+													{/if}
+													<Clipboard value={releaseCandidate.tag} size="xs" color="light">
+														{#snippet children(success)}
+															{#if success}
+																<CheckOutline class="mr-1 h-3 w-3" />
+																Copied
+															{:else}
+																<ClipboardCleanSolid class="mr-1 h-3 w-3" />
+																Copy Tag
+															{/if}
+														{/snippet}
+													</Clipboard>
 												</div>
 											</div>
 										</div>

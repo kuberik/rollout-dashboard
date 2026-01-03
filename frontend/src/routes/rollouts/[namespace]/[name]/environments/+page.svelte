@@ -992,8 +992,8 @@
 
 			<!-- Right: dots table and dependency graph -->
 			<div class="flex flex-1 flex-col">
-				<!-- Environment-Version Status Table -->
-				{#if tableVersions.length > 0 && graphEnvironments.length > 0}
+				<!-- Environment-Version Status Table - disabled for now -->
+				{#if false && tableVersions.length > 0 && graphEnvironments.length > 0}
 					<div class="border-b border-gray-200 px-3 pb-3 pt-5 dark:border-gray-700">
 						<div class="flex w-full text-sm">
 							<!-- Left: Environment column -->
