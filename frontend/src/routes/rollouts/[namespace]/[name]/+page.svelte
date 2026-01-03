@@ -93,6 +93,7 @@
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import { getBakeStatusColor } from '$lib/bake-status';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import { fly, blur } from 'svelte/transition';
 
@@ -2378,16 +2379,7 @@
 															{#if getDependencyStatus(version)}
 																{@const depBakeStatus = getDependencyStatus(version)}
 																{#if depBakeStatus}
-																	{@const valueColor =
-																		depBakeStatus === 'Succeeded'
-																			? 'green'
-																			: depBakeStatus === 'Failed'
-																				? 'red'
-																				: depBakeStatus === 'InProgress'
-																					? 'yellow'
-																					: depBakeStatus === 'Deploying'
-																						? 'blue'
-																						: 'gray'}
+																	{@const valueColor = getBakeStatusColor(depBakeStatus)}
 																	<JoinedBadge
 																		label="Dependency"
 																		value={depBakeStatus}

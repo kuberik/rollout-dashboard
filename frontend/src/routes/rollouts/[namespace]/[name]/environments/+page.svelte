@@ -23,6 +23,7 @@
 	import { rolloutQueryOptions, type RolloutResponse } from '$lib/api/rollouts';
 	import { getDisplayVersion } from '$lib/utils';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import { getBakeStatusColor } from '$lib/bake-status';
 	import type { Rollout } from '../../../../../types';
 	import type {
 		EnvironmentStatusEntry,
@@ -1092,14 +1093,7 @@
 												onmouseleave={() => (hoveredVersion = null)}
 											>
 												{#if status}
-													{@const dotColor =
-														status === 'Succeeded'
-															? 'green'
-															: status === 'Failed'
-																? 'red'
-																: status === 'InProgress'
-																	? 'yellow'
-																	: 'gray'}
+													{@const dotColor = getBakeStatusColor(status)}
 													<div
 														class="mx-auto h-2 w-2 rounded-full transition-all {dotColor === 'green'
 															? 'bg-green-500'
