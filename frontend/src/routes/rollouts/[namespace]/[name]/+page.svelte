@@ -460,6 +460,7 @@
 
 		// Find matching deployment history entry in the dependency environment
 		// EnvironmentInfo.history contains DeploymentHistoryEntry objects with bakeStatus
+		// History is already sorted with latest entries first, so just take the first match
 		const matchingEntry = depEnvInfo.history.find(
 			(entry: EnvironmentStatusEntry) =>
 				versionIdentifiers.has(entry.version.tag) ||

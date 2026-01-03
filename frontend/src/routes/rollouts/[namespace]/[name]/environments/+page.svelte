@@ -627,15 +627,22 @@
 				if (!candidate) continue;
 
 				const version = candidate.version;
-
 				// Only include versions that are in releaseCandidates
 				if (!releaseCandidateVersions.has(version)) continue;
 
 				// Check deployments of this version in direct dependencies
-				const depStatuses = deploymentStatuses.filter(
-					(s: DeploymentStatusWithEnv) =>
-						currentDeps.includes(s.environment) && getDisplayVersion(s.version) === version
-				);
+				// deploymentStatuses is already sorted, so just get the first match per environment
+				const latestStatusPerEnv = new Map<string, DeploymentStatusWithEnv>();
+				deploymentStatuses.forEach((s: DeploymentStatusWithEnv) => {
+					if (
+						currentDeps.includes(s.environment) &&
+						getDisplayVersion(s.version) === version &&
+						!latestStatusPerEnv.has(s.environment)
+					) {
+						latestStatusPerEnv.set(s.environment, s);
+					}
+				});
+				const latestDepStatuses = Array.from(latestStatusPerEnv.values());
 
 				// Determine state based on dependency statuses
 				let state: 'not-available' | 'failed' | 'cancelled' | 'succeeded' | 'evaluating';
@@ -645,14 +652,14 @@
 					// No dependencies, so it's available
 					state = 'succeeded';
 					combinedBakeStatus = 'Succeeded';
-				} else if (depStatuses.length === 0) {
+				} else if (latestDepStatuses.length === 0) {
 					// Not yet available in any dependency
 					state = 'not-available';
 					combinedBakeStatus = undefined;
 				} else {
 					// Determine combined bakeStatus from dependencies
-					const bakeStatuses = depStatuses
-						.map((s: EnvironmentStatusEntry) => s.bakeStatus)
+					const bakeStatuses = latestDepStatuses
+						.map((s: DeploymentStatusWithEnv) => s.bakeStatus)
 						.filter(Boolean);
 
 					if (bakeStatuses.some((bs) => bs === 'Failed')) {
@@ -663,7 +670,7 @@
 						combinedBakeStatus = 'Cancelled';
 					} else if (
 						currentDeps.every((dep) =>
-							depStatuses.some(
+							latestDepStatuses.some(
 								(s: DeploymentStatusWithEnv) =>
 									s.environment === dep && s.bakeStatus === 'Succeeded'
 							)
