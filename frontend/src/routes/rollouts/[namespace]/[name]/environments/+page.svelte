@@ -622,7 +622,7 @@
 		}
 
 		if (currentIdx > 0) {
-			for (let i = 0; i < currentIdx && result.upcoming.length < 10; i++) {
+			for (let i = 0; i < currentIdx; i++) {
 				const candidate = allVersions[i];
 				if (!candidate) continue;
 
