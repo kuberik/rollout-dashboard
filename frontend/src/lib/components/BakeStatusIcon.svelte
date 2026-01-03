@@ -32,17 +32,9 @@
 		large: '8'
 	};
 
-	const colorMap: Record<string, string> = {
-		green: 'text-green-600 dark:text-green-400',
-		red: 'text-red-600 dark:text-red-400',
-		yellow: 'text-yellow-600 dark:text-yellow-400',
-		blue: 'text-blue-600 dark:text-blue-400',
-		gray: 'text-gray-600 dark:text-gray-400'
-	};
-
 	function getStatusConfig(status?: string) {
 		const baseColor = getBakeStatusColor(status);
-		const color = colorMap[baseColor];
+		const color = `text-${baseColor}-600 dark:text-${baseColor}-400`;
 
 		switch (status) {
 			case 'Succeeded':
