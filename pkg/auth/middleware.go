@@ -22,18 +22,17 @@ func ExtractTokenMiddleware() gin.HandlerFunc {
 		// Fallback to cookies if Authorization header is not present.
 		accessTokenCookie := "access_token"
 		idTokenCookie := "id_token"
+		IdTokenCookie := "IdToken"
 
-		// First, try Authorization header (preferred when forwardAccessToken is enabled)
-		authHeader := c.GetHeader("Authorization")
-		if authHeader != "" {
-			// Extract Bearer token
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-				token = parts[1]
+		// Fallback to IdToken cookie if Authorization header not found
+		// This is often used by some OIDC providers/proxies
+		if token == "" {
+			if cookie, err := c.Cookie(IdTokenCookie); err == nil && cookie != "" {
+				token = cookie
 			}
 		}
 
-		// Fallback to ID token cookie if Authorization header not found
+		// Fallback to id_token cookie if IdToken not found
 		// Kubernetes API server requires ID token (JWT) for OIDC authentication
 		if token == "" {
 			if cookie, err := c.Cookie(idTokenCookie); err == nil && cookie != "" {
@@ -45,6 +44,18 @@ func ExtractTokenMiddleware() gin.HandlerFunc {
 		if token == "" {
 			if cookie, err := c.Cookie(accessTokenCookie); err == nil && cookie != "" {
 				token = cookie
+			}
+		}
+
+		// Try Authorization header last (e.g. when forwardAccessToken is enabled)
+		if token == "" {
+			authHeader := c.GetHeader("Authorization")
+			if authHeader != "" {
+				// Extract Bearer token
+				parts := strings.SplitN(authHeader, " ", 2)
+				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+					token = parts[1]
+				}
 			}
 		}
 

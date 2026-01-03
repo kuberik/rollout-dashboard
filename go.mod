@@ -18,6 +18,7 @@ require (
 	github.com/kuberik/openkruise-controller v0.0.0-20251227190345-7753c50fb249
 	github.com/kuberik/rollout-controller v0.5.1-0.20251226192013-e2abaa863f57
 	github.com/openkruise/kruise-rollout-api v0.6.0
+	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.34.2
 	k8s.io/apimachinery v0.34.2
 	k8s.io/client-go v0.34.2
@@ -26,6 +27,7 @@ require (
 )
 
 require (
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
@@ -47,7 +49,7 @@ require (
 	github.com/fluxcd/pkg/apis/meta v1.23.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
-	github.com/gin-contrib/sse v1.1.0 // indirect
+	github.com/gin-contrib/sse v1.1.0
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-openapi/jsonpointer v0.21.2 // indirect
