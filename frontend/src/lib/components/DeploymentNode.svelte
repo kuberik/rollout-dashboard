@@ -53,14 +53,14 @@
 </script>
 
 <div
-	class="relative w-[320px]"
+	class="relative w-fit min-w-[100px] whitespace-nowrap"
 	style={data.isCurrentEnvironment
 		? '--env-bg-color-light: rgb(219, 234, 254); --env-bg-color-dark: rgb(30, 58, 138);'
 		: '--env-bg-color-light: rgb(243, 244, 246); --env-bg-color-dark: rgb(31, 41, 55);'}
 >
 	<div
 		role="presentation"
-		class="node-border relative w-full rounded-lg border-2 bg-white text-gray-900 shadow-lg transition-all dark:bg-gray-900 dark:text-white"
+		class="node-border relative rounded-lg border-2 bg-white text-gray-900 shadow-lg transition-all dark:bg-gray-900 dark:text-white"
 		class:ring-2={data.isCurrentEnvironment}
 		class:ring-blue-400={data.isCurrentEnvironment}
 		class:dark:ring-blue-600={data.isCurrentEnvironment}

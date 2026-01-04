@@ -107,20 +107,21 @@
 		return Array.from(versionMap.values()).sort((a, b) => b.id - a.id);
 	});
 
-	// Build nodes and edges from environmentInfos with current/next state
-	const nodes = $derived.by(() => {
+	// Managed nodes and edges state for Svelte Flow
+	let flowNodes = $state<Node[]>([]);
+	let flowEdges = $state<Edge[]>([]);
+
+	// Base nodes data (unlayouted)
+	const baseNodes = $derived.by(() => {
 		if (!environmentInfos || environmentInfos.length === 0) return [];
 
 		const envInfos = environmentInfos;
 
-		// Global version index (newest first) to compare environments
-		// Use availableVersions from rollout, not deploymentStatuses
 		const versionIndex = new Map<string, number>();
 		availableVersions.forEach((version, idx) => {
 			versionIndex.set(version, idx);
 		});
 
-		// Helper: get current version for an environment
 		const getCurrentForEnv = (env: string): string | null => {
 			const envStatuses = deploymentStatuses
 				.filter((s: DeploymentStatusWithEnv) => s.environment === env)
@@ -133,15 +134,10 @@
 			return currentStatus ? getDisplayVersion(currentStatus.version) : null;
 		};
 
-		// Get current environment's version for comparison
 		const currentEnvVersion = getCurrentForEnv(currentEnvironment);
 		const currentEnvIdx = currentEnvVersion ? versionIndex.get(currentEnvVersion) : undefined;
 
-		// Create nodes
-		const nodeMap = new Map<string, Node>();
-
-		// Add all environment nodes
-		envInfos.forEach((envInfo: EnvironmentInfo) => {
+		return envInfos.map((envInfo: EnvironmentInfo) => {
 			const env = envInfo.environment;
 			const envStatuses = deploymentStatuses
 				.filter((s: DeploymentStatusWithEnv) => s.environment === env)
@@ -154,12 +150,13 @@
 			const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : 'N/A';
 			const envVersionIdx = currentVersion !== 'N/A' ? versionIndex.get(currentVersion) : undefined;
 
-			nodeMap.set(env, {
+			return {
 				id: env,
 				type: 'deployment',
-				position: { x: 0, y: 0 }, // Temporary, will be overridden by dagre
+				position: { x: 0, y: 0 },
 				draggable: false,
 				selectable: false,
+				style: 'width: auto',
 				data: {
 					environment: env,
 					currentVersion,
@@ -169,93 +166,24 @@
 					versionIndex: envVersionIdx,
 					currentEnvironmentVersionIndex: currentEnvIdx
 				}
-			});
-		});
-
-		return Array.from(nodeMap.values());
-	});
-
-	// Environments shown in the graph (excluding start/end nodes)
-	const graphEnvironments = $derived.by(() => {
-		return nodes
-			.filter((node) => node.type === 'deployment')
-			.map((node) => node.data.environment as string)
-			.filter(Boolean);
-	});
-
-	// Helper function to get node dimensions
-	function getNodeDimensions(node: Node): { width: number; height: number } {
-		if (node.type === 'simple') {
-			return { width: 120, height: 80 };
-		}
-		// deployment node - fixed width for consistent layout alignment
-		return { width: 320, height: 110 };
-	}
-
-	// Apply dagre layout to nodes
-	const layoutedNodes = $derived.by(() => {
-		if (nodes.length === 0) return [];
-
-		const graphEdges = edges.map((edge) => ({
-			source: edge.source,
-			target: edge.target
-		}));
-
-		// Create dagre graph
-		const g = new dagre.graphlib.Graph();
-		g.setDefaultEdgeLabel(() => ({}));
-		g.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 120 });
-
-		// Add nodes to dagre graph
-		nodes.forEach((node) => {
-			const { width, height } = getNodeDimensions(node);
-			g.setNode(node.id, { width, height });
-		});
-
-		// Add edges to dagre graph
-		graphEdges.forEach((edge) => {
-			g.setEdge(edge.source, edge.target);
-		});
-
-		// Calculate layout
-		dagre.layout(g);
-
-		// Apply positions from dagre to nodes
-		// Dagre returns center positions, so we need to convert to top-left
-		return nodes.map((node) => {
-			const dagreNode = g.node(node.id);
-			if (!dagreNode) return node;
-			return {
-				...node,
-				position: {
-					x: dagreNode.x - dagreNode.width / 2,
-					y: dagreNode.y - dagreNode.height / 2
-				}
-			};
+			} as Node;
 		});
 	});
 
-	const edges = $derived.by(() => {
+	// Base edges data
+	const baseEdges = $derived.by(() => {
 		if (!environmentInfos || environmentInfos.length === 0) return [];
 
 		const envInfos = environmentInfos;
 		const edgeList: Edge[] = [];
 
-		// Build dependency graph from relationships
 		const envDependencies = new Map<string, string[]>();
-		const envDependents = new Map<string, string[]>();
 		envInfos.forEach((envInfo: EnvironmentInfo) => {
 			const deps: string[] = [];
 			if (envInfo.relationship?.type === 'After') {
 				deps.push(envInfo.relationship.environment);
 			}
 			envDependencies.set(envInfo.environment, deps);
-			deps.forEach((dep) => {
-				if (!envDependents.has(dep)) {
-					envDependents.set(dep, []);
-				}
-				envDependents.get(dep)!.push(envInfo.environment);
-			});
 		});
 
 		const createEdge = (source: string, target: string, id: string): Edge => ({
@@ -271,7 +199,6 @@
 			}
 		});
 
-		// Add edges between environments based on relationships
 		envInfos.forEach((envInfo: EnvironmentInfo) => {
 			const deps = envDependencies.get(envInfo.environment) || [];
 			deps.forEach((dep) => {
@@ -280,6 +207,86 @@
 		});
 
 		return edgeList;
+	});
+
+	// Sync raw data to flow nodes while preserving measured dimensions
+	$effect(() => {
+		const newNodes = baseNodes.map((bn) => {
+			const existing = flowNodes.find((fn) => fn.id === bn.id);
+			if (existing) {
+				// Update data but preserve Svelte Flow managed properties
+				return { ...bn, measured: existing.measured, position: existing.position };
+			}
+			return bn;
+		});
+
+		// Only update if something changed (avoid simple reference identity triggers)
+		if (
+			JSON.stringify(newNodes.map((n) => n.id)) !== JSON.stringify(flowNodes.map((n) => n.id)) ||
+			JSON.stringify(newNodes.map((n) => n.data)) !== JSON.stringify(flowNodes.map((n) => n.data))
+		) {
+			flowNodes = newNodes;
+		}
+
+		if (JSON.stringify(baseEdges) !== JSON.stringify(flowEdges)) {
+			flowEdges = baseEdges;
+		}
+	});
+
+	// Re-layout effect: reacts to node measurements
+	$effect(() => {
+		if (flowNodes.length === 0) return;
+
+		// Create dagre graph
+		const g = new dagre.graphlib.Graph();
+		g.setDefaultEdgeLabel(() => ({}));
+		g.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 120 });
+
+		// Add nodes to dagre using actual measured dimensions
+		flowNodes.forEach((node) => {
+			const width = node.measured?.width ?? 100;
+			const height = node.measured?.height ?? 110;
+			g.setNode(node.id, { width, height });
+		});
+
+		flowEdges.forEach((edge) => {
+			g.setEdge(edge.source, edge.target);
+		});
+
+		dagre.layout(g);
+
+		// Check if any position changed
+		let changed = false;
+		const nextNodes = flowNodes.map((node) => {
+			const dagreNode = g.node(node.id);
+			if (!dagreNode) return node;
+
+			const nextPos = {
+				x: dagreNode.x - dagreNode.width / 2,
+				y: dagreNode.y - dagreNode.height / 2
+			};
+
+			if (
+				Math.abs(node.position.x - nextPos.x) > 0.5 ||
+				Math.abs(node.position.y - nextPos.y) > 0.5
+			) {
+				changed = true;
+				return { ...node, position: nextPos };
+			}
+			return node;
+		});
+
+		if (changed) {
+			flowNodes = nextNodes;
+		}
+	});
+
+	// Environments shown in the graph
+	const graphEnvironments = $derived.by(() => {
+		return flowNodes
+			.filter((node) => node.type === 'deployment')
+			.map((node) => node.data.environment as string)
+			.filter(Boolean);
 	});
 
 	const nodeTypes = {
@@ -634,7 +641,7 @@
 		<Alert color="red" class="mb-4">
 			Error loading deployment pipeline: {rolloutQuery.error.message}
 		</Alert>
-	{:else if !environmentInfos || environmentInfos.length === 0 || nodes.length === 0}
+	{:else if !environmentInfos || environmentInfos.length === 0 || baseNodes.length === 0}
 		<Card class="mb-4">
 			<p class="text-gray-600 dark:text-gray-400">
 				No environment information found. The deployment pipeline will appear here once deployments
@@ -855,7 +862,7 @@
 														Current
 													</Badge>
 												{:else if versionDiff !== null && versionDiff !== 0}
-													{@const diff = versionDiff}
+													{@const diff: number = versionDiff as number}
 													<Badge
 														color={diff < 0 ? 'green' : 'yellow'}
 														size="small"
@@ -914,8 +921,8 @@
 				<!-- Dependency graph -->
 				<div class="flex-1 overflow-auto">
 					<SvelteFlow
-						nodes={layoutedNodes}
-						{edges}
+						bind:nodes={flowNodes}
+						bind:edges={flowEdges}
 						{nodeTypes}
 						fitView
 						fitViewOptions={{ padding: 0.2, minZoom: 0.5, maxZoom: 1 }}
@@ -991,6 +998,11 @@
 
 	:global(.svelte-flow__background) {
 		pointer-events: none !important;
+	}
+
+	:global(.svelte-flow__node-deployment) {
+		width: auto !important;
+		min-width: 0 !important;
 	}
 
 	/* Pulse glow animation for hovered dots - green */
