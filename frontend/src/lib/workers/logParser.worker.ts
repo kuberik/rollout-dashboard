@@ -19,6 +19,7 @@ interface PodInfo {
 interface WorkerMessage {
 	type: 'parseLog' | 'parsePods';
 	data: string;
+	id: string;
 }
 
 // Format timestamp in user's local timezone
@@ -34,7 +35,7 @@ function formatTimestamp(timestamp: number): string {
 }
 
 self.onmessage = (e: MessageEvent<WorkerMessage>) => {
-	const { type, data } = e.data;
+	const { type, data, id } = e.data;
 
 	try {
 		if (type === 'parseLog') {
@@ -48,15 +49,16 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
 				logLine.timestamp = now;
 				logLine.formattedTimestamp = formatTimestamp(now);
 			}
-			self.postMessage({ type: 'log', data: logLine });
+			self.postMessage({ type: 'log', data: logLine, id });
 		} else if (type === 'parsePods') {
 			const pods = JSON.parse(data) as PodInfo[];
-			self.postMessage({ type: 'pods', data: pods });
+			self.postMessage({ type: 'pods', data: pods, id });
 		}
 	} catch (err) {
 		self.postMessage({
 			type: 'error',
-			error: err instanceof Error ? err.message : 'Unknown parsing error'
+			error: err instanceof Error ? err.message : 'Unknown parsing error',
+			id
 		});
 	}
 };

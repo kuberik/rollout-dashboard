@@ -27,14 +27,7 @@
 	const { namespace, name, filterType = '' }: Props = $props();
 
 	let selectedPod = $state<string | null>(null);
-	let pods = $state<PodInfo[]>([]);
 	let searchQuery = $state('');
-
-	// Track known pods for color generation
-	let knownPodNames = $state<Set<string>>(new Set());
-
-	// Pod colors using iwanthue
-	let podColors = $state<Map<string, string>>(new Map());
 
 	// Auto-scroll state
 	let autoScroll = $state(true);
@@ -52,18 +45,33 @@
 	const containersDropdownId = 'containers-filter-dropdown';
 	const logLevelsDropdownId = 'log-levels-filter-dropdown';
 
+	let discoveredPods = $state<PodInfo[]>([]);
+	const discoveredPodNames = new Set<string>();
+
+	function addDiscoveredPod(pod: PodInfo) {
+		if (!discoveredPodNames.has(pod.name)) {
+			discoveredPodNames.add(pod.name);
+			discoveredPods.push(pod);
+		}
+	}
+
 	// Handle pods updates from the stream
 	function handlePodsUpdate(newPods: PodInfo[]) {
-		const newPodNames = new Set(newPods.map((p) => p.name));
-		const hasNewPods = Array.from(newPodNames).some((name) => !knownPodNames.has(name));
-
-		if (hasNewPods) {
-			knownPodNames = newPodNames;
-		}
-
-		pods = newPods;
-		knownPodNames = newPodNames;
+		newPods.forEach(addDiscoveredPod);
 	}
+
+	// Dynamic discovery from logs
+	$effect(() => {
+		logs.forEach((log) => {
+			if (!discoveredPodNames.has(log.pod)) {
+				addDiscoveredPod({
+					name: log.pod,
+					namespace,
+					type: log.type || (log.pod.includes('test') ? 'test' : 'pod')
+				});
+			}
+		});
+	});
 
 	// Get query client for resetting query state
 	const queryClient = useQueryClient();
@@ -129,31 +137,27 @@
 		}
 	}
 
+	// Track podcast and their assigned colors
+	const podColors = new Map<string, string>();
+
+	// Generate a large stable palette once
+	const palette = iwanthue(50, {
+		seed: 'kuberik-rollout-dashboard-v1',
+		colorSpace: 'sensible'
+	});
+
 	function getPodColor(podName: string): string {
 		if (!podColors.has(podName)) {
-			// Generate colors for all known pods at once for consistency
-			const allPods = Array.from(knownPodNames);
-
-			// iwanthue requires at least 2 colors, so handle edge cases
-			if (allPods.length === 0) {
-				return '#ffffff';
-			} else if (allPods.length === 1) {
-				// For a single pod, use a default color
-				podColors.set(podName, '#3b82f6'); // blue
-				return '#3b82f6';
+			// Use the index in discoveredPods to assign a color
+			const index = discoveredPods.findIndex((p) => p.name === podName);
+			if (index !== -1) {
+				podColors.set(podName, palette[index % palette.length]);
+			} else {
+				// Fallback if not yet discovered (rare)
+				return 'var(--gray-500)';
 			}
-
-			const palette = iwanthue(allPods.length, {
-				seed: 42, // Fixed seed for consistent colors
-				colorSpace: 'default'
-			});
-			allPods.forEach((pod, idx) => {
-				if (!podColors.has(pod)) {
-					podColors.set(pod, palette[idx]);
-				}
-			});
 		}
-		return podColors.get(podName) || '#ffffff';
+		return podColors.get(podName)!;
 	}
 
 	// Get unique containers for filtering
@@ -203,13 +207,20 @@
 
 	// Group pods by name for filtering
 	const uniquePods = $derived.by(() => {
-		const podMap = new Map<string, PodInfo>();
-		pods.forEach((pod) => {
-			if (!podMap.has(pod.name)) {
-				podMap.set(pod.name, pod);
-			}
-		});
-		return Array.from(podMap.values());
+		let result = discoveredPods;
+
+		// Filter based on the requested tab type
+		if (filterType) {
+			result = result.filter((p) => {
+				if (p.type === filterType) return true;
+				// Fallback heuristics
+				if (filterType === 'pod' && !p.type) return true;
+				if (filterType === 'test' && (p.name.includes('test') || p.type === 'test')) return true;
+				return false;
+			});
+		}
+
+		return [...result].sort((a, b) => a.name.localeCompare(b.name));
 	});
 
 	// Highlight search matches in log lines
@@ -566,7 +577,7 @@
 	{:else if allLogLines.length === 0}
 		<div class="flex flex-1 items-center justify-center">
 			<div class="text-center text-gray-500 dark:text-gray-400">
-				<p>No logs available</p>
+				<p>No logs available (Total: {logs.length}, Filtered: {filteredLogs.length})</p>
 			</div>
 		</div>
 	{:else}

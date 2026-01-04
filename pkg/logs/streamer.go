@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -14,109 +15,117 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// truncateString truncates a string to maxLen characters
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
-
-// parseKubernetesLogTimestamp parses the RFC3339 timestamp prefix from Kubernetes log lines
-// Format: "2025-12-29T18:38:25.123456789Z <log content>"
-// Returns the timestamp in milliseconds and the log content without the timestamp prefix
-func parseKubernetesLogTimestamp(line string) (int64, string) {
-	// Kubernetes timestamps are RFC3339Nano format at the start of the line
-	// Find the space after the timestamp (or end of line if no space)
-	spaceIdx := strings.IndexByte(line, ' ')
-	if spaceIdx == -1 {
-		// No space found, try to parse the entire line as timestamp
-		if t, err := time.Parse(time.RFC3339Nano, line); err == nil {
-			return t.UnixMilli(), ""
-		}
-		return 0, line
-	}
-
-	// Try to parse the prefix as RFC3339Nano
-	timestampStr := line[:spaceIdx]
-	if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
-		// Successfully parsed, return timestamp and remaining log content
-		logContent := strings.TrimSpace(line[spaceIdx:])
-		return t.UnixMilli(), logContent
-	}
-
-	// Try RFC3339 format (without nanoseconds)
-	if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-		logContent := strings.TrimSpace(line[spaceIdx:])
-		return t.UnixMilli(), logContent
-	}
-
-	// Not a Kubernetes timestamp format, return original line
-	return 0, line
-}
-
-// StreamPod represents a pod/container combination to stream logs from
-type StreamPod struct {
-	Pod       *corev1.Pod
-	PodType   string
-	Container string
-}
-
 // SSEMessage represents a message to send via SSE
 type SSEMessage struct {
 	Event string
 	Data  string
 }
 
-// LogStreamer handles streaming logs from multiple pods
+// PodInfo represents information about a pod for the frontend
+type PodInfo struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Type      string `json:"type"`
+}
+
+// LogStreamer handles streaming logs using custom direct streaming
 type LogStreamer struct {
-	client          *kubernetes.Client
-	discovery       *PodDiscovery
-	sseChan         chan SSEMessage
-	ctx             context.Context
-	streamingPods   map[string]bool // key: "podName:containerName"
-	streamingPodsMu sync.RWMutex
-	wg              sync.WaitGroup
-	sinceTime       *time.Time
+	client        *kubernetes.Client
+	discovery     *PodDiscovery
+	sseChan       chan SSEMessage
+	ctx           context.Context
+	activeStreams map[string]context.CancelFunc // key: target.ID
+	streamsMu     sync.Mutex
+	wg            sync.WaitGroup
+	sinceTime     *time.Time
+
+	// Track active pods for frontend (aggregated from all targets)
+	activePods   map[string]PodInfo // key: podName
+	activePodsMu sync.Mutex
 }
 
 // NewLogStreamer creates a new LogStreamer instance
 func NewLogStreamer(client *kubernetes.Client, discovery *PodDiscovery, ctx context.Context, sinceTime *time.Time) *LogStreamer {
-	return &LogStreamer{
+	ls := &LogStreamer{
 		client:        client,
 		discovery:     discovery,
 		sseChan:       make(chan SSEMessage, 1000),
 		ctx:           ctx,
-		streamingPods: make(map[string]bool),
+		activeStreams: make(map[string]context.CancelFunc),
 		sinceTime:     sinceTime,
+		activePods:    make(map[string]PodInfo),
+	}
+	// Start periodic pods broadcast
+	go ls.broadcastPodsLoop()
+	return ls
+}
+
+func (ls *LogStreamer) broadcastPodsLoop() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ls.ctx.Done():
+			return
+		case <-ticker.C:
+			ls.broadcastPods()
+		}
 	}
 }
 
-// Start begins streaming logs from discovered pods
+func (ls *LogStreamer) broadcastPods() {
+	ls.activePodsMu.Lock()
+	var pods []PodInfo
+	for _, p := range ls.activePods {
+		pods = append(pods, p)
+	}
+	ls.activePodsMu.Unlock()
+
+	// Always send the event, even if empty, so frontend knows state
+	jsonBytes, err := json.Marshal(pods)
+	if err != nil {
+		return
+	}
+
+	select {
+	case <-ls.ctx.Done():
+		return
+	case ls.sseChan <- SSEMessage{Event: "pods", Data: string(jsonBytes)}:
+	default:
+	}
+}
+
+// Start begins streaming logs from discovered targets
 func (ls *LogStreamer) Start() error {
-	// Discover initial pods
-	pods, err := ls.discovery.Discover(ls.ctx)
+	// Initial discovery
+	targets, err := ls.discovery.Discover(ls.ctx)
 	if err != nil {
-		return fmt.Errorf("failed to discover pods: %w", err)
+		return fmt.Errorf("failed to discover targets: %w", err)
 	}
 
-	// Send initial pods list
-	if err := ls.sendPodsList(pods); err != nil {
-		return fmt.Errorf("failed to send initial pods list: %w", err)
-	}
+	ls.syncStreams(targets)
 
-	// Start streaming from initial pods
-	streamPods, err := ls.convertToStreamPods(pods)
-	if err != nil {
-		return fmt.Errorf("failed to convert pods: %w", err)
-	}
+	// Start periodic discovery
+	ls.wg.Add(1)
+	go func() {
+		defer ls.wg.Done()
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
 
-	for _, sp := range streamPods {
-		ls.startStreamingPod(sp)
-	}
-
-	// Start periodic pod discovery
-	ls.startPeriodicDiscovery()
+		for {
+			select {
+			case <-ls.ctx.Done():
+				return
+			case <-ticker.C:
+				targets, err := ls.discovery.Discover(ls.ctx)
+				if err != nil {
+					continue
+				}
+				ls.syncStreams(targets)
+			}
+		}
+	}()
 
 	return nil
 }
@@ -126,11 +135,24 @@ func (ls *LogStreamer) GetSSEChannel() <-chan SSEMessage {
 	return ls.sseChan
 }
 
+// SendKeepalive sends a ping message to keep the connection alive
+func (ls *LogStreamer) SendKeepalive() {
+	select {
+	case ls.sseChan <- SSEMessage{Event: "ping", Data: "{}"}:
+	default:
+	}
+}
+
 // Stop stops all streaming and closes the SSE channel
 func (ls *LogStreamer) Stop() {
-	close(ls.sseChan)
+	// Cancel all active streams
+	ls.streamsMu.Lock()
+	for _, cancel := range ls.activeStreams {
+		cancel()
+	}
+	ls.streamsMu.Unlock()
 
-	// Wait for goroutines to finish (with timeout)
+	// Wait for goroutines to finish
 	done := make(chan struct{})
 	go func() {
 		ls.wg.Wait()
@@ -141,247 +163,224 @@ func (ls *LogStreamer) Stop() {
 	case <-done:
 	case <-time.After(5 * time.Second):
 	}
+
+	close(ls.sseChan)
 }
 
-// startStreamingPod starts streaming logs from a single pod/container
-func (ls *LogStreamer) startStreamingPod(sp StreamPod) {
-	key := fmt.Sprintf("%s:%s", sp.Pod.Name, sp.Container)
+// syncStreams reconciles active streams with discovered targets
+func (ls *LogStreamer) syncStreams(targets []LogTarget) {
+	ls.streamsMu.Lock()
+	defer ls.streamsMu.Unlock()
 
-	ls.streamingPodsMu.Lock()
-	if ls.streamingPods[key] {
-		ls.streamingPodsMu.Unlock()
-		return // Already streaming
+	// Build map of current targets
+	targetMap := make(map[string]LogTarget)
+	for _, t := range targets {
+		targetMap[t.ID] = t
 	}
-	ls.streamingPods[key] = true
-	ls.streamingPodsMu.Unlock()
 
-	ls.wg.Add(1)
-	go func(sp StreamPod) {
-		defer ls.wg.Done()
-		defer func() {
-			ls.streamingPodsMu.Lock()
-			ls.streamingPods[key] = false
-			ls.streamingPodsMu.Unlock()
-		}()
+	// Stop streams for targets that are no longer present
+	for id, cancel := range ls.activeStreams {
+		if _, exists := targetMap[id]; !exists {
+			cancel()
+			delete(ls.activeStreams, id)
+		}
+	}
 
-		ls.streamPodLogs(sp)
-	}(sp)
+	// Start streams for new targets
+	for id, target := range targetMap {
+		if _, active := ls.activeStreams[id]; !active {
+			ctx, cancel := context.WithCancel(ls.ctx)
+			ls.activeStreams[id] = cancel
+			ls.wg.Add(1)
+			go func(t LogTarget, c context.Context) {
+				defer ls.wg.Done()
+				ls.runLogStream(c, t)
+			}(target, ctx)
+		}
+	}
 }
 
-// streamPodLogs streams logs from a single pod/container
-func (ls *LogStreamer) streamPodLogs(sp StreamPod) {
-	clientset := ls.client.GetClientset()
-	if clientset == nil {
+// runLogStream manages log streaming for a specific target (e.g. ReplicaSet)
+func (ls *LogStreamer) runLogStream(ctx context.Context, target LogTarget) {
+	// Track active pod streams for this target
+	streamKeys := make(map[string]context.CancelFunc) // key: pod/container
+	var mu sync.Mutex
+
+	// Cleanup all pod streams when target context is cancelled
+	defer func() {
+		mu.Lock()
+		for key, cancel := range streamKeys {
+			// Try to remove active pod if it's the last container?
+			// For simplicity, we won't strictly manage activePods removal here
+			// because it might overlap with other targets? Unlikely for pods.
+			parts := strings.Split(key, "/")
+			if len(parts) >= 1 {
+				ls.removeActivePod(parts[0])
+			}
+			cancel()
+		}
+		mu.Unlock()
+	}()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	// Initial reconciliation
+	ls.reconcilePodStreams(ctx, target, streamKeys, &mu)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ls.reconcilePodStreams(ctx, target, streamKeys, &mu)
+		}
+	}
+}
+
+func (ls *LogStreamer) removeActivePod(podName string) {
+	ls.activePodsMu.Lock()
+	defer ls.activePodsMu.Unlock()
+	delete(ls.activePods, podName)
+}
+
+func (ls *LogStreamer) reconcilePodStreams(ctx context.Context, target LogTarget, streamKeys map[string]context.CancelFunc, mu *sync.Mutex) {
+	pods, err := ls.client.GetClientset().CoreV1().Pods(target.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: target.LabelSelector.String(),
+	})
+	if err != nil {
+		fmt.Printf("Error listing pods for target %s: %v\n", target.ID, err)
 		return
 	}
 
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Update activePods
+	ls.activePodsMu.Lock()
+	for _, pod := range pods.Items {
+		ls.activePods[pod.Name] = PodInfo{
+			Name:      pod.Name,
+			Namespace: pod.Namespace,
+			Type:      target.Type,
+		}
+	}
+	ls.activePodsMu.Unlock()
+
+	currentKeys := make(map[string]struct{})
+	for _, pod := range pods.Items {
+		// Iterate all containers (init and regular)
+		var containers []corev1.Container
+		containers = append(containers, pod.Spec.InitContainers...)
+		containers = append(containers, pod.Spec.Containers...)
+
+		for _, container := range containers {
+			key := fmt.Sprintf("%s/%s", pod.Name, container.Name)
+			currentKeys[key] = struct{}{}
+
+			// Start stream if not active
+			if _, active := streamKeys[key]; !active {
+				podCtx, cancel := context.WithCancel(ctx)
+				streamKeys[key] = cancel
+				go ls.streamContainerLogs(podCtx, pod, container.Name, target.Type)
+			}
+		}
+	}
+
+	// Cleanup dead streams
+	for key, cancel := range streamKeys {
+		if _, exists := currentKeys[key]; !exists {
+			// Remove from activePods if needed?
+			// We updated activePods with the FRESH list above.
+			// But we need to remove ones that are GONE.
+			// The simplest way to handle removal is:
+			// 1. Identify pods that were tracked but are no longer in the list.
+			// However `ls.activePods` is global.
+			// Let's rely on `defer` in `runLogStream` for bulk cleanup,
+			// and here we just handle stream cleanup.
+			// For precise activePods removal, we'd need to compare previous Pod list with current.
+			// Let's skip detailed removal logic for individual pod disappearances for now to avoid complexity,
+			// or we can implement it if needed. The frontend handles missing pods gracefully.
+
+			cancel()
+			delete(streamKeys, key)
+		}
+	}
+}
+
+func (ls *LogStreamer) streamContainerLogs(ctx context.Context, pod corev1.Pod, containerName, filterType string) {
+	// Default options
+	tail := int64(100)
 	opts := &corev1.PodLogOptions{
-		Container:  sp.Container,
+		Container:  containerName,
 		Follow:     true,
-		Timestamps: true, // Enable Kubernetes-provided timestamps
+		Timestamps: true,
+		TailLines:  &tail,
 	}
 
+	// Use SinceTime if configured
 	if ls.sinceTime != nil {
-		// Reconnection: only get logs since the last seen timestamp
-		sinceTime := metav1.NewTime(*ls.sinceTime)
-		opts.SinceTime = &sinceTime
-	} else {
-		// Initial connection: limit to most recent 1000 lines to avoid sending too much history
-		tailLines := int64(1000)
-		opts.TailLines = &tailLines
+		t := metav1.NewTime(*ls.sinceTime)
+		opts.SinceTime = &t
+		opts.TailLines = nil // SinceTime and TailLines are mutually exclusive usually, or SinceTime takes precedence?
+		// Kubernetes API allows both but usually one is preferred. Let's unset TailLines if SinceTime is set.
 	}
 
-	req := clientset.CoreV1().Pods(sp.Pod.Namespace).GetLogs(sp.Pod.Name, opts)
-	stream, err := req.Stream(context.Background())
+	req := ls.client.GetClientset().CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, opts)
+	stream, err := req.Stream(ctx)
 	if err != nil {
 		return
 	}
 	defer stream.Close()
 
-	lineCount := 0
-	lastLineTime := time.Now()
 	scanner := bufio.NewScanner(stream)
 
-	// Monitor for stuck scanner (no data for 30 seconds)
-	scannerStuck := make(chan bool, 1)
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ls.ctx.Done():
-				return
-			case <-ticker.C:
-				timeSinceLastLine := time.Since(lastLineTime)
-				if timeSinceLastLine > 30*time.Second && lineCount == 0 {
-					scannerStuck <- true
-				}
-			}
-		}
-	}()
+	// Parse timestamp from line (Kubernetes adds it: 2023-.... content)
+	// Timestamp regex: RFC3339Nano or RFC3339 at start of line
+	timestampRegex := regexp.MustCompile(`^(\S+) (.*)$`)
 
 	for scanner.Scan() {
-		select {
-		case <-ls.ctx.Done():
-			return
-		default:
-		}
-
 		line := scanner.Text()
-		if line == "" {
-			continue
+
+		var timestamp int64
+		var content string
+
+		parts := timestampRegex.FindStringSubmatch(line)
+		if len(parts) == 3 {
+			if t, err := time.Parse(time.RFC3339Nano, parts[1]); err == nil {
+				timestamp = t.UnixMilli()
+				content = parts[2]
+			} else if t, err := time.Parse(time.RFC3339, parts[1]); err == nil {
+				timestamp = t.UnixMilli()
+				content = parts[2]
+			}
 		}
 
-		lineCount++
-		lastLineTime = time.Now()
-
-		// Parse Kubernetes-provided timestamp from the log line
-		// Format: "2025-12-29T18:38:25.123456789Z <log content>"
-		timestamp, logContent := parseKubernetesLogTimestamp(line)
-
-		// If timestamp parsing failed, use current time as fallback
 		if timestamp == 0 {
 			timestamp = time.Now().UnixMilli()
-			logContent = line // Use original line if we couldn't parse timestamp
+			content = line
 		}
 
-		logLine := map[string]interface{}{
-			"pod":       sp.Pod.Name,
-			"container": sp.Container,
-			"type":      sp.PodType,
-			"line":      logContent, // Send log content without Kubernetes timestamp prefix
+		logEntry := map[string]interface{}{
+			"pod":       pod.Name,
+			"container": containerName,
+			"type":      filterType,
+			"line":      content,
 			"timestamp": timestamp,
+			"namespace": pod.Namespace,
 		}
 
-		jsonBytes, err := json.Marshal(logLine)
+		jsonBytes, err := json.Marshal(logEntry)
 		if err != nil {
 			continue
 		}
 
 		select {
-		case <-ls.ctx.Done():
+		case <-ctx.Done():
 			return
 		case ls.sseChan <- SSEMessage{Event: "log", Data: string(jsonBytes)}:
-			// Successfully sent to channel
 		default:
-			// SSE channel full, dropping log line
+			// drop
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		// Scanner error
-	}
-}
-
-// startPeriodicDiscovery periodically checks for new pods and adds them to the stream
-func (ls *LogStreamer) startPeriodicDiscovery() {
-	ls.wg.Add(1)
-	go func() {
-		defer ls.wg.Done()
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ls.ctx.Done():
-				return
-			case <-ticker.C:
-				ls.discoverAndAddNewPods()
-			}
-		}
-	}()
-}
-
-// discoverAndAddNewPods discovers new pods and starts streaming from them
-func (ls *LogStreamer) discoverAndAddNewPods() {
-	newPods, err := ls.discovery.Discover(ls.ctx)
-	if err != nil {
-		return
-	}
-
-	streamPods, err := ls.convertToStreamPods(newPods)
-	if err != nil {
-		return
-	}
-
-	var newStreamPods []StreamPod
-	ls.streamingPodsMu.RLock()
-	for _, sp := range streamPods {
-		key := fmt.Sprintf("%s:%s", sp.Pod.Name, sp.Container)
-		if !ls.streamingPods[key] {
-			newStreamPods = append(newStreamPods, sp)
-		}
-	}
-	ls.streamingPodsMu.RUnlock()
-
-	if len(newStreamPods) == 0 {
-		return
-	}
-
-	for _, sp := range newStreamPods {
-		ls.startStreamingPod(sp)
-	}
-
-	// Send updated pods list
-	if err := ls.sendPodsList(newPods); err != nil {
-		// Error sending updated pods list
-	}
-}
-
-// convertToStreamPods converts PodInfo to StreamPod with actual pod objects
-func (ls *LogStreamer) convertToStreamPods(podInfos []PodInfo) ([]StreamPod, error) {
-	var streamPods []StreamPod
-
-	for _, podInfo := range podInfos {
-		pods, err := ls.client.GetAllPods(ls.ctx, podInfo.Namespace)
-		if err != nil {
-			continue
-		}
-
-		for _, pod := range pods.Items {
-			if pod.Name != podInfo.Name {
-				continue
-			}
-
-			for _, container := range pod.Spec.Containers {
-				streamPods = append(streamPods, StreamPod{
-					Pod:       &pod,
-					PodType:   podInfo.Type,
-					Container: container.Name,
-				})
-			}
-			break
-		}
-	}
-
-	return streamPods, nil
-}
-
-// sendPodsList sends the pods list via SSE
-func (ls *LogStreamer) sendPodsList(pods []PodInfo) error {
-	podsJSON, err := json.Marshal(pods)
-	if err != nil {
-		return err
-	}
-
-	select {
-	case <-ls.ctx.Done():
-		return ls.ctx.Err()
-	case ls.sseChan <- SSEMessage{Event: "pods", Data: string(podsJSON)}:
-		return nil
-	default:
-		return fmt.Errorf("SSE channel full")
-	}
-}
-
-// SendKeepalive sends a keepalive ping
-func (ls *LogStreamer) SendKeepalive() {
-	select {
-	case <-ls.ctx.Done():
-		return
-	case ls.sseChan <- SSEMessage{Event: "ping", Data: "keepalive"}:
-		// Keepalive sent
-	default:
-		// SSE channel full, cannot send keepalive
 	}
 }

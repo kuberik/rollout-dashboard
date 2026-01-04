@@ -28,6 +28,7 @@ import (
 	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -114,6 +115,10 @@ func NewClientWithToken(token string) (*Client, error) {
 	// Add core Kubernetes scheme (includes v1.Secret, v1.Pod, etc.)
 	if err := corev1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add core scheme: %w", err)
+	}
+
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add apps scheme: %w", err)
 	}
 
 	if err := envv1alpha1.AddToScheme(scheme); err != nil {
@@ -639,6 +644,14 @@ func (c *Client) GetOCIRepositoriesByRolloutAnnotation(ctx context.Context, name
 	return filteredOCIRepositories, nil
 }
 
+func (c *Client) GetRolloutTests(ctx context.Context, namespace string) (*openkruisev1alpha1.RolloutTestList, error) {
+	rolloutTests := &openkruisev1alpha1.RolloutTestList{}
+	if err := c.client.List(ctx, rolloutTests, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list RolloutTests: %w", err)
+	}
+	return rolloutTests, nil
+}
+
 func (c *Client) GetKustomization(ctx context.Context, namespace, name string) (*kustomizev1.Kustomization, error) {
 	kustomization := &kustomizev1.Kustomization{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, kustomization); err != nil {
@@ -675,8 +688,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 	var managedResources []ManagedResourceStatus
 
 	// Process each entry in the inventory
-	for i, entry := range kustomization.Status.Inventory.Entries {
-		fmt.Printf("Processing inventory entry %d: %s\n", i, entry.ID)
+	for _, entry := range kustomization.Status.Inventory.Entries {
 
 		// Use Flux's object.ParseObjMetadata to parse the inventory ID
 		objMetadata, err := object.ParseObjMetadata(entry.ID)
@@ -684,9 +696,6 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 			fmt.Printf("Failed to parse inventory entry %s: %v\n", entry.ID, err)
 			continue
 		}
-
-		fmt.Printf("Parsed: namespace=%s, name=%s, group=%s, kind=%s\n",
-			objMetadata.Namespace, objMetadata.Name, objMetadata.GroupKind.Group, objMetadata.GroupKind.Kind)
 
 		// Get the resource
 		obj := &unstructured.Unstructured{}
@@ -725,7 +734,6 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 		// Compute status using kstatus
 		result, err := status.Compute(obj)
 		if err != nil {
-			fmt.Printf("Failed to compute status for %s/%s: %v\n", objMetadata.Namespace, objMetadata.Name, err)
 			managedResources = append(managedResources, ManagedResourceStatus{
 				GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
 				Name:             objMetadata.Name,
@@ -738,7 +746,6 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 			continue
 		}
 
-		fmt.Printf("Successfully computed status for %s/%s: %s\n", objMetadata.Namespace, objMetadata.Name, result.Status)
 		managedResources = append(managedResources, ManagedResourceStatus{
 			GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
 			Name:             objMetadata.Name,
@@ -1102,4 +1109,13 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, podName, containerNa
 	}
 
 	return string(logs), nil
+}
+
+// GetReplicaSets lists replica sets in a namespace
+func (c *Client) GetReplicaSets(ctx context.Context, namespace string) (*appsv1.ReplicaSetList, error) {
+	replicaSets := &appsv1.ReplicaSetList{}
+	if err := c.client.List(ctx, replicaSets, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list replicasets: %w", err)
+	}
+	return replicaSets, nil
 }

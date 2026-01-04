@@ -43,14 +43,46 @@ export function createLogsStreamUrl(
 }
 
 // Create an async iterable that yields log lines from EventSource
+// Helper class to decouple event source (Push) from generator (Pull)
+class PromiseQueue<T> {
+	private queue: T[] = [];
+	private resolvers: ((value: T) => void)[] = [];
+
+	push(value: T) {
+		if (this.resolvers.length > 0) {
+			const resolve = this.resolvers.shift()!;
+			resolve(value);
+		} else {
+			this.queue.push(value);
+		}
+	}
+
+	async next(): Promise<T> {
+		if (this.queue.length > 0) {
+			return this.queue.shift()!;
+		}
+		return new Promise<T>((resolve) => {
+			this.resolvers.push(resolve);
+		});
+	}
+}
+
+// Create an async iterable that yields log lines from EventSource
 async function* createLogsStream(
 	namespace: string,
 	name: string,
 	filterType: string,
 	since?: number,
 	onPodsUpdate?: (pods: PodInfo[]) => void
-): AsyncGenerator<LogLine, void, unknown> {
+): AsyncGenerator<LogLine[], void, unknown> {
 	const url = createLogsStreamUrl(namespace, name, filterType, since);
+
+	// The BatchedQueue bridging the EventSource push and Generator pull
+	const batchQueue = new PromiseQueue<LogLine[]>();
+
+	// Mutable buffer for incoming logs
+	let buffer: LogLine[] = [];
+	const BATCH_SIZE = 1000;
 
 	// Create web worker for parsing and formatting
 	const worker = new LogParserWorker();
@@ -64,187 +96,145 @@ async function* createLogsStream(
 	}>();
 
 	worker.onmessage = (e: MessageEvent) => {
-		const { type, data, error } = e.data;
+		const { type, data, error, id } = e.data;
+
 		if (type === 'error') {
-			// Reject all pending promises
-			for (const { reject } of logPromises.values()) {
-				reject(new Error(error));
+			if (id) {
+				const promise = logPromises.get(id) || podPromises.get(id);
+				if (promise) {
+					promise.reject(new Error(error));
+					logPromises.delete(id);
+					podPromises.delete(id);
+				}
 			}
-			for (const { reject } of podPromises.values()) {
-				reject(new Error(error));
-			}
-			logPromises.clear();
-			podPromises.clear();
 			return;
 		}
-		if (type === 'log') {
-			// Find and resolve the first pending log promise
-			for (const [key, { resolve }] of logPromises.entries()) {
-				resolve(data as LogLine);
-				logPromises.delete(key);
-				break;
-			}
-		} else if (type === 'pods') {
-			// Find and resolve the first pending pods promise
-			for (const [key, { resolve }] of podPromises.entries()) {
-				resolve(data as PodInfo[]);
-				podPromises.delete(key);
-				break;
+
+		if (id) {
+			if (type === 'log') {
+				const promise = logPromises.get(id);
+				if (promise) {
+					promise.resolve(data as LogLine);
+					logPromises.delete(id);
+				}
+			} else if (type === 'pods') {
+				const promise = podPromises.get(id);
+				if (promise) {
+					promise.resolve(data as PodInfo[]);
+					podPromises.delete(id);
+				}
 			}
 		}
 	};
 
 	let logCount = 0;
 	let lastLogTime = Date.now();
-	let lastActivityCheck = Date.now();
-
-	// Batch log lines to reduce UI updates
-	const logBatch: LogLine[] = [];
-	const BATCH_SIZE = 1000; // Yield batches of 50 logs
-	const BATCH_TIMEOUT = 100; // Or every 100ms, whichever comes first
-	let lastBatchFlush = Date.now();
+	let shouldContinue = true;
 
 	const eventSource = createEventSource({
 		url,
 		onConnect: () => {
-			lastActivityCheck = Date.now();
+			console.log('[Logs Stream] Connected');
 		},
 		onDisconnect: () => {
-			// Connection closed
+			console.log('[Logs Stream] Disconnected');
 		}
 	});
 
-	// Monitor for inactivity
+	// FLUSH TIMER: PUSH-SIDE
+	// This runs independently of the backend/EventSource.
+	// It checks the buffer every 100ms and pushes a batch if waiting.
+	const flushTimer = setInterval(() => {
+		if (buffer.length > 0) {
+			console.debug(`[Logs Stream] Flushing batch of ${buffer.length} logs (Timer)`);
+			batchQueue.push([...buffer]);
+			buffer = [];
+		}
+	}, 100);
+
+	// ACTIVITY MONITOR
 	const activityMonitor = setInterval(() => {
 		const now = Date.now();
-		const timeSinceLastLog = now - lastLogTime;
-		const timeSinceLastActivity = now - lastActivityCheck;
-
-		// If no activity for 60 seconds, log warning
-		if (timeSinceLastLog > 60000) {
-			console.warn('[Logs Stream] No logs received for 60+ seconds, connection may be stuck');
+		if (now - lastLogTime > 60000) {
+			console.warn('[Logs Stream] No logs received for 60+ seconds');
 		}
-	}, 10000); // Check every 10 seconds
+	}, 10000);
 
-	let shouldContinue = true;
-
-	// Cleanup function to close resources
 	const cleanup = () => {
 		shouldContinue = false;
+		clearInterval(flushTimer);
 		clearInterval(activityMonitor);
 		eventSource.close();
 		worker.terminate();
+		// Push empty batch to unblock generator if waiting
+		batchQueue.push([]);
 	};
 
-	// Keep iterating even after disconnections
-	// When Envoy times out, the iterator ends, but eventsource-client will reconnect.
-	// We need to continue iterating after reconnection.
-	while (shouldContinue) {
+	// EVENT LOOP: PUSH-SIDE
+	// Reads from EventSource and pushes into reusable buffer
+	(async () => {
 		try {
-			// Iterate over the eventSource - if connection drops, this will exit
-			// but eventsource-client will reconnect automatically
 			for await (const { data, event } of eventSource) {
-				lastActivityCheck = Date.now();
+				if (!shouldContinue) break;
 
-				// Handle pods events - parse in worker
 				if (event === 'pods') {
 					try {
 						const promiseId = `pods-${Date.now()}-${Math.random()}`;
 						const pods = await new Promise<PodInfo[]>((resolve, reject) => {
 							podPromises.set(promiseId, { resolve, reject });
-							worker.postMessage({ type: 'parsePods', data });
+							worker.postMessage({ type: 'parsePods', data, id: promiseId });
 						});
-						if (onPodsUpdate) {
-							onPodsUpdate(pods);
-						}
-					} catch (err) {
-						console.error('[Logs Stream] Error parsing pods:', err);
+						if (onPodsUpdate) onPodsUpdate(pods);
+					} catch (e) {
+						console.error(e);
 					}
-					continue;
-				}
-
-				// Handle ping events (keepalive)
-				if (event === 'ping') {
-					continue;
-				}
-
-				// Handle error events
-				if (event === 'error') {
-					console.error('[Logs Stream] Received error event:', data);
-					try {
-						const errorObj = JSON.parse(data);
-						throw new Error(errorObj.error || data);
-					} catch (err) {
-						throw err instanceof Error ? err : new Error(data);
-					}
-				}
-
-				// Handle log events - parse and format in worker, then batch
-				if (event === 'log') {
+				} else if (event === 'log') {
 					try {
 						logCount++;
 						lastLogTime = Date.now();
 
-						// Parse and format timestamp in worker
 						const promiseId = `log-${Date.now()}-${Math.random()}`;
 						const logLine = await new Promise<LogLine>((resolve, reject) => {
 							logPromises.set(promiseId, { resolve, reject });
-							worker.postMessage({ type: 'parseLog', data });
+							worker.postMessage({ type: 'parseLog', data, id: promiseId });
 						});
 
-						// Add to batch
-						logBatch.push(logLine);
+						buffer.push(logLine);
 
-						// Flush batch if it reaches the size limit or timeout
-						const now = Date.now();
-						const shouldFlush =
-							logBatch.length >= BATCH_SIZE || now - lastBatchFlush >= BATCH_TIMEOUT;
-
-						if (shouldFlush && logBatch.length > 0) {
-							// Yield the entire batch as an array
-							// The reducer will handle it as a single update
-							yield logBatch as any; // Yield array, reducer will handle it
-							logBatch.length = 0; // Clear the batch
-							lastBatchFlush = now;
+						// Immediate flush if buffer is full
+						if (buffer.length >= BATCH_SIZE) {
+							console.debug(`[Logs Stream] Flushing full batch of ${buffer.length} logs`);
+							batchQueue.push([...buffer]);
+							buffer = [];
 						}
-					} catch (err) {
-						console.error('[Logs Stream] Error parsing log line:', err);
+					} catch (e) {
+						console.error(e);
 					}
 				}
 			}
-
-			// Flush any remaining logs in the batch before reconnecting
-			if (logBatch.length > 0) {
-				yield logBatch as any; // Yield array, reducer will handle it
-				logBatch.length = 0;
-			}
-			// Iterator ended (connection dropped), but eventSource may reconnect
-			// Wait a moment and check if it reconnected
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			// Check if eventSource is still active (not manually closed)
-			if (eventSource.readyState === 'open' || eventSource.readyState === 'connecting') {
-				// Continue the while loop to iterate again after reconnection
-				continue;
-			} else {
-				// EventSource was closed, exit
-				shouldContinue = false;
-			}
 		} catch (err) {
-			console.error('[Logs Stream] Error in stream:', err);
-			// Check if eventSource is still active
-			if (eventSource.readyState === 'open' || eventSource.readyState === 'connecting') {
-				// Wait a bit for reconnection and continue
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-				continue;
-			} else {
-				// EventSource was closed, throw the error
-				throw err;
+			console.error('[Logs Stream] EventSource broken:', err);
+		} finally {
+			// If loop exits cleanly or errors, we signal end
+			cleanup();
+		}
+	})();
+
+	// GENERATOR LOOP: PULL-SIDE
+	// This yields batches to the UI as they become available in the queue
+	try {
+		while (shouldContinue) {
+			const batch = await batchQueue.next();
+			if (batch.length > 0) {
+				yield batch;
+			} else if (!shouldContinue) {
+				// Empty batch + shouldContinue=false means we are shutting down
+				break;
 			}
 		}
+	} finally {
+		cleanup();
 	}
-
-	// Cleanup worker
-	worker.terminate();
 }
 
 const MAX_LOGS = 10000;
@@ -302,6 +292,14 @@ export function logsStreamQueryOptions({
 					// If no previous logs for this stream, include all logs
 					return latestTimestamp === undefined || logTimestamp >= latestTimestamp;
 				});
+
+				if (logsToAdd.length > 0) {
+					console.debug(`[Logs Reducer] Received ${logsToAdd.length} logs, kept ${filteredLogs.length} after timestamp filter`);
+					if (filteredLogs.length === 0 && logsToAdd.length > 0) {
+						console.debug('[Logs Reducer] All logs filtered out! Latest TS map:', Object.fromEntries(streamLatestTimestamp));
+						console.debug('[Logs Reducer] Rejected log sample:', logsToAdd[0]);
+					}
+				}
 
 				// Combine accumulator and filtered new logs
 				let result = [...acc, ...filteredLogs];
