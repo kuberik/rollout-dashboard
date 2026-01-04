@@ -53,86 +53,75 @@
 </script>
 
 <div
-	class="relative"
+	class="relative w-[320px]"
 	style={data.isCurrentEnvironment
 		? '--env-bg-color-light: rgb(219, 234, 254); --env-bg-color-dark: rgb(30, 58, 138);'
 		: '--env-bg-color-light: rgb(243, 244, 246); --env-bg-color-dark: rgb(31, 41, 55);'}
 >
-	<NeonBorder
-		active={data.hoveredVersion === data.currentVersion}
-		colors={['#1e40af', '#3b82f6', '#1e40af']}
-		class="w-[320px]"
+	<div
+		role="presentation"
+		class="node-border relative w-full rounded-lg border-2 bg-white text-gray-900 shadow-lg transition-all dark:bg-gray-900 dark:text-white"
+		class:ring-2={data.isCurrentEnvironment}
+		class:ring-blue-400={data.isCurrentEnvironment}
+		class:dark:ring-blue-600={data.isCurrentEnvironment}
 	>
-		<div
-			role="presentation"
-			class="node-border relative w-full rounded-lg border-2 bg-white text-gray-900 shadow-lg transition-all dark:bg-gray-900 dark:text-white"
-			class:ring-2={data.isCurrentEnvironment && data.hoveredVersion !== data.currentVersion}
-			class:ring-blue-400={data.isCurrentEnvironment && data.hoveredVersion !== data.currentVersion}
-			class:dark:ring-blue-600={data.isCurrentEnvironment &&
-				data.hoveredVersion !== data.currentVersion}
-			onmouseenter={() => data.onVersionHover?.(data.currentVersion)}
-			onmouseleave={() => data.onVersionHover?.(null)}
-		>
-			<Handle type="target" position={Position.Top} />
+		<Handle type="target" position={Position.Top} />
 
-			<div class="flex items-center gap-3 p-3">
-				<!-- Large status icon -->
-				<div class="flex-shrink-0">
-					<BakeStatusIcon bakeStatus={data.bakeStatus} size="large" />
-				</div>
-
-				<!-- Content: Environment name and version -->
-				<div class="min-w-0 flex-1">
-					<!-- Environment name as small label -->
-					<div class="mb-1 flex items-center justify-between">
-						<h3
-							class="text-[10px] font-medium uppercase tracking-wide"
-							class:text-blue-600={data.isCurrentEnvironment}
-							class:dark:text-blue-400={data.isCurrentEnvironment}
-							class:text-gray-500={!data.isCurrentEnvironment}
-							class:dark:text-gray-400={!data.isCurrentEnvironment}
-						>
-							{data.environment}
-						</h3>
-						{#if !data.isCurrentEnvironment && environmentsUrl}
-							<a
-								href={environmentsUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="flex items-center gap-1 text-[10px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-								title="Open environment in new window"
-							>
-								<ArrowUpRightFromSquareOutline class="h-3 w-3" />
-							</a>
-						{/if}
-					</div>
-
-					<!-- Version as main text -->
-					<div class="flex items-baseline gap-2">
-						<span
-							class="truncate font-mono text-base font-semibold text-gray-900 dark:text-gray-100"
-							title={data.currentVersion}
-						>
-							{data.currentVersion}
-						</span>
-						{#if versionDifference !== null && versionDifference !== 0}
-							<Badge
-								color={versionDifference < 0 ? 'green' : 'yellow'}
-								size="small"
-								class="flex-shrink-0 whitespace-nowrap text-[10px] font-medium"
-							>
-								{versionDifference < 0
-									? `+${Math.abs(versionDifference)}`
-									: `-${versionDifference}`}
-							</Badge>
-						{/if}
-					</div>
-				</div>
+		<div class="flex items-center gap-3 p-3">
+			<!-- Large status icon -->
+			<div class="flex-shrink-0">
+				<BakeStatusIcon bakeStatus={data.bakeStatus} size="large" />
 			</div>
 
-			<Handle type="source" position={Position.Bottom} />
+			<!-- Content: Environment name and version -->
+			<div class="min-w-0 flex-1">
+				<!-- Environment name as small label -->
+				<div class="mb-1 flex items-center justify-between">
+					<h3
+						class="text-[10px] font-medium uppercase tracking-wide"
+						class:text-blue-600={data.isCurrentEnvironment}
+						class:dark:text-blue-400={data.isCurrentEnvironment}
+						class:text-gray-500={!data.isCurrentEnvironment}
+						class:dark:text-gray-400={!data.isCurrentEnvironment}
+					>
+						{data.environment}
+					</h3>
+					{#if !data.isCurrentEnvironment && environmentsUrl}
+						<a
+							href={environmentsUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="flex items-center gap-1 text-[10px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+							title="Open environment in new window"
+						>
+							<ArrowUpRightFromSquareOutline class="h-3 w-3" />
+						</a>
+					{/if}
+				</div>
+
+				<!-- Version as main text -->
+				<div class="flex items-baseline gap-2">
+					<span
+						class="truncate font-mono text-base font-semibold text-gray-900 dark:text-gray-100"
+						title={data.currentVersion}
+					>
+						{data.currentVersion}
+					</span>
+					{#if versionDifference !== null && versionDifference !== 0}
+						<Badge
+							color={versionDifference < 0 ? 'green' : 'yellow'}
+							size="small"
+							class="flex-shrink-0 whitespace-nowrap text-[10px] font-medium"
+						>
+							{versionDifference < 0 ? `+${Math.abs(versionDifference)}` : `-${versionDifference}`}
+						</Badge>
+					{/if}
+				</div>
+			</div>
 		</div>
-	</NeonBorder>
+
+		<Handle type="source" position={Position.Bottom} />
+	</div>
 </div>
 
 <style>

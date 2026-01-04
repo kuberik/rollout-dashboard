@@ -133,108 +133,18 @@
 			return currentStatus ? getDisplayVersion(currentStatus.version) : null;
 		};
 
-		// Build dependency graph from relationships
-		// Relationship type "After" means this environment depends on the related environment
-		const envDependencies = new Map<string, string[]>();
-		const envDependents = new Map<string, string[]>();
-		envInfos.forEach((envInfo: EnvironmentInfo) => {
-			const deps: string[] = [];
-			if (envInfo.relationship?.type === 'After') {
-				deps.push(envInfo.relationship.environment);
-			}
-			envDependencies.set(envInfo.environment, deps);
-			deps.forEach((dep) => {
-				if (!envDependents.has(dep)) {
-					envDependents.set(dep, []);
-				}
-				envDependents.get(dep)!.push(envInfo.environment);
-			});
-		});
-
-		// Find all environments related to current (dependencies, current, dependents)
-		const relatedEnvs = new Set<string>();
-		relatedEnvs.add(currentEnvironment);
-
-		// Add dependencies of current
-		const currentDeps = envDependencies.get(currentEnvironment) || [];
-		currentDeps.forEach((dep) => relatedEnvs.add(dep));
-
-		// Add dependents of current
-		const currentDependents = envDependents.get(currentEnvironment) || [];
-		currentDependents.forEach((dep) => relatedEnvs.add(dep));
-
-		// Filter to only related environments
-		const relatedEnvInfos = envInfos.filter((ei: EnvironmentInfo) =>
-			relatedEnvs.has(ei.environment)
-		);
-
 		// Get current environment's version for comparison
 		const currentEnvVersion = getCurrentForEnv(currentEnvironment);
 		const currentEnvIdx = currentEnvVersion ? versionIndex.get(currentEnvVersion) : undefined;
 
-		// Create nodes - current in middle, dependencies above, dependents below
+		// Create nodes
 		const nodeMap = new Map<string, Node>();
 
-		// Top: dependencies (or "start" if none)
-		if (currentDeps.length === 0) {
-			// Add "start" node
-			nodeMap.set('__start__', {
-				id: '__start__',
-				type: 'simple',
-				position: { x: 0, y: 0 }, // Temporary, will be overridden by dagre
-				draggable: false,
-				selectable: false,
-				data: { label: 'start', isStartEnd: true }
-			});
-		} else {
-			// Add dependency nodes
-			currentDeps.forEach((depEnv) => {
-				const envInfo = relatedEnvInfos.find((ei: EnvironmentInfo) => ei.environment === depEnv);
-				if (!envInfo) return;
-
-				const envStatuses = deploymentStatuses
-					.filter((s: DeploymentStatusWithEnv) => s.environment === depEnv)
-					.sort(
-						(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
-					);
-				const currentStatus =
-					envStatuses.find(
-						(s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None'
-					) || envStatuses[0];
-				const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : 'N/A';
-				const envVersionIdx =
-					currentVersion !== 'N/A' ? versionIndex.get(currentVersion) : undefined;
-
-				nodeMap.set(depEnv, {
-					id: depEnv,
-					type: 'deployment',
-					position: { x: 0, y: 0 }, // Temporary, will be overridden by dagre
-					draggable: false,
-					selectable: false,
-					data: {
-						environment: depEnv,
-						currentVersion,
-						bakeStatus: currentStatus?.bakeStatus,
-						environmentInfo: envInfo,
-						isCurrentEnvironment: false,
-						versionIndex: envVersionIdx,
-						currentEnvironmentVersionIndex: currentEnvIdx,
-						hoveredVersion,
-						onVersionHover: (version: string | null) => {
-							hoveredVersion = version;
-						}
-					}
-				});
-			});
-		}
-
-		// Middle: current environment
-		const currentEnvInfo = relatedEnvInfos.find(
-			(ei: EnvironmentInfo) => ei.environment === currentEnvironment
-		);
-		if (currentEnvInfo) {
+		// Add all environment nodes
+		envInfos.forEach((envInfo: EnvironmentInfo) => {
+			const env = envInfo.environment;
 			const envStatuses = deploymentStatuses
-				.filter((s: DeploymentStatusWithEnv) => s.environment === currentEnvironment)
+				.filter((s: DeploymentStatusWithEnv) => s.environment === env)
 				.sort(
 					(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
 				);
@@ -244,80 +154,23 @@
 			const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : 'N/A';
 			const envVersionIdx = currentVersion !== 'N/A' ? versionIndex.get(currentVersion) : undefined;
 
-			nodeMap.set(currentEnvironment, {
-				id: currentEnvironment,
+			nodeMap.set(env, {
+				id: env,
 				type: 'deployment',
 				position: { x: 0, y: 0 }, // Temporary, will be overridden by dagre
 				draggable: false,
 				selectable: false,
 				data: {
-					environment: currentEnvironment,
+					environment: env,
 					currentVersion,
 					bakeStatus: currentStatus?.bakeStatus,
-					environmentInfo: currentEnvInfo,
-					isCurrentEnvironment: true,
+					environmentInfo: envInfo,
+					isCurrentEnvironment: env === currentEnvironment,
 					versionIndex: envVersionIdx,
-					currentEnvironmentVersionIndex: currentEnvIdx,
-					hoveredVersion,
-					onVersionHover: (version: string | null) => {
-						hoveredVersion = version;
-					}
+					currentEnvironmentVersionIndex: currentEnvIdx
 				}
 			});
-		}
-
-		// Bottom: dependents (or "end" if none)
-		if (currentDependents.length === 0) {
-			// Add "end" node
-			nodeMap.set('__end__', {
-				id: '__end__',
-				type: 'simple',
-				position: { x: 0, y: 0 }, // Temporary, will be overridden by dagre
-				draggable: false,
-				selectable: false,
-				data: { label: 'end', isStartEnd: true }
-			});
-		} else {
-			// Add dependent nodes
-			currentDependents.forEach((depEnv) => {
-				const envInfo = relatedEnvInfos.find((ei: EnvironmentInfo) => ei.environment === depEnv);
-				if (!envInfo) return;
-
-				const envStatuses = deploymentStatuses
-					.filter((s: DeploymentStatusWithEnv) => s.environment === depEnv)
-					.sort(
-						(a: DeploymentStatusWithEnv, b: DeploymentStatusWithEnv) => (b.id || 0) - (a.id || 0)
-					);
-				const currentStatus =
-					envStatuses.find(
-						(s: EnvironmentStatusEntry) => s.bakeStatus && s.bakeStatus !== 'None'
-					) || envStatuses[0];
-				const currentVersion = currentStatus ? getDisplayVersion(currentStatus.version) : 'N/A';
-				const envVersionIdx =
-					currentVersion !== 'N/A' ? versionIndex.get(currentVersion) : undefined;
-
-				nodeMap.set(depEnv, {
-					id: depEnv,
-					type: 'deployment',
-					position: { x: 0, y: 0 }, // Temporary, will be overridden by dagre
-					draggable: false,
-					selectable: false,
-					data: {
-						environment: depEnv,
-						currentVersion,
-						bakeStatus: currentStatus?.bakeStatus,
-						environmentInfo: envInfo,
-						isCurrentEnvironment: false,
-						versionIndex: envVersionIdx,
-						currentEnvironmentVersionIndex: currentEnvIdx,
-						hoveredVersion,
-						onVersionHover: (version: string | null) => {
-							hoveredVersion = version;
-						}
-					}
-				});
-			});
-		}
+		});
 
 		return Array.from(nodeMap.values());
 	});
@@ -405,81 +258,26 @@
 			});
 		});
 
-		const relatedEnvs = new Set<string>();
-		relatedEnvs.add(currentEnvironment);
-		(envDependencies.get(currentEnvironment) || []).forEach((dep) => relatedEnvs.add(dep));
-		(envDependents.get(currentEnvironment) || []).forEach((dep) => relatedEnvs.add(dep));
+		const createEdge = (source: string, target: string, id: string): Edge => ({
+			id,
+			source,
+			target,
+			type: 'smoothstep',
+			animated: true,
+			style: 'stroke: #6b7280; stroke-width: 2.5;',
+			markerEnd: {
+				type: 'arrowclosed',
+				color: '#6b7280'
+			}
+		});
 
-		const currentDeps = envDependencies.get(currentEnvironment) || [];
-		const currentDependents = envDependents.get(currentEnvironment) || [];
-
-		// Add edges from dependencies to current
-		if (currentDeps.length === 0) {
-			// Edge from start to current
-			edgeList.push({
-				id: '__start__-current',
-				source: '__start__',
-				target: currentEnvironment,
-				type: 'smoothstep',
-				animated: true,
-				style: 'stroke: #6b7280; stroke-width: 2.5;',
-				markerEnd: {
-					type: 'arrowclosed',
-					color: '#6b7280'
-				}
+		// Add edges between environments based on relationships
+		envInfos.forEach((envInfo: EnvironmentInfo) => {
+			const deps = envDependencies.get(envInfo.environment) || [];
+			deps.forEach((dep) => {
+				edgeList.push(createEdge(dep, envInfo.environment, `${dep}-${envInfo.environment}`));
 			});
-		} else {
-			// Edges from each dependency to current
-			currentDeps.forEach((dep) => {
-				if (!relatedEnvs.has(dep)) return;
-				edgeList.push({
-					id: `${dep}-${currentEnvironment}`,
-					source: dep,
-					target: currentEnvironment,
-					type: 'smoothstep',
-					animated: true,
-					style: 'stroke: #6b7280; stroke-width: 2.5;',
-					markerEnd: {
-						type: 'arrowclosed',
-						color: '#6b7280'
-					}
-				});
-			});
-		}
-
-		// Add edges from current to dependents
-		if (currentDependents.length === 0) {
-			// Edge from current to end
-			edgeList.push({
-				id: `current-__end__`,
-				source: currentEnvironment,
-				target: '__end__',
-				type: 'smoothstep',
-				animated: true,
-				style: 'stroke: #6b7280; stroke-width: 2.5;',
-				markerEnd: {
-					type: 'arrowclosed',
-					color: '#6b7280'
-				}
-			});
-		} else {
-			// Edges from current to each dependent
-			currentDependents.forEach((dep) => {
-				if (!relatedEnvs.has(dep)) return;
-				edgeList.push({
-					id: `${currentEnvironment}-${dep}`,
-					source: currentEnvironment,
-					target: dep,
-					type: 'smoothstep',
-					animated: true,
-					style: 'stroke: #6b7280; stroke-width: 2.5;',
-					markerEnd: {
-						type: 'arrowclosed',
-						color: '#6b7280'
-					}
-				});
-			});
-		}
+		});
 
 		return edgeList;
 	});
@@ -545,6 +343,19 @@
 		return [...allVersions].slice(0, 12).reverse();
 	});
 
+	// Direct dependencies of the current environment
+	const currentDeps = $derived.by(() => {
+		const envInfos = environmentInfos;
+		const currentEnvInfo = envInfos.find(
+			(e: EnvironmentInfo) => e.environment === currentEnvironment
+		);
+		const deps: string[] = [];
+		if (currentEnvInfo?.relationship?.type === 'After') {
+			deps.push(currentEnvInfo.relationship.environment);
+		}
+		return deps;
+	});
+
 	// Version summary for the current rollout/environment
 	const versionSummary = $derived.by(() => {
 		const result: {
@@ -554,6 +365,7 @@
 				version: string;
 				dependencyBakeStatus?: string;
 				state: 'not-available' | 'failed' | 'cancelled' | 'succeeded' | 'evaluating';
+				isDependencyCurrent: boolean;
 			}>;
 		} = {
 			currentVersion: null,
@@ -563,15 +375,6 @@
 
 		if (!environmentInfos || environmentInfos.length === 0 || allVersions.length === 0) {
 			return result;
-		}
-
-		const envInfos = environmentInfos;
-		const currentEnvInfo = envInfos.find(
-			(e: EnvironmentInfo) => e.environment === currentEnvironment
-		);
-		const currentDeps: string[] = [];
-		if (currentEnvInfo?.relationship?.type === 'After') {
-			currentDeps.push(currentEnvInfo.relationship.environment);
 		}
 
 		// Current environment statuses
@@ -689,15 +492,24 @@
 					}
 				}
 
-				result.upcoming.push({ version, dependencyBakeStatus: combinedBakeStatus, state });
+				const isDependencyCurrent = currentDeps.some(
+					(dep) => currentVersionsByEnv.get(dep) === version
+				);
+
+				result.upcoming.push({
+					version,
+					dependencyBakeStatus: combinedBakeStatus,
+					state,
+					isDependencyCurrent
+				});
 			}
 		}
 
 		return result;
 	});
 
-	// Hover state for version highlighting
-	let hoveredVersion = $state<string | null>(null);
+	// Hover state for version highlighting - removed as per request
+	// let hoveredVersion = $state<string | null>(null);
 
 	// All versions for the table (upcoming + deployed, oldest first for left-to-right display)
 	const tableVersions = $derived.by(() => {
@@ -896,41 +708,43 @@
 												: v.state === 'evaluating'
 													? 'bg-yellow-50/50 dark:bg-yellow-900/10'
 													: 'bg-gray-50 dark:bg-gray-800/60'}
-								<NeonBorder
-									active={hoveredVersion === v.version}
-									colors={['#1e40af', '#3b82f6', '#1e40af']}
+								<Card
+									class="relative max-w-full border-2 border-red-100 p-0 {borderColor} {bgColor} {isDisabled
+										? 'cursor-not-allowed opacity-60'
+										: ''} {v.state === 'succeeded' ? 'border-dashed' : ''}"
 								>
-									<Card
-										class="relative max-w-full border-2 border-red-100 p-0 {borderColor} {hoveredVersion !==
-										v.version
-											? bgColor
-											: ''} {isDisabled ? 'cursor-not-allowed opacity-60' : ''} {v.state ===
-											'succeeded' && hoveredVersion !== v.version
-											? 'border-dashed'
-											: ''}"
-										onmouseenter={() => (hoveredVersion = v.version)}
-										onmouseleave={() => (hoveredVersion = null)}
-									>
-										<div class="flex min-h-[2.5rem] items-center px-2.5 py-2">
-											<!-- Version number with badge -->
-											<div class="flex min-w-0 flex-1 items-center gap-2">
-												<div
-													class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
-													title={v.version}
-												>
-													{v.version}
-												</div>
-											</div>
-											<Badge
-												color={badgeColor}
-												size="small"
-												class="ml-3 flex flex-shrink-0 items-center gap-1"
+									<div class="flex min-h-[2.5rem] items-center px-2.5 py-2">
+										<!-- Version number with badge -->
+										<div class="flex min-w-0 flex-1 items-center gap-2">
+											<div
+												class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
+												title={v.version}
 											>
-												{badgeLabel}
-											</Badge>
+												{v.version}
+											</div>
+											{#if v.isDependencyCurrent}
+												<div class="flex min-w-0 items-center gap-1">
+													<div
+														class="h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-blue-500"
+													></div>
+													<span
+														class="truncate text-[10px] font-medium text-blue-600 dark:text-blue-400"
+														title="Current in {currentDeps.join(', ')}"
+													>
+														{currentDeps.join(', ')}
+													</span>
+												</div>
+											{/if}
 										</div>
-									</Card>
-								</NeonBorder>
+										<Badge
+											color={badgeColor}
+											size="small"
+											class="ml-3 flex flex-shrink-0 items-center gap-1"
+										>
+											{badgeLabel}
+										</Badge>
+									</div>
+								</Card>
 							{/each}
 						</div>
 					{/if}
@@ -951,40 +765,29 @@
 						<div class="w-full space-y-2">
 							{#each versionSummary.deployed as v}
 								{@const isCurrent = versionSummary.currentVersion === v.version}
-								<NeonBorder
-									active={hoveredVersion === v.version}
-									colors={['#1e40af', '#3b82f6', '#1e40af']}
+								<Card
+									class="relative max-w-full border-2 p-0 {isCurrent
+										? 'border-blue-200 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-900/20'
+										: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60'}"
 								>
-									<Card
-										class="relative max-w-full border-2 p-0 {isCurrent
-											? 'border-blue-200 dark:border-blue-700'
-											: 'border-gray-200 dark:border-gray-700'} {hoveredVersion !== v.version
-											? isCurrent
-												? 'bg-blue-50/50 dark:bg-blue-900/20'
-												: 'bg-gray-50 dark:bg-gray-800/60'
-											: ''}"
-										onmouseenter={() => (hoveredVersion = v.version)}
-										onmouseleave={() => (hoveredVersion = null)}
-									>
-										<div class="flex min-h-[2.5rem] items-center px-2.5 py-2">
-											<!-- Version number with status icon -->
-											<div class="flex min-w-0 flex-1 items-center gap-2">
-												<div class="flex h-4 w-4 flex-shrink-0 items-center justify-center">
-													<BakeStatusIcon bakeStatus={v.bakeStatus} size="small" />
-												</div>
-												<div
-													class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
-													title={v.version}
-												>
-													{v.version}
-												</div>
+									<div class="flex min-h-[2.5rem] items-center px-2.5 py-2">
+										<!-- Version number with status icon -->
+										<div class="flex min-w-0 flex-1 items-center gap-2">
+											<div class="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+												<BakeStatusIcon bakeStatus={v.bakeStatus} size="small" />
 											</div>
-											{#if isCurrent}
-												<Badge color="blue" size="small" class="ml-3 flex-shrink-0">Current</Badge>
-											{/if}
+											<div
+												class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-gray-100"
+												title={v.version}
+											>
+												{v.version}
+											</div>
 										</div>
-									</Card>
-								</NeonBorder>
+										{#if isCurrent}
+											<Badge color="blue" size="small" class="ml-3 flex-shrink-0">Current</Badge>
+										{/if}
+									</div>
+								</Card>
 							{/each}
 						</div>
 					{/if}
@@ -1040,20 +843,9 @@
 										{@const versionDiff = getVersionDifferenceForVersion(version)}
 										{@const isCurrentVersion =
 											version === currentVersionsByEnv.get(currentEnvironment)}
-										<div
-											role="presentation"
-											class="px-1 py-1 text-center"
-											onmouseenter={() => (hoveredVersion = version)}
-											onmouseleave={() => (hoveredVersion = null)}
-										>
+										<div role="presentation" class="px-1 py-1 text-center">
 											<div class="flex flex-col items-center gap-1">
-												<div class="h-4">
-													{#if hoveredVersion === version}
-														<ChevronDownOutline
-															class="mx-auto h-4 w-4 animate-bounce text-blue-500"
-														/>
-													{/if}
-												</div>
+												<div class="h-4"></div>
 												{#if isCurrentVersion}
 													<Badge
 														color="blue"
@@ -1063,12 +855,13 @@
 														Current
 													</Badge>
 												{:else if versionDiff !== null && versionDiff !== 0}
+													{@const diff = versionDiff}
 													<Badge
-														color={versionDiff < 0 ? 'green' : 'yellow'}
+														color={diff < 0 ? 'green' : 'yellow'}
 														size="small"
 														class="whitespace-nowrap text-[10px] font-medium"
 													>
-														{versionDiff < 0 ? `+${Math.abs(versionDiff)}` : `-${versionDiff}`}
+														{diff < 0 ? `+${Math.abs(diff)}` : `-${diff}`}
 													</Badge>
 												{/if}
 											</div>
@@ -1093,12 +886,7 @@
 										{#each tableVersions as version}
 											{@const status = getVersionStatusInEnv(version, env)}
 
-											<div
-												role="presentation"
-												class="px-1 py-1 text-center"
-												onmouseenter={() => (hoveredVersion = version)}
-												onmouseleave={() => (hoveredVersion = null)}
-											>
+											<div role="presentation" class="px-1 py-1 text-center">
 												{#if status}
 													{@const dotColor = getBakeStatusColor(status)}
 													<div
@@ -1108,9 +896,7 @@
 																? 'bg-red-500'
 																: dotColor === 'yellow'
 																	? 'bg-yellow-500'
-																	: 'bg-gray-400'} {hoveredVersion === version
-															? `pulse-glow-${dotColor}`
-															: ''}"
+																	: 'bg-gray-400'}"
 														title="{env}: {status}"
 													></div>
 												{/if}
