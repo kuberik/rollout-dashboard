@@ -73,7 +73,8 @@ async function* createLogsStream(
 	name: string,
 	filterType: string,
 	since?: number,
-	onPodsUpdate?: (pods: PodInfo[]) => void
+	onPodsUpdate?: (pods: PodInfo[]) => void,
+	signal?: AbortSignal
 ): AsyncGenerator<LogLine[], void, unknown> {
 	const url = createLogsStreamUrl(namespace, name, filterType, since);
 
@@ -161,14 +162,28 @@ async function* createLogsStream(
 	}, 10000);
 
 	const cleanup = () => {
+		if (!shouldContinue) return;
+		console.log('[Logs Stream] Cleaning up event stream');
 		shouldContinue = false;
 		clearInterval(flushTimer);
 		clearInterval(activityMonitor);
 		eventSource.close();
 		worker.terminate();
+
+		// Reject any pending promises from worker to avoid hanging
+		const error = new Error('Stream closed');
+		for (const { reject } of logPromises.values()) reject(error);
+		for (const { reject } of podPromises.values()) reject(error);
+		logPromises.clear();
+		podPromises.clear();
+
 		// Push empty batch to unblock generator if waiting
 		batchQueue.push([]);
 	};
+
+	if (signal) {
+		signal.addEventListener('abort', cleanup);
+	}
 
 	// EVENT LOOP: PUSH-SIDE
 	// Reads from EventSource and pushes into reusable buffer
@@ -255,8 +270,8 @@ export function logsStreamQueryOptions({
 	return queryOptions({
 		queryKey: ['rollouts', namespace, name, 'logs', filterType, since],
 		queryFn: streamedQuery({
-			streamFn: async () => {
-				return createLogsStream(namespace, name, filterType, since, onPodsUpdate);
+			streamFn: async ({ signal }) => {
+				return createLogsStream(namespace, name, filterType, since, onPodsUpdate, signal);
 			},
 			refetchMode: 'append', // Append new logs to existing ones
 			reducer: (acc: LogLine[], chunk: LogLine | LogLine[]) => {

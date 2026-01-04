@@ -310,7 +310,7 @@ func (ls *LogStreamer) reconcilePodStreams(ctx context.Context, target LogTarget
 
 func (ls *LogStreamer) streamContainerLogs(ctx context.Context, pod corev1.Pod, containerName, filterType string) {
 	// Default options
-	tail := int64(100)
+	tail := int64(1000)
 	opts := &corev1.PodLogOptions{
 		Container:  containerName,
 		Follow:     true,
