@@ -140,6 +140,19 @@
 	let rolloutGates = $state<any[]>([]);
 	let managedResources = $state<Record<string, ManagedResourceStatus[]>>({});
 	let healthChecks = $state<HealthCheck[]>([]);
+	const anyRolloutStalled = $derived.by(() => {
+		return Object.values(managedResources)
+			.flat()
+			.some((resource) => {
+				if (resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout') {
+					const kruiseRollout = resource.object as KruiseRollout;
+					return kruiseRollout?.status?.conditions?.some(
+						(c) => c.type === 'Stalled' && c.status === 'True'
+					);
+				}
+				return false;
+			});
+	});
 
 	// Map data from query response to state
 	$effect(() => {
@@ -1087,7 +1100,7 @@
 				<!-- Content Area -->
 				<div class="flex-1 overflow-y-auto p-4">
 					<!-- Failed Environment Deployment Alert -->
-					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
+					{#if rollout && (hasFailedBakeStatus(rollout) || anyRolloutStalled) && !hasUnblockFailedAnnotation(rollout)}
 						{@const latestEntry = rollout.status?.history?.[0]}
 						{@const failedHealthChecks = latestEntry?.failedHealthChecks || []}
 						<Alert color="red" class="mb-4">
@@ -1312,7 +1325,10 @@
 										<div
 											class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
 										>
-											<BakeStatusIcon bakeStatus={latestEntry.bakeStatus} size="medium" />
+											<BakeStatusIcon
+												bakeStatus={anyRolloutStalled ? 'Failed' : latestEntry.bakeStatus}
+												size="medium"
+											/>
 										</div>
 
 										<!-- Version Info -->
@@ -1330,10 +1346,10 @@
 													<Badge color="yellow" size="small">Custom</Badge>
 												{/if}
 												<Badge
-													color={latestEntry.bakeStatus === 'Succeeded'
-														? 'green'
-														: latestEntry.bakeStatus === 'Failed'
-															? 'red'
+													color={anyRolloutStalled || latestEntry.bakeStatus === 'Failed'
+														? 'red'
+														: latestEntry.bakeStatus === 'Succeeded'
+															? 'green'
 															: latestEntry.bakeStatus === 'Deploying'
 																? 'blue'
 																: latestEntry.bakeStatus === 'InProgress'
@@ -1341,7 +1357,7 @@
 																	: 'gray'}
 													size="small"
 												>
-													{latestEntry.bakeStatus}
+													{anyRolloutStalled ? 'Failed' : latestEntry.bakeStatus}
 												</Badge>
 												{#if rollout.spec?.wantedVersion}
 													<Badge size="small">Pinned</Badge>
@@ -1442,9 +1458,11 @@
 												title={allRolloutsCompleted ? 'Rolled out' : 'Rolling out'}
 												date={allRolloutsCompleted
 													? 'All rollouts completed'
-													: anyRolloutPaused
-														? 'Some rollouts paused'
-														: 'In progress'}
+													: anyRolloutStalled
+														? 'Stalled'
+														: anyRolloutPaused
+															? 'Some rollouts paused'
+															: 'In progress'}
 												class="min-w-0 flex-1 pr-3"
 											>
 												{#snippet orientationSlot()}
@@ -1452,13 +1470,19 @@
 														<div
 															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {allRolloutsCompleted
 																? 'bg-green-200 dark:bg-green-900'
-																: anyRolloutPaused
-																	? 'bg-yellow-200 dark:bg-yellow-900'
-																	: 'bg-blue-200 dark:bg-blue-900'}"
+																: anyRolloutStalled
+																	? 'bg-red-200 dark:bg-red-900'
+																	: anyRolloutPaused
+																		? 'bg-yellow-200 dark:bg-yellow-900'
+																		: 'bg-blue-200 dark:bg-blue-900'}"
 														>
 															{#if allRolloutsCompleted}
 																<CheckCircleSolid
 																	class="h-4 w-4 text-green-600 dark:text-green-400"
+																/>
+															{:else if anyRolloutStalled}
+																<ExclamationCircleSolid
+																	class="h-4 w-4 text-red-600 dark:text-red-400"
 																/>
 															{:else if anyRolloutPaused}
 																<PauseSolid class="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
@@ -1481,6 +1505,9 @@
 														{@const kruiseRolloutFromApi = rollout.kruiseRollout}
 														{@const currentStepIndex = rollout.rolloutData.currentStepIndex}
 														{@const isRolloutCompleted = rollout.isCompleted}
+														{@const isStalled = kruiseRolloutFromApi?.status?.conditions?.some(
+															(c) => c.type === 'Stalled' && c.status === 'True'
+														)}
 														{@const relevantTests = isRolloutCompleted
 															? rolloutTests
 															: rolloutTests.filter(
@@ -1493,6 +1520,10 @@
 																		{#if rollout.rolloutData.currentStepState === 'Completed'}
 																			<CheckCircleSolid
 																				class="h-3 w-3 text-green-600 dark:text-green-400"
+																			/>
+																		{:else if isStalled}
+																			<ExclamationCircleSolid
+																				class="h-3 w-3 text-red-600 dark:text-red-400"
 																			/>
 																		{:else if rollout.rolloutData.currentStepState === 'StepPaused'}
 																			<PauseSolid
@@ -1508,6 +1539,9 @@
 																				>{rollout.rolloutResource.name}</span
 																			>
 																		</span>
+																		{#if isStalled}
+																			<Badge color="red" size="small">Stalled</Badge>
+																		{/if}
 																	</div>
 																	{#if rollout.rolloutData.currentStepState === 'StepPaused'}
 																		{@const annotations =
