@@ -82,8 +82,8 @@ kind: Rollout
 metadata:
   name: hello-python
   annotations:
-    rollout.kuberik.io/step-1-max-wait: "10m"
-    rollout.kuberik.io/step-1-min-wait-after-success: "30s"
+    rollout.kuberik.io/step-1-ready-timeout: "10m"
+    rollout.kuberik.io/step-1-bake-time: "30s"
 spec:
   workloadRef:
     apiVersion: apps/v1

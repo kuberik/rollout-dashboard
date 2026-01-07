@@ -1546,12 +1546,11 @@
 																	{#if rollout.rolloutData.currentStepState === 'StepPaused'}
 																		{@const annotations =
 																			kruiseRolloutFromApi?.metadata?.annotations || {}}
-																		{@const maxWaitKey = `rollout.kuberik.io/step-${currentStepIndex}-max-wait`}
-																		{@const minWaitAfterSuccessKey = `rollout.kuberik.io/step-${currentStepIndex}-min-wait-after-success`}
+																		{@const readyTimeoutKey = `rollout.kuberik.io/step-${currentStepIndex}-ready-timeout`}
+																		{@const bakeTimeKey = `rollout.kuberik.io/step-${currentStepIndex}-bake-time`}
 																		{@const readyAtKey = `internal.rollout.kuberik.io/step-${currentStepIndex}-ready-at`}
-																		{@const maxWait = annotations[maxWaitKey]}
-																		{@const minWaitAfterSuccess =
-																			annotations[minWaitAfterSuccessKey]}
+																		{@const readyTimeout = annotations[readyTimeoutKey]}
+																		{@const bakeTime = annotations[bakeTimeKey]}
 																		{@const readyAt = annotations[readyAtKey]}
 																		{@const stalledCondition =
 																			kruiseRolloutFromApi?.status?.conditions?.find(
@@ -1561,60 +1560,56 @@
 																			{@const readyAtTime = new Date(readyAt).getTime()}
 																			{@const currentTime = $now.getTime()}
 																			{@const elapsedSinceReady = currentTime - readyAtTime}
-																			{@const maxWaitMs = maxWait ? parseDuration(maxWait) : 0}
-																			{@const minWaitAfterSuccessMs = minWaitAfterSuccess
-																				? parseDuration(minWaitAfterSuccess)
+																			{@const readyTimeoutMs = readyTimeout
+																				? parseDuration(readyTimeout)
 																				: 0}
-																			{@const minWaitProgress =
-																				minWaitAfterSuccessMs > 0
-																					? Math.min(
-																							100,
-																							(elapsedSinceReady / minWaitAfterSuccessMs) * 100
-																						)
+																			{@const bakeTimeMs = bakeTime ? parseDuration(bakeTime) : 0}
+																			{@const bakeProgress =
+																				bakeTimeMs > 0
+																					? Math.min(100, (elapsedSinceReady / bakeTimeMs) * 100)
 																					: 0}
-																			{@const remainingMinWait =
-																				minWaitAfterSuccessMs > 0
-																					? Math.max(0, minWaitAfterSuccessMs - elapsedSinceReady)
+																			{@const remainingBakeTime =
+																				bakeTimeMs > 0
+																					? Math.max(0, bakeTimeMs - elapsedSinceReady)
 																					: 0}
-																			{@const maxWaitDeadline = readyAtTime + maxWaitMs}
-																			{@const timeUntilMaxWait =
-																				maxWaitMs > 0
-																					? Math.max(0, maxWaitDeadline - currentTime)
+																			{@const readyTimeoutDeadline = readyAtTime + readyTimeoutMs}
+																			{@const timeUntilTimeout =
+																				readyTimeoutMs > 0
+																					? Math.max(0, readyTimeoutDeadline - currentTime)
 																					: 0}
-																			{@const isMaxWaitExceeded =
-																				maxWaitMs > 0 && currentTime > maxWaitDeadline}
-																			{@const isMinWaitComplete =
-																				minWaitAfterSuccessMs > 0 &&
-																				elapsedSinceReady >= minWaitAfterSuccessMs}
+																			{@const isTimeoutExceeded =
+																				readyTimeoutMs > 0 && currentTime > readyTimeoutDeadline}
+																			{@const isBakeComplete =
+																				bakeTimeMs > 0 && elapsedSinceReady >= bakeTimeMs}
 																			<div class="flex items-center gap-2">
 																				{#if canUpdate}
 																					<div class="relative inline-block">
 																						<Button
 																							size="xs"
-																							color={isMinWaitComplete ? 'green' : 'blue'}
+																							color={isBakeComplete ? 'green' : 'blue'}
 																							class="relative overflow-hidden"
-																							disabled={isMinWaitComplete}
+																							disabled={isBakeComplete}
 																							onclick={() =>
 																								continueRollout(
 																									rollout.rolloutResource.name,
 																									rollout.rolloutResource.namespace
 																								)}
 																						>
-																							{#if minWaitAfterSuccessMs > 0 && !isMinWaitComplete}
+																							{#if bakeTimeMs > 0 && !isBakeComplete}
 																								<!-- Progress overlay -->
 																								<div
 																									class="absolute inset-0 bg-blue-600 transition-all duration-300 ease-out dark:bg-blue-700"
-																									style="width: {minWaitProgress}%"
+																									style="width: {bakeProgress}%"
 																								></div>
 																								<!-- Content with relative positioning to stay above progress -->
 																								<span class="relative z-10 flex items-center">
 																									<PlaySolid class="mr-1 h-3 w-3" />
 																									Continue
 																									<span class="ml-2 text-xs opacity-90">
-																										{formatDurationFromMs(remainingMinWait)}
+																										{formatDurationFromMs(remainingBakeTime)}
 																									</span>
 																								</span>
-																							{:else if isMinWaitComplete}
+																							{:else if isBakeComplete}
 																								<CheckCircleSolid class="mr-1 h-3 w-3" />
 																								Ready
 																							{:else}
@@ -1624,12 +1619,12 @@
 																						</Button>
 																					</div>
 																				{/if}
-																				{#if maxWaitMs > 0}
-																					{@const timeoutTooltip = isMaxWaitExceeded
+																				{#if readyTimeoutMs > 0}
+																					{@const timeoutTooltip = isTimeoutExceeded
 																						? 'Timeout exceeded'
-																						: `Timeout in ${formatDurationFromMs(timeUntilMaxWait)}`}
+																						: `Timeout in ${formatDurationFromMs(timeUntilTimeout)}`}
 																					<span title={timeoutTooltip}>
-																						{#if isMaxWaitExceeded}
+																						{#if isTimeoutExceeded}
 																							<ExclamationCircleSolid
 																								class="h-3 w-3 text-red-500 dark:text-red-400"
 																							/>
