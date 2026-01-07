@@ -2,10 +2,6 @@ module github.com/kuberik/rollout-dashboard
 
 go 1.25.0
 
-replace github.com/kuberik/environment-controller => ../environment-controller
-
-replace github.com/kuberik/openkruise-controller => ../openkruise-controller
-
 require (
 	github.com/docker/cli v28.4.0+incompatible
 	github.com/fluxcd/image-reflector-controller/api v0.35.2
@@ -14,9 +10,9 @@ require (
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-containerregistry v0.20.6
-	github.com/kuberik/environment-controller v0.0.0
-	github.com/kuberik/openkruise-controller v0.0.0-20251227190345-7753c50fb249
-	github.com/kuberik/rollout-controller v0.5.1-0.20260104174019-94d121d31a01
+	github.com/kuberik/environment-controller v0.1.0
+	github.com/kuberik/openkruise-controller v0.1.0
+	github.com/kuberik/rollout-controller v0.6.0
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.34.2
