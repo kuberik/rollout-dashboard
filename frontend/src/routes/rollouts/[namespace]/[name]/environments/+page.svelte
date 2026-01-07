@@ -137,6 +137,15 @@
 		const currentEnvVersion = getCurrentForEnv(currentEnvironment);
 		const currentEnvIdx = currentEnvVersion ? versionIndex.get(currentEnvVersion) : undefined;
 
+		// Analyze edges to determine connection state
+		const incomingConnections = new Set<string>();
+		const outgoingConnections = new Set<string>();
+
+		baseEdges.forEach((edge) => {
+			incomingConnections.add(edge.target);
+			outgoingConnections.add(edge.source);
+		});
+
 		return envInfos.map((envInfo: EnvironmentInfo) => {
 			const env = envInfo.environment;
 			const envStatuses = deploymentStatuses
@@ -164,7 +173,9 @@
 					environmentInfo: envInfo,
 					isCurrentEnvironment: env === currentEnvironment,
 					versionIndex: envVersionIdx,
-					currentEnvironmentVersionIndex: currentEnvIdx
+					currentEnvironmentVersionIndex: currentEnvIdx,
+					hasIncoming: incomingConnections.has(env),
+					hasOutgoing: outgoingConnections.has(env)
 				}
 			} as Node;
 		});

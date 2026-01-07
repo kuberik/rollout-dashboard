@@ -23,6 +23,8 @@
 			currentEnvironmentVersionIndex?: number;
 			hoveredVersion?: string | null;
 			onVersionHover?: (version: string | null) => void;
+			hasIncoming?: boolean;
+			hasOutgoing?: boolean;
 		};
 	}
 
@@ -65,7 +67,9 @@
 		class:ring-blue-400={data.isCurrentEnvironment}
 		class:dark:ring-blue-600={data.isCurrentEnvironment}
 	>
-		<Handle type="target" position={Position.Top} />
+		{#if data.hasIncoming}
+			<Handle type="target" position={Position.Top} />
+		{/if}
 
 		<div class="flex items-center gap-3 p-3">
 			<!-- Large status icon -->
@@ -120,7 +124,9 @@
 			</div>
 		</div>
 
-		<Handle type="source" position={Position.Bottom} />
+		{#if data.hasOutgoing}
+			<Handle type="source" position={Position.Bottom} />
+		{/if}
 	</div>
 </div>
 
