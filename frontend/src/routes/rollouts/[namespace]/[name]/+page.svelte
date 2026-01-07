@@ -1100,7 +1100,7 @@
 				<!-- Content Area -->
 				<div class="flex-1 overflow-y-auto p-4">
 					<!-- Failed Environment Deployment Alert -->
-					{#if rollout && (hasFailedBakeStatus(rollout) || anyRolloutStalled) && !hasUnblockFailedAnnotation(rollout)}
+					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
 						{@const latestEntry = rollout.status?.history?.[0]}
 						{@const failedHealthChecks = latestEntry?.failedHealthChecks || []}
 						<Alert color="red" class="mb-4">
@@ -1325,10 +1325,7 @@
 										<div
 											class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
 										>
-											<BakeStatusIcon
-												bakeStatus={anyRolloutStalled ? 'Failed' : latestEntry.bakeStatus}
-												size="medium"
-											/>
+											<BakeStatusIcon bakeStatus={latestEntry.bakeStatus} size="medium" />
 										</div>
 
 										<!-- Version Info -->
@@ -1346,10 +1343,10 @@
 													<Badge color="yellow" size="small">Custom</Badge>
 												{/if}
 												<Badge
-													color={anyRolloutStalled || latestEntry.bakeStatus === 'Failed'
-														? 'red'
-														: latestEntry.bakeStatus === 'Succeeded'
-															? 'green'
+													color={latestEntry.bakeStatus === 'Succeeded'
+														? 'green'
+														: latestEntry.bakeStatus === 'Failed'
+															? 'red'
 															: latestEntry.bakeStatus === 'Deploying'
 																? 'blue'
 																: latestEntry.bakeStatus === 'InProgress'
@@ -1357,7 +1354,7 @@
 																	: 'gray'}
 													size="small"
 												>
-													{anyRolloutStalled ? 'Failed' : latestEntry.bakeStatus}
+													{latestEntry.bakeStatus}
 												</Badge>
 												{#if rollout.spec?.wantedVersion}
 													<Badge size="small">Pinned</Badge>
@@ -1539,9 +1536,6 @@
 																				>{rollout.rolloutResource.name}</span
 																			>
 																		</span>
-																		{#if isStalled}
-																			<Badge color="red" size="small">Stalled</Badge>
-																		{/if}
 																	</div>
 																	{#if rollout.rolloutData.currentStepState === 'StepPaused'}
 																		{@const annotations =
@@ -1634,9 +1628,6 @@
 																							/>
 																						{/if}
 																					</span>
-																				{/if}
-																				{#if stalledCondition}
-																					<Badge color="red" size="small">Stalled</Badge>
 																				{/if}
 																			</div>
 																		{:else if canUpdate}
