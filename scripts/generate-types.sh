@@ -13,7 +13,7 @@ if ! command -v openapi-typescript &> /dev/null; then
   npm install -g openapi-typescript
 fi
 
-local_crds=true
+local_crds=false
 
 if [ "$local_crds" = true ]; then
   cp ../rollout-controller/config/crd/bases/kuberik.com_rollouts.yaml $TEMP_DIR/rollout.yaml

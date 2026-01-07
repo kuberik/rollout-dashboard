@@ -537,13 +537,6 @@ export interface components {
                 }[];
                 /** @description CurrentVersion is the current version being deployed */
                 currentVersion?: string;
-                /**
-                 * Format: int64
-                 * @description DeploymentID is the ID of the deployment (backend-specific)
-                 */
-                deploymentId?: number;
-                /** @description DeploymentURL is the URL of the deployment (backend-specific) */
-                deploymentUrl?: string;
                 /** @description EnvironmentInfos tracks deployment information for each environment.
                  *     Each environment has environment URL and relationships (not per version). */
                 environmentInfos?: {
