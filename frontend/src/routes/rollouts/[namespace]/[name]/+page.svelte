@@ -652,7 +652,7 @@
 					if (ddService && ddEnv) {
 						// Build Datadog APM service URL
 						// Format: https://app.datadoghq.com/apm/service/{service_name}?env={env_name}
-						const datadogUrl = `https://app.datadoghq.com/apm/service:${encodeURIComponent(ddService)}?env=${encodeURIComponent(ddEnv)}`;
+						const datadogUrl = `https://app.datadoghq.com/apm/entity/service:${encodeURIComponent(ddService)}?env=${encodeURIComponent(ddEnv)}`;
 						return {
 							service: ddService,
 							env: ddEnv,
