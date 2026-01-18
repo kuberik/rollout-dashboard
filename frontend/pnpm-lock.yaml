@@ -11,15 +11,15 @@ importers:
       '@dagrejs/dagre':
         specifier: ^1.1.8
         version: 1.1.8
-      '@humanspeak/svelte-virtual-list':
-        specifier: ^0.3.6
-        version: 0.3.6(svelte@5.46.1)
       '@inlang/paraglide-js':
         specifier: ^2.0.0
         version: 2.0.11
       '@tanstack/svelte-query':
         specifier: ^6.0.12
         version: 6.0.12(svelte@5.46.1)
+      '@tanstack/svelte-virtual':
+        specifier: ^3.13.18
+        version: 3.13.18(svelte@5.46.1)
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -436,11 +436,6 @@ packages:
     resolution: {integrity: sha512-YuI2ZHQL78Q5HbhDiBA1X4LmYdXCKCMQIfw0pw7piHJwyREFebJUvrQN4cMssyES6x+vfUbx1CIpaQUKYdQZOw==}
     engines: {node: '>=18.18.0'}
 
-  '@humanspeak/svelte-virtual-list@0.3.6':
-    resolution: {integrity: sha512-ls5FicD5b8nXi87GG7mj9nIoTkIl0M/JkmmE21KWnTabtDRnqEjZ7kOsU3ZEAWc0/HW8PlRwF50yqKwpaLeBMw==}
-    peerDependencies:
-      svelte: ^5.0.0
-
   '@humanwhocodes/module-importer@1.0.1':
     resolution: {integrity: sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA==}
     engines: {node: '>=12.22'}
@@ -817,6 +812,14 @@ packages:
     resolution: {integrity: sha512-BelMexz1IYu8eXBhQBJJl1BAcYT08CByD88mqmjdojmpCBWn9kntFJXKcKUwqEdpZ9Y5JjeIBAJsiRhOCWyldg==}
     peerDependencies:
       svelte: ^5.25.0
+
+  '@tanstack/svelte-virtual@3.13.18':
+    resolution: {integrity: sha512-BHh8WkFK58eE9KzLctPQkCkvCj46LnM9tIGkpwo5Unx5YaBPf0uBJBqvSdc2jMwdT8gLXLHFHtCnSujlZP69BA==}
+    peerDependencies:
+      svelte: ^3.48.0 || ^4.0.0 || ^5.0.0
+
+  '@tanstack/virtual-core@3.13.18':
+    resolution: {integrity: sha512-Mx86Hqu1k39icq2Zusq+Ey2J6dDWTjDvEv43PJtRCoEYTLyfaPnxIQ6iy7YAOK0NV/qOEmZQ/uCufrppZxTgcg==}
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -2667,11 +2670,6 @@ snapshots:
       '@humanfs/core': 0.19.1
       '@humanwhocodes/retry': 0.3.1
 
-  '@humanspeak/svelte-virtual-list@0.3.6(svelte@5.46.1)':
-    dependencies:
-      esm-env: 1.2.2
-      svelte: 5.46.1
-
   '@humanwhocodes/module-importer@1.0.1': {}
 
   '@humanwhocodes/retry@0.3.1': {}
@@ -3007,6 +3005,13 @@ snapshots:
     dependencies:
       '@tanstack/query-core': 5.90.14
       svelte: 5.46.1
+
+  '@tanstack/svelte-virtual@3.13.18(svelte@5.46.1)':
+    dependencies:
+      '@tanstack/virtual-core': 3.13.18
+      svelte: 5.46.1
+
+  '@tanstack/virtual-core@3.13.18': {}
 
   '@testing-library/dom@10.4.1':
     dependencies:

@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import {
 		Button,
 		Spinner,
@@ -12,7 +12,7 @@
 		Checkbox
 	} from 'flowbite-svelte';
 	import { CloseOutline, ChevronDownOutline } from 'flowbite-svelte-icons';
-	import VirtualList from '@humanspeak/svelte-virtual-list';
+	import { createVirtualizer, notUndefined } from '@tanstack/svelte-virtual';
 	import iwanthue from 'iwanthue';
 	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import type { LogLine, PodInfo } from '$lib/api/logs';
@@ -31,9 +31,10 @@
 
 	// Auto-scroll state
 	let autoScroll = $state(true);
-	let virtualListRef: any = $state(null);
+	let virtualListEl = $state<HTMLElement | null>(null);
 	let isUserScrolling = $state(false);
 	let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+	let isAutoScrolling = $state(false);
 
 	// Filter state - using Sets for multi-select
 	let selectedPods = $state<Set<string>>(new Set());
@@ -232,6 +233,7 @@
 
 	// Flatten for virtual list - formatted timestamp comes from web worker
 	const allLogLines = $derived.by(() => {
+		// Optimization: Avoid re-mapping if unnecessary, but standard map is usually fast enough for 2k-10k items
 		return filteredLogs.map((log, index) => ({
 			line: log.line,
 			pod: log.pod,
@@ -243,39 +245,137 @@
 		}));
 	});
 
+	// Track element refs for measuring
+	let virtualItemEls: HTMLDivElement[] = $state([]);
+
+	// Track viewport width for dynamic estimation
+	let viewportWidth = $state(0);
+
+	// Estimate height based on chars per line (approx 8px per char for monospace 14px)
+	// Padding: 12px (py-1.5), Border: 1px, LineHeight: 20px
+	function estimateLogHeight(index: number): number {
+		const log = allLogLines[index];
+		if (!log || !viewportWidth) return 40; // Fallback
+
+		// Approx chars per line. Max width is container - padding (32px)
+		// 8px is approx char width for 14px monospace font
+		const charsPerLine = Math.max(1, Math.floor((viewportWidth - 32) / 8.4));
+		const lineCount = Math.max(1, Math.ceil(log.line.length / charsPerLine));
+
+		return lineCount * 20 + 13;
+	}
+
+	// Track scroll position for restoration
+	let savedScrollTop = $state(0);
+
+	// Setup Virtualizer - only recreates when scroll element changes
+	// NOT when count changes - this preserves cache and scroll position
+	let virtualizer = $derived(
+		createVirtualizer<HTMLElement, HTMLDivElement>({
+			count: 0, // Initial count, updated via effect
+			getScrollElement: virtualListEl ? () => virtualListEl : () => null,
+			estimateSize: estimateLogHeight,
+			overscan: 40
+		})
+	);
+
+	// Update count separately to avoid recreating virtualizer
+	$effect(() => {
+		const count = allLogLines.length;
+		const currentScrollTop = virtualListEl?.scrollTop ?? 0;
+
+		// Save scroll position before update
+		if (!autoScroll && currentScrollTop > 0) {
+			savedScrollTop = currentScrollTop;
+		}
+
+		// Update virtualizer count
+		$virtualizer.setOptions({ count });
+
+		// Restore scroll position after update (only when not auto-scrolling)
+		if (!autoScroll && savedScrollTop > 0 && virtualListEl) {
+			tick().then(() => {
+				if (virtualListEl && !autoScroll) {
+					virtualListEl.scrollTop = savedScrollTop;
+				}
+			});
+		}
+	});
+
+	// Use $state + $effect for virtualItems to properly track store value changes
+	import type { VirtualItem } from '@tanstack/svelte-virtual';
+	let virtualItems = $state<VirtualItem[]>([]);
+
+	$effect(() => {
+		// 1. Sync Data: Track count explicitly
+		const count = allLogLines.length;
+		const _ = virtualListEl; // Track element
+
+		// Guarded update to options to prevent loops, but ensure sync
+		if (
+			untrack(() => $virtualizer.options.count) !== count ||
+			untrack(() => $virtualizer.options.getScrollElement)() !== virtualListEl
+		) {
+			untrack(() => $virtualizer).setOptions({
+				count,
+				getScrollElement: () => virtualListEl
+			});
+		}
+
+		// 2. Sync View: Subscribe to virtualizer updates (scroll/resize)
+		// This runs when $virtualizer emits OR when above dependencies change
+		virtualItems = $virtualizer.getVirtualItems();
+	});
+
+	// Calculate before/after padding for natural document flow scrolling
+	let virtualListBefore = $derived(
+		virtualItems.length > 0
+			? notUndefined(virtualItems[0]).start - ($virtualizer.options.scrollMargin ?? 0)
+			: 0
+	);
+	let virtualListAfter = $derived(
+		virtualItems.length > 0
+			? $virtualizer.getTotalSize() - notUndefined(virtualItems[virtualItems.length - 1]).end
+			: 0
+	);
+
+	// Measure elements when they change
+	$effect(() => {
+		if (virtualItemEls.length) {
+			virtualItemEls.forEach((el) => {
+				if (el) $virtualizer.measureElement(el);
+			});
+		}
+	});
+
 	// Scroll to bottom
 	function scrollToBottom() {
-		if (!virtualListRef || allLogLines.length === 0) return;
+		if (!virtualListEl || allLogLines.length === 0) return;
 
-		// Scroll to the last item using VirtualList's scroll API
-		const lastIndex = allLogLines.length - 1;
 		isAutoScrolling = true;
-		virtualListRef.scroll({ index: lastIndex, smoothScroll: false, align: 'bottom' });
-		// Reset flag after a short delay
+		// Use virtualizer's scroll method
+		$virtualizer.scrollToIndex(allLogLines.length - 1, { align: 'end' });
+
 		setTimeout(() => {
 			isAutoScrolling = false;
 		}, 100);
 	}
 
-	// Track if we're currently auto-scrolling to avoid detecting it as user scrolling
-	let isAutoScrolling = $state(false);
-
 	// Auto-scroll when new logs arrive (if enabled)
 	let previousLogCount = $state(0);
 	let previousLastTimestamp = $state<number | null>(null);
+
+	// Handle auto-scroll
 	$effect(() => {
-		// Track allLogLines to detect changes
-		const logs = allLogLines;
-		const currentCount = logs.length;
-		const lastLog = logs[currentCount - 1];
+		const currentCount = allLogLines.length;
+		const lastLog = allLogLines[currentCount - 1];
 		const lastTimestamp = lastLog?.timestamp || null;
 
-		// Check if logs changed (count increased OR last timestamp changed)
 		const logsChanged = currentCount > previousLogCount || lastTimestamp !== previousLastTimestamp;
 
 		if (autoScroll && logsChanged && !isUserScrolling && !isAutoScrolling) {
-			// Use requestAnimationFrame to ensure DOM is updated
-			requestAnimationFrame(() => {
+			// Use tick to ensure DOM updates first
+			tick().then(() => {
 				scrollToBottom();
 			});
 		}
@@ -284,69 +384,33 @@
 		previousLastTimestamp = lastTimestamp;
 	});
 
-	// Listen for scroll events on the VirtualList viewport to detect user scrolling
-	onMount(() => {
-		if (!virtualListRef) return;
+	// Handle Scroll Events for Auto-scroll toggle
+	function handleScroll(e: Event) {
+		const target = e.target as HTMLElement;
+		if (!target || isAutoScrolling) return;
 
-		// Find the viewport element created by VirtualList
-		const findViewport = () => {
-			// VirtualList creates a viewport element, we need to find it
-			// It's typically the scrollable container
-			const container = virtualListRef as any;
-			if (container?.$el) {
-				const viewport =
-					container.$el.querySelector('[class*="viewport"]') || container.$el.firstElementChild;
-				return viewport;
-			}
-			return null;
-		};
+		const { scrollTop, scrollHeight, clientHeight } = target;
+		const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
 
-		// Wait for VirtualList to render
-		const setupScrollListener = () => {
-			const viewport = findViewport();
-			if (viewport && viewport instanceof HTMLElement) {
-				const handleScroll = () => {
-					if (isAutoScrolling) return; // Ignore our own scrolls
-
-					// Check if user is near the bottom (within 50px)
-					const isNearBottom =
-						viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 50;
-
-					// If user scrolled away from bottom, disable auto-scroll
-					if (!isNearBottom && autoScroll) {
-						autoScroll = false;
-					}
-
-					// Mark that user is scrolling
-					isUserScrolling = true;
-					if (scrollTimeout) {
-						clearTimeout(scrollTimeout);
-					}
-					scrollTimeout = setTimeout(() => {
-						isUserScrolling = false;
-					}, 150);
-				};
-
-				viewport.addEventListener('scroll', handleScroll);
-				return () => {
-					viewport.removeEventListener('scroll', handleScroll);
-				};
-			}
-			return null;
-		};
-
-		// Try immediately, then retry after a short delay
-		let cleanup = setupScrollListener();
-		if (!cleanup) {
-			setTimeout(() => {
-				cleanup = setupScrollListener();
-			}, 100);
+		// If user scrolled away from bottom, disable auto-scroll
+		if (!isNearBottom && autoScroll) {
+			autoScroll = false;
 		}
 
-		return () => {
-			if (cleanup) cleanup();
-		};
-	});
+		// If user scrolls back to bottom, re-enable auto-scroll
+		if (isNearBottom && !autoScroll) {
+			autoScroll = true;
+		}
+
+		// Mark that user is scrolling
+		isUserScrolling = true;
+		if (scrollTimeout) {
+			clearTimeout(scrollTimeout);
+		}
+		scrollTimeout = setTimeout(() => {
+			isUserScrolling = false;
+		}, 150);
+	}
 
 	// Cleanup on destroy
 	onDestroy(() => {
@@ -584,36 +648,43 @@
 		<div
 			class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-gray-900 dark:bg-gray-950"
 		>
-			<VirtualList
-				items={allLogLines}
-				viewportClass="h-full w-full overflow-y-auto"
-				containerClass="h-full w-full"
-				bind:this={virtualListRef}
+			<div
+				bind:this={virtualListEl}
+				bind:clientWidth={viewportWidth}
+				onscroll={handleScroll}
+				class="h-full w-full overflow-y-auto"
 			>
-				{#snippet renderItem(logItem: {
-					line: string;
-					pod: string;
-					container: string;
-					type: string;
-					timestamp: number;
-					formattedTimestamp: string;
-					index: number;
-				})}
-					{@const podColor = getPodColor(logItem.pod)}
-					{@const logLevel = getLogLevel(logItem.line)}
-					{@const levelColor = getLogLevelColor(logLevel)}
-					<div
-						class="flex items-start border-b border-gray-800 px-4 py-1.5 font-mono text-sm hover:bg-gray-800/50"
-					>
-						<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
-						<span class="mx-2 shrink-0 font-semibold" style="color: {podColor}">{logItem.pod}</span>
-						<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
-						<span class="min-w-0 flex-1 whitespace-pre-wrap break-words {levelColor}">
-							{@html highlightSearch(logItem.line, searchQuery)}
-						</span>
-					</div>
-				{/snippet}
-			</VirtualList>
+				<div>
+					{#if virtualListBefore > 0}
+						<div style="height: {virtualListBefore}px;"></div>
+					{/if}
+
+					{#each virtualItems as row, idx (row.index)}
+						{@const logItem = allLogLines[row.index]}
+						{@const podColor = getPodColor(logItem.pod)}
+						{@const logLevel = getLogLevel(logItem.line)}
+						{@const levelColor = getLogLevelColor(logLevel)}
+						<div
+							bind:this={virtualItemEls[idx]}
+							class="flex w-full items-baseline border-b border-gray-800 px-4 py-1.5 font-mono text-sm hover:bg-gray-800/50"
+							data-index={row.index}
+						>
+							<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
+							<span class="mx-2 shrink-0 font-semibold" style="color: {podColor}"
+								>{logItem.pod}</span
+							>
+							<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
+							<span class="min-w-0 flex-1 whitespace-pre-wrap break-words {levelColor}">
+								{@html highlightSearch(logItem.line, searchQuery)}
+							</span>
+						</div>
+					{/each}
+
+					{#if virtualListAfter > 0}
+						<div style="height: {virtualListAfter}px;"></div>
+					{/if}
+				</div>
+			</div>
 		</div>
 	{/if}
 
