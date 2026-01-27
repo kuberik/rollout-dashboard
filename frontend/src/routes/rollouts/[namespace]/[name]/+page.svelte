@@ -1679,98 +1679,104 @@
 																				t.status?.phase !== 'Failed' &&
 																				t.status?.phase !== 'Cancelled'
 																		)}
+																		{@const testsByStep = [
+																			...runningTests,
+																			...completedTests
+																		].reduce(
+																			(acc, test) => {
+																				const stepIndex = test.spec?.stepIndex ?? -1;
+																				if (!acc[stepIndex]) acc[stepIndex] = [];
+																				acc[stepIndex].push(test);
+																				return acc;
+																			},
+																			{} as Record<number, typeof relevantTests>
+																		)}
+																		{@const sortedStepIndices = Object.keys(testsByStep)
+																			.map(Number)
+																			.sort((a, b) => a - b)}
 																		<div
 																			class="text-xs font-semibold text-gray-600 dark:text-gray-400"
 																		>
 																			Rollout Tests
 																		</div>
-																		<div class="flex flex-col gap-2">
-																			{#each runningTests as test}
-																				{@const phase = test.status?.phase}
-																				{@const retryCount = test.status?.retryCount || 0}
-																				{@const activePods = test.status?.activePods || 0}
-																				{@const succeededPods = test.status?.succeededPods || 0}
-																				{@const failedPods = test.status?.failedPods || 0}
-																				<div class="flex items-center gap-2">
-																					<Badge
-																						color={phase === 'Running'
-																							? 'blue'
-																							: phase === 'Pending'
-																								? 'yellow'
-																								: phase === 'Cancelled'
-																									? 'gray'
-																									: 'gray'}
-																						size="small"
-																						class="flex min-w-[120px] items-center gap-1"
-																					>
-																						{#if phase === 'Running'}
-																							<Spinner size="4" color="blue" />
-																						{:else if phase === 'Pending'}
-																							<ClockArrowOutline class="h-3 w-3" />
-																						{:else if phase === 'Cancelled'}
-																							<CloseOutline class="h-3 w-3" />
-																						{:else}
-																							<ClockSolid class="h-3 w-3" />
-																						{/if}
-																						<span class="capitalize">
-																							{phase === 'WaitingForStep'
-																								? 'Waiting'
-																								: phase || 'Unknown'}
-																						</span>
-																					</Badge>
-																					<span class="text-xs text-gray-600 dark:text-gray-400">
-																						{test.metadata?.name || 'Unknown'}
-																					</span>
-																					{#if retryCount > 0}
-																						<Badge color="orange" size="small">
-																							{retryCount} retr{retryCount === 1 ? 'y' : 'ies'}
-																						</Badge>
+																		<div class="flex flex-col gap-4">
+																			{#each sortedStepIndices as stepIndex}
+																				<div class="space-y-2">
+																					{#if sortedStepIndices.length > 1 || stepIndex !== -1}
+																						<div
+																							class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500"
+																						>
+																							{#if stepIndex === -1}
+																								General
+																							{:else}
+																								Step {stepIndex}
+																							{/if}
+																						</div>
 																					{/if}
-																					{#if phase === 'Running' && activePods > 0}
-																						<span class="text-xs text-gray-500 dark:text-gray-500">
-																							{activePods} active
-																						</span>
-																					{/if}
-																				</div>
-																			{/each}
-																			{#each completedTests as test}
-																				{@const phase = test.status?.phase}
-																				{@const retryCount = test.status?.retryCount || 0}
-																				{@const testStepIndex = test.spec?.stepIndex}
-																				<div class="flex items-center gap-2">
-																					<Badge
-																						color={phase === 'Succeeded'
-																							? 'green'
-																							: phase === 'Cancelled'
-																								? 'gray'
-																								: 'red'}
-																						size="small"
-																						class="flex min-w-[120px] items-center gap-1"
-																					>
-																						{#if phase === 'Succeeded'}
-																							<CheckCircleSolid class="h-3 w-3" />
-																						{:else if phase === 'Failed'}
-																							<ExclamationCircleSolid class="h-3 w-3" />
-																						{:else if phase === 'Cancelled'}
-																							<CloseOutline class="h-3 w-3" />
-																						{/if}
-																						<span class="capitalize">
-																							{phase || 'Unknown'}
-																						</span>
-																					</Badge>
-																					<span class="text-xs text-gray-600 dark:text-gray-400">
-																						{test.metadata?.name || 'Unknown'}
-																					</span>
-																					{#if isRolloutCompleted && testStepIndex !== undefined}
-																						<span class="text-xs text-gray-500 dark:text-gray-400">
-																							(Step {testStepIndex})
-																						</span>
-																					{/if}
-																					{#if retryCount > 0}
-																						<Badge color="orange" size="small">
-																							{retryCount} retr{retryCount === 1 ? 'y' : 'ies'}
-																						</Badge>
-																					{/if}
+																					<div class="flex flex-col gap-2">
+																						{#each testsByStep[stepIndex] as test}
+																							{@const phase = test.status?.phase || 'Unknown'}
+																							{@const retryCount = test.status?.retryCount || 0}
+																							{#if test.metadata}
+																								<div class="flex items-center gap-2">
+																									<Tooltip
+																										class="z-50"
+																										placement="top"
+																										triggeredBy="#test-status-{test.metadata.name}"
+																									>
+																										{phase}
+																									</Tooltip>
+																									<div
+																										id="test-status-{test.metadata.name}"
+																										class="flex items-center justify-center"
+																									>
+																										{#if phase === 'Running'}
+																											<Spinner size="4" color="blue" />
+																										{:else if phase === 'Succeeded'}
+																											<CheckCircleSolid
+																												class="h-4 w-4 text-green-500 dark:text-green-400"
+																											/>
+																										{:else if phase === 'Failed'}
+																											<ExclamationCircleSolid
+																												class="h-4 w-4 text-red-500 dark:text-red-400"
+																											/>
+																										{:else if phase === 'Cancelled'}
+																											<CloseOutline
+																												class="h-4 w-4 text-gray-400 dark:text-gray-500"
+																											/>
+																										{:else if phase === 'Pending'}
+																											<ClockArrowOutline
+																												class="h-4 w-4 text-yellow-500 dark:text-yellow-400"
+																											/>
+																										{:else}
+																											<ClockSolid
+																												class="h-4 w-4 text-gray-400 dark:text-gray-500"
+																											/>
+																										{/if}
+																									</div>
+																									<span
+																										class="text-sm text-gray-700 dark:text-gray-300"
+																									>
+																										{test.metadata.name}
+																									</span>
+																									{#if retryCount > 0}
+																										<Badge color="orange" size="small">
+																											{retryCount} retr{retryCount === 1
+																												? 'y'
+																												: 'ies'}
+																										</Badge>
+																									{/if}
+																									{#if phase === 'Running' && test.status?.activePods}
+																										<span
+																											class="text-xs text-gray-500 dark:text-gray-500"
+																										>
+																											{test.status.activePods} active
+																										</span>
+																									{/if}
+																								</div>
+																							{/if}
+																						{/each}
+																					</div>
 																				</div>
 																			{/each}
 																		</div>
