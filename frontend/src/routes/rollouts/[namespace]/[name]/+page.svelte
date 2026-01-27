@@ -1684,7 +1684,7 @@
 																			...completedTests
 																		].reduce(
 																			(acc, test) => {
-																				const stepIndex = test.spec?.stepIndex ?? -1;
+																				const stepIndex = test.spec?.stepIndex ?? 0;
 																				if (!acc[stepIndex]) acc[stepIndex] = [];
 																				acc[stepIndex].push(test);
 																				return acc;
@@ -1702,15 +1702,11 @@
 																		<div class="flex flex-col gap-4">
 																			{#each sortedStepIndices as stepIndex}
 																				<div class="space-y-2">
-																					{#if sortedStepIndices.length > 1 || stepIndex !== -1}
+																					{#if sortedStepIndices.length > 1 || isRolloutCompleted}
 																						<div
 																							class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500"
 																						>
-																							{#if stepIndex === -1}
-																								General
-																							{:else}
-																								Step {stepIndex}
-																							{/if}
+																							Step {stepIndex}
 																						</div>
 																					{/if}
 																					<div class="flex flex-col gap-2">
@@ -1731,7 +1727,13 @@
 																										class="flex items-center justify-center"
 																									>
 																										{#if phase === 'Running'}
-																											<Spinner size="4" color="blue" />
+																											<div class="text-blue-600 dark:text-blue-500">
+																												<Spinner
+																													size="4"
+																													color="blue"
+																													type="dots"
+																												/>
+																											</div>
 																										{:else if phase === 'Succeeded'}
 																											<CheckCircleSolid
 																												class="h-4 w-4 text-green-500 dark:text-green-400"
