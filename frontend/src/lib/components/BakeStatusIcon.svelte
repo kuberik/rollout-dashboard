@@ -7,7 +7,7 @@
 		ExclamationCircleSolid,
 		ClockSolid,
 		PauseSolid,
-		CloseOutline,
+		CircleMinusSolid,
 		RefreshOutline
 	} from 'flowbite-svelte-icons';
 	import { getBakeStatusColor } from '$lib/bake-status';
@@ -46,7 +46,7 @@
 			case 'Deploying':
 				return { icon: RefreshOutline, color };
 			case 'Cancelled':
-				return { icon: CloseOutline, color };
+				return { icon: CircleMinusSolid, color };
 			case 'None':
 				return { icon: PauseSolid, color };
 			default:

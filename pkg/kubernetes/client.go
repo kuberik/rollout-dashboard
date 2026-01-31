@@ -1119,3 +1119,106 @@ func (c *Client) GetReplicaSets(ctx context.Context, namespace string) (*appsv1.
 	}
 	return replicaSets, nil
 }
+
+// GetRolloutSchedules gets all RolloutSchedules in a namespace
+func (c *Client) GetRolloutSchedules(ctx context.Context, namespace string) (*rolloutv1alpha1.RolloutScheduleList, error) {
+	schedules := &rolloutv1alpha1.RolloutScheduleList{}
+	if err := c.client.List(ctx, schedules, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list rollout schedules: %w", err)
+	}
+	return schedules, nil
+}
+
+// GetRolloutSchedulesAllNamespaces gets all RolloutSchedules across all namespaces
+func (c *Client) GetRolloutSchedulesAllNamespaces(ctx context.Context) (*rolloutv1alpha1.RolloutScheduleList, error) {
+	schedules := &rolloutv1alpha1.RolloutScheduleList{}
+	if err := c.client.List(ctx, schedules); err != nil {
+		return nil, fmt.Errorf("failed to list rollout schedules: %w", err)
+	}
+	return schedules, nil
+}
+
+// GetRolloutSchedule gets a single RolloutSchedule
+func (c *Client) GetRolloutSchedule(ctx context.Context, namespace, name string) (*rolloutv1alpha1.RolloutSchedule, error) {
+	schedule := &rolloutv1alpha1.RolloutSchedule{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, schedule); err != nil {
+		return nil, fmt.Errorf("failed to get rollout schedule: %w", err)
+	}
+	return schedule, nil
+}
+
+// GetClusterRolloutSchedules gets all ClusterRolloutSchedules
+func (c *Client) GetClusterRolloutSchedules(ctx context.Context) (*rolloutv1alpha1.ClusterRolloutScheduleList, error) {
+	schedules := &rolloutv1alpha1.ClusterRolloutScheduleList{}
+	if err := c.client.List(ctx, schedules); err != nil {
+		return nil, fmt.Errorf("failed to list cluster rollout schedules: %w", err)
+	}
+	return schedules, nil
+}
+
+// GetClusterRolloutSchedule gets a single ClusterRolloutSchedule
+func (c *Client) GetClusterRolloutSchedule(ctx context.Context, name string) (*rolloutv1alpha1.ClusterRolloutSchedule, error) {
+	schedule := &rolloutv1alpha1.ClusterRolloutSchedule{}
+	if err := c.client.Get(ctx, client.ObjectKey{Name: name}, schedule); err != nil {
+		return nil, fmt.Errorf("failed to get cluster rollout schedule: %w", err)
+	}
+	return schedule, nil
+}
+
+// GetRolloutSchedulesByRollout gets RolloutSchedules that match a specific rollout
+func (c *Client) GetRolloutSchedulesByRollout(ctx context.Context, namespace, rolloutName string, rolloutLabels map[string]string) (*rolloutv1alpha1.RolloutScheduleList, error) {
+	schedules := &rolloutv1alpha1.RolloutScheduleList{}
+	if err := c.client.List(ctx, schedules, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list rollout schedules: %w", err)
+	}
+
+	// Filter schedules that match the rollout
+	matchingSchedules := &rolloutv1alpha1.RolloutScheduleList{}
+	for _, schedule := range schedules.Items {
+		selector, err := metav1.LabelSelectorAsSelector(schedule.Spec.RolloutSelector)
+		if err != nil {
+			continue
+		}
+		if selector.Matches(labels.Set(rolloutLabels)) {
+			matchingSchedules.Items = append(matchingSchedules.Items, schedule)
+		}
+	}
+
+	return matchingSchedules, nil
+}
+
+// GetClusterRolloutSchedulesByRollout gets ClusterRolloutSchedules that match a specific rollout
+func (c *Client) GetClusterRolloutSchedulesByRollout(ctx context.Context, namespace, rolloutName string, rolloutLabels, namespaceLabels map[string]string) (*rolloutv1alpha1.ClusterRolloutScheduleList, error) {
+	schedules := &rolloutv1alpha1.ClusterRolloutScheduleList{}
+	if err := c.client.List(ctx, schedules); err != nil {
+		return nil, fmt.Errorf("failed to list cluster rollout schedules: %w", err)
+	}
+
+	// Filter schedules that match the rollout
+	matchingSchedules := &rolloutv1alpha1.ClusterRolloutScheduleList{}
+	for _, schedule := range schedules.Items {
+		// Check rollout selector
+		rolloutSelector, err := metav1.LabelSelectorAsSelector(schedule.Spec.RolloutSelector)
+		if err != nil {
+			continue
+		}
+		if !rolloutSelector.Matches(labels.Set(rolloutLabels)) {
+			continue
+		}
+
+		// Check namespace selector if present
+		if schedule.Spec.NamespaceSelector != nil {
+			namespaceSelector, err := metav1.LabelSelectorAsSelector(schedule.Spec.NamespaceSelector)
+			if err != nil {
+				continue
+			}
+			if !namespaceSelector.Matches(labels.Set(namespaceLabels)) {
+				continue
+			}
+		}
+
+		matchingSchedules.Items = append(matchingSchedules.Items, schedule)
+	}
+
+	return matchingSchedules, nil
+}

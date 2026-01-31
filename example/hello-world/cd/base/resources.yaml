@@ -67,6 +67,8 @@ apiVersion: kuberik.com/v1alpha1
 kind: Rollout
 metadata:
   name: hello-world-app
+  labels:
+    schedule: business-hours  # This rollout is controlled by business-hours schedule
   annotations:
     dashboard.rollout.kuberik.com/description: "Hello World app / __ENVIRONMENT__"
 spec:
@@ -128,3 +130,75 @@ spec:
     project: "LittleChimera/kuberik-testing"
     secret: "github-token"
   name: "hello-world-app"
+---
+# Example: Business hours deployment window
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutSchedule
+metadata:
+  name: business-hours-allow
+  annotations:
+    gate.kuberik.com/pretty-name: "Business Hours Only"
+    gate.kuberik.com/description: "Deployments allowed only during weekday business hours (9 AM - 5 PM EST)"
+spec:
+  rolloutSelector:
+    matchLabels:
+      schedule: business-hours
+  rules:
+    - name: "weekday-business-hours"
+      timeRange:
+        start: "09:00"
+        end: "17:00"
+      daysOfWeek:
+        - Monday
+        - Tuesday
+        - Wednesday
+        - Thursday
+        - Friday
+  timezone: "America/New_York"
+  action: Allow
+---
+# Example: Weekend-only deployments
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutSchedule
+metadata:
+  name: weekend-only
+  annotations:
+    gate.kuberik.com/pretty-name: "Weekend Deployments"
+    gate.kuberik.com/description: "Deployments allowed only on weekends"
+spec:
+  rolloutSelector:
+    matchLabels:
+      schedule: weekend
+  rules:
+    - name: "weekend-deployment"
+      daysOfWeek:
+        - Saturday
+        - Sunday
+  timezone: "UTC"
+  action: Allow
+---
+# Example: Night deployment window (cross-midnight)
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutSchedule
+metadata:
+  name: night-deployment
+  annotations:
+    gate.kuberik.com/pretty-name: "Night Deployment Window"
+    gate.kuberik.com/description: "Deployments allowed overnight (10 PM - 6 AM UTC)"
+spec:
+  rolloutSelector:
+    matchLabels:
+      schedule: night
+  rules:
+    - name: "overnight-window"
+      timeRange:
+        start: "22:00"
+        end: "06:00"
+      daysOfWeek:
+        - Monday
+        - Tuesday
+        - Wednesday
+        - Thursday
+        - Friday
+  timezone: "UTC"
+  action: Allow

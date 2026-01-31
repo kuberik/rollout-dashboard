@@ -26,6 +26,7 @@ import (
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
 	"github.com/kuberik/rollout-dashboard/pkg/logs"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
+	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -1067,6 +1068,95 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{
 				"healthChecks": healthChecks,
 				"debug":        debugInfo,
+			})
+		})
+
+		// Get schedules for a specific rollout
+		api.GET("/rollouts/:namespace/:name/schedules", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			// Get the rollout to get its labels
+			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching rollout: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch rollout",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Get the namespace to get its labels
+			namespaceObj, err := k8sClient.GetClientset().CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{})
+			if err != nil {
+				log.Printf("Error fetching namespace: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch namespace",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Get RolloutSchedules in this namespace that match the rollout
+			rolloutSchedules, err := k8sClient.GetRolloutSchedulesByRollout(context.Background(), namespace, name, rollout.Labels)
+			if err != nil {
+				log.Printf("Error fetching rollout schedules: %v", err)
+			}
+
+			// Get ClusterRolloutSchedules that match the rollout
+			clusterSchedules, err := k8sClient.GetClusterRolloutSchedulesByRollout(context.Background(), namespace, name, rollout.Labels, namespaceObj.Labels)
+			if err != nil {
+				log.Printf("Error fetching cluster rollout schedules: %v", err)
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rolloutSchedules":        rolloutSchedules,
+				"clusterRolloutSchedules": clusterSchedules,
+			})
+		})
+
+		// Get all schedules in a namespace
+		api.GET("/schedules", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.DefaultQuery("namespace", "all")
+
+			var rolloutSchedules *rolloutv1alpha1.RolloutScheduleList
+			var err error
+
+			if namespace == "all" || namespace == "*" || namespace == "" {
+				rolloutSchedules, err = k8sClient.GetRolloutSchedulesAllNamespaces(context.Background())
+			} else {
+				rolloutSchedules, err = k8sClient.GetRolloutSchedules(context.Background(), namespace)
+			}
+
+			if err != nil {
+				log.Printf("Error fetching rollout schedules: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch rollout schedules",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Always get cluster schedules (they're cluster-scoped)
+			clusterSchedules, err := k8sClient.GetClusterRolloutSchedules(context.Background())
+			if err != nil {
+				log.Printf("Error fetching cluster schedules: %v", err)
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"rolloutSchedules":        rolloutSchedules,
+				"clusterRolloutSchedules": clusterSchedules,
 			})
 		})
 

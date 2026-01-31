@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - resources.yaml
+  - schedules.yaml
 
 namespace: hello-world
 

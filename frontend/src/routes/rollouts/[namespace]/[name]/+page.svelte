@@ -49,6 +49,7 @@
 		ExclamationCircleSolid,
 		InfoCircleSolid,
 		CloseOutline,
+		CircleMinusSolid,
 		CodeOutline,
 		DatabaseSolid,
 		ClockSolid,
@@ -92,6 +93,7 @@
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
+	import ScheduleStatus from '$lib/components/ScheduleStatus.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { getBakeStatusColor } from '$lib/bake-status';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
@@ -1240,6 +1242,10 @@
 							</div>
 						</Alert>
 					{/if}
+
+					<!-- Schedule Status Banner -->
+					<ScheduleStatus {rollout} />
+
 					{#if rollout.status?.title || rollout.status?.description || rolloutQuery.data?.environment || gatewayIngressURLs.length > 0}
 						{@const environment = rolloutQuery.data?.environment}
 						{@const currentEnvInfo = environment?.status?.environmentInfos?.find(
@@ -1743,7 +1749,7 @@
 																												class="h-4 w-4 text-red-500 dark:text-red-400"
 																											/>
 																										{:else if phase === 'Cancelled'}
-																											<CloseOutline
+																											<CircleMinusSolid
 																												class="h-4 w-4 text-gray-400 dark:text-gray-500"
 																											/>
 																										{:else if phase === 'Pending'}
@@ -2381,6 +2387,7 @@
 								<div>
 									{#each rollout.status.releaseCandidates as releaseCandidate}
 										{@const version = releaseCandidate.tag}
+										{@const blockingGates = getBlockingGates(version)}
 										<div class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700">
 											<div
 												class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
@@ -2425,14 +2432,10 @@
 												</div>
 												<!-- Action buttons on the right -->
 												<div class="flex flex-wrap items-center gap-2 sm:justify-end">
-													<!-- Blocked/Ready badge - first -->
-													{#if rollout.status?.gatedReleaseCandidates
-														?.map((grc) => grc.tag)
-														.includes(version)}
+													<!-- Blocked/Ready badge - check current gate status -->
+													{#if blockingGates.length === 0}
 														<Badge color="green" size="small">Ready</Badge>
 													{:else}
-														{@const blockingGates = getBlockingGates(version)}
-														{#if blockingGates.length > 0}
 															<Badge color="yellow" size="small" class="cursor-help">
 																Blocked
 																<QuestionCircleOutline class="ml-1 h-3 w-3" />
@@ -2469,9 +2472,6 @@
 																	</div>
 																</div>
 															</Popover>
-														{:else}
-															<Badge color="yellow" size="small">Blocked</Badge>
-														{/if}
 													{/if}
 
 													{#if canModify}

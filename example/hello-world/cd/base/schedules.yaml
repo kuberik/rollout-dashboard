@@ -1,0 +1,104 @@
+# Additional RolloutSchedule examples for testing
+---
+# Example: Maintenance window (Sunday early morning)
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutSchedule
+metadata:
+  name: maintenance-window
+  annotations:
+    gate.kuberik.com/pretty-name: "Maintenance Window"
+    gate.kuberik.com/description: "Deployments allowed only during Sunday maintenance window (2-6 AM UTC)"
+spec:
+  rolloutSelector:
+    matchLabels:
+      maintenance: "true"
+  rules:
+    - name: "sunday-maintenance"
+      timeRange:
+        start: "02:00"
+        end: "06:00"
+      daysOfWeek:
+        - Sunday
+  timezone: "UTC"
+  action: Allow
+---
+# Example: Multiple deployment windows
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutSchedule
+metadata:
+  name: flexible-window
+  annotations:
+    gate.kuberik.com/pretty-name: "Flexible Deployment Windows"
+    gate.kuberik.com/description: "Deployments allowed during morning (9-11 AM), afternoon (2-4 PM), or anytime on weekends"
+spec:
+  rolloutSelector:
+    matchLabels:
+      schedule: flexible
+  rules:
+    - name: "morning-window"
+      timeRange:
+        start: "09:00"
+        end: "11:00"
+    - name: "afternoon-window"
+      timeRange:
+        start: "14:00"
+        end: "16:00"
+    - name: "weekend-anytime"
+      daysOfWeek:
+        - Saturday
+        - Sunday
+  timezone: "America/New_York"
+  action: Allow
+---
+# Example: Holiday deployment freeze (using date ranges)
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutSchedule
+metadata:
+  name: holiday-freeze
+  annotations:
+    gate.kuberik.com/pretty-name: "Holiday Deployment Freeze"
+    gate.kuberik.com/description: "Blocks all deployments during major holidays (Christmas, New Year)"
+spec:
+  rolloutSelector:
+    matchLabels:
+      freeze: "holiday"
+  rules:
+    - name: "christmas-freeze"
+      dateRange:
+        start: "2026-12-23"
+        end: "2026-12-26"
+    - name: "new-year-freeze"
+      dateRange:
+        start: "2026-12-31"
+        end: "2027-01-02"
+  timezone: "America/New_York"
+  action: Deny
+---
+# Example: ClusterRolloutSchedule (applies across namespaces)
+apiVersion: kuberik.com/v1alpha1
+kind: ClusterRolloutSchedule
+metadata:
+  name: production-peak-hours-deny
+  annotations:
+    gate.kuberik.com/pretty-name: "Peak Hours Protection"
+    gate.kuberik.com/description: "Blocks deployments during weekday peak hours (9 AM - 5 PM)"
+spec:
+  rolloutSelector:
+    matchLabels:
+      tier: frontend
+  namespaceSelector:
+    matchLabels:
+      environment: production
+  rules:
+    - name: "weekday-peak-hours"
+      timeRange:
+        start: "09:00"
+        end: "17:00"
+      daysOfWeek:
+        - Monday
+        - Tuesday
+        - Wednesday
+        - Thursday
+        - Friday
+  timezone: "America/New_York"
+  action: Deny
