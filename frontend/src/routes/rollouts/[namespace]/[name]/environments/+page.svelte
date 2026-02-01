@@ -643,7 +643,7 @@
 	>
 </svelte:head>
 
-<div class="flex h-full w-full flex-col p-4">
+<div class="flex h-full w-full flex-col p-3 sm:p-4">
 	{#if rolloutQuery.isLoading}
 		<div class="flex h-full items-center justify-center">
 			<Spinner size="8" />
@@ -661,10 +661,10 @@
 		</Card>
 	{:else}
 		<div
-			class="grid w-full flex-1 grid-cols-[minmax(min-content,30%)_1fr] overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+			class="grid w-full flex-1 grid-cols-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 md:grid-cols-[minmax(min-content,30%)_1fr]"
 		>
 			<!-- Left: version list focused on current rollout -->
-			<div class="overflow-y-auto border-r border-gray-200 p-4 dark:border-gray-700">
+			<div class="overflow-y-auto border-b border-gray-200 p-3 dark:border-gray-700 sm:p-4 md:border-b-0 md:border-r">
 				<h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">Version Status</h3>
 				<p class="mb-3 text-xs text-gray-600 dark:text-gray-400">
 					Shows how versions relate to the current environment and its direct dependencies.
@@ -813,7 +813,7 @@
 			</div>
 
 			<!-- Right: dots table and dependency graph -->
-			<div class="flex flex-1 flex-col">
+			<div class="flex min-h-[300px] flex-1 flex-col md:min-h-0">
 				<!-- Environment-Version Status Table - disabled for now -->
 				{#if false && tableVersions.length > 0 && graphEnvironments.length > 0}
 					<div class="border-b border-gray-200 px-3 pb-3 pt-5 dark:border-gray-700">
@@ -930,7 +930,7 @@
 				{/if}
 
 				<!-- Dependency graph -->
-				<div class="flex-1 overflow-auto">
+				<div class="min-h-[280px] flex-1 overflow-auto">
 					<SvelteFlow
 						bind:nodes={flowNodes}
 						bind:edges={flowEdges}

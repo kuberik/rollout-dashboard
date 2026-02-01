@@ -251,18 +251,30 @@
 	// Track viewport width for dynamic estimation
 	let viewportWidth = $state(0);
 
-	// Estimate height based on chars per line (approx 8px per char for monospace 14px)
-	// Padding: 12px (py-1.5), Border: 1px, LineHeight: 20px
+	// Check if mobile (sm breakpoint is 640px)
+	const isMobile = $derived(viewportWidth > 0 && viewportWidth < 640);
+
+	// Estimate height based on chars per line
+	// Desktop: horizontal layout with 14px font, 8.4px char width
+	// Mobile: stacked layout with 12px font (~7px char width), metadata line + content
 	function estimateLogHeight(index: number): number {
 		const log = allLogLines[index];
 		if (!log || !viewportWidth) return 40; // Fallback
 
-		// Approx chars per line. Max width is container - padding (32px)
-		// 8px is approx char width for 14px monospace font
-		const charsPerLine = Math.max(1, Math.floor((viewportWidth - 32) / 8.4));
-		const lineCount = Math.max(1, Math.ceil(log.line.length / charsPerLine));
-
-		return lineCount * 20 + 13;
+		if (isMobile) {
+			// Mobile stacked layout:
+			// - Metadata line: ~20px (text-[10px] + gap)
+			// - Content: variable based on log length
+			// - Padding: py-2 = 16px total
+			const charsPerLine = Math.max(1, Math.floor((viewportWidth - 16) / 7));
+			const contentLines = Math.max(1, Math.ceil(log.line.length / charsPerLine));
+			return 20 + contentLines * 16 + 16; // metadata + content + padding
+		} else {
+			// Desktop horizontal layout
+			const charsPerLine = Math.max(1, Math.floor((viewportWidth - 32) / 8.4));
+			const lineCount = Math.max(1, Math.ceil(log.line.length / charsPerLine));
+			return lineCount * 20 + 13;
+		}
 	}
 
 	// Track scroll position for restoration
@@ -422,31 +434,34 @@
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
 	<!-- Header with controls -->
-	<div class="mb-4 flex flex-shrink-0 flex-col gap-3 border-b pb-3">
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-3">
-				<h3 class="text-lg font-semibold text-gray-900 dark:text-white">Logs</h3>
-				{#if isLoading}
-					<Spinner size="4" color="blue" />
-				{/if}
-				{#if error}
-					<Badge color="red" class="text-xs">Error loading logs</Badge>
-				{/if}
+	<div class="mb-3 flex flex-shrink-0 flex-col gap-2 border-b border-gray-200 pb-3 dark:border-gray-700 sm:mb-4 sm:gap-3">
+		<!-- Status indicators -->
+		<div class="flex items-center gap-2">
+			{#if isLoading}
+				<Spinner size="4" color="blue" />
+				<span class="text-xs text-gray-500 dark:text-gray-400">Loading...</span>
+			{/if}
+			{#if error}
+				<Badge color="red" class="text-xs">Error loading logs</Badge>
+			{/if}
+		</div>
+		<!-- Controls row -->
+		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+			<!-- Auto-scroll toggle -->
+			<div class="flex items-center gap-2">
+				<Toggle bind:checked={autoScroll} />
+				<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Follow</span>
 			</div>
+			<!-- Filter dropdowns -->
 			<div class="flex flex-wrap items-center gap-2">
-				<!-- Auto-scroll toggle -->
-				<div class="flex items-center gap-2">
-					<Toggle bind:checked={autoScroll} />
-					<span class="text-sm text-gray-700 dark:text-gray-300">Follow logs</span>
-				</div>
 				<!-- Pod filter dropdown -->
 				<div class="relative">
-					<Button size="sm" color="light" id={podsDropdownId} class="min-w-[120px]">
+					<Button size="xs" color="light" id={podsDropdownId} class="text-xs">
 						Pods
 						{#if selectedPods.size > 0}
-							<Badge color="blue" class="ml-2">{selectedPods.size}</Badge>
+							<Badge color="blue" class="ml-1 text-xs">{selectedPods.size}</Badge>
 						{/if}
-						<ChevronDownOutline class="ml-2 h-4 w-4" />
+						<ChevronDownOutline class="ml-1 h-3 w-3" />
 					</Button>
 					<Dropdown
 						simple
@@ -495,12 +510,13 @@
 				<!-- Container filter dropdown -->
 				{#if uniqueContainers.length > 0}
 					<div class="relative">
-						<Button size="sm" color="light" id={containersDropdownId} class="min-w-[120px]">
-							Containers
+						<Button size="xs" color="light" id={containersDropdownId} class="text-xs">
+							<span class="hidden sm:inline">Containers</span>
+							<span class="sm:hidden">Cont.</span>
 							{#if selectedContainers.size > 0}
-								<Badge color="blue" class="ml-2">{selectedContainers.size}</Badge>
+								<Badge color="blue" class="ml-1 text-xs">{selectedContainers.size}</Badge>
 							{/if}
-							<ChevronDownOutline class="ml-2 h-4 w-4" />
+							<ChevronDownOutline class="ml-1 h-3 w-3" />
 						</Button>
 						<Dropdown
 							simple
@@ -550,12 +566,13 @@
 				{/if}
 				<!-- Log level filter dropdown -->
 				<div class="relative">
-					<Button size="sm" color="light" id={logLevelsDropdownId} class="min-w-[120px]">
-						Log Levels
+					<Button size="xs" color="light" id={logLevelsDropdownId} class="text-xs">
+						<span class="hidden sm:inline">Log Levels</span>
+						<span class="sm:hidden">Level</span>
 						{#if selectedLogLevels.size > 0}
-							<Badge color="blue" class="ml-2">{selectedLogLevels.size}</Badge>
+							<Badge color="blue" class="ml-1 text-xs">{selectedLogLevels.size}</Badge>
 						{/if}
-						<ChevronDownOutline class="ml-2 h-4 w-4" />
+						<ChevronDownOutline class="ml-1 h-3 w-3" />
 					</Button>
 					<Dropdown
 						simple
@@ -664,9 +681,10 @@
 						{@const podColor = getPodColor(logItem.pod)}
 						{@const logLevel = getLogLevel(logItem.line)}
 						{@const levelColor = getLogLevelColor(logLevel)}
+						<!-- Desktop: horizontal layout -->
 						<div
 							bind:this={virtualItemEls[idx]}
-							class="flex w-full items-baseline border-b border-gray-800 px-4 py-1.5 font-mono text-sm hover:bg-gray-800/50"
+							class="hidden w-full items-baseline border-b border-gray-800 px-4 py-1.5 font-mono text-sm hover:bg-gray-800/50 sm:flex"
 							data-index={row.index}
 						>
 							<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
@@ -675,6 +693,20 @@
 							>
 							<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
 							<span class="min-w-0 flex-1 whitespace-pre-wrap break-words {levelColor}">
+								{@html highlightSearch(logItem.line, searchQuery)}
+							</span>
+						</div>
+						<!-- Mobile: stacked layout -->
+						<div
+							class="flex w-full flex-col border-b border-gray-800 px-2 py-2 font-mono text-xs hover:bg-gray-800/50 sm:hidden"
+							data-index={row.index}
+						>
+							<div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
+								<span class="text-gray-500">{logItem.formattedTimestamp}</span>
+								<span class="font-semibold" style="color: {podColor}">{logItem.pod}</span>
+								<span class="text-green-400">{logItem.container}</span>
+							</div>
+							<span class="whitespace-pre-wrap break-words {levelColor}">
 								{@html highlightSearch(logItem.line, searchQuery)}
 							</span>
 						</div>
@@ -691,40 +723,28 @@
 	<!-- Footer with stats -->
 	{#if filteredLogs.length > 0 || logs.length > 0}
 		<div
-			class="mt-2 flex flex-shrink-0 items-center justify-between text-xs text-gray-500 dark:text-gray-400"
+			class="mt-2 flex flex-shrink-0 items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs"
 		>
-			<div>
+			<div class="flex flex-wrap items-center gap-x-1 gap-y-0.5">
 				<span>
 					{#if searchQuery || selectedPods.size > 0 || selectedContainers.size > 0 || selectedLogLevels.size > 0}
-						{filteredLogs.length} of {logs.length} log lines
+						{filteredLogs.length}/{logs.length}
 					{:else}
-						{filteredLogs.length} log lines
+						{filteredLogs.length} lines
 					{/if}
 				</span>
 				{#if selectedPods.size > 0}
-					<span class="ml-2">{selectedPods.size} {selectedPods.size === 1 ? 'pod' : 'pods'}</span>
+					<span class="hidden sm:inline">• {selectedPods.size} {selectedPods.size === 1 ? 'pod' : 'pods'}</span>
 				{:else if uniquePods.length > 0}
-					<span class="ml-2"
-						>from {uniquePods.length} {uniquePods.length === 1 ? 'pod' : 'pods'}</span
-					>
-				{/if}
-				{#if selectedContainers.size > 0}
-					<span class="ml-2"
-						>{selectedContainers.size}
-						{selectedContainers.size === 1 ? 'container' : 'containers'}</span
-					>
-				{/if}
-				{#if selectedLogLevels.size > 0}
-					<span class="ml-2"
-						>{selectedLogLevels.size} {selectedLogLevels.size === 1 ? 'level' : 'levels'}</span
-					>
+					<span class="hidden sm:inline">• {uniquePods.length} {uniquePods.length === 1 ? 'pod' : 'pods'}</span>
 				{/if}
 				{#if searchQuery}
-					<span class="ml-2 text-blue-500">matching "{searchQuery}"</span>
+					<span class="text-blue-500">"{searchQuery}"</span>
 				{/if}
 			</div>
-			<div>
-				<span class="text-green-500">Streaming live logs</span>
+			<div class="flex items-center gap-1">
+				<span class="hidden text-green-500 sm:inline">Streaming</span>
+				<span class="h-2 w-2 animate-pulse rounded-full bg-green-500"></span>
 			</div>
 		</div>
 	{/if}

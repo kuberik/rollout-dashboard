@@ -1255,17 +1255,17 @@
 								return e.environment === currentEnv;
 							}
 						)}
-						<Card class="mb-4 w-full max-w-none p-6">
+						<Card class="mb-4 w-full max-w-none p-4 sm:p-6">
 							<div class="flex flex-col gap-2">
-								<div class="flex items-center justify-between gap-4">
-									<div class="flex-1">
+								<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+									<div class="flex-1 min-w-0">
 										{#if rollout.status?.title}
-											<h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+											<h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
 												{rollout.status.title}
 											</h2>
 										{/if}
 										{#if rollout.status?.description}
-											<p class="text-sm text-gray-600 dark:text-gray-400">
+											<p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
 												{rollout.status.description}
 											</p>
 										{/if}
@@ -1276,16 +1276,16 @@
 														href={url}
 														target="_blank"
 														rel="noopener noreferrer"
-														class="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+														class="inline-flex items-center gap-1 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 break-all"
 													>
-														<ArrowUpRightFromSquareOutline class="h-4 w-4" />
-														{url}
+														<ArrowUpRightFromSquareOutline class="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+														<span class="truncate">{url}</span>
 													</a>
 												{/each}
 											</div>
 										{/if}
 									</div>
-									<div class="flex items-center gap-2">
+									<div class="flex flex-wrap items-center gap-2">
 										{#if datadogServiceInfo}
 											<JoinedBadge
 												label="Datadog"
@@ -1318,7 +1318,7 @@
 						<!-- Current Version Card -->
 						{#if rollout.status?.history?.[0]}
 							{@const latestEntry = rollout.status.history[0]}
-							<Card class="w-full max-w-none p-6 lg:col-span-2">
+							<Card class="w-full max-w-none p-4 sm:p-6 lg:col-span-2">
 								<!-- Header Section -->
 								<div class="mb-6">
 									<h3 class="text-xl font-bold text-gray-900 dark:text-white">Current Version</h3>
@@ -1335,18 +1335,18 @@
 										</div>
 
 										<!-- Version Info -->
-										<div class="flex-1">
-											<h4 class="text-2xl font-bold text-gray-900 dark:text-white">
+										<div class="min-w-0 flex-1">
+											<h4 class="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
 												{getDisplayVersion(latestEntry.version)}
 											</h4>
-											<div class="mt-1 flex items-center gap-2">
+											<div class="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
 												{#if getRevisionInfo(latestEntry.version)}
-													<Badge color="blue" size="small">
+													<Badge color="blue" size="small" class="whitespace-nowrap">
 														{formatRevision(getRevisionInfo(latestEntry.version)!)}
 													</Badge>
 												{/if}
 												{#if isCurrentVersionCustom}
-													<Badge color="yellow" size="small">Custom</Badge>
+													<Badge color="yellow" size="small" class="whitespace-nowrap">Custom</Badge>
 												{/if}
 												<Badge
 													color={latestEntry.bakeStatus === 'Succeeded'
@@ -1359,14 +1359,15 @@
 																	? 'yellow'
 																	: 'gray'}
 													size="small"
+													class="whitespace-nowrap"
 												>
 													{latestEntry.bakeStatus}
 												</Badge>
 												{#if rollout.spec?.wantedVersion}
-													<Badge size="small">Pinned</Badge>
+													<Badge size="small" class="whitespace-nowrap">Pinned</Badge>
 												{/if}
 												{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-													<Badge color="orange" size="small">
+													<Badge color="orange" size="small" class="whitespace-nowrap">
 														{rollout.status.releaseCandidates.length} upgrade{rollout.status
 															.releaseCandidates.length > 1
 															? 's'
@@ -2112,64 +2113,61 @@
 
 						<!-- Health Checks Card -->
 						{#if healthChecks.length > 0}
-							<Card class="w-full max-w-none p-6">
-								<div class="mb-4 flex items-center justify-between">
+							<Card class="w-full max-w-none p-4 sm:p-6">
+								<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 									<h4
-										class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
+										class="flex items-center gap-2 text-base font-medium text-gray-900 dark:text-white sm:text-lg"
 									>
-										<HeartSolid class="h-5 w-5" />
-										Health Checks
+										<HeartSolid class="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+										<span>Health Checks</span>
 									</h4>
-									<div class="flex items-center gap-2">
-										<Badge color="blue" size="small">
-											{healthChecks.filter((hc) => hc.status?.status === 'Healthy').length} / {healthChecks.length}
-											healthy
-										</Badge>
-									</div>
+									<Badge color="blue" size="small" class="whitespace-nowrap">
+										{healthChecks.filter((hc) => hc.status?.status === 'Healthy').length} / {healthChecks.length} healthy
+									</Badge>
 								</div>
 								{#if healthChecks.filter((hc) => hc.status?.status !== 'Healthy').length > 0}
 									<div class="space-y-0">
 										{#each healthChecks.filter((hc) => hc.status?.status !== 'Healthy') as healthCheck (healthCheck.metadata?.name + '/' + healthCheck.metadata?.namespace)}
 											<div
-												class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700"
+												class="border-b border-gray-200 py-3 last:border-b-0 dark:border-gray-700 sm:py-4"
 											>
-												<div class="flex items-center justify-between">
-													<div class="flex items-center gap-3">
-														<div class="flex h-8 w-8 items-center justify-center">
+												<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+													<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+														<div class="flex h-6 w-6 flex-shrink-0 items-center justify-center sm:h-8 sm:w-8">
 															{#if healthCheck.status?.status === 'Healthy'}
 																<CheckCircleSolid
-																	class="h-5 w-5 text-green-600 dark:text-green-400"
+																	class="h-4 w-4 text-green-600 dark:text-green-400 sm:h-5 sm:w-5"
 																/>
 															{:else if healthCheck.status?.status === 'Unhealthy'}
 																<ExclamationCircleSolid
-																	class="h-5 w-5 text-red-600 dark:text-red-400"
+																	class="h-4 w-4 text-red-600 dark:text-red-400 sm:h-5 sm:w-5"
 																/>
 															{:else if healthCheck.status?.status === 'Pending'}
-																<Spinner size="6" color="yellow" />
+																<Spinner size="5" color="yellow" />
 															{:else}
 																<ExclamationCircleSolid
-																	class="h-5 w-5 text-gray-500 dark:text-gray-400"
+																	class="h-4 w-4 text-gray-500 dark:text-gray-400 sm:h-5 sm:w-5"
 																/>
 															{/if}
 														</div>
 														<div class="min-w-0 flex-1">
 															<h3
-																class="truncate text-sm font-medium text-gray-900 dark:text-white"
+																class="truncate text-xs font-medium text-gray-900 dark:text-white sm:text-sm"
 															>
 																{healthCheck.metadata?.annotations?.['kuberik.com/display-name'] ||
 																	healthCheck.metadata?.name}
 															</h3>
 															{#if healthCheck.spec?.class}
-																<p class="text-xs text-gray-500 dark:text-gray-400">
+																<p class="text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
 																	{healthCheck.spec.class.charAt(0).toUpperCase() +
 																		healthCheck.spec.class.slice(1)}
 																</p>
 															{/if}
 														</div>
 													</div>
-													<div class="flex items-center gap-2">
+													<div class="ml-8 flex flex-wrap items-center gap-1.5 sm:ml-0 sm:gap-2">
 														{#if healthCheck.status?.lastChangeTime}
-															<div class="text-xs text-gray-500 dark:text-gray-400">
+															<div class="text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
 																{formatTimeAgo(healthCheck.status.lastChangeTime, $now)}
 															</div>
 														{/if}
@@ -2180,6 +2178,7 @@
 																	? 'red'
 																	: 'yellow'}
 															size="small"
+															class="whitespace-nowrap text-[10px] sm:text-xs"
 														>
 															{healthCheck.status?.status || 'Unknown'}
 														</Badge>
@@ -2187,16 +2186,16 @@
 												</div>
 
 												{#if healthCheck.status?.message}
-													<div class="ml-11 mt-2">
-														<p class="mb-1 text-xs text-gray-600 dark:text-gray-400">
+													<div class="ml-8 mt-1.5 sm:ml-11 sm:mt-2">
+														<p class="mb-1 text-[10px] text-gray-600 dark:text-gray-400 sm:text-xs">
 															{healthCheck.status.message}
 														</p>
 													</div>
 												{/if}
 												{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
-													<div class="ml-11 mt-1">
+													<div class="ml-8 mt-1 sm:ml-11">
 														<div
-															class="flex items-center gap-1 text-xs text-red-600 dark:text-red-400"
+															class="flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400 sm:text-xs"
 														>
 															<ExclamationCircleSolid class="h-3 w-3" />
 															<span
@@ -2225,13 +2224,14 @@
 
 						<!-- Kubernetes Resources Status Card -->
 						{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
-							<Card class="w-full max-w-none p-6">
-								<div class="mb-4 flex items-center justify-between">
+							<Card class="w-full max-w-none p-4 sm:p-6">
+								<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 									<h4
-										class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
+										class="flex items-center gap-2 text-base font-medium text-gray-900 dark:text-white sm:text-lg"
 									>
-										<CubesStackedSolid class="h-5 w-5" />
-										Kubernetes Resources Status
+										<CubesStackedSolid class="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+										<span class="sm:hidden">Resources</span>
+										<span class="hidden sm:inline">Kubernetes Resources Status</span>
 									</h4>
 									{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
 										{@const allResources = [
@@ -2269,7 +2269,7 @@
 												r.status === 'Succeeded' ||
 												r.status === 'Current'
 										)}
-										<Badge color="blue" size="small">
+										<Badge color="blue" size="small" class="whitespace-nowrap">
 											{healthyResources.length} / {allResources.length} healthy
 										</Badge>
 									{/if}
@@ -2347,7 +2347,7 @@
 						{/if}
 
 						<!-- Available Versions Card -->
-						<Card class="w-full max-w-none p-6 lg:col-span-2">
+						<Card class="w-full max-w-none p-4 sm:p-6 lg:col-span-2">
 							<div class="mb-4 flex items-center justify-between">
 								<h4
 									class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
@@ -2557,19 +2557,18 @@
 	{/if}
 </div>
 
-<Modal bind:open={showPinModal} title="Change Version">
-	<div class="space-y-4">
+<Modal bind:open={showPinModal} title="Change Version" size="sm">
+	<div class="space-y-3 sm:space-y-4">
 		{#if !isDashboardManagingWantedVersion}
-			<Alert color="yellow" class="mb-4">
+			<Alert color="yellow" class="mb-3 text-xs sm:mb-4 sm:text-sm">
 				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> The dashboard is not currently managing the wantedVersion
-				field for this rollout. Setting a pin may conflict with other controllers or external systems.
+				<span class="font-medium">Warning:</span> Dashboard not managing wantedVersion. Pin may conflict.
 			</Alert>
 		{/if}
 
 		<!-- Search and Toggle Section -->
-		<div class="space-y-3">
-			<div class="flex items-center gap-3">
+		<div class="space-y-2 sm:space-y-3">
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
 				<div class="flex-1">
 					<input
 						type="text"
@@ -2589,7 +2588,7 @@
 						currentPage = 1;
 					}}
 				>
-					Show All Versions
+					<span class="text-xs sm:text-sm">Show All Versions</span>
 				</Toggle>
 			</div>
 		</div>
@@ -2837,22 +2836,22 @@
 			</Listgroup>
 		</div>
 
-		<div class="flex justify-end gap-2 pt-4">
+		<div class="flex flex-col gap-3 pt-4">
 			{#if (showAllTags ? totalUnifiedPages : totalPages) > 1}
-				<div class="flex flex-1 items-center justify-center gap-2">
+				<div class="flex items-center justify-center gap-2">
 					<Button
-						size="sm"
+						size="xs"
 						color="light"
 						onclick={() => goToPage(currentPage - 1)}
 						disabled={currentPage === 1}
 					>
-						Previous
+						Prev
 					</Button>
-					<span class="text-sm text-gray-600 dark:text-gray-400">
-						Page {currentPage} of {showAllTags ? totalUnifiedPages : totalPages}
+					<span class="text-xs text-gray-600 dark:text-gray-400 sm:text-sm">
+						{currentPage}/{showAllTags ? totalUnifiedPages : totalPages}
 					</span>
 					<Button
-						size="sm"
+						size="xs"
 						color="light"
 						onclick={() => goToPage(currentPage + 1)}
 						disabled={currentPage === (showAllTags ? totalUnifiedPages : totalPages)}
@@ -2861,29 +2860,33 @@
 					</Button>
 				</div>
 			{/if}
-			<Button
-				color="light"
-				onclick={() => {
-					showPinModal = false;
-					selectedVersion = null;
-					searchQuery = '';
-					showAllTags = false;
-					isPinVersionMode = false;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="blue"
-				disabled={!selectedVersion}
-				onclick={() => {
-					if (!selectedVersion) return;
-					showDeployModal = true;
-					showPinModal = false;
-				}}
-			>
-				Change Version
-			</Button>
+			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+				<Button
+					color="light"
+					class="w-full sm:w-auto"
+					onclick={() => {
+						showPinModal = false;
+						selectedVersion = null;
+						searchQuery = '';
+						showAllTags = false;
+						isPinVersionMode = false;
+					}}
+				>
+					Cancel
+				</Button>
+				<Button
+					color="blue"
+					class="w-full sm:w-auto"
+					disabled={!selectedVersion}
+					onclick={() => {
+						if (!selectedVersion) return;
+						showDeployModal = true;
+						showPinModal = false;
+					}}
+				>
+					Change Version
+				</Button>
+			</div>
 		</div>
 	</div>
 </Modal>

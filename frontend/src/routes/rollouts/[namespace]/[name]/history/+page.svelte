@@ -121,7 +121,7 @@
 			<!-- Content -->
 			<div class="flex flex-1 flex-col overflow-hidden">
 				<!-- Content Area -->
-				<div class="flex-1 overflow-y-auto p-4">
+				<div class="flex-1 overflow-y-auto p-3 sm:p-4">
 					<!-- Header Card with Stats -->
 					{#if rollout.status?.history}
 						{@const history = rollout.status.history}
@@ -134,7 +134,7 @@
 							totalDeployments > 0
 								? Math.round((successfulDeployments / totalDeployments) * 100)
 								: 0}
-						<Card class="mb-4 w-full max-w-none p-6">
+						<Card class="mb-4 w-full max-w-none p-4 sm:p-6">
 							<div class="mb-4">
 								<h3 class="text-xl font-bold text-gray-900 dark:text-white">Deployment History</h3>
 								<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -172,7 +172,7 @@
 							</div>
 						</Card>
 					{:else}
-						<Card class="mb-4 w-full max-w-none p-6">
+						<Card class="mb-4 w-full max-w-none p-4 sm:p-6">
 							<div class="mb-6">
 								<h3 class="text-xl font-bold text-gray-900 dark:text-white">Deployment History</h3>
 								<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -184,7 +184,7 @@
 
 					<!-- History Timeline Card -->
 					{#if rollout.status?.history}
-						<Card class="w-full max-w-none p-6">
+						<Card class="w-full max-w-none p-4 sm:p-6">
 							<Timeline order="vertical" class="w-full">
 								{#each rollout.status.history as entry, i ((entry.version.tag, i))}
 									{@const isCurrent = i === 0}
@@ -368,7 +368,7 @@
 							</Timeline>
 						</Card>
 					{:else}
-						<Card class="w-full max-w-none p-6">
+						<Card class="w-full max-w-none p-4 sm:p-6">
 							<div class="flex h-64 items-center justify-center text-gray-500 dark:text-gray-400">
 								<p>No deployment history available</p>
 							</div>

@@ -47,7 +47,7 @@
 	});
 </script>
 
-<div class="flex w-full justify-center px-4 py-8 dark:bg-gray-900">
+<div class="flex w-full justify-center px-3 py-6 dark:bg-gray-900 sm:px-4 sm:py-8">
 	{#if loading}
 		<div class="mx-auto flex h-16 w-16 items-center justify-center">
 			<Spinner size="8" />
@@ -85,7 +85,7 @@
 								href="/rollouts/{deployment.metadata?.namespace}/{deployment.metadata?.name}"
 								class="block w-full"
 							>
-								<Card class="w-full max-w-full p-2 sm:p-4 md:p-6">
+								<Card class="w-full max-w-full p-4 sm:p-4 md:p-6">
 									<div class="flex flex-col gap-3">
 										<div class="flex flex-wrap items-start justify-between gap-4">
 											<div class="flex flex-1 items-start gap-4">

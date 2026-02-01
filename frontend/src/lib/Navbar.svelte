@@ -96,26 +96,34 @@
 <nav
 	class="sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 >
-	<div class="flex w-full flex-wrap items-center justify-between px-4 py-2">
-		<div class="flex min-w-0 flex-1 items-center gap-4">
-			<a href="/" class="flex shrink-0 items-center space-x-3 rtl:space-x-reverse">
-				<div class="flex h-8 w-8 items-center justify-center">
+	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
+		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+			<a href="/" class="flex shrink-0 items-center space-x-2 sm:space-x-3 rtl:space-x-reverse">
+				<div class="flex h-7 w-7 items-center justify-center sm:h-8 sm:w-8">
 					<div
 						class="h-full w-full [&>svg]:h-full [&>svg]:max-h-full [&>svg]:w-full [&>svg]:max-w-full"
 					>
 						{@html currentTheme === 'dark' ? LogoDark : LogoLight}
 					</div>
 				</div>
-				<span class="font-montserrat text-xl font-thin text-gray-600 dark:text-gray-400"
+				<span class="hidden font-montserrat text-xl font-thin text-gray-600 dark:text-gray-400 sm:inline"
 					>kuberik</span
 				>
-				<div class="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+				<div class="hidden h-6 w-px bg-gray-300 dark:bg-gray-600 sm:block"></div>
 				<div class="flex flex-col">
-					<span class="text-2xl font-light dark:text-white">Rollouts</span>
+					<span class="text-xl font-light dark:text-white sm:text-2xl">Rollouts</span>
 				</div>
 			</a>
 			{#if isRolloutPage && rollout}
-				<div class="flex min-w-0 flex-1 flex-col gap-1">
+				<!-- Mobile: Show compact rollout name -->
+				<div class="flex min-w-0 flex-1 items-center gap-2 md:hidden">
+					<div class="h-4 w-px bg-gray-300 dark:bg-gray-600"></div>
+					<span class="truncate text-sm font-medium text-gray-700 dark:text-gray-300">
+						{rollout.metadata?.name}
+					</span>
+				</div>
+				<!-- Desktop: Show full breadcrumb -->
+				<div class="hidden min-w-0 flex-1 flex-col gap-1 md:flex">
 					<Breadcrumb aria-label="Breadcrumb">
 						<BreadcrumbItem>
 							<div class="flex items-center gap-1.5">
@@ -274,7 +282,7 @@
 				</div>
 			{/if}
 		</div>
-		<div class="flex shrink-0 items-center gap-1.5">
+		<div class="flex shrink-0 items-center gap-1 sm:gap-1.5">
 			{#if isRolloutPage && rollout}
 				{@const status = getRolloutStatus(rollout)}
 				{@const readyCondition = rollout.status?.conditions?.find((c) => c.type === 'Ready')}
@@ -300,14 +308,14 @@
 				{/if}
 			{/if}
 			<button
-				class="rounded-lg bg-gray-100 p-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
 				onclick={() => theme.toggle()}
 				aria-label="Toggle dark mode"
 			>
 				{#if currentTheme === 'dark'}
-					<SunSolid class="h-5 w-5" />
+					<SunSolid class="h-4 w-4 sm:h-5 sm:w-5" />
 				{:else}
-					<MoonSolid class="h-5 w-5" />
+					<MoonSolid class="h-4 w-4 sm:h-5 sm:w-5" />
 				{/if}
 			</button>
 		</div>
