@@ -164,106 +164,96 @@
 	}
 </script>
 
-<Modal bind:open title="Deploy Version" size="sm">
-	<div class="space-y-3 sm:space-y-4">
+<Modal bind:open title="" size="sm" class="[&>div]:p-0">
+	<div class="p-6">
+		<!-- Version header -->
+		<div class="mb-6 text-center">
+			<div class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Deploy Version</div>
+			<div class="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 dark:bg-blue-900/30">
+				<span class="text-xl font-bold text-blue-600 dark:text-blue-400">{getDisplayVersion()}</span>
+			</div>
+		</div>
+
 		{#if rollout && rollout.metadata}
 			{#if rollout && !rollout.metadata?.managedFields && hasForceDeployAnnotation(rollout)}
-				<Alert color="yellow" class="mb-3 text-xs sm:mb-4 sm:text-sm">
+				<Alert color="yellow" class="mb-4 text-sm">
 					<ExclamationCircleSolid class="h-4 w-4" />
 					<span class="font-medium">Warning:</span> Version management disabled, force deploy already set.
 				</Alert>
 			{:else if rollout && hasForceDeployAnnotation(rollout)}
-				<Alert color="blue" class="mb-3 text-xs sm:mb-4 sm:text-sm">
+				<Alert color="blue" class="mb-4 text-sm">
 					<ExclamationCircleSolid class="h-4 w-4" />
 					<span class="font-medium">Info:</span> Force deploy already set. Only version pinning available.
 				</Alert>
 			{/if}
 		{/if}
 
-		<div class="mb-2 text-center sm:mb-3">
-			<Badge color="blue" class="px-2 py-1 text-sm sm:px-3 sm:text-base">{getDisplayVersion()}</Badge>
-			{#if selectedVersionTag && selectedVersionDisplay && selectedVersionDisplay !== selectedVersionTag}
-				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">Tag: {selectedVersionTag}</div>
-			{/if}
-		</div>
-
-		{#if rollout && !hasForceDeployAnnotation(rollout)}
-			<div
-				class="flex flex-col gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4"
-			>
-				<div class="flex-1">
-					<div class="text-sm font-medium text-gray-700 dark:text-gray-300">Pin Version</div>
-					<p class="text-xs text-gray-500 dark:text-gray-400">
-						{#if isPinVersionMode}
-							Pinning enabled for this deployment.
-						{:else}
-							Prevents automatic deployment from changing this version.
-						{/if}
-					</p>
-				</div>
-				<div class="flex items-center">
-					<Toggle
-						bind:checked={pinVersionToggle}
-						disabled={isPinVersionToggleDisabled}
-						color="blue"
-					/>
-					{#if isPinVersionMode}
-						<Tooltip placement="top"
-							>Pin-only: Older than current version, must pin to roll back.</Tooltip
-						>
-					{/if}
-				</div>
-			</div>
-		{/if}
-
-		<div>
-			<label
-				for="deploy-explanation"
-				class="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300 sm:mb-2 sm:text-sm"
-			>
-				Explanation (Optional)
-			</label>
-			<textarea
-				id="deploy-explanation"
-				bind:value={deployExplanation}
-				placeholder={pinVersionToggle
-					? 'Reason for pinning...'
-					: 'Reason for force deploy...'}
-				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
-				rows="2"
-			></textarea>
-		</div>
-
-		<div>
-			<label
-				for="deploy-confirmation-version"
-				class="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300 sm:mb-2 sm:text-sm"
-			>
-				Type to confirm: <span class="font-bold text-gray-900 dark:text-white"
-					>{getDisplayVersion()}</span
+		<div class="space-y-4">
+			{#if rollout && !hasForceDeployAnnotation(rollout)}
+				<div
+					class="flex items-center justify-between rounded-lg bg-gray-50 p-4 dark:bg-gray-800"
 				>
-			</label>
-			<input
-				id="deploy-confirmation-version"
-				type="text"
-				bind:value={deployConfirmationVersion}
-				placeholder={`Enter ${getDisplayVersion() ? 'version' : 'version'}`}
-				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
-			/>
+					<div>
+						<div class="font-medium text-gray-900 dark:text-white">Pin Version</div>
+						<p class="text-sm text-gray-500 dark:text-gray-400">
+							{#if isPinVersionMode}
+								Required for rollback
+							{:else}
+								Lock to this version
+							{/if}
+						</p>
+					</div>
+					<div class="flex items-center">
+						<Toggle
+							bind:checked={pinVersionToggle}
+							disabled={isPinVersionToggleDisabled}
+							color="blue"
+						/>
+						{#if isPinVersionMode}
+							<Tooltip placement="top">Older than current version, must pin to roll back.</Tooltip>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<div>
+				<label
+					for="deploy-explanation"
+					class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+				>
+					Explanation <span class="font-normal text-gray-400">(optional)</span>
+				</label>
+				<textarea
+					id="deploy-explanation"
+					bind:value={deployExplanation}
+					placeholder="Why are you deploying this version?"
+					class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
+					rows="2"
+				></textarea>
+			</div>
+
+			<div>
+				<label
+					for="deploy-confirmation-version"
+					class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+				>
+					Type <span class="font-bold text-blue-600 dark:text-blue-400">{getDisplayVersion()}</span> to confirm
+				</label>
+				<input
+					id="deploy-confirmation-version"
+					type="text"
+					bind:value={deployConfirmationVersion}
+					placeholder="Enter version to confirm"
+					class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
+				/>
+			</div>
 		</div>
 
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			{#if pinVersionToggle}
-				Deploys <b>{selectedVersionTag}</b> and pins it.
-			{:else}
-				Force deploys <b>{selectedVersionTag}</b> immediately.
-			{/if}
-		</p>
-
-		<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+		<!-- Footer -->
+		<div class="mt-6 flex gap-3">
 			<Button
 				color="light"
-				class="w-full sm:w-auto"
+				class="flex-1"
 				onclick={() => {
 					open = false;
 				}}
@@ -272,11 +262,15 @@
 			</Button>
 			<Button
 				color="blue"
-				class="w-full sm:w-auto"
+				class="flex-1"
 				disabled={!selectedVersionTag || deployConfirmationVersion !== getDisplayVersion()}
 				onclick={handleDeploy}
 			>
-				Deploy
+				{#if pinVersionToggle}
+					Pin & Deploy
+				{:else}
+					Deploy Now
+				{/if}
 			</Button>
 		</div>
 	</div>
