@@ -2623,7 +2623,7 @@
 	{/if}
 </div>
 
-<Modal bind:open={showPinModal} title="Change Version" size="sm">
+<Modal bind:open={showPinModal} title="Change Version" size="md">
 	<div class="space-y-3 sm:space-y-4">
 		{#if !isDashboardManagingWantedVersion}
 			<Alert color="yellow" class="mb-3 text-xs sm:mb-4 sm:text-sm">
@@ -2902,9 +2902,10 @@
 			</Listgroup>
 		</div>
 
-		<div class="flex flex-col gap-3 pt-4">
+		<!-- Footer with pagination and buttons -->
+		<div class="flex flex-col gap-2 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
 			{#if (showAllTags ? totalUnifiedPages : totalPages) > 1}
-				<div class="flex items-center justify-center gap-2">
+				<div class="flex items-center justify-center gap-2 sm:justify-start">
 					<Button
 						size="xs"
 						color="light"
@@ -2913,7 +2914,7 @@
 					>
 						Prev
 					</Button>
-					<span class="text-xs text-gray-600 dark:text-gray-400 sm:text-sm">
+					<span class="text-xs text-gray-600 dark:text-gray-400">
 						{currentPage}/{showAllTags ? totalUnifiedPages : totalPages}
 					</span>
 					<Button
@@ -2925,8 +2926,10 @@
 						Next
 					</Button>
 				</div>
+			{:else}
+				<div></div>
 			{/if}
-			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+			<div class="flex flex-col-reverse gap-2 sm:flex-row">
 				<Button
 					color="light"
 					class="w-full sm:w-auto"
