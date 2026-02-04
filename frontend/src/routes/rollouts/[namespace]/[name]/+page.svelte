@@ -2623,339 +2623,166 @@
 	{/if}
 </div>
 
-<Modal bind:open={showPinModal} title="Change Version" size="md">
-	<div class="space-y-3 sm:space-y-4">
+<Modal bind:open={showPinModal} title="" size="md" class="[&>div]:p-0">
+	<div class="p-6">
+		<!-- Header -->
+		<div class="mb-6 text-center">
+			<div class="text-lg font-semibold text-gray-900 dark:text-white">Select Version</div>
+			<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a version to deploy</p>
+		</div>
+
 		{#if !isDashboardManagingWantedVersion}
-			<Alert color="yellow" class="mb-3 text-xs sm:mb-4 sm:text-sm">
+			<Alert color="yellow" class="mb-4 text-sm">
 				<ExclamationCircleSolid class="h-4 w-4" />
 				<span class="font-medium">Warning:</span> Dashboard not managing wantedVersion. Pin may conflict.
 			</Alert>
 		{/if}
 
-		<!-- Search and Toggle Section -->
-		<div class="space-y-2 sm:space-y-3">
-			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-				<div class="flex-1">
-					<input
-						type="text"
-						placeholder="Search all versions..."
-						bind:value={searchQuery}
-						class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
-					/>
-				</div>
-				<Toggle
-					bind:checked={showAllTags}
-					color="blue"
-					onchange={() => {
-						if (showAllTags && allRepositoryTags.length === 0) {
-							getAllRepositoryTags();
-						}
-						// Reset to first page when switching modes
-						currentPage = 1;
-					}}
-				>
-					<span class="text-xs sm:text-sm">Show All Versions</span>
-				</Toggle>
-			</div>
+		<!-- Search -->
+		<div class="mb-4">
+			<input
+				type="text"
+				placeholder="Search versions..."
+				bind:value={searchQuery}
+				class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
+			/>
 		</div>
 
-		<!-- All Versions Section -->
-		<div>
-			<h5 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-				{showAllTags ? 'All Repository Versions' : 'Available Versions'}
-				{#if showAllTags}
-					<Badge color="gray" class="ml-2 text-xs">
-						{filteredVersionsForDisplay.length} total versions
-					</Badge>
-				{:else if rollout?.status?.availableReleases}
-					<Badge color="blue" class="ml-2 text-xs">
-						{rollout.status.availableReleases.length} versions
-					</Badge>
-				{/if}
-			</h5>
-			<Listgroup active class="max-h-64 overflow-y-auto">
-				{#if showAllTags ? filteredVersionsForDisplay.length > 0 : rollout?.status?.availableReleases}
-					{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
-						{@const versionTag = typeof version === 'string' ? version : version.tag}
-						{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
-							{#await loadAnnotationsOnDemand(versionTag)}{/await}
-							<ListgroupItem
-								class="w-full cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 {selectedVersion ===
-								versionTag
-									? 'border-2 border-blue-300 bg-blue-50 dark:border-blue-600 dark:bg-blue-900'
-									: 'border-2 border-transparent'}"
-							>
-								<div
-									class="flex w-full items-center justify-between"
-									onclick={() => {
-										selectedVersion = versionTag;
-									}}
-									role="button"
-									tabindex="0"
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											selectedVersion = versionTag;
-										}
-									}}
-								>
-									<div class="flex-1 space-y-2 pr-4">
-										<div class="flex items-center justify-between">
-											<div class="flex-1">
-												<div class="font-medium text-gray-900 dark:text-white">
-													{#if loadingAnnotations[versionTag]}
-														<div
-															class="h-5 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
-														></div>
-													{:else}
-														{(() => {
-															// Check if this is a regular release in availableReleases
-															const availableRelease = rollout?.status?.availableReleases?.find(
-																(ar) => ar.tag === versionTag
-															);
-															if (availableRelease) {
-																return getDisplayVersion(availableRelease);
-															}
-															// Fall back to annotations for custom releases
-															return getDisplayVersion({
-																version:
-																	annotations[versionTag]?.['org.opencontainers.image.version'],
-																tag: versionTag
-															});
-														})()}
-													{/if}
-												</div>
-												{#if (() => {
-													const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag);
-													const version = availableRelease?.version || annotations[versionTag]?.['org.opencontainers.image.version'];
-													return version && version !== versionTag;
-												})()}
-													<div class="text-xs text-gray-500 dark:text-gray-400">
-														Tag: <code
-															class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800"
-															>{versionTag}</code
-														>
-													</div>
-												{/if}
-											</div>
-										</div>
+		<!-- Toggle for all versions -->
+		<div class="mb-4 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-800">
+			<span class="text-sm text-gray-700 dark:text-gray-300">Show all repository versions</span>
+			<Toggle
+				bind:checked={showAllTags}
+				color="blue"
+				onchange={() => {
+					if (showAllTags && allRepositoryTags.length === 0) {
+						getAllRepositoryTags();
+					}
+					currentPage = 1;
+				}}
+			/>
+		</div>
 
-										<!-- Version details -->
-										<div class="grid grid-cols-2 gap-4 text-xs text-gray-600 dark:text-gray-400">
-											{#if loadingAnnotations[versionTag]}
-												<div class="col-span-2 space-y-2">
-													<div
-														class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
-													></div>
-													<div
-														class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
-													></div>
-												</div>
-											{:else}
-												{#if (() => {
-													const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag);
-													return availableRelease?.created || annotations[versionTag]?.['org.opencontainers.image.created'];
-												})()}
-													<div>
-														<span class="font-medium">Created:</span>
-														<div class="mb-1">
-															{formatDate(
-																(() => {
-																	const availableRelease = rollout?.status?.availableReleases?.find(
-																		(ar) => ar.tag === versionTag
-																	);
-																	return (
-																		availableRelease?.created ||
-																		annotations[versionTag]?.['org.opencontainers.image.created']
-																	);
-																})()
-															)}
-														</div>
-														<div class="text-gray-500 dark:text-gray-500">
-															<Badge color="gray" border>
-																<ClockSolid class="me-1.5 h-2.5 w-2.5" />
-																{formatTimeAgo(
-																	(() => {
-																		const availableRelease =
-																			rollout?.status?.availableReleases?.find(
-																				(ar) => ar.tag === versionTag
-																			);
-																		return (
-																			availableRelease?.created ||
-																			annotations[versionTag]?.['org.opencontainers.image.created']
-																		);
-																	})(),
-																	$now
-																)}
-															</Badge>
-														</div>
-													</div>
-												{/if}
-												{#if (() => {
-													const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag);
-													return availableRelease?.revision || annotations[versionTag]?.['org.opencontainers.image.revision'];
-												})()}
-													<div>
-														<span class="font-medium">Revision:</span>
-														<div class="font-mono">
-															{formatRevision(
-																(() => {
-																	const availableRelease = rollout?.status?.availableReleases?.find(
-																		(ar) => ar.tag === versionTag
-																	);
-																	return (
-																		availableRelease?.revision ||
-																		annotations[versionTag]?.['org.opencontainers.image.revision']
-																	);
-																})()!
-															)}
-														</div>
-													</div>
-												{/if}
-											{/if}
-										</div>
+		<!-- Version list -->
+		<div class="mb-4 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+			{#if showAllTags ? filteredVersionsForDisplay.length > 0 : rollout?.status?.availableReleases}
+				{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
+					{@const versionTag = typeof version === 'string' ? version : version.tag}
+					{@const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag)}
+					{@const displayVersion = availableRelease ? getDisplayVersion(availableRelease) : getDisplayVersion({ version: annotations[versionTag]?.['org.opencontainers.image.version'], tag: versionTag })}
+					{@const created = availableRelease?.created || annotations[versionTag]?.['org.opencontainers.image.created']}
+					{@const isCurrentlyDeployed = rollout?.status?.history?.[0]?.version.tag === versionTag}
+					{@const isCurrentlyPinned = rollout?.spec?.wantedVersion === versionTag}
+					{@const isCustom = showAllTags && !rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(versionTag)}
+					{@const isSelected = selectedVersion === versionTag}
+					{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
+						{#await loadAnnotationsOnDemand(versionTag)}{/await}
+						<button
+							type="button"
+							class="flex w-full items-center gap-4 border-b border-gray-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 {isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : ''}"
+							onclick={() => { selectedVersion = versionTag; }}
+						>
+							<!-- Selection indicator -->
+							<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 {isSelected ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600'}">
+								{#if isSelected}
+									<CheckOutline class="h-3 w-3 text-white" />
+								{/if}
+							</div>
 
-										<!-- Status indicators -->
-										<div class="flex flex-wrap gap-2">
-											{#if rollout?.status?.history?.[0]?.version.tag === versionTag}
-												<Badge color="green" class="text-xs">
-													<CheckCircleSolid class="mr-1 h-3 w-3" />
-													Currently Deployed
-												</Badge>
-											{/if}
-											{#if rollout?.spec?.wantedVersion === versionTag}
-												<Badge class="text-xs">
-													<CheckCircleSolid class="mr-1 h-3 w-3" />
-													Currently Pinned
-												</Badge>
-											{/if}
-											{#if showAllTags && !rollout?.status?.availableReleases
-													?.map((ar) => ar.tag)
-													.includes(versionTag)}
-												<Badge color="yellow" class="text-xs">
-													<ExclamationCircleSolid class="mr-1 h-3 w-3" />
-													Custom
-												</Badge>
-											{/if}
-										</div>
-
-										<!-- Action buttons -->
-										<div class="flex gap-2 pt-2">
-											{#if loadingAnnotations[versionTag]}
-												<div class="flex gap-2">
-													<div
-														class="h-6 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
-													></div>
-													<div
-														class="h-6 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
-													></div>
-												</div>
-											{:else}
-												{#if rollout?.status?.source}
-													<GitHubViewButton
-														sourceUrl={rollout.status.source}
-														version={(() => {
-															const availableRelease = rollout?.status?.availableReleases?.find(
-																(ar) => ar.tag === versionTag
-															);
-															if (availableRelease) {
-																return getDisplayVersion(availableRelease);
-															}
-															return getDisplayVersion({
-																version:
-																	annotations[versionTag]?.['org.opencontainers.image.version'],
-																tag: versionTag
-															});
-														})()}
-														size="xs"
-														color="light"
-													/>
-												{/if}
-												<Clipboard value={versionTag} size="xs" color="light" class="">
-													{#snippet children(success)}
-														{#if success}
-															<CheckOutline class="mr-1 h-3 w-3" />
-															Copied
-														{:else}
-															<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-															Copy Tag
-														{/if}
-													{/snippet}
-												</Clipboard>
-											{/if}
-										</div>
-									</div>
-									<div class="w-6 flex-shrink-0">
-										{#if selectedVersion === versionTag}
-											<CheckCircleSolid class="h-5 w-5 text-blue-600 dark:text-blue-400" />
-										{/if}
-									</div>
+							<!-- Version info -->
+							<div class="min-w-0 flex-1">
+								<div class="flex items-center gap-2">
+									<span class="font-medium text-gray-900 dark:text-white">{displayVersion}</span>
+									{#if isCurrentlyDeployed}
+										<span class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/50 dark:text-green-400">Current</span>
+									{/if}
+									{#if isCurrentlyPinned}
+										<span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/50 dark:text-blue-400">Pinned</span>
+									{/if}
+									{#if isCustom}
+										<span class="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400">Custom</span>
+									{/if}
 								</div>
-							</ListgroupItem>
-						{/if}
-					{/each}
-				{:else}
-					<ListgroupItem class="text-center text-gray-500 dark:text-gray-400">
-						No versions available
-					</ListgroupItem>
-				{/if}
-			</Listgroup>
+								{#if created}
+									<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+										{formatTimeAgo(created, $now)}
+									</div>
+								{/if}
+							</div>
+
+							<!-- Actions -->
+							<div class="flex flex-shrink-0 items-center gap-1" onclick={(e) => e.stopPropagation()}>
+								{#if rollout?.status?.source}
+									<GitHubViewButton
+										sourceUrl={rollout.status.source}
+										version={displayVersion}
+										size="xs"
+										color="light"
+									/>
+								{/if}
+							</div>
+						</button>
+					{/if}
+				{/each}
+			{:else}
+				<div class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+					No versions available
+				</div>
+			{/if}
 		</div>
 
-		<!-- Footer with pagination and buttons -->
-		<div class="flex flex-col gap-2 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
-			{#if (showAllTags ? totalUnifiedPages : totalPages) > 1}
-				<div class="flex items-center justify-center gap-2 sm:justify-start">
-					<Button
-						size="xs"
-						color="light"
-						onclick={() => goToPage(currentPage - 1)}
-						disabled={currentPage === 1}
-					>
-						Prev
-					</Button>
-					<span class="text-xs text-gray-600 dark:text-gray-400">
-						{currentPage}/{showAllTags ? totalUnifiedPages : totalPages}
-					</span>
-					<Button
-						size="xs"
-						color="light"
-						onclick={() => goToPage(currentPage + 1)}
-						disabled={currentPage === (showAllTags ? totalUnifiedPages : totalPages)}
-					>
-						Next
-					</Button>
-				</div>
-			{:else}
-				<div></div>
-			{/if}
-			<div class="flex flex-col-reverse gap-2 sm:flex-row">
+		<!-- Pagination -->
+		{#if (showAllTags ? totalUnifiedPages : totalPages) > 1}
+			<div class="mb-4 flex items-center justify-center gap-3">
 				<Button
+					size="xs"
 					color="light"
-					class="w-full sm:w-auto"
-					onclick={() => {
-						showPinModal = false;
-						selectedVersion = null;
-						searchQuery = '';
-						showAllTags = false;
-						isPinVersionMode = false;
-					}}
+					onclick={() => goToPage(currentPage - 1)}
+					disabled={currentPage === 1}
 				>
-					Cancel
+					Previous
 				</Button>
+				<span class="text-sm text-gray-600 dark:text-gray-400">
+					Page {currentPage} of {showAllTags ? totalUnifiedPages : totalPages}
+				</span>
 				<Button
-					color="blue"
-					class="w-full sm:w-auto"
-					disabled={!selectedVersion}
-					onclick={() => {
-						if (!selectedVersion) return;
-						showDeployModal = true;
-						showPinModal = false;
-					}}
+					size="xs"
+					color="light"
+					onclick={() => goToPage(currentPage + 1)}
+					disabled={currentPage === (showAllTags ? totalUnifiedPages : totalPages)}
 				>
-					Change Version
+					Next
 				</Button>
 			</div>
+		{/if}
+
+		<!-- Footer buttons -->
+		<div class="flex gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+			<Button
+				color="light"
+				class="flex-1"
+				onclick={() => {
+					showPinModal = false;
+					selectedVersion = null;
+					searchQuery = '';
+					showAllTags = false;
+					isPinVersionMode = false;
+				}}
+			>
+				Cancel
+			</Button>
+			<Button
+				color="blue"
+				class="flex-1"
+				disabled={!selectedVersion}
+				onclick={() => {
+					if (!selectedVersion) return;
+					showDeployModal = true;
+					showPinModal = false;
+				}}
+			>
+				Continue
+			</Button>
 		</div>
 	</div>
 </Modal>
