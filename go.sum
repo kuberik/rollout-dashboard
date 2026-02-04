@@ -164,6 +164,8 @@ github.com/kuberik/rollout-controller v0.5.1-0.20260104174019-94d121d31a01 h1:9a
 github.com/kuberik/rollout-controller v0.5.1-0.20260104174019-94d121d31a01/go.mod h1:iaBeZNcwL7eFWgmyDJFSaqxIVtZGU1YvfV3GDL8PuYc=
 github.com/kuberik/rollout-controller v0.6.0 h1:B6nmLZAzoJCWnIVhO/c7i7tybuGOW8nQ+R7m6D93uEA=
 github.com/kuberik/rollout-controller v0.6.0/go.mod h1:iaBeZNcwL7eFWgmyDJFSaqxIVtZGU1YvfV3GDL8PuYc=
+github.com/kuberik/rollout-controller v0.7.0 h1:GMk7CEDSccLXJPXhBIbuKn1ibALiJ54i1vrl2tgZRKk=
+github.com/kuberik/rollout-controller v0.7.0/go.mod h1:YUpom9l24ImrMZWucBtEcUPBiqM0GUFFMKvU0dlUoWo=
 github.com/leodido/go-urn v1.2.0/go.mod h1:+8+nEpDfqqsY+g338gtMEUOtuK+4dEMhiQEgxpxOKII=
 github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
 github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=
