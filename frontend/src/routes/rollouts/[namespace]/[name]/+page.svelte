@@ -235,7 +235,8 @@
 
 	let showToast = $state(false);
 	let toastMessage = $state('');
-	let toastType = $state<'success' | 'error'>('success');
+	let toastType = $state<'success' | 'error' | 'info'>('success');
+	let toastLoading = $state(false);
 
 	let showRollbackModal = $state(false);
 	let rollbackVersion = $state<string | null>(null);
@@ -265,6 +266,7 @@
 	let loadingAllTags = $state(false);
 	let searchQuery = $state('');
 	let showAllTags = $state(false);
+	let isReconciling = $state(false);
 
 	// Reset state when rollout changes
 	$effect(() => {
@@ -901,21 +903,19 @@
 	}
 
 	async function reconcileFluxResources() {
-		if (!rollout) return;
+		if (!rollout || isReconciling) return;
 
-		// Add spinning animation to the icon
-		const icon = document.getElementById('reconcile-icon');
-		if (icon) {
-			icon.classList.add('animate-spin');
-			// Remove the spinning class after animation completes
-			setTimeout(() => {
-				icon.classList.remove('animate-spin');
-			}, 1000);
-		}
+		isReconciling = true;
 
-		// Show immediate notification that reconciliation is starting
+		// Capture current state to detect changes
+		const previousReleaseTags = new Set(
+			rollout.status?.availableReleases?.map((r) => r.tag) ?? []
+		);
+
+		// Show persistent toast with spinner while checking
 		showToast = true;
-		toastMessage = 'Starting reconciliation of Flux resources...';
+		toastLoading = true;
+		toastMessage = 'Checking for new versions...';
 		toastType = 'success';
 
 		try {
@@ -930,28 +930,75 @@
 			);
 
 			if (!response.ok) {
-				throw new Error('Failed to reconcile Flux resources');
+				throw new Error('Failed to check for new versions');
 			}
 
-			// Show success toast
+			const reconcileData = await response.json();
+			const previousScanTime = reconcileData.previousScanTime;
+
+			// Poll until scan completes (scanTime changes) or we find new versions
+			const maxAttempts = 15;
+			const pollInterval = 1000; // 1 second
+			let newVersionCount = 0;
+			let scanCompleted = false;
+
+			for (let attempt = 0; attempt < maxAttempts; attempt++) {
+				await new Promise((resolve) => setTimeout(resolve, pollInterval));
+				await rolloutQuery.refetch();
+
+				// Check if scan completed by comparing scanTime
+				const currentScanTime = rolloutQuery.data?.imageRepoScanTime;
+				if (previousScanTime && currentScanTime && currentScanTime !== previousScanTime) {
+					scanCompleted = true;
+				}
+
+				const currentReleases = rolloutQuery.data?.rollout?.status?.availableReleases ?? [];
+				const currentTags = new Set(currentReleases.map((r: { tag: string }) => r.tag));
+
+				// Check if we have new versions
+				const newTags = [...currentTags].filter((tag) => !previousReleaseTags.has(tag));
+				if (newTags.length > 0) {
+					newVersionCount = newTags.length;
+					break;
+				}
+
+				// If scan completed and no new versions, we can stop
+				if (scanCompleted) {
+					break;
+				}
+			}
+
+			// Show result
+			toastLoading = false;
 			showToast = true;
-			toastMessage = 'Successfully triggered reconciliation of all associated Flux resources';
-			toastType = 'success';
+			if (newVersionCount > 0) {
+				toastMessage =
+					newVersionCount === 1
+						? '1 new version found!'
+						: `${newVersionCount} new versions found!`;
+				toastType = 'success';
+			} else {
+				toastMessage = 'No new versions available';
+				toastType = 'info';
+			}
 
 			// Auto-dismiss toast after 3 seconds
 			setTimeout(() => {
 				showToast = false;
 			}, 3000);
 		} catch (e) {
-			console.error('Failed to reconcile Flux resources:', e);
+			console.error('Failed to check for new versions:', e);
+			toastLoading = false;
 			showToast = true;
-			toastMessage = e instanceof Error ? e.message : 'Failed to reconcile Flux resources';
+			toastMessage = e instanceof Error ? e.message : 'Failed to check for new versions';
 			toastType = 'error';
 
 			// Auto-dismiss toast after 3 seconds
 			setTimeout(() => {
 				showToast = false;
 			}, 3000);
+		} finally {
+			isReconciling = false;
 		}
 	}
 
@@ -2355,9 +2402,28 @@
 									<CodeOutline class="h-5 w-5" />
 									Available Version Upgrades
 								</h4>
-								{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-									<Badge color="blue" size="small">{rollout.status.releaseCandidates.length}</Badge>
-								{/if}
+								<div class="flex items-center gap-2">
+									{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+										<Badge color="blue" size="small">{rollout.status.releaseCandidates.length}</Badge>
+									{/if}
+									<Button
+										id="refresh-versions-btn"
+										size="xs"
+										color="light"
+										onclick={reconcileFluxResources}
+										disabled={isReconciling}
+										class="!p-1.5"
+									>
+										{#if isReconciling}
+											<Spinner size="4" />
+										{:else}
+											<RefreshOutline class="h-4 w-4" />
+										{/if}
+									</Button>
+									<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
+										Refresh available versions
+									</Tooltip>
+								</div>
 							</div>
 							{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 								<Alert color="yellow" class="mb-4">
@@ -3035,20 +3101,19 @@
 	class="fixed right-4 top-24 z-50 rounded-lg"
 	align={false}
 	bind:toastStatus={showToast}
+	color={toastLoading ? 'blue' : toastType === 'success' ? 'green' : toastType === 'info' ? 'gray' : 'red'}
+	classes={{ icon: toastLoading ? '!bg-transparent' : '' }}
 >
 	{#snippet icon()}
-		<div
-			class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {toastType ===
-			'success'
-				? 'bg-green-100 text-green-500 dark:bg-green-800 dark:text-green-200'
-				: 'bg-red-100 text-red-500 dark:bg-red-800 dark:text-red-200'}"
-		>
-			{#if toastType === 'success'}
-				<CheckCircleSolid class="h-5 w-5" />
-			{:else}
-				<ExclamationCircleSolid class="h-5 w-5" />
-			{/if}
-		</div>
+		{#if toastLoading}
+			<Spinner size="5" color="blue" />
+		{:else if toastType === 'success'}
+			<CheckCircleSolid class="h-5 w-5" />
+		{:else if toastType === 'info'}
+			<CheckCircleSolid class="h-5 w-5" />
+		{:else}
+			<ExclamationCircleSolid class="h-5 w-5" />
+		{/if}
 	{/snippet}
 	{toastMessage}
 </Toast>

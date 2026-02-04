@@ -891,35 +891,79 @@ func (c *Client) ReconcileOCIRepository(ctx context.Context, namespace, name str
 	return nil
 }
 
+// ReconcileImageRepository adds the reconcile annotation to trigger a reconciliation
+func (c *Client) ReconcileImageRepository(ctx context.Context, namespace, name string) error {
+	imageRepository := &imagereflectorv1beta2.ImageRepository{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imageRepository); err != nil {
+		return fmt.Errorf("failed to get image repository: %w", err)
+	}
+
+	// Add the reconcile annotation with current timestamp
+	if imageRepository.Annotations == nil {
+		imageRepository.Annotations = make(map[string]string)
+	}
+	imageRepository.Annotations["reconcile.fluxcd.io/requestedAt"] = fmt.Sprintf("%d", time.Now().Unix())
+
+	if err := c.client.Update(ctx, imageRepository); err != nil {
+		return fmt.Errorf("failed to update image repository: %w", err)
+	}
+
+	return nil
+}
+
 // ReconcileAllFluxResources reconciles all associated Flux resources for a rollout
-func (c *Client) ReconcileAllFluxResources(ctx context.Context, namespace, rolloutName string) error {
+// Returns the previous scanTime of the ImageRepository (if found) so the caller can detect completion
+func (c *Client) ReconcileAllFluxResources(ctx context.Context, namespace, rolloutName string) (previousScanTime string, err error) {
+	// Get the rollout to find its ImagePolicy reference
+	rollout, err := c.GetRollout(ctx, namespace, rolloutName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get rollout: %w", err)
+	}
+
+	// Reconcile the ImageRepository referenced by the rollout's ImagePolicy
+	if rollout.Spec.ReleasesImagePolicy.Name != "" {
+		imagePolicy, err := c.GetImagePolicy(ctx, namespace, rollout.Spec.ReleasesImagePolicy.Name)
+		if err == nil && imagePolicy.Spec.ImageRepositoryRef.Name != "" {
+			// Get the ImageRepository to capture the previous scan time
+			imageRepo, err := c.GetImageRepository(ctx, namespace, imagePolicy.Spec.ImageRepositoryRef.Name)
+			if err == nil && imageRepo.Status.LastScanResult != nil {
+				previousScanTime = imageRepo.Status.LastScanResult.ScanTime.Format(time.RFC3339)
+			}
+			// Reconcile the ImageRepository
+			if err := c.ReconcileImageRepository(ctx, namespace, imagePolicy.Spec.ImageRepositoryRef.Name); err != nil {
+				// Log but don't fail - other resources can still be reconciled
+				fmt.Printf("Warning: failed to reconcile image repository %s: %v\n", imagePolicy.Spec.ImageRepositoryRef.Name, err)
+			}
+		}
+	}
+
 	// Get associated Kustomizations
 	kustomizations, err := c.GetKustomizationsByRolloutAnnotation(ctx, namespace, rolloutName)
 	if err != nil {
-		return fmt.Errorf("failed to get kustomizations: %w", err)
+		return previousScanTime, fmt.Errorf("failed to get kustomizations: %w", err)
 	}
 
 	// Get associated OCIRepositories
 	ociRepositories, err := c.GetOCIRepositoriesByRolloutAnnotation(ctx, namespace, rolloutName)
 	if err != nil {
-		return fmt.Errorf("failed to get OCI repositories: %w", err)
+		return previousScanTime, fmt.Errorf("failed to get OCI repositories: %w", err)
 	}
 
 	// Reconcile all Kustomizations
 	for _, kustomization := range kustomizations.Items {
 		if err := c.ReconcileKustomization(ctx, kustomization.Namespace, kustomization.Name); err != nil {
-			return fmt.Errorf("failed to reconcile kustomization %s: %w", kustomization.Name, err)
+			return previousScanTime, fmt.Errorf("failed to reconcile kustomization %s: %w", kustomization.Name, err)
 		}
 	}
 
 	// Reconcile all OCIRepositories
 	for _, ociRepository := range ociRepositories.Items {
 		if err := c.ReconcileOCIRepository(ctx, ociRepository.Namespace, ociRepository.Name); err != nil {
-			return fmt.Errorf("failed to reconcile OCI repository %s: %w", ociRepository.Name, err)
+			return previousScanTime, fmt.Errorf("failed to reconcile OCI repository %s: %w", ociRepository.Name, err)
 		}
 	}
 
-	return nil
+	return previousScanTime, nil
 }
 
 // GetRolloutGatesByRolloutReference fetches RolloutGates that reference a specific rollout

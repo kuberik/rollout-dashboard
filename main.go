@@ -204,14 +204,27 @@ func main() {
 				rolloutTests = nil
 			}
 
+			// Get the ImageRepository's scanTime for the rollout's ImagePolicy
+			var imageRepoScanTime string
+			if rollout.Spec.ReleasesImagePolicy.Name != "" {
+				imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, rollout.Spec.ReleasesImagePolicy.Name)
+				if err == nil && imagePolicy.Spec.ImageRepositoryRef.Name != "" {
+					imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imagePolicy.Spec.ImageRepositoryRef.Name)
+					if err == nil && imageRepo.Status.LastScanResult != nil {
+						imageRepoScanTime = imageRepo.Status.LastScanResult.ScanTime.Format(time.RFC3339)
+					}
+				}
+			}
+
 			c.JSON(http.StatusOK, gin.H{
-				"rollout":         rollout,
-				"kustomizations":  kustomizations,
-				"ociRepositories": ociRepositories,
-				"rolloutGates":    rolloutGates,
-				"environment":     environment,
-				"kruiseRollout":   kruiseRollout,
-				"rolloutTests":    rolloutTests,
+				"rollout":           rollout,
+				"kustomizations":    kustomizations,
+				"ociRepositories":   ociRepositories,
+				"rolloutGates":      rolloutGates,
+				"environment":       environment,
+				"kruiseRollout":     kruiseRollout,
+				"rolloutTests":      rolloutTests,
+				"imageRepoScanTime": imageRepoScanTime,
 			})
 		})
 
@@ -527,7 +540,7 @@ func main() {
 			name := c.Param("name")
 
 			// Reconcile all associated Flux resources
-			err := k8sClient.ReconcileAllFluxResources(context.Background(), namespace, name)
+			previousScanTime, err := k8sClient.ReconcileAllFluxResources(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error reconciling Flux resources: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{
@@ -538,7 +551,8 @@ func main() {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"message": "Successfully triggered reconciliation of all associated Flux resources",
+				"message":          "Successfully triggered reconciliation of all associated Flux resources",
+				"previousScanTime": previousScanTime,
 			})
 		})
 
