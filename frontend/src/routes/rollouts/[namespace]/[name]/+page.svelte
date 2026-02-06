@@ -908,9 +908,7 @@
 		isReconciling = true;
 
 		// Capture current state to detect changes
-		const previousReleaseTags = new Set(
-			rollout.status?.availableReleases?.map((r) => r.tag) ?? []
-		);
+		const previousReleaseTags = new Set(rollout.status?.availableReleases?.map((r) => r.tag) ?? []);
 
 		// Show persistent toast with spinner while checking
 		showToast = true;
@@ -973,9 +971,7 @@
 			showToast = true;
 			if (newVersionCount > 0) {
 				toastMessage =
-					newVersionCount === 1
-						? '1 new version found!'
-						: `${newVersionCount} new versions found!`;
+					newVersionCount === 1 ? '1 new version found!' : `${newVersionCount} new versions found!`;
 				toastType = 'success';
 			} else {
 				toastMessage = 'No new versions available';
@@ -1159,7 +1155,7 @@
 									>Deployment Failed</span
 								>
 							</div>
-							<p class="mb-3 mt-2 text-sm">
+							<p class="mt-2 mb-3 text-sm">
 								The latest deployment has failed
 								{#if failedHealthChecks.length > 0}
 									with {failedHealthChecks.length} failed health check{failedHealthChecks.length > 1
@@ -1304,15 +1300,17 @@
 						)}
 						<Card class="mb-4 w-full max-w-none p-4 sm:p-6">
 							<div class="flex flex-col gap-2">
-								<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-									<div class="flex-1 min-w-0">
+								<div
+									class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+								>
+									<div class="min-w-0 flex-1">
 										{#if rollout.status?.title}
-											<h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
+											<h2 class="text-base font-semibold text-gray-900 sm:text-lg dark:text-white">
 												{rollout.status.title}
 											</h2>
 										{/if}
 										{#if rollout.status?.description}
-											<p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+											<p class="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
 												{rollout.status.description}
 											</p>
 										{/if}
@@ -1323,9 +1321,11 @@
 														href={url}
 														target="_blank"
 														rel="noopener noreferrer"
-														class="inline-flex items-center gap-1 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 break-all"
+														class="inline-flex items-center gap-1 text-xs font-medium break-all text-blue-600 hover:text-blue-800 sm:text-sm dark:text-blue-400 dark:hover:text-blue-300"
 													>
-														<ArrowUpRightFromSquareOutline class="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+														<ArrowUpRightFromSquareOutline
+															class="h-3 w-3 flex-shrink-0 sm:h-4 sm:w-4"
+														/>
 														<span class="truncate">{url}</span>
 													</a>
 												{/each}
@@ -1383,7 +1383,7 @@
 
 										<!-- Version Info -->
 										<div class="min-w-0 flex-1">
-											<h4 class="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
+											<h4 class="text-xl font-bold text-gray-900 sm:text-2xl dark:text-white">
 												{getDisplayVersion(latestEntry.version)}
 											</h4>
 											<div class="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -1393,7 +1393,8 @@
 													</Badge>
 												{/if}
 												{#if isCurrentVersionCustom}
-													<Badge color="yellow" size="small" class="whitespace-nowrap">Custom</Badge>
+													<Badge color="yellow" size="small" class="whitespace-nowrap">Custom</Badge
+													>
 												{/if}
 												<Badge
 													color={latestEntry.bakeStatus === 'Succeeded'
@@ -1469,7 +1470,7 @@
 											{/if}
 											{#if latestEntry.message}
 												<Blockquote
-													class="mt-2 break-words text-sm text-gray-600 dark:text-gray-400"
+													class="mt-2 text-sm break-words text-gray-600 dark:text-gray-400"
 												>
 													"{latestEntry.message}"
 												</Blockquote>
@@ -1500,6 +1501,15 @@
 												return null;
 											})
 											.filter((r): r is NonNullable<typeof r> => r !== null)}
+										{@const allRolloutTests = Object.values(managedResources)
+											.flat()
+											.filter(
+												(resource) =>
+													resource.groupVersionKind === 'rollout.kuberik.com/v1alpha1/RolloutTest'
+											)}
+										{@const validRolloutTests = allRolloutTests
+											.map((resource) => resource.object as RolloutTest)
+											.filter((test) => test.spec?.rolloutName)}
 										{#if validRollouts.length > 0}
 											{@const allRolloutsCompleted = validRollouts.every((r) => r.isCompleted)}
 											{@const anyRolloutPaused = validRollouts.some(
@@ -1548,12 +1558,12 @@
 												{/snippet}
 												<div class="mt-2 space-y-3">
 													{#each validRollouts as rollout}
-														{@const allRolloutTests = rolloutQuery.data?.rolloutTests?.items || []}
 														{@const kruiseRolloutName = rollout.kruiseRollout?.metadata?.name}
-														{@const rolloutTests = allRolloutTests.filter(
+														{@const rolloutTests = validRolloutTests.filter(
 															(test: RolloutTest) =>
 																kruiseRolloutName && test.spec?.rolloutName === kruiseRolloutName
 														)}
+														<!-- DEBUG: kruiseRolloutName={kruiseRolloutName}, allTests={allRolloutTests.length}, filteredTests={rolloutTests.length}, testRolloutNames={JSON.stringify(allRolloutTests.map(t => t.spec?.rolloutName))} -->
 														{@const kruiseRolloutFromApi = rollout.kruiseRollout}
 														{@const currentStepIndex = rollout.rolloutData.currentStepIndex}
 														{@const isRolloutCompleted = rollout.isCompleted}
@@ -1759,7 +1769,7 @@
 																				<div class="space-y-2">
 																					{#if sortedStepIndices.length > 1 || isRolloutCompleted}
 																						<div
-																							class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500"
+																							class="text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-500"
 																						>
 																							Step {stepIndex}
 																						</div>
@@ -2164,49 +2174,54 @@
 							<Card class="w-full max-w-none p-4 sm:p-6">
 								<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 									<h4
-										class="flex items-center gap-2 text-base font-medium text-gray-900 dark:text-white sm:text-lg"
+										class="flex items-center gap-2 text-base font-medium text-gray-900 sm:text-lg dark:text-white"
 									>
-										<HeartSolid class="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+										<HeartSolid class="h-4 w-4 flex-shrink-0 sm:h-5 sm:w-5" />
 										<span>Health Checks</span>
 									</h4>
 									<Badge color="blue" size="small" class="whitespace-nowrap">
-										{healthChecks.filter((hc) => hc.status?.status === 'Healthy').length} / {healthChecks.length} healthy
+										{healthChecks.filter((hc) => hc.status?.status === 'Healthy').length} / {healthChecks.length}
+										healthy
 									</Badge>
 								</div>
 								{#if healthChecks.filter((hc) => hc.status?.status !== 'Healthy').length > 0}
 									<div class="space-y-0">
 										{#each healthChecks.filter((hc) => hc.status?.status !== 'Healthy') as healthCheck (healthCheck.metadata?.name + '/' + healthCheck.metadata?.namespace)}
 											<div
-												class="border-b border-gray-200 py-3 last:border-b-0 dark:border-gray-700 sm:py-4"
+												class="border-b border-gray-200 py-3 last:border-b-0 sm:py-4 dark:border-gray-700"
 											>
-												<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+												<div
+													class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+												>
 													<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-														<div class="flex h-6 w-6 flex-shrink-0 items-center justify-center sm:h-8 sm:w-8">
+														<div
+															class="flex h-6 w-6 flex-shrink-0 items-center justify-center sm:h-8 sm:w-8"
+														>
 															{#if healthCheck.status?.status === 'Healthy'}
 																<CheckCircleSolid
-																	class="h-4 w-4 text-green-600 dark:text-green-400 sm:h-5 sm:w-5"
+																	class="h-4 w-4 text-green-600 sm:h-5 sm:w-5 dark:text-green-400"
 																/>
 															{:else if healthCheck.status?.status === 'Unhealthy'}
 																<ExclamationCircleSolid
-																	class="h-4 w-4 text-red-600 dark:text-red-400 sm:h-5 sm:w-5"
+																	class="h-4 w-4 text-red-600 sm:h-5 sm:w-5 dark:text-red-400"
 																/>
 															{:else if healthCheck.status?.status === 'Pending'}
 																<Spinner size="5" color="yellow" />
 															{:else}
 																<ExclamationCircleSolid
-																	class="h-4 w-4 text-gray-500 dark:text-gray-400 sm:h-5 sm:w-5"
+																	class="h-4 w-4 text-gray-500 sm:h-5 sm:w-5 dark:text-gray-400"
 																/>
 															{/if}
 														</div>
 														<div class="min-w-0 flex-1">
 															<h3
-																class="truncate text-xs font-medium text-gray-900 dark:text-white sm:text-sm"
+																class="truncate text-xs font-medium text-gray-900 sm:text-sm dark:text-white"
 															>
 																{healthCheck.metadata?.annotations?.['kuberik.com/display-name'] ||
 																	healthCheck.metadata?.name}
 															</h3>
 															{#if healthCheck.spec?.class}
-																<p class="text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
+																<p class="text-[10px] text-gray-500 sm:text-xs dark:text-gray-400">
 																	{healthCheck.spec.class.charAt(0).toUpperCase() +
 																		healthCheck.spec.class.slice(1)}
 																</p>
@@ -2215,7 +2230,7 @@
 													</div>
 													<div class="ml-8 flex flex-wrap items-center gap-1.5 sm:ml-0 sm:gap-2">
 														{#if healthCheck.status?.lastChangeTime}
-															<div class="text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
+															<div class="text-[10px] text-gray-500 sm:text-xs dark:text-gray-400">
 																{formatTimeAgo(healthCheck.status.lastChangeTime, $now)}
 															</div>
 														{/if}
@@ -2226,7 +2241,7 @@
 																	? 'red'
 																	: 'yellow'}
 															size="small"
-															class="whitespace-nowrap text-[10px] sm:text-xs"
+															class="text-[10px] whitespace-nowrap sm:text-xs"
 														>
 															{healthCheck.status?.status || 'Unknown'}
 														</Badge>
@@ -2234,16 +2249,16 @@
 												</div>
 
 												{#if healthCheck.status?.message}
-													<div class="ml-8 mt-1.5 sm:ml-11 sm:mt-2">
-														<p class="mb-1 text-[10px] text-gray-600 dark:text-gray-400 sm:text-xs">
+													<div class="mt-1.5 ml-8 sm:mt-2 sm:ml-11">
+														<p class="mb-1 text-[10px] text-gray-600 sm:text-xs dark:text-gray-400">
 															{healthCheck.status.message}
 														</p>
 													</div>
 												{/if}
 												{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
-													<div class="ml-8 mt-1 sm:ml-11">
+													<div class="mt-1 ml-8 sm:ml-11">
 														<div
-															class="flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400 sm:text-xs"
+															class="flex items-center gap-1 text-[10px] text-red-600 sm:text-xs dark:text-red-400"
 														>
 															<ExclamationCircleSolid class="h-3 w-3" />
 															<span
@@ -2275,9 +2290,9 @@
 							<Card class="w-full max-w-none p-4 sm:p-6">
 								<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 									<h4
-										class="flex items-center gap-2 text-base font-medium text-gray-900 dark:text-white sm:text-lg"
+										class="flex items-center gap-2 text-base font-medium text-gray-900 sm:text-lg dark:text-white"
 									>
-										<CubesStackedSolid class="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+										<CubesStackedSolid class="h-4 w-4 flex-shrink-0 sm:h-5 sm:w-5" />
 										<span class="sm:hidden">Resources</span>
 										<span class="hidden sm:inline">Kubernetes Resources Status</span>
 									</h4>
@@ -2405,7 +2420,9 @@
 								</h4>
 								<div class="flex items-center gap-2">
 									{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-										<Badge color="blue" size="small">{rollout.status.releaseCandidates.length}</Badge>
+										<Badge color="blue" size="small"
+											>{rollout.status.releaseCandidates.length}</Badge
+										>
 									{/if}
 									<Button
 										id="refresh-versions-btn"
@@ -2503,42 +2520,42 @@
 													{#if blockingGates.length === 0}
 														<Badge color="green" size="small">Ready</Badge>
 													{:else}
-															<Badge color="yellow" size="small" class="cursor-help">
-																Blocked
-																<QuestionCircleOutline class="ml-1 h-3 w-3" />
-															</Badge>
-															<Popover class="max-w-sm" title="Blocked by Gates">
-																<div class="p-3">
-																	<div class="space-y-2">
-																		{#each blockingGates as gate}
-																			<div class="flex items-start gap-2">
-																				<ExclamationCircleSolid
-																					class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
-																				/>
-																				<div class="min-w-0 flex-1">
-																					<p
-																						class="text-sm font-medium text-gray-900 dark:text-white"
-																					>
-																						{getGatePrettyName(gate) ||
-																							gate.metadata?.name ||
-																							'Unknown Gate'}
+														<Badge color="yellow" size="small" class="cursor-help">
+															Blocked
+															<QuestionCircleOutline class="ml-1 h-3 w-3" />
+														</Badge>
+														<Popover class="max-w-sm" title="Blocked by Gates">
+															<div class="p-3">
+																<div class="space-y-2">
+																	{#each blockingGates as gate}
+																		<div class="flex items-start gap-2">
+																			<ExclamationCircleSolid
+																				class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
+																			/>
+																			<div class="min-w-0 flex-1">
+																				<p
+																					class="text-sm font-medium text-gray-900 dark:text-white"
+																				>
+																					{getGatePrettyName(gate) ||
+																						gate.metadata?.name ||
+																						'Unknown Gate'}
+																				</p>
+																				{#if getGateDescription(gate)}
+																					<p class="text-xs text-gray-600 dark:text-gray-400">
+																						{getGateDescription(gate)}
 																					</p>
-																					{#if getGateDescription(gate)}
-																						<p class="text-xs text-gray-600 dark:text-gray-400">
-																							{getGateDescription(gate)}
-																						</p>
-																					{/if}
-																					{#if gate.status?.status}
-																						<p class="text-xs text-yellow-600 dark:text-yellow-400">
-																							Status: {gate.status.status}
-																						</p>
-																					{/if}
-																				</div>
+																				{/if}
+																				{#if gate.status?.status}
+																					<p class="text-xs text-yellow-600 dark:text-yellow-400">
+																						Status: {gate.status.status}
+																					</p>
+																				{/if}
 																			</div>
-																		{/each}
-																	</div>
+																		</div>
+																	{/each}
 																</div>
-															</Popover>
+															</div>
+														</Popover>
 													{/if}
 
 													{#if canModify}
@@ -2589,7 +2606,7 @@
 										<InfoCircleSolid class="h-5 w-5" />
 										<span class="text-lg font-medium">Current version is custom</span>
 									</div>
-									<p class="mb-4 mt-2 text-sm">
+									<p class="mt-2 mb-4 text-sm">
 										The currently deployed version is not in the available releases list. This means
 										it's a custom version that was manually deployed. To change to a different
 										version, you need to manually deploy another version.
@@ -2645,12 +2662,14 @@
 				type="text"
 				placeholder="Search versions..."
 				bind:value={searchQuery}
-				class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
+				class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
 			/>
 		</div>
 
 		<!-- Toggle for all versions -->
-		<div class="mb-4 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-800">
+		<div
+			class="mb-4 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-800"
+		>
 			<span class="text-sm text-gray-700 dark:text-gray-300">Show all repository versions</span>
 			<Toggle
 				bind:checked={showAllTags}
@@ -2665,26 +2684,47 @@
 		</div>
 
 		<!-- Version list -->
-		<div class="mb-4 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+		<div
+			class="mb-4 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700"
+		>
 			{#if showAllTags ? filteredVersionsForDisplay.length > 0 : rollout?.status?.availableReleases}
 				{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
 					{@const versionTag = typeof version === 'string' ? version : version.tag}
-					{@const availableRelease = rollout?.status?.availableReleases?.find((ar) => ar.tag === versionTag)}
-					{@const displayVersion = availableRelease ? getDisplayVersion(availableRelease) : getDisplayVersion({ version: annotations[versionTag]?.['org.opencontainers.image.version'], tag: versionTag })}
-					{@const created = availableRelease?.created || annotations[versionTag]?.['org.opencontainers.image.created']}
+					{@const availableRelease = rollout?.status?.availableReleases?.find(
+						(ar) => ar.tag === versionTag
+					)}
+					{@const displayVersion = availableRelease
+						? getDisplayVersion(availableRelease)
+						: getDisplayVersion({
+								version: annotations[versionTag]?.['org.opencontainers.image.version'],
+								tag: versionTag
+							})}
+					{@const created =
+						availableRelease?.created ||
+						annotations[versionTag]?.['org.opencontainers.image.created']}
 					{@const isCurrentlyDeployed = rollout?.status?.history?.[0]?.version.tag === versionTag}
 					{@const isCurrentlyPinned = rollout?.spec?.wantedVersion === versionTag}
-					{@const isCustom = showAllTags && !rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(versionTag)}
+					{@const isCustom =
+						showAllTags &&
+						!rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(versionTag)}
 					{@const isSelected = selectedVersion === versionTag}
 					{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
 						{#await loadAnnotationsOnDemand(versionTag)}{/await}
 						<button
 							type="button"
-							class="flex w-full items-center gap-4 border-b border-gray-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 {isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : ''}"
-							onclick={() => { selectedVersion = versionTag; }}
+							class="flex w-full items-center gap-4 border-b border-gray-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 {isSelected
+								? 'bg-blue-50 dark:bg-blue-900/30'
+								: ''}"
+							onclick={() => {
+								selectedVersion = versionTag;
+							}}
 						>
 							<!-- Selection indicator -->
-							<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 {isSelected ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600'}">
+							<div
+								class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 {isSelected
+									? 'border-blue-500 bg-blue-500'
+									: 'border-gray-300 dark:border-gray-600'}"
+							>
 								{#if isSelected}
 									<CheckOutline class="h-3 w-3 text-white" />
 								{/if}
@@ -2695,13 +2735,22 @@
 								<div class="flex items-center gap-2">
 									<span class="font-medium text-gray-900 dark:text-white">{displayVersion}</span>
 									{#if isCurrentlyDeployed}
-										<span class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/50 dark:text-green-400">Current</span>
+										<span
+											class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/50 dark:text-green-400"
+											>Current</span
+										>
 									{/if}
 									{#if isCurrentlyPinned}
-										<span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/50 dark:text-blue-400">Pinned</span>
+										<span
+											class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/50 dark:text-blue-400"
+											>Pinned</span
+										>
 									{/if}
 									{#if isCustom}
-										<span class="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400">Custom</span>
+										<span
+											class="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400"
+											>Custom</span
+										>
 									{/if}
 								</div>
 								{#if created}
@@ -2712,7 +2761,10 @@
 							</div>
 
 							<!-- Actions -->
-							<div class="flex flex-shrink-0 items-center gap-1" onclick={(e) => e.stopPropagation()}>
+							<div
+								class="flex flex-shrink-0 items-center gap-1"
+								onclick={(e) => e.stopPropagation()}
+							>
 								{#if rollout?.status?.source}
 									<GitHubViewButton
 										sourceUrl={rollout.status.source}
@@ -2828,7 +2880,7 @@
 				id="mark-successful-message"
 				bind:value={markSuccessfulMessage}
 				placeholder="Provide additional details about why you're marking this deployment as successful..."
-				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
 				rows="3"
 			></textarea>
 		</div>
@@ -2929,10 +2981,16 @@
 	transition={fly}
 	position="top-right"
 	params={{ x: 200 }}
-	class="fixed right-4 top-24 z-50 rounded-lg"
+	class="fixed top-24 right-4 z-50 rounded-lg"
 	align={false}
 	bind:toastStatus={showToast}
-	color={toastLoading ? 'blue' : toastType === 'success' ? 'green' : toastType === 'info' ? 'gray' : 'red'}
+	color={toastLoading
+		? 'blue'
+		: toastType === 'success'
+			? 'green'
+			: toastType === 'info'
+				? 'gray'
+				: 'red'}
 	classes={{ icon: toastLoading ? '!bg-transparent' : '' }}
 >
 	{#snippet icon()}
