@@ -1549,9 +1549,10 @@
 												<div class="mt-2 space-y-3">
 													{#each validRollouts as rollout}
 														{@const allRolloutTests = rolloutQuery.data?.rolloutTests?.items || []}
+														{@const kruiseRolloutName = rollout.kruiseRollout?.metadata?.name}
 														{@const rolloutTests = allRolloutTests.filter(
 															(test: RolloutTest) =>
-																test.spec?.rolloutName === rollout.rolloutResource.name
+																kruiseRolloutName && test.spec?.rolloutName === kruiseRolloutName
 														)}
 														{@const kruiseRolloutFromApi = rollout.kruiseRollout}
 														{@const currentStepIndex = rollout.rolloutData.currentStepIndex}
