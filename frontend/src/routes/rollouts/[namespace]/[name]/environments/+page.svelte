@@ -67,11 +67,8 @@
 		return statuses;
 	});
 
-	// Get current environment from namespace (e.g., hello-world-dev -> dev)
-	const currentEnvironment = $derived.by(() => {
-		const parts = namespace.split('-');
-		return parts[parts.length - 1] || namespace;
-	});
+	// Get current environment from the Environment resource's spec
+	const currentEnvironment = $derived(environment?.spec?.environment ?? '');
 
 	// Get available versions from rollout (for version index calculation)
 	const availableVersions = $derived.by(() => {
