@@ -433,9 +433,11 @@
 			return null;
 		}
 
-		// Get current environment from namespace
-		const parts = namespace.split('-');
-		const currentEnv = parts[parts.length - 1] || namespace;
+		// Get current environment from the Environment resource's spec
+		const currentEnv = environment?.spec?.environment;
+		if (!currentEnv) {
+			return null;
+		}
 
 		// Find current environment info
 		const currentEnvInfo = environment.status.environmentInfos.find(
@@ -1291,13 +1293,12 @@
 
 					{#if rollout.status?.title || rollout.status?.description || rolloutQuery.data?.environment || gatewayIngressURLs.length > 0}
 						{@const environment = rolloutQuery.data?.environment}
-						{@const currentEnvInfo = environment?.status?.environmentInfos?.find(
-							(e: EnvironmentInfo) => {
-								const parts = namespace.split('-');
-								const currentEnv = parts[parts.length - 1] || namespace;
-								return e.environment === currentEnv;
-							}
-						)}
+						{@const currentEnv = environment?.spec?.environment}
+						{@const currentEnvInfo = currentEnv
+							? environment?.status?.environmentInfos?.find(
+									(e: EnvironmentInfo) => e.environment === currentEnv
+								)
+							: undefined}
 						<Card class="mb-4 w-full max-w-none p-4 sm:p-6">
 							<div class="flex flex-col gap-2">
 								<div
@@ -1563,7 +1564,6 @@
 															(test: RolloutTest) =>
 																kruiseRolloutName && test.spec?.rolloutName === kruiseRolloutName
 														)}
-														<!-- DEBUG: kruiseRolloutName={kruiseRolloutName}, allTests={allRolloutTests.length}, filteredTests={rolloutTests.length}, testRolloutNames={JSON.stringify(allRolloutTests.map(t => t.spec?.rolloutName))} -->
 														{@const kruiseRolloutFromApi = rollout.kruiseRollout}
 														{@const currentStepIndex = rollout.rolloutData.currentStepIndex}
 														{@const isRolloutCompleted = rollout.isCompleted}
