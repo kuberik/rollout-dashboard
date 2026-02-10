@@ -271,6 +271,72 @@ func (c *Client) ContinueKruiseRollout(ctx context.Context, namespace, name stri
 	return updatedRollout, nil
 }
 
+// ResetBakeStatusToDeploying resets the rollout's bake status to "Deploying"
+// This should be called when continuing a rollout to indicate a new deployment phase
+func (c *Client) ResetBakeStatusToDeploying(ctx context.Context, namespace, name string) (*rolloutv1alpha1.Rollout, error) {
+	// Get the current rollout
+	rollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
+		return nil, fmt.Errorf("failed to get rollout: %w", err)
+	}
+
+	// Check if there's a history entry to modify
+	if len(rollout.Status.History) == 0 {
+		return nil, fmt.Errorf("no deployment history found")
+	}
+
+	// Update the latest history entry to reset bake status
+	latestEntry := &rollout.Status.History[0]
+	latestEntry.BakeStatus = k8sptr.To(rolloutv1alpha1.BakeStatusDeploying)
+	latestEntry.BakeStatusMessage = nil
+	latestEntry.BakeEndTime = nil
+
+	// Update the rollout status
+	if err := c.client.Status().Update(ctx, rollout); err != nil {
+		return nil, fmt.Errorf("failed to update rollout status: %w", err)
+	}
+
+	return rollout, nil
+}
+
+// ResetHealthChecksToPending resets all health checks matching the rollout's selector to "Pending"
+// This should be called when continuing a rollout to reset health monitoring
+func (c *Client) ResetHealthChecksToPending(ctx context.Context, namespace, name string) error {
+	// Get the rollout to access its health check selector
+	rollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
+		return fmt.Errorf("failed to get rollout: %w", err)
+	}
+
+	// If there's no health check selector, nothing to reset
+	if rollout.Spec.HealthCheckSelector == nil {
+		return nil
+	}
+
+	// Get all matching health checks
+	healthChecks, err := c.GetHealthChecksBySelector(ctx, namespace, rollout.Spec.HealthCheckSelector)
+	if err != nil {
+		return fmt.Errorf("failed to get health checks: %w", err)
+	}
+
+	// Reset each health check to Pending
+	now := metav1.Now()
+	for i := range healthChecks {
+		hc := &healthChecks[i]
+		hc.Status.Status = rolloutv1alpha1.HealthStatusPending
+		resetMessage := "Health check reset due to rollout continuation"
+		hc.Status.Message = &resetMessage
+		hc.Status.LastChangeTime = &now
+		hc.Status.LastErrorTime = nil
+
+		if err := c.client.Status().Update(ctx, hc); err != nil {
+			return fmt.Errorf("failed to reset health check %s/%s: %w", hc.Namespace, hc.Name, err)
+		}
+	}
+
+	return nil
+}
+
 // AddBypassGatesAnnotation adds the rollout.kuberik.com/bypass-gates annotation to a rollout
 // This allows the rollout to bypass gate checks for a specific version
 func (c *Client) AddBypassGatesAnnotation(ctx context.Context, namespace, name string, version string) (*rolloutv1alpha1.Rollout, error) {

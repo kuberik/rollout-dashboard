@@ -564,10 +564,46 @@ func main() {
 			}
 
 			namespace := c.Param("namespace")
-			name := c.Param("name")
+			kruiseRolloutName := c.Param("name")
+
+			// Parse request body to get Kuberik rollout name
+			var req struct {
+				KuberikRolloutName string `json:"kuberikRolloutName"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				log.Printf("Error parsing continue request body: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "Invalid request body",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Reset bake status to Deploying on the Kuberik rollout
+			if req.KuberikRolloutName != "" {
+				_, err := k8sClient.ResetBakeStatusToDeploying(context.Background(), namespace, req.KuberikRolloutName)
+				if err != nil {
+					log.Printf("Error resetting bake status: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error":   "Failed to reset bake status",
+						"details": err.Error(),
+					})
+					return
+				}
+
+				// Reset health checks to Pending
+				if err := k8sClient.ResetHealthChecksToPending(context.Background(), namespace, req.KuberikRolloutName); err != nil {
+					log.Printf("Error resetting health checks: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error":   "Failed to reset health checks",
+						"details": err.Error(),
+					})
+					return
+				}
+			}
 
 			// Continue the OpenKruise rollout
-			updatedRollout, err := k8sClient.ContinueKruiseRollout(context.Background(), namespace, name)
+			updatedRollout, err := k8sClient.ContinueKruiseRollout(context.Background(), namespace, kruiseRolloutName)
 			if err != nil {
 				log.Printf("Error continuing kruise rollout: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{

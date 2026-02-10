@@ -8,7 +8,21 @@
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
 
+	// Support ?tab=tests or ?tab=pods query parameter
+	const tabFromUrl = $derived(page.url.searchParams.get('tab'));
+	const initialTab = $derived.by(() => {
+		if (tabFromUrl === 'tests') return 'tests';
+		return 'pods';
+	});
+
 	let activeTab = $state<'pods' | 'tests'>('pods');
+
+	// Set initial tab from URL on mount
+	$effect(() => {
+		if (tabFromUrl === 'tests' || tabFromUrl === 'pods') {
+			activeTab = tabFromUrl;
+		}
+	});
 </script>
 
 <svelte:head>

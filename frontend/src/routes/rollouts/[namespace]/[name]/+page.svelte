@@ -156,6 +156,25 @@
 			});
 	});
 
+	// Get the first stalled kruise rollout for retry functionality
+	const stalledKruiseRollout = $derived.by(() => {
+		for (const resources of Object.values(managedResources)) {
+			for (const resource of resources) {
+				if (resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout') {
+					const kruiseRollout = resource.object as KruiseRollout;
+					if (
+						kruiseRollout?.status?.conditions?.some(
+							(c) => c.type === 'Stalled' && c.status === 'True'
+						)
+					) {
+						return kruiseRollout;
+					}
+				}
+			}
+		}
+		return null;
+	});
+
 	// Map data from query response to state
 	$effect(() => {
 		if (rolloutQuery.data) {
@@ -1070,24 +1089,32 @@
 		return readyCondition?.lastTransitionTime;
 	}
 
-	async function continueRollout(rolloutName: string, namespace: string) {
+	async function continueRollout(
+		kruiseRolloutName: string,
+		kruiseRolloutNamespace: string,
+		kuberikRolloutName?: string
+	) {
 		try {
-			const response = await fetch(`/api/rollouts/${namespace}/${rolloutName}/continue`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					currentStepState: 'StepReady'
-				})
-			});
+			const response = await fetch(
+				`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						currentStepState: 'StepReady',
+						kuberikRolloutName: kuberikRolloutName || name
+					})
+				}
+			);
 
 			if (!response.ok) {
 				throw new Error('Failed to continue rollout');
 			}
 
 			showToast = true;
-			toastMessage = `Successfully continued rollout ${rolloutName}`;
+			toastMessage = `Successfully continued rollout ${kruiseRolloutName}`;
 			toastType = 'success';
 
 			// Auto-hide toast after 3 seconds
@@ -1163,6 +1190,8 @@
 									with {failedHealthChecks.length} failed health check{failedHealthChecks.length > 1
 										? 's'
 										: ''}.
+								{:else if stalledKruiseRollout}
+									because the rollout got stuck.
 								{/if}
 								Automated rollouts are paused until you manually mark this version as successful or change
 								to another version.
@@ -1182,6 +1211,34 @@
 								</div>
 							{/if}
 							<div class="flex flex-wrap gap-2">
+								{#if stalledKruiseRollout && canUpdate}
+									<Button
+										id="retry-rollout-btn"
+										size="xs"
+										color="blue"
+										onclick={() => {
+											if (stalledKruiseRollout?.metadata?.name && stalledKruiseRollout?.metadata?.namespace) {
+												continueRollout(
+													stalledKruiseRollout.metadata.name,
+													stalledKruiseRollout.metadata.namespace
+												);
+											}
+										}}
+									>
+										<PlaySolid class="me-2 h-4 w-4" />
+										Retry Rollout
+									</Button>
+									<Tooltip
+										triggeredBy="#retry-rollout-btn"
+										placement="bottom"
+										class="max-w-xs"
+										transition={blur}
+										transitionParams={{ duration: 300 }}
+									>
+										Retry the stalled rollout. This will reset the bake status and health checks,
+										then continue the OpenKruise rollout.
+									</Tooltip>
+								{/if}
 								{#if canUpdate}
 									<Button
 										id="mark-successful-btn"
@@ -1839,6 +1896,14 @@
 																										>
 																											{test.status.activePods} active
 																										</span>
+																									{/if}
+																									{#if phase === 'Failed'}
+																										<a
+																											href="/rollouts/{namespace}/{name}/logs?tab=tests"
+																											class="ml-auto text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+																										>
+																											View Logs
+																										</a>
 																									{/if}
 																								</div>
 																							{/if}
