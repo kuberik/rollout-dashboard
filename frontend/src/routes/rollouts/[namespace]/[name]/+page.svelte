@@ -84,7 +84,8 @@
 		hasFailedBakeStatus,
 		hasUnblockFailedAnnotation,
 		getDisplayVersion,
-		extractURLFromGatewayOrIngress
+		extractURLFromGatewayOrIngress,
+		parseLinkAnnotations
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
@@ -1836,6 +1837,7 @@
 																							{@const phase = test.status?.phase || 'Unknown'}
 																							{@const retryCount = test.status?.retryCount || 0}
 																							{#if test.metadata}
+																								{@const linkAnnotations = parseLinkAnnotations(test.metadata.annotations)}
 																								<div class="flex items-center gap-2">
 																									<Tooltip
 																										class="z-50"
@@ -1897,13 +1899,28 @@
 																											{test.status.activePods} active
 																										</span>
 																									{/if}
-																									{#if phase === 'Failed'}
-																										<a
-																											href="/rollouts/{namespace}/{name}/logs?tab=tests"
-																											class="ml-auto text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
-																										>
-																											View Logs
-																										</a>
+																									{#if linkAnnotations.length > 0 || phase === 'Failed'}
+																										<div class="ml-auto flex items-center gap-3">
+																											{#if phase === 'Failed'}
+																												<a
+																													href="/rollouts/{namespace}/{name}/logs?tab=tests"
+																													class="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+																												>
+																													View Logs
+																												</a>
+																											{/if}
+																											{#each linkAnnotations as link}
+																												<a
+																													href={link.url}
+																													target="_blank"
+																													rel="noopener noreferrer"
+																													class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+																												>
+																													{link.label}
+																													<ArrowUpRightFromSquareOutline class="h-3 w-3" />
+																												</a>
+																											{/each}
+																										</div>
 																									{/if}
 																								</div>
 																							{/if}

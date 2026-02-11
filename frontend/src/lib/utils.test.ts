@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations } from './utils';
 
 describe('Field Manager Validation', () => {
     describe('isFieldManaged', () => {
@@ -171,5 +171,69 @@ describe('Field Manager Validation', () => {
             expect(isFieldManaged(fieldsV1, 'spec.wantedVersion')).toBe(false); // This field is not managed
             expect(isFieldManaged(fieldsV1, 'spec.releasesImagePolicy')).toBe(true);
         });
+    });
+});
+
+describe('parseLinkAnnotations', () => {
+    it('should return empty array for undefined annotations', () => {
+        expect(parseLinkAnnotations(undefined)).toEqual([]);
+    });
+
+    it('should return empty array for empty annotations', () => {
+        expect(parseLinkAnnotations({})).toEqual([]);
+    });
+
+    it('should return empty array when no annotations match the link prefix', () => {
+        const annotations = {
+            'kubectl.kubernetes.io/last-applied-configuration': '{}',
+            'rollout.kuberik.com/bypass-gates': 'v1.2.3'
+        };
+        expect(parseLinkAnnotations(annotations)).toEqual([]);
+    });
+
+    it('should extract a single link annotation', () => {
+        const annotations = {
+            'rollout.kuberik.com/link.Logs': 'https://example.com/logs'
+        };
+        expect(parseLinkAnnotations(annotations)).toEqual([
+            { label: 'Logs', url: 'https://example.com/logs' }
+        ]);
+    });
+
+    it('should extract multiple link annotations', () => {
+        const annotations = {
+            'rollout.kuberik.com/link.Logs': 'https://example.com/logs',
+            'rollout.kuberik.com/link.CI': 'https://example.com/ci'
+        };
+        const result = parseLinkAnnotations(annotations);
+        expect(result).toHaveLength(2);
+        expect(result).toContainEqual({ label: 'Logs', url: 'https://example.com/logs' });
+        expect(result).toContainEqual({ label: 'CI', url: 'https://example.com/ci' });
+    });
+
+    it('should ignore non-link annotations mixed in', () => {
+        const annotations = {
+            'kubectl.kubernetes.io/last-applied-configuration': '{}',
+            'rollout.kuberik.com/link.Logs': 'https://example.com/logs',
+            'rollout.kuberik.com/bypass-gates': 'v1.0.0',
+            'rollout.kuberik.com/link.CI': 'https://example.com/ci'
+        };
+        const result = parseLinkAnnotations(annotations);
+        expect(result).toHaveLength(2);
+        expect(result).toContainEqual({ label: 'Logs', url: 'https://example.com/logs' });
+        expect(result).toContainEqual({ label: 'CI', url: 'https://example.com/ci' });
+    });
+
+    it('should preserve the full URL value including encoded characters', () => {
+        const annotations = {
+            'rollout.kuberik.com/link.CI': 'https://app.datadoghq.com/ci/test/runs?query=test_level%3Atest%20-%40ci.provider.name%3Agithub%20%40test.service%3Amyservice%20%40version%3Av1.0.0'
+        };
+        const result = parseLinkAnnotations(annotations);
+        expect(result).toEqual([
+            {
+                label: 'CI',
+                url: 'https://app.datadoghq.com/ci/test/runs?query=test_level%3Atest%20-%40ci.provider.name%3Agithub%20%40test.service%3Amyservice%20%40version%3Av1.0.0'
+            }
+        ]);
     });
 });

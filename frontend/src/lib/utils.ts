@@ -319,3 +319,17 @@ export function extractURLFromGatewayOrIngress(resource: any, groupVersionKind: 
 
     return null;
 }
+
+const LINK_ANNOTATION_PREFIX = 'rollout.kuberik.com/link.';
+
+export function parseLinkAnnotations(
+	annotations: Record<string, string> | undefined
+): { label: string; url: string }[] {
+	if (!annotations) return [];
+	return Object.entries(annotations)
+		.filter(([key]) => key.startsWith(LINK_ANNOTATION_PREFIX))
+		.map(([key, url]) => ({
+			label: key.slice(LINK_ANNOTATION_PREFIX.length),
+			url
+		}));
+}
