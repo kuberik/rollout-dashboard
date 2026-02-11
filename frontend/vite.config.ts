@@ -4,9 +4,13 @@ import { svelteTesting } from '@testing-library/svelte/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import mkcert from 'vite-plugin-mkcert';
+import { mockApiPlugin } from './dev-mock-api';
+
+const useMockApi = !!process.env.MOCK_API;
 
 export default defineConfig({
 	plugins: [
+		...(useMockApi ? [mockApiPlugin()] : []),
 		mkcert(),
 		tailwindcss(),
 		sveltekit(),
@@ -18,14 +22,15 @@ export default defineConfig({
 	server: {
 		https: true,
 		host: "0.0.0.0",
-		proxy: {
-			'/api': {
-				target: 'https://192.168.1.102.nip.io:8080', // The API is running locally via IIS on this port
-				changeOrigin: true,
-				secure: false,
-				// rewrite: (path) => path.replace(/^\/api/, '') // The local API has a slightly different path
+		...(!useMockApi && {
+			proxy: {
+				'/api': {
+					target: 'https://192.168.1.102.nip.io:8080',
+					changeOrigin: true,
+					secure: false,
+				}
 			}
-		},
+		}),
 		allowedHosts: true,
 	},
 	test: {
