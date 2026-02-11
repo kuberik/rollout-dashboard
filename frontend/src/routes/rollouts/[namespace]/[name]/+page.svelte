@@ -85,7 +85,10 @@
 		hasUnblockFailedAnnotation,
 		getDisplayVersion,
 		extractURLFromGatewayOrIngress,
-		parseLinkAnnotations
+		parseLinkAnnotations,
+		extractDatadogInfoFromContainers,
+		buildDatadogTestRunsUrl,
+		buildDatadogLogsUrl
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
@@ -1838,6 +1841,7 @@
 																							{@const retryCount = test.status?.retryCount || 0}
 																							{#if test.metadata}
 																								{@const linkAnnotations = parseLinkAnnotations(test.metadata.annotations)}
+																								{@const ddInfo = extractDatadogInfoFromContainers(test.spec?.jobTemplate?.template?.spec?.containers || [])}
 																								<div class="flex items-center gap-2">
 																									<Tooltip
 																										class="z-50"
@@ -1899,7 +1903,7 @@
 																											{test.status.activePods} active
 																										</span>
 																									{/if}
-																									{#if linkAnnotations.length > 0 || phase === 'Failed'}
+																									{#if linkAnnotations.length > 0 || ddInfo || phase === 'Failed'}
 																										<div class="ml-auto flex items-center gap-3">
 																											{#if phase === 'Failed'}
 																												<a
@@ -1920,6 +1924,26 @@
 																													<ArrowUpRightFromSquareOutline class="h-3 w-3" />
 																												</a>
 																											{/each}
+																											{#if ddInfo}
+																												<a
+																													href={buildDatadogLogsUrl(ddInfo.service, ddInfo.env)}
+																													target="_blank"
+																													rel="noopener noreferrer"
+																													class="inline-flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline dark:text-purple-400 dark:hover:text-purple-300"
+																												>
+																													<DatadogLogo class="h-3 w-3" />
+																													Logs
+																												</a>
+																												<a
+																													href={buildDatadogTestRunsUrl(ddInfo.service, getDisplayVersion(latestEntry.version))}
+																													target="_blank"
+																													rel="noopener noreferrer"
+																													class="inline-flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline dark:text-purple-400 dark:hover:text-purple-300"
+																												>
+																													<DatadogLogo class="h-3 w-3" />
+																													CI
+																												</a>
+																											{/if}
 																										</div>
 																									{/if}
 																								</div>

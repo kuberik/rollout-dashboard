@@ -320,6 +320,34 @@ export function extractURLFromGatewayOrIngress(resource: any, groupVersionKind: 
     return null;
 }
 
+export interface DatadogInfo {
+	service: string;
+	env: string;
+}
+
+export function extractDatadogInfoFromContainers(
+	containers: { env?: { name: string; value?: string }[] }[]
+): DatadogInfo | null {
+	for (const container of containers) {
+		let ddService: string | null = null;
+		let ddEnv: string | null = null;
+		for (const envVar of container.env || []) {
+			if (envVar.name === 'DD_SERVICE' && envVar.value) ddService = envVar.value;
+			if (envVar.name === 'DD_ENV' && envVar.value) ddEnv = envVar.value;
+		}
+		if (ddService && ddEnv) return { service: ddService, env: ddEnv };
+	}
+	return null;
+}
+
+export function buildDatadogTestRunsUrl(service: string, version: string): string {
+	return `https://app.datadoghq.com/ci/test/runs?query=${encodeURIComponent(`test_level:test -@ci.provider.name:github @test.service:${service} @version:${version}`)}`;
+}
+
+export function buildDatadogLogsUrl(service: string, env: string): string {
+	return `https://app.datadoghq.com/logs?query=${encodeURIComponent(`service:${service} env:${env}`)}&live=true`;
+}
+
 const LINK_ANNOTATION_PREFIX = 'rollout.kuberik.com/link.';
 
 export function parseLinkAnnotations(

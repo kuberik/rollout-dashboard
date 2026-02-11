@@ -22,16 +22,24 @@
 		UserSolid,
 		CogSolid
 	} from 'flowbite-svelte-icons';
-	import { formatTimeAgo, formatDuration, formatDate } from '$lib/utils';
+	import {
+		formatTimeAgo,
+		formatDuration,
+		formatDate,
+		extractDatadogInfoFromContainers,
+		buildDatadogTestRunsUrl,
+		buildDatadogLogsUrl
+	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import DeployModal from '$lib/components/DeployModal.svelte';
+	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { rolloutQueryOptions, rolloutTestsQueryOptions } from '$lib/api/rollouts';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 
 	// Params (runes)
@@ -46,10 +54,30 @@
 		})
 	);
 
+	// Query for rollout tests (to detect Datadog tags)
+	const rolloutTestsQuery = createQuery(() =>
+		rolloutTestsQueryOptions({
+			namespace,
+			name
+		})
+	);
+
 	// Derive local vars used in template
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const loading = $derived(rolloutQuery.isLoading);
 	const error = $derived(rolloutQuery.isError ? (rolloutQuery.error as Error).message : null);
+
+	// Extract Datadog info from RolloutTest containers
+	const datadogTestInfo = $derived.by(() => {
+		const tests = rolloutTestsQuery.data?.rolloutTests?.items;
+		if (!tests || tests.length === 0) return null;
+		for (const test of tests) {
+			const containers = test.spec?.jobTemplate?.template?.spec?.containers || [];
+			const info = extractDatadogInfoFromContainers(containers);
+			if (info) return info;
+		}
+		return null;
+	});
 
 	// Local state for deploy modal (rollback)
 	let showDeployModal = $state(false);
@@ -341,6 +369,26 @@
 												</div>
 												<!-- Secondary Actions -->
 												<div class="flex flex-wrap gap-2">
+													{#if datadogTestInfo}
+														<Button
+															color="light"
+															size="xs"
+															href={buildDatadogLogsUrl(datadogTestInfo.service, datadogTestInfo.env)}
+															target="_blank"
+														>
+															<DatadogLogo class="mr-1 h-3 w-3" />
+															Logs
+														</Button>
+														<Button
+															color="light"
+															size="xs"
+															href={buildDatadogTestRunsUrl(datadogTestInfo.service, getDisplayVersion(entry.version))}
+															target="_blank"
+														>
+															<DatadogLogo class="mr-1 h-3 w-3" />
+															CI
+														</Button>
+													{/if}
 													{#if rollout?.status?.source}
 														<GitHubViewButton
 															sourceUrl={rollout.status.source}

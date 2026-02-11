@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl } from './utils';
 
 describe('Field Manager Validation', () => {
     describe('isFieldManaged', () => {
@@ -235,5 +235,89 @@ describe('parseLinkAnnotations', () => {
                 url: 'https://app.datadoghq.com/ci/test/runs?query=test_level%3Atest%20-%40ci.provider.name%3Agithub%20%40test.service%3Amyservice%20%40version%3Av1.0.0'
             }
         ]);
+    });
+});
+
+describe('extractDatadogInfoFromContainers', () => {
+    it('should return null for empty containers array', () => {
+        expect(extractDatadogInfoFromContainers([])).toBeNull();
+    });
+
+    it('should return null when no DD env vars are present', () => {
+        const containers = [{ env: [{ name: 'FOO', value: 'bar' }] }];
+        expect(extractDatadogInfoFromContainers(containers)).toBeNull();
+    });
+
+    it('should return null when only DD_SERVICE is present', () => {
+        const containers = [{ env: [{ name: 'DD_SERVICE', value: 'my-service' }] }];
+        expect(extractDatadogInfoFromContainers(containers)).toBeNull();
+    });
+
+    it('should return null when only DD_ENV is present', () => {
+        const containers = [{ env: [{ name: 'DD_ENV', value: 'dev' }] }];
+        expect(extractDatadogInfoFromContainers(containers)).toBeNull();
+    });
+
+    it('should extract service and env when both are present', () => {
+        const containers = [{
+            env: [
+                { name: 'DD_SERVICE', value: 'my-service' },
+                { name: 'DD_ENV', value: 'production' }
+            ]
+        }];
+        expect(extractDatadogInfoFromContainers(containers)).toEqual({
+            service: 'my-service',
+            env: 'production'
+        });
+    });
+
+    it('should find DD tags in a second container if first has none', () => {
+        const containers = [
+            { env: [{ name: 'FOO', value: 'bar' }] },
+            {
+                env: [
+                    { name: 'DD_SERVICE', value: 'backend' },
+                    { name: 'DD_ENV', value: 'staging' }
+                ]
+            }
+        ];
+        expect(extractDatadogInfoFromContainers(containers)).toEqual({
+            service: 'backend',
+            env: 'staging'
+        });
+    });
+
+    it('should handle containers with no env field', () => {
+        const containers = [{}];
+        expect(extractDatadogInfoFromContainers(containers)).toBeNull();
+    });
+
+    it('should ignore env vars with empty values', () => {
+        const containers = [{
+            env: [
+                { name: 'DD_SERVICE', value: '' },
+                { name: 'DD_ENV', value: 'dev' }
+            ]
+        }];
+        expect(extractDatadogInfoFromContainers(containers)).toBeNull();
+    });
+});
+
+describe('buildDatadogTestRunsUrl', () => {
+    it('should build a URL with service and version', () => {
+        const url = buildDatadogTestRunsUrl('my-service', 'v1.0.0');
+        expect(url).toContain('https://app.datadoghq.com/ci/test/runs?query=');
+        expect(url).toContain(encodeURIComponent('@test.service:my-service'));
+        expect(url).toContain(encodeURIComponent('@version:v1.0.0'));
+    });
+});
+
+describe('buildDatadogLogsUrl', () => {
+    it('should build a URL with service and env', () => {
+        const url = buildDatadogLogsUrl('my-service', 'production');
+        expect(url).toContain('https://app.datadoghq.com/logs?query=');
+        expect(url).toContain(encodeURIComponent('service:my-service'));
+        expect(url).toContain(encodeURIComponent('env:production'));
+        expect(url).toContain('&live=true');
     });
 });
