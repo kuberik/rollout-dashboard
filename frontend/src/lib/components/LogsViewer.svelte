@@ -31,6 +31,7 @@
 
 	// Auto-scroll state
 	let autoScroll = $state(true);
+	let wrapLines = $state(false);
 	let virtualListEl = $state<HTMLElement | null>(null);
 	let isUserScrolling = $state(false);
 	let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -424,10 +425,16 @@
 		</div>
 		<!-- Controls row -->
 		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-			<!-- Auto-scroll toggle -->
-			<div class="flex items-center gap-2">
-				<Toggle bind:checked={autoScroll} />
-				<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Follow</span>
+			<!-- Auto-scroll and wrap toggles -->
+			<div class="flex items-center gap-3 sm:gap-4">
+				<div class="flex items-center gap-2">
+					<Toggle bind:checked={autoScroll} size="small" />
+					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Follow</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<Toggle bind:checked={wrapLines} size="small" />
+					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Wrap</span>
+				</div>
 			</div>
 			<!-- Filter dropdowns -->
 			<div class="flex flex-wrap items-center gap-2">
@@ -704,7 +711,7 @@
 				onscroll={handleScroll}
 				class="absolute inset-0 overflow-auto"
 			>
-				<div class="min-w-full" style="width: max-content;">
+				<div class="min-w-full" style={wrapLines ? '' : 'width: max-content;'}>
 					{#if virtualListBefore > 0}
 						<div style="height: {virtualListBefore}px;"></div>
 					{/if}
@@ -715,7 +722,7 @@
 						{@const logLevel = getLogLevel(logItem.line)}
 						{@const levelColor = getLogLevelColor(logLevel)}
 						<div
-							class="flex items-baseline whitespace-nowrap border-b border-gray-800 px-2 py-1 font-mono text-xs hover:bg-gray-800/50 sm:px-4 sm:text-sm"
+							class="flex items-baseline border-b border-gray-800 px-2 py-1 font-mono text-xs hover:bg-gray-800/50 sm:px-4 sm:text-sm {wrapLines ? 'flex-wrap' : 'whitespace-nowrap'}"
 							data-index={row.index}
 						>
 						{#if visibleColumns.has('timestamp')}
@@ -730,7 +737,7 @@
 							<span class="mx-1 shrink-0 text-green-400 sm:mx-2">{logItem.container}</span>
 						{/if}
 						{#if visibleColumns.has('message')}
-							<span class="{levelColor}">
+							<span class="{levelColor} {wrapLines ? 'min-w-0 break-all whitespace-pre-wrap' : ''}">
 								{@html highlightSearch(logItem.line, searchQuery)}
 							</span>
 						{/if}
