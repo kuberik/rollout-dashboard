@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Rollout } from '../../../../../types';
+	import type { Rollout, Kustomization, ManagedResourceStatus, RolloutTest } from '../../../../../types';
 	import {
 		Badge,
 		Timeline,
@@ -39,7 +39,7 @@
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutQueryOptions, rolloutTestsQueryOptions } from '$lib/api/rollouts';
+	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 
 	// Params (runes)
@@ -54,24 +54,56 @@
 		})
 	);
 
-	// Query for rollout tests (to detect Datadog tags)
-	const rolloutTestsQuery = createQuery(() =>
-		rolloutTestsQueryOptions({
-			namespace,
-			name
-		})
-	);
-
 	// Derive local vars used in template
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	const kustomizations = $derived(rolloutQuery.data?.kustomizations?.items as Kustomization[] || []);
 	const loading = $derived(rolloutQuery.isLoading);
 	const error = $derived(rolloutQuery.isError ? (rolloutQuery.error as Error).message : null);
 
-	// Extract Datadog info from RolloutTest containers
+	// Fetch managed resources from kustomizations (same approach as Overview page)
+	// This is needed because RolloutTests live in the app namespace, not the rollout namespace
+	let managedResources = $state<ManagedResourceStatus[]>([]);
+
+	$effect(() => {
+		const currentKustomizations = kustomizations;
+		if (!currentKustomizations || currentKustomizations.length === 0) {
+			managedResources = [];
+			return;
+		}
+
+		Promise.all(
+			currentKustomizations
+				.filter((ks) => Boolean(ks.metadata?.name))
+				.map(async (ks) => {
+					const ksName = ks.metadata!.name as string;
+					const ksNamespace = ks.metadata?.namespace || namespace;
+					try {
+						const res = await fetch(
+							`/api/kustomizations/${ksNamespace}/${ksName}/managed-resources`
+						);
+						if (res.ok) {
+							const data = await res.json();
+							return (data.managedResources || []) as ManagedResourceStatus[];
+						}
+					} catch (e) {
+						console.error(`Failed to fetch managed resources for ${ksName}:`, e);
+					}
+					return [] as ManagedResourceStatus[];
+				})
+		).then((results) => {
+			if (kustomizations === currentKustomizations) {
+				managedResources = results.flat();
+			}
+		});
+	});
+
+	// Extract Datadog info from RolloutTest containers found in managed resources
 	const datadogTestInfo = $derived.by(() => {
-		const tests = rolloutTestsQuery.data?.rolloutTests?.items;
-		if (!tests || tests.length === 0) return null;
-		for (const test of tests) {
+		const rolloutTests = managedResources
+			.filter((r) => r.groupVersionKind === 'rollout.kuberik.com/v1alpha1/RolloutTest')
+			.map((r) => r.object as RolloutTest);
+		if (rolloutTests.length === 0) return null;
+		for (const test of rolloutTests) {
 			const containers = test.spec?.jobTemplate?.template?.spec?.containers || [];
 			const info = extractDatadogInfoFromContainers(containers);
 			if (info) return info;
@@ -382,7 +414,7 @@
 														<Button
 															color="light"
 															size="xs"
-															href={buildDatadogTestRunsUrl(datadogTestInfo.service, getDisplayVersion(entry.version))}
+															href={buildDatadogTestRunsUrl(datadogTestInfo.service, isCurrent && datadogTestInfo.version ? datadogTestInfo.version : '*' + entry.version.tag + '*')}
 															target="_blank"
 														>
 															<DatadogLogo class="mr-1 h-3 w-3" />

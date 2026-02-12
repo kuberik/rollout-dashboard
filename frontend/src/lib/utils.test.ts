@@ -271,6 +271,33 @@ describe('extractDatadogInfoFromContainers', () => {
         });
     });
 
+    it('should extract service, env and version when all are present', () => {
+        const containers = [{
+            env: [
+                { name: 'DD_SERVICE', value: 'my-service' },
+                { name: 'DD_ENV', value: 'production' },
+                { name: 'DD_VERSION', value: 'main-1770831919-d4cd2de3ed1185943c9105df735a099a2165c7ce' }
+            ]
+        }];
+        expect(extractDatadogInfoFromContainers(containers)).toEqual({
+            service: 'my-service',
+            env: 'production',
+            version: 'main-1770831919-d4cd2de3ed1185943c9105df735a099a2165c7ce'
+        });
+    });
+
+    it('should return info without version when DD_VERSION is absent', () => {
+        const containers = [{
+            env: [
+                { name: 'DD_SERVICE', value: 'my-service' },
+                { name: 'DD_ENV', value: 'staging' }
+            ]
+        }];
+        const result = extractDatadogInfoFromContainers(containers);
+        expect(result).toEqual({ service: 'my-service', env: 'staging' });
+        expect(result?.version).toBeUndefined();
+    });
+
     it('should find DD tags in a second container if first has none', () => {
         const containers = [
             { env: [{ name: 'FOO', value: 'bar' }] },

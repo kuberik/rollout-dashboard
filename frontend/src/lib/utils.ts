@@ -323,6 +323,7 @@ export function extractURLFromGatewayOrIngress(resource: any, groupVersionKind: 
 export interface DatadogInfo {
 	service: string;
 	env: string;
+	version?: string;
 }
 
 export function extractDatadogInfoFromContainers(
@@ -331,11 +332,13 @@ export function extractDatadogInfoFromContainers(
 	for (const container of containers) {
 		let ddService: string | null = null;
 		let ddEnv: string | null = null;
+		let ddVersion: string | null = null;
 		for (const envVar of container.env || []) {
 			if (envVar.name === 'DD_SERVICE' && envVar.value) ddService = envVar.value;
 			if (envVar.name === 'DD_ENV' && envVar.value) ddEnv = envVar.value;
+			if (envVar.name === 'DD_VERSION' && envVar.value) ddVersion = envVar.value;
 		}
-		if (ddService && ddEnv) return { service: ddService, env: ddEnv };
+		if (ddService && ddEnv) return { service: ddService, env: ddEnv, ...(ddVersion ? { version: ddVersion } : {}) };
 	}
 	return null;
 }

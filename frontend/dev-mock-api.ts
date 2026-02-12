@@ -208,7 +208,7 @@ const mockManagedResources = {
 										env: [
 											{ name: 'DD_SERVICE', value: ROLLOUT_NAME },
 											{ name: 'DD_ENV', value: 'dev' },
-											{ name: 'DD_VERSION', value: 'f68d0ac' }
+											{ name: 'DD_VERSION', value: 'main-1770831919-f68d0ac3ed1185943c9105df735a099a2165c7ce' }
 										]
 									}
 								]
@@ -266,7 +266,7 @@ export function mockApiPlugin(): Plugin {
 				if (req.url === '/api/rollouts') {
 					return res.end(
 						JSON.stringify({
-							items: [mockRolloutResponse.rollout]
+							rollouts: { items: [mockRolloutResponse.rollout] }
 						})
 					);
 				}

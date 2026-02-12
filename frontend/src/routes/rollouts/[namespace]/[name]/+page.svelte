@@ -1935,7 +1935,7 @@
 																													Logs
 																												</a>
 																												<a
-																													href={buildDatadogTestRunsUrl(ddInfo.service, getDisplayVersion(latestEntry.version))}
+																													href={buildDatadogTestRunsUrl(ddInfo.service, ddInfo.version || getDisplayVersion(latestEntry.version))}
 																													target="_blank"
 																													rel="noopener noreferrer"
 																													class="inline-flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline dark:text-purple-400 dark:hover:text-purple-300"
