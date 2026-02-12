@@ -9,6 +9,9 @@ import { mockApiPlugin } from './dev-mock-api';
 const useMockApi = !!process.env.MOCK_API;
 
 export default defineConfig({
+	define: {
+		...(useMockApi ? { 'import.meta.env.VITE_APP_VERSION': JSON.stringify('v0.0.1') } : {})
+	},
 	plugins: [
 		...(useMockApi ? [mockApiPlugin()] : []),
 		mkcert(),

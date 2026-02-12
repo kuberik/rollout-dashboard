@@ -101,9 +101,9 @@
 		</Sidebar>
 
 		<!-- Content -->
-		<div class="flex flex-1 flex-col overflow-hidden">
+		<div class="flex min-w-0 flex-1 flex-col overflow-hidden">
 			<!-- Slot for child pages -->
-			<div class="flex-1 overflow-y-auto pb-16 md:pb-0">
+			<div class="min-w-0 flex-1 overflow-y-auto pb-16 md:pb-0">
 				{@render children()}
 			</div>
 		</div>

@@ -31,6 +31,7 @@
 
 	// Auto-scroll state
 	let autoScroll = $state(true);
+	let wrapLines = $state(false);
 	let virtualListEl = $state<HTMLElement | null>(null);
 	let isUserScrolling = $state(false);
 	let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -41,10 +42,24 @@
 	let selectedContainers = $state<Set<string>>(new Set());
 	let selectedLogLevels = $state<Set<'error' | 'warn' | 'info' | 'debug'>>(new Set());
 
+	// Column visibility state
+	type LogColumn = 'timestamp' | 'pod' | 'container' | 'message';
+	let visibleColumns = $state<Set<LogColumn>>(
+		new Set(['timestamp', 'pod', 'container', 'message'])
+	);
+	const allColumns: { value: LogColumn; label: string }[] = [
+		{ value: 'timestamp', label: 'Timestamp' },
+		{ value: 'pod', label: 'Pod' },
+		{ value: 'container', label: 'Container' },
+		{ value: 'message', label: 'Message' }
+	];
+	const hiddenColumnCount = $derived(allColumns.length - visibleColumns.size);
+
 	// Dropdown trigger IDs
 	const podsDropdownId = 'pods-filter-dropdown';
 	const containersDropdownId = 'containers-filter-dropdown';
 	const logLevelsDropdownId = 'log-levels-filter-dropdown';
+	const columnsDropdownId = 'columns-dropdown';
 
 	let discoveredPods = $state<PodInfo[]>([]);
 	const discoveredPodNames = new Set<string>();
@@ -245,37 +260,9 @@
 		}));
 	});
 
-	// Track element refs for measuring
-	let virtualItemEls: HTMLDivElement[] = $state([]);
-
-	// Track viewport width for dynamic estimation
-	let viewportWidth = $state(0);
-
-	// Check if mobile (sm breakpoint is 640px)
-	const isMobile = $derived(viewportWidth > 0 && viewportWidth < 640);
-
-	// Estimate height based on chars per line
-	// Desktop: horizontal layout with 14px font, 8.4px char width
-	// Mobile: stacked layout with 12px font (~7px char width), metadata line + content
-	function estimateLogHeight(index: number): number {
-		const log = allLogLines[index];
-		if (!log || !viewportWidth) return 40; // Fallback
-
-		if (isMobile) {
-			// Mobile stacked layout:
-			// - Metadata line: ~20px (text-[10px] + gap)
-			// - Content: variable based on log length
-			// - Padding: py-2 = 16px total
-			const charsPerLine = Math.max(1, Math.floor((viewportWidth - 16) / 7));
-			const contentLines = Math.max(1, Math.ceil(log.line.length / charsPerLine));
-			return 20 + contentLines * 16 + 16; // metadata + content + padding
-		} else {
-			// Desktop horizontal layout
-			const charsPerLine = Math.max(1, Math.floor((viewportWidth - 32) / 8.4));
-			const lineCount = Math.max(1, Math.ceil(log.line.length / charsPerLine));
-			return lineCount * 20 + 13;
-		}
-	}
+	// Fixed row height: with no text wrapping, every row is the same height
+	// py-1 (8px) + line-height ~20px + border 1px = ~29px. Use 30 as a safe constant.
+	const ROW_HEIGHT = 30;
 
 	// Track scroll position for restoration
 	let savedScrollTop = $state(0);
@@ -286,7 +273,7 @@
 		createVirtualizer<HTMLElement, HTMLDivElement>({
 			count: 0, // Initial count, updated via effect
 			getScrollElement: virtualListEl ? () => virtualListEl : () => null,
-			estimateSize: estimateLogHeight,
+			estimateSize: () => ROW_HEIGHT,
 			overscan: 40
 		})
 	);
@@ -350,15 +337,6 @@
 			? $virtualizer.getTotalSize() - notUndefined(virtualItems[virtualItems.length - 1]).end
 			: 0
 	);
-
-	// Measure elements when they change
-	$effect(() => {
-		if (virtualItemEls.length) {
-			virtualItemEls.forEach((el) => {
-				if (el) $virtualizer.measureElement(el);
-			});
-		}
-	});
 
 	// Scroll to bottom
 	function scrollToBottom() {
@@ -447,10 +425,16 @@
 		</div>
 		<!-- Controls row -->
 		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-			<!-- Auto-scroll toggle -->
-			<div class="flex items-center gap-2">
-				<Toggle bind:checked={autoScroll} />
-				<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Follow</span>
+			<!-- Auto-scroll and wrap toggles -->
+			<div class="flex items-center gap-3 sm:gap-4">
+				<div class="flex items-center gap-2">
+					<Toggle bind:checked={autoScroll} size="small" />
+					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Follow</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<Toggle bind:checked={wrapLines} size="small" />
+					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Wrap</span>
+				</div>
 			</div>
 			<!-- Filter dropdowns -->
 			<div class="flex flex-wrap items-center gap-2">
@@ -624,6 +608,63 @@
 						{/each}
 					</Dropdown>
 				</div>
+				<!-- Columns visibility dropdown -->
+				<div class="relative">
+					<Button size="xs" color="light" id={columnsDropdownId} class="text-xs">
+						<span class="hidden sm:inline">Columns</span>
+						<span class="sm:hidden">Cols</span>
+						{#if hiddenColumnCount > 0}
+							<Badge color="blue" class="ml-1 text-xs">{hiddenColumnCount}</Badge>
+						{/if}
+						<ChevronDownOutline class="ml-1 h-3 w-3" />
+					</Button>
+					<Dropdown
+						simple
+						placement="bottom-start"
+						triggeredBy={`#${columnsDropdownId}`}
+						class="w-48"
+					>
+						<DropdownItem
+							onclick={(e) => {
+								e.preventDefault();
+								if (visibleColumns.size === allColumns.length) {
+									// Keep at least message visible
+									visibleColumns = new Set(['message']);
+								} else {
+									visibleColumns = new Set(allColumns.map((c) => c.value));
+								}
+							}}
+						>
+							<label class="flex cursor-pointer items-center gap-2">
+								<Checkbox
+									checked={visibleColumns.size === allColumns.length}
+								/>
+								<span>Show All</span>
+							</label>
+						</DropdownItem>
+						{#each allColumns as col}
+							<DropdownItem
+								onclick={(e) => {
+									e.preventDefault();
+									if (visibleColumns.has(col.value)) {
+										// Don't allow hiding all columns
+										if (visibleColumns.size > 1) {
+											visibleColumns.delete(col.value);
+										}
+									} else {
+										visibleColumns.add(col.value);
+									}
+									visibleColumns = new Set(visibleColumns);
+								}}
+							>
+								<label class="flex cursor-pointer items-center gap-2">
+									<Checkbox checked={visibleColumns.has(col.value)} />
+									<span>{col.label}</span>
+								</label>
+							</DropdownItem>
+						{/each}
+					</Dropdown>
+				</div>
 			</div>
 		</div>
 		<!-- Search bar -->
@@ -663,15 +704,14 @@
 		</div>
 	{:else}
 		<div
-			class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-gray-900 dark:bg-gray-950"
+			class="relative min-h-0 flex-1 rounded-lg border bg-gray-900 dark:bg-gray-950"
 		>
 			<div
 				bind:this={virtualListEl}
-				bind:clientWidth={viewportWidth}
 				onscroll={handleScroll}
-				class="h-full w-full overflow-y-auto"
+				class="absolute inset-0 overflow-auto"
 			>
-				<div>
+				<div class="min-w-full" style={wrapLines ? '' : 'width: max-content;'}>
 					{#if virtualListBefore > 0}
 						<div style="height: {virtualListBefore}px;"></div>
 					{/if}
@@ -681,34 +721,26 @@
 						{@const podColor = getPodColor(logItem.pod)}
 						{@const logLevel = getLogLevel(logItem.line)}
 						{@const levelColor = getLogLevelColor(logLevel)}
-						<!-- Desktop: horizontal layout -->
 						<div
-							bind:this={virtualItemEls[idx]}
-							class="hidden w-full items-baseline border-b border-gray-800 px-4 py-1.5 font-mono text-sm hover:bg-gray-800/50 sm:flex"
+							class="flex items-baseline border-b border-gray-800 px-2 py-1 font-mono text-xs hover:bg-gray-800/50 sm:px-4 sm:text-sm {wrapLines ? 'flex-wrap' : 'whitespace-nowrap'}"
 							data-index={row.index}
 						>
+						{#if visibleColumns.has('timestamp')}
 							<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
-							<span class="mx-2 shrink-0 font-semibold" style="color: {podColor}"
+						{/if}
+						{#if visibleColumns.has('pod')}
+							<span class="mx-1 shrink-0 font-semibold sm:mx-2" style="color: {podColor}"
 								>{logItem.pod}</span
 							>
-							<span class="mx-2 shrink-0 text-green-400">{logItem.container}</span>
-							<span class="min-w-0 flex-1 whitespace-pre-wrap break-words {levelColor}">
+						{/if}
+						{#if visibleColumns.has('container')}
+							<span class="mx-1 shrink-0 text-green-400 sm:mx-2">{logItem.container}</span>
+						{/if}
+						{#if visibleColumns.has('message')}
+							<span class="{levelColor} {wrapLines ? 'min-w-0 break-all whitespace-pre-wrap' : ''}">
 								{@html highlightSearch(logItem.line, searchQuery)}
 							</span>
-						</div>
-						<!-- Mobile: stacked layout -->
-						<div
-							class="flex w-full flex-col border-b border-gray-800 px-2 py-2 font-mono text-xs hover:bg-gray-800/50 sm:hidden"
-							data-index={row.index}
-						>
-							<div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
-								<span class="text-gray-500">{logItem.formattedTimestamp}</span>
-								<span class="font-semibold" style="color: {podColor}">{logItem.pod}</span>
-								<span class="text-green-400">{logItem.container}</span>
-							</div>
-							<span class="whitespace-pre-wrap break-words {levelColor}">
-								{@html highlightSearch(logItem.line, searchQuery)}
-							</span>
+						{/if}
 						</div>
 					{/each}
 

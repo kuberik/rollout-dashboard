@@ -282,7 +282,7 @@
 				</div>
 			{/if}
 		</div>
-		<div class="flex shrink-0 items-center gap-1 sm:gap-1.5">
+		<div class="flex shrink-0 items-center gap-2 sm:gap-2.5">
 			{#if isRolloutPage && rollout}
 				{@const status = getRolloutStatus(rollout)}
 				{@const readyCondition = rollout.status?.conditions?.find((c) => c.type === 'Ready')}
@@ -292,7 +292,7 @@
 					id="rollout-status-badge"
 					color={status.color}
 					size="small"
-					class={`${errorMessage ? 'cursor-help' : ''} mr-2`}
+					class={`${errorMessage ? 'cursor-help' : ''}`}
 				>
 					{status.text}
 					{#if errorMessage}
@@ -307,11 +307,9 @@
 					</Popover>
 				{/if}
 			{/if}
-			{#if import.meta.env.VITE_APP_VERSION}
-				<span class="hidden text-xs text-gray-400 dark:text-gray-500 sm:inline">
-					{import.meta.env.VITE_APP_VERSION}
-				</span>
-			{/if}
+		{#if import.meta.env.VITE_APP_VERSION}
+			<Badge color="none" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
+		{/if}
 			<button
 				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
 				onclick={() => theme.toggle()}
