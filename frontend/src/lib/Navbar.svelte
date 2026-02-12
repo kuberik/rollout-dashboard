@@ -307,6 +307,11 @@
 					</Popover>
 				{/if}
 			{/if}
+			{#if import.meta.env.VITE_APP_VERSION}
+				<span class="hidden text-xs text-gray-400 dark:text-gray-500 sm:inline">
+					{import.meta.env.VITE_APP_VERSION}
+				</span>
+			{/if}
 			<button
 				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
 				onclick={() => theme.toggle()}
