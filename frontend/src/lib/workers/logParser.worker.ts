@@ -17,8 +17,8 @@ interface PodInfo {
 }
 
 interface WorkerMessage {
-	type: 'parseLog' | 'parsePods';
-	data: string;
+	type: 'parseLog' | 'parsePods' | 'parseLogBatch';
+	data: string | string[];
 	id: string;
 }
 
@@ -38,20 +38,38 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
 	const { type, data, id } = e.data;
 
 	try {
-		if (type === 'parseLog') {
-			const logLine = JSON.parse(data) as LogLine;
-			// Format timestamp in worker (uses user's local timezone)
+		if (type === 'parseLogBatch') {
+			// Batch parsing: data is an array of raw JSON strings
+			const rawLines = data as string[];
+			const results: LogLine[] = [];
+			for (const raw of rawLines) {
+				try {
+					const logLine = JSON.parse(raw) as LogLine;
+					if (logLine.timestamp) {
+						logLine.formattedTimestamp = formatTimestamp(logLine.timestamp);
+					} else {
+						const now = Date.now();
+						logLine.timestamp = now;
+						logLine.formattedTimestamp = formatTimestamp(now);
+					}
+					results.push(logLine);
+				} catch {
+					// Skip unparseable lines
+				}
+			}
+			self.postMessage({ type: 'logBatch', data: results, id });
+		} else if (type === 'parseLog') {
+			const logLine = JSON.parse(data as string) as LogLine;
 			if (logLine.timestamp) {
 				logLine.formattedTimestamp = formatTimestamp(logLine.timestamp);
 			} else {
-				// Fallback to current time if no timestamp provided
 				const now = Date.now();
 				logLine.timestamp = now;
 				logLine.formattedTimestamp = formatTimestamp(now);
 			}
 			self.postMessage({ type: 'log', data: logLine, id });
 		} else if (type === 'parsePods') {
-			const pods = JSON.parse(data) as PodInfo[];
+			const pods = JSON.parse(data as string) as PodInfo[];
 			self.postMessage({ type: 'pods', data: pods, id });
 		}
 	} catch (err) {

@@ -87,12 +87,8 @@ async function* createLogsStream(
 
 	// Create web worker for parsing and formatting
 	const worker = new LogParserWorker();
-	const logPromises = new Map<string, {
-		resolve: (value: LogLine) => void;
-		reject: (error: Error) => void;
-	}>();
-	const podPromises = new Map<string, {
-		resolve: (value: PodInfo[]) => void;
+	const pendingPromises = new Map<string, {
+		resolve: (value: any) => void;
 		reject: (error: Error) => void;
 	}>();
 
@@ -101,29 +97,20 @@ async function* createLogsStream(
 
 		if (type === 'error') {
 			if (id) {
-				const promise = logPromises.get(id) || podPromises.get(id);
+				const promise = pendingPromises.get(id);
 				if (promise) {
 					promise.reject(new Error(error));
-					logPromises.delete(id);
-					podPromises.delete(id);
+					pendingPromises.delete(id);
 				}
 			}
 			return;
 		}
 
 		if (id) {
-			if (type === 'log') {
-				const promise = logPromises.get(id);
-				if (promise) {
-					promise.resolve(data as LogLine);
-					logPromises.delete(id);
-				}
-			} else if (type === 'pods') {
-				const promise = podPromises.get(id);
-				if (promise) {
-					promise.resolve(data as PodInfo[]);
-					podPromises.delete(id);
-				}
+			const promise = pendingPromises.get(id);
+			if (promise) {
+				promise.resolve(data);
+				pendingPromises.delete(id);
 			}
 		}
 	};
@@ -131,6 +118,9 @@ async function* createLogsStream(
 	let logCount = 0;
 	let lastLogTime = Date.now();
 	let shouldContinue = true;
+
+	// Raw SSE data strings accumulated for batch parsing
+	let rawLogBuffer: string[] = [];
 
 	const eventSource = createEventSource({
 		url,
@@ -142,15 +132,35 @@ async function* createLogsStream(
 		}
 	});
 
-	// FLUSH TIMER: PUSH-SIDE
-	// This runs independently of the backend/EventSource.
-	// It checks the buffer every 100ms and pushes a batch if waiting.
-	const flushTimer = setInterval(() => {
+	// Flush raw log strings through the worker and push parsed results to the batch queue
+	async function flushRawBuffer() {
+		if (rawLogBuffer.length === 0) return;
+		const rawBatch = rawLogBuffer;
+		rawLogBuffer = [];
+		try {
+			const promiseId = `batch-${Date.now()}-${Math.random()}`;
+			const parsed = await new Promise<LogLine[]>((resolve, reject) => {
+				pendingPromises.set(promiseId, { resolve, reject });
+				worker.postMessage({ type: 'parseLogBatch', data: rawBatch, id: promiseId });
+			});
+			if (parsed.length > 0) {
+				buffer.push(...parsed);
+			}
+		} catch (e) {
+			console.error('[Logs Stream] Batch parse error:', e);
+		}
+		// Push whatever is in the parsed buffer to the queue
 		if (buffer.length > 0) {
-			console.debug(`[Logs Stream] Flushing batch of ${buffer.length} logs (Timer)`);
 			batchQueue.push([...buffer]);
 			buffer = [];
 		}
+	}
+
+	// FLUSH TIMER: PUSH-SIDE
+	// This runs independently of the backend/EventSource.
+	// It checks the raw buffer every 100ms and pushes a batch if waiting.
+	const flushTimer = setInterval(() => {
+		flushRawBuffer();
 	}, 100);
 
 	// ACTIVITY MONITOR
@@ -172,10 +182,8 @@ async function* createLogsStream(
 
 		// Reject any pending promises from worker to avoid hanging
 		const error = new Error('Stream closed');
-		for (const { reject } of logPromises.values()) reject(error);
-		for (const { reject } of podPromises.values()) reject(error);
-		logPromises.clear();
-		podPromises.clear();
+		for (const { reject } of pendingPromises.values()) reject(error);
+		pendingPromises.clear();
 
 		// Push empty batch to unblock generator if waiting
 		batchQueue.push([]);
@@ -186,7 +194,7 @@ async function* createLogsStream(
 	}
 
 	// EVENT LOOP: PUSH-SIDE
-	// Reads from EventSource and pushes into reusable buffer
+	// Reads from EventSource and accumulates raw data strings for batch processing
 	(async () => {
 		try {
 			for await (const { data, event } of eventSource) {
@@ -196,7 +204,7 @@ async function* createLogsStream(
 					try {
 						const promiseId = `pods-${Date.now()}-${Math.random()}`;
 						const pods = await new Promise<PodInfo[]>((resolve, reject) => {
-							podPromises.set(promiseId, { resolve, reject });
+							pendingPromises.set(promiseId, { resolve, reject });
 							worker.postMessage({ type: 'parsePods', data, id: promiseId });
 						});
 						if (onPodsUpdate) onPodsUpdate(pods);
@@ -204,26 +212,15 @@ async function* createLogsStream(
 						console.error(e);
 					}
 				} else if (event === 'log') {
-					try {
-						logCount++;
-						lastLogTime = Date.now();
+					logCount++;
+					lastLogTime = Date.now();
 
-						const promiseId = `log-${Date.now()}-${Math.random()}`;
-						const logLine = await new Promise<LogLine>((resolve, reject) => {
-							logPromises.set(promiseId, { resolve, reject });
-							worker.postMessage({ type: 'parseLog', data, id: promiseId });
-						});
+					// Accumulate raw JSON string for batch parsing
+					rawLogBuffer.push(data);
 
-						buffer.push(logLine);
-
-						// Immediate flush if buffer is full
-						if (buffer.length >= BATCH_SIZE) {
-							console.debug(`[Logs Stream] Flushing full batch of ${buffer.length} logs`);
-							batchQueue.push([...buffer]);
-							buffer = [];
-						}
-					} catch (e) {
-						console.error(e);
+					// Immediate flush if raw buffer is large enough
+					if (rawLogBuffer.length >= BATCH_SIZE) {
+						flushRawBuffer();
 					}
 				}
 			}
@@ -317,16 +314,33 @@ export function logsStreamQueryOptions({
 				}
 
 				// Combine accumulator and filtered new logs
-				let result = [...acc, ...filteredLogs];
+				// Optimization: only sort if the new batch is out of order relative to the accumulator.
+				// The accumulator is already sorted. If all new logs have timestamps >= the last
+				// accumulated log, we can just append (and sort only the new portion).
+				const lastAccTs = acc.length > 0 ? (acc[acc.length - 1].timestamp || 0) : 0;
+				const firstNewTs = filteredLogs.length > 0 ? (filteredLogs[0].timestamp || 0) : Infinity;
+				const needsFullSort = filteredLogs.length > 0 && firstNewTs < lastAccTs;
 
-				// Sort by timestamp (with pod name as secondary key for stability)
-				// This ensures logs from different pods are always in chronological order
-				// Since we're batching (reducer called less frequently), sorting is acceptable
-				result.sort((a, b) => {
-					const tsDiff = (a.timestamp || 0) - (b.timestamp || 0);
-					if (tsDiff !== 0) return tsDiff;
-					return (a.pod || '').localeCompare(b.pod || '');
-				});
+				let result: LogLine[];
+				if (needsFullSort) {
+					// New logs are out of order -- full sort required
+					result = [...acc, ...filteredLogs];
+					result.sort((a, b) => {
+						const tsDiff = (a.timestamp || 0) - (b.timestamp || 0);
+						if (tsDiff !== 0) return tsDiff;
+						return (a.pod || '').localeCompare(b.pod || '');
+					});
+				} else {
+					// New logs are in order -- sort only the new batch then append
+					if (filteredLogs.length > 1) {
+						filteredLogs.sort((a, b) => {
+							const tsDiff = (a.timestamp || 0) - (b.timestamp || 0);
+							if (tsDiff !== 0) return tsDiff;
+							return (a.pod || '').localeCompare(b.pod || '');
+						});
+					}
+					result = [...acc, ...filteredLogs];
+				}
 
 				// Trim to MAX_LOGS, keeping the most recent (last items after sorting)
 				if (result.length > MAX_LOGS) {
