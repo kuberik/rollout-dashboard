@@ -41,10 +41,24 @@
 	let selectedContainers = $state<Set<string>>(new Set());
 	let selectedLogLevels = $state<Set<'error' | 'warn' | 'info' | 'debug'>>(new Set());
 
+	// Column visibility state
+	type LogColumn = 'timestamp' | 'pod' | 'container' | 'message';
+	let visibleColumns = $state<Set<LogColumn>>(
+		new Set(['timestamp', 'pod', 'container', 'message'])
+	);
+	const allColumns: { value: LogColumn; label: string }[] = [
+		{ value: 'timestamp', label: 'Timestamp' },
+		{ value: 'pod', label: 'Pod' },
+		{ value: 'container', label: 'Container' },
+		{ value: 'message', label: 'Message' }
+	];
+	const hiddenColumnCount = $derived(allColumns.length - visibleColumns.size);
+
 	// Dropdown trigger IDs
 	const podsDropdownId = 'pods-filter-dropdown';
 	const containersDropdownId = 'containers-filter-dropdown';
 	const logLevelsDropdownId = 'log-levels-filter-dropdown';
+	const columnsDropdownId = 'columns-dropdown';
 
 	let discoveredPods = $state<PodInfo[]>([]);
 	const discoveredPodNames = new Set<string>();
@@ -587,6 +601,63 @@
 						{/each}
 					</Dropdown>
 				</div>
+				<!-- Columns visibility dropdown -->
+				<div class="relative">
+					<Button size="xs" color="light" id={columnsDropdownId} class="text-xs">
+						<span class="hidden sm:inline">Columns</span>
+						<span class="sm:hidden">Cols</span>
+						{#if hiddenColumnCount > 0}
+							<Badge color="blue" class="ml-1 text-xs">{hiddenColumnCount}</Badge>
+						{/if}
+						<ChevronDownOutline class="ml-1 h-3 w-3" />
+					</Button>
+					<Dropdown
+						simple
+						placement="bottom-start"
+						triggeredBy={`#${columnsDropdownId}`}
+						class="w-48"
+					>
+						<DropdownItem
+							onclick={(e) => {
+								e.preventDefault();
+								if (visibleColumns.size === allColumns.length) {
+									// Keep at least message visible
+									visibleColumns = new Set(['message']);
+								} else {
+									visibleColumns = new Set(allColumns.map((c) => c.value));
+								}
+							}}
+						>
+							<label class="flex cursor-pointer items-center gap-2">
+								<Checkbox
+									checked={visibleColumns.size === allColumns.length}
+								/>
+								<span>Show All</span>
+							</label>
+						</DropdownItem>
+						{#each allColumns as col}
+							<DropdownItem
+								onclick={(e) => {
+									e.preventDefault();
+									if (visibleColumns.has(col.value)) {
+										// Don't allow hiding all columns
+										if (visibleColumns.size > 1) {
+											visibleColumns.delete(col.value);
+										}
+									} else {
+										visibleColumns.add(col.value);
+									}
+									visibleColumns = new Set(visibleColumns);
+								}}
+							>
+								<label class="flex cursor-pointer items-center gap-2">
+									<Checkbox checked={visibleColumns.has(col.value)} />
+									<span>{col.label}</span>
+								</label>
+							</DropdownItem>
+						{/each}
+					</Dropdown>
+				</div>
 			</div>
 		</div>
 		<!-- Search bar -->
@@ -647,14 +718,22 @@
 							class="flex items-baseline whitespace-nowrap border-b border-gray-800 px-2 py-1 font-mono text-xs hover:bg-gray-800/50 sm:px-4 sm:text-sm"
 							data-index={row.index}
 						>
+						{#if visibleColumns.has('timestamp')}
 							<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
+						{/if}
+						{#if visibleColumns.has('pod')}
 							<span class="mx-1 shrink-0 font-semibold sm:mx-2" style="color: {podColor}"
 								>{logItem.pod}</span
 							>
+						{/if}
+						{#if visibleColumns.has('container')}
 							<span class="mx-1 shrink-0 text-green-400 sm:mx-2">{logItem.container}</span>
+						{/if}
+						{#if visibleColumns.has('message')}
 							<span class="{levelColor}">
 								{@html highlightSearch(logItem.line, searchQuery)}
 							</span>
+						{/if}
 						</div>
 					{/each}
 
