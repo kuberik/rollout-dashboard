@@ -92,27 +92,30 @@
 				</div>
 			</a>
 			{#if isRolloutPage && rollout}
-				<!-- Unified switcher pill (works on mobile + desktop) -->
-				<button
-					type="button"
-					onclick={() => (switcherOpen = true)}
-					class="group flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 transition-all hover:border-gray-300 hover:bg-white hover:shadow-sm dark:border-gray-700 dark:bg-gray-900/40 dark:hover:border-gray-600 dark:hover:bg-gray-900 sm:max-w-md sm:gap-3 sm:px-3 sm:py-2"
-					aria-label="Switch rollout (⌘K)"
-				>
-					<div class="flex min-w-0 flex-1 items-baseline gap-1.5 text-left">
-						<span class="hidden shrink-0 text-xs text-gray-500 dark:text-gray-400 sm:inline">
-							{rollout.metadata?.namespace}
+				<!-- Ghost breadcrumb switcher trigger -->
+				<div class="flex min-w-0 items-center gap-1">
+					<span class="select-none text-xl font-light text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+					<button
+						type="button"
+						onclick={() => (switcherOpen = true)}
+						class="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
+						aria-label="Switch rollout (⌘K)"
+					>
+						<span class="flex min-w-0 items-baseline gap-1.5">
+							<span class="hidden truncate text-sm text-gray-500 dark:text-gray-400 sm:inline">
+								{rollout.metadata?.namespace}
+							</span>
+							<span class="hidden text-gray-300 dark:text-gray-600 sm:inline">/</span>
+							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+								{rollout.metadata?.name}
+							</span>
 						</span>
-						<span class="hidden shrink-0 text-gray-300 dark:text-gray-600 sm:inline">/</span>
-						<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">
-							{rollout.metadata?.name}
-						</span>
-					</div>
-					<kbd class="hidden shrink-0 rounded border border-gray-300 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-gray-500 group-hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 md:inline-block">
-						{isMac ? '⌘K' : 'Ctrl K'}
-					</kbd>
-					<ChevronSortOutline class="h-4 w-4 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:group-hover:text-gray-300" />
-				</button>
+						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400 md:inline-block">
+							{isMac ? '⌘K' : 'Ctrl K'}
+						</kbd>
+						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+					</button>
+				</div>
 			{/if}
 		</div>
 		<div class="flex shrink-0 items-center gap-2 sm:gap-2.5">
