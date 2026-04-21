@@ -320,16 +320,45 @@
 		})()
 	);
 
-	let liveNodeId = $derived(
-		nodes.find(
+	// All nodes that are actively doing something right now. When multiple
+	// KruiseRollout tracks progress in parallel, there can be more than one.
+	let liveNodes = $derived(
+		nodes.filter(
 			(n) => n.status === 'running' || n.status === 'paused' || n.status === 'failed'
-		)?.id ?? nodes[nodes.length - 1]?.id ?? 'started'
+		)
+	);
+
+	// Default auto-selection: every live node if any exist, otherwise the last
+	// node in the pipeline (typically Bake once the whole rollout is done).
+	let autoSelectedIds = $derived(
+		liveNodes.length > 0
+			? liveNodes.map((n) => n.id)
+			: nodes.length > 0
+				? [nodes[nodes.length - 1].id]
+				: []
 	);
 
 	let userSelectedId = $state<string | null>(null);
-	let selectedId = $derived(userSelectedId ?? liveNodeId);
-	let selectedNode = $derived(nodes.find((n) => n.id === selectedId) ?? nodes[0]);
+	let selectedIds = $derived(userSelectedId !== null ? [userSelectedId] : autoSelectedIds);
+	let selectedNodes = $derived(
+		selectedIds
+			.map((id) => nodes.find((n) => n.id === id))
+			.filter((n): n is StageNode => n !== undefined)
+	);
 	let isAutoSelected = $derived(userSelectedId === null);
+
+	// Label + decoration for the "jump back to default selection" button.
+	let jumpButton = $derived.by(() => {
+		if (liveNodes.length > 0) {
+			return { label: 'Jump to live stage', live: true };
+		}
+		const fallbackId = autoSelectedIds[0];
+		const fallback = fallbackId ? nodes.find((n) => n.id === fallbackId) : null;
+		if (fallback) {
+			return { label: `Jump to ${fallback.shortLabel.toLowerCase()}`, live: false };
+		}
+		return { label: 'Reset view', live: false };
+	});
 
 	function select(id: string) {
 		userSelectedId = id;
@@ -504,7 +533,7 @@
 {/snippet}
 
 {#snippet navRow(node: StageNode, showLineAbove: boolean, showLineBelow: boolean)}
-	{@const isSelected = selectedId === node.id}
+	{@const isSelected = selectedIds.includes(node.id)}
 	<li class="relative">
 		<!-- Vertical connector line (behind circle) -->
 		{#if showLineAbove}
@@ -990,15 +1019,15 @@
 					onclick={jumpToLive}
 					class="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/60"
 				>
-					<span class="relative flex h-1.5 w-1.5">
-						<span
-							class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-70"
-						></span>
-						<span
-							class="relative inline-flex h-1.5 w-1.5 rounded-full bg-blue-500"
-						></span>
-					</span>
-					Jump to live stage
+					{#if jumpButton.live}
+						<span class="relative flex h-1.5 w-1.5">
+							<span
+								class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-70"
+							></span>
+							<span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+						</span>
+					{/if}
+					{jumpButton.label}
 				</button>
 			{/if}
 			{#if summary.failed > 0}
@@ -1040,9 +1069,12 @@
 
 		<!-- Right detail -->
 		<div class="p-5 sm:p-6">
-			{#if selectedNode}
-				{@render detailPanel(selectedNode)}
-			{/if}
+			{#each selectedNodes as node, idx (node.id)}
+				{#if idx > 0}
+					<div class="my-5 border-t border-gray-200 dark:border-gray-700"></div>
+				{/if}
+				{@render detailPanel(node)}
+			{/each}
 		</div>
 	</div>
 
@@ -1050,7 +1082,7 @@
 	<div class="md:hidden">
 		<ol class="py-2">
 			{#each nodes as node, idx}
-				{@const isSelected = selectedId === node.id}
+				{@const isSelected = selectedIds.includes(node.id)}
 				{#if node.groupHeader}
 					{@render groupHeader(node.groupHeader)}
 				{/if}
