@@ -873,23 +873,17 @@
 				{/if}
 			</div>
 
-			{#if sd.isCurrentStep && canUpdate}
+			{#if sd.isCurrentStep && !sd.isPastStep && sd.isStepPaused && canUpdate}
 				<div>
 					<Button
 						size="sm"
 						color="blue"
-						disabled={!sd.isStepPaused}
 						onclick={() =>
 							onContinue(sd.kr.rolloutResource.name, sd.kr.rolloutResource.namespace)}
 					>
 						<PlaySolid class="mr-1.5 h-3.5 w-3.5" />
-						Continue to next stage
+						{sd.isLastStep ? 'Finish rollout' : 'Continue to next stage'}
 					</Button>
-					{#if !sd.isStepPaused}
-						<p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-							Available once the stage has baked successfully.
-						</p>
-					{/if}
 				</div>
 			{/if}
 		{/if}
