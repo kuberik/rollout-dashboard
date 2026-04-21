@@ -592,8 +592,15 @@
 					? 'animate-pulse'
 					: ''}"
 			></span>
-			<span class="flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">
-				{title}
+			<span class="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-white">
+				<span class="truncate">{title}</span>
+				{#if extra === 'tests' && sd?.hasTests}
+					<span
+						class="inline-flex h-4 min-w-[1.125rem] flex-shrink-0 items-center justify-center rounded-full bg-gray-200 px-1 text-[10px] font-semibold leading-none text-gray-600 tabular-nums dark:bg-gray-700 dark:text-gray-300"
+					>
+						{sd.stepTests.length}
+					</span>
+				{/if}
 			</span>
 			<span
 				class="inline-flex flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset {pillClasses(
