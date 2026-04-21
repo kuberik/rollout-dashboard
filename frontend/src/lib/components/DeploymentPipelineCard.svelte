@@ -339,6 +339,19 @@
 	);
 
 	let userSelectedId = $state<string | null>(null);
+
+	// Clear any sticky user selection when a new deployment starts — so that
+	// the moment a rollout kicks off we jump back to the live stage rather
+	// than stranding the viewer on whatever step they were inspecting.
+	let latestEntryKey = $derived(
+		latestEntry?.timestamp ?? latestEntry?.version?.tag ?? latestEntry?.version?.revision ?? ''
+	);
+	$effect(() => {
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		latestEntryKey;
+		userSelectedId = null;
+	});
+
 	let selectedIds = $derived(userSelectedId !== null ? [userSelectedId] : autoSelectedIds);
 	let selectedNodes = $derived(
 		selectedIds
