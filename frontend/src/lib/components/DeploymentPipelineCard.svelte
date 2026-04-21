@@ -250,7 +250,7 @@
 						krName,
 						krIndex: krIdx,
 						stepIndex: stepIdx,
-						isLive: isCurrentStep,
+						isLive: isCurrentStep && !isPastStep,
 						// For multi-KR, each KR group is self-contained; otherwise all stages are one group
 						firstInGroup: hasMultipleKRs ? isFirstInKr : false,
 						lastInGroup: hasMultipleKRs ? isLastInKr : false,
