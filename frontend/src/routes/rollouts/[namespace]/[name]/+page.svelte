@@ -1,7 +1,6 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import type {
@@ -23,8 +22,6 @@
 		Badge,
 		Alert,
 		Button,
-		Timeline,
-		TimelineItem,
 		Modal,
 		Toast,
 		Spinner,
@@ -34,12 +31,12 @@
 		ListgroupItem,
 		Toggle,
 		Clipboard,
-		Blockquote,
-		StepIndicator,
 		Progressradial,
 		Sidebar,
 		SidebarGroup,
-		SidebarItem
+		SidebarItem,
+		Timeline,
+		TimelineItem
 	} from 'flowbite-svelte';
 	import {
 		CodePullRequestSolid,
@@ -66,7 +63,8 @@
 		CubesStackedSolid,
 		UserSolid,
 		CogSolid,
-		ArrowUpRightFromSquareOutline
+		ArrowUpRightFromSquareOutline,
+		ArrowUpOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -94,6 +92,7 @@
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import DeployModal from '$lib/components/DeployModal.svelte';
+	import RetryTestsModal from '$lib/components/RetryTestsModal.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
@@ -101,6 +100,9 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { getBakeStatusColor } from '$lib/bake-status';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
+	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
+	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
+	import EventsCard from '$lib/components/EventsCard.svelte';
 	import { fly, blur } from 'svelte/transition';
 
 	import { createQuery } from '@tanstack/svelte-query';
@@ -188,66 +190,59 @@
 		}
 	});
 
-	// Fetch managed resources when kustomizations change
-	$effect(() => {
-		const currentKustomizations = kustomizations;
-		if (!currentKustomizations || currentKustomizations.length === 0) {
-			managedResources = {};
-			return;
-		}
-
-		const tempResources: Record<string, ManagedResourceStatus[]> = {};
-		Promise.all(
-			currentKustomizations
-				.filter((kustomization) => Boolean(kustomization.metadata?.name))
-				.map(async (kustomization) => {
-					const name = kustomization.metadata!.name as string;
-					const kustomizationNamespace = kustomization.metadata?.namespace || namespace;
-					try {
-						const resourcesResponse = await fetch(
-							`/api/kustomizations/${kustomizationNamespace}/${name}/managed-resources`
-						);
-						if (resourcesResponse.ok) {
-							const resourcesData = await resourcesResponse.json();
-							tempResources[name] = resourcesData.managedResources || [];
+	// Query for managed resources — one combined fetch across all kustomizations
+	const managedResourcesQuery = createQuery(() => ({
+		queryKey: ['managed-resources', namespace, name, kustomizations.map((k) => k.metadata?.name)],
+		queryFn: async () => {
+			const result: Record<string, ManagedResourceStatus[]> = {};
+			await Promise.all(
+				kustomizations
+					.filter((k) => Boolean(k.metadata?.name))
+					.map(async (k) => {
+						const kName = k.metadata!.name as string;
+						const kNamespace = k.metadata?.namespace || namespace;
+						const res = await fetch(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`);
+						if (res.ok) {
+							const data = await res.json();
+							result[kName] = data.managedResources || [];
 						}
-					} catch (e) {
-						console.error(`Failed to fetch managed resources for ${name}:`, e);
-					}
-				})
-		).then(() => {
-			// Only update if kustomizations haven't changed
-			if (kustomizations === currentKustomizations) {
-				managedResources = { ...tempResources };
-			}
-		});
-	});
-
-	// Fetch health checks when rollout or healthCheckSelector changes
+					})
+			);
+			return result;
+		},
+		enabled: kustomizations.length > 0,
+		refetchInterval: 5000
+	}));
 	$effect(() => {
-		const currentRollout = rollout;
-		if (!currentRollout?.spec?.healthCheckSelector) {
-			healthChecks = [];
-			return;
-		}
-
-		fetch(`/api/rollouts/${namespace}/${name}/health-checks`)
-			.then((healthChecksResponse) => {
-				if (healthChecksResponse.ok) {
-					return healthChecksResponse.json();
-				}
-				return null;
-			})
-			.then((healthChecksData) => {
-				// Only update if rollout hasn't changed
-				if (healthChecksData && rollout === currentRollout) {
-					healthChecks = healthChecksData.healthChecks || [];
-				}
-			})
-			.catch((e) => {
-				console.error('Failed to fetch health checks:', e);
-			});
+		managedResources = managedResourcesQuery.data ?? {};
 	});
+
+	// Query for health checks
+	const healthChecksQuery = createQuery(() => ({
+		queryKey: ['health-checks', namespace, name],
+		queryFn: async () => {
+			const res = await fetch(`/api/rollouts/${namespace}/${name}/health-checks`);
+			if (!res.ok) return { healthChecks: [] };
+			return res.json();
+		},
+		enabled: Boolean(rollout?.spec?.healthCheckSelector),
+		refetchInterval: 5000
+	}));
+	$effect(() => {
+		healthChecks = healthChecksQuery.data?.healthChecks ?? [];
+	});
+
+	// Query for events
+	const eventsQuery = createQuery(() => ({
+		queryKey: ['events', namespace, name],
+		queryFn: async () => {
+			const res = await fetch(`/api/rollouts/${namespace}/${name}/events`);
+			if (!res.ok) return { events: [] };
+			return res.json();
+		},
+		refetchInterval: 5000
+	}));
+	const events = $derived(eventsQuery.data?.events ?? []);
 
 	let annotations = $state<Record<string, Record<string, string>>>({});
 	let loadingAnnotations = $state<Record<string, boolean>>({});
@@ -277,6 +272,9 @@
 
 	// New variables for pin version mode
 	let isPinVersionMode = $state(false);
+
+	let showRetryTestsModal = $state(false);
+	let retryTestsData = $state<{ test: RolloutTest; kruiseRolloutName: string }[]>([]);
 
 	// Toggle for showing/hiding "current" resources
 
@@ -1074,25 +1072,6 @@
 		}
 	}
 
-	function getResourceStatus(resource: Kustomization | OCIRepository) {
-		const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
-		if (!readyCondition) return { status: 'Unknown', color: 'gray' as const };
-
-		switch (readyCondition.status) {
-			case 'True':
-				return { status: 'Ready', color: 'green' as const };
-			case 'False':
-				return { status: 'Failed', color: 'red' as const };
-			default:
-				return { status: 'Unknown', color: 'gray' as const };
-		}
-	}
-
-	function getLastTransitionTime(resource: Kustomization | OCIRepository) {
-		const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
-		return readyCondition?.lastTransitionTime;
-	}
-
 	async function continueRollout(
 		kruiseRolloutName: string,
 		kruiseRolloutNamespace: string,
@@ -1140,6 +1119,43 @@
 			}, 3000);
 		}
 	}
+
+	function handleRetryTests() {
+		retryDeployment(retryTestsData[0]?.kruiseRolloutName, 'retry');
+	}
+
+	function handleSkipTests() {
+		retryDeployment(retryTestsData[0]?.kruiseRolloutName, 'skip');
+	}
+
+	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
+		try {
+			const response = await fetch(
+				`/api/rollouts/${namespace}/${name}/retry`,
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ kruiseRolloutName: kruiseRolloutName || '', testAction })
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to retry deployment');
+			}
+
+			showToast = true;
+			toastMessage = 'Deployment retry initiated';
+			toastType = 'success';
+			setTimeout(() => { showToast = false; }, 3000);
+			await rolloutQuery.refetch();
+		} catch (error) {
+			console.error('Retry deployment error:', error);
+			showToast = true;
+			toastMessage = `Failed to retry: ${error instanceof Error ? error.message : 'Unknown error'}`;
+			toastType = 'error';
+			setTimeout(() => { showToast = false; }, 3000);
+		}
+	}
 </script>
 
 <svelte:head>
@@ -1150,161 +1166,347 @@
 	>
 </svelte:head>
 
-<div class="h-full w-full dark:bg-gray-900">
+<div class="min-h-full dark:bg-gray-900">
 	{#if loading}
-		<div class="space-y-4 p-4">
-			<div class="w-full">
-				<div class="h-8 w-48 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-			</div>
-			<div class="grid gap-4">
-				{#each Array(3) as _}
-					<div class="w-full">
-						<div class="h-16 w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-					</div>
-				{/each}
+		<div class="space-y-4 px-4 py-8 sm:px-5">
+			<div class="h-10 w-48 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+			<div class="h-28 w-full animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
+			<div class="h-64 w-full animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
+			<div class="grid grid-cols-2 gap-4">
+				<div class="h-44 animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-44 animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
 			</div>
 		</div>
 	{:else if error}
-		<Alert color="red" class="mb-4">
-			{error}
-		</Alert>
+		<div class="px-4 py-8 sm:px-5"><Alert color="red">{error}</Alert></div>
 	{:else if !rollout}
-		<Alert color="yellow" class="mb-4">Release not found</Alert>
+		<div class="px-4 py-8 sm:px-5"><Alert color="yellow">Release not found</Alert></div>
 	{:else}
-		<!-- Main Layout: Sidebar and content side by side -->
-		<div class="flex h-full overflow-hidden">
-			<!-- Content -->
-			<div class="flex flex-1 flex-col overflow-hidden">
-				<!-- Content Area -->
-				<div class="flex-1 overflow-y-auto p-4">
-					<!-- Failed Environment Deployment Alert -->
-					{#if rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
-						{@const latestEntry = rollout.status?.history?.[0]}
-						{@const failedHealthChecks = latestEntry?.failedHealthChecks || []}
-						<Alert color="red" class="mb-4">
-							<div class="flex items-center gap-3">
-								<ExclamationCircleSolid class="h-5 w-5 text-red-600 dark:text-red-400" />
-								<span class="text-lg font-medium text-red-600 dark:text-red-400"
-									>Deployment Failed</span
-								>
+		<div class="px-4 pt-4 pb-10 sm:px-5">
+			<ScheduleStatus {rollout} />
+			{#if rollout.status?.history?.[0]}
+				{@const latestEntry = rollout.status.history[0]}
+				{@const environment = rolloutQuery.data?.environment}
+				{@const currentEnv = environment?.spec?.environment}
+				{@const currentEnvInfo = currentEnv
+					? environment?.status?.environmentInfos?.find(
+							(e: EnvironmentInfo) => e.environment === currentEnv
+						)
+					: undefined}
+				{@const pipelineKruiseRollouts = Object.values(managedResources)
+					.flat()
+					.filter((resource) => resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout')}
+				{@const pipelineValidRollouts = pipelineKruiseRollouts
+					.map((rolloutResource) => {
+						const kruiseRollout = rolloutResource.object as KruiseRollout;
+						const rolloutData = kruiseRollout?.status?.canaryStatus;
+						const canarySteps = kruiseRollout?.spec?.strategy?.canary?.steps;
+						if (rolloutData && canarySteps && canarySteps.length > 0) {
+							return {
+								rolloutResource,
+								kruiseRollout,
+								rolloutData,
+								canarySteps,
+								isCompleted: kruiseRollout.status?.currentStepState === 'Completed'
+							};
+						}
+						return null;
+					})
+					.filter((r): r is NonNullable<typeof r> => r !== null)}
+				{@const pipelineAllTests = Object.values(managedResources)
+					.flat()
+					.filter(
+						(resource) => resource.groupVersionKind === 'rollout.kuberik.com/v1alpha1/RolloutTest'
+					)}
+				{@const pipelineValidTests = pipelineAllTests
+					.map((resource) => resource.object as RolloutTest)
+					.filter((test) => test.spec?.rolloutName)}
+				{@const failedStepTests = pipelineValidRollouts.flatMap((kr) => {
+					const stepIdx = kr.rolloutData?.currentStepIndex;
+					const krName = kr.kruiseRollout?.metadata?.name || '';
+					return pipelineValidTests
+						.filter((t) => t.spec?.rolloutName === krName && t.spec?.stepIndex === stepIdx && t.status?.phase === 'Failed')
+						.map((t) => ({ test: t, kruiseRolloutName: krName }));
+				})}
+				{@const isFailed = hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
+				{@const failedHCList = latestEntry?.failedHealthChecks || []}
+				{@const statusStripClass =
+					latestEntry.bakeStatus === 'Succeeded'
+						? 'bg-green-500'
+						: latestEntry.bakeStatus === 'Failed'
+							? 'bg-red-500'
+							: latestEntry.bakeStatus === 'InProgress'
+								? 'bg-yellow-400'
+								: 'bg-blue-500'}
+				{@const statusBadgeColor =
+					latestEntry.bakeStatus === 'Succeeded'
+						? 'green'
+						: latestEntry.bakeStatus === 'Failed'
+							? 'red'
+							: latestEntry.bakeStatus === 'InProgress'
+								? 'yellow'
+								: latestEntry.bakeStatus === 'Deploying'
+									? 'blue'
+									: 'gray'}
+				{@const allStagesDone =
+					pipelineValidRollouts.length === 0 || pipelineValidRollouts.every((kr) => kr.isCompleted)}
+				{@const bakeIsDeploying = allStagesDone && latestEntry.bakeStatus === 'Deploying'}
+				{@const bakeIsInProgress = allStagesDone && latestEntry.bakeStatus === 'InProgress'}
+				{@const bakeIsSucceeded = allStagesDone && latestEntry.bakeStatus === 'Succeeded'}
+				{@const bakeIsFailed = allStagesDone && latestEntry.bakeStatus === 'Failed'}
+				{@const hasHCSelector = Boolean(rollout.spec?.healthCheckSelector)}
+				{@const allHCHealthy =
+					healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')}
+				{@const showHCSubComponent = hasHCSelector}
+				{@const hcSubDone = bakeIsInProgress || bakeIsSucceeded || (bakeIsFailed && allHCHealthy)}
+				{@const hcSubFailed = bakeIsFailed && !allHCHealthy}
+				{@const hcSubWaiting = bakeIsDeploying && !allHCHealthy}
+				{@const bakeTimerDone = bakeIsSucceeded}
+				{@const bakeTimerRunning = bakeIsInProgress}
+				{@const bakeTimerWaiting = bakeIsDeploying}
+				{@const bakeTimerFailed = bakeIsFailed && allHCHealthy}
+
+				<!-- ══ PAGE HEADER ══ -->
+				<div class="mb-4">
+					<p class="mb-1 text-xs text-gray-400 dark:text-gray-500">
+						{rollout.metadata?.namespace} › {rollout.metadata?.name}
+					</p>
+					<div class="flex flex-wrap items-baseline gap-3">
+						<h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+							{rollout.status?.title || rollout.metadata?.name}
+						</h1>
+						{#if currentEnvInfo}
+							<JoinedBadge
+								label="Environment"
+								value={currentEnvInfo.environment || 'N/A'}
+								valueColor="blue"
+							/>
+						{/if}
+					</div>
+					{#if rollout.status?.description}
+						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+							{rollout.status.description}
+						</p>
+					{/if}
+				</div>
+
+				<!-- ══ FAILURE PANEL ══ -->
+				{#if isFailed}
+					<div class="sticky top-0 z-20 mb-4">
+						<div class="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-950 via-red-900 to-red-950 shadow-2xl shadow-red-950/50 ring-1 ring-red-800/60">
+							<!-- Background glow decorations -->
+							<div class="pointer-events-none absolute inset-0 overflow-hidden">
+								<div class="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-red-500/10 blur-3xl"></div>
+								<div class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full bg-red-400/8 blur-2xl"></div>
 							</div>
-							<p class="mt-2 mb-3 text-sm">
-								The latest deployment has failed
-								{#if failedHealthChecks.length > 0}
-									with {failedHealthChecks.length} failed health check{failedHealthChecks.length > 1
-										? 's'
-										: ''}.
-								{:else if stalledKruiseRollout}
-									because the rollout got stuck.
-								{/if}
-								Automated rollouts are paused until you manually mark this version as successful or change
-								to another version.
-							</p>
-							{#if failedHealthChecks.length > 0}
-								<div class="mb-4">
-									<div class="flex flex-wrap gap-1.5">
-										{#each failedHealthChecks as failedHC, index}
-											<HealthCheckBadge
-												failedHealthCheck={failedHC}
-												fullHealthCheck={findFullHealthCheck(failedHC, healthChecks)}
-												{index}
-												prefix="failed-hc-alert"
-											/>
-										{/each}
+
+							<div class="relative flex flex-wrap items-center gap-x-8 gap-y-4 px-6 py-5">
+								<!-- Left: icon + text -->
+								<div class="flex min-w-0 flex-1 items-center gap-4">
+									<!-- Pulsing icon -->
+									<div class="relative shrink-0">
+										<div class="absolute inset-0 animate-ping rounded-full bg-red-500/40"></div>
+										<div class="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-500/20 ring-2 ring-red-500/50">
+											<ExclamationCircleSolid class="h-6 w-6 text-red-300" />
+										</div>
+									</div>
+
+									<!-- Text content -->
+									<div class="min-w-0">
+										<div class="flex flex-wrap items-center gap-2">
+											<p class="text-base font-bold tracking-tight text-white">Deployment Failed</p>
+											{#if failedHCList.length > 0}
+												<span class="inline-flex items-center rounded-full bg-red-800/60 px-2 py-0.5 text-xs font-medium text-red-300 ring-1 ring-red-700/60">
+													{failedHCList.length} issue{failedHCList.length > 1 ? 's' : ''}
+												</span>
+											{/if}
+										</div>
+										<p class="mt-0.5 text-sm text-red-200/75">
+											{#if failedHCList.length > 0}
+												{@const displayName = (() => { const hc = failedHCList[0]; const full = findFullHealthCheck(hc, healthChecks); return full?.metadata?.annotations?.['kuberik.com/display-name'] || hc.name || 'A health check'; })()}
+												{displayName}{failedHCList.length > 1 ? ` (+${failedHCList.length - 1} more)` : ''} · {failedHCList[0].message || 'No details available'}
+											{:else if latestEntry.bakeStatusMessage}
+												{latestEntry.bakeStatusMessage}
+											{:else}
+												An error occurred during deployment.
+											{/if}
+										</p>
 									</div>
 								</div>
-							{/if}
-							<div class="flex flex-wrap gap-2">
-								{#if stalledKruiseRollout && canUpdate}
-									<Button
-										id="retry-rollout-btn"
-										size="xs"
-										color="blue"
-										onclick={() => {
-											if (stalledKruiseRollout?.metadata?.name && stalledKruiseRollout?.metadata?.namespace) {
-												continueRollout(
-													stalledKruiseRollout.metadata.name,
-													stalledKruiseRollout.metadata.namespace
-												);
-											}
-										}}
-									>
-										<PlaySolid class="me-2 h-4 w-4" />
-										Retry Rollout
-									</Button>
-									<Tooltip
-										triggeredBy="#retry-rollout-btn"
-										placement="bottom"
-										class="max-w-xs"
-										transition={blur}
-										transitionParams={{ duration: 300 }}
-									>
-										Retry the stalled rollout. This will reset the bake status and health checks,
-										then continue the OpenKruise rollout.
-									</Tooltip>
-								{/if}
-								{#if canUpdate}
-									<Button
-										id="mark-successful-btn"
-										size="xs"
-										color="light"
-										onclick={() => {
-											selectedVersion = rollout?.status?.history?.[0]?.version.tag || null;
-											showMarkSuccessfulModal = true;
-										}}
-									>
-										<CheckCircleSolid class="me-2 h-4 w-4" />
-										Mark Successful
-									</Button>
-								{/if}
-								<Tooltip
-									triggeredBy="#mark-successful-btn"
-									placement="bottom"
-									class="max-w-xs"
-									transition={blur}
-									transitionParams={{ duration: 300 }}
-								>
-									Mark this deployment as successful to resume automated rollouts. Use when issues
-									are resolved or you want to manually override the failure status.
-								</Tooltip>
-								{#if canModify}
-									<Button
-										id="change-version-btn"
-										size="xs"
-										color="light"
-										disabled={!isDashboardManagingWantedVersion}
-										onclick={() => {
-											if (isDashboardManagingWantedVersion) {
-												isPinVersionMode = false;
-												showPinModal = true;
-											}
-										}}
-									>
-										<EditOutline class="me-2 h-4 w-4" />
-										Change Version
-									</Button>
-								{/if}
-								<Tooltip
-									triggeredBy="#change-version-btn"
-									placement="bottom"
-									class="max-w-xs"
-									transition={blur}
-									transitionParams={{ duration: 300 }}
-								>
-									Deploy a different version to replace the failed deployment. Choose from available
-									releases or any version in the repository.
-									{#if !isDashboardManagingWantedVersion}
-										<br />
-										<span class="text-yellow-600 dark:text-yellow-400">
-											Disabled: dashboard is not managing the wantedVersion field.
-										</span>
+
+								<!-- Right: actions -->
+								<div class="flex shrink-0 items-center gap-3">
+									{#if canUpdate}
+										<button
+											id="failure-retry-btn"
+											class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white/90 ring-1 ring-white/20 transition hover:bg-white/15 hover:ring-white/30 active:bg-white/20"
+											onclick={() => {
+												if (failedStepTests.length > 0) {
+													retryTestsData = failedStepTests;
+													showRetryTestsModal = true;
+												} else {
+													retryDeployment(stalledKruiseRollout?.metadata?.name);
+												}
+											}}
+										>
+											<PlaySolid class="h-3.5 w-3.5" />
+											Retry
+										</button>
+										<Tooltip triggeredBy="#failure-retry-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
+											Reset health checks and failed tests, then retry the deployment.
+										</Tooltip>
 									{/if}
-								</Tooltip>
-								{#if rollout?.status?.history && rollout.status.history.length > 1}
+									{#if rollout?.status?.history && rollout.status.history.length > 1 && canModify}
+										<button
+											id="failure-rollback-btn"
+											class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-red-900 shadow-lg transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+											disabled={!isDashboardManagingWantedVersion}
+											onclick={() => {
+												if (isDashboardManagingWantedVersion && rollout?.status?.history && rollout.status.history.length > 1) {
+													const previousVersion = rollout.status.history[1];
+													isPinVersionMode = true;
+													selectedVersion = previousVersion.version.tag;
+													pinVersionToggle = true;
+													const currentVersionName = getDisplayVersion(rollout.status.history[0].version);
+													const targetVersionName = getDisplayVersion(previousVersion.version);
+													deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+													showDeployModal = true;
+												}
+											}}
+										>
+											<ReplyOutline class="h-3.5 w-3.5" />
+											Rollback
+										</button>
+										<Tooltip triggeredBy="#failure-rollback-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
+											Revert to the previous version.
+											{#if !isDashboardManagingWantedVersion}
+												<br /><span class="text-yellow-300">Disabled: wantedVersion managed externally.</span>
+											{/if}
+										</Tooltip>
+									{/if}
+								</div>
+							</div>
+						</div>
+					</div>
+				{/if}
+
+				<div
+					class="flex flex-col gap-4 lg:grid lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start"
+				>
+					<div class="flex flex-col gap-4">
+						<!-- ══ STATUS CARD ══ -->
+						<div
+							class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+						>
+							<div class="min-w-0 px-5 py-5">
+								<!-- Top row: icon + version + status label | meta -->
+								<div class="flex items-start justify-between gap-4">
+									<div class="flex min-w-0 items-center gap-3">
+										<BakeStatusIcon
+											bakeStatus={latestEntry.bakeStatus}
+											size="medium"
+											class="shrink-0"
+										/>
+										<div class="min-w-0">
+											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+												<span
+													class="text-xl font-bold tracking-tight text-gray-900 dark:text-white"
+												>
+													{getDisplayVersion(latestEntry.version)}
+												</span>
+												<span class="text-sm text-gray-500 dark:text-gray-400">
+													{latestEntry.bakeStatus}
+												</span>
+											</div>
+											<!-- Contextual badges: only metadata badges, not status -->
+											{#if rollout.spec?.wantedVersion || isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || getRevisionInfo(latestEntry.version)}
+												<div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+													{#if rollout.spec?.wantedVersion}
+														<Badge size="small">Pinned</Badge>
+													{/if}
+													{#if isCurrentVersionCustom}
+														<Badge color="yellow" size="small">Custom</Badge>
+													{/if}
+													{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+														<span
+															class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+														>
+															<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status
+																.releaseCandidates.length}
+														</span>
+													{/if}
+													{#if getRevisionInfo(latestEntry.version)}
+														<Badge color="gray" size="small" class="font-mono">
+															{formatRevision(getRevisionInfo(latestEntry.version)!)}
+														</Badge>
+													{/if}
+												</div>
+											{/if}
+										</div>
+									</div>
+									<!-- Right: meta (time + triggered by) -->
+									<div class="shrink-0 text-right text-xs text-gray-400 dark:text-gray-500">
+										<div class="flex items-center justify-end gap-1">
+											<ClockSolid class="h-3 w-3" />
+											<span>{formatTimeAgo(latestEntry.timestamp, $now)}</span>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Actions footer — full-width, outside padded content -->
+							{#if rollout?.status?.source || canModify || rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
+								<div
+									class="flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3 dark:border-gray-700"
+								>
+									{#if rollout?.status?.source}
+										<GitHubViewButton
+											sourceUrl={rollout.status.source}
+											version={getDisplayVersion(latestEntry.version)}
+											size="sm"
+											color="light"
+										/>
+									{/if}
+									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
+										<SourceViewer
+											namespace={rollout.metadata?.namespace || ''}
+											name={rollout.metadata?.name || ''}
+											version={latestEntry.version.tag}
+										/>
+									{/if}
+									<div class="flex-1"></div>
 									{#if canModify}
 										<Button
-											id="rollback-btn"
-											size="xs"
+											id="status-change-version-btn"
+											size="sm"
+											color="light"
+											disabled={!isDashboardManagingWantedVersion}
+											onclick={() => {
+												if (isDashboardManagingWantedVersion) {
+													isPinVersionMode = false;
+													showPinModal = true;
+												}
+											}}
+										>
+											<EditOutline class="me-2 h-4 w-4" />
+											Change Version
+										</Button>
+									{/if}
+									{#if !isDashboardManagingWantedVersion}
+										<Tooltip
+											triggeredBy="#status-change-version-btn"
+											placement="bottom"
+											transition={blur}
+											transitionParams={{ duration: 300 }}
+										>
+											Version management disabled: This rollout's wantedVersion field is managed by
+											another controller or external system. The dashboard cannot pin it to prevent
+											conflicts.
+										</Tooltip>
+									{/if}
+									{#if rollout?.status?.history && rollout.status.history.length > 1 && canModify}
+										<Button
+											id="status-rollback-btn"
+											size="sm"
 											color="light"
 											disabled={!isDashboardManagingWantedVersion}
 											onclick={() => {
@@ -1329,1194 +1531,832 @@
 											Rollback
 										</Button>
 									{/if}
-									<Tooltip
-										triggeredBy="#rollback-btn"
-										placement="bottom"
-										class="max-w-xs"
-										transition={blur}
-										transitionParams={{ duration: 300 }}
-									>
-										Revert to the previous version that was deployed before this one.
-										{#if !isDashboardManagingWantedVersion}
-											<br />
-											<span class="text-yellow-600 dark:text-yellow-400">
-												Disabled: dashboard is not managing the wantedVersion field.
-											</span>
-										{/if}
-									</Tooltip>
-								{/if}
-							</div>
-						</Alert>
-					{/if}
+								</div>
+							{/if}
+						</div>
 
-					<!-- Schedule Status Banner -->
-					<ScheduleStatus {rollout} />
-
-					{#if rollout.status?.title || rollout.status?.description || rolloutQuery.data?.environment || gatewayIngressURLs.length > 0}
-						{@const environment = rolloutQuery.data?.environment}
-						{@const currentEnv = environment?.spec?.environment}
-						{@const currentEnvInfo = currentEnv
-							? environment?.status?.environmentInfos?.find(
-									(e: EnvironmentInfo) => e.environment === currentEnv
-								)
-							: undefined}
-						<Card class="mb-4 w-full max-w-none p-4 sm:p-6">
-							<div class="flex flex-col gap-2">
-								<div
-									class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+						<!-- PIPELINE CARD -->
+						<div
+							class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+						>
+							<div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+								<h5
+									class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white"
 								>
-									<div class="min-w-0 flex-1">
-										{#if rollout.status?.title}
-											<h2 class="text-base font-semibold text-gray-900 sm:text-lg dark:text-white">
-												{rollout.status.title}
-											</h2>
-										{/if}
-										{#if rollout.status?.description}
-											<p class="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
-												{rollout.status.description}
-											</p>
-										{/if}
-										{#if gatewayIngressURLs.length > 0}
-											<div class="mt-2 flex flex-wrap items-center gap-2">
-												{#each gatewayIngressURLs as url}
-													<a
-														href={url}
-														target="_blank"
-														rel="noopener noreferrer"
-														class="inline-flex items-center gap-1 text-xs font-medium break-all text-blue-600 hover:text-blue-800 sm:text-sm dark:text-blue-400 dark:hover:text-blue-300"
-													>
-														<ArrowUpRightFromSquareOutline
-															class="h-3 w-3 flex-shrink-0 sm:h-4 sm:w-4"
-														/>
-														<span class="truncate">{url}</span>
-													</a>
-												{/each}
-											</div>
-										{/if}
-									</div>
-									<div class="flex flex-wrap items-center gap-2">
-										{#if datadogServiceInfo}
-											<JoinedBadge
-												label="Datadog"
-												value={datadogServiceInfo.service}
-												valueColor="purple"
-												large
-												href={datadogServiceInfo.url}
-											>
-												{#snippet icon()}
-													<DatadogLogo class="h-3 w-3 flex-shrink-0 text-white" />
-												{/snippet}
-											</JoinedBadge>
-										{/if}
-										{#if currentEnvInfo}
-											<JoinedBadge
-												label="Environment"
-												value={currentEnvInfo.environment || 'N/A'}
-												valueColor="blue"
-												large
-											/>
-										{/if}
-									</div>
-								</div>
+									<CodePullRequestSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+									Deployment Pipeline
+								</h5>
 							</div>
-						</Card>
-					{/if}
-
-					<!-- Dashboard Grid -->
-					<div class="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-2">
-						<!-- Current Version Card -->
-						{#if rollout.status?.history?.[0]}
-							{@const latestEntry = rollout.status.history[0]}
-							<Card class="w-full max-w-none p-4 sm:p-6 lg:col-span-2">
-								<!-- Header Section -->
-								<div class="mb-6">
-									<h3 class="text-xl font-bold text-gray-900 dark:text-white">Current Version</h3>
-								</div>
-
-								<!-- Version Display Section -->
-								<div class="mb-6">
-									<div class="flex items-center gap-4">
-										<!-- Status Icon -->
-										<div
-											class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
-										>
-											<BakeStatusIcon bakeStatus={latestEntry.bakeStatus} size="medium" />
-										</div>
-
-										<!-- Version Info -->
-										<div class="min-w-0 flex-1">
-											<h4 class="text-xl font-bold text-gray-900 sm:text-2xl dark:text-white">
-												{getDisplayVersion(latestEntry.version)}
-											</h4>
-											<div class="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
-												{#if getRevisionInfo(latestEntry.version)}
-													<Badge color="blue" size="small" class="whitespace-nowrap">
-														{formatRevision(getRevisionInfo(latestEntry.version)!)}
-													</Badge>
-												{/if}
-												{#if isCurrentVersionCustom}
-													<Badge color="yellow" size="small" class="whitespace-nowrap">Custom</Badge
-													>
-												{/if}
-												<Badge
-													color={latestEntry.bakeStatus === 'Succeeded'
-														? 'green'
-														: latestEntry.bakeStatus === 'Failed'
-															? 'red'
-															: latestEntry.bakeStatus === 'Deploying'
-																? 'blue'
-																: latestEntry.bakeStatus === 'InProgress'
-																	? 'yellow'
-																	: 'gray'}
-													size="small"
-													class="whitespace-nowrap"
-												>
-													{latestEntry.bakeStatus}
-												</Badge>
-												{#if rollout.spec?.wantedVersion}
-													<Badge size="small" class="whitespace-nowrap">Pinned</Badge>
-												{/if}
-												{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-													<Badge color="orange" size="small" class="whitespace-nowrap">
-														{rollout.status.releaseCandidates.length} upgrade{rollout.status
-															.releaseCandidates.length > 1
-															? 's'
-															: ''}
-													</Badge>
-												{/if}
-											</div>
-										</div>
-									</div>
-								</div>
-
-								<!-- Deployment Timeline -->
-								<div class="mb-6">
-									<h5 class="mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-										Deployment Timeline
-									</h5>
-
-									<Timeline order="horizontal" class="w-full">
-										<!-- Started -->
-										<TimelineItem
-											title="Started"
-											date={formatTimeAgo(latestEntry.timestamp, $now)}
-											class="min-w-0 flex-1 pr-3"
-										>
-											{#snippet orientationSlot()}
-												<div class="flex items-center">
-													<div
-														class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-200 ring-0 ring-white sm:ring-8 dark:bg-blue-900 dark:ring-gray-800"
-													>
-														<ClockSolid class="h-4 w-4 text-blue-600 dark:text-blue-400" />
-													</div>
-													<div
-														class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-													></div>
-												</div>
-											{/snippet}
-											{#if latestEntry.triggeredBy}
+							<div class="px-4 py-4">
+								<Timeline order="horizontal" class="items-start">
+									<TimelineItem
+										order="horizontal"
+										title=""
+										date=""
+										class="mb-0 flex min-w-0 flex-1 sm:block"
+									>
+										{#snippet orientationSlot()}
+											<div class="mr-3 flex flex-col items-center sm:mr-0 sm:w-full sm:flex-row">
 												<div
-													class="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+													class="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-200 ring-0 ring-white sm:ring-8 dark:bg-blue-900 dark:ring-gray-800"
 												>
-													{#if latestEntry.triggeredBy.kind === 'User'}
-														<UserSolid class="h-3 w-3" />
-													{:else}
-														<CogSolid class="h-3 w-3" />
-													{/if}
-													<span>
-														Triggered by {latestEntry.triggeredBy.kind === 'User'
-															? latestEntry.triggeredBy.name
-															: 'System'}
-													</span>
+													<ClockSolid class="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
 												</div>
-											{/if}
-											{#if latestEntry.message}
-												<Blockquote
-													class="mt-2 text-sm break-words text-gray-600 dark:text-gray-400"
-												>
-													"{latestEntry.message}"
-												</Blockquote>
-											{/if}
-										</TimelineItem>
-
-										<!-- OpenKruise Rollout Progress (during baking and after completion) -->
-										{@const openKruiseRollouts = Object.values(managedResources)
-											.flat()
-											.filter(
-												(resource) =>
-													resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout'
-											)}
-										{@const validRollouts = openKruiseRollouts
-											.map((rolloutResource) => {
-												const kruiseRollout = rolloutResource.object as KruiseRollout;
-												const rolloutData = kruiseRollout?.status?.canaryStatus;
-												const canarySteps = kruiseRollout?.spec?.strategy?.canary?.steps;
-												if (rolloutData && canarySteps && canarySteps.length > 0) {
-													return {
-														rolloutResource,
-														kruiseRollout,
-														rolloutData,
-														canarySteps,
-														isCompleted: kruiseRollout.status?.currentStepState === 'Completed'
-													};
-												}
-												return null;
-											})
-											.filter((r): r is NonNullable<typeof r> => r !== null)}
-										{@const allRolloutTests = Object.values(managedResources)
-											.flat()
-											.filter(
-												(resource) =>
-													resource.groupVersionKind === 'rollout.kuberik.com/v1alpha1/RolloutTest'
-											)}
-										{@const validRolloutTests = allRolloutTests
-											.map((resource) => resource.object as RolloutTest)
-											.filter((test) => test.spec?.rolloutName)}
-										{#if validRollouts.length > 0}
-											{@const allRolloutsCompleted = validRollouts.every((r) => r.isCompleted)}
-											{@const anyRolloutPaused = validRollouts.some(
-												(r) => r.rolloutData.currentStepState === 'StepPaused'
-											)}
-											<TimelineItem
-												title={allRolloutsCompleted ? 'Rolled out' : 'Rolling out'}
-												date={allRolloutsCompleted
-													? 'All rollouts completed'
-													: anyRolloutStalled
-														? 'Stalled'
-														: anyRolloutPaused
-															? 'Some rollouts paused'
-															: 'In progress'}
-												class="min-w-0 flex-1 pr-3"
-											>
-												{#snippet orientationSlot()}
-													<div class="flex items-center">
-														<div
-															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {allRolloutsCompleted
-																? 'bg-green-200 dark:bg-green-900'
-																: anyRolloutStalled
-																	? 'bg-red-200 dark:bg-red-900'
-																	: anyRolloutPaused
-																		? 'bg-yellow-200 dark:bg-yellow-900'
-																		: 'bg-blue-200 dark:bg-blue-900'}"
-														>
-															{#if allRolloutsCompleted}
-																<CheckCircleSolid
-																	class="h-4 w-4 text-green-600 dark:text-green-400"
-																/>
-															{:else if anyRolloutStalled}
-																<ExclamationCircleSolid
-																	class="h-4 w-4 text-red-600 dark:text-red-400"
-																/>
-															{:else if anyRolloutPaused}
-																<PauseSolid class="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-															{:else}
-																<Spinner size="4" color="blue" />
-															{/if}
-														</div>
-														<div
-															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-														></div>
-													</div>
-												{/snippet}
-												<div class="mt-2 space-y-3">
-													{#each validRollouts as rollout}
-														{@const kruiseRolloutName = rollout.kruiseRollout?.metadata?.name}
-														{@const rolloutTests = validRolloutTests.filter(
-															(test: RolloutTest) =>
-																kruiseRolloutName && test.spec?.rolloutName === kruiseRolloutName
-														)}
-														{@const kruiseRolloutFromApi = rollout.kruiseRollout}
-														{@const currentStepIndex = rollout.rolloutData.currentStepIndex}
-														{@const isRolloutCompleted = rollout.isCompleted}
-														{@const isStalled = kruiseRolloutFromApi?.status?.conditions?.some(
-															(c) => c.type === 'Stalled' && c.status === 'True'
-														)}
-														{@const relevantTests = isRolloutCompleted
-															? rolloutTests
-															: rolloutTests.filter(
-																	(test: RolloutTest) => test.spec.stepIndex === currentStepIndex
-																)}
-														<div class="space-y-2">
-															<div class="space-y-1.5">
-																<div class="flex items-center justify-between gap-2">
-																	<div class="flex items-center gap-2">
-																		{#if rollout.rolloutData.currentStepState === 'Completed'}
-																			<CheckCircleSolid
-																				class="h-3 w-3 text-green-600 dark:text-green-400"
-																			/>
-																		{:else if isStalled}
-																			<ExclamationCircleSolid
-																				class="h-3 w-3 text-red-600 dark:text-red-400"
-																			/>
-																		{:else if rollout.rolloutData.currentStepState === 'StepPaused'}
-																			<PauseSolid
-																				class="h-3 w-3 text-yellow-600 dark:text-yellow-400"
-																			/>
-																		{:else}
-																			<Spinner size="4" color="blue" />
-																		{/if}
-																		<span class="text-sm text-gray-600 dark:text-gray-400">
-																			{rollout.rolloutResource.namespace}
-																			<span class="text-gray-500 dark:text-gray-400">/</span>
-																			<span class="font-medium text-gray-700 dark:text-gray-300"
-																				>{rollout.rolloutResource.name}</span
-																			>
-																		</span>
-																	</div>
-																	{#if rollout.rolloutData.currentStepState === 'StepPaused'}
-																		{@const annotations =
-																			kruiseRolloutFromApi?.metadata?.annotations || {}}
-																		{@const readyTimeoutKey = `rollout.kuberik.io/step-${currentStepIndex}-ready-timeout`}
-																		{@const bakeTimeKey = `rollout.kuberik.io/step-${currentStepIndex}-bake-time`}
-																		{@const readyAtKey = `internal.rollout.kuberik.io/step-${currentStepIndex}-ready-at`}
-																		{@const readyTimeout = annotations[readyTimeoutKey]}
-																		{@const bakeTime = annotations[bakeTimeKey]}
-																		{@const readyAt = annotations[readyAtKey]}
-																		{@const stalledCondition =
-																			kruiseRolloutFromApi?.status?.conditions?.find(
-																				(c) => c.type === 'Stalled' && c.status === 'True'
-																			)}
-																		{#if readyAt}
-																			{@const readyAtTime = new Date(readyAt).getTime()}
-																			{@const currentTime = $now.getTime()}
-																			{@const elapsedSinceReady = currentTime - readyAtTime}
-																			{@const readyTimeoutMs = readyTimeout
-																				? parseDuration(readyTimeout)
-																				: 0}
-																			{@const bakeTimeMs = bakeTime ? parseDuration(bakeTime) : 0}
-																			{@const bakeProgress =
-																				bakeTimeMs > 0
-																					? Math.min(100, (elapsedSinceReady / bakeTimeMs) * 100)
-																					: 0}
-																			{@const remainingBakeTime =
-																				bakeTimeMs > 0
-																					? Math.max(0, bakeTimeMs - elapsedSinceReady)
-																					: 0}
-																			{@const readyTimeoutDeadline = readyAtTime + readyTimeoutMs}
-																			{@const timeUntilTimeout =
-																				readyTimeoutMs > 0
-																					? Math.max(0, readyTimeoutDeadline - currentTime)
-																					: 0}
-																			{@const isTimeoutExceeded =
-																				readyTimeoutMs > 0 && currentTime > readyTimeoutDeadline}
-																			{@const isBakeComplete =
-																				bakeTimeMs > 0 && elapsedSinceReady >= bakeTimeMs}
-																			<div class="flex items-center gap-2">
-																				{#if canUpdate}
-																					<div class="relative inline-block">
-																						<Button
-																							size="xs"
-																							color={isBakeComplete ? 'green' : 'blue'}
-																							class="relative overflow-hidden"
-																							disabled={isBakeComplete}
-																							onclick={() =>
-																								continueRollout(
-																									rollout.rolloutResource.name,
-																									rollout.rolloutResource.namespace
-																								)}
-																						>
-																							{#if bakeTimeMs > 0 && !isBakeComplete}
-																								<!-- Progress overlay -->
-																								<div
-																									class="absolute inset-0 bg-blue-600 transition-all duration-300 ease-out dark:bg-blue-700"
-																									style="width: {bakeProgress}%"
-																								></div>
-																								<!-- Content with relative positioning to stay above progress -->
-																								<span class="relative z-10 flex items-center">
-																									<PlaySolid class="mr-1 h-3 w-3" />
-																									Continue
-																									<span class="ml-2 text-xs opacity-90">
-																										{formatDurationFromMs(remainingBakeTime)}
-																									</span>
-																								</span>
-																							{:else if isBakeComplete}
-																								<CheckCircleSolid class="mr-1 h-3 w-3" />
-																								Ready
-																							{:else}
-																								<PlaySolid class="mr-1 h-3 w-3" />
-																								Continue
-																							{/if}
-																						</Button>
-																					</div>
-																				{/if}
-																				{#if readyTimeoutMs > 0}
-																					{@const timeoutTooltip = isTimeoutExceeded
-																						? 'Timeout exceeded'
-																						: `Timeout in ${formatDurationFromMs(timeUntilTimeout)}`}
-																					<span title={timeoutTooltip}>
-																						{#if isTimeoutExceeded}
-																							<ExclamationCircleSolid
-																								class="h-3 w-3 text-red-500 dark:text-red-400"
-																							/>
-																						{:else}
-																							<ClockSolid
-																								class="h-3 w-3 text-gray-500 dark:text-gray-400"
-																							/>
-																						{/if}
-																					</span>
-																				{/if}
-																			</div>
-																		{:else if canUpdate}
-																			<Button
-																				size="xs"
-																				color="blue"
-																				onclick={() =>
-																					continueRollout(
-																						rollout.rolloutResource.name,
-																						rollout.rolloutResource.namespace
-																					)}
-																			>
-																				<PlaySolid class="mr-1 h-3 w-3" />
-																				Continue
-																			</Button>
-																		{/if}
-																	{/if}
-																</div>
-															</div>
-															{#if !rollout.isCompleted}
-																<StepIndicator
-																	glow
-																	currentStep={(rollout.rolloutData.currentStepIndex || 1) +
-																		(rollout.rolloutData.currentStepState === 'Completed' ? 1 : 0)}
-																	steps={rollout.canarySteps.map((step: any, index: number) =>
-																		index === rollout.canarySteps.length - 1 &&
-																		rollout.rolloutData.currentStepState === 'Completed'
-																			? 'Completed'
-																			: `Step ${index + 1}`
-																	)}
-																	color="blue"
-																	size="sm"
-																/>
-															{/if}
-															{#if relevantTests.length > 0 || (kruiseRolloutFromApi && currentStepIndex !== undefined && !isRolloutCompleted)}
-																<div
-																	class="mt-2 space-y-2 border-t border-gray-200 pt-2 dark:border-gray-700"
-																>
-																	{#if relevantTests.length > 0}
-																		{@const completedTests = relevantTests.filter(
-																			(t) =>
-																				t.status?.phase === 'Succeeded' ||
-																				t.status?.phase === 'Failed' ||
-																				t.status?.phase === 'Cancelled'
-																		)}
-																		{@const runningTests = relevantTests.filter(
-																			(t) =>
-																				t.status?.phase !== 'Succeeded' &&
-																				t.status?.phase !== 'Failed' &&
-																				t.status?.phase !== 'Cancelled'
-																		)}
-																		{@const testsByStep = [
-																			...runningTests,
-																			...completedTests
-																		].reduce(
-																			(acc, test) => {
-																				const stepIndex = test.spec?.stepIndex ?? 0;
-																				if (!acc[stepIndex]) acc[stepIndex] = [];
-																				acc[stepIndex].push(test);
-																				return acc;
-																			},
-																			{} as Record<number, typeof relevantTests>
-																		)}
-																		{@const sortedStepIndices = Object.keys(testsByStep)
-																			.map(Number)
-																			.sort((a, b) => a - b)}
-																		<div
-																			class="text-xs font-semibold text-gray-600 dark:text-gray-400"
-																		>
-																			Rollout Tests
-																		</div>
-																		<div class="flex flex-col gap-4">
-																			{#each sortedStepIndices as stepIndex}
-																				<div class="space-y-2">
-																					{#if sortedStepIndices.length > 1 || isRolloutCompleted}
-																						<div
-																							class="text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-500"
-																						>
-																							Step {stepIndex}
-																						</div>
-																					{/if}
-																					<div class="flex flex-col gap-2">
-																						{#each testsByStep[stepIndex] as test}
-																							{@const phase = test.status?.phase || 'Unknown'}
-																							{@const retryCount = test.status?.retryCount || 0}
-																							{#if test.metadata}
-																								{@const linkAnnotations = parseLinkAnnotations(test.metadata.annotations)}
-																								{@const ddInfo = extractDatadogInfoFromContainers(test.spec?.jobTemplate?.template?.spec?.containers || [])}
-																								<div class="flex items-center gap-2">
-																									<Tooltip
-																										class="z-50"
-																										placement="top"
-																										triggeredBy="#test-status-{test.metadata.name}"
-																									>
-																										{phase}
-																									</Tooltip>
-																									<div
-																										id="test-status-{test.metadata.name}"
-																										class="flex items-center justify-center"
-																									>
-																										{#if phase === 'Running'}
-																											<div class="text-blue-600 dark:text-blue-500">
-																												<Spinner
-																													size="4"
-																													color="blue"
-																													type="dots"
-																												/>
-																											</div>
-																										{:else if phase === 'Succeeded'}
-																											<CheckCircleSolid
-																												class="h-4 w-4 text-green-500 dark:text-green-400"
-																											/>
-																										{:else if phase === 'Failed'}
-																											<ExclamationCircleSolid
-																												class="h-4 w-4 text-red-500 dark:text-red-400"
-																											/>
-																										{:else if phase === 'Cancelled'}
-																											<CircleMinusSolid
-																												class="h-4 w-4 text-gray-400 dark:text-gray-500"
-																											/>
-																										{:else if phase === 'Pending'}
-																											<ClockArrowOutline
-																												class="h-4 w-4 text-yellow-500 dark:text-yellow-400"
-																											/>
-																										{:else}
-																											<ClockSolid
-																												class="h-4 w-4 text-gray-400 dark:text-gray-500"
-																											/>
-																										{/if}
-																									</div>
-																									<span
-																										class="text-sm text-gray-700 dark:text-gray-300"
-																									>
-																										{test.metadata.name}
-																									</span>
-																									{#if retryCount > 0}
-																										<Badge color="orange" size="small">
-																											{retryCount} retr{retryCount === 1
-																												? 'y'
-																												: 'ies'}
-																										</Badge>
-																									{/if}
-																									{#if phase === 'Running' && test.status?.activePods}
-																										<span
-																											class="text-xs text-gray-500 dark:text-gray-500"
-																										>
-																											{test.status.activePods} active
-																										</span>
-																									{/if}
-																									{#if linkAnnotations.length > 0 || ddInfo || phase === 'Failed'}
-																										<div class="ml-auto flex items-center gap-3">
-																											{#if phase === 'Failed'}
-																												<a
-																													href="/rollouts/{namespace}/{name}/logs?tab=tests"
-																													class="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
-																												>
-																													View Logs
-																												</a>
-																											{/if}
-																											{#each linkAnnotations as link}
-																												<a
-																													href={link.url}
-																													target="_blank"
-																													rel="noopener noreferrer"
-																													class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
-																												>
-																													{link.label}
-																													<ArrowUpRightFromSquareOutline class="h-3 w-3" />
-																												</a>
-																											{/each}
-																											{#if ddInfo}
-																												<a
-																													href={buildDatadogLogsUrl(ddInfo.service, ddInfo.env)}
-																													target="_blank"
-																													rel="noopener noreferrer"
-																													class="inline-flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline dark:text-purple-400 dark:hover:text-purple-300"
-																												>
-																													<DatadogLogo class="h-3 w-3" />
-																													Logs
-																												</a>
-																												<a
-																													href={buildDatadogTestRunsUrl(ddInfo.service, ddInfo.version || getDisplayVersion(latestEntry.version))}
-																													target="_blank"
-																													rel="noopener noreferrer"
-																													class="inline-flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline dark:text-purple-400 dark:hover:text-purple-300"
-																												>
-																													<DatadogLogo class="h-3 w-3" />
-																													CI
-																												</a>
-																											{/if}
-																										</div>
-																									{/if}
-																								</div>
-																							{/if}
-																						{/each}
-																					</div>
-																				</div>
-																			{/each}
-																		</div>
-																	{/if}
-																</div>
-															{/if}
-														</div>
-													{/each}
-												</div>
-											</TimelineItem>
-										{/if}
-
-										<!-- Baked -->
-										{#if latestEntry.bakeStatus === 'Succeeded' && latestEntry.bakeEndTime}
-											<TimelineItem
-												title="Baked"
-												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
-												class="min-w-0 flex-1 pr-3"
-											>
-												{#snippet orientationSlot()}
-													<div class="flex items-center">
-														<div
-															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-200 ring-0 ring-white sm:ring-8 dark:bg-green-900 dark:ring-gray-800"
-														>
-															<CheckCircleSolid
-																class="h-4 w-4 text-green-600 dark:text-green-400"
-															/>
-														</div>
-														<div
-															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-														></div>
-													</div>
-												{/snippet}
-												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-													Completed after {formatDuration(
-														latestEntry.bakeStartTime || latestEntry.timestamp,
-														new Date(latestEntry.bakeEndTime)
-													)}
-													{#if latestEntry.bakeStatusMessage}
-														<br />
-														{latestEntry.bakeStatusMessage}
-													{/if}
-												</div>
-											</TimelineItem>
-										{:else if latestEntry.bakeStatus === 'Pending' || latestEntry.bakeStatus === 'Deploying' || !latestEntry.bakeStatus || latestEntry.bakeStatus === 'None'}
-											<TimelineItem
-												title="Bake"
-												date={rollout.spec?.deployTimeout
-													? (() => {
-															const deploymentTime = new Date(latestEntry.timestamp).getTime();
-															const currentTime = $now.getTime();
-															const deployTimeoutMs = parseDuration(rollout.spec.deployTimeout);
-															const timeoutTime = deploymentTime + deployTimeoutMs;
-															const timeUntilTimeout = timeoutTime - currentTime;
-															if (timeUntilTimeout > 0) {
-																return `Will timeout in ${formatDurationFromMs(timeUntilTimeout)}`;
-															} else {
-																return 'Timed out';
-															}
-														})()
-													: 'Waiting for bake to start...'}
-												class="min-w-0 flex-1 pr-3"
-											>
-												{#snippet orientationSlot()}
-													<div class="flex items-center">
-														<div
-															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 ring-0 ring-white sm:ring-8 dark:bg-gray-700 dark:ring-gray-800"
-														>
-															<ClockSolid class="h-4 w-4 text-gray-600 dark:text-gray-400" />
-														</div>
-														<div
-															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-														></div>
-													</div>
-												{/snippet}
-												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-													{#if latestEntry.bakeEndTime && latestEntry.bakeStartTime}
-														Completed after {formatDuration(
-															latestEntry.bakeStartTime,
-															new Date(latestEntry.bakeEndTime)
-														)}
-														<br />
-													{:else if latestEntry.bakeStartTime}
-														Baking in progress...
-														<br />
-													{/if}
-													{#if latestEntry.bakeStatusMessage}
-														{latestEntry.bakeStatusMessage}
-													{/if}
-												</div>
-											</TimelineItem>
-										{:else if latestEntry.bakeStatus === 'Failed' && latestEntry.bakeEndTime}
-											{@const failedHealthChecks = latestEntry.failedHealthChecks || []}
-											<TimelineItem
-												title="Deployment failed"
-												date={formatTimeAgo(latestEntry.bakeEndTime, $now)}
-												class="min-w-0 flex-1 pr-3"
-											>
-												{#snippet orientationSlot()}
-													<div class="flex items-center">
-														<div
-															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-200 ring-0 ring-white sm:ring-8 dark:bg-red-900 dark:ring-gray-800"
-														>
-															<ExclamationCircleSolid
-																class="h-4 w-4 text-red-600 dark:text-red-400"
-															/>
-														</div>
-														<div
-															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
-														></div>
-													</div>
-												{/snippet}
-												<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-													Failed after {formatDuration(
-														latestEntry.bakeStartTime || latestEntry.timestamp,
-														new Date(latestEntry.bakeEndTime)
-													)}
-													{#if latestEntry.bakeStatusMessage}
-														<br />
-														{latestEntry.bakeStatusMessage}
-													{/if}
-													{#if failedHealthChecks.length > 0}
-														<div class="mt-2">
-															<p
-																class="mb-1.5 text-xs font-medium text-gray-900 dark:text-gray-100"
-															>
-																Failed Health Checks ({failedHealthChecks.length}):
+												<div
+													class="min-h-4 w-0.5 flex-1 bg-gray-200 sm:h-0.5 sm:min-h-0 sm:w-full dark:bg-gray-700"
+												></div>
+											</div>
+										{/snippet}
+										<div class="min-w-0 flex-1 pt-0.5 pb-6 sm:pt-2 sm:pr-6 sm:pb-0">
+											<p class="text-sm font-semibold text-gray-900 dark:text-white">Started</p>
+											<p class="text-xs text-gray-500 dark:text-gray-400">
+												{formatTimeAgo(latestEntry.timestamp, $now)}
+											</p>
+											{#if latestEntry.message || latestEntry.triggeredBy}
+												<div class="mt-1.5">
+													{#if latestEntry.message}
+														<div class="border-l-2 border-gray-600 pl-2 dark:border-gray-500">
+															<p class="text-xs text-gray-400 italic dark:text-gray-400">
+																{latestEntry.message}
 															</p>
-															<div class="flex flex-wrap gap-1.5">
-																{#each failedHealthChecks as failedHC, index}
-																	<HealthCheckBadge
-																		failedHealthCheck={failedHC}
-																		fullHealthCheck={findFullHealthCheck(failedHC, healthChecks)}
-																		{index}
-																		prefix="failed-hc-timeline"
-																	/>
-																{/each}
-															</div>
+														</div>
+													{/if}
+													{#if latestEntry.triggeredBy}
+														<div class="mt-1 flex justify-end pr-2">
+															<span
+																class="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-500"
+															>
+																{#if latestEntry.triggeredBy.kind === 'User'}
+																	<UserSolid class="h-2.5 w-2.5 flex-shrink-0" />
+																	<span>{latestEntry.triggeredBy.name}</span>
+																{:else}
+																	<CogSolid class="h-2.5 w-2.5 flex-shrink-0" />
+																	<span>System</span>
+																{/if}
+															</span>
 														</div>
 													{/if}
 												</div>
-											</TimelineItem>
-										{:else if latestEntry.bakeStatus === 'InProgress' && latestEntry.bakeStartTime}
-											{@const bakeProgress = rollout.spec?.bakeTime
-												? (() => {
-														const bakeStartTime = new Date(latestEntry.bakeStartTime).getTime();
-														const currentTime = $now.getTime();
-														const elapsedTime = currentTime - bakeStartTime;
-														const bakeTimeMs = parseDuration(rollout.spec.bakeTime);
-														if (bakeTimeMs > 0) {
-															return Math.min(100, Math.max(0, (elapsedTime / bakeTimeMs) * 100));
-														}
-														return 0;
-													})()
-												: 0}
+											{/if}
+										</div>
+									</TimelineItem>
+
+									{#each pipelineValidRollouts as kr}
+										{#each kr.canarySteps as _step, stepIdx}
+											{@const stepNum = stepIdx + 1}
+											{@const currentStepIndex = kr.rolloutData.currentStepIndex}
+											{@const isKrCompleted = kr.isCompleted}
+											{@const isKrStalled = kr.kruiseRollout?.status?.conditions?.some(
+												(c) => c.type === 'Stalled' && c.status === 'True'
+											)}
+											{@const isCurrentStep = currentStepIndex === stepNum}
+											{@const isPastStep =
+												isKrCompleted ||
+												(currentStepIndex !== undefined && stepNum < currentStepIndex)}
+											{@const isStepPaused =
+												isCurrentStep && kr.rolloutData.currentStepState === 'StepPaused'}
+											{@const isStepReady =
+												isCurrentStep && kr.rolloutData.currentStepState === 'StepReady'}
+											{@const isStepRunning =
+												isCurrentStep &&
+												!isStepPaused &&
+												!isStepReady &&
+												kr.rolloutData.currentStepState !== 'Completed' &&
+												!isKrStalled}
+											{@const rolloutDone =
+												isPastStep || (isCurrentStep && (isStepPaused || isStepReady))}
+											{@const rolloutRunning = isStepRunning}
+											{@const rolloutFailed = isKrStalled && isCurrentStep && !isStepPaused}
+											{@const bakeDone = isPastStep}
+											{@const waitingForBake = isCurrentStep && isStepReady}
+											{@const krName = kr.kruiseRollout?.metadata?.name}
+											{@const krTests = pipelineValidTests.filter(
+												(t: RolloutTest) => krName && t.spec?.rolloutName === krName
+											)}
+											{@const stepTests = krTests.filter(
+												(t: RolloutTest) => t.spec?.stepIndex === stepNum
+											)}
+											{@const hasTests = stepTests.length > 0}
+											{@const allTestsSucceeded =
+												!hasTests ||
+												stepTests.every((t: RolloutTest) => t.status?.phase === 'Succeeded')}
+											{@const bakingNow = isCurrentStep && isStepPaused && allTestsSucceeded && !isKrStalled}
+											{@const stageTestsFailed = isCurrentStep && stepTests.some((t: RolloutTest) => t.status?.phase === 'Failed')}
+											{@const bakeFailed = isKrStalled && isCurrentStep && isStepPaused && !stageTestsFailed}
+											{@const isLastStep = stepIdx === kr.canarySteps.length - 1}
 											<TimelineItem
-												title="Baking"
-												date={rollout.spec?.bakeTime
-													? (() => {
-															const deploymentTime = new Date(latestEntry.timestamp).getTime();
-															const currentTime = $now.getTime();
-															const elapsedTime = currentTime - deploymentTime;
-															const bakeTimeMs = parseDuration(rollout.spec.bakeTime);
-															if (elapsedTime < bakeTimeMs) {
-																const remainingTime = bakeTimeMs - elapsedTime;
-																return `Waiting for at least ${formatDurationFromMs(remainingTime)}`;
-															} else {
-																return 'Baking in progress...';
-															}
-														})()
-													: 'Waiting for bake to start...'}
-												class="min-w-0 flex-1 pr-3"
+												order="horizontal"
+												title=""
+												date=""
+												class="mb-0 flex min-w-0 flex-1 sm:block"
 											>
 												{#snippet orientationSlot()}
-													<div class="flex items-center">
+													<div
+														class="mr-3 flex flex-col items-center sm:mr-0 sm:w-full sm:flex-row"
+													>
 														<div
-															class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800 {latestEntry.bakeStatus ===
-															'InProgress'
-																? 'bg-white dark:bg-gray-800'
-																: healthChecks.every((hc) => hc.status?.status === 'Healthy')
+															class="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800
+															{rolloutFailed || stageTestsFailed || bakeFailed
+																? 'bg-red-200 dark:bg-red-900'
+																: isPastStep
 																	? 'bg-green-200 dark:bg-green-900'
-																	: healthChecks.some((hc) => hc.status?.status === 'Unhealthy')
-																		? 'bg-red-200 dark:bg-red-900'
-																		: 'bg-yellow-200 dark:bg-yellow-900'}"
+																	: isCurrentStep && bakingNow
+																		? 'bg-yellow-200 dark:bg-yellow-900'
+																		: isCurrentStep
+																			? 'bg-blue-200 dark:bg-blue-900'
+																			: 'bg-gray-200 dark:bg-gray-700'}"
 														>
-															{#if latestEntry.bakeStatus === 'InProgress'}
-																<Spinner type="pulse" size="8" color="yellow" />
-															{:else if healthChecks.every((hc) => hc.status?.status === 'Healthy')}
-																<CheckCircleSolid
-																	class="h-4 w-4 text-green-600 dark:text-green-400"
-																/>
-															{:else if healthChecks.some((hc) => hc.status?.status === 'Unhealthy')}
+															{#if rolloutFailed || stageTestsFailed || bakeFailed}
 																<ExclamationCircleSolid
-																	class="h-4 w-4 text-red-600 dark:text-red-400"
+																	class="h-3.5 w-3.5 text-red-600 dark:text-red-400"
 																/>
+															{:else if isPastStep}
+																<CheckCircleSolid
+																	class="h-3.5 w-3.5 text-green-600 dark:text-green-400"
+																/>
+															{:else if isCurrentStep && bakingNow}
+																<Spinner size="4" color="yellow" />
+															{:else if isCurrentStep}
+																<Spinner size="4" color="blue" />
 															{:else}
-																<ClockSolid class="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+																<ClockSolid class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
 															{/if}
 														</div>
 														<div
-															class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"
+															class="min-h-4 w-0.5 flex-1 bg-gray-200 sm:h-0.5 sm:min-h-0 sm:w-full dark:bg-gray-700"
 														></div>
 													</div>
 												{/snippet}
-												<div class="mt-1 space-y-2">
-													<div class="text-sm text-gray-600 dark:text-gray-400">
-														{latestEntry.bakeStatusMessage || 'Baking in progress...'}
-													</div>
-													{#if rollout.spec?.bakeTime}
-														{@const remainingTime = (() => {
-															const bakeStartTime = latestEntry.bakeStartTime
-																? new Date(latestEntry.bakeStartTime).getTime()
-																: new Date(latestEntry.timestamp).getTime();
-															const currentTime = $now.getTime();
-															const elapsedTime = currentTime - bakeStartTime;
-															const bakeTimeMs = parseDuration(rollout.spec.bakeTime);
-															return Math.max(0, bakeTimeMs - elapsedTime);
-														})()}
-														<div class="w-full">
-															<div class="mb-1 flex items-center justify-between text-xs">
-																<span class="text-gray-600 dark:text-gray-400">Bake Progress</span>
-																<span class="font-medium text-gray-700 dark:text-gray-300">
-																	{Math.round(bakeProgress)}%
-																</span>
-															</div>
-															<div class="relative">
-																<div
-																	class="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
-																>
+												<div class="min-w-0 flex-1 pt-0.5 pb-6 sm:pt-2 sm:pr-6 sm:pb-0">
+													{#if isCurrentStep}
+														{@const stageAllDone =
+															rolloutDone && allTestsSucceeded && !bakingNow && !waitingForBake && !bakeFailed}
+														<p
+															class="text-sm font-semibold {rolloutFailed || stageTestsFailed || bakeFailed
+																? 'text-red-700 dark:text-red-400'
+																: 'text-gray-900 dark:text-white'}"
+														>
+															Stage {stepNum}
+															<span
+																class="font-normal {rolloutFailed || stageTestsFailed || bakeFailed
+																	? 'text-red-600 dark:text-red-400'
+																	: stageAllDone
+																		? 'text-green-600 dark:text-green-400'
+																		: bakingNow || waitingForBake
+																			? 'text-yellow-600 dark:text-yellow-400'
+																			: 'text-blue-600 dark:text-blue-400'}"
+															>
+																· {rolloutFailed || stageTestsFailed || bakeFailed
+																	? 'Failed'
+																	: stageAllDone
+																			? 'Done'
+																			: bakingNow
+																				? 'Baking'
+																				: waitingForBake
+																					? 'Waiting'
+																					: 'In Progress'}
+															</span>
+														</p>
+														{#if !stageAllDone}
+															<div class="mt-2 space-y-2">
+																<div class="flex items-center gap-2">
 																	<div
-																		class="h-full rounded-full bg-yellow-500 transition-all duration-300 ease-out dark:bg-yellow-600"
-																		style="width: {bakeProgress}%"
-																	></div>
-																</div>
-																<div class="mt-0.5 flex justify-end">
-																	<span class="text-xs text-gray-500 dark:text-gray-400">
-																		{remainingTime > 0
-																			? `${formatDurationFromMs(remainingTime)} remaining`
-																			: 'Baking complete'}
+																		class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ring-1
+																	{rolloutFailed || stageTestsFailed
+																			? 'bg-red-100 ring-red-200 dark:bg-red-900/40 dark:ring-red-800'
+																			: rolloutDone
+																				? 'bg-green-100 ring-green-200 dark:bg-green-900/40 dark:ring-green-800'
+																				: rolloutRunning
+																					? 'bg-blue-100 ring-blue-200 dark:bg-blue-900/40 dark:ring-blue-800'
+																					: 'bg-gray-100 ring-gray-200 dark:bg-gray-700 dark:ring-gray-600'}"
+																	>
+																		{#if rolloutFailed || stageTestsFailed}
+																			<ExclamationCircleSolid
+																				class="h-2.5 w-2.5 text-red-600 dark:text-red-400"
+																			/>
+																		{:else if rolloutDone}
+																			<CheckCircleSolid
+																				class="h-2.5 w-2.5 text-green-600 dark:text-green-400"
+																			/>
+																		{:else if rolloutRunning}
+																			<Spinner size="4" color="blue" />
+																		{:else}
+																			<ClockSolid
+																				class="h-2.5 w-2.5 text-gray-400 dark:text-gray-500"
+																			/>
+																		{/if}
+																	</div>
+																	<span class="text-xs text-gray-600 dark:text-gray-400"
+																		>Rollout
+																		<span
+																			class={rolloutFailed || stageTestsFailed
+																				? 'text-red-600 dark:text-red-400'
+																				: rolloutDone
+																					? 'text-green-600 dark:text-green-400'
+																					: rolloutRunning
+																						? 'text-blue-600 dark:text-blue-400'
+																						: 'text-gray-400 dark:text-gray-500'}
+																			>· {rolloutFailed || stageTestsFailed
+																				? 'Failed'
+																				: rolloutDone
+																					? 'Done'
+																					: rolloutRunning
+																						? 'Rolling'
+																						: 'Pending'}</span
+																		>
 																	</span>
 																</div>
+
+																{#if hasTests}
+																	{@const anyTestFailed = stepTests.some(
+																		(t: RolloutTest) => t.status?.phase === 'Failed'
+																	)}
+																	{@const anyTestRunning = stepTests.some(
+																		(t: RolloutTest) => t.status?.phase === 'Running'
+																	)}
+																	{@const anyTestPending = stepTests.some((t: RolloutTest) =>
+																		['Pending', 'Unknown'].includes(t.status?.phase || '')
+																	)}
+																	{@const testsDone =
+																		isPastStep ||
+																		(isCurrentStep && isStepPaused && allTestsSucceeded)}
+																	{@const testsFailed = anyTestFailed}
+																	{@const testsRunning =
+																		!testsDone && !testsFailed && anyTestRunning}
+																	<div class="flex items-start gap-2">
+																		<div
+																			class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ring-1
+																		{testsFailed
+																				? 'bg-red-100 ring-red-200 dark:bg-red-900/40 dark:ring-red-800'
+																				: testsDone
+																					? 'bg-green-100 ring-green-200 dark:bg-green-900/40 dark:ring-green-800'
+																					: testsRunning
+																						? 'bg-blue-100 ring-blue-200 dark:bg-blue-900/40 dark:ring-blue-800'
+																						: anyTestPending
+																							? 'bg-yellow-100 ring-yellow-200 dark:bg-yellow-900/40 dark:ring-yellow-800'
+																							: 'bg-gray-100 ring-gray-200 dark:bg-gray-700 dark:ring-gray-600'}"
+																		>
+																			{#if testsFailed}
+																				<ExclamationCircleSolid
+																					class="h-2.5 w-2.5 text-red-600 dark:text-red-400"
+																				/>
+																			{:else if testsDone}
+																				<CheckCircleSolid
+																					class="h-2.5 w-2.5 text-green-600 dark:text-green-400"
+																				/>
+																			{:else if testsRunning}
+																				<Spinner size="4" color="blue" />
+																			{:else if anyTestPending}
+																				<ClockArrowOutline
+																					class="h-2.5 w-2.5 text-yellow-500 dark:text-yellow-400"
+																				/>
+																			{:else}
+																				<ClockSolid
+																					class="h-2.5 w-2.5 text-gray-400 dark:text-gray-500"
+																				/>
+																			{/if}
+																		</div>
+																		<div class="min-w-0 flex-1">
+																			<span class="text-xs text-gray-600 dark:text-gray-400"
+																				>Tests
+																				<span
+																					class={testsFailed
+																						? 'text-red-600 dark:text-red-400'
+																						: testsDone
+																							? 'text-green-600 dark:text-green-400'
+																							: testsRunning
+																								? 'text-blue-600 dark:text-blue-400'
+																								: 'text-gray-400 dark:text-gray-500'}
+																					>· {testsFailed
+																						? 'Failed'
+																						: testsDone
+																							? 'Done'
+																							: testsRunning
+																								? 'Running'
+																								: 'Pending'}</span
+																				>
+																			</span>
+																			<div class="mt-0.5 flex flex-col gap-0.5">
+																				{#each stepTests as test}
+																					{#if test.metadata}
+																						{@const phase = test.status?.phase || 'Unknown'}
+																						{@const retryCount = test.status?.retryCount || 0}
+																						{@const linkAnnotations = parseLinkAnnotations(
+																							test.metadata.annotations
+																						)}
+																						{@const ddInfo = extractDatadogInfoFromContainers(
+																							test.spec?.jobTemplate?.template?.spec?.containers ||
+																								[]
+																						)}
+																						<div
+																							class="flex flex-wrap items-center gap-x-2 gap-y-0.5"
+																						>
+																							<Tooltip
+																								class="z-50"
+																								placement="top"
+																								triggeredBy={'#pipe-test-' + test.metadata.name}
+																							>
+																								{phase}{retryCount > 0
+																									? ` (${retryCount} retr${retryCount === 1 ? 'y' : 'ies'})`
+																									: ''}
+																							</Tooltip>
+																							<div
+																								id={"pipe-test-" + test.metadata.name}
+																								class="flex items-center gap-1"
+																							>
+																								{#if phase === 'Running'}
+																									<Spinner size="4" color="blue" />
+																								{:else if phase === 'Succeeded'}
+																									<CheckCircleSolid
+																										class="h-3 w-3 text-green-500 dark:text-green-400"
+																									/>
+																								{:else if phase === 'Failed'}
+																									<ExclamationCircleSolid
+																										class="h-3 w-3 text-red-500 dark:text-red-400"
+																									/>
+																								{:else if phase === 'Cancelled'}
+																									<CircleMinusSolid
+																										class="h-3 w-3 text-gray-400 dark:text-gray-500"
+																									/>
+																								{:else if phase === 'Pending'}
+																									<ClockArrowOutline
+																										class="h-3 w-3 text-yellow-500 dark:text-yellow-400"
+																									/>
+																								{:else}
+																									<ClockSolid
+																										class="h-3 w-3 text-gray-400 dark:text-gray-500"
+																									/>
+																								{/if}
+																								<span
+																									class="text-xs text-gray-600 dark:text-gray-400"
+																									>{test.metadata.name}{retryCount > 0
+																										? ` (retry ${retryCount})`
+																										: ''}</span
+																								>
+																							</div>
+																							{#if phase === 'Failed'}
+																								<a
+																									href="/rollouts/{namespace}/{name}/logs?tab=tests"
+																									class="text-xs text-blue-600 hover:underline dark:text-blue-400"
+																									>Logs</a
+																								>
+																							{/if}
+																							{#each linkAnnotations as link}
+																								<a
+																									href={link.url}
+																									target="_blank"
+																									rel="noopener noreferrer"
+																									class="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
+																								>
+																									{link.label}<ArrowUpRightFromSquareOutline
+																										class="h-2.5 w-2.5"
+																									/>
+																								</a>
+																							{/each}
+																							{#if ddInfo}
+																								<a
+																									href={buildDatadogLogsUrl(
+																										ddInfo.service,
+																										ddInfo.env
+																									)}
+																									target="_blank"
+																									rel="noopener noreferrer"
+																									class="inline-flex items-center gap-0.5 text-xs text-purple-600 hover:underline dark:text-purple-400"
+																								>
+																									<DatadogLogo class="h-2.5 w-2.5" />Logs
+																								</a>
+																								<a
+																									href={buildDatadogTestRunsUrl(
+																										ddInfo.service,
+																										ddInfo.version ||
+																											getDisplayVersion(latestEntry.version)
+																									)}
+																									target="_blank"
+																									rel="noopener noreferrer"
+																									class="inline-flex items-center gap-0.5 text-xs text-purple-600 hover:underline dark:text-purple-400"
+																								>
+																									<DatadogLogo class="h-2.5 w-2.5" />CI
+																								</a>
+																							{/if}
+																						</div>
+																					{/if}
+																				{/each}
+																			</div>
+																		</div>
+																	</div>
+																{/if}
+
+																{#if !isLastStep}
+																	<div class="flex items-start gap-2">
+																		<div
+																			class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ring-1
+																	{bakeFailed
+																				? 'bg-red-100 ring-red-200 dark:bg-red-900/40 dark:ring-red-800'
+																				: bakeDone
+																					? 'bg-green-100 ring-green-200 dark:bg-green-900/40 dark:ring-green-800'
+																					: bakingNow
+																						? 'bg-yellow-100 ring-yellow-200 dark:bg-yellow-900/40 dark:ring-yellow-800'
+																						: 'bg-gray-100 ring-gray-200 dark:bg-gray-700 dark:ring-gray-600'}"
+																		>
+																			{#if bakeFailed}
+																				<ExclamationCircleSolid
+																					class="h-2.5 w-2.5 text-red-600 dark:text-red-400"
+																				/>
+																			{:else if bakeDone}
+																				<CheckCircleSolid
+																					class="h-2.5 w-2.5 text-green-600 dark:text-green-400"
+																				/>
+																			{:else if bakingNow}
+																				<Spinner size="4" color="yellow" />
+																			{:else}
+																				<ClockSolid
+																					class="h-2.5 w-2.5 text-gray-400 dark:text-gray-500"
+																				/>
+																			{/if}
+																		</div>
+																		<div class="min-w-0 flex-1">
+																			{#if bakingNow}
+																				{@const ann = kr.kruiseRollout?.metadata?.annotations || {}}
+																				{@const bakeTimeKey = `rollout.kuberik.io/step-${stepNum}-bake-time`}
+																				{@const readyAtKey = `internal.rollout.kuberik.io/step-${stepNum}-ready-at`}
+																				{@const stepBakeTime = ann[bakeTimeKey]}
+																				{@const stepReadyAt = ann[readyAtKey]}
+																				<span class="text-xs text-gray-600 dark:text-gray-400"
+																					>Bake <span class="text-yellow-600 dark:text-yellow-400"
+																						>· In progress</span
+																					></span
+																				>
+																				{#if stepReadyAt}
+																					{@const readyAtMs = new Date(stepReadyAt).getTime()}
+																					{@const elapsed = $now.getTime() - readyAtMs}
+																					{@const bakeTimeMs = stepBakeTime
+																						? parseDuration(stepBakeTime)
+																						: 0}
+																					{@const remainingBake =
+																						bakeTimeMs > 0 ? Math.max(0, bakeTimeMs - elapsed) : 0}
+																					{#if bakeTimeMs > 0}
+																						{@const bakeProgress = Math.min(
+																							100,
+																							(elapsed / bakeTimeMs) * 100
+																						)}
+																						<div class="mt-1 w-28">
+																							<div
+																								class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+																							>
+																								<div
+																									class="h-full rounded-full bg-yellow-400 transition-all duration-300 dark:bg-yellow-500"
+																									style="width: {bakeProgress}%"
+																								></div>
+																							</div>
+																							<p
+																								class="mt-0.5 text-xs text-gray-400 dark:text-gray-500"
+																							>
+																								{remainingBake > 0
+																									? formatDurationFromMs(remainingBake)
+																									: 'Ready'}
+																							</p>
+																						</div>
+																					{/if}
+																				{/if}
+																			{:else if bakeFailed}
+																				<span class="text-xs text-gray-600 dark:text-gray-400"
+																					>Bake <span class="text-red-600 dark:text-red-400"
+																					>· Failed</span
+																				></span
+																			>
+																			{:else}
+																				<span class="text-xs text-gray-600 dark:text-gray-400"
+																					>Bake <span
+																						class={bakeDone
+																							? 'text-green-600 dark:text-green-400'
+																							: 'text-gray-400 dark:text-gray-500'}
+																						>· {bakeDone ? 'Done' : 'Pending'}</span
+																					></span
+																				>
+																			{/if}
+																		</div>
+																	</div>
+																{/if}
+																{#if isCurrentStep && canUpdate}
+																	<div>
+																		<Button
+																			size="xs"
+																			color="blue"
+																			class="px-2 py-0.5 text-xs"
+																			disabled={!isStepPaused}
+																			onclick={() =>
+																				continueRollout(
+																					kr.rolloutResource.name,
+																					kr.rolloutResource.namespace
+																				)}
+																		>
+																			<PlaySolid class="mr-1 h-2.5 w-2.5" />Continue
+																		</Button>
+																	</div>
+																{/if}
 															</div>
-														</div>
+														{/if}
+													{:else}
+														<p
+															class="text-sm {isPastStep
+																? 'font-medium text-gray-700 dark:text-gray-300'
+																: 'text-gray-400 dark:text-gray-500'}"
+														>
+															Stage {stepNum}
+															<span
+																class={isPastStep
+																	? 'text-green-600 dark:text-green-400'
+																	: 'text-gray-400 dark:text-gray-500'}
+																>· {isPastStep ? 'Done' : 'Pending'}</span
+															>
+														</p>
 													{/if}
 												</div>
 											</TimelineItem>
-										{/if}
-									</Timeline>
-								</div>
+										{/each}
+									{/each}
 
-								<!-- Action Buttons -->
-								<div class="flex flex-wrap gap-3">
-									{#if rollout?.status?.source}
-										<GitHubViewButton
-											sourceUrl={rollout.status.source}
-											version={getDisplayVersion(latestEntry.version)}
-											size="sm"
-											color="light"
-										/>
-									{/if}
-									{#if canModify}
-										<Button
-											size="sm"
-											color="light"
-											class="text-xs"
-											disabled={!isDashboardManagingWantedVersion}
-											onclick={() => {
-												if (isDashboardManagingWantedVersion) {
-													isPinVersionMode = false;
-													showPinModal = true;
-												}
-											}}
-										>
-											<EditOutline class="me-2 h-4 w-4" />
-											Change Version
-										</Button>
-									{/if}
-									{#if !isDashboardManagingWantedVersion}
-										<Tooltip placement="bottom"
-											>Version management disabled: This rollout's wantedVersion field is managed by
-											another controller or external system. The dashboard cannot pin it to prevent
-											conflicts.</Tooltip
-										>
-									{/if}
-									{#if rollout?.status?.history && rollout.status.history.length > 1}
-										{#if canModify}
-											<Button
-												size="sm"
-												color="light"
-												class="text-xs"
-												disabled={!isDashboardManagingWantedVersion}
-												onclick={() => {
-													if (
-														isDashboardManagingWantedVersion &&
-														rollout?.status?.history &&
-														rollout.status.history.length > 1
-													) {
-														const previousVersion = rollout.status.history[1];
-														isPinVersionMode = true;
-														selectedVersion = previousVersion.version.tag;
-														pinVersionToggle = true;
-														const currentVersion = rollout.status.history[0].version;
-														const currentVersionName = getDisplayVersion(currentVersion);
-														const targetVersionName = getDisplayVersion(previousVersion.version);
-														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-														showDeployModal = true;
-													}
-												}}
-											>
-												<ReplyOutline class="me-2 h-4 w-4" />
-												Rollback
-											</Button>
-										{/if}
-									{/if}
-									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
-										<SourceViewer
-											namespace={rollout.metadata?.namespace || ''}
-											name={rollout.metadata?.name || ''}
-											version={latestEntry.version.tag}
-										/>
-									{/if}
-								</div>
-							</Card>
-						{/if}
-
-						<!-- Health Checks Card -->
-						{#if healthChecks.length > 0}
-							<Card class="w-full max-w-none p-4 sm:p-6">
-								<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-									<h4
-										class="flex items-center gap-2 text-base font-medium text-gray-900 sm:text-lg dark:text-white"
+									<TimelineItem
+										order="horizontal"
+										isLast
+										title=""
+										date=""
+										class="mb-0 flex min-w-0 flex-1 sm:block"
 									>
-										<HeartSolid class="h-4 w-4 flex-shrink-0 sm:h-5 sm:w-5" />
-										<span>Health Checks</span>
-									</h4>
-									<Badge color="blue" size="small" class="whitespace-nowrap">
-										{healthChecks.filter((hc) => hc.status?.status === 'Healthy').length} / {healthChecks.length}
-										healthy
-									</Badge>
-								</div>
-								{#if healthChecks.filter((hc) => hc.status?.status !== 'Healthy').length > 0}
-									<div class="space-y-0">
-										{#each healthChecks.filter((hc) => hc.status?.status !== 'Healthy') as healthCheck (healthCheck.metadata?.name + '/' + healthCheck.metadata?.namespace)}
-											<div
-												class="border-b border-gray-200 py-3 last:border-b-0 sm:py-4 dark:border-gray-700"
-											>
+										{#snippet orientationSlot()}
+											<div class="mr-3 flex flex-col items-center sm:mr-0 sm:w-full sm:flex-row">
 												<div
-													class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+													class="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-0 ring-white sm:ring-8 dark:ring-gray-800
+												{bakeIsSucceeded
+														? 'bg-green-200 dark:bg-green-900'
+														: bakeIsFailed
+															? 'bg-red-200 dark:bg-red-900'
+															: bakeIsInProgress
+																? 'bg-yellow-200 dark:bg-yellow-900'
+																: bakeIsDeploying
+																	? 'bg-blue-200 dark:bg-blue-900'
+																	: 'bg-gray-200 dark:bg-gray-700'}"
 												>
-													<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+													{#if bakeIsSucceeded}
+														<CheckCircleSolid
+															class="h-3.5 w-3.5 text-green-600 dark:text-green-400"
+														/>
+													{:else if bakeIsFailed}
+														<ExclamationCircleSolid
+															class="h-3.5 w-3.5 text-red-600 dark:text-red-400"
+														/>
+													{:else if bakeIsInProgress}
+														<Spinner size="4" color="yellow" />
+													{:else if bakeIsDeploying}
+														<Spinner size="4" color="blue" />
+													{:else}
+														<ClockSolid class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+													{/if}
+												</div>
+												<div class="hidden h-0.5 w-full bg-gray-200 sm:flex dark:bg-gray-700"></div>
+											</div>
+										{/snippet}
+										<!-- Row 2: content -->
+										<div class="min-w-0 flex-1 pt-0.5 sm:pt-2 sm:pr-6 sm:pb-0">
+											<!-- Header with label + help icon -->
+											<div class="flex items-center gap-1.5">
+												<p
+													id="bake-step-label"
+													class="text-sm font-semibold
+													{bakeIsFailed ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-white'}"
+												>
+													{bakeIsSucceeded
+														? 'Baked'
+														: bakeIsFailed
+															? 'Bake Failed'
+															: bakeIsInProgress
+																? 'Baking'
+																: bakeIsDeploying
+																	? 'Bake'
+																	: 'Bake'}
+												</p>
+												<span id="bake-help-icon">
+													<QuestionCircleOutline
+														class="h-3.5 w-3.5 cursor-help text-gray-400 dark:text-gray-500"
+													/>
+												</span>
+												<Tooltip
+													triggeredBy="#bake-help-icon"
+													placement="top"
+													class="max-w-xs text-xs"
+												>
+													After deployment, the new version bakes in production for a configured
+													period. Health checks are monitored during this time. If all checks pass
+													throughout the bake window, the deployment is marked as successful.
+												</Tooltip>
+											</div>
+
+											{#if bakeIsSucceeded && latestEntry.bakeEndTime}
+												<p class="text-xs text-gray-500 dark:text-gray-400">
+													{formatTimeAgo(latestEntry.bakeEndTime, $now)}
+												</p>
+												<p class="text-xs text-gray-400 dark:text-gray-500">
+													{formatDuration(
+														latestEntry.bakeStartTime || latestEntry.timestamp,
+														new Date(latestEntry.bakeEndTime)
+													)}
+												</p>
+											{:else if bakeIsFailed && latestEntry.bakeEndTime}
+												<p class="text-xs text-gray-500 dark:text-gray-400">
+													{formatTimeAgo(latestEntry.bakeEndTime, $now)}
+												</p>
+											{:else if !bakeIsSucceeded && !bakeIsFailed && rollout.spec?.deployTimeout && !bakeIsDeploying && !bakeIsInProgress}
+												<p class="text-xs text-gray-400 dark:text-gray-500">
+													{(() => {
+														const deploymentTime = new Date(latestEntry.timestamp).getTime();
+														const timeoutMs = parseDuration(rollout.spec.deployTimeout);
+														const timeUntilTimeout = deploymentTime + timeoutMs - $now.getTime();
+														return timeUntilTimeout > 0
+															? `Timeout in ${formatDurationFromMs(timeUntilTimeout)}`
+															: 'Timed out';
+													})()}
+												</p>
+											{/if}
+											{#if latestEntry.bakeStatusMessage}
+												<p class="mt-0.5 text-xs text-gray-400 italic dark:text-gray-500">
+													{latestEntry.bakeStatusMessage}
+												</p>
+											{/if}
+
+											<!-- Sub-components (shown when bake is active, not after success or failure) -->
+											{#if bakeIsDeploying || bakeIsInProgress}
+												<div class="mt-2 space-y-2">
+													<!-- Health checks sub-component -->
+													{#if showHCSubComponent}
+														<div class="flex items-start gap-2">
+															<div
+																class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ring-1
+																{hcSubFailed
+																	? 'bg-red-100 ring-red-200 dark:bg-red-900/40 dark:ring-red-800'
+																	: hcSubDone
+																		? 'bg-green-100 ring-green-200 dark:bg-green-900/40 dark:ring-green-800'
+																		: hcSubWaiting
+																			? 'bg-blue-100 ring-blue-200 dark:bg-blue-900/40 dark:ring-blue-800'
+																			: 'bg-gray-100 ring-gray-200 dark:bg-gray-700 dark:ring-gray-600'}"
+															>
+																{#if hcSubFailed}
+																	<ExclamationCircleSolid
+																		class="h-2.5 w-2.5 text-red-600 dark:text-red-400"
+																	/>
+																{:else if hcSubDone}
+																	<CheckCircleSolid
+																		class="h-2.5 w-2.5 text-green-600 dark:text-green-400"
+																	/>
+																{:else if hcSubWaiting}
+																	<Spinner size="4" color="blue" />
+																{:else}
+																	<ClockSolid
+																		class="h-2.5 w-2.5 text-gray-400 dark:text-gray-500"
+																	/>
+																{/if}
+															</div>
+															<div class="min-w-0 flex-1">
+																<span class="text-xs text-gray-600 dark:text-gray-400"
+																	>Health checks
+																	<span
+																		class={hcSubFailed
+																			? 'text-red-600 dark:text-red-400'
+																			: hcSubDone
+																				? 'text-green-600 dark:text-green-400'
+																				: hcSubWaiting
+																					? 'text-blue-600 dark:text-blue-400'
+																					: 'text-gray-400 dark:text-gray-500'}
+																	>
+																		· {hcSubFailed
+																			? 'Failed'
+																			: hcSubDone
+																				? 'Healthy'
+																				: hcSubWaiting
+																					? 'Waiting'
+																					: 'Pending'}
+																	</span>
+																</span>
+																{#if bakeIsFailed && (latestEntry.failedHealthChecks?.length ?? 0) > 0}
+																	<div class="mt-1 flex flex-col gap-1">
+																		{#each latestEntry.failedHealthChecks || [] as failedHC, index}
+																			<HealthCheckBadge
+																				failedHealthCheck={failedHC}
+																				fullHealthCheck={findFullHealthCheck(
+																					failedHC,
+																					healthChecks
+																				)}
+																				{index}
+																				prefix="failed-hc-pipeline"
+																			/>
+																		{/each}
+																	</div>
+																{/if}
+															</div>
+														</div>
+													{/if}
+
+													<!-- Bake timer sub-component -->
+													<div class="flex items-start gap-2">
 														<div
-															class="flex h-6 w-6 flex-shrink-0 items-center justify-center sm:h-8 sm:w-8"
+															class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ring-1
+															{bakeTimerFailed
+																? 'bg-red-100 ring-red-200 dark:bg-red-900/40 dark:ring-red-800'
+																: bakeTimerDone
+																	? 'bg-green-100 ring-green-200 dark:bg-green-900/40 dark:ring-green-800'
+																	: bakeTimerRunning
+																		? 'bg-yellow-100 ring-yellow-200 dark:bg-yellow-900/40 dark:ring-yellow-800'
+																		: 'bg-gray-100 ring-gray-200 dark:bg-gray-700 dark:ring-gray-600'}"
 														>
-															{#if healthCheck.status?.status === 'Healthy'}
+															{#if bakeTimerFailed}
+																<ExclamationCircleSolid
+																	class="h-2.5 w-2.5 text-red-600 dark:text-red-400"
+																/>
+															{:else if bakeTimerDone}
 																<CheckCircleSolid
-																	class="h-4 w-4 text-green-600 sm:h-5 sm:w-5 dark:text-green-400"
+																	class="h-2.5 w-2.5 text-green-600 dark:text-green-400"
 																/>
-															{:else if healthCheck.status?.status === 'Unhealthy'}
-																<ExclamationCircleSolid
-																	class="h-4 w-4 text-red-600 sm:h-5 sm:w-5 dark:text-red-400"
-																/>
-															{:else if healthCheck.status?.status === 'Pending'}
-																<Spinner size="5" color="yellow" />
+															{:else if bakeTimerRunning}
+																<Spinner size="4" color="yellow" />
 															{:else}
-																<ExclamationCircleSolid
-																	class="h-4 w-4 text-gray-500 sm:h-5 sm:w-5 dark:text-gray-400"
-																/>
+																<ClockSolid class="h-2.5 w-2.5 text-gray-400 dark:text-gray-500" />
 															{/if}
 														</div>
 														<div class="min-w-0 flex-1">
-															<h3
-																class="truncate text-xs font-medium text-gray-900 sm:text-sm dark:text-white"
-															>
-																{healthCheck.metadata?.annotations?.['kuberik.com/display-name'] ||
-																	healthCheck.metadata?.name}
-															</h3>
-															{#if healthCheck.spec?.class}
-																<p class="text-[10px] text-gray-500 sm:text-xs dark:text-gray-400">
-																	{healthCheck.spec.class.charAt(0).toUpperCase() +
-																		healthCheck.spec.class.slice(1)}
-																</p>
+															<span class="text-xs text-gray-600 dark:text-gray-400"
+																>Bake
+																<span
+																	class={bakeTimerFailed
+																		? 'text-red-600 dark:text-red-400'
+																		: bakeTimerDone
+																			? 'text-green-600 dark:text-green-400'
+																			: bakeTimerRunning
+																				? 'text-yellow-600 dark:text-yellow-400'
+																				: 'text-gray-400 dark:text-gray-500'}
+																>
+																	· {bakeTimerFailed
+																		? 'Failed'
+																		: bakeTimerDone
+																			? 'Done'
+																			: bakeTimerRunning
+																				? 'In progress'
+																				: 'Pending'}
+																</span>
+															</span>
+															{#if bakeTimerRunning && latestEntry.bakeStartTime}
+																{@const bakeProgressVal = rollout.spec?.bakeTime
+																	? (() => {
+																			const bakeStartMs = new Date(
+																				latestEntry.bakeStartTime
+																			).getTime();
+																			const elapsedMs = $now.getTime() - bakeStartMs;
+																			const totalMs = parseDuration(rollout.spec.bakeTime);
+																			return totalMs > 0
+																				? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100))
+																				: 0;
+																		})()
+																	: 0}
+																{@const remainingBakeMs = rollout.spec?.bakeTime
+																	? (() => {
+																			const bakeStartMs = new Date(
+																				latestEntry.bakeStartTime
+																			).getTime();
+																			const elapsedMs = $now.getTime() - bakeStartMs;
+																			const totalMs = parseDuration(rollout.spec.bakeTime);
+																			return Math.max(0, totalMs - elapsedMs);
+																		})()
+																	: 0}
+																{#if rollout.spec?.bakeTime}
+																	<div class="mt-1 w-28">
+																		<div
+																			class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+																		>
+																			<div
+																				class="h-full rounded-full bg-yellow-400 transition-all duration-300 dark:bg-yellow-500"
+																				style="width: {bakeProgressVal}%"
+																			></div>
+																		</div>
+																		<p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+																			{remainingBakeMs > 0
+																				? `${formatDurationFromMs(remainingBakeMs)} left`
+																				: 'Finishing...'}
+																		</p>
+																	</div>
+																{/if}
 															{/if}
 														</div>
 													</div>
-													<div class="ml-8 flex flex-wrap items-center gap-1.5 sm:ml-0 sm:gap-2">
-														{#if healthCheck.status?.lastChangeTime}
-															<div class="text-[10px] text-gray-500 sm:text-xs dark:text-gray-400">
-																{formatTimeAgo(healthCheck.status.lastChangeTime, $now)}
-															</div>
-														{/if}
-														<Badge
-															color={healthCheck.status?.status === 'Healthy'
-																? 'green'
-																: healthCheck.status?.status === 'Unhealthy'
-																	? 'red'
-																	: 'yellow'}
-															size="small"
-															class="text-[10px] whitespace-nowrap sm:text-xs"
-														>
-															{healthCheck.status?.status || 'Unknown'}
-														</Badge>
-													</div>
 												</div>
-
-												{#if healthCheck.status?.message}
-													<div class="mt-1.5 ml-8 sm:mt-2 sm:ml-11">
-														<p class="mb-1 text-[10px] text-gray-600 sm:text-xs dark:text-gray-400">
-															{healthCheck.status.message}
-														</p>
-													</div>
-												{/if}
-												{#if healthCheck.status?.lastErrorTime && healthCheck.status?.status === 'Unhealthy'}
-													<div class="mt-1 ml-8 sm:ml-11">
-														<div
-															class="flex items-center gap-1 text-[10px] text-red-600 sm:text-xs dark:text-red-400"
-														>
-															<ExclamationCircleSolid class="h-3 w-3" />
-															<span
-																>Error {formatTimeAgo(healthCheck.status.lastErrorTime, $now)}</span
-															>
-														</div>
-													</div>
-												{/if}
-											</div>
-										{/each}
-									</div>
-								{:else}
-									<div class="flex items-center justify-center py-8">
-										<div class="text-center">
-											<div class="mb-2 flex items-center justify-center">
-												<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
-											</div>
-											<p class="text-sm font-medium text-gray-900 dark:text-white">
-												All health checks are healthy
-											</p>
+											{/if}
 										</div>
-									</div>
-								{/if}
-							</Card>
-						{/if}
+									</TimelineItem>
+								</Timeline>
+							</div>
+						</div>
 
-						<!-- Kubernetes Resources Status Card -->
-						{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
-							<Card class="w-full max-w-none p-4 sm:p-6">
-								<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-									<h4
-										class="flex items-center gap-2 text-base font-medium text-gray-900 sm:text-lg dark:text-white"
-									>
-										<CubesStackedSolid class="h-4 w-4 flex-shrink-0 sm:h-5 sm:w-5" />
-										<span class="sm:hidden">Resources</span>
-										<span class="hidden sm:inline">Kubernetes Resources Status</span>
-									</h4>
-									{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
-										{@const allResources = [
-											...kustomizations.map((k) => ({
-												name: k.metadata?.name,
-												namespace: k.metadata?.namespace,
-												status: getResourceStatus(k).status,
-												message: k.status?.lastAppliedRevision
-													? `Last applied: ${k.status.lastAppliedRevision}`
-													: undefined,
-												lastModified: getLastTransitionTime(k),
-												groupVersionKind: 'Kustomization',
-												type: 'Kustomization'
-											})),
-											...ociRepositories.map((r) => ({
-												name: r.metadata?.name,
-												namespace: r.metadata?.namespace,
-												status: getResourceStatus(r).status,
-												message: r.status?.url ? `URL: ${r.status.url}` : undefined,
-												lastModified: getLastTransitionTime(r),
-												groupVersionKind: 'OCIRepository',
-												type: 'OCIRepository'
-											})),
-											...Object.values(filteredManagedResources)
-												.flat()
-												.map((r) => ({
-													...r,
-													type: r.groupVersionKind?.split('/').pop() || 'Resource'
-												}))
-										]}
-										{@const healthyResources = allResources.filter(
-											(r) =>
-												r.status === 'Ready' ||
-												r.status === 'Healthy' ||
-												r.status === 'Succeeded' ||
-												r.status === 'Current'
-										)}
-										<Badge color="blue" size="small" class="whitespace-nowrap">
-											{healthyResources.length} / {allResources.length} healthy
-										</Badge>
-									{/if}
-								</div>
-
-								<div class="space-y-4">
-									{#if kustomizations.length > 0 || ociRepositories.length > 0 || (managedResources && Object.keys(managedResources).length > 0)}
-										{@const allResources = [
-											...kustomizations.map((k) => ({
-												name: k.metadata?.name,
-												namespace: k.metadata?.namespace,
-												status: getResourceStatus(k).status,
-												message: k.status?.lastAppliedRevision
-													? `Last applied: ${k.status.lastAppliedRevision}`
-													: undefined,
-												lastModified: getLastTransitionTime(k),
-												groupVersionKind: 'Kustomization',
-												type: 'Kustomization'
-											})),
-											...ociRepositories.map((r) => ({
-												name: r.metadata?.name,
-												namespace: r.metadata?.namespace,
-												status: getResourceStatus(r).status,
-												message: r.status?.url ? `URL: ${r.status.url}` : undefined,
-												lastModified: getLastTransitionTime(r),
-												groupVersionKind: 'OCIRepository',
-												type: 'OCIRepository'
-											})),
-											...Object.values(filteredManagedResources)
-												.flat()
-												.map((r) => ({
-													...r,
-													type: r.groupVersionKind?.split('/').pop() || 'Resource'
-												}))
-										]}
-										{@const pendingResources = allResources.filter(
-											(r) =>
-												r.status === 'Failed' ||
-												r.status === 'Error' ||
-												r.status === 'InProgress' ||
-												r.status === 'Pending' ||
-												r.status === 'Unhealthy'
-										)}
-										{@const healthyResources = allResources.filter(
-											(r) =>
-												r.status === 'Ready' ||
-												r.status === 'Healthy' ||
-												r.status === 'Succeeded' ||
-												r.status === 'Current'
-										)}
-
-										{#if pendingResources.length > 0}
-											<div>
-												{#each pendingResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
-													<ResourceCard {resource} resourceType={resource.type} showRich={true} />
-												{/each}
-											</div>
-										{/if}
-
-										{#if healthyResources.length > 0 && pendingResources.length === 0}
-											<div class="flex items-center justify-center py-8">
-												<div class="text-center">
-													<div class="mb-2 flex items-center justify-center">
-														<CheckCircleSolid class="h-8 w-8 text-green-600 dark:text-green-400" />
-													</div>
-													<p class="text-sm font-medium text-gray-900 dark:text-white">
-														All resources are healthy
-													</p>
-												</div>
-											</div>
-										{/if}
-									{/if}
-								</div>
-							</Card>
-						{/if}
-
-						<!-- Available Versions Card -->
-						<Card class="w-full max-w-none p-4 sm:p-6 lg:col-span-2">
+						<!-- Available Upgrades card (full width) -->
+						<div
+							class="overflow-hidden rounded-lg border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-700 dark:bg-gray-800"
+						>
 							<div class="mb-4 flex items-center justify-between">
 								<h4
 									class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
@@ -2526,9 +2366,12 @@
 								</h4>
 								<div class="flex items-center gap-2">
 									{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-										<Badge color="blue" size="small"
-											>{rollout.status.releaseCandidates.length}</Badge
+										<span
+											class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
 										>
+											<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status.releaseCandidates
+												.length}
+										</span>
 									{/if}
 									<Button
 										id="refresh-versions-btn"
@@ -2739,10 +2582,50 @@
 									</div>
 								</Alert>
 							{/if}
-						</Card>
+						</div>
+					</div>
+					<div class="flex flex-col gap-4">
+						{#if datadogServiceInfo}
+							<div
+								class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+							>
+								<div
+									class="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+								>
+									<ArrowUpRightFromSquareOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+									<span class="text-sm font-semibold text-gray-900 dark:text-white"
+										>External Links</span
+									>
+								</div>
+								<div class="divide-y divide-gray-100 dark:divide-gray-700">
+									{#if datadogServiceInfo}
+										<a
+											href={datadogServiceInfo.url}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/30"
+										>
+											<DatadogLogo class="h-4 w-4 flex-shrink-0 text-[#632CA6]" />
+											<div class="min-w-0 flex-1">
+												<span class="text-sm text-gray-700 dark:text-gray-300"
+													>{datadogServiceInfo.service}</span
+												>
+												<span class="ml-1.5 text-xs text-gray-400 dark:text-gray-500"
+													>APM service</span
+												>
+											</div>
+											<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-gray-400" />
+										</a>
+									{/if}
+								</div>
+							</div>
+						{/if}
+						<HealthChecksCard {healthChecks} />
+						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} />
+						<EventsCard {events} />
 					</div>
 				</div>
-			</div>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -2768,6 +2651,7 @@
 				type="text"
 				placeholder="Search versions..."
 				bind:value={searchQuery}
+				style="font-size: 16px"
 				class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
 			/>
 		</div>
@@ -3061,6 +2945,13 @@
 		</div>
 	</div>
 </Modal>
+
+<RetryTestsModal
+	bind:open={showRetryTestsModal}
+	failedTests={retryTestsData}
+	onRetryTests={handleRetryTests}
+	onSkipTests={handleSkipTests}
+/>
 
 <DeployModal
 	bind:open={showDeployModal}

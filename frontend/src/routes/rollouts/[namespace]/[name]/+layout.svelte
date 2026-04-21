@@ -2,14 +2,16 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Sidebar, SidebarGroup, SidebarItem } from 'flowbite-svelte';
+	import { Tooltip, SidebarGroup, SidebarItem } from 'flowbite-svelte';
 	import {
 		ObjectsColumnSolid,
 		ClockArrowOutline,
 		LayersSolid,
-		TerminalOutline
+		TerminalOutline,
+		AngleLeftOutline,
+		AngleRightOutline
 	} from 'flowbite-svelte-icons';
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import type { Rollout } from '../../../../types';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
@@ -17,12 +19,25 @@
 
 	let { children }: { children: Snippet } = $props();
 
-	// derive params (runes)
+	const SIDEBAR_KEY = 'sidebar-collapsed';
+	let sidebarCollapsed = $state(false);
+	let sidebarMounted = $state(false);
+
+	onMount(() => {
+		sidebarCollapsed = localStorage.getItem(SIDEBAR_KEY) === 'true';
+		sidebarMounted = true;
+	});
+
+	$effect(() => {
+		if (!sidebarMounted) return;
+		localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
+	});
+
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
 	const activeUrl = $derived(page.url.pathname);
 
-	// Query for rollout data
+	// Query for rollout data (to know if Environments tab should show)
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
@@ -36,12 +51,10 @@
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const environment = $derived(rolloutQuery.data?.environment);
 
-	// Check if rollout has environment specified
 	const hasEnvironment = $derived(
 		environment?.status?.environmentInfos && environment.status.environmentInfos.length > 0
 	);
 
-	// Navigation items for reuse
 	const navItems = $derived([
 		{
 			label: 'Overview',
@@ -69,40 +82,77 @@
 		}
 	]);
 
-	// Check if a nav item is active
 	const isActive = (href: string) => {
-		// Exact match for Overview, prefix match for others
-		if (href === `/rollouts/${namespace}/${name}`) {
-			return activeUrl === href;
-		}
+		if (href === `/rollouts/${namespace}/${name}`) return activeUrl === href;
 		return activeUrl.startsWith(href);
 	};
+
+	const activeClass =
+		'flex items-center rounded-lg px-2 py-2 text-sm font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400';
+	const nonActiveClass =
+		'flex items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white';
 </script>
 
 <SvelteFlowProvider>
 	<div class="flex h-full flex-col overflow-hidden md:flex-row">
 		<!-- Desktop Sidebar (hidden on mobile) -->
-		<Sidebar
-			position="static"
-			{activeUrl}
-			class="hidden w-54 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 md:block"
+		{#if sidebarMounted}
+		<aside
+			class="hidden flex-shrink-0 border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800 md:flex md:flex-col {sidebarCollapsed
+				? 'w-12'
+				: 'w-48'} transition-[width] duration-200"
 		>
-			<SidebarGroup>
-				{#each navItems.filter((item) => item.show) as item}
-					<SidebarItem label={item.label} href={item.href}>
-						{#snippet icon()}
-							<item.icon
-								class="h-5 w-5 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
-							/>
-						{/snippet}
-					</SidebarItem>
-				{/each}
-			</SidebarGroup>
-		</Sidebar>
+			<!-- Nav items -->
+			<nav class="flex flex-1 flex-col p-2">
+				<SidebarGroup class="space-y-1">
+					{#each navItems.filter((item) => item.show) as item}
+						{@const active = isActive(item.href)}
+						<SidebarItem
+							id="nav-{item.label.toLowerCase()}"
+							href={item.href}
+							label={item.label}
+							{active}
+							{activeClass}
+							{nonActiveClass}
+							spanClass={sidebarCollapsed ? 'hidden' : 'ms-3'}
+							aClass={sidebarCollapsed ? 'justify-center' : ''}
+						>
+							{#snippet icon()}
+								<item.icon class="h-5 w-5 flex-shrink-0" />
+							{/snippet}
+						</SidebarItem>
+						{#if sidebarCollapsed}
+							<Tooltip triggeredBy="#nav-{item.label.toLowerCase()}" placement="right">
+								{item.label}
+							</Tooltip>
+						{/if}
+					{/each}
+				</SidebarGroup>
+			</nav>
+
+			<!-- Collapse toggle at bottom -->
+			<div class="border-t border-gray-200 p-2 dark:border-gray-700">
+				<button
+					class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300
+						{sidebarCollapsed ? 'justify-center' : ''}"
+					onclick={() => {
+						sidebarCollapsed = !sidebarCollapsed;
+					}}
+					title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+				>
+					{#if sidebarCollapsed}
+						<AngleRightOutline class="h-4 w-4" />
+					{:else}
+						<AngleLeftOutline class="h-4 w-4" />
+						<span>Collapse</span>
+					{/if}
+				</button>
+			</div>
+		</aside>
+		{/if}
 
 		<!-- Content -->
 		<div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-			<!-- Slot for child pages -->
 			<div class="min-w-0 flex-1 overflow-y-auto pb-16 md:pb-0">
 				{@render children()}
 			</div>
