@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Card, Badge, Spinner } from 'flowbite-svelte';
+	import { Card, Badge } from 'flowbite-svelte';
+	import StatusSpinner from './StatusSpinner.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -20,7 +21,8 @@
 		resource.status === 'Failed' ||
 		resource.status === 'Error' ||
 		resource.status === 'Unhealthy' ||
-		resource.status === 'InProgress';
+		resource.status === 'InProgress' ||
+		resource.status === 'Reconciling';
 
 	function getStatusIcon(status: string) {
 		switch (status) {
@@ -35,7 +37,8 @@
 				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
 			case 'Pending':
 			case 'InProgress':
-				return { icon: Spinner, color: 'text-yellow-600 dark:text-yellow-400', isSpinner: true };
+			case 'Reconciling':
+				return { icon: null as any, color: 'text-yellow-600 dark:text-yellow-400', isSpinner: true };
 			default:
 				return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
 		}
@@ -54,6 +57,7 @@
 				return 'red';
 			case 'Pending':
 			case 'InProgress':
+			case 'Reconciling':
 				return 'yellow';
 			default:
 				return 'gray';
@@ -66,7 +70,7 @@
 		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
 			<div class="flex h-6 w-6 flex-shrink-0 items-center justify-center sm:h-8 sm:w-8">
 				{#if getStatusIcon(resource.status).isSpinner}
-					<Spinner size="5" color="yellow" />
+					<StatusSpinner size="5" color="yellow" />
 				{:else}
 					<svelte:component
 						this={getStatusIcon(resource.status).icon}

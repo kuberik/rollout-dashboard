@@ -24,7 +24,6 @@
 		Button,
 		Modal,
 		Toast,
-		Spinner,
 		Tooltip,
 		Popover,
 		Listgroup,
@@ -94,6 +93,7 @@
 	import DeployModal from '$lib/components/DeployModal.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
+	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
@@ -1467,7 +1467,7 @@
 										class="!p-1.5"
 									>
 										{#if isReconciling}
-											<Spinner size="4" />
+											<StatusSpinner size="4" color="gray" />
 										{:else}
 											<RefreshOutline class="h-4 w-4" />
 										{/if}
@@ -2070,7 +2070,7 @@
 >
 	{#snippet icon()}
 		{#if toastLoading}
-			<Spinner size="5" color="blue" />
+			<StatusSpinner size="5" color="blue" />
 		{:else if toastType === 'success'}
 			<CheckCircleSolid class="h-5 w-5" />
 		{:else if toastType === 'info'}

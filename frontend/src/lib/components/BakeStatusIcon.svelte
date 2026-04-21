@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { Spinner } from 'flowbite-svelte';
+	import StatusSpinner from './StatusSpinner.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -59,14 +59,9 @@
 </script>
 
 {#if bakeStatus === 'InProgress'}
-	<Spinner
-		type="pulse"
-		color="yellow"
-		size={spinnerSizes[size]}
-		class="{sizeClasses[size]} {className}"
-	/>
+	<StatusSpinner color="yellow" size={spinnerSizes[size]} class={className} />
 {:else if bakeStatus === 'Deploying'}
-	<Spinner color="blue" size={spinnerSizes[size]} class="{sizeClasses[size]} {className}" />
+	<StatusSpinner color="blue" size={spinnerSizes[size]} class={className} />
 {:else}
 	<Icon class="{sizeClasses[size]} {statusInfo.color} {className}" />
 {/if}

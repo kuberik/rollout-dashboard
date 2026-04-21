@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	import type { Kustomization, OCIRepository, ManagedResourceStatus } from '../../types';
-	import { Spinner } from 'flowbite-svelte';
+	import StatusSpinner from './StatusSpinner.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -187,7 +187,7 @@
 				{#if notReadyResources.filter(r => ['Unhealthy','Failed','Error'].includes(r.status || '')).length > 0}
 					<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
 				{:else if notReadyResources.length > 0}
-					<Spinner size="4" color="yellow" />
+					<StatusSpinner size="4" color="yellow" />
 				{:else}
 					<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
 				{/if}
@@ -224,9 +224,9 @@
 							{#if isFailing}
 								<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
 							{:else if isReconciling}
-								<Spinner size="4" color="yellow" />
+								<StatusSpinner size="4" color="yellow" />
 							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
-								<Spinner size="4" color="blue" />
+								<StatusSpinner size="4" color="blue" />
 							{:else if isReady}
 								<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
 							{:else}
@@ -272,7 +272,7 @@
 						<div class="border-t border-gray-100 bg-gray-50/50 pb-1 dark:border-gray-700/50 dark:bg-gray-800/50">
 							{#if childData?.loading}
 								<div class="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
-									<Spinner size="4" /> Loading...
+									<StatusSpinner size="4" color="gray" /> Loading...
 								</div>
 							{:else if childData?.error}
 								<p class="px-4 py-2 text-xs text-red-500">{childData.error}</p>
@@ -284,7 +284,7 @@
 											{#if rs.readyReplicas === rs.desiredReplicas}
 												<CheckCircleSolid class="h-3 w-3 text-green-500 dark:text-green-400" />
 											{:else}
-												<Spinner size="4" color="yellow" />
+												<StatusSpinner size="4" color="yellow" />
 											{/if}
 										</div>
 										<div class="min-w-0 flex-1">
@@ -306,11 +306,11 @@
 										<div class="flex items-start gap-2 py-1 pl-14 pr-4">
 											<div class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
 												{#if pod.terminating}
-													<Spinner size="4" color="orange" />
+													<StatusSpinner size="4" color="orange" />
 												{:else if pod.phase === 'Running' && pod.ready}
 													<CheckCircleSolid class="h-3 w-3 text-green-500 dark:text-green-400" />
 												{:else if pod.phase === 'Pending' || (pod.phase === 'Running' && !pod.ready)}
-													<Spinner size="4" color="yellow" />
+													<StatusSpinner size="4" color="yellow" />
 												{:else if pod.phase === 'Failed'}
 													<ExclamationCircleSolid class="h-3 w-3 text-red-500 dark:text-red-400" />
 												{:else}
@@ -368,7 +368,7 @@
 							{#if isFailing}
 								<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
 							{:else if isReconciling}
-								<Spinner size="4" color="yellow" />
+								<StatusSpinner size="4" color="yellow" />
 							{:else if isReady}
 								<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
 							{:else}
@@ -424,9 +424,9 @@
 							{#if isFailing}
 								<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
 							{:else if isReconciling}
-								<Spinner size="4" color="yellow" />
+								<StatusSpinner size="4" color="yellow" />
 							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
-								<Spinner size="4" color="blue" />
+								<StatusSpinner size="4" color="blue" />
 							{:else}
 								<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
 							{/if}
@@ -476,9 +476,9 @@
 								{#if isFailing}
 									<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
 								{:else if isReconciling}
-									<Spinner size="4" color="yellow" />
+									<StatusSpinner size="4" color="yellow" />
 								{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
-									<Spinner size="4" color="blue" />
+									<StatusSpinner size="4" color="blue" />
 								{:else if isReady}
 									<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
 								{:else}
