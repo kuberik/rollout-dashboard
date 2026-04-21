@@ -284,7 +284,7 @@
 											{#if rs.readyReplicas === rs.desiredReplicas}
 												<CheckCircleSolid class="h-3 w-3 text-green-500 dark:text-green-400" />
 											{:else}
-												<StatusSpinner size="4" color="yellow" />
+												<StatusSpinner size="3" color="yellow" />
 											{/if}
 										</div>
 										<div class="min-w-0 flex-1">
@@ -306,11 +306,11 @@
 										<div class="flex items-start gap-2 py-1 pl-14 pr-4">
 											<div class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
 												{#if pod.terminating}
-													<StatusSpinner size="4" color="orange" />
+													<StatusSpinner size="3" color="orange" />
 												{:else if pod.phase === 'Running' && pod.ready}
 													<CheckCircleSolid class="h-3 w-3 text-green-500 dark:text-green-400" />
 												{:else if pod.phase === 'Pending' || (pod.phase === 'Running' && !pod.ready)}
-													<StatusSpinner size="4" color="yellow" />
+													<StatusSpinner size="3" color="yellow" />
 												{:else if pod.phase === 'Failed'}
 													<ExclamationCircleSolid class="h-3 w-3 text-red-500 dark:text-red-400" />
 												{:else}
