@@ -594,11 +594,6 @@
 			></span>
 			<span class="flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">
 				{title}
-				{#if extra === 'tests' && sd?.hasTests}
-					<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">
-						({sd.stepTests.length})
-					</span>
-				{/if}
 			</span>
 			<span
 				class="inline-flex flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset {pillClasses(
