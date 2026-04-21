@@ -13,7 +13,8 @@
 		UserSolid,
 		CogSolid,
 		ArrowUpRightFromSquareOutline,
-		CircleMinusSolid
+		CircleMinusSolid,
+		ArrowsRepeatOutline
 	} from 'flowbite-svelte-icons';
 	import DatadogLogo from './DatadogLogo.svelte';
 	import HealthCheckBadge from './HealthCheckBadge.svelte';
@@ -108,7 +109,12 @@
 		status: NodeStatus;
 		statusLabel: string;
 		krName?: string;
+		krIndex?: number;
+		stepIndex?: number;
 		isLive: boolean;
+		firstInGroup: boolean;
+		lastInGroup: boolean;
+		groupHeader?: string; // if set, render a KR group header before this node
 		stageData?: {
 			kr: ValidKruiseRollout;
 			stepNum: number;
@@ -143,7 +149,6 @@
 	let allHCHealthy = $derived(
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
 	);
-
 	let hasMultipleKRs = $derived(pipelineValidRollouts.length > 1);
 
 	let nodes = $derived<StageNode[]>(
@@ -157,7 +162,9 @@
 				longLabel: 'Deployment started',
 				status: 'done',
 				statusLabel: 'Triggered',
-				isLive: false
+				isLive: false,
+				firstInGroup: true,
+				lastInGroup: true
 			});
 
 			for (const [krIdx, kr] of pipelineValidRollouts.entries()) {
@@ -230,6 +237,9 @@
 						statusLabel = 'Pending';
 					}
 
+					const isFirstInKr = stepIdx === 0;
+					const isLastInKr = stepIdx === kr.canarySteps.length - 1;
+
 					result.push({
 						id: `stage-${krIdx}-${stepIdx}`,
 						kind: 'stage',
@@ -238,7 +248,13 @@
 						status,
 						statusLabel,
 						krName,
+						krIndex: krIdx,
+						stepIndex: stepIdx,
 						isLive: isCurrentStep,
+						// For multi-KR, each KR group is self-contained; otherwise all stages are one group
+						firstInGroup: hasMultipleKRs ? isFirstInKr : false,
+						lastInGroup: hasMultipleKRs ? isLastInKr : false,
+						groupHeader: hasMultipleKRs && isFirstInKr ? krName : undefined,
 						stageData: {
 							kr,
 							stepNum,
@@ -290,7 +306,9 @@
 				longLabel: bakeIsSucceeded ? 'Baked' : 'Final Bake',
 				status: bakeStatus,
 				statusLabel: bakeStatusLabel,
-				isLive: bakeIsDeploying || bakeIsInProgress
+				isLive: bakeIsDeploying || bakeIsInProgress,
+				firstInGroup: true,
+				lastInGroup: true
 			});
 
 			return result;
@@ -316,14 +334,12 @@
 		userSelectedId = null;
 	}
 
-	// Header summary
 	let summary = $derived(
 		(() => {
 			const failed = nodes.filter((n) => n.status === 'failed').length;
 			const done = nodes.filter((n) => n.status === 'done').length;
 			const running = nodes.filter((n) => n.status === 'running' || n.status === 'paused').length;
-			const pending = nodes.filter((n) => n.status === 'pending').length;
-			return { failed, done, running, pending, total: nodes.length };
+			return { failed, done, running, total: nodes.length };
 		})()
 	);
 
@@ -337,22 +353,6 @@
 			pending:
 				'bg-white border-2 border-gray-300 text-gray-400 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-500'
 		}[status];
-	}
-
-	function connectorBg(fromStatus: NodeStatus, toStatus: NodeStatus): string {
-		if (toStatus === 'failed') return 'bg-red-500';
-		if (fromStatus === 'done' && toStatus === 'done') return 'bg-green-500';
-		if (fromStatus === 'done')
-			return 'bg-gradient-to-r from-green-500 to-gray-200 dark:to-gray-700';
-		return 'bg-gray-200 dark:bg-gray-700';
-	}
-
-	function verticalConnectorBg(fromStatus: NodeStatus, toStatus: NodeStatus): string {
-		if (toStatus === 'failed') return 'bg-red-500';
-		if (fromStatus === 'done' && toStatus === 'done') return 'bg-green-500';
-		if (fromStatus === 'done')
-			return 'bg-gradient-to-b from-green-500 to-gray-200 dark:to-gray-700';
-		return 'bg-gray-200 dark:bg-gray-700';
 	}
 
 	function pillClasses(status: NodeStatus): string {
@@ -379,6 +379,17 @@
 		}[status];
 	}
 
+	function leftEdgeAccent(status: NodeStatus, selected: boolean): string {
+		if (!selected) return 'bg-transparent';
+		return {
+			done: 'bg-green-500',
+			running: 'bg-blue-500',
+			paused: 'bg-yellow-500',
+			failed: 'bg-red-500',
+			pending: 'bg-blue-500'
+		}[status];
+	}
+
 	function rolloutSubStatus(sd: NonNullable<StageNode['stageData']>): {
 		status: NodeStatus;
 		label: string;
@@ -393,7 +404,7 @@
 		status: NodeStatus;
 		label: string;
 	} {
-		if (!sd.hasTests) return { status: 'pending', label: '—' };
+		if (!sd.hasTests) return { status: 'pending', label: 'None' };
 		const anyFailed = sd.stepTests.some((t) => t.status?.phase === 'Failed');
 		const anyRunning = sd.stepTests.some((t) => t.status?.phase === 'Running');
 		const anyPending = sd.stepTests.some((t) =>
@@ -413,7 +424,7 @@
 	} {
 		if (sd.bakeFailed) return { status: 'failed', label: 'Failed' };
 		if (sd.bakeDone) return { status: 'done', label: 'Done' };
-		if (sd.bakingNow) return { status: 'paused', label: 'In progress' };
+		if (sd.bakingNow) return { status: 'paused', label: 'Baking' };
 		if (sd.waitingForBake) return { status: 'pending', label: 'Waiting' };
 		return { status: 'pending', label: 'Pending' };
 	}
@@ -444,24 +455,105 @@
 		if (phase === 'Pending') return 'text-yellow-500';
 		return 'text-gray-400';
 	}
+
+	function nodeAccentRow(node: StageNode): string {
+		// subtle tinted row bg for failed/live nodes
+		if (node.status === 'failed') return 'bg-red-50/40 dark:bg-red-950/20';
+		if (node.isLive) return 'bg-blue-50/30 dark:bg-blue-950/15';
+		return '';
+	}
 </script>
 
-<!-- ─────────────────────  snippets  ───────────────────── -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━ snippets ━━━━━━━━━━━━━━━━━━━━━━ -->
 
-{#snippet nodeIcon(status: NodeStatus, size: 'sm' | 'lg')}
+{#snippet nodeIcon(status: NodeStatus)}
 	{#if status === 'done'}
-		<CheckCircleSolid class={size === 'lg' ? 'h-5 w-5' : 'h-4 w-4'} />
+		<CheckCircleSolid class="h-4 w-4" />
 	{:else if status === 'failed'}
-		<ExclamationCircleSolid class={size === 'lg' ? 'h-5 w-5' : 'h-4 w-4'} />
+		<ExclamationCircleSolid class="h-4 w-4" />
 	{:else if status === 'running' || status === 'paused'}
-		<div
-			class="{size === 'lg'
-				? 'h-5 w-5'
-				: 'h-4 w-4'} animate-spin rounded-full border-2 border-white/70 border-t-white"
-		></div>
+		<div class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-white"></div>
 	{:else}
-		<ClockSolid class={size === 'lg' ? 'h-4 w-4' : 'h-3.5 w-3.5'} />
+		<ClockSolid class="h-3.5 w-3.5" />
 	{/if}
+{/snippet}
+
+{#snippet navRow(node: StageNode, showLineAbove: boolean, showLineBelow: boolean)}
+	{@const isSelected = selectedId === node.id}
+	<li class="relative">
+		<!-- Vertical connector line (behind circle) -->
+		{#if showLineAbove}
+			<div
+				aria-hidden="true"
+				class="absolute left-[23px] top-0 h-[13px] w-0.5 bg-gray-300 dark:bg-gray-600"
+			></div>
+		{/if}
+		{#if showLineBelow}
+			<div
+				aria-hidden="true"
+				class="absolute left-[23px] bottom-0 top-[33px] w-0.5 bg-gray-300 dark:bg-gray-600"
+			></div>
+		{/if}
+
+		<button
+			type="button"
+			onclick={() => select(node.id)}
+			aria-current={isSelected ? 'step' : undefined}
+			class="group relative flex w-full items-center gap-3 py-2 pl-4 pr-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 {isSelected
+				? 'bg-blue-50/50 dark:bg-blue-950/30'
+				: nodeAccentRow(node)}"
+		>
+			<!-- Left accent bar when selected -->
+			<span
+				aria-hidden="true"
+				class="absolute inset-y-0 left-0 w-0.5 {leftEdgeAccent(node.status, isSelected)}"
+			></span>
+
+			<!-- Circle -->
+			<div class="relative flex-shrink-0">
+				{#if node.isLive && node.status !== 'failed'}
+					<span
+						aria-hidden="true"
+						class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(node.status)}"
+					></span>
+				{/if}
+				<div
+					class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full shadow-sm {circleBg(
+						node.status
+					)}"
+				>
+					{@render nodeIcon(node.status)}
+				</div>
+			</div>
+
+			<!-- Label -->
+			<div class="flex min-w-0 flex-1 items-center justify-between gap-2">
+				<div class="flex min-w-0 items-center gap-1.5">
+					<span
+						class="truncate text-sm {isSelected
+							? 'font-semibold text-gray-900 dark:text-white'
+							: 'font-medium text-gray-700 dark:text-gray-200'}"
+					>
+						{node.shortLabel}
+					</span>
+					{#if node.isLive}
+						<span
+							class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+						>
+							Live
+						</span>
+					{/if}
+				</div>
+				<span
+					class="inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset {pillClasses(
+						node.status
+					)}"
+				>
+					{node.statusLabel}
+				</span>
+			</div>
+		</button>
+	</li>
 {/snippet}
 
 {#snippet subRow(
@@ -471,7 +563,7 @@
 	extra: 'tests' | 'bake' | 'hc' | 'timer' | null,
 	sd: NonNullable<StageNode['stageData']> | null
 )}
-	<div class="px-4 py-3 sm:px-5">
+	<div class="px-4 py-3">
 		<div class="flex items-center gap-3">
 			<span
 				aria-hidden="true"
@@ -497,7 +589,6 @@
 			</span>
 		</div>
 
-		<!-- Tests list -->
 		{#if extra === 'tests' && sd}
 			{#if sd.hasTests}
 				<ul class="mt-2.5 space-y-1.5 pl-5">
@@ -583,7 +674,6 @@
 			{/if}
 		{/if}
 
-		<!-- Stage-level bake progress bar -->
 		{#if extra === 'bake' && sd?.bakingNow}
 			{@const ann = sd.kr.kruiseRollout?.metadata?.annotations || {}}
 			{@const bakeTimeKey = `rollout.kuberik.io/step-${sd.stepNum}-bake-time`}
@@ -616,7 +706,6 @@
 			{/if}
 		{/if}
 
-		<!-- Final HC failed list -->
 		{#if extra === 'hc' && bakeIsFailed && (latestEntry.failedHealthChecks?.length ?? 0) > 0}
 			<div class="mt-2 flex flex-col gap-1 pl-5">
 				{#each latestEntry.failedHealthChecks || [] as failedHC, index}
@@ -630,7 +719,6 @@
 			</div>
 		{/if}
 
-		<!-- Final bake timer progress -->
 		{#if extra === 'timer' && bakeIsInProgress && latestEntry.bakeStartTime && rollout.spec?.bakeTime}
 			{@const bakeStartMs = new Date(latestEntry.bakeStartTime).getTime()}
 			{@const elapsedMs = $now.getTime() - bakeStartMs}
@@ -652,18 +740,19 @@
 	</div>
 {/snippet}
 
-{#snippet detailPanel(node: StageNode)}
+{#snippet detailPanel(node: StageNode, hideHeader = false)}
 	<div class="space-y-4">
-		<!-- Title row -->
-		<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-			<div class="flex min-w-0 items-center gap-3">
+		{#if !hideHeader}
+			<!-- Detail header: title + status + meta -->
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 				<h6 class="text-base font-bold tracking-tight text-gray-900 sm:text-lg dark:text-white">
 					{node.longLabel}
 				</h6>
 				{#if hasMultipleKRs && node.krName}
 					<span
-						class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+						class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600 dark:bg-gray-700 dark:text-gray-300"
 					>
+						<ArrowsRepeatOutline class="h-3 w-3" />
 						{node.krName}
 					</span>
 				{/if}
@@ -674,37 +763,37 @@
 				>
 					{node.statusLabel}
 				</span>
-			</div>
 
-			{#if node.kind === 'started' && latestEntry.timestamp}
-				<span class="text-xs text-gray-500 dark:text-gray-400">
-					{formatTimeAgo(latestEntry.timestamp, $now)}
-				</span>
-			{:else if node.kind === 'bake' && bakeIsSucceeded && latestEntry.bakeEndTime}
-				<span class="text-xs text-gray-500 dark:text-gray-400">
-					{formatTimeAgo(latestEntry.bakeEndTime, $now)} ·
-					{formatDuration(
-						latestEntry.bakeStartTime || latestEntry.timestamp,
-						new Date(latestEntry.bakeEndTime)
-					)}
-				</span>
-			{:else if node.kind === 'bake' && bakeIsFailed && latestEntry.bakeEndTime}
-				<span class="text-xs text-gray-500 dark:text-gray-400">
-					{formatTimeAgo(latestEntry.bakeEndTime, $now)}
-				</span>
-			{:else if node.kind === 'bake' && !bakeIsSucceeded && !bakeIsFailed && rollout.spec?.deployTimeout && !bakeIsDeploying && !bakeIsInProgress}
-				<span class="text-xs text-gray-400 dark:text-gray-500">
-					{(() => {
-						const deploymentTime = new Date(latestEntry.timestamp).getTime();
-						const timeoutMs = parseDuration(rollout.spec.deployTimeout);
-						const timeUntilTimeout = deploymentTime + timeoutMs - $now.getTime();
-						return timeUntilTimeout > 0
-							? `Timeout in ${formatDurationFromMs(timeUntilTimeout)}`
-							: 'Timed out';
-					})()}
-				</span>
-			{/if}
-		</div>
+				{#if node.kind === 'started' && latestEntry.timestamp}
+					<span class="text-xs text-gray-500 dark:text-gray-400">
+						{formatTimeAgo(latestEntry.timestamp, $now)}
+					</span>
+				{:else if node.kind === 'bake' && bakeIsSucceeded && latestEntry.bakeEndTime}
+					<span class="text-xs text-gray-500 dark:text-gray-400">
+						{formatTimeAgo(latestEntry.bakeEndTime, $now)} ·
+						{formatDuration(
+							latestEntry.bakeStartTime || latestEntry.timestamp,
+							new Date(latestEntry.bakeEndTime)
+						)}
+					</span>
+				{:else if node.kind === 'bake' && bakeIsFailed && latestEntry.bakeEndTime}
+					<span class="text-xs text-gray-500 dark:text-gray-400">
+						{formatTimeAgo(latestEntry.bakeEndTime, $now)}
+					</span>
+				{:else if node.kind === 'bake' && !bakeIsSucceeded && !bakeIsFailed && rollout.spec?.deployTimeout && !bakeIsDeploying && !bakeIsInProgress}
+					<span class="text-xs text-gray-400 dark:text-gray-500">
+						{(() => {
+							const deploymentTime = new Date(latestEntry.timestamp).getTime();
+							const timeoutMs = parseDuration(rollout.spec.deployTimeout);
+							const timeUntilTimeout = deploymentTime + timeoutMs - $now.getTime();
+							return timeUntilTimeout > 0
+								? `Timeout in ${formatDurationFromMs(timeUntilTimeout)}`
+								: 'Timed out';
+						})()}
+					</span>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- Started content -->
 		{#if node.kind === 'started'}
@@ -719,9 +808,7 @@
 					</div>
 				{/if}
 				{#if latestEntry.triggeredBy}
-					<div
-						class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-					>
+					<div class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
 						{#if latestEntry.triggeredBy.kind === 'User'}
 							<UserSolid class="h-3.5 w-3.5 flex-shrink-0" />
 							<span>
@@ -833,12 +920,24 @@
 	</div>
 {/snippet}
 
-<!-- ─────────────────────  card  ───────────────────── -->
+{#snippet groupHeader(label: string)}
+	<li aria-hidden="false" class="px-4 pt-4 pb-1">
+		<div
+			class="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500"
+		>
+			<ArrowsRepeatOutline class="h-3 w-3" />
+			<span class="truncate">{label}</span>
+			<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
+		</div>
+	</li>
+{/snippet}
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━ card ━━━━━━━━━━━━━━━━━━━━━━ -->
 
 <div
 	class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 >
-	<!-- Header: matches HealthChecksCard / ResourcesCard pattern -->
+	<!-- Header -->
 	<div
 		class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 	>
@@ -855,9 +954,14 @@
 			{:else}
 				<CodePullRequestSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 			{/if}
-			<span class="text-sm font-semibold text-gray-900 dark:text-white">
-				Deployment Pipeline
-			</span>
+			<span class="text-sm font-semibold text-gray-900 dark:text-white">Deployment Pipeline</span>
+			{#if hasMultipleKRs}
+				<span
+					class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+				>
+					{pipelineValidRollouts.length} parallel tracks
+				</span>
+			{/if}
 		</div>
 		<div class="flex items-center gap-3">
 			{#if !isAutoSelected}
@@ -889,104 +993,60 @@
 		</div>
 	</div>
 
-	<!-- ═══ Desktop: horizontal stepper + detail panel ═══ -->
-	<div class="hidden md:block">
-		<!-- Horizontal stepper -->
-		<div class="border-b border-gray-200 dark:border-gray-700">
-			<div class="overflow-x-auto">
-				<ol class="mx-auto flex items-start px-4 pt-5 pb-4 sm:px-6" style="width: max-content;">
-					{#each nodes as node, idx}
-						{#if idx > 0}
-							<li
-								aria-hidden="true"
-								class="mt-[18px] h-1 w-12 flex-shrink-0 rounded-full lg:w-16 {connectorBg(
-									nodes[idx - 1].status,
-									node.status
-								)}"
-							></li>
-						{/if}
-						<li class="flex-shrink-0">
-							<button
-								type="button"
-								onclick={() => select(node.id)}
-								aria-current={selectedId === node.id ? 'step' : undefined}
-								class="group flex w-24 flex-col items-center gap-2 focus:outline-none lg:w-28"
-							>
-								<div class="relative">
-									{#if selectedId === node.id}
-										<span
-											aria-hidden="true"
-											class="absolute -inset-1 rounded-full ring-2 ring-blue-500 dark:ring-blue-400"
-										></span>
-									{/if}
-									{#if node.isLive && node.status !== 'failed'}
-										<span
-											aria-hidden="true"
-											class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(
-												node.status
-											)}"
-										></span>
-									{/if}
-									<div
-										class="relative z-10 flex h-10 w-10 items-center justify-center rounded-full shadow-sm transition-transform duration-150 group-hover:scale-105 {circleBg(
-											node.status
-										)}"
-									>
-										{@render nodeIcon(node.status, 'lg')}
-									</div>
-								</div>
-								<div class="flex flex-col items-center gap-0.5">
-									<span
-										class="text-xs whitespace-nowrap transition-colors {selectedId === node.id
-											? 'font-semibold text-gray-900 dark:text-white'
-											: 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200'}"
-									>
-										{node.shortLabel}
-									</span>
-									{#if hasMultipleKRs && node.krName}
-										<span class="max-w-[7rem] truncate font-mono text-[10px] text-gray-400 dark:text-gray-500">
-											{node.krName}
-										</span>
-									{/if}
-								</div>
-							</button>
-						</li>
-					{/each}
-				</ol>
-			</div>
-		</div>
+	<!-- Desktop (md+): master-detail split -->
+	<div class="hidden md:grid md:grid-cols-[minmax(260px,300px)_1fr]">
+		<!-- Left nav -->
+		<nav
+			class="border-r border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/30"
+			aria-label="Pipeline stages"
+		>
+			<ol class="py-2">
+				{#each nodes as node, idx}
+					{#if node.groupHeader}
+						{@render groupHeader(node.groupHeader)}
+					{/if}
+					{@const showLineAbove = idx > 0 && !node.firstInGroup && (!hasMultipleKRs ? true : !node.firstInGroup)}
+					{@const showLineBelow = idx < nodes.length - 1 && !node.lastInGroup && (!hasMultipleKRs ? true : !node.lastInGroup)}
+					{@render navRow(node, showLineAbove, showLineBelow)}
+				{/each}
+			</ol>
+		</nav>
 
-		<!-- Detail panel -->
-		{#if selectedNode}
-			<div class="px-4 py-5 sm:px-6 sm:py-6">
+		<!-- Right detail -->
+		<div class="p-5 sm:p-6">
+			{#if selectedNode}
 				{@render detailPanel(selectedNode)}
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 
-	<!-- ═══ Mobile: vertical stepper with inline detail ═══ -->
+	<!-- Mobile (<md): vertical stepper with inline detail -->
 	<div class="md:hidden">
-		<ol class="relative">
+		<ol class="py-2">
 			{#each nodes as node, idx}
 				{@const isSelected = selectedId === node.id}
+				{#if node.groupHeader}
+					{@render groupHeader(node.groupHeader)}
+				{/if}
 				<li class="relative">
-					<!-- Vertical connector segments (above/below circle) -->
-					{#if idx > 0}
+					<!-- connector line pieces -->
+					{#if idx > 0 && !node.firstInGroup && (!hasMultipleKRs || !node.firstInGroup)}
 						<div
 							aria-hidden="true"
-							class="absolute left-[27px] top-0 h-6 w-0.5 {verticalConnectorBg(
-								nodes[idx - 1].status,
-								node.status
-							)}"
+							class="absolute left-[23px] top-0 h-[13px] w-0.5 bg-gray-300 dark:bg-gray-600"
 						></div>
 					{/if}
-					{#if idx < nodes.length - 1 && !isSelected}
+					{#if idx < nodes.length - 1 && !node.lastInGroup && !isSelected && (!hasMultipleKRs || !node.lastInGroup)}
 						<div
 							aria-hidden="true"
-							class="absolute left-[27px] bottom-0 top-[2.75rem] w-0.5 {verticalConnectorBg(
-								node.status,
-								nodes[idx + 1].status
-							)}"
+							class="absolute left-[23px] bottom-0 top-[33px] w-0.5 bg-gray-300 dark:bg-gray-600"
+						></div>
+					{/if}
+					{#if idx < nodes.length - 1 && !node.lastInGroup && isSelected && (!hasMultipleKRs || !node.lastInGroup)}
+						<!-- selected row: line spans full height across the inline detail -->
+						<div
+							aria-hidden="true"
+							class="absolute left-[23px] top-[33px] bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
 						></div>
 					{/if}
 
@@ -994,18 +1054,16 @@
 						type="button"
 						onclick={() => select(node.id)}
 						aria-current={isSelected ? 'step' : undefined}
-						class="relative flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 {isSelected
-							? 'bg-gray-50 dark:bg-gray-700/30'
-							: ''}"
+						class="group relative flex w-full items-center gap-3 py-2 pl-4 pr-4 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 {isSelected
+							? 'bg-blue-50/50 dark:bg-blue-950/30'
+							: nodeAccentRow(node)}"
 					>
-						<!-- Circle -->
+						<span
+							aria-hidden="true"
+							class="absolute inset-y-0 left-0 w-0.5 {leftEdgeAccent(node.status, isSelected)}"
+						></span>
+
 						<div class="relative flex-shrink-0">
-							{#if isSelected}
-								<span
-									aria-hidden="true"
-									class="absolute -inset-0.5 rounded-full ring-2 ring-blue-500 dark:ring-blue-400"
-								></span>
-							{/if}
 							{#if node.isLive && node.status !== 'failed'}
 								<span
 									aria-hidden="true"
@@ -1015,65 +1073,44 @@
 								></span>
 							{/if}
 							<div
-								class="relative z-10 flex h-10 w-10 items-center justify-center rounded-full shadow-sm {circleBg(
+								class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full shadow-sm {circleBg(
 									node.status
 								)}"
 							>
-								{@render nodeIcon(node.status, 'lg')}
+								{@render nodeIcon(node.status)}
 							</div>
 						</div>
 
-						<!-- Label + status -->
-						<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-							<div class="flex items-center justify-between gap-2">
-								<div class="flex min-w-0 items-center gap-2">
-									<span
-										class="truncate text-sm {isSelected
-											? 'font-semibold text-gray-900 dark:text-white'
-											: 'font-medium text-gray-700 dark:text-gray-200'}"
-									>
-										{node.shortLabel}
-									</span>
-									{#if node.isLive}
-										<span
-											class="inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800/60"
-										>
-											Live
-										</span>
-									{/if}
-								</div>
+						<div class="flex min-w-0 flex-1 items-center justify-between gap-2">
+							<div class="flex min-w-0 items-center gap-1.5">
 								<span
-									class="inline-flex flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset {pillClasses(
-										node.status
-									)}"
+									class="truncate text-sm {isSelected
+										? 'font-semibold text-gray-900 dark:text-white'
+										: 'font-medium text-gray-700 dark:text-gray-200'}"
 								>
-									{node.statusLabel}
+									{node.shortLabel}
 								</span>
+								{#if node.isLive}
+									<span
+										class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+									>
+										Live
+									</span>
+								{/if}
 							</div>
-							{#if hasMultipleKRs && node.krName}
-								<span class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500">
-									{node.krName}
-								</span>
-							{/if}
+							<span
+								class="inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset {pillClasses(
+									node.status
+								)}"
+							>
+								{node.statusLabel}
+							</span>
 						</div>
 					</button>
 
-					<!-- Inline detail panel -->
 					{#if isSelected}
-						<div class="relative">
-							<!-- Continue vertical line through the detail content -->
-							{#if idx < nodes.length - 1}
-								<div
-									aria-hidden="true"
-									class="absolute left-[27px] top-0 bottom-0 w-0.5 {verticalConnectorBg(
-										node.status,
-										nodes[idx + 1].status
-									)}"
-								></div>
-							{/if}
-							<div class="px-4 pb-5 pl-[60px]">
-								{@render detailPanel(node)}
-							</div>
+						<div class="pl-[54px] pr-4 pb-5 pt-1">
+							{@render detailPanel(node, true)}
 						</div>
 					{/if}
 				</li>
