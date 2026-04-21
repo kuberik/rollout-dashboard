@@ -114,7 +114,9 @@
 		isLive: boolean;
 		firstInGroup: boolean;
 		lastInGroup: boolean;
-		groupHeader?: string; // if set, render a KR group header before this node
+		// If set, render a KR group header before this node. `index` / `total`
+		// indicate this group's position among all parallel tracks.
+		groupHeader?: { name: string; index: number; total: number };
 		stageData?: {
 			kr: ValidKruiseRollout;
 			stepNum: number;
@@ -254,7 +256,10 @@
 						// For multi-KR, each KR group is self-contained; otherwise all stages are one group
 						firstInGroup: hasMultipleKRs ? isFirstInKr : false,
 						lastInGroup: hasMultipleKRs ? isLastInKr : false,
-						groupHeader: hasMultipleKRs && isFirstInKr ? krName : undefined,
+						groupHeader:
+						hasMultipleKRs && isFirstInKr && krName
+							? { name: krName, index: krIdx + 1, total: pipelineValidRollouts.length }
+							: undefined,
 						stageData: {
 							kr,
 							stepNum,
@@ -936,13 +941,19 @@
 	</div>
 {/snippet}
 
-{#snippet groupHeader(label: string)}
+{#snippet groupHeader(info: { name: string; index: number; total: number })}
 	<li aria-hidden="false" class="px-4 pt-4 pb-1">
 		<div
 			class="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500"
 		>
 			<ArrowsRepeatOutline class="h-3 w-3" />
-			<span class="truncate">{label}</span>
+			<span class="truncate">{info.name}</span>
+			<span
+				class="flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+				title="Parallel rollouts progress independently"
+			>
+				track {info.index} / {info.total}
+			</span>
 			<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
 		</div>
 	</li>
@@ -971,23 +982,24 @@
 				<CodePullRequestSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 			{/if}
 			<span class="text-sm font-semibold text-gray-900 dark:text-white">Deployment Pipeline</span>
-			{#if hasMultipleKRs}
-				<span
-					class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
-				>
-					{pipelineValidRollouts.length} parallel tracks
-				</span>
-			{/if}
 		</div>
 		<div class="flex items-center gap-3">
 			{#if !isAutoSelected}
 				<button
+					id="pipeline-jump-to-live"
 					type="button"
 					onclick={jumpToLive}
-					class="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+					aria-label="Jump to live stage"
+					class="flex h-6 w-6 items-center justify-center rounded-full text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/40"
 				>
-					Jump to live
+					<span class="relative flex h-2.5 w-2.5">
+						<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-60"></span>
+						<span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+					</span>
 				</button>
+				<Tooltip triggeredBy="#pipeline-jump-to-live" placement="bottom" class="text-xs">
+					Jump to live stage
+				</Tooltip>
 			{/if}
 			{#if summary.failed > 0}
 				<span class="text-xs font-semibold text-red-600 dark:text-red-400">
