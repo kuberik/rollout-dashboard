@@ -111,7 +111,7 @@
 		krName?: string;
 		krIndex?: number;
 		stepIndex?: number;
-		isLive: boolean;
+		isActive: boolean;
 		firstInGroup: boolean;
 		lastInGroup: boolean;
 		// If set, render a KR group header before this node. `index` / `total`
@@ -164,7 +164,7 @@
 				longLabel: 'Deployment started',
 				status: 'done',
 				statusLabel: 'Triggered',
-				isLive: false,
+				isActive: false,
 				firstInGroup: true,
 				lastInGroup: true
 			});
@@ -252,7 +252,7 @@
 						krName,
 						krIndex: krIdx,
 						stepIndex: stepIdx,
-						isLive: isCurrentStep && !isPastStep,
+						isActive: isCurrentStep && !isPastStep,
 						// For multi-KR, each KR group is self-contained; otherwise all stages are one group
 						firstInGroup: hasMultipleKRs ? isFirstInKr : false,
 						lastInGroup: hasMultipleKRs ? isLastInKr : false,
@@ -298,7 +298,7 @@
 				bakeStatusLabel = 'Baking';
 			} else if (bakeIsDeploying) {
 				bakeStatus = 'running';
-				bakeStatusLabel = 'Deploying';
+				bakeStatusLabel = 'In Progress';
 			} else {
 				bakeStatus = 'pending';
 				bakeStatusLabel = 'Pending';
@@ -311,7 +311,7 @@
 				longLabel: bakeIsSucceeded ? 'Baked' : 'Final Bake',
 				status: bakeStatus,
 				statusLabel: bakeStatusLabel,
-				isLive: bakeIsDeploying || bakeIsInProgress,
+				isActive: bakeIsDeploying || bakeIsInProgress,
 				firstInGroup: true,
 				lastInGroup: true
 			});
@@ -322,17 +322,17 @@
 
 	// All nodes that are actively doing something right now. When multiple
 	// KruiseRollout tracks progress in parallel, there can be more than one.
-	let liveNodes = $derived(
+	let activeNodes = $derived(
 		nodes.filter(
 			(n) => n.status === 'running' || n.status === 'paused' || n.status === 'failed'
 		)
 	);
 
-	// Default auto-selection: every live node if any exist, otherwise the last
+	// Default auto-selection: every active node if any exist, otherwise the last
 	// node in the pipeline (typically Bake once the whole rollout is done).
 	let autoSelectedIds = $derived(
-		liveNodes.length > 0
-			? liveNodes.map((n) => n.id)
+		activeNodes.length > 0
+			? activeNodes.map((n) => n.id)
 			: nodes.length > 0
 				? [nodes[nodes.length - 1].id]
 				: []
@@ -341,7 +341,7 @@
 	let userSelectedId = $state<string | null>(null);
 
 	// Clear any sticky user selection when a new deployment starts — so that
-	// the moment a rollout kicks off we jump back to the live stage rather
+	// the moment a rollout kicks off we jump back to the active stage rather
 	// than stranding the viewer on whatever step they were inspecting.
 	let latestEntryKey = $derived(
 		latestEntry?.timestamp ?? latestEntry?.version?.tag ?? latestEntry?.version?.revision ?? ''
@@ -362,22 +362,22 @@
 
 	// Label + decoration for the "jump back to default selection" button.
 	let jumpButton = $derived.by(() => {
-		if (liveNodes.length > 0) {
-			return { label: 'Jump to live stage', live: true };
+		if (activeNodes.length > 0) {
+			return { label: 'Jump to active stage', active: true };
 		}
 		const fallbackId = autoSelectedIds[0];
 		const fallback = fallbackId ? nodes.find((n) => n.id === fallbackId) : null;
 		if (fallback) {
-			return { label: `Jump to ${fallback.shortLabel.toLowerCase()}`, live: false };
+			return { label: `Jump to ${fallback.shortLabel.toLowerCase()}`, active: false };
 		}
-		return { label: 'Reset view', live: false };
+		return { label: 'Reset view', active: false };
 	});
 
 	function select(id: string) {
 		userSelectedId = id;
 	}
 
-	function jumpToLive() {
+	function jumpToActive() {
 		userSelectedId = null;
 	}
 
@@ -479,7 +479,13 @@
 	let finalHCStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
 			if (bakeIsFailed && !allHCHealthy) return { status: 'failed', label: 'Failed' };
-			if (bakeIsInProgress || bakeIsSucceeded || (bakeIsFailed && allHCHealthy))
+			// Once any bake activity has started, report checks as healthy as soon
+			// as they actually are — don't keep showing "Waiting" just because the
+			// bake hasn't transitioned to InProgress yet.
+			if (
+				allHCHealthy &&
+				(bakeIsDeploying || bakeIsInProgress || bakeIsSucceeded || bakeIsFailed)
+			)
 				return { status: 'done', label: 'Healthy' };
 			if (bakeIsDeploying && !allHCHealthy) return { status: 'running', label: 'Waiting' };
 			return { status: 'pending', label: 'Pending' };
@@ -504,9 +510,9 @@
 	}
 
 	function nodeAccentRow(node: StageNode): string {
-		// subtle tinted row bg for failed/live nodes
+		// subtle tinted row bg for failed/active nodes
 		if (node.status === 'failed') return 'bg-red-50/40 dark:bg-red-950/20';
-		if (node.isLive) return 'bg-blue-50/30 dark:bg-blue-950/15';
+		if (node.isActive) return 'bg-blue-50/30 dark:bg-blue-950/15';
 		return '';
 	}
 
@@ -578,7 +584,7 @@
 
 			<!-- Circle -->
 			<div class="relative flex-shrink-0">
-				{#if node.isLive && node.status !== 'failed'}
+				{#if node.isActive && node.status !== 'failed'}
 					<span
 						aria-hidden="true"
 						class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(node.status)}"
@@ -603,11 +609,11 @@
 					>
 						{node.shortLabel}
 					</span>
-					{#if node.isLive}
+					{#if node.isActive}
 						<span
 							class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
 						>
-							Live
+							Active
 						</span>
 					{/if}
 				</div>
@@ -1029,10 +1035,10 @@
 			{#if !isAutoSelected}
 				<button
 					type="button"
-					onclick={jumpToLive}
+					onclick={jumpToActive}
 					class="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/60"
 				>
-					{#if jumpButton.live}
+					{#if jumpButton.active}
 						<span class="relative flex h-1.5 w-1.5">
 							<span
 								class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-70"
@@ -1130,7 +1136,7 @@
 						></span>
 
 						<div class="relative flex-shrink-0">
-							{#if node.isLive && node.status !== 'failed'}
+							{#if node.isActive && node.status !== 'failed'}
 								<span
 									aria-hidden="true"
 									class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(
@@ -1156,11 +1162,11 @@
 								>
 									{node.shortLabel}
 								</span>
-								{#if node.isLive}
+								{#if node.isActive}
 									<span
 										class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
 									>
-										Live
+										Active
 									</span>
 								{/if}
 							</div>
