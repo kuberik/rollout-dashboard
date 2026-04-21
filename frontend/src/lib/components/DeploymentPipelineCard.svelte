@@ -822,7 +822,7 @@
 			<div class="space-y-3">
 				{#if latestEntry.message}
 					<div
-						class="rounded-md border-l-2 border-gray-300 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-900/40"
+						class="rounded-md bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
 					>
 						<p class="text-sm italic text-gray-700 dark:text-gray-300">
 							{latestEntry.message}
@@ -913,7 +913,7 @@
 
 			{#if latestEntry.bakeStatusMessage}
 				<div
-					class="rounded-md border-l-2 border-gray-300 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-900/40"
+					class="rounded-md bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
 				>
 					<p class="text-sm italic text-gray-700 dark:text-gray-300">
 						{latestEntry.bakeStatusMessage}
