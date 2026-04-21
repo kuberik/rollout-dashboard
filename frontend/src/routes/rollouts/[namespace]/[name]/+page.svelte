@@ -144,11 +144,16 @@
 	const loading = $derived(rolloutQuery.isLoading);
 	let error: string | null = $state(null);
 
-	let kustomizations = $state<Kustomization[]>([]);
-	let ociRepositories = $state<OCIRepository[]>([]);
-	let rolloutGates = $state<any[]>([]);
-	let managedResources = $state<Record<string, ManagedResourceStatus[]>>({});
-	let healthChecks = $state<HealthCheck[]>([]);
+	// Derive directly from the query so that when route params change the
+	// lists go back to empty while the new query is in flight, rather than
+	// lingering with the previously-selected rollout's data.
+	const kustomizations = $derived<Kustomization[]>(
+		rolloutQuery.data?.kustomizations?.items ?? []
+	);
+	const ociRepositories = $derived<OCIRepository[]>(
+		rolloutQuery.data?.ociRepositories?.items ?? []
+	);
+	const rolloutGates = $derived<any[]>(rolloutQuery.data?.rolloutGates?.items ?? []);
 	const anyRolloutStalled = $derived.by(() => {
 		return Object.values(managedResources)
 			.flat()
@@ -182,15 +187,6 @@
 		return null;
 	});
 
-	// Map data from query response to state
-	$effect(() => {
-		if (rolloutQuery.data) {
-			kustomizations = rolloutQuery.data.kustomizations?.items || [];
-			ociRepositories = rolloutQuery.data.ociRepositories?.items || [];
-			rolloutGates = rolloutQuery.data.rolloutGates?.items || [];
-		}
-	});
-
 	// Query for managed resources — one combined fetch across all kustomizations
 	const managedResourcesQuery = createQuery(() => ({
 		queryKey: ['managed-resources', namespace, name, kustomizations.map((k) => k.metadata?.name)],
@@ -214,9 +210,9 @@
 		enabled: kustomizations.length > 0,
 		refetchInterval: 5000
 	}));
-	$effect(() => {
-		managedResources = managedResourcesQuery.data ?? {};
-	});
+	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
+		managedResourcesQuery.data ?? {}
+	);
 
 	// Query for health checks
 	const healthChecksQuery = createQuery(() => ({
@@ -229,9 +225,7 @@
 		enabled: Boolean(rollout?.spec?.healthCheckSelector),
 		refetchInterval: 5000
 	}));
-	$effect(() => {
-		healthChecks = healthChecksQuery.data?.healthChecks ?? [];
-	});
+	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
 
 	// Query for events
 	const eventsQuery = createQuery(() => ({
@@ -287,7 +281,8 @@
 	let showAllTags = $state(false);
 	let isReconciling = $state(false);
 
-	// Reset state when rollout changes
+	// Reset state when rollout changes — without this, version-specific caches
+	// and UI state leak across rollouts when the user navigates between them.
 	$effect(() => {
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		namespace;
@@ -298,6 +293,11 @@
 		currentPage = 1;
 		selectedVersion = null;
 		isPinVersionMode = false;
+		annotations = {};
+		loadingAnnotations = {};
+		allRepositoryTags = [];
+		loadingAllTags = false;
+		isReconciling = false;
 	});
 
 	// Reset state when modals close
