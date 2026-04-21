@@ -1,0 +1,49 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: hello-multi-staging
+
+labels:
+  - pairs:
+      environment: staging
+    includeSelectors: true
+    includeTemplates: true
+
+replacements:
+  - sourceValue: staging
+    targets:
+      - select:
+          kind: Rollout
+          name: hello-multi-app
+        fieldPaths:
+          - metadata.annotations.[dashboard.rollout.kuberik.com/description]
+        options:
+          delimiter: " "
+          index: 4
+      - select:
+          kind: OCIRepository
+          name: hello-multi
+        fieldPaths:
+          - spec.url
+        options:
+          delimiter: "/"
+          index: 5
+      - select:
+          kind: Environment
+        fieldPaths:
+          - spec.environment
+        options:
+          create: true
+patches:
+  - patch: |-
+      apiVersion: environments.kuberik.com/v1alpha1
+      kind: Environment
+      metadata:
+        name: hello-multi-app
+      spec:
+        relationship:
+          environment: dev
+          type: After

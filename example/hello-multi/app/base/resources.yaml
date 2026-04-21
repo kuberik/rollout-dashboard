@@ -1,0 +1,260 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-multi-script
+data:
+  app.py: |
+    import os
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    VERSION = os.environ.get("VERSION", "unknown")
+    ROLE = os.environ.get("ROLE", "app")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(f"Hello from {ROLE}!\nVersion: {VERSION}\n".encode())
+
+    if __name__ == "__main__":
+        port = int(os.environ.get("PORT", 8080))
+        HTTPServer(("", port), Handler).serve_forever()
+---
+# ━━━━━━━━━━━━━━━━━━━ API service ━━━━━━━━━━━━━━━━━━━
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-api
+  labels:
+    app: hello-multi
+    role: api
+spec:
+  minReadySeconds: 5
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-multi
+      role: api
+  template:
+    metadata:
+      labels:
+        app: hello-multi
+        role: api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/littlechimera/hello-world/app:${HELLO_MULTI_VERSION}
+          command: ["python", "/app/app.py"]
+          env:
+            - name: VERSION
+              value: ${HELLO_MULTI_VERSION}
+            - name: ROLE
+              value: api
+            - name: PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: app-script
+              mountPath: /app/app.py
+              subPath: app.py
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 2
+      volumes:
+        - name: app-script
+          configMap:
+            name: hello-multi-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-api
+  labels:
+    app: hello-multi
+    role: api
+spec:
+  selector:
+    app: hello-multi
+    role: api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+apiVersion: rollouts.kruise.io/v1beta1
+kind: Rollout
+metadata:
+  name: hello-api
+  annotations:
+    rollout.kuberik.io/step-1-ready-timeout: "10m"
+    rollout.kuberik.io/step-1-bake-time: "15s"
+    rollout.kuberik.io/step-2-ready-timeout: "10m"
+    rollout.kuberik.io/step-2-bake-time: "15s"
+spec:
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-api
+  strategy:
+    canary:
+      steps:
+        - replicas: 1
+        - replicas: 2
+        - replicas: 100%
+---
+apiVersion: rollout.kuberik.com/v1alpha1
+kind: RolloutTest
+metadata:
+  name: hello-api-test
+  labels:
+    app: hello-multi
+spec:
+  rolloutName: hello-api
+  stepIndex: 1
+  jobTemplate:
+    backoffLimit: 1
+    template:
+      spec:
+        restartPolicy: Never
+        containers:
+          - name: test
+            image: curlimages/curl:8.10.1
+            command: ["sh", "-c"]
+            args:
+              - |
+                set -eu
+                sleep 5
+                for i in 1 2 3 4 5; do
+                  if curl -fsS http://hello-api/; then
+                    exit 0
+                  fi
+                  sleep 3
+                done
+                exit 1
+---
+# ━━━━━━━━━━━━━━━━━━━ Worker service ━━━━━━━━━━━━━━━━━━━
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-worker
+  labels:
+    app: hello-multi
+    role: worker
+spec:
+  minReadySeconds: 5
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hello-multi
+      role: worker
+  template:
+    metadata:
+      labels:
+        app: hello-multi
+        role: worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/littlechimera/hello-world/app:${HELLO_MULTI_VERSION}
+          command: ["python", "/app/app.py"]
+          env:
+            - name: VERSION
+              value: ${HELLO_MULTI_VERSION}
+            - name: ROLE
+              value: worker
+            - name: PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: app-script
+              mountPath: /app/app.py
+              subPath: app.py
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 2
+      volumes:
+        - name: app-script
+          configMap:
+            name: hello-multi-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-worker
+  labels:
+    app: hello-multi
+    role: worker
+spec:
+  selector:
+    app: hello-multi
+    role: worker
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+apiVersion: rollouts.kruise.io/v1beta1
+kind: Rollout
+metadata:
+  name: hello-worker
+  annotations:
+    rollout.kuberik.io/step-1-ready-timeout: "10m"
+    rollout.kuberik.io/step-1-bake-time: "30s"
+    rollout.kuberik.io/step-2-ready-timeout: "10m"
+    rollout.kuberik.io/step-2-bake-time: "30s"
+    rollout.kuberik.io/step-3-ready-timeout: "10m"
+    rollout.kuberik.io/step-3-bake-time: "30s"
+spec:
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-worker
+  strategy:
+    canary:
+      steps:
+        - replicas: 1
+        - replicas: 2
+        - replicas: 3
+        - replicas: 100%
+---
+apiVersion: rollout.kuberik.com/v1alpha1
+kind: RolloutTest
+metadata:
+  name: hello-worker-test
+  labels:
+    app: hello-multi
+spec:
+  rolloutName: hello-worker
+  stepIndex: 1
+  jobTemplate:
+    backoffLimit: 1
+    template:
+      spec:
+        restartPolicy: Never
+        containers:
+          - name: test
+            image: curlimages/curl:8.10.1
+            command: ["sh", "-c"]
+            args:
+              - |
+                set -eu
+                sleep 5
+                for i in 1 2 3 4 5; do
+                  if curl -fsS http://hello-worker/; then
+                    exit 0
+                  fi
+                  sleep 3
+                done
+                exit 1

@@ -462,6 +462,26 @@
 		if (node.isLive) return 'bg-blue-50/30 dark:bg-blue-950/15';
 		return '';
 	}
+
+	function shouldShowLineAbove(node: StageNode, idx: number): boolean {
+		if (idx === 0) return false;
+		if (hasMultipleKRs) {
+			// In parallel-tracks mode, bookends (Started, Bake) are isolated
+			if (node.kind === 'started' || node.kind === 'bake') return false;
+			// First stage of a KR group starts its own track
+			if (node.kind === 'stage' && node.firstInGroup) return false;
+		}
+		return true;
+	}
+
+	function shouldShowLineBelow(node: StageNode, idx: number): boolean {
+		if (idx === nodes.length - 1) return false;
+		if (hasMultipleKRs) {
+			if (node.kind === 'started' || node.kind === 'bake') return false;
+			if (node.kind === 'stage' && node.lastInGroup) return false;
+		}
+		return true;
+	}
 </script>
 
 <!-- ━━━━━━━━━━━━━━━━━━━━━━ snippets ━━━━━━━━━━━━━━━━━━━━━━ -->
@@ -485,13 +505,13 @@
 		{#if showLineAbove}
 			<div
 				aria-hidden="true"
-				class="absolute left-[23px] top-0 h-[13px] w-0.5 bg-gray-300 dark:bg-gray-600"
+				class="absolute left-[29px] top-0 h-2 w-0.5 bg-gray-300 dark:bg-gray-600"
 			></div>
 		{/if}
 		{#if showLineBelow}
 			<div
 				aria-hidden="true"
-				class="absolute left-[23px] bottom-0 top-[33px] w-0.5 bg-gray-300 dark:bg-gray-600"
+				class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
 			></div>
 		{/if}
 
@@ -1005,9 +1025,7 @@
 					{#if node.groupHeader}
 						{@render groupHeader(node.groupHeader)}
 					{/if}
-					{@const showLineAbove = idx > 0 && !node.firstInGroup && (!hasMultipleKRs ? true : !node.firstInGroup)}
-					{@const showLineBelow = idx < nodes.length - 1 && !node.lastInGroup && (!hasMultipleKRs ? true : !node.lastInGroup)}
-					{@render navRow(node, showLineAbove, showLineBelow)}
+					{@render navRow(node, shouldShowLineAbove(node, idx), shouldShowLineBelow(node, idx))}
 				{/each}
 			</ol>
 		</nav>
@@ -1030,23 +1048,18 @@
 				{/if}
 				<li class="relative">
 					<!-- connector line pieces -->
-					{#if idx > 0 && !node.firstInGroup && (!hasMultipleKRs || !node.firstInGroup)}
+					{#if shouldShowLineAbove(node, idx)}
 						<div
 							aria-hidden="true"
-							class="absolute left-[23px] top-0 h-[13px] w-0.5 bg-gray-300 dark:bg-gray-600"
+							class="absolute left-[29px] top-0 h-2 w-0.5 bg-gray-300 dark:bg-gray-600"
 						></div>
 					{/if}
-					{#if idx < nodes.length - 1 && !node.lastInGroup && !isSelected && (!hasMultipleKRs || !node.lastInGroup)}
+					{#if shouldShowLineBelow(node, idx)}
+						<!-- Line below: spans from circle bottom to li bottom. When selected, li height
+						     expands to include the inline detail panel, so the line continues through it. -->
 						<div
 							aria-hidden="true"
-							class="absolute left-[23px] bottom-0 top-[33px] w-0.5 bg-gray-300 dark:bg-gray-600"
-						></div>
-					{/if}
-					{#if idx < nodes.length - 1 && !node.lastInGroup && isSelected && (!hasMultipleKRs || !node.lastInGroup)}
-						<!-- selected row: line spans full height across the inline detail -->
-						<div
-							aria-hidden="true"
-							class="absolute left-[23px] top-[33px] bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
+							class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
 						></div>
 					{/if}
 

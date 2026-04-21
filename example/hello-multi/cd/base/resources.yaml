@@ -1,0 +1,90 @@
+---
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-multi-app
+  annotations:
+    dashboard.rollout.kuberik.com/description: "Hello Multi app / __ENVIRONMENT__"
+spec:
+  releasesImagePolicy:
+    name: hello-multi-app
+  versionHistoryLimit: 5
+  bakeTime: 15s
+  healthCheckSelector:
+    selector:
+      matchLabels:
+        app: hello-multi
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: hello-multi-app
+spec:
+  image: ghcr.io/littlechimera/hello-world/app
+  interval: 60s
+  secretRef:
+    name: github-registry-credentials
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: hello-multi-app
+spec:
+  imageRepositoryRef:
+    name: hello-multi-app
+  filterTags:
+    pattern: "^main-(?P<timestamp>[0-9]+)-[a-f0-9]+$"
+    extract: "$timestamp"
+  policy:
+    alphabetical:
+      order: asc
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: hello-multi
+  annotations:
+    rollout.kuberik.com/rollout: hello-multi-app
+spec:
+  interval: 60s
+  url: oci://ghcr.io/littlechimera/hello-multi/__ENVIRONMENT__/manifests
+  secretRef:
+    name: github-registry-credentials
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hello-multi
+  annotations:
+    rollout.kuberik.com/substitute.HELLO_MULTI_VERSION.from: "hello-multi-app"
+spec:
+  interval: 5m
+  prune: true
+  sourceRef:
+    kind: OCIRepository
+    name: hello-multi
+---
+apiVersion: kuberik.com/v1alpha1
+kind: HealthCheck
+metadata:
+  name: hello-multi-kustomization-health-check
+  labels:
+    app: hello-multi
+  annotations:
+    healthcheck.kuberik.com/kustomization: "hello-multi"
+    kuberik.com/display-name: "Flux Deployment"
+spec:
+  class: "kustomization"
+---
+apiVersion: environments.kuberik.com/v1alpha1
+kind: Environment
+metadata:
+  name: hello-multi-app
+spec:
+  rolloutRef:
+    name: hello-multi-app
+  backend:
+    type: github
+    project: "LittleChimera/kuberik-testing"
+    secret: "github-token"
+  name: "hello-multi-app"

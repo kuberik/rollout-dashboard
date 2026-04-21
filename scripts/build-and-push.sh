@@ -32,30 +32,32 @@ else
     echo "Repository $REPO_NAME already exists."
 fi
 
-# Function to build and push for a specific environment and version
+# Function to build and push manifest OCI for a specific environment.
+# $1 = env, $2 = kustomize base path inside repo (e.g. "app/deployments/dev"),
+# $3 = OCI artifact name (e.g. "hello-world"), $4 = human-readable title prefix.
 build_and_push() {
     local env=$1
+    local kustomize_path=$2
+    local artifact_name=$3
+    local title_prefix=$4
     local version=$(git rev-parse HEAD)
     local version_short=$(git rev-parse --short HEAD)
     local tag="main-$(git log --format=%ct -1 )-${version}"
     temp_dir=$(mktemp -d)
 
-    echo "Building and pushing for environment: $env, version: $version"
+    echo "Building and pushing ${artifact_name} for environment: $env, version: $version"
 
-    # Build with kustomize for the specific environment and version
-    kustomize build "app/deployments/${env}" -o "${temp_dir}"
-    # Build OCI image with crane
+    kustomize build "${kustomize_path}" -o "${temp_dir}"
     flux push artifact \
-      "oci://${REGISTRY}/${OCI_ARTIFACT_NAME}/${env}/manifests:${tag}" \
+      "oci://${REGISTRY}/${artifact_name}/${env}/manifests:${tag}" \
       --path "${temp_dir}" \
       --source="$(git config --get remote.origin.url)" \
       --revision="$(git rev-parse HEAD)" \
       --annotations="org.opencontainers.image.version=${version_short}" \
-      --annotations="org.opencontainers.image.title=Hello World manifests / ${env}" \
-      --annotations="org.opencontainers.image.description=Hello World manifests / ${env}" \
-    echo "Successfully pushed ${OCI_ARTIFACT_NAME}/${env}/manifests:${tag}"
-    # echo "$temp_dir"
-    # exit 0
+      --annotations="org.opencontainers.image.title=${title_prefix} manifests / ${env}" \
+      --annotations="org.opencontainers.image.description=${title_prefix} manifests / ${env}"
+    echo "Successfully pushed ${artifact_name}/${env}/manifests:${tag}"
+
     rm -rf $temp_dir
     rm -rf "${temp_dir}.tar.gz"
 }
@@ -67,6 +69,10 @@ trap "rm -rf $temp_dir" EXIT
     cd $temp_dir
     gh repo clone $REPO_NAME .
     cp -r $PROJECT_ROOT/example/hello-world/* .
+    # Second example (multi KruiseRollouts) is copied under its own subdir
+    # so its paths don't collide with hello-world.
+    mkdir -p multi
+    cp -r $PROJECT_ROOT/example/hello-multi/* multi/
     git add .
     git commit -m "Initial commit"
 
@@ -93,7 +99,7 @@ trap "rm -rf $temp_dir" EXIT
             --platform linux/amd64 \
             --provenance true \
             --annotation "index:org.opencontainers.image.version=${version_short}" \
-            --annotation "index:org.opencontainers.image.source=https://github.com/${REPO_NAME}.git" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/${REPO_NAME}" \
             --annotation "index:org.opencontainers.image.revision=${version}" \
             --annotation "index:org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --annotation "index:org.opencontainers.image.title=Hello World app" \
@@ -110,7 +116,8 @@ trap "rm -rf $temp_dir" EXIT
 
 
         for env in $ENVIRONMENTS; do
-            build_and_push $env
+            build_and_push "$env" "app/deployments/${env}" "hello-world" "Hello World"
+            build_and_push "$env" "multi/app/deployments/${env}" "hello-multi" "Hello Multi"
         done
     done
 )
