@@ -74,32 +74,32 @@
 </script>
 
 <div class="mb-4">
-	<div class="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-950 via-red-900 to-red-950 shadow-2xl shadow-red-950/50 ring-1 ring-red-800/60">
+	<div class="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-100 via-red-50 to-red-100 shadow-2xl shadow-red-200/60 ring-1 ring-red-300/60 dark:from-red-950 dark:via-red-900 dark:to-red-950 dark:shadow-red-950/50 dark:ring-red-800/60">
 		<!-- Background glow decorations -->
 		<div class="pointer-events-none absolute inset-0 overflow-hidden">
-			<div class="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-red-500/10 blur-3xl"></div>
-			<div class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full bg-red-400/8 blur-2xl"></div>
+			<div class="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-red-400/8 blur-3xl dark:bg-red-500/10"></div>
+			<div class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full bg-red-300/10 blur-2xl dark:bg-red-400/8"></div>
 		</div>
 
 		<div class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5">
 			<!-- Icon + text -->
 			<div class="flex min-w-0 flex-1 items-center gap-4">
 				<div class="relative shrink-0">
-					<div class="absolute inset-0 animate-ping rounded-full bg-red-500/40"></div>
-					<div class="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-500/20 ring-2 ring-red-500/50">
-						<ExclamationCircleSolid class="h-6 w-6 text-red-300" />
+					<div class="absolute inset-0 animate-ping rounded-full bg-red-500/30 dark:bg-red-500/40"></div>
+					<div class="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50">
+						<ExclamationCircleSolid class="h-6 w-6 text-red-600 dark:text-red-300" />
 					</div>
 				</div>
 				<div class="min-w-0">
 					<div class="flex flex-wrap items-center gap-2">
-						<p class="text-base font-bold tracking-tight text-white">Deployment Failed</p>
+						<p class="text-base font-bold tracking-tight text-red-900 dark:text-white">Deployment Failed</p>
 						{#if failedHCList.length > 0}
-							<span class="inline-flex items-center rounded-full bg-red-800/60 px-2 py-0.5 text-xs font-medium text-red-300 ring-1 ring-red-700/60">
+							<span class="inline-flex items-center rounded-full bg-red-200/80 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-300/60 dark:bg-red-800/60 dark:text-red-300 dark:ring-red-700/60">
 								{failedHCList.length} issue{failedHCList.length > 1 ? 's' : ''}
 							</span>
 						{/if}
 					</div>
-					<p class="mt-0.5 break-words text-sm text-red-200/75">
+					<p class="mt-0.5 break-words text-sm text-red-700/75 dark:text-red-200/75">
 						{#if failedHCList.length > 0}
 							{findDisplayName(failedHCList[0])}{failedHCList.length > 1 ? ` (+${failedHCList.length - 1} more)` : ''} · {failedHCList[0].message || 'No details available'}
 						{:else if (rollout.status?.history?.[0] as any)?.bakeStatusMessage}
@@ -116,7 +116,7 @@
 				{#if canUpdate}
 					<button
 						id="failure-retry-btn"
-						class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white/90 ring-1 ring-white/20 transition hover:bg-white/15 hover:ring-white/30 active:bg-white/20"
+						class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-red-800/10 px-4 py-2 text-sm font-medium text-red-900 ring-1 ring-red-400/30 transition hover:bg-red-800/15 hover:ring-red-400/50 active:bg-red-800/20 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15 dark:hover:ring-white/30 dark:active:bg-white/20"
 						onclick={handleRetry}
 					>
 						<PlaySolid class="h-3.5 w-3.5" />
@@ -129,7 +129,7 @@
 				{#if rollout?.status?.history && rollout.status.history.length > 1 && canModify}
 					<button
 						id="failure-rollback-btn"
-						class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-red-900 shadow-lg transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+						class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-red-900 dark:hover:bg-red-50"
 						disabled={!isDashboardManagingWantedVersion}
 						onclick={handleRollback}
 					>

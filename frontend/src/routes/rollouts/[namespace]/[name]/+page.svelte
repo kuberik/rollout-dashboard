@@ -92,7 +92,7 @@
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import DeployModal from '$lib/components/DeployModal.svelte';
-	import RetryTestsModal from '$lib/components/RetryTestsModal.svelte';
+	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
@@ -272,9 +272,6 @@
 
 	// New variables for pin version mode
 	let isPinVersionMode = $state(false);
-
-	let showRetryTestsModal = $state(false);
-	let retryTestsData = $state<{ test: RolloutTest; kruiseRolloutName: string }[]>([]);
 
 	// Toggle for showing/hiding "current" resources
 
@@ -1120,14 +1117,6 @@
 		}
 	}
 
-	function handleRetryTests() {
-		retryDeployment(retryTestsData[0]?.kruiseRolloutName, 'retry');
-	}
-
-	function handleSkipTests() {
-		retryDeployment(retryTestsData[0]?.kruiseRolloutName, 'skip');
-	}
-
 	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
 		try {
 			const response = await fetch(
@@ -1292,102 +1281,19 @@
 
 				<!-- ══ FAILURE PANEL ══ -->
 				{#if isFailed}
-					<div class="sticky top-0 z-20 mb-4">
-						<div class="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-950 via-red-900 to-red-950 shadow-2xl shadow-red-950/50 ring-1 ring-red-800/60">
-							<!-- Background glow decorations -->
-							<div class="pointer-events-none absolute inset-0 overflow-hidden">
-								<div class="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-red-500/10 blur-3xl"></div>
-								<div class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full bg-red-400/8 blur-2xl"></div>
-							</div>
-
-							<div class="relative flex flex-wrap items-center gap-x-8 gap-y-4 px-6 py-5">
-								<!-- Left: icon + text -->
-								<div class="flex min-w-0 flex-1 items-center gap-4">
-									<!-- Pulsing icon -->
-									<div class="relative shrink-0">
-										<div class="absolute inset-0 animate-ping rounded-full bg-red-500/40"></div>
-										<div class="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-500/20 ring-2 ring-red-500/50">
-											<ExclamationCircleSolid class="h-6 w-6 text-red-300" />
-										</div>
-									</div>
-
-									<!-- Text content -->
-									<div class="min-w-0">
-										<div class="flex flex-wrap items-center gap-2">
-											<p class="text-base font-bold tracking-tight text-white">Deployment Failed</p>
-											{#if failedHCList.length > 0}
-												<span class="inline-flex items-center rounded-full bg-red-800/60 px-2 py-0.5 text-xs font-medium text-red-300 ring-1 ring-red-700/60">
-													{failedHCList.length} issue{failedHCList.length > 1 ? 's' : ''}
-												</span>
-											{/if}
-										</div>
-										<p class="mt-0.5 text-sm text-red-200/75">
-											{#if failedHCList.length > 0}
-												{@const displayName = (() => { const hc = failedHCList[0]; const full = findFullHealthCheck(hc, healthChecks); return full?.metadata?.annotations?.['kuberik.com/display-name'] || hc.name || 'A health check'; })()}
-												{displayName}{failedHCList.length > 1 ? ` (+${failedHCList.length - 1} more)` : ''} · {failedHCList[0].message || 'No details available'}
-											{:else if latestEntry.bakeStatusMessage}
-												{latestEntry.bakeStatusMessage}
-											{:else}
-												An error occurred during deployment.
-											{/if}
-										</p>
-									</div>
-								</div>
-
-								<!-- Right: actions -->
-								<div class="flex shrink-0 items-center gap-3">
-									{#if canUpdate}
-										<button
-											id="failure-retry-btn"
-											class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white/90 ring-1 ring-white/20 transition hover:bg-white/15 hover:ring-white/30 active:bg-white/20"
-											onclick={() => {
-												if (failedStepTests.length > 0) {
-													retryTestsData = failedStepTests;
-													showRetryTestsModal = true;
-												} else {
-													retryDeployment(stalledKruiseRollout?.metadata?.name);
-												}
-											}}
-										>
-											<PlaySolid class="h-3.5 w-3.5" />
-											Retry
-										</button>
-										<Tooltip triggeredBy="#failure-retry-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
-											Reset health checks and failed tests, then retry the deployment.
-										</Tooltip>
-									{/if}
-									{#if rollout?.status?.history && rollout.status.history.length > 1 && canModify}
-										<button
-											id="failure-rollback-btn"
-											class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-red-900 shadow-lg transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-											disabled={!isDashboardManagingWantedVersion}
-											onclick={() => {
-												if (isDashboardManagingWantedVersion && rollout?.status?.history && rollout.status.history.length > 1) {
-													const previousVersion = rollout.status.history[1];
-													isPinVersionMode = true;
-													selectedVersion = previousVersion.version.tag;
-													pinVersionToggle = true;
-													const currentVersionName = getDisplayVersion(rollout.status.history[0].version);
-													const targetVersionName = getDisplayVersion(previousVersion.version);
-													deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-													showDeployModal = true;
-												}
-											}}
-										>
-											<ReplyOutline class="h-3.5 w-3.5" />
-											Rollback
-										</button>
-										<Tooltip triggeredBy="#failure-rollback-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
-											Revert to the previous version.
-											{#if !isDashboardManagingWantedVersion}
-												<br /><span class="text-yellow-300">Disabled: wantedVersion managed externally.</span>
-											{/if}
-										</Tooltip>
-									{/if}
-								</div>
-							</div>
-						</div>
-					</div>
+					<FailurePanel
+						{rollout}
+						{failedHCList}
+						{healthChecks}
+						{failedStepTests}
+						{stalledKruiseRollout}
+						{canUpdate}
+						{canModify}
+						{isDashboardManagingWantedVersion}
+						onRetry={retryDeployment}
+						onSuccess={(m) => { toastType = 'success'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
+						onError={(m) => { toastType = 'error'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
+					/>
 				{/if}
 
 				<div
@@ -2945,13 +2851,6 @@
 		</div>
 	</div>
 </Modal>
-
-<RetryTestsModal
-	bind:open={showRetryTestsModal}
-	failedTests={retryTestsData}
-	onRetryTests={handleRetryTests}
-	onSkipTests={handleSkipTests}
-/>
 
 <DeployModal
 	bind:open={showDeployModal}
