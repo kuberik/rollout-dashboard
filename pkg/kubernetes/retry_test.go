@@ -3,10 +3,9 @@ package kubernetes
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/require"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,22 +23,43 @@ func newTestClient(t *testing.T, initial ...client.Object) *Client {
 	return &Client{client: c}
 }
 
-func TestSetRetryAnnotation_SetsAnnotation(t *testing.T) {
+func TestSetRetryAnnotation_RetryMode(t *testing.T) {
 	rollout := &rolloutv1alpha1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "ns"},
 	}
 	cli := newTestClient(t, rollout)
 
-	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app"))
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", rolloutv1alpha1.RetryModeRetry))
 
 	got := &rolloutv1alpha1.Rollout{}
 	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
-	val, ok := got.Annotations[rolloutv1alpha1.RetryAnnotation]
-	require.True(t, ok, "retry annotation should be set")
-	// Value should be a parseable RFC3339 timestamp (unique per invocation to aid
-	// correlation in controller events).
-	_, err := time.Parse(time.RFC3339Nano, val)
-	require.NoError(t, err, "retry annotation value should be RFC3339Nano")
+	require.Equal(t, rolloutv1alpha1.RetryModeRetry, got.Annotations[rolloutv1alpha1.RetryAnnotation])
+}
+
+func TestSetRetryAnnotation_SkipMode(t *testing.T) {
+	rollout := &rolloutv1alpha1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "ns"},
+	}
+	cli := newTestClient(t, rollout)
+
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", rolloutv1alpha1.RetryModeSkip))
+
+	got := &rolloutv1alpha1.Rollout{}
+	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
+	require.Equal(t, rolloutv1alpha1.RetryModeSkip, got.Annotations[rolloutv1alpha1.RetryAnnotation])
+}
+
+func TestSetRetryAnnotation_UnknownModeDefaultsToRetry(t *testing.T) {
+	rollout := &rolloutv1alpha1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "ns"},
+	}
+	cli := newTestClient(t, rollout)
+
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", "bogus"))
+
+	got := &rolloutv1alpha1.Rollout{}
+	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
+	require.Equal(t, rolloutv1alpha1.RetryModeRetry, got.Annotations[rolloutv1alpha1.RetryAnnotation])
 }
 
 func TestSetRetryAnnotation_PreservesExistingAnnotations(t *testing.T) {
@@ -54,7 +74,7 @@ func TestSetRetryAnnotation_PreservesExistingAnnotations(t *testing.T) {
 	}
 	cli := newTestClient(t, rollout)
 
-	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app"))
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", rolloutv1alpha1.RetryModeRetry))
 
 	got := &rolloutv1alpha1.Rollout{}
 	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
@@ -64,6 +84,6 @@ func TestSetRetryAnnotation_PreservesExistingAnnotations(t *testing.T) {
 
 func TestSetRetryAnnotation_RolloutMissing(t *testing.T) {
 	cli := newTestClient(t)
-	err := cli.SetRetryAnnotation(context.Background(), "ns", "missing")
+	err := cli.SetRetryAnnotation(context.Background(), "ns", "missing", rolloutv1alpha1.RetryModeRetry)
 	require.Error(t, err)
 }

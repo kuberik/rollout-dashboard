@@ -271,14 +271,85 @@ func (c *Client) ContinueKruiseRollout(ctx context.Context, namespace, name stri
 	return updatedRollout, nil
 }
 
+// ClearKruiseRolloutStalledCondition sets the Stalled condition on a kruise rollout to False
+// and resets the step started-at annotation so the step timeout window is refreshed.
+// This allows the rollouttest controller to create new jobs after a retry.
+func (c *Client) ClearKruiseRolloutStalledCondition(ctx context.Context, namespace, name string) error {
+	rollout := &kruiserolloutv1beta1.Rollout{}
+
+	// Update annotation with retry on conflict
+	for attempt := 0; attempt < 5; attempt++ {
+		if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
+			return fmt.Errorf("failed to get kruise rollout: %w", err)
+		}
+
+		// Reset the step started-at annotation to now so the timeout window is refreshed
+		stepIndex := rollout.Status.CanaryStatus.CurrentStepIndex
+		startedAtKey := fmt.Sprintf("internal.rollout.kuberik.io/step-%d-started-at", stepIndex)
+		annotations := rollout.GetAnnotations()
+		if annotations == nil {
+			annotations = make(map[string]string)
+		}
+		annotations[startedAtKey] = time.Now().UTC().Format(time.RFC3339)
+		rollout.SetAnnotations(annotations)
+		err := c.client.Update(ctx, rollout)
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "the object has been modified") {
+			return fmt.Errorf("failed to reset step started-at annotation: %w", err)
+		}
+		if attempt == 4 {
+			return fmt.Errorf("failed to reset step started-at annotation after retries: %w", err)
+		}
+	}
+
+	// Clear the stalled condition with retry on conflict
+	for attempt := 0; attempt < 5; attempt++ {
+		// Re-fetch on each attempt to get latest resource version
+		if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
+			return fmt.Errorf("failed to re-get kruise rollout: %w", err)
+		}
+
+		found := false
+		for i, cond := range rollout.Status.Conditions {
+			if cond.Type == kruiserolloutv1beta1.RolloutConditionType("Stalled") && cond.Status == corev1.ConditionTrue {
+				rollout.Status.Conditions[i].Status = corev1.ConditionFalse
+				rollout.Status.Conditions[i].Reason = "RetryRequested"
+				rollout.Status.Conditions[i].Message = "Stalled condition cleared by rollout-dashboard retry"
+				rollout.Status.Conditions[i].LastUpdateTime = metav1.Now()
+				rollout.Status.Conditions[i].LastTransitionTime = metav1.Now()
+				found = true
+			}
+		}
+
+		if !found {
+			return nil
+		}
+
+		err := c.client.Status().Update(ctx, rollout)
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "the object has been modified") {
+			return fmt.Errorf("failed to clear stalled condition on kruise rollout: %w", err)
+		}
+		// Conflict — retry with fresh fetch
+	}
+	return fmt.Errorf("failed to clear stalled condition after retries: resource conflict")
+}
+
 // SetRetryAnnotation patches the Rollout with the rollout.kuberik.com/retry annotation.
-// The rollout controller handles the actual reset: BakeStatus is reset to Deploying,
-// LastRetryTimestamp is stamped on History[0], and downstream controllers
-// (healthcheck, kustomizationhealth, openkruise step gate) use that timestamp to
-// unwind stale failure conditions. The annotation value is a timestamp — not
-// semantically required, but helps correlate dashboard-initiated retries with
-// controller events.
-func (c *Client) SetRetryAnnotation(ctx context.Context, namespace, name string) error {
+// The value is the retry mode (rolloutv1alpha1.RetryModeRetry or RetryModeSkip) and is
+// consumed by the rollout controller to populate History[0].LastRetryMode. From there:
+//   - rollout-controller resets BakeStatus to Deploying and stamps LastRetryTimestamp
+//   - healthcheck/kustomizationhealth unwind stale failures using the timestamp
+//   - openkruise stepgate resets failed RolloutTests (mode=retry) or marks them
+//     Skipped (mode=skip), and clears the Kruise Stalled condition
+func (c *Client) SetRetryAnnotation(ctx context.Context, namespace, name, mode string) error {
+	if mode != rolloutv1alpha1.RetryModeRetry && mode != rolloutv1alpha1.RetryModeSkip {
+		mode = rolloutv1alpha1.RetryModeRetry
+	}
 	rollout := &rolloutv1alpha1.Rollout{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
 		return fmt.Errorf("failed to get rollout: %w", err)
@@ -287,7 +358,7 @@ func (c *Client) SetRetryAnnotation(ctx context.Context, namespace, name string)
 	if rollout.Annotations == nil {
 		rollout.Annotations = map[string]string{}
 	}
-	rollout.Annotations[rolloutv1alpha1.RetryAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+	rollout.Annotations[rolloutv1alpha1.RetryAnnotation] = mode
 	if err := c.client.Patch(ctx, rollout, client.MergeFrom(patchBase)); err != nil {
 		return fmt.Errorf("failed to set retry annotation: %w", err)
 	}
@@ -1296,6 +1367,96 @@ func (c *Client) GetClusterRolloutSchedule(ctx context.Context, name string) (*r
 		return nil, fmt.Errorf("failed to get cluster rollout schedule: %w", err)
 	}
 	return schedule, nil
+}
+
+// GetEventsForRollout collects events relevant to a rollout:
+// 1. Events for the Rollout object itself
+// 2. Events for all Deployments found via kustomizations linked to the rollout
+// 3. Events for ReplicaSets owned by those Deployments
+func (c *Client) GetEventsForRollout(ctx context.Context, namespace, rolloutName string) ([]corev1.Event, error) {
+	cutoff := time.Now().Add(-2 * time.Hour)
+	var allEvents []corev1.Event
+
+	fetchEvents := func(ns, name string) error {
+		eventList, err := c.clientset.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+			FieldSelector: "involvedObject.name=" + name,
+		})
+		if err != nil {
+			return err
+		}
+		for _, ev := range eventList.Items {
+			if ev.LastTimestamp.After(cutoff) {
+				allEvents = append(allEvents, ev)
+			}
+		}
+		return nil
+	}
+
+	// Find Deployments via kustomizations linked to the rollout
+	kustomizations, err := c.GetKustomizationsByRolloutAnnotation(ctx, namespace, rolloutName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kustomizations: %w", err)
+	}
+
+	for _, kustomization := range kustomizations.Items {
+		resources, err := c.GetKustomizationManagedResources(ctx, kustomization.Namespace, kustomization.Name)
+		if err != nil {
+			fmt.Printf("Warning: failed to get managed resources for kustomization %s: %v\n", kustomization.Name, err)
+			continue
+		}
+		for _, resource := range resources {
+			if !strings.Contains(resource.GroupVersionKind, "apps/v1/Deployment") {
+				continue
+			}
+			if err := fetchEvents(resource.Namespace, resource.Name); err != nil {
+				fmt.Printf("Warning: failed to get events for deployment %s/%s: %v\n", resource.Namespace, resource.Name, err)
+			}
+			if resource.Object == nil {
+				continue
+			}
+			deploymentUID := string(resource.Object.GetUID())
+			rsList, err := c.clientset.AppsV1().ReplicaSets(resource.Namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("Warning: failed to list replicasets in %s: %v\n", resource.Namespace, err)
+				continue
+			}
+			for _, rs := range rsList.Items {
+				for _, ownerRef := range rs.OwnerReferences {
+					if string(ownerRef.UID) == deploymentUID {
+						if err := fetchEvents(rs.Namespace, rs.Name); err != nil {
+							fmt.Printf("Warning: failed to get events for replicaset %s/%s: %v\n", rs.Namespace, rs.Name, err)
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Deduplicate by message+reason+involvedObject
+	type dedupeKey struct{ message, reason, objName, objKind string }
+	seen := make(map[dedupeKey]int)
+	var deduped []corev1.Event
+	for _, ev := range allEvents {
+		k := dedupeKey{ev.Message, ev.Reason, ev.InvolvedObject.Name, ev.InvolvedObject.Kind}
+		if idx, exists := seen[k]; exists {
+			if ev.LastTimestamp.After(deduped[idx].LastTimestamp.Time) {
+				deduped[idx] = ev
+			}
+		} else {
+			seen[k] = len(deduped)
+			deduped = append(deduped, ev)
+		}
+	}
+
+	sort.Slice(deduped, func(i, j int) bool {
+		return deduped[i].LastTimestamp.After(deduped[j].LastTimestamp.Time)
+	})
+
+	if len(deduped) > 50 {
+		deduped = deduped[:50]
+	}
+	return deduped, nil
 }
 
 // GetRolloutSchedulesByRollout gets RolloutSchedules that match a specific rollout

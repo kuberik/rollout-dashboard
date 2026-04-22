@@ -618,15 +618,12 @@ func main() {
 			})
 		})
 
-		// Retry a failed deployment by setting the rollout.kuberik.com/retry annotation.
-		// The controllers handle the cascade from the annotation:
-		// - rollout-controller resets BakeStatus to Deploying and stamps
-		//   History[0].LastRetryTimestamp
-		// - healthcheck/kustomizationhealth reset stale failure state using the timestamp
-		// - openkruise stepgate resets failed RolloutTests and clears the Kruise Stalled
-		//   condition once it sees the new LastRetryTimestamp
-		// The request body is ignored for forward compatibility; older frontend builds
-		// may still send {kruiseRolloutName, testAction} which the controllers don't need.
+		// Retry or skip a failed deployment by setting the rollout.kuberik.com/retry
+		// annotation on the kuberik Rollout. The annotation value carries the mode:
+		//   "retry" (default): re-run failed RolloutTests
+		//   "skip":             mark failed RolloutTests as Skipped (treated as passing)
+		// The controllers handle the cascade — no direct Kruise patching needed.
+		// kruiseRolloutName in the body is legacy and ignored.
 		api.POST("/rollouts/:namespace/:name/retry", func(c *gin.Context) {
 			k8sClient, ok := getK8sClient(c)
 			if !ok {
@@ -636,11 +633,25 @@ func main() {
 			namespace := c.Param("namespace")
 			kuberikRolloutName := c.Param("name")
 
-			if err := k8sClient.SetRetryAnnotation(context.Background(), namespace, kuberikRolloutName); err != nil {
+			var req struct {
+				KruiseRolloutName string `json:"kruiseRolloutName"`
+				TestAction        string `json:"testAction"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+				return
+			}
+
+			mode := rolloutv1alpha1.RetryModeRetry
+			if req.TestAction == rolloutv1alpha1.RetryModeSkip {
+				mode = rolloutv1alpha1.RetryModeSkip
+			}
+
+			if err := k8sClient.SetRetryAnnotation(context.Background(), namespace, kuberikRolloutName, mode); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger retry", "details": err.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+			c.JSON(http.StatusOK, gin.H{"status": "ok", "action": mode})
 		})
 
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
@@ -1022,6 +1033,199 @@ func main() {
 			})
 		})
 
+		// Get child resources (ReplicaSets + Pods) for a Deployment
+		api.GET("/namespaces/:namespace/deployments/:name/children", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+			ctx := context.Background()
+			clientset := k8sClient.GetClientset()
+
+			// Get the Deployment to get its UID and selector
+			deployment, err := clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
+				return
+			}
+
+			deploymentUID := string(deployment.UID)
+
+			// Get all ReplicaSets in namespace and filter by owner
+			allRS, err := clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list ReplicaSets"})
+				return
+			}
+
+			type PodInfo struct {
+				Name        string   `json:"name"`
+				Namespace   string   `json:"namespace"`
+				Phase       string   `json:"phase"`
+				Ready       bool     `json:"ready"`
+				Terminating bool     `json:"terminating"`
+				Restarts    int32    `json:"restarts"`
+				Node        string   `json:"node"`
+				Age         string   `json:"age"`
+				Images      []string `json:"images"`
+				Message     string   `json:"message,omitempty"`
+			}
+			type RSInfo struct {
+				Name            string    `json:"name"`
+				Namespace       string    `json:"namespace"`
+				Replicas        int32     `json:"replicas"`
+				ReadyReplicas   int32     `json:"readyReplicas"`
+				DesiredReplicas int32     `json:"desiredReplicas"`
+				IsCurrentRS     bool      `json:"isCurrentRS"`
+				Pods            []PodInfo `json:"pods"`
+			}
+
+			var replicaSets []RSInfo
+			currentRSRevision := deployment.Annotations["deployment.kubernetes.io/revision"]
+
+			for _, rs := range allRS.Items {
+				owned := false
+				for _, ownerRef := range rs.OwnerReferences {
+					if string(ownerRef.UID) == deploymentUID {
+						owned = true
+						break
+					}
+				}
+				if !owned {
+					continue
+				}
+
+				rsUID := string(rs.UID)
+				isCurrent := rs.Annotations["deployment.kubernetes.io/revision"] == currentRSRevision
+
+				// Get pods owned by this ReplicaSet
+				allPods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+				if err != nil {
+					continue
+				}
+
+				pods := []PodInfo{}
+				for _, pod := range allPods.Items {
+					isPodOwned := false
+					for _, ownerRef := range pod.OwnerReferences {
+						if string(ownerRef.UID) == rsUID {
+							isPodOwned = true
+							break
+						}
+					}
+					if !isPodOwned {
+						continue
+					}
+
+					// Count restarts and check readiness
+					var totalRestarts int32
+					isReady := false
+					for _, cs := range pod.Status.ContainerStatuses {
+						totalRestarts += cs.RestartCount
+					}
+					for _, cond := range pod.Status.Conditions {
+						if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+							isReady = true
+							break
+						}
+					}
+
+					// Collect first meaningful message from container states or conditions
+					podMessage := ""
+					for _, cs := range pod.Status.ContainerStatuses {
+						if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+							podMessage = cs.State.Waiting.Reason
+							if cs.State.Waiting.Message != "" {
+								podMessage += ": " + cs.State.Waiting.Message
+							}
+							break
+						}
+						if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" && cs.State.Terminated.Reason != "Completed" {
+							podMessage = cs.State.Terminated.Reason
+							if cs.State.Terminated.Message != "" {
+								podMessage += ": " + cs.State.Terminated.Message
+							}
+							break
+						}
+					}
+					if podMessage == "" {
+						for _, cond := range pod.Status.Conditions {
+							if cond.Status != corev1.ConditionTrue && cond.Message != "" {
+								podMessage = cond.Message
+								break
+							}
+						}
+					}
+
+					var images []string
+					for _, c := range pod.Spec.Containers {
+						images = append(images, c.Image)
+					}
+
+					age := ""
+					if !pod.CreationTimestamp.IsZero() {
+						dur := time.Since(pod.CreationTimestamp.Time)
+						if dur < time.Minute {
+							age = fmt.Sprintf("%ds", int(dur.Seconds()))
+						} else if dur < time.Hour {
+							age = fmt.Sprintf("%dm", int(dur.Minutes()))
+						} else if dur < 24*time.Hour {
+							age = fmt.Sprintf("%dh", int(dur.Hours()))
+						} else {
+							age = fmt.Sprintf("%dd", int(dur.Hours()/24))
+						}
+					}
+
+					pods = append(pods, PodInfo{
+						Name:        pod.Name,
+						Namespace:   pod.Namespace,
+						Phase:       string(pod.Status.Phase),
+						Ready:       isReady,
+						Terminating: pod.DeletionTimestamp != nil,
+						Restarts:    totalRestarts,
+						Node:        pod.Spec.NodeName,
+						Age:         age,
+						Images:      images,
+						Message:     podMessage,
+					})
+				}
+
+				desiredReplicas := int32(1)
+				if rs.Spec.Replicas != nil {
+					desiredReplicas = *rs.Spec.Replicas
+				}
+
+				replicaSets = append(replicaSets, RSInfo{
+					Name:            rs.Name,
+					Namespace:       rs.Namespace,
+					Replicas:        rs.Status.Replicas,
+					ReadyReplicas:   rs.Status.ReadyReplicas,
+					DesiredReplicas: desiredReplicas,
+					IsCurrentRS:     isCurrent,
+					Pods:            pods,
+				})
+			}
+
+			if replicaSets == nil {
+				replicaSets = []RSInfo{}
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"replicaSets": replicaSets,
+				"deployment": map[string]interface{}{
+					"name":              deployment.Name,
+					"namespace":         deployment.Namespace,
+					"replicas":          deployment.Status.Replicas,
+					"readyReplicas":     deployment.Status.ReadyReplicas,
+					"updatedReplicas":   deployment.Status.UpdatedReplicas,
+					"availableReplicas": deployment.Status.AvailableReplicas,
+				},
+			})
+		})
+
 		// New endpoint to fetch health checks for a rollout
 		// Check permissions for a rollout action
 		api.GET("/rollouts/:namespace/:name/permissions", func(c *gin.Context) {
@@ -1144,6 +1348,24 @@ func main() {
 				"healthChecks": healthChecks,
 				"debug":        debugInfo,
 			})
+		})
+
+		// Get events for a specific rollout
+		api.GET("/rollouts/:namespace/:name/events", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+
+			events, err := k8sClient.GetEventsForRollout(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching events: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events", "details": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"events": events})
 		})
 
 		// Get schedules for a specific rollout
