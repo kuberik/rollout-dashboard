@@ -14,7 +14,8 @@
 		CogSolid,
 		ArrowUpRightFromSquareOutline,
 		CircleMinusSolid,
-		ArrowsRepeatOutline
+		ArrowsRepeatOutline,
+		RefreshOutline
 	} from 'flowbite-svelte-icons';
 	import DatadogLogo from './DatadogLogo.svelte';
 	import HealthCheckBadge from './HealthCheckBadge.svelte';
@@ -677,9 +678,7 @@
 							)}
 							<li class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
 								<Tooltip class="z-50" placement="top" triggeredBy={'#pipe-test-' + test.metadata.name}>
-									{phase}{retryCount > 0
-										? ` (${retryCount} retr${retryCount === 1 ? 'y' : 'ies'})`
-										: ''}
+									{phase}
 								</Tooltip>
 								<span id={'pipe-test-' + test.metadata.name} class="inline-flex items-center gap-1.5">
 									{#if phase === 'Running'}
@@ -696,8 +695,17 @@
 										<ClockSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
 									{/if}
 									<span class="font-mono text-gray-700 dark:text-gray-200">
-										{test.metadata.name}{retryCount > 0 ? ` (retry ${retryCount})` : ''}
+										{test.metadata.name}
 									</span>
+									{#if retryCount > 0}
+										<span
+											class="inline-flex items-center gap-0.5 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-medium text-gray-500 tabular-nums dark:bg-gray-700 dark:text-gray-400"
+											title="{retryCount} retr{retryCount === 1 ? 'y' : 'ies'}"
+										>
+											<RefreshOutline class="h-2.5 w-2.5" />
+											{retryCount}
+										</span>
+									{/if}
 								</span>
 								{#if phase === 'Failed'}
 									<a
