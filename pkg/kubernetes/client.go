@@ -271,6 +271,29 @@ func (c *Client) ContinueKruiseRollout(ctx context.Context, namespace, name stri
 	return updatedRollout, nil
 }
 
+// SetRetryAnnotation patches the Rollout with the rollout.kuberik.com/retry annotation.
+// The rollout controller handles the actual reset: BakeStatus is reset to Deploying,
+// LastRetryTimestamp is stamped on History[0], and downstream controllers
+// (healthcheck, kustomizationhealth, openkruise step gate) use that timestamp to
+// unwind stale failure conditions. The annotation value is a timestamp — not
+// semantically required, but helps correlate dashboard-initiated retries with
+// controller events.
+func (c *Client) SetRetryAnnotation(ctx context.Context, namespace, name string) error {
+	rollout := &rolloutv1alpha1.Rollout{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
+		return fmt.Errorf("failed to get rollout: %w", err)
+	}
+	patchBase := rollout.DeepCopy()
+	if rollout.Annotations == nil {
+		rollout.Annotations = map[string]string{}
+	}
+	rollout.Annotations[rolloutv1alpha1.RetryAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := c.client.Patch(ctx, rollout, client.MergeFrom(patchBase)); err != nil {
+		return fmt.Errorf("failed to set retry annotation: %w", err)
+	}
+	return nil
+}
+
 // ResetBakeStatusToDeploying resets the rollout's bake status to "Deploying"
 // This should be called when continuing a rollout to indicate a new deployment phase
 func (c *Client) ResetBakeStatusToDeploying(ctx context.Context, namespace, name string) (*rolloutv1alpha1.Rollout, error) {

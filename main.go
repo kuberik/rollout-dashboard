@@ -618,6 +618,31 @@ func main() {
 			})
 		})
 
+		// Retry a failed deployment by setting the rollout.kuberik.com/retry annotation.
+		// The controllers handle the cascade from the annotation:
+		// - rollout-controller resets BakeStatus to Deploying and stamps
+		//   History[0].LastRetryTimestamp
+		// - healthcheck/kustomizationhealth reset stale failure state using the timestamp
+		// - openkruise stepgate resets failed RolloutTests and clears the Kruise Stalled
+		//   condition once it sees the new LastRetryTimestamp
+		// The request body is ignored for forward compatibility; older frontend builds
+		// may still send {kruiseRolloutName, testAction} which the controllers don't need.
+		api.POST("/rollouts/:namespace/:name/retry", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			kuberikRolloutName := c.Param("name")
+
+			if err := k8sClient.SetRetryAnnotation(context.Background(), namespace, kuberikRolloutName); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger retry", "details": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		})
+
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
 			k8sClient, ok := getK8sClient(c)
 			if !ok {
