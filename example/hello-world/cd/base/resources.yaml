@@ -1,3 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-world
+---
 apiVersion: kuberik.com/v1alpha1
 kind: Rollout
 metadata:
@@ -116,6 +122,34 @@ metadata:
     kuberik.com/display-name: "Flux Deployment"
 spec:
   class: "kustomization"
+---
+apiVersion: kuberik.com/v1alpha1
+kind: HealthCheck
+metadata:
+  name: hello-world-prometheus-high-error-rate
+  labels:
+    app: hello-world
+  annotations:
+    healthcheck.kuberik.com/prometheus-url: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+    healthcheck.kuberik.com/prometheus-alert-labels: "alertname=HighErrorRate,app=hello-python"
+    healthcheck.kuberik.com/requeue-interval: "30s"
+    kuberik.com/display-name: "High Error Rate Alert"
+spec:
+  class: "prometheus-alert"
+---
+apiVersion: kuberik.com/v1alpha1
+kind: HealthCheck
+metadata:
+  name: hello-world-prometheus-app-down
+  labels:
+    app: hello-world
+  annotations:
+    healthcheck.kuberik.com/prometheus-url: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+    healthcheck.kuberik.com/prometheus-alert-labels: "alertname=AppDown,app=hello-python"
+    healthcheck.kuberik.com/requeue-interval: "30s"
+    kuberik.com/display-name: "App Down Alert"
+spec:
+  class: "prometheus-alert"
 ---
 apiVersion: environments.kuberik.com/v1alpha1
 kind: Environment

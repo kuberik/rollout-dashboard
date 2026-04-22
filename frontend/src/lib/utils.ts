@@ -1,4 +1,4 @@
-import type { Rollout } from "../types";
+import type { Rollout, Kustomization, OCIRepository } from "../types";
 
 
 export function formatDate(dateString: string): string {
@@ -349,6 +349,27 @@ export function buildDatadogTestRunsUrl(service: string, version: string): strin
 
 export function buildDatadogLogsUrl(service: string, env: string): string {
 	return `https://app.datadoghq.com/logs?query=${encodeURIComponent(`service:${service} env:${env}`)}&live=true`;
+}
+
+export function getResourceStatus(resource: Kustomization | OCIRepository) {
+	const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
+	if (!readyCondition) return { status: 'Unknown', color: 'gray' as const };
+
+	if (readyCondition.status === 'True') return { status: 'Ready', color: 'green' as const };
+
+	const reconcilingCondition = resource.status?.conditions?.find((c) => c.type === 'Reconciling');
+	const isReconciling =
+		reconcilingCondition?.status === 'True' ||
+		readyCondition.status === 'Unknown' ||
+		readyCondition.reason?.toLowerCase().includes('progress');
+	if (isReconciling) return { status: 'Reconciling', color: 'yellow' as const };
+
+	return { status: 'Failed', color: 'red' as const };
+}
+
+export function getLastTransitionTime(resource: Kustomization | OCIRepository) {
+	const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
+	return readyCondition?.lastTransitionTime;
 }
 
 const LINK_ANNOTATION_PREFIX = 'rollout.kuberik.com/link.';

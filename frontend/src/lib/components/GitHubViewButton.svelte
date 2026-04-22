@@ -34,7 +34,7 @@
 	}
 </script>
 
-<Button {size} {color} onclick={openGitHubUrl} class="text-xs" title="View on GitHub">
-	<GithubSolid class="h-3 w-3 sm:mr-1" />
-	<span class="hidden sm:inline">View on GitHub</span>
+<Button {size} {color} onclick={openGitHubUrl} title="View on GitHub">
+	<GithubSolid class="me-2 h-4 w-4" />
+	View on GitHub
 </Button>

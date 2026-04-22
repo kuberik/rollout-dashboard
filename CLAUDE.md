@@ -218,7 +218,21 @@ Run `go mod tidy` after making changes to the rollout-controller API.
 
 ## Deployment
 
-The dashboard is deployed to Kubernetes using Kustomize:
+### Dev environment (Kind cluster)
+
+Build frontend + backend and deploy to the local `rollout-dev` Kind cluster using `ko`:
+
+```bash
+# Build frontend first (ko bundles the build output as kodata)
+(cd frontend && npm run build && rm -rf ../kodata && cp -r build ../kodata)
+
+# Build Go binary, push image to Kind, apply manifests
+kustomize build deploy/dev | KIND_CLUSTER_NAME=rollout-dev KO_DOCKER_REPO=kind.local ko apply -f -
+```
+
+`ko` builds the Go binary, packages it with `kodata/` (the built frontend), loads the image directly into the Kind cluster, and applies the rendered manifests.
+
+### Production
 
 ```bash
 # Deploy to cluster

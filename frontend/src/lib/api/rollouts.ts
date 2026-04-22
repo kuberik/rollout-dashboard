@@ -52,6 +52,31 @@ export async function fetchRolloutsList(): Promise<RolloutsListResponse> {
     return (await res.json()) as RolloutsListResponse;
 }
 
+export async function fetchRolloutsInNamespace(namespace: string): Promise<RolloutsListResponse> {
+    const res = await fetch(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`);
+    if (!res.ok) {
+        throw new Error('Failed to fetch rollouts');
+    }
+    return (await res.json()) as RolloutsListResponse;
+}
+
+export const rolloutsInNamespaceQueryKey = (namespace: string) =>
+    ['rollouts', 'namespace', namespace] as const;
+
+export function rolloutsInNamespaceQueryOptions({
+    namespace,
+    options
+}: {
+    namespace: string;
+    options?: QueryOverrides<RolloutsListResponse>;
+}) {
+    return {
+        queryKey: rolloutsInNamespaceQueryKey(namespace),
+        queryFn: () => fetchRolloutsInNamespace(namespace),
+        ...options
+    };
+}
+
 export function rolloutQueryOptions({
     namespace,
     name,

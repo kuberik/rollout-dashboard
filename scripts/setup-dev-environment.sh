@@ -18,7 +18,7 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm repo update
 
 # Install OpenKruise Rollout
-helm template openkruise/kruise-rollout --version 0.6.2 --set featureGates="AdvancedDeployment=true\,RolloutHistory=true" | kubectl apply -f -
+helm template openkruise/kruise-rollout --version 0.6.2 --set rollout.featureGates="AdvancedDeployment=true\,RolloutHistory=false" | kubectl apply -f -
 
 # Install kube-prometheus-stack
 kubectl create ns monitoring -o yaml --dry-run=client | kubectl apply -f -
@@ -210,7 +210,7 @@ GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
 SCRIPT_DIR=$(dirname "$0")
 for env in dev prod staging; do
   for app in hello-world hello-multi; do
-    kustomize build "example/${app}/app/deployments/${env}" | kubectl apply -f -
+    # kustomize build "example/${app}/app/deployments/${env}" | kubectl apply -f -
     kustomize build "example/${app}/cd/deployments/${env}" | kubectl apply -f -
     kubectl -n ${app}-${env} create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
     kubectl -n ${app}-${env} create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -

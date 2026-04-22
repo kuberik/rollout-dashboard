@@ -1,10 +1,5 @@
 ---
 apiVersion: v1
-kind: Namespace
-metadata:
-  name: hello-world
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: hello-python-script
@@ -12,18 +7,89 @@ data:
   app.py: |
     import os
     import random
+    import time
     from http.server import BaseHTTPRequestHandler, HTTPServer
+    from threading import Lock
 
     VERSION = os.environ.get("VERSION", "unknown")
     LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.".split()
 
+    # Simple metrics storage
+    class Metrics:
+        def __init__(self):
+            self.lock = Lock()
+            self.request_count = 0
+            self.request_duration_sum = 0
+            self.error_count = 0
+            self.start_time = time.time()
+
+        def inc_requests(self):
+            with self.lock:
+                self.request_count += 1
+
+        def add_duration(self, duration):
+            with self.lock:
+                self.request_duration_sum += duration
+
+        def inc_errors(self):
+            with self.lock:
+                self.error_count += 1
+
+        def get_metrics(self):
+            with self.lock:
+                uptime = time.time() - self.start_time
+                return {
+                    "request_count": self.request_count,
+                    "request_duration_sum": self.request_duration_sum,
+                    "error_count": self.error_count,
+                    "uptime": uptime
+                }
+
+    metrics = Metrics()
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            print(" ".join(random.sample(LOREM, random.randint(1, len(LOREM)))))
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(f"Hello, World!\nVersion: {VERSION}\n".encode())
+            start = time.time()
+
+            if self.path == "/metrics":
+                # Prometheus metrics endpoint
+                m = metrics.get_metrics()
+                self.send_response(200)
+                self.send_header("Content-type", "text/plain; version=0.0.4")
+                self.end_headers()
+
+                output = f"""# HELP http_requests_total Total number of HTTP requests
+    # TYPE http_requests_total counter
+    http_requests_total{{version="{VERSION}"}} {m['request_count']}
+
+    # HELP http_request_duration_seconds_sum Sum of HTTP request durations
+    # TYPE http_request_duration_seconds_sum counter
+    http_request_duration_seconds_sum{{version="{VERSION}"}} {m['request_duration_sum']:.6f}
+
+    # HELP http_errors_total Total number of HTTP errors
+    # TYPE http_errors_total counter
+    http_errors_total{{version="{VERSION}"}} {m['error_count']}
+
+    # HELP process_uptime_seconds Process uptime in seconds
+    # TYPE process_uptime_seconds gauge
+    process_uptime_seconds{{version="{VERSION}"}} {m['uptime']:.2f}
+    """
+                self.wfile.write(output.encode())
+            else:
+                # Regular endpoint
+                try:
+                    metrics.inc_requests()
+                    print(" ".join(random.sample(LOREM, random.randint(1, len(LOREM)))))
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/plain")
+                    self.end_headers()
+                    self.wfile.write(f"Hello, World!\nVersion: {VERSION}\n".encode())
+                except Exception as e:
+                    metrics.inc_errors()
+                    raise
+                finally:
+                    duration = time.time() - start
+                    metrics.add_duration(duration)
 
     if __name__ == "__main__":
         port = int(os.environ.get("PORT", 8080))
@@ -47,6 +113,10 @@ spec:
     metadata:
       labels:
         app: hello-python
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: python-server
@@ -61,7 +131,8 @@ spec:
               value: hello-python
             - name: DD_ENV
           ports:
-            - containerPort: 8080
+            - name: http
+              containerPort: 8080
           volumeMounts:
             - name: app-script
               mountPath: /app/app.py
@@ -87,6 +158,8 @@ metadata:
   annotations:
     rollout.kuberik.io/step-1-ready-timeout: "10m"
     rollout.kuberik.io/step-1-bake-time: "30s"
+    rollout.kuberik.io/step-2-ready-timeout: "10m"
+    rollout.kuberik.io/step-2-bake-time: "30s"
 spec:
   workloadRef:
     apiVersion: apps/v1
@@ -97,11 +170,8 @@ spec:
       steps:
       - replicas: 1
         traffic: 20%
-        # pause:
-        #   duration: 20
+      - replicas: 2
       - replicas: 100%
-        # pause:
-        #   duration: 20
       trafficRoutings:
         - service: hello-python
           gateway:

@@ -61,8 +61,8 @@
 			{/if}
 		</div>
 		{#if failureMessage}
-			<div class="rounded-lg bg-red-50 p-3 dark:bg-red-900/20">
-				<p class="text-xs leading-relaxed text-red-700 dark:text-red-300">
+			<div class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+				<p class="text-xs leading-relaxed text-gray-700 dark:text-gray-300">
 					{failureMessage}
 				</p>
 			</div>

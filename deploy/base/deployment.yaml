@@ -67,8 +67,14 @@ metadata:
   name: rollout-dashboard-rollouts-patch
 rules:
   - apiGroups: ["rollouts.kruise.io"]
-    resources: ["rollouts/status"]
-    verbs: ["patch"]
+    resources: ["rollouts", "rollouts/status"]
+    verbs: ["patch", "update"]
+  - apiGroups: ["rollout.kuberik.com"]
+    resources: ["rollouttests/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
