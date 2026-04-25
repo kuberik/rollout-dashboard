@@ -203,7 +203,8 @@
 					);
 					const hasTests = stepTests.length > 0;
 					const allTestsSucceeded =
-						!hasTests || stepTests.every((t) => t.status?.phase === 'Succeeded');
+						!hasTests ||
+						stepTests.every((t) => ['Succeeded', 'Skipped'].includes(t.status?.phase ?? ''));
 					const bakingNow =
 						isCurrentStep && isStepPaused && allTestsSucceeded && !isKrStalled;
 					const stageTestsFailed =
@@ -506,6 +507,7 @@
 		if (phase === 'Succeeded') return 'text-green-500';
 		if (phase === 'Failed') return 'text-red-500';
 		if (phase === 'Cancelled') return 'text-gray-400';
+		if (phase === 'Skipped') return 'text-gray-400';
 		if (phase === 'Pending') return 'text-yellow-500';
 		return 'text-gray-400';
 	}
@@ -688,6 +690,8 @@
 									{:else if phase === 'Failed'}
 										<ExclamationCircleSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
 									{:else if phase === 'Cancelled'}
+										<CircleMinusSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
+									{:else if phase === 'Skipped'}
 										<CircleMinusSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
 									{:else if phase === 'Pending'}
 										<ClockArrowOutline class="h-3.5 w-3.5 {testIconColor(phase)}" />
