@@ -358,6 +358,10 @@ func (c *Client) SetRetryAnnotation(ctx context.Context, namespace, name, mode s
 	rollout.Annotations[rolloutv1alpha1.RetryAnnotation] = ""
 	if mode == openkruisev1alpha1.RetryModeSkip {
 		rollout.Annotations[openkruisev1alpha1.RetryModeAnnotation] = mode
+	} else {
+		// Explicitly remove any stale mode annotation so a previous "skip" retry
+		// cannot bleed into this retry. MergeFrom encodes the deletion as null.
+		delete(rollout.Annotations, openkruisev1alpha1.RetryModeAnnotation)
 	}
 	if err := c.client.Patch(ctx, rollout, client.MergeFrom(patchBase)); err != nil {
 		return fmt.Errorf("failed to set retry annotation: %w", err)

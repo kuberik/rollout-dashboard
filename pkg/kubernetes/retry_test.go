@@ -86,6 +86,25 @@ func TestSetRetryAnnotation_PreservesExistingAnnotations(t *testing.T) {
 	require.Contains(t, got.Annotations, rolloutv1alpha1.RetryAnnotation)
 }
 
+func TestSetRetryAnnotation_RetryModeClearsStaleSkip(t *testing.T) {
+	rollout := &rolloutv1alpha1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				openkruisev1alpha1.RetryModeAnnotation: openkruisev1alpha1.RetryModeSkip,
+			},
+		},
+	}
+	cli := newTestClient(t, rollout)
+
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", openkruisev1alpha1.RetryModeRetry))
+
+	got := &rolloutv1alpha1.Rollout{}
+	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
+	require.NotContains(t, got.Annotations, openkruisev1alpha1.RetryModeAnnotation)
+}
+
 func TestSetRetryAnnotation_RolloutMissing(t *testing.T) {
 	cli := newTestClient(t)
 	err := cli.SetRetryAnnotation(context.Background(), "ns", "missing", openkruisev1alpha1.RetryModeRetry)
