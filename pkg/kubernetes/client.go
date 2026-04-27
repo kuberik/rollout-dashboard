@@ -339,16 +339,13 @@ func (c *Client) ClearKruiseRolloutStalledCondition(ctx context.Context, namespa
 	return fmt.Errorf("failed to clear stalled condition after retries: resource conflict")
 }
 
-// SetRetryAnnotation patches the Rollout with the rollout.kuberik.com/retry annotation.
-// The value is the retry mode (rolloutv1alpha1.RetryModeRetry or RetryModeSkip) and is
-// consumed by the rollout controller to populate History[0].LastRetryMode. From there:
-//   - rollout-controller resets BakeStatus to Deploying and stamps LastRetryTimestamp
-//   - healthcheck/kustomizationhealth unwind stale failures using the timestamp
-//   - openkruise stepgate resets failed RolloutTests (mode=retry) or marks them
-//     Skipped (mode=skip), and clears the Kruise Stalled condition
+// SetRetryAnnotation patches the Rollout with the rollout.kuberik.com/retry annotation
+// (presence-only trigger consumed by rollout-controller) and, when mode is "skip",
+// also sets rollouttest.kuberik.com/retry-mode so the openkruise stepgate marks
+// failed RolloutTests as Skipped instead of re-running them.
 func (c *Client) SetRetryAnnotation(ctx context.Context, namespace, name, mode string) error {
-	if mode != rolloutv1alpha1.RetryModeRetry && mode != rolloutv1alpha1.RetryModeSkip {
-		mode = rolloutv1alpha1.RetryModeRetry
+	if mode != openkruisev1alpha1.RetryModeRetry && mode != openkruisev1alpha1.RetryModeSkip {
+		mode = openkruisev1alpha1.RetryModeRetry
 	}
 	rollout := &rolloutv1alpha1.Rollout{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, rollout); err != nil {
@@ -358,7 +355,10 @@ func (c *Client) SetRetryAnnotation(ctx context.Context, namespace, name, mode s
 	if rollout.Annotations == nil {
 		rollout.Annotations = map[string]string{}
 	}
-	rollout.Annotations[rolloutv1alpha1.RetryAnnotation] = mode
+	rollout.Annotations[rolloutv1alpha1.RetryAnnotation] = ""
+	if mode == openkruisev1alpha1.RetryModeSkip {
+		rollout.Annotations[openkruisev1alpha1.RetryModeAnnotation] = mode
+	}
 	if err := c.client.Patch(ctx, rollout, client.MergeFrom(patchBase)); err != nil {
 		return fmt.Errorf("failed to set retry annotation: %w", err)
 	}
