@@ -26,6 +26,7 @@ import (
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
 	"github.com/kuberik/rollout-dashboard/pkg/logs"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
+	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -642,9 +643,9 @@ func main() {
 				return
 			}
 
-			mode := rolloutv1alpha1.RetryModeRetry
-			if req.TestAction == rolloutv1alpha1.RetryModeSkip {
-				mode = rolloutv1alpha1.RetryModeSkip
+			mode := openkruisev1alpha1.RetryModeRetry
+			if req.TestAction == openkruisev1alpha1.RetryModeSkip {
+				mode = openkruisev1alpha1.RetryModeSkip
 			}
 
 			if err := k8sClient.SetRetryAnnotation(context.Background(), namespace, kuberikRolloutName, mode); err != nil {

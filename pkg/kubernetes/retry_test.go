@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,11 +30,12 @@ func TestSetRetryAnnotation_RetryMode(t *testing.T) {
 	}
 	cli := newTestClient(t, rollout)
 
-	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", rolloutv1alpha1.RetryModeRetry))
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", openkruisev1alpha1.RetryModeRetry))
 
 	got := &rolloutv1alpha1.Rollout{}
 	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
-	require.Equal(t, rolloutv1alpha1.RetryModeRetry, got.Annotations[rolloutv1alpha1.RetryAnnotation])
+	require.Equal(t, "", got.Annotations[rolloutv1alpha1.RetryAnnotation])
+	require.NotContains(t, got.Annotations, openkruisev1alpha1.RetryModeAnnotation)
 }
 
 func TestSetRetryAnnotation_SkipMode(t *testing.T) {
@@ -42,11 +44,12 @@ func TestSetRetryAnnotation_SkipMode(t *testing.T) {
 	}
 	cli := newTestClient(t, rollout)
 
-	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", rolloutv1alpha1.RetryModeSkip))
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", openkruisev1alpha1.RetryModeSkip))
 
 	got := &rolloutv1alpha1.Rollout{}
 	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
-	require.Equal(t, rolloutv1alpha1.RetryModeSkip, got.Annotations[rolloutv1alpha1.RetryAnnotation])
+	require.Equal(t, "", got.Annotations[rolloutv1alpha1.RetryAnnotation])
+	require.Equal(t, openkruisev1alpha1.RetryModeSkip, got.Annotations[openkruisev1alpha1.RetryModeAnnotation])
 }
 
 func TestSetRetryAnnotation_UnknownModeDefaultsToRetry(t *testing.T) {
@@ -59,7 +62,8 @@ func TestSetRetryAnnotation_UnknownModeDefaultsToRetry(t *testing.T) {
 
 	got := &rolloutv1alpha1.Rollout{}
 	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
-	require.Equal(t, rolloutv1alpha1.RetryModeRetry, got.Annotations[rolloutv1alpha1.RetryAnnotation])
+	require.Equal(t, "", got.Annotations[rolloutv1alpha1.RetryAnnotation])
+	require.NotContains(t, got.Annotations, openkruisev1alpha1.RetryModeAnnotation)
 }
 
 func TestSetRetryAnnotation_PreservesExistingAnnotations(t *testing.T) {
@@ -74,7 +78,7 @@ func TestSetRetryAnnotation_PreservesExistingAnnotations(t *testing.T) {
 	}
 	cli := newTestClient(t, rollout)
 
-	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", rolloutv1alpha1.RetryModeRetry))
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", openkruisev1alpha1.RetryModeRetry))
 
 	got := &rolloutv1alpha1.Rollout{}
 	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
@@ -82,8 +86,27 @@ func TestSetRetryAnnotation_PreservesExistingAnnotations(t *testing.T) {
 	require.Contains(t, got.Annotations, rolloutv1alpha1.RetryAnnotation)
 }
 
+func TestSetRetryAnnotation_RetryModeClearsStaleSkip(t *testing.T) {
+	rollout := &rolloutv1alpha1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				openkruisev1alpha1.RetryModeAnnotation: openkruisev1alpha1.RetryModeSkip,
+			},
+		},
+	}
+	cli := newTestClient(t, rollout)
+
+	require.NoError(t, cli.SetRetryAnnotation(context.Background(), "ns", "app", openkruisev1alpha1.RetryModeRetry))
+
+	got := &rolloutv1alpha1.Rollout{}
+	require.NoError(t, cli.client.Get(context.Background(), client.ObjectKey{Name: "app", Namespace: "ns"}, got))
+	require.NotContains(t, got.Annotations, openkruisev1alpha1.RetryModeAnnotation)
+}
+
 func TestSetRetryAnnotation_RolloutMissing(t *testing.T) {
 	cli := newTestClient(t)
-	err := cli.SetRetryAnnotation(context.Background(), "ns", "missing", rolloutv1alpha1.RetryModeRetry)
+	err := cli.SetRetryAnnotation(context.Background(), "ns", "missing", openkruisev1alpha1.RetryModeRetry)
 	require.Error(t, err)
 }
