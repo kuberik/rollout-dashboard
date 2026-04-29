@@ -1348,7 +1348,12 @@
 				{/if}
 
 				<!-- ══ BAKE FAILURE DISABLED (RECOVERY MODE) ══ -->
-				{#if bakeFailureDisabledCondition}
+				<!--
+					The condition is set when a deploy starts and persists until the next
+					deploy starts; only show the banner while the active deploy is still
+					running (Deploying or InProgress).
+				-->
+				{#if bakeFailureDisabledCondition && (latestEntry.bakeStatus === 'Deploying' || latestEntry.bakeStatus === 'InProgress')}
 					<AlertPanel
 						severity="info"
 						title="Recovery mode"
