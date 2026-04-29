@@ -63,7 +63,8 @@
 		UserSolid,
 		CogSolid,
 		ArrowUpRightFromSquareOutline,
-		ArrowUpOutline
+		ArrowUpOutline,
+		GithubSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -445,8 +446,26 @@
 		return typeof version === 'string' ? version : (version?.tag ?? '');
 	}
 
-	// Helper function to get dependency status for a version
-	function getDependencyStatus(versionTag: string): string | null {
+	// Build GitHub tree URL for a given version
+	function getGitHubUrl(version: string): string {
+		let url = rollout?.status?.source ?? '';
+		if (!url) return '';
+		if (url.includes('github.com')) {
+			url = url.endsWith('/') ? url + 'tree/' + version : url + '/tree/' + version;
+		} else if (url.includes('git@github.com:')) {
+			url = url.replace('git@github.com:', 'https://github.com/') + '/tree/' + version;
+		} else if (url.includes('.git')) {
+			url = url.replace('.git', '') + '/tree/' + version;
+		} else {
+			url = url.endsWith('/') ? url + 'tree/' + version : url + '/tree/' + version;
+		}
+		return url;
+	}
+
+	// Helper function to get dependency env + status for a version
+	function getDependencyStatus(
+		versionTag: string
+	): { env: string; bakeStatus: string } | null {
 		const environment = rolloutQuery.data?.environment;
 		if (!environment?.status?.environmentInfos) {
 			return null;
@@ -497,8 +516,6 @@
 		}
 
 		// Find matching deployment history entry in the dependency environment
-		// EnvironmentInfo.history contains DeploymentHistoryEntry objects with bakeStatus
-		// History is already sorted with latest entries first, so just take the first match
 		const matchingEntry = depEnvInfo.history.find(
 			(entry: EnvironmentStatusEntry) =>
 				versionIdentifiers.has(entry.version.tag) ||
@@ -506,12 +523,11 @@
 				(entry.version.revision && versionIdentifiers.has(entry.version.revision))
 		);
 
-		if (!matchingEntry) {
+		if (!matchingEntry || !matchingEntry.bakeStatus) {
 			return null;
 		}
 
-		// Return bakeStatus directly from DeploymentHistoryEntry
-		return matchingEntry.bakeStatus || null;
+		return { env: depEnv, bakeStatus: matchingEntry.bakeStatus };
 	}
 
 	function getStatusIcon(status: string | null) {
@@ -1308,33 +1324,42 @@
 													{latestEntry.bakeStatus}
 												</span>
 											</div>
-											<!-- Contextual badges: only metadata badges, not status -->
-											{#if rollout.spec?.wantedVersion || isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || getRevisionInfo(latestEntry.version)}
-												<div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-													{#if rollout.spec?.wantedVersion}
-														<Badge size="small">Pinned</Badge>
-													{/if}
-													{#if isCurrentVersionCustom}
-														<Badge color="yellow" size="small">Custom</Badge>
+											<!-- Metadata line: pinned, upgrades, custom, hash -->
+											{#if (rollout.spec?.wantedVersion && !isPinnedVersionCustom) || isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version))}
+												<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+													{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+														<span
+															class="flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400"
+														>
+															<PauseSolid class="h-3 w-3" /> Pinned{#if latestEntry.message}<span class="font-normal italic text-amber-600/80 dark:text-amber-400/70"> · {latestEntry.message}</span>{/if}
+														</span>
 													{/if}
 													{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 														<span
-															class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+															class="flex items-center gap-1 text-orange-600 dark:text-orange-400"
 														>
-															<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status
+															<ArrowUpOutline class="h-3 w-3" />{rollout.status
 																.releaseCandidates.length}
+															{rollout.status.releaseCandidates.length === 1
+																? 'upgrade'
+																: 'upgrades'} available
 														</span>
 													{/if}
-													{#if getRevisionInfo(latestEntry.version)}
-														<Badge color="gray" size="small" class="font-mono">
+													{#if isCurrentVersionCustom}
+														<span class="font-medium text-yellow-600 dark:text-yellow-400"
+															>Custom version</span
+														>
+													{/if}
+													{#if getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
+														<span class="font-mono text-gray-500 dark:text-gray-400">
 															{formatRevision(getRevisionInfo(latestEntry.version)!)}
-														</Badge>
+														</span>
 													{/if}
 												</div>
 											{/if}
 										</div>
 									</div>
-									<!-- Right: meta (time + triggered by) -->
+									<!-- Right: time -->
 									<div class="shrink-0 text-right text-xs text-gray-400 dark:text-gray-500">
 										<div class="flex items-center justify-end gap-1">
 											<ClockSolid class="h-3 w-3" />
@@ -1343,19 +1368,11 @@
 									</div>
 								</div>
 							</div>
-							<!-- Actions footer — full-width, outside padded content -->
-							{#if rollout?.status?.source || canModify || rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
+							<!-- Actions footer -->
+							{#if canModify || rollout?.status?.source || rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 								<div
-									class="flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3 dark:border-gray-700"
+									class="flex flex-col gap-2 border-t border-gray-100 px-5 py-3 sm:flex-row sm:flex-wrap sm:items-center dark:border-gray-700"
 								>
-									{#if rollout?.status?.source}
-										<GitHubViewButton
-											sourceUrl={rollout.status.source}
-											version={getDisplayVersion(latestEntry.version)}
-											size="sm"
-											color="light"
-										/>
-									{/if}
 									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 										<SourceViewer
 											namespace={rollout.metadata?.namespace || ''}
@@ -1363,12 +1380,38 @@
 											version={latestEntry.version.tag}
 										/>
 									{/if}
-									<div class="flex-1"></div>
+									{#if rollout?.status?.source}
+										<Button
+											size="sm"
+											color="light"
+											class="w-full justify-center sm:w-auto"
+											href={getGitHubUrl(getDisplayVersion(latestEntry.version))}
+											target="_blank"
+											rel="noopener noreferrer"
+										>
+											<GithubSolid class="me-2 h-4 w-4" />
+											View on GitHub
+										</Button>
+									{/if}
 									{#if canModify}
+										{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+											<Button
+												size="sm"
+												color="light"
+												class="w-full justify-center sm:w-auto"
+												disabled={!isDashboardManagingWantedVersion}
+												onclick={() => {
+													showClearPinModal = true;
+												}}
+											>
+												Clear pin
+											</Button>
+										{/if}
 										<Button
 											id="status-change-version-btn"
 											size="sm"
 											color="light"
+											class="w-full justify-center sm:w-auto"
 											disabled={!isDashboardManagingWantedVersion}
 											onclick={() => {
 												if (isDashboardManagingWantedVersion) {
@@ -1380,46 +1423,47 @@
 											<EditOutline class="me-2 h-4 w-4" />
 											Change Version
 										</Button>
-									{/if}
-									{#if !isDashboardManagingWantedVersion}
-										<Tooltip
-											triggeredBy="#status-change-version-btn"
-											placement="bottom"
-											transition={blur}
-											transitionParams={{ duration: 300 }}
-										>
-											Version management disabled: This rollout's wantedVersion field is managed by
-											another controller or external system. The dashboard cannot pin it to prevent
-											conflicts.
-										</Tooltip>
-									{/if}
-									{#if rollout?.status?.history && rollout.status.history.length > 1 && canModify}
-										<Button
-											id="status-rollback-btn"
-											size="sm"
-											color="light"
-											disabled={!isDashboardManagingWantedVersion}
-											onclick={() => {
-												if (
-													isDashboardManagingWantedVersion &&
-													rollout?.status?.history &&
-													rollout.status.history.length > 1
-												) {
-													const previousVersion = rollout.status.history[1];
-													isPinVersionMode = true;
-													selectedVersion = previousVersion.version.tag;
-													pinVersionToggle = true;
-													const currentVersion = rollout.status.history[0].version;
-													const currentVersionName = getDisplayVersion(currentVersion);
-													const targetVersionName = getDisplayVersion(previousVersion.version);
-													deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-													showDeployModal = true;
-												}
-											}}
-										>
-											<ReplyOutline class="me-2 h-4 w-4" />
-											Rollback
-										</Button>
+										{#if rollout?.status?.history && rollout.status.history.length > 1}
+											<Button
+												id="status-rollback-btn"
+												size="sm"
+												color="light"
+												class="w-full justify-center sm:w-auto"
+												disabled={!isDashboardManagingWantedVersion}
+												onclick={() => {
+													if (
+														isDashboardManagingWantedVersion &&
+														rollout?.status?.history &&
+														rollout.status.history.length > 1
+													) {
+														const previousVersion = rollout.status.history[1];
+														isPinVersionMode = true;
+														selectedVersion = previousVersion.version.tag;
+														pinVersionToggle = true;
+														const currentVersion = rollout.status.history[0].version;
+														const currentVersionName = getDisplayVersion(currentVersion);
+														const targetVersionName = getDisplayVersion(previousVersion.version);
+														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+														showDeployModal = true;
+													}
+												}}
+											>
+												<ReplyOutline class="me-2 h-4 w-4" />
+												Rollback
+											</Button>
+										{/if}
+										{#if !isDashboardManagingWantedVersion}
+											<Tooltip
+												triggeredBy="#status-change-version-btn"
+												placement="bottom"
+												transition={blur}
+												transitionParams={{ duration: 300 }}
+											>
+												Version management disabled: This rollout's wantedVersion field is managed by
+												another controller or external system. The dashboard cannot pin it to prevent
+												conflicts.
+											</Tooltip>
+										{/if}
 									{/if}
 								</div>
 							{/if}
@@ -1440,232 +1484,256 @@
 
 						<!-- Available Upgrades card (full width) -->
 						<div
-							class="overflow-hidden rounded-lg border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-700 dark:bg-gray-800"
+							class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 						>
-							<div class="mb-4 flex items-center justify-between">
-								<h4
-									class="flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white"
+							<!-- Header -->
+							<div
+								class="flex items-center gap-2.5 border-b border-gray-100 px-5 py-3.5 dark:border-gray-700"
+							>
+								<CodeOutline class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+								<span class="text-sm font-semibold text-gray-900 dark:text-white"
+									>Available Version Upgrades</span
 								>
-									<CodeOutline class="h-5 w-5" />
-									Available Version Upgrades
-								</h4>
-								<div class="flex items-center gap-2">
-									{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-										<span
-											class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-										>
-											<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status.releaseCandidates
-												.length}
-										</span>
-									{/if}
-									<Button
-										id="refresh-versions-btn"
-										size="xs"
-										color="light"
-										onclick={reconcileFluxResources}
-										disabled={isReconciling}
-										class="!p-1.5"
+								{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+									<span
+										class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
 									>
-										{#if isReconciling}
-											<StatusSpinner size="4" color="gray" />
-										{:else}
-											<RefreshOutline class="h-4 w-4" />
-										{/if}
-									</Button>
-									<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
-										Refresh available versions
-									</Tooltip>
-								</div>
+										<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status.releaseCandidates
+											.length}
+									</span>
+								{/if}
+								<button
+									id="refresh-versions-btn"
+									onclick={reconcileFluxResources}
+									disabled={isReconciling}
+									aria-label="Refresh available versions"
+									class="ml-auto rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+								>
+									{#if isReconciling}
+										<StatusSpinner size="4" color="gray" />
+									{:else}
+										<RefreshOutline class="h-4 w-4" />
+									{/if}
+								</button>
+								<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
+									Refresh available versions
+								</Tooltip>
 							</div>
-							{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
-								<Alert color="yellow" class="mb-4">
-									<div class="flex items-center justify-between gap-3">
-										<div class="flex items-center gap-2">
-											<PauseSolid class="h-4 w-4" />
-											<span class="text-sm"
-												>Automated upgrades are paused because the rollout is pinned to a version.</span
-											>
-										</div>
-										{#if canModify}
-											<Button
-												size="xs"
-												color="light"
-												disabled={!isDashboardManagingWantedVersion}
-												onclick={() => {
-													showClearPinModal = true;
-												}}
-											>
-												Clear pin
-											</Button>
-										{/if}
-									</div>
-								</Alert>
-							{/if}
-							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-								<div>
-									{#each rollout.status.releaseCandidates as releaseCandidate}
-										{@const version = releaseCandidate.tag}
-										{@const blockingGates = getBlockingGates(version)}
-										<div class="border-b border-gray-200 py-4 last:border-b-0 dark:border-gray-700">
-											<div
-												class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-											>
-												<div class="flex items-center gap-3">
-													<!-- Version and time stacked vertically -->
-													<div class="flex flex-col gap-1">
-														<!-- Version row -->
-														<h6 class="truncate text-sm font-medium text-gray-900 dark:text-white">
-															{getDisplayVersion(releaseCandidate)}
-														</h6>
-														<!-- Time and Dependency row -->
-														<div class="flex flex-wrap items-center gap-2">
-															{#if releaseCandidate.created}
-																<Badge
-																	color="gray"
-																	border
-																	size="small"
-																	class="flex items-center gap-1"
-																>
-																	<ClockSolid class="h-3 w-3" />
-																	{formatTimeAgo(releaseCandidate.created, $now)}
-																</Badge>
-															{/if}
-															{#if getDependencyStatus(version)}
-																{@const depBakeStatus = getDependencyStatus(version)}
-																{#if depBakeStatus}
-																	{@const valueColor = getBakeStatusColor(depBakeStatus)}
-																	<JoinedBadge
-																		label="Dependency"
-																		value={depBakeStatus}
-																		{valueColor}
-																	>
-																		{#snippet icon()}
-																			<BakeStatusIcon bakeStatus={depBakeStatus} size="small" />
-																		{/snippet}
-																	</JoinedBadge>
-																{/if}
-															{/if}
-														</div>
-													</div>
-												</div>
-												<!-- Action buttons on the right -->
-												<div class="flex flex-wrap items-center gap-2 sm:justify-end">
-													<!-- Blocked/Ready badge - check current gate status -->
-													{#if blockingGates.length === 0}
-														<Badge color="green" size="small">Ready</Badge>
-													{:else}
-														<Badge color="yellow" size="small" class="cursor-help">
-															Blocked
-															<QuestionCircleOutline class="ml-1 h-3 w-3" />
-														</Badge>
-														<Popover class="max-w-sm" title="Blocked by Gates">
-															<div class="p-3">
-																<div class="space-y-2">
-																	{#each blockingGates as gate}
-																		<div class="flex items-start gap-2">
-																			<ExclamationCircleSolid
-																				class="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-400"
-																			/>
-																			<div class="min-w-0 flex-1">
-																				<p
-																					class="text-sm font-medium text-gray-900 dark:text-white"
-																				>
-																					{getGatePrettyName(gate) ||
-																						gate.metadata?.name ||
-																						'Unknown Gate'}
-																				</p>
-																				{#if getGateDescription(gate)}
-																					<p class="text-xs text-gray-600 dark:text-gray-400">
-																						{getGateDescription(gate)}
-																					</p>
-																				{/if}
-																				{#if gate.status?.status}
-																					<p class="text-xs text-yellow-600 dark:text-yellow-400">
-																						Status: {gate.status.status}
-																					</p>
-																				{/if}
-																			</div>
-																		</div>
-																	{/each}
-																</div>
-															</div>
-														</Popover>
-													{/if}
 
-													{#if canModify}
-														<Button
-															size="xs"
-															color="blue"
-															disabled={!isDashboardManagingWantedVersion &&
-																!hasForceDeployAnnotation(rollout)}
-															onclick={() => {
-																selectedVersion = version;
-																const isCustom = isSelectedVersionCustom(version);
-																const mustPin = isOlderThanCurrent(version) || isCustom;
-																isPinVersionMode = mustPin;
-																pinVersionToggle = mustPin;
-																showDeployModal = true;
-															}}
-														>
-															Deploy
-														</Button>
-													{/if}
-													{#if rollout?.status?.source}
-														<GitHubViewButton
-															sourceUrl={rollout.status.source}
-															version={getDisplayVersion(releaseCandidate)}
-															size="xs"
-															color="light"
-														/>
-													{/if}
-													<Clipboard value={releaseCandidate.tag} size="xs" color="light">
-														{#snippet children(success)}
-															{#if success}
-																<CheckOutline class="mr-1 h-3 w-3" />
-																Copied
-															{:else}
-																<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-																Copy Tag
-															{/if}
-														{/snippet}
-													</Clipboard>
-												</div>
-											</div>
-										</div>
-									{/each}
-								</div>
-							{:else if isCurrentVersionCustom}
-								<Alert color="yellow">
-									<div class="flex items-center gap-3">
-										<InfoCircleSolid class="h-5 w-5" />
-										<span class="text-lg font-medium">Current version is custom</span>
-									</div>
-									<p class="mt-2 mb-4 text-sm">
-										The currently deployed version is not in the available releases list. This means
-										it's a custom version that was manually deployed. To change to a different
-										version, you need to manually deploy another version.
+							<!-- Pin warning (compact banner) -->
+							{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+								<div
+									class="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-5 py-2.5 dark:border-amber-900/30 dark:bg-amber-900/20"
+								>
+									<PauseSolid class="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+									<p class="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
+										Automated upgrades paused — rollout is pinned to a version.
 									</p>
-									<div class="flex gap-2">
+									{#if canModify}
 										<Button
 											size="xs"
 											color="light"
+											class="shrink-0"
+											disabled={!isDashboardManagingWantedVersion}
 											onclick={() => {
-												isPinVersionMode = true;
-												showPinModal = true;
+												showClearPinModal = true;
 											}}
 										>
-											<EditOutline class="me-2 h-4 w-4" />
-											Change Version
+											Clear pin
 										</Button>
-									</div>
-								</Alert>
+									{/if}
+								</div>
+							{/if}
+
+							<!-- Release candidates -->
+							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+								<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+									{#each rollout.status.releaseCandidates as releaseCandidate}
+										{@const version = releaseCandidate.tag}
+										{@const blockingGates = getBlockingGates(version)}
+										{@const isBlocked = blockingGates.length > 0}
+										{@const depInfo = getDependencyStatus(version)}
+										<li class="flex items-center gap-3 px-5 py-3.5">
+											<!-- Version info -->
+											<div class="min-w-0 flex-1">
+												<div class="flex flex-wrap items-center gap-1.5">
+													<span
+														class="font-mono text-sm font-semibold text-gray-900 dark:text-white"
+													>
+														{getDisplayVersion(releaseCandidate)}
+													</span>
+													{#if isBlocked}
+														<span
+															class="inline-flex cursor-help items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+														>
+															Blocked <QuestionCircleOutline class="h-3 w-3" />
+														</span>
+														<Popover class="max-w-sm text-sm" title="Blocked by Gates">
+															<div class="space-y-2 p-1">
+																{#each blockingGates as gate}
+																	<div class="flex items-start gap-2">
+																		<ExclamationCircleSolid
+																			class="mt-0.5 h-4 w-4 shrink-0 text-yellow-600 dark:text-yellow-400"
+																		/>
+																		<div class="min-w-0">
+																			<p class="font-medium text-gray-900 dark:text-white">
+																				{getGatePrettyName(gate) ||
+																					gate.metadata?.name ||
+																					'Unknown Gate'}
+																			</p>
+																			{#if getGateDescription(gate)}
+																				<p class="text-xs text-gray-500 dark:text-gray-400">
+																					{getGateDescription(gate)}
+																				</p>
+																			{/if}
+																			{#if gate.status?.status}
+																				<p class="text-xs text-yellow-600 dark:text-yellow-400">
+																					Status: {gate.status.status}
+																				</p>
+																			{/if}
+																		</div>
+																	</div>
+																{/each}
+															</div>
+														</Popover>
+													{:else}
+														<span
+															class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400"
+														>
+															Ready
+														</span>
+													{/if}
+												</div>
+												<div
+													class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+												>
+													{#if releaseCandidate.created}
+														<span class="flex items-center gap-1">
+															<ClockSolid class="h-3 w-3" />
+															{formatTimeAgo(releaseCandidate.created, $now)}
+														</span>
+													{/if}
+													{#if depInfo}
+														{@const valueColor = getBakeStatusColor(depInfo.bakeStatus)}
+														<JoinedBadge
+															label="{depInfo.env} env"
+															value={depInfo.bakeStatus}
+															{valueColor}
+														>
+															{#snippet icon()}
+																<BakeStatusIcon
+																	bakeStatus={depInfo.bakeStatus}
+																	size="small"
+																/>
+															{/snippet}
+														</JoinedBadge>
+													{/if}
+												</div>
+											</div>
+
+											<!-- Actions -->
+											<div class="flex shrink-0 items-center gap-1.5">
+												{#if rollout?.status?.source}
+													<Button
+														size="xs"
+														color="light"
+														class="!p-1.5"
+														title="View on GitHub"
+														onclick={() => {
+															let url = rollout?.status?.source ?? '';
+															const ver = getDisplayVersion(releaseCandidate);
+															if (url.includes('github.com')) {
+																url = url.endsWith('/')
+																	? url + 'tree/' + ver
+																	: url + '/tree/' + ver;
+															} else if (url.includes('git@github.com:')) {
+																url =
+																	url.replace('git@github.com:', 'https://github.com/') +
+																	'/tree/' +
+																	ver;
+															} else if (url.includes('.git')) {
+																url = url.replace('.git', '') + '/tree/' + ver;
+															} else {
+																url = url.endsWith('/')
+																	? url + 'tree/' + ver
+																	: url + '/tree/' + ver;
+															}
+															window.open(url, '_blank');
+														}}
+													>
+														<GithubSolid class="h-3.5 w-3.5" />
+													</Button>
+												{/if}
+												<Clipboard
+													value={releaseCandidate.tag}
+													size="xs"
+													color="light"
+													class="!p-1.5"
+												>
+													{#snippet children(success)}
+														{#if success}
+															<CheckOutline class="h-3.5 w-3.5" />
+														{:else}
+															<ClipboardCleanSolid class="h-3.5 w-3.5" />
+														{/if}
+													{/snippet}
+												</Clipboard>
+												{#if canModify}
+													<Button
+														size="xs"
+														color="blue"
+														disabled={!isDashboardManagingWantedVersion &&
+															!hasForceDeployAnnotation(rollout)}
+														onclick={() => {
+															selectedVersion = version;
+															const isCustom = isSelectedVersionCustom(version);
+															const mustPin = isOlderThanCurrent(version) || isCustom;
+															isPinVersionMode = mustPin;
+															pinVersionToggle = mustPin;
+															showDeployModal = true;
+														}}
+													>
+														Deploy
+													</Button>
+												{/if}
+											</div>
+										</li>
+									{/each}
+								</ul>
+							{:else if isCurrentVersionCustom}
+								<div class="p-5">
+									<Alert color="yellow">
+										<div class="flex items-center gap-3">
+											<InfoCircleSolid class="h-5 w-5" />
+											<span class="text-lg font-medium">Current version is custom</span>
+										</div>
+										<p class="mt-2 mb-4 text-sm">
+											The currently deployed version is not in the available releases list. This means
+											it's a custom version that was manually deployed. To change to a different
+											version, you need to manually deploy another version.
+										</p>
+										<div class="flex gap-2">
+											<Button
+												size="xs"
+												color="light"
+												onclick={() => {
+													isPinVersionMode = true;
+													showPinModal = true;
+												}}
+											>
+												<EditOutline class="me-2 h-4 w-4" />
+												Change Version
+											</Button>
+										</div>
+									</Alert>
+								</div>
 							{:else}
-								<Alert color="blue">
-									<div class="flex items-center">
-										<ExclamationCircleSolid class="mr-2 h-5 w-5" />
-										<span class="font-medium">No version upgrades available</span>
-									</div>
-								</Alert>
+								<div
+									class="flex flex-col items-center gap-2 py-10 text-gray-400 dark:text-gray-500"
+								>
+									<CheckCircleSolid class="h-8 w-8 text-green-400 dark:text-green-500" />
+									<p class="text-sm">Up to date — no upgrades available</p>
+								</div>
 							{/if}
 						</div>
 					</div>
@@ -1980,36 +2048,17 @@
 
 <Modal bind:open={showClearPinModal} title="Clear Version Pin">
 	<div class="space-y-4">
-		<Alert color="yellow" class="mb-4">
-			<div class="flex items-center">
-				<ExclamationCircleSolid class="mr-2 h-4 w-4" />
-				<p>
-					<span class="font-medium">Clear Pin:</span> This will remove the version pin and allow automated
-					upgrades to resume.
-				</p>
-			</div>
-		</Alert>
 		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to clear the version pin for <b>{rollout?.metadata?.name}</b>?
-		</p>
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			Once cleared, the rollout will resume automated upgrades based on available release
-			candidates.
+			Remove the version pin for <strong>{rollout?.metadata?.name}</strong>? Automated upgrades
+			will resume and the rollout will advance to the latest release candidate.
 		</p>
 		{#if !isDashboardManagingWantedVersion}
-			<Alert color="yellow" class="mt-3">
-				<div class="flex items-center">
-					<ExclamationCircleSolid class="mr-2 h-4 w-4" />
-					<p class="text-sm">
-						<span class="font-medium">Warning:</span> The dashboard is not currently managing the wantedVersion
-						field for this rollout. Clearing the pin may conflict with other controllers or external
-						systems.
-					</p>
-				</div>
-			</Alert>
+			<p class="text-xs text-amber-600 dark:text-amber-400">
+				The dashboard is not managing the wantedVersion field. Clearing may conflict with other
+				controllers.
+			</p>
 		{/if}
-
-		<div class="flex justify-end gap-2">
+		<div class="flex justify-end gap-2 pt-2">
 			<Button
 				color="light"
 				onclick={() => {
