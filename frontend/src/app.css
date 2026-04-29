@@ -47,6 +47,12 @@
   input[type="search"]::-webkit-search-cancel-button {
     display: none;
   }
+
+}
+
+/* prevent iOS Safari from zooming on input focus — must be unlayered to beat Tailwind utilities */
+input, select, textarea {
+  font-size: max(16px, 1em);
 }
 
 .dark {
