@@ -108,6 +108,9 @@
 							An error occurred during deployment.
 						{/if}
 					</p>
+					<p class="mt-1 text-xs text-red-700/60 dark:text-red-200/55">
+						Automated deployments are paused until this is resolved.
+					</p>
 				</div>
 			</div>
 

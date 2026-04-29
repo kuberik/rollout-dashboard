@@ -93,6 +93,8 @@
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import DeployModal from '$lib/components/DeployModal.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
+	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
@@ -168,6 +170,13 @@
 				return false;
 			});
 	});
+
+	const deploymentBlockedCondition = $derived(
+		rollout?.status?.conditions?.find((c) => c.type === 'DeploymentBlocked' && c.status === 'True')
+	);
+	const bakeFailureDisabledCondition = $derived(
+		rollout?.status?.conditions?.find((c) => c.type === 'BakeFailureDisabled' && c.status === 'True')
+	);
 
 	// Get the first stalled kruise rollout for retry functionality
 	const stalledKruiseRollout = $derived.by(() => {
@@ -265,6 +274,36 @@
 	let pinVersionToggle = $state(false);
 	let deployExplanation = $state('');
 	let deployConfirmationVersion = $state('');
+
+	// Recovery-mode pre-confirmation modal state
+	let showRecoveryWarningModal = $state(false);
+	let recoveryWarningReason = $state<'previous-failed' | 'unhealthy-health-checks'>(
+		'previous-failed'
+	);
+
+	function recoveryModeReason(): 'previous-failed' | 'unhealthy-health-checks' | null {
+		const currentBakeStatus = rollout?.status?.history?.[0]?.bakeStatus;
+		if (currentBakeStatus && currentBakeStatus !== 'Succeeded') {
+			return 'previous-failed';
+		}
+		if (healthChecks?.some((hc) => hc.status?.status === 'Unhealthy')) {
+			return 'unhealthy-health-checks';
+		}
+		return null;
+	}
+
+	// Intercept transitions to the deploy confirmation modal: if the action would put the
+	// rollout into recovery mode, show the warning modal first. The warning modal's
+	// onContinue then opens the actual DeployModal.
+	function requestDeployModal() {
+		const reason = recoveryModeReason();
+		if (reason) {
+			recoveryWarningReason = reason;
+			showRecoveryWarningModal = true;
+		} else {
+			showDeployModal = true;
+		}
+	}
 
 	// New variables for pin version mode
 	let isPinVersionMode = $state(false);
@@ -1189,7 +1228,6 @@
 		<div class="px-4 py-8 sm:px-5"><Alert color="yellow">Release not found</Alert></div>
 	{:else}
 		<div class="px-4 pt-4 pb-10 sm:px-5">
-			<ScheduleStatus {rollout} />
 			{#if rollout.status?.history?.[0]}
 				{@const latestEntry = rollout.status.history[0]}
 				{@const environment = rolloutQuery.data?.environment}
@@ -1279,6 +1317,9 @@
 					{/if}
 				</div>
 
+				<!-- ══ SCHEDULE STATUS (blocking / closing-soon) ══ -->
+				<ScheduleStatus {rollout} />
+
 				<!-- ══ FAILURE PANEL ══ -->
 				{#if isFailed}
 					<FailurePanel
@@ -1293,6 +1334,40 @@
 						onRetry={retryDeployment}
 						onSuccess={(m) => { toastType = 'success'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
 						onError={(m) => { toastType = 'error'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
+					/>
+				{/if}
+
+				<!-- ══ DEPLOYMENT BLOCKED ══ -->
+				{#if deploymentBlockedCondition && !isFailed && latestEntry.bakeStatus !== 'Deploying' && latestEntry.bakeStatus !== 'InProgress'}
+					<AlertPanel
+						severity="warning"
+						title="Deployment paused"
+						message={deploymentBlockedCondition.message || 'Health checks are unhealthy.'}
+						pulse
+					/>
+				{/if}
+
+				<!-- ══ BAKE FAILURE DISABLED (RECOVERY MODE) ══ -->
+				{#if bakeFailureDisabledCondition}
+					<AlertPanel
+						severity="info"
+						title="Recovery mode"
+						message={bakeFailureDisabledCondition.message ||
+							'Health check failures will not fail this deployment.'}
+					/>
+				{/if}
+
+				<!-- ══ PINNED VERSION ══ -->
+				{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+					{@const trig = latestEntry?.triggeredBy}
+					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
+					{@const pinnedBy = author ? `Pinned by ${author}` : 'Pinned'}
+					<AlertPanel
+						severity="pinned"
+						title="Version pinned"
+						message={latestEntry?.message}
+						quoted={!!latestEntry?.message}
+						footnote="{pinnedBy} · Automated deployments are paused until the pin is cleared."
 					/>
 				{/if}
 
@@ -1324,16 +1399,9 @@
 													{latestEntry.bakeStatus}
 												</span>
 											</div>
-											<!-- Metadata line: pinned, upgrades, custom, hash -->
-											{#if (rollout.spec?.wantedVersion && !isPinnedVersionCustom) || isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version))}
+											<!-- Metadata line: upgrades, custom, hash (pinned shown as alert above) -->
+											{#if isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version))}
 												<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-													{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
-														<span
-															class="flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400"
-														>
-															<PauseSolid class="h-3 w-3" /> Pinned{#if latestEntry.message}<span class="font-normal italic text-amber-600/80 dark:text-amber-400/70"> · {latestEntry.message}</span>{/if}
-														</span>
-													{/if}
 													{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 														<span
 															class="flex items-center gap-1 text-orange-600 dark:text-orange-400"
@@ -1444,7 +1512,7 @@
 														const currentVersionName = getDisplayVersion(currentVersion);
 														const targetVersionName = getDisplayVersion(previousVersion.version);
 														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-														showDeployModal = true;
+														requestDeployModal();
 													}
 												}}
 											>
@@ -1690,7 +1758,7 @@
 															const mustPin = isOlderThanCurrent(version) || isCustom;
 															isPinVersionMode = mustPin;
 															pinVersionToggle = mustPin;
-															showDeployModal = true;
+															requestDeployModal();
 														}}
 													>
 														Deploy
@@ -1804,7 +1872,6 @@
 				type="text"
 				placeholder="Search versions..."
 				bind:value={searchQuery}
-				style="font-size: 16px"
 				class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
 			/>
 		</div>
@@ -1973,8 +2040,8 @@
 				disabled={!selectedVersion}
 				onclick={() => {
 					if (!selectedVersion) return;
-					showDeployModal = true;
 					showPinModal = false;
+					requestDeployModal();
 				}}
 			>
 				Continue
@@ -2098,6 +2165,15 @@
 		toastMessage = m;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
+	}}
+/>
+
+<RecoveryModeWarningModal
+	bind:open={showRecoveryWarningModal}
+	reason={recoveryWarningReason}
+	versionDisplay={selectedVersionDisplay()}
+	onContinue={() => {
+		showDeployModal = true;
 	}}
 />
 
