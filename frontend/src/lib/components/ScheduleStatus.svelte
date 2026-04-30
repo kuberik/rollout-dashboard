@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Alert, Popover } from 'flowbite-svelte';
+	import { Popover } from 'flowbite-svelte';
 	import {
 		CalendarWeekSolid,
 		ClockSolid,
@@ -7,6 +7,7 @@
 		CloseOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout } from '$lib/types';
+	import AlertPanel from './AlertPanel.svelte';
 
 	type RolloutSchedule = {
 		metadata: { name: string; namespace: string };
@@ -90,15 +91,80 @@
 		return earliestTransition ? earliestTransition.toISOString() : null;
 	});
 
-	let blockingSchedules = $derived(
-		allSchedules
-			.filter((s) => {
-				const { active } = s.status;
-				const { action } = s.spec;
-				return (action === 'Allow' && !active) || (action === 'Deny' && active);
-			})
-			.map((s) => s.metadata.name)
+	let blockingSchedulesFull = $derived(
+		allSchedules.filter((s) => {
+			const { active } = s.status;
+			const { action } = s.spec;
+			return (action === 'Allow' && !active) || (action === 'Deny' && active);
+		})
 	);
+
+	let blockingSchedules = $derived(blockingSchedulesFull.map((s) => s.metadata.name));
+
+	const DAY_ORDER: Record<string, number> = {
+		Monday: 0,
+		Tuesday: 1,
+		Wednesday: 2,
+		Thursday: 3,
+		Friday: 4,
+		Saturday: 5,
+		Sunday: 6,
+		Mon: 0,
+		Tue: 1,
+		Wed: 2,
+		Thu: 3,
+		Fri: 4,
+		Sat: 5,
+		Sun: 6
+	};
+	const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+	function formatDays(days: string[]): string {
+		const sorted = [...days]
+			.map((d) => (d in DAY_ORDER ? DAY_ORDER[d] : -1))
+			.filter((i) => i >= 0)
+			.sort((a, b) => a - b);
+		if (sorted.length === 0) return days.join(', ');
+		// Collapse consecutive runs into ranges (Mon-Fri).
+		const ranges: string[] = [];
+		let start = sorted[0];
+		let prev = sorted[0];
+		for (let i = 1; i <= sorted.length; i++) {
+			if (i === sorted.length || sorted[i] !== prev + 1) {
+				ranges.push(start === prev ? DAY_SHORT[start] : `${DAY_SHORT[start]}–${DAY_SHORT[prev]}`);
+				if (i < sorted.length) {
+					start = sorted[i];
+					prev = sorted[i];
+				}
+			} else {
+				prev = sorted[i];
+			}
+		}
+		return ranges.join(', ');
+	}
+
+	function formatRule(
+		rule: {
+			name?: string;
+			timeRange?: { start: string; end: string };
+			daysOfWeek?: string[];
+			dateRange?: { start: string; end: string };
+		},
+		timezone: string | undefined
+	): string {
+		const parts: string[] = [];
+		if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+			parts.push(formatDays(rule.daysOfWeek));
+		}
+		if (rule.timeRange) {
+			parts.push(`${rule.timeRange.start}–${rule.timeRange.end}`);
+		}
+		if (rule.dateRange) {
+			parts.push(`${rule.dateRange.start} → ${rule.dateRange.end}`);
+		}
+		const body = parts.join(' · ') || rule.name || 'Always';
+		return timezone ? `${body} (${timezone})` : body;
+	}
 
 	let allowingSchedules = $derived(
 		allSchedules
@@ -211,70 +277,93 @@
 
 {#if !loading && !error && allSchedules.length > 0}
 	{#if isBlocked}
-		<!-- Blocked State - Yellow Alert -->
-		<Alert color="yellow" class="mb-4">
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-3">
-					<ExclamationCircleSolid class="h-5 w-5" />
-					<div>
-						<div class="font-semibold">Deployments Currently Blocked</div>
-						<div class="mt-1 text-sm">
-							{#if nextChange}
-								Will be allowed in <span class="font-medium"
-									>{formatTimeUntil(nextChange)}</span
-								>
-								({formatTime(nextChange)})
-							{:else}
-								Check schedule rules for deployment windows
-							{/if}
-						</div>
-					</div>
-				</div>
+		<AlertPanel
+			severity="warning"
+			title="Deployments currently blocked"
+			message={nextChange
+				? `Will be allowed in ${formatTimeUntil(nextChange)} (${formatTime(nextChange)}).`
+				: 'Check schedule rules for deployment windows.'}
+			icon={CalendarWeekSolid}
+			pulse
+		>
+			{#snippet actions()}
+				<button
+					type="button"
+					id="schedule-details"
+					class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-800/10 px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-400/30 transition hover:bg-amber-800/15 hover:ring-amber-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15"
+				>
+					{blockingSchedules.length} schedule{blockingSchedules.length > 1 ? 's' : ''}
+				</button>
+			{/snippet}
+		</AlertPanel>
+		<Popover
+			triggeredBy="#schedule-details"
+			placement="bottom-end"
+			arrow={false}
+			defaultClass=""
+			class="z-20 w-96 max-w-[90vw] rounded-xl border border-amber-300/70 bg-gradient-to-br from-amber-50 via-white to-amber-50 p-0 text-amber-950 shadow-2xl shadow-amber-300/30 dark:border-amber-700/60 dark:from-amber-950 dark:via-amber-900/80 dark:to-amber-950 dark:text-amber-50 dark:shadow-amber-950/50"
+		>
+			<div class="border-b border-amber-200/70 px-4 py-3 dark:border-amber-800/60">
 				<div class="flex items-center gap-2">
-					<CalendarWeekSolid class="h-4 w-4" />
-					<button
-						type="button"
-						id="schedule-details"
-						class="text-sm underline hover:no-underline"
-					>
-						{blockingSchedules.length} schedule{blockingSchedules.length > 1 ? 's' : ''}
-					</button>
+					<CalendarWeekSolid class="h-4 w-4 text-amber-600 dark:text-amber-300" />
+					<p class="text-sm font-semibold tracking-tight">
+						{blockingSchedulesFull.length === 1 ? 'Blocking schedule' : 'Blocking schedules'}
+					</p>
 				</div>
 			</div>
-		</Alert>
-		<Popover triggeredBy="#schedule-details" class="w-80 text-sm" placement="bottom">
-			<div class="space-y-2 p-3">
-				<div class="font-semibold text-gray-900 dark:text-white">Blocking Schedules:</div>
-				<ul class="list-inside list-disc space-y-1 text-gray-700 dark:text-gray-300">
-					{#each blockingSchedules as name}
-						<li>{name}</li>
-					{/each}
-				</ul>
-			</div>
+			<ul class="divide-y divide-amber-200/60 dark:divide-amber-800/40">
+				{#each blockingSchedulesFull as schedule}
+					<li class="px-4 py-3">
+						<div class="mb-2 flex items-center justify-between gap-2">
+							<span class="truncate text-sm font-medium text-amber-900 dark:text-amber-100">
+								{schedule.metadata.name}
+							</span>
+							<span
+								class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 {schedule
+									.spec.action === 'Deny'
+									? 'bg-red-100 text-red-700 ring-red-300/60 dark:bg-red-500/20 dark:text-red-200 dark:ring-red-700/50'
+									: 'bg-emerald-100 text-emerald-700 ring-emerald-300/60 dark:bg-emerald-500/20 dark:text-emerald-200 dark:ring-emerald-700/50'}"
+							>
+								{schedule.spec.action}
+							</span>
+						</div>
+						{#if schedule.spec.rules?.length}
+							<ul class="space-y-1">
+								{#each schedule.spec.rules as rule}
+									<li class="flex items-start gap-2 text-xs text-amber-800/90 dark:text-amber-200/85">
+										<ClockSolid class="mt-0.5 h-3 w-3 shrink-0 text-amber-500/80 dark:text-amber-400/80" />
+										<span class="break-words">{formatRule(rule, schedule.spec.timezone)}</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+						{#if schedule.status?.nextTransition}
+							<p class="mt-2 text-xs text-amber-700/80 dark:text-amber-300/70">
+								Allowed in <span class="font-medium">{formatTimeUntil(schedule.status.nextTransition)}</span>
+								· {formatTime(schedule.status.nextTransition)}
+							</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
 		</Popover>
 	{:else if isAllowed && isClosingSoon && !isWarningDismissed}
-		<!-- Warning: Window closing soon - Dismissable -->
-		<Alert color="yellow" class="mb-4">
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-3">
-					<ClockSolid class="h-5 w-5" />
-					<div>
-						<div class="font-semibold">Deployment Window Closing Soon</div>
-						<div class="mt-1 text-sm">
-							Window closes in <span class="font-medium">{formatTimeUntil(nextChange!)}</span>
-							({formatTime(nextChange!)})
-						</div>
-					</div>
-				</div>
+		<AlertPanel
+			severity="warning"
+			title="Deployment window closing soon"
+			message={`Window closes in ${formatTimeUntil(nextChange!)} (${formatTime(nextChange!)}).`}
+			icon={ClockSolid}
+		>
+			{#snippet actions()}
 				<button
 					type="button"
 					onclick={dismissWarning}
-					class="ml-auto inline-flex items-center rounded-lg p-1.5 text-yellow-500 hover:bg-yellow-200 dark:text-yellow-400 dark:hover:bg-gray-700"
+					class="inline-flex items-center rounded-lg p-1.5 text-amber-700 transition hover:bg-amber-200/60 dark:text-amber-300 dark:hover:bg-amber-800/40"
 					aria-label="Dismiss"
 				>
 					<CloseOutline class="h-5 w-5" />
 				</button>
-			</div>
-		</Alert>
+			{/snippet}
+		</AlertPanel>
 	{/if}
 {/if}
