@@ -1,4 +1,9 @@
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-multi
+---
 apiVersion: kuberik.com/v1alpha1
 kind: Rollout
 metadata:
