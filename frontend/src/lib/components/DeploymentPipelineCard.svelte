@@ -937,9 +937,9 @@
 				class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/60 dark:border-gray-700 dark:bg-gray-900/30"
 			>
 				{@render subRow('Rollout', rolloutSub.status, rolloutSub.label, null, sd)}
-				<div class="border-t border-gray-200 dark:border-gray-700"></div>
-				{@render subRow('Tests', testsSub.status, testsSub.label, 'tests', sd)}
 				{#if !sd.isLastStep}
+					<div class="border-t border-gray-200 dark:border-gray-700"></div>
+					{@render subRow('Tests', testsSub.status, testsSub.label, 'tests', sd)}
 					<div class="border-t border-gray-200 dark:border-gray-700"></div>
 					{@render subRow('Bake', bakeSub.status, bakeSub.label, 'bake', sd)}
 				{/if}
