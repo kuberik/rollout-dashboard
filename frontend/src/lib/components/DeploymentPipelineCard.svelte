@@ -180,6 +180,13 @@
 						kr.kruiseRollout?.status?.conditions?.some(
 							(c) => c.type === 'Stalled' && c.status === 'True'
 						) ?? false;
+					// KuberikBakeHealthy=False is set by the stepgate when the kuberik Rollout's
+					// bake period has failed. Unlike Stalled, it does not trigger kstatus retry
+					// machinery — it is observability-only, so we check it explicitly here.
+					const isKrBakeFailed =
+						kr.kruiseRollout?.status?.conditions?.some(
+							(c) => c.type === 'KuberikBakeHealthy' && c.status === 'False'
+						) ?? false;
 					const isCurrentStep = currentStepIndex === stepNum;
 					const isPastStep =
 						isKrCompleted || (currentStepIndex !== undefined && stepNum < currentStepIndex);
@@ -206,11 +213,11 @@
 						!hasTests ||
 						stepTests.every((t) => ['Succeeded', 'Skipped'].includes(t.status?.phase ?? ''));
 					const bakingNow =
-						isCurrentStep && isStepPaused && allTestsSucceeded && !isKrStalled;
+						isCurrentStep && isStepPaused && allTestsSucceeded && !isKrStalled && !isKrBakeFailed;
 					const stageTestsFailed =
 						isCurrentStep && stepTests.some((t) => t.status?.phase === 'Failed');
 					const bakeFailed =
-						isKrStalled && isCurrentStep && isStepPaused && !stageTestsFailed;
+						(isKrStalled || isKrBakeFailed) && isCurrentStep && isStepPaused && !stageTestsFailed;
 					const waitingForBake = isCurrentStep && isStepReady;
 					const isLastStep = stepIdx === kr.canarySteps.length - 1;
 					const stageAllDone =
