@@ -26,7 +26,8 @@
 		parseLinkAnnotations,
 		extractDatadogInfoFromContainers,
 		buildDatadogTestRunsUrl,
-		buildDatadogLogsUrl
+		buildDatadogLogsUrl,
+		buildDatadogTraceSearchUrl
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import type { Rollout, RolloutTest, HealthCheck, KruiseRollout } from '../../types';
@@ -755,6 +756,18 @@
 										class="inline-flex items-center gap-0.5 font-medium text-purple-600 hover:underline dark:text-purple-400"
 									>
 										<DatadogLogo class="h-2.5 w-2.5" />CI
+									</a>
+									<a
+										href={buildDatadogTraceSearchUrl(
+											ddInfo.service,
+											ddInfo.env,
+											ddInfo.version || getDisplayVersion(latestEntry.version)
+										)}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="inline-flex items-center gap-0.5 font-medium text-purple-600 hover:underline dark:text-purple-400"
+									>
+										<DatadogLogo class="h-2.5 w-2.5" />Trace
 									</a>
 								{/if}
 							</li>
