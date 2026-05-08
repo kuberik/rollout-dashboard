@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl } from './utils';
 
 describe('Field Manager Validation', () => {
     describe('isFieldManaged', () => {
@@ -346,5 +346,28 @@ describe('buildDatadogLogsUrl', () => {
         expect(url).toContain(encodeURIComponent('service:my-service'));
         expect(url).toContain(encodeURIComponent('env:production'));
         expect(url).toContain('&live=true');
+    });
+});
+
+describe('buildDatadogTraceSearchUrl', () => {
+    it('should build a URL with service, env, and version', () => {
+        const url = buildDatadogTraceSearchUrl('my-service', 'production', 'v1.0.0');
+        expect(url).toContain('https://app.datadoghq.com/apm/traces?query=');
+        expect(url).toContain(encodeURIComponent('service:my-service'));
+        expect(url).toContain(encodeURIComponent('env:production'));
+        expect(url).toContain(encodeURIComponent('version:v1.0.0'));
+        // `@rollout.test:true` marker is what distinguishes rollout-test
+        // traces from the service Deployment's regular APM traffic; without
+        // it the search would also surface unrelated traffic.
+        expect(url).toContain(encodeURIComponent('@rollout.test:true'));
+    });
+
+    it('should omit the version filter when no version is provided', () => {
+        const url = buildDatadogTraceSearchUrl('my-service', 'staging');
+        expect(url).toContain('https://app.datadoghq.com/apm/traces?query=');
+        expect(url).toContain(encodeURIComponent('service:my-service'));
+        expect(url).toContain(encodeURIComponent('env:staging'));
+        expect(url).toContain(encodeURIComponent('@rollout.test:true'));
+        expect(url).not.toContain(encodeURIComponent('version:'));
     });
 });

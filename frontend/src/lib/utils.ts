@@ -351,6 +351,29 @@ export function buildDatadogLogsUrl(service: string, env: string): string {
 	return `https://app.datadoghq.com/logs?query=${encodeURIComponent(`service:${service} env:${env}`)}&live=true`;
 }
 
+/**
+ * Datadog APM trace search filtered to spans emitted by the rollout test.
+ *
+ * The rollout-test image (see `tests/rollout/src/instrumentation.ts` in the
+ * caffeine app repo) wraps each Playwright test + step in custom APM spans
+ * tagged `@rollout.test:true`. Pairing that marker with the standard
+ * unified-service tags (`service`, `env`, `version`) narrows the result
+ * to exactly the traces produced by the canary's rollout-test Job — the
+ * service Deployment's regular APM traffic, which carries the same
+ * `service`/`env`/`version` tags but lacks `@rollout.test:true`, is
+ * excluded.
+ *
+ * Each Playwright test produces one trace (root: `rollout_test.test`,
+ * children: `rollout_test.step` per `test.step()` call), so the search
+ * returns one row per test (more on Job retries) and each row drills
+ * into a step-level flame graph.
+ */
+export function buildDatadogTraceSearchUrl(service: string, env: string, version?: string): string {
+	const filters = [`service:${service}`, `env:${env}`, '@rollout.test:true'];
+	if (version) filters.splice(2, 0, `version:${version}`);
+	return `https://app.datadoghq.com/apm/traces?query=${encodeURIComponent(filters.join(' '))}`;
+}
+
 export function getResourceStatus(resource: Kustomization | OCIRepository) {
 	const readyCondition = resource.status?.conditions?.find((c) => c.type === 'Ready');
 	if (!readyCondition) return { status: 'Unknown', color: 'gray' as const };
