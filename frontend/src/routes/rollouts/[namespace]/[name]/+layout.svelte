@@ -16,6 +16,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { SvelteFlowProvider } from '@xyflow/svelte';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -50,6 +51,10 @@
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const environment = $derived(rolloutQuery.data?.environment);
+	const rolloutTheme = $derived(rollout ? getRolloutEnvironmentTheme(rollout) : null);
+	const rolloutThemeStyle = $derived(
+		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
+	);
 
 	const hasEnvironment = $derived(
 		environment?.status?.environmentInfos && environment.status.environmentInfos.length > 0
@@ -87,68 +92,77 @@
 		return activeUrl.startsWith(href);
 	};
 
-	const activeClass =
-		'flex items-center rounded-lg px-2 py-2 text-sm font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400';
+	const activeClass = $derived(
+		rolloutTheme
+			? 'flex items-center rounded-lg px-2 py-2 text-sm font-medium environment-theme-surface'
+			: 'flex items-center rounded-lg px-2 py-2 text-sm font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+	);
+	const mobileActiveClass = $derived(
+		rolloutTheme ? 'environment-theme-text' : 'text-primary-600 dark:text-primary-400'
+	);
 	const nonActiveClass =
 		'flex items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white';
 </script>
 
 <SvelteFlowProvider>
-	<div class="flex h-full flex-col overflow-hidden md:flex-row">
+	<div
+		class="environment-theme-scope flex h-full flex-col overflow-hidden md:flex-row"
+		style={rolloutThemeStyle}
+	>
 		<!-- Desktop Sidebar (hidden on mobile) -->
 		{#if sidebarMounted}
-		<aside
-			class="hidden flex-shrink-0 border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800 md:flex md:flex-col {sidebarCollapsed
-				? 'w-12'
-				: 'w-48'} transition-[width] duration-200"
-		>
-			<!-- Nav items -->
-			<nav class="flex flex-1 flex-col p-2">
-				<SidebarGroup class="space-y-1">
-					{#each navItems.filter((item) => item.show) as item}
-						{@const active = isActive(item.href)}
-						<SidebarItem
-							id="nav-{item.label.toLowerCase()}"
-							href={item.href}
-							label={item.label}
-							{active}
-							{activeClass}
-							{nonActiveClass}
-							spanClass={sidebarCollapsed ? 'hidden' : 'ms-3'}
-							aClass={sidebarCollapsed ? 'justify-center' : ''}
-						>
-							{#snippet icon()}
-								<item.icon class="h-5 w-5 flex-shrink-0" />
-							{/snippet}
-						</SidebarItem>
-						{#if sidebarCollapsed}
-							<Tooltip triggeredBy="#nav-{item.label.toLowerCase()}" placement="right">
-								{item.label}
-							</Tooltip>
-						{/if}
-					{/each}
-				</SidebarGroup>
-			</nav>
+			<aside
+				class="hidden flex-shrink-0 border-r border-gray-200 bg-gray-50 md:flex md:flex-col dark:border-gray-700 dark:bg-gray-800 {sidebarCollapsed
+					? 'w-12'
+					: 'w-48'} transition-[width] duration-200"
+			>
+				<!-- Nav items -->
+				<nav class="flex flex-1 flex-col p-2">
+					<SidebarGroup class="space-y-1">
+						{#each navItems.filter((item) => item.show) as item}
+							{@const active = isActive(item.href)}
+							<SidebarItem
+								id="nav-{item.label.toLowerCase()}"
+								href={item.href}
+								label={item.label}
+								{active}
+								{activeClass}
+								{nonActiveClass}
+								spanClass={sidebarCollapsed ? 'hidden' : 'ms-3'}
+								aClass={sidebarCollapsed ? 'justify-center' : ''}
+							>
+								{#snippet icon()}
+									<item.icon class="h-5 w-5 flex-shrink-0" />
+								{/snippet}
+							</SidebarItem>
+							{#if sidebarCollapsed}
+								<Tooltip triggeredBy="#nav-{item.label.toLowerCase()}" placement="right">
+									{item.label}
+								</Tooltip>
+							{/if}
+						{/each}
+					</SidebarGroup>
+				</nav>
 
-			<!-- Collapse toggle at bottom -->
-			<div class="border-t border-gray-200 p-2 dark:border-gray-700">
-				<button
-					class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300
+				<!-- Collapse toggle at bottom -->
+				<div class="border-t border-gray-200 p-2 dark:border-gray-700">
+					<button
+						class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300
 						{sidebarCollapsed ? 'justify-center' : ''}"
-					onclick={() => {
-						sidebarCollapsed = !sidebarCollapsed;
-					}}
-					title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-				>
-					{#if sidebarCollapsed}
-						<AngleRightOutline class="h-4 w-4" />
-					{:else}
-						<AngleLeftOutline class="h-4 w-4" />
-						<span>Collapse</span>
-					{/if}
-				</button>
-			</div>
-		</aside>
+						onclick={() => {
+							sidebarCollapsed = !sidebarCollapsed;
+						}}
+						title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+					>
+						{#if sidebarCollapsed}
+							<AngleRightOutline class="h-4 w-4" />
+						{:else}
+							<AngleLeftOutline class="h-4 w-4" />
+							<span>Collapse</span>
+						{/if}
+					</button>
+				</div>
+			</aside>
 		{/if}
 
 		<!-- Content -->
@@ -160,14 +174,14 @@
 
 		<!-- Mobile Bottom Navigation (hidden on desktop) -->
 		<nav
-			class="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 md:hidden"
+			class="fixed right-0 bottom-0 left-0 z-50 border-t border-gray-200 bg-white md:hidden dark:border-gray-700 dark:bg-gray-800"
 		>
 			<div class="flex h-16 items-center justify-around">
 				{#each navItems.filter((item) => item.show) as item}
 					<a
 						href={item.href}
 						class="flex flex-1 flex-col items-center justify-center gap-1 py-2 {isActive(item.href)
-							? 'text-primary-600 dark:text-primary-400'
+							? mobileActiveClass
 							: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}"
 					>
 						<item.icon class="h-5 w-5" />

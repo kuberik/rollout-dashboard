@@ -24,6 +24,11 @@ replacements:
           delimiter: " "
           index: 4
       - select:
+          kind: Rollout
+          name: hello-multi-app
+        fieldPaths:
+          - metadata.annotations.[dashboard.rollout.kuberik.com/theme]
+      - select:
           kind: OCIRepository
           name: hello-multi
         fieldPaths:

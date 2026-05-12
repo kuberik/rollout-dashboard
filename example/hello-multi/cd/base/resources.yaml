@@ -10,6 +10,7 @@ metadata:
   name: hello-multi-app
   annotations:
     dashboard.rollout.kuberik.com/description: "Hello Multi app / __ENVIRONMENT__"
+    dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
 spec:
   releasesImagePolicy:
     name: hello-multi-app

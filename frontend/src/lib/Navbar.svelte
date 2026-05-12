@@ -14,6 +14,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
 	import RolloutSwitcher from '$lib/RolloutSwitcher.svelte';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 	let switcherOpen = $state(false);
@@ -57,6 +58,10 @@
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
+	const rolloutTheme = $derived(rollout ? getRolloutEnvironmentTheme(rollout) : null);
+	const rolloutThemeStyle = $derived(
+		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
+	);
 
 	// Global ⌘K / Ctrl+K shortcut
 	function handleGlobalKeydown(e: KeyboardEvent) {
@@ -71,8 +76,12 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <nav
-	class="sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	class="environment-theme-scope sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	style={rolloutThemeStyle}
 >
+	{#if rolloutTheme}
+		<div class="environment-theme-accent h-1 w-full" aria-hidden="true"></div>
+	{/if}
 	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
 		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
 			<a href="/" class="flex shrink-0 items-center space-x-2 sm:space-x-3 rtl:space-x-reverse">
@@ -83,18 +92,22 @@
 						{@html currentTheme === 'dark' ? LogoDark : LogoLight}
 					</div>
 				</div>
-				<span class="hidden font-montserrat text-xl font-thin text-gray-600 dark:text-gray-400 sm:inline"
+				<span
+					class="font-montserrat hidden text-xl font-thin text-gray-600 sm:inline dark:text-gray-400"
 					>kuberik</span
 				>
-				<div class="hidden h-6 w-px bg-gray-300 dark:bg-gray-600 sm:block"></div>
+				<div class="hidden h-6 w-px bg-gray-300 sm:block dark:bg-gray-600"></div>
 				<div class="flex flex-col">
-					<span class="text-xl font-light dark:text-white sm:text-2xl">Rollouts</span>
+					<span class="text-xl font-light sm:text-2xl dark:text-white">Rollouts</span>
 				</div>
 			</a>
 			{#if isRolloutPage && rollout}
 				<!-- Ghost breadcrumb switcher trigger -->
 				<div class="flex min-w-0 items-center gap-1">
-					<span class="select-none text-xl font-light text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+					<span
+						class="text-xl font-light text-gray-300 select-none dark:text-gray-600"
+						aria-hidden="true">/</span
+					>
 					<button
 						type="button"
 						onclick={() => (switcherOpen = true)}
@@ -102,18 +115,29 @@
 						aria-label="Switch rollout (⌘K)"
 					>
 						<span class="flex min-w-0 items-baseline gap-1.5">
-							<span class="hidden truncate text-sm text-gray-500 dark:text-gray-400 sm:inline">
+							<span class="hidden truncate text-sm text-gray-500 sm:inline dark:text-gray-400">
 								{rollout.metadata?.namespace}
 							</span>
-							<span class="hidden text-gray-300 dark:text-gray-600 sm:inline">/</span>
+							<span class="hidden text-gray-300 sm:inline dark:text-gray-600">/</span>
 							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">
 								{rollout.metadata?.name}
 							</span>
+							{#if rolloutTheme}
+								<span
+									class="environment-theme-surface hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase sm:inline-flex"
+								>
+									{rolloutTheme.label}
+								</span>
+							{/if}
 						</span>
-						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400 md:inline-block">
+						<kbd
+							class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 md:inline-block dark:text-gray-600 dark:group-hover:text-gray-400"
+						>
 							{isMac ? '⌘K' : 'Ctrl K'}
 						</kbd>
-						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+						<ChevronSortOutline
+							class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300"
+						/>
 					</button>
 				</div>
 			{/if}
@@ -144,10 +168,14 @@
 				{/if}
 			{/if}
 			{#if import.meta.env.VITE_APP_VERSION}
-				<Badge color="none" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
+				<Badge
+					color="none"
+					class="hidden bg-gray-200 text-gray-600 sm:inline-flex dark:bg-gray-700 dark:text-gray-400"
+					>{import.meta.env.VITE_APP_VERSION}</Badge
+				>
 			{/if}
 			<button
-				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
+				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 sm:p-2 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
 				onclick={() => theme.toggle()}
 				aria-label="Toggle dark mode"
 			>
