@@ -80,7 +80,7 @@
 	style={rolloutThemeStyle}
 >
 	{#if rolloutTheme}
-		<div class="environment-theme-accent h-1 w-full" aria-hidden="true"></div>
+		<div class="h-1 w-full environment-theme-accent" aria-hidden="true"></div>
 	{/if}
 	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
 		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
@@ -92,22 +92,18 @@
 						{@html currentTheme === 'dark' ? LogoDark : LogoLight}
 					</div>
 				</div>
-				<span
-					class="font-montserrat hidden text-xl font-thin text-gray-600 sm:inline dark:text-gray-400"
+				<span class="hidden font-montserrat text-xl font-thin text-gray-600 dark:text-gray-400 sm:inline"
 					>kuberik</span
 				>
-				<div class="hidden h-6 w-px bg-gray-300 sm:block dark:bg-gray-600"></div>
+				<div class="hidden h-6 w-px bg-gray-300 dark:bg-gray-600 sm:block"></div>
 				<div class="flex flex-col">
-					<span class="text-xl font-light sm:text-2xl dark:text-white">Rollouts</span>
+					<span class="text-xl font-light dark:text-white sm:text-2xl">Rollouts</span>
 				</div>
 			</a>
 			{#if isRolloutPage && rollout}
 				<!-- Ghost breadcrumb switcher trigger -->
 				<div class="flex min-w-0 items-center gap-1">
-					<span
-						class="text-xl font-light text-gray-300 select-none dark:text-gray-600"
-						aria-hidden="true">/</span
-					>
+					<span class="select-none text-xl font-light text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
 					<button
 						type="button"
 						onclick={() => (switcherOpen = true)}
@@ -115,29 +111,25 @@
 						aria-label="Switch rollout (⌘K)"
 					>
 						<span class="flex min-w-0 items-baseline gap-1.5">
-							<span class="hidden truncate text-sm text-gray-500 sm:inline dark:text-gray-400">
+							<span class="hidden truncate text-sm text-gray-500 dark:text-gray-400 sm:inline">
 								{rollout.metadata?.namespace}
 							</span>
-							<span class="hidden text-gray-300 sm:inline dark:text-gray-600">/</span>
+							<span class="hidden text-gray-300 dark:text-gray-600 sm:inline">/</span>
 							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">
 								{rollout.metadata?.name}
 							</span>
 							{#if rolloutTheme}
 								<span
-									class="environment-theme-surface hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase sm:inline-flex"
+									class="environment-theme-surface hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider sm:inline-flex"
 								>
 									{rolloutTheme.label}
 								</span>
 							{/if}
 						</span>
-						<kbd
-							class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 md:inline-block dark:text-gray-600 dark:group-hover:text-gray-400"
-						>
+						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400 md:inline-block">
 							{isMac ? '⌘K' : 'Ctrl K'}
 						</kbd>
-						<ChevronSortOutline
-							class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300"
-						/>
+						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
 					</button>
 				</div>
 			{/if}
@@ -168,14 +160,10 @@
 				{/if}
 			{/if}
 			{#if import.meta.env.VITE_APP_VERSION}
-				<Badge
-					color="none"
-					class="hidden bg-gray-200 text-gray-600 sm:inline-flex dark:bg-gray-700 dark:text-gray-400"
-					>{import.meta.env.VITE_APP_VERSION}</Badge
-				>
+				<Badge color="none" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
 			{/if}
 			<button
-				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 sm:p-2 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
 				onclick={() => theme.toggle()}
 				aria-label="Toggle dark mode"
 			>

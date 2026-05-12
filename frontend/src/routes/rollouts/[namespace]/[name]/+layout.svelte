@@ -105,64 +105,61 @@
 </script>
 
 <SvelteFlowProvider>
-	<div
-		class="environment-theme-scope flex h-full flex-col overflow-hidden md:flex-row"
-		style={rolloutThemeStyle}
-	>
+	<div class="environment-theme-scope flex h-full flex-col overflow-hidden md:flex-row" style={rolloutThemeStyle}>
 		<!-- Desktop Sidebar (hidden on mobile) -->
 		{#if sidebarMounted}
-			<aside
-				class="hidden flex-shrink-0 border-r border-gray-200 bg-gray-50 md:flex md:flex-col dark:border-gray-700 dark:bg-gray-800 {sidebarCollapsed
-					? 'w-12'
-					: 'w-48'} transition-[width] duration-200"
-			>
-				<!-- Nav items -->
-				<nav class="flex flex-1 flex-col p-2">
-					<SidebarGroup class="space-y-1">
-						{#each navItems.filter((item) => item.show) as item}
-							{@const active = isActive(item.href)}
-							<SidebarItem
-								id="nav-{item.label.toLowerCase()}"
-								href={item.href}
-								label={item.label}
-								{active}
-								{activeClass}
-								{nonActiveClass}
-								spanClass={sidebarCollapsed ? 'hidden' : 'ms-3'}
-								aClass={sidebarCollapsed ? 'justify-center' : ''}
-							>
-								{#snippet icon()}
-									<item.icon class="h-5 w-5 flex-shrink-0" />
-								{/snippet}
-							</SidebarItem>
-							{#if sidebarCollapsed}
-								<Tooltip triggeredBy="#nav-{item.label.toLowerCase()}" placement="right">
-									{item.label}
-								</Tooltip>
-							{/if}
-						{/each}
-					</SidebarGroup>
-				</nav>
-
-				<!-- Collapse toggle at bottom -->
-				<div class="border-t border-gray-200 p-2 dark:border-gray-700">
-					<button
-						class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300
-						{sidebarCollapsed ? 'justify-center' : ''}"
-						onclick={() => {
-							sidebarCollapsed = !sidebarCollapsed;
-						}}
-						title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-					>
+		<aside
+			class="hidden flex-shrink-0 border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800 md:flex md:flex-col {sidebarCollapsed
+				? 'w-12'
+				: 'w-48'} transition-[width] duration-200"
+		>
+			<!-- Nav items -->
+			<nav class="flex flex-1 flex-col p-2">
+				<SidebarGroup class="space-y-1">
+					{#each navItems.filter((item) => item.show) as item}
+						{@const active = isActive(item.href)}
+						<SidebarItem
+							id="nav-{item.label.toLowerCase()}"
+							href={item.href}
+							label={item.label}
+							{active}
+							{activeClass}
+							{nonActiveClass}
+							spanClass={sidebarCollapsed ? 'hidden' : 'ms-3'}
+							aClass={sidebarCollapsed ? 'justify-center' : ''}
+						>
+							{#snippet icon()}
+								<item.icon class="h-5 w-5 flex-shrink-0" />
+							{/snippet}
+						</SidebarItem>
 						{#if sidebarCollapsed}
-							<AngleRightOutline class="h-4 w-4" />
-						{:else}
-							<AngleLeftOutline class="h-4 w-4" />
-							<span>Collapse</span>
+							<Tooltip triggeredBy="#nav-{item.label.toLowerCase()}" placement="right">
+								{item.label}
+							</Tooltip>
 						{/if}
-					</button>
-				</div>
-			</aside>
+					{/each}
+				</SidebarGroup>
+			</nav>
+
+			<!-- Collapse toggle at bottom -->
+			<div class="border-t border-gray-200 p-2 dark:border-gray-700">
+				<button
+					class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300
+						{sidebarCollapsed ? 'justify-center' : ''}"
+					onclick={() => {
+						sidebarCollapsed = !sidebarCollapsed;
+					}}
+					title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+				>
+					{#if sidebarCollapsed}
+						<AngleRightOutline class="h-4 w-4" />
+					{:else}
+						<AngleLeftOutline class="h-4 w-4" />
+						<span>Collapse</span>
+					{/if}
+				</button>
+			</div>
+		</aside>
 		{/if}
 
 		<!-- Content -->
@@ -174,7 +171,7 @@
 
 		<!-- Mobile Bottom Navigation (hidden on desktop) -->
 		<nav
-			class="fixed right-0 bottom-0 left-0 z-50 border-t border-gray-200 bg-white md:hidden dark:border-gray-700 dark:bg-gray-800"
+			class="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 md:hidden"
 		>
 			<div class="flex h-16 items-center justify-around">
 				{#each navItems.filter((item) => item.show) as item}

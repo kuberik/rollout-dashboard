@@ -68,7 +68,8 @@
 			query = '';
 			await tick();
 			const idx = filtered.findIndex(
-				(r) => r.metadata?.name === currentName && r.metadata?.namespace === currentNamespace
+				(r) =>
+					r.metadata?.name === currentName && r.metadata?.namespace === currentNamespace
 			);
 			selectedIndex = idx >= 0 ? idx : 0;
 			searchInput?.focus();
@@ -117,24 +118,17 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if open}
-	<div
-		class="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh]"
-		role="dialog"
-		aria-modal="true"
-		aria-label="Switch rollout"
-	>
+	<div class="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh]" role="dialog" aria-modal="true" aria-label="Switch rollout">
 		<!-- Backdrop -->
 		<button
 			type="button"
 			aria-label="Close"
-			class="backdrop-enter fixed inset-0 bg-gray-900/60 backdrop-blur-sm"
+			class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm backdrop-enter"
 			onclick={() => (open = false)}
 		></button>
 
 		<!-- Palette -->
-		<div
-			class="palette-enter relative z-10 mx-4 w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700"
-		>
+		<div class="relative z-10 mx-4 w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-gray-200 palette-enter dark:bg-gray-800 dark:ring-gray-700">
 			<!-- Search -->
 			<div class="flex items-center gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
 				<SearchOutline class="h-4 w-4 shrink-0 text-gray-400" />
@@ -146,12 +140,9 @@
 					placeholder="Search rollouts..."
 					autocomplete="off"
 					spellcheck="false"
-					class="flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 placeholder-gray-400 outline-none focus:ring-0 focus:outline-none dark:text-white"
+					class="flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 placeholder-gray-400 outline-none focus:outline-none focus:ring-0 dark:text-white"
 				/>
-				<kbd
-					class="hidden shrink-0 rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-gray-500 sm:inline-block dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400"
-					>ESC</kbd
-				>
+				<kbd class="hidden shrink-0 rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-block">ESC</kbd>
 			</div>
 
 			<!-- List -->
@@ -162,22 +153,17 @@
 					</div>
 				{:else if filtered.length === 0}
 					<div class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-						No rollouts match <span class="font-medium text-gray-700 dark:text-gray-300"
-							>"{query}"</span
-						>
+						No rollouts match <span class="font-medium text-gray-700 dark:text-gray-300">"{query}"</span>
 					</div>
 				{:else}
 					{#each grouped as group (group.ns)}
-						<div
-							class="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wider text-gray-400 uppercase dark:text-gray-500"
-						>
+						<div class="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
 							{group.ns}
 						</div>
 						{#each group.items as item (`${group.ns}/${item.rollout.metadata?.name}`)}
 							{@const r = item.rollout}
 							{@const idx = item.idx}
-							{@const isCurrent =
-								r.metadata?.name === currentName && r.metadata?.namespace === currentNamespace}
+							{@const isCurrent = r.metadata?.name === currentName && r.metadata?.namespace === currentNamespace}
 							{@const status = getRolloutStatus(r)}
 							{@const isActive = idx === selectedIndex}
 							{@const rolloutTheme = getRolloutEnvironmentTheme(r)}
@@ -195,17 +181,9 @@
 							>
 								<span class="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
 									{#if status.color === 'yellow'}
-										<span
-											class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-60"
-										></span>
+										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-60"></span>
 									{/if}
-									<span
-										class="h-2 w-2 rounded-full {status.color === 'green'
-											? 'bg-green-500'
-											: status.color === 'red'
-												? 'bg-red-500'
-												: 'bg-yellow-500'}"
-									></span>
+									<span class="h-2 w-2 rounded-full {status.color === 'green' ? 'bg-green-500' : status.color === 'red' ? 'bg-red-500' : 'bg-yellow-500'}"></span>
 								</span>
 								<div class="flex min-w-0 flex-1 flex-col">
 									<span
@@ -220,8 +198,7 @@
 									{#if rolloutTheme || r.status?.title}
 										<span class="flex min-w-0 items-center gap-1.5">
 											{#if rolloutTheme}
-												<span class="environment-theme-accent h-1.5 w-1.5 shrink-0 rounded-full"
-												></span>
+												<span class="h-1.5 w-1.5 shrink-0 rounded-full environment-theme-accent"></span>
 											{/if}
 											<span class="truncate text-xs text-gray-500 dark:text-gray-400">
 												{rolloutTheme?.label || r.status?.title}
@@ -230,10 +207,7 @@
 									{/if}
 								</div>
 								{#if isCurrent}
-									<span
-										class="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-blue-700 uppercase dark:bg-blue-900/60 dark:text-blue-300"
-										>Current</span
-									>
+									<span class="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">Current</span>
 								{/if}
 							</button>
 						{/each}
@@ -242,26 +216,15 @@
 			</div>
 
 			<!-- Footer -->
-			<div
-				class="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-400"
-			>
+			<div class="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-400">
 				<div class="flex items-center gap-3">
 					<span class="flex items-center gap-1">
-						<kbd
-							class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700"
-							>↑</kbd
-						>
-						<kbd
-							class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700"
-							>↓</kbd
-						>
+						<kbd class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700">↑</kbd>
+						<kbd class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700">↓</kbd>
 						<span>navigate</span>
 					</span>
 					<span class="flex items-center gap-1">
-						<kbd
-							class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700"
-							>↵</kbd
-						>
+						<kbd class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700">↵</kbd>
 						<span>select</span>
 					</span>
 				</div>
