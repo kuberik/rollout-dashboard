@@ -15,6 +15,7 @@
 		containerClass?: string;
 		containerStyle?: string;
 		labelClass?: string;
+		labelBorder?: boolean;
 		valueClass?: string;
 	}
 
@@ -28,6 +29,7 @@
 		containerClass = '',
 		containerStyle,
 		labelClass = '',
+		labelBorder = false,
 		valueClass = ''
 	}: Props = $props();
 
@@ -36,7 +38,12 @@
 
 <div class="inline-flex items-center {containerClass}" style={containerStyle}>
 	<!-- Left part: Label with optional icon -->
-	<Badge color="gray" {large} class="flex items-center gap-1.5 rounded-r-none border-r-0 {labelClass}">
+	<Badge
+		color="gray"
+		{large}
+		border={labelBorder}
+		class="flex items-center gap-1.5 rounded-r-none border-r-0 {labelClass}"
+	>
 		{#if icon}
 			{@render icon()}
 		{/if}
