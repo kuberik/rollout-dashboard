@@ -16,6 +16,7 @@
 		containerStyle?: string;
 		labelClass?: string;
 		labelBorder?: boolean;
+		labelPlainBorder?: boolean;
 		valueClass?: string;
 	}
 
@@ -30,10 +31,14 @@
 		containerStyle,
 		labelClass = '',
 		labelBorder = false,
+		labelPlainBorder = false,
 		valueClass = ''
 	}: Props = $props();
 
 	const hasLink = $derived(!!href);
+	const labelPlainBorderClass = $derived(
+		labelPlainBorder ? 'border-y border-l border-gray-300 dark:border-gray-600' : ''
+	);
 </script>
 
 <div class="inline-flex items-center {containerClass}" style={containerStyle}>
@@ -42,7 +47,7 @@
 		color="gray"
 		{large}
 		border={labelBorder}
-		class="flex items-center gap-1.5 rounded-r-none border-r-0 {labelClass}"
+		class="flex items-center gap-1.5 rounded-r-none border-r-0 {labelPlainBorderClass} {labelClass}"
 	>
 		{#if icon}
 			{@render icon()}
