@@ -29,7 +29,7 @@ const PRESET_THEMES: Record<string, ThemePreset> = {
 	testing: { label: 'Test', color: '#0891b2' }
 };
 
-const ENVIRONMENT_MATCHERS: { pattern: RegExp; preset: string }[] = [
+const ENVIRONMENT_MATCHERS: { pattern: RegExp; preset: keyof typeof PRESET_THEMES }[] = [
 	{ pattern: /prod|production/i, preset: 'prod' },
 	{ pattern: /dev|development/i, preset: 'dev' },
 	{ pattern: /staging|stage/i, preset: 'staging' },
@@ -81,9 +81,31 @@ function labelFromThemeName(name: string): string {
 		.join(' ');
 }
 
-function presetNameFromEnvironmentName(environmentName: string): string | null {
+function presetNameFromEnvironmentName(environmentName: string): keyof typeof PRESET_THEMES | null {
 	const match = ENVIRONMENT_MATCHERS.find(({ pattern }) => pattern.test(environmentName));
 	return match?.preset ?? null;
+}
+
+function resolveThemeLabel({
+	annotationLabel,
+	environmentName,
+	inlineThemeColor,
+	preset,
+	themeName,
+	themeValue
+}: {
+	annotationLabel?: string;
+	environmentName?: string;
+	inlineThemeColor: string | null;
+	preset?: ThemePreset;
+	themeName: string;
+	themeValue?: string;
+}): string {
+	if (annotationLabel) return annotationLabel;
+	if (themeValue && preset) return preset.label;
+	if (themeValue && inlineThemeColor) return environmentName || 'Custom';
+	if (themeName === 'custom') return environmentName || 'Custom';
+	return environmentName || preset?.label || labelFromThemeName(themeName);
 }
 
 function buildEnvironmentTheme(name: string, label: string, color: string): EnvironmentTheme {
@@ -121,11 +143,14 @@ export function getRolloutEnvironmentTheme(
 	const color = customColor ?? inlineThemeColor ?? preset?.color;
 	if (!color) return null;
 
-	const label =
-		annotations?.[ENVIRONMENT_THEME_LABEL_ANNOTATION]?.trim() ||
-		environmentName ||
-		preset?.label ||
-		(themeName === 'custom' ? 'Custom' : labelFromThemeName(themeName));
+	const label = resolveThemeLabel({
+		annotationLabel: annotations?.[ENVIRONMENT_THEME_LABEL_ANNOTATION]?.trim(),
+		environmentName,
+		inlineThemeColor,
+		preset,
+		themeName,
+		themeValue
+	});
 
 	return buildEnvironmentTheme(themeName, label, color);
 }

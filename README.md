@@ -36,7 +36,7 @@ In this example, the kustomization `hello-world` is associated with the rollout 
 
 The dashboard can infer a rollout's color theme from its related Environment resource. If `spec.environment` contains `prod` or `production`, the dashboard uses the production theme; names containing `dev`, `development`, `staging`, `stage`, `test`, or `testing` use their matching presets.
 
-Rollouts can also opt into or override dashboard color themes with annotations on the Rollout resource. This helps distinguish environments when switching between development, staging, and production dashboards, including in places where Environment data is not loaded.
+Rollouts can also opt into or override dashboard color themes with annotations on the Rollout resource. When present, annotation values take precedence over Environment inference. This helps distinguish environments when switching between development, staging, and production dashboards, including in places where Environment data is not loaded.
 
 ```yaml
 apiVersion: kuberik.com/v1alpha1

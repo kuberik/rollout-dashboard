@@ -282,6 +282,38 @@ describe('environment themes', () => {
         expect(theme?.color).toBe('#16a34a');
     });
 
+    it('lets a theme annotation override the inferred environment theme', () => {
+        const theme = getRolloutEnvironmentTheme(
+            {
+                metadata: {
+                    annotations: {
+                        [ENVIRONMENT_THEME_ANNOTATION]: 'dev'
+                    }
+                }
+            } as any,
+            'eu-prod-1'
+        );
+
+        expect(theme?.label).toBe('Development');
+        expect(theme?.color).toBe('#16a34a');
+    });
+
+    it('lets a custom color annotation override the inferred environment color', () => {
+        const theme = getRolloutEnvironmentTheme(
+            {
+                metadata: {
+                    annotations: {
+                        [ENVIRONMENT_THEME_COLOR_ANNOTATION]: '#0EA5E9'
+                    }
+                }
+            } as any,
+            'eu-prod-1'
+        );
+
+        expect(theme?.label).toBe('eu-prod-1');
+        expect(theme?.color).toBe('#0ea5e9');
+    });
+
     it('maps development to the green preset theme', () => {
         const theme = getRolloutEnvironmentTheme({
             metadata: {
