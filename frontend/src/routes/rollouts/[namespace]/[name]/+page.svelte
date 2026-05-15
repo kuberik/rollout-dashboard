@@ -1336,7 +1336,6 @@
 									valueColor="gray"
 									containerClass="environment-theme-scope"
 									containerStyle={rolloutThemeStyle}
-									labelBorder
 									valueClass="environment-theme-badge"
 								/>
 							{:else}
