@@ -295,6 +295,12 @@ export interface components {
                     message?: string;
                     /**
                      * Format: date-time
+                     * @description LastRetryTimestamp is the time when a retry was most recently requested for this deployment.
+                     *     Stale failure conditions with LastErrorTime older than this are ignored by the rollout controller.
+                     */
+                    lastRetryTimestamp?: string;
+                    /**
+                     * Format: date-time
                      * @description Timestamp is the time when the deployment occurred.
                      */
                     timestamp: string;
