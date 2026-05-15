@@ -14,6 +14,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
 	import RolloutSwitcher from '$lib/RolloutSwitcher.svelte';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 	let switcherOpen = $state(false);
@@ -57,6 +58,12 @@
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
+	const rolloutTheme = $derived(
+		rollout ? getRolloutEnvironmentTheme(rollout, rolloutQuery.data?.environment) : null
+	);
+	const rolloutThemeStyle = $derived(
+		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
+	);
 
 	// Global ⌘K / Ctrl+K shortcut
 	function handleGlobalKeydown(e: KeyboardEvent) {
@@ -71,8 +78,12 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <nav
-	class="sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	class="environment-theme-scope sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	style={rolloutThemeStyle}
 >
+	{#if rolloutTheme}
+		<div class="h-1 w-full environment-theme-accent" aria-hidden="true"></div>
+	{/if}
 	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
 		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
 			<a href="/" class="flex shrink-0 items-center space-x-2 sm:space-x-3 rtl:space-x-reverse">
@@ -109,6 +120,15 @@
 							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">
 								{rollout.metadata?.name}
 							</span>
+							{#if rolloutTheme}
+								<Badge
+									color="gray"
+									size="small"
+									class="environment-theme-badge hidden shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider sm:inline-flex"
+								>
+									{rolloutTheme.label}
+								</Badge>
+							{/if}
 						</span>
 						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400 md:inline-block">
 							{isMac ? '⌘K' : 'Ctrl K'}

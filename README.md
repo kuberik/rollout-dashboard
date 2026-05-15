@@ -5,6 +5,7 @@ A web application with a Go Gin backend and Svelte frontend for managing Kuberne
 ## Features
 
 ### Gate Management
+
 The dashboard provides comprehensive gate management for Kubernetes rollouts:
 
 - **Gate Status Display**: Shows the status of all gates for each rollout
@@ -12,12 +13,14 @@ The dashboard provides comprehensive gate management for Kubernetes rollouts:
 - **Gate History**: Track which versions have passed through gates
 
 ### Kustomization Association
+
 Kustomizations can be associated with rollouts using the annotation format:
 `rollout.kuberik.com/substitute.<variable>.from: <rollout>`
 
 This allows the dashboard to find related kustomizations that reference a specific rollout for variable substitution.
 
 **Example:**
+
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -29,7 +32,33 @@ metadata:
 
 In this example, the kustomization `hello-world` is associated with the rollout `hello-world-app` and will receive the `HELLO_WORLD_VERSION` variable from that rollout.
 
+### Environment Color Themes
+
+The dashboard can infer a rollout's color theme from its related Environment resource. If `spec.environment` contains `prod` or `production`, the dashboard uses the production theme; names containing `dev`, `development`, `staging`, `stage`, `test`, or `testing` use their matching presets.
+
+Rollouts can also opt into or override dashboard color themes with annotations on the Rollout resource. When present, annotation values take precedence over Environment inference. This helps distinguish environments when switching between development, staging, and production dashboards, including in places where Environment data is not loaded.
+
+```yaml
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-world-app
+  annotations:
+    # Presets: dev/development, staging, prod/production, test/testing
+    dashboard.rollout.kuberik.com/theme: "prod"
+```
+
+Production uses an amber preset instead of red so it does not look like an error state. For fully custom themes, set a validated hex color and optional label:
+
+```yaml
+metadata:
+  annotations:
+    dashboard.rollout.kuberik.com/theme-color: "#0ea5e9"
+    dashboard.rollout.kuberik.com/theme-label: "Sandbox"
+```
+
 ### Bypass Gates Feature
+
 You can allow the rollout controller to bypass gate checks for a specific version by adding the `rollout.kuberik.com/bypass-gates` annotation with the version as the value:
 
 ```bash
@@ -60,11 +89,13 @@ kubectl annotate rollout <rollout-name> rollout.kuberik.com/bypass-gates-
 ### Backend (Go)
 
 1. Install Go dependencies:
+
 ```bash
 go mod tidy
 ```
 
 2. Run the backend server:
+
 ```bash
 go run main.go
 ```
@@ -74,16 +105,19 @@ The backend server will run on http://localhost:8080
 ### Frontend (Svelte)
 
 1. Navigate to the frontend directory:
+
 ```bash
 cd frontend
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Run the development server:
+
 ```bash
 npm run dev
 ```
@@ -93,6 +127,7 @@ The frontend development server will run on http://localhost:5173
 ## Building for Production
 
 1. Build the frontend:
+
 ```bash
 cd frontend
 npm run build

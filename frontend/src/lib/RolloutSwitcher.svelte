@@ -5,7 +5,9 @@
 	import { tick } from 'svelte';
 	import type { Rollout } from '../types';
 	import { getRolloutStatus } from '$lib/utils';
+	import { Badge } from 'flowbite-svelte';
 	import { SearchOutline } from 'flowbite-svelte-icons';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	let {
 		open = $bindable(false),
@@ -165,15 +167,24 @@
 							{@const isCurrent = r.metadata?.name === currentName && r.metadata?.namespace === currentNamespace}
 							{@const status = getRolloutStatus(r)}
 							{@const isActive = idx === selectedIndex}
+							{@const rolloutTheme = getRolloutEnvironmentTheme(r)}
 							<button
 								type="button"
 								data-idx={idx}
-								class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors {isActive
+								aria-current={isCurrent ? 'page' : undefined}
+								title={isCurrent ? 'Currently open rollout' : undefined}
+								class="relative flex w-full items-center gap-3 overflow-hidden rounded-lg px-3 py-2 text-left transition-colors {isActive
 									? 'bg-blue-50 dark:bg-blue-900/40'
 									: 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
 								onclick={() => selectRollout(r)}
 								onmouseenter={() => (selectedIndex = idx)}
 							>
+								{#if isCurrent}
+									<span
+										class="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-r-full bg-blue-500 dark:bg-blue-400"
+										aria-hidden="true"
+									></span>
+								{/if}
 								<span class="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
 									{#if status.color === 'yellow'}
 										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-60"></span>
@@ -181,7 +192,11 @@
 									<span class="h-2 w-2 rounded-full {status.color === 'green' ? 'bg-green-500' : status.color === 'red' ? 'bg-red-500' : 'bg-yellow-500'}"></span>
 								</span>
 								<div class="flex min-w-0 flex-1 flex-col">
-									<span class="truncate text-sm font-medium {isActive ? 'text-blue-700 dark:text-blue-200' : 'text-gray-900 dark:text-white'}">
+									<span
+										class="truncate text-sm font-medium {isActive
+											? 'text-blue-700 dark:text-blue-200'
+											: 'text-gray-900 dark:text-white'}"
+									>
 										{r.metadata?.name}
 									</span>
 									{#if r.status?.title}
@@ -190,8 +205,15 @@
 										</span>
 									{/if}
 								</div>
-								{#if isCurrent}
-									<span class="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">Current</span>
+								{#if rolloutTheme}
+									<Badge
+										color="gray"
+										size="small"
+										style={getEnvironmentThemeStyle(rolloutTheme)}
+										class="environment-theme-scope environment-theme-badge shrink-0 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+									>
+										{rolloutTheme.label}
+									</Badge>
 								{/if}
 							</button>
 						{/each}

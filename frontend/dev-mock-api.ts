@@ -30,7 +30,8 @@ const mockRolloutResponse = {
 			namespace: NAMESPACE,
 			annotations: {
 				'dashboard.rollout.kuberik.com/description':
-					'Example application for testing rollout features.'
+					'Example application for testing rollout features.',
+				'dashboard.rollout.kuberik.com/theme': 'dev'
 			},
 			labels: {
 				environment: 'dev'

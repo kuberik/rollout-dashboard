@@ -24,6 +24,10 @@ replacements:
           delimiter: " "
           index: 4
       - select:
+          kind: Rollout
+        fieldPaths:
+          - metadata.annotations.[dashboard.rollout.kuberik.com/theme]
+      - select:
           kind: ImageRepository
           name: hello-world-manifests
         fieldPaths:

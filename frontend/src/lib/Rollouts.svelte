@@ -2,13 +2,14 @@
 
 <script lang="ts">
 	import type { Rollout } from '../types';
-	import { Alert, Sidebar, SidebarGroup } from 'flowbite-svelte';
+	import { Alert, Badge, Sidebar, SidebarGroup } from 'flowbite-svelte';
 	import { SearchOutline, ArrowUpOutline, HeartSolid } from 'flowbite-svelte-icons';
 	import { getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	const rolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 30000 } })
@@ -283,6 +284,7 @@
 									{@const failedHCCount = latest?.failedHealthChecks?.length || 0}
 									{@const activeLabel   = ACTIVE_LABEL[status] ?? null}
 									{@const statusText    = STATUS_TEXT[status] ?? STATUS_TEXT['None']}
+									{@const rolloutTheme  = getRolloutEnvironmentTheme(r)}
 									{@const bakeProgressPct = (() => {
 										if (status !== 'InProgress' || !latest?.bakeStartTime || !r.spec?.bakeTime) return null;
 										const elapsed = $now.getTime() - new Date(latest.bakeStartTime).getTime();
@@ -292,7 +294,8 @@
 
 									<a
 										href="/rollouts/{ns}/{name}"
-										class="group flex flex-col overflow-hidden rounded-lg border transition-colors
+										style={rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined}
+										class="environment-theme-scope group flex flex-col overflow-hidden rounded-lg border transition-colors
 											{status === 'Failed'
 												? 'border-red-200 bg-red-50 hover:border-red-300 dark:border-red-900/50 dark:bg-red-950/20 dark:hover:border-red-800'
 												: 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'}"
@@ -300,6 +303,15 @@
 										<div class="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
 											<BakeStatusIcon bakeStatus={status} size="small" class="shrink-0" />
 											<span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">{name}</span>
+											{#if rolloutTheme}
+												<Badge
+													color="gray"
+													size="small"
+													class="environment-theme-badge shrink-0 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+												>
+													{rolloutTheme.label}
+												</Badge>
+											{/if}
 											{#if latest?.timestamp}
 												<span class="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500">{compactTime(latest.timestamp, $now)}</span>
 											{/if}

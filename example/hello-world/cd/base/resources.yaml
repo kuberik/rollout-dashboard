@@ -10,6 +10,7 @@ metadata:
   name: hello-world-manifests
   annotations:
     dashboard.rollout.kuberik.com/description: "Hello World manifests / __ENVIRONMENT__"
+    dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
 spec:
   releasesImagePolicy:
     name: hello-world-manifests
@@ -74,9 +75,10 @@ kind: Rollout
 metadata:
   name: hello-world-app
   labels:
-    schedule: business-hours  # This rollout is controlled by business-hours schedule
+    schedule: business-hours # This rollout is controlled by business-hours schedule
   annotations:
     dashboard.rollout.kuberik.com/description: "Hello World app / __ENVIRONMENT__"
+    dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
 spec:
   releasesImagePolicy:
     name: hello-world-app

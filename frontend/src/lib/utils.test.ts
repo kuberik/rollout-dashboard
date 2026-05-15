@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl } from './utils';
+import {
+    ENVIRONMENT_THEME_ANNOTATION,
+    ENVIRONMENT_THEME_COLOR_ANNOTATION,
+    ENVIRONMENT_THEME_LABEL_ANNOTATION,
+    getEnvironmentThemeStyle,
+    getRolloutEnvironmentTheme
+} from './environment-theme';
 
 describe('Field Manager Validation', () => {
     describe('isFieldManaged', () => {
@@ -235,6 +242,128 @@ describe('parseLinkAnnotations', () => {
                 url: 'https://app.datadoghq.com/ci/test/runs?query=test_level%3Atest%20-%40ci.provider.name%3Agithub%20%40test.service%3Amyservice%20%40version%3Av1.0.0'
             }
         ]);
+    });
+});
+
+describe('environment themes', () => {
+    it('returns null when a rollout has no theme annotations', () => {
+        expect(getRolloutEnvironmentTheme({ metadata: { annotations: {} } } as any)).toBeNull();
+        expect(getRolloutEnvironmentTheme(null)).toBeNull();
+    });
+
+    it('maps production to a non-red preset theme', () => {
+        const theme = getRolloutEnvironmentTheme({
+            metadata: {
+                annotations: {
+                    [ENVIRONMENT_THEME_ANNOTATION]: 'prod'
+                }
+            }
+        } as any);
+
+        expect(theme?.label).toBe('Production');
+        expect(theme?.color).toBe('#d97706');
+        expect(theme?.color).not.toMatch(/^#(?:dc2626|ef4444|f87171)$/);
+    });
+
+    it('infers production from an Environment name containing prod', () => {
+        const theme = getRolloutEnvironmentTheme({ metadata: { annotations: {} } } as any, 'eu-prod-1');
+
+        expect(theme?.label).toBe('eu-prod-1');
+        expect(theme?.color).toBe('#d97706');
+    });
+
+    it('infers development from Environment spec.environment', () => {
+        const theme = getRolloutEnvironmentTheme(
+            { metadata: { annotations: {} } } as any,
+            { spec: { environment: 'development-west' } } as any
+        );
+
+        expect(theme?.label).toBe('development-west');
+        expect(theme?.color).toBe('#16a34a');
+    });
+
+    it('lets a theme annotation override the inferred environment theme', () => {
+        const theme = getRolloutEnvironmentTheme(
+            {
+                metadata: {
+                    annotations: {
+                        [ENVIRONMENT_THEME_ANNOTATION]: 'dev'
+                    }
+                }
+            } as any,
+            'eu-prod-1'
+        );
+
+        expect(theme?.label).toBe('Development');
+        expect(theme?.color).toBe('#16a34a');
+    });
+
+    it('lets a custom color annotation override the inferred environment color', () => {
+        const theme = getRolloutEnvironmentTheme(
+            {
+                metadata: {
+                    annotations: {
+                        [ENVIRONMENT_THEME_COLOR_ANNOTATION]: '#0EA5E9'
+                    }
+                }
+            } as any,
+            'eu-prod-1'
+        );
+
+        expect(theme?.label).toBe('eu-prod-1');
+        expect(theme?.color).toBe('#0ea5e9');
+    });
+
+    it('maps development to the green preset theme', () => {
+        const theme = getRolloutEnvironmentTheme({
+            metadata: {
+                annotations: {
+                    [ENVIRONMENT_THEME_ANNOTATION]: 'development'
+                }
+            }
+        } as any);
+
+        expect(theme?.label).toBe('Development');
+        expect(theme?.color).toBe('#16a34a');
+    });
+
+    it('uses a custom hex color annotation with an optional label', () => {
+        const theme = getRolloutEnvironmentTheme({
+            metadata: {
+                annotations: {
+                    [ENVIRONMENT_THEME_COLOR_ANNOTATION]: '#0EA5E9',
+                    [ENVIRONMENT_THEME_LABEL_ANNOTATION]: 'Sandbox'
+                }
+            }
+        } as any);
+
+        expect(theme?.label).toBe('Sandbox');
+        expect(theme?.color).toBe('#0ea5e9');
+    });
+
+    it('rejects invalid custom color values', () => {
+        const theme = getRolloutEnvironmentTheme({
+            metadata: {
+                annotations: {
+                    [ENVIRONMENT_THEME_COLOR_ANNOTATION]: 'url(https://example.com/image.png)'
+                }
+            }
+        } as any);
+
+        expect(theme).toBeNull();
+    });
+
+    it('returns CSS variables for a parsed theme', () => {
+        const theme = getRolloutEnvironmentTheme({
+            metadata: {
+                annotations: {
+                    [ENVIRONMENT_THEME_ANNOTATION]: 'staging'
+                }
+            }
+        } as any);
+
+        expect(theme).not.toBeNull();
+        expect(getEnvironmentThemeStyle(theme!)).toContain('--rollout-theme-accent: #7c3aed');
     });
 });
 

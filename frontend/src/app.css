@@ -55,6 +55,53 @@ input, select, textarea {
   font-size: max(16px, 1em);
 }
 
+.environment-theme-scope {
+  --rollout-theme-accent: #2563eb;
+  --rollout-theme-text: #1d4ed8;
+  --rollout-theme-border: #bfdbfe;
+  --rollout-theme-surface: #eff6ff;
+  --rollout-theme-dark-surface: #172554;
+  --rollout-theme-dark-text: #93c5fd;
+}
+
+.environment-theme-accent {
+  background-color: var(--rollout-theme-accent);
+}
+
+.environment-theme-text {
+  color: var(--rollout-theme-text);
+}
+
+.environment-theme-border {
+  border-color: var(--rollout-theme-border);
+}
+
+.environment-theme-surface {
+  background-color: var(--rollout-theme-surface);
+  color: var(--rollout-theme-text);
+}
+
+.environment-theme-badge {
+  border: 1px solid var(--rollout-theme-border);
+  background-color: color-mix(in srgb, var(--rollout-theme-surface) 72%, transparent);
+  color: var(--rollout-theme-text);
+}
+
+.dark .environment-theme-text {
+  color: var(--rollout-theme-dark-text);
+}
+
+.dark .environment-theme-surface {
+  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 45%, transparent);
+  color: var(--rollout-theme-dark-text);
+}
+
+.dark .environment-theme-badge {
+  border-color: color-mix(in srgb, var(--rollout-theme-accent) 38%, rgb(55 65 81));
+  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, transparent);
+  color: var(--rollout-theme-dark-text);
+}
+
 .dark {
   * {
     scrollbar-color: #4b5563 #1f2937;

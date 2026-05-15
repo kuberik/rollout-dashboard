@@ -108,6 +108,7 @@
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
 	import EventsCard from '$lib/components/EventsCard.svelte';
 	import { fly, blur } from 'svelte/transition';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
@@ -144,6 +145,11 @@
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	const environment = $derived(rolloutQuery.data?.environment);
+	const rolloutTheme = $derived(rollout ? getRolloutEnvironmentTheme(rollout, environment) : null);
+	const rolloutThemeStyle = $derived(
+		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
+	);
 	const loading = $derived(rolloutQuery.isLoading);
 	let error: string | null = $state(null);
 
@@ -1256,13 +1262,7 @@
 		<div class="px-4 pt-4 pb-10 sm:px-5">
 			{#if rollout.status?.history?.[0]}
 				{@const latestEntry = rollout.status.history[0]}
-				{@const environment = rolloutQuery.data?.environment}
 				{@const currentEnv = environment?.spec?.environment}
-				{@const currentEnvInfo = currentEnv
-					? environment?.status?.environmentInfos?.find(
-							(e: EnvironmentInfo) => e.environment === currentEnv
-						)
-					: undefined}
 				{@const pipelineKruiseRollouts = Object.values(managedResources)
 					.flat()
 					.filter((resource) => resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout')}
@@ -1328,12 +1328,24 @@
 						<h1 class="text-2xl font-bold text-gray-900 dark:text-white">
 							{rollout.status?.title || rollout.metadata?.name}
 						</h1>
-						{#if currentEnvInfo}
-							<JoinedBadge
-								label="Environment"
-								value={currentEnvInfo.environment || 'N/A'}
-								valueColor="blue"
-							/>
+						{#if currentEnv}
+							{#if rolloutTheme}
+								<JoinedBadge
+									label="Environment"
+									value={currentEnv}
+									valueColor="gray"
+									containerClass="environment-theme-scope"
+									containerStyle={rolloutThemeStyle}
+									labelPlainBorder
+									valueClass="environment-theme-badge"
+								/>
+							{:else}
+								<JoinedBadge
+									label="Environment"
+									value={currentEnv}
+									valueColor="blue"
+								/>
+							{/if}
 						{/if}
 					</div>
 					{#if rollout.status?.description}

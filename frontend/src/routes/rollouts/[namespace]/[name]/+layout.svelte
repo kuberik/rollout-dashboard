@@ -12,7 +12,6 @@
 		AngleRightOutline
 	} from 'flowbite-svelte-icons';
 	import { onMount, type Snippet } from 'svelte';
-	import type { Rollout } from '../../../../types';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { SvelteFlowProvider } from '@xyflow/svelte';
@@ -48,7 +47,6 @@
 		})
 	);
 
-	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const environment = $derived(rolloutQuery.data?.environment);
 
 	const hasEnvironment = $derived(
