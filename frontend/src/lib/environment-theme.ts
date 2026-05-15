@@ -1,4 +1,4 @@
-import type { Rollout } from '../types';
+import type { Environment, Rollout } from '../types';
 
 export const ENVIRONMENT_THEME_ANNOTATION = 'dashboard.rollout.kuberik.com/theme';
 export const ENVIRONMENT_THEME_COLOR_ANNOTATION = 'dashboard.rollout.kuberik.com/theme-color';
@@ -28,6 +28,13 @@ const PRESET_THEMES: Record<string, ThemePreset> = {
 	test: { label: 'Test', color: '#0891b2' },
 	testing: { label: 'Test', color: '#0891b2' }
 };
+
+const ENVIRONMENT_MATCHERS: { pattern: RegExp; preset: string }[] = [
+	{ pattern: /prod|production/i, preset: 'prod' },
+	{ pattern: /dev|development/i, preset: 'dev' },
+	{ pattern: /staging|stage/i, preset: 'staging' },
+	{ pattern: /test|testing/i, preset: 'test' }
+];
 
 const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -74,6 +81,11 @@ function labelFromThemeName(name: string): string {
 		.join(' ');
 }
 
+function presetNameFromEnvironmentName(environmentName: string): string | null {
+	const match = ENVIRONMENT_MATCHERS.find(({ pattern }) => pattern.test(environmentName));
+	return match?.preset ?? null;
+}
+
 function buildEnvironmentTheme(name: string, label: string, color: string): EnvironmentTheme {
 	const normalizedColor = normalizeHexColor(color) ?? '#2563eb';
 	return {
@@ -88,15 +100,21 @@ function buildEnvironmentTheme(name: string, label: string, color: string): Envi
 	};
 }
 
-export function getRolloutEnvironmentTheme(rollout?: Rollout | null): EnvironmentTheme | null {
+export function getRolloutEnvironmentTheme(
+	rollout?: Rollout | null,
+	environment?: Environment | string | null
+): EnvironmentTheme | null {
 	const annotations = rollout?.metadata?.annotations;
-	if (!annotations) return null;
+	const environmentName = typeof environment === 'string' ? environment : environment?.spec?.environment;
 
-	const themeValue = annotations[ENVIRONMENT_THEME_ANNOTATION]?.trim();
-	const colorValue = annotations[ENVIRONMENT_THEME_COLOR_ANNOTATION]?.trim();
-	if (!themeValue && !colorValue) return null;
+	const themeValue = annotations?.[ENVIRONMENT_THEME_ANNOTATION]?.trim();
+	const colorValue = annotations?.[ENVIRONMENT_THEME_COLOR_ANNOTATION]?.trim();
+	if (!themeValue && !colorValue && !environmentName) return null;
 
-	const themeName = themeValue ? normalizeThemeName(themeValue) : 'custom';
+	const inferredPresetName = environmentName ? presetNameFromEnvironmentName(environmentName) : null;
+	const themeName = themeValue
+		? normalizeThemeName(themeValue)
+		: (inferredPresetName ?? (colorValue ? 'custom' : ''));
 	const preset = themeName ? PRESET_THEMES[themeName] : undefined;
 	const customColor = colorValue ? normalizeHexColor(colorValue) : null;
 	const inlineThemeColor = themeValue ? normalizeHexColor(themeValue) : null;
@@ -104,7 +122,8 @@ export function getRolloutEnvironmentTheme(rollout?: Rollout | null): Environmen
 	if (!color) return null;
 
 	const label =
-		annotations[ENVIRONMENT_THEME_LABEL_ANNOTATION]?.trim() ||
+		annotations?.[ENVIRONMENT_THEME_LABEL_ANNOTATION]?.trim() ||
+		environmentName ||
 		preset?.label ||
 		(themeName === 'custom' ? 'Custom' : labelFromThemeName(themeName));
 

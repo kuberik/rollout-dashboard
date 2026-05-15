@@ -170,11 +170,8 @@
 							<button
 								type="button"
 								data-idx={idx}
-								style={rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined}
 								class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors {isActive
-									? rolloutTheme
-										? 'environment-theme-scope environment-theme-surface'
-										: 'bg-blue-50 dark:bg-blue-900/40'
+									? 'bg-blue-50 dark:bg-blue-900/40'
 									: 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
 								onclick={() => selectRollout(r)}
 								onmouseenter={() => (selectedIndex = idx)}
@@ -188,24 +185,25 @@
 								<div class="flex min-w-0 flex-1 flex-col">
 									<span
 										class="truncate text-sm font-medium {isActive
-											? rolloutTheme
-												? 'environment-theme-text'
-												: 'text-blue-700 dark:text-blue-200'
+											? 'text-blue-700 dark:text-blue-200'
 											: 'text-gray-900 dark:text-white'}"
 									>
 										{r.metadata?.name}
 									</span>
-									{#if rolloutTheme || r.status?.title}
-										<span class="flex min-w-0 items-center gap-1.5">
-											{#if rolloutTheme}
-												<span class="h-1.5 w-1.5 shrink-0 rounded-full environment-theme-accent"></span>
-											{/if}
-											<span class="truncate text-xs text-gray-500 dark:text-gray-400">
-												{rolloutTheme?.label || r.status?.title}
-											</span>
+									{#if r.status?.title}
+										<span class="truncate text-xs text-gray-500 dark:text-gray-400">
+											{r.status.title}
 										</span>
 									{/if}
 								</div>
+								{#if rolloutTheme}
+									<span
+										style={getEnvironmentThemeStyle(rolloutTheme)}
+										class="environment-theme-scope environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+									>
+										{rolloutTheme.label}
+									</span>
+								{/if}
 								{#if isCurrent}
 									<span class="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">Current</span>
 								{/if}

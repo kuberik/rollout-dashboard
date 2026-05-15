@@ -265,6 +265,23 @@ describe('environment themes', () => {
         expect(theme?.color).not.toMatch(/^#(?:dc2626|ef4444|f87171)$/);
     });
 
+    it('infers production from an Environment name containing prod', () => {
+        const theme = getRolloutEnvironmentTheme({ metadata: { annotations: {} } } as any, 'eu-prod-1');
+
+        expect(theme?.label).toBe('eu-prod-1');
+        expect(theme?.color).toBe('#d97706');
+    });
+
+    it('infers development from Environment spec.environment', () => {
+        const theme = getRolloutEnvironmentTheme(
+            { metadata: { annotations: {} } } as any,
+            { spec: { environment: 'development-west' } } as any
+        );
+
+        expect(theme?.label).toBe('development-west');
+        expect(theme?.color).toBe('#16a34a');
+    });
+
     it('maps development to the green preset theme', () => {
         const theme = getRolloutEnvironmentTheme({
             metadata: {

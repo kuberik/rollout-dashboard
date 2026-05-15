@@ -58,7 +58,9 @@
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
-	const rolloutTheme = $derived(rollout ? getRolloutEnvironmentTheme(rollout) : null);
+	const rolloutTheme = $derived(
+		rollout ? getRolloutEnvironmentTheme(rollout, rolloutQuery.data?.environment) : null
+	);
 	const rolloutThemeStyle = $derived(
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
@@ -80,7 +82,7 @@
 	style={rolloutThemeStyle}
 >
 	{#if rolloutTheme}
-		<div class="h-1 w-full environment-theme-accent" aria-hidden="true"></div>
+		<div class="h-0.5 w-full environment-theme-accent" aria-hidden="true"></div>
 	{/if}
 	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
 		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
@@ -120,7 +122,7 @@
 							</span>
 							{#if rolloutTheme}
 								<span
-									class="environment-theme-surface hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider sm:inline-flex"
+									class="environment-theme-badge hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider sm:inline-flex"
 								>
 									{rolloutTheme.label}
 								</span>

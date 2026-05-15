@@ -81,13 +81,10 @@ input, select, textarea {
   color: var(--rollout-theme-text);
 }
 
-.environment-theme-card {
-  border-color: var(--rollout-theme-border);
-  background-color: color-mix(in srgb, var(--rollout-theme-surface) 65%, white);
-}
-
-.environment-theme-card:hover {
-  border-color: color-mix(in srgb, var(--rollout-theme-accent) 55%, white);
+.environment-theme-badge {
+  border: 1px solid var(--rollout-theme-border);
+  background-color: color-mix(in srgb, var(--rollout-theme-surface) 72%, transparent);
+  color: var(--rollout-theme-text);
 }
 
 .dark .environment-theme-text {
@@ -99,13 +96,10 @@ input, select, textarea {
   color: var(--rollout-theme-dark-text);
 }
 
-.dark .environment-theme-card {
-  border-color: color-mix(in srgb, var(--rollout-theme-accent) 40%, rgb(55 65 81));
-  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, rgb(31 41 55));
-}
-
-.dark .environment-theme-card:hover {
-  border-color: color-mix(in srgb, var(--rollout-theme-accent) 55%, rgb(55 65 81));
+.dark .environment-theme-badge {
+  border-color: color-mix(in srgb, var(--rollout-theme-accent) 38%, rgb(55 65 81));
+  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, transparent);
+  color: var(--rollout-theme-dark-text);
 }
 
 .dark {

@@ -12,11 +12,9 @@
 		AngleRightOutline
 	} from 'flowbite-svelte-icons';
 	import { onMount, type Snippet } from 'svelte';
-	import type { Rollout } from '../../../../types';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { SvelteFlowProvider } from '@xyflow/svelte';
-	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -49,12 +47,7 @@
 		})
 	);
 
-	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const environment = $derived(rolloutQuery.data?.environment);
-	const rolloutTheme = $derived(rollout ? getRolloutEnvironmentTheme(rollout) : null);
-	const rolloutThemeStyle = $derived(
-		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
-	);
 
 	const hasEnvironment = $derived(
 		environment?.status?.environmentInfos && environment.status.environmentInfos.length > 0
@@ -92,20 +85,14 @@
 		return activeUrl.startsWith(href);
 	};
 
-	const activeClass = $derived(
-		rolloutTheme
-			? 'flex items-center rounded-lg px-2 py-2 text-sm font-medium environment-theme-surface'
-			: 'flex items-center rounded-lg px-2 py-2 text-sm font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-	);
-	const mobileActiveClass = $derived(
-		rolloutTheme ? 'environment-theme-text' : 'text-primary-600 dark:text-primary-400'
-	);
+	const activeClass =
+		'flex items-center rounded-lg px-2 py-2 text-sm font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400';
 	const nonActiveClass =
 		'flex items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white';
 </script>
 
 <SvelteFlowProvider>
-	<div class="environment-theme-scope flex h-full flex-col overflow-hidden md:flex-row" style={rolloutThemeStyle}>
+	<div class="flex h-full flex-col overflow-hidden md:flex-row">
 		<!-- Desktop Sidebar (hidden on mobile) -->
 		{#if sidebarMounted}
 		<aside
@@ -178,7 +165,7 @@
 					<a
 						href={item.href}
 						class="flex flex-1 flex-col items-center justify-center gap-1 py-2 {isActive(item.href)
-							? mobileActiveClass
+							? 'text-primary-600 dark:text-primary-400'
 							: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}"
 					>
 						<item.icon class="h-5 w-5" />
