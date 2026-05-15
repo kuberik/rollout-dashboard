@@ -16,3 +16,7 @@
 | #1043 | 7:09 PM | ✅ | Mobile Filter Bar Layout Improvement | ~405 |
 | #1034 | 1:08 PM | 🔄 | Rollout-Dashboard List View Redesign | ~595 |
 </claude-mem-context>
+
+## Rollout list visual treatment
+
+- Avoid environment theming that thickens or recolors rollout list card borders; status coloring owns that visual channel.

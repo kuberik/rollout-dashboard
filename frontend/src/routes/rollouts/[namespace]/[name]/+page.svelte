@@ -1330,21 +1330,14 @@
 						</h1>
 						{#if currentEnv}
 							{#if rolloutTheme}
-								<div
-									class="environment-theme-scope inline-flex items-center"
-									style={rolloutThemeStyle}
-								>
-									<span
-										class="inline-flex items-center rounded-l-lg border border-r-0 border-gray-200 bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
-									>
-										Environment
-									</span>
-									<span
-										class="environment-theme-badge inline-flex items-center rounded-r-lg px-2.5 py-0.5 text-xs font-medium"
-									>
-										{currentEnv}
-									</span>
-								</div>
+								<JoinedBadge
+									label="Environment"
+									value={currentEnv}
+									valueColor="gray"
+									containerClass="environment-theme-scope"
+									containerStyle={rolloutThemeStyle}
+									valueClass="environment-theme-badge"
+								/>
 							{:else}
 								<JoinedBadge
 									label="Environment"

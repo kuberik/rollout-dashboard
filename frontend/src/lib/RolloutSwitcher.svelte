@@ -5,6 +5,7 @@
 	import { tick } from 'svelte';
 	import type { Rollout } from '../types';
 	import { getRolloutStatus } from '$lib/utils';
+	import { Badge } from 'flowbite-svelte';
 	import { SearchOutline } from 'flowbite-svelte-icons';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
@@ -170,7 +171,11 @@
 							<button
 								type="button"
 								data-idx={idx}
-								class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors {isActive
+								aria-current={isCurrent ? 'page' : undefined}
+								title={isCurrent ? 'Currently open rollout' : undefined}
+								class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors {isCurrent
+									? 'ring-1 ring-inset ring-blue-200 dark:ring-blue-800/70'
+									: ''} {isActive
 									? 'bg-blue-50 dark:bg-blue-900/40'
 									: 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
 								onclick={() => selectRollout(r)}
@@ -197,15 +202,14 @@
 									{/if}
 								</div>
 								{#if rolloutTheme}
-									<span
+									<Badge
+										color="gray"
+										size="small"
 										style={getEnvironmentThemeStyle(rolloutTheme)}
-										class="environment-theme-scope environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+										class="environment-theme-scope environment-theme-badge shrink-0 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
 									>
 										{rolloutTheme.label}
-									</span>
-								{/if}
-								{#if isCurrent}
-									<span class="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">Current</span>
+									</Badge>
 								{/if}
 							</button>
 						{/each}

@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	import type { Rollout } from '../types';
-	import { Alert, Sidebar, SidebarGroup } from 'flowbite-svelte';
+	import { Alert, Badge, Sidebar, SidebarGroup } from 'flowbite-svelte';
 	import { SearchOutline, ArrowUpOutline, HeartSolid } from 'flowbite-svelte-icons';
 	import { getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
@@ -295,21 +295,22 @@
 									<a
 										href="/rollouts/{ns}/{name}"
 										style={rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined}
-										class="environment-theme-scope group relative flex flex-col overflow-hidden rounded-lg border transition-colors
+										class="environment-theme-scope group flex flex-col overflow-hidden rounded-lg border transition-colors
 											{status === 'Failed'
 												? 'border-red-200 bg-red-50 hover:border-red-300 dark:border-red-900/50 dark:bg-red-950/20 dark:hover:border-red-800'
 												: 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'}"
 									>
-										{#if rolloutTheme}
-											<div class="absolute inset-y-0 left-0 w-1 environment-theme-accent opacity-70" aria-hidden="true"></div>
-										{/if}
 										<div class="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
 											<BakeStatusIcon bakeStatus={status} size="small" class="shrink-0" />
 											<span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">{name}</span>
 											{#if rolloutTheme}
-												<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+												<Badge
+													color="gray"
+													size="small"
+													class="environment-theme-badge shrink-0 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+												>
 													{rolloutTheme.label}
-												</span>
+												</Badge>
 											{/if}
 											{#if latest?.timestamp}
 												<span class="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500">{compactTime(latest.timestamp, $now)}</span>
