@@ -173,14 +173,18 @@
 								data-idx={idx}
 								aria-current={isCurrent ? 'page' : undefined}
 								title={isCurrent ? 'Currently open rollout' : undefined}
-								class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors {isCurrent
-									? 'ring-1 ring-inset ring-blue-200 dark:ring-blue-800/70'
-									: ''} {isActive
+								class="relative flex w-full items-center gap-3 overflow-hidden rounded-lg px-3 py-2 text-left transition-colors {isActive
 									? 'bg-blue-50 dark:bg-blue-900/40'
 									: 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
 								onclick={() => selectRollout(r)}
 								onmouseenter={() => (selectedIndex = idx)}
 							>
+								{#if isCurrent}
+									<span
+										class="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-r-full bg-blue-500 dark:bg-blue-400"
+										aria-hidden="true"
+									></span>
+								{/if}
 								<span class="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
 									{#if status.color === 'yellow'}
 										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-60"></span>
