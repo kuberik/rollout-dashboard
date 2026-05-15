@@ -956,6 +956,13 @@
 					<div class="border-t border-gray-200 dark:border-gray-700"></div>
 					{@render subRow('Bake', bakeSub.status, bakeSub.label, 'bake', sd)}
 				{/if}
+				{#if sd.isLastStep && sd.hasTests}
+					<div class="border-t border-gray-200 dark:border-gray-700"></div>
+					<div class="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+						<ExclamationCircleSolid class="h-3.5 w-3.5 shrink-0" />
+						Tests on last step won't run — rollout completes without pausing.
+					</div>
+				{/if}
 			</div>
 
 			{#if sd.isCurrentStep && !sd.isPastStep && sd.isStepPaused && canUpdate}

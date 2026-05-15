@@ -138,7 +138,9 @@ spec:
   # but requires careful structure matching Envoy's xDS API.
 EOF
 
-# Create Gateway
+# Create shared Gateway (accepts *.${HOST_IP}.nip.io, open to all namespaces)
+# kuberik dashboard → kuberik.${HOST_IP}.nip.io
+# demo app         → demo.${HOST_IP}.nip.io
 cat <<EOF | kubectl apply -f -
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -160,24 +162,24 @@ spec:
     - name: https
       protocol: HTTPS
       port: 443
-      hostname: ${HOST_IP}.nip.io
+      hostname: "*.${HOST_IP}.nip.io"
       tls:
         mode: Terminate
         certificateRefs:
           - name: rollout-dashboard-tls
       allowedRoutes:
         namespaces:
-          from: Same
+          from: All
     - name: http
       protocol: HTTP
       port: 80
-      hostname: ${HOST_IP}.nip.io
+      hostname: "*.${HOST_IP}.nip.io"
       allowedRoutes:
         namespaces:
-          from: Same
+          from: All
 EOF
 
-# Create HTTPRoute
+# Create HTTPRoute for rollout-dashboard (accessible at kuberik.${HOST_IP}.nip.io)
 cat <<EOF | kubectl apply -f -
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -185,21 +187,20 @@ metadata:
   name: rollout-dashboard
   namespace: kuberik-system
   annotations:
-    # Disable buffering for SSE endpoints
     gateway.envoyproxy.io/response-buffering: "false"
 spec:
   parentRefs:
     - name: rollout-dashboard-gateway
       namespace: kuberik-system
   hostnames:
-    - ${HOST_IP}.nip.io
+    - kuberik.${HOST_IP}.nip.io
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
       timeouts:
-        backendRequest: 0s  # No timeout for backend requests (SSE connections)
+        backendRequest: 0s
       backendRefs:
         - name: rollout-dashboard
           port: 80

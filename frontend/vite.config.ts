@@ -28,7 +28,7 @@ export default defineConfig({
 		...(!useMockApi && {
 			proxy: {
 				'/api': {
-					target: 'https://192.168.1.102.nip.io:8080',
+					target: 'https://kuberik.192.168.1.102.nip.io:8080',
 					changeOrigin: true,
 					secure: false,
 				}

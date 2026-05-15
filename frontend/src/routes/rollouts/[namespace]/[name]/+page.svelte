@@ -237,6 +237,32 @@
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
 
+	const errorCutoff = $derived<Date | null>(
+		rollout?.status?.history?.[0]?.timestamp
+			? new Date(
+					Math.max(
+						new Date(rollout.status.history[0].timestamp).getTime(),
+						rollout.status.history[0].lastRetryTimestamp
+							? new Date(rollout.status.history[0].lastRetryTimestamp).getTime()
+							: 0
+					)
+				)
+			: null
+	);
+
+	// Health checks that are failing but whose lastErrorTime predates the current
+	// deployment/retry cutoff are not blocking the rollout — hide them entirely.
+	const visibleHealthChecks = $derived<HealthCheck[]>(
+		errorCutoff !== null
+			? healthChecks.filter((hc) => {
+					if (hc.status?.status !== 'Failed' && hc.status?.status !== 'Unhealthy') return true;
+					const lastErrorTime = hc.status?.lastErrorTime;
+					if (!lastErrorTime) return false;
+					return new Date(lastErrorTime) >= errorCutoff!;
+				})
+			: healthChecks
+	);
+
 	// Query for events
 	const eventsQuery = createQuery(() => ({
 		queryKey: ['events', namespace, name],
@@ -286,7 +312,7 @@
 		if (currentBakeStatus && currentBakeStatus !== 'Succeeded') {
 			return 'previous-failed';
 		}
-		if (healthChecks?.some((hc) => hc.status?.status === 'Unhealthy')) {
+		if (visibleHealthChecks?.some((hc) => hc.status?.status === 'Unhealthy')) {
 			return 'unhealthy-health-checks';
 		}
 		return null;
@@ -1325,7 +1351,7 @@
 					<FailurePanel
 						{rollout}
 						{failedHCList}
-						{healthChecks}
+						healthChecks={visibleHealthChecks}
 						{failedStepTests}
 						{stalledKruiseRollout}
 						{canUpdate}
@@ -1548,7 +1574,7 @@
 							{latestEntry}
 							{pipelineValidRollouts}
 							{pipelineValidTests}
-							{healthChecks}
+							healthChecks={visibleHealthChecks}
 							{canUpdate}
 							{namespace}
 							{name}
@@ -1846,7 +1872,7 @@
 								</div>
 							</div>
 						{/if}
-						<HealthChecksCard {healthChecks} />
+						<HealthChecksCard healthChecks={visibleHealthChecks} />
 						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} />
 						<EventsCard {events} />
 					</div>
