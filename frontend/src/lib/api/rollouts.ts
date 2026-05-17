@@ -21,6 +21,7 @@ export type RolloutResponse = {
 
 export type RolloutsListResponse = {
     rollouts: { items: Rollout[] };
+    environments?: { items: Environment[] };
 };
 
 type QueryOverrides<TData> = Omit<
