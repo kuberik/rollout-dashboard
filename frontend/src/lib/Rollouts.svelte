@@ -496,7 +496,7 @@
 
 		<!-- Expandable filter panel -->
 		{#if showFilters}
-			<div id="filter-panel" transition:slide={{ duration: 150 }} class="border-t border-gray-100 bg-gray-50/50 dark:border-gray-700/60 dark:bg-gray-900/30">
+			<div id="filter-panel" transition:slide={{ duration: 180 }} class="border-t border-gray-100 bg-gray-50/70 dark:border-gray-700/60 dark:bg-gray-900/40">
 				<div class="grid gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
 					<!-- Status section -->
 					<section>
@@ -605,19 +605,22 @@
 	</header>
 
 	<!-- ── Group cards grid ── -->
-	<div class="flex-1 bg-gray-50 px-4 py-5 dark:bg-gray-900/50 sm:px-6 sm:py-6">
+	<div class="flex-1 bg-gray-50/70 px-4 py-5 dark:bg-gray-900/40 sm:px-6 sm:py-6">
 		{#if loading}
-			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+			<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
 				{#each Array(6) as _}
-					<div class="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-						<div class="border-b border-gray-100 px-4 py-2.5 dark:border-gray-700/60">
-							<div class="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+					<div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+						<div class="border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
+							<div class="h-3.5 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 						</div>
-						<div class="space-y-3 p-4">
+						<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each Array(2) as _}
-								<div>
-									<div class="h-3.5 w-3/4 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-									<div class="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-gray-100 dark:bg-gray-700"></div>
+								<div class="px-4 py-3">
+									<div class="flex items-center gap-2.5">
+										<div class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+										<div class="h-3.5 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+									</div>
+									<div class="mt-2 h-2.5 w-2/3 animate-pulse rounded bg-gray-100 pl-[18px] dark:bg-gray-700/60"></div>
 								</div>
 							{/each}
 						</div>
@@ -634,42 +637,48 @@
 				<button onclick={() => { searchQuery = ''; statusFilters = []; envFilters = []; nsFilters = []; }} class="mt-3 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Clear filters</button>
 			</div>
 		{:else}
-			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+			<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
 				{#each groupedRows as group}
 					{@const drift = groupBy === 'name' && group.versions.size > 1}
 					{@const groupHighlighted =
 						(group.labelKind === 'namespace' && nsFilters.includes(group.key)) ||
 						(group.labelKind === 'environment' && envFilters.includes(group.key))}
-					<section class="overflow-hidden rounded-lg border bg-white transition-shadow hover:shadow-sm dark:bg-gray-800
+					<section class="group/card overflow-hidden rounded-xl border bg-white shadow-sm transition-all hover:shadow-md dark:bg-gray-800
 						{groupHighlighted ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700'}"
 					>
-						<!-- Group header (neutral, calm) -->
+						<!-- Group header (calm, refined) -->
 						<button
 							type="button"
 							onclick={() => toggleGroupKey(group)}
 							aria-pressed={groupHighlighted}
-							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors hover:bg-gray-50 dark:border-gray-700/60 dark:hover:bg-gray-700/30"
+							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50/80 dark:border-gray-700/60 dark:hover:bg-gray-700/30"
 						>
-							<div class="flex min-w-0 items-center gap-2">
-								<!-- Severity indicator (only when non-healthy) — small dot, not a tinted bg -->
+							<div class="flex min-w-0 items-center gap-2.5">
+								<!-- Severity indicator — only when not healthy -->
 								{#if group.severity === 3}
-									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="{group.failedCount} failed"></span>
+									<span class="relative flex h-2 w-2 shrink-0">
+										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-50"></span>
+										<span class="relative inline-flex h-2 w-2 rounded-full bg-red-500" title="{group.failedCount} failed"></span>
+									</span>
 								{:else if group.severity === 2}
-									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" title="{group.stuckCount} stuck"></span>
+									<span class="h-2 w-2 shrink-0 rounded-full bg-orange-500" title="{group.stuckCount} stuck"></span>
 								{:else if group.severity === 1}
-									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" title="{group.activeCount} active"></span>
+									<span class="relative flex h-2 w-2 shrink-0">
+										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-300 opacity-50"></span>
+										<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400" title="{group.activeCount} active"></span>
+									</span>
 								{/if}
 								{#if group.labelKind === 'environment'}
 									<Badge color="dark" border rounded class="environment-theme-badge"
 										style={(group.rows[0]?.theme) ? getEnvironmentThemeStyle(group.rows[0].theme) : undefined}
 									>{group.label}</Badge>
 								{:else}
-									<h3 class="truncate text-xs
+									<h3 class="truncate text-[13px] tracking-tight
 										{group.labelKind === 'name' ? 'font-semibold text-gray-900 dark:text-white' : 'font-mono font-semibold text-gray-700 dark:text-gray-200'}
 										{groupHighlighted ? 'text-blue-600 dark:text-blue-400' : ''}"
 									>{group.label}</h3>
 								{/if}
-								<span class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{group.rows.length}</span>
+								<span class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-gray-500 dark:bg-gray-700/60 dark:text-gray-400">{group.rows.length}</span>
 								{#if drift}
 									<Badge color="orange" rounded class="text-[10px]" title="Versions differ across deployments">drift</Badge>
 								{/if}
@@ -687,8 +696,11 @@
 									<a
 										href="/rollouts/{row.ns}/{row.name}"
 										style={row.theme ? getEnvironmentThemeStyle(row.theme) : undefined}
-										class="environment-theme-scope relative block px-4 py-3 transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/30"
+										class="environment-theme-scope group/row relative block px-4 py-3 transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/30"
 									>
+										<!-- Subtle hover indicator slides in from left -->
+										<span class="pointer-events-none absolute inset-y-2 left-0 w-0.5 origin-top scale-y-0 rounded-r-full bg-blue-400 transition-transform duration-200 group-hover/row:scale-y-100 dark:bg-blue-500"></span>
+
 										<!-- Line 1: dot + name + env -->
 										<div class="flex items-center gap-2.5">
 											<span class="relative flex h-2 w-2 shrink-0">
@@ -698,15 +710,15 @@
 												<span class="relative inline-flex h-2 w-2 rounded-full {badge.dot}"></span>
 											</span>
 											{#if groupBy === 'name'}
-												<h4 class="min-w-0 flex-1 truncate font-mono text-[12.5px] text-gray-700 dark:text-gray-300">{row.ns}</h4>
+												<h4 class="min-w-0 flex-1 truncate font-mono text-[13px] text-gray-700 transition-colors group-hover/row:text-gray-900 dark:text-gray-300 dark:group-hover/row:text-white">{row.ns}</h4>
 												{#if row.theme}
 													<Badge color="dark" border rounded class="environment-theme-badge shrink-0">{row.theme.label}</Badge>
 												{/if}
 											{:else if groupBy === 'environment'}
-												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
+												<h4 class="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-gray-900 dark:text-white">{row.name}</h4>
 												<span class="shrink-0 truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{row.ns}</span>
 											{:else}
-												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
+												<h4 class="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-gray-900 dark:text-white">{row.name}</h4>
 												{#if row.theme}
 													<Badge color="dark" border rounded class="environment-theme-badge shrink-0">{row.theme.label}</Badge>
 												{/if}
@@ -766,21 +778,23 @@
 											</div>
 										</div>
 
-										<!-- Subtle per-rollout timeline (light dots on a hairline) -->
+										<!-- Subtle per-rollout deploy timeline -->
 										{#if row.displayHistory.length > 0}
-											<div class="mt-2 pl-[18px]">
+											<div class="mt-2.5 pl-[18px]">
 												<div class="relative h-1.5">
-													<div class="absolute inset-x-0 top-[3px] h-px bg-gray-100 dark:bg-gray-700/40"></div>
+													<div class="absolute inset-x-0 top-[3px] h-px bg-gradient-to-r from-gray-200/40 via-gray-200 to-gray-300/80 dark:from-gray-700/30 dark:via-gray-700/60 dark:to-gray-600/80"></div>
 													{#each row.displayHistory as h}
 														{@const t = new Date(h.ts).getTime()}
 														{@const x = Math.min(100, Math.max(0, ((t - group.rangeMin) / group.rangeSpan) * 100))}
 														{@const b = STATUS_BADGE[h.status] ?? STATUS_BADGE['None']}
 														<span
-															class="absolute top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full {b.sparkBg}"
+															class="absolute top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full {b.sparkBg} ring-1 ring-white transition-transform hover:scale-150 dark:ring-gray-800"
 															style="left: {x}%"
 															title="{h.version} · {h.status}"
 														></span>
 													{/each}
+													<!-- 'now' dot anchor on the right -->
+													<span class="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-gray-300 ring-1 ring-white dark:bg-gray-600 dark:ring-gray-800" title="now"></span>
 												</div>
 											</div>
 										{/if}
