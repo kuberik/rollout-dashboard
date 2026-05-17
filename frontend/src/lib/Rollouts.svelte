@@ -394,7 +394,7 @@
 	];
 </script>
 
-<div class="flex min-h-full flex-col bg-gray-50/40 dark:bg-gray-900/30">
+<div class="flex min-h-full flex-col bg-white dark:bg-gray-900">
 
 	<!-- ── Toolbar: search + Filter button + active chips + group-by ── -->
 	<header class="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
@@ -459,7 +459,7 @@
 			</div>
 		</div>
 
-		<!-- Row 2: active filter chips (own row so they never push the group toggle) -->
+		<!-- Row 2: active filter chips (ghost style, own row) -->
 		{#if !showFilters && activeFilterCount > 0}
 			<div class="flex flex-wrap items-center gap-1 px-4 pb-2 sm:px-6">
 				{#each statusFilters as k}
@@ -468,16 +468,11 @@
 						type="button"
 						onclick={() => toggleStatus(k)}
 						title="Remove filter"
-						class="inline-flex h-5 cursor-pointer items-center gap-1 rounded-full border px-1.5 text-[10px] font-medium transition-colors
-							{meta.color === 'red'    ? 'border-red-300 bg-red-100 text-red-800 hover:bg-red-200/70 dark:border-red-800/60 dark:bg-red-900/40 dark:text-red-200'
-							: meta.color === 'yellow' ? 'border-yellow-300 bg-yellow-100 text-yellow-800 hover:bg-yellow-200/70 dark:border-yellow-800/60 dark:bg-yellow-900/40 dark:text-yellow-200'
-							: meta.color === 'green'  ? 'border-green-300 bg-green-100 text-green-800 hover:bg-green-200/70 dark:border-green-800/60 dark:bg-green-900/40 dark:text-green-200'
-							: meta.color === 'orange' ? 'border-orange-300 bg-orange-100 text-orange-800 hover:bg-orange-200/70 dark:border-orange-800/60 dark:bg-orange-900/40 dark:text-orange-200'
-							:                           'border-gray-300 bg-gray-100 text-gray-800 hover:bg-gray-200/70 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100'}"
+						class="inline-flex h-5 cursor-pointer items-center gap-1 rounded border border-gray-200 bg-white px-1.5 text-[10px] font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100"
 					>
 						<span class="h-1.5 w-1.5 rounded-full {meta.dot}"></span>
 						{meta.label}
-						<CloseOutline class="h-2.5 w-2.5 opacity-70" />
+						<CloseOutline class="h-2.5 w-2.5 opacity-50" />
 					</button>
 				{/each}
 				{#each envFilters as env}
@@ -485,16 +480,16 @@
 						type="button"
 						onclick={() => toggleEnv(env)}
 						title="Remove filter"
-						class="inline-flex h-5 cursor-pointer items-center gap-1 rounded-full border border-blue-300 bg-blue-100 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-blue-800 transition-colors hover:bg-blue-200/70 dark:border-blue-800/60 dark:bg-blue-900/40 dark:text-blue-200"
-					>{env}<CloseOutline class="h-2.5 w-2.5 opacity-70" /></button>
+						class="inline-flex h-5 cursor-pointer items-center gap-1 rounded border border-gray-200 bg-white px-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100"
+					>{env}<CloseOutline class="h-2.5 w-2.5 opacity-50" /></button>
 				{/each}
 				{#each nsFilters as ns}
 					<button
 						type="button"
 						onclick={() => toggleNs(ns)}
 						title="Remove filter"
-						class="inline-flex h-5 cursor-pointer items-center gap-1 rounded-full border border-gray-300 bg-gray-100 px-1.5 font-mono text-[10px] font-medium text-gray-800 transition-colors hover:bg-gray-200/70 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-					>{ns}<CloseOutline class="h-2.5 w-2.5 opacity-70" /></button>
+						class="inline-flex h-5 cursor-pointer items-center gap-1 rounded border border-gray-200 bg-white px-1.5 font-mono text-[10px] font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100"
+					>{ns}<CloseOutline class="h-2.5 w-2.5 opacity-50" /></button>
 				{/each}
 			</div>
 		{/if}
@@ -610,7 +605,7 @@
 	</header>
 
 	<!-- ── Group cards grid ── -->
-	<div class="flex-1 px-4 py-4 sm:px-6">
+	<div class="flex-1 bg-gray-50 px-4 py-5 dark:bg-gray-900/50 sm:px-6 sm:py-6">
 		{#if loading}
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
 				{#each Array(6) as _}
@@ -645,34 +640,33 @@
 					{@const groupHighlighted =
 						(group.labelKind === 'namespace' && nsFilters.includes(group.key)) ||
 						(group.labelKind === 'environment' && envFilters.includes(group.key))}
-					<section class="overflow-hidden rounded-lg border bg-white shadow-sm transition-all hover:shadow-md dark:bg-gray-800
-						{groupHighlighted ? 'border-blue-400 dark:border-blue-500' : 'border-gray-200 dark:border-gray-700'}"
+					<section class="overflow-hidden rounded-lg border bg-white transition-shadow hover:shadow-sm dark:bg-gray-800
+						{groupHighlighted ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700'}"
 					>
-						<!-- Group header -->
+						<!-- Group header (neutral, calm) -->
 						<button
 							type="button"
 							onclick={() => toggleGroupKey(group)}
 							aria-pressed={groupHighlighted}
-							class="flex w-full items-center justify-between gap-2 border-b px-4 py-2.5 text-left transition-colors
-								{groupHighlighted
-									? 'border-blue-200 bg-blue-50 hover:bg-blue-100/70 dark:border-blue-800/40 dark:bg-blue-900/20 dark:hover:bg-blue-900/30'
-									: group.severity === 3
-										? 'border-red-100 bg-red-50/60 hover:bg-red-50 dark:border-red-900/40 dark:bg-red-900/10 dark:hover:bg-red-900/20'
-										: group.severity === 2
-											? 'border-orange-100 bg-orange-50/60 hover:bg-orange-50 dark:border-orange-900/40 dark:bg-orange-900/10 dark:hover:bg-orange-900/20'
-											: group.severity === 1
-												? 'border-yellow-100 bg-yellow-50/60 hover:bg-yellow-50 dark:border-yellow-900/40 dark:bg-yellow-900/10 dark:hover:bg-yellow-900/20'
-												: 'border-gray-100 bg-gray-50/60 hover:bg-gray-100 dark:border-gray-700/60 dark:bg-gray-800/60 dark:hover:bg-gray-700/40'}"
+							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors hover:bg-gray-50 dark:border-gray-700/60 dark:hover:bg-gray-700/30"
 						>
-							<div class="flex min-w-0 items-baseline gap-2">
+							<div class="flex min-w-0 items-center gap-2">
+								<!-- Severity indicator (only when non-healthy) — small dot, not a tinted bg -->
+								{#if group.severity === 3}
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="{group.failedCount} failed"></span>
+								{:else if group.severity === 2}
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" title="{group.stuckCount} stuck"></span>
+								{:else if group.severity === 1}
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" title="{group.activeCount} active"></span>
+								{/if}
 								{#if group.labelKind === 'environment'}
 									<Badge color="dark" border rounded class="environment-theme-badge"
 										style={(group.rows[0]?.theme) ? getEnvironmentThemeStyle(group.rows[0].theme) : undefined}
 									>{group.label}</Badge>
 								{:else}
-									<h3 class="truncate text-xs font-semibold
-										{group.labelKind === 'name' ? 'text-gray-900 dark:text-white' : 'font-mono text-gray-700 dark:text-gray-200'}
-										{groupHighlighted ? 'text-blue-700 dark:text-blue-300' : ''}"
+									<h3 class="truncate text-xs
+										{group.labelKind === 'name' ? 'font-semibold text-gray-900 dark:text-white' : 'font-mono font-semibold text-gray-700 dark:text-gray-200'}
+										{groupHighlighted ? 'text-blue-600 dark:text-blue-400' : ''}"
 									>{group.label}</h3>
 								{/if}
 								<span class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{group.rows.length}</span>
@@ -680,63 +674,37 @@
 									<Badge color="orange" rounded class="text-[10px]" title="Versions differ across deployments">drift</Badge>
 								{/if}
 							</div>
-							<div class="flex shrink-0 items-center gap-1.5">
-								<!-- Status badges -->
-								{#if group.failedCount > 0}
-									<Badge color="red" rounded class="text-[10px]">{group.failedCount} failed</Badge>
-								{:else if group.stuckCount > 0}
-									<Badge color="orange" rounded class="text-[10px]">{group.stuckCount} stuck</Badge>
-								{:else if group.activeCount > 0}
-									<Badge color="yellow" rounded class="text-[10px]">{group.activeCount} active</Badge>
-								{:else}
-									<CheckCircleSolid class="h-3.5 w-3.5 text-green-500 dark:text-green-400" />
-								{/if}
-								{#if groupHighlighted}
-									<CloseOutline class="h-3.5 w-3.5 text-blue-500" />
-								{/if}
-							</div>
+							{#if groupHighlighted}
+								<CloseOutline class="h-3.5 w-3.5 text-blue-500" />
+							{/if}
 						</button>
-
-						<!-- Group time-axis labels (oldest → now) -->
-						{#if group.rangeSpan > 60000}
-							<div class="flex justify-between border-b border-gray-100 px-4 pt-1 pb-0.5 font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:border-gray-700/60 dark:text-gray-500">
-								<span>{compactSeconds(Math.floor(($now.getTime() - group.rangeMin) / 1000))} ago</span>
-								<span>now</span>
-							</div>
-						{/if}
 
 						<!-- Rows -->
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each group.rows as row}
 								{@const badge = STATUS_BADGE[row.status] ?? STATUS_BADGE['None']}
-								{@const rowTint = row.status === 'Failed'
-									? 'bg-red-50/40 dark:bg-red-900/10 hover:bg-red-50/70 dark:hover:bg-red-900/20'
-									: isRunning(row.status)
-										? 'bg-yellow-50/30 dark:bg-yellow-900/5 hover:bg-yellow-50/60 dark:hover:bg-yellow-900/10'
-										: 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}
 								<li>
 									<a
 										href="/rollouts/{row.ns}/{row.name}"
 										style={row.theme ? getEnvironmentThemeStyle(row.theme) : undefined}
-										class="environment-theme-scope relative block px-4 py-2.5 transition-colors {rowTint}"
+										class="environment-theme-scope relative block px-4 py-3 transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/30"
 									>
-										<!-- Line 1: dot + identity + secondary tags -->
-										<div class="flex items-center gap-2">
+										<!-- Line 1: dot + name + env -->
+										<div class="flex items-center gap-2.5">
 											<span class="relative flex h-2 w-2 shrink-0">
 												{#if isRunning(row.status)}
 													<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {badge.dot}"></span>
 												{/if}
 												<span class="relative inline-flex h-2 w-2 rounded-full {badge.dot}"></span>
 											</span>
-											<!-- Primary identity (changes by grouping mode) -->
 											{#if groupBy === 'name'}
-												<h4 class="min-w-0 flex-1 truncate font-mono text-[12px] text-gray-700 dark:text-gray-300">{row.ns}</h4>
+												<h4 class="min-w-0 flex-1 truncate font-mono text-[12.5px] text-gray-700 dark:text-gray-300">{row.ns}</h4>
 												{#if row.theme}
 													<Badge color="dark" border rounded class="environment-theme-badge shrink-0">{row.theme.label}</Badge>
 												{/if}
 											{:else if groupBy === 'environment'}
 												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
-												<span class="shrink-0 truncate font-mono text-[11px] text-gray-500 dark:text-gray-500">{row.ns}</span>
+												<span class="shrink-0 truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{row.ns}</span>
 											{:else}
 												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
 												{#if row.theme}
@@ -745,69 +713,70 @@
 											{/if}
 										</div>
 
-										<!-- Line 2: status · version · signals · age -->
-										<div class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-4 text-[11px] text-gray-500 dark:text-gray-400">
-											<span class="shrink-0 {row.status === 'Failed' ? 'font-medium text-red-600 dark:text-red-400' : isRunning(row.status) ? 'font-medium text-yellow-700 dark:text-yellow-400' : ''}">
-												{badge.label}{#if row.bakeProgressPct !== null}&nbsp;{Math.round(row.bakeProgressPct)}%{/if}
-											</span>
+										<!-- Line 2: minimal meta — version, age, and ONLY non-healthy signals -->
+										<div class="mt-1 flex items-center gap-x-2 pl-[18px] text-[11px] text-gray-500 dark:text-gray-500">
+											<!-- Status label only when not Healthy/Idle (those are implied by the dot) -->
+											{#if row.status === 'Failed'}
+												<span class="shrink-0 font-medium text-red-600 dark:text-red-400">Failed</span>
+												<span class="text-gray-300 dark:text-gray-700">·</span>
+											{:else if isRunning(row.status)}
+												<span class="shrink-0 font-medium text-yellow-700 dark:text-yellow-400">
+													{badge.label}{#if row.bakeProgressPct !== null}&nbsp;{Math.round(row.bakeProgressPct)}%{/if}
+												</span>
+												<span class="text-gray-300 dark:text-gray-700">·</span>
+											{/if}
+
 											{#if row.version}
-												<span class="text-gray-300 dark:text-gray-600">·</span>
 												<span class="min-w-0 truncate font-mono">{row.version}</span>
+											{:else}
+												<span class="text-gray-300 dark:text-gray-700">no version</span>
 											{/if}
-											{#if row.pinnedVersion}
-												<span class="text-gray-300 dark:text-gray-600">·</span>
-												<span
-													class="inline-flex shrink-0 items-center gap-0.5 font-medium text-orange-600 dark:text-orange-400"
-													title="Pinned to {row.pinnedVersion} — automated deploys are paused until the pin is cleared"
-												>
-													<PauseSolid class="h-3 w-3" />pinned
-												</span>
-											{/if}
-											{#if row.isStuck || row.waitingCandidateVersion}
-												{@const waitId = `wait-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
-												<span class="text-gray-300 dark:text-gray-600">·</span>
-												<span
-													id={waitId}
-													class="inline-flex shrink-0 cursor-help items-center gap-0.5
-														{row.isStuck ? 'font-medium text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'}"
-												>
-													<ClockSolid class="h-3 w-3" />
-													{row.isStuck ? 'stuck' : 'waiting'} {compactSeconds(row.waitingSeconds)}
-													<QuestionCircleOutline class="ml-0.5 h-3 w-3 opacity-60" />
-												</span>
-											{:else if row.upgradeCount > 0}
-												<span class="text-gray-300 dark:text-gray-600">·</span>
-												<span class="inline-flex shrink-0 items-center gap-0.5 tabular-nums text-gray-500 dark:text-gray-400" title="{row.upgradeCount} pending upgrades">
-													<ArrowUpOutline class="h-3 w-3" />{row.upgradeCount}
-												</span>
-											{/if}
-											{#if row.failedHCCount > 0}
-												<span class="text-gray-300 dark:text-gray-600">·</span>
-												<span class="inline-flex shrink-0 items-center gap-0.5 tabular-nums text-red-600 dark:text-red-400" title="{row.failedHCCount} failed health checks">
-													<HeartSolid class="h-3 w-3" />{row.failedHCCount}
-												</span>
-											{/if}
-											{#if row.age}
-												<span class="text-gray-300 dark:text-gray-600">·</span>
-												<span class="shrink-0 font-mono tabular-nums">{row.age}</span>
-											{/if}
+
+											<!-- Trailing signals (right-aligned, icon-only) -->
+											<div class="ml-auto flex shrink-0 items-center gap-2 tabular-nums">
+												{#if row.pinnedVersion}
+													<span class="inline-flex items-center text-orange-500 dark:text-orange-400" title="Pinned to {row.pinnedVersion}">
+														<PauseSolid class="h-3 w-3" />
+													</span>
+												{/if}
+												{#if row.isStuck}
+													{@const waitId = `wait-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
+													<span id={waitId} class="inline-flex cursor-help items-center gap-0.5 font-medium text-orange-600 dark:text-orange-400">
+														<ClockSolid class="h-3 w-3" />{compactSeconds(row.waitingSeconds)}
+													</span>
+												{:else if row.waitingCandidateVersion}
+													{@const waitId = `wait-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
+													<span id={waitId} class="inline-flex cursor-help items-center text-gray-400 dark:text-gray-500" title="Waiting on gates">
+														<ClockSolid class="h-3 w-3" />
+													</span>
+												{/if}
+												{#if row.failedHCCount > 0}
+													<span class="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400" title="{row.failedHCCount} failed health checks">
+														<HeartSolid class="h-3 w-3" />{row.failedHCCount}
+													</span>
+												{/if}
+												{#if row.upgradeCount > 0 && !row.isStuck && !row.waitingCandidateVersion}
+													<span class="inline-flex items-center gap-0.5 text-gray-400 dark:text-gray-500" title="{row.upgradeCount} pending upgrades">
+														<ArrowUpOutline class="h-3 w-3" />{row.upgradeCount}
+													</span>
+												{/if}
+												{#if row.age}
+													<span class="font-mono text-gray-400 dark:text-gray-500">{row.age}</span>
+												{/if}
+											</div>
 										</div>
 
-										<!-- Per-rollout timeline aligned within the group's time range — for spotting cross-deployment correlations -->
+										<!-- Subtle per-rollout timeline (light dots on a hairline) -->
 										{#if row.displayHistory.length > 0}
-											<div class="mt-2 pl-4">
-												<div class="relative h-2.5">
-													<!-- track -->
-													<div class="absolute inset-x-0 top-1 h-0.5 rounded-full bg-gray-200 dark:bg-gray-700/60"></div>
-													<!-- now marker -->
-													<span class="absolute top-0 h-2.5 w-px bg-gray-400 dark:bg-gray-500" style="right: 0; left: auto;"></span>
-													<!-- deploy markers -->
+											<div class="mt-2 pl-[18px]">
+												<div class="relative h-1.5">
+													<div class="absolute inset-x-0 top-[3px] h-px bg-gray-100 dark:bg-gray-700/40"></div>
 													{#each row.displayHistory as h}
 														{@const t = new Date(h.ts).getTime()}
 														{@const x = Math.min(100, Math.max(0, ((t - group.rangeMin) / group.rangeSpan) * 100))}
 														{@const b = STATUS_BADGE[h.status] ?? STATUS_BADGE['None']}
 														<span
-															class="absolute top-0 h-2.5 w-2.5 -translate-x-1/2 rounded-full ring-2 {b.sparkBg} {row.status === 'Failed' ? 'ring-red-50/40 dark:ring-red-900/10' : isRunning(row.status) ? 'ring-yellow-50/30 dark:ring-yellow-900/5' : 'ring-white dark:ring-gray-800'}"
+															class="absolute top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full {b.sparkBg}"
 															style="left: {x}%"
 															title="{h.version} · {h.status}"
 														></span>
