@@ -132,12 +132,23 @@ func main() {
 				log.Printf("Error fetching OCI repositories: %v", err)
 			}
 
+			var environments interface{}
+			if namespace == "all" || namespace == "*" || namespace == "" {
+				environments, err = k8sClient.GetEnvironmentsAllNamespaces(context.Background())
+			} else {
+				environments, err = k8sClient.GetEnvironments(context.Background(), namespace)
+			}
+			if err != nil {
+				log.Printf("Error fetching environments: %v", err)
+			}
+
 			c.JSON(http.StatusOK, gin.H{
 				"rollouts":          rollouts,
 				"imagePolicies":     imagePolicies,
 				"imageRepositories": imageRepositories,
 				"kustomizations":    kustomizations,
 				"ociRepositories":   ociRepositories,
+				"environments":      environments,
 			})
 		})
 

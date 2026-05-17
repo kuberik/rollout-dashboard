@@ -16,6 +16,13 @@ export type EnvironmentTheme = ThemePreset & {
 	surfaceColor: string;
 	darkSurfaceColor: string;
 	darkTextColor: string;
+	/**
+	 * The raw environment name (e.g. "staging", "dev", "kuberik-demo").
+	 * Pages other than the Navbar should display this as the environment value
+	 * (typically inside a JoinedBadge labelled "Environment"), reserving the
+	 * canonical preset `label` ("Staging", "Development") for the Navbar only.
+	 */
+	environmentName: string;
 };
 
 const PRESET_THEMES: Record<string, ThemePreset> = {
@@ -105,14 +112,18 @@ function resolveThemeLabel({
 	if (themeValue && preset) return preset.label;
 	if (themeValue && inlineThemeColor) return environmentName || 'Custom';
 	if (themeName === 'custom') return environmentName || 'Custom';
-	return environmentName || preset?.label || labelFromThemeName(themeName);
+	// Prefer the preset's canonical label (e.g. "Staging") over the raw
+	// environmentName ("staging") so labels are consistent regardless of
+	// whether the theme came from a rollout annotation or an Environment.
+	return preset?.label || environmentName || labelFromThemeName(themeName);
 }
 
-function buildEnvironmentTheme(name: string, label: string, color: string): EnvironmentTheme {
+function buildEnvironmentTheme(name: string, label: string, environmentName: string, color: string): EnvironmentTheme {
 	const normalizedColor = normalizeHexColor(color) ?? '#2563eb';
 	return {
 		name,
 		label,
+		environmentName,
 		color: normalizedColor,
 		textColor: mixWith(normalizedColor, '#000000', 0.18),
 		borderColor: mixWith(normalizedColor, '#ffffff', 0.64),
@@ -151,8 +162,16 @@ export function getRolloutEnvironmentTheme(
 		themeName,
 		themeValue
 	});
+	// Raw environment name for display in pages other than the Navbar.
+	// Only sources we treat as a *real* environment value: Environment.spec.environment,
+	// or an explicit theme-label annotation. We do NOT fall back to the preset
+	// label here, because a rollout with no Environment shouldn't be shown as
+	// having one — match the detail page, which only renders the env badge when
+	// environment.spec.environment is present.
+	const rawEnvironmentName =
+		environmentName || annotations?.[ENVIRONMENT_THEME_LABEL_ANNOTATION]?.trim() || '';
 
-	return buildEnvironmentTheme(themeName, label, color);
+	return buildEnvironmentTheme(themeName, label, rawEnvironmentName, color);
 }
 
 export function getEnvironmentThemeStyle(theme: EnvironmentTheme): string {

@@ -1,8 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import type { Rollout } from '../types';
+	import type { Rollout, Environment } from '../types';
 	import { Alert, Badge, Popover } from 'flowbite-svelte';
+	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
 	import {
 		SearchOutline,
 		ArrowUpOutline,
@@ -29,19 +30,48 @@
 	);
 
 	const rollouts = $derived<Rollout[]>(rolloutsQuery.data?.rollouts?.items || []);
+	const environments = $derived<Environment[]>(rolloutsQuery.data?.environments?.items || []);
+	const envByRollout = $derived.by(() => {
+		const m = new Map<string, Environment>();
+		for (const env of environments) {
+			const ns = env.metadata?.namespace || '';
+			const refName = env.spec?.rolloutRef?.name;
+			if (ns && refName) m.set(`${ns}/${refName}`, env);
+		}
+		return m;
+	});
 	const loading  = $derived(rolloutsQuery.isLoading);
 	const error    = $derived(
 		rolloutsQuery.isError ? (rolloutsQuery.error as Error).message || 'Unknown error' : null
 	);
 
+	function envForRollout(r: Rollout): Environment | undefined {
+		const ns = r.metadata?.namespace || '';
+		const name = r.metadata?.name || '';
+		return envByRollout.get(`${ns}/${name}`);
+	}
+
 	type GroupBy = 'namespace' | 'name' | 'environment';
+	const GROUP_BY_STORAGE_KEY = 'rollouts:groupBy';
+
+	function loadGroupBy(): GroupBy {
+		if (typeof window === 'undefined') return 'namespace';
+		const v = window.localStorage.getItem(GROUP_BY_STORAGE_KEY);
+		return v === 'name' || v === 'environment' || v === 'namespace' ? v : 'namespace';
+	}
 
 	let searchQuery   = $state('');
 	let statusFilters = $state<StatusKey[]>([]);
 	let envFilters    = $state<string[]>([]);
 	let nsFilters     = $state<string[]>([]);
-	let groupBy       = $state<GroupBy>('namespace');
+	let groupBy       = $state<GroupBy>(loadGroupBy());
 	let showFilters   = $state(false);
+
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			window.localStorage.setItem(GROUP_BY_STORAGE_KEY, groupBy);
+		}
+	});
 
 	const activeFilterCount = $derived(statusFilters.length + envFilters.length + nsFilters.length);
 	const uniqueNamespaces = $derived(
@@ -81,8 +111,8 @@
 	const uniqueEnvironments = $derived.by(() => {
 		const seen = new Map<string, string>();
 		rollouts.forEach((r) => {
-			const t = getRolloutEnvironmentTheme(r);
-			if (t?.label) seen.set(t.label.toLowerCase(), t.label);
+			const t = getRolloutEnvironmentTheme(r, envForRollout(r));
+			if (t?.environmentName) seen.set(t.environmentName.toLowerCase(), t.environmentName);
 		});
 		return [...seen.values()].sort();
 	});
@@ -112,6 +142,12 @@
 		displayHistory: HistoryDot[];           // history clipped to group context (set by groupedRows)
 		latestTs: number;                       // for sorting by recency
 		pinnedVersion: string | null;           // spec.wantedVersion when set — automated deploys paused
+		// Behind-lead info (set by behindInfoMap derivation; null if no siblings or this row IS the lead)
+		behindCount: number;                    // versions in lead.history not yet deployed here
+		behindOldestLagSec: number;             // oldest unpromoted version's current lag vs lead
+		behindThresholdSec: number;             // mean+stdev of historical promotion lags
+		isBehindSlow: boolean;                  // oldest unpromoted version's lag exceeds threshold
+		leadKey: string | null;                 // lead env label (preferred) or namespace
 	};
 
 	function buildRow(r: Rollout, n: Date): Row {
@@ -187,7 +223,7 @@
 			upgradeCount:            rcs.length,
 			failedHCCount:           latest?.failedHealthChecks?.length || 0,
 			bakeProgressPct,
-			theme:                   getRolloutEnvironmentTheme(r),
+			theme:                   getRolloutEnvironmentTheme(r, envForRollout(r)),
 			waitingCandidateVersion,
 			waitingSeconds,
 			stuckThresholdSec,
@@ -197,6 +233,11 @@
 			displayHistory:          history, // overwritten in groupedRows once we know group context
 			latestTs:                latest?.timestamp ? new Date(latest.timestamp).getTime() : 0,
 			pinnedVersion:           r.spec?.wantedVersion || null,
+			behindCount:             0,
+			behindOldestLagSec:      0,
+			behindThresholdSec:      0,
+			isBehindSlow:            false,
+			leadKey:                 null,
 		};
 	}
 
@@ -214,7 +255,63 @@
 
 	const allRows = $derived.by(() => {
 		const n = $now;
-		return rollouts.map((r) => buildRow(r, n));
+		const nowMs = n.getTime();
+		const rows = rollouts.map((r) => buildRow(r, n));
+
+		// Second pass: compute "behind lead" info per row, using same-named siblings as the comparison set.
+		// Threshold = mean + 1 stdev of HISTORICAL promotion lags (versions present in both this row and the lead),
+		// matching the same shape as the stuck heuristic so behaviour is comparable.
+		const byName = new Map<string, Row[]>();
+		for (const row of rows) {
+			const list = byName.get(row.name);
+			if (list) list.push(row); else byName.set(row.name, [row]);
+		}
+		for (const row of rows) {
+			const siblings = byName.get(row.name) || [];
+			if (siblings.length <= 1) continue;
+			// Lead = sibling with newest latest deploy
+			let lead = row;
+			for (const s of siblings) if (s.latestTs > lead.latestTs) lead = s;
+			if (lead === row || lead.history.length === 0) continue;
+
+			const myVersions = new Set(row.history.map((h) => h.version));
+			const leadByVersion = new Map<string, number>();
+			for (const h of lead.history) leadByVersion.set(h.version, new Date(h.ts).getTime());
+
+			// Historical promotion lags: versions that this row eventually deployed AFTER the lead did.
+			const histLags: number[] = [];
+			for (const h of row.history) {
+				const leadTs = leadByVersion.get(h.version);
+				if (leadTs === undefined) continue;
+				const myTs = new Date(h.ts).getTime();
+				if (myTs > leadTs) histLags.push((myTs - leadTs) / 1000);
+			}
+			let threshold = 7 * 86400;
+			if (histLags.length >= 3) {
+				const mean = histLags.reduce((a, b) => a + b, 0) / histLags.length;
+				const stdev = Math.sqrt(histLags.reduce((s, x) => s + (x - mean) ** 2, 0) / histLags.length);
+				threshold = Math.max(mean + stdev, 30 * 60);
+			} else if (histLags.length > 0) {
+				threshold = Math.max(Math.max(...histLags) * 2, 30 * 60);
+			}
+
+			// Unpromoted: versions in lead.history this row hasn't deployed yet.
+			let behindCount = 0;
+			let oldestLag = 0;
+			for (const h of lead.history) {
+				if (myVersions.has(h.version)) continue;
+				behindCount++;
+				const lag = Math.max(0, (nowMs - new Date(h.ts).getTime()) / 1000);
+				if (lag > oldestLag) oldestLag = lag;
+			}
+
+			row.behindCount = behindCount;
+			row.behindOldestLagSec = oldestLag;
+			row.behindThresholdSec = threshold;
+			row.isBehindSlow = behindCount > 0 && oldestLag > threshold;
+			row.leadKey = lead.theme?.environmentName ?? lead.ns;
+		}
+		return rows;
 	});
 
 	const filteredRollouts = $derived.by(() => {
@@ -222,7 +319,7 @@
 		return allRows.filter((row) => {
 			if (q && !row.name.toLowerCase().includes(q) && !row.ns.toLowerCase().includes(q)) return false;
 			if (nsFilters.length > 0  && !nsFilters.includes(row.ns)) return false;
-			if (envFilters.length > 0 && !envFilters.includes(row.theme?.label ?? '')) return false;
+			if (envFilters.length > 0 && !envFilters.includes(row.theme?.environmentName ?? '')) return false;
 			if (!matchesStatusFilter(row)) return false;
 			return true;
 		});
@@ -252,7 +349,7 @@
 
 	function groupKeyOf(row: Row, gb: GroupBy): { key: string; label: string; labelKind: Group['labelKind'] } {
 		if (gb === 'name')        return { key: row.name, label: row.name, labelKind: 'name' };
-		if (gb === 'environment') return { key: row.theme?.label ?? 'No environment', label: row.theme?.label ?? 'No environment', labelKind: 'environment' };
+		if (gb === 'environment') return { key: row.theme?.environmentName ?? 'No environment', label: row.theme?.environmentName ?? 'No environment', labelKind: 'environment' };
 		return { key: row.ns, label: row.ns, labelKind: 'namespace' };
 	}
 
@@ -346,7 +443,7 @@
 	const stuckTotal = $derived(statusCounts.stuck);
 
 	function envCount(env: string): number {
-		return rollouts.filter((r) => getRolloutEnvironmentTheme(r)?.label === env).length;
+		return rollouts.filter((r) => getRolloutEnvironmentTheme(r, envForRollout(r))?.environmentName === env).length;
 	}
 
 	type StatusKey = 'failed' | 'active' | 'stuck' | 'succeeded' | 'idle';
@@ -639,49 +736,39 @@
 		{:else}
 			<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
 				{#each groupedRows as group}
-					{@const drift = groupBy === 'name' && group.versions.size > 1}
 					{@const groupHighlighted =
 						(group.labelKind === 'namespace' && nsFilters.includes(group.key)) ||
 						(group.labelKind === 'environment' && envFilters.includes(group.key))}
-					<section class="group/card overflow-hidden rounded-xl border bg-white shadow-sm transition-all hover:shadow-md dark:bg-gray-800
+					<section class="overflow-hidden rounded-lg border bg-white dark:bg-gray-800
 						{groupHighlighted ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700'}"
 					>
-						<!-- Group header (calm, refined) -->
+						<!-- Group header -->
 						<button
 							type="button"
 							onclick={() => toggleGroupKey(group)}
 							aria-pressed={groupHighlighted}
-							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50/80 dark:border-gray-700/60 dark:hover:bg-gray-700/30"
+							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors hover:bg-gray-50 dark:border-gray-700/60 dark:hover:bg-gray-700/40"
 						>
-							<div class="flex min-w-0 items-center gap-2.5">
+							<div class="flex min-w-0 items-center gap-2">
 								<!-- Severity indicator — only when not healthy -->
 								{#if group.severity === 3}
-									<span class="relative flex h-2 w-2 shrink-0">
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-50"></span>
-										<span class="relative inline-flex h-2 w-2 rounded-full bg-red-500" title="{group.failedCount} failed"></span>
-									</span>
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="{group.failedCount} failed"></span>
 								{:else if group.severity === 2}
-									<span class="h-2 w-2 shrink-0 rounded-full bg-orange-500" title="{group.stuckCount} stuck"></span>
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" title="{group.stuckCount} stuck"></span>
 								{:else if group.severity === 1}
-									<span class="relative flex h-2 w-2 shrink-0">
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-300 opacity-50"></span>
-										<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400" title="{group.activeCount} active"></span>
-									</span>
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" title="{group.activeCount} active"></span>
 								{/if}
 								{#if group.labelKind === 'environment'}
 									<Badge color="dark" border rounded class="environment-theme-badge"
 										style={(group.rows[0]?.theme) ? getEnvironmentThemeStyle(group.rows[0].theme) : undefined}
 									>{group.label}</Badge>
 								{:else}
-									<h3 class="truncate text-[13px] tracking-tight
+									<h3 class="truncate text-xs
 										{group.labelKind === 'name' ? 'font-semibold text-gray-900 dark:text-white' : 'font-mono font-semibold text-gray-700 dark:text-gray-200'}
 										{groupHighlighted ? 'text-blue-600 dark:text-blue-400' : ''}"
 									>{group.label}</h3>
 								{/if}
-								<span class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-gray-500 dark:bg-gray-700/60 dark:text-gray-400">{group.rows.length}</span>
-								{#if drift}
-									<Badge color="orange" rounded class="text-[10px]" title="Versions differ across deployments">drift</Badge>
-								{/if}
+								<span class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{group.rows.length}</span>
 							</div>
 							{#if groupHighlighted}
 								<CloseOutline class="h-3.5 w-3.5 text-blue-500" />
@@ -696,11 +783,8 @@
 									<a
 										href="/rollouts/{row.ns}/{row.name}"
 										style={row.theme ? getEnvironmentThemeStyle(row.theme) : undefined}
-										class="environment-theme-scope group/row relative block px-4 py-3 transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/30"
+										class="environment-theme-scope relative block px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 									>
-										<!-- Subtle hover indicator slides in from left -->
-										<span class="pointer-events-none absolute inset-y-2 left-0 w-0.5 origin-top scale-y-0 rounded-r-full bg-blue-400 transition-transform duration-200 group-hover/row:scale-y-100 dark:bg-blue-500"></span>
-
 										<!-- Line 1: dot + name + env -->
 										<div class="flex items-center gap-2.5">
 											<span class="relative flex h-2 w-2 shrink-0">
@@ -710,72 +794,90 @@
 												<span class="relative inline-flex h-2 w-2 rounded-full {badge.dot}"></span>
 											</span>
 											{#if groupBy === 'name'}
-												<h4 class="min-w-0 flex-1 truncate font-mono text-[13px] text-gray-700 transition-colors group-hover/row:text-gray-900 dark:text-gray-300 dark:group-hover/row:text-white">{row.ns}</h4>
-												{#if row.theme}
-													<Badge color="dark" border rounded class="environment-theme-badge shrink-0">{row.theme.label}</Badge>
+												<h4 class="min-w-0 flex-1 truncate font-mono text-[12.5px] text-gray-700 dark:text-gray-300">{row.ns}</h4>
+												{#if row.theme?.environmentName}
+													<JoinedBadge
+														label="Environment"
+														value={row.theme.environmentName}
+														valueColor="gray"
+														containerClass="environment-theme-scope shrink-0"
+														containerStyle={getEnvironmentThemeStyle(row.theme)}
+														labelPlainBorder
+														valueClass="environment-theme-badge"
+													/>
 												{/if}
 											{:else if groupBy === 'environment'}
-												<h4 class="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-gray-900 dark:text-white">{row.name}</h4>
+												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
 												<span class="shrink-0 truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{row.ns}</span>
 											{:else}
-												<h4 class="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-gray-900 dark:text-white">{row.name}</h4>
-												{#if row.theme}
-													<Badge color="dark" border rounded class="environment-theme-badge shrink-0">{row.theme.label}</Badge>
+												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
+												{#if row.theme?.environmentName}
+													<JoinedBadge
+														label="Environment"
+														value={row.theme.environmentName}
+														valueColor="gray"
+														containerClass="environment-theme-scope shrink-0"
+														containerStyle={getEnvironmentThemeStyle(row.theme)}
+														labelPlainBorder
+														valueClass="environment-theme-badge"
+													/>
 												{/if}
 											{/if}
 										</div>
 
-										<!-- Line 2: minimal meta — version, age, and ONLY non-healthy signals -->
-										<div class="mt-1 flex items-center gap-x-2 pl-[18px] text-[11px] text-gray-500 dark:text-gray-500">
+										<!-- Line 2: meta — wraps naturally on narrow screens -->
+										<div class="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-[18px] text-[11px] text-gray-500 dark:text-gray-500">
 											<!-- Status label only when not Healthy/Idle (those are implied by the dot) -->
 											{#if row.status === 'Failed'}
 												<span class="shrink-0 font-medium text-red-600 dark:text-red-400">Failed</span>
-												<span class="text-gray-300 dark:text-gray-700">·</span>
 											{:else if isRunning(row.status)}
 												<span class="shrink-0 font-medium text-yellow-700 dark:text-yellow-400">
 													{badge.label}{#if row.bakeProgressPct !== null}&nbsp;{Math.round(row.bakeProgressPct)}%{/if}
 												</span>
-												<span class="text-gray-300 dark:text-gray-700">·</span>
 											{/if}
 
 											{#if row.version}
-												<span class="min-w-0 truncate font-mono">{row.version}</span>
+												<span class="min-w-0 max-w-full truncate font-mono">{row.version}</span>
 											{:else}
 												<span class="text-gray-300 dark:text-gray-700">no version</span>
 											{/if}
 
-											<!-- Trailing signals (right-aligned, icon-only) -->
-											<div class="ml-auto flex shrink-0 items-center gap-2 tabular-nums">
-												{#if row.pinnedVersion}
-													<span class="inline-flex items-center text-orange-500 dark:text-orange-400" title="Pinned to {row.pinnedVersion}">
-														<PauseSolid class="h-3 w-3" />
-													</span>
-												{/if}
-												{#if row.isStuck}
-													{@const waitId = `wait-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
-													<span id={waitId} class="inline-flex cursor-help items-center gap-0.5 font-medium text-orange-600 dark:text-orange-400">
-														<ClockSolid class="h-3 w-3" />{compactSeconds(row.waitingSeconds)}
-													</span>
-												{:else if row.waitingCandidateVersion}
-													{@const waitId = `wait-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
-													<span id={waitId} class="inline-flex cursor-help items-center text-gray-400 dark:text-gray-500" title="Waiting on gates">
-														<ClockSolid class="h-3 w-3" />
-													</span>
-												{/if}
-												{#if row.failedHCCount > 0}
-													<span class="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400" title="{row.failedHCCount} failed health checks">
-														<HeartSolid class="h-3 w-3" />{row.failedHCCount}
-													</span>
-												{/if}
-												{#if row.upgradeCount > 0 && !row.isStuck && !row.waitingCandidateVersion}
-													<span class="inline-flex items-center gap-0.5 text-gray-400 dark:text-gray-500" title="{row.upgradeCount} pending upgrades">
-														<ArrowUpOutline class="h-3 w-3" />{row.upgradeCount}
-													</span>
-												{/if}
-												{#if row.age}
-													<span class="font-mono text-gray-400 dark:text-gray-500">{row.age}</span>
-												{/if}
-											</div>
+											<!-- Signals — flow inline, wrap on narrow viewports -->
+											{#if row.pinnedVersion}
+												<span class="inline-flex shrink-0 items-center gap-1 text-orange-600 dark:text-orange-400" title="Pinned to {row.pinnedVersion} — automated deploys are paused until the pin is cleared">
+													<PauseSolid class="h-3 w-3" />Pinned
+												</span>
+											{/if}
+											{#if row.isStuck}
+												{@const waitId = `wait-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
+												<span id={waitId} class="inline-flex shrink-0 cursor-help items-center gap-1 font-medium text-orange-600 dark:text-orange-400">
+													<ClockSolid class="h-3 w-3" />stuck {compactSeconds(row.waitingSeconds)}
+												</span>
+											{:else if row.upgradeCount > 0}
+												<span class="inline-flex shrink-0 items-center gap-1 text-orange-600 dark:text-orange-400" title="{row.upgradeCount} {row.upgradeCount === 1 ? 'upgrade' : 'upgrades'} available">
+													<ArrowUpOutline class="h-3 w-3" />{row.upgradeCount} {row.upgradeCount === 1 ? 'upgrade' : 'upgrades'}
+												</span>
+											{/if}
+											{#if row.failedHCCount > 0}
+												<span class="inline-flex shrink-0 items-center gap-1 text-red-600 dark:text-red-400" title="{row.failedHCCount} failed health check{row.failedHCCount === 1 ? '' : 's'}">
+													<HeartSolid class="h-3 w-3" />{row.failedHCCount} unhealthy
+												</span>
+											{/if}
+											{#if row.behindCount > 0}
+												{@const behindId = `behind-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
+												<span
+													id={behindId}
+													class="inline-flex shrink-0 cursor-help items-center gap-1
+														{row.isBehindSlow ? 'font-medium text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-500'}"
+												>
+													<ChevronDownOutline class="h-3 w-3" />
+													{row.behindCount} behind {row.leadKey}{#if row.isBehindSlow}&nbsp;·&nbsp;{compactSeconds(row.behindOldestLagSec)}{/if}
+													<QuestionCircleOutline class="ml-0.5 h-3 w-3 opacity-60" />
+												</span>
+											{/if}
+											{#if row.age}
+												<span class="ml-auto shrink-0 font-mono text-gray-400 dark:text-gray-500">{row.age}</span>
+											{/if}
 										</div>
 
 										<!-- Subtle per-rollout deploy timeline -->
@@ -806,14 +908,49 @@
 										{/if}
 									</a>
 
-									{#if row.isStuck || row.waitingCandidateVersion}
+									{#if row.behindCount > 0}
+										{@const behindId = `behind-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
+										<Popover triggeredBy={`#${behindId}`} class="max-w-sm">
+											<div class="p-3">
+												<div class="mb-2 flex items-center gap-2">
+													<ChevronDownOutline class="h-4 w-4 {row.isBehindSlow ? 'text-orange-500' : 'text-gray-400'}" />
+													<h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+														{row.isBehindSlow ? 'Slow promotion' : 'Behind lead'}
+													</h4>
+												</div>
+												<dl class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+													<div class="flex justify-between gap-3">
+														<dt class="text-gray-500 dark:text-gray-400">Lead</dt>
+														<dd class="truncate font-mono">{row.leadKey}</dd>
+													</div>
+													<div class="flex justify-between gap-3">
+														<dt class="text-gray-500 dark:text-gray-400">Versions behind</dt>
+														<dd class="tabular-nums">{row.behindCount}</dd>
+													</div>
+													<div class="flex justify-between gap-3">
+														<dt class="text-gray-500 dark:text-gray-400">Oldest unpromoted lag</dt>
+														<dd class="font-mono tabular-nums {row.isBehindSlow ? 'font-semibold text-orange-600 dark:text-orange-400' : ''}">{compactSeconds(row.behindOldestLagSec)}</dd>
+													</div>
+													<div class="flex justify-between gap-3">
+														<dt class="text-gray-500 dark:text-gray-400">Slow threshold</dt>
+														<dd class="font-mono tabular-nums">{compactSeconds(row.behindThresholdSec)}</dd>
+													</div>
+												</dl>
+												<p class="mt-2 border-t border-gray-100 pt-2 text-[11px] leading-relaxed text-gray-500 dark:border-gray-700 dark:text-gray-400">
+													Threshold = mean + 1·stdev of historical promotion lag (per matching version that landed in both this rollout and the lead). With &lt;3 samples, falls back to 2× max historical lag, then to 7 days.
+												</p>
+											</div>
+										</Popover>
+									{/if}
+
+									{#if row.isStuck}
 										{@const waitId = `wait-${row.ns}-${row.name}`.replace(/[^a-z0-9-]/gi, '-')}
 										<Popover triggeredBy={`#${waitId}`} class="max-w-sm">
 											<div class="p-3">
 												<div class="mb-2 flex items-center gap-2">
-													<ClockSolid class="h-4 w-4 {row.isStuck ? 'text-orange-500' : 'text-gray-400'}" />
+													<ClockSolid class="h-4 w-4 text-orange-500" />
 													<h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-														{row.isStuck ? 'Stuck on gates' : 'Waiting on gates'}
+														Stuck on gates
 													</h4>
 												</div>
 												<dl class="space-y-1 text-xs text-gray-600 dark:text-gray-300">

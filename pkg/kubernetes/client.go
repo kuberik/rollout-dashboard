@@ -1225,6 +1225,15 @@ func (c *Client) GetEnvironments(ctx context.Context, namespace string) (*envv1a
 	return environments, nil
 }
 
+// GetEnvironmentsAllNamespaces fetches all Environments across all namespaces
+func (c *Client) GetEnvironmentsAllNamespaces(ctx context.Context) (*envv1alpha1.EnvironmentList, error) {
+	environments := &envv1alpha1.EnvironmentList{}
+	if err := c.client.List(ctx, environments); err != nil {
+		return nil, fmt.Errorf("failed to list environments across all namespaces: %w", err)
+	}
+	return environments, nil
+}
+
 // GetPodsBySelector lists pods matching the given label selector
 func (c *Client) GetPodsBySelector(ctx context.Context, namespace string, selector labels.Selector) (*corev1.PodList, error) {
 	pods := &corev1.PodList{}
