@@ -275,13 +275,15 @@
 						<span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Application</span>
 					</div>
 					{#each envNames as envName}
+						{@const envDeployedCount = sortedAppNames.filter((app) => matrix.get(app)?.get(envName)?.rollout).length}
 						<a
 							href="/envs/{envName}"
-							class="environment-theme-scope border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
+							class="environment-theme-scope flex items-baseline justify-between gap-2 border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
 							style={getEnvThemeStyle(envName)}
 							title="See all apps in {envName}"
 						>
 							<span class="environment-theme-text text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
+							<span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{envDeployedCount}</span>
 						</a>
 					{/each}
 				</div>
