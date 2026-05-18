@@ -32,6 +32,7 @@
 		failedCount: number;
 		activeCount: number;
 		envCount: number;
+		deployedCount: number;
 		currentVersions: string[];
 		lastDeploy: string | null;
 	};
@@ -57,6 +58,7 @@
 					failedCount: 0,
 					activeCount: 0,
 					envCount: 0,
+					deployedCount: 0,
 					currentVersions: [],
 					lastDeploy: null
 				});
@@ -72,6 +74,7 @@
 				const h = c.rollout?.status?.history?.[0];
 				const v = h?.version;
 				if (v) versions.add(getDisplayVersion(v));
+				if (h) summary.deployedCount++;
 				const status = h?.bakeStatus;
 				if (status === 'Failed') summary.failedCount++;
 				if (status === 'InProgress' || status === 'Deploying') summary.activeCount++;
@@ -106,14 +109,15 @@
 
 	// Fleet roll-up
 	const fleetTotals = $derived.by(() => {
-		let failed = 0, active = 0, drift = 0, healthy = 0;
+		let failed = 0, active = 0, drift = 0, pending = 0, healthy = 0;
 		for (const a of apps) {
 			if (a.failedCount > 0) failed++;
 			else if (a.activeCount > 0) active++;
 			else if (a.currentVersions.length > 1) drift++;
+			else if (a.deployedCount < a.envCount) pending++;
 			else healthy++;
 		}
-		return { failed, active, drift, healthy };
+		return { failed, active, drift, pending, healthy };
 	});
 </script>
 
@@ -156,13 +160,19 @@
 							{fleetTotals.drift} drifting
 						</span>
 					{/if}
+					{#if fleetTotals.pending > 0}
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
+							<span class="h-2 w-2 rounded-full bg-gray-400 dark:bg-gray-500"></span>
+							{fleetTotals.pending} pending
+						</span>
+					{/if}
 					{#if fleetTotals.failed > 0}
 						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
 							<span class="h-2 w-2 rounded-full bg-red-500"></span>
 							{fleetTotals.failed} failed
 						</span>
 					{/if}
-					{#if fleetTotals.failed === 0 && fleetTotals.active === 0 && fleetTotals.drift === 0}
+					{#if fleetTotals.failed === 0 && fleetTotals.active === 0 && fleetTotals.drift === 0 && fleetTotals.pending === 0}
 						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400">
 							<span class="h-2 w-2 rounded-full bg-green-500"></span>
 							All healthy
@@ -180,6 +190,9 @@
 				{/if}
 				{#if fleetTotals.drift > 0}
 					<span class="bg-orange-500" style="width:{(fleetTotals.drift / apps.length) * 100}%"></span>
+				{/if}
+				{#if fleetTotals.pending > 0}
+					<span class="bg-gray-400 dark:bg-gray-500" style="width:{(fleetTotals.pending / apps.length) * 100}%"></span>
 				{/if}
 				{#if fleetTotals.failed > 0}
 					<span class="bg-red-500" style="width:{(fleetTotals.failed / apps.length) * 100}%"></span>
