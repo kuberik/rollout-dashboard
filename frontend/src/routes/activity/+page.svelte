@@ -8,6 +8,8 @@
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import { ClockSolid, RocketOutline } from 'flowbite-svelte-icons';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import type { Environment } from '../../types';
 
 	const rolloutsQuery = createQuery(() =>
@@ -30,8 +32,17 @@
 		isRunning: boolean;
 	};
 
-	// Optional env filter (clicking an env pill scopes the feed)
-	let envFilter = $state<string | null>(null);
+	// Optional env filter (clicking an env pill scopes the feed).
+	// Synced with ?env=<name> in the URL so the filter is deeplinkable / shareable.
+	const envFilter = $derived(page.url.searchParams.get('env'));
+
+	function setEnvFilter(next: string | null) {
+		const params = new URLSearchParams(page.url.searchParams);
+		if (next) params.set('env', next);
+		else params.delete('env');
+		const qs = params.toString();
+		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
+	}
 
 	const knownEnvs = $derived.by(() => {
 		const map = new Map<string, ReturnType<typeof getRolloutEnvironmentTheme>>();
@@ -139,7 +150,7 @@
 		<div class="mb-5 flex flex-wrap items-center gap-1.5">
 			<button
 				type="button"
-				onclick={() => (envFilter = null)}
+				onclick={() => setEnvFilter(null)}
 				class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors
 					{envFilter === null
 						? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
@@ -148,7 +159,7 @@
 			{#each knownEnvs as e}
 				<button
 					type="button"
-					onclick={() => (envFilter = envFilter === e.name ? null : e.name)}
+					onclick={() => setEnvFilter(envFilter === e.name ? null : e.name)}
 					class="environment-theme-scope inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors
 						{envFilter === e.name
 							? 'ring-2 ring-gray-900/20 dark:ring-gray-100/20 environment-theme-badge'

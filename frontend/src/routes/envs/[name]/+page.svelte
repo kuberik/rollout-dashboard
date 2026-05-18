@@ -333,9 +333,15 @@
 
 			<!-- Activity rail -->
 			<section class="lg:col-span-2">
-				<h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-					Recent activity
-				</h2>
+				<div class="mb-3 flex items-baseline justify-between">
+					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+						Recent activity
+					</h2>
+					<a
+						href={`/activity?env=${encodeURIComponent(envName)}`}
+						class="text-[10px] text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+					>view all ›</a>
+				</div>
 				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 					{#if recentActivity.length === 0}
 						<div class="p-4 text-sm text-gray-500 dark:text-gray-400">No deployment history.</div>
