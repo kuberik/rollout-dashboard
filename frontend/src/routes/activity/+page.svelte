@@ -60,6 +60,14 @@
 		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
 
+	function clearAllFilters() {
+		goto('?', { replaceState: false, noScroll: true, keepFocus: true });
+	}
+
+	const activeFilterCount = $derived(
+		(envFilter ? 1 : 0) + (appFilter ? 1 : 0) + (nsFilter ? 1 : 0)
+	);
+
 	const knownEnvs = $derived.by(() => {
 		const map = new Map<string, ReturnType<typeof getRolloutEnvironmentTheme>>();
 		for (const env of environments) {
@@ -190,6 +198,13 @@
 					<span class="font-mono normal-case">{nsFilter}</span>
 					<span aria-hidden="true">×</span>
 				</button>
+			{/if}
+			{#if activeFilterCount >= 2}
+				<button
+					type="button"
+					onclick={clearAllFilters}
+					class="ml-1 text-[11px] text-gray-400 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-500 dark:hover:text-gray-300"
+				>clear all</button>
 			{/if}
 		</div>
 	{/if}
