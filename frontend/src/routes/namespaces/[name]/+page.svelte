@@ -294,27 +294,29 @@
 								</div>
 								<ul class="mt-2 space-y-0.5">
 									{#each day.events as e}
-										<li class="environment-theme-scope grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 py-1.5 text-sm" style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}>
-											<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{shortTime(e.timestamp)}</span>
-											<div class="flex min-w-0 items-center gap-2">
-												{#if e.envName || e.theme}
-													<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{e.envName || e.theme?.label}</span>
-												{/if}
-												<a
-													href="/rollouts/{namespace}/{e.appName}"
-													class="min-w-0 truncate text-gray-800 hover:text-gray-900 dark:text-gray-200 dark:hover:text-white"
-												>{e.title}</a>
-												<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{e.version}</span>
-											</div>
-											<span class="flex shrink-0 items-center gap-1">
-												<span class="relative flex h-1.5 w-1.5">
-													{#if isRunning(e.bakeStatus)}
-														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[e.bakeStatus]}"></span>
+										<li class="environment-theme-scope" style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}>
+											<a
+												href="/rollouts/{namespace}/{e.appName}"
+												class="-mx-2 grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+											>
+												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{shortTime(e.timestamp)}</span>
+												<div class="flex min-w-0 items-center gap-2">
+													{#if e.envName || e.theme}
+														<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{e.envName || e.theme?.label}</span>
 													{/if}
-													<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[e.bakeStatus] ?? STATUS_DOT.None}"></span>
+													<span class="min-w-0 truncate text-gray-800 dark:text-gray-200">{e.title}</span>
+													<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{e.version}</span>
+												</div>
+												<span class="flex shrink-0 items-center gap-1">
+													<span class="relative flex h-1.5 w-1.5">
+														{#if isRunning(e.bakeStatus)}
+															<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[e.bakeStatus]}"></span>
+														{/if}
+														<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[e.bakeStatus] ?? STATUS_DOT.None}"></span>
+													</span>
+													<span class="text-[10px] {STATUS_TEXT[e.bakeStatus] ?? STATUS_TEXT.None}">{STATUS_LABEL[e.bakeStatus]}</span>
 												</span>
-												<span class="text-[10px] {STATUS_TEXT[e.bakeStatus] ?? STATUS_TEXT.None}">{STATUS_LABEL[e.bakeStatus]}</span>
-											</span>
+											</a>
 										</li>
 									{/each}
 								</ul>
