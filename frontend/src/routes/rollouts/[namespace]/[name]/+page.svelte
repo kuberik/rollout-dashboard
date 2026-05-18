@@ -1342,6 +1342,16 @@
 							<span aria-hidden="true">↗</span>
 							across envs
 						</a>
+						{#if rollout.metadata?.namespace}
+							<a
+								href={`/namespaces/${rollout.metadata.namespace}`}
+								class="inline-flex items-center gap-1 self-center text-[11px] text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+								title="View namespace timeline"
+							>
+								<span aria-hidden="true">↗</span>
+								namespace
+							</a>
+						{/if}
 					</div>
 					{#if rollout.status?.description && rollout.status.description !== (rollout.status?.title || rollout.metadata?.name)}
 						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
