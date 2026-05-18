@@ -152,7 +152,13 @@
 										<span class="text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
 										<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
 									</div>
-									<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.version}</span>
+									<div class="flex items-baseline gap-x-1.5">
+										{#if entry.rolloutName !== entry.displayName}
+											<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutName}</span>
+											<span class="text-[10px] text-gray-300 dark:text-gray-700">·</span>
+										{/if}
+										<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.version}</span>
+									</div>
 								</div>
 
 								<!-- Right: status badge + time -->

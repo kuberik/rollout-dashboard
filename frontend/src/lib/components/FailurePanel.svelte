@@ -101,7 +101,18 @@
 					</div>
 					<div class="mt-0.5 text-sm text-red-700/75 dark:text-red-200/75">
 						{#if failedHCList.length === 1}
-							<p class="break-words">{findDisplayName(failedHCList[0])} · {failedHCList[0].message || 'No details available'}</p>
+							{@const hcMsg = failedHCList[0].message || ''}
+							{@const hcParts = hcMsg.split(/;\s*/).filter(Boolean)}
+							<p class="break-words font-medium">{findDisplayName(failedHCList[0])}</p>
+							{#if hcParts.length > 1}
+								<ul class="mt-0.5 list-disc space-y-0.5 pl-4">
+									{#each hcParts as part}
+										<li class="break-words">{part}</li>
+									{/each}
+								</ul>
+							{:else if hcMsg}
+								<p class="break-words">{hcMsg}</p>
+							{/if}
 						{:else if failedHCList.length > 1}
 							<ul class="list-disc space-y-0.5 pl-4">
 								{#each failedHCList.slice(0, 6) as hc}
