@@ -34,6 +34,19 @@
 
 	type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
 
+	const ENV_ABBREV: Record<string, string> = {
+		development: 'dev',
+		production: 'prod',
+		staging: 'staging',
+		testing: 'test'
+	};
+
+	function shortEnvLabel(theme: ReturnType<typeof getRolloutEnvironmentTheme>): string {
+		if (!theme) return '';
+		const candidate = (theme.environmentName || theme.name || theme.label || '').toLowerCase();
+		return ENV_ABBREV[candidate] || candidate;
+	}
+
 	type Card = {
 		ns: string;
 		name: string;
@@ -65,8 +78,8 @@
 			else if (!latest) statusKey = 'pending';
 			else statusKey = 'succeeded';
 			// Display the short form whenever possible: prefer the explicit env spec
-			// name ('prod'), then the theme key ('prod'), then the preset label.
-			const envDisplay = theme?.environmentName || theme?.name || theme?.label || '';
+			// name ('prod'), then the theme key abbreviated ('production' → 'prod').
+			const envDisplay = shortEnvLabel(theme);
 			return {
 				ns: r.metadata?.namespace || '',
 				name: r.metadata?.name || '',
@@ -96,13 +109,8 @@
 		const map = new Map<string, { display: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> }>();
 		for (const c of cards) {
 			if (!c.envKey) continue;
-			const existing = map.get(c.envKey);
-			if (!existing) {
+			if (!map.has(c.envKey)) {
 				map.set(c.envKey, { display: c.envDisplay, theme: c.theme });
-			} else if (existing.display.length > c.envDisplay.length) {
-				// prefer the shorter label (e.g. 'PROD' over 'PRODUCTION') for tighter chips
-				existing.display = c.envDisplay;
-				existing.theme = c.theme;
 			}
 		}
 		return [...map.entries()]
