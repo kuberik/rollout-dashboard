@@ -834,6 +834,13 @@
 									>{group.label}</h3>
 								{/if}
 								<span class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{group.rows.length}</span>
+									{#if group.failedCount > 0}
+										<span class="shrink-0 text-[10px] font-medium text-red-600 dark:text-red-400">{group.failedCount} failed</span>
+									{:else if group.stuckCount > 0}
+										<span class="shrink-0 text-[10px] font-medium text-orange-600 dark:text-orange-400">{group.stuckCount} stuck</span>
+									{:else if group.activeCount > 0}
+										<span class="shrink-0 text-[10px] font-medium text-yellow-700 dark:text-yellow-400">{group.activeCount} baking</span>
+									{/if}
 							</div>
 							{#if groupHighlighted}
 								<CloseOutline class="h-3.5 w-3.5 text-blue-500" />
