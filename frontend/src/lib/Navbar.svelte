@@ -103,47 +103,51 @@
 				</div>
 			</a>
 			{#if !isRolloutPage}
-				<!-- Main nav links -->
-				<div class="hidden items-center sm:flex">
+				<!-- Main nav links (icons only on xs, icons+text on sm+) -->
+				<div class="flex items-center">
 					<a
 						href="/"
-						class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors
+						aria-label="Rollouts"
+						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
 							{page.url.pathname === '/'
 								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
 								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
 					>
 						<GridOutline class="h-4 w-4" />
-						Rollouts
+						<span class="hidden sm:inline">Rollouts</span>
 					</a>
 					<a
 						href="/apps"
-						class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors
+						aria-label="Apps"
+						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
 							{page.url.pathname === '/apps' || page.url.pathname.startsWith('/apps/')
 								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
 								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
 					>
 						<RocketOutline class="h-4 w-4" />
-						Apps
+						<span class="hidden sm:inline">Apps</span>
 					</a>
 					<a
 						href="/environments"
-						class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors
+						aria-label="Environments"
+						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
 							{page.url.pathname === '/environments' || page.url.pathname.startsWith('/envs/')
 								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
 								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
 					>
 						<LayersSolid class="h-4 w-4" />
-						Environments
+						<span class="hidden sm:inline">Environments</span>
 					</a>
 					<a
 						href="/activity"
-						class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors
+						aria-label="Activity"
+						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
 							{page.url.pathname === '/activity'
 								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
 								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
 					>
 						<ClockOutline class="h-4 w-4" />
-						Activity
+						<span class="hidden sm:inline">Activity</span>
 					</a>
 				</div>
 			{/if}
