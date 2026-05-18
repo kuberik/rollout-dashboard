@@ -266,22 +266,27 @@
 						</div>
 						<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" />
 					</div>
-					<!-- Env strip -->
-					<div class="flex flex-wrap gap-1.5">
+					<!-- Env strip: env badge + current version per env -->
+					<div class="flex flex-wrap gap-x-2 gap-y-1.5">
 						{#each app.cells as c}
-							{@const status = c.rollout?.status?.history?.[0]?.bakeStatus || 'None'}
-							<span
-								class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-							>
-								<span class="relative flex h-1.5 w-1.5">
-									{#if isRunning(status)}
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
-									{/if}
-									<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
+							{@const latest = c.rollout?.status?.history?.[0]}
+							{@const status = latest?.bakeStatus || 'None'}
+							{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
+							<div class="inline-flex items-center gap-1">
+								<span
+									class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+									style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+								>
+									<span class="relative flex h-1.5 w-1.5">
+										{#if isRunning(status)}
+											<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
+										{/if}
+										<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
+									</span>
+									<span>{shortEnvLabel(c.theme) || c.envName || '—'}</span>
 								</span>
-								<span>{shortEnvLabel(c.theme) || c.envName || '—'}</span>
-							</span>
+								<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">{ver ?? '—'}</span>
+							</div>
 						{/each}
 					</div>
 					{#if app.lastDeploy}

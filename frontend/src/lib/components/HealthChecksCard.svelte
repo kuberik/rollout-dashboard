@@ -58,7 +58,7 @@
 		</div>
 		{#if problemChecks.length > 0}
 			{#each failedChecks as hc (hc.metadata?.name + '/' + hc.metadata?.namespace)}
-				<div class="border-b border-red-100 bg-red-50 px-4 py-3 last:border-b-0 dark:border-red-900/30 dark:bg-red-950/15">
+				<div class="border-b border-gray-100 bg-red-50 px-4 py-3 last:border-b-0 dark:border-gray-700/60 dark:bg-red-950/15">
 					<div class="flex items-start gap-3">
 						<ExclamationCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500 dark:text-red-400" />
 						<div class="min-w-0 flex-1">
@@ -90,7 +90,7 @@
 				</div>
 			{/each}
 			{#each pendingChecks as hc (hc.metadata?.name + '/' + hc.metadata?.namespace)}
-				<div class="border-b border-yellow-100 bg-yellow-50 px-4 py-2.5 last:border-b-0 dark:border-yellow-900/30 dark:bg-yellow-950/10">
+				<div class="border-b border-gray-100 bg-yellow-50 px-4 py-2.5 last:border-b-0 dark:border-gray-700/60 dark:bg-yellow-950/10">
 					<div class="flex items-start gap-3">
 						<StatusSpinner size="4" color="yellow" class="mt-0.5" />
 						<div class="min-w-0 flex-1">
