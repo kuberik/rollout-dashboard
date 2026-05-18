@@ -39,18 +39,38 @@
 
 	const cells = $derived.by<Cell[]>(() => {
 		const envObjs = environments.filter((e) => e.spec?.rolloutRef?.name === appName);
-		const result: Cell[] = envObjs.map((env) => {
-			const envName = env.spec?.environment || '';
-			const rollout =
-				rollouts.find(
-					(r) =>
-						r.metadata?.name === appName && r.metadata?.namespace === env.metadata?.namespace
-				) || null;
-			const theme = rollout ? getRolloutEnvironmentTheme(rollout, env) : null;
-			return { envName, environment: env, rollout, theme };
-		});
-		return result.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
+		if (envObjs.length > 0) {
+			const result: Cell[] = envObjs.map((env) => {
+				const envName = env.spec?.environment || '';
+				const rollout =
+					rollouts.find(
+						(r) =>
+							r.metadata?.name === appName && r.metadata?.namespace === env.metadata?.namespace
+					) || null;
+				const theme = rollout ? getRolloutEnvironmentTheme(rollout, env) : null;
+				return { envName, environment: env, rollout, theme };
+			});
+			return result.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
+		}
+		// Fallback: no Environment resources, but we may still have rollouts named appName
+		// across namespaces. Show them sorted by namespace.
+		const matchingRollouts = rollouts.filter((r) => r.metadata?.name === appName);
+		return matchingRollouts
+			.map<Cell>((r) => {
+				const theme = getRolloutEnvironmentTheme(r);
+				return {
+					envName: r.metadata?.namespace || '',
+					environment: {} as Environment,
+					rollout: r,
+					theme
+				};
+			})
+			.sort((a, b) => (a.rollout?.metadata?.namespace || '').localeCompare(b.rollout?.metadata?.namespace || ''));
 	});
+
+	const hasEnvironmentBinding = $derived(
+		environments.some((e) => e.spec?.rolloutRef?.name === appName)
+	);
 
 	const appTitle = $derived.by(() => {
 		for (const c of cells) {
@@ -286,7 +306,11 @@
 				<div class="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
 					<code class="font-mono">{appName}</code>
 					<span class="text-gray-300 dark:text-gray-600">·</span>
-					<span>{cells.length} environment{cells.length === 1 ? '' : 's'}</span>
+					{#if hasEnvironmentBinding}
+						<span>{cells.length} environment{cells.length === 1 ? '' : 's'}</span>
+					{:else}
+						<span>{cells.length} rollout{cells.length === 1 ? '' : 's'} (no Environment binding)</span>
+					{/if}
 				</div>
 				{#if appDescription}
 					<p class="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-300">{appDescription}</p>
@@ -326,10 +350,10 @@
 			</div>
 		</div>
 
-		<!-- Promotion flow -->
+		<!-- Promotion flow (or rollout list, if no Environment binding) -->
 		<section class="mb-8">
 			<h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-				Promotion flow
+				{hasEnvironmentBinding ? 'Promotion flow' : 'Rollouts'}
 			</h2>
 			<div class="flex flex-wrap items-stretch gap-3">
 				{#each cells as cell, idx}
@@ -378,7 +402,7 @@
 							<div class="mt-1 pl-4 text-[11px] text-gray-400 dark:text-gray-500">no version</div>
 						{/if}
 					</a>
-					{#if idx < cells.length - 1}
+					{#if hasEnvironmentBinding && idx < cells.length - 1}
 						<div class="hidden items-center text-gray-300 dark:text-gray-600 sm:flex" aria-hidden="true">
 							<ArrowRightOutline class="h-4 w-4" />
 						</div>
@@ -387,7 +411,7 @@
 			</div>
 		</section>
 
-		{#if promotionHints.length > 0}
+		{#if promotionHints.length > 0 && hasEnvironmentBinding}
 			<section class="mb-8">
 				<h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
 					Promotion candidates
