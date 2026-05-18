@@ -32,14 +32,22 @@
 		isRunning: boolean;
 	};
 
-	// Optional env filter (clicking an env pill scopes the feed).
-	// Synced with ?env=<name> in the URL so the filter is deeplinkable / shareable.
+	// Optional env / app filters (clicking an env pill scopes the feed).
+	// Synced with ?env=<name>&app=<name> in the URL so filters are deeplinkable.
 	const envFilter = $derived(page.url.searchParams.get('env'));
+	const appFilter = $derived(page.url.searchParams.get('app'));
 
 	function setEnvFilter(next: string | null) {
 		const params = new URLSearchParams(page.url.searchParams);
 		if (next) params.set('env', next);
 		else params.delete('env');
+		const qs = params.toString();
+		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
+	}
+
+	function clearAppFilter() {
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete('app');
 		const qs = params.toString();
 		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
@@ -93,6 +101,7 @@
 		}
 		return entries
 			.filter((e) => !envFilter || e.envName === envFilter)
+			.filter((e) => !appFilter || e.rolloutName === appFilter)
 			.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 			.slice(0, 60);
 	});
@@ -145,6 +154,21 @@
 			<Spinner size="5" color="gray" />
 		{/if}
 	</div>
+
+	{#if appFilter}
+		<div class="mb-3 flex items-center gap-2">
+			<span class="text-[11px] text-gray-500 dark:text-gray-400">Showing only:</span>
+			<button
+				type="button"
+				onclick={clearAppFilter}
+				class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+				title="Clear app filter"
+			>
+				<span class="font-mono normal-case">{appFilter}</span>
+				<span aria-hidden="true">×</span>
+			</button>
+		</div>
+	{/if}
 
 	{#if knownEnvs.length > 0}
 		<div class="mb-5 flex flex-wrap items-center gap-1.5">
