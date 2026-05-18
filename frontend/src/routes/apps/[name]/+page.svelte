@@ -154,9 +154,15 @@
 		}
 		return [...set];
 	});
+	const deployedCellCount = $derived(
+		cells.filter((c) => c.rollout?.status?.history?.[0]).length
+	);
+	const undeployedCount = $derived(cells.length - deployedCellCount);
 
 	const hasDrift = $derived(currentVersions.length > 1);
-	const allInSync = $derived(currentVersions.length === 1 && cells.length > 1);
+	const allInSync = $derived(
+		currentVersions.length === 1 && cells.length > 1 && undeployedCount === 0
+	);
 
 	// Promotion candidates: versions deployed in an earlier-tier env but not yet the latest env
 	// (used to nudge "ready to promote v1.5 from dev → prod")
@@ -310,6 +316,10 @@
 					{:else if failedCount === 0 && activeCount === 0 && hasDrift}
 						<span class="flex items-center gap-1 font-medium text-orange-600 dark:text-orange-400">
 							<span class="h-2 w-2 rounded-full bg-orange-500"></span>{currentVersions.length} versions live
+						</span>
+					{:else if failedCount === 0 && activeCount === 0 && undeployedCount > 0}
+						<span class="flex items-center gap-1 font-medium text-gray-500 dark:text-gray-400">
+							<span class="h-2 w-2 rounded-full bg-gray-400"></span>{undeployedCount} env{undeployedCount === 1 ? '' : 's'} pending
 						</span>
 					{/if}
 				</div>
