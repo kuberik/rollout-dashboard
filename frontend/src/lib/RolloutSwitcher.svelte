@@ -36,7 +36,16 @@
 			const name = r.metadata?.name?.toLowerCase() || '';
 			const ns = r.metadata?.namespace?.toLowerCase() || '';
 			const title = r.status?.title?.toLowerCase() || '';
-			return name.includes(q) || ns.includes(q) || title.includes(q);
+			const theme = getRolloutEnvironmentTheme(r);
+			const envName = (theme?.environmentName || '').toLowerCase();
+			const envLabel = (theme?.label || '').toLowerCase();
+			return (
+				name.includes(q) ||
+				ns.includes(q) ||
+				title.includes(q) ||
+				envName.includes(q) ||
+				envLabel.includes(q)
+			);
 		});
 		result.sort((a, b) => {
 			const nsA = a.metadata?.namespace || '';
