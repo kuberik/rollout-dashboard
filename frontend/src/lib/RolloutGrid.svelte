@@ -361,12 +361,12 @@
 			{#each sorted as c (c.ns + '/' + c.name)}
 				<a
 					href={`/rollouts/${c.ns}/${c.name}`}
-					class="environment-theme-scope group flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+					class="environment-theme-scope group flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
 					style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 				>
-					<div class="flex items-start justify-between gap-2">
-						<div class="min-w-0">
-							<div class="flex items-center gap-2">
+					<div class="flex min-w-0 items-start justify-between gap-2">
+						<div class="min-w-0 flex-1">
+							<div class="flex min-w-0 items-center gap-2">
 								<span class="relative flex h-2 w-2 shrink-0">
 									{#if c.isRunning}
 										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[c.bakeStatus]}"></span>
@@ -375,10 +375,10 @@
 								</span>
 								<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{c.title}</span>
 							</div>
-							<div class="mt-0.5 flex items-center gap-1.5 pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">
+							<div class="mt-0.5 flex min-w-0 items-center gap-1.5 pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">
 								<span class="truncate">{c.ns}</span>
 								{#if c.name !== c.ns && c.name !== c.title}
-									<span class="text-gray-300 dark:text-gray-600">·</span>
+									<span class="shrink-0 text-gray-300 dark:text-gray-600">·</span>
 									<span class="truncate">{c.name}</span>
 								{/if}
 							</div>
@@ -388,8 +388,8 @@
 						{/if}
 					</div>
 
-					<div class="flex items-end justify-between gap-2">
-						<div class="flex min-w-0 flex-col gap-0.5">
+					<div class="flex min-w-0 items-end justify-between gap-2">
+						<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 							<span class="truncate font-mono text-sm font-medium text-gray-800 dark:text-gray-200">
 								{c.version ?? '—'}
 							</span>
@@ -411,7 +411,7 @@
 					</div>
 
 					{#if c.statusKey === 'failed' && c.bakeStatusMessage}
-						<div class="line-clamp-2 rounded-md border border-red-200 bg-red-50/70 px-2 py-1 text-[11px] text-red-700 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-300">
+						<div class="line-clamp-2 break-words rounded-md border border-red-200 bg-red-50/70 px-2 py-1 text-[11px] text-red-700 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-300">
 							{c.bakeStatusMessage}
 						</div>
 					{/if}
