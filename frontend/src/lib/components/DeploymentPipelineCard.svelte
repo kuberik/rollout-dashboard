@@ -21,6 +21,7 @@
 	import HealthCheckBadge from './HealthCheckBadge.svelte';
 	import {
 		formatTimeAgo,
+		formatTimeAgoCompact,
 		formatDuration,
 		getDisplayVersion,
 		parseLinkAnnotations,
@@ -872,20 +873,20 @@
 				</span>
 
 				{#if node.kind === 'started' && latestEntry.timestamp}
-					<span class="text-xs text-gray-500 dark:text-gray-400">
-						{formatTimeAgo(latestEntry.timestamp, $now)}
+					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(latestEntry.timestamp, $now)}>
+						{formatTimeAgoCompact(latestEntry.timestamp, $now)}
 					</span>
 				{:else if node.kind === 'bake' && bakeIsSucceeded && latestEntry.bakeEndTime}
-					<span class="text-xs text-gray-500 dark:text-gray-400">
-						{formatTimeAgo(latestEntry.bakeEndTime, $now)} ·
+					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(latestEntry.bakeEndTime, $now)}>
+						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)} ·
 						{formatDuration(
 							latestEntry.bakeStartTime || latestEntry.timestamp,
 							new Date(latestEntry.bakeEndTime)
 						)}
 					</span>
 				{:else if node.kind === 'bake' && bakeIsFailed && latestEntry.bakeEndTime}
-					<span class="text-xs text-gray-500 dark:text-gray-400">
-						{formatTimeAgo(latestEntry.bakeEndTime, $now)}
+					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(latestEntry.bakeEndTime, $now)}>
+						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)}
 					</span>
 				{:else if node.kind === 'bake' && !bakeIsSucceeded && !bakeIsFailed && rollout.spec?.deployTimeout && !bakeIsDeploying && !bakeIsInProgress}
 					<span class="text-xs text-gray-400 dark:text-gray-500">

@@ -17,6 +17,7 @@
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
+		formatTimeAgoCompact,
 		formatDuration,
 		formatDate,
 		extractDatadogInfoFromContainers,
@@ -441,8 +442,8 @@
 
 								<!-- Time + actor -->
 								<div class="hidden flex-shrink-0 text-right sm:block">
-									<div class="text-xs text-gray-500 dark:text-gray-400">
-										{formatTimeAgo(entry.timestamp, $now)}
+									<div class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(entry.timestamp, $now)}>
+										{formatTimeAgoCompact(entry.timestamp, $now)}
 									</div>
 									{#if entry.triggeredBy}
 										<div class="mt-0.5 flex items-center justify-end gap-1 text-xs text-gray-400">

@@ -1704,9 +1704,9 @@
 													class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
 												>
 													{#if releaseCandidate.created}
-														<span class="flex items-center gap-1">
+														<span class="flex items-center gap-1" title={formatTimeAgo(releaseCandidate.created, $now)}>
 															<ClockSolid class="h-3 w-3" />
-															{formatTimeAgo(releaseCandidate.created, $now)}
+															{formatTimeAgoCompact(releaseCandidate.created, $now)}
 														</span>
 													{/if}
 													{#if depInfo}
@@ -1992,8 +1992,8 @@
 									{/if}
 								</div>
 								{#if created}
-									<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-										{formatTimeAgo(created, $now)}
+									<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(created, $now)}>
+										{formatTimeAgoCompact(created, $now)}
 									</div>
 								{/if}
 							</div>
