@@ -185,10 +185,12 @@
 		<!-- Header -->
 		<div class="mb-6 flex items-start justify-between gap-4">
 			<div class="min-w-0">
-				<div class="flex items-center gap-2">
-					<h1 class="truncate text-2xl font-light text-gray-900 dark:text-white">{envName}</h1>
-					{#if slotTheme}
-						<span class="environment-theme-badge shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider">{slotTheme.label}</span>
+				<div class="flex items-baseline gap-3">
+					<h1 class="environment-theme-text truncate text-2xl font-light text-gray-900 dark:text-white">
+						{slotTheme?.label ?? envName.charAt(0).toUpperCase() + envName.slice(1)}
+					</h1>
+					{#if slotTheme && slotTheme.label.toLowerCase() !== envName.toLowerCase()}
+						<code class="font-mono text-xs text-gray-400 dark:text-gray-500">{envName}</code>
 					{/if}
 				</div>
 				<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

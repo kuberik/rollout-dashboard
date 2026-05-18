@@ -14,6 +14,7 @@
 		FilterSolid,
 		ChevronDownOutline,
 		ChevronUpOutline,
+		ChevronRightOutline,
 		QuestionCircleOutline,
 		PauseSolid,
 	} from 'flowbite-svelte-icons';
@@ -800,18 +801,32 @@
 					{@const groupHighlighted =
 						(group.labelKind === 'namespace' && nsFilters.includes(group.key)) ||
 						(group.labelKind === 'environment' && envFilters.includes(group.key))}
+					{@const detailHref =
+						group.labelKind === 'namespace'
+							? `/namespaces/${group.key}`
+							: group.labelKind === 'environment' && group.key !== 'No environment'
+								? `/envs/${encodeURIComponent(group.key)}`
+								: group.labelKind === 'name'
+									? `/apps/${group.key}`
+									: null}
 					<section class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
 					>
-						<!-- Group header -->
+						<!-- Group header row (toggle + optional detail link) -->
+						<div class="flex border-b border-gray-100 dark:border-gray-700/60
+							{group.severity === 3
+								? 'bg-red-50 dark:bg-red-950/20'
+								: group.severity === 2
+									? 'bg-orange-50 dark:bg-orange-950/20'
+									: ''}">
 						<button
 							type="button"
 							onclick={() => toggleGroupKey(group)}
 							aria-pressed={groupHighlighted}
-							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors dark:border-gray-700/60
+							class="flex flex-1 items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors
 								{group.severity === 3
-									? 'bg-red-50 hover:bg-red-100/60 dark:bg-red-950/20 dark:hover:bg-red-900/20'
+									? 'hover:bg-red-100/60 dark:hover:bg-red-900/20'
 									: group.severity === 2
-										? 'bg-orange-50 hover:bg-orange-100/60 dark:bg-orange-950/20 dark:hover:bg-orange-900/20'
+										? 'hover:bg-orange-100/60 dark:hover:bg-orange-900/20'
 										: 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}"
 						>
 							<div class="flex min-w-0 items-center gap-2">
@@ -851,6 +866,17 @@
 								<CloseOutline class="h-3.5 w-3.5 text-blue-500" />
 							{/if}
 						</button>
+						{#if detailHref}
+							<a
+								href={detailHref}
+								class="flex shrink-0 items-center border-l border-gray-100 px-3 text-gray-300 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700/60 dark:text-gray-600 dark:hover:bg-gray-700/40 dark:hover:text-gray-300"
+								title={group.labelKind === 'namespace' ? 'View namespace timeline' : group.labelKind === 'environment' ? 'View environment overview' : 'View app across environments'}
+								aria-label="View detail"
+							>
+								<ChevronRightOutline class="h-4 w-4" />
+							</a>
+						{/if}
+						</div>
 
 						<!-- Rows -->
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
