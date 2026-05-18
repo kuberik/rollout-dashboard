@@ -8,7 +8,7 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
-	import { CheckCircleSolid, ExclamationCircleSolid, LayersSolid } from 'flowbite-svelte-icons';
+	import { CheckCircleSolid, ExclamationCircleSolid, LayersSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -264,7 +264,89 @@
 			</p>
 		</div>
 	{:else}
-		<div class="overflow-x-auto">
+		<!-- Mobile: stacked cards (one per app, env rows inside) -->
+		<div class="space-y-3 md:hidden">
+			{#each sortedAppNames as appName}
+				{@const row = matrix.get(appName)}
+				{@const drift = hasDrift(appName)}
+				{@const sev = appSeverity(appName)}
+				<section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 {sev === 3 ? 'border-red-200 dark:border-red-900/50' : ''}">
+					<a
+						href="/apps/{appName}"
+						class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700/60 {sev === 3 ? 'bg-red-50/40 dark:bg-red-900/5' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}"
+					>
+						<div class="min-w-0">
+							<div class="flex items-center gap-2">
+								{#if sev === 3}
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"></span>
+								{:else if sev === 1}
+									<span class="relative flex h-1.5 w-1.5 shrink-0">
+										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+										<span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-yellow-400"></span>
+									</span>
+								{:else}
+									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400 dark:bg-green-500"></span>
+								{/if}
+								<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
+								{#if drift}
+									<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
+								{/if}
+							</div>
+							<div class="mt-0.5 truncate pl-3.5 font-mono text-[11px] text-gray-400 dark:text-gray-500">{appName}</div>
+						</div>
+						<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+					</a>
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each envNames as envName}
+							{@const cell = row?.get(envName)}
+							<li class="environment-theme-scope" style={getEnvThemeStyle(envName)}>
+								{#if cell}
+									{@const status = bakeStatus(cell.rollout)}
+									{@const dotClass = STATUS_DOT[status] ?? STATUS_DOT['None']}
+									{@const labelClass = STATUS_LABEL_CLASS[status] ?? STATUS_LABEL_CLASS['None']}
+									{@const label = STATUS_LABEL[status] ?? status}
+									{@const latest = cell.rollout.status?.history?.[0]}
+									{@const behind = behindFor(appName, envName)}
+									<a
+										href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
+										class="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+									>
+										<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wider">{envName}</span>
+										<div class="flex min-w-0 flex-col gap-0.5">
+											<div class="flex min-w-0 items-center gap-1.5">
+												<span class="relative flex h-2 w-2 shrink-0">
+													{#if isRunning(status)}
+														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {dotClass}"></span>
+													{/if}
+													<span class="relative inline-flex h-2 w-2 rounded-full {dotClass}"></span>
+												</span>
+												<span class="truncate font-mono text-xs font-medium text-gray-800 dark:text-gray-200">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
+											</div>
+											<span class="text-[11px] {labelClass}">{label}</span>
+											{#if behind}
+												<span class="truncate text-[10px] text-orange-700 dark:text-orange-300">← <span class="font-mono">{behind.version}</span> on {behind.fromEnv}</span>
+											{/if}
+										</div>
+										{#if latest?.timestamp}
+											<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(latest.timestamp, $now)}</span>
+										{/if}
+									</a>
+								{:else}
+									<div class="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">
+										<span class="shrink-0 rounded-full border border-dashed border-gray-200 px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:border-gray-700 dark:text-gray-500">{envName}</span>
+										<span class="text-[11px] text-gray-400 dark:text-gray-500">no rollout</span>
+										<span></span>
+									</div>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/each}
+		</div>
+
+		<!-- Desktop: matrix layout -->
+		<div class="hidden overflow-x-auto md:block">
 			<div class="min-w-max overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 				<!-- Column headers -->
 				<div
