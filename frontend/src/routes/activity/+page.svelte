@@ -3,25 +3,26 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { formatTimeAgoCompact, getDisplayVersion } from '$lib/utils';
+	import { formatTimeAgoCompact, formatTimeAgo, getDisplayVersion } from '$lib/utils';
+	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
-	import { Badge, Spinner } from 'flowbite-svelte';
-	import {
-		CheckCircleSolid,
-		ExclamationCircleSolid,
-		ClockSolid,
-	} from 'flowbite-svelte-icons';
+	import { Spinner } from 'flowbite-svelte';
+	import { ClockSolid, RocketOutline } from 'flowbite-svelte-icons';
+	import type { Environment } from '../../types';
 
 	const rolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: 15000 } })
 	);
 
 	const rollouts = $derived(rolloutsQuery.data?.rollouts?.items || []);
+	const environments = $derived<Environment[]>(rolloutsQuery.data?.environments?.items || []);
 
 	type ActivityEntry = {
 		rolloutName: string;
 		rolloutNamespace: string;
 		displayName: string;
+		envName: string;
+		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		version: string;
 		bakeStatus: string;
 		timestamp: string;
@@ -29,11 +30,39 @@
 		isRunning: boolean;
 	};
 
+	// Optional env filter (clicking an env pill scopes the feed)
+	let envFilter = $state<string | null>(null);
+
+	const knownEnvs = $derived.by(() => {
+		const map = new Map<string, ReturnType<typeof getRolloutEnvironmentTheme>>();
+		for (const env of environments) {
+			const name = env.spec?.environment;
+			if (!name) continue;
+			if (!map.has(name)) {
+				const r = rollouts.find(
+					(r) =>
+						r.metadata?.name === env.spec?.rolloutRef?.name &&
+						r.metadata?.namespace === env.metadata?.namespace
+				);
+				if (r) map.set(name, getRolloutEnvironmentTheme(r, env));
+				else map.set(name, null);
+			}
+		}
+		return [...map.entries()].map(([name, theme]) => ({ name, theme }));
+	});
+
 	const activityFeed = $derived.by(() => {
 		const entries: ActivityEntry[] = [];
 		for (const rollout of rollouts) {
 			const history = rollout.status?.history || [];
 			const title = rollout.status?.title || rollout.metadata?.name || '';
+			const env = environments.find(
+				(e) =>
+					e.metadata?.namespace === rollout.metadata?.namespace &&
+					e.spec?.rolloutRef?.name === rollout.metadata?.name
+			);
+			const envName = env?.spec?.environment || '';
+			const theme = env ? getRolloutEnvironmentTheme(rollout, env) : getRolloutEnvironmentTheme(rollout);
 			for (const h of history.slice(0, 8)) {
 				if (!h.timestamp) continue;
 				const bs = h.bakeStatus || 'None';
@@ -41,6 +70,8 @@
 					rolloutName: rollout.metadata?.name || '',
 					rolloutNamespace: rollout.metadata?.namespace || '',
 					displayName: title,
+					envName,
+					theme,
 					version: getDisplayVersion(h.version),
 					bakeStatus: bs,
 					timestamp: h.timestamp,
@@ -50,6 +81,7 @@
 			}
 		}
 		return entries
+			.filter((e) => !envFilter || e.envName === envFilter)
 			.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 			.slice(0, 60);
 	});
@@ -78,13 +110,13 @@
 		return groups;
 	});
 
-	const STATUS_CONFIG: Record<string, { dotClass: string; badgeColor: 'green' | 'red' | 'yellow' | 'blue' | 'gray'; label: string }> = {
-		Succeeded: { dotClass: 'bg-green-500', badgeColor: 'green', label: 'Succeeded' },
-		Failed:    { dotClass: 'bg-red-500',   badgeColor: 'red',   label: 'Failed' },
-		InProgress:{ dotClass: 'bg-yellow-400',badgeColor: 'yellow', label: 'Baking' },
-		Deploying: { dotClass: 'bg-blue-500',  badgeColor: 'blue',  label: 'Deploying' },
-		Cancelled: { dotClass: 'bg-gray-400',  badgeColor: 'gray',  label: 'Cancelled' },
-		None:      { dotClass: 'bg-gray-300 dark:bg-gray-600', badgeColor: 'gray', label: 'Idle' },
+	const STATUS_CONFIG: Record<string, { dotClass: string; textClass: string; label: string }> = {
+		Succeeded: { dotClass: 'bg-green-500', textClass: 'text-green-700 dark:text-green-400', label: 'Succeeded' },
+		Failed:    { dotClass: 'bg-red-500',   textClass: 'text-red-700 dark:text-red-400',     label: 'Failed' },
+		InProgress:{ dotClass: 'bg-yellow-400',textClass: 'text-yellow-700 dark:text-yellow-400', label: 'Baking' },
+		Deploying: { dotClass: 'bg-blue-500',  textClass: 'text-blue-700 dark:text-blue-400',   label: 'Deploying' },
+		Cancelled: { dotClass: 'bg-gray-400',  textClass: 'text-gray-500 dark:text-gray-500',   label: 'Cancelled' },
+		None:      { dotClass: 'bg-gray-300 dark:bg-gray-600', textClass: 'text-gray-400 dark:text-gray-600', label: 'Idle' },
 	};
 </script>
 
@@ -92,8 +124,8 @@
 	<title>kuberik | Activity</title>
 </svelte:head>
 
-<div class="mx-auto max-w-2xl px-4 py-6 sm:px-6">
-	<div class="mb-6 flex items-center justify-between">
+<div class="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+	<div class="mb-4 flex items-center justify-between">
 		<div>
 			<h1 class="text-lg font-semibold text-gray-900 dark:text-white">Deploy Activity</h1>
 			<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Recent deployments across all rollouts</p>
@@ -102,6 +134,30 @@
 			<Spinner size="5" color="gray" />
 		{/if}
 	</div>
+
+	{#if knownEnvs.length > 0}
+		<div class="mb-5 flex flex-wrap items-center gap-1.5">
+			<button
+				type="button"
+				onclick={() => (envFilter = null)}
+				class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors
+					{envFilter === null
+						? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-400 dark:hover:bg-gray-700'}"
+			>All</button>
+			{#each knownEnvs as e}
+				<button
+					type="button"
+					onclick={() => (envFilter = envFilter === e.name ? null : e.name)}
+					class="environment-theme-scope inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors
+						{envFilter === e.name
+							? 'ring-2 ring-gray-900/20 dark:ring-gray-100/20 environment-theme-badge'
+							: 'environment-theme-badge opacity-70 hover:opacity-100'}"
+					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
+				>{e.name}</button>
+			{/each}
+		</div>
+	{/if}
 
 	{#if rolloutsQuery.isLoading}
 		<div class="space-y-3">
@@ -129,14 +185,15 @@
 						<div class="flex-1 border-t border-gray-100 dark:border-gray-800"></div>
 					</div>
 
-					<!-- Entries: simple bordered list, no timeline chrome -->
+					<!-- Entries: simple bordered list -->
 					<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 						{#each dayGroup.entries as entry, idx}
 							{@const cfg = STATUS_CONFIG[entry.bakeStatus] ?? STATUS_CONFIG['None']}
 							<a
 								href={entry.href}
-								class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+								class="environment-theme-scope flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
 									{idx > 0 ? 'border-t border-gray-100 dark:border-gray-700/60' : ''}"
+								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
 							>
 								<!-- Status dot -->
 								<span class="relative flex h-2 w-2 shrink-0">
@@ -146,11 +203,16 @@
 									<span class="relative inline-flex h-2 w-2 rounded-full {cfg.dotClass}"></span>
 								</span>
 
+								<!-- Env badge -->
+								{#if entry.envName}
+									<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{entry.envName}</span>
+								{/if}
+
 								<!-- Name + namespace -->
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-baseline gap-x-1.5">
-										<span class="text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
-										<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
+										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
+										<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
 									</div>
 									<div class="flex items-baseline gap-x-1.5">
 										{#if entry.rolloutName !== entry.displayName}
@@ -161,10 +223,10 @@
 									</div>
 								</div>
 
-								<!-- Right: status badge + time -->
-								<div class="flex shrink-0 items-center gap-2">
-									<Badge color={cfg.badgeColor} class="text-xs">{cfg.label}</Badge>
-									<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(entry.timestamp, $now)}</span>
+								<!-- Right: status text + time -->
+								<div class="flex shrink-0 items-center gap-3">
+									<span class="text-[11px] font-medium {cfg.textClass}">{cfg.label}</span>
+									<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(entry.timestamp, $now)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
 								</div>
 							</a>
 						{/each}
