@@ -482,7 +482,7 @@
 												{/if}
 												<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[cur.bakeStatus] ?? STATUS_DOT.None}"></span>
 											</span>
-											<span class="environment-theme-text uppercase tracking-wider text-gray-700 dark:text-gray-300">{cur.envName}</span>
+											<span class="environment-theme-text uppercase tracking-wider text-gray-700 dark:text-gray-300">{hasEnvironmentBinding ? cur.envName : (cur.cell.theme?.label ?? cur.envName)}</span>
 										</span>
 									{/each}
 									{#each v.past.slice(0, 4) as p}
@@ -490,7 +490,7 @@
 											class="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-400 dark:border-gray-600/50 dark:text-gray-500"
 											title="Previously on {p.envName} at {p.timestamp}"
 										>
-											<span class="uppercase tracking-wider">{p.envName}</span>
+											<span class="uppercase tracking-wider">{hasEnvironmentBinding ? p.envName : (p.cell.theme?.label ?? p.envName)}</span>
 											<span class="font-mono text-[9px]">{formatTimeAgoCompact(p.timestamp, $now)}</span>
 										</span>
 									{/each}
@@ -518,7 +518,7 @@
 								<li class="environment-theme-scope px-4 py-2.5 text-sm" style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}>
 									<div class="flex items-center justify-between gap-2">
 										<div class="flex min-w-0 items-center gap-2">
-											<span class="environment-theme-badge shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-700/60 dark:text-gray-300">{a.envName || 'no-env'}</span>
+											<span class="environment-theme-badge shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-700/60 dark:text-gray-300">{hasEnvironmentBinding ? (a.envName || 'no-env') : (a.theme?.label ?? a.envName ?? 'no-env')}</span>
 											<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">{a.version}</span>
 										</div>
 										<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
