@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgo } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import { CheckCircleSolid, ExclamationCircleSolid, LayersSolid } from 'flowbite-svelte-icons';
@@ -287,7 +287,7 @@
 												<span class="text-[11px] font-medium {labelClass}">{label}</span>
 												{#if latest?.timestamp}
 													<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
-														{formatTimeAgo(latest.timestamp, $now)}
+														{formatTimeAgoCompact(latest.timestamp, $now)}
 													</span>
 												{/if}
 											</div>
