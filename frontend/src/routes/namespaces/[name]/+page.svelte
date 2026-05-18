@@ -248,8 +248,8 @@
 								</div>
 								<div class="mt-0.5 pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">{a.rollout.metadata?.name}</div>
 							</div>
-							{#if a.envName}
-								<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{a.envName}</span>
+							{#if a.envName || a.theme}
+								<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{a.envName || a.theme?.label}</span>
 							{/if}
 						</div>
 						<div class="mt-3 flex items-end justify-between gap-2">
@@ -291,8 +291,8 @@
 										<li class="environment-theme-scope grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 py-1.5 text-sm" style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}>
 											<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{shortTime(e.timestamp)}</span>
 											<div class="flex min-w-0 items-center gap-2">
-												{#if e.envName}
-													<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{e.envName}</span>
+												{#if e.envName || e.theme}
+													<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{e.envName || e.theme?.label}</span>
 												{/if}
 												<a
 													href="/rollouts/{namespace}/{e.appName}"
