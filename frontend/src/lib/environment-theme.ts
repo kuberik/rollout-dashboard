@@ -196,8 +196,12 @@ const ENV_SHORT_LABEL: Record<string, string> = {
 	testing: 'test'
 };
 
-export function shortEnvLabel(theme: EnvironmentTheme | null | undefined): string {
-	if (!theme) return '';
-	const candidate = (theme.environmentName || theme.name || theme.label || '').toLowerCase();
+export function shortEnvLabel(input: EnvironmentTheme | string | null | undefined): string {
+	if (!input) return '';
+	const candidate = (
+		typeof input === 'string'
+			? input
+			: input.environmentName || input.name || input.label || ''
+	).toLowerCase();
 	return ENV_SHORT_LABEL[candidate] || candidate;
 }

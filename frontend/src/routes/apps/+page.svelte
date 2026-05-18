@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
+	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -280,7 +280,7 @@
 									{/if}
 									<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
 								</span>
-								<span>{c.envName || '—'}</span>
+								<span>{shortEnvLabel(c.theme) || c.envName || '—'}</span>
 							</span>
 						{/each}
 					</div>

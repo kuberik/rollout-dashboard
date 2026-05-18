@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { formatTimeAgoCompact, formatTimeAgo, getDisplayVersion } from '$lib/utils';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
+	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import { ClockSolid, RocketOutline } from 'flowbite-svelte-icons';
@@ -213,7 +213,7 @@
 							? 'ring-2 ring-gray-900/20 dark:ring-gray-100/20 environment-theme-badge'
 							: 'environment-theme-badge opacity-70 hover:opacity-100'}"
 					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-				>{e.name}</button>
+				>{shortEnvLabel(e.theme) || e.name}</button>
 			{/each}
 		</div>
 	{/if}
@@ -264,7 +264,7 @@
 
 								<!-- Env badge -->
 								{#if entry.envName || entry.theme}
-									<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{entry.envName || entry.theme?.label}</span>
+									<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(entry.theme) || entry.envName || entry.theme?.label}</span>
 								{/if}
 
 								<!-- Name + namespace -->

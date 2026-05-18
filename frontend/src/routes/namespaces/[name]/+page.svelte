@@ -5,7 +5,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
+	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import {
@@ -263,7 +263,7 @@
 								<div class="mt-0.5 pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">{a.rollout.metadata?.name}</div>
 							</div>
 							{#if a.envName || a.theme}
-								<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{a.envName || a.theme?.label}</span>
+								<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
 							{/if}
 						</div>
 						<div class="mt-3 flex items-end justify-between gap-2">
@@ -316,7 +316,7 @@
 												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{shortTime(e.timestamp)}</span>
 												<div class="flex min-w-0 items-center gap-2">
 													{#if e.envName || e.theme}
-														<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{e.envName || e.theme?.label}</span>
+														<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(e.theme) || e.envName || e.theme?.label}</span>
 													{/if}
 													<span class="min-w-0 truncate text-gray-800 dark:text-gray-200">{e.title}</span>
 													<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{e.version}</span>
