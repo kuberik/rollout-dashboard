@@ -734,20 +734,95 @@
 				<button onclick={() => { searchQuery = ''; statusFilters = []; envFilters = []; nsFilters = []; }} class="mt-3 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Clear filters</button>
 			</div>
 		{:else}
+			<!-- Status summary bar -->
+			{#if statusCounts.failed > 0 || statusCounts.active > 0 || stuckTotal > 0 || statusCounts.succeeded > 0}
+				<div class="mb-5 flex flex-wrap items-center gap-2">
+					{#if statusCounts.failed > 0}
+						<button
+							type="button"
+							onclick={() => toggleStatus('failed')}
+							class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors
+								{statusFilters.includes('failed')
+									? 'bg-red-500 text-white dark:bg-red-600'
+									: 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30'}"
+						>
+							<span class="h-2 w-2 rounded-full bg-red-500 {statusFilters.includes('failed') ? 'bg-white' : ''}"></span>
+							{statusCounts.failed} Failed
+						</button>
+					{/if}
+					{#if statusCounts.active > 0}
+						<button
+							type="button"
+							onclick={() => toggleStatus('active')}
+							class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors
+								{statusFilters.includes('active')
+									? 'bg-yellow-400 text-gray-900'
+									: 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/20 dark:text-yellow-400 dark:hover:bg-yellow-900/30'}"
+						>
+							<span class="relative flex h-2 w-2 shrink-0">
+								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+								<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
+							</span>
+							{statusCounts.active} Baking
+						</button>
+					{/if}
+					{#if stuckTotal > 0}
+						<button
+							type="button"
+							onclick={() => toggleStatus('stuck')}
+							class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors
+								{statusFilters.includes('stuck')
+									? 'bg-orange-500 text-white dark:bg-orange-600'
+									: 'bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:hover:bg-orange-900/30'}"
+						>
+							<span class="h-2 w-2 rounded-full bg-orange-500 {statusFilters.includes('stuck') ? 'bg-white' : ''}"></span>
+							{stuckTotal} Stuck
+						</button>
+					{/if}
+					<div class="ml-auto flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+						{#if statusCounts.succeeded > 0}
+							<span class="flex items-center gap-1">
+								<span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+								{statusCounts.succeeded} healthy
+							</span>
+						{/if}
+						{#if statusCounts.idle > 0}
+							<span class="flex items-center gap-1">
+								<span class="h-1.5 w-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></span>
+								{statusCounts.idle} idle
+							</span>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
 			<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
 				{#each groupedRows as group}
 					{@const groupHighlighted =
 						(group.labelKind === 'namespace' && nsFilters.includes(group.key)) ||
 						(group.labelKind === 'environment' && envFilters.includes(group.key))}
-					<section class="overflow-hidden rounded-lg border bg-white dark:bg-gray-800
-						{groupHighlighted ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700'}"
+					<section class="overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-gray-800
+						{groupHighlighted
+							? 'border-l-4 border-l-blue-400 border-gray-200 dark:border-gray-700 dark:border-l-blue-500'
+							: group.severity === 3
+								? 'border-l-4 border-l-red-500 border-gray-200 dark:border-gray-700 dark:border-l-red-500'
+								: group.severity === 2
+									? 'border-l-4 border-l-orange-500 border-gray-200 dark:border-gray-700 dark:border-l-orange-500'
+									: group.severity === 1
+										? 'border-l-4 border-l-yellow-400 border-gray-200 dark:border-gray-700 dark:border-l-yellow-400'
+										: 'border-gray-200 dark:border-gray-700'}"
 					>
 						<!-- Group header -->
 						<button
 							type="button"
 							onclick={() => toggleGroupKey(group)}
 							aria-pressed={groupHighlighted}
-							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors hover:bg-gray-50 dark:border-gray-700/60 dark:hover:bg-gray-700/40"
+							class="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors dark:border-gray-700/60
+								{group.severity === 3
+									? 'bg-red-50 hover:bg-red-100/60 dark:bg-red-950/20 dark:hover:bg-red-900/20'
+									: group.severity === 2
+										? 'bg-orange-50 hover:bg-orange-100/60 dark:bg-orange-950/20 dark:hover:bg-orange-900/20'
+										: 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}"
 						>
 							<div class="flex min-w-0 items-center gap-2">
 								<!-- Severity indicator — only when not healthy -->
