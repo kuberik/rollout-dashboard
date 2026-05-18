@@ -1,0 +1,7 @@
+*.svelte text diff
+*.ts text diff
+*.tsx text diff
+*.js text diff
+*.css text diff
+*.html text diff
+*.md text diff
