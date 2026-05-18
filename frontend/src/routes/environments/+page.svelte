@@ -261,10 +261,56 @@
 	</div>
 
 	{#if query.isLoading}
-		<div class="space-y-3">
-			{#each Array(5) as _}
-				<div class="h-14 w-full animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+		<!-- Mobile skeleton: env-grouped cards -->
+		<div class="space-y-3 md:hidden">
+			{#each Array(3) as _}
+				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+					<div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
+						<div class="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+						<div class="h-3 w-3 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+					</div>
+					<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each Array(2) as _}
+							<div class="flex items-center justify-between gap-3 px-4 py-3">
+								<div class="flex min-w-0 flex-1 flex-col gap-1.5">
+									<div class="h-3.5 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+									<div class="h-3 w-1/3 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+								</div>
+								<div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+							</div>
+						{/each}
+					</div>
+				</div>
 			{/each}
+		</div>
+		<!-- Desktop skeleton: matrix-shaped grid -->
+		<div class="hidden overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 md:block">
+			<!-- Header row -->
+			<div class="grid border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40" style="grid-template-columns: minmax(200px,1.5fr) repeat(3, minmax(150px,1fr))">
+				<div class="px-5 py-3"><div class="h-3 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div></div>
+				{#each Array(3) as _}
+					<div class="border-l border-gray-200 px-5 py-3 dark:border-gray-700"><div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div></div>
+				{/each}
+			</div>
+			<!-- Rows -->
+			<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
+				{#each Array(4) as _}
+					<div class="grid" style="grid-template-columns: minmax(200px,1.5fr) repeat(3, minmax(150px,1fr))">
+						<div class="flex flex-col gap-1.5 px-5 py-4">
+							<div class="h-4 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+							<div class="h-3 w-1/2 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+						</div>
+						{#each Array(3) as _}
+							<div class="border-l border-gray-100 p-3 dark:border-gray-700/60">
+								<div class="space-y-1.5">
+									<div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+									<div class="h-2.5 w-12 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/each}
+			</div>
 		</div>
 	{:else if query.isError}
 		<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">

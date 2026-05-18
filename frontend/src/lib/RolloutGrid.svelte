@@ -457,12 +457,46 @@
 
 	{#if query.isLoading}
 		<div class="space-y-6">
+			<!-- Fleet summary skeleton -->
+			<div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<div class="flex items-center justify-between gap-4">
+					<div class="flex items-baseline gap-2">
+						<div class="h-8 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+						<div class="h-4 w-20 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+					</div>
+					<div class="hidden gap-2 sm:flex">
+						{#each Array(3) as _}
+							<div class="h-4 w-16 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
+						{/each}
+					</div>
+				</div>
+				<div class="mt-3 h-1 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+			</div>
+			<!-- Namespace groups skeleton -->
 			{#each Array(2) as _}
 				<div class="space-y-3">
-					<div class="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+					<div class="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-700/60">
+						<div class="h-4 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+						<div class="h-4 w-16 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+					</div>
 					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 						{#each Array(3) as _}
-							<div class="h-28 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+							<div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+								<div class="flex items-start justify-between gap-2">
+									<div class="flex flex-col gap-1.5">
+										<div class="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+										<div class="h-3 w-24 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+									</div>
+									<div class="h-4 w-12 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
+								</div>
+								<div class="mt-3 flex items-end justify-between">
+									<div class="flex flex-col gap-1.5">
+										<div class="h-3.5 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+										<div class="h-3 w-12 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+									</div>
+									<div class="h-3 w-8 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+								</div>
+							</div>
 						{/each}
 					</div>
 				</div>
