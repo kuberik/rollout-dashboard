@@ -350,11 +350,13 @@
 	function groupKeyOf(row: Row, gb: GroupBy): { key: string; label: string; labelKind: Group['labelKind'] } {
 		if (gb === 'name')        return { key: row.name, label: row.name, labelKind: 'name' };
 		if (gb === 'environment') {
-			// Prefer the explicit Environment name. Fall back to the theme's preset label
-			// (e.g. "Development") for rollouts that only have a theme annotation, then
-			// to "No environment" when nothing identifies the env.
-			const key = row.theme?.environmentName || row.theme?.label || 'No environment';
-			return { key, label: key, labelKind: 'environment' };
+			// Use the normalized theme name (e.g. 'prod') as the merge key so a rollout
+			// bound via Environment.spec.environment=prod groups with another rollout
+			// that only carries the 'prod' theme annotation. The display label prefers
+			// the explicit environment name, then the preset label.
+			const key = row.theme?.name || 'no-environment';
+			const label = row.theme?.environmentName || row.theme?.label || 'No environment';
+			return { key, label, labelKind: 'environment' };
 		}
 		return { key: row.ns, label: row.ns, labelKind: 'namespace' };
 	}
@@ -810,7 +812,7 @@
 					{@const detailHref =
 						group.labelKind === 'namespace'
 							? `/namespaces/${group.key}`
-							: group.labelKind === 'environment' && group.key !== 'No environment'
+							: group.labelKind === 'environment' && group.key !== 'no-environment'
 								? `/envs/${encodeURIComponent(group.key)}`
 								: group.labelKind === 'name'
 									? `/apps/${group.key}`
