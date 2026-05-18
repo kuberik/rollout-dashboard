@@ -103,6 +103,18 @@
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}
+
+	// Fleet roll-up
+	const fleetTotals = $derived.by(() => {
+		let failed = 0, active = 0, drift = 0, healthy = 0;
+		for (const a of apps) {
+			if (a.failedCount > 0) failed++;
+			else if (a.activeCount > 0) active++;
+			else if (a.currentVersions.length > 1) drift++;
+			else healthy++;
+		}
+		return { failed, active, drift, healthy };
+	});
 </script>
 
 <svelte:head>
@@ -110,7 +122,7 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<div class="mb-6 flex items-center justify-between">
+	<div class="mb-4 flex items-center justify-between">
 		<div>
 			<h1 class="text-lg font-semibold text-gray-900 dark:text-white">Apps</h1>
 			<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Each app and where it's deployed</p>
@@ -119,6 +131,62 @@
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
 	</div>
+
+	{#if apps.length > 0}
+		<!-- Fleet summary banner -->
+		<section class="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+			<div class="flex flex-wrap items-baseline justify-between gap-4">
+				<div class="flex items-baseline gap-1.5">
+					<span class="text-3xl font-light {fleetTotals.failed > 0 ? 'text-red-600 dark:text-red-400' : fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{fleetTotals.healthy}</span>
+					<span class="text-sm text-gray-400 dark:text-gray-500">/ {apps.length} apps healthy</span>
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					{#if fleetTotals.active > 0}
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+							<span class="relative flex h-2 w-2">
+								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+								<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
+							</span>
+							{fleetTotals.active} deploying
+						</span>
+					{/if}
+					{#if fleetTotals.drift > 0}
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-orange-700 dark:text-orange-400">
+							<span class="h-2 w-2 rounded-full bg-orange-500"></span>
+							{fleetTotals.drift} drifting
+						</span>
+					{/if}
+					{#if fleetTotals.failed > 0}
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
+							<span class="h-2 w-2 rounded-full bg-red-500"></span>
+							{fleetTotals.failed} failed
+						</span>
+					{/if}
+					{#if fleetTotals.failed === 0 && fleetTotals.active === 0 && fleetTotals.drift === 0}
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400">
+							<span class="h-2 w-2 rounded-full bg-green-500"></span>
+							All healthy
+						</span>
+					{/if}
+				</div>
+			</div>
+			<!-- Composition bar -->
+			<div class="mt-3 flex h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700/60">
+				{#if fleetTotals.healthy > 0}
+					<span class="bg-green-500" style="width:{(fleetTotals.healthy / apps.length) * 100}%"></span>
+				{/if}
+				{#if fleetTotals.active > 0}
+					<span class="bg-yellow-400" style="width:{(fleetTotals.active / apps.length) * 100}%"></span>
+				{/if}
+				{#if fleetTotals.drift > 0}
+					<span class="bg-orange-500" style="width:{(fleetTotals.drift / apps.length) * 100}%"></span>
+				{/if}
+				{#if fleetTotals.failed > 0}
+					<span class="bg-red-500" style="width:{(fleetTotals.failed / apps.length) * 100}%"></span>
+				{/if}
+			</div>
+		</section>
+	{/if}
 
 	{#if query.isLoading}
 		<div class="space-y-3">
