@@ -1327,11 +1327,21 @@
 							{rollout.status?.title || rollout.metadata?.name}
 						</h1>
 						{#if currentEnv}
-							<span
-								class="environment-theme-scope environment-theme-badge shrink-0 self-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider {rolloutTheme ? '' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}"
+							<a
+								href={`/envs/${encodeURIComponent(currentEnv)}`}
+								class="environment-theme-scope environment-theme-badge shrink-0 self-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-80 {rolloutTheme ? '' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}"
 								style={rolloutThemeStyle}
-							>{currentEnv}</span>
+								title="View all apps in {currentEnv}"
+							>{currentEnv}</a>
 						{/if}
+						<a
+							href={`/apps/${rollout.metadata?.name}`}
+							class="inline-flex items-center gap-1 self-center text-[11px] text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+							title="See this app across all environments"
+						>
+							<span aria-hidden="true">↗</span>
+							across envs
+						</a>
 					</div>
 					{#if rollout.status?.description && rollout.status.description !== (rollout.status?.title || rollout.metadata?.name)}
 						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
