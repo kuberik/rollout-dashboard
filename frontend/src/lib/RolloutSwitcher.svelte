@@ -4,10 +4,11 @@
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
 	import type { Rollout } from '../types';
-	import { getRolloutStatus } from '$lib/utils';
+	import { getRolloutStatus, formatTimeAgoCompact } from '$lib/utils';
 	import { Badge } from 'flowbite-svelte';
 	import { SearchOutline } from 'flowbite-svelte-icons';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
+	import { now } from '$lib/stores/time';
 
 	let {
 		open = $bindable(false),
@@ -214,6 +215,11 @@
 										</span>
 									{/if}
 								</div>
+								{#if r.status?.history?.[0]?.timestamp}
+									<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={`Last deploy ${r.status.history[0].timestamp}`}>
+										{formatTimeAgoCompact(r.status.history[0].timestamp, $now)}
+									</span>
+								{/if}
 								{#if rolloutTheme}
 									<Badge
 										color="gray"
