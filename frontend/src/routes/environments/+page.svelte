@@ -135,6 +135,8 @@
 		const earlier = row.get(earlierEnvName);
 		const current = row.get(envName);
 		if (!earlier?.rollout || !current?.rollout) return null;
+		// Pinned env is intentionally held — don't surface it as lagging.
+		if (current.rollout.spec?.wantedVersion) return null;
 		const earlierH = earlier.rollout.status?.history?.[0];
 		if (!earlierH) return null;
 		if (earlierH.bakeStatus !== 'Succeeded') return null;
@@ -327,9 +329,17 @@
 												<span class="truncate text-[10px] text-orange-700 dark:text-orange-300">← <span class="font-mono">{behind.version}</span> on {behind.fromEnv}</span>
 											{/if}
 										</div>
-										{#if latest?.timestamp}
-											<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(latest.timestamp, $now)}</span>
-										{/if}
+										<div class="flex shrink-0 items-center gap-1">
+											{#if cell.rollout.spec?.wantedVersion}
+												<span
+													class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+													title={`Pinned to ${cell.rollout.spec.wantedVersion}`}
+												>pin</span>
+											{/if}
+											{#if latest?.timestamp}
+												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(latest.timestamp, $now)}</span>
+											{/if}
+										</div>
 									</a>
 								{:else}
 									<div class="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">
@@ -435,11 +445,19 @@
 											</div>
 											<div class="mt-1 flex items-center justify-between gap-1 pl-4">
 												<span class="text-[11px] font-medium {labelClass}">{label}</span>
-												{#if latest?.timestamp}
-													<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
-														{formatTimeAgoCompact(latest.timestamp, $now)}
-													</span>
-												{/if}
+												<div class="flex items-center gap-1">
+													{#if cell.rollout.spec?.wantedVersion}
+														<span
+															class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+															title={`Pinned to ${cell.rollout.spec.wantedVersion}`}
+														>pin</span>
+													{/if}
+													{#if latest?.timestamp}
+														<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+															{formatTimeAgoCompact(latest.timestamp, $now)}
+														</span>
+													{/if}
+												</div>
 											</div>
 											{#if behind}
 												<div
