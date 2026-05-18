@@ -31,6 +31,7 @@
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
+	import RolloutSubnav from '$lib/components/RolloutSubnav.svelte';
 
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
@@ -283,6 +284,7 @@
 		</div>
 	{:else}
 		<div class="flex-1 overflow-y-auto p-3 sm:p-5">
+			<RolloutSubnav {namespace} {name} />
 			<!-- Page header + stats bar -->
 			<div class="mb-5 flex flex-wrap items-start justify-between gap-4">
 				<div>
