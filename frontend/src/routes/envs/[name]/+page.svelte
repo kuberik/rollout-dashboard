@@ -354,28 +354,30 @@
 					{:else}
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each recentActivity as a}
-								<li class="px-4 py-2.5 text-sm">
-									<div class="flex items-center justify-between gap-2">
-										<a
-											href="/rollouts/{a.ns}/{a.appName}"
-											class="min-w-0 truncate font-medium text-gray-900 hover:text-gray-700 dark:text-white dark:hover:text-gray-200"
-										>{a.title}</a>
-										<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
-											{formatTimeAgoCompact(a.timestamp, $now)}
-										</span>
-									</div>
-									<div class="mt-0.5 flex items-center justify-between gap-2 text-[11px]">
-										<span class="flex items-center gap-1.5">
-											<span class="relative flex h-1.5 w-1.5">
-												{#if isRunning(a.bakeStatus)}
-													<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[a.bakeStatus]}"></span>
-												{/if}
-												<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None}"></span>
+								<li>
+									<a
+										href="/rollouts/{a.ns}/{a.appName}"
+										class="block px-4 py-2.5 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+									>
+										<div class="flex items-center justify-between gap-2">
+											<span class="min-w-0 truncate font-medium text-gray-900 dark:text-white">{a.title}</span>
+											<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
+												{formatTimeAgoCompact(a.timestamp, $now)}
 											</span>
-											<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
-										</span>
-										<span class="font-mono text-gray-500 dark:text-gray-400">{a.version}</span>
-									</div>
+										</div>
+										<div class="mt-0.5 flex items-center justify-between gap-2 text-[11px]">
+											<span class="flex items-center gap-1.5">
+												<span class="relative flex h-1.5 w-1.5">
+													{#if isRunning(a.bakeStatus)}
+														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[a.bakeStatus]}"></span>
+													{/if}
+													<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None}"></span>
+												</span>
+												<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
+											</span>
+											<span class="font-mono text-gray-500 dark:text-gray-400">{a.version}</span>
+										</div>
+									</a>
 								</li>
 							{/each}
 						</ul>
