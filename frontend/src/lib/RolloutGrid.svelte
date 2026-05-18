@@ -38,7 +38,8 @@
 		ns: string;
 		name: string;
 		title: string;
-		envName: string;
+		envKey: string; // normalized merge key (e.g. 'prod')
+		envDisplay: string; // label to show on the card (e.g. 'PROD' or 'PRODUCTION')
 		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
 		version: string | null;
 		timestamp: string | null;
@@ -67,7 +68,8 @@
 				ns: r.metadata?.namespace || '',
 				name: r.metadata?.name || '',
 				title: r.status?.title || r.metadata?.name || '',
-				envName: theme?.environmentName || theme?.label || '',
+				envKey: theme?.name || '',
+				envDisplay: theme?.environmentName || theme?.label || '',
 				theme,
 				version: latest?.version ? getDisplayVersion(latest.version) : null,
 				timestamp: latest?.timestamp || null,
@@ -88,13 +90,21 @@
 	let envFilters = $state<string[]>([]);
 
 	const knownEnvs = $derived.by(() => {
-		const set = new Map<string, ReturnType<typeof getRolloutEnvironmentTheme>>();
+		const map = new Map<string, { display: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> }>();
 		for (const c of cards) {
-			if (c.envName && !set.has(c.envName)) set.set(c.envName, c.theme);
+			if (!c.envKey) continue;
+			const existing = map.get(c.envKey);
+			if (!existing) {
+				map.set(c.envKey, { display: c.envDisplay, theme: c.theme });
+			} else if (existing.display.length > c.envDisplay.length) {
+				// prefer the shorter label (e.g. 'PROD' over 'PRODUCTION') for tighter chips
+				existing.display = c.envDisplay;
+				existing.theme = c.theme;
+			}
 		}
-		return [...set.entries()]
-			.map(([name, theme]) => ({ name, theme }))
-			.sort((a, b) => compareEnvironmentNames(a.name, b.name));
+		return [...map.entries()]
+			.map(([key, v]) => ({ key, display: v.display, theme: v.theme }))
+			.sort((a, b) => compareEnvironmentNames(a.display, b.display));
 	});
 
 	function toggleStatus(k: StatusKey) {
@@ -117,9 +127,9 @@
 		const q = searchQuery.trim().toLowerCase();
 		return cards.filter((c) => {
 			if (statusFilters.length > 0 && !statusFilters.includes(c.statusKey)) return false;
-			if (envFilters.length > 0 && !envFilters.includes(c.envName)) return false;
+			if (envFilters.length > 0 && !envFilters.includes(c.envKey)) return false;
 			if (q) {
-				const hay = `${c.ns} ${c.name} ${c.title} ${c.envName} ${c.version ?? ''}`.toLowerCase();
+				const hay = `${c.ns} ${c.name} ${c.title} ${c.envKey} ${c.envDisplay} ${c.version ?? ''}`.toLowerCase();
 				if (!hay.includes(q)) return false;
 			}
 			return true;
@@ -296,10 +306,10 @@
 			{#each knownEnvs as e}
 				<button
 					type="button"
-					onclick={() => toggleEnv(e.name)}
-					class="environment-theme-scope environment-theme-badge inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-opacity {envFilters.includes(e.name) ? 'ring-2 ring-gray-900/20 dark:ring-gray-100/20' : 'opacity-70 hover:opacity-100'}"
+					onclick={() => toggleEnv(e.key)}
+					class="environment-theme-scope environment-theme-badge inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-opacity {envFilters.includes(e.key) ? 'ring-2 ring-gray-900/20 dark:ring-gray-100/20' : 'opacity-70 hover:opacity-100'}"
 					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-				>{e.name}</button>
+				>{e.display}</button>
 			{/each}
 			{#if envFilters.length > 0 || statusFilters.length > 0 || searchQuery}
 				<button
@@ -362,8 +372,8 @@
 								{/if}
 							</div>
 						</div>
-						{#if c.envName}
-							<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{c.envName}</span>
+						{#if c.envDisplay}
+							<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{c.envDisplay}</span>
 						{/if}
 					</div>
 
