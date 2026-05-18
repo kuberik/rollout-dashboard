@@ -156,10 +156,10 @@
 					onclick={() => (switcherOpen = true)}
 					aria-label="Quick switch rollout (⌘K)"
 					title="Quick switch rollout (⌘K)"
-					class="ml-2 hidden items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300 sm:inline-flex"
+					class="ml-1 inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300 sm:ml-2"
 				>
 					<SearchOutline class="h-3.5 w-3.5" />
-					<kbd class="font-mono text-[10px]">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+					<kbd class="hidden font-mono text-[10px] sm:inline">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
 				</button>
 			{/if}
 			{#if isRolloutPage && rollout}
