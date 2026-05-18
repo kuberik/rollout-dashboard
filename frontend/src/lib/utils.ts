@@ -16,6 +16,21 @@ export function formatTimeAgo(start: string, end: Date = new Date()): string {
     return `${formatDuration(start, end)} ago`;
 }
 
+export function formatTimeAgoCompact(start: string, end: Date = new Date()): string {
+    const date = new Date(start);
+    const s = Math.floor((end.getTime() - date.getTime()) / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `${d}d`;
+    const mo = Math.floor(d / 30);
+    if (mo < 12) return `${mo}mo`;
+    return `${Math.floor(mo / 12)}y`;
+}
+
 export function formatDuration(timestamp: string, now: Date = new Date()): string {
     const date = new Date(timestamp);
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);

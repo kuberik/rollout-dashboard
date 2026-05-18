@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { formatTimeAgo, getDisplayVersion } from '$lib/utils';
+	import { formatTimeAgoCompact, getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { Badge, Spinner } from 'flowbite-svelte';
 	import {
@@ -158,7 +158,7 @@
 								<!-- Right: status badge + time -->
 								<div class="flex shrink-0 items-center gap-2">
 									<Badge color={cfg.badgeColor} class="text-xs">{cfg.label}</Badge>
-									<span class="w-10 text-right font-mono text-[11px] text-gray-400 dark:text-gray-500">{formatTimeAgo(entry.timestamp, $now)}</span>
+									<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(entry.timestamp, $now)}</span>
 								</div>
 							</a>
 						{/each}

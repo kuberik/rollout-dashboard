@@ -1345,7 +1345,7 @@
 							{/if}
 						{/if}
 					</div>
-					{#if rollout.status?.description}
+					{#if rollout.status?.description && rollout.status.description !== (rollout.status?.title || rollout.metadata?.name)}
 						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
 							{rollout.status.description}
 						</p>

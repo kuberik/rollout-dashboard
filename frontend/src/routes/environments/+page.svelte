@@ -126,12 +126,21 @@
 		})
 	);
 
-	// Counts from all rollouts (not just ones with env objects)
+	// Counts from rollouts that appear in the matrix only
+	const matrixRollouts = $derived.by(() => {
+		const out: import('../../types').Rollout[] = [];
+		for (const [, row] of matrix) {
+			for (const [, cell] of row) {
+				if (cell) out.push(cell.rollout);
+			}
+		}
+		return out;
+	});
 	const failedCount = $derived(
-		rollouts.filter((r) => r.status?.history?.[0]?.bakeStatus === 'Failed').length
+		matrixRollouts.filter((r) => r.status?.history?.[0]?.bakeStatus === 'Failed').length
 	);
 	const activeCount = $derived(
-		rollouts.filter((r) => {
+		matrixRollouts.filter((r) => {
 			const s = r.status?.history?.[0]?.bakeStatus;
 			return s === 'InProgress' || s === 'Deploying';
 		}).length

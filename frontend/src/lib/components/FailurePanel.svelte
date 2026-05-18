@@ -99,15 +99,34 @@
 							</span>
 						{/if}
 					</div>
-					<p class="mt-0.5 break-words text-sm text-red-700/75 dark:text-red-200/75">
-						{#if failedHCList.length > 0}
-							{findDisplayName(failedHCList[0])}{failedHCList.length > 1 ? ` (+${failedHCList.length - 1} more)` : ''} · {failedHCList[0].message || 'No details available'}
+					<div class="mt-0.5 text-sm text-red-700/75 dark:text-red-200/75">
+						{#if failedHCList.length === 1}
+							<p class="break-words">{findDisplayName(failedHCList[0])} · {failedHCList[0].message || 'No details available'}</p>
+						{:else if failedHCList.length > 1}
+							<ul class="list-disc space-y-0.5 pl-4">
+								{#each failedHCList.slice(0, 6) as hc}
+									<li class="break-words">{findDisplayName(hc)}{hc.message ? ` — ${hc.message}` : ''}</li>
+								{/each}
+								{#if failedHCList.length > 6}
+									<li class="opacity-60">+{failedHCList.length - 6} more</li>
+								{/if}
+							</ul>
 						{:else if (rollout.status?.history?.[0] as any)?.bakeStatusMessage}
-							{(rollout.status?.history?.[0] as any).bakeStatusMessage}
+							{@const msg = (rollout.status?.history?.[0] as any).bakeStatusMessage as string}
+							{@const parts = msg.split(/;\s*/).filter(Boolean)}
+							{#if parts.length > 1}
+								<ul class="list-disc space-y-0.5 pl-4">
+									{#each parts as part}
+										<li class="break-words">{part}</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="break-words">{msg}</p>
+							{/if}
 						{:else}
-							An error occurred during deployment.
+							<p>An error occurred during deployment.</p>
 						{/if}
-					</p>
+					</div>
 					<p class="mt-1 text-xs text-red-700/60 dark:text-red-200/55">
 						Automated deployments are paused until this is resolved.
 					</p>
