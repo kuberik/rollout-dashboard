@@ -230,6 +230,12 @@
 		return hints;
 	});
 
+	// For each cell, the promotion hint that targets it (if any) — used to render
+	// a 'behind by …' badge on the lagging environment card.
+	function hintFor(cell: Cell): PromotionHint | undefined {
+		return promotionHints.find((h) => h.toCell === cell);
+	}
+
 	// Status helpers
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
@@ -407,6 +413,15 @@
 									</span>
 								{/if}
 							</div>
+							{#if hasEnvironmentBinding}
+								{@const h = hintFor(cell)}
+								{#if h}
+									<div class="mt-2 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-[10px] text-orange-700 dark:border-orange-900/50 dark:bg-orange-900/10 dark:text-orange-300">
+										<span aria-hidden="true">←</span>
+										<span class="truncate">behind <span class="font-mono">{h.version}</span> on <span class="font-semibold uppercase tracking-wider">{h.fromEnv}</span></span>
+									</div>
+								{/if}
+							{/if}
 						{:else}
 							<div class="mt-3 flex items-center gap-2 text-gray-400 dark:text-gray-500">
 								<span class="h-2 w-2 shrink-0 rounded-full border border-dashed border-gray-300 dark:border-gray-600"></span>
