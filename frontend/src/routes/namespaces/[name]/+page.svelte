@@ -171,9 +171,17 @@
 	</div>
 
 	{#if query.isLoading}
-		<div class="space-y-4">
-			<div class="h-14 w-2/3 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
-			<div class="h-44 w-full animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+		<div class="space-y-6">
+			<div class="space-y-2">
+				<div class="h-8 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-4 w-1/3 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+			</div>
+			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+				{#each Array(3) as _}
+					<div class="h-28 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+				{/each}
+			</div>
+			<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
 		</div>
 	{:else if query.isError}
 		<div class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/10 dark:text-red-400">
