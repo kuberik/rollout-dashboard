@@ -10,6 +10,18 @@
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 
+	const ENV_ABBREV: Record<string, string> = {
+		development: 'dev',
+		production: 'prod',
+		staging: 'staging',
+		testing: 'test'
+	};
+	function shortEnvLabel(theme: ReturnType<typeof getRolloutEnvironmentTheme>): string {
+		if (!theme) return '';
+		const c = (theme.environmentName || theme.name || theme.label || '').toLowerCase();
+		return ENV_ABBREV[c] || c;
+	}
+
 	let {
 		open = $bindable(false),
 		rollouts,
@@ -227,7 +239,7 @@
 										style={getEnvironmentThemeStyle(rolloutTheme)}
 										class="environment-theme-scope environment-theme-badge shrink-0 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
 									>
-										{rolloutTheme.label}
+										{shortEnvLabel(rolloutTheme)}
 									</Badge>
 								{/if}
 							</button>
