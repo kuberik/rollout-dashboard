@@ -350,25 +350,33 @@
 							>{cell.envName}</span>
 							<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{cell.rollout?.metadata?.namespace ?? ''}</span>
 						</div>
-						<div class="mt-3 flex items-center gap-2">
-							<span class="relative flex h-2 w-2 shrink-0">
-								{#if isRunning(status)}
-									<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
-								{/if}
-								<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
-							</span>
-							<span class="truncate font-mono text-sm font-medium text-gray-900 dark:text-white">
-								{latest ? getDisplayVersion(latest.version) : '—'}
-							</span>
-						</div>
-						<div class="mt-1 flex items-center justify-between gap-2 pl-4">
-							<span class="text-[11px] font-medium {STATUS_TEXT[status] ?? STATUS_TEXT.None}">{STATUS_LABEL[status]}</span>
-							{#if latest?.timestamp}
-								<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(latest.timestamp, $now)}>
-									{formatTimeAgoCompact(latest.timestamp, $now)}
+						{#if latest}
+							<div class="mt-3 flex items-center gap-2">
+								<span class="relative flex h-2 w-2 shrink-0">
+									{#if isRunning(status)}
+										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
+									{/if}
+									<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
 								</span>
-							{/if}
-						</div>
+								<span class="truncate font-mono text-sm font-medium text-gray-900 dark:text-white">
+									{getDisplayVersion(latest.version)}
+								</span>
+							</div>
+							<div class="mt-1 flex items-center justify-between gap-2 pl-4">
+								<span class="text-[11px] font-medium {STATUS_TEXT[status] ?? STATUS_TEXT.None}">{STATUS_LABEL[status]}</span>
+								{#if latest?.timestamp}
+									<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(latest.timestamp, $now)}>
+										{formatTimeAgoCompact(latest.timestamp, $now)}
+									</span>
+								{/if}
+							</div>
+						{:else}
+							<div class="mt-3 flex items-center gap-2 text-gray-400 dark:text-gray-500">
+								<span class="h-2 w-2 shrink-0 rounded-full border border-dashed border-gray-300 dark:border-gray-600"></span>
+								<span class="font-mono text-[11px]">awaiting first deploy</span>
+							</div>
+							<div class="mt-1 pl-4 text-[11px] text-gray-400 dark:text-gray-500">no version</div>
+						{/if}
 					</a>
 					{#if idx < cells.length - 1}
 						<div class="hidden items-center text-gray-300 dark:text-gray-600 sm:flex" aria-hidden="true">

@@ -13,7 +13,8 @@
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		LayersSolid,
-		ChevronRightOutline
+		ChevronRightOutline,
+		ClockSolid
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../../types';
 
@@ -118,6 +119,17 @@
 	const succeededCount = $derived(
 		slots.filter((s) => s.rollout?.status?.history?.[0]?.bakeStatus === 'Succeeded').length
 	);
+	const otherCount = $derived(
+		Math.max(0, slots.length - succeededCount - activeCount - failedCount)
+	);
+	const newestDeploy = $derived.by<string | null>(() => {
+		let t: string | null = null;
+		for (const s of slots) {
+			const ts = s.rollout?.status?.history?.[0]?.timestamp;
+			if (ts && (!t || new Date(ts) > new Date(t))) t = ts;
+		}
+		return t;
+	});
 
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
@@ -204,42 +216,59 @@
 			</div>
 		</div>
 
-		<!-- Health summary -->
-		<section class="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-3">
-			<div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+		<!-- Health summary: single compact stat card with composition bar -->
+		<section class="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+			<div class="flex flex-wrap items-center justify-between gap-4">
+				<!-- Headline number -->
 				<div class="flex items-baseline gap-1.5">
-					<span class="text-2xl font-light text-green-600 dark:text-green-400">{succeededCount}</span>
-					<span class="text-xs text-gray-400 dark:text-gray-500">/ {slots.length}</span>
+					<span class="text-3xl font-light {failedCount > 0 ? 'text-red-600 dark:text-red-400' : succeededCount === slots.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{succeededCount}</span>
+					<span class="text-sm text-gray-400 dark:text-gray-500">/ {slots.length} healthy</span>
 				</div>
-				<div class="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">
-					<CheckCircleSolid class="h-3 w-3 text-green-500" />
-					Healthy
-				</div>
-			</div>
-			<div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="flex items-baseline gap-1.5">
-					<span class="text-2xl font-light text-yellow-600 dark:text-yellow-400">{activeCount}</span>
-				</div>
-				<div class="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">
+				<!-- Inline status pills (only non-zero) -->
+				<div class="flex items-center gap-3">
 					{#if activeCount > 0}
-						<span class="relative flex h-2 w-2">
-							<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-							<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+							<span class="relative flex h-2 w-2">
+								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+								<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
+							</span>
+							{activeCount} deploying
 						</span>
-					{:else}
-						<span class="h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600"></span>
 					{/if}
-					Deploying
+					{#if failedCount > 0}
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
+							<ExclamationCircleSolid class="h-3 w-3 text-red-500" />
+							{failedCount} failed
+						</span>
+					{/if}
+					{#if failedCount === 0 && activeCount === 0 && succeededCount === slots.length}
+						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400">
+							<CheckCircleSolid class="h-3 w-3" />
+							All healthy
+						</span>
+					{/if}
+					{#if newestDeploy}
+						<span class="inline-flex items-center gap-1 font-mono text-[11px] text-gray-400 dark:text-gray-500" title="Newest deploy {formatTimeAgo(newestDeploy, $now)}">
+							<ClockSolid class="h-3 w-3" />
+							{formatTimeAgoCompact(newestDeploy, $now)}
+						</span>
+					{/if}
 				</div>
 			</div>
-			<div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="flex items-baseline gap-1.5">
-					<span class="text-2xl font-light {failedCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-300 dark:text-gray-600'}">{failedCount}</span>
-				</div>
-				<div class="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">
-					<ExclamationCircleSolid class="h-3 w-3 {failedCount > 0 ? 'text-red-500' : 'text-gray-300 dark:text-gray-600'}" />
-					Failed
-				</div>
+			<!-- Composition bar -->
+			<div class="mt-3 flex h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700/60">
+				{#if succeededCount > 0}
+					<span class="bg-green-500" style="width:{(succeededCount / slots.length) * 100}%"></span>
+				{/if}
+				{#if activeCount > 0}
+					<span class="bg-yellow-400" style="width:{(activeCount / slots.length) * 100}%"></span>
+				{/if}
+				{#if failedCount > 0}
+					<span class="bg-red-500" style="width:{(failedCount / slots.length) * 100}%"></span>
+				{/if}
+				{#if otherCount > 0}
+					<span class="bg-gray-300 dark:bg-gray-600" style="width:{(otherCount / slots.length) * 100}%"></span>
+				{/if}
 			</div>
 		</section>
 
