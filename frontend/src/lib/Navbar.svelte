@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { MoonSolid, SunSolid, ClockOutline, GridOutline, LayersSolid, RocketOutline } from 'flowbite-svelte-icons';
+	import { MoonSolid, SunSolid, ClockOutline, GridOutline, LayersSolid, RocketOutline, SearchOutline } from 'flowbite-svelte-icons';
 	import LogoDark from '$lib/assets/logo-rotate-dark.svg?raw';
 	import LogoLight from '$lib/assets/logo-rotate-light.svg?raw';
 	import { theme } from '$lib/stores/theme';
@@ -46,12 +46,12 @@
 		})
 	);
 
-	// Query to fetch all rollouts for the switcher
+	// Query to fetch all rollouts for the switcher. Keep enabled site-wide so
+	// the Ctrl+K palette is reachable from any page.
 	const allRolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({
 			options: {
-				staleTime: 30000,
-				enabled: isRolloutPage
+				staleTime: 30000
 			}
 		})
 	);
@@ -65,9 +65,9 @@
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
 
-	// Global ⌘K / Ctrl+K shortcut
+	// Global ⌘K / Ctrl+K shortcut — works on every page so users can jump
+	// to any rollout from anywhere in the dashboard.
 	function handleGlobalKeydown(e: KeyboardEvent) {
-		if (!isRolloutPage) return;
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
 			e.preventDefault();
 			switcherOpen = !switcherOpen;
@@ -150,6 +150,17 @@
 						<span class="hidden sm:inline">Activity</span>
 					</a>
 				</div>
+				<!-- Site-wide quick switch (⌘K) -->
+				<button
+					type="button"
+					onclick={() => (switcherOpen = true)}
+					aria-label="Quick switch rollout (⌘K)"
+					title="Quick switch rollout (⌘K)"
+					class="ml-2 hidden items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300 sm:inline-flex"
+				>
+					<SearchOutline class="h-3.5 w-3.5" />
+					<kbd class="font-mono text-[10px]">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+				</button>
 			{/if}
 			{#if isRolloutPage && rollout}
 				<!-- Ghost breadcrumb switcher trigger -->
@@ -230,12 +241,10 @@
 	</div>
 </nav>
 
-{#if isRolloutPage}
-	<RolloutSwitcher
-		bind:open={switcherOpen}
-		rollouts={allRollouts}
-		currentNamespace={namespace}
-		currentName={name}
-		loading={allRolloutsQuery.isLoading}
-	/>
-{/if}
+<RolloutSwitcher
+	bind:open={switcherOpen}
+	rollouts={allRollouts}
+	currentNamespace={namespace}
+	currentName={name}
+	loading={allRolloutsQuery.isLoading}
+/>
