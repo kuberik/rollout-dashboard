@@ -1420,7 +1420,7 @@
 					<div class="flex flex-col gap-4">
 						<!-- ══ STATUS CARD ══ -->
 						<div
-							class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+							class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
 						>
 							<div class="min-w-0 px-5 py-5">
 								<!-- Top row: icon + version + status label | meta -->
@@ -1595,7 +1595,7 @@
 
 						<!-- Available Upgrades card (full width) -->
 						<div
-							class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+							class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
 						>
 							<!-- Header -->
 							<div

@@ -801,16 +801,7 @@
 					{@const groupHighlighted =
 						(group.labelKind === 'namespace' && nsFilters.includes(group.key)) ||
 						(group.labelKind === 'environment' && envFilters.includes(group.key))}
-					<section class="overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-gray-800
-						{groupHighlighted
-							? 'border-l-4 border-l-blue-400 border-gray-200 dark:border-gray-700 dark:border-l-blue-500'
-							: group.severity === 3
-								? 'border-l-4 border-l-red-500 border-gray-200 dark:border-gray-700 dark:border-l-red-500'
-								: group.severity === 2
-									? 'border-l-4 border-l-orange-500 border-gray-200 dark:border-gray-700 dark:border-l-orange-500'
-									: group.severity === 1
-										? 'border-l-4 border-l-yellow-400 border-gray-200 dark:border-gray-700 dark:border-l-yellow-400'
-										: 'border-gray-200 dark:border-gray-700'}"
+					<section class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
 					>
 						<!-- Group header -->
 						<button

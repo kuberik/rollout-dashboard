@@ -17,6 +17,12 @@
 | #1034 | 1:08 PM | 🔄 | Rollout-Dashboard List View Redesign | ~595 |
 </claude-mem-context>
 
+## Design hard rules — never violate these
+
+- **No colored borders anywhere.** Do not use `border-l-4`, `border-t-4`, colored top/left/right/bottom accent strips, or any thickened/colored border variant on cards, sections, or any UI element. This includes status-colored, environment-colored, or any other colored border. It looks amateurish. Use other visual cues (icons, dot indicators, background tints) instead.
+- **No `h-1` / `h-0.5` colored accent bars** at the top or bottom of cards. Same rule — amateurish.
+- When you discover a design constraint from user feedback, add it here immediately without waiting to be asked.
+
 ## Rollout list visual treatment
 
-- Avoid environment theming that thickens or recolors rollout list card borders; status coloring owns that visual channel.
+- No thickened or colored card borders. For status severity, use the dot indicator in the group header and the status dot in each row.

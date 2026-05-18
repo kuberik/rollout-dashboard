@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { MoonSolid, SunSolid, ClockOutline, GridOutline } from 'flowbite-svelte-icons';
+	import { MoonSolid, SunSolid, ClockOutline, GridOutline, LayersSolid } from 'flowbite-svelte-icons';
 	import LogoDark from '$lib/assets/logo-rotate-dark.svg?raw';
 	import LogoLight from '$lib/assets/logo-rotate-light.svg?raw';
 	import { theme } from '$lib/stores/theme';
@@ -124,6 +124,16 @@
 					>
 						<ClockOutline class="h-4 w-4" />
 						Activity
+					</a>
+					<a
+						href="/environments"
+						class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors
+							{page.url.pathname === '/environments'
+								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
+								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
+					>
+						<LayersSolid class="h-4 w-4" />
+						Environments
 					</a>
 				</div>
 			{/if}
