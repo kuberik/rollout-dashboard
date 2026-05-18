@@ -148,7 +148,7 @@
 		<section class="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
 			<div class="flex flex-wrap items-baseline justify-between gap-4">
 				<div class="flex items-baseline gap-1.5">
-					<span class="text-3xl font-light {fleetTotals.failed > 0 ? 'text-red-600 dark:text-red-400' : fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{fleetTotals.healthy}</span>
+					<span class="text-3xl font-light {fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{fleetTotals.healthy}</span>
 					<span class="text-sm text-gray-400 dark:text-gray-500">/ {apps.length} apps healthy</span>
 				</div>
 				<div class="flex flex-wrap items-center gap-3">

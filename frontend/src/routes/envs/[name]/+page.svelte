@@ -234,7 +234,7 @@
 			<div class="flex flex-wrap items-center justify-between gap-4">
 				<!-- Headline number -->
 				<div class="flex items-baseline gap-1.5">
-					<span class="text-3xl font-light {failedCount > 0 ? 'text-red-600 dark:text-red-400' : succeededCount === slots.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{succeededCount}</span>
+					<span class="text-3xl font-light {succeededCount === slots.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{succeededCount}</span>
 					<span class="text-sm text-gray-400 dark:text-gray-500">/ {slots.length} healthy</span>
 				</div>
 				<!-- Inline status pills (only non-zero) -->

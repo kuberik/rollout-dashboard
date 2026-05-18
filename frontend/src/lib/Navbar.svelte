@@ -103,8 +103,8 @@
 				</div>
 			</a>
 			{#if !isRolloutPage}
-				<!-- Main nav links (icons only on xs, icons+text on sm+) -->
-				<div class="flex items-center">
+				<!-- Main nav links — desktop only; mobile uses bottom tab bar -->
+				<div class="hidden items-center sm:flex">
 					<a
 						href="/"
 						aria-label="Rollouts"

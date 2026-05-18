@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import Navbar from '../lib/Navbar.svelte';
+	import MobileTabBar from '../lib/MobileTabBar.svelte';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 
 	const queryClient = new QueryClient({
@@ -26,5 +27,6 @@
 				</main>
 			</div>
 		</div>
+		<MobileTabBar />
 	</div>
 </QueryClientProvider>

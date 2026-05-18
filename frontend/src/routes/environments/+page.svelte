@@ -126,7 +126,10 @@
 
 	// For each (app, envName), check if the env immediately earlier in the tier
 	// has a different succeeded version → this cell is "behind" that earlier env.
-	function behindFor(appName: string, envName: string): { fromEnv: string; version: string } | null {
+	function behindFor(
+		appName: string,
+		envName: string
+	): { fromEnv: string; version: string; behindBy: number | null } | null {
 		const row = matrix.get(appName);
 		if (!row) return null;
 		const idx = envNames.indexOf(envName);
@@ -142,10 +145,20 @@
 		if (earlierH.bakeStatus !== 'Succeeded') return null;
 		const earlierV = getDisplayVersion(earlierH.version);
 		const currentH = current.rollout.status?.history?.[0];
-		if (!currentH) return { fromEnv: earlierEnvName, version: earlierV };
+		if (!currentH) return { fromEnv: earlierEnvName, version: earlierV, behindBy: null };
 		const currentV = getDisplayVersion(currentH.version);
 		if (earlierV === currentV) return null;
-		return { fromEnv: earlierEnvName, version: earlierV };
+		// Count distinct versions in earlier env's history between current (inclusive) and latest.
+		const earlierHistory = earlier.rollout.status?.history ?? [];
+		const distinct: string[] = [];
+		for (const h of earlierHistory) {
+			const v = getDisplayVersion(h.version);
+			if (distinct[distinct.length - 1] !== v) distinct.push(v);
+			if (v === currentV) break;
+		}
+		const i = distinct.indexOf(currentV);
+		const behindBy = i >= 0 ? i : null;
+		return { fromEnv: earlierEnvName, version: earlierV, behindBy };
 	}
 
 	function appSeverity(appName: string): number {
@@ -266,42 +279,41 @@
 			</p>
 		</div>
 	{:else}
-		<!-- Mobile: stacked cards (one per app, env rows inside) -->
-		<div class="space-y-3 md:hidden">
-			{#each sortedAppNames as appName}
-				{@const row = matrix.get(appName)}
-				{@const drift = hasDrift(appName)}
-				{@const sev = appSeverity(appName)}
-				<section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+		<!-- Mobile: grouped by ENVIRONMENT (one card per env, app rows inside) -->
+		<div class="space-y-4 md:hidden">
+			{#each envNames as envName}
+				{@const envApps = sortedAppNames
+					.map((appName) => ({ appName, cell: matrix.get(appName)?.get(envName) ?? null }))
+					.filter((x) => x.cell !== null)}
+				{@const envFailedCount = envApps.filter((x) => x.cell && bakeStatus(x.cell.rollout) === 'Failed').length}
+				{@const envActiveCount = envApps.filter((x) => x.cell && isRunning(bakeStatus(x.cell.rollout))).length}
+				{@const envPendingCount = envApps.filter((x) => x.cell && behindFor(x.appName, envName)).length}
+				<section
+					class="environment-theme-scope overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+					style={getEnvThemeStyle(envName)}
+				>
 					<a
-						href="/apps/{appName}"
-						class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700/60 {sev === 3 ? 'bg-red-50/40 dark:bg-red-900/5' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}"
+						href="/envs/{envName}"
+						class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 hover:bg-gray-50 dark:border-gray-700/60 dark:hover:bg-gray-700/40"
 					>
-						<div class="min-w-0">
-							<div class="flex items-center gap-2">
-								{#if sev === 3}
-									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"></span>
-								{:else if sev === 1}
-									<span class="relative flex h-1.5 w-1.5 shrink-0">
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-										<span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-yellow-400"></span>
-									</span>
-								{:else}
-									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400 dark:bg-green-500"></span>
-								{/if}
-								<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
-								{#if drift}
-									<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
-								{/if}
-							</div>
-							<div class="mt-0.5 truncate pl-3.5 font-mono text-[11px] text-gray-400 dark:text-gray-500">{appName}</div>
+						<div class="flex min-w-0 items-center gap-2">
+							<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider">{envName}</span>
+							<span class="text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{envApps.length} app{envApps.length === 1 ? '' : 's'}</span>
+							{#if envFailedCount > 0}
+								<span class="text-[11px] font-medium text-red-600 dark:text-red-400">· {envFailedCount} failed</span>
+							{:else if envActiveCount > 0}
+								<span class="text-[11px] font-medium text-yellow-700 dark:text-yellow-400">· {envActiveCount} deploying</span>
+							{:else if envPendingCount > 0}
+								<span class="text-[11px] font-medium text-orange-700 dark:text-orange-400">· {envPendingCount} behind</span>
+							{/if}
 						</div>
 						<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
 					</a>
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each envNames as envName}
-							{@const cell = row?.get(envName)}
-							<li class="environment-theme-scope" style={getEnvThemeStyle(envName)}>
+					{#if envApps.length === 0}
+						<div class="px-4 py-3 text-[11px] text-gray-400 dark:text-gray-500">No apps deployed here.</div>
+					{:else}
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each envApps as { appName, cell }}
 								{#if cell}
 									{@const status = bakeStatus(cell.rollout)}
 									{@const dotClass = STATUS_DOT[status] ?? STATUS_DOT['None']}
@@ -309,48 +321,53 @@
 									{@const label = STATUS_LABEL[status] ?? status}
 									{@const latest = cell.rollout.status?.history?.[0]}
 									{@const behind = behindFor(appName, envName)}
-									<a
-										href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
-										class="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
-									>
-										<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wider">{envName}</span>
-										<div class="flex min-w-0 flex-col gap-0.5">
-											<div class="flex min-w-0 items-center gap-1.5">
-												<span class="relative flex h-2 w-2 shrink-0">
-													{#if isRunning(status)}
-														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {dotClass}"></span>
+									{@const drift = hasDrift(appName)}
+									<li>
+										<a
+											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
+											class="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+										>
+											<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+												<div class="flex min-w-0 items-center gap-2">
+													<span class="relative flex h-2 w-2 shrink-0">
+														{#if isRunning(status)}
+															<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {dotClass}"></span>
+														{/if}
+														<span class="relative inline-flex h-2 w-2 rounded-full {dotClass}"></span>
+													</span>
+													<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
+													{#if drift}
+														<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[9px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
 													{/if}
-													<span class="relative inline-flex h-2 w-2 rounded-full {dotClass}"></span>
-												</span>
-												<span class="truncate font-mono text-xs font-medium text-gray-800 dark:text-gray-200">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
+												</div>
+												<div class="flex min-w-0 items-center gap-2 pl-4">
+													<span class="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
+													<span class="text-[10px] {labelClass}">{label}</span>
+												</div>
+												{#if behind}
+													<span class="truncate pl-4 text-[10px] text-orange-700 dark:text-orange-300">
+														← {#if behind.behindBy && behind.behindBy > 0}{behind.behindBy} {behind.behindBy === 1 ? 'version' : 'versions'} behind{:else}behind{/if}
+														<span class="font-mono">{behind.version}</span> on {behind.fromEnv}
+													</span>
+												{/if}
 											</div>
-											<span class="text-[11px] {labelClass}">{label}</span>
-											{#if behind}
-												<span class="truncate text-[10px] text-orange-700 dark:text-orange-300">← <span class="font-mono">{behind.version}</span> on {behind.fromEnv}</span>
-											{/if}
-										</div>
-										<div class="flex shrink-0 items-center gap-1">
-											{#if cell.rollout.spec?.wantedVersion}
-												<span
-													class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-													title={`Pinned to ${cell.rollout.spec.wantedVersion}`}
-												>pin</span>
-											{/if}
-											{#if latest?.timestamp}
-												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(latest.timestamp, $now)}</span>
-											{/if}
-										</div>
-									</a>
-								{:else}
-									<div class="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">
-										<span class="shrink-0 rounded-full border border-dashed border-gray-200 px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:border-gray-700 dark:text-gray-500">{envName}</span>
-										<span class="text-[11px] text-gray-400 dark:text-gray-500">no rollout</span>
-										<span></span>
-									</div>
+											<div class="flex shrink-0 flex-col items-end gap-1">
+												{#if cell.rollout.spec?.wantedVersion}
+													<span
+														class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+														title={`Pinned to ${cell.rollout.spec.wantedVersion}`}
+													>pin</span>
+												{/if}
+												{#if latest?.timestamp}
+													<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(latest.timestamp, $now)}</span>
+												{/if}
+											</div>
+										</a>
+									</li>
 								{/if}
-							</li>
-						{/each}
-					</ul>
+							{/each}
+						</ul>
+					{/if}
 				</section>
 			{/each}
 		</div>
@@ -461,10 +478,16 @@
 											</div>
 											{#if behind}
 												<div
-													class="mt-1.5 flex items-center gap-1 truncate text-[10px] text-orange-700 dark:text-orange-300"
+													class="mt-1.5 flex flex-wrap items-center gap-x-1 truncate text-[10px] text-orange-700 dark:text-orange-300"
 													title="behind {behind.version} on {behind.fromEnv}"
 												>
 													<span aria-hidden="true">←</span>
+													{#if behind.behindBy && behind.behindBy > 0}
+														<span class="font-semibold">{behind.behindBy}</span>
+														<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+													{:else}
+														<span>behind</span>
+													{/if}
 													<span class="font-mono">{behind.version}</span>
 													<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
 												</div>
