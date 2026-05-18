@@ -3,7 +3,6 @@
 <script lang="ts">
 	import type { Rollout, Environment } from '../types';
 	import { Alert, Badge, Popover } from 'flowbite-svelte';
-	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
 	import {
 		SearchOutline,
 		ArrowUpOutline,
@@ -862,15 +861,10 @@
 											{#if groupBy === 'name'}
 												<h4 class="min-w-0 flex-1 truncate font-mono text-[12.5px] text-gray-700 dark:text-gray-300">{row.ns}</h4>
 												{#if row.theme?.environmentName}
-													<JoinedBadge
-														label="Environment"
-														value={row.theme.environmentName}
-														valueColor="gray"
-														containerClass="environment-theme-scope shrink-0"
-														containerStyle={getEnvironmentThemeStyle(row.theme)}
-														labelPlainBorder
-														valueClass="environment-theme-badge"
-													/>
+													<span
+														class="environment-theme-scope environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+														style={getEnvironmentThemeStyle(row.theme)}
+													>{row.theme.environmentName}</span>
 												{/if}
 											{:else if groupBy === 'environment'}
 												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
@@ -878,15 +872,10 @@
 											{:else}
 												<h4 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</h4>
 												{#if row.theme?.environmentName}
-													<JoinedBadge
-														label="Environment"
-														value={row.theme.environmentName}
-														valueColor="gray"
-														containerClass="environment-theme-scope shrink-0"
-														containerStyle={getEnvironmentThemeStyle(row.theme)}
-														labelPlainBorder
-														valueClass="environment-theme-badge"
-													/>
+													<span
+														class="environment-theme-scope environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+														style={getEnvironmentThemeStyle(row.theme)}
+													>{row.theme.environmentName}</span>
 												{/if}
 											{/if}
 										</div>

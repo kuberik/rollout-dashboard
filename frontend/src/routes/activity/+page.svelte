@@ -120,49 +120,48 @@
 			<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Deploys will appear here once rollouts have history.</p>
 		</div>
 	{:else}
-		<div class="space-y-8">
+		<div class="space-y-6">
 			{#each groupedByDay as dayGroup}
 				<div>
 					<!-- Day label -->
-					<div class="mb-3 flex items-center gap-3">
+					<div class="mb-2 flex items-center gap-3">
 						<span class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{dayGroup.label}</span>
 						<div class="flex-1 border-t border-gray-100 dark:border-gray-800"></div>
 					</div>
 
-					<!-- Entries -->
-					<div class="relative">
-						<!-- Vertical timeline line -->
-						<div class="absolute left-[7px] top-3 bottom-3 w-px bg-gray-200 dark:bg-gray-700/80"></div>
+					<!-- Entries: simple bordered list, no timeline chrome -->
+					<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+						{#each dayGroup.entries as entry, idx}
+							{@const cfg = STATUS_CONFIG[entry.bakeStatus] ?? STATUS_CONFIG['None']}
+							<a
+								href={entry.href}
+								class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+									{idx > 0 ? 'border-t border-gray-100 dark:border-gray-700/60' : ''}"
+							>
+								<!-- Status dot -->
+								<span class="relative flex h-2 w-2 shrink-0">
+									{#if entry.isRunning}
+										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {cfg.dotClass}"></span>
+									{/if}
+									<span class="relative inline-flex h-2 w-2 rounded-full {cfg.dotClass}"></span>
+								</span>
 
-						<ul class="space-y-2">
-							{#each dayGroup.entries as entry}
-								{@const cfg = STATUS_CONFIG[entry.bakeStatus] ?? STATUS_CONFIG['None']}
-								<li class="relative pl-7">
-									<!-- Timeline dot -->
-									<span class="absolute left-0 top-4 flex h-3.5 w-3.5 items-center justify-center">
-										<span class="h-2.5 w-2.5 rounded-full {cfg.dotClass} ring-2 ring-white dark:ring-gray-900"></span>
-									</span>
+								<!-- Name + namespace -->
+								<div class="min-w-0 flex-1">
+									<div class="flex flex-wrap items-baseline gap-x-1.5">
+										<span class="text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
+										<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
+									</div>
+									<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.version}</span>
+								</div>
 
-									<a
-										href={entry.href}
-										class="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/50"
-									>
-										<div class="min-w-0 flex-1">
-											<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-												<span class="text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
-												<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
-											</div>
-											<div class="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-												<span class="font-mono truncate">{entry.version}</span>
-												<span class="shrink-0">·</span>
-												<span class="shrink-0">{formatTimeAgo(entry.timestamp, $now)}</span>
-											</div>
-										</div>
-										<Badge color={cfg.badgeColor} class="shrink-0 text-xs">{cfg.label}</Badge>
-									</a>
-								</li>
-							{/each}
-						</ul>
+								<!-- Right: status badge + time -->
+								<div class="flex shrink-0 items-center gap-2">
+									<Badge color={cfg.badgeColor} class="text-xs">{cfg.label}</Badge>
+									<span class="w-10 text-right font-mono text-[11px] text-gray-400 dark:text-gray-500">{formatTimeAgo(entry.timestamp, $now)}</span>
+								</div>
+							</a>
+						{/each}
 					</div>
 				</div>
 			{/each}

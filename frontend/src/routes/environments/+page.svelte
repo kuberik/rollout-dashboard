@@ -5,10 +5,9 @@
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getDisplayVersion, formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import { Spinner, Badge } from 'flowbite-svelte';
+	import { Spinner } from 'flowbite-svelte';
 	import { CheckCircleSolid, ExclamationCircleSolid, LayersSolid } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: 15000 } })
@@ -27,7 +26,7 @@
 		return [...names].sort();
 	});
 
-	// Unique app names (rollout names that appear across envs)
+	// Unique app names (rollout resource names that appear across envs)
 	const appNames = $derived.by(() => {
 		const names = new Set<string>();
 		for (const env of environments) {
@@ -43,19 +42,12 @@
 		for (const app of appNames) {
 			const row = new Map<string, { rollout: Rollout; env: Environment } | null>();
 			for (const envName of envNames) {
-				// Find the Environment object for this app + envName
 				const envObj = environments.find(
 					(e) => e.spec?.rolloutRef?.name === app && e.spec?.environment === envName
 				);
-				if (!envObj) {
-					row.set(envName, null);
-					continue;
-				}
-				// Find the Rollout with the same name in the environment's namespace
+				if (!envObj) { row.set(envName, null); continue; }
 				const rollout = rollouts.find(
-					(r) =>
-						r.metadata?.name === app &&
-						r.metadata?.namespace === envObj.metadata?.namespace
+					(r) => r.metadata?.name === app && r.metadata?.namespace === envObj.metadata?.namespace
 				);
 				row.set(envName, rollout ? { rollout, env: envObj } : null);
 			}
@@ -64,7 +56,7 @@
 		return result;
 	});
 
-	// Get the rollout title/display name for an app
+	// Get display title for an app (first non-null rollout's title, fallback to name)
 	function getAppTitle(appName: string): string {
 		const row = matrix.get(appName);
 		if (!row) return appName;
@@ -74,52 +66,33 @@
 		return appName;
 	}
 
-	// Status color helpers
+	// Status helpers
 	const STATUS_DOT: Record<string, string> = {
-		Succeeded: 'bg-green-500',
-		Failed: 'bg-red-500',
+		Succeeded:  'bg-green-500',
+		Failed:     'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
-		Cancelled: 'bg-gray-400',
-		None: 'bg-gray-300 dark:bg-gray-600',
+		Deploying:  'bg-blue-500',
+		Cancelled:  'bg-gray-400',
+		None:       'bg-gray-300 dark:bg-gray-600',
 	};
 
-	const STATUS_RING: Record<string, string> = {
-		Succeeded: 'ring-green-200 dark:ring-green-800/50',
-		Failed: 'ring-red-200 dark:ring-red-800/50',
-		InProgress: 'ring-yellow-200 dark:ring-yellow-800/50',
-		Deploying: 'ring-blue-200 dark:ring-blue-800/50',
-		Cancelled: 'ring-gray-200 dark:ring-gray-700',
-		None: 'ring-gray-200 dark:ring-gray-700',
-	};
-
-	const STATUS_BG: Record<string, string> = {
-		Succeeded: 'bg-green-50 dark:bg-green-900/10',
-		Failed: 'bg-red-50 dark:bg-red-900/15',
-		InProgress: 'bg-yellow-50 dark:bg-yellow-900/10',
-		Deploying: 'bg-blue-50 dark:bg-blue-900/10',
-		Cancelled: 'bg-gray-50 dark:bg-gray-800/40',
-		None: 'bg-gray-50 dark:bg-gray-800/40',
-	};
-
-	const STATUS_TEXT: Record<string, string> = {
-		Succeeded: 'text-green-700 dark:text-green-400',
-		Failed: 'text-red-700 dark:text-red-400',
+	const STATUS_LABEL_CLASS: Record<string, string> = {
+		Succeeded:  'text-green-700 dark:text-green-400',
+		Failed:     'text-red-700 dark:text-red-400',
 		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Deploying: 'text-blue-700 dark:text-blue-400',
-		Cancelled: 'text-gray-500 dark:text-gray-500',
-		None: 'text-gray-400 dark:text-gray-600',
+		Deploying:  'text-blue-700 dark:text-blue-400',
+		Cancelled:  'text-gray-500 dark:text-gray-500',
+		None:       'text-gray-400 dark:text-gray-600',
 	};
 
-	function bakeStatus(r: Rollout) {
-		return r.status?.history?.[0]?.bakeStatus || 'None';
-	}
+	const STATUS_LABEL: Record<string, string> = {
+		Succeeded: 'Succeeded', Failed: 'Failed', InProgress: 'Baking',
+		Deploying: 'Deploying', Cancelled: 'Cancelled', None: 'No deploy',
+	};
 
-	function isRunning(s: string) {
-		return s === 'InProgress' || s === 'Deploying';
-	}
+	function bakeStatus(r: Rollout) { return r.status?.history?.[0]?.bakeStatus || 'None'; }
+	function isRunning(s: string) { return s === 'InProgress' || s === 'Deploying'; }
 
-	// Check version drift: does this app have different versions across environments?
 	function hasDrift(appName: string): boolean {
 		const row = matrix.get(appName);
 		if (!row) return false;
@@ -133,7 +106,6 @@
 		return versions.size > 1;
 	}
 
-	// Overall rollout health for an app
 	function appSeverity(appName: string): number {
 		const row = matrix.get(appName);
 		if (!row) return 0;
@@ -147,18 +119,14 @@
 		return sev;
 	}
 
-	// Sort apps: failed first, then by name
 	const sortedAppNames = $derived(
 		[...appNames].sort((a, b) => {
-			const sa = appSeverity(a);
-			const sb = appSeverity(b);
-			if (sb !== sa) return sb - sa;
-			return a.localeCompare(b);
+			const d = appSeverity(b) - appSeverity(a);
+			return d !== 0 ? d : a.localeCompare(b);
 		})
 	);
 
-	// Global counts
-	const totalRollouts = $derived(rollouts.length);
+	// Counts from all rollouts (not just ones with env objects)
 	const failedCount = $derived(
 		rollouts.filter((r) => r.status?.history?.[0]?.bakeStatus === 'Failed').length
 	);
@@ -168,6 +136,11 @@
 			return s === 'InProgress' || s === 'Deploying';
 		}).length
 	);
+
+	// Column width: first col wider, env cols equal
+	function gridCols(n: number) {
+		return `minmax(200px,1.5fr) ${'minmax(150px,1fr) '.repeat(n).trim()}`;
+	}
 </script>
 
 <svelte:head>
@@ -179,44 +152,38 @@
 	<div class="mb-6 flex items-center justify-between">
 		<div>
 			<h1 class="text-lg font-semibold text-gray-900 dark:text-white">Environments</h1>
-			<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-				Cross-environment deployment status
-			</p>
+			<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Cross-environment deployment status</p>
 		</div>
 		<div class="flex items-center gap-3">
-			{#if query.isFetching}
-				<Spinner size="5" color="gray" />
-			{/if}
-			{#if totalRollouts > 0}
-				<div class="flex items-center gap-2 text-xs">
-					{#if failedCount > 0}
-						<span class="flex items-center gap-1 font-medium text-red-600 dark:text-red-400">
-							<ExclamationCircleSolid class="h-3.5 w-3.5" />{failedCount} failed
+			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
+			<div class="flex items-center gap-2 text-xs">
+				{#if failedCount > 0}
+					<span class="flex items-center gap-1 font-medium text-red-600 dark:text-red-400">
+						<ExclamationCircleSolid class="h-3.5 w-3.5" />{failedCount} failed
+					</span>
+				{/if}
+				{#if activeCount > 0}
+					<span class="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-400">
+						<span class="relative flex h-2 w-2">
+							<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+							<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
 						</span>
-					{/if}
-					{#if activeCount > 0}
-						<span class="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-400">
-							<span class="relative flex h-2 w-2">
-								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-								<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
-							</span>
-							{activeCount} deploying
-						</span>
-					{/if}
-					{#if failedCount === 0 && activeCount === 0}
-						<span class="flex items-center gap-1 text-green-600 dark:text-green-400">
-							<CheckCircleSolid class="h-3.5 w-3.5" />All healthy
-						</span>
-					{/if}
-				</div>
-			{/if}
+						{activeCount} deploying
+					</span>
+				{/if}
+				{#if failedCount === 0 && activeCount === 0 && rollouts.length > 0}
+					<span class="flex items-center gap-1 text-green-600 dark:text-green-400">
+						<CheckCircleSolid class="h-3.5 w-3.5" />All healthy
+					</span>
+				{/if}
+			</div>
 		</div>
 	</div>
 
 	{#if query.isLoading}
 		<div class="space-y-3">
 			{#each Array(5) as _}
-				<div class="h-16 w-full animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-14 w-full animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
 			{/each}
 		</div>
 	{:else if query.isError}
@@ -224,7 +191,6 @@
 			Failed to load environments: {(query.error as Error).message}
 		</div>
 	{:else if envNames.length === 0}
-		<!-- No environment resources found — show all rollouts in a plain list -->
 		<div class="flex flex-col items-center justify-center py-20 text-center">
 			<LayersSolid class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
 			<p class="text-sm font-medium text-gray-900 dark:text-white">No environments configured</p>
@@ -233,105 +199,105 @@
 			</p>
 		</div>
 	{:else}
-		<!-- Deployment matrix -->
-		<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-			<!-- Column headers -->
-			<div
-				class="grid border-b border-gray-200 dark:border-gray-700"
-				style="grid-template-columns: minmax(180px,1fr) {envNames.map(() => 'minmax(160px,1fr)').join(' ')}"
-			>
-				<div class="px-5 py-3">
-					<span class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Application</span>
-				</div>
-				{#each envNames as envName}
-					<div class="border-l border-gray-100 px-5 py-3 dark:border-gray-700/60">
-						<span class="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300">{envName}</span>
+		<div class="overflow-x-auto">
+			<div class="min-w-max overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<!-- Column headers -->
+				<div
+					class="grid border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40"
+					style="grid-template-columns: {gridCols(envNames.length)}"
+				>
+					<div class="px-5 py-3">
+						<span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Application</span>
 					</div>
-				{/each}
-			</div>
-
-			<!-- Rows -->
-			<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
-				{#each sortedAppNames as appName}
-					{@const row = matrix.get(appName)}
-					{@const drift = hasDrift(appName)}
-					{@const sev = appSeverity(appName)}
-					<div
-						class="grid transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/20
-							{sev === 3 ? 'bg-red-50/30 dark:bg-red-900/5' : ''}"
-						style="grid-template-columns: minmax(180px,1fr) {envNames.map(() => 'minmax(160px,1fr)').join(' ')}"
-					>
-						<!-- App name column -->
-						<div class="flex items-center gap-2.5 px-5 py-3.5">
-							{#if sev === 3}
-								<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"></span>
-							{:else if sev === 1}
-								<span class="relative flex h-1.5 w-1.5 shrink-0">
-									<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-									<span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-yellow-400"></span>
-								</span>
-							{:else}
-								<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400"></span>
-							{/if}
-							<div class="min-w-0">
-								<p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{getAppTitle(appName)}</p>
-								{#if drift}
-									<p class="text-[10px] font-medium text-orange-500 dark:text-orange-400">version drift</p>
-								{/if}
-							</div>
+					{#each envNames as envName}
+						<div class="border-l border-gray-200 px-5 py-3 dark:border-gray-700">
+							<span class="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
 						</div>
+					{/each}
+				</div>
 
-						<!-- Environment cells -->
-						{#each envNames as envName}
-							{@const cell = row?.get(envName)}
-							<div class="border-l border-gray-100 px-4 py-3 dark:border-gray-700/60">
-								{#if cell}
-									{@const status = bakeStatus(cell.rollout)}
-									{@const dotClass = STATUS_DOT[status] ?? STATUS_DOT['None']}
-									{@const bgClass = STATUS_BG[status] ?? STATUS_BG['None']}
-									{@const textClass = STATUS_TEXT[status] ?? STATUS_TEXT['None']}
-									{@const latest = cell.rollout.status?.history?.[0]}
-									<a
-										href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
-										class="group block rounded-lg p-2.5 transition-colors {bgClass} hover:brightness-95"
-									>
-										<div class="flex items-center gap-2">
-											<span class="relative flex h-2 w-2 shrink-0">
-												{#if isRunning(status)}
-													<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {dotClass}"></span>
-												{/if}
-												<span class="relative inline-flex h-2 w-2 rounded-full {dotClass}"></span>
-											</span>
-											<span class="truncate font-mono text-xs font-semibold text-gray-900 dark:text-white">
-												{latest?.version ? getDisplayVersion(latest.version) : '—'}
-											</span>
-										</div>
-										<div class="mt-1 flex items-center justify-between gap-1">
-											<span class="text-[10px] font-medium {textClass}">
-												{status === 'None' ? 'Idle' : status === 'InProgress' ? 'Baking' : status}
-											</span>
-											{#if latest?.timestamp}
-												<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
-													{formatTimeAgo(latest.timestamp, $now)}
-												</span>
-											{/if}
-										</div>
-									</a>
-								{:else}
-									<div class="flex h-full items-center justify-center py-3">
-										<span class="text-xs text-gray-300 dark:text-gray-700">—</span>
-									</div>
-								{/if}
+				<!-- Rows -->
+				<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each sortedAppNames as appName}
+						{@const row = matrix.get(appName)}
+						{@const drift = hasDrift(appName)}
+						{@const sev = appSeverity(appName)}
+						<div
+							class="grid {sev === 3 ? 'bg-red-50/40 dark:bg-red-900/5' : ''}"
+							style="grid-template-columns: {gridCols(envNames.length)}"
+						>
+							<!-- App name column -->
+							<div class="flex flex-col justify-center px-5 py-4 gap-0.5">
+								<div class="flex items-center gap-2">
+									{#if sev === 3}
+										<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"></span>
+									{:else if sev === 1}
+										<span class="relative flex h-1.5 w-1.5 shrink-0">
+											<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+											<span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-yellow-400"></span>
+										</span>
+									{:else}
+										<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400 dark:bg-green-500"></span>
+									{/if}
+									<span class="text-sm font-semibold text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
+								</div>
+								<div class="flex items-center gap-2 pl-3.5">
+									<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{appName}</span>
+									{#if drift}
+										<span class="inline-flex items-center rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
+									{/if}
+								</div>
 							</div>
-						{/each}
-					</div>
-				{/each}
+
+							<!-- Environment cells -->
+							{#each envNames as envName}
+								{@const cell = row?.get(envName)}
+								<div class="border-l border-gray-100 p-3 dark:border-gray-700/60">
+									{#if cell}
+										{@const status = bakeStatus(cell.rollout)}
+										{@const dotClass = STATUS_DOT[status] ?? STATUS_DOT['None']}
+										{@const labelClass = STATUS_LABEL_CLASS[status] ?? STATUS_LABEL_CLASS['None']}
+										{@const label = STATUS_LABEL[status] ?? status}
+										{@const latest = cell.rollout.status?.history?.[0]}
+										<a
+											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
+											class="group block rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+										>
+											<div class="flex items-center gap-2">
+												<span class="relative flex h-2 w-2 shrink-0">
+													{#if isRunning(status)}
+														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {dotClass}"></span>
+													{/if}
+													<span class="relative inline-flex h-2 w-2 rounded-full {dotClass}"></span>
+												</span>
+												<span class="truncate font-mono text-xs font-medium text-gray-800 dark:text-gray-200">
+													{latest?.version ? getDisplayVersion(latest.version) : '—'}
+												</span>
+											</div>
+											<div class="mt-1 flex items-center justify-between gap-1 pl-4">
+												<span class="text-[11px] font-medium {labelClass}">{label}</span>
+												{#if latest?.timestamp}
+													<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+														{formatTimeAgo(latest.timestamp, $now)}
+													</span>
+												{/if}
+											</div>
+										</a>
+									{:else}
+										<div class="flex items-center justify-center py-4">
+											<span class="text-xs text-gray-300 dark:text-gray-700">—</span>
+										</div>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{/each}
+				</div>
 			</div>
 		</div>
 
-		<!-- Footer note -->
-		<p class="mt-4 text-center text-[11px] text-gray-400 dark:text-gray-600">
-			{sortedAppNames.length} app{sortedAppNames.length === 1 ? '' : 's'} across {envNames.length} environment{envNames.length === 1 ? '' : 's'}
+		<p class="mt-3 text-center text-[11px] text-gray-400 dark:text-gray-600">
+			{sortedAppNames.length} app{sortedAppNames.length === 1 ? '' : 's'} · {envNames.length} environment{envNames.length === 1 ? '' : 's'}
 		</p>
 	{/if}
 </div>

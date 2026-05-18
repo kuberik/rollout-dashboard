@@ -1321,9 +1321,6 @@
 
 				<!-- ══ PAGE HEADER ══ -->
 				<div class="mb-4">
-					<p class="mb-1 text-xs text-gray-400 dark:text-gray-500">
-						{rollout.metadata?.namespace} › {rollout.metadata?.name}
-					</p>
 					<div class="flex flex-wrap items-baseline gap-3">
 						<h1 class="text-2xl font-bold text-gray-900 dark:text-white">
 							{rollout.status?.title || rollout.metadata?.name}
