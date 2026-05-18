@@ -8,7 +8,7 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
-	import { LayersSolid, RocketOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
+	import { LayersSolid, RocketOutline, ChevronRightOutline, ClockSolid } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -119,6 +119,13 @@
 		}
 		return { failed, active, drift, pending, healthy };
 	});
+	const fleetNewestDeploy = $derived.by<string | null>(() => {
+		let t: string | null = null;
+		for (const a of apps) {
+			if (a.lastDeploy && (!t || new Date(a.lastDeploy) > new Date(t))) t = a.lastDeploy;
+		}
+		return t;
+	});
 </script>
 
 <svelte:head>
@@ -176,6 +183,12 @@
 						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400">
 							<span class="h-2 w-2 rounded-full bg-green-500"></span>
 							All healthy
+						</span>
+					{/if}
+					{#if fleetNewestDeploy}
+						<span class="inline-flex items-center gap-1 font-mono text-[11px] text-gray-400 dark:text-gray-500" title="Newest deploy {formatTimeAgo(fleetNewestDeploy, $now)}">
+							<ClockSolid class="h-3 w-3" />
+							{formatTimeAgoCompact(fleetNewestDeploy, $now)}
 						</span>
 					{/if}
 				</div>
