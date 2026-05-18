@@ -4,6 +4,8 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getDisplayVersion, formatTimeAgoCompact } from '$lib/utils';
+	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
+	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import { CheckCircleSolid, ExclamationCircleSolid, LayersSolid } from 'flowbite-svelte-icons';
@@ -16,15 +18,31 @@
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
 
-	// Unique environment names, sorted
+	// Unique environment names, sorted by tier (dev → staging → prod)
 	const envNames = $derived.by(() => {
 		const names = new Set<string>();
 		for (const env of environments) {
 			const n = env.spec?.environment;
 			if (n) names.add(n);
 		}
-		return [...names].sort();
+		return [...names].sort(compareEnvironmentNames);
 	});
+
+	// Theme per env column (first rollout with a matching theme wins)
+	function getEnvThemeStyle(envName: string): string | undefined {
+		for (const env of environments) {
+			if (env.spec?.environment !== envName) continue;
+			const r = rollouts.find(
+				(r) =>
+					r.metadata?.name === env.spec?.rolloutRef?.name &&
+					r.metadata?.namespace === env.metadata?.namespace
+			);
+			if (!r) continue;
+			const theme = getRolloutEnvironmentTheme(r, env);
+			if (theme) return getEnvironmentThemeStyle(theme);
+		}
+		return undefined;
+	}
 
 	// Unique app names (rollout resource names that appear across envs)
 	const appNames = $derived.by(() => {
@@ -219,9 +237,14 @@
 						<span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Application</span>
 					</div>
 					{#each envNames as envName}
-						<div class="border-l border-gray-200 px-5 py-3 dark:border-gray-700">
-							<span class="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
-						</div>
+						<a
+							href="/envs/{envName}"
+							class="environment-theme-scope border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
+							style={getEnvThemeStyle(envName)}
+							title="See all apps in {envName}"
+						>
+							<span class="environment-theme-text text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
+						</a>
 					{/each}
 				</div>
 
@@ -236,7 +259,11 @@
 							style="grid-template-columns: {gridCols(envNames.length)}"
 						>
 							<!-- App name column -->
-							<div class="flex flex-col justify-center px-5 py-4 gap-0.5">
+							<a
+								href="/apps/{appName}"
+								class="flex flex-col justify-center px-5 py-4 gap-0.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+								title="See {appName} across all environments"
+							>
 								<div class="flex items-center gap-2">
 									{#if sev === 3}
 										<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"></span>
@@ -256,7 +283,7 @@
 										<span class="inline-flex items-center rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
 									{/if}
 								</div>
-							</div>
+							</a>
 
 							<!-- Environment cells -->
 							{#each envNames as envName}
