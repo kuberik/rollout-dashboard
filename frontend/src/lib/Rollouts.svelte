@@ -824,9 +824,14 @@
 									<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" title="{group.activeCount} active"></span>
 								{/if}
 								{#if group.labelKind === 'environment'}
-									<Badge color="dark" border rounded class="environment-theme-badge"
-										style={(group.rows[0]?.theme) ? getEnvironmentThemeStyle(group.rows[0].theme) : undefined}
-									>{group.label}</Badge>
+									{#if group.rows[0]?.theme}
+										<span
+											class="environment-theme-scope environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+											style={getEnvironmentThemeStyle(group.rows[0].theme)}
+										>{group.label}</span>
+									{:else}
+										<span class="shrink-0 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-mono font-semibold text-gray-400 dark:border-gray-600 dark:text-gray-500">No env</span>
+									{/if}
 								{:else}
 									<h3 class="truncate text-xs
 										{group.labelKind === 'name' ? 'font-semibold text-gray-900 dark:text-white' : 'font-mono font-semibold text-gray-700 dark:text-gray-200'}
