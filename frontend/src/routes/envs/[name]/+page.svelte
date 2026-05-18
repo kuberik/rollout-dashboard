@@ -6,6 +6,7 @@
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
+	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import {
@@ -155,6 +156,51 @@
 		Cancelled: 'text-gray-500 dark:text-gray-500',
 		None: 'text-gray-400 dark:text-gray-600'
 	};
+	// Compute "behind by N versions" for each slot on this env. We look for the same
+	// app deployed on an earlier-tier env (e.g. dev when we're on prod); if the
+	// earlier env has a newer succeeded version, count distinct versions between
+	// this slot's current version and the earlier env's current version.
+	type BehindInfo = { fromEnv: string; version: string; behindBy: number | null };
+	function behindForSlot(s: Slot): BehindInfo | null {
+		const myEnv = s.environment.spec?.environment;
+		if (!myEnv) return null;
+		// Pinned env is intentionally held.
+		if (s.rollout?.spec?.wantedVersion) return null;
+		const myCurrentH = s.rollout?.status?.history?.[0];
+		if (!myCurrentH) return null;
+		const myCurrentV = getDisplayVersion(myCurrentH.version);
+		// Find candidate earlier envs that deploy the same app.
+		const candidates: { envName: string; rollout: Rollout }[] = [];
+		for (const env of environments) {
+			const otherEnvName = env.spec?.environment;
+			if (!otherEnvName || otherEnvName === myEnv) continue;
+			if (env.spec?.rolloutRef?.name !== s.appName) continue;
+			if (compareEnvironmentNames(otherEnvName, myEnv) >= 0) continue;
+			const otherRollout = rollouts.find(
+				(r) => r.metadata?.name === s.appName && r.metadata?.namespace === env.metadata?.namespace
+			);
+			if (otherRollout) candidates.push({ envName: otherEnvName, rollout: otherRollout });
+		}
+		if (candidates.length === 0) return null;
+		// Use the *closest* earlier env (highest rank below myEnv) — that's the
+		// promotion source we care about.
+		candidates.sort((a, b) => compareEnvironmentNames(b.envName, a.envName));
+		const source = candidates[0];
+		const sourceH = source.rollout.status?.history?.[0];
+		if (!sourceH || sourceH.bakeStatus !== 'Succeeded') return null;
+		const sourceV = getDisplayVersion(sourceH.version);
+		if (sourceV === myCurrentV) return null;
+		// Walk source history to count distinct versions until myCurrentV.
+		const distinct: string[] = [];
+		for (const h of source.rollout.status?.history ?? []) {
+			const v = getDisplayVersion(h.version);
+			if (distinct[distinct.length - 1] !== v) distinct.push(v);
+			if (v === myCurrentV) break;
+		}
+		const idx = distinct.indexOf(myCurrentV);
+		return { fromEnv: source.envName, version: sourceV, behindBy: idx >= 0 ? idx : null };
+	}
+
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}
@@ -296,6 +342,7 @@
 						{#each slots as s}
 							{@const latest = s.rollout?.status?.history?.[0]}
 							{@const status = latest?.bakeStatus || 'None'}
+							{@const behind = behindForSlot(s)}
 							<li class="group">
 								<div class="flex items-center justify-between gap-3 px-4 py-3">
 									<a
@@ -310,6 +357,12 @@
 												<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
 											</span>
 											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{s.title}</span>
+											{#if s.rollout?.spec?.wantedVersion}
+												<span
+													class="shrink-0 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+													title={`Pinned to ${s.rollout.spec.wantedVersion}`}
+												>pin</span>
+											{/if}
 										</div>
 										<div class="mt-0.5 flex items-center gap-2 pl-4 text-[11px] text-gray-500 dark:text-gray-400">
 											<span class="font-mono">{s.appName}</span>
@@ -318,6 +371,19 @@
 												<span class="font-mono">{s.rollout.metadata.namespace}</span>
 											{/if}
 										</div>
+										{#if behind}
+											<div class="mt-1 flex items-center gap-1 pl-4 text-[10px] text-orange-700 dark:text-orange-300">
+												<span aria-hidden="true">←</span>
+												{#if behind.behindBy && behind.behindBy > 0}
+													<span class="font-semibold">{behind.behindBy}</span>
+													<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+												{:else}
+													<span>behind</span>
+												{/if}
+												<span class="font-mono">{behind.version}</span>
+												<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
+											</div>
+										{/if}
 									</a>
 									<div class="flex shrink-0 items-center gap-3">
 										<div class="flex flex-col items-end">

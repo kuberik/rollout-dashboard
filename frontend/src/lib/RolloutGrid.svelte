@@ -363,13 +363,13 @@
 						onclick={() => toggleStatus(k)}
 						class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors
 							{sel
-								? p.color === 'red'    ? 'bg-red-500 text-white'
-								: p.color === 'yellow' ? 'bg-yellow-400 text-gray-900'
-								: p.color === 'gray'   ? 'bg-gray-500 text-white'
-								:                        'bg-green-500 text-white'
+								? p.color === 'red'    ? 'bg-red-100 text-red-800 ring-1 ring-red-300 dark:bg-red-900/30 dark:text-red-200 dark:ring-red-700/60'
+								: p.color === 'yellow' ? 'bg-yellow-100 text-yellow-800 ring-1 ring-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-200 dark:ring-yellow-700/60'
+								: p.color === 'gray'   ? 'bg-gray-200 text-gray-800 ring-1 ring-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:ring-gray-500'
+								:                        'bg-green-100 text-green-800 ring-1 ring-green-300 dark:bg-green-900/30 dark:text-green-200 dark:ring-green-700/60'
 								: 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700'}"
 					>
-						<span class="h-1.5 w-1.5 rounded-full {sel ? 'bg-white' : p.dot}"></span>
+						<span class="h-1.5 w-1.5 rounded-full {p.dot}"></span>
 						{n} {p.label}
 					</button>
 				{/if}
