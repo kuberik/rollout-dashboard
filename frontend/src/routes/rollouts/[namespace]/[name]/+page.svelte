@@ -1874,6 +1874,36 @@
 						<EventsCard {events} />
 					</div>
 				</div>
+			{:else}
+				<!-- No deploy yet — minimal but informative empty state -->
+				<div class="mx-auto max-w-2xl py-6">
+					<div class="flex flex-col items-center rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+						<div class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
+							<ClockSolid class="h-5 w-5 text-gray-400 dark:text-gray-500" />
+						</div>
+						<h2 class="text-base font-semibold text-gray-900 dark:text-white">No deploys yet</h2>
+						<p class="mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
+							{rollout.status?.title ?? rollout.metadata?.name} hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.
+						</p>
+						{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}
+							<div class="mt-5 w-full">
+								<div class="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+									{rollout.status?.releaseCandidates?.length} release candidate{rollout.status?.releaseCandidates?.length === 1 ? '' : 's'} available
+								</div>
+								<ul class="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700/60 dark:border-gray-700">
+									{#each rollout.status?.releaseCandidates?.slice(0, 5) ?? [] as rc}
+										<li class="flex items-center justify-between px-3 py-2 text-left">
+											<span class="font-mono text-sm text-gray-800 dark:text-gray-200">{getDisplayVersion(rc)}</span>
+											{#if rc.created}
+												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(rc.created, $now)}</span>
+											{/if}
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
+					</div>
+				</div>
 			{/if}
 		</div>
 	{/if}
