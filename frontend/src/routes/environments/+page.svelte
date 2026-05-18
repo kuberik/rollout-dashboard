@@ -136,12 +136,13 @@
 		const current = row.get(envName);
 		if (!earlier?.rollout || !current?.rollout) return null;
 		const earlierH = earlier.rollout.status?.history?.[0];
-		const currentH = current.rollout.status?.history?.[0];
-		if (!earlierH || !currentH) return null;
+		if (!earlierH) return null;
+		if (earlierH.bakeStatus !== 'Succeeded') return null;
 		const earlierV = getDisplayVersion(earlierH.version);
+		const currentH = current.rollout.status?.history?.[0];
+		if (!currentH) return { fromEnv: earlierEnvName, version: earlierV };
 		const currentV = getDisplayVersion(currentH.version);
 		if (earlierV === currentV) return null;
-		if (earlierH.bakeStatus !== 'Succeeded') return null;
 		return { fromEnv: earlierEnvName, version: earlierV };
 	}
 
