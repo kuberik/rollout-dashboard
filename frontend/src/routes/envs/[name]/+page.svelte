@@ -172,7 +172,7 @@
 			Environments
 		</a>
 		<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
-		<span>{envName}</span>
+		<span class="font-medium text-gray-700 dark:text-gray-300">{envName}</span>
 	</div>
 
 	{#if query.isLoading}

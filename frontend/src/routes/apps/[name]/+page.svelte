@@ -278,12 +278,12 @@
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	<!-- Breadcrumb / back -->
 	<div class="mb-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-		<a href="/environments" class="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200">
+		<a href="/apps" class="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200">
 			<ArrowLeftOutline class="h-3 w-3" />
-			Environments
+			Apps
 		</a>
 		<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
-		<span>App</span>
+		<span>{appName}</span>
 	</div>
 
 	{#if query.isLoading}
