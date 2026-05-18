@@ -73,10 +73,16 @@
 	);
 
 	const appTitle = $derived.by(() => {
+		// In fallback mode (no Environment binding), titles often include env-specific suffixes
+		// (e.g. 'Hello World manifests / dev'). Prefer the shortest title — usually the cleanest.
+		const titles: string[] = [];
 		for (const c of cells) {
-			if (c.rollout?.status?.title) return c.rollout.status.title;
+			if (c.rollout?.status?.title) titles.push(c.rollout.status.title);
 		}
-		return appName;
+		if (titles.length === 0) return appName;
+		if (hasEnvironmentBinding) return titles[0];
+		titles.sort((a, b) => a.length - b.length);
+		return titles[0];
 	});
 
 	const appDescription = $derived.by(() => {
@@ -368,11 +374,12 @@
 					>
 						<div class="flex items-center justify-between gap-2">
 							<span
-								class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider {cell.theme
+								class="environment-theme-badge max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider {cell.theme
 									? ''
 									: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}"
-							>{cell.envName}</span>
-							<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{cell.rollout?.metadata?.namespace ?? ''}</span>
+								title={cell.envName}
+							>{hasEnvironmentBinding ? cell.envName : (cell.theme?.label ?? cell.envName)}</span>
+							<span class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500" title={cell.rollout?.metadata?.namespace ?? ''}>{cell.rollout?.metadata?.namespace ?? ''}</span>
 						</div>
 						{#if latest}
 							<div class="mt-3 flex items-center gap-2">
