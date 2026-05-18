@@ -36,6 +36,7 @@
 	// Synced with ?env=<name>&app=<name> in the URL so filters are deeplinkable.
 	const envFilter = $derived(page.url.searchParams.get('env'));
 	const appFilter = $derived(page.url.searchParams.get('app'));
+	const nsFilter = $derived(page.url.searchParams.get('ns'));
 
 	function setEnvFilter(next: string | null) {
 		const params = new URLSearchParams(page.url.searchParams);
@@ -48,6 +49,13 @@
 	function clearAppFilter() {
 		const params = new URLSearchParams(page.url.searchParams);
 		params.delete('app');
+		const qs = params.toString();
+		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
+	}
+
+	function clearNsFilter() {
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete('ns');
 		const qs = params.toString();
 		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
@@ -102,6 +110,7 @@
 		return entries
 			.filter((e) => !envFilter || e.envName === envFilter)
 			.filter((e) => !appFilter || e.rolloutName === appFilter)
+			.filter((e) => !nsFilter || e.rolloutNamespace === nsFilter)
 			.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 			.slice(0, 60);
 	});
@@ -155,18 +164,33 @@
 		{/if}
 	</div>
 
-	{#if appFilter}
-		<div class="mb-3 flex items-center gap-2">
+	{#if appFilter || nsFilter}
+		<div class="mb-3 flex flex-wrap items-center gap-2">
 			<span class="text-[11px] text-gray-500 dark:text-gray-400">Showing only:</span>
-			<button
-				type="button"
-				onclick={clearAppFilter}
-				class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
-				title="Clear app filter"
-			>
-				<span class="font-mono normal-case">{appFilter}</span>
-				<span aria-hidden="true">×</span>
-			</button>
+			{#if appFilter}
+				<button
+					type="button"
+					onclick={clearAppFilter}
+					class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+					title="Clear app filter"
+				>
+					<span class="text-[9px] text-blue-500/70 dark:text-blue-400/70">app</span>
+					<span class="font-mono normal-case">{appFilter}</span>
+					<span aria-hidden="true">×</span>
+				</button>
+			{/if}
+			{#if nsFilter}
+				<button
+					type="button"
+					onclick={clearNsFilter}
+					class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700"
+					title="Clear namespace filter"
+				>
+					<span class="text-[9px] text-gray-500/70 dark:text-gray-400/70">ns</span>
+					<span class="font-mono normal-case">{nsFilter}</span>
+					<span aria-hidden="true">×</span>
+				</button>
+			{/if}
 		</div>
 	{/if}
 
