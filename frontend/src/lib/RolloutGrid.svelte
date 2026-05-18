@@ -7,12 +7,14 @@
 	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact } from '$lib/utils';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
+	import { slide } from 'svelte/transition';
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		SearchOutline,
 		ExclamationCircleSolid,
 		CheckCircleSolid,
 		ChevronRightOutline,
+		ChevronDownOutline,
 		ClockSolid
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../types';
@@ -40,7 +42,6 @@
 		staging: 'staging',
 		testing: 'test'
 	};
-
 	function shortEnvLabel(theme: ReturnType<typeof getRolloutEnvironmentTheme>): string {
 		if (!theme) return '';
 		const candidate = (theme.environmentName || theme.name || theme.label || '').toLowerCase();
@@ -51,15 +52,14 @@
 		ns: string;
 		name: string;
 		title: string;
-		envKey: string; // normalized merge key (e.g. 'prod')
-		envDisplay: string; // label to show on the card (e.g. 'PROD' or 'PRODUCTION')
+		envKey: string;
+		envDisplay: string;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
 		version: string | null;
 		timestamp: string | null;
 		bakeStatus: string;
 		statusKey: StatusKey;
 		isRunning: boolean;
-		failedHCCount: number;
 		bakeStatusMessage: string | null;
 		pinnedVersion: string | null;
 		rollout: Rollout;
@@ -77,8 +77,6 @@
 			else if (isRunning) statusKey = 'active';
 			else if (!latest) statusKey = 'pending';
 			else statusKey = 'succeeded';
-			// Display the short form whenever possible: prefer the explicit env spec
-			// name ('prod'), then the theme key abbreviated ('production' → 'prod').
 			const envDisplay = shortEnvLabel(theme);
 			return {
 				ns: r.metadata?.namespace || '',
@@ -92,7 +90,6 @@
 				bakeStatus,
 				statusKey,
 				isRunning,
-				failedHCCount: latest?.failedHealthChecks?.length || 0,
 				bakeStatusMessage: latest?.bakeStatusMessage || null,
 				pinnedVersion: r.spec?.wantedVersion || null,
 				rollout: r
@@ -104,19 +101,7 @@
 	let searchQuery = $state('');
 	let statusFilters = $state<StatusKey[]>([]);
 	let envFilters = $state<string[]>([]);
-
-	const knownEnvs = $derived.by(() => {
-		const map = new Map<string, { display: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> }>();
-		for (const c of cards) {
-			if (!c.envKey) continue;
-			if (!map.has(c.envKey)) {
-				map.set(c.envKey, { display: c.envDisplay, theme: c.theme });
-			}
-		}
-		return [...map.entries()]
-			.map(([key, v]) => ({ key, display: v.display, theme: v.theme }))
-			.sort((a, b) => compareEnvironmentNames(a.display, b.display));
-	});
+	let expandedNs = $state<Set<string>>(new Set());
 
 	function toggleStatus(k: StatusKey) {
 		statusFilters = statusFilters.includes(k)
@@ -128,11 +113,28 @@
 			? envFilters.filter((x) => x !== name)
 			: [...envFilters, name];
 	}
+	function toggleNs(ns: string) {
+		const next = new Set(expandedNs);
+		if (next.has(ns)) next.delete(ns);
+		else next.add(ns);
+		expandedNs = next;
+	}
 	function clearFilters() {
 		statusFilters = [];
 		envFilters = [];
 		searchQuery = '';
 	}
+
+	const knownEnvs = $derived.by(() => {
+		const map = new Map<string, { display: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> }>();
+		for (const c of cards) {
+			if (!c.envKey) continue;
+			if (!map.has(c.envKey)) map.set(c.envKey, { display: c.envDisplay, theme: c.theme });
+		}
+		return [...map.entries()]
+			.map(([key, v]) => ({ key, display: v.display, theme: v.theme }))
+			.sort((a, b) => compareEnvironmentNames(a.display, b.display));
+	});
 
 	const filtered = $derived.by(() => {
 		const q = searchQuery.trim().toLowerCase();
@@ -147,20 +149,57 @@
 		});
 	});
 
-	// Severity-aware sort: failed → active → pending → healthy, then newest first
-	const sorted = $derived.by(() => {
-		const sevRank: Record<StatusKey, number> = {
-			failed: 0,
-			active: 1,
-			pending: 2,
-			succeeded: 3
-		};
-		return [...filtered].sort((a, b) => {
-			const s = sevRank[a.statusKey] - sevRank[b.statusKey];
-			if (s !== 0) return s;
-			const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-			const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-			return bt - at;
+	// Group filtered cards by namespace, sort cards within group by severity then recency,
+	// sort groups by worst severity first then alphabetical.
+	type NsGroup = {
+		ns: string;
+		cards: Card[];
+		failedCount: number;
+		activeCount: number;
+		pendingCount: number;
+		severity: number; // 3 failed, 2 active, 1 pending, 0 healthy
+		newestDeploy: string | null;
+	};
+
+	const grouped = $derived.by<NsGroup[]>(() => {
+		const sevRank: Record<StatusKey, number> = { failed: 0, active: 1, pending: 2, succeeded: 3 };
+		const map = new Map<string, NsGroup>();
+		for (const c of filtered) {
+			let g = map.get(c.ns);
+			if (!g) {
+				g = {
+					ns: c.ns,
+					cards: [],
+					failedCount: 0,
+					activeCount: 0,
+					pendingCount: 0,
+					severity: 0,
+					newestDeploy: null
+				};
+				map.set(c.ns, g);
+			}
+			g.cards.push(c);
+			if (c.statusKey === 'failed') g.failedCount++;
+			else if (c.statusKey === 'active') g.activeCount++;
+			else if (c.statusKey === 'pending') g.pendingCount++;
+			if (c.timestamp && (!g.newestDeploy || new Date(c.timestamp) > new Date(g.newestDeploy))) {
+				g.newestDeploy = c.timestamp;
+			}
+		}
+		for (const g of map.values()) {
+			g.severity =
+				g.failedCount > 0 ? 3 : g.activeCount > 0 ? 2 : g.pendingCount > 0 ? 1 : 0;
+			g.cards.sort((a, b) => {
+				const s = sevRank[a.statusKey] - sevRank[b.statusKey];
+				if (s !== 0) return s;
+				const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+				const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+				return bt - at;
+			});
+		}
+		return [...map.values()].sort((a, b) => {
+			if (b.severity !== a.severity) return b.severity - a.severity;
+			return a.ns.localeCompare(b.ns);
 		});
 	});
 
@@ -177,6 +216,46 @@
 		}
 		return t;
 	});
+
+	// Timeline events for a namespace: merge deploy histories from all rollouts in the ns,
+	// most recent first.
+	type TimelineEvent = {
+		ns: string;
+		appName: string;
+		appTitle: string;
+		envDisplay: string;
+		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
+		version: string;
+		bakeStatus: string;
+		timestamp: string;
+	};
+
+	function timelineForNs(ns: string, limit = 20): TimelineEvent[] {
+		const events: TimelineEvent[] = [];
+		for (const c of cards) {
+			if (c.ns !== ns) continue;
+			const history = c.rollout.status?.history ?? [];
+			for (const h of history.slice(0, 12)) {
+				if (!h.timestamp) continue;
+				events.push({
+					ns,
+					appName: c.name,
+					appTitle: c.title,
+					envDisplay: c.envDisplay,
+					theme: c.theme,
+					version: getDisplayVersion(h.version),
+					bakeStatus: h.bakeStatus || 'None',
+					timestamp: h.timestamp
+				});
+			}
+		}
+		events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+		return events.slice(0, limit);
+	}
+
+	function isRunning(s: string) {
+		return s === 'InProgress' || s === 'Deploying';
+	}
 
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
@@ -310,7 +389,7 @@
 		</div>
 	</div>
 
-	<!-- Env chip row (only if multiple envs) -->
+	<!-- Env chip row -->
 	{#if knownEnvs.length > 1}
 		<div class="mb-5 flex flex-wrap items-center gap-1.5">
 			<span class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">env</span>
@@ -333,9 +412,16 @@
 	{/if}
 
 	{#if query.isLoading}
-		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-			{#each Array(6) as _}
-				<div class="h-28 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+		<div class="space-y-6">
+			{#each Array(2) as _}
+				<div class="space-y-3">
+					<div class="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+						{#each Array(3) as _}
+							<div class="h-28 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+						{/each}
+					</div>
+				</div>
 			{/each}
 		</div>
 	{:else if query.isError}
@@ -347,7 +433,7 @@
 			<p class="text-sm font-medium text-gray-900 dark:text-white">No rollouts yet</p>
 			<p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">Create a Rollout resource in your cluster to see it here.</p>
 		</div>
-	{:else if sorted.length === 0}
+	{:else if grouped.length === 0}
 		<div class="flex flex-col items-center justify-center py-12 text-center">
 			<p class="text-sm font-medium text-gray-700 dark:text-gray-300">No matches</p>
 			<button
@@ -357,70 +443,158 @@
 			>Clear filters</button>
 		</div>
 	{:else}
-		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-			{#each sorted as c (c.ns + '/' + c.name)}
-				<a
-					href={`/rollouts/${c.ns}/${c.name}`}
-					class="environment-theme-scope group flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
-					style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-				>
-					<div class="flex min-w-0 items-start justify-between gap-2">
-						<div class="min-w-0 flex-1">
-							<div class="flex min-w-0 items-center gap-2">
-								<span class="relative flex h-2 w-2 shrink-0">
-									{#if c.isRunning}
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[c.bakeStatus]}"></span>
+		<div class="space-y-6">
+			{#each grouped as g (g.ns)}
+				{@const open = expandedNs.has(g.ns)}
+				{@const events = open ? timelineForNs(g.ns) : []}
+				<section>
+					<!-- Namespace header -->
+					<div class="mb-2 flex items-center justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700/60">
+						<div class="flex min-w-0 items-baseline gap-2">
+							{#if g.severity === 3}
+								<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"></span>
+							{:else if g.severity === 2}
+								<span class="relative flex h-1.5 w-1.5 shrink-0">
+									<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+									<span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-yellow-400"></span>
+								</span>
+							{:else if g.severity === 1}
+								<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400"></span>
+							{:else}
+								<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400 dark:bg-green-500"></span>
+							{/if}
+							<h2 class="truncate font-mono text-sm font-semibold text-gray-800 dark:text-gray-200">{g.ns}</h2>
+							<span class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{g.cards.length}</span>
+							{#if g.failedCount > 0}
+								<span class="shrink-0 text-[11px] font-medium text-red-600 dark:text-red-400">· {g.failedCount} failed</span>
+							{:else if g.activeCount > 0}
+								<span class="shrink-0 text-[11px] font-medium text-yellow-700 dark:text-yellow-400">· {g.activeCount} deploying</span>
+							{:else if g.pendingCount > 0}
+								<span class="shrink-0 text-[11px] font-medium text-gray-500 dark:text-gray-400">· {g.pendingCount} pending</span>
+							{/if}
+						</div>
+						<div class="flex shrink-0 items-center gap-1">
+							<button
+								type="button"
+								onclick={() => toggleNs(g.ns)}
+								class="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-0.5 text-[11px] text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-gray-200"
+								aria-expanded={open}
+							>
+								<ChevronDownOutline class="h-3 w-3 transition-transform {open ? 'rotate-180' : ''}" />
+								<span>timeline</span>
+							</button>
+							<a
+								href={`/namespaces/${g.ns}`}
+								class="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-200"
+								title="Open namespace detail"
+							>
+								<ChevronRightOutline class="h-3 w-3" />
+							</a>
+						</div>
+					</div>
+
+					<!-- Rollouts grid -->
+					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+						{#each g.cards as c (c.ns + '/' + c.name)}
+							<a
+								href={`/rollouts/${c.ns}/${c.name}`}
+								class="environment-theme-scope group flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+							>
+								<div class="flex min-w-0 items-start justify-between gap-2">
+									<div class="min-w-0 flex-1">
+										<div class="flex min-w-0 items-center gap-2">
+											<span class="relative flex h-2 w-2 shrink-0">
+												{#if c.isRunning}
+													<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[c.bakeStatus]}"></span>
+												{/if}
+												<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[c.bakeStatus] ?? STATUS_DOT.None}"></span>
+											</span>
+											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{c.title}</span>
+										</div>
+										<div class="mt-0.5 truncate pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</div>
+									</div>
+									{#if c.envDisplay}
+										<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{c.envDisplay}</span>
 									{/if}
-									<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[c.bakeStatus] ?? STATUS_DOT.None}"></span>
-								</span>
-								<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{c.title}</span>
-							</div>
-							<div class="mt-0.5 flex min-w-0 items-center gap-1.5 pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">
-								<span class="truncate">{c.ns}</span>
-								{#if c.name !== c.ns && c.name !== c.title}
-									<span class="shrink-0 text-gray-300 dark:text-gray-600">·</span>
-									<span class="truncate">{c.name}</span>
+								</div>
+
+								<div class="flex min-w-0 items-end justify-between gap-2">
+									<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+										<span class="truncate font-mono text-sm font-medium text-gray-800 dark:text-gray-200">
+											{c.version ?? '—'}
+										</span>
+										<span class="text-[11px] {STATUS_TEXT[c.bakeStatus] ?? STATUS_TEXT.None}">{STATUS_LABEL[c.bakeStatus]}</span>
+									</div>
+									<div class="flex shrink-0 items-center gap-1.5">
+										{#if c.pinnedVersion}
+											<span
+												class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+												title={`Pinned to ${c.pinnedVersion}`}
+											>pinned</span>
+										{/if}
+										{#if c.timestamp}
+											<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(c.timestamp, $now)}>
+												{formatTimeAgoCompact(c.timestamp, $now)}
+											</span>
+										{/if}
+									</div>
+								</div>
+
+								{#if c.statusKey === 'failed' && c.bakeStatusMessage}
+									<div class="line-clamp-2 break-words rounded-md border border-red-200 bg-red-50/70 px-2 py-1 text-[11px] text-red-700 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-300">
+										{c.bakeStatusMessage}
+									</div>
 								{/if}
+							</a>
+						{/each}
+					</div>
+
+					<!-- Inline expandable timeline for this namespace -->
+					{#if open}
+						<div transition:slide={{ duration: 180 }} class="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+							<div class="flex items-baseline justify-between border-b border-gray-100 px-4 py-2 dark:border-gray-700/60">
+								<span class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Deploy timeline</span>
+								<a href={`/namespaces/${g.ns}`} class="text-[10px] text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">full view ›</a>
 							</div>
-						</div>
-						{#if c.envDisplay}
-							<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{c.envDisplay}</span>
-						{/if}
-					</div>
-
-					<div class="flex min-w-0 items-end justify-between gap-2">
-						<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-							<span class="truncate font-mono text-sm font-medium text-gray-800 dark:text-gray-200">
-								{c.version ?? '—'}
-							</span>
-							<span class="text-[11px] {STATUS_TEXT[c.bakeStatus] ?? STATUS_TEXT.None}">{STATUS_LABEL[c.bakeStatus]}</span>
-						</div>
-						<div class="flex shrink-0 items-center gap-1.5">
-							{#if c.pinnedVersion}
-								<span
-									class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-									title={`Pinned to ${c.pinnedVersion}`}
-								>pinned</span>
+							{#if events.length === 0}
+								<div class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No deploy history yet.</div>
+							{:else}
+								<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+									{#each events as e}
+										<li class="environment-theme-scope" style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}>
+											<a
+												href={`/rollouts/${e.ns}/${e.appName}`}
+												class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+											>
+												<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{e.envDisplay || 'no-env'}</span>
+												<div class="flex min-w-0 items-center gap-2">
+													<span class="truncate text-gray-800 dark:text-gray-200">{e.appTitle}</span>
+													<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{e.version}</span>
+												</div>
+												<span class="flex shrink-0 items-center gap-1.5 text-[11px]">
+													<span class="relative flex h-1.5 w-1.5">
+														{#if isRunning(e.bakeStatus)}
+															<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[e.bakeStatus]}"></span>
+														{/if}
+														<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[e.bakeStatus] ?? STATUS_DOT.None}"></span>
+													</span>
+													<span class={STATUS_TEXT[e.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[e.bakeStatus]}</span>
+													<span class="font-mono text-gray-400 dark:text-gray-500" title={formatTimeAgo(e.timestamp, $now)}>{formatTimeAgoCompact(e.timestamp, $now)}</span>
+												</span>
+											</a>
+										</li>
+									{/each}
+								</ul>
 							{/if}
-							{#if c.timestamp}
-								<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(c.timestamp, $now)}>
-									{formatTimeAgoCompact(c.timestamp, $now)}
-								</span>
-							{/if}
-						</div>
-					</div>
-
-					{#if c.statusKey === 'failed' && c.bakeStatusMessage}
-						<div class="line-clamp-2 break-words rounded-md border border-red-200 bg-red-50/70 px-2 py-1 text-[11px] text-red-700 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-300">
-							{c.bakeStatusMessage}
 						</div>
 					{/if}
-				</a>
+				</section>
 			{/each}
 		</div>
 
-		<p class="mt-4 text-center text-[11px] text-gray-400 dark:text-gray-600">
-			{sorted.length} of {cards.length}
+		<p class="mt-6 text-center text-[11px] text-gray-400 dark:text-gray-600">
+			{filtered.length} rollout{filtered.length === 1 ? '' : 's'} in {grouped.length} namespace{grouped.length === 1 ? '' : 's'}
 		</p>
 	{/if}
 </div>
