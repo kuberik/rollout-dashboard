@@ -275,7 +275,7 @@
 						<span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Application</span>
 					</div>
 					{#each envNames as envName}
-						{@const envDeployedCount = sortedAppNames.filter((app) => matrix.get(app)?.get(envName)?.rollout).length}
+						{@const envDeployedCount = sortedAppNames.filter((app) => matrix.get(app)?.get(envName)?.rollout?.status?.history?.[0]).length}
 						<a
 							href="/envs/{envName}"
 							class="environment-theme-scope flex items-baseline justify-between gap-2 border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
