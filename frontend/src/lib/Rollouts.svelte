@@ -349,7 +349,13 @@
 
 	function groupKeyOf(row: Row, gb: GroupBy): { key: string; label: string; labelKind: Group['labelKind'] } {
 		if (gb === 'name')        return { key: row.name, label: row.name, labelKind: 'name' };
-		if (gb === 'environment') return { key: row.theme?.environmentName ?? 'No environment', label: row.theme?.environmentName ?? 'No environment', labelKind: 'environment' };
+		if (gb === 'environment') {
+			// Prefer the explicit Environment name. Fall back to the theme's preset label
+			// (e.g. "Development") for rollouts that only have a theme annotation, then
+			// to "No environment" when nothing identifies the env.
+			const key = row.theme?.environmentName || row.theme?.label || 'No environment';
+			return { key, label: key, labelKind: 'environment' };
+		}
 		return { key: row.ns, label: row.ns, labelKind: 'namespace' };
 	}
 
