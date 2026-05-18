@@ -184,7 +184,7 @@
 			<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
 		</div>
 	{:else if query.isError}
-		<div class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/10 dark:text-red-400">
+		<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
 			Failed to load: {(query.error as Error).message}
 		</div>
 	{:else if apps.length === 0}

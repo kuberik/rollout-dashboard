@@ -225,7 +225,7 @@
 			{/each}
 		</div>
 	{:else if rolloutsQuery.isError}
-		<div class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/10 dark:text-red-400">
+		<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
 			Failed to load activity: {(rolloutsQuery.error as Error).message}
 		</div>
 	{:else if activityFeed.length === 0}

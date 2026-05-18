@@ -254,7 +254,7 @@
 			{/each}
 		</div>
 	{:else if query.isError}
-		<div class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/10 dark:text-red-400">
+		<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
 			Failed to load environments: {(query.error as Error).message}
 		</div>
 	{:else if envNames.length === 0}
@@ -272,7 +272,7 @@
 				{@const row = matrix.get(appName)}
 				{@const drift = hasDrift(appName)}
 				{@const sev = appSeverity(appName)}
-				<section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 {sev === 3 ? 'border-red-200 dark:border-red-900/50' : ''}">
+				<section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 					<a
 						href="/apps/{appName}"
 						class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700/60 {sev === 3 ? 'bg-red-50/40 dark:bg-red-900/5' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}"
