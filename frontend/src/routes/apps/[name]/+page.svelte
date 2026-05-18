@@ -73,16 +73,22 @@
 	);
 
 	const appTitle = $derived.by(() => {
-		// In fallback mode (no Environment binding), titles often include env-specific suffixes
-		// (e.g. 'Hello World manifests / dev'). Prefer the shortest title — usually the cleanest.
 		const titles: string[] = [];
 		for (const c of cells) {
 			if (c.rollout?.status?.title) titles.push(c.rollout.status.title);
 		}
 		if (titles.length === 0) return appName;
 		if (hasEnvironmentBinding) return titles[0];
-		titles.sort((a, b) => a.length - b.length);
-		return titles[0];
+		// Fallback mode: titles often have env suffixes like 'Foo / dev'. Find the longest
+		// common prefix, then strip trailing separator characters.
+		let prefix = titles[0];
+		for (const t of titles.slice(1)) {
+			let i = 0;
+			while (i < prefix.length && i < t.length && prefix[i] === t[i]) i++;
+			prefix = prefix.slice(0, i);
+		}
+		const cleaned = prefix.replace(/[\s\-/|·:]+$/, '').trim();
+		return cleaned.length >= 3 ? cleaned : titles.sort((a, b) => a.length - b.length)[0];
 	});
 
 	const appDescription = $derived.by(() => {
