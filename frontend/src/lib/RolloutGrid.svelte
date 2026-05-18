@@ -64,12 +64,15 @@
 			else if (isRunning) statusKey = 'active';
 			else if (!latest) statusKey = 'pending';
 			else statusKey = 'succeeded';
+			// Display the short form whenever possible: prefer the explicit env spec
+			// name ('prod'), then the theme key ('prod'), then the preset label.
+			const envDisplay = theme?.environmentName || theme?.name || theme?.label || '';
 			return {
 				ns: r.metadata?.namespace || '',
 				name: r.metadata?.name || '',
 				title: r.status?.title || r.metadata?.name || '',
 				envKey: theme?.name || '',
-				envDisplay: theme?.environmentName || theme?.label || '',
+				envDisplay,
 				theme,
 				version: latest?.version ? getDisplayVersion(latest.version) : null,
 				timestamp: latest?.timestamp || null,
