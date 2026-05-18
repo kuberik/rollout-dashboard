@@ -64,7 +64,9 @@
 		CogSolid,
 		ArrowUpRightFromSquareOutline,
 		ArrowUpOutline,
-		GithubSolid
+		GithubSolid,
+		ArrowLeftOutline,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -1320,6 +1322,20 @@
 									? 'blue'
 									: 'gray'}
 
+				<!-- Breadcrumb -->
+				<div class="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+					<a href="/" class="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200">
+						<ArrowLeftOutline class="h-3 w-3" />
+						Rollouts
+					</a>
+					{#if rollout.metadata?.namespace}
+						<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
+						<a href={`/namespaces/${rollout.metadata.namespace}`} class="font-mono hover:text-gray-700 dark:hover:text-gray-200">{rollout.metadata.namespace}</a>
+					{/if}
+					<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
+					<span class="font-mono text-gray-700 dark:text-gray-300">{rollout.metadata?.name}</span>
+				</div>
+
 				<!-- ══ PAGE HEADER ══ -->
 				<div class="mb-4">
 					<div class="flex flex-wrap items-baseline gap-3">
@@ -1342,16 +1358,6 @@
 							<span aria-hidden="true">↗</span>
 							across envs
 						</a>
-						{#if rollout.metadata?.namespace}
-							<a
-								href={`/namespaces/${rollout.metadata.namespace}`}
-								class="inline-flex items-center gap-1 self-center text-[11px] text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
-								title="View namespace timeline"
-							>
-								<span aria-hidden="true">↗</span>
-								namespace
-							</a>
-						{/if}
 					</div>
 					{#if rollout.status?.description && rollout.status.description !== (rollout.status?.title || rollout.metadata?.name)}
 						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
