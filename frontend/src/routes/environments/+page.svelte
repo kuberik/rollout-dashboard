@@ -268,7 +268,7 @@
 			<div class="min-w-max overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 				<!-- Column headers -->
 				<div
-					class="grid border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40"
+					class="sticky top-0 z-10 grid border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40"
 					style="grid-template-columns: {gridCols(envNames.length)}"
 				>
 					<div class="px-5 py-3">
