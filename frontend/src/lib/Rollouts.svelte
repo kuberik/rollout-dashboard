@@ -24,6 +24,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
+	import { compareEnvironmentNames } from '$lib/env-order';
 
 	const rolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 30000 } })
@@ -430,6 +431,10 @@
 		}
 		return Object.values(groups).sort((a, b) => {
 			if (b.severity !== a.severity) return b.severity - a.severity;
+			// For env groups, prefer tier order (dev → staging → prod) over alphabetical.
+			if (a.labelKind === 'environment' && b.labelKind === 'environment') {
+				return compareEnvironmentNames(a.label, b.label);
+			}
 			return a.label.localeCompare(b.label);
 		});
 	});
