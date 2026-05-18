@@ -185,6 +185,17 @@
 			return s === 'InProgress' || s === 'Deploying';
 		}).length
 	);
+	// Number of (app, env) cells where the next-tier env is behind the previous
+	// — surfaces fleet-wide promotion candidates.
+	const pendingPromotionCount = $derived.by(() => {
+		let n = 0;
+		for (const app of appNames) {
+			for (const envName of envNames) {
+				if (behindFor(app, envName)) n++;
+			}
+		}
+		return n;
+	});
 
 	// Column width: first col wider, env cols equal
 	function gridCols(n: number) {
@@ -220,7 +231,12 @@
 						{activeCount} deploying
 					</span>
 				{/if}
-				{#if failedCount === 0 && activeCount === 0 && rollouts.length > 0}
+				{#if pendingPromotionCount > 0}
+					<span class="flex items-center gap-1 font-medium text-orange-600 dark:text-orange-400" title="At least one earlier-tier env has a different succeeded version">
+						<span class="h-2 w-2 rounded-full bg-orange-500"></span>{pendingPromotionCount} pending
+					</span>
+				{/if}
+				{#if failedCount === 0 && activeCount === 0 && pendingPromotionCount === 0 && rollouts.length > 0}
 					<span class="flex items-center gap-1 text-green-600 dark:text-green-400">
 						<CheckCircleSolid class="h-3.5 w-3.5" />All healthy
 					</span>
