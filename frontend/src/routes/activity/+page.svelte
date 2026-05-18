@@ -239,8 +239,8 @@
 								</span>
 
 								<!-- Env badge -->
-								{#if entry.envName}
-									<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{entry.envName}</span>
+								{#if entry.envName || entry.theme}
+									<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{entry.envName || entry.theme?.label}</span>
 								{/if}
 
 								<!-- Name + namespace -->
