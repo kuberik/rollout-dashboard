@@ -1,9 +1,9 @@
 <script lang="ts">
-	import Rollouts from '$lib/Rollouts.svelte';
+	import RolloutGrid from '$lib/RolloutGrid.svelte';
 </script>
 
 <svelte:head>
 	<title>kuberik | Rollouts</title>
 </svelte:head>
 
-<Rollouts />
+<RolloutGrid />
