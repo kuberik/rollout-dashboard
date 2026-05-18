@@ -42,6 +42,7 @@
 		title: string;
 		envKey: string;
 		envDisplay: string;
+		envName: string; // raw env name (e.g. 'staging') for behind-by lookups
 		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
 		version: string | null;
 		timestamp: string | null;
@@ -50,8 +51,59 @@
 		isRunning: boolean;
 		bakeStatusMessage: string | null;
 		pinnedVersion: string | null;
+		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
 		rollout: Rollout;
 	};
+
+	// Build a per-app map: appName → Array<{envName, rollout, env}> sorted by env tier.
+	// Used to compute "N versions behind" diagnostics on each card.
+	const appIndex = $derived.by(() => {
+		const map = new Map<string, { envName: string; rollout: Rollout }[]>();
+		for (const env of environments) {
+			const appName = env.spec?.rolloutRef?.name;
+			const envName = env.spec?.environment;
+			if (!appName || !envName) continue;
+			const ns = env.metadata?.namespace;
+			const r = rollouts.find((x) => x.metadata?.name === appName && x.metadata?.namespace === ns);
+			if (!r) continue;
+			if (!map.has(appName)) map.set(appName, []);
+			map.get(appName)!.push({ envName, rollout: r });
+		}
+		for (const list of map.values()) {
+			list.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
+		}
+		return map;
+	});
+
+	function computeBehind(
+		r: Rollout,
+		envName: string
+	): { fromEnv: string; version: string; behindBy: number | null } | null {
+		// Pinned rollouts are intentionally held.
+		if (r.spec?.wantedVersion) return null;
+		const myH = r.status?.history?.[0];
+		if (!myH) return null;
+		const myV = getDisplayVersion(myH.version);
+		const peers = appIndex.get(r.metadata?.name ?? '');
+		if (!peers || peers.length < 2) return null;
+		// Find the closest earlier-tier env that deploys this app.
+		const earlierPeers = peers.filter((p) => compareEnvironmentNames(p.envName, envName) < 0);
+		if (earlierPeers.length === 0) return null;
+		const source = earlierPeers[earlierPeers.length - 1];
+		const sourceH = source.rollout.status?.history?.[0];
+		if (!sourceH || sourceH.bakeStatus !== 'Succeeded') return null;
+		const sourceV = getDisplayVersion(sourceH.version);
+		if (sourceV === myV) return null;
+		// Count distinct versions between myV (inclusive) and sourceV (newest) in source history.
+		const distinct: string[] = [];
+		for (const h of source.rollout.status?.history ?? []) {
+			const v = getDisplayVersion(h.version);
+			if (distinct[distinct.length - 1] !== v) distinct.push(v);
+			if (v === myV) break;
+		}
+		const idx = distinct.indexOf(myV);
+		return { fromEnv: source.envName, version: sourceV, behindBy: idx >= 0 ? idx : null };
+	}
 
 	const cards = $derived.by<Card[]>(() => {
 		return rollouts.map((r) => {
@@ -66,12 +118,15 @@
 			else if (!latest) statusKey = 'pending';
 			else statusKey = 'succeeded';
 			const envDisplay = shortEnvLabel(theme);
+			const envName = env?.spec?.environment ?? '';
+			const behind = envName ? computeBehind(r, envName) : null;
 			return {
 				ns: r.metadata?.namespace || '',
 				name: r.metadata?.name || '',
 				title: r.status?.title || r.metadata?.name || '',
 				envKey: theme?.name || '',
 				envDisplay,
+				envName,
 				theme,
 				version: latest?.version ? getDisplayVersion(latest.version) : null,
 				timestamp: latest?.timestamp || null,
@@ -80,6 +135,7 @@
 				isRunning,
 				bakeStatusMessage: latest?.bakeStatusMessage || null,
 				pinnedVersion: r.spec?.wantedVersion || null,
+				behind,
 				rollout: r
 			};
 		});
@@ -529,8 +585,22 @@
 									</div>
 								</div>
 
+								{#if c.behind}
+									<div class="flex items-center gap-1 truncate text-[10px] text-orange-700 dark:text-orange-300">
+										<span aria-hidden="true">←</span>
+										{#if c.behind.behindBy && c.behind.behindBy > 0}
+											<span class="font-semibold">{c.behind.behindBy}</span>
+											<span>{c.behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+										{:else}
+											<span>behind</span>
+										{/if}
+										<span class="font-mono">{c.behind.version}</span>
+										<span class="text-orange-500/70 dark:text-orange-400/70">on {c.behind.fromEnv}</span>
+									</div>
+								{/if}
+
 								{#if c.statusKey === 'failed' && c.bakeStatusMessage}
-									<div class="line-clamp-2 break-words rounded-md border border-red-200 bg-red-50/70 px-2 py-1 text-[11px] text-red-700 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-300">
+									<div class="line-clamp-2 break-words rounded-md bg-red-50/70 px-2 py-1 text-[11px] text-red-700 dark:bg-red-900/15 dark:text-red-300">
 										{c.bakeStatusMessage}
 									</div>
 								{/if}
