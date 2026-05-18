@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
+	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact } from '$lib/utils';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
@@ -35,18 +35,6 @@
 	}
 
 	type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
-
-	const ENV_ABBREV: Record<string, string> = {
-		development: 'dev',
-		production: 'prod',
-		staging: 'staging',
-		testing: 'test'
-	};
-	function shortEnvLabel(theme: ReturnType<typeof getRolloutEnvironmentTheme>): string {
-		if (!theme) return '';
-		const candidate = (theme.environmentName || theme.name || theme.label || '').toLowerCase();
-		return ENV_ABBREV[candidate] || candidate;
-	}
 
 	type Card = {
 		ns: string;

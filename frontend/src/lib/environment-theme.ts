@@ -184,3 +184,20 @@ export function getEnvironmentThemeStyle(theme: EnvironmentTheme): string {
 		`--rollout-theme-dark-text: ${theme.darkTextColor}`
 	].join('; ');
 }
+
+// Canonical short labels for the well-known env presets. Used wherever we
+// display the env badge so 'PRODUCTION' / 'DEVELOPMENT' don't blow out
+// tight cards and chips. Anything not in this map falls back to the raw
+// environment name or theme key.
+const ENV_SHORT_LABEL: Record<string, string> = {
+	development: 'dev',
+	production: 'prod',
+	staging: 'staging',
+	testing: 'test'
+};
+
+export function shortEnvLabel(theme: EnvironmentTheme | null | undefined): string {
+	if (!theme) return '';
+	const candidate = (theme.environmentName || theme.name || theme.label || '').toLowerCase();
+	return ENV_SHORT_LABEL[candidate] || candidate;
+}

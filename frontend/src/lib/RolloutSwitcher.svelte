@@ -7,20 +7,8 @@
 	import { getRolloutStatus, formatTimeAgoCompact } from '$lib/utils';
 	import { Badge } from 'flowbite-svelte';
 	import { SearchOutline } from 'flowbite-svelte-icons';
-	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
-
-	const ENV_ABBREV: Record<string, string> = {
-		development: 'dev',
-		production: 'prod',
-		staging: 'staging',
-		testing: 'test'
-	};
-	function shortEnvLabel(theme: ReturnType<typeof getRolloutEnvironmentTheme>): string {
-		if (!theme) return '';
-		const c = (theme.environmentName || theme.name || theme.label || '').toLowerCase();
-		return ENV_ABBREV[c] || c;
-	}
 
 	let {
 		open = $bindable(false),
