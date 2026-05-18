@@ -124,6 +124,27 @@
 		return versions.size > 1;
 	}
 
+	// For each (app, envName), check if the env immediately earlier in the tier
+	// has a different succeeded version → this cell is "behind" that earlier env.
+	function behindFor(appName: string, envName: string): { fromEnv: string; version: string } | null {
+		const row = matrix.get(appName);
+		if (!row) return null;
+		const idx = envNames.indexOf(envName);
+		if (idx <= 0) return null;
+		const earlierEnvName = envNames[idx - 1];
+		const earlier = row.get(earlierEnvName);
+		const current = row.get(envName);
+		if (!earlier?.rollout || !current?.rollout) return null;
+		const earlierH = earlier.rollout.status?.history?.[0];
+		const currentH = current.rollout.status?.history?.[0];
+		if (!earlierH || !currentH) return null;
+		const earlierV = getDisplayVersion(earlierH.version);
+		const currentV = getDisplayVersion(currentH.version);
+		if (earlierV === currentV) return null;
+		if (earlierH.bakeStatus !== 'Succeeded') return null;
+		return { fromEnv: earlierEnvName, version: earlierV };
+	}
+
 	function appSeverity(appName: string): number {
 		const row = matrix.get(appName);
 		if (!row) return 0;
@@ -295,6 +316,7 @@
 										{@const labelClass = STATUS_LABEL_CLASS[status] ?? STATUS_LABEL_CLASS['None']}
 										{@const label = STATUS_LABEL[status] ?? status}
 										{@const latest = cell.rollout.status?.history?.[0]}
+										{@const behind = behindFor(appName, envName)}
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
 											class="group block rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
@@ -318,6 +340,16 @@
 													</span>
 												{/if}
 											</div>
+											{#if behind}
+												<div
+													class="mt-1.5 flex items-center gap-1 truncate text-[10px] text-orange-700 dark:text-orange-300"
+													title="behind {behind.version} on {behind.fromEnv}"
+												>
+													<span aria-hidden="true">←</span>
+													<span class="font-mono">{behind.version}</span>
+													<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
+												</div>
+											{/if}
 										</a>
 									{:else}
 										<div class="flex items-center justify-center py-4">
