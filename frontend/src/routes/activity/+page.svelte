@@ -202,7 +202,7 @@
 							{@const cfg = STATUS_CONFIG[entry.bakeStatus] ?? STATUS_CONFIG['None']}
 							<a
 								href={entry.href}
-								class="environment-theme-scope flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+								class="environment-theme-scope flex w-full min-w-0 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
 									{idx > 0 ? 'border-t border-gray-100 dark:border-gray-700/60' : ''}"
 								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
 							>
@@ -221,22 +221,22 @@
 
 								<!-- Name + namespace -->
 								<div class="min-w-0 flex-1">
-									<div class="flex flex-wrap items-baseline gap-x-1.5">
+									<div class="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
 										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
 										<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
 									</div>
-									<div class="flex items-baseline gap-x-1.5">
+									<div class="flex min-w-0 items-baseline gap-x-1.5">
 										{#if entry.rolloutName !== entry.displayName}
-											<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutName}</span>
-											<span class="text-[10px] text-gray-300 dark:text-gray-700">·</span>
+											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutName}</span>
+											<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-700">·</span>
 										{/if}
-										<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.version}</span>
+										<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.version}</span>
 									</div>
 								</div>
 
 								<!-- Right: status text + time -->
 								<div class="flex shrink-0 items-center gap-3">
-									<span class="text-[11px] font-medium {cfg.textClass}">{cfg.label}</span>
+									<span class="hidden text-[11px] font-medium sm:inline {cfg.textClass}">{cfg.label}</span>
 									<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(entry.timestamp, $now)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
 								</div>
 							</a>
