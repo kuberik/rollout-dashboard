@@ -3,7 +3,8 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, formatStatusTime } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, formatStatusTime, detectStuck, detectStuckBehind } from '$lib/utils';
+	import type { StuckReason } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
@@ -11,7 +12,7 @@
 	import { ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
-	import DriftBadge from '$lib/components/DriftBadge.svelte';
+	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -114,17 +115,21 @@
 	function bakeStatus(r: Rollout) { return r.status?.history?.[0]?.bakeStatus || 'None'; }
 	function isRunning(s: string) { return s === 'InProgress' || s === 'Deploying'; }
 
-	function hasDrift(appName: string): boolean {
+	// Per-cell stuck detection: own bake stuck OR behind a peer for too long.
+	function stuckFor(appName: string, envName: string, refNow: Date): StuckReason | null {
 		const row = matrix.get(appName);
-		if (!row) return false;
-		const versions = new Set<string>();
-		for (const [, cell] of row) {
-			if (cell?.rollout) {
-				const v = cell.rollout.status?.history?.[0]?.version?.tag ?? null;
-				if (v) versions.add(v);
-			}
+		if (!row) return null;
+		const current = row.get(envName);
+		if (!current?.rollout) return null;
+		const own = detectStuck(current.rollout, { now: refNow });
+		if (own) return own;
+		for (const [otherEnv, otherCell] of row) {
+			if (otherEnv === envName) continue;
+			if (!otherCell?.rollout) continue;
+			const r = detectStuckBehind(current.rollout, otherCell.rollout, otherEnv, { now: refNow });
+			if (r) return r;
 		}
-		return versions.size > 1;
+		return null;
 	}
 
 	// For each (app, envName), check if the env immediately earlier in the tier
@@ -374,7 +379,7 @@
 									{@const latest = cell.rollout.status?.history?.[0]}
 									{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
 									{@const behind = behindFor(appName, envName)}
-									{@const drift = hasDrift(appName)}
+									{@const stuck = stuckFor(appName, envName, $now)}
 									<li class="{status === 'Failed' ? 'card-failed' : ''} {isRunning(status) ? 'card-active' : ''}">
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
@@ -391,7 +396,7 @@
 												<div class="flex min-w-0 flex-col gap-0.5">
 													<div class="flex min-w-0 items-center gap-2">
 														<span class="truncate text-base font-bold text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
-														{#if drift}<DriftBadge size="xs" />{/if}
+														{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
 													</div>
 													<div class="flex min-w-0 items-center gap-2">
 														<span class="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
@@ -448,30 +453,14 @@
 					{#each envNames as envName}
 						{@const envCells = sortedAppNames.map((app) => matrix.get(app)?.get(envName)).filter(Boolean) as { rollout: import('../../types').Rollout; env: import('../../types').Environment }[]}
 						{@const envDeployedCount = envCells.filter((c) => c.rollout.status?.history?.[0]).length}
-						{@const envFailed = envCells.filter((c) => c.rollout.status?.history?.[0]?.bakeStatus === 'Failed').length}
-						{@const envActive = envCells.filter((c) => {
-							const s = c.rollout.status?.history?.[0]?.bakeStatus;
-							return s === 'InProgress' || s === 'Deploying';
-						}).length}
-						{@const envSucceeded = envCells.filter((c) => c.rollout.status?.history?.[0]?.bakeStatus === 'Succeeded').length}
 						<a
 							href="/envs/{envName}"
-							class="environment-theme-scope flex flex-col gap-1.5 border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
+							class="environment-theme-scope flex items-baseline justify-between gap-2 border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
 							style={getEnvThemeStyle(envName)}
 							title="See all apps in {envName}"
 						>
-							<div class="flex items-baseline justify-between gap-2">
-								<span class="environment-theme-text text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
-								<span class="font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">{envDeployedCount}</span>
-							</div>
-							<!-- Per-column health bar: shows fleet outcome mix for this env -->
-							{#if envDeployedCount > 0}
-								<div class="flex h-0.5 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-700/70" title={`${envSucceeded} succeeded · ${envActive} deploying · ${envFailed} failed`}>
-									{#if envSucceeded > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(envSucceeded / envDeployedCount) * 100}%"></span>{/if}
-									{#if envActive > 0}<span class="bg-yellow-400" style="width:{(envActive / envDeployedCount) * 100}%"></span>{/if}
-									{#if envFailed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(envFailed / envDeployedCount) * 100}%"></span>{/if}
-								</div>
-							{/if}
+							<span class="environment-theme-text text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
+							<span class="font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">{envDeployedCount}</span>
 						</a>
 					{/each}
 				</div>
@@ -480,7 +469,6 @@
 				<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
 					{#each sortedAppNames as appName}
 						{@const row = matrix.get(appName)}
-						{@const drift = hasDrift(appName)}
 						{@const sev = appSeverity(appName)}
 						<div
 							class="grid {sev === 3 ? 'bg-red-50/40 dark:bg-red-900/5' : ''}"
@@ -507,7 +495,6 @@
 								</div>
 								<div class="flex items-center gap-2 pl-3.5">
 									<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{appName}</span>
-									{#if drift}<DriftBadge />{/if}
 								</div>
 							</a>
 
@@ -525,7 +512,7 @@
 										{@const behind = behindFor(appName, envName)}
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
-											class="group block overflow-hidden rounded-lg border border-transparent bg-gray-50/50 px-3 py-2.5 transition-all hover:-translate-y-px hover:border-gray-200 hover:bg-white hover:shadow-md dark:bg-gray-900/30 dark:hover:border-gray-700 dark:hover:bg-gray-800
+											class="group block overflow-hidden rounded-lg bg-gray-50/50 px-3 py-2.5 transition-colors hover:bg-white dark:bg-gray-900/30 dark:hover:bg-gray-800
 												{status === 'Failed' ? 'card-failed' : ''}
 												{isRunning(status) ? 'card-active' : ''}"
 										>

@@ -138,25 +138,6 @@ input, select, textarea {
     transparent 50%);
 }
 
-/* Left-edge env tint: subtle horizontal gradient that fades the env theme
-   color in from the left edge of a row. Used on activity feed rows so users
-   can scan by env at a glance. Uses background-image so it composes with the
-   hover bg-color set by Tailwind. */
-.environment-theme-edge {
-  background-image: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--rollout-theme-accent) 14%, transparent) 0,
-    transparent 5rem
-  );
-}
-.dark .environment-theme-edge {
-  background-image: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--rollout-theme-accent) 22%, transparent) 0,
-    transparent 5rem
-  );
-}
-
 .dark {
   * {
     scrollbar-color: #4b5563 #1f2937;

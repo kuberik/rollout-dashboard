@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { MoonSolid, SunSolid, ClockOutline, GridOutline, LayersSolid, RocketOutline, SearchOutline } from 'flowbite-svelte-icons';
+	import { MoonSolid, SunSolid, SearchOutline } from 'flowbite-svelte-icons';
 	import LogoDark from '$lib/assets/logo-rotate-dark.svg?raw';
 	import LogoLight from '$lib/assets/logo-rotate-light.svg?raw';
 	import { theme } from '$lib/stores/theme';
@@ -21,6 +21,7 @@
 	let currentTheme = $state<'light' | 'dark'>('light');
 	let switcherOpen = $state(false);
 	let resourceSwitcherOpen = $state(false);
+	let sectionMenuOpen = $state(false);
 	let isMac = $state(false);
 
 	theme.subscribe((value) => {
@@ -32,23 +33,42 @@
 		isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 	});
 
-	// Detect which detail page (if any) we're on so the navbar can show
-	// a baked-in 'Section / Item' breadcrumb instead of pages providing
-	// their own. Keeps navigation consistent across every detail view.
+	// Sections: every page belongs to one of these. Rendered as a single
+	// breadcrumb chip with a chevron-driven popover instead of 4 inline buttons.
+	const SECTIONS = [
+		{ key: 'rollouts', label: 'Rollouts', href: '/' },
+		{ key: 'apps', label: 'Apps', href: '/apps' },
+		{ key: 'environments', label: 'Environments', href: '/environments' },
+		{ key: 'activity', label: 'Activity', href: '/activity' }
+	] as const;
+
 	const isRolloutPage = $derived(page.url.pathname.match(/^\/rollouts\/[^/]+\/[^/]+/) !== null);
 	const appDetailMatch = $derived(page.url.pathname.match(/^\/apps\/([^/]+)/));
 	const envDetailMatch = $derived(page.url.pathname.match(/^\/envs\/([^/]+)/));
 	const nsDetailMatch = $derived(page.url.pathname.match(/^\/namespaces\/([^/]+)/));
+
+	const currentSectionKey = $derived.by<typeof SECTIONS[number]['key']>(() => {
+		const p = page.url.pathname;
+		if (p.startsWith('/apps')) return 'apps';
+		if (p.startsWith('/environments') || p.startsWith('/envs/')) return 'environments';
+		if (p.startsWith('/activity')) return 'activity';
+		return 'rollouts';
+	});
+	const currentSection = $derived(SECTIONS.find((s) => s.key === currentSectionKey)!);
+
+	// Detail context: rendered as 'Section / Item' breadcrumb. Item is a
+	// switcher button when there are siblings.
 	const detailContext = $derived.by(() => {
-		if (appDetailMatch) return { section: 'Apps', sectionHref: '/apps', item: decodeURIComponent(appDetailMatch[1]), mono: true };
-		if (envDetailMatch) return { section: 'Environments', sectionHref: '/environments', item: decodeURIComponent(envDetailMatch[1]), mono: false };
-		if (nsDetailMatch) return { section: 'Namespaces', sectionHref: '/', item: decodeURIComponent(nsDetailMatch[1]), mono: true };
+		if (isRolloutPage) return { kind: 'rollout' as const };
+		if (appDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(appDetailMatch[1]), mono: true };
+		if (envDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(envDetailMatch[1]), mono: false };
+		if (nsDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(nsDetailMatch[1]), mono: true };
 		return null;
 	});
+
 	const namespace = $derived(page.params.namespace as string | undefined);
 	const name = $derived(page.params.name as string | undefined);
 
-	// Query for rollout data when on rollout detail page
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace: namespace || '',
@@ -60,8 +80,6 @@
 		})
 	);
 
-	// Query to fetch all rollouts for the switcher. Keep enabled site-wide so
-	// the Ctrl+K palette is reachable from any page.
 	const allRolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({
 			options: {
@@ -80,9 +98,6 @@
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
 
-	// Sibling-item lists for the in-navbar switcher on /apps/[name],
-	// /envs/[name], /namespaces/[name]. Each entry is shaped for the
-	// generic ResourceSwitcher (key, label, href, optional mono/subtext).
 	const resourceItems = $derived.by(() => {
 		if (appDetailMatch) {
 			const names = new Set<string>();
@@ -129,12 +144,13 @@
 		return null;
 	});
 
-	// Global ⌘K / Ctrl+K shortcut — works on every page so users can jump
-	// to any rollout from anywhere in the dashboard.
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
 			e.preventDefault();
 			switcherOpen = !switcherOpen;
+		}
+		if (e.key === 'Escape' && sectionMenuOpen) {
+			sectionMenuOpen = false;
 		}
 	}
 </script>
@@ -149,7 +165,7 @@
 		<div class="h-1 w-full environment-theme-accent" aria-hidden="true"></div>
 	{/if}
 	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
-		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
 			<a href="/" class="flex shrink-0 items-center space-x-2 sm:space-x-3 rtl:space-x-reverse">
 				<div class="flex h-7 w-7 items-center justify-center sm:h-8 sm:w-8">
 					<div
@@ -161,75 +177,50 @@
 				<span class="hidden font-montserrat text-xl font-thin text-gray-600 dark:text-gray-400 sm:inline"
 					>kuberik</span
 				>
-				<div class="hidden h-6 w-px bg-gray-300 dark:bg-gray-600 sm:block"></div>
-				<div class="flex flex-col">
-					<span class="text-xl font-light dark:text-white sm:text-2xl {isRolloutPage || detailContext ? 'hidden sm:inline' : ''}">Rollouts</span>
-				</div>
 			</a>
-			{#if !isRolloutPage && !detailContext}
-				<!-- Main nav links — desktop only; mobile uses bottom tab bar -->
-				<div class="hidden items-center sm:flex">
-					<a
-						href="/"
-						aria-label="Rollouts"
-						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
-							{page.url.pathname === '/'
-								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
-								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
-					>
-						<GridOutline class="h-4 w-4" />
-						<span class="hidden sm:inline">Rollouts</span>
-					</a>
-					<a
-						href="/apps"
-						aria-label="Apps"
-						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
-							{page.url.pathname === '/apps' || page.url.pathname.startsWith('/apps/')
-								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
-								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
-					>
-						<RocketOutline class="h-4 w-4" />
-						<span class="hidden sm:inline">Apps</span>
-					</a>
-					<a
-						href="/environments"
-						aria-label="Environments"
-						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
-							{page.url.pathname === '/environments' || page.url.pathname.startsWith('/envs/')
-								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
-								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
-					>
-						<LayersSolid class="h-4 w-4" />
-						<span class="hidden sm:inline">Environments</span>
-					</a>
-					<a
-						href="/activity"
-						aria-label="Activity"
-						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-3
-							{page.url.pathname === '/activity'
-								? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
-								: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white'}"
-					>
-						<ClockOutline class="h-4 w-4" />
-						<span class="hidden sm:inline">Activity</span>
-					</a>
-				</div>
-				<!-- Site-wide quick switch (⌘K) -->
+
+			<!-- Section breadcrumb: single chip with chevron-driven popover.
+			     Replaces the 4 inline section buttons across the navbar. -->
+			<div class="relative flex min-w-0 items-center gap-1">
+				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
 				<button
 					type="button"
-					onclick={() => (switcherOpen = true)}
-					aria-label="Quick switch rollout (⌘K)"
-					title="Quick switch rollout (⌘K)"
-					class="ml-1 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300 sm:ml-2"
+					id="section-breadcrumb-trigger"
+					onclick={() => (sectionMenuOpen = !sectionMenuOpen)}
+					class="group flex min-w-0 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
+					aria-haspopup="menu"
+					aria-expanded={sectionMenuOpen}
 				>
-					<SearchOutline class="h-3.5 w-3.5 shrink-0" />
-					<kbd class="hidden shrink-0 font-mono text-[10px] lg:inline">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+					<span class="truncate text-base font-light text-gray-900 dark:text-white sm:text-lg">{currentSection.label}</span>
+					<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
 				</button>
-			{/if}
-			{#if isRolloutPage && rollout}
-				<!-- Ghost breadcrumb switcher trigger -->
-				<div class="flex min-w-0 items-center gap-1">
-					<span class="select-none text-xl font-light text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+				{#if sectionMenuOpen}
+					<div
+						class="absolute left-0 top-full z-50 mt-1 min-w-[12rem] overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+						role="menu"
+					>
+						{#each SECTIONS as s}
+							<a
+								href={s.href}
+								onclick={() => (sectionMenuOpen = false)}
+								class="block px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/60
+									{s.key === currentSectionKey
+										? 'bg-gray-50 font-semibold text-gray-900 dark:bg-gray-700/60 dark:text-white'
+										: 'text-gray-700 dark:text-gray-300'}"
+								role="menuitem"
+							>{s.label}</a>
+						{/each}
+					</div>
+					<button
+						type="button"
+						class="fixed inset-0 z-40 cursor-default"
+						onclick={() => (sectionMenuOpen = false)}
+						aria-label="Close menu"
+					></button>
+				{/if}
+
+				{#if detailContext?.kind === 'rollout' && rollout}
+					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
 					<button
 						type="button"
 						onclick={() => (switcherOpen = true)}
@@ -259,23 +250,14 @@
 						</kbd>
 						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
 					</button>
-				</div>
-			{:else if detailContext}
-				<!-- Generic detail-page breadcrumb: 'Section / Item ⇅'.
-				     Section link → index; item button → ResourceSwitcher. -->
-				<div class="flex min-w-0 items-center gap-1">
-					<span class="select-none text-xl font-light text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
-					<a
-						href={detailContext.sectionHref}
-						class="rounded-md px-2 py-1 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white"
-					>{detailContext.section}</a>
-					<span class="select-none text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+				{:else if detailContext?.kind === 'item'}
+					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
 					{#if resourceItems && resourceItems.items.length > 1}
 						<button
 							type="button"
 							onclick={() => (resourceSwitcherOpen = true)}
 							class="group flex min-w-0 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
-							aria-label={`Switch ${detailContext.section.toLowerCase()}`}
+							aria-label={`Switch ${currentSection.label.toLowerCase()}`}
 						>
 							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
 								{detailContext.item}
@@ -287,19 +269,20 @@
 							{detailContext.item}
 						</span>
 					{/if}
-				</div>
-				<!-- ⌘K switcher still reachable from these pages -->
-				<button
-					type="button"
-					onclick={() => (switcherOpen = true)}
-					aria-label="Quick switch rollout (⌘K)"
-					title="Quick switch rollout (⌘K)"
-					class="ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300"
-				>
-					<SearchOutline class="h-3.5 w-3.5 shrink-0" />
-					<kbd class="hidden shrink-0 font-mono text-[10px] lg:inline">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
-				</button>
-			{/if}
+				{/if}
+			</div>
+
+			<!-- Site-wide quick switch (⌘K) -->
+			<button
+				type="button"
+				onclick={() => (switcherOpen = true)}
+				aria-label="Quick switch rollout (⌘K)"
+				title="Quick switch rollout (⌘K)"
+				class="ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300"
+			>
+				<SearchOutline class="h-3.5 w-3.5 shrink-0" />
+				<kbd class="hidden shrink-0 font-mono text-[10px] lg:inline">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+			</button>
 		</div>
 		<div class="flex shrink-0 items-center gap-2 sm:gap-2.5">
 			{#if isRolloutPage && rollout}
@@ -327,7 +310,7 @@
 				{/if}
 			{/if}
 			{#if import.meta.env.VITE_APP_VERSION}
-				<Badge color="none" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
+				<Badge color="gray" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
 			{/if}
 			<button
 				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"

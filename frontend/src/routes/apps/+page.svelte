@@ -3,14 +3,15 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind } from '$lib/utils';
+	import type { StuckReason } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
 	import { SearchOutline } from 'flowbite-svelte-icons';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
-	import DriftBadge from '$lib/components/DriftBadge.svelte';
+	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -109,17 +110,37 @@
 		return s === 'InProgress' || s === 'Deploying';
 	}
 
+	// Returns the worst stuck reason across this app's cells, or null.
+	// Cell-level: baking-too-long, or behind upstream env for too long.
+	function appStuckReason(a: AppSummary, refNow: Date): StuckReason | null {
+		let worst: StuckReason | null = null;
+		for (const c of a.cells) {
+			const own = detectStuck(c.rollout, { now: refNow });
+			if (own && (!worst || stuckPriority(own) > stuckPriority(worst))) worst = own;
+			for (const peer of a.cells) {
+				if (peer === c) continue;
+				const r = detectStuckBehind(c.rollout, peer.rollout, peer.envName, { now: refNow });
+				if (r && (!worst || stuckPriority(r) > stuckPriority(worst))) worst = r;
+			}
+		}
+		return worst;
+	}
+	function stuckPriority(r: StuckReason): number {
+		if (r.kind === 'baking' || r.kind === 'deploying') return 2;
+		return 1;
+	}
+
 	// Fleet roll-up
 	const fleetTotals = $derived.by(() => {
-		let failed = 0, active = 0, drift = 0, pending = 0, healthy = 0;
+		let failed = 0, active = 0, stuck = 0, pending = 0, healthy = 0;
 		for (const a of apps) {
 			if (a.failedCount > 0) failed++;
 			else if (a.activeCount > 0) active++;
-			else if (a.currentVersions.length > 1) drift++;
+			else if (appStuckReason(a, $now)) stuck++;
 			else if (a.deployedCount < a.envCount) pending++;
 			else healthy++;
 		}
-		return { failed, active, drift, pending, healthy };
+		return { failed, active, stuck, pending, healthy };
 	});
 	const fleetNewestDeploy = $derived.by<string | null>(() => {
 		let t: string | null = null;
@@ -131,11 +152,11 @@
 
 	// Classify an app for filter purposes — same priority as fleetTotals so the
 	// header counts match the chip behaviour.
-	type AppStatus = 'failed' | 'active' | 'drifting' | 'pending' | 'healthy';
-	function appStatusKey(a: AppSummary): AppStatus {
+	type AppStatus = 'failed' | 'active' | 'stuck' | 'pending' | 'healthy';
+	function appStatusKey(a: AppSummary, refNow: Date): AppStatus {
 		if (a.failedCount > 0) return 'failed';
 		if (a.activeCount > 0) return 'active';
-		if (a.currentVersions.length > 1) return 'drifting';
+		if (appStuckReason(a, refNow)) return 'stuck';
 		if (a.deployedCount < a.envCount) return 'pending';
 		return 'healthy';
 	}
@@ -155,8 +176,9 @@
 
 	const filteredApps = $derived.by(() => {
 		const q = searchQuery.trim().toLowerCase();
+		const refNow = $now;
 		return apps.filter((a) => {
-			if (statusFilters.length > 0 && !statusFilters.includes(appStatusKey(a))) return false;
+			if (statusFilters.length > 0 && !statusFilters.includes(appStatusKey(a, refNow))) return false;
 			if (q) {
 				const hay = `${a.name} ${a.title}`.toLowerCase();
 				if (!hay.includes(q)) return false;
@@ -181,7 +203,7 @@
 						<span>of {apps.length} healthy</span>
 						{#if fleetTotals.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {fleetTotals.failed} failed</span>{/if}
 						{#if fleetTotals.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {fleetTotals.active} deploying</span>{/if}
-						{#if fleetTotals.drift > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400">· {fleetTotals.drift} drifting</span>{/if}
+						{#if fleetTotals.stuck > 0}<span class="ml-2 font-medium text-amber-700 dark:text-amber-300">· {fleetTotals.stuck} stuck</span>{/if}
 						{#if fleetTotals.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {fleetTotals.pending} pending</span>{/if}
 					</span>
 					{#if fleetNewestDeploy}
@@ -194,15 +216,6 @@
 			</div>
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
-		{#if apps.length > 0}
-			<div class="mt-3 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" title={`${fleetTotals.healthy} healthy · ${fleetTotals.active} deploying · ${fleetTotals.drift} drifting · ${fleetTotals.failed} failed · ${fleetTotals.pending} pending`}>
-				{#if fleetTotals.healthy > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(fleetTotals.healthy / apps.length) * 100}%"></span>{/if}
-				{#if fleetTotals.active > 0}<span class="bg-yellow-400" style="width:{(fleetTotals.active / apps.length) * 100}%"></span>{/if}
-				{#if fleetTotals.drift > 0}<span class="bg-orange-400 dark:bg-orange-500" style="width:{(fleetTotals.drift / apps.length) * 100}%"></span>{/if}
-				{#if fleetTotals.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(fleetTotals.failed / apps.length) * 100}%"></span>{/if}
-				{#if fleetTotals.pending > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{(fleetTotals.pending / apps.length) * 100}%"></span>{/if}
-			</div>
-		{/if}
 	</div>
 
 	{#if apps.length > 0 && !query.isLoading}
@@ -217,10 +230,10 @@
 				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-1.5">
-				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'Deploying', dot:'bg-yellow-400'}, {key:'drifting', label:'Drifting', dot:'bg-orange-500'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'healthy', label:'Healthy', dot:'bg-green-500'}] as p}
+				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'Deploying', dot:'bg-yellow-400'}, {key:'stuck', label:'Stuck', dot:'bg-amber-500'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'healthy', label:'Healthy', dot:'bg-green-500'}] as p}
 					{@const k = p.key as AppStatus}
 					{@const sel = statusFilters.includes(k)}
-					{@const n = fleetTotals[k === 'drifting' ? 'drift' : k]}
+					{@const n = fleetTotals[k]}
 					{#if n > 0}
 						<button
 							type="button"
@@ -304,29 +317,29 @@
 	{:else}
 		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 			{#each filteredApps as app}
-				{@const drift = app.currentVersions.length > 1}
-				{@const sk = appStatusKey(app)}
+				{@const sk = appStatusKey(app, $now)}
+				{@const stuck = sk === 'stuck' ? appStuckReason(app, $now) : null}
 				<a
 					href="/apps/{app.name}"
-					class="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800
+					class="group flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
 						{sk === 'failed' ? 'card-failed' : ''}
 						{sk === 'active' ? 'card-active' : ''}"
 				>
-					<!-- Title row: status circle + title/name + drift pill -->
+					<!-- Title row: status circle + title/name + stuck pill -->
 					<div class="flex min-w-0 items-start justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
-							<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {sk === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : sk === 'active' ? 'bg-yellow-100 dark:bg-yellow-900/30' : sk === 'drifting' ? 'bg-orange-100 dark:bg-orange-900/30' : sk === 'pending' ? 'bg-gray-100 dark:bg-gray-700/60' : 'bg-green-100 dark:bg-green-900/30'}">
+							<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {sk === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : sk === 'active' ? 'bg-yellow-100 dark:bg-yellow-900/30' : sk === 'stuck' ? 'bg-amber-100 dark:bg-amber-900/30' : sk === 'pending' ? 'bg-gray-100 dark:bg-gray-700/60' : 'bg-green-100 dark:bg-green-900/30'}">
 								{#if sk === 'active'}
 									<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 								{/if}
-								<span class="relative inline-flex h-2.5 w-2.5 rounded-full {sk === 'failed' ? 'bg-red-500' : sk === 'active' ? 'bg-yellow-400' : sk === 'drifting' ? 'bg-orange-500' : sk === 'pending' ? 'bg-gray-400' : 'bg-green-500'}"></span>
+								<span class="relative inline-flex h-2.5 w-2.5 rounded-full {sk === 'failed' ? 'bg-red-500' : sk === 'active' ? 'bg-yellow-400' : sk === 'stuck' ? 'bg-amber-500' : sk === 'pending' ? 'bg-gray-400' : 'bg-green-500'}"></span>
 							</span>
 							<div class="flex min-w-0 flex-col">
 								<span class="truncate text-base font-bold text-gray-900 dark:text-white">{app.title}</span>
 								<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{app.name}</span>
 							</div>
 						</div>
-						{#if drift}<DriftBadge versions={app.currentVersions} />{/if}
+						{#if stuck}<StuckBadge reason={stuck} />{/if}
 					</div>
 					<!-- Env strip: env badge + version per env -->
 					<div class="flex flex-wrap gap-x-2 gap-y-1.5 pl-12">

@@ -272,77 +272,61 @@
 			{/if}
 		</div>
 	{:else}
-		{@const maxDayCount = Math.max(1, ...groupedByDay.map((g) => g.entries.length))}
 		<div class="space-y-6">
 			{#each groupedByDay as dayGroup}
-				{@const failed = dayGroup.entries.filter((e) => e.bakeStatus === 'Failed').length}
-				{@const active = dayGroup.entries.filter((e) => e.isRunning).length}
-				{@const succeeded = dayGroup.entries.filter((e) => e.bakeStatus === 'Succeeded').length}
 				<div>
-					<!-- Day header: label + count + proportional volume bar with status mix -->
-					<div class="mb-2 flex items-center gap-3">
+					<!-- Day header: label + count -->
+					<div class="mb-2 flex items-baseline gap-2">
 						<span class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{dayGroup.label}</span>
-						<span class="font-mono text-[10px] tabular-nums text-gray-500 dark:text-gray-400">{dayGroup.entries.length}</span>
-						<!-- Volume bar: width proportional to busiest day in view; segments by status -->
-						<div class="flex h-1.5 max-w-[18rem] flex-1 overflow-hidden rounded-full bg-transparent" title={`${dayGroup.entries.length} deploys (${succeeded} succeeded, ${active} deploying, ${failed} failed)`}>
-							<div class="flex h-full rounded-full bg-gray-100 dark:bg-gray-800" style="width: {(dayGroup.entries.length / maxDayCount) * 100}%">
-								{#if succeeded > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(succeeded / dayGroup.entries.length) * 100}%"></span>{/if}
-								{#if active > 0}<span class="bg-yellow-400" style="width:{(active / dayGroup.entries.length) * 100}%"></span>{/if}
-								{#if failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(failed / dayGroup.entries.length) * 100}%"></span>{/if}
-								{#if dayGroup.entries.length - succeeded - active - failed > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{((dayGroup.entries.length - succeeded - active - failed) / dayGroup.entries.length) * 100}%"></span>{/if}
-							</div>
-						</div>
+						<span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"></span>
+						<span class="font-mono text-[10px] tabular-nums text-gray-500 dark:text-gray-400">{dayGroup.entries.length} {dayGroup.entries.length === 1 ? 'deploy' : 'deploys'}</span>
 					</div>
 
-					<!-- Entries: rich rows with status circle + env tint -->
+					<!-- Entries: aligned columns — icon | env | name | version transition | status | time -->
 					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 						{#each dayGroup.entries as entry, idx}
 							{@const cfg = STATUS_CONFIG[entry.bakeStatus] ?? STATUS_CONFIG['None']}
 							<a
 								href={entry.href}
-								class="environment-theme-scope {entry.theme ? 'environment-theme-edge' : ''} flex w-full min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
-									{entry.bakeStatus === 'Failed' ? 'card-failed' : ''}
-									{entry.isRunning ? 'card-active' : ''}
+								class="environment-theme-scope grid w-full min-w-0 grid-cols-[auto_4rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:grid-cols-[auto_4.5rem_minmax(0,1fr)_minmax(0,11rem)_auto_auto] sm:gap-x-4
 									{idx > 0 ? 'border-t border-gray-100 dark:border-gray-700/60' : ''}"
 								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
 							>
-								<!-- Status circle -->
-								<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {entry.bakeStatus === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : entry.bakeStatus === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : entry.isRunning ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
+								<!-- Status icon (col 1) -->
+								<span class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {entry.bakeStatus === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : entry.bakeStatus === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : entry.isRunning ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
 									{#if entry.isRunning}
 										<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 									{/if}
 									<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
 								</span>
 
-								<!-- Env badge -->
-								{#if entry.envName || entry.theme}
-									<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(entry.theme) || entry.envName || entry.theme?.label}</span>
-								{/if}
+								<!-- Env badge column (col 2 — fixed width so all rows align) -->
+								<span class="flex justify-start">
+									{#if entry.envName || entry.theme}
+										<span class="environment-theme-badge inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(entry.theme) || entry.envName || entry.theme?.label}</span>
+									{/if}
+								</span>
 
-								<!-- Name + namespace + version transition -->
-								<div class="min-w-0 flex-1">
-									<div class="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-										<span class="truncate text-sm font-bold text-gray-900 dark:text-white">{entry.displayName}</span>
-										<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
-									</div>
-									<div class="flex min-w-0 items-baseline gap-x-1.5">
-										{#if entry.rolloutName !== entry.displayName}
-											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutName}</span>
-											<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-700">·</span>
-										{/if}
-										{#if entry.previousVersion}
-											<span class="shrink-0 font-mono text-[11px] text-gray-400/70 line-through dark:text-gray-500/70">{entry.previousVersion}</span>
-											<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-600">→</span>
-										{/if}
-										<span class="truncate font-mono text-[11px] font-medium text-gray-700 dark:text-gray-300">{entry.version}</span>
-									</div>
+								<!-- Name + rollout id (col 3) -->
+								<div class="min-w-0">
+									<div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</div>
+									<div class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500">{entry.rolloutName} <span class="text-gray-300 dark:text-gray-700">·</span> {entry.rolloutNamespace}</div>
 								</div>
 
-								<!-- Right: status text + time -->
-								<div class="flex shrink-0 items-center gap-3">
-									<span class="hidden text-[11px] font-medium sm:inline {cfg.textClass}">{cfg.label}</span>
-									<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(entry.timestamp, $now)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
+								<!-- Version transition (col 4, sm+) -->
+								<div class="hidden min-w-0 items-baseline justify-end gap-1.5 sm:flex">
+									{#if entry.previousVersion}
+										<span class="font-mono text-[11px] text-gray-400/70 line-through dark:text-gray-500/70">{entry.previousVersion}</span>
+										<span class="text-[10px] text-gray-300 dark:text-gray-600">→</span>
+									{/if}
+									<span class="truncate font-mono text-[11px] font-medium text-gray-700 dark:text-gray-300">{entry.version}</span>
 								</div>
+
+								<!-- Status text (col 5, sm+) -->
+								<span class="hidden shrink-0 text-[11px] font-medium sm:block {cfg.textClass}">{cfg.label}</span>
+
+								<!-- Time (col 6) -->
+								<span class="shrink-0 font-mono text-[11px] tabular-nums text-gray-400 dark:text-gray-500" title={formatTimeAgo(entry.timestamp, $now)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
 							</a>
 						{/each}
 					</div>

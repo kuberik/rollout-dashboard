@@ -330,15 +330,6 @@
 				</div>
 				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 			</div>
-			{#if slots.length > 0}
-				{@const otherCount = Math.max(0, slots.length - succeededCount - activeCount - failedCount)}
-				<div class="mt-3 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-					{#if succeededCount > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(succeededCount / slots.length) * 100}%"></span>{/if}
-					{#if activeCount > 0}<span class="bg-yellow-400" style="width:{(activeCount / slots.length) * 100}%"></span>{/if}
-					{#if failedCount > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(failedCount / slots.length) * 100}%"></span>{/if}
-					{#if otherCount > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{(otherCount / slots.length) * 100}%"></span>{/if}
-				</div>
-			{/if}
 		</div>
 
 		<div class="grid gap-6 lg:grid-cols-5">

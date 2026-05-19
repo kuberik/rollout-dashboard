@@ -322,15 +322,6 @@
 			</div>
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
-		{#if cards.length > 0}
-			<!-- Fleet composition bar: visualize the breakdown across all rollouts -->
-			<div class="mt-3 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" title={`${counts.succeeded} healthy · ${counts.active} deploying · ${counts.failed} failed · ${counts.pending} pending`}>
-				{#if counts.succeeded > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(counts.succeeded / cards.length) * 100}%"></span>{/if}
-				{#if counts.active > 0}<span class="bg-yellow-400" style="width:{(counts.active / cards.length) * 100}%"></span>{/if}
-				{#if counts.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(counts.failed / cards.length) * 100}%"></span>{/if}
-				{#if counts.pending > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{(counts.pending / cards.length) * 100}%"></span>{/if}
-			</div>
-		{/if}
 	</div>
 
 	<!-- Filter bar: search + status chips + env chips + clear -->
@@ -509,7 +500,7 @@
 						{#each g.cards as c (c.ns + '/' + c.name)}
 							<a
 								href={`/rollouts/${c.ns}/${c.name}`}
-								class="environment-theme-scope group relative flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800
+								class="environment-theme-scope group relative flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
 									{c.statusKey === 'failed' ? 'card-failed' : ''}
 									{c.statusKey === 'active' ? 'card-active' : ''}"
 								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}

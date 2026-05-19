@@ -84,6 +84,57 @@ export function compareRollouts(
     return { kind: 'divergent', otherVersion: otherV };
 }
 
+// 'Stuck' = a rollout that should be progressing but isn't. Two cases:
+//   1. baking/deploying state has been running too long (default >1h)
+//   2. (cross-env) this rollout is behind a peer for too long (default >24h)
+// Returns null when not stuck so callers can `{#if isStuck(...)}` cleanly.
+export type StuckReason =
+    | { kind: 'baking'; durationMs: number }
+    | { kind: 'deploying'; durationMs: number }
+    | { kind: 'behind'; peerEnv: string; peerAdvancedMs: number; behindBy: number | null };
+
+export function detectStuck(
+    rollout: Rollout | null | undefined,
+    options: { now?: Date; bakeThresholdMs?: number } = {}
+): StuckReason | null {
+    if (!rollout) return null;
+    const now = options.now ?? new Date();
+    const bakeThreshold = options.bakeThresholdMs ?? 60 * 60 * 1000; // 1h
+    const latest = rollout.status?.history?.[0];
+    if (!latest || !latest.timestamp) return null;
+    const sinceLatest = now.getTime() - new Date(latest.timestamp).getTime();
+    if (latest.bakeStatus === 'InProgress' && sinceLatest > bakeThreshold) {
+        return { kind: 'baking', durationMs: sinceLatest };
+    }
+    if (latest.bakeStatus === 'Deploying' && sinceLatest > bakeThreshold) {
+        return { kind: 'deploying', durationMs: sinceLatest };
+    }
+    return null;
+}
+
+// Stuck-against-peer detection: compare two rollouts. If `myRollout` is
+// behind a peer AND the peer advanced more than `thresholdMs` ago, the
+// promotion isn't flowing — return a 'behind' StuckReason. Used on /apps
+// and /environments to flag specific cells that aren't being promoted.
+export function detectStuckBehind(
+    myRollout: Rollout | null | undefined,
+    peerRollout: Rollout | null | undefined,
+    peerEnvName: string,
+    options: { now?: Date; thresholdMs?: number } = {}
+): StuckReason | null {
+    if (!myRollout || !peerRollout) return null;
+    if (myRollout.spec?.wantedVersion) return null; // pinned — by user choice
+    const rel = compareRollouts(myRollout, peerRollout);
+    if (!rel || rel.kind !== 'behind') return null;
+    const now = options.now ?? new Date();
+    const threshold = options.thresholdMs ?? 24 * 60 * 60 * 1000; // 24h
+    const peerTs = peerRollout.status?.history?.[0]?.timestamp;
+    if (!peerTs) return null;
+    const peerAdvancedMs = now.getTime() - new Date(peerTs).getTime();
+    if (peerAdvancedMs < threshold) return null;
+    return { kind: 'behind', peerEnv: peerEnvName, peerAdvancedMs, behindBy: rel.by };
+}
+
 // Classify a bakeStatusMessage / failure message into a short diagnostic
 // category. The full message is too noisy for list cards; a category tag
 // ("healthcheck", "image", "gate", "test", "timeout") gives the on-call

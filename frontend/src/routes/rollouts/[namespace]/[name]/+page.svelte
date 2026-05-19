@@ -1420,15 +1420,6 @@
 								{latestEntry.bakeStatus === 'InProgress' || latestEntry.bakeStatus === 'Deploying' ? 'card-active' : ''}"
 							style={rolloutThemeStyle}
 						>
-							{#if currentEnv && rolloutTheme}
-								<!-- Env-themed band header matching pipeline node design -->
-								<div class="environment-theme-band flex items-center justify-between gap-2 px-5 py-2">
-									<span class="environment-theme-text truncate text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{currentEnv}</span>
-									{#if rollout.metadata?.namespace}
-										<span class="truncate font-mono text-[10px] text-gray-500 dark:text-gray-400">{rollout.metadata.namespace}</span>
-									{/if}
-								</div>
-							{/if}
 							<div class="min-w-0 px-5 py-5">
 								<!-- Top row: icon + version + status label | meta -->
 								<div class="flex items-start justify-between gap-4">

@@ -289,15 +289,6 @@
 				</div>
 				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 			</div>
-			{#if apps.length > 0}
-				{@const otherCount = Math.max(0, apps.length - succeededCount - activeCount - failedCount)}
-				<div class="mt-3 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-					{#if succeededCount > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(succeededCount / apps.length) * 100}%"></span>{/if}
-					{#if activeCount > 0}<span class="bg-yellow-400" style="width:{(activeCount / apps.length) * 100}%"></span>{/if}
-					{#if failedCount > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(failedCount / apps.length) * 100}%"></span>{/if}
-					{#if otherCount > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{(otherCount / apps.length) * 100}%"></span>{/if}
-				</div>
-			{/if}
 		</div>
 
 		<!-- Correlation timeline: per-app deploy moments aligned by time so
@@ -356,7 +347,7 @@
 					{@const previousSucceeded = status === 'Failed' ? previousSucceededVersion(a.rollout, latest?.version ? getDisplayVersion(latest.version) : null) : null}
 					<a
 						href="/rollouts/{a.rollout.metadata?.namespace}/{a.rollout.metadata?.name}"
-						class="environment-theme-scope flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800
+						class="environment-theme-scope group flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
 							{status === 'Failed' ? 'card-failed' : ''}
 							{isRunning(status) ? 'card-active' : ''}"
 						style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
