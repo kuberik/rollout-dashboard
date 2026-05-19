@@ -263,6 +263,42 @@
 		return c;
 	});
 
+	// Per-env health summary: how many rollouts in each env (and how
+	// many are healthy). Surfaces "is prod healthy" at a glance.
+	type EnvSummary = {
+		key: string; // env name for filter
+		display: string;
+		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
+		total: number;
+		healthy: number;
+		failed: number;
+		active: number;
+	};
+	const envSummaries = $derived.by<EnvSummary[]>(() => {
+		const map = new Map<string, EnvSummary>();
+		for (const c of cards) {
+			if (!c.envKey) continue;
+			let s = map.get(c.envKey);
+			if (!s) {
+				s = {
+					key: c.envKey,
+					display: c.envDisplay || c.envName || '—',
+					theme: c.theme,
+					total: 0,
+					healthy: 0,
+					failed: 0,
+					active: 0
+				};
+				map.set(c.envKey, s);
+			}
+			s.total++;
+			if (c.statusKey === 'succeeded') s.healthy++;
+			else if (c.statusKey === 'failed') s.failed++;
+			else if (c.statusKey === 'active') s.active++;
+		}
+		return Array.from(map.values()).sort((a, b) => a.display.localeCompare(b.display));
+	});
+
 	// Things that need attention — surfaced above the main list when present.
 	// Failed comes first, then stuck. Pinned-version cards are intentionally
 	// excluded because the user opted in to that state.
@@ -370,8 +406,46 @@
 		</div>
 	{/if}
 
-	<!-- Filter bar: search + env chips. Status filters live on the
-	     stat tiles above. -->
+	<!-- Per-environment summary tiles. Each is a clickable env filter
+	     showing fleet-wide health for that env. Auto-flow grid so an
+	     arbitrary number of envs lays out cleanly. -->
+	{#if cards.length > 0 && envSummaries.length > 0}
+		<div
+			class="mb-4 grid gap-2"
+			style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
+		>
+			{#each envSummaries as e}
+				{@const sel = envFilters.includes(e.key)}
+				{@const allHealthy = e.total > 0 && e.healthy === e.total}
+				<button
+					type="button"
+					onclick={() => toggleEnv(e.key)}
+					aria-pressed={sel}
+					class="environment-theme-scope group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border bg-white px-4 py-2.5 text-left shadow-sm transition-all dark:bg-gray-800
+						{sel
+							? 'border-gray-900 ring-1 ring-gray-900 dark:border-white dark:ring-white'
+							: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}"
+					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
+				>
+					<div class="flex min-w-0 flex-col">
+						<span class="environment-theme-text truncate text-[11px] font-bold uppercase tracking-wider">{e.display}</span>
+						<span class="font-mono text-xs {allHealthy ? 'text-green-600 dark:text-green-400' : e.failed > 0 ? 'text-red-600 dark:text-red-400' : e.active > 0 ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
+							{e.healthy}/{e.total} healthy{#if e.failed > 0} · {e.failed} failed{/if}{#if e.active > 0} · {e.active} in progress{/if}
+						</span>
+					</div>
+					<!-- Mini composition: tiny bar that visualises the env health mix -->
+					<div class="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-700/70 sm:flex" aria-hidden="true">
+						{#if e.healthy > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(e.healthy / e.total) * 100}%"></span>{/if}
+						{#if e.active > 0}<span class="bg-yellow-400" style="width:{(e.active / e.total) * 100}%"></span>{/if}
+						{#if e.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(e.failed / e.total) * 100}%"></span>{/if}
+					</div>
+				</button>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Filter bar: just search. Status filters live on the stat tiles,
+	     env filters on the env tiles. -->
 	{#if cards.length > 0}
 		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
 			<div class="relative min-w-0 flex-1 sm:max-w-xs">
@@ -383,18 +457,6 @@
 					class="block w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder-gray-500"
 				/>
 			</div>
-			{#if knownEnvs.length > 1}
-				<div class="flex flex-wrap items-center gap-1">
-					{#each knownEnvs as e}
-						<button
-							type="button"
-							onclick={() => toggleEnv(e.key)}
-							class="environment-theme-scope environment-theme-badge inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-opacity {envFilters.includes(e.key) ? 'ring-2 ring-gray-900/20 dark:ring-gray-100/20' : 'opacity-60 hover:opacity-100'}"
-							style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-						>{e.display}</button>
-					{/each}
-				</div>
-			{/if}
 			{#if envFilters.length > 0 || statusFilters.length > 0 || searchQuery}
 				<button
 					type="button"
