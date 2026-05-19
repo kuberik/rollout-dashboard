@@ -235,6 +235,13 @@
 		namespace: 'Namespaces',
 		action: 'Go to'
 	};
+	const KIND_SINGULAR: Record<ResultKind, string> = {
+		rollout: 'rollout',
+		app: 'app',
+		env: 'environment',
+		namespace: 'namespace',
+		action: 'page'
+	};
 	const grouped = $derived.by<Group[]>(() => {
 		const map = new Map<ResultKind, Group>();
 		filtered.forEach((result, idx) => {
@@ -284,9 +291,11 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (!open) return;
+		const inPicker = !scope && !query;
+		const maxIdx = inPicker ? 3 : filtered.length - 1;
 		if (e.key === 'Escape') {
 			e.preventDefault();
-			// First ESC clears the scope (back to global); second ESC closes.
+			// First ESC clears the scope (back to picker); second ESC closes.
 			if (scope) {
 				scope = null;
 				query = '';
@@ -295,13 +304,12 @@
 				open = false;
 			}
 		} else if (e.key === 'Backspace' && query === '' && scope) {
-			// Backspace at empty query clears the scope chip.
 			e.preventDefault();
 			scope = null;
 			selectedIndex = 0;
 		} else if (e.key === 'ArrowDown') {
 			e.preventDefault();
-			selectedIndex = Math.min(selectedIndex + 1, filtered.length - 1);
+			selectedIndex = Math.min(selectedIndex + 1, maxIdx);
 			scrollSelectedIntoView();
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
@@ -309,8 +317,18 @@
 			scrollSelectedIntoView();
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
-			const r = filtered[selectedIndex];
-			if (r) pick(r);
+			if (inPicker) {
+				const kinds: ResultKind[] = ['rollout', 'app', 'env', 'namespace'];
+				const k = kinds[selectedIndex];
+				if (k) {
+					scope = k;
+					selectedIndex = 0;
+					searchInput?.focus();
+				}
+			} else {
+				const r = filtered[selectedIndex];
+				if (r) pick(r);
+			}
 		}
 	}
 
@@ -385,6 +403,41 @@
 				{#if loading && allResults.length === 0}
 					<div class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
 						Loading…
+					</div>
+				{:else if !scope && !query}
+					<!-- Kind-picker mode: top-level categories. Click drills in. -->
+					{@const kindCounts = (() => {
+						const c: Record<ResultKind, number> = { rollout: 0, app: 0, env: 0, namespace: 0, action: 0 };
+						for (const r of allResults) c[r.kind]++;
+						return c;
+					})()}
+					<div class="px-2 pb-1 pt-2">
+						<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Browse</span>
+					</div>
+					<div class="grid gap-1.5 px-1 sm:grid-cols-2">
+						{#each (['rollout','app','env','namespace'] as ResultKind[]) as kind, kindIdx}
+							{@const KIcon = KIND_ICON[kind]}
+							{@const sel = kindIdx === selectedIndex}
+							<button
+								type="button"
+								data-idx={kindIdx}
+								onclick={() => { scope = kind; selectedIndex = 0; searchInput?.focus(); }}
+								onmouseenter={() => (selectedIndex = kindIdx)}
+								class="group flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-3 text-left transition-colors dark:border-gray-700 {sel ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-gray-50/50 hover:bg-gray-100 dark:bg-gray-700/30 dark:hover:bg-gray-700/60'}"
+							>
+								<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-gray-600 shadow-sm dark:bg-gray-800 dark:text-gray-400">
+									<KIcon class="h-4 w-4" />
+								</span>
+								<span class="flex flex-1 flex-col gap-0.5">
+									<span class="text-sm font-medium text-gray-900 dark:text-white">{KIND_LABEL[kind]}</span>
+									<span class="text-[11px] text-gray-500 dark:text-gray-400">{kindCounts[kind]} {kindCounts[kind] === 1 ? KIND_SINGULAR[kind] : KIND_LABEL[kind].toLowerCase()}</span>
+								</span>
+								<span class="text-gray-300 group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" aria-hidden="true">›</span>
+							</button>
+						{/each}
+					</div>
+					<div class="mt-3 border-t border-gray-100 px-2 pb-1 pt-3 dark:border-gray-700/60">
+						<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Or type to search across everything</span>
 					</div>
 				{:else if filtered.length === 0}
 					<div class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
