@@ -87,6 +87,18 @@ input, select, textarea {
   color: var(--rollout-theme-text);
 }
 
+/* Full-width themed header band: used as a header on env-themed cards
+   like the /apps/[name] pipeline nodes. Saturated enough to clearly
+   identify the env, soft enough not to overwhelm the card body. */
+.environment-theme-band {
+  background-color: color-mix(in srgb, var(--rollout-theme-surface) 90%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--rollout-theme-border) 70%, transparent);
+}
+.dark .environment-theme-band {
+  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 40%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--rollout-theme-accent) 25%, rgb(55 65 81));
+}
+
 .dark .environment-theme-text {
   color: var(--rollout-theme-dark-text);
 }
