@@ -305,30 +305,30 @@
 			</a>
 		</div>
 	{:else}
-		<!-- Header: title + inline summary + composition bar -->
+		<!-- Header -->
 		<div class="mb-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-				<div class="flex min-w-0 items-baseline gap-3">
-					<h1 class="environment-theme-text truncate text-2xl font-light text-gray-900 dark:text-white">
-						{slotTheme?.label ?? envName.charAt(0).toUpperCase() + envName.slice(1)}
-					</h1>
-					{#if slotTheme && slotTheme.label.toLowerCase() !== envName.toLowerCase()}
-						<code class="font-mono text-xs text-gray-400 dark:text-gray-500">{envName}</code>
-					{/if}
-					<span class="text-sm text-gray-500 dark:text-gray-400">
-						<span class="tabular-nums {succeededCount === slots.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{succeededCount}</span>
-						<span>of {slots.length} healthy</span>
-						{#if failedCount > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
-						{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
-					</span>
-					{#if newestDeploy}
-						<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(newestDeploy, $now)}`}>
-							last deploy {formatTimeAgoCompact(newestDeploy, $now)}
-						</span>
-					{/if}
-					<DeployVolumeSparkline rollouts={slots.filter((s) => s.rollout).map((s) => s.rollout!)} />
-				</div>
+			<div class="flex items-baseline justify-between gap-3">
+				<h1 class="environment-theme-text min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">
+					{slotTheme?.label ?? envName.charAt(0).toUpperCase() + envName.slice(1)}
+				</h1>
 				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
+			</div>
+			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
+				{#if slotTheme && slotTheme.label.toLowerCase() !== envName.toLowerCase()}
+					<code class="font-mono text-xs text-gray-400 dark:text-gray-500">{envName}</code>
+				{/if}
+				<span>
+					<span class="tabular-nums {succeededCount === slots.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{succeededCount}</span>
+					of {slots.length} healthy
+				</span>
+				{#if failedCount > 0}<span class="font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
+				{#if activeCount > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
+				{#if newestDeploy}
+					<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(newestDeploy, $now)}`}>
+						· last deploy {formatTimeAgoCompact(newestDeploy, $now)}
+					</span>
+				{/if}
+				<DeployVolumeSparkline rollouts={slots.filter((s) => s.rollout).map((s) => s.rollout!)} />
 			</div>
 		</div>
 
