@@ -416,8 +416,8 @@
 				<div class="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
 					<div class="flex items-start justify-between gap-3">
 						<div class="flex items-center gap-3">
-							<span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-								<span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>
+							<span class="inline-flex h-9 w-9 items-center justify-center rounded-full {getStatusCircleClass('Succeeded')}">
+								<BakeStatusIcon bakeStatus="Succeeded" size="medium" />
 							</span>
 							<div class="flex flex-col">
 								<span class="text-base font-bold text-gray-900 dark:text-white">My App</span>
