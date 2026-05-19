@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
@@ -189,6 +189,16 @@
 		return { fromEnv: source.envName, version: sourceV, behindBy: idx >= 0 ? idx : null };
 	}
 
+	function previousSucceededVersion(r: Rollout | null, currentV: string | null): string | null {
+		if (!r) return null;
+		for (const h of r.status?.history ?? []) {
+			if (h.bakeStatus !== 'Succeeded') continue;
+			const v = getDisplayVersion(h.version);
+			if (v && v !== currentV) return v;
+		}
+		return null;
+	}
+
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}
@@ -305,7 +315,13 @@
 												<span class="font-mono">{s.rollout.metadata.namespace}</span>
 											{/if}
 										</div>
-										{#if behind}
+										{#if status === 'Failed'}
+											{@const cat = categorizeFailure(latest?.bakeStatusMessage)}
+											{@const prev = previousSucceededVersion(s.rollout, latest?.version ? getDisplayVersion(latest.version) : null)}
+											<div class="mt-1 truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
+												{cat ?? 'failed'} failed{#if prev}<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{prev}</span></span>{/if}
+											</div>
+										{:else if behind}
 											<div class="mt-1 flex items-center gap-1 pl-4 text-[10px] text-orange-700 dark:text-orange-300">
 												<span aria-hidden="true">←</span>
 												{#if behind.behindBy && behind.behindBy > 0}

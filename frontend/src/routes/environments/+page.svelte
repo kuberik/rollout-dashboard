@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
@@ -358,6 +358,7 @@
 									{@const labelClass = STATUS_LABEL_CLASS[status] ?? STATUS_LABEL_CLASS['None']}
 									{@const label = STATUS_LABEL[status] ?? status}
 									{@const latest = cell.rollout.status?.history?.[0]}
+									{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
 									{@const behind = behindFor(appName, envName)}
 									{@const drift = hasDrift(appName)}
 									<li>
@@ -380,7 +381,7 @@
 												</div>
 												<div class="flex min-w-0 items-center gap-2 pl-4">
 													<span class="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
-													<span class="text-[10px] {labelClass}">{label}</span>
+													<span class="truncate text-[10px] {labelClass}" title={failureCategory ? latest?.bakeStatusMessage ?? '' : ''}>{failureCategory ? `${failureCategory} failed` : label}</span>
 												</div>
 												{#if behind}
 													<span class="truncate pl-4 text-[10px] text-orange-700 dark:text-orange-300">
@@ -482,6 +483,7 @@
 										{@const labelClass = STATUS_LABEL_CLASS[status] ?? STATUS_LABEL_CLASS['None']}
 										{@const label = STATUS_LABEL[status] ?? status}
 										{@const latest = cell.rollout.status?.history?.[0]}
+										{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
 										{@const behind = behindFor(appName, envName)}
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
@@ -499,7 +501,7 @@
 												</span>
 											</div>
 											<div class="mt-1 flex items-center justify-between gap-1 pl-4">
-												<span class="text-[11px] font-medium {labelClass}">{label}</span>
+												<span class="truncate text-[11px] font-medium {labelClass}" title={failureCategory ? latest?.bakeStatusMessage ?? '' : ''}>{failureCategory ? `${failureCategory} failed` : label}</span>
 												<div class="flex items-center gap-1">
 													{#if cell.rollout.spec?.wantedVersion}
 														<span

@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -152,6 +152,16 @@
 		Cancelled: 'text-gray-500 dark:text-gray-500',
 		None: 'text-gray-400 dark:text-gray-600'
 	};
+	function previousSucceededVersion(r: Rollout | null, currentV: string | null): string | null {
+		if (!r) return null;
+		for (const h of r.status?.history ?? []) {
+			if (h.bakeStatus !== 'Succeeded') continue;
+			const v = getDisplayVersion(h.version);
+			if (v && v !== currentV) return v;
+		}
+		return null;
+	}
+
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}
@@ -236,6 +246,8 @@
 				{#each apps as a}
 					{@const latest = a.rollout.status?.history?.[0]}
 					{@const status = latest?.bakeStatus || 'None'}
+					{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
+					{@const previousSucceeded = status === 'Failed' ? previousSucceededVersion(a.rollout, latest?.version ? getDisplayVersion(latest.version) : null) : null}
 					<a
 						href="/rollouts/{a.rollout.metadata?.namespace}/{a.rollout.metadata?.name}"
 						class="environment-theme-scope flex min-w-0 flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
@@ -267,6 +279,11 @@
 								</span>
 							{/if}
 						</div>
+						{#if failureCategory}
+							<div class="truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
+								{failureCategory} failed{#if previousSucceeded}<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{previousSucceeded}</span></span>{/if}
+							</div>
+						{/if}
 					</a>
 				{/each}
 			</div>
