@@ -262,27 +262,26 @@
 	{/if}
 
 	{#if query.isLoading}
-		<!-- Skeleton mirrors the card grid so the loading state has the
-		     same shape as the loaded state. -->
-		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-			{#each Array(6) as _}
-				<div class="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-					<div class="flex items-start justify-between gap-3">
-						<div class="flex items-center gap-3">
+		<!-- Skeleton mirrors the list-of-rows shape -->
+		<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+				{#each Array(6) as _}
+					<li class="flex items-center gap-5 px-5 py-4">
+						<div class="flex flex-1 items-center gap-3">
 							<div class="h-9 w-9 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
 							<div class="flex flex-col gap-1.5">
-								<div class="h-3.5 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-								<div class="h-2.5 w-20 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+								<div class="h-3.5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+								<div class="h-2.5 w-24 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
 							</div>
 						</div>
-					</div>
-					<div class="flex flex-wrap gap-1.5 pl-12">
-						{#each Array(3) as _}
-							<div class="h-4 w-14 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
-						{/each}
-					</div>
-				</div>
-			{/each}
+						<div class="hidden gap-3 sm:flex">
+							{#each Array(3) as _}
+								<div class="h-4 w-20 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
+							{/each}
+						</div>
+					</li>
+				{/each}
+			</ul>
 		</div>
 	{:else if query.isError}
 		<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
@@ -334,63 +333,69 @@
 			>Clear filters</button>
 		</div>
 	{:else}
-		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-			{#each filteredApps as app}
-				{@const sk = appStatusKey(app, $now)}
-				{@const stuck = sk === 'stuck' ? appStuckReason(app, $now) : null}
-				{@const bakeForIcon = sk === 'failed' ? 'Failed' : sk === 'active' ? 'InProgress' : sk === 'pending' ? 'None' : 'Succeeded'}
-				<a
-					href="/apps/{app.name}"
-					class="group flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
-						
-						"
-				>
-					<!-- Title row: status icon + title/name + stuck pill -->
-					<div class="flex min-w-0 items-start justify-between gap-3">
-						<div class="flex min-w-0 items-center gap-3">
-							<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(bakeForIcon)}">
-								{#if sk === 'active'}
-									<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
-								{/if}
-								<BakeStatusIcon bakeStatus={bakeForIcon} size="medium" />
-							</span>
-							<div class="flex min-w-0 flex-col">
-								<span class="truncate text-base font-bold text-gray-900 dark:text-white">{app.title}</span>
-								<div class="flex min-w-0 items-baseline gap-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
-									<span class="truncate">{app.name}</span>
-									{#if app.lastDeploy}
-										<span class="shrink-0" title={formatTimeAgo(app.lastDeploy, $now)}>· {formatTimeAgoCompact(app.lastDeploy, $now)}</span>
+		<!-- Single dense panel — same chrome as /envs/[name]. Each app is
+		     a row; env strip lives on the right side on sm+, wraps below
+		     the title on mobile. -->
+		<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+				{#each filteredApps as app}
+					{@const sk = appStatusKey(app, $now)}
+					{@const stuck = sk === 'stuck' ? appStuckReason(app, $now) : null}
+					{@const bakeForIcon = sk === 'failed' ? 'Failed' : sk === 'active' ? 'InProgress' : sk === 'pending' ? 'None' : 'Succeeded'}
+					<li>
+						<a
+							href="/apps/{app.name}"
+							class="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:flex-row sm:items-center sm:gap-5 sm:px-5"
+						>
+							<!-- Title block (status + name + meta) -->
+							<div class="flex min-w-0 flex-1 items-center gap-3">
+								<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(bakeForIcon)}">
+									{#if sk === 'active'}
+										<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 									{/if}
+									<BakeStatusIcon bakeStatus={bakeForIcon} size="medium" />
+								</span>
+								<div class="flex min-w-0 flex-col">
+									<div class="flex min-w-0 items-baseline gap-2">
+										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white sm:text-base">{app.title}</span>
+										{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
+									</div>
+									<div class="flex min-w-0 items-baseline gap-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
+										<span class="truncate">{app.name}</span>
+										{#if app.lastDeploy}
+											<span class="shrink-0" title={formatTimeAgo(app.lastDeploy, $now)}>· {formatTimeAgoCompact(app.lastDeploy, $now)}</span>
+										{/if}
+									</div>
 								</div>
 							</div>
-						</div>
-						{#if stuck}<StuckBadge reason={stuck} />{/if}
-					</div>
-					<!-- Env strip: env badge + version per env -->
-					<div class="flex flex-wrap gap-x-2 gap-y-1.5 pl-12">
-						{#each app.cells as c}
-							{@const latest = c.rollout?.status?.history?.[0]}
-							{@const status = latest?.bakeStatus || 'None'}
-							{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
-							<div class="inline-flex items-baseline gap-1">
-								<span
-									class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-									style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-								>
-									<span class="relative flex h-1.5 w-1.5">
-										{#if isRunning(status)}
-											<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
-										{/if}
-										<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
-									</span>
-									<span>{shortEnvLabel(c.theme) || c.envName || '—'}</span>
-								</span>
-								<span class="max-w-[8rem] truncate font-mono text-[10px] text-gray-500 dark:text-gray-400" title={ver ?? ''}>{ver ?? '—'}</span>
+
+							<!-- Env strip — right-aligned on sm+ -->
+							<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-12 sm:shrink-0 sm:justify-end sm:pl-0">
+								{#each app.cells as c}
+									{@const latest = c.rollout?.status?.history?.[0]}
+									{@const status = latest?.bakeStatus || 'None'}
+									{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
+									<div class="inline-flex items-baseline gap-1.5">
+										<span
+											class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+											style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+										>
+											<span class="relative flex h-1.5 w-1.5">
+												{#if isRunning(status)}
+													<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
+												{/if}
+												<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
+											</span>
+											<span>{shortEnvLabel(c.theme) || c.envName || '—'}</span>
+										</span>
+										<span class="max-w-[7rem] truncate font-mono text-[10px] text-gray-500 dark:text-gray-400" title={ver ?? ''}>{ver ?? '—'}</span>
+									</div>
+								{/each}
 							</div>
-						{/each}
-					</div>
-				</a>
-			{/each}
+						</a>
+					</li>
+				{/each}
+			</ul>
 		</div>
 	{/if}
 </div>

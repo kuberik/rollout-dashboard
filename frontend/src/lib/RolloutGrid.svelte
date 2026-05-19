@@ -364,26 +364,27 @@
 	{/if}
 
 	{#if query.isLoading}
-		<div class="space-y-8">
+		<div class="space-y-6">
 			{#each Array(2) as _}
 				<div>
 					<div class="mb-3 flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-700/60">
 						<div class="h-3 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 						<div class="h-3 w-4 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
 					</div>
-					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-						{#each Array(3) as _}
-							<div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-								<div class="flex items-center justify-between gap-2">
-									<div class="h-3.5 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-									<div class="h-4 w-10 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
-								</div>
-								<div class="mt-3 flex items-center justify-between pl-4">
+					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each Array(3) as _}
+								<li class="flex items-center gap-4 px-5 py-4">
+									<div class="h-9 w-9 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+									<div class="flex flex-1 flex-col gap-1.5">
+										<div class="h-3.5 w-44 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+										<div class="h-2.5 w-24 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+									</div>
 									<div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-									<div class="h-3 w-8 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
-								</div>
-							</div>
-						{/each}
+									<div class="h-4 w-12 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
+								</li>
+							{/each}
+						</ul>
 					</div>
 				</div>
 			{/each}
@@ -462,71 +463,66 @@
 						<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" />
 					</a>
 
-					<!-- Rollouts grid -->
-					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-						{#each g.cards as c (c.ns + '/' + c.name)}
-							<a
-								href={`/rollouts/${c.ns}/${c.name}`}
-								class="environment-theme-scope group relative flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
-									
-									"
-								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-							>
-								<!-- Title row: large status icon + title/name, env badge -->
-								<div class="flex min-w-0 items-start justify-between gap-3">
-									<div class="flex min-w-0 items-center gap-3">
+					<!-- Rollouts: single dense panel with one row per rollout.
+					     Matches the /envs/[name] aesthetic instead of a generic
+					     card grid. -->
+					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each g.cards as c (c.ns + '/' + c.name)}
+								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
+									<a
+										href={`/rollouts/${c.ns}/${c.name}`}
+										class="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
+									>
+										<!-- Status icon -->
 										<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
 											{#if c.isRunning}
 												<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(c.bakeStatus)}"></span>
 											{/if}
 											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 										</span>
-										<div class="flex min-w-0 flex-col">
-											<span class="truncate text-base font-bold text-gray-900 dark:text-white">{c.title}</span>
-											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
+
+										<!-- Title + name + diagnostic line -->
+										<div class="flex min-w-0 flex-1 flex-col">
+											<div class="flex min-w-0 items-baseline gap-2">
+												<span class="truncate text-sm font-semibold text-gray-900 dark:text-white sm:text-base">{c.title}</span>
+												{#if c.stuck}<StuckBadge reason={c.stuck} size="xs" />{/if}
+											</div>
+											<div class="flex min-w-0 items-baseline gap-2 text-[11px]">
+												<span class="truncate font-mono text-gray-400 dark:text-gray-500">{c.name}</span>
+												{#if c.failureCategory}
+													<span class="shrink-0 text-gray-400 dark:text-gray-500" title={c.bakeStatusMessage ?? ''}>
+														· <span class="font-medium text-gray-600 dark:text-gray-400">{c.failureCategory}</span> failed
+													</span>
+												{:else if c.behind}
+													<span class="shrink-0 text-gray-400 dark:text-gray-500" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
+														· {c.behind.behindBy && c.behind.behindBy > 0 ? `${c.behind.behindBy} behind` : 'behind'} <span class="font-medium text-gray-600 dark:text-gray-400">{c.behind.fromEnv}</span>
+													</span>
+												{/if}
+											</div>
 										</div>
-									</div>
-									<div class="flex shrink-0 items-center gap-1.5 self-start">
-										{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
+
+										<!-- Version column -->
+										<div class="hidden min-w-0 shrink-0 flex-col items-end gap-0.5 sm:flex">
+											<div class="flex items-baseline gap-1.5">
+												<span class="truncate font-mono text-sm text-gray-700 dark:text-gray-300">{c.version ?? '—'}</span>
+												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
+											</div>
+											{#if c.timestamp}
+												<span class="font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(c.timestamp, $now)}>
+													{formatStatusTime(c.bakeStatus, c.timestamp, $now)}
+												</span>
+											{/if}
+										</div>
+
+										<!-- Env badge -->
 										{#if c.envDisplay}
-											<span class="environment-theme-badge rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
+											<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
 										{/if}
-									</div>
-								</div>
-
-								<!-- Version + meta row: prominent version display -->
-								<div class="flex min-w-0 items-baseline justify-between gap-3 pl-12">
-									<div class="flex min-w-0 items-baseline gap-1.5">
-										<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{c.version ?? '—'}</span>
-										{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} />{/if}
-									</div>
-									{#if c.timestamp}
-										<span class="shrink-0 font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(c.timestamp, $now)}>
-											{formatStatusTime(c.bakeStatus, c.timestamp, $now)}
-										</span>
-									{/if}
-								</div>
-
-								<!-- Failure or behind hint: the status icon already signals
-								     red; keep this text soft so it doesn't double-alarm. -->
-								{#if c.failureCategory}
-									<div class="truncate pl-12 text-xs text-gray-500 dark:text-gray-400" title={c.bakeStatusMessage ?? ''}>
-										<span class="font-medium text-gray-700 dark:text-gray-300">{c.failureCategory}</span> failed{#if c.previousSucceededVersion}
-											· was <span class="font-mono">{c.previousSucceededVersion}</span>
-										{/if}
-									</div>
-								{:else if c.behind}
-									<div class="truncate pl-12 text-xs text-gray-500 dark:text-gray-400" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
-										{#if c.behind.behindBy && c.behind.behindBy > 0}
-											{c.behind.behindBy} {c.behind.behindBy === 1 ? 'version' : 'versions'} behind <span class="font-medium text-gray-700 dark:text-gray-300">{c.behind.fromEnv}</span>
-										{:else}
-											behind <span class="font-medium text-gray-700 dark:text-gray-300">{c.behind.fromEnv}</span>
-										{/if}
-									</div>
-								{/if}
-
-							</a>
-						{/each}
+									</a>
+								</li>
+							{/each}
+						</ul>
 					</div>
 
 				</section>
