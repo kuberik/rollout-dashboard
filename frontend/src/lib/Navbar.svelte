@@ -14,10 +14,13 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
 	import RolloutSwitcher from '$lib/RolloutSwitcher.svelte';
+	import ResourceSwitcher from '$lib/ResourceSwitcher.svelte';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
+	import type { Environment } from '../types';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 	let switcherOpen = $state(false);
+	let resourceSwitcherOpen = $state(false);
 	let isMac = $state(false);
 
 	theme.subscribe((value) => {
@@ -69,12 +72,62 @@
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
+	const allEnvironments = $derived<Environment[]>(allRolloutsQuery.data?.environments?.items || []);
 	const rolloutTheme = $derived(
 		rollout ? getRolloutEnvironmentTheme(rollout, rolloutQuery.data?.environment) : null
 	);
 	const rolloutThemeStyle = $derived(
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
+
+	// Sibling-item lists for the in-navbar switcher on /apps/[name],
+	// /envs/[name], /namespaces/[name]. Each entry is shaped for the
+	// generic ResourceSwitcher (key, label, href, optional mono/subtext).
+	const resourceItems = $derived.by(() => {
+		if (appDetailMatch) {
+			const names = new Set<string>();
+			for (const env of allEnvironments) {
+				const n = env.spec?.rolloutRef?.name;
+				if (n) names.add(n);
+			}
+			return {
+				title: 'Apps',
+				currentKey: decodeURIComponent(appDetailMatch[1]),
+				items: [...names]
+					.sort((a, b) => a.localeCompare(b))
+					.map((n) => ({ key: n, label: n, href: `/apps/${n}`, mono: true }))
+			};
+		}
+		if (envDetailMatch) {
+			const names = new Set<string>();
+			for (const env of allEnvironments) {
+				const n = env.spec?.environment;
+				if (n) names.add(n);
+			}
+			return {
+				title: 'Environments',
+				currentKey: decodeURIComponent(envDetailMatch[1]),
+				items: [...names]
+					.sort((a, b) => a.localeCompare(b))
+					.map((n) => ({ key: n, label: n, href: `/envs/${encodeURIComponent(n)}` }))
+			};
+		}
+		if (nsDetailMatch) {
+			const names = new Set<string>();
+			for (const r of allRollouts) {
+				const ns = r.metadata?.namespace;
+				if (ns) names.add(ns);
+			}
+			return {
+				title: 'Namespaces',
+				currentKey: decodeURIComponent(nsDetailMatch[1]),
+				items: [...names]
+					.sort((a, b) => a.localeCompare(b))
+					.map((n) => ({ key: n, label: n, href: `/namespaces/${encodeURIComponent(n)}`, mono: true }))
+			};
+		}
+		return null;
+	});
 
 	// Global ⌘K / Ctrl+K shortcut — works on every page so users can jump
 	// to any rollout from anywhere in the dashboard.
@@ -208,8 +261,8 @@
 					</button>
 				</div>
 			{:else if detailContext}
-				<!-- Generic detail-page breadcrumb: 'Section / Item'.
-				     Section link goes back to its index; item is current. -->
+				<!-- Generic detail-page breadcrumb: 'Section / Item ⇅'.
+				     Section link → index; item button → ResourceSwitcher. -->
 				<div class="flex min-w-0 items-center gap-1">
 					<span class="select-none text-xl font-light text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
 					<a
@@ -217,9 +270,23 @@
 						class="rounded-md px-2 py-1 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white"
 					>{detailContext.section}</a>
 					<span class="select-none text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
-					<span class="truncate px-1 text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
-						{detailContext.item}
-					</span>
+					{#if resourceItems && resourceItems.items.length > 1}
+						<button
+							type="button"
+							onclick={() => (resourceSwitcherOpen = true)}
+							class="group flex min-w-0 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
+							aria-label={`Switch ${detailContext.section.toLowerCase()}`}
+						>
+							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
+								{detailContext.item}
+							</span>
+							<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+						</button>
+					{:else}
+						<span class="truncate px-1 text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
+							{detailContext.item}
+						</span>
+					{/if}
 				</div>
 				<!-- ⌘K switcher still reachable from these pages -->
 				<button
@@ -284,3 +351,12 @@
 	currentName={name}
 	loading={allRolloutsQuery.isLoading}
 />
+
+{#if resourceItems}
+	<ResourceSwitcher
+		bind:open={resourceSwitcherOpen}
+		title={resourceItems.title}
+		items={resourceItems.items}
+		currentKey={resourceItems.currentKey}
+	/>
+{/if}
