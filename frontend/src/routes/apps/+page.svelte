@@ -12,6 +12,7 @@
 	import { SearchOutline } from 'flowbite-svelte-icons';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -319,20 +320,21 @@
 			{#each filteredApps as app}
 				{@const sk = appStatusKey(app, $now)}
 				{@const stuck = sk === 'stuck' ? appStuckReason(app, $now) : null}
+				{@const bakeForIcon = sk === 'failed' ? 'Failed' : sk === 'active' ? 'InProgress' : sk === 'pending' ? 'None' : 'Succeeded'}
 				<a
 					href="/apps/{app.name}"
 					class="group flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
 						{sk === 'failed' ? 'card-failed' : ''}
 						{sk === 'active' ? 'card-active' : ''}"
 				>
-					<!-- Title row: status circle + title/name + stuck pill -->
+					<!-- Title row: status icon + title/name + stuck pill -->
 					<div class="flex min-w-0 items-start justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
 							<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {sk === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : sk === 'active' ? 'bg-yellow-100 dark:bg-yellow-900/30' : sk === 'stuck' ? 'bg-amber-100 dark:bg-amber-900/30' : sk === 'pending' ? 'bg-gray-100 dark:bg-gray-700/60' : 'bg-green-100 dark:bg-green-900/30'}">
 								{#if sk === 'active'}
 									<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 								{/if}
-								<span class="relative inline-flex h-2.5 w-2.5 rounded-full {sk === 'failed' ? 'bg-red-500' : sk === 'active' ? 'bg-yellow-400' : sk === 'stuck' ? 'bg-amber-500' : sk === 'pending' ? 'bg-gray-400' : 'bg-green-500'}"></span>
+								<BakeStatusIcon bakeStatus={bakeForIcon} size="medium" />
 							</span>
 							<div class="flex min-w-0 flex-col">
 								<span class="truncate text-base font-bold text-gray-900 dark:text-white">{app.title}</span>
