@@ -87,8 +87,10 @@
 		parseLinkAnnotations,
 		extractDatadogInfoFromContainers,
 		buildDatadogTestRunsUrl,
-		buildDatadogLogsUrl
+		buildDatadogLogsUrl,
+		detectStuck
 	} from '$lib/utils';
+	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -151,6 +153,7 @@
 	const rolloutThemeStyle = $derived(
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
+	const stuckReason = $derived(detectStuck(rollout, { now: $now }));
 	const loading = $derived(rolloutQuery.isLoading);
 	let error: string | null = $state(null);
 
@@ -1439,6 +1442,9 @@
 												<span class="text-sm text-gray-500 dark:text-gray-400">
 													{latestEntry.bakeStatus}
 												</span>
+												{#if stuckReason}
+													<StuckBadge reason={stuckReason} />
+												{/if}
 											</div>
 											<!-- Metadata line: upgrades, custom, hash (pinned shown as alert above) -->
 											{#if isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version))}
