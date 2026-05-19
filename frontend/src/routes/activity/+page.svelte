@@ -246,8 +246,18 @@
 	{:else if activityFeed.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
 			<ClockSolid class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
-			<p class="text-sm font-medium text-gray-900 dark:text-white">No deploy history</p>
-			<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Deploys will appear here once rollouts have history.</p>
+			{#if activeFilterCount > 0 || envFilter}
+				<p class="text-sm font-medium text-gray-900 dark:text-white">No deploys match these filters</p>
+				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Try widening the scope or resetting.</p>
+				<button
+					type="button"
+					onclick={clearAllFilters}
+					class="mt-3 inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+				>Clear filters</button>
+			{:else}
+				<p class="text-sm font-medium text-gray-900 dark:text-white">No deploy history</p>
+				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Deploys will appear here once rollouts have history.</p>
+			{/if}
 		</div>
 	{:else}
 		<div class="space-y-6">

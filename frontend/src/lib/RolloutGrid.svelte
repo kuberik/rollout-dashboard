@@ -15,7 +15,8 @@
 		CheckCircleSolid,
 		ChevronRightOutline,
 		ChevronDownOutline,
-		ClockSolid
+		ClockSolid,
+		GridOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../types';
 
@@ -508,6 +509,7 @@
 		</div>
 	{:else if cards.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
+			<GridOutline class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
 			<p class="text-sm font-medium text-gray-900 dark:text-white">No rollouts yet</p>
 			<p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">Create a Rollout resource in your cluster to see it here.</p>
 		</div>
