@@ -201,6 +201,19 @@
 		return null;
 	}
 
+	function deploySparkline(r: Rollout): { status: string; version: string; timestamp: string | null }[] {
+		const history = r.status?.history ?? [];
+		const out: { status: string; version: string; timestamp: string | null }[] = [];
+		for (const h of history) {
+			const v = getDisplayVersion(h.version);
+			if (!v) continue;
+			if (out.length > 0 && out[0].version === v) continue;
+			out.unshift({ status: h.bakeStatus || 'None', version: v, timestamp: h.timestamp || null });
+			if (out.length >= 6) break;
+		}
+		return out;
+	}
+
 	function previousSucceededVersion(r: Rollout | null, currentV: string | null): string | null {
 		if (!r) return null;
 		for (const h of r.status?.history ?? []) {
@@ -356,13 +369,32 @@
 										{/if}
 									</a>
 									<div class="flex shrink-0 items-center gap-3">
-										<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">
-											{latest ? getDisplayVersion(latest.version) : '—'}
-										</span>
-										{#if latest?.timestamp}
-											<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
-												{formatStatusTime(status, latest.timestamp, $now)}
+										<div class="flex flex-col items-end gap-1">
+											<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">
+												{latest ? getDisplayVersion(latest.version) : '—'}
 											</span>
+											{#if latest?.timestamp}
+												<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
+													{formatStatusTime(status, latest.timestamp, $now)}
+												</span>
+											{/if}
+										</div>
+										<!-- Deploy history sparkline -->
+										{#if s.rollout}
+											{@const sparkline = deploySparkline(s.rollout)}
+											{#if sparkline.length > 1}
+												<div class="hidden flex-col items-end gap-0.5 sm:flex" aria-label="Recent deploy history">
+													<span class="text-[9px] uppercase tracking-wider text-gray-300 dark:text-gray-600">history</span>
+													<div class="flex items-center gap-1">
+														{#each sparkline as h}
+															<span
+																class="h-1 w-2.5 rounded-full {h.status === 'Succeeded' ? 'bg-green-400 dark:bg-green-500' : h.status === 'Failed' ? 'bg-red-400 dark:bg-red-500' : h.status === 'InProgress' || h.status === 'Deploying' ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}"
+																title={`${h.version} · ${h.status}${h.timestamp ? ' · ' + formatTimeAgoCompact(h.timestamp, $now) + ' ago' : ''}`}
+															></span>
+														{/each}
+													</div>
+												</div>
+											{/if}
 										{/if}
 									</div>
 								</div>

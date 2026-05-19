@@ -419,11 +419,12 @@
 	{:else}
 		<div class="space-y-8">
 			{#each grouped as g (g.ns)}
+				{@const succeededInNs = g.cards.filter((c) => c.statusKey === 'succeeded').length}
 				<section>
 					<!-- Namespace header: subtle, single click target -->
 					<a
 						href={`/namespaces/${g.ns}`}
-						class="group mb-3 flex items-center justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700/60"
+						class="group mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-2 dark:border-gray-700/60"
 					>
 						<div class="flex min-w-0 items-baseline gap-2">
 							<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{g.ns}</h2>
@@ -436,6 +437,15 @@
 								<span class="shrink-0 text-[11px] font-medium text-gray-500 dark:text-gray-400">· {g.pendingCount} pending</span>
 							{/if}
 						</div>
+						<!-- Namespace mix bar: outcome ratio across rollouts in this ns -->
+						{#if g.cards.length > 0}
+							<div class="hidden h-1 max-w-[10rem] flex-1 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-700/70 sm:flex" title={`${succeededInNs}/${g.cards.length} healthy · ${g.activeCount} deploying · ${g.failedCount} failed · ${g.pendingCount} pending`}>
+								{#if succeededInNs > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(succeededInNs / g.cards.length) * 100}%"></span>{/if}
+								{#if g.activeCount > 0}<span class="bg-yellow-400" style="width:{(g.activeCount / g.cards.length) * 100}%"></span>{/if}
+								{#if g.failedCount > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(g.failedCount / g.cards.length) * 100}%"></span>{/if}
+								{#if g.pendingCount > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{(g.pendingCount / g.cards.length) * 100}%"></span>{/if}
+							</div>
+						{/if}
 						<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" />
 					</a>
 
