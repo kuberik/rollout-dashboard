@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind, compareRollouts } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -248,28 +248,26 @@
 				{@const isZero = t.count === 0}
 				<button
 					type="button"
-					onclick={() => toggleStatus(t.key)}
+					onclick={() => !isZero && toggleStatus(t.key)}
 					aria-pressed={sel}
 					disabled={isZero}
-					class="group relative flex items-center gap-3 overflow-hidden rounded-xl border bg-white p-3.5 text-left shadow-sm transition-all dark:bg-gray-800
+					class="group relative flex items-center gap-3 overflow-hidden rounded-xl border bg-white px-3.5 py-2.5 text-left shadow-sm transition-all dark:bg-gray-800
 						{sel
 							? 'border-gray-900 ring-1 ring-gray-900 dark:border-white dark:ring-white'
-							: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}
-						{isZero ? 'opacity-50' : ''}"
+							: isZero
+								? 'border-gray-100 dark:border-gray-800'
+								: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}"
 				>
-					<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {t.key === 'stuck' ? 'bg-amber-100 dark:bg-amber-900/30' : getStatusCircleClass(t.bake)}">
-						{#if t.key === 'active' && t.count > 0}
-							<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/40"></span>
-						{/if}
-						{#if t.key === 'stuck'}
+					<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {isZero ? 'bg-gray-50 dark:bg-gray-700/30' : (t.key === 'stuck' ? 'bg-amber-100 dark:bg-amber-900/30' : getStatusCircleClass(t.bake))}">
+						{#if t.key === 'stuck' && !isZero}
 							<svg class="h-5 w-5 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
 						{:else}
-							<BakeStatusIcon bakeStatus={t.bake} size="medium" />
+							<BakeStatusIcon bakeStatus={isZero ? 'None' : t.bake} size="medium" />
 						{/if}
 					</span>
 					<div class="flex min-w-0 flex-1 flex-col">
-						<span class="font-mono text-2xl font-light tabular-nums leading-none text-gray-900 dark:text-white">{t.count}</span>
-						<span class="mt-1 truncate text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{t.label}</span>
+						<span class="font-mono text-2xl font-light tabular-nums leading-none {isZero ? 'text-gray-300 dark:text-gray-600' : 'text-gray-900 dark:text-white'}">{t.count}</span>
+						<span class="mt-1 truncate text-[11px] uppercase tracking-wider {isZero ? 'text-gray-300 dark:text-gray-600' : 'text-gray-500 dark:text-gray-400'}">{t.label}</span>
 					</div>
 				</button>
 			{/each}
@@ -450,27 +448,41 @@
 								</div>
 							</div>
 
-							<!-- Env strip — right-aligned on sm+ -->
-							<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-12 sm:shrink-0 sm:justify-end sm:pl-0">
-								{#each app.cells as c}
+							<!-- Promotion flow: each env is a chip with version + status
+							     dot, joined by an arrow whose colour reflects the version-
+							     relationship between consecutive envs. -->
+							<div class="flex flex-wrap items-center gap-x-1 gap-y-1.5 pl-12 sm:shrink-0 sm:justify-end sm:pl-0">
+								{#each app.cells as c, ci}
 									{@const latest = c.rollout?.status?.history?.[0]}
 									{@const status = latest?.bakeStatus || 'None'}
 									{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
-									<div class="inline-flex items-baseline gap-1.5">
-										<span
-											class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-											style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-										>
-											<span class="relative flex h-1.5 w-1.5">
-												{#if isRunning(status)}
-													<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
-												{/if}
-												<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
-											</span>
-											<span>{shortEnvLabel(c.theme) || c.envName || '—'}</span>
+									{#if ci > 0}
+										{@const prev = app.cells[ci - 1]}
+										{@const rel = compareRollouts(prev.rollout, c.rollout)}
+										{@const arrowColor = !rel
+											? 'text-gray-300 dark:text-gray-600'
+											: rel.kind === 'same'
+												? 'text-green-500/70 dark:text-green-400/70'
+												: rel.kind === 'ahead'
+													? 'text-emerald-500 dark:text-emerald-400'
+													: rel.kind === 'behind'
+														? 'text-orange-500 dark:text-orange-400'
+														: 'text-gray-400 dark:text-gray-500'}
+										<span class="shrink-0 px-0.5 text-xs {arrowColor}" aria-hidden="true" title={rel?.kind ?? 'no comparison'}>→</span>
+									{/if}
+									<span
+										class="environment-theme-scope environment-theme-badge inline-flex shrink-0 items-baseline gap-1.5 rounded-md px-1.5 py-0.5"
+										style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+									>
+										<span class="relative flex h-1.5 w-1.5">
+											{#if isRunning(status)}
+												<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
+											{/if}
+											<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
 										</span>
-										<span class="max-w-[7rem] truncate font-mono text-[10px] text-gray-500 dark:text-gray-400" title={ver ?? ''}>{ver ?? '—'}</span>
-									</div>
+										<span class="text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(c.theme) || c.envName || '—'}</span>
+										<span class="max-w-[6rem] truncate font-mono text-[10px] opacity-80" title={ver ?? ''}>{ver ?? '—'}</span>
+									</span>
 								{/each}
 							</div>
 						</a>

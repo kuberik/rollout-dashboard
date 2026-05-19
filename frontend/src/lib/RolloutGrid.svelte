@@ -340,24 +340,22 @@
 				{@const isZero = t.count === 0}
 				<button
 					type="button"
-					onclick={() => toggleStatus(t.key)}
+					onclick={() => !isZero && toggleStatus(t.key)}
 					aria-pressed={sel}
 					disabled={isZero}
-					class="group relative flex items-center gap-3 overflow-hidden rounded-xl border bg-white p-3.5 text-left shadow-sm transition-all dark:bg-gray-800
+					class="group relative flex items-center gap-3 overflow-hidden rounded-xl border bg-white px-3.5 py-2.5 text-left shadow-sm transition-all dark:bg-gray-800
 						{sel
 							? 'border-gray-900 ring-1 ring-gray-900 dark:border-white dark:ring-white'
-							: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}
-						{isZero ? 'opacity-50' : ''}"
+							: isZero
+								? 'border-gray-100 dark:border-gray-800'
+								: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}"
 				>
-					<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(t.bake)}">
-						{#if t.key === 'active' && t.count > 0}
-							<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(t.bake)}"></span>
-						{/if}
-						<BakeStatusIcon bakeStatus={t.bake} size="medium" />
+					<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {isZero ? 'bg-gray-50 dark:bg-gray-700/30' : getStatusCircleClass(t.bake)}">
+						<BakeStatusIcon bakeStatus={isZero ? 'None' : t.bake} size="medium" />
 					</span>
 					<div class="flex min-w-0 flex-1 flex-col">
-						<span class="font-mono text-2xl font-light tabular-nums leading-none text-gray-900 dark:text-white">{t.count}</span>
-						<span class="mt-1 truncate text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{t.label}</span>
+						<span class="font-mono text-2xl font-light tabular-nums leading-none {isZero ? 'text-gray-300 dark:text-gray-600' : 'text-gray-900 dark:text-white'}">{t.count}</span>
+						<span class="mt-1 truncate text-[11px] uppercase tracking-wider {isZero ? 'text-gray-300 dark:text-gray-600' : 'text-gray-500 dark:text-gray-400'}">{t.label}</span>
 					</div>
 				</button>
 			{/each}
