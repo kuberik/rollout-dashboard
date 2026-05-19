@@ -12,6 +12,7 @@
 		ArrowLeftOutline,
 		LayersSolid
 	} from 'flowbite-svelte-icons';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import type { Rollout, Environment } from '../../../types';
 
 	const envName = $derived(page.params.name as string);
@@ -303,64 +304,67 @@
 							{@const status = latest?.bakeStatus || 'None'}
 							{@const behind = behindForSlot(s)}
 							{@const promote = behind ? null : readyToPromote(s)}
-							<li class="group">
-								<div class="flex items-center justify-between gap-3 px-4 py-3">
+							<li class="group {status === 'Failed' ? 'card-failed' : ''} {isRunning(status) ? 'card-active' : ''}">
+								<div class="flex items-center justify-between gap-4 px-5 py-4">
 									<a
 										href={s.rollout ? `/rollouts/${s.rollout.metadata?.namespace}/${s.rollout.metadata?.name}` : '#'}
-										class="min-w-0 flex-1"
+										class="flex min-w-0 flex-1 items-center gap-3"
 									>
-										<div class="flex items-center gap-2">
-											<span class="relative flex h-2 w-2 shrink-0">
-												{#if isRunning(status)}
-													<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
+										<!-- Substantial status circle -->
+										<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {status === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : status === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : isRunning(status) ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
+											{#if isRunning(status)}
+												<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
+											{/if}
+											<BakeStatusIcon bakeStatus={status} size="medium" />
+										</span>
+										<div class="flex min-w-0 flex-col gap-0.5">
+											<div class="flex min-w-0 items-center gap-2">
+												<span class="truncate text-base font-bold text-gray-900 dark:text-white">{s.title}</span>
+												{#if s.rollout?.spec?.wantedVersion}
+													<span
+														class="shrink-0 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+														title={`Pinned to ${s.rollout.spec.wantedVersion}`}
+													>pin</span>
 												{/if}
-												<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
-											</span>
-											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{s.title}</span>
-											{#if s.rollout?.spec?.wantedVersion}
-												<span
-													class="shrink-0 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-													title={`Pinned to ${s.rollout.spec.wantedVersion}`}
-												>pin</span>
+											</div>
+											<div class="flex min-w-0 items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+												<span class="truncate font-mono">{s.appName}</span>
+												{#if s.rollout?.metadata?.namespace}
+													<span class="text-gray-300 dark:text-gray-600">·</span>
+													<span class="truncate font-mono">{s.rollout.metadata.namespace}</span>
+												{/if}
+											</div>
+											{#if status === 'Failed'}
+												{@const cat = categorizeFailure(latest?.bakeStatusMessage)}
+												{@const prev = previousSucceededVersion(s.rollout, latest?.version ? getDisplayVersion(latest.version) : null)}
+												<div class="mt-1 inline-flex max-w-fit truncate rounded-md bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-900/15 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
+													<span class="font-semibold">{cat ?? 'failed'}</span>&nbsp;failed{#if prev}<span class="text-red-500/70 dark:text-red-400/70">&nbsp;· was&nbsp;<span class="font-mono">{prev}</span></span>{/if}
+												</div>
+											{:else if behind}
+												<div class="mt-1 inline-flex max-w-fit items-center gap-1 truncate rounded-md bg-orange-50 px-2 py-0.5 text-[11px] text-orange-700 dark:bg-orange-900/15 dark:text-orange-300">
+													<span aria-hidden="true">←</span>
+													{#if behind.behindBy && behind.behindBy > 0}
+														<span class="font-semibold">{behind.behindBy}</span>
+														<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+													{:else}
+														<span>behind</span>
+													{/if}
+													<span class="font-mono">{behind.version}</span>
+													<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
+												</div>
+											{:else if promote}
+												<div class="mt-1 inline-flex max-w-fit items-center gap-1 truncate rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-900/15 dark:text-emerald-300">
+													<span aria-hidden="true">→</span>
+													<span class="font-mono">{promote.version}</span>
+													<span>ready for</span>
+													<span class="font-semibold uppercase tracking-wider">{promote.toEnv}</span>
+												</div>
 											{/if}
 										</div>
-										<div class="mt-0.5 flex items-center gap-2 pl-4 text-[11px] text-gray-500 dark:text-gray-400">
-											<span class="font-mono">{s.appName}</span>
-											{#if s.rollout?.metadata?.namespace}
-												<span class="text-gray-300 dark:text-gray-600">·</span>
-												<span class="font-mono">{s.rollout.metadata.namespace}</span>
-											{/if}
-										</div>
-										{#if status === 'Failed'}
-											{@const cat = categorizeFailure(latest?.bakeStatusMessage)}
-											{@const prev = previousSucceededVersion(s.rollout, latest?.version ? getDisplayVersion(latest.version) : null)}
-											<div class="mt-1 truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
-												{cat ?? 'failed'} failed{#if prev}<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{prev}</span></span>{/if}
-											</div>
-										{:else if behind}
-											<div class="mt-1 flex items-center gap-1 pl-4 text-[10px] text-orange-700 dark:text-orange-300">
-												<span aria-hidden="true">←</span>
-												{#if behind.behindBy && behind.behindBy > 0}
-													<span class="font-semibold">{behind.behindBy}</span>
-													<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
-												{:else}
-													<span>behind</span>
-												{/if}
-												<span class="font-mono">{behind.version}</span>
-												<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
-											</div>
-										{:else if promote}
-											<div class="mt-1 flex items-center gap-1 pl-4 text-[10px] text-emerald-700 dark:text-emerald-300">
-												<span aria-hidden="true">→</span>
-												<span class="font-mono">{promote.version}</span>
-												<span>ready for</span>
-												<span class="font-semibold uppercase tracking-wider">{promote.toEnv}</span>
-											</div>
-										{/if}
 									</a>
 									<div class="flex shrink-0 items-center gap-3">
 										<div class="flex flex-col items-end gap-1">
-											<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">
+											<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">
 												{latest ? getDisplayVersion(latest.version) : '—'}
 											</span>
 											{#if latest?.timestamp}
