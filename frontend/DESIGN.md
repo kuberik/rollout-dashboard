@@ -56,7 +56,7 @@ violates an enforced item.
 - ✅ ⌘K palette rebuilt as a unified surface (`CommandPalette.svelte`) that searches across rollouts, apps, environments, namespaces, and top-level pages with kind-aware scoring and grouped sections.
 - ✅ /apps/[name] promotion flow now uses Svelte Flow + dagre; auto-reflows LR ↔ TB based on viewport. **Not pannable, not zoomable** — like /rollouts/[ns]/[name]/environments, it fits-to-view only.
 - ✅ Rollout detail layout converted from a side sub-sidebar to horizontal top tabs (Overview / History / Environments / Logs). Eliminates the double-sidebar that used to appear next to the global sidebar.
-- ✅ /apps/[name] version lifecycle replaced the lane-Gantt with a chronological env-chip trail per version. Each row reads as `[ENV] 2h › [ENV] 1h › …` so promotion velocity is visible without a scaled axis.
+- ✅ /apps/[name] version lifecycle is now a proper Gantt. One lane per env, each deploy a colored bar that runs until the next deploy in that env (or 'now'). Same version uses the same palette colour across lanes so a version's promotion arc traces visually. Has a real time axis with hour/day/week ticks, a 'now' edge marker, and a version-colour legend below.
 
 ## Working principles
 
