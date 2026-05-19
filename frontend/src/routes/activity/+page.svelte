@@ -271,13 +271,26 @@
 			{/if}
 		</div>
 	{:else}
+		{@const maxDayCount = Math.max(1, ...groupedByDay.map((g) => g.entries.length))}
 		<div class="space-y-6">
 			{#each groupedByDay as dayGroup}
+				{@const failed = dayGroup.entries.filter((e) => e.bakeStatus === 'Failed').length}
+				{@const active = dayGroup.entries.filter((e) => e.isRunning).length}
+				{@const succeeded = dayGroup.entries.filter((e) => e.bakeStatus === 'Succeeded').length}
 				<div>
-					<!-- Day label -->
+					<!-- Day header: label + count + proportional volume bar with status mix -->
 					<div class="mb-2 flex items-center gap-3">
 						<span class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{dayGroup.label}</span>
-						<div class="flex-1 border-t border-gray-100 dark:border-gray-800"></div>
+						<span class="font-mono text-[10px] tabular-nums text-gray-500 dark:text-gray-400">{dayGroup.entries.length}</span>
+						<!-- Volume bar: width proportional to busiest day in view; segments by status -->
+						<div class="flex h-1.5 max-w-[18rem] flex-1 overflow-hidden rounded-full bg-transparent" title={`${dayGroup.entries.length} deploys (${succeeded} succeeded, ${active} deploying, ${failed} failed)`}>
+							<div class="flex h-full rounded-full bg-gray-100 dark:bg-gray-800" style="width: {(dayGroup.entries.length / maxDayCount) * 100}%">
+								{#if succeeded > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(succeeded / dayGroup.entries.length) * 100}%"></span>{/if}
+								{#if active > 0}<span class="bg-yellow-400" style="width:{(active / dayGroup.entries.length) * 100}%"></span>{/if}
+								{#if failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(failed / dayGroup.entries.length) * 100}%"></span>{/if}
+								{#if dayGroup.entries.length - succeeded - active - failed > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{((dayGroup.entries.length - succeeded - active - failed) / dayGroup.entries.length) * 100}%"></span>{/if}
+							</div>
+						</div>
 					</div>
 
 					<!-- Entries: simple bordered list -->
