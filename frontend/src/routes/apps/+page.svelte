@@ -3,7 +3,8 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact } from '$lib/utils';
+	import { now } from '$lib/stores/time';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
@@ -133,7 +134,7 @@
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	<div class="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-		<div class="flex items-baseline gap-3">
+		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
 			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Apps</h1>
 			{#if apps.length > 0}
 				<span class="text-sm text-gray-500 dark:text-gray-400">
@@ -144,6 +145,11 @@
 					{#if fleetTotals.drift > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400">· {fleetTotals.drift} drifting</span>{/if}
 					{#if fleetTotals.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {fleetTotals.pending} pending</span>{/if}
 				</span>
+				{#if fleetNewestDeploy}
+					<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(fleetNewestDeploy, $now)}`}>
+						last deploy {formatTimeAgoCompact(fleetNewestDeploy, $now)}
+					</span>
+				{/if}
 			{/if}
 		</div>
 		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}

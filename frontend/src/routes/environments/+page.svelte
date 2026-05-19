@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
@@ -212,6 +212,15 @@
 		return n;
 	});
 
+	const newestDeploy = $derived.by<string | null>(() => {
+		let t: string | null = null;
+		for (const r of matrixRollouts) {
+			const ts = r.status?.history?.[0]?.timestamp;
+			if (ts && (!t || new Date(ts) > new Date(t))) t = ts;
+		}
+		return t;
+	});
+
 	// Column width: first col wider, env cols equal
 	function gridCols(n: number) {
 		return `minmax(200px,1.5fr) ${'minmax(150px,1fr) '.repeat(n).trim()}`;
@@ -224,7 +233,7 @@
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	<div class="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-		<div class="flex items-baseline gap-3">
+		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
 			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Environments</h1>
 			{#if rollouts.length > 0}
 				<span class="text-sm text-gray-500 dark:text-gray-400">
@@ -233,6 +242,11 @@
 					{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
 					{#if pendingPromotionCount > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400" title="At least one earlier-tier env has a different succeeded version">· {pendingPromotionCount} behind</span>{/if}
 				</span>
+				{#if newestDeploy}
+					<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(newestDeploy, $now)}`}>
+						last deploy {formatTimeAgoCompact(newestDeploy, $now)}
+					</span>
+				{/if}
 			{/if}
 		</div>
 		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}

@@ -16,6 +16,26 @@ export function formatTimeAgo(start: string, end: Date = new Date()): string {
     return `${formatDuration(start, end)} ago`;
 }
 
+// Classify a bakeStatusMessage / failure message into a short diagnostic
+// category. The full message is too noisy for list cards; a category tag
+// ("healthcheck", "image", "gate", "test", "timeout") gives the on-call
+// user enough signal to triage without leaving the list view.
+export function categorizeFailure(msg: string | null | undefined): string | null {
+    if (!msg) return null;
+    const m = msg.toLowerCase();
+    if (/health.?check|liveness|readiness/.test(m)) return 'healthcheck';
+    if (/image.?pull|cannot pull|registry|pullbackoff|errimagepull|imagepullbackoff/.test(m)) return 'image';
+    if (/gate/.test(m)) return 'gate';
+    if (/test/.test(m)) return 'test';
+    if (/timeout|timed out|deadline/.test(m)) return 'timeout';
+    if (/canary|kruise/.test(m)) return 'canary';
+    if (/manifest|render|kustom|invalid yaml|invalid spec/.test(m)) return 'manifest';
+    if (/permission|forbidden|unauthorized|rbac/.test(m)) return 'permission';
+    if (/crashloop|oom|killed/.test(m)) return 'crash';
+    if (/network|dial|connection refused|unreachable/.test(m)) return 'network';
+    return 'failed';
+}
+
 export function formatTimeAgoCompact(start: string, end: Date = new Date()): string {
     const date = new Date(start);
     const s = Math.floor((end.getTime() - date.getTime()) / 1000);

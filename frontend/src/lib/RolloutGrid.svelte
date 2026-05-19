@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure } from '$lib/utils';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -46,6 +46,7 @@
 		statusKey: StatusKey;
 		isRunning: boolean;
 		bakeStatusMessage: string | null;
+		failureCategory: string | null;
 		pinnedVersion: string | null;
 		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
 		rollout: Rollout;
@@ -130,6 +131,7 @@
 				statusKey,
 				isRunning,
 				bakeStatusMessage: latest?.bakeStatusMessage || null,
+				failureCategory: bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
 				pinnedVersion: r.spec?.wantedVersion || null,
 				behind,
 				rollout: r
@@ -243,6 +245,18 @@
 		return c;
 	});
 
+	// Activity pulse: how many deploys landed in the last 24h. Gives the user
+	// a sense of cluster cadence (idle weekend vs busy release day).
+	const recent24h = $derived.by(() => {
+		const cutoff = $now.getTime() - 24 * 60 * 60 * 1000;
+		let n = 0;
+		for (const c of cards) {
+			if (!c.timestamp) continue;
+			if (new Date(c.timestamp).getTime() >= cutoff) n++;
+		}
+		return n;
+	});
+
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
@@ -256,7 +270,7 @@
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	<!-- Header: title + inline status summary -->
 	<div class="mb-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-		<div class="flex items-baseline gap-3">
+		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
 			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
 			{#if cards.length > 0}
 				<span class="text-sm text-gray-500 dark:text-gray-400">
@@ -266,6 +280,11 @@
 					{#if counts.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} deploying</span>{/if}
 					{#if counts.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {counts.pending} pending</span>{/if}
 				</span>
+				{#if recent24h > 0}
+					<a href="/activity" class="text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300" title="View activity">
+						{recent24h} deploy{recent24h === 1 ? '' : 's'} · 24h
+					</a>
+				{/if}
 			{/if}
 		</div>
 		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
@@ -434,7 +453,11 @@
 									{/if}
 								</div>
 
-								{#if c.behind}
+								{#if c.failureCategory}
+									<div class="truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={c.bakeStatusMessage ?? ''}>
+										{c.failureCategory} failed
+									</div>
+								{:else if c.behind}
 									<div class="truncate pl-4 text-[10px] text-orange-700 dark:text-orange-300" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
 										{#if c.behind.behindBy && c.behind.behindBy > 0}
 											{c.behind.behindBy} {c.behind.behindBy === 1 ? 'version' : 'versions'} behind {c.behind.fromEnv}

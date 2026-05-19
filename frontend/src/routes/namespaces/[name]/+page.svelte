@@ -119,6 +119,15 @@
 		apps.filter((a) => a.rollout.status?.history?.[0]?.bakeStatus === 'Succeeded').length
 	);
 
+	const newestDeploy = $derived.by<string | null>(() => {
+		let t: string | null = null;
+		for (const a of apps) {
+			const ts = a.rollout.status?.history?.[0]?.timestamp;
+			if (ts && (!t || new Date(ts) > new Date(t))) t = ts;
+		}
+		return t;
+	});
+
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
@@ -209,6 +218,11 @@
 					{#if failedCount > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
 					{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
 				</span>
+				{#if newestDeploy}
+					<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(newestDeploy, $now)}`}>
+						last deploy {formatTimeAgoCompact(newestDeploy, $now)}
+					</span>
+				{/if}
 			</div>
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
