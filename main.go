@@ -142,6 +142,19 @@ func main() {
 				log.Printf("Error fetching environments: %v", err)
 			}
 
+			// KruiseRollouts: the actual canary-step pipeline data. Frontend
+			// correlates them to each kuberik Rollout via the linked
+			// Kustomization's inventory entries (group: rollouts.kruise.io).
+			var kruiseRollouts interface{}
+			if namespace == "all" || namespace == "*" || namespace == "" {
+				kruiseRollouts, err = k8sClient.GetKruiseRolloutsAllNamespaces(context.Background())
+			} else {
+				kruiseRollouts, err = k8sClient.GetKruiseRollouts(context.Background(), namespace)
+			}
+			if err != nil {
+				log.Printf("Error fetching kruise rollouts: %v", err)
+			}
+
 			c.JSON(http.StatusOK, gin.H{
 				"rollouts":          rollouts,
 				"imagePolicies":     imagePolicies,
@@ -149,6 +162,7 @@ func main() {
 				"kustomizations":    kustomizations,
 				"ociRepositories":   ociRepositories,
 				"environments":      environments,
+				"kruiseRollouts":    kruiseRollouts,
 			})
 		})
 

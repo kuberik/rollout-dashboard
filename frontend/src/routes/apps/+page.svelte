@@ -3,16 +3,15 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind, compareRollouts } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
-	import { SearchOutline } from 'flowbite-svelte-icons';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
-	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import AppVelocityCard from '$lib/components/AppVelocityCard.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../../types';
 
@@ -100,18 +99,6 @@
 		});
 	});
 
-	const STATUS_DOT: Record<string, string> = {
-		Succeeded: 'bg-green-500',
-		Failed: 'bg-red-500',
-		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
-		Cancelled: 'bg-gray-400',
-		None: 'bg-gray-300 dark:bg-gray-600'
-	};
-	function isRunning(s: string) {
-		return s === 'InProgress' || s === 'Deploying';
-	}
-
 	// Returns the worst stuck reason across this app's cells, or null.
 	// Cell-level: baking-too-long, or behind upstream env for too long.
 	function appStuckReason(a: AppSummary, refNow: Date): StuckReason | null {
@@ -156,45 +143,6 @@
 		return out.sort((x, y) => (x.reason === 'failed' ? 0 : 1) - (y.reason === 'failed' ? 0 : 1)).slice(0, 6);
 	});
 
-	// Per-env summary across apps: how many apps have deploys in each
-	// env, with healthy/failed/active counts. Powers the env tile row.
-	type EnvSummary = {
-		key: string;
-		display: string;
-		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
-		total: number;
-		healthy: number;
-		failed: number;
-		active: number;
-	};
-	const envSummaries = $derived.by<EnvSummary[]>(() => {
-		const map = new Map<string, EnvSummary>();
-		for (const a of apps) {
-			for (const c of a.cells) {
-				if (!c.envName) continue;
-				let s = map.get(c.envName);
-				if (!s) {
-					s = {
-						key: c.envName,
-						display: shortEnvLabel(c.theme) || c.envName,
-						theme: c.theme,
-						total: 0,
-						healthy: 0,
-						failed: 0,
-						active: 0
-					};
-					map.set(c.envName, s);
-				}
-				const status = c.rollout?.status?.history?.[0]?.bakeStatus;
-				s.total++;
-				if (status === 'Succeeded') s.healthy++;
-				else if (status === 'Failed') s.failed++;
-				else if (status === 'InProgress' || status === 'Deploying') s.active++;
-			}
-		}
-		return Array.from(map.values()).sort((a, b) => a.display.localeCompare(b.display));
-	});
-
 	// Fleet roll-up
 	const fleetTotals = $derived.by(() => {
 		let failed = 0, active = 0, stuck = 0, pending = 0, healthy = 0;
@@ -227,7 +175,6 @@
 	}
 
 	let statusFilters = $state<AppStatus[]>([]);
-	let searchQuery = $state('');
 
 	function toggleStatus(k: AppStatus) {
 		statusFilters = statusFilters.includes(k)
@@ -236,18 +183,12 @@
 	}
 	function clearFilters() {
 		statusFilters = [];
-		searchQuery = '';
 	}
 
 	const filteredApps = $derived.by(() => {
-		const q = searchQuery.trim().toLowerCase();
 		const refNow = $now;
 		return apps.filter((a) => {
 			if (statusFilters.length > 0 && !statusFilters.includes(appStatusKey(a, refNow))) return false;
-			if (q) {
-				const hay = `${a.name} ${a.title}`.toLowerCase();
-				if (!hay.includes(q)) return false;
-			}
 			return true;
 		});
 	});
@@ -268,7 +209,7 @@
 					<DeployVolumeSparkline {rollouts} />
 				</span>
 			{/if}
-			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
+			
 		</div>
 	</div>
 
@@ -313,56 +254,6 @@
 		</div>
 	{/if}
 
-	<!-- Per-env summary tiles. Read-only — these reflect cross-app
-	     health per env, without affecting /apps' app-level filter. -->
-	{#if apps.length > 0 && envSummaries.length > 0}
-		<div
-			class="mb-4 grid gap-2"
-			style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
-		>
-			{#each envSummaries as e}
-				{@const allHealthy = e.total > 0 && e.healthy === e.total}
-				<a
-					href="/envs/{encodeURIComponent(e.key)}"
-					class="environment-theme-scope group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
-					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-				>
-					<div class="flex min-w-0 flex-col">
-						<span class="environment-theme-text truncate text-[11px] font-bold uppercase tracking-wider">{e.display}</span>
-						<span class="font-mono text-xs {allHealthy ? 'text-green-600 dark:text-green-400' : e.failed > 0 ? 'text-red-600 dark:text-red-400' : e.active > 0 ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
-							{e.healthy}/{e.total} healthy{#if e.failed > 0} · {e.failed} failed{/if}{#if e.active > 0} · {e.active} in progress{/if}
-						</span>
-					</div>
-					<div class="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-700/70 sm:flex" aria-hidden="true">
-						{#if e.healthy > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(e.healthy / e.total) * 100}%"></span>{/if}
-						{#if e.active > 0}<span class="bg-yellow-400" style="width:{(e.active / e.total) * 100}%"></span>{/if}
-						{#if e.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(e.failed / e.total) * 100}%"></span>{/if}
-					</div>
-				</a>
-			{/each}
-		</div>
-	{/if}
-
-	{#if apps.length > 0 && !query.isLoading}
-		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-			<div class="relative min-w-0 flex-1 sm:max-w-xs">
-				<SearchOutline class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-				<input
-					type="text"
-					bind:value={searchQuery}
-					placeholder="Search apps…"
-					class="block w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder-gray-500"
-				/>
-			</div>
-			{#if statusFilters.length > 0 || searchQuery}
-				<button
-					type="button"
-					onclick={clearFilters}
-					class="text-[11px] text-gray-400 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-500 dark:hover:text-gray-300"
-				>clear</button>
-			{/if}
-		</div>
-	{/if}
 
 	{#if query.isLoading}
 		<!-- Skeleton mirrors the list-of-rows shape -->
@@ -436,7 +327,7 @@
 			>Clear filters</button>
 		</div>
 	{:else}
-		{#if attentionItems.length > 0 && statusFilters.length === 0 && !searchQuery}
+		{#if attentionItems.length > 0 && statusFilters.length === 0}
 			{@const failedCount = attentionItems.filter((i) => i.reason === 'failed').length}
 			{@const stuckCount = attentionItems.filter((i) => i.reason === 'stuck').length}
 			<!-- Loud needs-attention hero. Red when failures, amber when only stuck. -->
@@ -483,109 +374,13 @@
 				</ul>
 			</div>
 		{/if}
-		<!-- Each app gets its own substantial panel — title row up top,
-		     a real promotion-flow strip below filling the horizontal
-		     space with env tiles + relationship arrows. -->
-		<div class="space-y-3">
-			{#each filteredApps as app}
-				{@const sk = appStatusKey(app, $now)}
-				{@const stuck = sk === 'stuck' ? appStuckReason(app, $now) : null}
-				{@const bakeForIcon = sk === 'failed' ? 'Failed' : sk === 'active' ? 'InProgress' : sk === 'pending' ? 'None' : 'Succeeded'}
-				{@const inSync = app.currentVersions.length === 1 && app.deployedCount === app.envCount}
-				{@const stateLabel = stuck
-					? 'needs attention'
-					: app.failedCount > 0
-						? `${app.failedCount} env${app.failedCount === 1 ? '' : 's'} failing`
-						: app.activeCount > 0
-							? 'deploy in progress'
-							: inSync
-								? `in sync · ${app.envCount} env${app.envCount === 1 ? '' : 's'}`
-								: app.deployedCount < app.envCount
-									? `${app.envCount - app.deployedCount} env${(app.envCount - app.deployedCount) === 1 ? '' : 's'} pending`
-									: `${app.currentVersions.length} versions live`}
-				<a
-					href="/apps/{app.name}"
-					class="group block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50/60 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:bg-gray-700/40"
-				>
-					<!-- Header row: status icon + title + meta -->
-					<div class="flex items-start gap-3 px-5 py-4">
-						<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(bakeForIcon)}">
-							{#if sk === 'active'}
-								<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
-							{/if}
-							<BakeStatusIcon bakeStatus={bakeForIcon} size="medium" />
-						</span>
-						<div class="flex min-w-0 flex-1 flex-col">
-							<div class="flex min-w-0 items-baseline gap-2">
-								<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{app.title}</span>
-								{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
-							</div>
-							<div class="flex min-w-0 items-baseline gap-2 text-[11px]">
-								<span class="truncate font-mono text-gray-400 dark:text-gray-500">{app.name}</span>
-								<span class="shrink-0 text-gray-300 dark:text-gray-600">·</span>
-								<span class="shrink-0 {stuck || app.failedCount > 0 ? 'text-amber-600 dark:text-amber-400' : inSync ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}">{stateLabel}</span>
-							</div>
-						</div>
-						{#if app.lastDeploy}
-							<div class="shrink-0 text-right">
-								<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Last deploy</div>
-								<div class="font-mono text-xs text-gray-700 dark:text-gray-300" title={formatTimeAgo(app.lastDeploy, $now)}>{formatTimeAgoCompact(app.lastDeploy, $now)} ago</div>
-							</div>
-						{/if}
-					</div>
-
-					<!-- Promotion flow strip — fills the horizontal space.
-					     Each env is a tile (env name top, version middle,
-					     status bottom); arrows between encode the relationship. -->
-					<div class="border-t border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700/60 dark:bg-gray-900/30">
-						<div class="flex items-stretch gap-2 overflow-x-auto">
-							{#each app.cells as c, ci}
-								{@const latest = c.rollout?.status?.history?.[0]}
-								{@const status = latest?.bakeStatus || 'None'}
-								{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
-								{#if ci > 0}
-									{@const prev = app.cells[ci - 1]}
-									{@const rel = compareRollouts(prev.rollout, c.rollout)}
-									{@const arrowColor = !rel
-										? 'text-gray-300 dark:text-gray-600'
-										: rel.kind === 'same'
-											? 'text-green-500 dark:text-green-400'
-											: rel.kind === 'ahead'
-												? 'text-emerald-500 dark:text-emerald-400'
-												: rel.kind === 'behind'
-													? 'text-orange-500 dark:text-orange-400'
-													: 'text-gray-400 dark:text-gray-500'}
-									{@const relLabel = !rel ? '—' : rel.kind === 'same' ? 'in sync' : rel.kind === 'ahead' ? `+${rel.by ?? '?'}` : rel.kind === 'behind' ? `−${rel.by ?? '?'}` : 'diverged'}
-									<div class="relative flex shrink-0 items-center self-center px-1">
-										<svg class="h-5 w-10 {arrowColor}" viewBox="0 0 40 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-											<line x1="0" y1="10" x2="34" y2="10" stroke-linecap="round" {...(!rel || rel.kind === 'divergent' ? { 'stroke-dasharray': '3 3' } : {})} />
-											<polyline points="30,5 36,10 30,15" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-										</svg>
-										<span class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full pb-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider {arrowColor}">{relLabel}</span>
-									</div>
-								{/if}
-								<div
-									class="environment-theme-scope flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/80 bg-white px-3 py-2 dark:border-gray-700/80 dark:bg-gray-800"
-									style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-								>
-									<div class="flex items-center justify-between gap-1">
-										<span class="environment-theme-text truncate text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(c.theme) || c.envName || '—'}</span>
-										<span class="relative flex h-1.5 w-1.5 shrink-0">
-											{#if isRunning(status)}
-												<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
-											{/if}
-											<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
-										</span>
-									</div>
-									<span class="mt-1 truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={ver ?? ''}>{ver ?? '—'}</span>
-									{#if latest?.timestamp}
-										<span class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(latest.timestamp, $now)}>{formatTimeAgoCompact(latest.timestamp, $now)} ago</span>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					</div>
-				</a>
+		<!-- Velocity cards: per-app card with header + lane chart + legend.
+		     2-up on md+, single column on mobile. Lane chart shows per-env
+		     deploy history with stable per-version palette so drift reads
+		     visually; "newest" rank in mint, "−N" rank in neutral gray. -->
+		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+			{#each filteredApps as app (app.name)}
+				<AppVelocityCard title={app.title} name={app.name} cells={app.cells} refNow={$now} />
 			{/each}
 		</div>
 	{/if}

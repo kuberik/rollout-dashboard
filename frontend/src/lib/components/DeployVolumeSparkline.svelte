@@ -6,34 +6,67 @@
 
 	let {
 		rollouts,
-		days = 7
+		days = 7,
+		hours,
+		buckets
 	}: {
 		rollouts: Rollout[];
 		days?: number;
+		hours?: number;
+		buckets?: number;
 	} = $props();
 
-	const buckets = $derived.by(() => {
-		const day = 24 * 60 * 60 * 1000;
-		const out: number[] = Array(days).fill(0);
-		const d = new Date($now);
-		d.setHours(0, 0, 0, 0);
-		const todayStart = d.getTime();
-		for (const r of rollouts) {
-			for (const h of r.status?.history ?? []) {
-				if (!h.timestamp) continue;
-				const ts = new Date(h.timestamp).getTime();
-				const daysAgo = Math.floor((todayStart - ts) / day);
-				const idx = days - 1 - daysAgo;
-				if (idx >= 0 && idx < days) out[idx]++;
+	// When `hours` is set, bucket over the last N hours (rolling window ending
+	// now). Otherwise, bucket by day over the last N days. `buckets` lets
+	// callers override the bar count — fewer buckets = wider bars for visual
+	// density on small per-row sparklines.
+	const isHourly = $derived(hours !== undefined && hours > 0);
+	const bucketCount = $derived(buckets ?? (isHourly ? (hours as number) : days));
+
+	const bucketValues = $derived.by(() => {
+		const out: number[] = Array(bucketCount).fill(0);
+		const nowMs = $now.getTime();
+		if (isHourly) {
+			const totalMs = (hours as number) * 60 * 60 * 1000;
+			const start = nowMs - totalMs;
+			const bucketWidth = totalMs / bucketCount;
+			for (const r of rollouts) {
+				for (const h of r.status?.history ?? []) {
+					if (!h.timestamp) continue;
+					const ts = new Date(h.timestamp).getTime();
+					if (ts < start || ts > nowMs) continue;
+					const idx = Math.min(bucketCount - 1, Math.floor((ts - start) / bucketWidth));
+					out[idx]++;
+				}
+			}
+		} else {
+			const day = 24 * 60 * 60 * 1000;
+			const d = new Date($now);
+			d.setHours(0, 0, 0, 0);
+			const todayStart = d.getTime();
+			for (const r of rollouts) {
+				for (const h of r.status?.history ?? []) {
+					if (!h.timestamp) continue;
+					const ts = new Date(h.timestamp).getTime();
+					const daysAgo = Math.floor((todayStart - ts) / day);
+					const idx = bucketCount - 1 - daysAgo;
+					if (idx >= 0 && idx < bucketCount) out[idx]++;
+				}
 			}
 		}
 		return out;
 	});
-	const max = $derived(Math.max(1, ...buckets));
-	const total = $derived(buckets.reduce((s, n) => s + n, 0));
+	const max = $derived(Math.max(1, ...bucketValues));
+	const total = $derived(bucketValues.reduce((s, n) => s + n, 0));
 
 	function label(i: number): string {
-		const ago = days - 1 - i;
+		if (isHourly) {
+			const ago = (hours as number) - 1 - i;
+			if (ago === 0) return 'this hour';
+			if (ago === 1) return '1h ago';
+			return `${ago}h ago`;
+		}
+		const ago = bucketCount - 1 - i;
 		if (ago === 0) return 'today';
 		if (ago === 1) return 'yesterday';
 		return `${ago}d ago`;
@@ -42,16 +75,16 @@
 
 {#if total > 0}
 	<span
-		class="flex h-4 w-14 items-end gap-px"
-		aria-label={`Deploys per day, last ${days} days`}
-		title={`${total} deploys over last ${days} days`}
+		class="flex h-4 w-16 items-end gap-px"
+		aria-label={isHourly ? `Deploys per hour, last ${hours} hours` : `Deploys per day, last ${bucketCount} days`}
+		title={isHourly ? `${total} deploys over last ${hours}h` : `${total} deploys over last ${bucketCount} days`}
 	>
-		{#each buckets as count, i}
+		{#each bucketValues as count, i}
 			<span
 				class="flex-1 rounded-sm {count > 0
-					? 'bg-blue-300 dark:bg-blue-500/70'
-					: 'bg-gray-200 dark:bg-gray-700'}"
-				style="height: {count === 0 ? '8%' : Math.max(15, (count / max) * 100)}%"
+					? 'bg-emerald-400 dark:bg-emerald-500/80'
+					: 'bg-gray-200 dark:bg-gray-700/60'}"
+				style="height: {count === 0 ? '20%' : Math.max(30, (count / max) * 100)}%"
 				title={`${count} deploy${count === 1 ? '' : 's'} ${label(i)}`}
 			></span>
 		{/each}

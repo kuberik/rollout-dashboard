@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { Spinner } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -59,7 +60,10 @@
 </script>
 
 {#if bakeStatus === 'InProgress'}
-	<StatusSpinner color="yellow" size={spinnerSizes[size]} class={className} />
+	<!-- Bake (InProgress) uses Flowbite's `pulse` spinner — concentric
+	     dots radiating out. Matches the prior look and reads as "passive
+	     watch" rather than "actively transferring". -->
+	<Spinner type="pulse" size={spinnerSizes[size]} color="yellow" class={className} />
 {:else if bakeStatus === 'Deploying'}
 	<StatusSpinner color="blue" size={spinnerSizes[size]} class={className} />
 {:else}

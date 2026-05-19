@@ -15,6 +15,8 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
+	import { compareEnvironmentNames } from '$lib/env-order';
+	import { ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../../../types';
 
@@ -266,6 +268,91 @@
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}
+
+	// Per-app promotion chain: for an app, list all envs it's bound to,
+	// ordered, with each env's current status. The current page's env is
+	// mint-highlighted.
+	type ChainCell = { envName: string; status: string };
+	function chainFor(appName: string): ChainCell[] {
+		const out: ChainCell[] = [];
+		for (const env of environments) {
+			if (env.spec?.rolloutRef?.name !== appName) continue;
+			const otherEnv = env.spec?.environment;
+			if (!otherEnv) continue;
+			const r = rollouts.find(
+				(x) => x.metadata?.name === appName && x.metadata?.namespace === env.metadata?.namespace
+			);
+			out.push({ envName: otherEnv, status: r?.status?.history?.[0]?.bakeStatus ?? 'None' });
+		}
+		return out.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
+	}
+
+	function chainDot(status: string): string {
+		switch (status) {
+			case 'Succeeded': return 'bg-green-500';
+			case 'Failed': return 'bg-red-500';
+			case 'InProgress': return 'bg-yellow-400';
+			case 'Deploying': return 'bg-blue-500';
+			case 'Cancelled': return 'bg-gray-400';
+			default: return 'bg-gray-300 dark:bg-gray-600';
+		}
+	}
+
+	// Metrics for the strip
+	const deploys24h = $derived.by(() => {
+		const cutoff = $now.getTime() - 24 * 60 * 60 * 1000;
+		let n = 0;
+		for (const s of slots) {
+			for (const h of s.rollout?.status?.history ?? []) {
+				if (!h.timestamp) continue;
+				if (new Date(h.timestamp).getTime() >= cutoff) n++;
+			}
+		}
+		return n;
+	});
+
+	const medianBakeMs = $derived.by(() => {
+		const durations: number[] = [];
+		for (const s of slots) {
+			for (const h of s.rollout?.status?.history ?? []) {
+				if (!h.bakeStartTime || !h.bakeEndTime) continue;
+				const d = new Date(h.bakeEndTime).getTime() - new Date(h.bakeStartTime).getTime();
+				if (d > 0) durations.push(d);
+			}
+		}
+		if (durations.length === 0) return null;
+		durations.sort((a, b) => a - b);
+		const mid = Math.floor(durations.length / 2);
+		return durations.length % 2 ? durations[mid] : (durations[mid - 1] + durations[mid]) / 2;
+	});
+
+	function fmtDurationShort(ms: number | null): string {
+		if (ms === null) return '—';
+		const s = Math.floor(ms / 1000);
+		if (s < 60) return `${s}s`;
+		const m = Math.floor(s / 60);
+		const r = s % 60;
+		if (m < 60) return r > 0 ? `${m}m ${r}s` : `${m}m`;
+		const h = Math.floor(m / 60);
+		return `${h}h ${m % 60}m`;
+	}
+
+	const promotionRate = $derived.by(() => {
+		// % of deploys succeeded out of all terminal deploys (last 30)
+		let total = 0;
+		let ok = 0;
+		for (const s of slots) {
+			for (const h of (s.rollout?.status?.history ?? []).slice(0, 30)) {
+				if (h.bakeStatus === 'Succeeded') {
+					ok++;
+					total++;
+				} else if (h.bakeStatus === 'Failed' || h.bakeStatus === 'Cancelled') {
+					total++;
+				}
+			}
+		}
+		return total === 0 ? null : Math.round((ok / total) * 100);
+	});
 </script>
 
 <svelte:head>
@@ -312,7 +399,7 @@
 				<h1 class="environment-theme-text min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">
 					{slotTheme?.label ?? envName.charAt(0).toUpperCase() + envName.slice(1)}
 				</h1>
-				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
+				
 			</div>
 			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
 				{#if slotTheme && slotTheme.label.toLowerCase() !== envName.toLowerCase()}
@@ -333,6 +420,39 @@
 			</div>
 		</div>
 
+		<!-- Metrics strip: per-env summary stats. Each app defines its own
+		     promotion chain, so the strip has no env-level chain — the
+		     paragraph on the right makes that explicit. -->
+		<section class="mb-6 flex flex-wrap items-center gap-x-8 gap-y-4 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+			<div>
+				<div class="font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Apps in this env</div>
+				<div class="mt-1 font-mono text-xl font-light text-gray-900 dark:text-white">{slots.length}</div>
+			</div>
+			<div class="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
+			<div>
+				<div class="font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Deploys · 24h</div>
+				<div class="mt-1 flex items-baseline gap-2">
+					<span class="font-mono text-xl font-light text-gray-900 dark:text-white">{deploys24h}</span>
+					<DeployVolumeSparkline rollouts={slots.filter((s) => s.rollout).map((s) => s.rollout!)} hours={24} />
+				</div>
+			</div>
+			<div class="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
+			<div>
+				<div class="font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Median bake</div>
+				<div class="mt-1 font-mono text-xl font-light text-gray-900 dark:text-white">{fmtDurationShort(medianBakeMs)}</div>
+			</div>
+			<div class="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
+			<div>
+				<div class="font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Promotion rate</div>
+				<div class="mt-1 font-mono text-xl font-light {promotionRate === null ? 'text-gray-400 dark:text-gray-500' : promotionRate >= 90 ? 'text-emerald-600 dark:text-emerald-400' : promotionRate >= 70 ? 'text-yellow-700 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}">
+					{promotionRate === null ? '—' : `${promotionRate}%`}
+				</div>
+			</div>
+			<div class="ml-auto max-w-[260px] text-right text-[11px] text-gray-500 dark:text-gray-400">
+				Each app defines its own promotion chain — see the inline chips per row.
+			</div>
+		</section>
+
 		<div class="grid gap-6 lg:grid-cols-5">
 			<!-- App list -->
 			<section class="lg:col-span-3">
@@ -346,17 +466,16 @@
 							{@const status = latest?.bakeStatus || 'None'}
 							{@const behind = behindForSlot(s)}
 							{@const promote = behind ? null : readyToPromote(s)}
+							{@const chain = chainFor(s.appName)}
 							<li class="group">
 								<div class="flex items-center justify-between gap-4 px-5 py-4">
 									<a
 										href={s.rollout ? `/rollouts/${s.rollout.metadata?.namespace}/${s.rollout.metadata?.name}` : '#'}
 										class="flex min-w-0 flex-1 items-center gap-3"
 									>
-										<!-- Substantial status circle -->
+										<!-- Status circle. No animate-ping halo — the icon
+										     (pulse for bake, spinner for deploy) is enough signal. -->
 										<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
-											{#if isRunning(status)}
-												<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(status)}"></span>
-											{/if}
 											<BakeStatusIcon bakeStatus={status} size="medium" />
 										</span>
 										<div class="flex min-w-0 flex-col gap-0.5">
@@ -392,6 +511,26 @@
 											{/if}
 										</div>
 									</a>
+									<!-- Per-app promotion chain: env chips for the envs this app
+									     is bound to, ordered, with the current env mint-highlighted.
+									     Each app has its own chain — no env-level chain. -->
+									<div class="hidden flex-wrap items-center gap-1 lg:flex">
+										{#if chain.length <= 1}
+											<span class="font-mono text-[10px] italic text-gray-400 dark:text-gray-500">only bound to {envName}</span>
+										{:else}
+											{#each chain as c, ci (c.envName)}
+												{#if ci > 0}
+													<ChevronRightOutline class="h-3 w-3 shrink-0 text-gray-300 dark:text-gray-600" />
+												{/if}
+												<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider {c.envName === envName
+													? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-300'
+													: 'border-gray-200 bg-gray-50/60 text-gray-500 opacity-80 dark:border-gray-700 dark:bg-gray-700/40 dark:text-gray-300'}">
+													<span class="h-1.5 w-1.5 rounded-full {chainDot(c.status)}"></span>
+													{c.envName}
+												</span>
+											{/each}
+										{/if}
+									</div>
 									<div class="flex shrink-0 items-center gap-3">
 										<div class="flex flex-col items-end gap-1">
 											<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -459,7 +598,7 @@
 									</div>
 									<ol class="relative">
 										<!-- Spine -->
-										<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gradient-to-b from-gray-200 via-gray-200/60 to-transparent dark:from-gray-700 dark:via-gray-700/60" aria-hidden="true"></span>
+										<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700/80" aria-hidden="true"></span>
 										{#each group.entries as a, ai}
 											{@const isLast = ai === group.entries.length - 1}
 											<li class="relative pl-6 {isLast ? '' : 'pb-3'}">

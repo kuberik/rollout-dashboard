@@ -17,8 +17,10 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
+	import PipelineGlyph from '$lib/components/PipelineGlyph.svelte';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
-	import type { Rollout, Environment } from '../types';
+	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
+	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
@@ -26,6 +28,8 @@
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
+	const kustomizations = $derived<Kustomization[]>(query.data?.kustomizations?.items || []);
+	const kruiseRollouts = $derived<KruiseRollout[]>(query.data?.kruiseRollouts?.items || []);
 
 	function envForRollout(r: Rollout): Environment | undefined {
 		return environments.find(
@@ -263,42 +267,6 @@
 		return c;
 	});
 
-	// Per-env health summary: how many rollouts in each env (and how
-	// many are healthy). Surfaces "is prod healthy" at a glance.
-	type EnvSummary = {
-		key: string; // env name for filter
-		display: string;
-		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
-		total: number;
-		healthy: number;
-		failed: number;
-		active: number;
-	};
-	const envSummaries = $derived.by<EnvSummary[]>(() => {
-		const map = new Map<string, EnvSummary>();
-		for (const c of cards) {
-			if (!c.envKey) continue;
-			let s = map.get(c.envKey);
-			if (!s) {
-				s = {
-					key: c.envKey,
-					display: c.envDisplay || c.envName || '—',
-					theme: c.theme,
-					total: 0,
-					healthy: 0,
-					failed: 0,
-					active: 0
-				};
-				map.set(c.envKey, s);
-			}
-			s.total++;
-			if (c.statusKey === 'succeeded') s.healthy++;
-			else if (c.statusKey === 'failed') s.failed++;
-			else if (c.statusKey === 'active') s.active++;
-		}
-		return Array.from(map.values()).sort((a, b) => a.display.localeCompare(b.display));
-	});
-
 	// Things that need attention — surfaced above the main list when present.
 	// Failed comes first, then stuck. Pinned-version cards are intentionally
 	// excluded because the user opted in to that state.
@@ -354,19 +322,17 @@
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Page header -->
+	<!-- Page header — meta on the right reads `last 24h [spark] N deploys`
+	     per design. No refetch spinner; refetches happen silently. -->
 	<div class="mb-4 flex items-baseline justify-between gap-3">
 		<h1 class="min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
-		<div class="flex items-center gap-3">
-			{#if cards.length > 0 && recent24h > 0}
-				<a href="/activity" class="hidden items-center gap-2 text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 sm:inline-flex" title="View activity">
-					<span class="font-mono tabular-nums">{recent24h}</span>
-					<span>deploy{recent24h === 1 ? '' : 's'} · 24h</span>
-					<DeployVolumeSparkline {rollouts} />
-				</a>
-			{/if}
-			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
-		</div>
+		{#if cards.length > 0 && recent24h > 0}
+			<a href="/activity" class="hidden items-center gap-2 text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 sm:inline-flex" title="View activity">
+				<span class="font-mono uppercase tracking-wider">last 24h</span>
+				<DeployVolumeSparkline {rollouts} hours={24} buckets={20} />
+				<span class="font-mono tabular-nums">{recent24h} deploy{recent24h === 1 ? '' : 's'}</span>
+			</a>
+		{/if}
 	</div>
 
 	<!-- Stat tiles: clickable status filters. The big visual at the top
@@ -406,46 +372,7 @@
 		</div>
 	{/if}
 
-	<!-- Per-environment summary tiles. Each is a clickable env filter
-	     showing fleet-wide health for that env. Auto-flow grid so an
-	     arbitrary number of envs lays out cleanly. -->
-	{#if cards.length > 0 && envSummaries.length > 0}
-		<div
-			class="mb-4 grid gap-2"
-			style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
-		>
-			{#each envSummaries as e}
-				{@const sel = envFilters.includes(e.key)}
-				{@const allHealthy = e.total > 0 && e.healthy === e.total}
-				<button
-					type="button"
-					onclick={() => toggleEnv(e.key)}
-					aria-pressed={sel}
-					class="environment-theme-scope group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border bg-white px-4 py-2.5 text-left shadow-sm transition-all dark:bg-gray-800
-						{sel
-							? 'border-gray-900 ring-1 ring-gray-900 dark:border-white dark:ring-white'
-							: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}"
-					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-				>
-					<div class="flex min-w-0 flex-col">
-						<span class="environment-theme-text truncate text-[11px] font-bold uppercase tracking-wider">{e.display}</span>
-						<span class="font-mono text-xs {allHealthy ? 'text-green-600 dark:text-green-400' : e.failed > 0 ? 'text-red-600 dark:text-red-400' : e.active > 0 ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
-							{e.healthy}/{e.total} healthy{#if e.failed > 0} · {e.failed} failed{/if}{#if e.active > 0} · {e.active} in progress{/if}
-						</span>
-					</div>
-					<!-- Mini composition: tiny bar that visualises the env health mix -->
-					<div class="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-700/70 sm:flex" aria-hidden="true">
-						{#if e.healthy > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(e.healthy / e.total) * 100}%"></span>{/if}
-						{#if e.active > 0}<span class="bg-yellow-400" style="width:{(e.active / e.total) * 100}%"></span>{/if}
-						{#if e.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(e.failed / e.total) * 100}%"></span>{/if}
-					</div>
-				</button>
-			{/each}
-		</div>
-	{/if}
-
-	<!-- Filter bar: just search. Status filters live on the stat tiles,
-	     env filters on the env tiles. -->
+	<!-- Filter bar: search + compact env filter pills (per design). -->
 	{#if cards.length > 0}
 		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
 			<div class="relative min-w-0 flex-1 sm:max-w-xs">
@@ -456,6 +383,21 @@
 					placeholder="Search rollouts…"
 					class="block w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder-gray-500"
 				/>
+			</div>
+			<div class="flex flex-wrap items-center gap-1.5">
+				{#each knownEnvs as e}
+					{@const sel = envFilters.includes(e.key)}
+					<button
+						type="button"
+						onclick={() => toggleEnv(e.key)}
+						aria-pressed={sel}
+						class="environment-theme-scope inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors
+							{sel
+								? 'environment-theme-badge'
+								: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+						style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
+					>{e.display}</button>
+				{/each}
 			</div>
 			{#if envFilters.length > 0 || statusFilters.length > 0 || searchQuery}
 				<button
@@ -617,69 +559,87 @@
 						<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" />
 					</a>
 
-					<!-- Rollouts: single dense panel with one row per rollout.
-					     Matches the /envs/[name] aesthetic instead of a generic
-					     card grid. -->
+					<!-- Rollouts panel with column headers + fixed-width rows so
+					     all rollouts in this namespace align across columns. -->
 					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+						<!-- Column header row (lg only) -->
+						<div class="row-grid hidden gap-x-4 border-b border-gray-100 px-5 py-2 font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:border-gray-700/60 dark:text-gray-500 lg:grid">
+							<span></span>
+							<span>Rollout</span>
+							<span>Pipeline</span>
+							<span>24h</span>
+							<span class="text-right">Version · age</span>
+							<span></span>
+						</div>
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each g.cards as c (c.ns + '/' + c.name)}
-								{@const statusLabel = STATUS_LABEL[c.bakeStatus] ?? c.bakeStatus}
 								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 									<a
 										href={`/rollouts/${c.ns}/${c.name}`}
-										class="row-grid items-center gap-x-4 gap-y-2 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
+										class="row-grid gap-x-4 gap-y-2 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
 									>
-										<!-- Status icon -->
-										<span class="relative col-start-1 row-span-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)} sm:row-span-1">
-											{#if c.isRunning}
-												<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(c.bakeStatus)}"></span>
-											{/if}
+										<!-- Status icon. No animate-ping halo on list rows — the
+										     icon (pulse for bake, spinner for deploy) is enough
+										     signal; the halo at row scale read as "too much". -->
+										<span class="relative col-start-1 row-span-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)} sm:row-span-1">
 											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 										</span>
 
-										<!-- Title block -->
+										<!-- Title block: title · name · diagnostic line -->
 										<div class="flex min-w-0 flex-col">
 											<div class="flex min-w-0 items-baseline gap-2">
 												<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{c.title}</span>
 												{#if c.stuck}<StuckBadge reason={c.stuck} size="xs" />{/if}
 											</div>
-											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
+											<div class="flex min-w-0 items-baseline gap-2">
+												<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
+												{#if c.failureCategory}
+													<span class="truncate text-[11px] text-red-600 dark:text-red-400" title={c.bakeStatusMessage ?? ''}>· {c.failureCategory} failed</span>
+												{:else if c.behind}
+													<span class="truncate text-[11px] text-amber-700 dark:text-amber-400" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
+														· {c.behind.behindBy && c.behind.behindBy > 0 ? `${c.behind.behindBy} behind` : 'behind'} {c.behind.fromEnv}
+													</span>
+												{:else if c.bakeStatus === 'InProgress'}
+													<span class="truncate text-[11px] text-yellow-700 dark:text-yellow-400">· baking</span>
+												{:else if c.bakeStatus === 'Deploying'}
+													<span class="truncate text-[11px] text-blue-600 dark:text-blue-400">· deploying</span>
+												{/if}
+											</div>
 										</div>
 
-										<!-- Version + status block (centre, fills the dead space) -->
-										<div class="col-span-2 col-start-2 flex min-w-0 flex-col sm:col-span-1 sm:col-start-auto">
+										<!-- Pipeline glyph: real canary-step stages from the linked
+										     KruiseRollout(s) + a trailing bake cell. Multi-KR
+										     rollouts render as stacked tracks so steps don't read
+										     across tracks. Bake stays pending until all tracks
+										     complete — same gating as the rollout detail page. -->
+										<div class="hidden shrink-0 items-center lg:flex">
+											<PipelineGlyph summary={derivePipeline(c.rollout, kruiseRolloutsForRollout(c.rollout, kustomizations, kruiseRollouts))} />
+										</div>
+
+										<!-- 24h sparkline: this rollout's hourly deploy density.
+										     12 buckets (2h each) for visual density. -->
+										<div class="hidden shrink-0 items-center lg:flex" aria-label="24h deploys">
+											<DeployVolumeSparkline rollouts={[c.rollout]} hours={24} buckets={12} />
+										</div>
+
+										<!-- Version + age block (right side) -->
+										<div class="col-start-2 row-start-2 flex min-w-0 flex-col sm:col-start-auto sm:row-start-auto sm:items-end">
 											<div class="flex min-w-0 items-baseline gap-1.5">
-												<span class="truncate font-mono text-base font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ?? '—'}</span>
+												<span class="truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ?? '—'}</span>
 												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
 											</div>
-											{#if c.failureCategory}
-												<span class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={c.bakeStatusMessage ?? ''}>
-													<span class="font-medium text-gray-700 dark:text-gray-300">{c.failureCategory}</span> failed
-												</span>
-											{:else if c.behind}
-												<span class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
-													{c.behind.behindBy && c.behind.behindBy > 0 ? `${c.behind.behindBy} behind` : 'behind'} <span class="font-medium text-gray-700 dark:text-gray-300">{c.behind.fromEnv}</span>
-												</span>
-											{:else}
-												<span class="truncate text-[11px] {c.bakeStatus === 'Succeeded' ? 'text-green-600 dark:text-green-400' : c.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : c.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : c.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}">{statusLabel}</span>
-											{/if}
-										</div>
-
-										<!-- Last deploy time (mini stack) -->
-										<div class="hidden shrink-0 flex-col items-end gap-0.5 sm:flex">
 											{#if c.timestamp}
-												<span class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{c.isRunning ? 'Started' : 'Deployed'}</span>
-												<span class="font-mono text-xs {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-700 dark:text-gray-300'}" title={formatTimeAgo(c.timestamp, $now)}>
-													{formatStatusTime(c.bakeStatus, c.timestamp, $now)}
+												<span class="font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatTimeAgo(c.timestamp, $now)}>
+													{c.isRunning ? 'started ' : ''}{formatStatusTime(c.bakeStatus, c.timestamp, $now)}
 												</span>
 											{:else}
-												<span class="font-mono text-[10px] uppercase tracking-wider text-gray-300 dark:text-gray-600">No deploy</span>
+												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">no deploy</span>
 											{/if}
 										</div>
 
 										<!-- Env badge -->
 										{#if c.envDisplay}
-											<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-md px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
+											<span class="environment-theme-badge inline-flex shrink-0 items-center justify-self-end rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
 										{/if}
 									</a>
 								</li>

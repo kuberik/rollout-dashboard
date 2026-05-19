@@ -22,6 +22,11 @@ export type RolloutResponse = {
 export type RolloutsListResponse = {
     rollouts: { items: Rollout[] };
     environments?: { items: Environment[] };
+    kustomizations?: { items: Kustomization[] };
+    // Lightweight KruiseRollout list across queried namespaces. Frontend
+    // correlates each kuberik Rollout to its KruiseRollouts via the linked
+    // Kustomization's inventory entries (group: rollouts.kruise.io).
+    kruiseRollouts?: { items: KruiseRollout[] };
 };
 
 type QueryOverrides<TData> = Omit<

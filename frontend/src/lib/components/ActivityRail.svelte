@@ -167,7 +167,7 @@
 							<span class="font-mono text-[10px] text-gray-300 dark:text-gray-600">{group.entries.length}</span>
 						</div>
 						<ol class="relative">
-							<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gradient-to-b from-gray-200 via-gray-200/60 to-transparent dark:from-gray-700 dark:via-gray-700/60" aria-hidden="true"></span>
+							<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700/80" aria-hidden="true"></span>
 							{#each group.entries as a, ai}
 								{@const isLast = ai === group.entries.length - 1}
 								<li

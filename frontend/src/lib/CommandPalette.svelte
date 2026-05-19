@@ -73,7 +73,15 @@
 
 		// 1. Rollouts
 		for (const r of rollouts) {
-			const theme = getRolloutEnvironmentTheme(r);
+			// Pair to the rollout's Environment resource if one exists so we
+			// pick up the env theme even when the rollout has no theme
+			// annotations (e.g. kuberik-demo-app).
+			const env = environments.find(
+				(e) =>
+					e.metadata?.namespace === r.metadata?.namespace &&
+					e.spec?.rolloutRef?.name === r.metadata?.name
+			);
+			const theme = getRolloutEnvironmentTheme(r, env);
 			const status = getRolloutStatus(r);
 			const latest = r.status?.history?.[0];
 			out.push({

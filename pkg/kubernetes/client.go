@@ -1160,6 +1160,27 @@ func (c *Client) GetKruiseRollout(ctx context.Context, namespace, name string) (
 	return rollout, nil
 }
 
+// GetKruiseRolloutsAllNamespaces lists KruiseRollouts across all namespaces.
+// Used by the rollouts list endpoint so the frontend can correlate each
+// kuberik Rollout to its underlying KruiseRollouts (via the linked
+// Kustomization's inventory entries) and render a real pipeline glyph.
+func (c *Client) GetKruiseRolloutsAllNamespaces(ctx context.Context) (*kruiserolloutv1beta1.RolloutList, error) {
+	rollouts := &kruiserolloutv1beta1.RolloutList{}
+	if err := c.client.List(ctx, rollouts); err != nil {
+		return nil, fmt.Errorf("failed to list kruise rollouts across all namespaces: %w", err)
+	}
+	return rollouts, nil
+}
+
+// GetKruiseRollouts lists KruiseRollouts in a single namespace.
+func (c *Client) GetKruiseRollouts(ctx context.Context, namespace string) (*kruiserolloutv1beta1.RolloutList, error) {
+	rollouts := &kruiserolloutv1beta1.RolloutList{}
+	if err := c.client.List(ctx, rollouts, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list kruise rollouts: %w", err)
+	}
+	return rollouts, nil
+}
+
 // GetAllRolloutTests fetches all RolloutTests in a namespace
 func (c *Client) GetAllRolloutTests(ctx context.Context, namespace string) (*openkruisev1alpha1.RolloutTestList, error) {
 	rolloutTests := &openkruisev1alpha1.RolloutTestList{}

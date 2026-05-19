@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, detectStuck } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -14,6 +14,8 @@
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import PinBadge from '$lib/components/PinBadge.svelte';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../../../types';
 
@@ -53,70 +55,79 @@
 					title: r.status?.title || r.metadata?.name || ''
 				};
 			})
-			.sort((a, b) => a.title.localeCompare(b.title));
+			.sort((a, b) => {
+				const sa = a.rollout.status?.history?.[0]?.bakeStatus === 'Failed' ? 0 : 1;
+				const sb = b.rollout.status?.history?.[0]?.bakeStatus === 'Failed' ? 0 : 1;
+				if (sa !== sb) return sa - sb;
+				return a.title.localeCompare(b.title);
+			});
 	});
 
-	type TimelineEvent = {
+	type ActivityEntry = {
 		appName: string;
 		title: string;
 		envName: string;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		version: string;
-		previousVersion: string | null;
 		timestamp: string;
 		bakeStatus: string;
 	};
 
-	const timeline = $derived.by<TimelineEvent[]>(() => {
-		const list: TimelineEvent[] = [];
+	const recentActivity = $derived.by<ActivityEntry[]>(() => {
+		const list: ActivityEntry[] = [];
 		for (const a of apps) {
 			const history = a.rollout.status?.history;
 			if (!history) continue;
-			for (let i = 0; i < history.length; i++) {
-				const entry = history[i];
-				const currentV = getDisplayVersion(entry.version);
-				let previousVersion: string | null = null;
-				for (let j = i + 1; j < history.length; j++) {
-					const v = getDisplayVersion(history[j].version);
-					if (v && v !== currentV) { previousVersion = v; break; }
-				}
+			for (const entry of history) {
 				list.push({
 					appName: a.rollout.metadata?.name || '',
 					title: a.title,
 					envName: a.envName,
 					theme: a.theme,
-					version: currentV,
-					previousVersion,
+					version: getDisplayVersion(entry.version),
 					timestamp: entry.timestamp,
 					bakeStatus: entry.bakeStatus || 'None'
 				});
 			}
 		}
-		return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+		list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+		return list.slice(0, 20);
 	});
 
-	// Group timeline by day for visual scanning
-	type DayGroup = { dayKey: string; dayLabel: string; events: TimelineEvent[] };
-	const timelineByDay = $derived.by<DayGroup[]>(() => {
+	type DayGroup = { label: string; key: string; entries: ActivityEntry[] };
+	function dayKey(ts: string): string {
+		const d = new Date(ts);
+		return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+	}
+	function dayLabel(ts: string, refNow: Date): string {
+		const d = new Date(ts);
+		const today = new Date(refNow.getFullYear(), refNow.getMonth(), refNow.getDate());
+		const that = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+		const days = Math.round((today.getTime() - that.getTime()) / 86_400_000);
+		if (days === 0) return 'Today';
+		if (days === 1) return 'Yesterday';
+		if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+	}
+	const activityByDay = $derived.by<DayGroup[]>(() => {
+		const refNow = $now;
 		const map = new Map<string, DayGroup>();
-		const today = new Date();
-		today.setHours(0, 0, 0, 0);
-		const yesterday = new Date(today);
-		yesterday.setDate(yesterday.getDate() - 1);
-
-		for (const e of timeline) {
-			const d = new Date(e.timestamp);
-			const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-			const key = day.toISOString().slice(0, 10);
-			let label: string;
-			if (day.getTime() === today.getTime()) label = 'Today';
-			else if (day.getTime() === yesterday.getTime()) label = 'Yesterday';
-			else label = day.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: day.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
-			if (!map.has(key)) map.set(key, { dayKey: key, dayLabel: label, events: [] });
-			map.get(key)!.events.push(e);
+		for (const a of recentActivity) {
+			const key = dayKey(a.timestamp);
+			let g = map.get(key);
+			if (!g) {
+				g = { label: dayLabel(a.timestamp, refNow), key, entries: [] };
+				map.set(key, g);
+			}
+			g.entries.push(a);
 		}
-		return [...map.values()];
+		return Array.from(map.values());
 	});
+
+	function hourLabel(ts: string): string {
+		const d = new Date(ts);
+		return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+	}
 
 	const failedCount = $derived(
 		apps.filter((a) => a.rollout.status?.history?.[0]?.bakeStatus === 'Failed').length
@@ -130,64 +141,17 @@
 	const succeededCount = $derived(
 		apps.filter((a) => a.rollout.status?.history?.[0]?.bakeStatus === 'Succeeded').length
 	);
-
-	const newestDeploy = $derived.by<string | null>(() => {
-		let t: string | null = null;
+	const deploys24h = $derived.by(() => {
+		const cutoff = $now.getTime() - 24 * 60 * 60 * 1000;
+		let n = 0;
 		for (const a of apps) {
-			const ts = a.rollout.status?.history?.[0]?.timestamp;
-			if (ts && (!t || new Date(ts) > new Date(t))) t = ts;
-		}
-		return t;
-	});
-
-	// Correlation timeline: per-app row of deploy moments mapped to relative
-	// time positions. Window is the last 7 days (or expanded to include the
-	// oldest visible deploy if events span further back).
-	type TimelinePoint = { ts: number; status: string; version: string };
-	type TimelineRow = { appName: string; title: string; envName: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> | null; points: TimelinePoint[] };
-
-	const correlationTimeline = $derived.by<{ rows: TimelineRow[]; windowStart: number; windowEnd: number } | null>(() => {
-		if (apps.length === 0) return null;
-		const nowMs = $now.getTime();
-		const sevenDays = 7 * 24 * 60 * 60 * 1000;
-		let earliest = nowMs - sevenDays;
-		const rows: TimelineRow[] = [];
-		for (const a of apps) {
-			const history = a.rollout.status?.history ?? [];
-			const points: TimelinePoint[] = [];
-			for (const h of history) {
+			for (const h of a.rollout.status?.history ?? []) {
 				if (!h.timestamp) continue;
-				const ts = new Date(h.timestamp).getTime();
-				if (ts < earliest) earliest = ts;
-				points.push({ ts, status: h.bakeStatus || 'None', version: getDisplayVersion(h.version) });
+				if (new Date(h.timestamp).getTime() >= cutoff) n++;
 			}
-			if (points.length === 0) continue;
-			points.sort((p, q) => p.ts - q.ts);
-			rows.push({
-				appName: a.rollout.metadata?.name || '',
-				title: a.title,
-				envName: a.envName,
-				theme: a.theme,
-				points
-			});
 		}
-		if (rows.length === 0) return null;
-		return { rows, windowStart: earliest, windowEnd: nowMs };
+		return n;
 	});
-
-	function timelineX(ts: number, start: number, end: number): number {
-		if (end === start) return 100;
-		return Math.max(0, Math.min(100, ((ts - start) / (end - start)) * 100));
-	}
-	function timelineWindowLabel(start: number, end: number): string {
-		const span = end - start;
-		const d = Math.floor(span / (24 * 60 * 60 * 1000));
-		if (d >= 1) return `last ${d} day${d === 1 ? '' : 's'}`;
-		const h = Math.floor(span / (60 * 60 * 1000));
-		if (h >= 1) return `last ${h}h`;
-		const m = Math.floor(span / (60 * 1000));
-		return `last ${m}m`;
-	}
 
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
@@ -213,6 +177,9 @@
 		Cancelled: 'text-gray-500 dark:text-gray-500',
 		None: 'text-gray-400 dark:text-gray-600'
 	};
+	function isRunning(s: string) {
+		return s === 'InProgress' || s === 'Deploying';
+	}
 	function previousSucceededVersion(r: Rollout | null, currentV: string | null): string | null {
 		if (!r) return null;
 		for (const h of r.status?.history ?? []) {
@@ -222,14 +189,6 @@
 		}
 		return null;
 	}
-
-	function isRunning(s: string) {
-		return s === 'InProgress' || s === 'Deploying';
-	}
-
-	function shortTime(ts: string): string {
-		return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-	}
 </script>
 
 <svelte:head>
@@ -237,19 +196,19 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-
 	{#if query.isLoading}
 		<div class="space-y-6">
 			<div class="space-y-2">
 				<div class="h-8 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 				<div class="h-4 w-1/3 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
 			</div>
-			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-				{#each Array(3) as _}
-					<div class="h-28 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
-				{/each}
+			<div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
+				{#each Array(4) as _}<div class="h-20 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>{/each}
 			</div>
-			<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+			<div class="grid gap-6 lg:grid-cols-[1fr_320px]">
+				<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+			</div>
 		</div>
 	{:else if query.isError}
 		<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
@@ -274,183 +233,162 @@
 		<div class="mb-6">
 			<div class="flex items-baseline justify-between gap-3">
 				<h1 class="min-w-0 truncate font-mono text-2xl font-light text-gray-900 dark:text-white">{namespace}</h1>
-				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
+				
 			</div>
-			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-				<span>
-					<span class="tabular-nums {succeededCount === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{succeededCount}</span>
-					of {apps.length} healthy
-				</span>
-				{#if failedCount > 0}<span class="font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
+			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-xs text-gray-500 dark:text-gray-400">
+				<span>namespace</span>
+				<span class="text-gray-300 dark:text-gray-600">·</span>
+				<span class="tabular-nums">{apps.length}</span> rollout{apps.length === 1 ? '' : 's'}
+				{#if failedCount > 0}<span class="font-medium text-red-600 dark:text-red-400">· {failedCount} failing</span>{/if}
 				{#if activeCount > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} in progress</span>{/if}
-				{#if newestDeploy}
-					<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(newestDeploy, $now)}`}>
-						· last deploy {formatTimeAgoCompact(newestDeploy, $now)}
-					</span>
-				{/if}
-				<DeployVolumeSparkline rollouts={apps.map((a) => a.rollout)} />
 			</div>
 		</div>
 
-		<!-- Correlation timeline: per-app deploy moments aligned by time so
-		     users can spot 'A deployed then B failed 5 min later' patterns. -->
-		{#if correlationTimeline}
-			<section class="mb-6">
-				<div class="mb-3 flex items-baseline justify-between">
-					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-						Correlation timeline
-					</h2>
-					<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{timelineWindowLabel(correlationTimeline.windowStart, correlationTimeline.windowEnd)} · now ›</span>
+		<!-- Stat tiles: 4 columns -->
+		<div class="mb-6 grid gap-3 grid-cols-2 sm:grid-cols-4">
+			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Rollouts</div>
+				<div class="mt-1 font-mono text-2xl font-light text-gray-900 dark:text-white">{apps.length}</div>
+			</div>
+			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Healthy</div>
+				<div class="mt-1 font-mono text-2xl font-light {succeededCount === apps.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}">{succeededCount}</div>
+			</div>
+			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Failing</div>
+				<div class="mt-1 font-mono text-2xl font-light {failedCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-300 dark:text-gray-600'}">{failedCount}</div>
+			</div>
+			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Deploys · 24h</div>
+				<div class="mt-1 flex items-baseline gap-2">
+					<span class="font-mono text-2xl font-light text-gray-900 dark:text-white">{deploys24h}</span>
+					<DeployVolumeSparkline rollouts={apps.map((a) => a.rollout)} hours={24} />
 				</div>
+			</div>
+		</div>
+
+		<!-- Two-column body: rollouts list + activity rail -->
+		<div class="grid gap-6 lg:grid-cols-[1fr_320px]">
+			<section>
+				<h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+					Rollouts in {namespace}
+				</h2>
 				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each correlationTimeline.rows as row}
-							<li class="environment-theme-scope flex items-center gap-3 px-4 py-2.5" style={row.theme ? getEnvironmentThemeStyle(row.theme) : undefined}>
+						{#each apps as a (a.rollout.metadata?.name)}
+							{@const latest = a.rollout.status?.history?.[0]}
+							{@const status = latest?.bakeStatus || 'None'}
+							{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
+							{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
+							{@const prevV = status === 'Failed' ? previousSucceededVersion(a.rollout, ver) : null}
+							{@const stuck = detectStuck(a.rollout, { now: $now })}
+							<li class="environment-theme-scope" style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}>
 								<a
-									href="/rollouts/{namespace}/{row.appName}"
-									class="flex w-32 min-w-0 shrink-0 flex-col gap-0.5 transition-opacity hover:opacity-80"
+									href="/rollouts/{a.rollout.metadata?.namespace}/{a.rollout.metadata?.name}"
+									class="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 								>
-									<span class="truncate text-xs font-semibold text-gray-900 dark:text-white">{row.title}</span>
-									{#if row.envName}
-										<span class="truncate font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{row.envName}</span>
+									<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
+										<BakeStatusIcon bakeStatus={status} size="medium" />
+									</span>
+									<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+										<div class="flex min-w-0 items-baseline gap-2">
+											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.title}</span>
+											{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
+											{#if a.rollout.spec?.wantedVersion}<PinBadge version={a.rollout.spec.wantedVersion} size="xs" />{/if}
+										</div>
+										<div class="flex min-w-0 items-baseline gap-2">
+											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{a.rollout.metadata?.name}</span>
+											{#if failureCategory}
+												<span class="truncate text-[11px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>· {failureCategory} failed{#if prevV} · was <span class="font-mono">{prevV}</span>{/if}</span>
+											{/if}
+										</div>
+									</div>
+									<div class="flex shrink-0 flex-col items-end gap-0.5">
+										<span class="font-mono text-sm text-gray-700 dark:text-gray-300" title={ver ?? ''}>{ver ?? '—'}</span>
+										{#if latest?.timestamp}
+											<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
+												{formatStatusTime(status, latest.timestamp, $now)}
+											</span>
+										{/if}
+									</div>
+									{#if a.envName || a.theme}
+										<span class="environment-theme-badge shrink-0 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
 									{/if}
 								</a>
-								<!-- Timeline track -->
-								<div class="relative h-5 flex-1 rounded bg-gray-50 dark:bg-gray-900/40">
-									<!-- 'now' marker on the right edge -->
-									<span class="absolute right-0 top-0 h-full w-px bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
-									{#each row.points as p}
-										<span
-											class="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-gray-800 {p.status === 'Succeeded' ? 'bg-green-500' : p.status === 'Failed' ? 'bg-red-500' : p.status === 'InProgress' || p.status === 'Deploying' ? 'bg-yellow-400' : 'bg-gray-400'}"
-											style="left: {timelineX(p.ts, correlationTimeline.windowStart, correlationTimeline.windowEnd)}%"
-											title={`${p.version} · ${p.status} · ${formatTimeAgo(new Date(p.ts).toISOString(), $now)}`}
-										></span>
-									{/each}
-								</div>
-								<span class="shrink-0 font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">{row.points.length}</span>
 							</li>
 						{/each}
 					</ul>
 				</div>
 			</section>
-		{/if}
 
-		<!-- Rollouts in namespace -->
-		<section class="mb-6">
-			<h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-				Rollouts ({apps.length})
-			</h2>
-			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-				{#each apps as a}
-					{@const latest = a.rollout.status?.history?.[0]}
-					{@const status = latest?.bakeStatus || 'None'}
-					{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
-					{@const previousSucceeded = status === 'Failed' ? previousSucceededVersion(a.rollout, latest?.version ? getDisplayVersion(latest.version) : null) : null}
+			<aside>
+				<div class="mb-3 flex items-baseline justify-between">
+					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Recent activity</h2>
 					<a
-						href="/rollouts/{a.rollout.metadata?.namespace}/{a.rollout.metadata?.name}"
-						class="environment-theme-scope group flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
-							
-							"
-						style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
-					>
-						<!-- Title row: status circle + title/name + env badge -->
-						<div class="flex min-w-0 items-start justify-between gap-3">
-							<div class="flex min-w-0 items-center gap-3">
-								<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
-									{#if isRunning(status)}
-										<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(status)}"></span>
-									{/if}
-									<BakeStatusIcon bakeStatus={status} size="medium" />
-								</span>
-								<div class="flex min-w-0 flex-col">
-									<span class="truncate text-base font-bold text-gray-900 dark:text-white">{a.title}</span>
-									<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{a.rollout.metadata?.name}</span>
-								</div>
+						href={`/activity?ns=${encodeURIComponent(namespace)}`}
+						class="text-[10px] text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+					>view all ›</a>
+				</div>
+				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+					{#if recentActivity.length === 0}
+						<div class="flex flex-col items-center px-4 py-10 text-center">
+							<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700/60">
+								<span class="block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600"></span>
 							</div>
-							{#if a.envName || a.theme}
-								<span class="environment-theme-badge shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
-							{/if}
+							<p class="text-sm font-medium text-gray-700 dark:text-gray-300">No activity yet</p>
 						</div>
-						<!-- Meta row -->
-						<div class="flex min-w-0 items-baseline justify-between gap-3 pl-12">
-							<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">
-								{latest ? getDisplayVersion(latest.version) : '—'}
-							</span>
-							{#if latest?.timestamp}
-								<span class="shrink-0 font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
-									{formatStatusTime(status, latest.timestamp, $now)}
-								</span>
-							{/if}
-						</div>
-						{#if failureCategory}
-							<div class="truncate pl-12 text-xs text-gray-500 dark:text-gray-400" title={latest?.bakeStatusMessage ?? ''}>
-								<span class="font-medium text-gray-700 dark:text-gray-300">{failureCategory}</span> failed{#if previousSucceeded} · was <span class="font-mono">{previousSucceeded}</span>{/if}
-							</div>
-						{/if}
-					</a>
-				{/each}
-			</div>
-		</section>
-
-		<!-- Unified deployment timeline -->
-		<section>
-			<div class="mb-3 flex items-baseline justify-between">
-				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-					Deployment timeline
-				</h2>
-				<a
-					href={`/activity?ns=${encodeURIComponent(namespace)}`}
-					class="text-[10px] text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
-				>view all ›</a>
-			</div>
-			<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				{#if timelineByDay.length === 0}
-					<div class="p-4 text-sm text-gray-500 dark:text-gray-400">No deployment history yet.</div>
-				{:else}
-					<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each timelineByDay as day}
-							<div class="px-4 pt-3 pb-2">
-								<div class="flex items-baseline justify-between">
-									<span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{day.dayLabel}</span>
-									<span class="text-[10px] text-gray-400 dark:text-gray-500">{day.events.length} deploy{day.events.length === 1 ? '' : 's'}</span>
-								</div>
-								<ul class="mt-2 space-y-0.5">
-									{#each day.events as e}
-										<li class="environment-theme-scope" style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}>
-											<a
-												href="/rollouts/{namespace}/{e.appName}"
-												class="-mx-2 grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+					{:else}
+						<div class="p-4">
+							{#each activityByDay as group, gi}
+								<div class="{gi > 0 ? 'mt-5' : ''}">
+									<div class="mb-3 flex items-center gap-2">
+										<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{group.label}</span>
+										<span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"></span>
+										<span class="font-mono text-[10px] text-gray-300 dark:text-gray-600">{group.entries.length}</span>
+									</div>
+									<ol class="relative">
+										<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700/80" aria-hidden="true"></span>
+										{#each group.entries as a, ai}
+											{@const isLast = ai === group.entries.length - 1}
+											<li
+												class="environment-theme-scope relative pl-6 {isLast ? '' : 'pb-3'}"
+												style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
 											>
-												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{shortTime(e.timestamp)}</span>
-												<div class="flex min-w-0 items-center gap-2">
-													{#if e.envName || e.theme}
-														<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(e.theme) || e.envName || e.theme?.label}</span>
+												<span class="absolute left-0 top-1 inline-flex h-3.5 w-3.5 items-center justify-center">
+													{#if isRunning(a.bakeStatus)}
+														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[a.bakeStatus]}"></span>
 													{/if}
-													<span class="min-w-0 truncate text-gray-800 dark:text-gray-200">{e.title}</span>
-													{#if e.previousVersion}
-														<span class="shrink-0 font-mono text-[11px] text-gray-400/70 line-through dark:text-gray-500/70">{e.previousVersion}</span>
-														<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-600">→</span>
-													{/if}
-													<span class="shrink-0 font-mono text-[11px] text-gray-700 dark:text-gray-300">{e.version}</span>
-												</div>
-												<span class="flex shrink-0 items-center gap-1">
-													<span class="relative flex h-1.5 w-1.5">
-														{#if isRunning(e.bakeStatus)}
-															<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[e.bakeStatus]}"></span>
-														{/if}
-														<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[e.bakeStatus] ?? STATUS_DOT.None}"></span>
-													</span>
-													<span class="text-[10px] {STATUS_TEXT[e.bakeStatus] ?? STATUS_TEXT.None}">{STATUS_LABEL[e.bakeStatus]}</span>
+													<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 												</span>
-											</a>
-										</li>
-									{/each}
-								</ul>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		</section>
+												<a
+													href="/rollouts/{namespace}/{a.appName}"
+													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+												>
+													<div class="flex items-baseline justify-between gap-2">
+														<div class="flex min-w-0 items-center gap-2">
+															{#if a.envName || a.theme}
+																<span class="environment-theme-badge shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-700/60 dark:text-gray-300">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
+															{/if}
+															<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{a.title}</span>
+														</div>
+														<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
+															{hourLabel(a.timestamp)}
+														</span>
+													</div>
+													<div class="mt-0.5 flex items-center justify-between gap-2">
+														<span class="text-[11px] {STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}">{STATUS_LABEL[a.bakeStatus]}</span>
+														<span class="font-mono text-[11px] text-gray-700 dark:text-gray-300">{a.version}</span>
+													</div>
+												</a>
+											</li>
+										{/each}
+									</ol>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</aside>
+		</div>
 	{/if}
 </div>
