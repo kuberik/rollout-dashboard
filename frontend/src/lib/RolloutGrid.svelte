@@ -50,6 +50,7 @@
 		previousSucceededVersion: string | null;
 		pinnedVersion: string | null;
 		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
+		sparkline: { status: string; version: string; timestamp: string | null }[];
 		rollout: Rollout;
 	};
 
@@ -127,6 +128,21 @@
 					}
 				}
 			}
+			// Sparkline: last 6 deploys, oldest → newest (right is most recent).
+			// Dedupe identical version repeats to show distinct deploys only.
+			const history = r.status?.history ?? [];
+			const sparkline: { status: string; version: string; timestamp: string | null }[] = [];
+			for (const h of history) {
+				const v = getDisplayVersion(h.version);
+				if (!v) continue;
+				if (sparkline.length > 0 && sparkline[0].version === v) continue;
+				sparkline.unshift({
+					status: h.bakeStatus || 'None',
+					version: v,
+					timestamp: h.timestamp || null
+				});
+				if (sparkline.length >= 6) break;
+			}
 			return {
 				ns: r.metadata?.namespace || '',
 				name: r.metadata?.name || '',
@@ -145,6 +161,7 @@
 				previousSucceededVersion,
 				pinnedVersion: r.spec?.wantedVersion || null,
 				behind,
+				sparkline,
 				rollout: r
 			};
 		});
@@ -463,6 +480,18 @@
 										</span>
 									{/if}
 								</div>
+
+								<!-- Deploy history sparkline: last 6 distinct deploys, oldest left → newest right -->
+								{#if c.sparkline.length > 1}
+									<div class="flex items-center gap-1 pl-4" aria-label="Recent deploy history" title="Recent deploys (oldest → newest)">
+										{#each c.sparkline as h}
+											<span
+												class="h-1 w-3 rounded-full transition-opacity {h.status === 'Succeeded' ? 'bg-green-400 dark:bg-green-500' : h.status === 'Failed' ? 'bg-red-400 dark:bg-red-500' : h.status === 'InProgress' || h.status === 'Deploying' ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}"
+												title={`${h.version} · ${h.status}${h.timestamp ? ` · ${formatTimeAgoCompact(h.timestamp, $now)} ago` : ''}`}
+											></span>
+										{/each}
+									</div>
+								{/if}
 
 								{#if c.failureCategory}
 									<div class="truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={c.bakeStatusMessage ?? ''}>
