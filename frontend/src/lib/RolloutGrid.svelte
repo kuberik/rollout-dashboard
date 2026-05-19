@@ -310,31 +310,64 @@
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Page header — mirrors /apps so the dashboard feels consistent
-	     across the top-level lists. Title row stacks above meta on
-	     mobile, both on one line ≥ sm. -->
-	<div class="mb-5">
-		<div class="flex items-baseline justify-between gap-3">
-			<h1 class="min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
+	<!-- Page header -->
+	<div class="mb-4 flex items-baseline justify-between gap-3">
+		<h1 class="min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
+		<div class="flex items-center gap-3">
+			{#if cards.length > 0 && recent24h > 0}
+				<a href="/activity" class="hidden items-center gap-2 text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 sm:inline-flex" title="View activity">
+					<span class="font-mono tabular-nums">{recent24h}</span>
+					<span>deploy{recent24h === 1 ? '' : 's'} · 24h</span>
+					<DeployVolumeSparkline {rollouts} />
+				</a>
+			{/if}
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
-		{#if cards.length > 0}
-			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-				<span>
-					<span class="tabular-nums {counts.succeeded === cards.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{counts.succeeded}</span>
-					of {cards.length} healthy
-				</span>
-				{#if counts.failed > 0}<span class="font-medium text-red-600 dark:text-red-400">· {counts.failed} failed</span>{/if}
-				{#if counts.active > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} in progress</span>{/if}
-				{#if counts.pending > 0}<span>· {counts.pending} pending</span>{/if}
-				<DeployVolumeSparkline {rollouts} />
-			</div>
-		{/if}
 	</div>
 
-	<!-- Filter bar: search + status chips + env chips + clear -->
+	<!-- Stat tiles: clickable status filters. The big visual at the top
+	     of the page so an engineer immediately knows the fleet state. -->
 	{#if cards.length > 0}
-		<div class="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
+		{@const tiles = [
+			{ key: 'succeeded' as StatusKey, label: 'Healthy', count: counts.succeeded, bake: 'Succeeded', tone: 'green' },
+			{ key: 'active' as StatusKey, label: 'In progress', count: counts.active, bake: 'InProgress', tone: 'yellow' },
+			{ key: 'pending' as StatusKey, label: 'Pending', count: counts.pending, bake: 'None', tone: 'gray' },
+			{ key: 'failed' as StatusKey, label: 'Failed', count: counts.failed, bake: 'Failed', tone: 'red' }
+		]}
+		<div class="mb-4 grid gap-2 grid-cols-2 sm:grid-cols-4">
+			{#each tiles as t}
+				{@const sel = statusFilters.includes(t.key)}
+				{@const isZero = t.count === 0}
+				<button
+					type="button"
+					onclick={() => toggleStatus(t.key)}
+					aria-pressed={sel}
+					disabled={isZero}
+					class="group relative flex items-center gap-3 overflow-hidden rounded-xl border bg-white p-3.5 text-left shadow-sm transition-all dark:bg-gray-800
+						{sel
+							? 'border-gray-900 ring-1 ring-gray-900 dark:border-white dark:ring-white'
+							: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}
+						{isZero ? 'opacity-50' : ''}"
+				>
+					<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(t.bake)}">
+						{#if t.key === 'active' && t.count > 0}
+							<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(t.bake)}"></span>
+						{/if}
+						<BakeStatusIcon bakeStatus={t.bake} size="medium" />
+					</span>
+					<div class="flex min-w-0 flex-1 flex-col">
+						<span class="font-mono text-2xl font-light tabular-nums leading-none text-gray-900 dark:text-white">{t.count}</span>
+						<span class="mt-1 truncate text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{t.label}</span>
+					</div>
+				</button>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Filter bar: search + env chips. Status filters live on the
+	     stat tiles above. -->
+	{#if cards.length > 0}
+		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
 			<div class="relative min-w-0 flex-1 sm:max-w-xs">
 				<SearchOutline class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 				<input
@@ -343,26 +376,6 @@
 					placeholder="Search rollouts…"
 					class="block w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder-gray-500"
 				/>
-			</div>
-			<div class="flex flex-wrap items-center gap-1.5">
-				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'In progress', dot:'bg-yellow-400'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'succeeded', label:'Healthy', dot:'bg-green-500'}] as p}
-					{@const k = p.key as StatusKey}
-					{@const sel = statusFilters.includes(k)}
-					{@const n = counts[k]}
-					{#if n > 0}
-						<button
-							type="button"
-							onclick={() => toggleStatus(k)}
-							class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors
-								{sel
-									? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-									: 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/60'}"
-						>
-							<span class="h-1.5 w-1.5 rounded-full {p.dot}"></span>
-							{n} {p.label}
-						</button>
-					{/if}
-				{/each}
 			</div>
 			{#if knownEnvs.length > 1}
 				<div class="flex flex-wrap items-center gap-1">
@@ -465,30 +478,46 @@
 		</div>
 	{:else}
 		{#if attentionItems.length > 0 && statusFilters.length === 0 && envFilters.length === 0 && !searchQuery}
-			<!-- Needs attention: compact strip of failed/stuck items so the
-			     landing page surfaces what to act on first. Only renders
-			     when there are unfiltered issues. -->
-			<div class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="flex items-baseline justify-between gap-2 border-b border-gray-100 px-4 py-2 dark:border-gray-700/60">
-					<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Needs attention</span>
-					<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{attentionItems.length}</span>
+			{@const failedCount = attentionItems.filter((i) => i.reason === 'failed').length}
+			{@const stuckCount = attentionItems.filter((i) => i.reason === 'stuck').length}
+			<!-- Needs attention: loud red-tinted hero when there are failures.
+			     Falls back to amber tint when only stuck (less urgent). -->
+			<div class="mb-6 overflow-hidden rounded-xl border-2 {failedCount > 0
+				? 'border-red-300 bg-red-50/60 dark:border-red-700/60 dark:bg-red-900/15'
+				: 'border-amber-300 bg-amber-50/60 dark:border-amber-700/60 dark:bg-amber-900/15'} shadow-sm">
+				<div class="flex items-center gap-3 px-5 py-3">
+					<span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full {failedCount > 0
+						? 'bg-red-100 dark:bg-red-900/40'
+						: 'bg-amber-100 dark:bg-amber-900/40'}">
+						<span class="absolute inset-0 animate-ping rounded-full {failedCount > 0 ? 'bg-red-400/40' : 'bg-amber-400/40'}"></span>
+						<svg class="relative h-5 w-5 {failedCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+							<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+						</svg>
+					</span>
+					<div class="flex min-w-0 flex-1 flex-col">
+						<span class="text-sm font-semibold {failedCount > 0 ? 'text-red-900 dark:text-red-100' : 'text-amber-900 dark:text-amber-100'}">
+							{#if failedCount > 0}{failedCount} {failedCount === 1 ? 'rollout has' : 'rollouts have'} failed{#if stuckCount > 0}, {stuckCount} stuck{/if}
+							{:else}{stuckCount} {stuckCount === 1 ? 'rollout is' : 'rollouts are'} stuck{/if}
+						</span>
+						<span class="text-xs {failedCount > 0 ? 'text-red-700/80 dark:text-red-300/80' : 'text-amber-700/80 dark:text-amber-300/80'}">Click to jump to the rollout.</span>
+					</div>
 				</div>
-				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+				<ul class="divide-y {failedCount > 0 ? 'divide-red-200/60 dark:divide-red-800/40' : 'divide-amber-200/60 dark:divide-amber-800/40'}">
 					{#each attentionItems as item}
 						{@const c = item.card}
 						<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 							<a
 								href={`/rollouts/${c.ns}/${c.name}`}
-								class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+								class="flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-white/60 dark:hover:bg-gray-800/60"
 							>
 								<span class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
 									<BakeStatusIcon bakeStatus={c.bakeStatus} size="small" />
 								</span>
 								<div class="flex min-w-0 flex-1 items-baseline gap-2">
 									<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{c.title}</span>
-									<span class="truncate text-xs text-gray-500 dark:text-gray-400">{item.detail}</span>
+									<span class="truncate text-xs {failedCount > 0 ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}">· {item.detail}</span>
 								</div>
-								<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">{c.ns}</span>
+								<span class="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400">{c.ns}</span>
 								{#if c.envDisplay}
 									<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
 								{/if}
@@ -559,8 +588,8 @@
 											</div>
 										</div>
 
-										<!-- Version column -->
-										<div class="hidden min-w-0 shrink-0 flex-col items-end gap-0.5 sm:flex">
+										<!-- Version column (visible everywhere) -->
+										<div class="flex min-w-0 shrink-0 flex-col items-end gap-0.5">
 											<div class="flex items-baseline gap-1.5">
 												<span class="truncate font-mono text-sm text-gray-700 dark:text-gray-300">{c.version ?? '—'}</span>
 												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
