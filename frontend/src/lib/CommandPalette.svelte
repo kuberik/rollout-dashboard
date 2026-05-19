@@ -26,8 +26,11 @@
 	} from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 
+	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action';
+
 	let {
 		open = $bindable(false),
+		scope = $bindable(null),
 		rollouts,
 		environments,
 		currentNamespace,
@@ -35,6 +38,7 @@
 		loading = false
 	}: {
 		open: boolean;
+		scope?: ResultKind | null;
 		rollouts: Rollout[];
 		environments: Environment[];
 		currentNamespace?: string;
@@ -46,8 +50,6 @@
 	let listEl = $state<HTMLDivElement | null>(null);
 	let query = $state('');
 	let selectedIndex = $state(0);
-
-	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action';
 	type Result = {
 		kind: ResultKind;
 		key: string;
@@ -213,15 +215,15 @@
 
 	const filtered = $derived.by(() => {
 		const q = query.trim();
-		const scored = allResults
+		const scoped = scope ? allResults.filter((r) => r.kind === scope) : allResults;
+		const scored = scoped
 			.map((r) => ({ r, s: score(r, q) }))
 			.filter((x) => x.s >= 0);
 		scored.sort((a, b) => {
 			if (b.s !== a.s) return b.s - a.s;
 			return a.r.title.localeCompare(b.r.title);
 		});
-		// Cap to a sane number for keyboard nav.
-		return scored.slice(0, 80).map((x) => x.r);
+		return scored.slice(0, 200).map((x) => x.r);
 	});
 
 	// Group filtered results by kind for rendering. Keeps a flat index for kb nav.
@@ -284,7 +286,19 @@
 		if (!open) return;
 		if (e.key === 'Escape') {
 			e.preventDefault();
-			open = false;
+			// First ESC clears the scope (back to global); second ESC closes.
+			if (scope) {
+				scope = null;
+				query = '';
+				selectedIndex = 0;
+			} else {
+				open = false;
+			}
+		} else if (e.key === 'Backspace' && query === '' && scope) {
+			// Backspace at empty query clears the scope chip.
+			e.preventDefault();
+			scope = null;
+			selectedIndex = 0;
 		} else if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			selectedIndex = Math.min(selectedIndex + 1, filtered.length - 1);
@@ -328,14 +342,27 @@
 		<div
 			class="relative z-10 flex h-full w-full flex-col overflow-hidden bg-white palette-enter dark:bg-gray-800 sm:mx-4 sm:h-auto sm:max-w-2xl sm:rounded-xl sm:shadow-2xl sm:ring-1 sm:ring-gray-200 sm:dark:ring-gray-700"
 		>
-			<div class="flex shrink-0 items-center gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+			<div class="flex shrink-0 items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
 				<SearchOutline class="h-4 w-4 shrink-0 text-gray-400" />
+				{#if scope}
+					{@const ScopeIcon = KIND_ICON[scope]}
+					<span class="inline-flex shrink-0 items-center gap-1 rounded-md bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700/60 dark:text-gray-200">
+						<ScopeIcon class="h-3 w-3" />
+						<span>{KIND_LABEL[scope]}</span>
+						<button
+							type="button"
+							onclick={() => { scope = null; selectedIndex = 0; searchInput?.focus(); }}
+							aria-label="Clear scope"
+							class="-mr-0.5 ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-600/60 dark:hover:text-gray-200"
+						>×</button>
+					</span>
+				{/if}
 				<input
 					bind:this={searchInput}
 					value={query}
 					oninput={onInput}
 					type="text"
-					placeholder="Search rollouts, apps, environments, namespaces…"
+					placeholder={scope ? `Search ${KIND_LABEL[scope].toLowerCase()}…` : 'Search rollouts, apps, environments, namespaces…'}
 					autocomplete="off"
 					spellcheck="false"
 					class="flex-1 border-0 bg-transparent p-0 text-base text-gray-900 placeholder-gray-400 outline-none focus:outline-none focus:ring-0 sm:text-sm dark:text-white"

@@ -57,6 +57,13 @@ violates an enforced item.
 - ✅ /apps/[name] promotion flow now uses Svelte Flow + dagre; auto-reflows LR ↔ TB based on viewport. **Not pannable, not zoomable** — like /rollouts/[ns]/[name]/environments, it fits-to-view only.
 - ✅ Rollout detail layout converted from a side sub-sidebar to horizontal top tabs (Overview / History / Environments / Logs). Eliminates the double-sidebar that used to appear next to the global sidebar.
 - ✅ /apps/[name] version lifecycle is now a proper Gantt. One lane per env, each deploy a colored bar that runs until the next deploy in that env (or 'now'). Same version uses the same palette colour across lanes so a version's promotion arc traces visually. Has a real time axis with hour/day/week ticks, a 'now' edge marker, and a version-colour legend below.
+- ✅ Gantt surfaces version ordering: each bar shows the version name plus a `−N` chip when behind the newest. The legend below is now a "newest first" ladder showing every version with its `newest` / `−N` rank.
+- ✅ Mobile rollout-detail tabs no longer render a horizontal scrollbar (`.no-scrollbar` utility hides chrome on overflow-x).
+- ✅ Promotion-flow SvelteFlow now reacts to container resize via ResizeObserver + `useSvelteFlow().fitView()`. Component is wrapped in `SvelteFlowProvider` so the hook is reachable. Orientation flips LR ↔ TB based on container width, not just initial viewport. Background and edge labels restyled to match dashboard chrome.
+- ✅ Command palette has scoped levels:
+  - ⌘K opens the global multi-type view.
+  - Clicking a section name in the navbar breadcrumb opens the palette **scoped** to that kind (rollouts / apps / environments). The scope appears as a removable chip next to the search icon; placeholder updates to match.
+  - First ESC clears the scope back to global; second ESC closes. Backspace on an empty query also pops the scope.
 
 ## Working principles
 

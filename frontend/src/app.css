@@ -114,6 +114,32 @@ input, select, textarea {
   color: var(--rollout-theme-dark-text);
 }
 
+/* Hide native scrollbar chrome while keeping the element scrollable.
+   Used on horizontal-scrolling tab strips like the rollout detail tabs
+   where a visible scrollbar adds visual noise on mobile. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Svelte Flow visual refinements: edge label chip should match our
+   button-pill aesthetic, not the library default white-on-white. */
+.svelte-flow__edge-textbg {
+  fill: rgb(255 255 255);
+  stroke: rgb(229 231 235);
+  stroke-width: 1;
+}
+.dark .svelte-flow__edge-textbg {
+  fill: rgb(31 41 55);
+  stroke: rgb(75 85 99);
+}
+.svelte-flow__handle {
+  opacity: 0;
+}
+
 .dark {
   * {
     scrollbar-color: #4b5563 #1f2937;

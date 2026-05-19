@@ -53,6 +53,25 @@
 		return SECTIONS[0];
 	});
 
+	// Map a section to the palette scope it should open with.
+	type PaletteScope = 'rollout' | 'app' | 'env' | 'namespace';
+	function sectionScope(key: string): PaletteScope | null {
+		if (key === 'rollouts') return 'rollout';
+		if (key === 'apps') return 'app';
+		if (key === 'environments') return 'env';
+		return null;
+	}
+
+	let paletteScope = $state<PaletteScope | null>(null);
+
+	function openSectionPalette(section: Section, ev: MouseEvent | KeyboardEvent) {
+		const s = sectionScope(section.key);
+		if (!s) return; // Activity has no palette scope — fall through to navigation
+		ev.preventDefault();
+		paletteScope = s;
+		switcherOpen = true;
+	}
+
 	// Detail context: rendered as breadcrumb 'Item ⇅' on detail pages.
 	const detailContext = $derived.by(() => {
 		if (isRolloutPage) return { kind: 'rollout' as const };
@@ -143,9 +162,19 @@
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
 			e.preventDefault();
-			switcherOpen = !switcherOpen;
+			if (!switcherOpen) {
+				paletteScope = null; // global scope by default on ⌘K
+				switcherOpen = true;
+			} else {
+				switcherOpen = false;
+			}
 		}
 	}
+
+	$effect(() => {
+		// When the palette closes, reset its scope so the next open is clean.
+		if (!switcherOpen) paletteScope = null;
+	});
 </script>
 
 <svelte:window onkeydown={handleGlobalKeydown} />
@@ -172,11 +201,13 @@
 				>
 			</a>
 
-			<!-- Section breadcrumb: static link, no dropdown -->
+			<!-- Section breadcrumb: clicking opens the command palette scoped
+			     to that kind (rollouts → rollouts only, apps → apps only). -->
 			<div class="flex min-w-0 items-center gap-1">
 				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
 				<a
 					href={currentSection.href}
+					onclick={(ev) => openSectionPalette(currentSection, ev)}
 					class="truncate rounded-md px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg"
 				>{currentSection.label}</a>
 
@@ -255,6 +286,7 @@
 
 <CommandPalette
 	bind:open={switcherOpen}
+	bind:scope={paletteScope}
 	rollouts={allRollouts}
 	environments={allEnvironments}
 	currentNamespace={namespace}

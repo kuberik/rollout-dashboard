@@ -76,7 +76,7 @@
 			class="sticky top-0 z-10 shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 			aria-label="Rollout sections"
 		>
-			<div class="flex items-stretch gap-0 overflow-x-auto px-2 sm:px-4">
+			<div class="no-scrollbar flex items-stretch gap-0 overflow-x-auto px-2 sm:px-4">
 				{#each tabs.filter((t) => t.show) as t (t.href)}
 					{@const active = isActive(t.href)}
 					<a
