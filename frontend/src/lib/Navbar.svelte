@@ -13,13 +13,11 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
 	import CommandPalette from '$lib/CommandPalette.svelte';
-	import ResourceSwitcher from '$lib/ResourceSwitcher.svelte';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { Environment } from '../types';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 	let switcherOpen = $state(false);
-	let resourceSwitcherOpen = $state(false);
 	let isMac = $state(false);
 
 	theme.subscribe((value) => {
@@ -53,24 +51,9 @@
 		return SECTIONS[0];
 	});
 
-	// Map a section to the palette scope it should open with.
+	// Palette scope for the item ⇅ button — rollouts / apps / envs / namespaces.
 	type PaletteScope = 'rollout' | 'app' | 'env' | 'namespace';
-	function sectionScope(key: string): PaletteScope | null {
-		if (key === 'rollouts') return 'rollout';
-		if (key === 'apps') return 'app';
-		if (key === 'environments') return 'env';
-		return null;
-	}
-
 	let paletteScope = $state<PaletteScope | null>(null);
-
-	function openSectionPalette(section: Section, ev: MouseEvent | KeyboardEvent) {
-		const s = sectionScope(section.key);
-		if (!s) return; // Activity has no palette scope — fall through to navigation
-		ev.preventDefault();
-		paletteScope = s;
-		switcherOpen = true;
-	}
 
 	// Detail context: rendered as breadcrumb 'Item ⇅' on detail pages.
 	const detailContext = $derived.by(() => {
@@ -113,51 +96,6 @@
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
 
-	const resourceItems = $derived.by(() => {
-		if (appDetailMatch) {
-			const names = new Set<string>();
-			for (const env of allEnvironments) {
-				const n = env.spec?.rolloutRef?.name;
-				if (n) names.add(n);
-			}
-			return {
-				title: 'Apps',
-				currentKey: decodeURIComponent(appDetailMatch[1]),
-				items: [...names]
-					.sort((a, b) => a.localeCompare(b))
-					.map((n) => ({ key: n, label: n, href: `/apps/${n}`, mono: true }))
-			};
-		}
-		if (envDetailMatch) {
-			const names = new Set<string>();
-			for (const env of allEnvironments) {
-				const n = env.spec?.environment;
-				if (n) names.add(n);
-			}
-			return {
-				title: 'Environments',
-				currentKey: decodeURIComponent(envDetailMatch[1]),
-				items: [...names]
-					.sort((a, b) => a.localeCompare(b))
-					.map((n) => ({ key: n, label: n, href: `/envs/${encodeURIComponent(n)}` }))
-			};
-		}
-		if (nsDetailMatch) {
-			const names = new Set<string>();
-			for (const r of allRollouts) {
-				const ns = r.metadata?.namespace;
-				if (ns) names.add(ns);
-			}
-			return {
-				title: 'Namespaces',
-				currentKey: decodeURIComponent(nsDetailMatch[1]),
-				items: [...names]
-					.sort((a, b) => a.localeCompare(b))
-					.map((n) => ({ key: n, label: n, href: `/namespaces/${encodeURIComponent(n)}`, mono: true }))
-			};
-		}
-		return null;
-	});
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -201,13 +139,13 @@
 				>
 			</a>
 
-			<!-- Section breadcrumb: clicking opens the command palette scoped
-			     to that kind (rollouts → rollouts only, apps → apps only). -->
+			<!-- Section breadcrumb: section name LINK navigates to the list
+			     page; item chevron opens the unified CommandPalette scoped
+			     to that kind. Same palette everywhere. -->
 			<div class="flex min-w-0 items-center gap-1">
 				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
 				<a
 					href={currentSection.href}
-					onclick={(ev) => openSectionPalette(currentSection, ev)}
 					class="truncate rounded-md px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg"
 				>{currentSection.label}</a>
 
@@ -215,7 +153,7 @@
 					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
 					<button
 						type="button"
-						onclick={() => (switcherOpen = true)}
+						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
 						class="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
 						aria-label="Switch rollout (⌘K)"
 						title={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
@@ -245,23 +183,21 @@
 					</button>
 				{:else if detailContext?.kind === 'item'}
 					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
-					{#if resourceItems && resourceItems.items.length > 1}
-						<button
-							type="button"
-							onclick={() => (resourceSwitcherOpen = true)}
-							class="group flex min-w-0 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
-							aria-label={`Switch ${resourceItems.title.toLowerCase()}`}
-						>
-							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
-								{detailContext.item}
-							</span>
-							<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
-						</button>
-					{:else}
-						<span class="truncate px-1 text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
+					{@const itemScope = appDetailMatch ? 'app' : envDetailMatch ? 'env' : nsDetailMatch ? 'namespace' : null}
+					<button
+						type="button"
+						onclick={() => { if (itemScope) { paletteScope = itemScope; switcherOpen = true; } }}
+						disabled={!itemScope}
+						class="group flex min-w-0 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-gray-700/60 dark:disabled:hover:bg-transparent"
+						aria-label={`Switch ${currentSection.label.toLowerCase()}`}
+					>
+						<span class="truncate text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
 							{detailContext.item}
 						</span>
-					{/if}
+						{#if itemScope}
+							<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+						{/if}
+					</button>
 				{/if}
 			</div>
 		</div>
@@ -294,11 +230,3 @@
 	loading={allRolloutsQuery.isLoading}
 />
 
-{#if resourceItems}
-	<ResourceSwitcher
-		bind:open={resourceSwitcherOpen}
-		title={resourceItems.title}
-		items={resourceItems.items}
-		currentKey={resourceItems.currentKey}
-	/>
-{/if}

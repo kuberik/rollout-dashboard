@@ -374,8 +374,8 @@
 											{#if status === 'Failed'}
 												{@const cat = categorizeFailure(latest?.bakeStatusMessage)}
 												{@const prev = previousSucceededVersion(s.rollout, latest?.version ? getDisplayVersion(latest.version) : null)}
-												<div class="mt-1 truncate text-[11px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>
-													<span class="font-medium">{cat ?? 'failed'}</span> failed{#if prev}<span class="text-gray-400 dark:text-gray-500"> · was <span class="font-mono">{prev}</span></span>{/if}
+												<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400" title={latest?.bakeStatusMessage ?? ''}>
+													<span class="font-medium text-gray-700 dark:text-gray-300">{cat ?? 'failed'}</span> failed{#if prev} · was <span class="font-mono">{prev}</span>{/if}
 												</div>
 											{:else if behind}
 												<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">

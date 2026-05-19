@@ -406,8 +406,8 @@
 														{/if}
 													</div>
 													{#if failureCategory}
-														<div class="mt-1 truncate text-[11px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>
-															<span class="font-medium">{failureCategory}</span> failed
+														<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400" title={latest?.bakeStatusMessage ?? ''}>
+															<span class="font-medium text-gray-700 dark:text-gray-300">{failureCategory}</span> failed
 														</div>
 													{:else if behind}
 														<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">

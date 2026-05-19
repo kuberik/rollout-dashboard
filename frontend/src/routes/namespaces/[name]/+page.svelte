@@ -383,8 +383,8 @@
 							{/if}
 						</div>
 						{#if failureCategory}
-							<div class="truncate pl-12 text-xs text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>
-								<span class="font-medium">{failureCategory}</span> failed{#if previousSucceeded}<span class="text-gray-400 dark:text-gray-500"> · was <span class="font-mono">{previousSucceeded}</span></span>{/if}
+							<div class="truncate pl-12 text-xs text-gray-500 dark:text-gray-400" title={latest?.bakeStatusMessage ?? ''}>
+								<span class="font-medium text-gray-700 dark:text-gray-300">{failureCategory}</span> failed{#if previousSucceeded} · was <span class="font-mono">{previousSucceeded}</span>{/if}
 							</div>
 						{/if}
 					</a>

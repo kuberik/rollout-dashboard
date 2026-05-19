@@ -90,8 +90,8 @@
 
 			{#if status === 'Failed'}
 				{@const cat = categorizeFailure(latest.bakeStatusMessage)}
-				<div class="truncate text-[11px] text-red-600 dark:text-red-400" title={latest.bakeStatusMessage ?? ''}>
-					<span class="font-medium">{cat ?? 'failed'}</span> failed
+				<div class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={latest.bakeStatusMessage ?? ''}>
+					<span class="font-medium text-gray-700 dark:text-gray-300">{cat ?? 'failed'}</span> failed
 				</div>
 			{:else if data.stuck}
 				<StuckBadge reason={data.stuck} />

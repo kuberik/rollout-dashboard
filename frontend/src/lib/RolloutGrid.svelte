@@ -532,11 +532,12 @@
 									{/if}
 								</div>
 
-								<!-- Failure or behind hint: inline text, no boxed background -->
+								<!-- Failure or behind hint: the status icon already signals
+								     red; keep this text soft so it doesn't double-alarm. -->
 								{#if c.failureCategory}
-									<div class="truncate pl-12 text-xs text-red-600 dark:text-red-400" title={c.bakeStatusMessage ?? ''}>
-										<span class="font-medium">{c.failureCategory}</span> failed{#if c.previousSucceededVersion}
-											<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{c.previousSucceededVersion}</span></span>
+									<div class="truncate pl-12 text-xs text-gray-500 dark:text-gray-400" title={c.bakeStatusMessage ?? ''}>
+										<span class="font-medium text-gray-700 dark:text-gray-300">{c.failureCategory}</span> failed{#if c.previousSucceededVersion}
+											· was <span class="font-mono">{c.previousSucceededVersion}</span>
 										{/if}
 									</div>
 								{:else if c.behind}
