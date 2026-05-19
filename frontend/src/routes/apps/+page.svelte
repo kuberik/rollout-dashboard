@@ -285,7 +285,7 @@
 									</span>
 									<span>{shortEnvLabel(c.theme) || c.envName || '—'}</span>
 								</span>
-								<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">{ver ?? '—'}</span>
+								<span class="max-w-[8rem] truncate font-mono text-[10px] text-gray-500 dark:text-gray-400" title={ver ?? ''}>{ver ?? '—'}</span>
 							</div>
 						{/each}
 					</div>
