@@ -8,7 +8,7 @@
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
-	import { RocketOutline, SearchOutline } from 'flowbite-svelte-icons';
+	import { SearchOutline } from 'flowbite-svelte-icons';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import DriftBadge from '$lib/components/DriftBadge.svelte';
 	import type { Rollout, Environment } from '../../types';
@@ -257,14 +257,40 @@
 			Failed to load: {(query.error as Error).message}
 		</div>
 	{:else if apps.length === 0}
-		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<RocketOutline class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
-			<p class="text-sm font-medium text-gray-900 dark:text-white">No apps yet</p>
-			<p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-				Create
-				<code class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800">Environment</code>
-				resources that reference rollouts to see consolidated app views.
-			</p>
+		<div class="mx-auto max-w-2xl py-12">
+			<!-- Faded sample card: shows what an app card will look like -->
+			<div class="pointer-events-none relative mx-auto w-full max-w-sm select-none opacity-60 grayscale" aria-hidden="true">
+				<div class="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+					<div class="flex items-start justify-between gap-3">
+						<div class="flex items-center gap-3">
+							<span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+								<span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>
+							</span>
+							<div class="flex flex-col">
+								<span class="text-base font-bold text-gray-900 dark:text-white">My App</span>
+								<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">my-app</span>
+							</div>
+						</div>
+					</div>
+					<div class="mt-2 flex flex-wrap gap-2 pl-12">
+						{#each [{ env: 'DEV', v: 'v1.3' }, { env: 'STAGE', v: 'v1.2' }, { env: 'PROD', v: 'v1.2' }] as cell}
+							<div class="inline-flex items-baseline gap-1">
+								<span class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider dark:bg-gray-700">
+									<span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
+									<span>{cell.env}</span>
+								</span>
+								<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">{cell.v}</span>
+							</div>
+						{/each}
+					</div>
+				</div>
+			</div>
+			<div class="mt-8 text-center">
+				<p class="text-base font-semibold text-gray-900 dark:text-white">No apps yet</p>
+				<p class="mt-2 mx-auto max-w-md text-sm text-gray-500 dark:text-gray-400">
+					An app appears here once you bind a <code class="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">Rollout</code> to an <code class="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">Environment</code> resource. Apps consolidate the same rollout across all environments.
+				</p>
+			</div>
 		</div>
 	{:else if filteredApps.length === 0}
 		<div class="flex flex-col items-center justify-center py-12 text-center">

@@ -8,7 +8,7 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
-	import { LayersSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
+	import { ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import DriftBadge from '$lib/components/DriftBadge.svelte';
@@ -300,12 +300,35 @@
 			Failed to load environments: {(query.error as Error).message}
 		</div>
 	{:else if envNames.length === 0}
-		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<LayersSolid class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
-			<p class="text-sm font-medium text-gray-900 dark:text-white">No environments configured</p>
-			<p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-				Create <code class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800">Environment</code> resources in your cluster to see cross-environment comparisons here.
-			</p>
+		<div class="mx-auto max-w-2xl py-12">
+			<!-- Faded sample matrix preview: shows what the cross-env comparison looks like -->
+			<div class="pointer-events-none mx-auto w-full max-w-md select-none opacity-60 grayscale" aria-hidden="true">
+				<div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+					<div class="grid grid-cols-4 border-b border-gray-200 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+						<div class="px-3 py-2">App</div>
+						<div class="px-3 py-2 text-center">DEV</div>
+						<div class="px-3 py-2 text-center">STAGE</div>
+						<div class="px-3 py-2 text-center">PROD</div>
+					</div>
+					{#each ['my-app', 'web', 'worker'] as appName, i}
+						<div class="grid grid-cols-4 border-t border-gray-100 text-xs dark:border-gray-700/60">
+							<div class="px-3 py-2.5 font-mono text-gray-700 dark:text-gray-300">{appName}</div>
+							{#each Array(3) as _, j}
+								<div class="flex items-center justify-center gap-1 px-3 py-2.5">
+									<span class="h-1.5 w-1.5 rounded-full {i === 1 && j === 2 ? 'bg-red-500' : 'bg-green-500'}"></span>
+									<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">v1.{3 - j}</span>
+								</div>
+							{/each}
+						</div>
+					{/each}
+				</div>
+			</div>
+			<div class="mt-8 text-center">
+				<p class="text-base font-semibold text-gray-900 dark:text-white">No environments configured</p>
+				<p class="mt-2 mx-auto max-w-md text-sm text-gray-500 dark:text-gray-400">
+					A matrix like the one above will show your apps × environments grid once you create <code class="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">Environment</code> resources that reference your rollouts.
+				</p>
+			</div>
 		</div>
 	{:else}
 		<!-- Mobile: grouped by ENVIRONMENT (one card per env, app rows inside) -->
