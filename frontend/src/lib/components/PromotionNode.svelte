@@ -50,7 +50,7 @@
 	type="button"
 	onclick={onClick}
 	disabled={!data.href}
-	class="environment-theme-scope group relative flex w-54 flex-col overflow-hidden rounded-xl border border-gray-200/80 bg-white text-left shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-70 disabled:hover:bg-white dark:border-gray-700/80 dark:bg-gray-800 dark:hover:bg-gray-700/40 dark:disabled:hover:bg-gray-800"
+	class="environment-theme-scope group relative flex w-56 flex-col overflow-hidden rounded-xl border border-gray-200/80 bg-white text-left shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-70 disabled:hover:bg-white dark:border-gray-700/80 dark:bg-gray-800 dark:hover:bg-gray-700/40 dark:disabled:hover:bg-gray-800"
 	style={themeStyle}
 >
 	{#if data.showHandles.target}
