@@ -76,21 +76,26 @@
 			class="sticky top-0 z-10 shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 			aria-label="Rollout sections"
 		>
-			<div class="no-scrollbar flex items-stretch gap-0 overflow-x-auto px-2 sm:px-4">
-				{#each tabs.filter((t) => t.show) as t (t.href)}
-					{@const active = isActive(t.href)}
-					<a
-						href={t.href}
-						aria-current={active ? 'page' : undefined}
-						class="group inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors
-							{active
-								? 'border-gray-900 text-gray-900 dark:border-white dark:text-white'
-								: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-					>
-						<t.icon class="h-4 w-4 shrink-0" />
-						<span>{t.label}</span>
-					</a>
-				{/each}
+			<!-- Right-edge fade mask hints that tabs scroll horizontally on
+			     narrow screens; mask is invisible on sm+ where everything fits. -->
+			<div class="relative">
+				<div class="no-scrollbar flex items-stretch gap-0 overflow-x-auto px-2 sm:px-4">
+					{#each tabs.filter((t) => t.show) as t (t.href)}
+						{@const active = isActive(t.href)}
+						<a
+							href={t.href}
+							aria-current={active ? 'page' : undefined}
+							class="group inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors
+								{active
+									? 'border-gray-900 text-gray-900 dark:border-white dark:text-white'
+									: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+						>
+							<t.icon class="h-4 w-4 shrink-0" />
+							<span>{t.label}</span>
+						</a>
+					{/each}
+				</div>
+				<span class="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white to-transparent dark:from-gray-800 sm:hidden" aria-hidden="true"></span>
 			</div>
 		</nav>
 
