@@ -186,6 +186,6 @@
 		zoomOnDoubleClick={false}
 		preventScrolling={false}
 	>
-		<Background bgColor="transparent" patternColor="rgb(203 213 225 / 0.4)" gap={18} size={1} />
+		<Background bgColor="transparent" patternColor="rgb(148 163 184 / 0.25)" gap={18} size={1} />
 	</SvelteFlow>
 </div>
