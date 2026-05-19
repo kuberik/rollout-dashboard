@@ -165,11 +165,12 @@
 		nodesDraggable={false}
 		nodesConnectable={false}
 		elementsSelectable={false}
-		panOnDrag={true}
+		panOnDrag={false}
+		panOnScroll={false}
 		zoomOnScroll={false}
-		zoomOnPinch
-		minZoom={0.5}
-		maxZoom={1.5}
+		zoomOnPinch={false}
+		zoomOnDoubleClick={false}
+		preventScrolling={false}
 	>
 		<Background bgColor="transparent" patternColor="rgb(229 231 235)" gap={20} />
 	</SvelteFlow>

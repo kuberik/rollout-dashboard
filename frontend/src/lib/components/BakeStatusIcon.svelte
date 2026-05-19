@@ -58,8 +58,10 @@
 	const Icon = $derived(statusInfo.icon);
 </script>
 
-{#if bakeStatus === 'InProgress' || bakeStatus === 'Deploying'}
+{#if bakeStatus === 'InProgress'}
 	<StatusSpinner color="yellow" size={spinnerSizes[size]} class={className} />
+{:else if bakeStatus === 'Deploying'}
+	<StatusSpinner color="blue" size={spinnerSizes[size]} class={className} />
 {:else}
 	<Icon class="{sizeClasses[size]} {statusInfo.color} {className}" />
 {/if}

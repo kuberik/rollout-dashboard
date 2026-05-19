@@ -192,7 +192,7 @@
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-yellow-400',
+		Deploying: 'bg-blue-500',
 		Cancelled: 'bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};
@@ -208,7 +208,7 @@
 		Succeeded: 'text-green-700 dark:text-green-400',
 		Failed: 'text-red-700 dark:text-red-400',
 		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Deploying: 'text-yellow-700 dark:text-yellow-400',
+		Deploying: 'text-blue-700 dark:text-blue-400',
 		Cancelled: 'text-gray-500 dark:text-gray-500',
 		None: 'text-gray-400 dark:text-gray-600'
 	};

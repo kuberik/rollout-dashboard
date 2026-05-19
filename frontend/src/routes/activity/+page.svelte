@@ -163,7 +163,7 @@
 		Succeeded: { dotClass: 'bg-green-500', textClass: 'text-green-700 dark:text-green-400', label: 'Succeeded' },
 		Failed:    { dotClass: 'bg-red-500',   textClass: 'text-red-700 dark:text-red-400',     label: 'Failed' },
 		InProgress:{ dotClass: 'bg-yellow-400',textClass: 'text-yellow-700 dark:text-yellow-400', label: 'Baking' },
-		Deploying: { dotClass: 'bg-yellow-400', textClass: 'text-yellow-700 dark:text-yellow-400',   label: 'Deploying' },
+		Deploying: { dotClass: 'bg-blue-500',  textClass: 'text-blue-700 dark:text-blue-400',   label: 'Deploying' },
 		Cancelled: { dotClass: 'bg-gray-400',  textClass: 'text-gray-500 dark:text-gray-500',   label: 'Cancelled' },
 		None:      { dotClass: 'bg-gray-300 dark:bg-gray-600', textClass: 'text-gray-400 dark:text-gray-600', label: 'Idle' },
 	};

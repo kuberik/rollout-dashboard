@@ -103,7 +103,7 @@
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-yellow-400',
+		Deploying: 'bg-blue-500',
 		Cancelled: 'bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};

@@ -19,7 +19,7 @@ violates an enforced item.
 
 ### Colour palette discipline
 
-- Reuse status colours: green (succeeded/healthy), red (failed), yellow (in-progress AND deploying — they share yellow), amber (stuck), gray (pending/no-deploy/behind context). Do NOT use blue for Deploying — that clashes with env themes.
+- Reuse status colours: green (succeeded/healthy), red (failed), yellow (InProgress / baking — RESERVED for baking only), blue (Deploying), amber (stuck), gray (pending/no-deploy/behind context). InProgress and Deploying are NOT the same state and must NOT share a colour.
 - Env theme colours (dev/staging/prod/etc.) belong to env badges and the env band on /apps/[name] pipeline nodes. They do not apply to the card body.
 - Stop adding new colour scopes. Audit existing colour uses before adding any new tint.
 
@@ -54,7 +54,8 @@ violates an enforced item.
 - ✅ Sidebar is collapsible with a toggle at the bottom, state persisted to localStorage.
 - ✅ Magnifying-glass search button removed; ⌘K kbd hint lives on the rollout breadcrumb selector.
 - ✅ ⌘K palette rebuilt as a unified surface (`CommandPalette.svelte`) that searches across rollouts, apps, environments, namespaces, and top-level pages with kind-aware scoring and grouped sections.
-- ✅ /apps/[name] promotion flow now uses Svelte Flow + dagre; auto-reflows LR ↔ TB based on viewport, pannable, zoomable.
+- ✅ /apps/[name] promotion flow now uses Svelte Flow + dagre; auto-reflows LR ↔ TB based on viewport. **Not pannable, not zoomable** — like /rollouts/[ns]/[name]/environments, it fits-to-view only.
+- ✅ Rollout detail layout converted from a side sub-sidebar to horizontal top tabs (Overview / History / Environments / Logs). Eliminates the double-sidebar that used to appear next to the global sidebar.
 - ✅ /apps/[name] version lifecycle replaced the lane-Gantt with a chronological env-chip trail per version. Each row reads as `[ENV] 2h › [ENV] 1h › …` so promotion velocity is visible without a scaled axis.
 
 ## Working principles
