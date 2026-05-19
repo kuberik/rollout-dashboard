@@ -156,6 +156,45 @@
 		return out.sort((x, y) => (x.reason === 'failed' ? 0 : 1) - (y.reason === 'failed' ? 0 : 1)).slice(0, 6);
 	});
 
+	// Per-env summary across apps: how many apps have deploys in each
+	// env, with healthy/failed/active counts. Powers the env tile row.
+	type EnvSummary = {
+		key: string;
+		display: string;
+		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
+		total: number;
+		healthy: number;
+		failed: number;
+		active: number;
+	};
+	const envSummaries = $derived.by<EnvSummary[]>(() => {
+		const map = new Map<string, EnvSummary>();
+		for (const a of apps) {
+			for (const c of a.cells) {
+				if (!c.envName) continue;
+				let s = map.get(c.envName);
+				if (!s) {
+					s = {
+						key: c.envName,
+						display: shortEnvLabel(c.theme) || c.envName,
+						theme: c.theme,
+						total: 0,
+						healthy: 0,
+						failed: 0,
+						active: 0
+					};
+					map.set(c.envName, s);
+				}
+				const status = c.rollout?.status?.history?.[0]?.bakeStatus;
+				s.total++;
+				if (status === 'Succeeded') s.healthy++;
+				else if (status === 'Failed') s.failed++;
+				else if (status === 'InProgress' || status === 'Deploying') s.active++;
+			}
+		}
+		return Array.from(map.values()).sort((a, b) => a.display.localeCompare(b.display));
+	});
+
 	// Fleet roll-up
 	const fleetTotals = $derived.by(() => {
 		let failed = 0, active = 0, stuck = 0, pending = 0, healthy = 0;
@@ -270,6 +309,36 @@
 						<span class="mt-1 truncate text-[11px] uppercase tracking-wider {isZero ? 'text-gray-300 dark:text-gray-600' : 'text-gray-500 dark:text-gray-400'}">{t.label}</span>
 					</div>
 				</button>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Per-env summary tiles. Read-only — these reflect cross-app
+	     health per env, without affecting /apps' app-level filter. -->
+	{#if apps.length > 0 && envSummaries.length > 0}
+		<div
+			class="mb-4 grid gap-2"
+			style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
+		>
+			{#each envSummaries as e}
+				{@const allHealthy = e.total > 0 && e.healthy === e.total}
+				<a
+					href="/envs/{encodeURIComponent(e.key)}"
+					class="environment-theme-scope group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
+				>
+					<div class="flex min-w-0 flex-col">
+						<span class="environment-theme-text truncate text-[11px] font-bold uppercase tracking-wider">{e.display}</span>
+						<span class="font-mono text-xs {allHealthy ? 'text-green-600 dark:text-green-400' : e.failed > 0 ? 'text-red-600 dark:text-red-400' : e.active > 0 ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
+							{e.healthy}/{e.total} healthy{#if e.failed > 0} · {e.failed} failed{/if}{#if e.active > 0} · {e.active} in progress{/if}
+						</span>
+					</div>
+					<div class="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-700/70 sm:flex" aria-hidden="true">
+						{#if e.healthy > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(e.healthy / e.total) * 100}%"></span>{/if}
+						{#if e.active > 0}<span class="bg-yellow-400" style="width:{(e.active / e.total) * 100}%"></span>{/if}
+						{#if e.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(e.failed / e.total) * 100}%"></span>{/if}
+					</div>
+				</a>
 			{/each}
 		</div>
 	{/if}
