@@ -46,13 +46,10 @@ violates an enforced item.
 
 ## Open issues — still to address
 
-1. **Navbar breadcrumb wiring is reversed.** Currently the section-name link (e.g. "Apps") opens the CommandPalette scoped to apps, and the item chevron (e.g. "hello-multi-app ⇅") opens the old ResourceSwitcher modal. The correct mapping is the inverse: the section link should NAVIGATE to /apps; the item ⇅ button should open the CommandPalette scoped to the relevant kind. Two palettes (CommandPalette + ResourceSwitcher) is also inconsistent — the item button should use the same CommandPalette.
-2. **"healthcheck failed" red text still feels ugly on cards** even after softening to plain inline text. Treat failure surface more elegantly — maybe a small icon + label only.
-3. **Gantt has bar artifacts.** Narrow bars (e.g. a version that lived 30 minutes early in the window) still try to render the version label + rank chip and end up showing junk like `( −4`. Need to hide label/chip when the bar is too narrow. Also the timeline window is fixed to "first deploy → now"; should be adjustable / zoomable.
-4. **Promotion flow has a white background sometimes.** SvelteFlow's internal canvas leaks a white fill instead of inheriting the dark container bg. The rollout-detail Environments page doesn't have this — that flow is well-styled, so the AppPromotionFlow should mirror its setup more closely.
-5. **Rollout list (home `/`) still feels out of place** vs the rest of the dashboard. It's the landing page and should be the most inspiring view, but visually it's plainer than /apps and /environments. Needs a real redesign pass — not micro-polish.
-6. **Apps list (`/apps`) is also uninspiring** — the flat grid of plain cards doesn't communicate enough about each app at a glance.
-7. **Mobile rollout-detail tabs STILL show a horizontal scrollbar** despite the `.no-scrollbar` utility. The CSS isn't taking effect — likely overridden by a more-specific webkit selector or the property names are wrong on the user's browser/OS.
+1. **Gantt timeline range is fixed** to "first deploy → now". Should be adjustable / zoomable so the user can focus on a specific window.
+2. **Rollout list (home `/`) still feels out of place** vs the rest of the dashboard. It's the landing page and should be the most inspiring view, but visually it's plainer than /apps and /environments. Needs a real redesign pass — not micro-polish.
+3. **Apps list (`/apps`) is also uninspiring** — the flat grid of plain cards doesn't communicate enough about each app at a glance.
+4. **AppPromotionFlow node sync model** — the env page uses `bind:nodes`/`bind:edges` + a $effect to merge dagre positions with the library's internal `measured` state. My impl uses pure $derived which discards measurements on every re-derivation. Should adopt the env-page pattern for cleaner resize behaviour.
 
 ## Recently addressed (do not regress)
 

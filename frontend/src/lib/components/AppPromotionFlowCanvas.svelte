@@ -1,7 +1,6 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { SvelteFlow, Background, useSvelteFlow, type Node, type Edge } from '@xyflow/svelte';
 	import * as dagre from '@dagrejs/dagre';
 	import PromotionNode from '$lib/components/PromotionNode.svelte';
@@ -28,6 +27,13 @@
 	let containerEl = $state<HTMLDivElement | null>(null);
 	let orientation = $state<'LR' | 'TB'>('LR');
 
+	// Bindable state for SvelteFlow — the library expects to mutate
+	// these (positions, `measured`). Pure $derived would overwrite the
+	// library's internal state on every dep change, so we keep them
+	// as $state and sync via a separate $effect (env-page pattern).
+	let flowNodes = $state<Node[]>([]);
+	let flowEdges = $state<Edge[]>([]);
+
 	function pickOrientation(width: number) {
 		// Below ~620px, stack vertically. Otherwise lay out left→right.
 		orientation = width < 620 ? 'TB' : 'LR';
@@ -45,11 +51,16 @@
 			requestAnimationFrame(() => fitView({ duration: 150, padding: 0.18 }));
 		});
 		ro.observe(containerEl);
-		return () => ro.disconnect();
+		const onWinResize = () => requestAnimationFrame(() => fitView({ duration: 150, padding: 0.18 }));
+		window.addEventListener('resize', onWinResize);
+		return () => {
+			ro.disconnect();
+			window.removeEventListener('resize', onWinResize);
+		};
 	});
 
-	// Build base nodes + edges from cells; then run dagre to position.
-	const layout = $derived.by<{ nodes: Node[]; edges: Edge[] }>(() => {
+	// Derive base node/edge data (no positions yet).
+	const base = $derived.by<{ nodes: Node[]; edges: Edge[] }>(() => {
 		if (cells.length === 0) return { nodes: [], edges: [] };
 
 		const baseNodes: Node[] = cells.map((c, i) => {
@@ -119,6 +130,36 @@
 				} as Edge);
 			}
 		}
+		return { nodes: baseNodes, edges: baseEdges };
+	});
+
+	// Sync base data into flowNodes/flowEdges, preserving library-managed
+	// fields like `measured` on nodes that already exist.
+	$effect(() => {
+		const nextNodes = base.nodes.map((bn) => {
+			const existing = flowNodes.find((fn) => fn.id === bn.id);
+			if (existing) {
+				return { ...bn, measured: existing.measured, position: existing.position };
+			}
+			return bn;
+		});
+		// Only update when ids or data actually changed
+		if (
+			JSON.stringify(nextNodes.map((n) => n.id)) !== JSON.stringify(flowNodes.map((n) => n.id)) ||
+			JSON.stringify(nextNodes.map((n) => n.data)) !== JSON.stringify(flowNodes.map((n) => n.data))
+		) {
+			flowNodes = nextNodes;
+		}
+		if (JSON.stringify(base.edges) !== JSON.stringify(flowEdges)) {
+			flowEdges = base.edges;
+		}
+	});
+
+	// Re-layout effect: reacts to node measurements + orientation
+	$effect(() => {
+		if (flowNodes.length === 0) return;
+		const _trigger = orientation;
+		void _trigger;
 
 		const g = new dagre.graphlib.Graph();
 		g.setDefaultEdgeLabel(() => ({}));
@@ -129,34 +170,40 @@
 			marginx: 12,
 			marginy: 12
 		});
-		for (const n of baseNodes) g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-		for (const e of baseEdges) g.setEdge(e.source, e.target);
-		dagre.layout(g);
 
-		const nodes = baseNodes.map((n) => {
-			const p = g.node(n.id);
-			return {
-				...n,
-				position: { x: p.x - NODE_WIDTH / 2, y: p.y - NODE_HEIGHT / 2 }
-			};
+		flowNodes.forEach((node) => {
+			const width = node.measured?.width ?? NODE_WIDTH;
+			const height = node.measured?.height ?? NODE_HEIGHT;
+			g.setNode(node.id, { width, height });
+		});
+		flowEdges.forEach((edge) => {
+			g.setEdge(edge.source, edge.target);
 		});
 
-		return { nodes, edges: baseEdges };
+		dagre.layout(g);
+
+		let changed = false;
+		const nextNodes = flowNodes.map((node) => {
+			const dn = g.node(node.id);
+			if (!dn) return node;
+			const nextPos = { x: dn.x - dn.width / 2, y: dn.y - dn.height / 2 };
+			if (
+				Math.abs(node.position.x - nextPos.x) > 0.5 ||
+				Math.abs(node.position.y - nextPos.y) > 0.5
+			) {
+				changed = true;
+				return { ...node, position: nextPos };
+			}
+			return node;
+		});
+		if (changed) {
+			flowNodes = nextNodes;
+			requestAnimationFrame(() => fitView({ duration: 150, padding: 0.18 }));
+		}
 	});
 
-	const flowNodes = $derived(layout.nodes);
-	const flowEdges = $derived(layout.edges);
-
-	// Re-fit when layout changes (orientation flip, cells change)
-	$effect(() => {
-		// touch dependencies
-		flowNodes.length;
-		orientation;
-		requestAnimationFrame(() => fitView({ duration: 150, padding: 0.18 }));
-	});
-
-	// Canvas height: in TB mode we stack — grow vertically; in LR mode
-	// a single row of nodes with edge labels above/below — fixed height.
+	// Canvas height: in TB mode stack — grow vertically; in LR mode
+	// a single row of nodes — fixed height.
 	const canvasHeight = $derived(
 		orientation === 'LR'
 			? NODE_HEIGHT + 60
@@ -170,8 +217,8 @@
 	style="height: {canvasHeight}px"
 >
 	<SvelteFlow
-		nodes={flowNodes}
-		edges={flowEdges}
+		bind:nodes={flowNodes}
+		bind:edges={flowEdges}
 		{nodeTypes}
 		fitView
 		fitViewOptions={{ padding: 0.18 }}
