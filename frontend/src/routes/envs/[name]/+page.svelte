@@ -305,22 +305,14 @@
 										{/if}
 									</a>
 									<div class="flex shrink-0 items-center gap-3">
-										<div class="flex flex-col items-end">
-											<span class="truncate font-mono text-xs font-medium text-gray-800 dark:text-gray-200">
-												{latest ? getDisplayVersion(latest.version) : '—'}
-											</span>
-											<span class="text-[10px] {STATUS_TEXT[status] ?? STATUS_TEXT.None}">{STATUS_LABEL[status]}</span>
-										</div>
+										<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">
+											{latest ? getDisplayVersion(latest.version) : '—'}
+										</span>
 										{#if latest?.timestamp}
 											<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(latest.timestamp, $now)}>
 												{formatTimeAgoCompact(latest.timestamp, $now)}
 											</span>
 										{/if}
-										<a
-											href="/apps/{s.appName}"
-											class="text-[10px] text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
-											title="See {s.appName} across all environments"
-										>flow ›</a>
 									</div>
 								</div>
 							</li>

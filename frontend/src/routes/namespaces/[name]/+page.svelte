@@ -224,35 +224,31 @@
 					{@const status = latest?.bakeStatus || 'None'}
 					<a
 						href="/rollouts/{a.rollout.metadata?.namespace}/{a.rollout.metadata?.name}"
-						class="environment-theme-scope group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+						class="environment-theme-scope flex min-w-0 flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
 						style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
 					>
-						<div class="flex items-start justify-between gap-2">
-							<div class="min-w-0">
-								<div class="flex items-center gap-2">
-									<span class="relative flex h-2 w-2 shrink-0">
-										{#if isRunning(status)}
-											<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
-										{/if}
-										<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
-									</span>
-									<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.title}</span>
-								</div>
-								<div class="mt-0.5 pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">{a.rollout.metadata?.name}</div>
+						<!-- Title row -->
+						<div class="flex min-w-0 items-center justify-between gap-2">
+							<div class="flex min-w-0 items-center gap-2">
+								<span class="relative flex h-2 w-2 shrink-0">
+									{#if isRunning(status)}
+										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
+									{/if}
+									<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
+								</span>
+								<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.title}</span>
 							</div>
 							{#if a.envName || a.theme}
 								<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
 							{/if}
 						</div>
-						<div class="mt-3 flex items-end justify-between gap-2">
-							<div class="flex flex-col">
-								<span class="font-mono text-sm font-medium text-gray-800 dark:text-gray-200">
-									{latest ? getDisplayVersion(latest.version) : '—'}
-								</span>
-								<span class="text-[11px] {STATUS_TEXT[status] ?? STATUS_TEXT.None}">{STATUS_LABEL[status]}</span>
-							</div>
+						<!-- Meta row -->
+						<div class="flex min-w-0 items-baseline justify-between gap-2 pl-4">
+							<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">
+								{latest ? getDisplayVersion(latest.version) : '—'}
+							</span>
 							{#if latest?.timestamp}
-								<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(latest.timestamp, $now)}>
+								<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(latest.timestamp, $now)}>
 									{formatTimeAgoCompact(latest.timestamp, $now)}
 								</span>
 							{/if}
