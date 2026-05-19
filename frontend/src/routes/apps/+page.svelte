@@ -169,26 +169,37 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<div class="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Apps</h1>
-			{#if apps.length > 0}
-				<span class="text-sm text-gray-500 dark:text-gray-400">
-					<span class="tabular-nums {fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{fleetTotals.healthy}</span>
-					<span>of {apps.length} healthy</span>
-					{#if fleetTotals.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {fleetTotals.failed} failed</span>{/if}
-					{#if fleetTotals.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {fleetTotals.active} deploying</span>{/if}
-					{#if fleetTotals.drift > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400">· {fleetTotals.drift} drifting</span>{/if}
-					{#if fleetTotals.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {fleetTotals.pending} pending</span>{/if}
-				</span>
-				{#if fleetNewestDeploy}
-					<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(fleetNewestDeploy, $now)}`}>
-						last deploy {formatTimeAgoCompact(fleetNewestDeploy, $now)}
+	<div class="mb-6">
+		<div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+			<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+				<h1 class="text-2xl font-light text-gray-900 dark:text-white">Apps</h1>
+				{#if apps.length > 0}
+					<span class="text-sm text-gray-500 dark:text-gray-400">
+						<span class="tabular-nums {fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{fleetTotals.healthy}</span>
+						<span>of {apps.length} healthy</span>
+						{#if fleetTotals.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {fleetTotals.failed} failed</span>{/if}
+						{#if fleetTotals.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {fleetTotals.active} deploying</span>{/if}
+						{#if fleetTotals.drift > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400">· {fleetTotals.drift} drifting</span>{/if}
+						{#if fleetTotals.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {fleetTotals.pending} pending</span>{/if}
 					</span>
+					{#if fleetNewestDeploy}
+						<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(fleetNewestDeploy, $now)}`}>
+							last deploy {formatTimeAgoCompact(fleetNewestDeploy, $now)}
+						</span>
+					{/if}
 				{/if}
-			{/if}
+			</div>
+			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
-		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
+		{#if apps.length > 0}
+			<div class="mt-3 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" title={`${fleetTotals.healthy} healthy · ${fleetTotals.active} deploying · ${fleetTotals.drift} drifting · ${fleetTotals.failed} failed · ${fleetTotals.pending} pending`}>
+				{#if fleetTotals.healthy > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(fleetTotals.healthy / apps.length) * 100}%"></span>{/if}
+				{#if fleetTotals.active > 0}<span class="bg-yellow-400" style="width:{(fleetTotals.active / apps.length) * 100}%"></span>{/if}
+				{#if fleetTotals.drift > 0}<span class="bg-orange-400 dark:bg-orange-500" style="width:{(fleetTotals.drift / apps.length) * 100}%"></span>{/if}
+				{#if fleetTotals.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(fleetTotals.failed / apps.length) * 100}%"></span>{/if}
+				{#if fleetTotals.pending > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{(fleetTotals.pending / apps.length) * 100}%"></span>{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if apps.length > 0 && !query.isLoading}

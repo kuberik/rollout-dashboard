@@ -297,26 +297,37 @@
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Header: title + inline status summary -->
-	<div class="mb-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
-			{#if cards.length > 0}
-				<span class="text-sm text-gray-500 dark:text-gray-400">
-					<span class="tabular-nums {counts.succeeded === cards.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{counts.succeeded}</span>
-					<span>of {cards.length} healthy</span>
-					{#if counts.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {counts.failed} failed</span>{/if}
-					{#if counts.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} deploying</span>{/if}
-					{#if counts.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {counts.pending} pending</span>{/if}
-				</span>
-				{#if recent24h > 0}
-					<a href="/activity" class="text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300" title="View activity">
-						{recent24h} deploy{recent24h === 1 ? '' : 's'} · 24h
-					</a>
+	<!-- Page hero: title + inline status + fleet composition bar -->
+	<div class="mb-5">
+		<div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+			<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+				<h1 class="text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
+				{#if cards.length > 0}
+					<span class="text-sm text-gray-500 dark:text-gray-400">
+						<span class="tabular-nums {counts.succeeded === cards.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{counts.succeeded}</span>
+						<span>of {cards.length} healthy</span>
+						{#if counts.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {counts.failed} failed</span>{/if}
+						{#if counts.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} deploying</span>{/if}
+						{#if counts.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {counts.pending} pending</span>{/if}
+					</span>
+					{#if recent24h > 0}
+						<a href="/activity" class="text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300" title="View activity">
+							{recent24h} deploy{recent24h === 1 ? '' : 's'} · 24h
+						</a>
+					{/if}
 				{/if}
-			{/if}
+			</div>
+			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
-		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
+		{#if cards.length > 0}
+			<!-- Fleet composition bar: visualize the breakdown across all rollouts -->
+			<div class="mt-3 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" title={`${counts.succeeded} healthy · ${counts.active} deploying · ${counts.failed} failed · ${counts.pending} pending`}>
+				{#if counts.succeeded > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(counts.succeeded / cards.length) * 100}%"></span>{/if}
+				{#if counts.active > 0}<span class="bg-yellow-400" style="width:{(counts.active / cards.length) * 100}%"></span>{/if}
+				{#if counts.failed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(counts.failed / cards.length) * 100}%"></span>{/if}
+				{#if counts.pending > 0}<span class="bg-gray-300 dark:bg-gray-600" style="width:{(counts.pending / cards.length) * 100}%"></span>{/if}
+			</div>
+		{/if}
 	</div>
 
 	<!-- Filter bar: search + status chips + env chips + clear -->
