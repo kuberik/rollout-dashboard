@@ -11,6 +11,7 @@
 	import { LayersSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
+	import DriftBadge from '$lib/components/DriftBadge.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -367,9 +368,7 @@
 												<div class="flex min-w-0 flex-col gap-0.5">
 													<div class="flex min-w-0 items-center gap-2">
 														<span class="truncate text-base font-bold text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
-														{#if drift}
-															<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[9px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
-														{/if}
+														{#if drift}<DriftBadge size="xs" />{/if}
 													</div>
 													<div class="flex min-w-0 items-center gap-2">
 														<span class="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
@@ -485,9 +484,7 @@
 								</div>
 								<div class="flex items-center gap-2 pl-3.5">
 									<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{appName}</span>
-									{#if drift}
-										<span class="inline-flex items-center rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
-									{/if}
+									{#if drift}<DriftBadge />{/if}
 								</div>
 							</a>
 

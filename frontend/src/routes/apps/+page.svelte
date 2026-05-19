@@ -10,6 +10,7 @@
 	import { Spinner } from 'flowbite-svelte';
 	import { RocketOutline, SearchOutline } from 'flowbite-svelte-icons';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import DriftBadge from '$lib/components/DriftBadge.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -299,9 +300,7 @@
 								<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{app.name}</span>
 							</div>
 						</div>
-						{#if drift}
-							<span class="shrink-0 self-start rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" title={`Live versions: ${app.currentVersions.join(', ')}`}>drift</span>
-						{/if}
+						{#if drift}<DriftBadge versions={app.currentVersions} />{/if}
 					</div>
 					<!-- Env strip: env badge + version per env -->
 					<div class="flex flex-wrap gap-x-2 gap-y-1.5 pl-12">
