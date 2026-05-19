@@ -407,12 +407,16 @@
 								type="button"
 								data-idx={idx}
 								aria-current={r.isCurrent ? 'page' : undefined}
+								title={r.isCurrent ? 'Currently open' : undefined}
 								class="group relative flex w-full items-center gap-3 overflow-hidden rounded-lg px-3 py-2 text-left transition-colors {isActive
 									? 'bg-blue-50 dark:bg-blue-900/40'
 									: 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
 								onclick={() => pick(r)}
 								onmouseenter={() => (selectedIndex = idx)}
 							>
+								{#if r.isCurrent}
+									<span class="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-blue-500 dark:bg-blue-400" aria-hidden="true"></span>
+								{/if}
 								<!-- Type icon -->
 								<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400">
 									<Icon class="h-3.5 w-3.5" />
