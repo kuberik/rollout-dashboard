@@ -14,6 +14,7 @@
 		GridOutline
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import type { Rollout, Environment } from '../types';
 
 	const query = createQuery(() =>
@@ -286,29 +287,6 @@
 		return n;
 	});
 
-	// 7-day deploy volume sparkline: buckets[0] = 6 days ago, buckets[6] = today.
-	// Counts every history entry across all rollouts, not just the latest one,
-	// so the sparkline reflects real activity volume.
-	const weekVolume = $derived.by(() => {
-		const day = 24 * 60 * 60 * 1000;
-		const buckets = [0, 0, 0, 0, 0, 0, 0];
-		const todayStart = (() => {
-			const d = new Date($now);
-			d.setHours(0, 0, 0, 0);
-			return d.getTime();
-		})();
-		for (const card of cards) {
-			for (const h of card.rollout.status?.history ?? []) {
-				if (!h.timestamp) continue;
-				const ts = new Date(h.timestamp).getTime();
-				const daysAgo = Math.floor((todayStart - ts) / day);
-				const idx = 6 - daysAgo;
-				if (idx >= 0 && idx <= 6) buckets[idx]++;
-			}
-		}
-		return buckets;
-	});
-	const weekMax = $derived(Math.max(1, ...weekVolume));
 
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
@@ -337,16 +315,7 @@
 					{#if recent24h > 0}
 						<a href="/activity" class="inline-flex items-center gap-2 text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300" title="View activity">
 							<span>{recent24h} deploy{recent24h === 1 ? '' : 's'} · 24h</span>
-							<!-- 7-day volume sparkline -->
-							<span class="flex h-4 w-14 items-end gap-px" aria-label="Deploys per day, last 7 days">
-								{#each weekVolume as count, i}
-									<span
-										class="flex-1 rounded-sm {count > 0 ? 'bg-blue-300 dark:bg-blue-500/70' : 'bg-gray-200 dark:bg-gray-700'}"
-										style="height: {count === 0 ? '8%' : Math.max(15, (count / weekMax) * 100)}%"
-										title={`${count} deploy${count === 1 ? '' : 's'} ${i === 6 ? 'today' : i === 5 ? 'yesterday' : `${6 - i}d ago`}`}
-									></span>
-								{/each}
-							</span>
+							<DeployVolumeSparkline {rollouts} />
 						</a>
 					{/if}
 				{/if}

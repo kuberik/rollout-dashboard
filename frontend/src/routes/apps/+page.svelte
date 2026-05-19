@@ -9,6 +9,7 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
 	import { RocketOutline, SearchOutline } from 'flowbite-svelte-icons';
+	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -187,6 +188,7 @@
 							last deploy {formatTimeAgoCompact(fleetNewestDeploy, $now)}
 						</span>
 					{/if}
+					<DeployVolumeSparkline {rollouts} />
 				{/if}
 			</div>
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}

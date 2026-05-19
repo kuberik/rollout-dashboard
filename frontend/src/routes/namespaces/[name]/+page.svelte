@@ -13,6 +13,7 @@
 		LayersSolid
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import type { Rollout, Environment } from '../../../types';
 
 	const namespace = $derived(page.params.name as string);
@@ -284,6 +285,7 @@
 							last deploy {formatTimeAgoCompact(newestDeploy, $now)}
 						</span>
 					{/if}
+					<DeployVolumeSparkline rollouts={apps.map((a) => a.rollout)} />
 				</div>
 				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 			</div>
