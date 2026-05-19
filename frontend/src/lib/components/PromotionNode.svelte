@@ -13,6 +13,7 @@
 		categorizeFailure
 	} from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
+	import { getStatusCircleClass } from '$lib/bake-status';
 	import { getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import type { Rollout } from '../../types';
 	import { now } from '$lib/stores/time';
@@ -69,9 +70,10 @@
 	<div class="flex flex-1 flex-col gap-3 p-4">
 		{#if latest}
 			<div class="flex items-center gap-3">
-				<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {status === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : status === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : isRunning ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700'}">
+				<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
 					{#if isRunning}
-						<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400/40"></span>
+						{@const pingColor = status === 'Deploying' ? 'bg-blue-400/40' : 'bg-yellow-400/40'}
+						<span class="absolute inline-flex h-full w-full animate-ping rounded-full {pingColor}"></span>
 					{/if}
 					<BakeStatusIcon bakeStatus={status} size="medium" />
 				</span>
