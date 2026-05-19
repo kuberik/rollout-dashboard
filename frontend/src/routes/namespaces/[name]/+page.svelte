@@ -192,7 +192,7 @@
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
+		Deploying: 'bg-yellow-400',
 		Cancelled: 'bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};
@@ -208,7 +208,7 @@
 		Succeeded: 'text-green-700 dark:text-green-400',
 		Failed: 'text-red-700 dark:text-red-400',
 		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Deploying: 'text-blue-700 dark:text-blue-400',
+		Deploying: 'text-yellow-700 dark:text-yellow-400',
 		Cancelled: 'text-gray-500 dark:text-gray-500',
 		None: 'text-gray-400 dark:text-gray-600'
 	};
@@ -348,8 +348,8 @@
 					<a
 						href="/rollouts/{a.rollout.metadata?.namespace}/{a.rollout.metadata?.name}"
 						class="environment-theme-scope group flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
-							{status === 'Failed' ? 'card-failed' : ''}
-							{isRunning(status) ? 'card-active' : ''}"
+							
+							"
 						style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
 					>
 						<!-- Title row: status circle + title/name + env badge -->
@@ -382,8 +382,8 @@
 							{/if}
 						</div>
 						{#if failureCategory}
-							<div class="truncate rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700 dark:bg-red-900/15 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
-								<span class="font-semibold">{failureCategory}</span> failed{#if previousSucceeded}<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{previousSucceeded}</span></span>{/if}
+							<div class="truncate pl-12 text-xs text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>
+								<span class="font-medium">{failureCategory}</span> failed{#if previousSucceeded}<span class="text-gray-400 dark:text-gray-500"> · was <span class="font-mono">{previousSucceeded}</span></span>{/if}
 							</div>
 						{/if}
 					</a>

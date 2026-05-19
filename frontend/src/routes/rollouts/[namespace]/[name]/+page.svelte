@@ -1419,8 +1419,8 @@
 						<!-- ══ STATUS CARD ══ -->
 						<div
 							class="environment-theme-scope overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800
-								{latestEntry.bakeStatus === 'Failed' ? 'card-failed' : ''}
-								{latestEntry.bakeStatus === 'InProgress' || latestEntry.bakeStatus === 'Deploying' ? 'card-active' : ''}"
+								
+								"
 							style={rolloutThemeStyle}
 						>
 							<div class="min-w-0 px-5 py-5">

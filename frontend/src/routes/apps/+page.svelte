@@ -103,7 +103,7 @@
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
+		Deploying: 'bg-yellow-400',
 		Cancelled: 'bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};
@@ -324,8 +324,8 @@
 				<a
 					href="/apps/{app.name}"
 					class="group flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
-						{sk === 'failed' ? 'card-failed' : ''}
-						{sk === 'active' ? 'card-active' : ''}"
+						
+						"
 				>
 					<!-- Title row: status icon + title/name + stuck pill -->
 					<div class="flex min-w-0 items-start justify-between gap-3">

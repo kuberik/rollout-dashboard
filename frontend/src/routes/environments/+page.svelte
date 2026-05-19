@@ -93,7 +93,7 @@
 		Succeeded:  'bg-green-500',
 		Failed:     'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying:  'bg-blue-500',
+		Deploying:  'bg-yellow-400',
 		Cancelled:  'bg-gray-400',
 		None:       'bg-gray-300 dark:bg-gray-600',
 	};
@@ -102,7 +102,7 @@
 		Succeeded:  'text-green-700 dark:text-green-400',
 		Failed:     'text-red-700 dark:text-red-400',
 		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Deploying:  'text-blue-700 dark:text-blue-400',
+		Deploying:  'text-yellow-700 dark:text-yellow-400',
 		Cancelled:  'text-gray-500 dark:text-gray-500',
 		None:       'text-gray-400 dark:text-gray-600',
 	};
@@ -380,7 +380,7 @@
 									{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
 									{@const behind = behindFor(appName, envName)}
 									{@const stuck = stuckFor(appName, envName, $now)}
-									<li class="{status === 'Failed' ? 'card-failed' : ''} {isRunning(status) ? 'card-active' : ''}">
+									<li class="">
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
 											class="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
@@ -405,20 +405,16 @@
 														{/if}
 													</div>
 													{#if failureCategory}
-														<div class="mt-1 inline-flex max-w-fit truncate rounded-md bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-900/15 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
-															<span class="font-semibold">{failureCategory}</span>&nbsp;failed
+														<div class="mt-1 truncate text-[11px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>
+															<span class="font-medium">{failureCategory}</span> failed
 														</div>
 													{:else if behind}
-														<div class="mt-1 inline-flex max-w-fit items-center gap-1 truncate rounded-md bg-orange-50 px-2 py-0.5 text-[11px] text-orange-700 dark:bg-orange-900/15 dark:text-orange-300">
-															<span aria-hidden="true">←</span>
+														<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
 															{#if behind.behindBy && behind.behindBy > 0}
-																<span class="font-semibold">{behind.behindBy}</span>
-																<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+																{behind.behindBy} {behind.behindBy === 1 ? 'version' : 'versions'} behind <span class="font-medium text-gray-700 dark:text-gray-300">{behind.fromEnv}</span>
 															{:else}
-																<span>behind</span>
+																behind <span class="font-medium text-gray-700 dark:text-gray-300">{behind.fromEnv}</span>
 															{/if}
-															<span class="font-mono">{behind.version}</span>
-															<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
 														</div>
 													{/if}
 												</div>
@@ -513,8 +509,8 @@
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
 											class="group block overflow-hidden rounded-lg bg-gray-50/50 px-3 py-2.5 transition-colors hover:bg-white dark:bg-gray-900/30 dark:hover:bg-gray-800
-												{status === 'Failed' ? 'card-failed' : ''}
-												{isRunning(status) ? 'card-active' : ''}"
+												
+												"
 										>
 											<div class="flex items-center gap-2">
 												<span class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {status === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : status === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : isRunning(status) ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
@@ -539,19 +535,12 @@
 												</div>
 											</div>
 											{#if behind}
-												<div
-													class="mt-1.5 ml-8 inline-flex max-w-fit items-center gap-x-1 truncate rounded-md bg-orange-50 px-1.5 py-0.5 text-[10px] text-orange-700 dark:bg-orange-900/15 dark:text-orange-300"
-													title="behind {behind.version} on {behind.fromEnv}"
-												>
-													<span aria-hidden="true">←</span>
+												<div class="mt-1 ml-8 truncate text-[10px] text-gray-500 dark:text-gray-400" title="behind {behind.version} on {behind.fromEnv}">
 													{#if behind.behindBy && behind.behindBy > 0}
-														<span class="font-semibold">{behind.behindBy}</span>
-														<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+														{behind.behindBy} {behind.behindBy === 1 ? 'version' : 'versions'} behind <span class="font-medium text-gray-700 dark:text-gray-300">{behind.fromEnv}</span>
 													{:else}
-														<span>behind</span>
+														behind <span class="font-medium text-gray-700 dark:text-gray-300">{behind.fromEnv}</span>
 													{/if}
-													<span class="font-mono">{behind.version}</span>
-													<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
 												</div>
 											{/if}
 										</a>

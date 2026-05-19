@@ -292,7 +292,7 @@
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
+		Deploying: 'bg-yellow-400',
 		Cancelled: 'bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};
@@ -491,8 +491,8 @@
 							<a
 								href={`/rollouts/${c.ns}/${c.name}`}
 								class="environment-theme-scope group relative flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40
-									{c.statusKey === 'failed' ? 'card-failed' : ''}
-									{c.statusKey === 'active' ? 'card-active' : ''}"
+									
+									"
 								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 							>
 								<!-- Title row: large status icon + title/name, env badge -->
@@ -527,19 +527,19 @@
 									{/if}
 								</div>
 
-								<!-- Failure or behind hint -->
+								<!-- Failure or behind hint: inline text, no boxed background -->
 								{#if c.failureCategory}
-									<div class="truncate rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700 dark:bg-red-900/15 dark:text-red-300" title={c.bakeStatusMessage ?? ''}>
-										<span class="font-semibold">{c.failureCategory}</span> failed{#if c.previousSucceededVersion}
+									<div class="truncate pl-12 text-xs text-red-600 dark:text-red-400" title={c.bakeStatusMessage ?? ''}>
+										<span class="font-medium">{c.failureCategory}</span> failed{#if c.previousSucceededVersion}
 											<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{c.previousSucceededVersion}</span></span>
 										{/if}
 									</div>
 								{:else if c.behind}
-									<div class="truncate rounded-md bg-orange-50 px-3 py-1.5 text-xs text-orange-700 dark:bg-orange-900/15 dark:text-orange-300" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
+									<div class="truncate pl-12 text-xs text-gray-500 dark:text-gray-400" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
 										{#if c.behind.behindBy && c.behind.behindBy > 0}
-											<span class="font-semibold">{c.behind.behindBy}</span> {c.behind.behindBy === 1 ? 'version' : 'versions'} behind {c.behind.fromEnv}
+											{c.behind.behindBy} {c.behind.behindBy === 1 ? 'version' : 'versions'} behind <span class="font-medium text-gray-700 dark:text-gray-300">{c.behind.fromEnv}</span>
 										{:else}
-											behind {c.behind.fromEnv}
+											behind <span class="font-medium text-gray-700 dark:text-gray-300">{c.behind.fromEnv}</span>
 										{/if}
 									</div>
 								{/if}

@@ -171,7 +171,7 @@
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
 		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
+		Deploying: 'bg-yellow-400',
 		Cancelled: 'bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};
@@ -187,7 +187,7 @@
 		Succeeded: 'text-green-700 dark:text-green-400',
 		Failed: 'text-red-700 dark:text-red-400',
 		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Deploying: 'text-blue-700 dark:text-blue-400',
+		Deploying: 'text-yellow-700 dark:text-yellow-400',
 		Cancelled: 'text-gray-500 dark:text-gray-500',
 		None: 'text-gray-400 dark:text-gray-600'
 	};
@@ -345,7 +345,7 @@
 							{@const status = latest?.bakeStatus || 'None'}
 							{@const behind = behindForSlot(s)}
 							{@const promote = behind ? null : readyToPromote(s)}
-							<li class="group {status === 'Failed' ? 'card-failed' : ''} {isRunning(status) ? 'card-active' : ''}">
+							<li class="group">
 								<div class="flex items-center justify-between gap-4 px-5 py-4">
 									<a
 										href={s.rollout ? `/rollouts/${s.rollout.metadata?.namespace}/${s.rollout.metadata?.name}` : '#'}
@@ -373,27 +373,20 @@
 											{#if status === 'Failed'}
 												{@const cat = categorizeFailure(latest?.bakeStatusMessage)}
 												{@const prev = previousSucceededVersion(s.rollout, latest?.version ? getDisplayVersion(latest.version) : null)}
-												<div class="mt-1 inline-flex max-w-fit truncate rounded-md bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-900/15 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
-													<span class="font-semibold">{cat ?? 'failed'}</span>&nbsp;failed{#if prev}<span class="text-red-500/70 dark:text-red-400/70">&nbsp;· was&nbsp;<span class="font-mono">{prev}</span></span>{/if}
+												<div class="mt-1 truncate text-[11px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>
+													<span class="font-medium">{cat ?? 'failed'}</span> failed{#if prev}<span class="text-gray-400 dark:text-gray-500"> · was <span class="font-mono">{prev}</span></span>{/if}
 												</div>
 											{:else if behind}
-												<div class="mt-1 inline-flex max-w-fit items-center gap-1 truncate rounded-md bg-orange-50 px-2 py-0.5 text-[11px] text-orange-700 dark:bg-orange-900/15 dark:text-orange-300">
-													<span aria-hidden="true">←</span>
+												<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
 													{#if behind.behindBy && behind.behindBy > 0}
-														<span class="font-semibold">{behind.behindBy}</span>
-														<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+														{behind.behindBy} {behind.behindBy === 1 ? 'version' : 'versions'} behind <span class="font-medium text-gray-700 dark:text-gray-300">{behind.fromEnv}</span>
 													{:else}
-														<span>behind</span>
+														behind <span class="font-medium text-gray-700 dark:text-gray-300">{behind.fromEnv}</span>
 													{/if}
-													<span class="font-mono">{behind.version}</span>
-													<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
 												</div>
 											{:else if promote}
-												<div class="mt-1 inline-flex max-w-fit items-center gap-1 truncate rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-900/15 dark:text-emerald-300">
-													<span aria-hidden="true">→</span>
-													<span class="font-mono">{promote.version}</span>
-													<span>ready for</span>
-													<span class="font-semibold uppercase tracking-wider">{promote.toEnv}</span>
+												<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+													<span class="font-mono">{promote.version}</span> ready for <span class="font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300">{promote.toEnv}</span>
 												</div>
 											{/if}
 										</div>
