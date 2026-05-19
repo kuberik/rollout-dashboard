@@ -3,12 +3,11 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
+	import { getDisplayVersion } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
-	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
-	import { LayersSolid, RocketOutline, ChevronRightOutline, ClockSolid } from 'flowbite-svelte-icons';
+	import { RocketOutline } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -133,86 +132,22 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<div class="mb-4 flex items-center justify-between">
-		<div>
-			<h1 class="text-lg font-semibold text-gray-900 dark:text-white">Apps</h1>
-			<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Each app and where it's deployed</p>
+	<div class="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+		<div class="flex items-baseline gap-3">
+			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Apps</h1>
+			{#if apps.length > 0}
+				<span class="text-sm text-gray-500 dark:text-gray-400">
+					<span class="tabular-nums {fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{fleetTotals.healthy}</span>
+					<span>of {apps.length} healthy</span>
+					{#if fleetTotals.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {fleetTotals.failed} failed</span>{/if}
+					{#if fleetTotals.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {fleetTotals.active} deploying</span>{/if}
+					{#if fleetTotals.drift > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400">· {fleetTotals.drift} drifting</span>{/if}
+					{#if fleetTotals.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {fleetTotals.pending} pending</span>{/if}
+				</span>
+			{/if}
 		</div>
-		<div class="flex items-center gap-3">
-			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
-		</div>
+		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 	</div>
-
-	{#if apps.length > 0}
-		<!-- Fleet summary banner -->
-		<section class="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-			<div class="flex flex-wrap items-baseline justify-between gap-4">
-				<div class="flex items-baseline gap-1.5">
-					<span class="text-3xl font-light {fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{fleetTotals.healthy}</span>
-					<span class="text-sm text-gray-400 dark:text-gray-500">/ {apps.length} apps healthy</span>
-				</div>
-				<div class="flex flex-wrap items-center gap-3">
-					{#if fleetTotals.active > 0}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
-							<span class="relative flex h-2 w-2">
-								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-								<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
-							</span>
-							{fleetTotals.active} deploying
-						</span>
-					{/if}
-					{#if fleetTotals.drift > 0}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-orange-700 dark:text-orange-400">
-							<span class="h-2 w-2 rounded-full bg-orange-500"></span>
-							{fleetTotals.drift} drifting
-						</span>
-					{/if}
-					{#if fleetTotals.pending > 0}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
-							<span class="h-2 w-2 rounded-full bg-gray-400 dark:bg-gray-500"></span>
-							{fleetTotals.pending} pending
-						</span>
-					{/if}
-					{#if fleetTotals.failed > 0}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
-							<span class="h-2 w-2 rounded-full bg-red-500"></span>
-							{fleetTotals.failed} failed
-						</span>
-					{/if}
-					{#if fleetTotals.failed === 0 && fleetTotals.active === 0 && fleetTotals.drift === 0 && fleetTotals.pending === 0}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400">
-							<span class="h-2 w-2 rounded-full bg-green-500"></span>
-							All healthy
-						</span>
-					{/if}
-					{#if fleetNewestDeploy}
-						<span class="inline-flex items-center gap-1 font-mono text-[11px] text-gray-400 dark:text-gray-500" title="Newest deploy {formatTimeAgo(fleetNewestDeploy, $now)}">
-							<ClockSolid class="h-3 w-3" />
-							{formatTimeAgoCompact(fleetNewestDeploy, $now)}
-						</span>
-					{/if}
-				</div>
-			</div>
-			<!-- Composition bar -->
-			<div class="mt-3 flex h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700/60">
-				{#if fleetTotals.healthy > 0}
-					<span class="bg-green-500" style="width:{(fleetTotals.healthy / apps.length) * 100}%"></span>
-				{/if}
-				{#if fleetTotals.active > 0}
-					<span class="bg-yellow-400" style="width:{(fleetTotals.active / apps.length) * 100}%"></span>
-				{/if}
-				{#if fleetTotals.drift > 0}
-					<span class="bg-orange-500" style="width:{(fleetTotals.drift / apps.length) * 100}%"></span>
-				{/if}
-				{#if fleetTotals.pending > 0}
-					<span class="bg-gray-400 dark:bg-gray-500" style="width:{(fleetTotals.pending / apps.length) * 100}%"></span>
-				{/if}
-				{#if fleetTotals.failed > 0}
-					<span class="bg-red-500" style="width:{(fleetTotals.failed / apps.length) * 100}%"></span>
-				{/if}
-			</div>
-		</section>
-	{/if}
 
 	{#if query.isLoading}
 		<div class="space-y-3">
@@ -240,39 +175,34 @@
 				{@const drift = app.currentVersions.length > 1}
 				<a
 					href="/apps/{app.name}"
-					class="group flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+					class="flex min-w-0 flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
 				>
-					<div class="flex items-start justify-between gap-2">
-						<div class="min-w-0">
-							<div class="flex items-center gap-2">
-								{#if app.failedCount > 0}
-									<span class="h-2 w-2 shrink-0 rounded-full bg-red-500"></span>
-								{:else if app.activeCount > 0}
-									<span class="relative flex h-2 w-2 shrink-0">
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-										<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
-									</span>
-								{:else}
-									<span class="h-2 w-2 shrink-0 rounded-full bg-green-400 dark:bg-green-500"></span>
-								{/if}
-								<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{app.title}</span>
-							</div>
-							<div class="mt-0.5 flex items-center gap-2 pl-4 font-mono text-[11px] text-gray-400 dark:text-gray-500">
-								<span class="truncate">{app.name}</span>
-								{#if drift}
-									<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
-								{/if}
-							</div>
+					<!-- Title row -->
+					<div class="flex min-w-0 items-center justify-between gap-2">
+						<div class="flex min-w-0 items-center gap-2">
+							{#if app.failedCount > 0}
+								<span class="h-2 w-2 shrink-0 rounded-full bg-red-500"></span>
+							{:else if app.activeCount > 0}
+								<span class="relative flex h-2 w-2 shrink-0">
+									<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+									<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
+								</span>
+							{:else}
+								<span class="h-2 w-2 shrink-0 rounded-full bg-green-400 dark:bg-green-500"></span>
+							{/if}
+							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{app.title}</span>
 						</div>
-						<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" />
+						{#if drift}
+							<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
+						{/if}
 					</div>
-					<!-- Env strip: env badge + current version per env -->
-					<div class="flex flex-wrap gap-x-2 gap-y-1.5">
+					<!-- Env strip: env badge + version per env -->
+					<div class="flex flex-wrap gap-x-2 gap-y-1.5 pl-4">
 						{#each app.cells as c}
 							{@const latest = c.rollout?.status?.history?.[0]}
 							{@const status = latest?.bakeStatus || 'None'}
 							{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
-							<div class="inline-flex items-center gap-1">
+							<div class="inline-flex items-baseline gap-1">
 								<span
 									class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
 									style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
@@ -289,18 +219,8 @@
 							</div>
 						{/each}
 					</div>
-					{#if app.lastDeploy}
-						<div class="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
-							<span>last deploy</span>
-							<span class="font-mono" title={formatTimeAgo(app.lastDeploy, $now)}>{formatTimeAgoCompact(app.lastDeploy, $now)}</span>
-						</div>
-					{/if}
 				</a>
 			{/each}
 		</div>
-
-		<p class="mt-4 text-center text-[11px] text-gray-400 dark:text-gray-600">
-			{apps.length} app{apps.length === 1 ? '' : 's'}
-		</p>
 	{/if}
 </div>

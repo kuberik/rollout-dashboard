@@ -8,7 +8,7 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
-	import { CheckCircleSolid, ExclamationCircleSolid, LayersSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
+	import { LayersSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -223,41 +223,19 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Header -->
-	<div class="mb-6 flex items-center justify-between">
-		<div>
-			<h1 class="text-lg font-semibold text-gray-900 dark:text-white">Environments</h1>
-			<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Cross-environment deployment status</p>
+	<div class="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+		<div class="flex items-baseline gap-3">
+			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Environments</h1>
+			{#if rollouts.length > 0}
+				<span class="text-sm text-gray-500 dark:text-gray-400">
+					{envNames.length} env{envNames.length === 1 ? '' : 's'} · {sortedAppNames.length} app{sortedAppNames.length === 1 ? '' : 's'}
+					{#if failedCount > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
+					{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
+					{#if pendingPromotionCount > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400" title="At least one earlier-tier env has a different succeeded version">· {pendingPromotionCount} behind</span>{/if}
+				</span>
+			{/if}
 		</div>
-		<div class="flex items-center gap-3">
-			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
-			<div class="flex items-center gap-2 text-xs">
-				{#if failedCount > 0}
-					<span class="flex items-center gap-1 font-medium text-red-600 dark:text-red-400">
-						<ExclamationCircleSolid class="h-3.5 w-3.5" />{failedCount} failed
-					</span>
-				{/if}
-				{#if activeCount > 0}
-					<span class="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-400">
-						<span class="relative flex h-2 w-2">
-							<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-							<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
-						</span>
-						{activeCount} deploying
-					</span>
-				{/if}
-				{#if pendingPromotionCount > 0}
-					<span class="flex items-center gap-1 font-medium text-orange-600 dark:text-orange-400" title="At least one earlier-tier env has a different succeeded version">
-						<span class="h-2 w-2 rounded-full bg-orange-500"></span>{pendingPromotionCount} pending
-					</span>
-				{/if}
-				{#if failedCount === 0 && activeCount === 0 && pendingPromotionCount === 0 && rollouts.length > 0}
-					<span class="flex items-center gap-1 text-green-600 dark:text-green-400">
-						<CheckCircleSolid class="h-3.5 w-3.5" />All healthy
-					</span>
-				{/if}
-			</div>
-		</div>
+		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 	</div>
 
 	{#if query.isLoading}
@@ -551,9 +529,5 @@
 				</div>
 			</div>
 		</div>
-
-		<p class="mt-3 text-center text-[11px] text-gray-400 dark:text-gray-600">
-			{sortedAppNames.length} app{sortedAppNames.length === 1 ? '' : 's'} · {envNames.length} environment{envNames.length === 1 ? '' : 's'}
-		</p>
 	{/if}
 </div>
