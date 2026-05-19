@@ -13,6 +13,7 @@
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../../types';
 
@@ -333,9 +334,10 @@
 			>Clear filters</button>
 		</div>
 	{:else}
-		<!-- Single dense panel — same chrome as /envs/[name]. Each app is
-		     a row; env strip lives on the right side on sm+, wraps below
-		     the title on mobile. -->
+		<!-- Two-column: dense app list + activity rail. Same shape as
+		     /envs/[name]. Stacks on mobile. -->
+		<div class="grid gap-6 lg:grid-cols-5">
+			<div class="lg:col-span-3">
 		<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 				{#each filteredApps as app}
@@ -396,6 +398,11 @@
 					</li>
 				{/each}
 			</ul>
+		</div>
+			</div>
+			<aside class="lg:col-span-2">
+				<ActivityRail {rollouts} {environments} limit={18} />
+			</aside>
 		</div>
 	{/if}
 </div>

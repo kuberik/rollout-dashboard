@@ -17,6 +17,7 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
+	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../types';
 
@@ -441,8 +442,11 @@
 			>Clear filters</button>
 		</div>
 	{:else}
-		<div class="space-y-8">
-			{#each grouped as g (g.ns)}
+		<!-- Two-column: namespace-grouped rollout lists + activity rail.
+		     Same chrome as detail pages (e.g. /envs/[name]). -->
+		<div class="grid gap-6 lg:grid-cols-5">
+			<div class="space-y-6 lg:col-span-3">
+				{#each grouped as g (g.ns)}
 				<section>
 					<!-- Namespace header -->
 					<a
@@ -526,7 +530,11 @@
 					</div>
 
 				</section>
-			{/each}
+				{/each}
+			</div>
+			<aside class="lg:col-span-2">
+				<ActivityRail {rollouts} {environments} limit={20} />
+			</aside>
 		</div>
 	{/if}
 </div>
