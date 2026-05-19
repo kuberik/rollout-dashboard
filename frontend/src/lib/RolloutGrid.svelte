@@ -10,8 +10,7 @@
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		SearchOutline,
-		ChevronRightOutline,
-		GridOutline
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
@@ -418,10 +417,50 @@
 			Failed to load rollouts: {(query.error as Error).message}
 		</div>
 	{:else if cards.length === 0}
-		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<GridOutline class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
-			<p class="text-sm font-medium text-gray-900 dark:text-white">No rollouts yet</p>
-			<p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">Create a Rollout resource in your cluster to see it here.</p>
+		<div class="mx-auto max-w-2xl py-12">
+			<!-- Faded sample card preview showing what a rollout looks like -->
+			<div class="pointer-events-none relative mx-auto w-full max-w-sm select-none opacity-60 grayscale" aria-hidden="true">
+				<div class="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+					<div class="flex items-start justify-between gap-3">
+						<div class="flex items-center gap-3">
+							<span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+								<span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>
+							</span>
+							<div class="flex flex-col">
+								<span class="text-base font-bold text-gray-900 dark:text-white">My App</span>
+								<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">my-app</span>
+							</div>
+						</div>
+						<span class="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:bg-gray-700 dark:text-gray-300">PROD</span>
+					</div>
+					<div class="mt-2 flex items-baseline justify-between gap-3 pl-12">
+						<span class="font-mono text-sm font-medium text-gray-700 dark:text-gray-300">v1.2.3</span>
+						<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">2h</span>
+					</div>
+					<div class="mt-2 flex items-center gap-1.5 pl-12">
+						<span class="text-[9px] uppercase tracking-wider text-gray-300 dark:text-gray-600">history</span>
+						<div class="flex gap-1">
+							{#each [1, 1, 0, 1, 1, 1] as ok}
+								<span class="h-1.5 w-3.5 rounded-full {ok ? 'bg-green-400 dark:bg-green-500' : 'bg-red-400 dark:bg-red-500'}"></span>
+							{/each}
+						</div>
+					</div>
+				</div>
+			</div>
+			<!-- Empty state message + CTA -->
+			<div class="mt-8 text-center">
+				<p class="text-base font-semibold text-gray-900 dark:text-white">No rollouts yet</p>
+				<p class="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400 mx-auto">Cards like the one above will appear here once you create a <code class="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">Rollout</code> resource in your cluster.</p>
+				<a
+					href="https://github.com/kuberik/rollout-controller"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+				>
+					Read the docs
+					<span aria-hidden="true">↗</span>
+				</a>
+			</div>
 		</div>
 	{:else if grouped.length === 0}
 		<div class="flex flex-col items-center justify-center py-12 text-center">
