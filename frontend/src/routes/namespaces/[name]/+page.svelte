@@ -138,6 +138,55 @@
 		return t;
 	});
 
+	// Correlation timeline: per-app row of deploy moments mapped to relative
+	// time positions. Window is the last 7 days (or expanded to include the
+	// oldest visible deploy if events span further back).
+	type TimelinePoint = { ts: number; status: string; version: string };
+	type TimelineRow = { appName: string; title: string; envName: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> | null; points: TimelinePoint[] };
+
+	const correlationTimeline = $derived.by<{ rows: TimelineRow[]; windowStart: number; windowEnd: number } | null>(() => {
+		if (apps.length === 0) return null;
+		const nowMs = $now.getTime();
+		const sevenDays = 7 * 24 * 60 * 60 * 1000;
+		let earliest = nowMs - sevenDays;
+		const rows: TimelineRow[] = [];
+		for (const a of apps) {
+			const history = a.rollout.status?.history ?? [];
+			const points: TimelinePoint[] = [];
+			for (const h of history) {
+				if (!h.timestamp) continue;
+				const ts = new Date(h.timestamp).getTime();
+				if (ts < earliest) earliest = ts;
+				points.push({ ts, status: h.bakeStatus || 'None', version: getDisplayVersion(h.version) });
+			}
+			if (points.length === 0) continue;
+			points.sort((p, q) => p.ts - q.ts);
+			rows.push({
+				appName: a.rollout.metadata?.name || '',
+				title: a.title,
+				envName: a.envName,
+				theme: a.theme,
+				points
+			});
+		}
+		if (rows.length === 0) return null;
+		return { rows, windowStart: earliest, windowEnd: nowMs };
+	});
+
+	function timelineX(ts: number, start: number, end: number): number {
+		if (end === start) return 100;
+		return Math.max(0, Math.min(100, ((ts - start) / (end - start)) * 100));
+	}
+	function timelineWindowLabel(start: number, end: number): string {
+		const span = end - start;
+		const d = Math.floor(span / (24 * 60 * 60 * 1000));
+		if (d >= 1) return `last ${d} day${d === 1 ? '' : 's'}`;
+		const h = Math.floor(span / (60 * 60 * 1000));
+		if (h >= 1) return `last ${h}h`;
+		const m = Math.floor(span / (60 * 1000));
+		return `last ${m}m`;
+	}
+
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
 		Failed: 'bg-red-500',
@@ -246,6 +295,49 @@
 			</div>
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
+
+		<!-- Correlation timeline: per-app deploy moments aligned by time so
+		     users can spot 'A deployed then B failed 5 min later' patterns. -->
+		{#if correlationTimeline}
+			<section class="mb-6">
+				<div class="mb-3 flex items-baseline justify-between">
+					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+						Correlation timeline
+					</h2>
+					<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{timelineWindowLabel(correlationTimeline.windowStart, correlationTimeline.windowEnd)} · now ›</span>
+				</div>
+				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each correlationTimeline.rows as row}
+							<li class="environment-theme-scope flex items-center gap-3 px-4 py-2.5" style={row.theme ? getEnvironmentThemeStyle(row.theme) : undefined}>
+								<a
+									href="/rollouts/{namespace}/{row.appName}"
+									class="flex w-32 min-w-0 shrink-0 flex-col gap-0.5 transition-opacity hover:opacity-80"
+								>
+									<span class="truncate text-xs font-semibold text-gray-900 dark:text-white">{row.title}</span>
+									{#if row.envName}
+										<span class="truncate font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{row.envName}</span>
+									{/if}
+								</a>
+								<!-- Timeline track -->
+								<div class="relative h-5 flex-1 rounded bg-gray-50 dark:bg-gray-900/40">
+									<!-- 'now' marker on the right edge -->
+									<span class="absolute right-0 top-0 h-full w-px bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
+									{#each row.points as p}
+										<span
+											class="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-gray-800 {p.status === 'Succeeded' ? 'bg-green-500' : p.status === 'Failed' ? 'bg-red-500' : p.status === 'InProgress' || p.status === 'Deploying' ? 'bg-yellow-400' : 'bg-gray-400'}"
+											style="left: {timelineX(p.ts, correlationTimeline.windowStart, correlationTimeline.windowEnd)}%"
+											title={`${p.version} · ${p.status} · ${formatTimeAgo(new Date(p.ts).toISOString(), $now)}`}
+										></span>
+									{/each}
+								</div>
+								<span class="shrink-0 font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">{row.points.length}</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			</section>
+		{/if}
 
 		<!-- Rollouts in namespace -->
 		<section class="mb-6">
