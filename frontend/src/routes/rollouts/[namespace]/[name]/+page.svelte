@@ -1439,7 +1439,7 @@
 												>
 													{getDisplayVersion(latestEntry.version)}
 												</span>
-												<span class="text-sm text-gray-500 dark:text-gray-400">
+												<span class="text-sm {latestEntry.bakeStatus === 'Succeeded' ? 'text-green-600 dark:text-green-400' : latestEntry.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : latestEntry.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : latestEntry.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}">
 													{latestEntry.bakeStatus}
 												</span>
 												{#if stuckReason}
