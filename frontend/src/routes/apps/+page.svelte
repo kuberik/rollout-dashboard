@@ -8,7 +8,7 @@
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
-	import { RocketOutline } from 'flowbite-svelte-icons';
+	import { RocketOutline, SearchOutline } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -126,6 +126,42 @@
 		}
 		return t;
 	});
+
+	// Classify an app for filter purposes — same priority as fleetTotals so the
+	// header counts match the chip behaviour.
+	type AppStatus = 'failed' | 'active' | 'drifting' | 'pending' | 'healthy';
+	function appStatusKey(a: AppSummary): AppStatus {
+		if (a.failedCount > 0) return 'failed';
+		if (a.activeCount > 0) return 'active';
+		if (a.currentVersions.length > 1) return 'drifting';
+		if (a.deployedCount < a.envCount) return 'pending';
+		return 'healthy';
+	}
+
+	let statusFilters = $state<AppStatus[]>([]);
+	let searchQuery = $state('');
+
+	function toggleStatus(k: AppStatus) {
+		statusFilters = statusFilters.includes(k)
+			? statusFilters.filter((x) => x !== k)
+			: [...statusFilters, k];
+	}
+	function clearFilters() {
+		statusFilters = [];
+		searchQuery = '';
+	}
+
+	const filteredApps = $derived.by(() => {
+		const q = searchQuery.trim().toLowerCase();
+		return apps.filter((a) => {
+			if (statusFilters.length > 0 && !statusFilters.includes(appStatusKey(a))) return false;
+			if (q) {
+				const hay = `${a.name} ${a.title}`.toLowerCase();
+				if (!hay.includes(q)) return false;
+			}
+			return true;
+		});
+	});
 </script>
 
 <svelte:head>
@@ -155,6 +191,47 @@
 		{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 	</div>
 
+	{#if apps.length > 0 && !query.isLoading}
+		<div class="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
+			<div class="relative min-w-0 flex-1 sm:max-w-xs">
+				<SearchOutline class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+				<input
+					type="text"
+					bind:value={searchQuery}
+					placeholder="Search apps…"
+					class="block w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder-gray-500"
+				/>
+			</div>
+			<div class="flex flex-wrap items-center gap-1.5">
+				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'Deploying', dot:'bg-yellow-400'}, {key:'drifting', label:'Drifting', dot:'bg-orange-500'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'healthy', label:'Healthy', dot:'bg-green-500'}] as p}
+					{@const k = p.key as AppStatus}
+					{@const sel = statusFilters.includes(k)}
+					{@const n = fleetTotals[k === 'drifting' ? 'drift' : k]}
+					{#if n > 0}
+						<button
+							type="button"
+							onclick={() => toggleStatus(k)}
+							class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors
+								{sel
+									? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+									: 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/60'}"
+						>
+							<span class="h-1.5 w-1.5 rounded-full {p.dot}"></span>
+							{n} {p.label}
+						</button>
+					{/if}
+				{/each}
+			</div>
+			{#if statusFilters.length > 0 || searchQuery}
+				<button
+					type="button"
+					onclick={clearFilters}
+					class="text-[11px] text-gray-400 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-500 dark:hover:text-gray-300"
+				>clear</button>
+			{/if}
+		</div>
+	{/if}
+
 	{#if query.isLoading}
 		<div class="space-y-3">
 			{#each Array(5) as _}
@@ -175,9 +252,18 @@
 				resources that reference rollouts to see consolidated app views.
 			</p>
 		</div>
+	{:else if filteredApps.length === 0}
+		<div class="flex flex-col items-center justify-center py-12 text-center">
+			<p class="text-sm font-medium text-gray-700 dark:text-gray-300">No apps match</p>
+			<button
+				type="button"
+				onclick={clearFilters}
+				class="mt-2 text-xs text-gray-500 underline underline-offset-2 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+			>Clear filters</button>
+		</div>
 	{:else}
 		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-			{#each apps as app}
+			{#each filteredApps as app}
 				{@const drift = app.currentVersions.length > 1}
 				<a
 					href="/apps/{app.name}"
