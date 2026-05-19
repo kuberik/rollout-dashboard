@@ -556,7 +556,7 @@
 										<div class="flex items-center gap-1">
 											{#each c.sparkline as h}
 												<span
-													class="h-1.5 w-3.5 rounded-full {h.status === 'Succeeded' ? 'bg-green-400 dark:bg-green-500' : h.status === 'Failed' ? 'bg-red-400 dark:bg-red-500' : h.status === 'InProgress' || h.status === 'Deploying' ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}"
+													class="h-1.5 w-3.5 rounded-full {h.status === 'Succeeded' ? 'bg-green-400 dark:bg-green-500' : h.status === 'Failed' ? 'bg-red-400 dark:bg-red-500' : h.status === 'InProgress' ? 'bg-yellow-400' : h.status === 'Deploying' ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}"
 													title={`${h.version} · ${h.status}${h.timestamp ? ` · ${formatTimeAgoCompact(h.timestamp, $now)} ago` : ''}`}
 												></span>
 											{/each}
