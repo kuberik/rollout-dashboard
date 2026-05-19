@@ -46,13 +46,16 @@ violates an enforced item.
 
 ## Open issues — still to address
 
-1. **Restore the section breadcrumb in the navbar** (link, not a dropdown). When on `/apps`, show "Apps" in the navbar; when on `/apps/foo`, show "Apps / foo ⇅". Was working before; the recent navbar rewrite stripped it.
-2. **Sidebar should be collapsible** like the previous nav was. Add a collapse toggle that shrinks the sidebar to icons-only.
-3. **Drop the magnifying-glass search button.** Keep the ⌘K kbd hint on a more meaningful control (e.g. the rollout breadcrumb button).
-4. **⌘K palette needs a major rebuild.** Today it only switches between rollouts well. The Apps / Environments / Namespaces tabs in the palette look like an afterthought. The palette should be a powerful, multi-typeahead surface — search across rollouts, apps, envs, namespaces, actions in one place. Aim for something that rivals popular cmd+k implementations.
-5. **Promotion flow on /apps/[name] → SvelteFlow.** The current SVG-connector pipeline is not great; introduce `@xyflow/svelte` so it lays out properly on every screen size and the user can pan.
-6. **Version lifecycle on /apps/[name] still looks bad.** Even after switching to per-env lanes, the Gantt rows feel cluttered. Rethink the visualization.
-7. **Home rollout list still looks the most inconsistent** with the rest of the dashboard. The card design is unified now but the page structure (namespace grouping, search/filter bar) differs from /apps. Audit and align.
+1. **Home rollout list still looks the most inconsistent** with the rest of the dashboard. The card design is unified now but the page structure (namespace grouping, search/filter bar) differs from /apps. Audit and align.
+
+## Recently addressed (do not regress)
+
+- ✅ Restored section breadcrumb as a static link (`Apps`, `Environments`, etc.) in the navbar — sidebar is the switcher, the navbar label is just a link.
+- ✅ Sidebar is collapsible with a toggle at the bottom, state persisted to localStorage.
+- ✅ Magnifying-glass search button removed; ⌘K kbd hint lives on the rollout breadcrumb selector.
+- ✅ ⌘K palette rebuilt as a unified surface (`CommandPalette.svelte`) that searches across rollouts, apps, environments, namespaces, and top-level pages with kind-aware scoring and grouped sections.
+- ✅ /apps/[name] promotion flow now uses Svelte Flow + dagre; auto-reflows LR ↔ TB based on viewport, pannable, zoomable.
+- ✅ /apps/[name] version lifecycle replaced the lane-Gantt with a chronological env-chip trail per version. Each row reads as `[ENV] 2h › [ENV] 1h › …` so promotion velocity is visible without a scaled axis.
 
 ## Working principles
 
