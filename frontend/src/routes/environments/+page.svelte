@@ -491,7 +491,7 @@
 							<!-- Environment cells -->
 							{#each envNames as envName}
 								{@const cell = row?.get(envName)}
-								<div class="border-l border-gray-100 p-3 dark:border-gray-700/60">
+								<div class="environment-theme-scope border-l border-gray-100 p-3 dark:border-gray-700/60" style={getEnvThemeStyle(envName)}>
 									{#if cell}
 										{@const status = bakeStatus(cell.rollout)}
 										{@const dotClass = STATUS_DOT[status] ?? STATUS_DOT['None']}
@@ -502,7 +502,7 @@
 										{@const behind = behindFor(appName, envName)}
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
-											class="group block overflow-hidden rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+											class="group block overflow-hidden rounded-lg border border-transparent bg-gray-50/50 px-3 py-2.5 transition-all hover:-translate-y-px hover:border-gray-200 hover:bg-white hover:shadow-md dark:bg-gray-900/30 dark:hover:border-gray-700 dark:hover:bg-gray-800
 												{status === 'Failed' ? 'card-failed' : ''}
 												{isRunning(status) ? 'card-active' : ''}"
 										>
