@@ -261,9 +261,26 @@
 	{/if}
 
 	{#if query.isLoading}
-		<div class="space-y-3">
-			{#each Array(5) as _}
-				<div class="h-20 w-full animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+		<!-- Skeleton mirrors the card grid so the loading state has the
+		     same shape as the loaded state. -->
+		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+			{#each Array(6) as _}
+				<div class="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+					<div class="flex items-start justify-between gap-3">
+						<div class="flex items-center gap-3">
+							<div class="h-9 w-9 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+							<div class="flex flex-col gap-1.5">
+								<div class="h-3.5 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+								<div class="h-2.5 w-20 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+							</div>
+						</div>
+					</div>
+					<div class="flex flex-wrap gap-1.5 pl-12">
+						{#each Array(3) as _}
+							<div class="h-4 w-14 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
+						{/each}
+					</div>
+				</div>
 			{/each}
 		</div>
 	{:else if query.isError}
