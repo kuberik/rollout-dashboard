@@ -12,7 +12,7 @@
 	import { ChevronSortOutline } from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
-	import RolloutSwitcher from '$lib/RolloutSwitcher.svelte';
+	import CommandPalette from '$lib/CommandPalette.svelte';
 	import ResourceSwitcher from '$lib/ResourceSwitcher.svelte';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { Environment } from '../types';
@@ -35,6 +35,23 @@
 	const appDetailMatch = $derived(page.url.pathname.match(/^\/apps\/([^/]+)/));
 	const envDetailMatch = $derived(page.url.pathname.match(/^\/envs\/([^/]+)/));
 	const nsDetailMatch = $derived(page.url.pathname.match(/^\/namespaces\/([^/]+)/));
+
+	// Section breadcrumb: every page belongs to a section. Render as a
+	// plain static link (no dropdown) — sidebar is the section switcher.
+	type Section = { key: string; label: string; href: string };
+	const SECTIONS: readonly Section[] = [
+		{ key: 'rollouts', label: 'Rollouts', href: '/' },
+		{ key: 'apps', label: 'Apps', href: '/apps' },
+		{ key: 'environments', label: 'Environments', href: '/environments' },
+		{ key: 'activity', label: 'Activity', href: '/activity' }
+	];
+	const currentSection = $derived.by<Section>(() => {
+		const p = page.url.pathname;
+		if (p.startsWith('/apps')) return SECTIONS[1];
+		if (p.startsWith('/environments') || p.startsWith('/envs/')) return SECTIONS[2];
+		if (p.startsWith('/activity')) return SECTIONS[3];
+		return SECTIONS[0];
+	});
 
 	// Detail context: rendered as breadcrumb 'Item ⇅' on detail pages.
 	const detailContext = $derived.by(() => {
@@ -155,14 +172,22 @@
 				>
 			</a>
 
-			{#if detailContext?.kind === 'rollout' && rollout}
-				<div class="flex min-w-0 items-center gap-1">
-					<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
+			<!-- Section breadcrumb: static link, no dropdown -->
+			<div class="flex min-w-0 items-center gap-1">
+				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
+				<a
+					href={currentSection.href}
+					class="truncate rounded-md px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg"
+				>{currentSection.label}</a>
+
+				{#if detailContext?.kind === 'rollout' && rollout}
+					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
 					<button
 						type="button"
 						onclick={() => (switcherOpen = true)}
 						class="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
 						aria-label="Switch rollout (⌘K)"
+						title={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
 					>
 						<span class="flex min-w-0 items-baseline gap-1.5">
 							<span class="hidden truncate text-sm text-gray-500 dark:text-gray-400 sm:inline">
@@ -182,12 +207,13 @@
 								</Badge>
 							{/if}
 						</span>
+						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400 md:inline-block">
+							{isMac ? '⌘K' : 'Ctrl K'}
+						</kbd>
 						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
 					</button>
-				</div>
-			{:else if detailContext?.kind === 'item'}
-				<div class="flex min-w-0 items-center gap-1">
-					<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
+				{:else if detailContext?.kind === 'item'}
+					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
 					{#if resourceItems && resourceItems.items.length > 1}
 						<button
 							type="button"
@@ -205,20 +231,8 @@
 							{detailContext.item}
 						</span>
 					{/if}
-				</div>
-			{/if}
-
-			<!-- Site-wide quick switch (⌘K) -->
-			<button
-				type="button"
-				onclick={() => (switcherOpen = true)}
-				aria-label="Quick switch rollout (⌘K)"
-				title="Quick switch rollout (⌘K)"
-				class="ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300"
-			>
-				<SearchOutline class="h-3.5 w-3.5 shrink-0" />
-				<kbd class="hidden shrink-0 font-mono text-[10px] lg:inline">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
-			</button>
+				{/if}
+			</div>
 		</div>
 		<div class="flex shrink-0 items-center gap-2 sm:gap-2.5">
 			{#if import.meta.env.VITE_APP_VERSION}
@@ -239,9 +253,10 @@
 	</div>
 </nav>
 
-<RolloutSwitcher
+<CommandPalette
 	bind:open={switcherOpen}
 	rollouts={allRollouts}
+	environments={allEnvironments}
 	currentNamespace={namespace}
 	currentName={name}
 	loading={allRolloutsQuery.isLoading}
