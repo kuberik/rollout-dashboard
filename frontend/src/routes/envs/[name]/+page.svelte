@@ -11,11 +11,8 @@
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
-		CheckCircleSolid,
-		ExclamationCircleSolid,
 		LayersSolid,
-		ChevronRightOutline,
-		ClockSolid
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../../types';
 
@@ -71,14 +68,6 @@
 	const slotTheme = $derived(slots.find((s) => s.theme)?.theme ?? null);
 	const themeStyle = $derived(slotTheme ? getEnvironmentThemeStyle(slotTheme) : undefined);
 
-	const namespaces = $derived.by(() => {
-		const set = new Set<string>();
-		for (const s of slots) {
-			if (s.environment.metadata?.namespace) set.add(s.environment.metadata.namespace);
-		}
-		return [...set].sort();
-	});
-
 	type ActivityEntry = {
 		appName: string;
 		title: string;
@@ -120,17 +109,6 @@
 	const succeededCount = $derived(
 		slots.filter((s) => s.rollout?.status?.history?.[0]?.bakeStatus === 'Succeeded').length
 	);
-	const otherCount = $derived(
-		Math.max(0, slots.length - succeededCount - activeCount - failedCount)
-	);
-	const newestDeploy = $derived.by<string | null>(() => {
-		let t: string | null = null;
-		for (const s of slots) {
-			const ts = s.rollout?.status?.history?.[0]?.timestamp;
-			if (ts && (!t || new Date(ts) > new Date(t))) t = ts;
-		}
-		return t;
-	});
 
 	const STATUS_DOT: Record<string, string> = {
 		Succeeded: 'bg-green-500',
@@ -253,83 +231,24 @@
 			</a>
 		</div>
 	{:else}
-		<!-- Header -->
-		<div class="mb-6 flex items-start justify-between gap-4">
-			<div class="min-w-0">
-				<div class="flex items-baseline gap-3">
-					<h1 class="environment-theme-text truncate text-2xl font-light text-gray-900 dark:text-white">
-						{slotTheme?.label ?? envName.charAt(0).toUpperCase() + envName.slice(1)}
-					</h1>
-					{#if slotTheme && slotTheme.label.toLowerCase() !== envName.toLowerCase()}
-						<code class="font-mono text-xs text-gray-400 dark:text-gray-500">{envName}</code>
-					{/if}
-				</div>
-				<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-					<span>{slots.length} app{slots.length === 1 ? '' : 's'}</span>
-					<span class="text-gray-300 dark:text-gray-600">·</span>
-					<span>{namespaces.length} namespace{namespaces.length === 1 ? '' : 's'}</span>
-				</div>
+		<!-- Header: title + inline summary -->
+		<div class="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+			<div class="flex min-w-0 items-baseline gap-3">
+				<h1 class="environment-theme-text truncate text-2xl font-light text-gray-900 dark:text-white">
+					{slotTheme?.label ?? envName.charAt(0).toUpperCase() + envName.slice(1)}
+				</h1>
+				{#if slotTheme && slotTheme.label.toLowerCase() !== envName.toLowerCase()}
+					<code class="font-mono text-xs text-gray-400 dark:text-gray-500">{envName}</code>
+				{/if}
+				<span class="text-sm text-gray-500 dark:text-gray-400">
+					<span class="tabular-nums {succeededCount === slots.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{succeededCount}</span>
+					<span>of {slots.length} healthy</span>
+					{#if failedCount > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
+					{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
+				</span>
 			</div>
-			<div class="flex shrink-0 items-center gap-3">
-				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
-			</div>
+			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
-
-		<!-- Health summary: single compact stat card with composition bar -->
-		<section class="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-			<div class="flex flex-wrap items-center justify-between gap-4">
-				<!-- Headline number -->
-				<div class="flex items-baseline gap-1.5">
-					<span class="text-3xl font-light {succeededCount === slots.length ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">{succeededCount}</span>
-					<span class="text-sm text-gray-400 dark:text-gray-500">/ {slots.length} healthy</span>
-				</div>
-				<!-- Inline status pills (only non-zero) -->
-				<div class="flex items-center gap-3">
-					{#if activeCount > 0}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
-							<span class="relative flex h-2 w-2">
-								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-								<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
-							</span>
-							{activeCount} deploying
-						</span>
-					{/if}
-					{#if failedCount > 0}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
-							<ExclamationCircleSolid class="h-3 w-3 text-red-500" />
-							{failedCount} failed
-						</span>
-					{/if}
-					{#if failedCount === 0 && activeCount === 0 && succeededCount === slots.length}
-						<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400">
-							<CheckCircleSolid class="h-3 w-3" />
-							All healthy
-						</span>
-					{/if}
-					{#if newestDeploy}
-						<span class="inline-flex items-center gap-1 font-mono text-[11px] text-gray-400 dark:text-gray-500" title="Newest deploy {formatTimeAgo(newestDeploy, $now)}">
-							<ClockSolid class="h-3 w-3" />
-							{formatTimeAgoCompact(newestDeploy, $now)}
-						</span>
-					{/if}
-				</div>
-			</div>
-			<!-- Composition bar -->
-			<div class="mt-3 flex h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700/60">
-				{#if succeededCount > 0}
-					<span class="bg-green-500" style="width:{(succeededCount / slots.length) * 100}%"></span>
-				{/if}
-				{#if activeCount > 0}
-					<span class="bg-yellow-400" style="width:{(activeCount / slots.length) * 100}%"></span>
-				{/if}
-				{#if failedCount > 0}
-					<span class="bg-red-500" style="width:{(failedCount / slots.length) * 100}%"></span>
-				{/if}
-				{#if otherCount > 0}
-					<span class="bg-gray-300 dark:bg-gray-600" style="width:{(otherCount / slots.length) * 100}%"></span>
-				{/if}
-			</div>
-		</section>
 
 		<div class="grid gap-6 lg:grid-cols-5">
 			<!-- App list -->

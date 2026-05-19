@@ -10,8 +10,6 @@
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
-		CheckCircleSolid,
-		ExclamationCircleSolid,
 		LayersSolid,
 		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
@@ -108,7 +106,6 @@
 		return [...map.values()];
 	});
 
-	const totalDeploys = $derived(timeline.length);
 	const failedCount = $derived(
 		apps.filter((a) => a.rollout.status?.history?.[0]?.bakeStatus === 'Failed').length
 	);
@@ -203,36 +200,17 @@
 		</div>
 	{:else}
 		<!-- Header -->
-		<div class="mb-6 flex items-start justify-between gap-4">
-			<div class="min-w-0">
+		<div class="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+			<div class="flex min-w-0 items-baseline gap-3">
 				<h1 class="truncate font-mono text-2xl font-light text-gray-900 dark:text-white">{namespace}</h1>
-				<div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-					<span>{apps.length} rollout{apps.length === 1 ? '' : 's'}</span>
-					<span class="text-gray-300 dark:text-gray-600">·</span>
-					<span>{totalDeploys} deploy{totalDeploys === 1 ? '' : 's'} on record</span>
-				</div>
+				<span class="text-sm text-gray-500 dark:text-gray-400">
+					<span class="tabular-nums {succeededCount === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{succeededCount}</span>
+					<span>of {apps.length} healthy</span>
+					{#if failedCount > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
+					{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
+				</span>
 			</div>
-			<div class="flex shrink-0 items-center gap-3">
-				{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
-				<div class="flex items-center gap-2 text-xs">
-					{#if failedCount > 0}
-						<span class="flex items-center gap-1 font-medium text-red-600 dark:text-red-400">
-							<ExclamationCircleSolid class="h-3.5 w-3.5" />{failedCount} failed
-						</span>
-					{:else if activeCount > 0}
-						<span class="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-400">
-							<span class="relative flex h-2 w-2">
-								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-								<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
-							</span>{activeCount} deploying
-						</span>
-					{:else}
-						<span class="flex items-center gap-1 text-green-600 dark:text-green-400">
-							<CheckCircleSolid class="h-3.5 w-3.5" />{succeededCount}/{apps.length} healthy
-						</span>
-					{/if}
-				</div>
-			</div>
+			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
 
 		<!-- Rollouts in namespace -->
