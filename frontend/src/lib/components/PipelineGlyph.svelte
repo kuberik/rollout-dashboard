@@ -26,7 +26,9 @@
        gets ONE cell, not per-track. -->
 <span class="inline-flex items-center" aria-label="Pipeline">
 	{#if isMultiTrack}
-		<span class="inline-flex flex-col gap-0.5">
+		<!-- Tracks right-align so the Y-connector lands on each track's
+		     last step regardless of how many steps each track has. -->
+		<span class="inline-flex flex-col items-end gap-0.5">
 			{#each summary.tracks as track (track.name)}
 				<span class="inline-flex items-center" title={track.name}>
 					{#each track.stages as s, i}
