@@ -23,7 +23,6 @@
 	import { rolloutQueryOptions, type RolloutResponse } from '$lib/api/rollouts';
 	import { getDisplayVersion } from '$lib/utils';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import RolloutSubnav from '$lib/components/RolloutSubnav.svelte';
 	import { getBakeStatusColor } from '$lib/bake-status';
 	import type { Rollout } from '../../../../../types';
 	import type {
@@ -642,7 +641,6 @@
 </svelte:head>
 
 <div class="flex h-full w-full flex-col p-3 sm:p-4">
-	<RolloutSubnav {namespace} {name} />
 	{#if rolloutQuery.isLoading}
 		<div class="flex h-full items-center justify-center">
 			<Spinner size="8" />

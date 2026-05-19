@@ -92,7 +92,6 @@
 		buildDatadogLogsUrl
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import RolloutSubnav from '$lib/components/RolloutSubnav.svelte';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import DeployModal from '$lib/components/DeployModal.svelte';
@@ -1336,8 +1335,6 @@
 					<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
 					<span class="font-mono text-gray-700 dark:text-gray-300">{rollout.metadata?.name}</span>
 				</div>
-
-				<RolloutSubnav namespace={rollout.metadata?.namespace ?? ''} name={rollout.metadata?.name ?? ''} />
 
 				<!-- ══ PAGE HEADER ══ -->
 				<div class="mb-4">

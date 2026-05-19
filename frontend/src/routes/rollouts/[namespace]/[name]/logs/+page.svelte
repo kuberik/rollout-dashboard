@@ -4,7 +4,6 @@
 	import { page } from '$app/state';
 	import { Button } from 'flowbite-svelte';
 	import LogsViewer from '$lib/components/LogsViewer.svelte';
-	import RolloutSubnav from '$lib/components/RolloutSubnav.svelte';
 
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
@@ -31,7 +30,6 @@
 </svelte:head>
 
 <div class="flex h-full flex-col overflow-hidden p-3 dark:bg-gray-900 sm:p-4">
-	<RolloutSubnav {namespace} {name} />
 	<div class="mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-2 sm:mb-4">
 		<h1 class="text-lg font-bold text-gray-900 dark:text-white sm:text-xl">Logs</h1>
 		<!-- Tab buttons inline on mobile -->
