@@ -199,6 +199,41 @@
 		return { fromEnv: source.envName, version: sourceV, behindBy: idx >= 0 ? idx : null };
 	}
 
+	// Mirror of behindForSlot: when this env is AHEAD of the next-tier env,
+	// surface a positive 'ready to promote to staging' signal. Only fires when
+	// this slot's current version is Succeeded (you don't promote a failure)
+	// and the next tier is on an older different version.
+	type PromoteInfo = { toEnv: string; version: string };
+	function readyToPromote(s: Slot): PromoteInfo | null {
+		const myEnv = s.environment.spec?.environment;
+		if (!myEnv) return null;
+		const myCurrentH = s.rollout?.status?.history?.[0];
+		if (!myCurrentH || myCurrentH.bakeStatus !== 'Succeeded') return null;
+		const myCurrentV = getDisplayVersion(myCurrentH.version);
+		// Find the closest later-tier env that deploys the same app.
+		const candidates: { envName: string; rollout: Rollout }[] = [];
+		for (const env of environments) {
+			const otherEnvName = env.spec?.environment;
+			if (!otherEnvName || otherEnvName === myEnv) continue;
+			if (env.spec?.rolloutRef?.name !== s.appName) continue;
+			if (compareEnvironmentNames(otherEnvName, myEnv) <= 0) continue;
+			const otherRollout = rollouts.find(
+				(r) => r.metadata?.name === s.appName && r.metadata?.namespace === env.metadata?.namespace
+			);
+			if (otherRollout) candidates.push({ envName: otherEnvName, rollout: otherRollout });
+		}
+		if (candidates.length === 0) return null;
+		// Closest later-tier env first.
+		candidates.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
+		const target = candidates[0];
+		// Skip if target is pinned — it's intentionally held.
+		if (target.rollout.spec?.wantedVersion) return null;
+		const targetH = target.rollout.status?.history?.[0];
+		const targetV = targetH ? getDisplayVersion(targetH.version) : null;
+		if (targetV === myCurrentV) return null;
+		return { toEnv: target.envName, version: myCurrentV };
+	}
+
 	function previousSucceededVersion(r: Rollout | null, currentV: string | null): string | null {
 		if (!r) return null;
 		for (const h of r.status?.history ?? []) {
@@ -297,6 +332,7 @@
 							{@const latest = s.rollout?.status?.history?.[0]}
 							{@const status = latest?.bakeStatus || 'None'}
 							{@const behind = behindForSlot(s)}
+							{@const promote = behind ? null : readyToPromote(s)}
 							<li class="group">
 								<div class="flex items-center justify-between gap-3 px-4 py-3">
 									<a
@@ -342,6 +378,13 @@
 												{/if}
 												<span class="font-mono">{behind.version}</span>
 												<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
+											</div>
+										{:else if promote}
+											<div class="mt-1 flex items-center gap-1 pl-4 text-[10px] text-emerald-700 dark:text-emerald-300">
+												<span aria-hidden="true">→</span>
+												<span class="font-mono">{promote.version}</span>
+												<span>ready for</span>
+												<span class="font-semibold uppercase tracking-wider">{promote.toEnv}</span>
 											</div>
 										{/if}
 									</a>
