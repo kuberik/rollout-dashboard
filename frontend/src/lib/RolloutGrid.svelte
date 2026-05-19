@@ -17,7 +17,7 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../types';
 
 	const query = createQuery(() =>
@@ -502,8 +502,7 @@
 									<div class="flex min-w-0 items-center gap-3">
 										<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
 											{#if c.isRunning}
-												{@const pingColor = c.bakeStatus === 'Deploying' ? 'bg-blue-400/40' : 'bg-yellow-400/30'}
-												<span class="absolute inset-0 animate-ping rounded-full {pingColor}"></span>
+												<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(c.bakeStatus)}"></span>
 											{/if}
 											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 										</span>
