@@ -56,7 +56,6 @@
 		pinnedVersion: string | null;
 		stuck: StuckReason | null;
 		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
-		sparkline: { status: string; version: string; timestamp: string | null }[];
 		rollout: Rollout;
 	};
 
@@ -134,21 +133,6 @@
 					}
 				}
 			}
-			// Sparkline: last 6 deploys, oldest → newest (right is most recent).
-			// Dedupe identical version repeats to show distinct deploys only.
-			const history = r.status?.history ?? [];
-			const sparkline: { status: string; version: string; timestamp: string | null }[] = [];
-			for (const h of history) {
-				const v = getDisplayVersion(h.version);
-				if (!v) continue;
-				if (sparkline.length > 0 && sparkline[0].version === v) continue;
-				sparkline.unshift({
-					status: h.bakeStatus || 'None',
-					version: v,
-					timestamp: h.timestamp || null
-				});
-				if (sparkline.length >= 6) break;
-			}
 			return {
 				ns: r.metadata?.namespace || '',
 				name: r.metadata?.name || '',
@@ -168,7 +152,6 @@
 				pinnedVersion: r.spec?.wantedVersion || null,
 				stuck: detectStuck(r, { now: $now }),
 				behind,
-				sparkline,
 				rollout: r
 			};
 		});
@@ -430,14 +413,6 @@
 						<span class="font-mono text-sm font-medium text-gray-700 dark:text-gray-300">v1.2.3</span>
 						<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">2h</span>
 					</div>
-					<div class="mt-2 flex items-center gap-1.5 pl-12">
-						<span class="text-[9px] uppercase tracking-wider text-gray-300 dark:text-gray-600">history</span>
-						<div class="flex gap-1">
-							{#each [1, 1, 0, 1, 1, 1] as ok}
-								<span class="h-1.5 w-3.5 rounded-full {ok ? 'bg-green-400 dark:bg-green-500' : 'bg-red-400 dark:bg-red-500'}"></span>
-							{/each}
-						</div>
-					</div>
 				</div>
 			</div>
 			<!-- Empty state message + CTA -->
@@ -550,20 +525,6 @@
 									</div>
 								{/if}
 
-								<!-- Deploy history sparkline at bottom, more visible -->
-								{#if c.sparkline.length > 1}
-									<div class="mt-auto flex items-center gap-1.5 pl-12" aria-label="Recent deploy history">
-										<span class="text-[9px] uppercase tracking-wider text-gray-300 dark:text-gray-600">history</span>
-										<div class="flex items-center gap-1">
-											{#each c.sparkline as h}
-												<span
-													class="h-1.5 w-3.5 rounded-full {h.status === 'Succeeded' ? 'bg-green-400 dark:bg-green-500' : h.status === 'Failed' ? 'bg-red-400 dark:bg-red-500' : h.status === 'InProgress' ? 'bg-yellow-400' : h.status === 'Deploying' ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}"
-													title={`${h.version} · ${h.status}${h.timestamp ? ` · ${formatTimeAgoCompact(h.timestamp, $now)} ago` : ''}`}
-												></span>
-											{/each}
-										</div>
-									</div>
-								{/if}
 							</a>
 						{/each}
 					</div>
