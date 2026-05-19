@@ -72,6 +72,7 @@
 		appName: string;
 		title: string;
 		version: string;
+		previousVersion: string | null;
 		timestamp: string;
 		bakeStatus: string;
 		ns: string;
@@ -80,12 +81,21 @@
 	const recentActivity = $derived.by<ActivityEntry[]>(() => {
 		const list: ActivityEntry[] = [];
 		for (const s of slots) {
-			if (!s.rollout?.status?.history) continue;
-			for (const entry of s.rollout.status.history) {
+			const history = s.rollout?.status?.history;
+			if (!s.rollout || !history) continue;
+			for (let i = 0; i < history.length; i++) {
+				const entry = history[i];
+				const currentV = getDisplayVersion(entry.version);
+				let previousVersion: string | null = null;
+				for (let j = i + 1; j < history.length; j++) {
+					const v = getDisplayVersion(history[j].version);
+					if (v && v !== currentV) { previousVersion = v; break; }
+				}
 				list.push({
 					appName: s.appName,
 					title: s.title,
-					version: getDisplayVersion(entry.version),
+					version: currentV,
+					previousVersion,
 					timestamp: entry.timestamp,
 					bakeStatus: entry.bakeStatus || 'None',
 					ns: s.rollout.metadata?.namespace || '',
@@ -390,7 +400,13 @@
 												</span>
 												<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
 											</span>
-											<span class="font-mono text-gray-500 dark:text-gray-400">{a.version}</span>
+											<span class="flex shrink-0 items-baseline gap-1">
+												{#if a.previousVersion}
+													<span class="font-mono text-gray-400/70 line-through dark:text-gray-500/70">{a.previousVersion}</span>
+													<span class="text-[10px] text-gray-300 dark:text-gray-600">→</span>
+												{/if}
+												<span class="font-mono text-gray-700 dark:text-gray-300">{a.version}</span>
+											</span>
 										</div>
 									</a>
 								</li>

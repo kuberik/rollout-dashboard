@@ -26,6 +26,7 @@
 		envName: string;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		version: string;
+		previousVersion: string | null;
 		bakeStatus: string;
 		timestamp: string;
 		href: string;
@@ -98,16 +99,26 @@
 			);
 			const envName = env?.spec?.environment || '';
 			const theme = env ? getRolloutEnvironmentTheme(rollout, env) : getRolloutEnvironmentTheme(rollout);
-			for (const h of history.slice(0, 8)) {
+			const limited = history.slice(0, 8);
+			for (let i = 0; i < limited.length; i++) {
+				const h = limited[i];
 				if (!h.timestamp) continue;
 				const bs = h.bakeStatus || 'None';
+				const currentV = getDisplayVersion(h.version);
+				// Find the previous *different* version in this rollout's history.
+				let previousVersion: string | null = null;
+				for (let j = i + 1; j < history.length; j++) {
+					const v = getDisplayVersion(history[j].version);
+					if (v && v !== currentV) { previousVersion = v; break; }
+				}
 				entries.push({
 					rolloutName: rollout.metadata?.name || '',
 					rolloutNamespace: rollout.metadata?.namespace || '',
 					displayName: title,
 					envName,
 					theme,
-					version: getDisplayVersion(h.version),
+					version: currentV,
+					previousVersion,
 					bakeStatus: bs,
 					timestamp: h.timestamp,
 					href: `/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}`,
@@ -303,7 +314,11 @@
 											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutName}</span>
 											<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-700">·</span>
 										{/if}
-										<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.version}</span>
+										{#if entry.previousVersion}
+											<span class="shrink-0 font-mono text-[11px] text-gray-400/70 line-through dark:text-gray-500/70">{entry.previousVersion}</span>
+											<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-600">→</span>
+										{/if}
+										<span class="truncate font-mono text-[11px] text-gray-700 dark:text-gray-300">{entry.version}</span>
 									</div>
 								</div>
 

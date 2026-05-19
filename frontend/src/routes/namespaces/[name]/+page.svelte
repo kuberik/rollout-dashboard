@@ -60,6 +60,7 @@
 		envName: string;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		version: string;
+		previousVersion: string | null;
 		timestamp: string;
 		bakeStatus: string;
 	};
@@ -67,14 +68,23 @@
 	const timeline = $derived.by<TimelineEvent[]>(() => {
 		const list: TimelineEvent[] = [];
 		for (const a of apps) {
-			if (!a.rollout.status?.history) continue;
-			for (const entry of a.rollout.status.history) {
+			const history = a.rollout.status?.history;
+			if (!history) continue;
+			for (let i = 0; i < history.length; i++) {
+				const entry = history[i];
+				const currentV = getDisplayVersion(entry.version);
+				let previousVersion: string | null = null;
+				for (let j = i + 1; j < history.length; j++) {
+					const v = getDisplayVersion(history[j].version);
+					if (v && v !== currentV) { previousVersion = v; break; }
+				}
 				list.push({
 					appName: a.rollout.metadata?.name || '',
 					title: a.title,
 					envName: a.envName,
 					theme: a.theme,
-					version: getDisplayVersion(entry.version),
+					version: currentV,
+					previousVersion,
 					timestamp: entry.timestamp,
 					bakeStatus: entry.bakeStatus || 'None'
 				});
@@ -324,7 +334,11 @@
 														<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(e.theme) || e.envName || e.theme?.label}</span>
 													{/if}
 													<span class="min-w-0 truncate text-gray-800 dark:text-gray-200">{e.title}</span>
-													<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{e.version}</span>
+													{#if e.previousVersion}
+														<span class="shrink-0 font-mono text-[11px] text-gray-400/70 line-through dark:text-gray-500/70">{e.previousVersion}</span>
+														<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-600">→</span>
+													{/if}
+													<span class="shrink-0 font-mono text-[11px] text-gray-700 dark:text-gray-300">{e.version}</span>
 												</div>
 												<span class="flex shrink-0 items-center gap-1">
 													<span class="relative flex h-1.5 w-1.5">
