@@ -322,7 +322,7 @@
 					of {slots.length} healthy
 				</span>
 				{#if failedCount > 0}<span class="font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
-				{#if activeCount > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
+				{#if activeCount > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} in progress</span>{/if}
 				{#if newestDeploy}
 					<span class="text-xs text-gray-400 dark:text-gray-500" title={`Newest deploy ${formatTimeAgo(newestDeploy, $now)}`}>
 						· last deploy {formatTimeAgoCompact(newestDeploy, $now)}

@@ -318,7 +318,7 @@
 					of {cards.length} healthy
 				</span>
 				{#if counts.failed > 0}<span class="font-medium text-red-600 dark:text-red-400">· {counts.failed} failed</span>{/if}
-				{#if counts.active > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} deploying</span>{/if}
+				{#if counts.active > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} in progress</span>{/if}
 				{#if counts.pending > 0}<span>· {counts.pending} pending</span>{/if}
 				<DeployVolumeSparkline {rollouts} />
 			</div>
@@ -338,7 +338,7 @@
 				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-1.5">
-				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'Deploying', dot:'bg-yellow-400'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'succeeded', label:'Healthy', dot:'bg-green-500'}] as p}
+				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'In progress', dot:'bg-yellow-400'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'succeeded', label:'Healthy', dot:'bg-green-500'}] as p}
 					{@const k = p.key as StatusKey}
 					{@const sel = statusFilters.includes(k)}
 					{@const n = counts[k]}
@@ -478,7 +478,7 @@
 							{#if g.failedCount > 0}
 								<span class="shrink-0 text-[11px] font-medium text-red-600 dark:text-red-400">· {g.failedCount} failed</span>
 							{:else if g.activeCount > 0}
-								<span class="shrink-0 text-[11px] font-medium text-yellow-700 dark:text-yellow-400">· {g.activeCount} deploying</span>
+								<span class="shrink-0 text-[11px] font-medium text-yellow-700 dark:text-yellow-400">· {g.activeCount} in progress</span>
 							{:else if g.pendingCount > 0}
 								<span class="shrink-0 text-[11px] font-medium text-gray-500 dark:text-gray-400">· {g.pendingCount} pending</span>
 							{/if}

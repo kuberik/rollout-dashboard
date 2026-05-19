@@ -203,7 +203,7 @@
 						<span class="tabular-nums {fleetTotals.healthy === apps.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{fleetTotals.healthy}</span>
 						<span>of {apps.length} healthy</span>
 						{#if fleetTotals.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {fleetTotals.failed} failed</span>{/if}
-						{#if fleetTotals.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {fleetTotals.active} deploying</span>{/if}
+						{#if fleetTotals.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {fleetTotals.active} in progress</span>{/if}
 						{#if fleetTotals.stuck > 0}<span class="ml-2 font-medium text-amber-700 dark:text-amber-300">· {fleetTotals.stuck} stuck</span>{/if}
 						{#if fleetTotals.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {fleetTotals.pending} pending</span>{/if}
 					</span>
@@ -231,7 +231,7 @@
 				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-1.5">
-				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'Deploying', dot:'bg-yellow-400'}, {key:'stuck', label:'Stuck', dot:'bg-amber-500'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'healthy', label:'Healthy', dot:'bg-green-500'}] as p}
+				{#each [{key:'failed', label:'Failed', dot:'bg-red-500'}, {key:'active', label:'In progress', dot:'bg-yellow-400'}, {key:'stuck', label:'Stuck', dot:'bg-amber-500'}, {key:'pending', label:'Pending', dot:'bg-gray-400'}, {key:'healthy', label:'Healthy', dot:'bg-green-500'}] as p}
 					{@const k = p.key as AppStatus}
 					{@const sel = statusFilters.includes(k)}
 					{@const n = fleetTotals[k]}

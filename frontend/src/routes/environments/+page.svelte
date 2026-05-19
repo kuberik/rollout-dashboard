@@ -235,7 +235,7 @@
 				<span class="text-sm text-gray-500 dark:text-gray-400">
 					{envNames.length} env{envNames.length === 1 ? '' : 's'} · {sortedAppNames.length} app{sortedAppNames.length === 1 ? '' : 's'}
 					{#if failedCount > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {failedCount} failed</span>{/if}
-					{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} deploying</span>{/if}
+					{#if activeCount > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} in progress</span>{/if}
 					{#if pendingPromotionCount > 0}<span class="ml-2 font-medium text-orange-700 dark:text-orange-400" title="At least one earlier-tier env has a different succeeded version">· {pendingPromotionCount} behind</span>{/if}
 				</span>
 				{#if newestDeploy}
@@ -359,7 +359,7 @@
 							{#if envFailedCount > 0}
 								<span class="text-[11px] font-medium text-red-600 dark:text-red-400">· {envFailedCount} failed</span>
 							{:else if envActiveCount > 0}
-								<span class="text-[11px] font-medium text-yellow-700 dark:text-yellow-400">· {envActiveCount} deploying</span>
+								<span class="text-[11px] font-medium text-yellow-700 dark:text-yellow-400">· {envActiveCount} in progress</span>
 							{:else if envPendingCount > 0}
 								<span class="text-[11px] font-medium text-orange-700 dark:text-orange-400">· {envPendingCount} behind</span>
 							{/if}
