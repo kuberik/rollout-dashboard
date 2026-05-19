@@ -4,9 +4,8 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
-	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import {
@@ -154,84 +153,52 @@
 		Cancelled: 'text-gray-500 dark:text-gray-500',
 		None: 'text-gray-400 dark:text-gray-600'
 	};
-	// Compute "behind by N versions" for each slot on this env. We look for the same
-	// app deployed on an earlier-tier env (e.g. dev when we're on prod); if the
-	// earlier env has a newer succeeded version, count distinct versions between
-	// this slot's current version and the earlier env's current version.
-	type BehindInfo = { fromEnv: string; version: string; behindBy: number | null };
-	function behindForSlot(s: Slot): BehindInfo | null {
+	// Find peers (same app deployed elsewhere) using actual deploy history
+	// to derive direction instead of env-name tier ordering.
+	function peerRollouts(s: Slot): { envName: string; rollout: Rollout }[] {
 		const myEnv = s.environment.spec?.environment;
-		if (!myEnv) return null;
-		// Pinned env is intentionally held.
-		if (s.rollout?.spec?.wantedVersion) return null;
-		const myCurrentH = s.rollout?.status?.history?.[0];
-		if (!myCurrentH) return null;
-		const myCurrentV = getDisplayVersion(myCurrentH.version);
-		// Find candidate earlier envs that deploy the same app.
-		const candidates: { envName: string; rollout: Rollout }[] = [];
+		if (!myEnv) return [];
+		const out: { envName: string; rollout: Rollout }[] = [];
 		for (const env of environments) {
 			const otherEnvName = env.spec?.environment;
 			if (!otherEnvName || otherEnvName === myEnv) continue;
 			if (env.spec?.rolloutRef?.name !== s.appName) continue;
-			if (compareEnvironmentNames(otherEnvName, myEnv) >= 0) continue;
 			const otherRollout = rollouts.find(
 				(r) => r.metadata?.name === s.appName && r.metadata?.namespace === env.metadata?.namespace
 			);
-			if (otherRollout) candidates.push({ envName: otherEnvName, rollout: otherRollout });
+			if (otherRollout) out.push({ envName: otherEnvName, rollout: otherRollout });
 		}
-		if (candidates.length === 0) return null;
-		// Use the *closest* earlier env (highest rank below myEnv) — that's the
-		// promotion source we care about.
-		candidates.sort((a, b) => compareEnvironmentNames(b.envName, a.envName));
-		const source = candidates[0];
-		const sourceH = source.rollout.status?.history?.[0];
-		if (!sourceH || sourceH.bakeStatus !== 'Succeeded') return null;
-		const sourceV = getDisplayVersion(sourceH.version);
-		if (sourceV === myCurrentV) return null;
-		// Walk source history to count distinct versions until myCurrentV.
-		const distinct: string[] = [];
-		for (const h of source.rollout.status?.history ?? []) {
-			const v = getDisplayVersion(h.version);
-			if (distinct[distinct.length - 1] !== v) distinct.push(v);
-			if (v === myCurrentV) break;
-		}
-		const idx = distinct.indexOf(myCurrentV);
-		return { fromEnv: source.envName, version: sourceV, behindBy: idx >= 0 ? idx : null };
+		return out;
 	}
 
-	// Mirror of behindForSlot: when this env is AHEAD of the next-tier env,
-	// surface a positive 'ready to promote to staging' signal. Only fires when
-	// this slot's current version is Succeeded (you don't promote a failure)
-	// and the next tier is on an older different version.
+	type BehindInfo = { fromEnv: string; version: string; behindBy: number | null };
+	function behindForSlot(s: Slot): BehindInfo | null {
+		if (s.rollout?.spec?.wantedVersion) return null;
+		if (!s.rollout) return null;
+		let best: BehindInfo | null = null;
+		for (const peer of peerRollouts(s)) {
+			const rel = compareRollouts(s.rollout, peer.rollout);
+			if (!rel || rel.kind !== 'behind') continue;
+			const candidate = { fromEnv: peer.envName, version: rel.otherVersion, behindBy: rel.by };
+			if (!best || (candidate.behindBy ?? 0) > (best.behindBy ?? 0)) best = candidate;
+		}
+		return best;
+	}
+
 	type PromoteInfo = { toEnv: string; version: string };
 	function readyToPromote(s: Slot): PromoteInfo | null {
-		const myEnv = s.environment.spec?.environment;
-		if (!myEnv) return null;
-		const myCurrentH = s.rollout?.status?.history?.[0];
+		if (!s.rollout) return null;
+		const myCurrentH = s.rollout.status?.history?.[0];
 		if (!myCurrentH || myCurrentH.bakeStatus !== 'Succeeded') return null;
 		const myCurrentV = getDisplayVersion(myCurrentH.version);
-		// Find the closest later-tier env that deploys the same app.
-		const candidates: { envName: string; rollout: Rollout }[] = [];
-		for (const env of environments) {
-			const otherEnvName = env.spec?.environment;
-			if (!otherEnvName || otherEnvName === myEnv) continue;
-			if (env.spec?.rolloutRef?.name !== s.appName) continue;
-			if (compareEnvironmentNames(otherEnvName, myEnv) <= 0) continue;
-			const otherRollout = rollouts.find(
-				(r) => r.metadata?.name === s.appName && r.metadata?.namespace === env.metadata?.namespace
-			);
-			if (otherRollout) candidates.push({ envName: otherEnvName, rollout: otherRollout });
+		for (const peer of peerRollouts(s)) {
+			if (peer.rollout.spec?.wantedVersion) continue;
+			const rel = compareRollouts(s.rollout, peer.rollout);
+			if (rel?.kind === 'ahead') {
+				return { toEnv: peer.envName, version: myCurrentV };
+			}
 		}
-		if (candidates.length === 0) return null;
-		// Closest later-tier env first.
-		candidates.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
-		const target = candidates[0];
-		// Skip if target is pinned — it's intentionally held.
-		if (target.rollout.spec?.wantedVersion) return null;
-		const targetH = target.rollout.status?.history?.[0];
-		const targetV = targetH ? getDisplayVersion(targetH.version) : null;
-		if (targetV === myCurrentV) return null;
-		return { toEnv: target.envName, version: myCurrentV };
+		return null;
 	}
 
 	function previousSucceededVersion(r: Rollout | null, currentV: string | null): string | null {

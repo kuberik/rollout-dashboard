@@ -33,6 +33,57 @@ export function formatStatusTime(
     return t;
 }
 
+// Compare two rollouts' current versions using their actual deploy history,
+// not env-name tier ordering. Direction is derived from data: if my current
+// version appears as a past entry in the other rollout's history, the other
+// has already deployed and moved past my version → I'm behind. Conversely,
+// if the other's current version appears as a past entry in my history,
+// I've already deployed past it → I'm ahead. When the versions diverge
+// without history overlap, returns 'divergent'.
+export type RolloutRelation =
+    | { kind: 'same' }
+    | { kind: 'behind'; otherVersion: string; by: number | null }
+    | { kind: 'ahead'; otherVersion: string; by: number | null }
+    | { kind: 'divergent'; otherVersion: string };
+
+export function compareRollouts(
+    myRollout: Rollout | null | undefined,
+    otherRollout: Rollout | null | undefined
+): RolloutRelation | null {
+    if (!myRollout || !otherRollout) return null;
+    const myH = myRollout.status?.history ?? [];
+    const otherH = otherRollout.status?.history ?? [];
+    const myV = myH[0] ? getDisplayVersion(myH[0].version) : null;
+    const otherV = otherH[0] ? getDisplayVersion(otherH[0].version) : null;
+    if (!myV || !otherV) return null;
+    if (myV === otherV) return { kind: 'same' };
+
+    const myVInOtherPast = otherH.slice(1).some((h) => getDisplayVersion(h.version) === myV);
+    const otherVInMyPast = myH.slice(1).some((h) => getDisplayVersion(h.version) === otherV);
+
+    if (myVInOtherPast && !otherVInMyPast) {
+        const distinct: string[] = [];
+        for (const h of otherH) {
+            const v = getDisplayVersion(h.version);
+            if (distinct[distinct.length - 1] !== v) distinct.push(v);
+            if (v === myV) break;
+        }
+        const idx = distinct.indexOf(myV);
+        return { kind: 'behind', otherVersion: otherV, by: idx >= 0 ? idx : null };
+    }
+    if (otherVInMyPast && !myVInOtherPast) {
+        const distinct: string[] = [];
+        for (const h of myH) {
+            const v = getDisplayVersion(h.version);
+            if (distinct[distinct.length - 1] !== v) distinct.push(v);
+            if (v === otherV) break;
+        }
+        const idx = distinct.indexOf(otherV);
+        return { kind: 'ahead', otherVersion: otherV, by: idx >= 0 ? idx : null };
+    }
+    return { kind: 'divergent', otherVersion: otherV };
+}
+
 // Classify a bakeStatusMessage / failure message into a short diagnostic
 // category. The full message is too noisy for list cards; a category tag
 // ("healthcheck", "image", "gate", "test", "timeout") gives the on-call

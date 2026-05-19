@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
@@ -126,39 +126,27 @@
 
 	// For each (app, envName), check if the env immediately earlier in the tier
 	// has a different succeeded version → this cell is "behind" that earlier env.
+	// Direction-from-data: scan all other env cells for the same app, find
+	// any peer whose history shows mine as a past entry (= they're ahead).
 	function behindFor(
 		appName: string,
 		envName: string
 	): { fromEnv: string; version: string; behindBy: number | null } | null {
 		const row = matrix.get(appName);
 		if (!row) return null;
-		const idx = envNames.indexOf(envName);
-		if (idx <= 0) return null;
-		const earlierEnvName = envNames[idx - 1];
-		const earlier = row.get(earlierEnvName);
 		const current = row.get(envName);
-		if (!earlier?.rollout || !current?.rollout) return null;
-		// Pinned env is intentionally held — don't surface it as lagging.
+		if (!current?.rollout) return null;
 		if (current.rollout.spec?.wantedVersion) return null;
-		const earlierH = earlier.rollout.status?.history?.[0];
-		if (!earlierH) return null;
-		if (earlierH.bakeStatus !== 'Succeeded') return null;
-		const earlierV = getDisplayVersion(earlierH.version);
-		const currentH = current.rollout.status?.history?.[0];
-		if (!currentH) return { fromEnv: earlierEnvName, version: earlierV, behindBy: null };
-		const currentV = getDisplayVersion(currentH.version);
-		if (earlierV === currentV) return null;
-		// Count distinct versions in earlier env's history between current (inclusive) and latest.
-		const earlierHistory = earlier.rollout.status?.history ?? [];
-		const distinct: string[] = [];
-		for (const h of earlierHistory) {
-			const v = getDisplayVersion(h.version);
-			if (distinct[distinct.length - 1] !== v) distinct.push(v);
-			if (v === currentV) break;
+		let best: { fromEnv: string; version: string; behindBy: number | null } | null = null;
+		for (const [otherEnv, otherCell] of row) {
+			if (otherEnv === envName) continue;
+			if (!otherCell?.rollout) continue;
+			const rel = compareRollouts(current.rollout, otherCell.rollout);
+			if (!rel || rel.kind !== 'behind') continue;
+			const candidate = { fromEnv: otherEnv, version: rel.otherVersion, behindBy: rel.by };
+			if (!best || (candidate.behindBy ?? 0) > (best.behindBy ?? 0)) best = candidate;
 		}
-		const i = distinct.indexOf(currentV);
-		const behindBy = i >= 0 ? i : null;
-		return { fromEnv: earlierEnvName, version: earlierV, behindBy };
+		return best;
 	}
 
 	function appSeverity(appName: string): number {

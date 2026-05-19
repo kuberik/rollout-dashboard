@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -73,34 +73,29 @@
 		return map;
 	});
 
+	// Find the most relevant peer env for this rollout — the one where my
+	// current version exists as a past deploy. That env has progressed past
+	// me, so we say I'm "behind <env>" — direction derived from data, not
+	// from env-name tier assumptions. If no peer has progressed past me but
+	// my history contains a peer's current version, I'm "ahead" of it.
 	function computeBehind(
 		r: Rollout,
 		envName: string
 	): { fromEnv: string; version: string; behindBy: number | null } | null {
-		// Pinned rollouts are intentionally held.
 		if (r.spec?.wantedVersion) return null;
-		const myH = r.status?.history?.[0];
-		if (!myH) return null;
-		const myV = getDisplayVersion(myH.version);
 		const peers = appIndex.get(r.metadata?.name ?? '');
 		if (!peers || peers.length < 2) return null;
-		// Find the closest earlier-tier env that deploys this app.
-		const earlierPeers = peers.filter((p) => compareEnvironmentNames(p.envName, envName) < 0);
-		if (earlierPeers.length === 0) return null;
-		const source = earlierPeers[earlierPeers.length - 1];
-		const sourceH = source.rollout.status?.history?.[0];
-		if (!sourceH || sourceH.bakeStatus !== 'Succeeded') return null;
-		const sourceV = getDisplayVersion(sourceH.version);
-		if (sourceV === myV) return null;
-		// Count distinct versions between myV (inclusive) and sourceV (newest) in source history.
-		const distinct: string[] = [];
-		for (const h of source.rollout.status?.history ?? []) {
-			const v = getDisplayVersion(h.version);
-			if (distinct[distinct.length - 1] !== v) distinct.push(v);
-			if (v === myV) break;
+		// Prefer peers that have actually moved past me (kind === 'behind').
+		// Among them, pick the one with the highest behindBy (furthest behind).
+		let best: { fromEnv: string; version: string; behindBy: number | null } | null = null;
+		for (const peer of peers) {
+			if (peer.envName === envName) continue;
+			const rel = compareRollouts(r, peer.rollout);
+			if (!rel || rel.kind !== 'behind') continue;
+			const candidate = { fromEnv: peer.envName, version: rel.otherVersion, behindBy: rel.by };
+			if (!best || (candidate.behindBy ?? 0) > (best.behindBy ?? 0)) best = candidate;
 		}
-		const idx = distinct.indexOf(myV);
-		return { fromEnv: source.envName, version: sourceV, behindBy: idx >= 0 ? idx : null };
+		return best;
 	}
 
 	const cards = $derived.by<Card[]>(() => {
