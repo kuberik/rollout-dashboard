@@ -46,7 +46,7 @@ violates an enforced item.
 
 ## Open issues — still to address
 
-1. **Home rollout list still looks the most inconsistent** with the rest of the dashboard. The card design is unified now but the page structure (namespace grouping, search/filter bar) differs from /apps. Audit and align.
+_None known at the moment. Append here as new feedback lands._
 
 ## Recently addressed (do not regress)
 
@@ -64,6 +64,7 @@ violates an enforced item.
   - ⌘K opens the global multi-type view.
   - Clicking a section name in the navbar breadcrumb opens the palette **scoped** to that kind (rollouts / apps / environments). The scope appears as a removable chip next to the search icon; placeholder updates to match.
   - First ESC clears the scope back to global; second ESC closes. Backspace on an empty query also pops the scope.
+- ✅ Home rollout-list page header aligned with /apps: title stacks above meta on mobile, meta is a single line of count chips and the deploy-volume sparkline. Removes the unique "Recent 24h deploys" link element that made the header feel different from the other lists.
 
 ## Working principles
 

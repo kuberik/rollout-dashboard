@@ -303,29 +303,26 @@
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Page hero: title + inline status + fleet composition bar -->
+	<!-- Page header — mirrors /apps so the dashboard feels consistent
+	     across the top-level lists. Title row stacks above meta on
+	     mobile, both on one line ≥ sm. -->
 	<div class="mb-5">
-		<div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-			<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-				<h1 class="text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
-				{#if cards.length > 0}
-					<span class="text-sm text-gray-500 dark:text-gray-400">
-						<span class="tabular-nums {counts.succeeded === cards.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{counts.succeeded}</span>
-						<span>of {cards.length} healthy</span>
-						{#if counts.failed > 0}<span class="ml-2 font-medium text-red-600 dark:text-red-400">· {counts.failed} failed</span>{/if}
-						{#if counts.active > 0}<span class="ml-2 font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} deploying</span>{/if}
-						{#if counts.pending > 0}<span class="ml-2 text-gray-500 dark:text-gray-400">· {counts.pending} pending</span>{/if}
-					</span>
-					{#if recent24h > 0}
-						<a href="/activity" class="inline-flex items-center gap-2 text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300" title="View activity">
-							<span>{recent24h} deploy{recent24h === 1 ? '' : 's'} · 24h</span>
-							<DeployVolumeSparkline {rollouts} />
-						</a>
-					{/if}
-				{/if}
-			</div>
+		<div class="flex items-baseline justify-between gap-3">
+			<h1 class="min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
 			{#if query.isFetching}<Spinner size="5" color="gray" />{/if}
 		</div>
+		{#if cards.length > 0}
+			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
+				<span>
+					<span class="tabular-nums {counts.succeeded === cards.length ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{counts.succeeded}</span>
+					of {cards.length} healthy
+				</span>
+				{#if counts.failed > 0}<span class="font-medium text-red-600 dark:text-red-400">· {counts.failed} failed</span>{/if}
+				{#if counts.active > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {counts.active} deploying</span>{/if}
+				{#if counts.pending > 0}<span>· {counts.pending} pending</span>{/if}
+				<DeployVolumeSparkline {rollouts} />
+			</div>
+		{/if}
 	</div>
 
 	<!-- Filter bar: search + status chips + env chips + clear -->
