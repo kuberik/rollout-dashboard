@@ -166,7 +166,7 @@
 
 <div
 	bind:this={containerEl}
-	class="overflow-hidden rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white dark:border-gray-700/60 dark:from-gray-900/40 dark:to-gray-800/40"
+	class="overflow-hidden rounded-xl border border-gray-200 bg-gray-50/60 shadow-sm dark:border-gray-700 dark:bg-gray-900/30"
 	style="height: {canvasHeight}px"
 >
 	<SvelteFlow

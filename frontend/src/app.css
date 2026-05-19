@@ -125,8 +125,9 @@ input, select, textarea {
   display: none;
 }
 
-/* Svelte Flow visual refinements: edge label chip should match our
-   button-pill aesthetic, not the library default white-on-white. */
+/* Svelte Flow visual refinements: match the dashboard chrome instead of
+   the library defaults. Edge label chips, hidden handles, no focus ring
+   on the canvas, and a subtle attribution if it sneaks back in. */
 .svelte-flow__edge-textbg {
   fill: rgb(255 255 255);
   stroke: rgb(229 231 235);
@@ -138,6 +139,12 @@ input, select, textarea {
 }
 .svelte-flow__handle {
   opacity: 0;
+}
+.svelte-flow__renderer:focus-visible {
+  outline: none;
+}
+.svelte-flow__attribution {
+  display: none;
 }
 
 .dark {
