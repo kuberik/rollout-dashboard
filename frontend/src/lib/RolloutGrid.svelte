@@ -307,6 +307,14 @@
 		Cancelled: 'bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};
+	const STATUS_LABEL: Record<string, string> = {
+		Succeeded: 'Succeeded',
+		Failed: 'Failed',
+		InProgress: 'Baking',
+		Deploying: 'Deploying',
+		Cancelled: 'Cancelled',
+		None: 'No deploy'
+	};
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
@@ -553,55 +561,64 @@
 					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each g.cards as c (c.ns + '/' + c.name)}
+								{@const statusLabel = STATUS_LABEL[c.bakeStatus] ?? c.bakeStatus}
 								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 									<a
 										href={`/rollouts/${c.ns}/${c.name}`}
-										class="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
+										class="grid items-center gap-4 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
+										style="grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto;"
 									>
 										<!-- Status icon -->
-										<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
+										<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
 											{#if c.isRunning}
 												<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(c.bakeStatus)}"></span>
 											{/if}
 											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 										</span>
 
-										<!-- Title + name + diagnostic line -->
-										<div class="flex min-w-0 flex-1 flex-col">
+										<!-- Title block -->
+										<div class="flex min-w-0 flex-col">
 											<div class="flex min-w-0 items-baseline gap-2">
-												<span class="truncate text-sm font-semibold text-gray-900 dark:text-white sm:text-base">{c.title}</span>
+												<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{c.title}</span>
 												{#if c.stuck}<StuckBadge reason={c.stuck} size="xs" />{/if}
 											</div>
-											<div class="flex min-w-0 items-baseline gap-2 text-[11px]">
-												<span class="truncate font-mono text-gray-400 dark:text-gray-500">{c.name}</span>
-												{#if c.failureCategory}
-													<span class="shrink-0 text-gray-400 dark:text-gray-500" title={c.bakeStatusMessage ?? ''}>
-														· <span class="font-medium text-gray-600 dark:text-gray-400">{c.failureCategory}</span> failed
-													</span>
-												{:else if c.behind}
-													<span class="shrink-0 text-gray-400 dark:text-gray-500" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
-														· {c.behind.behindBy && c.behind.behindBy > 0 ? `${c.behind.behindBy} behind` : 'behind'} <span class="font-medium text-gray-600 dark:text-gray-400">{c.behind.fromEnv}</span>
-													</span>
-												{/if}
-											</div>
+											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
 										</div>
 
-										<!-- Version column (visible everywhere) -->
-										<div class="flex min-w-0 shrink-0 flex-col items-end gap-0.5">
-											<div class="flex items-baseline gap-1.5">
-												<span class="truncate font-mono text-sm text-gray-700 dark:text-gray-300">{c.version ?? '—'}</span>
+										<!-- Version + status block (centre, fills the dead space) -->
+										<div class="flex min-w-0 flex-col">
+											<div class="flex min-w-0 items-baseline gap-1.5">
+												<span class="truncate font-mono text-base font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ?? '—'}</span>
 												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
 											</div>
+											{#if c.failureCategory}
+												<span class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={c.bakeStatusMessage ?? ''}>
+													<span class="font-medium text-gray-700 dark:text-gray-300">{c.failureCategory}</span> failed
+												</span>
+											{:else if c.behind}
+												<span class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
+													{c.behind.behindBy && c.behind.behindBy > 0 ? `${c.behind.behindBy} behind` : 'behind'} <span class="font-medium text-gray-700 dark:text-gray-300">{c.behind.fromEnv}</span>
+												</span>
+											{:else}
+												<span class="truncate text-[11px] {c.bakeStatus === 'Succeeded' ? 'text-green-600 dark:text-green-400' : c.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : c.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : c.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}">{statusLabel}</span>
+											{/if}
+										</div>
+
+										<!-- Last deploy time (mini stack) -->
+										<div class="flex shrink-0 flex-col items-end gap-0.5">
 											{#if c.timestamp}
-												<span class="font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(c.timestamp, $now)}>
+												<span class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{c.isRunning ? 'Started' : 'Deployed'}</span>
+												<span class="font-mono text-xs {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-700 dark:text-gray-300'}" title={formatTimeAgo(c.timestamp, $now)}>
 													{formatStatusTime(c.bakeStatus, c.timestamp, $now)}
 												</span>
+											{:else}
+												<span class="font-mono text-[10px] uppercase tracking-wider text-gray-300 dark:text-gray-600">No deploy</span>
 											{/if}
 										</div>
 
 										<!-- Env badge -->
 										{#if c.envDisplay}
-											<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
+											<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-md px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
 										{/if}
 									</a>
 								</li>
