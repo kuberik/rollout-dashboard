@@ -348,7 +348,7 @@
 					<!-- Title row: status icon + title/name + stuck pill -->
 					<div class="flex min-w-0 items-start justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
-							<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {sk === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : sk === 'active' ? 'bg-yellow-100 dark:bg-yellow-900/30' : sk === 'stuck' ? 'bg-amber-100 dark:bg-amber-900/30' : sk === 'pending' ? 'bg-gray-100 dark:bg-gray-700/60' : 'bg-green-100 dark:bg-green-900/30'}">
+							<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(bakeForIcon)}">
 								{#if sk === 'active'}
 									<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 								{/if}
@@ -356,7 +356,12 @@
 							</span>
 							<div class="flex min-w-0 flex-col">
 								<span class="truncate text-base font-bold text-gray-900 dark:text-white">{app.title}</span>
-								<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{app.name}</span>
+								<div class="flex min-w-0 items-baseline gap-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
+									<span class="truncate">{app.name}</span>
+									{#if app.lastDeploy}
+										<span class="shrink-0" title={formatTimeAgo(app.lastDeploy, $now)}>· {formatTimeAgoCompact(app.lastDeploy, $now)}</span>
+									{/if}
+								</div>
 							</div>
 						</div>
 						{#if stuck}<StuckBadge reason={stuck} />{/if}
