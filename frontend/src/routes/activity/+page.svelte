@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { formatTimeAgoCompact, formatTimeAgo, getDisplayVersion } from '$lib/utils';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -296,7 +296,7 @@
 								<!-- Status icon (col 1) -->
 								<span class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(entry.bakeStatus)}">
 									{#if entry.isRunning}
-										<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
+										<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(entry.bakeStatus)}"></span>
 									{/if}
 									<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
 								</span>

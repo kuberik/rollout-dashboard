@@ -34,3 +34,18 @@ export function getStatusCircleClass(bakeStatus?: string): string {
             return 'bg-gray-100 dark:bg-gray-700/60';
     }
 }
+
+// Returns the tailwind class for the animate-ping ring inside a status
+// circle. Matches the circle bg color so Deploying pings in blue and
+// InProgress pings in yellow.
+export function getStatusPingClass(bakeStatus?: string): string {
+    const c = getBakeStatusColor(bakeStatus);
+    switch (c) {
+        case 'blue':
+            return 'bg-blue-400/40';
+        case 'yellow':
+            return 'bg-yellow-400/30';
+        default:
+            return 'bg-yellow-400/30';
+    }
+}

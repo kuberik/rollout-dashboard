@@ -15,7 +15,7 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../../../types';
 
 	const envName = $derived(page.params.name as string);
@@ -355,7 +355,7 @@
 										<!-- Substantial status circle -->
 										<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
 											{#if isRunning(status)}
-												<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
+												<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(status)}"></span>
 											{/if}
 											<BakeStatusIcon bakeStatus={status} size="medium" />
 										</span>
