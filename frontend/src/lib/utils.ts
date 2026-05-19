@@ -16,6 +16,23 @@ export function formatTimeAgo(start: string, end: Date = new Date()): string {
     return `${formatDuration(start, end)} ago`;
 }
 
+// For in-flight rollouts (Baking/Deploying), prepend the verb so the
+// timestamp clearly reads as time-in-state — a baking rollout sitting
+// at 'baking 2h' jumps out as stuck, while 'baking 30s' looks normal.
+// Returns just the timestamp for terminal states (timestamp alone is
+// clear when there's no ongoing process).
+export function formatStatusTime(
+    bakeStatus: string,
+    timestamp: string | null | undefined,
+    now: Date = new Date()
+): string {
+    if (!timestamp) return '';
+    const t = formatTimeAgoCompact(timestamp, now);
+    if (bakeStatus === 'InProgress') return `baking ${t}`;
+    if (bakeStatus === 'Deploying') return `deploying ${t}`;
+    return t;
+}
+
 // Classify a bakeStatusMessage / failure message into a short diagnostic
 // category. The full message is too noisy for list cards; a category tag
 // ("healthcheck", "image", "gate", "test", "timeout") gives the on-call
