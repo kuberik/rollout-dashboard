@@ -114,6 +114,23 @@ input, select, textarea {
   color: var(--rollout-theme-dark-text);
 }
 
+/* Home rollout row layout: two-row grid on mobile (status icon spans
+   both rows, content stacks), single row of five tracks on sm+ so
+   every rollout shows status · title · version+status · last-deploy ·
+   env. The grid-template-columns is too gnarly to express via the
+   `grid-cols-[...]` arbitrary-value syntax, so we put it here. */
+.row-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+}
+@media (min-width: 640px) {
+  .row-grid {
+    grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+    grid-template-rows: auto;
+  }
+}
+
 /* Hide native scrollbar chrome while keeping the element scrollable.
    Used on horizontal-scrolling tab strips like the rollout detail tabs.
    The dark-mode global `.dark ::-webkit-scrollbar-thumb { @apply bg-gray-600 }`

@@ -565,11 +565,10 @@
 								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 									<a
 										href={`/rollouts/${c.ns}/${c.name}`}
-										class="grid items-center gap-4 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
-										style="grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto;"
+										class="row-grid items-center gap-x-4 gap-y-2 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
 									>
 										<!-- Status icon -->
-										<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
+										<span class="relative col-start-1 row-span-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)} sm:row-span-1">
 											{#if c.isRunning}
 												<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(c.bakeStatus)}"></span>
 											{/if}
@@ -586,7 +585,7 @@
 										</div>
 
 										<!-- Version + status block (centre, fills the dead space) -->
-										<div class="flex min-w-0 flex-col">
+										<div class="col-span-2 col-start-2 flex min-w-0 flex-col sm:col-span-1 sm:col-start-auto">
 											<div class="flex min-w-0 items-baseline gap-1.5">
 												<span class="truncate font-mono text-base font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ?? '—'}</span>
 												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
@@ -605,7 +604,7 @@
 										</div>
 
 										<!-- Last deploy time (mini stack) -->
-										<div class="flex shrink-0 flex-col items-end gap-0.5">
+										<div class="hidden shrink-0 flex-col items-end gap-0.5 sm:flex">
 											{#if c.timestamp}
 												<span class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{c.isRunning ? 'Started' : 'Deployed'}</span>
 												<span class="font-mono text-xs {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-700 dark:text-gray-300'}" title={formatTimeAgo(c.timestamp, $now)}>
