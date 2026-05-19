@@ -414,81 +414,110 @@
 				</ul>
 			</div>
 		{/if}
-		<!-- Single dense panel — full width. One row per app. -->
-		<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-				{#each filteredApps as app}
-					{@const sk = appStatusKey(app, $now)}
-					{@const stuck = sk === 'stuck' ? appStuckReason(app, $now) : null}
-					{@const bakeForIcon = sk === 'failed' ? 'Failed' : sk === 'active' ? 'InProgress' : sk === 'pending' ? 'None' : 'Succeeded'}
-					<li>
-						<a
-							href="/apps/{app.name}"
-							class="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:flex-row sm:items-center sm:gap-5 sm:px-5"
-						>
-							<!-- Title block (status + name + meta) -->
-							<div class="flex min-w-0 flex-1 items-center gap-3">
-								<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(bakeForIcon)}">
-									{#if sk === 'active'}
-										<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
-									{/if}
-									<BakeStatusIcon bakeStatus={bakeForIcon} size="medium" />
-								</span>
-								<div class="flex min-w-0 flex-col">
-									<div class="flex min-w-0 items-baseline gap-2">
-										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white sm:text-base">{app.title}</span>
-										{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
-									</div>
-									<div class="flex min-w-0 items-baseline gap-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
-										<span class="truncate">{app.name}</span>
-										{#if app.lastDeploy}
-											<span class="shrink-0" title={formatTimeAgo(app.lastDeploy, $now)}>· {formatTimeAgoCompact(app.lastDeploy, $now)}</span>
-										{/if}
-									</div>
-								</div>
+		<!-- Each app gets its own substantial panel — title row up top,
+		     a real promotion-flow strip below filling the horizontal
+		     space with env tiles + relationship arrows. -->
+		<div class="space-y-3">
+			{#each filteredApps as app}
+				{@const sk = appStatusKey(app, $now)}
+				{@const stuck = sk === 'stuck' ? appStuckReason(app, $now) : null}
+				{@const bakeForIcon = sk === 'failed' ? 'Failed' : sk === 'active' ? 'InProgress' : sk === 'pending' ? 'None' : 'Succeeded'}
+				{@const inSync = app.currentVersions.length === 1 && app.deployedCount === app.envCount}
+				{@const stateLabel = stuck
+					? 'needs attention'
+					: app.failedCount > 0
+						? `${app.failedCount} env${app.failedCount === 1 ? '' : 's'} failing`
+						: app.activeCount > 0
+							? 'deploy in progress'
+							: inSync
+								? `in sync · ${app.envCount} env${app.envCount === 1 ? '' : 's'}`
+								: app.deployedCount < app.envCount
+									? `${app.envCount - app.deployedCount} env${(app.envCount - app.deployedCount) === 1 ? '' : 's'} pending`
+									: `${app.currentVersions.length} versions live`}
+				<a
+					href="/apps/{app.name}"
+					class="group block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50/60 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:bg-gray-700/40"
+				>
+					<!-- Header row: status icon + title + meta -->
+					<div class="flex items-start gap-3 px-5 py-4">
+						<span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(bakeForIcon)}">
+							{#if sk === 'active'}
+								<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
+							{/if}
+							<BakeStatusIcon bakeStatus={bakeForIcon} size="medium" />
+						</span>
+						<div class="flex min-w-0 flex-1 flex-col">
+							<div class="flex min-w-0 items-baseline gap-2">
+								<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{app.title}</span>
+								{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
 							</div>
+							<div class="flex min-w-0 items-baseline gap-2 text-[11px]">
+								<span class="truncate font-mono text-gray-400 dark:text-gray-500">{app.name}</span>
+								<span class="shrink-0 text-gray-300 dark:text-gray-600">·</span>
+								<span class="shrink-0 {stuck || app.failedCount > 0 ? 'text-amber-600 dark:text-amber-400' : inSync ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}">{stateLabel}</span>
+							</div>
+						</div>
+						{#if app.lastDeploy}
+							<div class="shrink-0 text-right">
+								<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Last deploy</div>
+								<div class="font-mono text-xs text-gray-700 dark:text-gray-300" title={formatTimeAgo(app.lastDeploy, $now)}>{formatTimeAgoCompact(app.lastDeploy, $now)} ago</div>
+							</div>
+						{/if}
+					</div>
 
-							<!-- Promotion flow: each env is a chip with version + status
-							     dot, joined by an arrow whose colour reflects the version-
-							     relationship between consecutive envs. -->
-							<div class="flex flex-wrap items-center gap-x-1 gap-y-1.5 pl-12 sm:shrink-0 sm:justify-end sm:pl-0">
-								{#each app.cells as c, ci}
-									{@const latest = c.rollout?.status?.history?.[0]}
-									{@const status = latest?.bakeStatus || 'None'}
-									{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
-									{#if ci > 0}
-										{@const prev = app.cells[ci - 1]}
-										{@const rel = compareRollouts(prev.rollout, c.rollout)}
-										{@const arrowColor = !rel
-											? 'text-gray-300 dark:text-gray-600'
-											: rel.kind === 'same'
-												? 'text-green-500/70 dark:text-green-400/70'
-												: rel.kind === 'ahead'
-													? 'text-emerald-500 dark:text-emerald-400'
-													: rel.kind === 'behind'
-														? 'text-orange-500 dark:text-orange-400'
-														: 'text-gray-400 dark:text-gray-500'}
-										<span class="shrink-0 px-0.5 text-xs {arrowColor}" aria-hidden="true" title={rel?.kind ?? 'no comparison'}>→</span>
-									{/if}
-									<span
-										class="environment-theme-scope environment-theme-badge inline-flex shrink-0 items-baseline gap-1.5 rounded-md px-1.5 py-0.5"
-										style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-									>
-										<span class="relative flex h-1.5 w-1.5">
+					<!-- Promotion flow strip — fills the horizontal space.
+					     Each env is a tile (env name top, version middle,
+					     status bottom); arrows between encode the relationship. -->
+					<div class="border-t border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700/60 dark:bg-gray-900/30">
+						<div class="flex items-stretch gap-2 overflow-x-auto">
+							{#each app.cells as c, ci}
+								{@const latest = c.rollout?.status?.history?.[0]}
+								{@const status = latest?.bakeStatus || 'None'}
+								{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
+								{#if ci > 0}
+									{@const prev = app.cells[ci - 1]}
+									{@const rel = compareRollouts(prev.rollout, c.rollout)}
+									{@const arrowColor = !rel
+										? 'text-gray-300 dark:text-gray-600'
+										: rel.kind === 'same'
+											? 'text-green-500 dark:text-green-400'
+											: rel.kind === 'ahead'
+												? 'text-emerald-500 dark:text-emerald-400'
+												: rel.kind === 'behind'
+													? 'text-orange-500 dark:text-orange-400'
+													: 'text-gray-400 dark:text-gray-500'}
+									{@const relLabel = !rel ? '—' : rel.kind === 'same' ? 'in sync' : rel.kind === 'ahead' ? `+${rel.by ?? '?'}` : rel.kind === 'behind' ? `−${rel.by ?? '?'}` : 'diverged'}
+									<div class="relative flex shrink-0 items-center self-center px-1">
+										<svg class="h-5 w-10 {arrowColor}" viewBox="0 0 40 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+											<line x1="0" y1="10" x2="34" y2="10" stroke-linecap="round" {...(!rel || rel.kind === 'divergent' ? { 'stroke-dasharray': '3 3' } : {})} />
+											<polyline points="30,5 36,10 30,15" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+										</svg>
+										<span class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full pb-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider {arrowColor}">{relLabel}</span>
+									</div>
+								{/if}
+								<div
+									class="environment-theme-scope flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/80 bg-white px-3 py-2 dark:border-gray-700/80 dark:bg-gray-800"
+									style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+								>
+									<div class="flex items-center justify-between gap-1">
+										<span class="environment-theme-text truncate text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(c.theme) || c.envName || '—'}</span>
+										<span class="relative flex h-1.5 w-1.5 shrink-0">
 											{#if isRunning(status)}
 												<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
 											{/if}
 											<span class="relative inline-flex h-1.5 w-1.5 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
 										</span>
-										<span class="text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(c.theme) || c.envName || '—'}</span>
-										<span class="max-w-[6rem] truncate font-mono text-[10px] opacity-80" title={ver ?? ''}>{ver ?? '—'}</span>
-									</span>
-								{/each}
-							</div>
-						</a>
-					</li>
-				{/each}
-			</ul>
+									</div>
+									<span class="mt-1 truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={ver ?? ''}>{ver ?? '—'}</span>
+									{#if latest?.timestamp}
+										<span class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(latest.timestamp, $now)}>{formatTimeAgoCompact(latest.timestamp, $now)} ago</span>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					</div>
+				</a>
+			{/each}
 		</div>
 	{/if}
 </div>
