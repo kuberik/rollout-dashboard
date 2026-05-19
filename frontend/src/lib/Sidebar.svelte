@@ -20,7 +20,7 @@
 </script>
 
 <aside
-	class="sticky top-0 hidden h-[calc(100vh-0px)] w-44 shrink-0 self-stretch border-r border-gray-200 bg-white py-3 dark:border-gray-700 dark:bg-gray-800 sm:flex sm:flex-col"
+	class="hidden w-44 shrink-0 overflow-y-auto border-r border-gray-200 bg-white py-3 dark:border-gray-700 dark:bg-gray-800 sm:flex sm:flex-col"
 	aria-label="Sections"
 >
 	<nav class="flex flex-col gap-0.5 px-2">
