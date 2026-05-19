@@ -299,7 +299,7 @@
 							{@const cfg = STATUS_CONFIG[entry.bakeStatus] ?? STATUS_CONFIG['None']}
 							<a
 								href={entry.href}
-								class="environment-theme-scope flex w-full min-w-0 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+								class="environment-theme-scope {entry.theme ? 'environment-theme-edge' : ''} flex w-full min-w-0 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
 									{idx > 0 ? 'border-t border-gray-100 dark:border-gray-700/60' : ''}"
 								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
 							>
