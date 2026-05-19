@@ -10,6 +10,7 @@
 	import { Spinner } from 'flowbite-svelte';
 	import { LayersSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import PinBadge from '$lib/components/PinBadge.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -396,12 +397,7 @@
 												</div>
 											</div>
 											<div class="flex shrink-0 flex-col items-end gap-1">
-												{#if cell.rollout.spec?.wantedVersion}
-													<span
-														class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-														title={`Pinned to ${cell.rollout.spec.wantedVersion}`}
-													>pin</span>
-												{/if}
+												{#if cell.rollout.spec?.wantedVersion}<PinBadge version={cell.rollout.spec.wantedVersion} size="xs" />{/if}
 												{#if latest?.timestamp}
 													<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}">{formatStatusTime(status, latest.timestamp, $now)}</span>
 												{/if}
@@ -527,12 +523,7 @@
 											<div class="mt-1 flex items-center justify-between gap-1 pl-8">
 												<span class="truncate text-[11px] font-medium {labelClass}" title={failureCategory ? latest?.bakeStatusMessage ?? '' : ''}>{failureCategory ? `${failureCategory} failed` : label}</span>
 												<div class="flex items-center gap-1">
-													{#if cell.rollout.spec?.wantedVersion}
-														<span
-															class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-															title={`Pinned to ${cell.rollout.spec.wantedVersion}`}
-														>pin</span>
-													{/if}
+													{#if cell.rollout.spec?.wantedVersion}<PinBadge version={cell.rollout.spec.wantedVersion} size="xs" />{/if}
 													{#if latest?.timestamp}
 														<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
 															{formatTimeAgoCompact(latest.timestamp, $now)}

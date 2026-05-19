@@ -15,6 +15,7 @@
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import PinBadge from '$lib/components/PinBadge.svelte';
 	import type { Rollout, Environment } from '../types';
 
 	const query = createQuery(() =>
@@ -497,12 +498,7 @@
 								<div class="flex min-w-0 items-baseline justify-between gap-3 pl-12">
 									<div class="flex min-w-0 items-baseline gap-1.5">
 										<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{c.version ?? '—'}</span>
-										{#if c.pinnedVersion}
-											<span
-												class="shrink-0 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-												title={`Pinned to ${c.pinnedVersion}`}
-											>pin</span>
-										{/if}
+										{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} />{/if}
 									</div>
 									{#if c.timestamp}
 										<span class="shrink-0 font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(c.timestamp, $now)}>

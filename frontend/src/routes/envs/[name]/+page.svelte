@@ -14,6 +14,7 @@
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import PinBadge from '$lib/components/PinBadge.svelte';
 	import type { Rollout, Environment } from '../../../types';
 
 	const envName = $derived(page.params.name as string);
@@ -333,12 +334,7 @@
 										<div class="flex min-w-0 flex-col gap-0.5">
 											<div class="flex min-w-0 items-center gap-2">
 												<span class="truncate text-base font-bold text-gray-900 dark:text-white">{s.title}</span>
-												{#if s.rollout?.spec?.wantedVersion}
-													<span
-														class="shrink-0 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-														title={`Pinned to ${s.rollout.spec.wantedVersion}`}
-													>pin</span>
-												{/if}
+												{#if s.rollout?.spec?.wantedVersion}<PinBadge version={s.rollout.spec.wantedVersion} />{/if}
 											</div>
 											<div class="flex min-w-0 items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
 												<span class="truncate font-mono">{s.appName}</span>
