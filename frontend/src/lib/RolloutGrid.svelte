@@ -47,6 +47,7 @@
 		isRunning: boolean;
 		bakeStatusMessage: string | null;
 		failureCategory: string | null;
+		previousSucceededVersion: string | null;
 		pinnedVersion: string | null;
 		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
 		rollout: Rollout;
@@ -117,6 +118,20 @@
 			const envDisplay = shortEnvLabel(theme);
 			const envName = env?.spec?.environment ?? '';
 			const behind = envName ? computeBehind(r, envName) : null;
+			// For failed cards: find the most recent succeeded version that's different
+			// from the current one. Gives the user a rollback target at a glance.
+			let previousSucceededVersion: string | null = null;
+			if (bakeStatus === 'Failed') {
+				const currentV = latest?.version ? getDisplayVersion(latest.version) : null;
+				for (const h of r.status?.history ?? []) {
+					if (h.bakeStatus !== 'Succeeded') continue;
+					const v = getDisplayVersion(h.version);
+					if (v && v !== currentV) {
+						previousSucceededVersion = v;
+						break;
+					}
+				}
+			}
 			return {
 				ns: r.metadata?.namespace || '',
 				name: r.metadata?.name || '',
@@ -132,6 +147,7 @@
 				isRunning,
 				bakeStatusMessage: latest?.bakeStatusMessage || null,
 				failureCategory: bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
+				previousSucceededVersion,
 				pinnedVersion: r.spec?.wantedVersion || null,
 				behind,
 				rollout: r
@@ -455,7 +471,9 @@
 
 								{#if c.failureCategory}
 									<div class="truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={c.bakeStatusMessage ?? ''}>
-										{c.failureCategory} failed
+										{c.failureCategory} failed{#if c.previousSucceededVersion}
+											<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{c.previousSucceededVersion}</span></span>
+										{/if}
 									</div>
 								{:else if c.behind}
 									<div class="truncate pl-4 text-[10px] text-orange-700 dark:text-orange-300" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
