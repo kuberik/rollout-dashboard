@@ -411,15 +411,32 @@
 						<span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Application</span>
 					</div>
 					{#each envNames as envName}
-						{@const envDeployedCount = sortedAppNames.filter((app) => matrix.get(app)?.get(envName)?.rollout?.status?.history?.[0]).length}
+						{@const envCells = sortedAppNames.map((app) => matrix.get(app)?.get(envName)).filter(Boolean) as { rollout: import('../../types').Rollout; env: import('../../types').Environment }[]}
+						{@const envDeployedCount = envCells.filter((c) => c.rollout.status?.history?.[0]).length}
+						{@const envFailed = envCells.filter((c) => c.rollout.status?.history?.[0]?.bakeStatus === 'Failed').length}
+						{@const envActive = envCells.filter((c) => {
+							const s = c.rollout.status?.history?.[0]?.bakeStatus;
+							return s === 'InProgress' || s === 'Deploying';
+						}).length}
+						{@const envSucceeded = envCells.filter((c) => c.rollout.status?.history?.[0]?.bakeStatus === 'Succeeded').length}
 						<a
 							href="/envs/{envName}"
-							class="environment-theme-scope flex items-baseline justify-between gap-2 border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
+							class="environment-theme-scope flex flex-col gap-1.5 border-l border-gray-200 px-5 py-3 transition-colors hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
 							style={getEnvThemeStyle(envName)}
 							title="See all apps in {envName}"
 						>
-							<span class="environment-theme-text text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
-							<span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{envDeployedCount}</span>
+							<div class="flex items-baseline justify-between gap-2">
+								<span class="environment-theme-text text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-200">{envName}</span>
+								<span class="font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">{envDeployedCount}</span>
+							</div>
+							<!-- Per-column health bar: shows fleet outcome mix for this env -->
+							{#if envDeployedCount > 0}
+								<div class="flex h-0.5 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-700/70" title={`${envSucceeded} succeeded · ${envActive} deploying · ${envFailed} failed`}>
+									{#if envSucceeded > 0}<span class="bg-green-400 dark:bg-green-500" style="width:{(envSucceeded / envDeployedCount) * 100}%"></span>{/if}
+									{#if envActive > 0}<span class="bg-yellow-400" style="width:{(envActive / envDeployedCount) * 100}%"></span>{/if}
+									{#if envFailed > 0}<span class="bg-red-400 dark:bg-red-500" style="width:{(envFailed / envDeployedCount) * 100}%"></span>{/if}
+								</div>
+							{/if}
 						</a>
 					{/each}
 				</div>
