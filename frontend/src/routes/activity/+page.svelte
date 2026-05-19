@@ -8,6 +8,7 @@
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import { ClockSolid, RocketOutline } from 'flowbite-svelte-icons';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { Environment } from '../../types';
@@ -293,33 +294,35 @@
 						</div>
 					</div>
 
-					<!-- Entries: simple bordered list -->
-					<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+					<!-- Entries: rich rows with status circle + env tint -->
+					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 						{#each dayGroup.entries as entry, idx}
 							{@const cfg = STATUS_CONFIG[entry.bakeStatus] ?? STATUS_CONFIG['None']}
 							<a
 								href={entry.href}
-								class="environment-theme-scope {entry.theme ? 'environment-theme-edge' : ''} flex w-full min-w-0 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+								class="environment-theme-scope {entry.theme ? 'environment-theme-edge' : ''} flex w-full min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+									{entry.bakeStatus === 'Failed' ? 'card-failed' : ''}
+									{entry.isRunning ? 'card-active' : ''}
 									{idx > 0 ? 'border-t border-gray-100 dark:border-gray-700/60' : ''}"
 								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
 							>
-								<!-- Status dot -->
-								<span class="relative flex h-2 w-2 shrink-0">
+								<!-- Status circle -->
+								<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {entry.bakeStatus === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : entry.bakeStatus === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : entry.isRunning ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
 									{#if entry.isRunning}
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {cfg.dotClass}"></span>
+										<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 									{/if}
-									<span class="relative inline-flex h-2 w-2 rounded-full {cfg.dotClass}"></span>
+									<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
 								</span>
 
 								<!-- Env badge -->
 								{#if entry.envName || entry.theme}
-									<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(entry.theme) || entry.envName || entry.theme?.label}</span>
+									<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(entry.theme) || entry.envName || entry.theme?.label}</span>
 								{/if}
 
-								<!-- Name + namespace -->
+								<!-- Name + namespace + version transition -->
 								<div class="min-w-0 flex-1">
 									<div class="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
+										<span class="truncate text-sm font-bold text-gray-900 dark:text-white">{entry.displayName}</span>
 										<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{entry.rolloutNamespace}</span>
 									</div>
 									<div class="flex min-w-0 items-baseline gap-x-1.5">
@@ -331,7 +334,7 @@
 											<span class="shrink-0 font-mono text-[11px] text-gray-400/70 line-through dark:text-gray-500/70">{entry.previousVersion}</span>
 											<span class="shrink-0 text-[10px] text-gray-300 dark:text-gray-600">→</span>
 										{/if}
-										<span class="truncate font-mono text-[11px] text-gray-700 dark:text-gray-300">{entry.version}</span>
+										<span class="truncate font-mono text-[11px] font-medium text-gray-700 dark:text-gray-300">{entry.version}</span>
 									</div>
 								</div>
 
