@@ -64,9 +64,7 @@
 		CogSolid,
 		ArrowUpRightFromSquareOutline,
 		ArrowUpOutline,
-		GithubSolid,
-		ArrowLeftOutline,
-		ChevronRightOutline
+		GithubSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -1321,20 +1319,6 @@
 								: latestEntry.bakeStatus === 'Deploying'
 									? 'blue'
 									: 'gray'}
-
-				<!-- Breadcrumb -->
-				<div class="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-					<a href="/" class="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200">
-						<ArrowLeftOutline class="h-3 w-3" />
-						Rollouts
-					</a>
-					{#if rollout.metadata?.namespace}
-						<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
-						<a href={`/namespaces/${rollout.metadata.namespace}`} class="font-mono hover:text-gray-700 dark:hover:text-gray-200">{rollout.metadata.namespace}</a>
-					{/if}
-					<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
-					<span class="font-mono text-gray-700 dark:text-gray-300">{rollout.metadata?.name}</span>
-				</div>
 
 				<!-- ══ PAGE HEADER ══ -->
 				<div class="mb-4">
