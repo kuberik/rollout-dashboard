@@ -12,6 +12,7 @@
 		ArrowLeftOutline,
 		LayersSolid
 	} from 'flowbite-svelte-icons';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import type { Rollout, Environment } from '../../../types';
 
 	const namespace = $derived(page.params.name as string);
@@ -334,7 +335,7 @@
 			<h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
 				Rollouts ({apps.length})
 			</h2>
-			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 				{#each apps as a}
 					{@const latest = a.rollout.status?.history?.[0]}
 					{@const status = latest?.bakeStatus || 'None'}
@@ -342,27 +343,32 @@
 					{@const previousSucceeded = status === 'Failed' ? previousSucceededVersion(a.rollout, latest?.version ? getDisplayVersion(latest.version) : null) : null}
 					<a
 						href="/rollouts/{a.rollout.metadata?.namespace}/{a.rollout.metadata?.name}"
-						class="environment-theme-scope flex min-w-0 flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+						class="environment-theme-scope flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800
+							{status === 'Failed' ? 'card-failed' : ''}
+							{isRunning(status) ? 'card-active' : ''}"
 						style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
 					>
-						<!-- Title row -->
-						<div class="flex min-w-0 items-center justify-between gap-2">
-							<div class="flex min-w-0 items-center gap-2">
-								<span class="relative flex h-2 w-2 shrink-0">
+						<!-- Title row: status circle + title/name + env badge -->
+						<div class="flex min-w-0 items-start justify-between gap-3">
+							<div class="flex min-w-0 items-center gap-3">
+								<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {status === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : status === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : isRunning(status) ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
 									{#if isRunning(status)}
-										<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[status]}"></span>
+										<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 									{/if}
-									<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[status] ?? STATUS_DOT.None}"></span>
+									<BakeStatusIcon bakeStatus={status} size="medium" />
 								</span>
-								<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.title}</span>
+								<div class="flex min-w-0 flex-col">
+									<span class="truncate text-base font-bold text-gray-900 dark:text-white">{a.title}</span>
+									<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{a.rollout.metadata?.name}</span>
+								</div>
 							</div>
 							{#if a.envName || a.theme}
-								<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
+								<span class="environment-theme-badge shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
 							{/if}
 						</div>
 						<!-- Meta row -->
-						<div class="flex min-w-0 items-baseline justify-between gap-2 pl-4">
-							<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">
+						<div class="flex min-w-0 items-baseline justify-between gap-3 pl-12">
+							<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">
 								{latest ? getDisplayVersion(latest.version) : '—'}
 							</span>
 							{#if latest?.timestamp}
@@ -372,8 +378,8 @@
 							{/if}
 						</div>
 						{#if failureCategory}
-							<div class="truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
-								{failureCategory} failed{#if previousSucceeded}<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{previousSucceeded}</span></span>{/if}
+							<div class="truncate rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700 dark:bg-red-900/15 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
+								<span class="font-semibold">{failureCategory}</span> failed{#if previousSucceeded}<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{previousSucceeded}</span></span>{/if}
 							</div>
 						{/if}
 					</a>

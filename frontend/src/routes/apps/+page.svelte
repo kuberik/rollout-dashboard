@@ -262,34 +262,36 @@
 			>Clear filters</button>
 		</div>
 	{:else}
-		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 			{#each filteredApps as app}
 				{@const drift = app.currentVersions.length > 1}
+				{@const sk = appStatusKey(app)}
 				<a
 					href="/apps/{app.name}"
-					class="flex min-w-0 flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+					class="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800
+						{sk === 'failed' ? 'card-failed' : ''}
+						{sk === 'active' ? 'card-active' : ''}"
 				>
-					<!-- Title row -->
-					<div class="flex min-w-0 items-center justify-between gap-2">
-						<div class="flex min-w-0 items-center gap-2">
-							{#if app.failedCount > 0}
-								<span class="h-2 w-2 shrink-0 rounded-full bg-red-500"></span>
-							{:else if app.activeCount > 0}
-								<span class="relative flex h-2 w-2 shrink-0">
-									<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
-									<span class="relative inline-flex h-2 w-2 rounded-full bg-yellow-400"></span>
-								</span>
-							{:else}
-								<span class="h-2 w-2 shrink-0 rounded-full bg-green-400 dark:bg-green-500"></span>
-							{/if}
-							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{app.title}</span>
+					<!-- Title row: status circle + title/name + drift pill -->
+					<div class="flex min-w-0 items-start justify-between gap-3">
+						<div class="flex min-w-0 items-center gap-3">
+							<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {sk === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : sk === 'active' ? 'bg-yellow-100 dark:bg-yellow-900/30' : sk === 'drifting' ? 'bg-orange-100 dark:bg-orange-900/30' : sk === 'pending' ? 'bg-gray-100 dark:bg-gray-700/60' : 'bg-green-100 dark:bg-green-900/30'}">
+								{#if sk === 'active'}
+									<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
+								{/if}
+								<span class="relative inline-flex h-2.5 w-2.5 rounded-full {sk === 'failed' ? 'bg-red-500' : sk === 'active' ? 'bg-yellow-400' : sk === 'drifting' ? 'bg-orange-500' : sk === 'pending' ? 'bg-gray-400' : 'bg-green-500'}"></span>
+							</span>
+							<div class="flex min-w-0 flex-col">
+								<span class="truncate text-base font-bold text-gray-900 dark:text-white">{app.title}</span>
+								<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{app.name}</span>
+							</div>
 						</div>
 						{#if drift}
-							<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
+							<span class="shrink-0 self-start rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" title={`Live versions: ${app.currentVersions.join(', ')}`}>drift</span>
 						{/if}
 					</div>
 					<!-- Env strip: env badge + version per env -->
-					<div class="flex flex-wrap gap-x-2 gap-y-1.5 pl-4">
+					<div class="flex flex-wrap gap-x-2 gap-y-1.5 pl-12">
 						{#each app.cells as c}
 							{@const latest = c.rollout?.status?.history?.[0]}
 							{@const status = latest?.bakeStatus || 'None'}
