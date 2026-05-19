@@ -132,6 +132,30 @@
 		return 1;
 	}
 
+	// Apps that need user attention — failed or stuck. Surfaced as a
+	// compact strip above the main list when there are issues.
+	type AttentionItem = { app: AppSummary; reason: 'failed' | 'stuck'; detail: string };
+	const attentionItems = $derived.by<AttentionItem[]>(() => {
+		const refNow = $now;
+		const out: AttentionItem[] = [];
+		for (const a of apps) {
+			if (a.failedCount > 0) {
+				out.push({ app: a, reason: 'failed', detail: `${a.failedCount} env${a.failedCount === 1 ? '' : 's'} failing` });
+			} else {
+				const r = appStuckReason(a, refNow);
+				if (r) {
+					const detail = r.kind === 'baking'
+						? 'baking >1h'
+						: r.kind === 'deploying'
+							? 'deploying >1h'
+							: `behind ${r.peerEnv}`;
+					out.push({ app: a, reason: 'stuck', detail });
+				}
+			}
+		}
+		return out.sort((x, y) => (x.reason === 'failed' ? 0 : 1) - (y.reason === 'failed' ? 0 : 1)).slice(0, 6);
+	});
+
 	// Fleet roll-up
 	const fleetTotals = $derived.by(() => {
 		let failed = 0, active = 0, stuck = 0, pending = 0, healthy = 0;
@@ -333,6 +357,37 @@
 			>Clear filters</button>
 		</div>
 	{:else}
+		{#if attentionItems.length > 0 && statusFilters.length === 0 && !searchQuery}
+			<!-- Needs attention: top apps with failures or stuck promotions.
+			     Only shows when relevant and not filtered. -->
+			<div class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<div class="flex items-baseline justify-between gap-2 border-b border-gray-100 px-4 py-2 dark:border-gray-700/60">
+					<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Needs attention</span>
+					<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{attentionItems.length}</span>
+				</div>
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each attentionItems as item}
+						{@const a = item.app}
+						{@const bake = item.reason === 'failed' ? 'Failed' : 'InProgress'}
+						<li>
+							<a
+								href="/apps/{a.name}"
+								class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+							>
+								<span class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(bake)}">
+									<BakeStatusIcon bakeStatus={bake} size="small" />
+								</span>
+								<div class="flex min-w-0 flex-1 items-baseline gap-2">
+									<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{a.title}</span>
+									<span class="truncate text-xs text-gray-500 dark:text-gray-400">{item.detail}</span>
+								</div>
+								<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">{a.envCount} env{a.envCount === 1 ? '' : 's'}</span>
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 		<!-- Single dense panel — full width. One row per app. -->
 		<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">

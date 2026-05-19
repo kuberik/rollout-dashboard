@@ -263,6 +263,29 @@
 		return c;
 	});
 
+	// Things that need attention — surfaced above the main list when present.
+	// Failed comes first, then stuck. Pinned-version cards are intentionally
+	// excluded because the user opted in to that state.
+	const attentionItems = $derived.by(() => {
+		const out: { card: Card; reason: 'failed' | 'stuck'; detail: string }[] = [];
+		for (const c of cards) {
+			if (c.statusKey === 'failed') {
+				const detail = c.failureCategory ? `${c.failureCategory} failed` : 'failed';
+				out.push({ card: c, reason: 'failed', detail });
+			} else if (c.stuck) {
+				const r = c.stuck;
+				const detail = r.kind === 'baking'
+					? `baking >1h`
+					: r.kind === 'deploying'
+						? `deploying >1h`
+						: `behind ${r.peerEnv}`;
+				out.push({ card: c, reason: 'stuck', detail });
+			}
+		}
+		// Failed first, then stuck. Cap at 6 so the strip stays calm.
+		return out.sort((a, b) => (a.reason === 'failed' ? 0 : 1) - (b.reason === 'failed' ? 0 : 1)).slice(0, 6);
+	});
+
 	// Activity pulse: how many deploys landed in the last 24h. Gives the user
 	// a sense of cluster cadence (idle weekend vs busy release day).
 	const recent24h = $derived.by(() => {
@@ -441,6 +464,40 @@
 			>Clear filters</button>
 		</div>
 	{:else}
+		{#if attentionItems.length > 0 && statusFilters.length === 0 && envFilters.length === 0 && !searchQuery}
+			<!-- Needs attention: compact strip of failed/stuck items so the
+			     landing page surfaces what to act on first. Only renders
+			     when there are unfiltered issues. -->
+			<div class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+				<div class="flex items-baseline justify-between gap-2 border-b border-gray-100 px-4 py-2 dark:border-gray-700/60">
+					<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Needs attention</span>
+					<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{attentionItems.length}</span>
+				</div>
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each attentionItems as item}
+						{@const c = item.card}
+						<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
+							<a
+								href={`/rollouts/${c.ns}/${c.name}`}
+								class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+							>
+								<span class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
+									<BakeStatusIcon bakeStatus={c.bakeStatus} size="small" />
+								</span>
+								<div class="flex min-w-0 flex-1 items-baseline gap-2">
+									<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{c.title}</span>
+									<span class="truncate text-xs text-gray-500 dark:text-gray-400">{item.detail}</span>
+								</div>
+								<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">{c.ns}</span>
+								{#if c.envDisplay}
+									<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
+								{/if}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 		<div class="space-y-6">
 			{#each grouped as g (g.ns)}
 				<section>
