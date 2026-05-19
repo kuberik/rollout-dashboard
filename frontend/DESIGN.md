@@ -46,10 +46,7 @@ violates an enforced item.
 
 ## Open issues — still to address
 
-1. **Gantt timeline range is fixed** to "first deploy → now". Should be adjustable / zoomable so the user can focus on a specific window.
-2. **Rollout list (home `/`) still feels out of place** vs the rest of the dashboard. It's the landing page and should be the most inspiring view, but visually it's plainer than /apps and /environments. Needs a real redesign pass — not micro-polish.
-3. **Apps list (`/apps`) is also uninspiring** — the flat grid of plain cards doesn't communicate enough about each app at a glance.
-4. **AppPromotionFlow node sync model** — the env page uses `bind:nodes`/`bind:edges` + a $effect to merge dagre positions with the library's internal `measured` state. My impl uses pure $derived which discards measurements on every re-derivation. Should adopt the env-page pattern for cleaner resize behaviour.
+1. **Rollout list (home `/`) and Apps list (`/apps`) need more inspiration.** Both have been simplified and aligned but still feel like generic card grids. Open question: what would a "delightful" landing page look like — surface fleet trends, recent activity, upcoming promotions?
 
 ## Recently addressed (do not regress)
 
