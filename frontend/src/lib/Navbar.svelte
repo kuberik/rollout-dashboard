@@ -29,8 +29,19 @@
 		isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 	});
 
-	// Check if we're on a rollout detail page
+	// Detect which detail page (if any) we're on so the navbar can show
+	// a baked-in 'Section / Item' breadcrumb instead of pages providing
+	// their own. Keeps navigation consistent across every detail view.
 	const isRolloutPage = $derived(page.url.pathname.match(/^\/rollouts\/[^/]+\/[^/]+/) !== null);
+	const appDetailMatch = $derived(page.url.pathname.match(/^\/apps\/([^/]+)/));
+	const envDetailMatch = $derived(page.url.pathname.match(/^\/envs\/([^/]+)/));
+	const nsDetailMatch = $derived(page.url.pathname.match(/^\/namespaces\/([^/]+)/));
+	const detailContext = $derived.by(() => {
+		if (appDetailMatch) return { section: 'Apps', sectionHref: '/apps', item: decodeURIComponent(appDetailMatch[1]), mono: true };
+		if (envDetailMatch) return { section: 'Environments', sectionHref: '/environments', item: decodeURIComponent(envDetailMatch[1]), mono: false };
+		if (nsDetailMatch) return { section: 'Namespaces', sectionHref: '/', item: decodeURIComponent(nsDetailMatch[1]), mono: true };
+		return null;
+	});
 	const namespace = $derived(page.params.namespace as string | undefined);
 	const name = $derived(page.params.name as string | undefined);
 
@@ -102,7 +113,7 @@
 					<span class="text-xl font-light dark:text-white sm:text-2xl">Rollouts</span>
 				</div>
 			</a>
-			{#if !isRolloutPage}
+			{#if !isRolloutPage && !detailContext}
 				<!-- Main nav links — desktop only; mobile uses bottom tab bar -->
 				<div class="hidden items-center sm:flex">
 					<a
@@ -196,6 +207,31 @@
 						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
 					</button>
 				</div>
+			{:else if detailContext}
+				<!-- Generic detail-page breadcrumb: 'Section / Item'.
+				     Section link goes back to its index; item is current. -->
+				<div class="flex min-w-0 items-center gap-1">
+					<span class="select-none text-xl font-light text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+					<a
+						href={detailContext.sectionHref}
+						class="rounded-md px-2 py-1 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-white"
+					>{detailContext.section}</a>
+					<span class="select-none text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+					<span class="truncate px-1 text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
+						{detailContext.item}
+					</span>
+				</div>
+				<!-- ⌘K switcher still reachable from these pages -->
+				<button
+					type="button"
+					onclick={() => (switcherOpen = true)}
+					aria-label="Quick switch rollout (⌘K)"
+					title="Quick switch rollout (⌘K)"
+					class="ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-gray-300"
+				>
+					<SearchOutline class="h-3.5 w-3.5 shrink-0" />
+					<kbd class="hidden shrink-0 font-mono text-[10px] lg:inline">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+				</button>
 			{/if}
 		</div>
 		<div class="flex shrink-0 items-center gap-2 sm:gap-2.5">

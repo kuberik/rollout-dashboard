@@ -72,7 +72,10 @@
 		return g;
 	});
 
-	// On open: jump to current rollout, focus search
+	// On open: jump to current rollout, focus search on non-touch devices.
+	// Mobile/touch devices: don't auto-focus — that forces the keyboard
+	// open and makes the list harder to scan. User taps the input
+	// explicitly when they want to search.
 	$effect(() => {
 		if (!open) return;
 		(async () => {
@@ -83,7 +86,10 @@
 					r.metadata?.name === currentName && r.metadata?.namespace === currentNamespace
 			);
 			selectedIndex = idx >= 0 ? idx : 0;
-			searchInput?.focus();
+			const isTouch =
+				typeof window !== 'undefined' &&
+				(window.matchMedia?.('(pointer: coarse)').matches ?? false);
+			if (!isTouch) searchInput?.focus();
 			scrollSelectedIntoView();
 		})();
 	});
@@ -129,7 +135,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if open}
-	<div class="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh]" role="dialog" aria-modal="true" aria-label="Switch rollout">
+	<div class="fixed inset-0 z-[100] flex items-start justify-center sm:pt-[12vh]" role="dialog" aria-modal="true" aria-label="Switch rollout">
 		<!-- Backdrop -->
 		<button
 			type="button"
@@ -138,10 +144,10 @@
 			onclick={() => (open = false)}
 		></button>
 
-		<!-- Palette -->
-		<div class="relative z-10 mx-4 w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-gray-200 palette-enter dark:bg-gray-800 dark:ring-gray-700">
+		<!-- Palette: full-screen on mobile, centered modal on sm+ -->
+		<div class="relative z-10 flex h-full w-full flex-col overflow-hidden bg-white palette-enter dark:bg-gray-800 sm:mx-4 sm:h-auto sm:max-w-xl sm:rounded-xl sm:shadow-2xl sm:ring-1 sm:ring-gray-200 sm:dark:ring-gray-700">
 			<!-- Search -->
-			<div class="flex items-center gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+			<div class="flex shrink-0 items-center gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
 				<SearchOutline class="h-4 w-4 shrink-0 text-gray-400" />
 				<input
 					bind:this={searchInput}
@@ -151,13 +157,21 @@
 					placeholder="Search rollouts..."
 					autocomplete="off"
 					spellcheck="false"
-					class="flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 placeholder-gray-400 outline-none focus:outline-none focus:ring-0 dark:text-white"
+					class="flex-1 border-0 bg-transparent p-0 text-base text-gray-900 placeholder-gray-400 outline-none focus:outline-none focus:ring-0 sm:text-sm dark:text-white"
 				/>
 				<kbd class="hidden shrink-0 rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-block">ESC</kbd>
+				<button
+					type="button"
+					aria-label="Close"
+					onclick={() => (open = false)}
+					class="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700/60 dark:hover:text-gray-200 sm:hidden"
+				>
+					<span class="text-xl leading-none" aria-hidden="true">×</span>
+				</button>
 			</div>
 
-			<!-- List -->
-			<div bind:this={listEl} class="max-h-[50vh] overflow-y-auto p-2">
+			<!-- List: full remaining height on mobile, capped on sm+ -->
+			<div bind:this={listEl} class="flex-1 overflow-y-auto p-2 sm:max-h-[50vh] sm:flex-none">
 				{#if loading && rollouts.length === 0}
 					<div class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
 						Loading rollouts...
@@ -183,7 +197,7 @@
 								data-idx={idx}
 								aria-current={isCurrent ? 'page' : undefined}
 								title={isCurrent ? 'Currently open rollout' : undefined}
-								class="relative flex w-full items-center gap-3 overflow-hidden rounded-lg px-3 py-2 text-left transition-colors {isActive
+								class="relative flex w-full items-center gap-3 overflow-hidden rounded-lg px-3 py-3 text-left transition-colors sm:py-2 {isActive
 									? 'bg-blue-50 dark:bg-blue-900/40'
 									: 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
 								onclick={() => selectRollout(r)}
@@ -236,9 +250,9 @@
 				{/if}
 			</div>
 
-			<!-- Footer -->
-			<div class="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-400">
-				<div class="flex items-center gap-3">
+			<!-- Footer: keyboard hints are desktop-only; mobile gets just the count -->
+			<div class="flex shrink-0 items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-400">
+				<div class="hidden items-center gap-3 sm:flex">
 					<span class="flex items-center gap-1">
 						<kbd class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700">↑</kbd>
 						<kbd class="rounded border border-gray-300 bg-white px-1 py-0.5 font-mono text-[10px] font-medium dark:border-gray-600 dark:bg-gray-700">↓</kbd>

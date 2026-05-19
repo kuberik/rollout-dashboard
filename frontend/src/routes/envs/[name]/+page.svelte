@@ -10,8 +10,7 @@
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
-		LayersSolid,
-		ChevronRightOutline
+		LayersSolid
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../../types';
 
@@ -234,15 +233,6 @@
 </svelte:head>
 
 <div class="environment-theme-scope mx-auto max-w-7xl px-4 py-6 sm:px-6" style={themeStyle}>
-	<!-- Breadcrumb / back -->
-	<div class="mb-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-		<a href="/environments" class="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200">
-			<ArrowLeftOutline class="h-3 w-3" />
-			Environments
-		</a>
-		<ChevronRightOutline class="h-3 w-3 text-gray-300 dark:text-gray-600" />
-		<span class="font-medium text-gray-700 dark:text-gray-300">{envName}</span>
-	</div>
 
 	{#if query.isLoading}
 		<div class="space-y-6">
