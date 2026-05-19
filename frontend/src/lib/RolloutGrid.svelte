@@ -4,7 +4,9 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime, compareRollouts, detectStuck } from '$lib/utils';
+	import type { StuckReason } from '$lib/utils';
+	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -51,6 +53,7 @@
 		failureCategory: string | null;
 		previousSucceededVersion: string | null;
 		pinnedVersion: string | null;
+		stuck: StuckReason | null;
 		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
 		sparkline: { status: string; version: string; timestamp: string | null }[];
 		rollout: Rollout;
@@ -162,6 +165,7 @@
 				failureCategory: bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
 				previousSucceededVersion,
 				pinnedVersion: r.spec?.wantedVersion || null,
+				stuck: detectStuck(r, { now: $now }),
 				behind,
 				sparkline,
 				rollout: r
@@ -509,9 +513,12 @@
 											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
 										</div>
 									</div>
-									{#if c.envDisplay}
-										<span class="environment-theme-badge shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
-									{/if}
+									<div class="flex shrink-0 items-center gap-1.5 self-start">
+										{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
+										{#if c.envDisplay}
+											<span class="environment-theme-badge rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
+										{/if}
+									</div>
 								</div>
 
 								<!-- Version + meta row: prominent version display -->
