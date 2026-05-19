@@ -13,6 +13,7 @@
 		ChevronRightOutline,
 		GridOutline
 	} from 'flowbite-svelte-icons';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import type { Rollout, Environment } from '../types';
 
 	const query = createQuery(() =>
@@ -450,38 +451,43 @@
 					</a>
 
 					<!-- Rollouts grid -->
-					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 						{#each g.cards as c (c.ns + '/' + c.name)}
 							<a
 								href={`/rollouts/${c.ns}/${c.name}`}
-								class="environment-theme-scope group flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+								class="environment-theme-scope group relative flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800
+									{c.statusKey === 'failed' ? 'card-failed' : ''}
+									{c.statusKey === 'active' ? 'card-active' : ''}"
 								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 							>
-								<!-- Title row: status dot, name, env badge -->
-								<div class="flex min-w-0 items-center justify-between gap-2">
-									<div class="flex min-w-0 items-center gap-2">
-										<span class="relative flex h-2 w-2 shrink-0">
+								<!-- Title row: large status icon + title/name, env badge -->
+								<div class="flex min-w-0 items-start justify-between gap-3">
+									<div class="flex min-w-0 items-center gap-3">
+										<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {c.statusKey === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : c.statusKey === 'active' ? 'bg-yellow-100 dark:bg-yellow-900/30' : c.statusKey === 'succeeded' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
 											{#if c.isRunning}
-												<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[c.bakeStatus]}"></span>
+												<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 											{/if}
-											<span class="relative inline-flex h-2 w-2 rounded-full {STATUS_DOT[c.bakeStatus] ?? STATUS_DOT.None}"></span>
+											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 										</span>
-										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{c.title}</span>
+										<div class="flex min-w-0 flex-col">
+											<span class="truncate text-base font-bold text-gray-900 dark:text-white">{c.title}</span>
+											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
+										</div>
 									</div>
 									{#if c.envDisplay}
-										<span class="environment-theme-badge shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{c.envDisplay}</span>
+										<span class="environment-theme-badge shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
 									{/if}
 								</div>
 
-								<!-- Meta row: version + timestamp + pin -->
-								<div class="flex min-w-0 items-baseline justify-between gap-2 pl-4">
+								<!-- Version + meta row: prominent version display -->
+								<div class="flex min-w-0 items-baseline justify-between gap-3 pl-12">
 									<div class="flex min-w-0 items-baseline gap-1.5">
-										<span class="truncate font-mono text-xs text-gray-700 dark:text-gray-300">{c.version ?? '—'}</span>
+										<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{c.version ?? '—'}</span>
 										{#if c.pinnedVersion}
 											<span
-												class="shrink-0 text-[9px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400"
+												class="shrink-0 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
 												title={`Pinned to ${c.pinnedVersion}`}
-											>·  pin</span>
+											>pin</span>
 										{/if}
 									</div>
 									{#if c.timestamp}
@@ -491,31 +497,35 @@
 									{/if}
 								</div>
 
-								<!-- Deploy history sparkline: last 6 distinct deploys, oldest left → newest right -->
-								{#if c.sparkline.length > 1}
-									<div class="flex items-center gap-1 pl-4" aria-label="Recent deploy history" title="Recent deploys (oldest → newest)">
-										{#each c.sparkline as h}
-											<span
-												class="h-1 w-3 rounded-full transition-opacity {h.status === 'Succeeded' ? 'bg-green-400 dark:bg-green-500' : h.status === 'Failed' ? 'bg-red-400 dark:bg-red-500' : h.status === 'InProgress' || h.status === 'Deploying' ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}"
-												title={`${h.version} · ${h.status}${h.timestamp ? ` · ${formatTimeAgoCompact(h.timestamp, $now)} ago` : ''}`}
-											></span>
-										{/each}
-									</div>
-								{/if}
-
+								<!-- Failure or behind hint -->
 								{#if c.failureCategory}
-									<div class="truncate pl-4 text-[10px] text-red-700 dark:text-red-300" title={c.bakeStatusMessage ?? ''}>
-										{c.failureCategory} failed{#if c.previousSucceededVersion}
+									<div class="truncate rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700 dark:bg-red-900/15 dark:text-red-300" title={c.bakeStatusMessage ?? ''}>
+										<span class="font-semibold">{c.failureCategory}</span> failed{#if c.previousSucceededVersion}
 											<span class="text-red-500/70 dark:text-red-400/70"> · was <span class="font-mono">{c.previousSucceededVersion}</span></span>
 										{/if}
 									</div>
 								{:else if c.behind}
-									<div class="truncate pl-4 text-[10px] text-orange-700 dark:text-orange-300" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
+									<div class="truncate rounded-md bg-orange-50 px-3 py-1.5 text-xs text-orange-700 dark:bg-orange-900/15 dark:text-orange-300" title={`Behind ${c.behind.version} on ${c.behind.fromEnv}`}>
 										{#if c.behind.behindBy && c.behind.behindBy > 0}
-											{c.behind.behindBy} {c.behind.behindBy === 1 ? 'version' : 'versions'} behind {c.behind.fromEnv}
+											<span class="font-semibold">{c.behind.behindBy}</span> {c.behind.behindBy === 1 ? 'version' : 'versions'} behind {c.behind.fromEnv}
 										{:else}
 											behind {c.behind.fromEnv}
 										{/if}
+									</div>
+								{/if}
+
+								<!-- Deploy history sparkline at bottom, more visible -->
+								{#if c.sparkline.length > 1}
+									<div class="mt-auto flex items-center gap-1.5 pl-12" aria-label="Recent deploy history">
+										<span class="text-[9px] uppercase tracking-wider text-gray-300 dark:text-gray-600">history</span>
+										<div class="flex items-center gap-1">
+											{#each c.sparkline as h}
+												<span
+													class="h-1.5 w-3.5 rounded-full {h.status === 'Succeeded' ? 'bg-green-400 dark:bg-green-500' : h.status === 'Failed' ? 'bg-red-400 dark:bg-red-500' : h.status === 'InProgress' || h.status === 'Deploying' ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}"
+													title={`${h.version} · ${h.status}${h.timestamp ? ` · ${formatTimeAgoCompact(h.timestamp, $now)} ago` : ''}`}
+												></span>
+											{/each}
+										</div>
 									</div>
 								{/if}
 							</a>

@@ -102,6 +102,30 @@ input, select, textarea {
   color: var(--rollout-theme-dark-text);
 }
 
+/* State-driven card backgrounds: subtle gradient tints for failed/active
+   cards so users can spot them at a glance from across the page. Uses
+   background-image so it composes with the underlying bg-color. */
+.card-failed {
+  background-image: linear-gradient(135deg,
+    color-mix(in srgb, rgb(239 68 68) 5%, transparent) 0%,
+    transparent 50%);
+}
+.dark .card-failed {
+  background-image: linear-gradient(135deg,
+    color-mix(in srgb, rgb(239 68 68) 12%, transparent) 0%,
+    transparent 50%);
+}
+.card-active {
+  background-image: linear-gradient(135deg,
+    color-mix(in srgb, rgb(250 204 21) 6%, transparent) 0%,
+    transparent 50%);
+}
+.dark .card-active {
+  background-image: linear-gradient(135deg,
+    color-mix(in srgb, rgb(250 204 21) 12%, transparent) 0%,
+    transparent 50%);
+}
+
 /* Left-edge env tint: subtle horizontal gradient that fades the env theme
    color in from the left edge of a row. Used on activity feed rows so users
    can scan by env at a glance. Uses background-image so it composes with the
