@@ -18,15 +18,16 @@
 	const isMultiTrack = $derived(summary.tracks.length > 1);
 </script>
 
-<!-- Layout: each KruiseRollout is its own row of step dots. Multi-track
-     rollouts stack so steps don't read across tracks. The kuberik-level
-     bake cell is appended to the last row inline with the canary steps
-     (same connector style) — semantically it's the final stage. -->
+<!-- Layout:
+     - Single-track: one row of step dots, then a connector + bake cell.
+     - Multi-track: stacked rows of step dots (one per KruiseRollout),
+       then a Y-shape converging to a single bake dot vertically centered
+       between the tracks. Bake gates on all tracks completing, so it
+       gets ONE cell, not per-track. -->
 <span class="inline-flex items-center" aria-label="Pipeline">
 	{#if isMultiTrack}
 		<span class="inline-flex flex-col gap-0.5">
-			{#each summary.tracks as track, ti (track.name)}
-				{@const isLast = ti === summary.tracks.length - 1}
+			{#each summary.tracks as track (track.name)}
 				<span class="inline-flex items-center" title={track.name}>
 					{#each track.stages as s, i}
 						{#if i > 0}
@@ -34,13 +35,28 @@
 						{/if}
 						<span class="block h-1.5 w-1.5 rounded-full {dotClass(s)}"></span>
 					{/each}
-					{#if isLast}
-						<span class="h-px w-1.5 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
-						<span class="block h-1.5 w-1.5 rounded-full {dotClass(summary.bake)}" title="Bake"></span>
-					{/if}
 				</span>
 			{/each}
 		</span>
+		<!-- Y-connector: two short lines from each track's right edge
+		     converge to the single bake dot vertically centered between
+		     the tracks. SVG height matches the stacked-tracks total
+		     height (2 rows of h-1.5 + gap-0.5 = ~14px). -->
+		{@const trackCount = summary.tracks.length}
+		{@const blockH = trackCount * 6 + (trackCount - 1) * 2}
+		<svg width="10" height={blockH} viewBox="0 0 10 {blockH}" class="shrink-0 text-gray-300 dark:text-gray-600" aria-hidden="true">
+			{#each summary.tracks as _, ti}
+				{@const trackCenter = ti * 8 + 3}
+				{@const bakeCenter = blockH / 2}
+				<path
+					d="M 0 {trackCenter} Q 5 {trackCenter}, 5 {bakeCenter} T 10 {bakeCenter}"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1"
+				/>
+			{/each}
+		</svg>
+		<span class="block h-1.5 w-1.5 rounded-full {dotClass(summary.bake)}" title="Bake"></span>
 	{:else}
 		<span class="inline-flex items-center">
 			{#each summary.tracks[0]?.stages ?? [] as s, i}
