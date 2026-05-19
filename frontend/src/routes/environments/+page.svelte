@@ -3,12 +3,13 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, formatStatusTime } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
 	import { LayersSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -349,34 +350,50 @@
 									{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
 									{@const behind = behindFor(appName, envName)}
 									{@const drift = hasDrift(appName)}
-									<li>
+									<li class="{status === 'Failed' ? 'card-failed' : ''} {isRunning(status) ? 'card-active' : ''}">
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
-											class="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+											class="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 										>
-											<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-												<div class="flex min-w-0 items-center gap-2">
-													<span class="relative flex h-2 w-2 shrink-0">
-														{#if isRunning(status)}
-															<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {dotClass}"></span>
+											<div class="flex min-w-0 flex-1 items-center gap-3">
+												<!-- Status circle with BakeStatusIcon -->
+												<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {status === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : status === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : isRunning(status) ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
+													{#if isRunning(status)}
+														<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
+													{/if}
+													<BakeStatusIcon bakeStatus={status} size="medium" />
+												</span>
+												<div class="flex min-w-0 flex-col gap-0.5">
+													<div class="flex min-w-0 items-center gap-2">
+														<span class="truncate text-base font-bold text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
+														{#if drift}
+															<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[9px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
 														{/if}
-														<span class="relative inline-flex h-2 w-2 rounded-full {dotClass}"></span>
-													</span>
-													<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{getAppTitle(appName)}</span>
-													{#if drift}
-														<span class="shrink-0 rounded-full bg-orange-100 px-1.5 py-px text-[9px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">drift</span>
+													</div>
+													<div class="flex min-w-0 items-center gap-2">
+														<span class="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
+														{#if !failureCategory && !behind}
+															<span class="truncate text-[10px] {labelClass}">{label}</span>
+														{/if}
+													</div>
+													{#if failureCategory}
+														<div class="mt-1 inline-flex max-w-fit truncate rounded-md bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-900/15 dark:text-red-300" title={latest?.bakeStatusMessage ?? ''}>
+															<span class="font-semibold">{failureCategory}</span>&nbsp;failed
+														</div>
+													{:else if behind}
+														<div class="mt-1 inline-flex max-w-fit items-center gap-1 truncate rounded-md bg-orange-50 px-2 py-0.5 text-[11px] text-orange-700 dark:bg-orange-900/15 dark:text-orange-300">
+															<span aria-hidden="true">←</span>
+															{#if behind.behindBy && behind.behindBy > 0}
+																<span class="font-semibold">{behind.behindBy}</span>
+																<span>{behind.behindBy === 1 ? 'version' : 'versions'} behind</span>
+															{:else}
+																<span>behind</span>
+															{/if}
+															<span class="font-mono">{behind.version}</span>
+															<span class="text-orange-500/70 dark:text-orange-400/70">on {behind.fromEnv}</span>
+														</div>
 													{/if}
 												</div>
-												<div class="flex min-w-0 items-center gap-2 pl-4">
-													<span class="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">{latest?.version ? getDisplayVersion(latest.version) : '—'}</span>
-													<span class="truncate text-[10px] {labelClass}" title={failureCategory ? latest?.bakeStatusMessage ?? '' : ''}>{failureCategory ? `${failureCategory} failed` : label}</span>
-												</div>
-												{#if behind}
-													<span class="truncate pl-4 text-[10px] text-orange-700 dark:text-orange-300">
-														← {#if behind.behindBy && behind.behindBy > 0}{behind.behindBy} {behind.behindBy === 1 ? 'version' : 'versions'} behind{:else}behind{/if}
-														<span class="font-mono">{behind.version}</span> on {behind.fromEnv}
-													</span>
-												{/if}
 											</div>
 											<div class="flex shrink-0 flex-col items-end gap-1">
 												{#if cell.rollout.spec?.wantedVersion}
@@ -386,7 +403,7 @@
 													>pin</span>
 												{/if}
 												{#if latest?.timestamp}
-													<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(latest.timestamp, $now)}</span>
+													<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}">{formatStatusTime(status, latest.timestamp, $now)}</span>
 												{/if}
 											</div>
 										</a>
@@ -492,20 +509,22 @@
 										{@const behind = behindFor(appName, envName)}
 										<a
 											href="/rollouts/{cell.rollout.metadata?.namespace}/{cell.rollout.metadata?.name}"
-											class="group block rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+											class="group block overflow-hidden rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40
+												{status === 'Failed' ? 'card-failed' : ''}
+												{isRunning(status) ? 'card-active' : ''}"
 										>
 											<div class="flex items-center gap-2">
-												<span class="relative flex h-2 w-2 shrink-0">
+												<span class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {status === 'Failed' ? 'bg-red-100 dark:bg-red-900/30' : status === 'Succeeded' ? 'bg-green-100 dark:bg-green-900/30' : isRunning(status) ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-gray-100 dark:bg-gray-700/60'}">
 													{#if isRunning(status)}
-														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {dotClass}"></span>
+														<span class="absolute inset-0 animate-ping rounded-full bg-yellow-400/30"></span>
 													{/if}
-													<span class="relative inline-flex h-2 w-2 rounded-full {dotClass}"></span>
+													<BakeStatusIcon bakeStatus={status} size="small" />
 												</span>
 												<span class="truncate font-mono text-xs font-medium text-gray-800 dark:text-gray-200">
 													{latest?.version ? getDisplayVersion(latest.version) : '—'}
 												</span>
 											</div>
-											<div class="mt-1 flex items-center justify-between gap-1 pl-4">
+											<div class="mt-1 flex items-center justify-between gap-1 pl-8">
 												<span class="truncate text-[11px] font-medium {labelClass}" title={failureCategory ? latest?.bakeStatusMessage ?? '' : ''}>{failureCategory ? `${failureCategory} failed` : label}</span>
 												<div class="flex items-center gap-1">
 													{#if cell.rollout.spec?.wantedVersion}
@@ -523,7 +542,7 @@
 											</div>
 											{#if behind}
 												<div
-													class="mt-1.5 flex flex-wrap items-center gap-x-1 truncate text-[10px] text-orange-700 dark:text-orange-300"
+													class="mt-1.5 ml-8 inline-flex max-w-fit items-center gap-x-1 truncate rounded-md bg-orange-50 px-1.5 py-0.5 text-[10px] text-orange-700 dark:bg-orange-900/15 dark:text-orange-300"
 													title="behind {behind.version} on {behind.fromEnv}"
 												>
 													<span aria-hidden="true">←</span>
