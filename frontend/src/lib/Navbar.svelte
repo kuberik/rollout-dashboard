@@ -163,7 +163,7 @@
 				>
 				<div class="hidden h-6 w-px bg-gray-300 dark:bg-gray-600 sm:block"></div>
 				<div class="flex flex-col">
-					<span class="text-xl font-light dark:text-white sm:text-2xl">Rollouts</span>
+					<span class="text-xl font-light dark:text-white sm:text-2xl {isRolloutPage || detailContext ? 'hidden sm:inline' : ''}">Rollouts</span>
 				</div>
 			</a>
 			{#if !isRolloutPage && !detailContext}
