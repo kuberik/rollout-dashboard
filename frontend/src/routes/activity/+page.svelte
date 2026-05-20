@@ -351,7 +351,10 @@
 									     card-bg disc, then layer the colored bg on top. -->
 									<span class="relative z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white ring-2 ring-white dark:bg-gray-800 dark:ring-gray-800">
 										<span class="absolute inset-0 rounded-full {getStatusCircleClass(entry.bakeStatus)}" aria-hidden="true"></span>
-										<span class="relative">
+										<!-- Icon wrapper: own flex centering so inline-block
+										     spinners (StatusSpinner, Flowbite pulse svg) and
+										     inline SVG icons all land on the same point. -->
+										<span class="relative inline-flex items-center justify-center">
 											<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
 										</span>
 									</span>
