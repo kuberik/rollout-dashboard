@@ -239,12 +239,13 @@
 				<span class="environment-theme-badge inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">{lane.envLabel}</span>
 				<div class="relative h-5 overflow-hidden rounded-md bg-gray-50 dark:bg-gray-900/40">
 					{#each lane.segs as s, si}
+						{@const showLabel = s.width >= 14}
 						<span
-							class="absolute top-0.5 bottom-0.5 flex items-center overflow-hidden whitespace-nowrap rounded-sm px-1 font-mono text-[9px] font-semibold text-white/95 {s.color} {s.isCurrent ? `ring-[1.5px] ring-inset ${ringClass(lane.bakeStatus, lane.stuck)}` : ''}"
+							class="absolute top-0.5 bottom-0.5 flex min-w-0 items-center overflow-hidden whitespace-nowrap rounded-sm font-mono text-[9px] font-semibold text-white/95 {s.color} {s.isCurrent ? `ring-[1.5px] ring-inset ${ringClass(lane.bakeStatus, lane.stuck)}` : ''} {showLabel ? 'px-1' : 'px-0'}"
 							style="left: {s.left}%; width: {s.width}%;"
 							title={`${lane.envName} · ${s.version}${s.isCurrent ? ' (current)' : ''}`}
 						>
-							{#if s.width >= 14}{s.version}{/if}
+							{#if showLabel}{s.version}{/if}
 						</span>
 					{/each}
 				</div>
