@@ -351,9 +351,6 @@
 									     card-bg disc, then layer the colored bg on top. -->
 									<span class="relative z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white ring-2 ring-white dark:bg-gray-800 dark:ring-gray-800">
 										<span class="absolute inset-0 rounded-full {getStatusCircleClass(entry.bakeStatus)}" aria-hidden="true"></span>
-										{#if entry.isRunning}
-											<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(entry.bakeStatus)}"></span>
-										{/if}
 										<span class="relative">
 											<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
 										</span>
