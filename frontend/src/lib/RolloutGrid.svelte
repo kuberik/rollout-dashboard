@@ -647,7 +647,7 @@
 
 										<!-- Env badge -->
 										{#if c.envDisplay}
-											<span class="environment-theme-badge inline-flex shrink-0 items-center justify-self-end rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
+											<span class="environment-theme-badge inline-flex shrink-0 items-center justify-self-center rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
 										{/if}
 									</a>
 								</li>
