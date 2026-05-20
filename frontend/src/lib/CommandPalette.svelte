@@ -64,6 +64,13 @@
 		timestamp?: string;
 		stuck?: boolean;
 		isCurrent?: boolean;
+		// For `app` rows: per-env mini-strip data (env theme + bake status)
+		envCells?: Array<{
+			envName: string;
+			theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
+			bakeStatus: string;
+			version: string | null;
+		}>;
 	};
 
 	// Build the index from all entity types. The palette is a single
@@ -109,13 +116,30 @@
 		}
 		for (const name of appNames) {
 			const cells = environments.filter((e) => e.spec?.rolloutRef?.name === name);
-			const envLabels = cells.map((c) => c.spec?.environment).filter(Boolean) as string[];
+			const envCells = cells
+				.map((env) => {
+					const envName = env.spec?.environment ?? '';
+					const r = rollouts.find(
+						(x) =>
+							x.metadata?.name === name && x.metadata?.namespace === env.metadata?.namespace
+					);
+					const theme = r ? getRolloutEnvironmentTheme(r, env) : null;
+					const latest = r?.status?.history?.[0];
+					return {
+						envName,
+						theme,
+						bakeStatus: latest?.bakeStatus ?? 'None',
+						version: latest?.version ? getDisplayVersion(latest.version) : null
+					};
+				})
+				.sort((a, b) => a.envName.localeCompare(b.envName));
 			out.push({
 				kind: 'app',
 				key: `app:${name}`,
 				title: name,
-				subtitle: envLabels.length > 0 ? `${envLabels.length} env${envLabels.length === 1 ? '' : 's'}: ${envLabels.join(' · ')}` : undefined,
-				href: `/apps/${encodeURIComponent(name)}`
+				subtitle: envCells.length > 0 ? `${envCells.length} env${envCells.length === 1 ? '' : 's'}` : undefined,
+				href: `/apps/${encodeURIComponent(name)}`,
+				envCells
 			});
 		}
 
@@ -483,7 +507,11 @@
 									<Icon class="h-3.5 w-3.5" />
 								</span>
 
-								<!-- Title + subtitle column -->
+								<!-- Title + subtitle column. For app rows, the subtitle line
+								     becomes a per-env mini-strip: `[DEV ●] [STAGING ●] [PROD ●]`
+								     where each chip is the env's theme badge with a colored
+								     status dot. Gives a glance at app fleet health without
+								     opening the app page. -->
 								<div class="flex min-w-0 flex-1 flex-col">
 									<div class="flex min-w-0 items-baseline gap-2">
 										<span class="truncate text-sm font-medium {isActive ? 'text-blue-700 dark:text-blue-200' : 'text-gray-900 dark:text-white'}">{r.title}</span>
@@ -491,7 +519,26 @@
 											<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">{r.version}</span>
 										{/if}
 									</div>
-									{#if r.subtitle}
+									{#if r.kind === 'app' && r.envCells && r.envCells.length > 0}
+										<div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+											{#each r.envCells as ec (ec.envName)}
+												{@const dot = ec.bakeStatus === 'Succeeded' ? 'bg-green-500'
+													: ec.bakeStatus === 'Failed' ? 'bg-red-500'
+													: ec.bakeStatus === 'InProgress' ? 'bg-yellow-400'
+													: ec.bakeStatus === 'Deploying' ? 'bg-blue-500'
+													: ec.bakeStatus === 'Cancelled' ? 'bg-gray-400'
+													: 'bg-gray-300 dark:bg-gray-600'}
+												<span
+													class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wider"
+													style={ec.theme ? getEnvironmentThemeStyle(ec.theme) : undefined}
+													title={`${ec.envName} · ${ec.version ?? 'no deploy'} · ${ec.bakeStatus}`}
+												>
+													<span class="h-1.5 w-1.5 rounded-full {dot}"></span>
+													{shortEnvLabel(ec.theme) || ec.envName}
+												</span>
+											{/each}
+										</div>
+									{:else if r.subtitle}
 										<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.subtitle}</span>
 									{/if}
 								</div>

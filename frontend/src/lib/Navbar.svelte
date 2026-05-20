@@ -58,9 +58,9 @@
 	// Detail context: rendered as breadcrumb 'Item ⇅' on detail pages.
 	const detailContext = $derived.by(() => {
 		if (isRolloutPage) return { kind: 'rollout' as const };
-		if (appDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(appDetailMatch[1]), mono: true };
+		if (appDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(appDetailMatch[1]), mono: false };
 		if (envDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(envDetailMatch[1]), mono: false };
-		if (nsDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(nsDetailMatch[1]), mono: true };
+		if (nsDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(nsDetailMatch[1]), mono: false };
 		return null;
 	});
 

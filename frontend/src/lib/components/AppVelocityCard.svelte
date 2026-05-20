@@ -4,7 +4,7 @@
 	import { getDisplayVersion, formatTimeAgoCompact, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { getEnvironmentThemeStyle, shortEnvLabel, getRolloutEnvironmentTheme } from '$lib/environment-theme';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import type { Rollout, Environment } from '../../types';
@@ -229,12 +229,16 @@
 		</div>
 	</div>
 
-	<!-- Lane chart: one row per env -->
+	<!-- Lane chart: one row per env. Layout: [env badge] [lane segments]
+	     [rank chip — center-aligned] [status icon]. The current version
+	     is shown inside its lane segment (when wide enough); no separate
+	     version text on the right. -->
 	<div class="flex flex-col gap-1.5 px-5 py-4">
 		{#each built.lanes as lane (lane.envName)}
+			{@const isRunning = lane.bakeStatus === 'InProgress' || lane.bakeStatus === 'Deploying'}
 			<div
 				class="environment-theme-scope grid items-center gap-2"
-				style="grid-template-columns: 64px minmax(0, 1fr) 110px; {lane.theme ? getEnvironmentThemeStyle(lane.theme) : ''}"
+				style="grid-template-columns: 64px minmax(0, 1fr) 80px 24px; {lane.theme ? getEnvironmentThemeStyle(lane.theme) : ''}"
 			>
 				<span class="environment-theme-badge inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">{lane.envLabel}</span>
 				<div class="relative h-5 overflow-hidden rounded-md bg-gray-50 dark:bg-gray-900/40">
@@ -249,8 +253,7 @@
 						</span>
 					{/each}
 				</div>
-				<div class="flex items-center justify-end gap-1.5">
-					<span class="truncate font-mono text-[11px] text-gray-600 dark:text-gray-300" title={lane.currentVersion ?? ''}>{lane.currentVersion ?? '—'}</span>
+				<div class="flex justify-center">
 					{#if lane.currentRank === 0}
 						<span class="inline-flex items-center rounded border border-emerald-300 bg-emerald-50 px-1 py-px font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-300">newest</span>
 					{:else if lane.currentRank !== null}
@@ -259,6 +262,14 @@
 						<span class="font-mono text-[9px] text-gray-400 dark:text-gray-500">—</span>
 					{/if}
 				</div>
+				<!-- Status icon at the end — same chrome the rest of the
+				     dashboard uses (pastel disc + icon, pulse for in-flight). -->
+				<span class="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(lane.bakeStatus)}" title={lane.bakeStatus}>
+					{#if isRunning}
+						<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(lane.bakeStatus)}"></span>
+					{/if}
+					<BakeStatusIcon bakeStatus={lane.bakeStatus} size="small" />
+				</span>
 			</div>
 		{/each}
 	</div>

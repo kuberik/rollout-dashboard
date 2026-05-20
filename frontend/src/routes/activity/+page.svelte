@@ -345,12 +345,18 @@
 									class="grid w-full min-w-0 grid-cols-[28px_3rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
 								>
 									<!-- Status circle: 28px wide so the rail at 30px from row
-									     edge passes through its center. -->
-									<span class="relative z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-2 ring-white dark:ring-gray-800 {getStatusCircleClass(entry.bakeStatus)}">
+									     edge passes through its center. The colored bg class
+									     uses `/30` opacity in dark mode, which let the rail
+									     line show through; cover the rail with an opaque
+									     card-bg disc, then layer the colored bg on top. -->
+									<span class="relative z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white ring-2 ring-white dark:bg-gray-800 dark:ring-gray-800">
+										<span class="absolute inset-0 rounded-full {getStatusCircleClass(entry.bakeStatus)}" aria-hidden="true"></span>
 										{#if entry.isRunning}
 											<span class="absolute inset-0 animate-ping rounded-full {getStatusPingClass(entry.bakeStatus)}"></span>
 										{/if}
-										<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
+										<span class="relative">
+											<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
+										</span>
 									</span>
 
 									<!-- Time -->
