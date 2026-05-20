@@ -179,16 +179,6 @@
 		return { label: `spread across ${currentVersions.size} versions`, synced: false };
 	});
 
-	function ringClass(bake: string, stuck: StuckReason | null): string {
-		if (stuck) return 'ring-amber-500';
-		switch (bake) {
-			case 'Succeeded': return 'ring-emerald-400';
-			case 'Failed': return 'ring-red-500';
-			case 'InProgress': return 'ring-yellow-400';
-			case 'Deploying': return 'ring-blue-500';
-			default: return 'ring-gray-400';
-		}
-	}
 
 	const latestDeploy = $derived.by<string | null>(() => {
 		let ts: string | null = null;
@@ -244,7 +234,7 @@
 					{#each lane.segs as s, si}
 						{@const showLabel = s.width >= 14}
 						<span
-							class="absolute top-0.5 bottom-0.5 flex min-w-0 items-center overflow-hidden whitespace-nowrap rounded-sm font-mono text-[9px] font-semibold text-white/95 {s.color} {s.isCurrent ? `ring-[1.5px] ring-inset ${ringClass(lane.bakeStatus, lane.stuck)}` : ''} {showLabel ? 'px-1' : 'px-0'}"
+							class="absolute top-0.5 bottom-0.5 flex min-w-0 items-center overflow-hidden whitespace-nowrap rounded-sm font-mono text-[9px] font-semibold text-white/95 {s.color} {showLabel ? 'px-1' : 'px-0'}"
 							style="left: {s.left}%; width: {s.width}%;"
 							title={`${lane.envName} · ${s.version}${s.isCurrent ? ' (current)' : ''}`}
 						>
