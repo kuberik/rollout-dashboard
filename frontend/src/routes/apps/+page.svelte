@@ -9,7 +9,7 @@
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
-	import { CheckOutline, ClockOutline, HourglassOutline, CloseOutline, ExclamationCircleOutline } from 'flowbite-svelte-icons';
+	import { CheckOutline, RefreshOutline, HourglassOutline, CloseOutline, ExclamationCircleOutline } from 'flowbite-svelte-icons';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import AppVelocityCard from '$lib/components/AppVelocityCard.svelte';
@@ -221,7 +221,7 @@
 	{#if apps.length > 0}
 		{@const tiles = [
 			{ key: 'healthy' as AppStatus, label: 'Healthy', count: fleetTotals.healthy, bake: 'Succeeded', icon: CheckOutline, iconTone: 'text-green-600 dark:text-green-400' },
-			{ key: 'active' as AppStatus, label: 'In progress', count: fleetTotals.active, bake: 'InProgress', icon: ClockOutline, iconTone: 'text-yellow-700 dark:text-yellow-400' },
+			{ key: 'active' as AppStatus, label: 'In progress', count: fleetTotals.active, bake: 'Deploying', icon: RefreshOutline, iconTone: 'text-blue-600 dark:text-blue-400' },
 			{ key: 'stuck' as AppStatus, label: 'Stuck', count: fleetTotals.stuck, bake: 'InProgress', icon: ExclamationCircleOutline, iconTone: 'text-amber-600 dark:text-amber-400' },
 			{ key: 'pending' as AppStatus, label: 'Pending', count: fleetTotals.pending, bake: 'None', icon: HourglassOutline, iconTone: 'text-gray-500 dark:text-gray-400' },
 			{ key: 'failed' as AppStatus, label: 'Failed', count: fleetTotals.failed, bake: 'Failed', icon: CloseOutline, iconTone: 'text-red-600 dark:text-red-400' }

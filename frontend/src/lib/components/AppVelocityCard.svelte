@@ -241,7 +241,7 @@
 					{#each lane.segs as s, si}
 						<span
 							class="absolute top-0.5 bottom-0.5 flex items-center overflow-hidden whitespace-nowrap rounded-sm px-1 font-mono text-[9px] font-semibold text-white/95 {s.color} {s.isCurrent ? `ring-[1.5px] ring-inset ${ringClass(lane.bakeStatus, lane.stuck)}` : ''}"
-							style="left: {s.left}%; width: max(1.5%, {s.width}%);"
+							style="left: {s.left}%; width: {s.width}%;"
 							title={`${lane.envName} · ${s.version}${s.isCurrent ? ' (current)' : ''}`}
 						>
 							{#if s.width >= 14}{s.version}{/if}

@@ -324,10 +324,10 @@
 										<span class="truncate font-mono text-[10px] {summaryClass(r)}">{summaryLine(r)}</span>
 									</div>
 
-									<!-- Version -->
-									<div class="flex flex-col items-end gap-0.5 justify-self-end">
-										<span class="font-mono text-xs text-gray-700 dark:text-gray-300" title={ver ?? ''}>{ver ?? '—'}</span>
+									<!-- Version (pin badge appears to the left of the version) -->
+									<div class="flex items-center justify-end gap-1.5 justify-self-end">
 										{#if r.spec?.wantedVersion}<PinBadge version={r.spec.wantedVersion} size="xs" />{/if}
+										<span class="font-mono text-xs text-gray-700 dark:text-gray-300" title={ver ?? ''}>{ver ?? '—'}</span>
 									</div>
 
 									<!-- Age -->

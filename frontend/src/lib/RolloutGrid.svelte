@@ -15,7 +15,7 @@
 		ChevronRightOutline,
 		CheckOutline,
 		HourglassOutline,
-		ClockOutline,
+		RefreshOutline,
 		CloseOutline
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
@@ -348,7 +348,7 @@
 		     rows; these are summary tiles, no animation needed. -->
 		{@const tiles = [
 			{ key: 'succeeded' as StatusKey, label: 'Healthy', count: counts.succeeded, bake: 'Succeeded', icon: CheckOutline, iconTone: 'text-green-600 dark:text-green-400' },
-			{ key: 'active' as StatusKey, label: 'In progress', count: counts.active, bake: 'InProgress', icon: ClockOutline, iconTone: 'text-yellow-700 dark:text-yellow-400' },
+			{ key: 'active' as StatusKey, label: 'In progress', count: counts.active, bake: 'Deploying', icon: RefreshOutline, iconTone: 'text-blue-600 dark:text-blue-400' },
 			{ key: 'pending' as StatusKey, label: 'Pending', count: counts.pending, bake: 'None', icon: HourglassOutline, iconTone: 'text-gray-500 dark:text-gray-400' },
 			{ key: 'failed' as StatusKey, label: 'Failed', count: counts.failed, bake: 'Failed', icon: CloseOutline, iconTone: 'text-red-600 dark:text-red-400' }
 		]}
@@ -633,8 +633,8 @@
 										<!-- Version + age block (right side) -->
 										<div class="col-start-2 row-start-2 flex min-w-0 flex-col sm:col-start-auto sm:row-start-auto sm:items-end">
 											<div class="flex min-w-0 items-baseline gap-1.5">
-												<span class="truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ?? '—'}</span>
 												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
+												<span class="truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ?? '—'}</span>
 											</div>
 											{#if c.timestamp}
 												<span class="font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatTimeAgo(c.timestamp, $now)}>
