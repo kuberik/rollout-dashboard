@@ -9,6 +9,7 @@
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
+	import { CheckOutline, ClockOutline, HourglassOutline, CloseOutline, ExclamationCircleOutline } from 'flowbite-svelte-icons';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import AppVelocityCard from '$lib/components/AppVelocityCard.svelte';
@@ -213,14 +214,17 @@
 		</div>
 	</div>
 
-	<!-- Stat tiles: clickable status filters. -->
+	<!-- Stat tiles: each tile gets its own static, semantically distinct
+	     icon. The previous BakeStatusIcon reuse made the zero tiles look
+	     identical (all pause icons), and "stuck" had to special-case its
+	     own SVG. Inlining keeps the tile semantics obvious. -->
 	{#if apps.length > 0}
 		{@const tiles = [
-			{ key: 'healthy' as AppStatus, label: 'Healthy', count: fleetTotals.healthy, bake: 'Succeeded' },
-			{ key: 'active' as AppStatus, label: 'In progress', count: fleetTotals.active, bake: 'InProgress' },
-			{ key: 'stuck' as AppStatus, label: 'Stuck', count: fleetTotals.stuck, bake: 'InProgress' },
-			{ key: 'pending' as AppStatus, label: 'Pending', count: fleetTotals.pending, bake: 'None' },
-			{ key: 'failed' as AppStatus, label: 'Failed', count: fleetTotals.failed, bake: 'Failed' }
+			{ key: 'healthy' as AppStatus, label: 'Healthy', count: fleetTotals.healthy, bake: 'Succeeded', icon: CheckOutline, iconTone: 'text-green-600 dark:text-green-400' },
+			{ key: 'active' as AppStatus, label: 'In progress', count: fleetTotals.active, bake: 'InProgress', icon: ClockOutline, iconTone: 'text-yellow-700 dark:text-yellow-400' },
+			{ key: 'stuck' as AppStatus, label: 'Stuck', count: fleetTotals.stuck, bake: 'InProgress', icon: ExclamationCircleOutline, iconTone: 'text-amber-600 dark:text-amber-400' },
+			{ key: 'pending' as AppStatus, label: 'Pending', count: fleetTotals.pending, bake: 'None', icon: HourglassOutline, iconTone: 'text-gray-500 dark:text-gray-400' },
+			{ key: 'failed' as AppStatus, label: 'Failed', count: fleetTotals.failed, bake: 'Failed', icon: CloseOutline, iconTone: 'text-red-600 dark:text-red-400' }
 		]}
 		<div class="mb-4 grid gap-2 grid-cols-2 sm:grid-cols-5">
 			{#each tiles as t}
@@ -239,11 +243,7 @@
 								: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}"
 				>
 					<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {isZero ? 'bg-gray-50 dark:bg-gray-700/30' : (t.key === 'stuck' ? 'bg-amber-100 dark:bg-amber-900/30' : getStatusCircleClass(t.bake))}">
-						{#if t.key === 'stuck' && !isZero}
-							<svg class="h-5 w-5 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
-						{:else}
-							<BakeStatusIcon bakeStatus={isZero ? 'None' : t.bake} size="medium" />
-						{/if}
+						<t.icon class="h-5 w-5 {isZero ? 'text-gray-300 dark:text-gray-600' : t.iconTone}" />
 					</span>
 					<div class="flex min-w-0 flex-1 flex-col">
 						<span class="font-mono text-2xl font-light tabular-nums leading-none {isZero ? 'text-gray-300 dark:text-gray-600' : 'text-gray-900 dark:text-white'}">{t.count}</span>

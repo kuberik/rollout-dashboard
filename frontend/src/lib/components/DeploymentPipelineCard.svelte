@@ -402,14 +402,16 @@
 	);
 
 	// Styling helpers
+	// Pastel circle bg + colored icon — matches `getStatusCircleClass` in
+	// `lib/bake-status.ts` (used for all other status circles across the
+	// dashboard) so the pipeline stages don't read as a different style.
 	function circleBg(status: NodeStatus): string {
 		return {
-			done: 'bg-green-500 text-white',
-			running: 'bg-blue-500 text-white',
-			paused: 'bg-yellow-500 text-white',
-			failed: 'bg-red-500 text-white',
-			pending:
-				'bg-white border-2 border-gray-300 text-gray-400 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-500'
+			done: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
+			running: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+			paused: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+			failed: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+			pending: 'bg-gray-100 text-gray-400 dark:bg-gray-700/60 dark:text-gray-500'
 		}[status];
 	}
 

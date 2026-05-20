@@ -2041,8 +2041,8 @@
 									{/if}
 								</div>
 								{#if created}
-									<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(created, $now)}>
-										{formatTimeAgoCompact(created, $now)}
+									<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title={new Date(created).toLocaleString()}>
+										{formatTimeAgo(created, $now)}
 									</div>
 								{/if}
 							</div>

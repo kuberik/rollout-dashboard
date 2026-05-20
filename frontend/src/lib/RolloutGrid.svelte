@@ -12,7 +12,11 @@
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		SearchOutline,
-		ChevronRightOutline
+		ChevronRightOutline,
+		CheckOutline,
+		HourglassOutline,
+		ClockOutline,
+		CloseOutline
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
@@ -338,11 +342,15 @@
 	<!-- Stat tiles: clickable status filters. The big visual at the top
 	     of the page so an engineer immediately knows the fleet state. -->
 	{#if cards.length > 0}
+		<!-- Each tile uses a distinct, static icon — the row-status pause
+		     icon was being reused everywhere and made the zero tiles
+		     indistinguishable. Bake spinner stays inline on actual list
+		     rows; these are summary tiles, no animation needed. -->
 		{@const tiles = [
-			{ key: 'succeeded' as StatusKey, label: 'Healthy', count: counts.succeeded, bake: 'Succeeded', tone: 'green' },
-			{ key: 'active' as StatusKey, label: 'In progress', count: counts.active, bake: 'InProgress', tone: 'yellow' },
-			{ key: 'pending' as StatusKey, label: 'Pending', count: counts.pending, bake: 'None', tone: 'gray' },
-			{ key: 'failed' as StatusKey, label: 'Failed', count: counts.failed, bake: 'Failed', tone: 'red' }
+			{ key: 'succeeded' as StatusKey, label: 'Healthy', count: counts.succeeded, bake: 'Succeeded', icon: CheckOutline, iconTone: 'text-green-600 dark:text-green-400' },
+			{ key: 'active' as StatusKey, label: 'In progress', count: counts.active, bake: 'InProgress', icon: ClockOutline, iconTone: 'text-yellow-700 dark:text-yellow-400' },
+			{ key: 'pending' as StatusKey, label: 'Pending', count: counts.pending, bake: 'None', icon: HourglassOutline, iconTone: 'text-gray-500 dark:text-gray-400' },
+			{ key: 'failed' as StatusKey, label: 'Failed', count: counts.failed, bake: 'Failed', icon: CloseOutline, iconTone: 'text-red-600 dark:text-red-400' }
 		]}
 		<div class="mb-4 grid gap-2 grid-cols-2 sm:grid-cols-4">
 			{#each tiles as t}
@@ -361,7 +369,7 @@
 								: 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'}"
 				>
 					<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {isZero ? 'bg-gray-50 dark:bg-gray-700/30' : getStatusCircleClass(t.bake)}">
-						<BakeStatusIcon bakeStatus={isZero ? 'None' : t.bake} size="medium" />
+						<t.icon class="h-5 w-5 {isZero ? 'text-gray-300 dark:text-gray-600' : t.iconTone}" />
 					</span>
 					<div class="flex min-w-0 flex-1 flex-col">
 						<span class="font-mono text-2xl font-light tabular-nums leading-none {isZero ? 'text-gray-300 dark:text-gray-600' : 'text-gray-900 dark:text-white'}">{t.count}</span>
