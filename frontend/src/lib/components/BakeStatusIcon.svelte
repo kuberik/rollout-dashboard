@@ -27,10 +27,26 @@
 		large: 'h-8 w-8'
 	};
 
-	const spinnerSizes: Record<'small' | 'medium' | 'large', '4' | '6' | '8'> = {
+	// Spinner sizes match the static-icon sizes so Deploying/InProgress
+	// circles don't render visibly bigger than Succeeded/Failed ones on
+	// the same row (most visible on the activity rail where running rows
+	// sit next to static ones). StatusSpinner accepts '3' for the small
+	// case; Flowbite's `Spinner` only goes down to '4', so InProgress
+	// uses an extra `scale` class to size-match.
+	const spinnerSizes: Record<'small' | 'medium' | 'large', '3' | '6' | '8'> = {
+		small: '3',
+		medium: '6',
+		large: '8'
+	};
+	const flowbiteSpinnerSizes: Record<'small' | 'medium' | 'large', '4' | '6' | '8'> = {
 		small: '4',
 		medium: '6',
 		large: '8'
+	};
+	const flowbiteSpinnerScale: Record<'small' | 'medium' | 'large', string> = {
+		small: 'scale-75',
+		medium: '',
+		large: ''
 	};
 
 	function getStatusConfig(status?: string) {
@@ -65,7 +81,7 @@
      dots radiating out), which reads as "passive watch" rather than
      "actively transferring". -->
 {#if bakeStatus === 'InProgress'}
-	<Spinner type="pulse" size={spinnerSizes[size]} color="yellow" class={className} />
+	<Spinner type="pulse" size={flowbiteSpinnerSizes[size]} color="yellow" class="{flowbiteSpinnerScale[size]} {className}" />
 {:else if bakeStatus === 'Deploying'}
 	<StatusSpinner color="blue" size={spinnerSizes[size]} class={className} />
 {:else}

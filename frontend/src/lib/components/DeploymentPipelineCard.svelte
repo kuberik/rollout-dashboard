@@ -559,7 +559,10 @@
 	{:else if status === 'failed'}
 		<ExclamationCircleSolid class="h-4 w-4" />
 	{:else if status === 'running' || status === 'paused'}
-		<div class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-white"></div>
+		<!-- Rotating arc in the parent's text color (currentColor) so the
+		     spinner picks up the same hue as the rest of the icons —
+		     blue-600 for running, yellow-700 for paused/baking. -->
+		<div class="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current"></div>
 	{:else}
 		<ClockSolid class="h-3.5 w-3.5" />
 	{/if}
