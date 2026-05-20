@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { Spinner } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -58,12 +59,13 @@
 	const Icon = $derived(statusInfo.icon);
 </script>
 
-<!-- In-flight states render a rotating-border spinner (StatusSpinner) so
-     the row visibly *says* "something is happening". The previous pulse
-     animation (Flowbite's expanding-rings) was distinct from a spinner
-     and read as anxious — drop the pulse, keep the spin. -->
+<!-- In-flight states: Deploying is an actively-running deploy → rotating
+     border spinner. InProgress is the bake window — the rollout is just
+     watching health checks — → Flowbite's `pulse` spinner (concentric
+     dots radiating out), which reads as "passive watch" rather than
+     "actively transferring". -->
 {#if bakeStatus === 'InProgress'}
-	<StatusSpinner color="yellow" size={spinnerSizes[size]} class={className} />
+	<Spinner type="pulse" size={spinnerSizes[size]} color="yellow" class={className} />
 {:else if bakeStatus === 'Deploying'}
 	<StatusSpinner color="blue" size={spinnerSizes[size]} class={className} />
 {:else}
