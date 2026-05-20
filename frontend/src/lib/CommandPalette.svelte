@@ -520,20 +520,17 @@
 										{/if}
 									</div>
 									{#if r.kind === 'app' && r.envCells && r.envCells.length > 0}
+										<!-- Per-env mini-strip — just the themed env badges,
+										     no status dot inside (the inner dot was reading
+										     as part of the badge chrome rather than a status
+										     cue). Tooltip still surfaces the bake state. -->
 										<div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
 											{#each r.envCells as ec (ec.envName)}
-												{@const dot = ec.bakeStatus === 'Succeeded' ? 'bg-green-500'
-													: ec.bakeStatus === 'Failed' ? 'bg-red-500'
-													: ec.bakeStatus === 'InProgress' ? 'bg-yellow-400'
-													: ec.bakeStatus === 'Deploying' ? 'bg-blue-500'
-													: ec.bakeStatus === 'Cancelled' ? 'bg-gray-400'
-													: 'bg-gray-300 dark:bg-gray-600'}
 												<span
-													class="environment-theme-scope environment-theme-badge inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wider"
+													class="environment-theme-scope environment-theme-badge inline-flex items-center rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wider"
 													style={ec.theme ? getEnvironmentThemeStyle(ec.theme) : undefined}
 													title={`${ec.envName} · ${ec.version ?? 'no deploy'} · ${ec.bakeStatus}`}
 												>
-													<span class="h-1.5 w-1.5 rounded-full {dot}"></span>
 													{shortEnvLabel(ec.theme) || ec.envName}
 												</span>
 											{/each}

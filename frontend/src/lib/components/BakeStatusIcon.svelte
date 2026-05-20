@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import StatusSpinner from './StatusSpinner.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -23,6 +24,12 @@
 		small: 'h-3 w-3',
 		medium: 'h-6 w-6',
 		large: 'h-8 w-8'
+	};
+
+	const spinnerSizes: Record<'small' | 'medium' | 'large', '4' | '6' | '8'> = {
+		small: '4',
+		medium: '6',
+		large: '8'
 	};
 
 	function getStatusConfig(status?: string) {
@@ -51,9 +58,14 @@
 	const Icon = $derived(statusInfo.icon);
 </script>
 
-<!-- All status icons are static. Earlier iterations animated the
-     in-flight ones (rotating border for Deploying, pulsing dots for
-     InProgress) but the motion read as "anxious" — and the dashboard
-     refetches every 10s anyway, so a changing version/state already
-     signals progress. Keep the icons calm; let the data move. -->
-<Icon class="{sizeClasses[size]} {statusInfo.color} {className}" />
+<!-- In-flight states render a rotating-border spinner (StatusSpinner) so
+     the row visibly *says* "something is happening". The previous pulse
+     animation (Flowbite's expanding-rings) was distinct from a spinner
+     and read as anxious — drop the pulse, keep the spin. -->
+{#if bakeStatus === 'InProgress'}
+	<StatusSpinner color="yellow" size={spinnerSizes[size]} class={className} />
+{:else if bakeStatus === 'Deploying'}
+	<StatusSpinner color="blue" size={spinnerSizes[size]} class={className} />
+{:else}
+	<Icon class="{sizeClasses[size]} {statusInfo.color} {className}" />
+{/if}
