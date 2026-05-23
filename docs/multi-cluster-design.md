@@ -139,10 +139,13 @@ If neither env var is set, the backend falls back to:
 - URL: reconstruct from `X-Forwarded-Proto` / `X-Forwarded-Host` request headers,
   then `Host`
 
-**`DASHBOARD_URL` is strongly recommended in multi-cluster setups** — without it,
-self-exclusion may fail when the in-cluster request `Host` (e.g. internal Service
-name) does not match the public `environmentUrl`, causing the hub to attempt to
-call itself via the external URL.
+**Self-exclusion is automatic.** For every local `Environment` object, the entry
+in `status.environmentInfos[]` whose `environment` matches `spec.environment`
+points to *this* dashboard — so its `environmentUrl` is, by definition, ours.
+The hub aggregates these base URLs as additional "self" identities, on top of
+`DASHBOARD_URL` and the request-derived URL. No fan-out is attempted to any of
+them. Works zero-config even when Envoy / NGINX / Traefik drops the `Host`
+header.
 
 ## Write Operations (Mutations) for Spokes
 

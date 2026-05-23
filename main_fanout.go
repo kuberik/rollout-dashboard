@@ -68,29 +68,47 @@ func isNumeric(s string) bool {
 	return true
 }
 
-// extractSpokeURLs finds unique base URLs from environment environmentUrl values that differ from localURL.
-func extractSpokeURLs(environmentsJSON json.RawMessage, localURL string) []string {
+// parsedEnvironments is the minimal projection of an EnvironmentList needed by fan-out.
+type parsedEnvironments struct {
+	Items []struct {
+		Spec struct {
+			Environment string `json:"environment"`
+		} `json:"spec"`
+		Status struct {
+			EnvironmentInfos []struct {
+				Environment    string `json:"environment"`
+				EnvironmentURL string `json:"environmentUrl"`
+			} `json:"environmentInfos"`
+		} `json:"status"`
+	} `json:"items"`
+}
+
+func parseEnvironments(environmentsJSON json.RawMessage) *parsedEnvironments {
 	if environmentsJSON == nil {
 		return nil
 	}
-	var envList struct {
-		Items []struct {
-			Status struct {
-				EnvironmentInfos []struct {
-					EnvironmentURL string `json:"environmentUrl"`
-				} `json:"environmentInfos"`
-			} `json:"status"`
-		} `json:"items"`
-	}
+	var envList parsedEnvironments
 	if err := json.Unmarshal(environmentsJSON, &envList); err != nil {
 		return nil
 	}
+	return &envList
+}
+
+// localDashboardURLsFromEnvironments returns base URLs that correspond to THIS
+// dashboard, derived from local Environment objects. The entry in
+// status.environmentInfos where info.environment == spec.environment is the
+// environment that lives on this cluster, so its environmentUrl points to us.
+// Robust zero-config self-identification — works behind reverse proxies that
+// don't forward Host headers.
+func localDashboardURLsFromEnvironments(envs *parsedEnvironments) []string {
+	if envs == nil {
+		return nil
+	}
 	seen := make(map[string]bool)
-	localBase := dashboardBaseURL(localURL)
 	var result []string
-	for _, env := range envList.Items {
+	for _, env := range envs.Items {
 		for _, info := range env.Status.EnvironmentInfos {
-			if info.EnvironmentURL == "" {
+			if info.Environment != env.Spec.Environment || info.EnvironmentURL == "" {
 				continue
 			}
 			base := dashboardBaseURL(info.EnvironmentURL)
@@ -98,9 +116,37 @@ func extractSpokeURLs(environmentsJSON json.RawMessage, localURL string) []strin
 				continue
 			}
 			seen[base] = true
-			if base != localBase {
-				result = append(result, base)
+			result = append(result, base)
+		}
+	}
+	return result
+}
+
+// extractSpokeURLs finds unique base URLs from environment environmentUrl values
+// that are NOT in the provided set of self URLs.
+func extractSpokeURLs(envs *parsedEnvironments, selfURLs []string) []string {
+	if envs == nil {
+		return nil
+	}
+	selfSet := make(map[string]bool)
+	for _, u := range selfURLs {
+		if b := dashboardBaseURL(u); b != "" {
+			selfSet[b] = true
+		}
+	}
+	seen := make(map[string]bool)
+	var result []string
+	for _, env := range envs.Items {
+		for _, info := range env.Status.EnvironmentInfos {
+			if info.EnvironmentURL == "" {
+				continue
 			}
+			base := dashboardBaseURL(info.EnvironmentURL)
+			if base == "" || seen[base] || selfSet[base] {
+				continue
+			}
+			seen[base] = true
+			result = append(result, base)
 		}
 	}
 	return result
@@ -268,8 +314,17 @@ func fanOutRollouts(
 		}
 	}
 
-	// Discover spokes from local environments.
-	spokeURLs := extractSpokeURLs(localData["environments"], localURL)
+	// Build the set of self URLs from three sources:
+	// 1. The localURL (env var DASHBOARD_URL, or reconstructed from request)
+	// 2. Auto-detected from local environments — for each local Environment,
+	//    the entry matching spec.environment is the env that lives on this
+	//    cluster, so its environmentUrl points back to us. Zero-config, robust
+	//    even behind reverse proxies that don't forward Host headers.
+	envs := parseEnvironments(localData["environments"])
+	selfURLs := append([]string{localURL}, localDashboardURLsFromEnvironments(envs)...)
+
+	// Discover spokes — base URLs from environmentUrl that aren't self.
+	spokeURLs := extractSpokeURLs(envs, selfURLs)
 	if len(spokeURLs) == 0 {
 		return localData, nil, nil
 	}
