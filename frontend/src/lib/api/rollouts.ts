@@ -19,6 +19,17 @@ export type RolloutResponse = {
     rolloutTests?: { items: RolloutTest[] };
 };
 
+export type ClusterInfo = {
+    url: string;
+    name: string;
+};
+
+export type ClusterError = {
+    url: string;
+    name: string;
+    error: string;
+};
+
 export type RolloutsListResponse = {
     rollouts: { items: Rollout[] };
     environments?: { items: Environment[] };
@@ -27,6 +38,10 @@ export type RolloutsListResponse = {
     // correlates each kuberik Rollout to its KruiseRollouts via the linked
     // Kustomization's inventory entries (group: rollouts.kruise.io).
     kruiseRollouts?: { items: KruiseRollout[] };
+    // Multi-cluster: discovered spoke clusters (absent when single-cluster).
+    clusters?: ClusterInfo[];
+    // Multi-cluster: spokes that could not be reached.
+    clusterErrors?: ClusterError[];
 };
 
 type QueryOverrides<TData> = Omit<
@@ -34,13 +49,18 @@ type QueryOverrides<TData> = Omit<
     'queryKey' | 'queryFn'
 >;
 
-export const rolloutQueryKey = (namespace: string, name: string) =>
-    ['rollout', namespace, name] as const;
+export const rolloutQueryKey = (namespace: string, name: string, dashboard?: string) =>
+    ['rollout', namespace, name, dashboard] as const;
 
 export const rolloutsListQueryKey = ['rollouts', 'all'] as const;
 
-export async function fetchRollout(namespace: string, name: string): Promise<RolloutResponse> {
-    const res = await fetch(`/api/rollouts/${namespace}/${name}`);
+export async function fetchRollout(
+    namespace: string,
+    name: string,
+    dashboard?: string
+): Promise<RolloutResponse> {
+    const params = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
+    const res = await fetch(`/api/rollouts/${namespace}/${name}${params}`);
     if (!res.ok) {
         if (res.status === 404) {
             return { rollout: null };
@@ -86,15 +106,17 @@ export function rolloutsInNamespaceQueryOptions({
 export function rolloutQueryOptions({
     namespace,
     name,
+    dashboard,
     options
 }: {
     namespace: string;
     name: string;
+    dashboard?: string;
     options?: QueryOverrides<RolloutResponse>;
 }) {
     return {
-        queryKey: rolloutQueryKey(namespace, name),
-        queryFn: () => fetchRollout(namespace, name),
+        queryKey: rolloutQueryKey(namespace, name, dashboard),
+        queryFn: () => fetchRollout(namespace, name, dashboard),
         ...options
     };
 }
@@ -107,6 +129,23 @@ export function rolloutsListQueryOptions({
     return {
         queryKey: rolloutsListQueryKey,
         queryFn: () => fetchRolloutsList(),
+        ...options
+    };
+}
+
+export async function fetchClusterInfo(): Promise<ClusterInfo> {
+    const res = await fetch('/api/cluster');
+    if (!res.ok) throw new Error('Failed to fetch cluster info');
+    return (await res.json()) as ClusterInfo;
+}
+
+export const clusterInfoQueryKey = ['cluster-info'] as const;
+
+export function clusterInfoQueryOptions(options?: QueryOverrides<ClusterInfo>) {
+    return {
+        queryKey: clusterInfoQueryKey,
+        queryFn: fetchClusterInfo,
+        staleTime: 60000,
         ...options
     };
 }

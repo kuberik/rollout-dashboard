@@ -1,0 +1,10 @@
+# Optional ConfigMap that lets you name this cluster in the multi-cluster dashboard.
+# If absent, the dashboard falls back to URL-based name parsing.
+# Set data.name to a short, human-readable identifier (e.g. "prod", "staging").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kuberik-cluster-info
+  namespace: kuberik-system
+data:
+  name: ""  # Set this to your cluster's short name, e.g. "prod" or "staging"

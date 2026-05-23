@@ -2,7 +2,8 @@
 
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
+	import type { ClusterInfo, ClusterError } from '$lib/api/rollouts';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime, compareRollouts, detectStuck } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
@@ -26,14 +27,58 @@
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
 
+	const SOURCE_DASHBOARD_ANNOTATION = 'rollout-dashboard.kuberik.com/source-dashboard';
+
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
 	);
+
+	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
 	const kustomizations = $derived<Kustomization[]>(query.data?.kustomizations?.items || []);
 	const kruiseRollouts = $derived<KruiseRollout[]>(query.data?.kruiseRollouts?.items || []);
+	const spokeClusters = $derived<ClusterInfo[]>(query.data?.clusters || []);
+	const clusterErrors = $derived<ClusterError[]>(query.data?.clusterErrors || []);
+	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+
+	// Helper: source dashboard URL for a rollout (set as annotation by hub).
+	function rolloutSourceURL(r: Rollout): string {
+		return (r.metadata?.annotations as Record<string, string> | undefined)?.[SOURCE_DASHBOARD_ANNOTATION] ?? '';
+	}
+
+	// True when more than one cluster is represented in the current result set.
+	const isMultiCluster = $derived(spokeClusters.length > 0);
+
+	const localClusterName = $derived<string>(clusterQuery.data?.name || clusterLabelFromURL(localClusterURL));
+
+	// All clusters for the filter pills: local + discovered spokes.
+	const allClusters = $derived<ClusterInfo[]>([
+		{ url: localClusterURL, name: localClusterName },
+		...spokeClusters
+	].filter((cl) => cl.url));
+
+	function clusterLabelFromURL(rawURL: string): string {
+		try {
+			const host = new URL(rawURL).hostname;
+			if (host.startsWith('kuberik.')) {
+				const rest = host.slice('kuberik.'.length);
+				const seg = rest.split('.')[0];
+				if (seg) return seg;
+			}
+			return host || rawURL;
+		} catch {
+			return rawURL;
+		}
+	}
+
+	// Derive the label for a rollout's cluster URL.
+	function clusterLabelForCard(c: Card): string {
+		const url = c.sourceURL || localClusterURL;
+		const found = allClusters.find((cl) => cl.url === url);
+		return found?.name || clusterLabelFromURL(url);
+	}
 
 	function envForRollout(r: Rollout): Environment | undefined {
 		return environments.find(
@@ -65,6 +110,7 @@
 		stuck: StuckReason | null;
 		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
 		rollout: Rollout;
+		sourceURL: string; // dashboard URL this rollout belongs to (empty = local)
 	};
 
 	// Build a per-app map: appName → Array<{envName, rollout, env}> sorted by env tier.
@@ -160,7 +206,8 @@
 				pinnedVersion: r.spec?.wantedVersion || null,
 				stuck: detectStuck(r, { now: $now }),
 				behind,
-				rollout: r
+				rollout: r,
+				sourceURL: rolloutSourceURL(r)
 			};
 		});
 	});
@@ -169,6 +216,7 @@
 	let searchQuery = $state('');
 	let statusFilters = $state<StatusKey[]>([]);
 	let envFilters = $state<string[]>([]);
+	let clusterFilters = $state<string[]>([]); // set of cluster URLs
 
 	function toggleStatus(k: StatusKey) {
 		statusFilters = statusFilters.includes(k)
@@ -180,9 +228,15 @@
 			? envFilters.filter((x) => x !== name)
 			: [...envFilters, name];
 	}
+	function toggleCluster(url: string) {
+		clusterFilters = clusterFilters.includes(url)
+			? clusterFilters.filter((x) => x !== url)
+			: [...clusterFilters, url];
+	}
 	function clearFilters() {
 		statusFilters = [];
 		envFilters = [];
+		clusterFilters = [];
 		searchQuery = '';
 	}
 
@@ -202,6 +256,11 @@
 		return cards.filter((c) => {
 			if (statusFilters.length > 0 && !statusFilters.includes(c.statusKey)) return false;
 			if (envFilters.length > 0 && !envFilters.includes(c.envKey)) return false;
+			if (clusterFilters.length > 0) {
+				// Match against the source URL; treat empty/local sourceURL as localClusterURL.
+				const cardURL = c.sourceURL || localClusterURL;
+				if (!clusterFilters.includes(cardURL)) return false;
+			}
 			if (q) {
 				const hay = `${c.ns} ${c.name} ${c.title} ${c.envKey} ${c.envDisplay} ${c.version ?? ''}`.toLowerCase();
 				if (!hay.includes(q)) return false;
@@ -210,10 +269,12 @@
 		});
 	});
 
-	// Group filtered cards by namespace, sort cards within group by severity then recency,
+	// Group filtered cards by cluster+namespace, sort cards within group by severity then recency,
 	// sort groups by worst severity first then alphabetical.
 	type NsGroup = {
 		ns: string;
+		clusterURL: string; // source dashboard URL (empty = local)
+		clusterLabel: string; // short cluster name for display
 		cards: Card[];
 		failedCount: number;
 		activeCount: number;
@@ -226,10 +287,16 @@
 		const sevRank: Record<StatusKey, number> = { failed: 0, active: 1, pending: 2, succeeded: 3 };
 		const map = new Map<string, NsGroup>();
 		for (const c of filtered) {
-			let g = map.get(c.ns);
+			// Key by cluster+ns so same namespace on different clusters is separate.
+			const groupKey = (c.sourceURL || '') + '|' + c.ns;
+			let g = map.get(groupKey);
 			if (!g) {
+				const cURL = c.sourceURL || localClusterURL;
+				const cLabel = clusterLabelForCard(c);
 				g = {
 					ns: c.ns,
+					clusterURL: cURL,
+					clusterLabel: cLabel,
 					cards: [],
 					failedCount: 0,
 					activeCount: 0,
@@ -237,7 +304,7 @@
 					severity: 0,
 					newestDeploy: null
 				};
-				map.set(c.ns, g);
+				map.set(groupKey, g);
 			}
 			g.cards.push(c);
 			if (c.statusKey === 'failed') g.failedCount++;
@@ -380,7 +447,21 @@
 		</div>
 	{/if}
 
-	<!-- Filter bar: search + compact env filter pills (per design). -->
+	<!-- Cluster error banner — soft warning, not in the red attention strip. -->
+	{#if clusterErrors.length > 0}
+		<div class="mb-4 flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 dark:border-amber-800/40 dark:bg-amber-900/10">
+			{#each clusterErrors as ce}
+				<div class="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+					<svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+						<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+					</svg>
+					<span><span class="font-semibold">{ce.name}</span> unreachable — {ce.error}</span>
+				</div>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Filter bar: search + compact env filter pills + cluster filter pills (per design). -->
 	{#if cards.length > 0}
 		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
 			<div class="relative min-w-0 flex-1 sm:max-w-xs">
@@ -393,6 +474,26 @@
 				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-1.5">
+				{#if isMultiCluster}
+					{#each allClusters as cl}
+						{@const sel = clusterFilters.includes(cl.url)}
+						<button
+							type="button"
+							onclick={() => toggleCluster(cl.url)}
+							aria-pressed={sel}
+							class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors
+								{sel
+									? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+									: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+						>
+							<svg class="h-2 w-2 shrink-0" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true"><circle cx="4" cy="4" r="4"/></svg>
+							{cl.name}
+						</button>
+					{/each}
+					{#if allClusters.length > 0}
+						<span class="h-4 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
+					{/if}
+				{/if}
 				{#each knownEnvs as e}
 					{@const sel = envFilters.includes(e.key)}
 					<button
@@ -407,7 +508,7 @@
 					>{e.display}</button>
 				{/each}
 			</div>
-			{#if envFilters.length > 0 || statusFilters.length > 0 || searchQuery}
+			{#if envFilters.length > 0 || statusFilters.length > 0 || clusterFilters.length > 0 || searchQuery}
 				<button
 					type="button"
 					onclick={clearFilters}
@@ -523,9 +624,12 @@
 				<ul class="divide-y {failedCount > 0 ? 'divide-red-200/60 dark:divide-red-800/40' : 'divide-amber-200/60 dark:divide-amber-800/40'}">
 					{#each attentionItems as item}
 						{@const c = item.card}
+						{@const attentionHref = c.sourceURL && c.sourceURL !== localClusterURL
+							? `/rollouts/${c.ns}/${c.name}?dashboard=${encodeURIComponent(c.sourceURL)}`
+							: `/rollouts/${c.ns}/${c.name}`}
 						<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 							<a
-								href={`/rollouts/${c.ns}/${c.name}`}
+								href={attentionHref}
 								class="flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-white/60 dark:hover:bg-gray-800/60"
 							>
 								<span class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
@@ -546,14 +650,18 @@
 			</div>
 		{/if}
 		<div class="space-y-6">
-			{#each grouped as g (g.ns)}
+			{#each grouped as g (g.clusterURL + '|' + g.ns)}
 				<section>
-					<!-- Namespace header -->
+					<!-- Namespace header: shows cluster prefix when multi-cluster. -->
 					<a
 						href={`/namespaces/${g.ns}`}
 						class="group mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-2 dark:border-gray-700/60"
 					>
 						<div class="flex min-w-0 items-baseline gap-2">
+							{#if isMultiCluster}
+								<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{g.clusterLabel}</span>
+								<span class="shrink-0 text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+							{/if}
 							<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{g.ns}</h2>
 							<span class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{g.cards.length}</span>
 							{#if g.failedCount > 0}
@@ -580,10 +688,13 @@
 							<span></span>
 						</div>
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#each g.cards as c (c.ns + '/' + c.name)}
+							{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+								{@const rolloutHref = c.sourceURL && c.sourceURL !== localClusterURL
+									? `/rollouts/${c.ns}/${c.name}?dashboard=${encodeURIComponent(c.sourceURL)}`
+									: `/rollouts/${c.ns}/${c.name}`}
 								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 									<a
-										href={`/rollouts/${c.ns}/${c.name}`}
+										href={rolloutHref}
 										class="row-grid gap-x-4 gap-y-2 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
 									>
 										<!-- Status icon. No animate-ping halo on list rows — the

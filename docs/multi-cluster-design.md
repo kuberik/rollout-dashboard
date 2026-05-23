@@ -111,10 +111,42 @@ per-instance, not as a global failure.
 - Each rollout card/row shows which cluster it belongs to
 - Errors per cluster surfaced inline (e.g. "staging unreachable")
 
+## Cluster Name Resolution
+
+The hub reads its cluster name from the `kuberik-cluster-info` ConfigMap:
+
+```yaml
+# deploy/base/cluster-info.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kuberik-cluster-info
+  namespace: kuberik-system
+data:
+  name: prod  # short cluster identifier shown in the UI
+```
+
+This ConfigMap is optional. When absent, the backend falls back to URL-based parsing
+(`kuberik.<short-name>.<rest>` → `<short-name>`) and finally to the raw hostname.
+
+Environment controllers publishing spoke `environmentUrl` values should deploy a
+matching `kuberik-cluster-info` ConfigMap on each spoke cluster.
+
+## Write Operations (Mutations) for Spokes
+
+Currently, only `GET /api/rollouts` and `GET /api/rollouts/:ns/:name?dashboard=<url>` are
+proxied through the hub. POST mutation endpoints (pin, force-deploy, bypass-gates, etc.)
+are not yet proxied — the detail page shows a read-only banner when viewing a spoke rollout.
+
+Planned: extend the proxy pattern to all mutation endpoints using the same `?dashboard=<url>`
+query param convention.
+
 ## Open Questions
 
 1. **RBAC gaps** — user may have access on hub but not on a spoke. Spoke returns 403;
    hub should surface this per-cluster, not as a global error.
 2. **Token expiry** — ID token expires mid-session. Hub needs to propagate 401s from
    spokes back to frontend to trigger re-auth via Envoy.
-3. **Hub in UI** — hub includes itself in the merged result set (local query + remote fan-out). Decide if the hub dashboard URL appears explicitly in the UI or is just labelled "local".
+3. **Hub in UI** — hub cluster is always shown as "local" or by its `kuberik-cluster-info`
+   name. Cluster pills appear only when spokes are discovered; single-cluster setups
+   see no extra UI.

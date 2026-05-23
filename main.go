@@ -66,6 +66,25 @@ func main() {
 			})
 		})
 
+		// GET /api/cluster — returns the name and URL of this dashboard instance.
+		// Cluster name is read from the kuberik-cluster-info ConfigMap (kuberik-system);
+		// falls back to URL parsing when the ConfigMap is absent.
+		api.GET("/cluster", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+			localURL := localDashboardURL(c)
+			name, err := k8sClient.GetClusterName(context.Background())
+			if err != nil {
+				log.Printf("Error fetching cluster name: %v", err)
+			}
+			if name == "" {
+				name = ClusterNameFromURL(localURL)
+			}
+			c.JSON(http.StatusOK, ClusterInfo{URL: localURL, Name: name})
+		})
+
 		api.GET("/rollouts", func(c *gin.Context) {
 			k8sClient, ok := getK8sClient(c)
 			if !ok {
@@ -155,18 +174,52 @@ func main() {
 				log.Printf("Error fetching kruise rollouts: %v", err)
 			}
 
-			c.JSON(http.StatusOK, gin.H{
-				"rollouts":          rollouts,
+			// Fan out to discovered spoke dashboards and merge results.
+			localData := map[string]json.RawMessage{
+				"rollouts":       marshalToRaw(rollouts),
+				"environments":   marshalToRaw(environments),
+				"kustomizations": marshalToRaw(kustomizations),
+				"kruiseRollouts": marshalToRaw(kruiseRollouts),
+			}
+			localURL := localDashboardURL(c)
+			token := auth.GetTokenFromContext(c)
+			merged, clusters, clusterErrors := fanOutRollouts(c.Request.Context(), localData, localURL, token)
+
+			response := gin.H{
+				"rollouts":          merged["rollouts"],
 				"imagePolicies":     imagePolicies,
 				"imageRepositories": imageRepositories,
-				"kustomizations":    kustomizations,
+				"kustomizations":    merged["kustomizations"],
 				"ociRepositories":   ociRepositories,
-				"environments":      environments,
-				"kruiseRollouts":    kruiseRollouts,
-			})
+				"environments":      merged["environments"],
+				"kruiseRollouts":    merged["kruiseRollouts"],
+			}
+			if len(clusters) > 0 {
+				response["clusters"] = clusters
+			}
+			if len(clusterErrors) > 0 {
+				response["clusterErrors"] = clusterErrors
+			}
+			c.JSON(http.StatusOK, response)
 		})
 
 		api.GET("/rollouts/:namespace/:name", func(c *gin.Context) {
+			// If ?dashboard=<url> is set and differs from local, proxy to that spoke.
+			if dashboard := c.Query("dashboard"); dashboard != "" {
+				localURL := localDashboardURL(c)
+				if dashboardBaseURL(dashboard) != dashboardBaseURL(localURL) {
+					token := auth.GetTokenFromContext(c)
+					path := "/api/rollouts/" + c.Param("namespace") + "/" + c.Param("name")
+					raw, status, err := proxyToSpoke(c.Request.Context(), dashboardBaseURL(dashboard), path, token)
+					if err != nil {
+						c.JSON(http.StatusBadGateway, gin.H{"error": "spoke unreachable", "details": err.Error()})
+						return
+					}
+					c.Data(status, "application/json", raw)
+					return
+				}
+			}
+
 			k8sClient, ok := getK8sClient(c)
 			if !ok {
 				return

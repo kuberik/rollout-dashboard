@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -21,4 +22,33 @@ func getK8sClient(c *gin.Context) (*kubernetes.Client, bool) {
 		return nil, false
 	}
 	return k8sClient, true
+}
+
+// localDashboardURL reconstructs the external base URL of this dashboard from the incoming request.
+// Respects X-Forwarded-Proto and X-Forwarded-Host set by reverse proxies.
+func localDashboardURL(c *gin.Context) string {
+	scheme := "https"
+	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	} else if c.Request.TLS == nil {
+		scheme = "http"
+	}
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	return scheme + "://" + host
+}
+
+// marshalToRaw JSON-encodes v and returns the result as json.RawMessage.
+// Returns nil if v is nil or marshaling fails.
+func marshalToRaw(v interface{}) json.RawMessage {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return b
 }

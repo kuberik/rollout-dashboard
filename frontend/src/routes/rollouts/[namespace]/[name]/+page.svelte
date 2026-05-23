@@ -123,12 +123,17 @@
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
+	// ?dashboard=<url> is set when the rollout lives on a remote spoke cluster.
+	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
+	// Read-only when the rollout comes from a spoke (mutations not yet proxied).
+	const isRemote = $derived(!!dashboard);
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
-			name
+			name,
+			dashboard
 		})
 	);
 
@@ -141,8 +146,8 @@
 	);
 
 	// Derived permissions state
-	const canUpdate = $derived(permissionsQuery.data?.permissions?.update ?? false);
-	const canPatch = $derived(permissionsQuery.data?.permissions?.patch ?? false);
+	const canUpdate = $derived(!isRemote && (permissionsQuery.data?.permissions?.update ?? false));
+	const canPatch = $derived(!isRemote && (permissionsQuery.data?.permissions?.patch ?? false));
 	// Most actions require update permission, but some (like force-deploy, bypass-gates) use patch
 	const canModify = $derived(canUpdate || canPatch);
 
@@ -1248,6 +1253,14 @@
 </svelte:head>
 
 <div class="min-h-full dark:bg-gray-900">
+	{#if isRemote}
+		<div class="flex items-center gap-2 border-b border-amber-200 bg-amber-50/60 px-4 py-2 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-300">
+			<svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+				<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+			</svg>
+			<span>Read-only view — this rollout is on a remote cluster. Mutations are not available here.</span>
+		</div>
+	{/if}
 	{#if loading}
 		<div class="space-y-4 px-4 py-8 sm:px-5">
 			<div class="h-10 w-48 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
