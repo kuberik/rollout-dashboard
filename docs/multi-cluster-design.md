@@ -111,26 +111,38 @@ per-instance, not as a global failure.
 - Each rollout card/row shows which cluster it belongs to
 - Errors per cluster surfaced inline (e.g. "staging unreachable")
 
-## Cluster Name Resolution
+## Cluster Identity (Name + URL)
 
-The hub reads its cluster name from the `kuberik-cluster-info` ConfigMap:
+The dashboard reads two optional env vars:
+
+- `CLUSTER_NAME` — short human-readable name shown in the UI (e.g. `prod`)
+- `DASHBOARD_URL` — external base URL of this dashboard, used for self-exclusion
+  during fan-out (critical behind reverse proxies that drop the Host header)
+
+The deployment wires both via `configMapKeyRef` with `optional: true`, so the
+user populates them by creating a `kuberik-cluster-info` ConfigMap if desired:
 
 ```yaml
-# deploy/base/cluster-info.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: kuberik-cluster-info
   namespace: kuberik-system
 data:
-  name: prod  # short cluster identifier shown in the UI
+  name: prod
+  url: https://kuberik.prod.example.com
 ```
 
-This ConfigMap is optional. When absent, the backend falls back to URL-based parsing
-(`kuberik.<short-name>.<rest>` → `<short-name>`) and finally to the raw hostname.
+If neither env var is set, the backend falls back to:
+- Name: parse `kuberik.<name>.<rest>` from the request hostname; if `<name>` is
+  numeric (IP octet from nip.io/sslip.io) use the full hostname instead
+- URL: reconstruct from `X-Forwarded-Proto` / `X-Forwarded-Host` request headers,
+  then `Host`
 
-Environment controllers publishing spoke `environmentUrl` values should deploy a
-matching `kuberik-cluster-info` ConfigMap on each spoke cluster.
+**`DASHBOARD_URL` is strongly recommended in multi-cluster setups** — without it,
+self-exclusion may fail when the in-cluster request `Host` (e.g. internal Service
+name) does not match the public `environmentUrl`, causing the hub to attempt to
+call itself via the external URL.
 
 ## Write Operations (Mutations) for Spokes
 

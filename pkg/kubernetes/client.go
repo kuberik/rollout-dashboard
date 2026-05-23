@@ -1551,16 +1551,3 @@ func (c *Client) GetClusterRolloutSchedulesByRollout(ctx context.Context, namesp
 	return matchingSchedules, nil
 }
 
-// GetClusterName reads the cluster name from the kuberik-cluster-info ConfigMap in kuberik-system.
-// Returns empty string (no error) if the ConfigMap does not exist — caller should fall back to URL parsing.
-func (c *Client) GetClusterName(ctx context.Context) (string, error) {
-	cm := &corev1.ConfigMap{}
-	err := c.client.Get(ctx, client.ObjectKey{Namespace: "kuberik-system", Name: "kuberik-cluster-info"}, cm)
-	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			return "", nil
-		}
-		return "", fmt.Errorf("failed to get kuberik-cluster-info: %w", err)
-	}
-	return cm.Data["name"], nil
-}

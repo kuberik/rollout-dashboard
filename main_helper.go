@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
@@ -24,9 +25,14 @@ func getK8sClient(c *gin.Context) (*kubernetes.Client, bool) {
 	return k8sClient, true
 }
 
-// localDashboardURL reconstructs the external base URL of this dashboard from the incoming request.
-// Respects X-Forwarded-Proto and X-Forwarded-Host set by reverse proxies.
+// localDashboardURL returns the external base URL of this dashboard.
+// Prefers the DASHBOARD_URL env var (typically set from the kuberik-cluster-info ConfigMap)
+// so that self-exclusion during multi-cluster fan-out works behind reverse proxies that
+// don't forward Host headers. Falls back to reconstructing from request headers.
 func localDashboardURL(c *gin.Context) string {
+	if envURL := os.Getenv("DASHBOARD_URL"); envURL != "" {
+		return envURL
+	}
 	scheme := "https"
 	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
 		scheme = proto

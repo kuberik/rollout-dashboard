@@ -67,18 +67,12 @@ func main() {
 		})
 
 		// GET /api/cluster — returns the name and URL of this dashboard instance.
-		// Cluster name is read from the kuberik-cluster-info ConfigMap (kuberik-system);
-		// falls back to URL parsing when the ConfigMap is absent.
+		// Name and URL come from CLUSTER_NAME / DASHBOARD_URL env vars (typically
+		// populated via the optional kuberik-cluster-info ConfigMap). Both fall back
+		// to URL parsing of the incoming request.
 		api.GET("/cluster", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
-			if !ok {
-				return
-			}
 			localURL := localDashboardURL(c)
-			name, err := k8sClient.GetClusterName(context.Background())
-			if err != nil {
-				log.Printf("Error fetching cluster name: %v", err)
-			}
+			name := os.Getenv("CLUSTER_NAME")
 			if name == "" {
 				name = ClusterNameFromURL(localURL)
 			}

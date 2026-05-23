@@ -65,7 +65,9 @@
 			if (host.startsWith('kuberik.')) {
 				const rest = host.slice('kuberik.'.length);
 				const seg = rest.split('.')[0];
-				if (seg) return seg;
+				// Skip numeric segments — IP-based dev URLs (nip.io etc.) have no
+				// meaningful short form, so use the full hostname instead.
+				if (seg && !/^\d+$/.test(seg)) return seg;
 			}
 			return host || rawURL;
 		} catch {

@@ -36,8 +36,10 @@ func dashboardBaseURL(rawURL string) string {
 }
 
 // ClusterNameFromURL derives a short cluster name from a dashboard URL.
-// If the hostname starts with "kuberik.", returns the next segment.
-// Falls back to the full hostname.
+// If the hostname is "kuberik.<name>.<rest>" and <name> is non-numeric, returns <name>.
+// Otherwise returns the full hostname — IP-based URLs (e.g. nip.io, sslip.io)
+// have no meaningful short form so we keep the full host instead of producing
+// nonsense like "192" from "kuberik.192.168.1.102.nip.io".
 func ClusterNameFromURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -47,11 +49,23 @@ func ClusterNameFromURL(rawURL string) string {
 	if strings.HasPrefix(host, "kuberik.") {
 		rest := strings.TrimPrefix(host, "kuberik.")
 		parts := strings.SplitN(rest, ".", 2)
-		if len(parts) > 0 && parts[0] != "" {
+		if len(parts) > 0 && parts[0] != "" && !isNumeric(parts[0]) {
 			return parts[0]
 		}
 	}
 	return host
+}
+
+func isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // extractSpokeURLs finds unique base URLs from environment environmentUrl values that differ from localURL.

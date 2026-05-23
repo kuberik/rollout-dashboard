@@ -12,6 +12,24 @@ spec:
           image: ko://github.com/kuberik/rollout-dashboard
           ports:
             - containerPort: 8080
+          env:
+            # Optional human-readable cluster name shown in multi-cluster UI.
+            # User can create a kuberik-cluster-info ConfigMap with `name` key to populate.
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: kuberik-cluster-info
+                  key: name
+                  optional: true
+            # Optional external URL of this dashboard. Required for correct self-exclusion
+            # during multi-cluster fan-out when behind a reverse proxy that does not
+            # forward Host headers. Set via the same kuberik-cluster-info ConfigMap.
+            - name: DASHBOARD_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kuberik-cluster-info
+                  key: url
+                  optional: true
 ---
 apiVersion: v1
 kind: Service
