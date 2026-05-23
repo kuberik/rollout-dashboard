@@ -111,7 +111,7 @@ trap "rm -rf $temp_dir" EXIT
             -t "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}" \
             .
 
-          kind load docker-image "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}" --name rollout-dev
+          kind load docker-image "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}" --name "${KIND_CLUSTER_NAME:-rollout-dev}"
         done
 
 

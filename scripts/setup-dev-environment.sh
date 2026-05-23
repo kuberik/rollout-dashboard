@@ -85,11 +85,14 @@ kubectl apply -f https://raw.githubusercontent.com/DataDog/datadog-operator/refs
 
 for repo in rollout-controller environment-controller openkruise-controller prometheus-controller; do
   if [ -d "$SCRIPT_DIR/../../$repo" ]; then
-    (cd "$SCRIPT_DIR/../../$repo" && make dev-deploy)
+    (cd "$SCRIPT_DIR/../../$repo" && KIND_CLUSTER_NAME="${CLUSTER_NAME}" KIND_CLUSTER="${CLUSTER_NAME}" make dev-deploy)
   fi
 done
 
-(cd frontend && npm run build; rm -rf ../kodata; cp -r build ../kodata)
+# Frontend is served by the vite dev server, not the in-cluster pod.
+# Skip the npm build — the dashboard pod only needs to serve /api in dev.
+# Ensure kodata exists so ko doesn't complain about a missing directory.
+mkdir -p kodata
 
 kubectl create ns kuberik-system -o yaml --dry-run=client | kubectl apply -f -
 
@@ -234,7 +237,7 @@ spec:
           port: 80
 EOF
 
-"${SCRIPT_DIR}"/build-and-push.sh "${env}"
+KIND_CLUSTER_NAME="${CLUSTER_NAME}" "${SCRIPT_DIR}"/build-and-push.sh "${env}"
 GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
 SCRIPT_DIR=$(dirname "$0")
 for env in ${APP_ENVS}; do
