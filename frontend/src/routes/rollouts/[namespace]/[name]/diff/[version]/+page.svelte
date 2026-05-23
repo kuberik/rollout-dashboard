@@ -20,6 +20,8 @@
 	let patches: Record<string, string> = {};
 
 	const { namespace, name, version } = $page.params;
+	const dashboard = $page.url.searchParams.get('dashboard') || undefined;
+	const dashboardSuffix = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
 
 	theme.subscribe((value) => {
 		currentTheme = value;
@@ -50,7 +52,7 @@
 
 	async function loadRolloutDiff() {
 		try {
-			const data = await fetchRollout(namespace as string, name as string);
+			const data = await fetchRollout(namespace as string, name as string, dashboard);
 			rollout = data.rollout;
 
 			if (!rollout?.status?.history) {
@@ -67,8 +69,8 @@
 
 			// Fetch manifests for both versions
 			const [currentManifest, previousManifest] = await Promise.all([
-				fetch(`/api/rollouts/${namespace}/${name}/manifest/${version}`).then((r) => r.json()),
-				fetch(`/api/rollouts/${namespace}/${name}/manifest/${previousVersion}`).then((r) =>
+				fetch(`/api/rollouts/${namespace}/${name}/manifest/${version}${dashboardSuffix}`).then((r) => r.json()),
+				fetch(`/api/rollouts/${namespace}/${name}/manifest/${previousVersion}${dashboardSuffix}`).then((r) =>
 					r.json()
 				)
 			]);

@@ -124,9 +124,17 @@
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
 	// ?dashboard=<url> is set when the rollout lives on a remote spoke cluster.
+	// The hub's spoke-proxy middleware forwards every API call (including mutations)
+	// to the named dashboard, so the UI behaves identically regardless of source.
 	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
-	// Read-only when the rollout comes from a spoke (mutations not yet proxied).
-	const isRemote = $derived(!!dashboard);
+
+	// Append ?dashboard=<url> to an API path so the hub's proxy middleware forwards
+	// to the right spoke. No-op when the rollout is local to the hub.
+	function apiUrl(path: string): string {
+		if (!dashboard) return path;
+		const sep = path.includes('?') ? '&' : '?';
+		return `${path}${sep}dashboard=${encodeURIComponent(dashboard)}`;
+	}
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
 	const rolloutQuery = createQuery(() =>
@@ -141,13 +149,14 @@
 	const permissionsQuery = createQuery(() =>
 		rolloutPermissionsQueryOptions({
 			namespace,
-			name
+			name,
+			dashboard
 		})
 	);
 
 	// Derived permissions state
-	const canUpdate = $derived(!isRemote && (permissionsQuery.data?.permissions?.update ?? false));
-	const canPatch = $derived(!isRemote && (permissionsQuery.data?.permissions?.patch ?? false));
+	const canUpdate = $derived(permissionsQuery.data?.permissions?.update ?? false);
+	const canPatch = $derived(permissionsQuery.data?.permissions?.patch ?? false);
 	// Most actions require update permission, but some (like force-deploy, bypass-gates) use patch
 	const canModify = $derived(canUpdate || canPatch);
 
@@ -223,7 +232,7 @@
 					.map(async (k) => {
 						const kName = k.metadata!.name as string;
 						const kNamespace = k.metadata?.namespace || namespace;
-						const res = await fetch(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`);
+						const res = await fetch(apiUrl(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`));
 						if (res.ok) {
 							const data = await res.json();
 							result[kName] = data.managedResources || [];
@@ -243,7 +252,7 @@
 	const healthChecksQuery = createQuery(() => ({
 		queryKey: ['health-checks', namespace, name],
 		queryFn: async () => {
-			const res = await fetch(`/api/rollouts/${namespace}/${name}/health-checks`);
+			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/health-checks`));
 			if (!res.ok) return { healthChecks: [] };
 			return res.json();
 		},
@@ -282,7 +291,7 @@
 	const eventsQuery = createQuery(() => ({
 		queryKey: ['events', namespace, name],
 		queryFn: async () => {
-			const res = await fetch(`/api/rollouts/${namespace}/${name}/events`);
+			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/events`));
 			if (!res.ok) return { events: [] };
 			return res.json();
 		},
@@ -803,8 +812,7 @@
 		if (!rollout || !pinVersion) return;
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
 				{
 					method: 'POST',
 					headers: {
@@ -866,8 +874,7 @@
 		if (!rollout) return;
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
 				{
 					method: 'POST',
 					headers: {
@@ -920,8 +927,7 @@
 		loadingAnnotations[version] = true;
 		loadingAnnotations = { ...loadingAnnotations };
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`)
 			);
 			if (response.ok) {
 				const data = await response.json();
@@ -960,8 +966,7 @@
 		if (!rollout) return;
 		loadingAllTags = true;
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/tags`
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/tags`)
 			);
 			if (response.ok) {
 				const data = await response.json();
@@ -981,8 +986,7 @@
 		if (!rollout) return;
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mark-successful`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mark-successful`),
 				{
 					method: 'POST',
 					headers: {
@@ -1034,8 +1038,7 @@
 		toastType = 'success';
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`),
 				{
 					method: 'POST',
 					headers: {
@@ -1172,8 +1175,7 @@
 		kuberikRolloutName?: string
 	) {
 		try {
-			const response = await fetch(
-				`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`,
+			const response = await fetch(apiUrl(`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`),
 				{
 					method: 'POST',
 					headers: {
@@ -1216,8 +1218,7 @@
 
 	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
 		try {
-			const response = await fetch(
-				`/api/rollouts/${namespace}/${name}/retry`,
+			const response = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/retry`),
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -1253,14 +1254,6 @@
 </svelte:head>
 
 <div class="min-h-full dark:bg-gray-900">
-	{#if isRemote}
-		<div class="flex items-center gap-2 border-b border-amber-200 bg-amber-50/60 px-4 py-2 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-300">
-			<svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-				<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
-			</svg>
-			<span>Read-only view — this rollout is on a remote cluster. Mutations are not available here.</span>
-		</div>
-	{/if}
 	{#if loading}
 		<div class="space-y-4 px-4 py-8 sm:px-5">
 			<div class="h-10 w-48 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>

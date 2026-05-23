@@ -165,30 +165,34 @@ export type PermissionsResponse = {
 
 export async function fetchRolloutPermissions(
     namespace: string,
-    name: string
+    name: string,
+    dashboard?: string
 ): Promise<PermissionsResponse> {
-    const res = await fetch(`/api/rollouts/${namespace}/${name}/permissions/all`);
+    const params = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
+    const res = await fetch(`/api/rollouts/${namespace}/${name}/permissions/all${params}`);
     if (!res.ok) {
         throw new Error('Failed to load permissions');
     }
     return (await res.json()) as PermissionsResponse;
 }
 
-export const rolloutPermissionsQueryKey = (namespace: string, name: string) =>
-    ['rollout-permissions', namespace, name] as const;
+export const rolloutPermissionsQueryKey = (namespace: string, name: string, dashboard?: string) =>
+    ['rollout-permissions', namespace, name, dashboard] as const;
 
 export function rolloutPermissionsQueryOptions({
     namespace,
     name,
+    dashboard,
     options
 }: {
     namespace: string;
     name: string;
+    dashboard?: string;
     options?: QueryOverrides<PermissionsResponse>;
 }) {
     return {
-        queryKey: rolloutPermissionsQueryKey(namespace, name),
-        queryFn: () => fetchRolloutPermissions(namespace, name),
+        queryKey: rolloutPermissionsQueryKey(namespace, name, dashboard),
+        queryFn: () => fetchRolloutPermissions(namespace, name, dashboard),
         ...options
     };
 }

@@ -22,9 +22,10 @@
 		namespace: string;
 		name: string;
 		filterType?: 'pod' | 'test' | '';
+		dashboard?: string;
 	}
 
-	const { namespace, name, filterType = '' }: Props = $props();
+	const { namespace, name, filterType = '', dashboard }: Props = $props();
 
 	let selectedPod = $state<string | null>(null);
 	let searchQuery = $state('');
@@ -98,7 +99,8 @@
 			namespace,
 			name,
 			filterType,
-			onPodsUpdate: handlePodsUpdate
+			onPodsUpdate: handlePodsUpdate,
+			dashboard
 		})
 	);
 	const logsQuery = createQuery(() => logsQueryOptions);

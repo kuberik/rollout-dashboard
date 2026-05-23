@@ -39,8 +39,9 @@
 
 	const namespace = $derived(get(page).params.namespace as string);
 	const name = $derived(get(page).params.name as string);
+	const dashboard = $derived(get(page).url.searchParams.get('dashboard') || undefined);
 
-	const rolloutQuery = createQuery(() => rolloutQueryOptions({ namespace, name }));
+	const rolloutQuery = createQuery(() => rolloutQueryOptions({ namespace, name, dashboard }));
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const kustomizations = $derived(

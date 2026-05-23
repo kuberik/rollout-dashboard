@@ -37,12 +37,14 @@
 	// Params
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
+	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
 
 	// Fetch rollout data
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
 			name,
+			dashboard,
 			options: {
 				refetchInterval: 5000
 			}

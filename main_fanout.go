@@ -286,29 +286,6 @@ func fetchSpokeClusterName(ctx context.Context, spokeURL, token string) string {
 	return ClusterNameFromURL(spokeURL)
 }
 
-// proxyToSpoke forwards a GET request to a remote dashboard and streams the response back.
-func proxyToSpoke(ctx context.Context, spokeURL, path, token string) (json.RawMessage, int, error) {
-	reqURL := spokeURL + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	c := &http.Client{Transport: fanoutTransport, Timeout: 10 * time.Second}
-	resp, err := c.Do(req)
-	if err != nil {
-		return nil, http.StatusBadGateway, err
-	}
-	defer resp.Body.Close()
-	var raw json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("decode spoke response: %w", err)
-	}
-	return raw, resp.StatusCode, nil
-}
-
 // fanOutRollouts fans out GET /api/rollouts to all discovered spoke dashboards
 // and merges the results with localData. localData values must be json.RawMessage.
 // Returns merged data, cluster list, and per-cluster errors.

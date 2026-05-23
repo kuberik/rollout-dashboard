@@ -59,6 +59,11 @@ func main() {
 
 	// API routes under /api prefix
 	api := r.Group("/api")
+	// Spoke proxy middleware: any request carrying ?dashboard=<url> that points to
+	// a remote dashboard is transparently forwarded there. Local-only endpoints
+	// (no ?dashboard param) fall through unchanged. Covers all current and future
+	// rollout endpoints without per-handler proxy plumbing.
+	api.Use(SpokeProxyMiddleware())
 	{
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
@@ -198,22 +203,6 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name", func(c *gin.Context) {
-			// If ?dashboard=<url> is set and differs from local, proxy to that spoke.
-			if dashboard := c.Query("dashboard"); dashboard != "" {
-				localURL := localDashboardURL(c)
-				if dashboardBaseURL(dashboard) != dashboardBaseURL(localURL) {
-					token := auth.GetTokenFromContext(c)
-					path := "/api/rollouts/" + c.Param("namespace") + "/" + c.Param("name")
-					raw, status, err := proxyToSpoke(c.Request.Context(), dashboardBaseURL(dashboard), path, token)
-					if err != nil {
-						c.JSON(http.StatusBadGateway, gin.H{"error": "spoke unreachable", "details": err.Error()})
-						return
-					}
-					c.Data(status, "application/json", raw)
-					return
-				}
-			}
-
 			k8sClient, ok := getK8sClient(c)
 			if !ok {
 				return
