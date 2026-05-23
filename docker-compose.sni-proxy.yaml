@@ -1,0 +1,21 @@
+version: "3.9"
+
+# SNI-based TCP router on host:443 for multi-cluster kind dev.
+# Routes TLS traffic to the right kind cluster (or to vite) based on SNI:
+#   SNI=kuberik.<host>.nip.io       → host.docker.internal:5173 (vite, hub frontend)
+#   SNI=kuberik-spoke.<host>.nip.io → host.docker.internal:8081 (kind spoke Envoy)
+#
+# Replaces docker-compose.socat.yaml in multi-cluster mode. haproxy.cfg is
+# templated by setup-multi-cluster-dev.sh into /tmp before this compose runs.
+
+services:
+  sni-router:
+    image: haproxy:2.9-alpine
+    container_name: sni-router
+    ports:
+      - "443:443"
+    volumes:
+      - /tmp/kuberik-haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -2,14 +2,26 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
 )
+
+// fanoutTransport is the shared transport for hub→spoke HTTP calls.
+// Honors INSECURE_SKIP_TLS_VERIFY=true (dev only — for self-signed certs across kind clusters).
+var fanoutTransport = func() http.RoundTripper {
+	tr := &http.Transport{}
+	if os.Getenv("INSECURE_SKIP_TLS_VERIFY") == "true" {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	return tr
+}()
 
 const sourceDashboardAnnotation = "rollout-dashboard.kuberik.com/source-dashboard"
 
@@ -228,7 +240,7 @@ func fetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.Ra
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	c := &http.Client{Timeout: 10 * time.Second}
+	c := &http.Client{Transport: fanoutTransport, Timeout: 10 * time.Second}
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err
@@ -255,7 +267,7 @@ func fetchSpokeClusterName(ctx context.Context, spokeURL, token string) string {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	c := &http.Client{Timeout: 5 * time.Second}
+	c := &http.Client{Transport: fanoutTransport, Timeout: 5 * time.Second}
 	resp, err := c.Do(req)
 	if err != nil {
 		return ClusterNameFromURL(spokeURL)
@@ -284,7 +296,7 @@ func proxyToSpoke(ctx context.Context, spokeURL, path, token string) (json.RawMe
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	c := &http.Client{Timeout: 10 * time.Second}
+	c := &http.Client{Transport: fanoutTransport, Timeout: 10 * time.Second}
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, http.StatusBadGateway, err

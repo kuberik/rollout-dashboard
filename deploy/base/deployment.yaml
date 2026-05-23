@@ -30,6 +30,14 @@ spec:
                   name: kuberik-cluster-info
                   key: url
                   optional: true
+            # Dev-only: skip TLS verification when calling spoke dashboards.
+            # Use only in kind/dev where each cluster has its own self-signed cert.
+            - name: INSECURE_SKIP_TLS_VERIFY
+              valueFrom:
+                configMapKeyRef:
+                  name: kuberik-cluster-info
+                  key: insecureSkipTLSVerify
+                  optional: true
 ---
 apiVersion: v1
 kind: Service

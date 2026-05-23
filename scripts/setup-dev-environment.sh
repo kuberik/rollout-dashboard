@@ -4,10 +4,27 @@ set -x
 
 SCRIPT_DIR=$(dirname "$0")
 GITHUB_TOKEN=${GITHUB_TOKEN:-$(gh auth token)}
+
+# Parameters (defaults match the original single-cluster setup):
+#   CLUSTER_NAME       — kind cluster name (default: rollout-dev)
+#   HOSTNAME_PREFIX    — subdomain prefix for the dashboard (default: kuberik)
+#                         e.g. "kuberik" → kuberik.<HOST_IP>.nip.io
+#                              "kuberik-spoke" → kuberik-spoke.<HOST_IP>.nip.io
+#   CLUSTER_DISPLAY    — short name shown in multi-cluster UI (default: HOSTNAME_PREFIX)
+#   APP_ENVS           — space-separated list of app environments to deploy
+#                         (default: "dev prod staging")
+CLUSTER_NAME="${CLUSTER_NAME:-rollout-dev}"
+HOSTNAME_PREFIX="${HOSTNAME_PREFIX:-kuberik}"
+CLUSTER_DISPLAY="${CLUSTER_DISPLAY:-${HOSTNAME_PREFIX}}"
+APP_ENVS="${APP_ENVS:-dev prod staging}"
+
 # Check if Kind cluster exists, if not run the setup script
-if ! kind get clusters | grep -q rollout-dev; then
+if ! kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
     "${SCRIPT_DIR}/setup-kind-cluster.sh"
 fi
+
+# Switch kubectl context to this cluster (idempotent)
+kubectl config use-context "kind-${CLUSTER_NAME}"
 
 # Apply Flux
 kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
@@ -75,9 +92,20 @@ done
 (cd frontend && npm run build; rm -rf ../kodata; cp -r build ../kodata)
 
 kubectl create ns kuberik-system -o yaml --dry-run=client | kubectl apply -f -
-kustomize build deploy/dev | KIND_CLUSTER_NAME=rollout-dev KO_DOCKER_REPO=kind.local ko apply -f -
 
 HOST_IP=$(ip route get 8.8.8.8 | awk '{print $7}')
+DASHBOARD_HOSTNAME="${HOSTNAME_PREFIX}.${HOST_IP}.nip.io"
+
+# Cluster identity ConfigMap consumed by the dashboard via configMapKeyRef (optional).
+# Provides CLUSTER_NAME and DASHBOARD_URL env vars for the multi-cluster UI + self-exclusion.
+# INSECURE_SKIP_TLS_VERIFY is dev-only — bypass cert checks between kind clusters.
+kubectl -n kuberik-system create configmap kuberik-cluster-info \
+  --from-literal=name="${CLUSTER_DISPLAY}" \
+  --from-literal=url="https://${DASHBOARD_HOSTNAME}" \
+  --from-literal=insecureSkipTLSVerify="${INSECURE_SKIP_TLS_VERIFY:-false}" \
+  -o yaml --dry-run=client | kubectl apply -f -
+
+kustomize build deploy/dev | KIND_CLUSTER_NAME="${CLUSTER_NAME}" KO_DOCKER_REPO=kind.local ko apply -f -
 
 echo "Warning: GatewayClass 'eg' not found. Creating it explicitly..."
 cat <<EOF | kubectl apply -f -
@@ -193,7 +221,7 @@ spec:
     - name: rollout-dashboard-gateway
       namespace: kuberik-system
   hostnames:
-    - kuberik.${HOST_IP}.nip.io
+    - ${DASHBOARD_HOSTNAME}
   rules:
     - matches:
         - path:
@@ -209,7 +237,7 @@ EOF
 "${SCRIPT_DIR}"/build-and-push.sh "${env}"
 GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
 SCRIPT_DIR=$(dirname "$0")
-for env in dev prod staging; do
+for env in ${APP_ENVS}; do
   for app in hello-world hello-multi; do
     # kustomize build "example/${app}/app/deployments/${env}" | kubectl apply -f -
     kustomize build "example/${app}/cd/deployments/${env}" | kubectl apply -f -
