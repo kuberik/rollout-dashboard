@@ -392,7 +392,7 @@
 
 	// Reset state when modals close
 	$effect(() => {
-		if (!showPinModal && !showDeployModal) {
+		if (!showPinModal && !showDeployModal && !showRecoveryWarningModal) {
 			selectedVersion = null;
 			searchQuery = '';
 			showAllTags = false;
