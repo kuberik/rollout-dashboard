@@ -47,7 +47,9 @@
 		};
 	};
 
-	let { rollout }: { rollout: Rollout } = $props();
+	// `dashboard` is the spoke URL when the rollout lives on a remote cluster;
+	// it's appended as ?dashboard=<url> so the hub proxies the call to that spoke.
+	let { rollout, dashboard }: { rollout: Rollout; dashboard?: string } = $props();
 
 	let allSchedules = $state<Array<RolloutSchedule | ClusterRolloutSchedule>>([]);
 	let loading = $state(true);
@@ -231,8 +233,9 @@
 
 	async function fetchSchedules() {
 		try {
+			const dashboardParam = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
 			const response = await fetch(
-				`/api/rollouts/${rollout.metadata.namespace}/${rollout.metadata.name}/schedules`
+				`/api/rollouts/${rollout.metadata.namespace}/${rollout.metadata.name}/schedules${dashboardParam}`
 			);
 			if (!response.ok) throw new Error('Failed to fetch schedules');
 
