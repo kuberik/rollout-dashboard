@@ -1550,3 +1550,4 @@ func (c *Client) GetClusterRolloutSchedulesByRollout(ctx context.Context, namesp
 
 	return matchingSchedules, nil
 }
+

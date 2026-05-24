@@ -25,12 +25,15 @@ export interface LogsStreamData {
 	pods: PodInfo[];
 }
 
-// Create EventSource URL for logs streaming
+// Create EventSource URL for logs streaming.
+// Adds ?dashboard=<url> when set so the hub's spoke-proxy forwards the SSE stream
+// to the right cluster.
 export function createLogsStreamUrl(
 	namespace: string,
 	name: string,
 	filterType: string = '',
-	since?: number
+	since?: number,
+	dashboard?: string
 ): string {
 	const params = new URLSearchParams();
 	if (filterType) {
@@ -38,6 +41,9 @@ export function createLogsStreamUrl(
 	}
 	if (since) {
 		params.set('since', since.toString());
+	}
+	if (dashboard) {
+		params.set('dashboard', dashboard);
 	}
 	return `/api/rollouts/${namespace}/${name}/pods/logs?${params.toString()}`;
 }
@@ -74,9 +80,10 @@ async function* createLogsStream(
 	filterType: string,
 	since?: number,
 	onPodsUpdate?: (pods: PodInfo[]) => void,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	dashboard?: string
 ): AsyncGenerator<LogLine[], void, unknown> {
-	const url = createLogsStreamUrl(namespace, name, filterType, since);
+	const url = createLogsStreamUrl(namespace, name, filterType, since, dashboard);
 
 	// The BatchedQueue bridging the EventSource push and Generator pull
 	const batchQueue = new PromiseQueue<LogLine[]>();
@@ -256,19 +263,21 @@ export function logsStreamQueryOptions({
 	name,
 	filterType = '',
 	since,
-	onPodsUpdate
+	onPodsUpdate,
+	dashboard
 }: {
 	namespace: string;
 	name: string;
 	filterType?: 'pod' | 'test' | '';
 	since?: number;
 	onPodsUpdate?: (pods: PodInfo[]) => void;
+	dashboard?: string;
 }) {
 	return queryOptions({
-		queryKey: ['rollouts', namespace, name, 'logs', filterType, since],
+		queryKey: ['rollouts', namespace, name, 'logs', filterType, since, dashboard],
 		queryFn: streamedQuery({
 			streamFn: async ({ signal }) => {
-				return createLogsStream(namespace, name, filterType, since, onPodsUpdate, signal);
+				return createLogsStream(namespace, name, filterType, since, onPodsUpdate, signal, dashboard);
 			},
 			refetchMode: 'append', // Append new logs to existing ones
 			reducer: (acc: LogLine[], chunk: LogLine | LogLine[]) => {

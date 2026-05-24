@@ -16,7 +16,7 @@ nodes:
   - role: control-plane
     extraPortMappings:
       - containerPort: 30951
-        hostPort: 8080
+        hostPort: __HOST_PORT__
         protocol: TCP
     extraMounts:
       # Mount the CA certificate for HTTPS

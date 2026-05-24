@@ -57,13 +57,38 @@ func main() {
 	// Apply token extraction middleware to all routes
 	r.Use(auth.ExtractTokenMiddleware())
 
+	// If HUB_URL is set, this instance is a spoke — redirect all non-/api requests
+	// to the hub so there's one canonical entry point for the UI. /api requests
+	// are still served locally so the hub can proxy to us.
+	if hubURL := os.Getenv("HUB_URL"); hubURL != "" {
+		r.Use(redirectToHubMiddleware(hubURL))
+	}
+
 	// API routes under /api prefix
 	api := r.Group("/api")
+	// Spoke proxy middleware: any request carrying ?dashboard=<url> that points to
+	// a remote dashboard is transparently forwarded there. Local-only endpoints
+	// (no ?dashboard param) fall through unchanged. Covers all current and future
+	// rollout endpoints without per-handler proxy plumbing.
+	api.Use(SpokeProxyMiddleware())
 	{
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"status": "ok",
 			})
+		})
+
+		// GET /api/cluster — returns the name and URL of this dashboard instance.
+		// Name and URL come from CLUSTER_NAME / DASHBOARD_URL env vars (typically
+		// populated via the optional kuberik-cluster-info ConfigMap). Both fall back
+		// to URL parsing of the incoming request.
+		api.GET("/cluster", func(c *gin.Context) {
+			localURL := localDashboardURL(c)
+			name := os.Getenv("CLUSTER_NAME")
+			if name == "" {
+				name = ClusterNameFromURL(localURL)
+			}
+			c.JSON(http.StatusOK, ClusterInfo{URL: localURL, Name: name})
 		})
 
 		api.GET("/rollouts", func(c *gin.Context) {
@@ -155,15 +180,48 @@ func main() {
 				log.Printf("Error fetching kruise rollouts: %v", err)
 			}
 
-			c.JSON(http.StatusOK, gin.H{
-				"rollouts":          rollouts,
+			// If we're already serving a fan-out leg (header set by the calling hub),
+			// return local data only — fanning out again would create a cycle.
+			if c.GetHeader(fanoutHeader) != "" {
+				c.JSON(http.StatusOK, gin.H{
+					"rollouts":          rollouts,
+					"imagePolicies":     imagePolicies,
+					"imageRepositories": imageRepositories,
+					"kustomizations":    kustomizations,
+					"ociRepositories":   ociRepositories,
+					"environments":      environments,
+					"kruiseRollouts":    kruiseRollouts,
+				})
+				return
+			}
+
+			// Fan out to discovered spoke dashboards and merge results.
+			localData := map[string]json.RawMessage{
+				"rollouts":       marshalToRaw(rollouts),
+				"environments":   marshalToRaw(environments),
+				"kustomizations": marshalToRaw(kustomizations),
+				"kruiseRollouts": marshalToRaw(kruiseRollouts),
+			}
+			localURL := localDashboardURL(c)
+			token := auth.GetTokenFromContext(c)
+			merged, clusters, clusterErrors := fanOutRollouts(c.Request.Context(), localData, localURL, token)
+
+			response := gin.H{
+				"rollouts":          merged["rollouts"],
 				"imagePolicies":     imagePolicies,
 				"imageRepositories": imageRepositories,
-				"kustomizations":    kustomizations,
+				"kustomizations":    merged["kustomizations"],
 				"ociRepositories":   ociRepositories,
-				"environments":      environments,
-				"kruiseRollouts":    kruiseRollouts,
-			})
+				"environments":      merged["environments"],
+				"kruiseRollouts":    merged["kruiseRollouts"],
+			}
+			if len(clusters) > 0 {
+				response["clusters"] = clusters
+			}
+			if len(clusterErrors) > 0 {
+				response["clusterErrors"] = clusterErrors
+			}
+			c.JSON(http.StatusOK, response)
 		})
 
 		api.GET("/rollouts/:namespace/:name", func(c *gin.Context) {

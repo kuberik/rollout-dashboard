@@ -111,10 +111,57 @@ per-instance, not as a global failure.
 - Each rollout card/row shows which cluster it belongs to
 - Errors per cluster surfaced inline (e.g. "staging unreachable")
 
+## Cluster Identity (Name + URL)
+
+The dashboard reads two optional env vars:
+
+- `CLUSTER_NAME` — short human-readable name shown in the UI (e.g. `prod`)
+- `DASHBOARD_URL` — external base URL of this dashboard, used for self-exclusion
+  during fan-out (critical behind reverse proxies that drop the Host header)
+
+The deployment wires both via `configMapKeyRef` with `optional: true`, so the
+user populates them by creating a `kuberik-cluster-info` ConfigMap if desired:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kuberik-cluster-info
+  namespace: kuberik-system
+data:
+  name: prod
+  url: https://kuberik.prod.example.com
+```
+
+If neither env var is set, the backend falls back to:
+- Name: parse `kuberik.<name>.<rest>` from the request hostname; if `<name>` is
+  numeric (IP octet from nip.io/sslip.io) use the full hostname instead
+- URL: reconstruct from `X-Forwarded-Proto` / `X-Forwarded-Host` request headers,
+  then `Host`
+
+**Self-exclusion is automatic.** For every local `Environment` object, the entry
+in `status.environmentInfos[]` whose `environment` matches `spec.environment`
+points to *this* dashboard — so its `environmentUrl` is, by definition, ours.
+The hub aggregates these base URLs as additional "self" identities, on top of
+`DASHBOARD_URL` and the request-derived URL. No fan-out is attempted to any of
+them. Works zero-config even when Envoy / NGINX / Traefik drops the `Host`
+header.
+
+## Write Operations (Mutations) for Spokes
+
+Currently, only `GET /api/rollouts` and `GET /api/rollouts/:ns/:name?dashboard=<url>` are
+proxied through the hub. POST mutation endpoints (pin, force-deploy, bypass-gates, etc.)
+are not yet proxied — the detail page shows a read-only banner when viewing a spoke rollout.
+
+Planned: extend the proxy pattern to all mutation endpoints using the same `?dashboard=<url>`
+query param convention.
+
 ## Open Questions
 
 1. **RBAC gaps** — user may have access on hub but not on a spoke. Spoke returns 403;
    hub should surface this per-cluster, not as a global error.
 2. **Token expiry** — ID token expires mid-session. Hub needs to propagate 401s from
    spokes back to frontend to trigger re-auth via Envoy.
-3. **Hub in UI** — hub includes itself in the merged result set (local query + remote fan-out). Decide if the hub dashboard URL appears explicitly in the UI or is just labelled "local".
+3. **Hub in UI** — hub cluster is always shown as "local" or by its `kuberik-cluster-info`
+   name. Cluster pills appear only when spokes are discovered; single-cluster setups
+   see no extra UI.

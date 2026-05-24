@@ -123,12 +123,25 @@
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
+	// ?dashboard=<url> is set when the rollout lives on a remote spoke cluster.
+	// The hub's spoke-proxy middleware forwards every API call (including mutations)
+	// to the named dashboard, so the UI behaves identically regardless of source.
+	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
+
+	// Append ?dashboard=<url> to an API path so the hub's proxy middleware forwards
+	// to the right spoke. No-op when the rollout is local to the hub.
+	function apiUrl(path: string): string {
+		if (!dashboard) return path;
+		const sep = path.includes('?') ? '&' : '?';
+		return `${path}${sep}dashboard=${encodeURIComponent(dashboard)}`;
+	}
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
-			name
+			name,
+			dashboard
 		})
 	);
 
@@ -136,7 +149,8 @@
 	const permissionsQuery = createQuery(() =>
 		rolloutPermissionsQueryOptions({
 			namespace,
-			name
+			name,
+			dashboard
 		})
 	);
 
@@ -218,7 +232,7 @@
 					.map(async (k) => {
 						const kName = k.metadata!.name as string;
 						const kNamespace = k.metadata?.namespace || namespace;
-						const res = await fetch(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`);
+						const res = await fetch(apiUrl(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`));
 						if (res.ok) {
 							const data = await res.json();
 							result[kName] = data.managedResources || [];
@@ -238,7 +252,7 @@
 	const healthChecksQuery = createQuery(() => ({
 		queryKey: ['health-checks', namespace, name],
 		queryFn: async () => {
-			const res = await fetch(`/api/rollouts/${namespace}/${name}/health-checks`);
+			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/health-checks`));
 			if (!res.ok) return { healthChecks: [] };
 			return res.json();
 		},
@@ -277,7 +291,7 @@
 	const eventsQuery = createQuery(() => ({
 		queryKey: ['events', namespace, name],
 		queryFn: async () => {
-			const res = await fetch(`/api/rollouts/${namespace}/${name}/events`);
+			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/events`));
 			if (!res.ok) return { events: [] };
 			return res.json();
 		},
@@ -798,8 +812,7 @@
 		if (!rollout || !pinVersion) return;
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
 				{
 					method: 'POST',
 					headers: {
@@ -861,8 +874,7 @@
 		if (!rollout) return;
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
 				{
 					method: 'POST',
 					headers: {
@@ -915,8 +927,7 @@
 		loadingAnnotations[version] = true;
 		loadingAnnotations = { ...loadingAnnotations };
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`)
 			);
 			if (response.ok) {
 				const data = await response.json();
@@ -955,8 +966,7 @@
 		if (!rollout) return;
 		loadingAllTags = true;
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/tags`
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/tags`)
 			);
 			if (response.ok) {
 				const data = await response.json();
@@ -976,8 +986,7 @@
 		if (!rollout) return;
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mark-successful`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mark-successful`),
 				{
 					method: 'POST',
 					headers: {
@@ -1029,8 +1038,7 @@
 		toastType = 'success';
 
 		try {
-			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`,
+			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`),
 				{
 					method: 'POST',
 					headers: {
@@ -1167,8 +1175,7 @@
 		kuberikRolloutName?: string
 	) {
 		try {
-			const response = await fetch(
-				`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`,
+			const response = await fetch(apiUrl(`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`),
 				{
 					method: 'POST',
 					headers: {
@@ -1211,8 +1218,7 @@
 
 	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
 		try {
-			const response = await fetch(
-				`/api/rollouts/${namespace}/${name}/retry`,
+			const response = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/retry`),
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },

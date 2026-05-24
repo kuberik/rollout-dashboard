@@ -66,11 +66,13 @@
 
 	const namespace = $derived(page.params.namespace as string | undefined);
 	const name = $derived(page.params.name as string | undefined);
+	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
 
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace: namespace || '',
 			name: name || '',
+			dashboard,
 			options: {
 				refetchInterval: 5000,
 				enabled: isRolloutPage && !!namespace && !!name
