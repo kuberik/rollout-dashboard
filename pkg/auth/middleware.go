@@ -8,58 +8,32 @@ import (
 
 const TokenContextKey = "oidc_token"
 
-// ExtractTokenMiddleware extracts OIDC token from request headers or cookies
-// Envoy Gateway typically sets the token in:
-// 1. Authorization header (Bearer token)
-// 2. Or cookies (id_token, access_token)
-// The middleware stores the token in the context for use by handlers
+// ExtractTokenMiddleware extracts OIDC token from request headers or cookies.
+// oauth2-proxy extAuth sets Authorization: Bearer <access_token> via headersToBackend.
+// Cookies are a fallback for direct access or Envoy native OIDC.
 func ExtractTokenMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var token string
 
-		// With forwardAccessToken: true in SecurityPolicy, Envoy Gateway forwards the access token
-		// in the standard Authorization header. This is the preferred method.
-		// Fallback to cookies if Authorization header is not present.
-		accessTokenCookie := "access_token"
-		idTokenCookie := "id_token"
-		IdTokenCookie := "IdToken"
-
-		// Fallback to IdToken cookie if Authorization header not found
-		// This is often used by some OIDC providers/proxies
-		if token == "" {
-			if cookie, err := c.Cookie(IdTokenCookie); err == nil && cookie != "" {
-				token = cookie
+		// Authorization header is set by oauth2-proxy via Envoy extAuth headersToBackend.
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				token = parts[1]
 			}
 		}
 
-		// Fallback to id_token cookie if IdToken not found
-		// Kubernetes API server requires ID token (JWT) for OIDC authentication
+		// Fallback: cookies for Envoy native OIDC or direct access.
 		if token == "" {
-			if cookie, err := c.Cookie(idTokenCookie); err == nil && cookie != "" {
-				token = cookie
-			}
-		}
-
-		// Fallback to access token cookie if ID token not found
-		if token == "" {
-			if cookie, err := c.Cookie(accessTokenCookie); err == nil && cookie != "" {
-				token = cookie
-			}
-		}
-
-		// Try Authorization header last (e.g. when forwardAccessToken is enabled)
-		if token == "" {
-			authHeader := c.GetHeader("Authorization")
-			if authHeader != "" {
-				// Extract Bearer token
-				parts := strings.SplitN(authHeader, " ", 2)
-				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-					token = parts[1]
+			for _, name := range []string{"IdToken", "id_token", "access_token"} {
+				if cookie, err := c.Cookie(name); err == nil && cookie != "" {
+					token = cookie
+					break
 				}
 			}
 		}
 
-		// Store token in context if found
 		if token != "" {
 			c.Set(TokenContextKey, token)
 		}

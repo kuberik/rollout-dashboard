@@ -49,7 +49,9 @@ func TestExtractTokenMiddleware(t *testing.T) {
 		assert.Equal(t, "fallback-token", w.Body.String())
 	})
 
-	t.Run("Prioritize cookies over Authorization header", func(t *testing.T) {
+	t.Run("Prioritize Authorization header over cookies", func(t *testing.T) {
+		// oauth2-proxy extAuth populates Authorization via headersToBackend, so
+		// it must outrank any leftover cookie from a previous auth scheme.
 		r := gin.New()
 		r.Use(ExtractTokenMiddleware())
 		r.GET("/test", func(c *gin.Context) {
@@ -65,6 +67,6 @@ func TestExtractTokenMiddleware(t *testing.T) {
 		r.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "cookie-token", w.Body.String())
+		assert.Equal(t, "header-token", w.Body.String())
 	})
 }
