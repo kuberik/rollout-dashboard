@@ -19,6 +19,8 @@
 		isPinVersionMode?: boolean;
 		// Optional initial explanation (e.g., for rollback)
 		initialExplanation?: string;
+		// Multi-cluster: remote dashboard URL when this rollout lives on a spoke.
+		dashboard?: string;
 		// Callbacks
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
@@ -31,6 +33,7 @@
 		selectedVersionDisplay = null,
 		isPinVersionMode = false,
 		initialExplanation = '',
+		dashboard,
 		onSuccess = () => {},
 		onError = () => {}
 	}: Props = $props();
@@ -101,8 +104,9 @@
 		if (!rollout || !selectedVersionTag) return;
 
 		try {
+			const dashboardParam = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
 			const response = await fetch(
-				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/change-version`,
+				`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/change-version${dashboardParam}`,
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },

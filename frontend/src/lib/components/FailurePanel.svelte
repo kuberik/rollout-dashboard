@@ -18,6 +18,7 @@
 		canUpdate: boolean;
 		canModify: boolean;
 		isDashboardManagingWantedVersion: boolean;
+		dashboard?: string;
 		onRetry: (kruiseRolloutName?: string, testAction?: string) => Promise<void>;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
@@ -32,6 +33,7 @@
 		canUpdate,
 		canModify,
 		isDashboardManagingWantedVersion,
+		dashboard,
 		onRetry,
 		onSuccess = () => {},
 		onError = () => {}
@@ -195,6 +197,7 @@
 	selectedVersionDisplay={rollbackVersionTag}
 	isPinVersionMode={true}
 	initialExplanation={rollbackExplanation}
+	{dashboard}
 	{onSuccess}
 	{onError}
 />
