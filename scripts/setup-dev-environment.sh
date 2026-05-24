@@ -260,3 +260,9 @@ for env in ${APP_ENVS}; do
       -p '{"imagePullSecrets":[{"name":"github-registry-credentials"}]}'
   done
 done
+
+# Set up OIDC auth via oauth2-proxy by default.
+# HOSTNAME_PREFIX and HOST_PORT are inherited from the calling environment
+# (set by setup-multi-cluster-dev.sh or defaulting to kuberik/8080 for single-cluster).
+HOSTNAME_PREFIX="${HOSTNAME_PREFIX}" HOST_PORT="${HOST_PORT:-8080}" \
+  "${SCRIPT_DIR}/setup-oidc-auth.sh"

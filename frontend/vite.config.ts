@@ -5,8 +5,10 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import mkcert from 'vite-plugin-mkcert';
 import { mockApiPlugin } from './dev-mock-api';
+import { devAuthPlugin } from './dev-auth';
 
 const useMockApi = !!process.env.MOCK_API;
+const skipDevAuth = !!process.env.SKIP_DEV_AUTH;
 
 export default defineConfig({
 	define: {
@@ -14,6 +16,7 @@ export default defineConfig({
 	},
 	plugins: [
 		...(useMockApi ? [mockApiPlugin()] : []),
+		...(!useMockApi && !skipDevAuth ? [devAuthPlugin()] : []),
 		mkcert(),
 		tailwindcss(),
 		sveltekit(),
@@ -28,6 +31,11 @@ export default defineConfig({
 		...(!useMockApi && {
 			proxy: {
 				'/api': {
+					target: 'https://kuberik.192.168.1.102.nip.io:8080',
+					changeOrigin: true,
+					secure: false,
+				},
+				'/oauth2': {
 					target: 'https://kuberik.192.168.1.102.nip.io:8080',
 					changeOrigin: true,
 					secure: false,
