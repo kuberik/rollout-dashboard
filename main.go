@@ -173,6 +173,21 @@ func main() {
 				log.Printf("Error fetching kruise rollouts: %v", err)
 			}
 
+			// If we're already serving a fan-out leg (header set by the calling hub),
+			// return local data only — fanning out again would create a cycle.
+			if c.GetHeader(fanoutHeader) != "" {
+				c.JSON(http.StatusOK, gin.H{
+					"rollouts":          rollouts,
+					"imagePolicies":     imagePolicies,
+					"imageRepositories": imageRepositories,
+					"kustomizations":    kustomizations,
+					"ociRepositories":   ociRepositories,
+					"environments":      environments,
+					"kruiseRollouts":    kruiseRollouts,
+				})
+				return
+			}
+
 			// Fan out to discovered spoke dashboards and merge results.
 			localData := map[string]json.RawMessage{
 				"rollouts":       marshalToRaw(rollouts),

@@ -25,6 +25,12 @@ var fanoutTransport = func() http.RoundTripper {
 
 const sourceDashboardAnnotation = "rollout-dashboard.kuberik.com/source-dashboard"
 
+// fanoutHeader marks a request as already being a fan-out leg — the receiver
+// must NOT fan out again, otherwise hub↔spoke topologies create an infinite
+// loop that bottoms out only on per-request timeouts (and meanwhile duplicates
+// every item N times before bailing).
+const fanoutHeader = "X-Kuberik-Fanout"
+
 // ClusterInfo describes a discovered kuberik dashboard instance.
 type ClusterInfo struct {
 	URL  string `json:"url"`
@@ -240,6 +246,7 @@ func fetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.Ra
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	req.Header.Set(fanoutHeader, "1")
 	c := &http.Client{Transport: fanoutTransport, Timeout: 10 * time.Second}
 	resp, err := c.Do(req)
 	if err != nil {
@@ -267,6 +274,7 @@ func fetchSpokeClusterName(ctx context.Context, spokeURL, token string) string {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	req.Header.Set(fanoutHeader, "1")
 	c := &http.Client{Transport: fanoutTransport, Timeout: 5 * time.Second}
 	resp, err := c.Do(req)
 	if err != nil {
