@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
@@ -57,4 +58,25 @@ func marshalToRaw(v interface{}) json.RawMessage {
 		return nil
 	}
 	return b
+}
+
+// redirectToHubMiddleware sends a 302 to hubURL+path for every non-/api request,
+// keeping the spoke as a pure API backend while the hub owns the user-facing UI.
+// Self-redirect (hubURL points back to this instance) is skipped to avoid loops.
+func redirectToHubMiddleware(hubURL string) gin.HandlerFunc {
+	hubBase := strings.TrimRight(hubURL, "/")
+	return func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/api/") || path == "/api" {
+			c.Next()
+			return
+		}
+		// Guard against a misconfigured HUB_URL pointing at ourselves.
+		if selfBase := localDashboardURL(c); hubBase == strings.TrimRight(selfBase, "/") {
+			c.Next()
+			return
+		}
+		c.Redirect(http.StatusFound, hubBase+c.Request.URL.RequestURI())
+		c.Abort()
+	}
 }

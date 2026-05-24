@@ -57,6 +57,13 @@ func main() {
 	// Apply token extraction middleware to all routes
 	r.Use(auth.ExtractTokenMiddleware())
 
+	// If HUB_URL is set, this instance is a spoke — redirect all non-/api requests
+	// to the hub so there's one canonical entry point for the UI. /api requests
+	// are still served locally so the hub can proxy to us.
+	if hubURL := os.Getenv("HUB_URL"); hubURL != "" {
+		r.Use(redirectToHubMiddleware(hubURL))
+	}
+
 	// API routes under /api prefix
 	api := r.Group("/api")
 	// Spoke proxy middleware: any request carrying ?dashboard=<url> that points to

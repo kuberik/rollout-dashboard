@@ -100,12 +100,18 @@ HOST_IP=$(ip route get 8.8.8.8 | awk '{print $7}')
 DASHBOARD_HOSTNAME="${HOSTNAME_PREFIX}.${HOST_IP}.nip.io"
 
 # Cluster identity ConfigMap consumed by the dashboard via configMapKeyRef (optional).
-# Provides CLUSTER_NAME and DASHBOARD_URL env vars for the multi-cluster UI + self-exclusion.
+# Provides CLUSTER_NAME, DASHBOARD_URL and (on spokes) HUB_URL env vars for the
+# multi-cluster UI, self-exclusion, and frontend redirection.
 # INSECURE_SKIP_TLS_VERIFY is dev-only — bypass cert checks between kind clusters.
-kubectl -n kuberik-system create configmap kuberik-cluster-info \
-  --from-literal=name="${CLUSTER_DISPLAY}" \
-  --from-literal=url="https://${DASHBOARD_HOSTNAME}" \
-  --from-literal=insecureSkipTLSVerify="${INSECURE_SKIP_TLS_VERIFY:-false}" \
+cm_args=(
+  --from-literal=name="${CLUSTER_DISPLAY}"
+  --from-literal=url="https://${DASHBOARD_HOSTNAME}"
+  --from-literal=insecureSkipTLSVerify="${INSECURE_SKIP_TLS_VERIFY:-false}"
+)
+if [ -n "${HUB_URL:-}" ]; then
+  cm_args+=(--from-literal=hubUrl="${HUB_URL}")
+fi
+kubectl -n kuberik-system create configmap kuberik-cluster-info "${cm_args[@]}" \
   -o yaml --dry-run=client | kubectl apply -f -
 
 kustomize build deploy/dev | KIND_CLUSTER_NAME="${CLUSTER_NAME}" KO_DOCKER_REPO=kind.local ko apply -f -

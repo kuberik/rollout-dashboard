@@ -38,6 +38,14 @@ spec:
                   name: kuberik-cluster-info
                   key: insecureSkipTLSVerify
                   optional: true
+            # When set, this instance is a spoke and redirects all non-/api requests
+            # to the named hub URL. Keep unset on hub dashboards.
+            - name: HUB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kuberik-cluster-info
+                  key: hubUrl
+                  optional: true
 ---
 apiVersion: v1
 kind: Service

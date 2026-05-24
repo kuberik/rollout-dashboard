@@ -75,6 +75,7 @@ HOSTNAME_PREFIX="kuberik-spoke" \
 CLUSTER_DISPLAY="dev" \
 APP_ENVS="dev staging" \
 INSECURE_SKIP_TLS_VERIFY="true" \
+HUB_URL="https://${HUB_HOSTNAME}" \
 SKIP_PROXY="true" \
   "${SCRIPT_DIR}/setup-dev-environment.sh"
 
