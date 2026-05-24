@@ -1360,7 +1360,7 @@
 				</div>
 
 				<!-- ══ SCHEDULE STATUS (blocking / closing-soon) ══ -->
-				<ScheduleStatus {rollout} />
+				<ScheduleStatus {rollout} {dashboard} />
 
 				<!-- ══ FAILURE PANEL ══ -->
 				{#if isFailed}
@@ -1373,6 +1373,7 @@
 						{canUpdate}
 						{canModify}
 						{isDashboardManagingWantedVersion}
+						{dashboard}
 						onRetry={retryDeployment}
 						onSuccess={(m) => { toastType = 'success'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
 						onError={(m) => { toastType = 'error'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
@@ -1499,6 +1500,7 @@
 											namespace={rollout.metadata?.namespace || ''}
 											name={rollout.metadata?.name || ''}
 											version={latestEntry.version.tag}
+											{dashboard}
 										/>
 									{/if}
 									{#if rollout?.status?.source}
@@ -1895,7 +1897,7 @@
 							</div>
 						{/if}
 						<HealthChecksCard healthChecks={visibleHealthChecks} />
-						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} />
+						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} {dashboard} />
 						<EventsCard {events} />
 					</div>
 				</div>
@@ -2237,6 +2239,7 @@
 	selectedVersionDisplay={selectedVersionDisplay()}
 	{isPinVersionMode}
 	initialExplanation={deployExplanation}
+	{dashboard}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;
