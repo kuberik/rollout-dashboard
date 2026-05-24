@@ -632,6 +632,7 @@
 			{selectedVersionDisplay}
 			isPinVersionMode={true}
 			initialExplanation={deployExplanation}
+			{dashboard}
 		/>
 	{/if}
 </div>
