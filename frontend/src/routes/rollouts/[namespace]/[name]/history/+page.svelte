@@ -87,8 +87,11 @@
 					const ksName = ks.metadata!.name as string;
 					const ksNamespace = ks.metadata?.namespace || namespace;
 					try {
+						const dashboardParam = dashboard
+							? `?dashboard=${encodeURIComponent(dashboard)}`
+							: '';
 						const res = await fetch(
-							`/api/kustomizations/${ksNamespace}/${ksName}/managed-resources`
+							`/api/kustomizations/${ksNamespace}/${ksName}/managed-resources${dashboardParam}`
 						);
 						if (res.ok) {
 							const data = await res.json();
@@ -542,6 +545,7 @@
 												namespace={rollout.metadata?.namespace || ''}
 												name={rollout.metadata?.name || ''}
 												version={entry.version.tag}
+												{dashboard}
 											/>
 										{/if}
 										{#if i < (rollout?.status?.history?.length ?? 0) - 1 && rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}

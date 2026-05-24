@@ -1499,6 +1499,7 @@
 											namespace={rollout.metadata?.namespace || ''}
 											name={rollout.metadata?.name || ''}
 											version={latestEntry.version.tag}
+											{dashboard}
 										/>
 									{/if}
 									{#if rollout?.status?.source}
@@ -1895,7 +1896,7 @@
 							</div>
 						{/if}
 						<HealthChecksCard healthChecks={visibleHealthChecks} />
-						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} />
+						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} {dashboard} />
 						<EventsCard {events} />
 					</div>
 				</div>
