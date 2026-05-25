@@ -21,11 +21,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const DEFAULT_DEX_TOKEN_URL = 'https://192.168.1.102.nip.io:10443/dex/token';
 const DEFAULT_PATHS = ['/api'];
-const CLIENT_ID = 'rollout-dashboard';
-const CLIENT_SECRET = 'rollout-dashboard-secret';
+const CLIENT_ID = 'kuberik-cluster';
+const CLIENT_SECRET = 'kuberik-cluster-secret';
 const USERNAME = 'admin@example.com';
 const PASSWORD = 'password';
-const SCOPE = 'openid email profile groups audience:server:client_id:kubernetes';
+const SCOPE = 'openid email profile groups';
 
 interface TokenResponse {
 	id_token: string;
