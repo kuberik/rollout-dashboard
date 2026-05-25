@@ -65,8 +65,10 @@ fi
 sort -u "${REDIRECT_URIS_FILE}" -o "${REDIRECT_URIS_FILE}"
 
 # --- Regenerate Dex config ---
-# trustedPeers makes the kubernetes client accept tokens issued for kuberik-cluster,
-# so the same id_token works against both oauth2-proxy AND kube-apiserver.
+# One OIDC client. Both oauth2-proxy and kube-apiserver are configured to
+# accept aud=kuberik-cluster, so the same id_token authenticates against both
+# without any provider-specific cross-client trickery (works with Okta, Auth0,
+# Google, etc. — not just Dex's trustedPeers feature).
 DEX_CONFIG="${OUTPUT_DIR}/dex.yaml"
 {
 cat <<EOF
@@ -83,17 +85,12 @@ storage:
     # JWKS cache and reject every token until its next refresh.
     file: /var/dex/dex.db
 staticClients:
-  - id: kubernetes
-    redirectURIs:
-      - http://localhost:8000
-    name: kubernetes
-    secret: kubernetes-client-secret
-    trustedPeers:
-    - ${OIDC_CLIENT_ID}
   - id: ${OIDC_CLIENT_ID}
     name: Kuberik Cluster
     secret: ${OIDC_CLIENT_SECRET}
     redirectURIs:
+      # First entry is the kubectl oidc-login local callback for kubectl access.
+      - http://localhost:8000
 EOF
 while IFS= read -r uri; do
     echo "      - ${uri}"
@@ -190,11 +187,10 @@ spec:
         - --upstream=static://200
         - --http-address=0.0.0.0:4180
         - --redirect-url=${REDIRECT_URI}
-        - --scope=openid email profile groups audience:server:client_id:kubernetes
+        - --scope=openid email profile groups
         - --set-authorization-header=true
         - --pass-access-token=true
         - --set-xauthrequest=true
-        - --oidc-extra-audience=kubernetes
         - --skip-provider-button=true
         - --cookie-secure=true
         - --cookie-samesite=lax

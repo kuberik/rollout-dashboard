@@ -32,8 +32,8 @@ if [ ! -f "${OUTPUT_DIR}/dex-hostname.txt" ]; then
 fi
 DEX_HOST=$(cat "${OUTPUT_DIR}/dex-hostname.txt")
 DEX_ISSUER_URL="https://${DEX_HOST}:10443/dex"
-CLIENT_ID="kubernetes"
-CLIENT_SECRET="kubernetes-client-secret"
+CLIENT_ID="kuberik-cluster"
+CLIENT_SECRET="kuberik-cluster-secret"
 # Use absolute path for CA certificate so it works from any directory
 CA_CERT_PATH=$(cd "${OUTPUT_DIR}" && pwd)/dex-ca.crt
 

@@ -25,7 +25,7 @@ const CLIENT_ID = 'kuberik-cluster';
 const CLIENT_SECRET = 'kuberik-cluster-secret';
 const USERNAME = 'admin@example.com';
 const PASSWORD = 'password';
-const SCOPE = 'openid email profile groups audience:server:client_id:kubernetes';
+const SCOPE = 'openid email profile groups';
 
 interface TokenResponse {
 	id_token: string;
