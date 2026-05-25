@@ -261,8 +261,35 @@ for env in ${APP_ENVS}; do
   done
 done
 
-# Set up OIDC auth via oauth2-proxy by default.
-# HOSTNAME_PREFIX and HOST_PORT are inherited from the calling environment
-# (set by setup-multi-cluster-dev.sh or defaulting to kuberik/8080 for single-cluster).
-HOSTNAME_PREFIX="${HOSTNAME_PREFIX}" HOST_PORT="${HOST_PORT:-8080}" \
-  "${SCRIPT_DIR}/setup-oidc-auth.sh"
+# Install the cluster-level auth gate (oauth2-proxy in auth-system).
+# Dashboard-agnostic — any HTTPRoute can opt in by creating its own SecurityPolicy.
+HOSTNAME_PREFIX="${HOSTNAME_PREFIX}" \
+  "${SCRIPT_DIR}/setup-cluster-auth.sh"
+
+# Opt the dashboard into the shared auth gate.
+# The SecurityPolicy lives in kuberik-system (same as the HTTPRoute it targets)
+# and references the shared oauth2-proxy across namespaces via the ReferenceGrant
+# that setup-cluster-auth.sh installed in auth-system.
+cat <<EOF | kubectl apply -f -
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: rollout-dashboard-auth
+  namespace: kuberik-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: rollout-dashboard
+  extAuth:
+    http:
+      backendRefs:
+        - name: oauth2-proxy
+          namespace: auth-system
+          port: 4180
+      headersToBackend:
+        - Authorization
+        - X-Auth-Request-User
+        - X-Auth-Request-Email
+        - X-Auth-Request-Access-Token
+EOF
