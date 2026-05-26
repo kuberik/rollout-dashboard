@@ -240,18 +240,158 @@ const mockPermissions = {
 	}
 };
 
+const hcNow = new Date();
+const hcAgo = (mins: number) => new Date(hcNow.getTime() - mins * 60_000).toISOString();
+// Mirrors the real HealthCheck CRDs in example/hello-world/cd/base/resources.yaml.
 const mockHealthChecks = {
 	healthChecks: [
 		{
-			name: ROLLOUT_NAME,
-			namespace: APP_NAMESPACE,
-			kind: 'Deployment',
-			apiVersion: 'apps/v1',
-			status: 'Healthy',
-			message: 'Deployment is available'
+			apiVersion: 'kuberik.com/v1alpha1',
+			kind: 'HealthCheck',
+			metadata: {
+				name: 'hello-world-kustomization-health-check',
+				namespace: APP_NAMESPACE,
+				labels: { app: 'hello-world' },
+				annotations: {
+					'healthcheck.kuberik.com/kustomization': 'hello-world',
+					'kuberik.com/display-name': 'Flux Deployment'
+				}
+			},
+			spec: { class: 'kustomization' },
+			status: {
+				status: 'Healthy',
+				message: 'Kustomization is reconciled · 1/1 ready',
+				lastChangeTime: hcAgo(6)
+			}
+		},
+		{
+			apiVersion: 'kuberik.com/v1alpha1',
+			kind: 'HealthCheck',
+			metadata: {
+				name: 'hello-world-prometheus-high-error-rate',
+				namespace: APP_NAMESPACE,
+				labels: { app: 'hello-world' },
+				annotations: {
+					'healthcheck.kuberik.com/prometheus-alert-labels': 'alertname=HighErrorRate,app=hello-python',
+					'kuberik.com/display-name': 'High Error Rate Alert'
+				}
+			},
+			spec: { class: 'prometheus-alert' },
+			status: {
+				status: 'Pending',
+				message: 'evaluating alert state · next probe in 12s',
+				lastChangeTime: hcAgo(0.4)
+			}
+		},
+		{
+			apiVersion: 'kuberik.com/v1alpha1',
+			kind: 'HealthCheck',
+			metadata: {
+				name: 'hello-world-prometheus-app-down',
+				namespace: APP_NAMESPACE,
+				labels: { app: 'hello-world' },
+				annotations: {
+					'healthcheck.kuberik.com/prometheus-alert-labels': 'alertname=AppDown,app=hello-python',
+					'kuberik.com/display-name': 'App Down Alert'
+				}
+			},
+			spec: { class: 'prometheus-alert' },
+			status: {
+				status: 'Healthy',
+				message: 'alert is not firing',
+				lastChangeTime: hcAgo(4)
+			}
 		}
 	]
 };
+
+// Synthetic fleet — multiple rollouts grouped into apps via Environment CRDs.
+// Detail endpoints still only mock `default/hello-world`; the rest are
+// list-only so the rollouts + apps + activity views look populated.
+type FleetSpec = {
+	app: string;
+	env: 'dev' | 'staging' | 'prod';
+	bake: 'Succeeded' | 'Failed' | 'InProgress' | 'Deploying';
+	currentVersion: string;
+	previousVersion?: string;
+	deployedAgoMin: number;
+};
+const FLEET: FleetSpec[] = [
+	{ app: 'orders-api',      env: 'dev',     bake: 'Succeeded',  currentVersion: 'e936e6f', previousVersion: '01ab7c9', deployedAgoMin: 4 * 60 + 12 },
+	{ app: 'orders-api',      env: 'staging', bake: 'Succeeded',  currentVersion: '01ab7c9', previousVersion: '7d2918a', deployedAgoMin: 22 * 60 },
+	{ app: 'orders-api',      env: 'prod',    bake: 'InProgress', currentVersion: '7c14e2a', previousVersion: '01ab7c9', deployedAgoMin: 2 },
+	{ app: 'checkout-worker', env: 'dev',     bake: 'Succeeded',  currentVersion: '3f1ed09', deployedAgoMin: 38 },
+	{ app: 'checkout-worker', env: 'staging', bake: 'Failed',     currentVersion: 'a02f1c4', previousVersion: '3f1ed09', deployedAgoMin: 3 },
+	{ app: 'recommender-svc', env: 'dev',     bake: 'Succeeded',  currentVersion: '4b9c2e1', deployedAgoMin: 6 * 60 },
+	{ app: 'recommender-svc', env: 'prod',    bake: 'Succeeded',  currentVersion: '88c0e51', deployedAgoMin: 2 * 24 * 60 }
+];
+
+const mkFleetRollout = (s: FleetSpec) => {
+	const ns = `${s.app}-${s.env}`;
+	const history = [
+		{
+			version: { tag: s.currentVersion, version: s.currentVersion },
+			timestamp: hcAgo(s.deployedAgoMin),
+			message: '*Automatic deployment*',
+			triggeredBy: { kind: 'System', name: 'System' },
+			bakeStatus: s.bake,
+			...(s.bake === 'Failed' && { bakeStatusMessage: 'HighErrorRate firing · rolled back' }),
+			bakeStartTime: hcAgo(s.deployedAgoMin),
+			bakeEndTime: hcAgo(s.deployedAgoMin - 1)
+		},
+		...(s.previousVersion ? [{
+			version: { tag: s.previousVersion, version: s.previousVersion },
+			timestamp: hcAgo(s.deployedAgoMin + 6 * 60),
+			message: '*Automatic deployment*',
+			triggeredBy: { kind: 'System', name: 'System' },
+			bakeStatus: 'Succeeded' as const,
+			bakeStartTime: hcAgo(s.deployedAgoMin + 6 * 60),
+			bakeEndTime: hcAgo(s.deployedAgoMin + 6 * 60 - 1)
+		}] : [])
+	];
+	return {
+		apiVersion: 'kuberik.com/v1alpha1',
+		kind: 'Rollout',
+		metadata: {
+			name: s.app,
+			namespace: ns,
+			labels: { environment: s.env }
+		},
+		spec: {
+			releasesImagePolicy: `${ns}/${s.app}`,
+			versionHistoryLimit: 10,
+			minBakeTime: '5m'
+		},
+		status: {
+			wantedVersion: s.currentVersion,
+			currentVersion: s.currentVersion,
+			previousVersion: s.previousVersion,
+			history
+		}
+	};
+};
+const mkFleetEnvironment = (s: FleetSpec) => ({
+	apiVersion: 'environments.kuberik.com/v1alpha1',
+	kind: 'Environment',
+	metadata: { name: s.app, namespace: `${s.app}-${s.env}` },
+	spec: {
+		environment: s.env,
+		name: s.app,
+		rolloutRef: { name: s.app }
+	},
+	status: {
+		currentVersion: s.currentVersion,
+		lastStatusChangeTime: hcAgo(s.deployedAgoMin)
+	}
+});
+
+const mockFleetRollouts = FLEET.map(mkFleetRollout);
+const mockFleetEnvironments = FLEET.map(mkFleetEnvironment);
+const mockClusters = [
+	{ name: 'dev',     url: 'https://kuberik-dev.example.com' },
+	{ name: 'staging', url: 'https://kuberik-staging.example.com' },
+	{ name: 'prod',    url: 'https://kuberik-prod.example.com' }
+];
 
 export function mockApiPlugin(): Plugin {
 	return {
@@ -267,7 +407,12 @@ export function mockApiPlugin(): Plugin {
 				if (req.url === '/api/rollouts') {
 					return res.end(
 						JSON.stringify({
-							rollouts: { items: [mockRolloutResponse.rollout] }
+							rollouts: { items: [mockRolloutResponse.rollout, ...mockFleetRollouts] },
+							environments: { items: mockFleetEnvironments },
+							kustomizations: { items: [] },
+							kruiseRollouts: { items: [] },
+							clusters: mockClusters,
+							clusterErrors: []
 						})
 					);
 				}
