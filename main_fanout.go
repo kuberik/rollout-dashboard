@@ -360,6 +360,7 @@ func fanOutRollouts(
 	merged := localData
 	var clusters []ClusterInfo
 	var clusterErrors []ClusterError
+	seenNames := make(map[string]bool)
 
 	for _, r := range results {
 		if r.spoke.err != nil {
@@ -370,6 +371,10 @@ func fanOutRollouts(
 			})
 			continue
 		}
+		if seenNames[r.name] {
+			continue
+		}
+		seenNames[r.name] = true
 		clusters = append(clusters, ClusterInfo{URL: r.spoke.url, Name: r.name})
 		// Annotate and merge each key.
 		for _, k := range mergedKeys {
