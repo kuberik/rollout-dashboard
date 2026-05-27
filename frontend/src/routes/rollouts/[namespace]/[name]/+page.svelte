@@ -1602,6 +1602,7 @@
 							{canUpdate}
 							{namespace}
 							{name}
+							{dashboard}
 							onContinue={continueRollout}
 						/>
 

@@ -552,7 +552,7 @@
 											<Button
 												color="light"
 												size="xs"
-												href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version.tag}`}
+												href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version.tag}${dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : ''}`}
 											>
 												<CodePullRequestSolid class="mr-1 h-3 w-3" />
 												Show diff

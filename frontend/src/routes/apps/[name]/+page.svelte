@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { sourceDashboardURL, rolloutMatchesEnvironment } from '$lib/source-dashboard';
+	import { sourceDashboardURL, rolloutMatchesEnvironment, withDashboardParam } from '$lib/source-dashboard';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
@@ -45,11 +45,11 @@
 	// Append ?dashboard=<url> so a card click opens the rollout on the cluster it
 	// actually lives on. No-op when the rollout is local to this dashboard.
 	function rolloutHref(cell: Cell): string {
-		const base = `/rollouts/${cell.rollout?.metadata?.namespace}/${cell.rollout?.metadata?.name}`;
-		if (cell.sourceURL && cell.sourceURL !== localClusterURL) {
-			return `${base}?dashboard=${encodeURIComponent(cell.sourceURL)}`;
-		}
-		return base;
+		return withDashboardParam(
+			`/rollouts/${cell.rollout?.metadata?.namespace}/${cell.rollout?.metadata?.name}`,
+			cell.sourceURL,
+			localClusterURL
+		);
 	}
 
 	const cells = $derived.by<Cell[]>(() => {
@@ -1006,9 +1006,7 @@
 													<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 												</span>
 												<a
-													href={a.sourceURL && a.sourceURL !== localClusterURL
-														? `/rollouts/${a.ns}/${a.rollout.metadata?.name}?dashboard=${encodeURIComponent(a.sourceURL)}`
-														: `/rollouts/${a.ns}/${a.rollout.metadata?.name}`}
+													href={withDashboardParam(`/rollouts/${a.ns}/${a.rollout.metadata?.name}`, a.sourceURL, localClusterURL)}
 													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 												>
 													<div class="flex items-baseline justify-between gap-2">

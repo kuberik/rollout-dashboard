@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SOURCE_DASHBOARD_ANNOTATION, sourceDashboardURL, rolloutMatchesEnvironment } from './source-dashboard';
+import { SOURCE_DASHBOARD_ANNOTATION, sourceDashboardURL, rolloutMatchesEnvironment, withDashboardParam } from './source-dashboard';
 
 const DEV = 'https://kuberik.dev.example.com';
 const PROD = 'https://kuberik.prod.example.com';
@@ -52,5 +52,27 @@ describe('rolloutMatchesEnvironment', () => {
 
 	it('does not match when namespaces differ', () => {
 		expect(rolloutMatchesEnvironment(rollout('app', 'ns-a', DEV), environment('app', 'ns-b', DEV))).toBe(false);
+	});
+});
+
+describe('withDashboardParam', () => {
+	it('appends ?dashboard= for a remote cluster', () => {
+		expect(withDashboardParam('/rollouts/ns/app', PROD, DEV)).toBe(
+			`/rollouts/ns/app?dashboard=${encodeURIComponent(PROD)}`
+		);
+	});
+
+	it('is a no-op when the resource is local to the viewed cluster', () => {
+		expect(withDashboardParam('/rollouts/ns/app', DEV, DEV)).toBe('/rollouts/ns/app');
+	});
+
+	it('is a no-op when sourceURL is empty', () => {
+		expect(withDashboardParam('/rollouts/ns/app', '', DEV)).toBe('/rollouts/ns/app');
+	});
+
+	it('uses & when the path already has a query string', () => {
+		expect(withDashboardParam('/rollouts/ns/app/logs?tab=tests', PROD, DEV)).toBe(
+			`/rollouts/ns/app/logs?tab=tests&dashboard=${encodeURIComponent(PROD)}`
+		);
 	});
 });

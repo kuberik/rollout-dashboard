@@ -11,7 +11,7 @@
 	import { Badge } from 'flowbite-svelte';
 	import { ChevronSortOutline } from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutsListQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
+	import { rolloutsListQueryOptions, rolloutQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import CommandPalette from '$lib/CommandPalette.svelte';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { Environment } from '../types';
@@ -87,6 +87,9 @@
 			}
 		})
 	);
+
+	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
+	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
@@ -227,6 +230,7 @@
 	bind:scope={paletteScope}
 	rollouts={allRollouts}
 	environments={allEnvironments}
+	{localClusterURL}
 	currentNamespace={namespace}
 	currentName={name}
 	loading={allRolloutsQuery.isLoading}

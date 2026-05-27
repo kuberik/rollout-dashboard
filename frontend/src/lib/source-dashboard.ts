@@ -29,3 +29,14 @@ export function rolloutMatchesEnvironment(rollout: RolloutLike, env: Environment
 		env.spec?.rolloutRef?.name === rollout.metadata?.name
 	);
 }
+
+// Append ?dashboard=<sourceURL> so a link opens the resource on the cluster it
+// actually lives on. No-op when the resource is local to this dashboard (empty
+// sourceURL, or the same URL as the cluster currently being viewed).
+export function withDashboardParam(path: string, sourceURL: string, localClusterURL: string): string {
+	if (sourceURL && sourceURL !== localClusterURL) {
+		const sep = path.includes('?') ? '&' : '?';
+		return `${path}${sep}dashboard=${encodeURIComponent(sourceURL)}`;
+	}
+	return path;
+}

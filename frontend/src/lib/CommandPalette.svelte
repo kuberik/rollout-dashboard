@@ -24,6 +24,7 @@
 		getRolloutEnvironmentTheme,
 		shortEnvLabel
 	} from '$lib/environment-theme';
+	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
 
 	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action';
@@ -33,6 +34,7 @@
 		scope = $bindable(null),
 		rollouts,
 		environments,
+		localClusterURL = '',
 		currentNamespace,
 		currentName,
 		loading = false
@@ -41,6 +43,7 @@
 		scope?: ResultKind | null;
 		rollouts: Rollout[];
 		environments: Environment[];
+		localClusterURL?: string;
 		currentNamespace?: string;
 		currentName?: string;
 		loading?: boolean;
@@ -83,11 +86,7 @@
 			// Pair to the rollout's Environment resource if one exists so we
 			// pick up the env theme even when the rollout has no theme
 			// annotations (e.g. kuberik-demo-app).
-			const env = environments.find(
-				(e) =>
-					e.metadata?.namespace === r.metadata?.namespace &&
-					e.spec?.rolloutRef?.name === r.metadata?.name
-			);
+			const env = environments.find((e) => rolloutMatchesEnvironment(r, e));
 			const theme = getRolloutEnvironmentTheme(r, env);
 			const status = getRolloutStatus(r);
 			const latest = r.status?.history?.[0];
@@ -96,7 +95,7 @@
 				key: `rollout:${r.metadata?.namespace}/${r.metadata?.name}`,
 				title: r.status?.title || r.metadata?.name || '',
 				subtitle: r.metadata?.namespace,
-				href: `/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`,
+				href: withDashboardParam(`/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`, sourceDashboardURL(r), localClusterURL),
 				envTheme: theme,
 				statusColor: status.color,
 				statusText: status.text,
@@ -119,10 +118,7 @@
 			const envCells = cells
 				.map((env) => {
 					const envName = env.spec?.environment ?? '';
-					const r = rollouts.find(
-						(x) =>
-							x.metadata?.name === name && x.metadata?.namespace === env.metadata?.namespace
-					);
+					const r = rollouts.find((x) => rolloutMatchesEnvironment(x, env));
 					const theme = r ? getRolloutEnvironmentTheme(r, env) : null;
 					const latest = r?.status?.history?.[0];
 					return {
@@ -153,11 +149,7 @@
 			const refRollout = (() => {
 				for (const e of environments) {
 					if (e.spec?.environment !== name) continue;
-					const r = rollouts.find(
-						(r) =>
-							r.metadata?.name === e.spec?.rolloutRef?.name &&
-							r.metadata?.namespace === e.metadata?.namespace
-					);
+					const r = rollouts.find((r) => rolloutMatchesEnvironment(r, e));
 					if (r) return r;
 				}
 				return null;
