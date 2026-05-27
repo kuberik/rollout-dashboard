@@ -75,7 +75,7 @@
 		const refNow = $now;
 		const cutoff = refNow.getTime() - 24 * 60 * 60 * 1000;
 		for (const s of map.values()) {
-			s.cells.sort((a, b) => a.appTitle.localeCompare(b.appTitle));
+			s.cells.sort((a, b) => a.appName.localeCompare(b.appName));
 			for (const { cell } of s.cells) {
 				const status = cell.rollout.status?.history?.[0]?.bakeStatus;
 				if (status === 'Succeeded') s.healthy++;
@@ -291,7 +291,7 @@
 									<!-- Title + name + status chip + "was vX" -->
 									<div class="flex min-w-0 flex-col gap-0.5">
 										<div class="flex min-w-0 items-baseline gap-2">
-											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{appTitle}</span>
+											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{appName}</span>
 											{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
 											{#if status === 'Succeeded' && !stuck}
 												<span class="inline-flex shrink-0 items-center rounded border border-emerald-300 bg-emerald-50 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-300">healthy</span>
@@ -306,7 +306,7 @@
 											{/if}
 										</div>
 										<div class="flex min-w-0 items-baseline gap-2">
-											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{appName}</span>
+											{#if appTitle !== appName}<span class="truncate text-[11px] text-gray-400 dark:text-gray-500">{appTitle}</span>{/if}
 											{#if prevV}
 												<span class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500" title={prevV}>· was <span class="line-through">{shortenVersion(prevV)}</span></span>
 											{/if}

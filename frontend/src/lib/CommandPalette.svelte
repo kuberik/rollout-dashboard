@@ -56,7 +56,10 @@
 	type Result = {
 		kind: ResultKind;
 		key: string;
+		// Canonical, searchable identifier — the resource name for rollouts.
 		title: string;
+		// Optional human-friendly OCI title, shown muted alongside the name.
+		pretty?: string;
 		subtitle?: string;
 		href: string;
 		// Extra surface-area for visual cues
@@ -96,7 +99,11 @@
 				// from multiple clusters, so namespace/name alone is not unique
 				// and would produce duplicate keyed-each keys (crashes the list).
 				key: `rollout:${sourceDashboardURL(r)}|${r.metadata?.namespace}/${r.metadata?.name}`,
-				title: r.status?.title || r.metadata?.name || '',
+				title: r.metadata?.name || '',
+				pretty:
+					r.status?.title && r.status.title !== r.metadata?.name
+						? r.status.title
+						: undefined,
 				subtitle: r.metadata?.namespace,
 				href: withDashboardParam(`/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`, sourceDashboardURL(r), localClusterURL),
 				envTheme: theme,
@@ -220,6 +227,7 @@
 		const lower = q.toLowerCase();
 		const hay = [
 			r.title,
+			r.pretty ?? '',
 			r.subtitle ?? '',
 			r.version ?? '',
 			r.envTheme?.label ?? '',
@@ -233,6 +241,7 @@
 		if (titleLower === lower) s += 100;
 		else if (titleLower.startsWith(lower)) s += 60;
 		else if (titleLower.includes(lower)) s += 30;
+		if ((r.pretty ?? '').toLowerCase().includes(lower)) s += 12;
 		if ((r.subtitle ?? '').toLowerCase().includes(lower)) s += 10;
 		if ((r.version ?? '').toLowerCase().includes(lower)) s += 8;
 		if ((r.envTheme?.label ?? '').toLowerCase().includes(lower)) s += 8;
@@ -530,8 +539,10 @@
 												</span>
 											{/each}
 										</div>
-									{:else if r.subtitle}
-										<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.subtitle}</span>
+									{:else if r.pretty || r.subtitle}
+										<span class="truncate text-xs text-gray-500 dark:text-gray-400"
+											>{#if r.pretty}{r.pretty}{#if r.subtitle} · {r.subtitle}{/if}{:else}{r.subtitle}{/if}</span
+										>
 									{/if}
 								</div>
 

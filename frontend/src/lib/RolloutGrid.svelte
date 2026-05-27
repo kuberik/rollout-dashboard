@@ -630,7 +630,7 @@
 									<BakeStatusIcon bakeStatus={c.bakeStatus} size="small" />
 								</span>
 								<div class="flex min-w-0 flex-1 items-baseline gap-2">
-									<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{c.title}</span>
+									<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{c.name}</span>
 									<span class="truncate text-xs {failedCount > 0 ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}">· {item.detail}</span>
 								</div>
 								<span class="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400">{c.ns}</span>
@@ -698,14 +698,16 @@
 											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 										</span>
 
-										<!-- Title block: title · name · diagnostic line -->
+										<!-- Name block: name · pretty title · diagnostic line.
+										     Name is the canonical identifier; status.title is a
+										     muted hint shown only when it adds something. -->
 										<div class="flex min-w-0 flex-col">
 											<div class="flex min-w-0 items-baseline gap-2">
-												<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{c.title}</span>
+												<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{c.name}</span>
 												{#if c.stuck}<StuckBadge reason={c.stuck} size="xs" />{/if}
 											</div>
 											<div class="flex min-w-0 items-baseline gap-2">
-												<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
+												{#if c.title !== c.name}<span class="truncate text-[11px] text-gray-400 dark:text-gray-500">{c.title}</span>{/if}
 												{#if c.failureCategory}
 													<span class="truncate text-[11px] text-red-600 dark:text-red-400" title={c.bakeStatusMessage ?? ''}>· {c.failureCategory} failed</span>
 												{:else if c.behind}

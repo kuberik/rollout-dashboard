@@ -61,7 +61,7 @@
 			const sevA = appSeverity(a);
 			const sevB = appSeverity(b);
 			if (sevA !== sevB) return sevB - sevA;
-			return a.title.localeCompare(b.title);
+			return a.appName.localeCompare(b.appName);
 		});
 	});
 
@@ -481,13 +481,15 @@
 										</span>
 										<div class="flex min-w-0 flex-col gap-0.5">
 											<div class="flex min-w-0 items-center gap-2">
-												<span class="truncate text-base font-bold text-gray-900 dark:text-white">{s.title}</span>
+												<span class="truncate text-base font-bold text-gray-900 dark:text-white">{s.appName}</span>
 												{#if s.rollout?.spec?.wantedVersion}<PinBadge version={s.rollout.spec.wantedVersion} />{/if}
 											</div>
 											<div class="flex min-w-0 items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-												<span class="truncate font-mono">{s.appName}</span>
+												{#if s.title !== s.appName}
+													<span class="truncate">{s.title}</span>
+													{#if s.rollout?.metadata?.namespace}<span class="text-gray-300 dark:text-gray-600">·</span>{/if}
+												{/if}
 												{#if s.rollout?.metadata?.namespace}
-													<span class="text-gray-300 dark:text-gray-600">·</span>
 													<span class="truncate font-mono">{s.rollout.metadata.namespace}</span>
 												{/if}
 											</div>
@@ -615,7 +617,7 @@
 													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 												>
 													<div class="flex items-baseline justify-between gap-2">
-														<span class="min-w-0 truncate text-sm font-medium text-gray-900 dark:text-white">{a.title}</span>
+														<span class="min-w-0 truncate text-sm font-medium text-gray-900 dark:text-white">{a.appName}</span>
 														<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
 															{hourLabel(a.timestamp)}
 														</span>
