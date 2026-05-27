@@ -2,7 +2,8 @@
 
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
+	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -19,6 +20,9 @@
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: 15000 } })
 	);
+
+	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
+	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -44,9 +48,7 @@
 			if (!envName) continue;
 			const appName = env.spec?.rolloutRef?.name;
 			if (!appName) continue;
-			const r = rollouts.find(
-				(x) => x.metadata?.name === appName && x.metadata?.namespace === env.metadata?.namespace
-			);
+			const r = rollouts.find((x) => rolloutMatchesEnvironment(x, env));
 			if (!r) continue;
 			const theme = getRolloutEnvironmentTheme(r, env);
 			let s = map.get(envName);
@@ -265,6 +267,7 @@
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 						{#each s.cells as { appName, appTitle, cell } (appName)}
 							{@const r = cell.rollout}
+							{@const detailHref = withDashboardParam(`/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`, sourceDashboardURL(cell.env), localClusterURL)}
 							{@const latest = r.status?.history?.[0]}
 							{@const status = latest?.bakeStatus || 'None'}
 							{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
@@ -275,7 +278,7 @@
 							{@const isRunning = status === 'InProgress' || status === 'Deploying'}
 							<li>
 								<a
-									href="/rollouts/{r.metadata?.namespace}/{r.metadata?.name}"
+									href={detailHref}
 									class="grid items-center gap-4 px-5 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
 									style="grid-template-columns: 36px minmax(0, 1.5fr) 180px 110px 60px;"
 								>

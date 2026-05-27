@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
 	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { now } from '$lib/stores/time';
@@ -47,11 +48,7 @@
 		for (const env of environments) {
 			const name = env.spec?.rolloutRef?.name;
 			if (!name) continue;
-			const rollout =
-				rollouts.find(
-					(r) =>
-						r.metadata?.name === name && r.metadata?.namespace === env.metadata?.namespace
-				) || null;
+			const rollout = rollouts.find((r) => rolloutMatchesEnvironment(r, env)) || null;
 			const theme = rollout ? getRolloutEnvironmentTheme(rollout, env) : null;
 			const envName = env.spec?.environment || '';
 			const cell: AppCell = { envName, rollout, env, theme };

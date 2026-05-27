@@ -50,6 +50,7 @@
 		canUpdate: boolean;
 		namespace: string;
 		name: string;
+		dashboard?: string;
 		onContinue: (kruiseRolloutName: string, kruiseRolloutNamespace: string) => void;
 	}
 
@@ -62,6 +63,7 @@
 		canUpdate,
 		namespace,
 		name,
+		dashboard,
 		onContinue
 	}: Props = $props();
 
@@ -727,7 +729,7 @@
 								</span>
 								{#if phase === 'Failed'}
 									<a
-										href="/rollouts/{namespace}/{name}/logs?tab=tests"
+										href={`/rollouts/${namespace}/${name}/logs?tab=tests${dashboard ? `&dashboard=${encodeURIComponent(dashboard)}` : ''}`}
 										class="inline-flex items-center gap-0.5 font-medium text-blue-600 hover:underline dark:text-blue-400"
 									>
 										Logs<ArrowUpRightFromSquareOutline class="h-2.5 w-2.5" />
