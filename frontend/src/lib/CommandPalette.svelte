@@ -92,7 +92,10 @@
 			const latest = r.status?.history?.[0];
 			out.push({
 				kind: 'rollout',
-				key: `rollout:${r.metadata?.namespace}/${r.metadata?.name}`,
+				// Source cluster must be part of the key: the hub merges rollouts
+				// from multiple clusters, so namespace/name alone is not unique
+				// and would produce duplicate keyed-each keys (crashes the list).
+				key: `rollout:${sourceDashboardURL(r)}|${r.metadata?.namespace}/${r.metadata?.name}`,
 				title: r.status?.title || r.metadata?.name || '',
 				subtitle: r.metadata?.namespace,
 				href: withDashboardParam(`/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`, sourceDashboardURL(r), localClusterURL),
