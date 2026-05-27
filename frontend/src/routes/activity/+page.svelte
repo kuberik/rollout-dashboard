@@ -2,7 +2,8 @@
 
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
+	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
 	import { formatTimeAgoCompact, formatTimeAgo, getDisplayVersion } from '$lib/utils';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -18,6 +19,9 @@
 	const rolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: 15000 } })
 	);
+
+	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
+	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
 
 	const rollouts = $derived(rolloutsQuery.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(rolloutsQuery.data?.environments?.items || []);
@@ -91,11 +95,7 @@
 			const name = env.spec?.environment;
 			if (!name) continue;
 			if (!map.has(name)) {
-				const r = rollouts.find(
-					(r) =>
-						r.metadata?.name === env.spec?.rolloutRef?.name &&
-						r.metadata?.namespace === env.metadata?.namespace
-				);
+				const r = rollouts.find((r) => rolloutMatchesEnvironment(r, env));
 				if (r) map.set(name, getRolloutEnvironmentTheme(r, env));
 				else map.set(name, null);
 			}
@@ -108,11 +108,7 @@
 		for (const rollout of rollouts) {
 			const history = rollout.status?.history || [];
 			const title = rollout.status?.title || rollout.metadata?.name || '';
-			const env = environments.find(
-				(e) =>
-					e.metadata?.namespace === rollout.metadata?.namespace &&
-					e.spec?.rolloutRef?.name === rollout.metadata?.name
-			);
+			const env = environments.find((e) => rolloutMatchesEnvironment(rollout, e));
 			const envName = env?.spec?.environment || '';
 			const theme = env ? getRolloutEnvironmentTheme(rollout, env) : getRolloutEnvironmentTheme(rollout);
 			const limited = history.slice(0, 8);
@@ -139,7 +135,7 @@
 					previousVersion,
 					bakeStatus: bs,
 					timestamp: h.timestamp,
-					href: `/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}`,
+					href: withDashboardParam(`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}`, sourceDashboardURL(rollout), localClusterURL),
 					isRunning: bs === 'InProgress' || bs === 'Deploying',
 					actor: actorName,
 					actorKind

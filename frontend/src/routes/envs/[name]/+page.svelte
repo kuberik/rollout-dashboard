@@ -3,7 +3,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
+	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
@@ -26,6 +27,9 @@
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
 	);
 
+	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
+	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
 
@@ -35,23 +39,22 @@
 		rollout: Rollout | null;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		title: string;
+		sourceURL: string;
 	};
 
 	const slots = $derived.by<Slot[]>(() => {
 		const envObjs = environments.filter((e) => e.spec?.environment === envName);
 		const result: Slot[] = envObjs.map((env) => {
 			const appName = env.spec?.rolloutRef?.name || '';
-			const rollout =
-				rollouts.find(
-					(r) => r.metadata?.name === appName && r.metadata?.namespace === env.metadata?.namespace
-				) || null;
+			const rollout = rollouts.find((r) => rolloutMatchesEnvironment(r, env)) || null;
 			const theme = rollout ? getRolloutEnvironmentTheme(rollout, env) : null;
 			return {
 				appName,
 				environment: env,
 				rollout,
 				theme,
-				title: rollout?.status?.title || appName
+				title: rollout?.status?.title || appName,
+				sourceURL: sourceDashboardURL(env)
 			};
 		});
 		return result.sort((a, b) => {
@@ -81,6 +84,7 @@
 		bakeStatus: string;
 		ns: string;
 		rollout: Rollout;
+		sourceURL: string;
 	};
 	const recentActivity = $derived.by<ActivityEntry[]>(() => {
 		const list: ActivityEntry[] = [];
@@ -103,7 +107,8 @@
 					timestamp: entry.timestamp,
 					bakeStatus: entry.bakeStatus || 'None',
 					ns: s.rollout.metadata?.namespace || '',
-					rollout: s.rollout
+					rollout: s.rollout,
+					sourceURL: s.sourceURL
 				});
 			}
 		}
@@ -204,9 +209,7 @@
 			const otherEnvName = env.spec?.environment;
 			if (!otherEnvName || otherEnvName === myEnv) continue;
 			if (env.spec?.rolloutRef?.name !== s.appName) continue;
-			const otherRollout = rollouts.find(
-				(r) => r.metadata?.name === s.appName && r.metadata?.namespace === env.metadata?.namespace
-			);
+			const otherRollout = rollouts.find((r) => rolloutMatchesEnvironment(r, env));
 			if (otherRollout) out.push({ envName: otherEnvName, rollout: otherRollout });
 		}
 		return out;
@@ -279,9 +282,7 @@
 			if (env.spec?.rolloutRef?.name !== appName) continue;
 			const otherEnv = env.spec?.environment;
 			if (!otherEnv) continue;
-			const r = rollouts.find(
-				(x) => x.metadata?.name === appName && x.metadata?.namespace === env.metadata?.namespace
-			);
+			const r = rollouts.find((x) => rolloutMatchesEnvironment(x, env));
 			out.push({ envName: otherEnv, status: r?.status?.history?.[0]?.bakeStatus ?? 'None' });
 		}
 		return out.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
@@ -470,7 +471,7 @@
 							<li class="group">
 								<div class="flex items-center justify-between gap-4 px-5 py-4">
 									<a
-										href={s.rollout ? `/rollouts/${s.rollout.metadata?.namespace}/${s.rollout.metadata?.name}` : '#'}
+										href={s.rollout ? withDashboardParam(`/rollouts/${s.rollout.metadata?.namespace}/${s.rollout.metadata?.name}`, s.sourceURL, localClusterURL) : '#'}
 										class="flex min-w-0 flex-1 items-center gap-3"
 									>
 										<!-- Status circle. No animate-ping halo — the icon
@@ -610,7 +611,7 @@
 													<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 												</span>
 												<a
-													href="/rollouts/{a.ns}/{a.appName}"
+													href={withDashboardParam(`/rollouts/${a.ns}/${a.appName}`, a.sourceURL, localClusterURL)}
 													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 												>
 													<div class="flex items-baseline justify-between gap-2">

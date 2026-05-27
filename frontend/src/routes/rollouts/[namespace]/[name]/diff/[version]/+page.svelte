@@ -160,7 +160,7 @@
 
 <div class="w-full px-4 py-8 dark:bg-gray-900">
 	<div class="mb-6">
-		<Button color="light" href={`/rollouts/${namespace}/${name}`}>
+		<Button color="light" href={`/rollouts/${namespace}/${name}${dashboardSuffix}`}>
 			<ChevronLeftOutline class="mr-2 h-4 w-4" />
 			Back to Rollout
 		</Button>
