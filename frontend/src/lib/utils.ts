@@ -393,6 +393,23 @@ export function getDisplayVersion(versionInfo: {
 }
 
 /**
+ * Shorten long version strings for compact display in cells/badges.
+ * - Full git SHA (40 hex chars) → first 7 chars (e.g. cf9292d)
+ * - Tag with a long hex suffix after a dash (≥12 hex chars, e.g.
+ *   main-1776963445-50ef792…) → keep prefix and shorten the hex tail to 7
+ * Returns the input unchanged if it's already short or doesn't match.
+ * The full version should still be exposed via a `title` attribute for
+ * users who need to copy or read the full string.
+ */
+export function shortenVersion(version: string | null | undefined): string {
+    if (!version) return version ?? '';
+    if (/^[0-9a-f]{40}$/i.test(version)) return version.slice(0, 7);
+    const m = version.match(/^(.+-)([0-9a-f]{12,})$/i);
+    if (m) return m[1] + m[2].slice(0, 7);
+    return version;
+}
+
+/**
  * Extracts URL from gateway or ingress API resources
  * @param resource The managed resource with object field
  * @param groupVersionKind The groupVersionKind string (e.g., "networking.k8s.io/v1/Ingress")
