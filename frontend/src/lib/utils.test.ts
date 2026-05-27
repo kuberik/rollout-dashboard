@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion } from './utils';
 import {
     ENVIRONMENT_THEME_ANNOTATION,
     ENVIRONMENT_THEME_COLOR_ANNOTATION,
@@ -498,5 +498,40 @@ describe('buildDatadogTraceSearchUrl', () => {
         expect(url).toContain(encodeURIComponent('env:staging'));
         expect(url).toContain(encodeURIComponent('@rollout.test:true'));
         expect(url).not.toContain(encodeURIComponent('version:'));
+    });
+});
+
+describe('shortenVersion', () => {
+    it('returns empty string for nullish input', () => {
+        expect(shortenVersion(null)).toBe('');
+        expect(shortenVersion(undefined)).toBe('');
+        expect(shortenVersion('')).toBe('');
+    });
+
+    it('shortens a full 40-char git SHA to 7 chars', () => {
+        expect(shortenVersion('cf9292d57497bfccae1be39609c2c0e50b4de1ce')).toBe('cf9292d');
+        expect(shortenVersion('7BD43E1956F3B822B948BD0EEA9DBD08B4673DDB')).toBe('7BD43E1');
+    });
+
+    it('keeps tag prefix and shortens long hex suffix after a dash', () => {
+        expect(shortenVersion('main-1776963445-50ef792e2bd4b2c21c1e2b13f064e05c9e84034d'))
+            .toBe('main-1776963445-50ef792');
+        expect(shortenVersion('release-abcdef0123456789')).toBe('release-abcdef0');
+    });
+
+    it('leaves already-short SHAs alone', () => {
+        expect(shortenVersion('a7e115f')).toBe('a7e115f');
+        expect(shortenVersion('ebe9fb6')).toBe('ebe9fb6');
+    });
+
+    it('leaves non-hex versions alone', () => {
+        expect(shortenVersion('1.2.3')).toBe('1.2.3');
+        expect(shortenVersion('v1.2.3-rc1')).toBe('v1.2.3-rc1');
+        expect(shortenVersion('0.3.0-1779831037')).toBe('0.3.0-1779831037');
+        expect(shortenVersion('main-1.2.3')).toBe('main-1.2.3');
+    });
+
+    it('does not shorten short hex tails (<12 chars)', () => {
+        expect(shortenVersion('release-abc1234')).toBe('release-abc1234');
     });
 });

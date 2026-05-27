@@ -743,11 +743,17 @@
 											<DeployVolumeSparkline rollouts={[c.rollout]} hours={24} buckets={12} />
 										</div>
 
-										<!-- Version + age block (right side) -->
+										<!-- Version + age block (right side). `min-w-0` on the
+										     version span itself is required for `truncate` to
+										     ellipsize inside flex parents — without it, long
+										     versions (full git SHAs, pinned tags with hex
+										     suffixes) overflow the column. `shortenVersion`
+										     trims obvious SHA-like values for compactness; the
+										     full string is preserved in the `title` attribute. -->
 										<div class="col-start-2 row-start-2 flex min-w-0 flex-col sm:col-start-auto sm:row-start-auto sm:items-end">
-											<div class="flex min-w-0 items-baseline gap-1.5">
+											<div class="flex min-w-0 max-w-full items-baseline gap-1.5">
 												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
-												<span class="truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ?? '—'}</span>
+												<span class="min-w-0 truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ? shortenVersion(c.version) : '—'}</span>
 											</div>
 											{#if c.timestamp}
 												<span class="font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatTimeAgo(c.timestamp, $now)}>
