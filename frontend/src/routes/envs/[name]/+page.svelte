@@ -5,7 +5,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
+	import { getDisplayVersion, shortenVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -495,7 +495,7 @@
 												{@const cat = categorizeFailure(latest?.bakeStatusMessage)}
 												{@const prev = previousSucceededVersion(s.rollout, latest?.version ? getDisplayVersion(latest.version) : null)}
 												<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400" title={latest?.bakeStatusMessage ?? ''}>
-													<span class="font-medium text-gray-700 dark:text-gray-300">{cat ?? 'failed'}</span> failed{#if prev} · was <span class="font-mono">{prev}</span>{/if}
+													<span class="font-medium text-gray-700 dark:text-gray-300">{cat ?? 'failed'}</span> failed{#if prev} · was <span class="font-mono" title={prev}>{shortenVersion(prev)}</span>{/if}
 												</div>
 											{:else if behind}
 												<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
@@ -507,7 +507,7 @@
 												</div>
 											{:else if promote}
 												<div class="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
-													<span class="font-mono">{promote.version}</span> ready for <span class="font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300">{promote.toEnv}</span>
+													<span class="font-mono" title={promote.version}>{shortenVersion(promote.version)}</span> ready for <span class="font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300">{promote.toEnv}</span>
 												</div>
 											{/if}
 										</div>
@@ -534,8 +534,8 @@
 									</div>
 									<div class="flex shrink-0 items-center gap-3">
 										<div class="flex flex-col items-end gap-1">
-											<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">
-												{latest ? getDisplayVersion(latest.version) : '—'}
+											<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300" title={latest ? getDisplayVersion(latest.version) : ''}>
+												{latest ? shortenVersion(getDisplayVersion(latest.version)) : '—'}
 											</span>
 											{#if latest?.timestamp}
 												<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
@@ -624,10 +624,10 @@
 														<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
 														<span class="flex shrink-0 items-baseline gap-1">
 															{#if a.previousVersion}
-																<span class="font-mono text-gray-400/70 line-through dark:text-gray-500/70">{a.previousVersion}</span>
+																<span class="font-mono text-gray-400/70 line-through dark:text-gray-500/70" title={a.previousVersion}>{shortenVersion(a.previousVersion)}</span>
 																<span class="text-[10px] text-gray-300 dark:text-gray-600">→</span>
 															{/if}
-															<span class="font-mono text-gray-700 dark:text-gray-300">{a.version}</span>
+															<span class="font-mono text-gray-700 dark:text-gray-300" title={a.version}>{shortenVersion(a.version)}</span>
 														</span>
 													</div>
 												</a>

@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, detectStuck, detectStuckBehind } from '$lib/utils';
+	import { getDisplayVersion, shortenVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
@@ -308,7 +308,7 @@
 										<div class="flex min-w-0 items-baseline gap-2">
 											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{appName}</span>
 											{#if prevV}
-												<span class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500">· was <span class="line-through">{prevV}</span></span>
+												<span class="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500" title={prevV}>· was <span class="line-through">{shortenVersion(prevV)}</span></span>
 											{/if}
 											{#if failureCategory}
 												<span class="truncate text-[10px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>· {failureCategory} failed</span>
@@ -330,7 +330,7 @@
 									<!-- Version (pin badge appears to the left of the version) -->
 									<div class="flex items-center justify-end gap-1.5 justify-self-end">
 										{#if r.spec?.wantedVersion}<PinBadge version={r.spec.wantedVersion} size="xs" />{/if}
-										<span class="font-mono text-xs text-gray-700 dark:text-gray-300" title={ver ?? ''}>{ver ?? '—'}</span>
+										<span class="font-mono text-xs text-gray-700 dark:text-gray-300" title={ver ?? ''}>{ver ? shortenVersion(ver) : '—'}</span>
 									</div>
 
 									<!-- Age -->

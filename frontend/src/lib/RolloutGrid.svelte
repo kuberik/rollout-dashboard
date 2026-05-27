@@ -5,7 +5,7 @@
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import type { ClusterInfo, ClusterError } from '$lib/api/rollouts';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime, compareRollouts, detectStuck } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime, compareRollouts, detectStuck, shortenVersion } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import { compareEnvironmentNames } from '$lib/env-order';
