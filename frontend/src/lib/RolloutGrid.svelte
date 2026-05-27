@@ -26,8 +26,7 @@
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
-
-	const SOURCE_DASHBOARD_ANNOTATION = 'rollout-dashboard.kuberik.com/source-dashboard';
+	import { sourceDashboardURL, rolloutMatchesEnvironment } from '$lib/source-dashboard';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
@@ -44,9 +43,7 @@
 	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
 
 	// Helper: source dashboard URL for a rollout (set as annotation by hub).
-	function rolloutSourceURL(r: Rollout): string {
-		return (r.metadata?.annotations as Record<string, string> | undefined)?.[SOURCE_DASHBOARD_ANNOTATION] ?? '';
-	}
+	const rolloutSourceURL = sourceDashboardURL;
 
 	// True when more than one cluster is represented in the current result set.
 	const isMultiCluster = $derived(spokeClusters.length > 0);
@@ -83,11 +80,7 @@
 	}
 
 	function envForRollout(r: Rollout): Environment | undefined {
-		return environments.find(
-			(e) =>
-				e.metadata?.namespace === r.metadata?.namespace &&
-				e.spec?.rolloutRef?.name === r.metadata?.name
-		);
+		return environments.find((e) => rolloutMatchesEnvironment(r, e));
 	}
 
 	type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
@@ -123,8 +116,7 @@
 			const appName = env.spec?.rolloutRef?.name;
 			const envName = env.spec?.environment;
 			if (!appName || !envName) continue;
-			const ns = env.metadata?.namespace;
-			const r = rollouts.find((x) => x.metadata?.name === appName && x.metadata?.namespace === ns);
+			const r = rollouts.find((x) => rolloutMatchesEnvironment(x, env));
 			if (!r) continue;
 			if (!map.has(appName)) map.set(appName, []);
 			map.get(appName)!.push({ envName, rollout: r });
