@@ -58,7 +58,7 @@
 				list.push({
 					rolloutName: r.metadata?.name ?? '',
 					rolloutNamespace: r.metadata?.namespace ?? '',
-					displayName: r.status?.title ?? r.metadata?.name ?? '',
+					displayName: r.metadata?.name ?? '',
 					envName,
 					theme,
 					version: ver,

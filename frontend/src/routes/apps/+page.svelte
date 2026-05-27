@@ -93,7 +93,7 @@
 			const sa = a.failedCount > 0 ? 3 : a.activeCount > 0 ? 1 : 0;
 			const sb = b.failedCount > 0 ? 3 : b.activeCount > 0 ? 1 : 0;
 			if (sa !== sb) return sb - sa;
-			return a.title.localeCompare(b.title);
+			return a.name.localeCompare(b.name);
 		});
 	});
 
@@ -361,7 +361,7 @@
 									<BakeStatusIcon bakeStatus={bake} size="small" />
 								</span>
 								<div class="flex min-w-0 flex-1 items-baseline gap-2">
-									<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{a.title}</span>
+									<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{a.name}</span>
 									<span class="truncate text-xs {failedCount > 0 ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}">· {item.detail}</span>
 								</div>
 								<span class="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400">{a.envCount} env{a.envCount === 1 ? '' : 's'}</span>

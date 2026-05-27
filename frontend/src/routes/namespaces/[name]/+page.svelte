@@ -60,7 +60,7 @@
 				const sa = a.rollout.status?.history?.[0]?.bakeStatus === 'Failed' ? 0 : 1;
 				const sb = b.rollout.status?.history?.[0]?.bakeStatus === 'Failed' ? 0 : 1;
 				if (sa !== sb) return sa - sb;
-				return a.title.localeCompare(b.title);
+				return (a.rollout.metadata?.name || '').localeCompare(b.rollout.metadata?.name || '');
 			});
 	});
 
@@ -295,12 +295,12 @@
 									</span>
 									<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 										<div class="flex min-w-0 items-baseline gap-2">
-											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.title}</span>
+											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.rollout.metadata?.name}</span>
 											{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
 											{#if a.rollout.spec?.wantedVersion}<PinBadge version={a.rollout.spec.wantedVersion} size="xs" />{/if}
 										</div>
 										<div class="flex min-w-0 items-baseline gap-2">
-											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{a.rollout.metadata?.name}</span>
+											{#if a.title !== a.rollout.metadata?.name}<span class="truncate text-[11px] text-gray-400 dark:text-gray-500">{a.title}</span>{/if}
 											{#if failureCategory}
 												<span class="truncate text-[11px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>· {failureCategory} failed{#if prevV} · was <span class="font-mono">{prevV}</span>{/if}</span>
 											{/if}
@@ -372,7 +372,7 @@
 															{#if a.envName || a.theme}
 																<span class="environment-theme-badge shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-700/60 dark:text-gray-300">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
 															{/if}
-															<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{a.title}</span>
+															<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{a.appName}</span>
 														</div>
 														<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
 															{hourLabel(a.timestamp)}

@@ -107,7 +107,6 @@
 		const entries: ActivityEntry[] = [];
 		for (const rollout of rollouts) {
 			const history = rollout.status?.history || [];
-			const title = rollout.status?.title || rollout.metadata?.name || '';
 			const env = environments.find((e) => rolloutMatchesEnvironment(rollout, e));
 			const envName = env?.spec?.environment || '';
 			const theme = env ? getRolloutEnvironmentTheme(rollout, env) : getRolloutEnvironmentTheme(rollout);
@@ -128,7 +127,7 @@
 				entries.push({
 					rolloutName: rollout.metadata?.name || '',
 					rolloutNamespace: rollout.metadata?.namespace || '',
-					displayName: title,
+					displayName: rollout.metadata?.name || '',
 					envName,
 					theme,
 					version: currentV,
