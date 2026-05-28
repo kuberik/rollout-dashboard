@@ -5,6 +5,7 @@
 // changes here and there together.
 
 import { categorizeFailure } from '$lib/utils';
+import { sourceDashboardURL } from '$lib/source-dashboard';
 import type { Rollout, Kustomization, KruiseRollout } from '../types';
 
 export type StageState = 'done' | 'active' | 'fail' | 'cancelled' | 'pending';
@@ -22,9 +23,6 @@ export type PipelineSummary = {
 	// The trailing kuberik-level bake cell. Only flips out of `pending`
 	// once every track is completed — matches the controller's behaviour.
 	bake: StageState;
-	// True when no KruiseRollouts could be linked yet. UI may fall back to
-	// a synthesised glyph that still encodes the bake status.
-	isSynthetic: boolean;
 };
 
 const SUBSTITUTE_FROM_RE = /^rollout\.kuberik\.com\/substitute\.[^/]+\.from$/;
@@ -33,6 +31,9 @@ const SUBSTITUTE_FROM_RE = /^rollout\.kuberik\.com\/substitute\.[^/]+\.from$/;
 // the Kustomizations in the same namespace, picks those whose
 // `rollout.kuberik.com/substitute.*.from` annotations name this rollout,
 // and reads their inventory entries for `rollouts.kruise.io/_/Rollout` IDs.
+// In multi-cluster fanout the hub merges resources from every spoke into one
+// list, so match by source-cluster annotation too — otherwise a KR with the
+// same ns+name on another cluster gets picked up as a phantom extra track.
 export function kruiseRolloutsForRollout(
 	rollout: Rollout,
 	kustomizations: Kustomization[],
@@ -41,10 +42,12 @@ export function kruiseRolloutsForRollout(
 	const ns = rollout.metadata?.namespace;
 	const name = rollout.metadata?.name;
 	if (!ns || !name) return [];
+	const rolloutSource = sourceDashboardURL(rollout);
 
 	const ids = new Set<string>();
 	for (const k of kustomizations) {
 		if (k.metadata?.namespace !== ns) continue;
+		if (sourceDashboardURL(k) !== rolloutSource) continue;
 		const annotations = k.metadata?.annotations || {};
 		const linked = Object.entries(annotations).some(
 			([key, value]) => SUBSTITUTE_FROM_RE.test(key) && value === name
@@ -63,6 +66,7 @@ export function kruiseRolloutsForRollout(
 		const krNs = kr.metadata?.namespace;
 		const krName = kr.metadata?.name;
 		if (!krNs || !krName) continue;
+		if (sourceDashboardURL(kr) !== rolloutSource) continue;
 		if (ids.has(`${krNs}_${krName}_rollouts.kruise.io_Rollout`)) out.push(kr);
 	}
 	return out;
@@ -104,18 +108,18 @@ function isKrCompleted(kr: KruiseRollout): boolean {
 // Build the structured pipeline summary for a kuberik Rollout, given the
 // KruiseRollouts that drive it. The bake cell only goes "active"/"done"/
 // "fail" once every track is completed — same gating as the detail page.
+// When no KruiseRollouts are linked (no openkruise canary in use, or data
+// not yet propagated), produce a single-stage "deploy" track so the glyph
+// renders as deploy + bake — mirroring the detail page's Started + Bake.
 export function derivePipeline(rollout: Rollout, krs: KruiseRollout[]): PipelineSummary {
+	const bakeStatus = rollout.status?.history?.[0]?.bakeStatus || 'None';
+
 	if (krs.length === 0) {
-		return {
-			tracks: [{ name: '', stages: syntheticGlyph(rollout, 5) }],
-			bake: 'pending',
-			isSynthetic: true
-		};
+		const [deploy, bake] = deployBakeStates(rollout);
+		return { tracks: [{ name: '', stages: [deploy] }], bake };
 	}
 
 	const allStagesDone = krs.every(isKrCompleted);
-	const bakeStatus = rollout.status?.history?.[0]?.bakeStatus || 'None';
-
 	let bake: StageState = 'pending';
 	if (allStagesDone) {
 		if (bakeStatus === 'Succeeded') bake = 'done';
@@ -130,50 +134,24 @@ export function derivePipeline(rollout: Rollout, krs: KruiseRollout[]): Pipeline
 		stages: trackStagesForKR(kr)
 	}));
 
-	return { tracks, bake, isSynthetic: false };
+	return { tracks, bake };
 }
 
-// Synthesised glyph for rollouts without linked KruiseRollouts (pipeline
-// data hasn't propagated yet). Encodes the bake status alone in N cells.
-function syntheticGlyph(rollout: Rollout, count: number): StageState[] {
+// Derive (deploy, bake) cell states for a rollout without a KruiseRollout
+// pipeline. test/image failures fall on deploy; gate/healthcheck/timeout
+// failures fall on bake — matches where the rollout controller marks the
+// stage failed.
+function deployBakeStates(rollout: Rollout): [StageState, StageState] {
 	const latest = rollout.status?.history?.[0];
 	const status = latest?.bakeStatus || 'None';
-	if (status === 'Succeeded') return Array<StageState>(count).fill('done');
-	if (status === 'InProgress') {
-		const out: StageState[] = [];
-		for (let i = 0; i < count - 1; i++) out.push('done');
-		out.push('active');
-		return out;
-	}
-	if (status === 'Deploying') {
-		const out: StageState[] = ['active'];
-		for (let i = 1; i < count; i++) out.push('pending');
-		return out;
-	}
-	if (status === 'Cancelled') {
-		const out: StageState[] = ['done', 'cancelled'];
-		while (out.length < count) out.push('pending');
-		return out.slice(0, count);
-	}
+	if (status === 'Succeeded') return ['done', 'done'];
+	if (status === 'InProgress') return ['done', 'active'];
+	if (status === 'Deploying') return ['active', 'pending'];
+	if (status === 'Cancelled') return ['done', 'cancelled'];
 	if (status === 'Failed') {
 		const cat = categorizeFailure(latest?.bakeStatusMessage);
-		const failPos = (() => {
-			switch (cat) {
-				case 'test': return 0;
-				case 'image': return 1;
-				case 'gate': return Math.min(2, count - 1);
-				case 'healthcheck': return count - 1;
-				case 'timeout': return count - 1;
-				default: return Math.floor(count / 2);
-			}
-		})();
-		const out: StageState[] = [];
-		for (let i = 0; i < count; i++) {
-			if (i < failPos) out.push('done');
-			else if (i === failPos) out.push('fail');
-			else out.push('pending');
-		}
-		return out;
+		if (cat === 'test' || cat === 'image') return ['fail', 'pending'];
+		return ['done', 'fail'];
 	}
-	return Array<StageState>(count).fill('pending');
+	return ['pending', 'pending'];
 }

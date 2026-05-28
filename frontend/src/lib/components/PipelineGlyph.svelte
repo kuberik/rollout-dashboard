@@ -19,13 +19,10 @@
 </script>
 
 <!-- Layout:
-     - Single-track real pipeline: row of step dots + connector + bake cell.
-     - Multi-track real pipeline: stacked tracks + Y-converged bake cell.
-     - Synthetic fallback (no KruiseRollouts linked): just the synthesised
-       stage dots — no separate bake cell, since the synthesised glyph
-       already encodes the bake state in its last cell. Adding another
-       bake here would render one extra step compared to the rollout
-       detail page. -->
+     - Single-track pipeline: row of step dots + connector + bake cell.
+       For no-KR rollouts the track has one "deploy" cell, so the glyph
+       renders as deploy + bake — mirrors the detail page's Started + Bake.
+     - Multi-track real pipeline: stacked tracks + Y-converged bake cell. -->
 <span class="inline-flex items-center" aria-label="Pipeline">
 	{#if isMultiTrack}
 		<!-- Tracks right-align so the Y-connector lands on each track's
@@ -69,10 +66,8 @@
 				{/if}
 				<span class="block h-2 w-2 rounded-full {dotClass(s)}"></span>
 			{/each}
-			{#if !summary.isSynthetic}
-				<span class="h-px w-2 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
-				<span class="block h-2 w-2 rounded-full {dotClass(summary.bake)}" title="Bake"></span>
-			{/if}
+			<span class="h-px w-2 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
+			<span class="block h-2 w-2 rounded-full {dotClass(summary.bake)}" title="Bake"></span>
 		</span>
 	{/if}
 </span>
