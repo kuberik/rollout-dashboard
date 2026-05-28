@@ -263,71 +263,105 @@ func main() {
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
-			// Get Rollout
-			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
-			if err != nil {
-				log.Printf("Error fetching rollout: %v", err)
+			var (
+				rollout           *rolloutv1alpha1.Rollout
+				rolloutErr        error
+				kustomizations    interface{}
+				ociRepositories   interface{}
+				rolloutGates      interface{}
+				environment       interface{}
+				kruiseRollout     interface{}
+				rolloutTests      interface{}
+				imageRepoScanTime string
+			)
+
+			// Fan out: rollout fetch is fatal (returns 500 below); the rest log-and-continue.
+			// ImagePolicy → ImageRepository chain is sequenced inside the rollout goroutine since
+			// it depends on rollout.Spec.ReleasesImagePolicy.Name.
+			g, gctx := errgroup.WithContext(c.Request.Context())
+			g.Go(func() error {
+				r, err := k8sClient.GetRollout(gctx, namespace, name)
+				if err != nil {
+					rolloutErr = err
+					return nil
+				}
+				rollout = r
+				if r.Spec.ReleasesImagePolicy.Name == "" {
+					return nil
+				}
+				imagePolicy, err := k8sClient.GetImagePolicy(gctx, namespace, r.Spec.ReleasesImagePolicy.Name)
+				if err != nil || imagePolicy.Spec.ImageRepositoryRef.Name == "" {
+					return nil
+				}
+				imageRepo, err := k8sClient.GetImageRepository(gctx, namespace, imagePolicy.Spec.ImageRepositoryRef.Name)
+				if err == nil && imageRepo.Status.LastScanResult != nil {
+					imageRepoScanTime = imageRepo.Status.LastScanResult.ScanTime.Format(time.RFC3339)
+				}
+				return nil
+			})
+			g.Go(func() error {
+				res, err := k8sClient.GetKustomizationsByRolloutAnnotation(gctx, namespace, name)
+				if err != nil {
+					log.Printf("Error fetching kustomizations: %v", err)
+					return nil
+				}
+				kustomizations = res
+				return nil
+			})
+			g.Go(func() error {
+				res, err := k8sClient.GetOCIRepositoriesByRolloutAnnotation(gctx, namespace, name)
+				if err != nil {
+					log.Printf("Error fetching OCI repositories: %v", err)
+					return nil
+				}
+				ociRepositories = res
+				return nil
+			})
+			g.Go(func() error {
+				res, err := k8sClient.GetRolloutGatesByRolloutReference(gctx, namespace, name)
+				if err != nil {
+					log.Printf("Error fetching rollout gates: %v", err)
+					return nil
+				}
+				rolloutGates = res
+				return nil
+			})
+			g.Go(func() error {
+				res, err := k8sClient.GetEnvironmentByRolloutReference(gctx, namespace, name)
+				if err != nil {
+					log.Printf("Error fetching environment: %v", err)
+					return nil
+				}
+				environment = res
+				return nil
+			})
+			g.Go(func() error {
+				res, err := k8sClient.GetKruiseRollout(gctx, namespace, name)
+				if err != nil {
+					// KruiseRollout might not exist, that's okay
+					return nil
+				}
+				kruiseRollout = res
+				return nil
+			})
+			g.Go(func() error {
+				res, err := k8sClient.GetAllRolloutTests(gctx, namespace)
+				if err != nil {
+					log.Printf("Error fetching rollout tests: %v", err)
+					return nil
+				}
+				rolloutTests = res
+				return nil
+			})
+			_ = g.Wait()
+
+			if rolloutErr != nil {
+				log.Printf("Error fetching rollout: %v", rolloutErr)
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "Failed to fetch rollout",
-					"details": err.Error(),
+					"details": rolloutErr.Error(),
 				})
 				return
-			}
-
-			// Get associated Kustomizations that reference this rollout
-			kustomizations, err := k8sClient.GetKustomizationsByRolloutAnnotation(context.Background(), namespace, name)
-			if err != nil {
-				log.Printf("Error fetching kustomizations: %v", err)
-			}
-
-			// Get associated OCIRepositories that reference this rollout
-			ociRepositories, err := k8sClient.GetOCIRepositoriesByRolloutAnnotation(context.Background(), namespace, name)
-			if err != nil {
-				log.Printf("Error fetching OCI repositories: %v", err)
-			}
-
-			// Get associated RolloutGates that reference this rollout
-			rolloutGates, err := k8sClient.GetRolloutGatesByRolloutReference(context.Background(), namespace, name)
-			if err != nil {
-				log.Printf("Error fetching rollout gates: %v", err)
-			}
-
-			// Get associated KuberikEnvironment that references this rollout
-			environment, err := k8sClient.GetEnvironmentByRolloutReference(context.Background(), namespace, name)
-			if err != nil {
-				log.Printf("Error fetching environment: %v", err)
-			}
-
-			// Try to get the KruiseRollout (may not exist)
-			// Note: We use interface{} since we don't import kruiserolloutv1beta1 in main.go
-			var kruiseRollout interface{}
-			kruiseRolloutObj, err := k8sClient.GetKruiseRollout(context.Background(), namespace, name)
-			if err != nil {
-				// KruiseRollout might not exist, that's okay
-				kruiseRollout = nil
-			} else {
-				kruiseRollout = kruiseRolloutObj
-			}
-
-			// Get all RolloutTests in the namespace (they will be filtered by rollout name in frontend)
-			// We fetch all tests and let the frontend filter by the actual KruiseRollout name
-			rolloutTests, err := k8sClient.GetAllRolloutTests(context.Background(), namespace)
-			if err != nil {
-				log.Printf("Error fetching rollout tests: %v", err)
-				// Continue without rollout tests if there's an error
-				rolloutTests = nil
-			}
-
-			// Get the ImageRepository's scanTime for the rollout's ImagePolicy
-			var imageRepoScanTime string
-			if rollout.Spec.ReleasesImagePolicy.Name != "" {
-				imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, rollout.Spec.ReleasesImagePolicy.Name)
-				if err == nil && imagePolicy.Spec.ImageRepositoryRef.Name != "" {
-					imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imagePolicy.Spec.ImageRepositoryRef.Name)
-					if err == nil && imageRepo.Status.LastScanResult != nil {
-						imageRepoScanTime = imageRepo.Status.LastScanResult.ScanTime.Format(time.RFC3339)
-					}
-				}
 			}
 
 			c.JSON(http.StatusOK, gin.H{
