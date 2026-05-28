@@ -26,6 +26,7 @@ import (
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
 	"github.com/kuberik/rollout-dashboard/pkg/logs"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
+	"golang.org/x/sync/errgroup"
 	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -98,86 +99,115 @@ func main() {
 			}
 
 			namespace := c.DefaultQuery("namespace", "all")
+			allNamespaces := namespace == "all" || namespace == "*" || namespace == ""
 
-			// Get Rollouts
-			var rollouts interface{}
-			var err error
-			if namespace == "all" || namespace == "*" || namespace == "" {
-				rollouts, err = k8sClient.GetRolloutsAllNamespaces(context.Background())
-			} else {
-				rollouts, err = k8sClient.GetRollouts(context.Background(), namespace)
-			}
-			if err != nil {
-				log.Printf("Error fetching rollouts: %v", err)
+			var (
+				rollouts          interface{}
+				imagePolicies     interface{}
+				imageRepositories interface{}
+				kustomizations    interface{}
+				ociRepositories   interface{}
+				environments      interface{}
+				kruiseRollouts    interface{}
+				rolloutsErr       error
+			)
+
+			// Fan out the 7 cluster LISTs in parallel. Only rollouts is fatal —
+			// the rest log on failure and return partial data (matches prior behavior).
+			g, gctx := errgroup.WithContext(c.Request.Context())
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					rollouts, err = k8sClient.GetRolloutsAllNamespaces(gctx)
+				} else {
+					rollouts, err = k8sClient.GetRollouts(gctx, namespace)
+				}
+				if err != nil {
+					rolloutsErr = err
+				}
+				return nil
+			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					imagePolicies, err = k8sClient.GetImagePoliciesAllNamespaces(gctx)
+				} else {
+					imagePolicies, err = k8sClient.GetImagePolicies(gctx, namespace)
+				}
+				if err != nil {
+					log.Printf("Error fetching image policies: %v", err)
+				}
+				return nil
+			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					imageRepositories, err = k8sClient.GetImageRepositoriesAllNamespaces(gctx)
+				} else {
+					imageRepositories, err = k8sClient.GetImageRepositories(gctx, namespace)
+				}
+				if err != nil {
+					log.Printf("Error fetching image repositories: %v", err)
+				}
+				return nil
+			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					kustomizations, err = k8sClient.GetKustomizationsAllNamespaces(gctx)
+				} else {
+					kustomizations, err = k8sClient.GetKustomizations(gctx, namespace)
+				}
+				if err != nil {
+					log.Printf("Error fetching kustomizations: %v", err)
+				}
+				return nil
+			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					ociRepositories, err = k8sClient.GetOCIRepositoriesAllNamespaces(gctx)
+				} else {
+					ociRepositories, err = k8sClient.GetOCIRepositories(gctx, namespace)
+				}
+				if err != nil {
+					log.Printf("Error fetching OCI repositories: %v", err)
+				}
+				return nil
+			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					environments, err = k8sClient.GetEnvironmentsAllNamespaces(gctx)
+				} else {
+					environments, err = k8sClient.GetEnvironments(gctx, namespace)
+				}
+				if err != nil {
+					log.Printf("Error fetching environments: %v", err)
+				}
+				return nil
+			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					kruiseRollouts, err = k8sClient.GetKruiseRolloutsAllNamespaces(gctx)
+				} else {
+					kruiseRollouts, err = k8sClient.GetKruiseRollouts(gctx, namespace)
+				}
+				if err != nil {
+					log.Printf("Error fetching kruise rollouts: %v", err)
+				}
+				return nil
+			})
+			_ = g.Wait()
+
+			if rolloutsErr != nil {
+				log.Printf("Error fetching rollouts: %v", rolloutsErr)
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "Failed to fetch rollouts",
-					"details": err.Error(),
+					"details": rolloutsErr.Error(),
 				})
 				return
-			}
-
-			// Get associated Flux resources
-			var imagePolicies interface{}
-			if namespace == "all" || namespace == "*" || namespace == "" {
-				imagePolicies, err = k8sClient.GetImagePoliciesAllNamespaces(context.Background())
-			} else {
-				imagePolicies, err = k8sClient.GetImagePolicies(context.Background(), namespace)
-			}
-			if err != nil {
-				log.Printf("Error fetching image policies: %v", err)
-			}
-
-			var imageRepositories interface{}
-			if namespace == "all" || namespace == "*" || namespace == "" {
-				imageRepositories, err = k8sClient.GetImageRepositoriesAllNamespaces(context.Background())
-			} else {
-				imageRepositories, err = k8sClient.GetImageRepositories(context.Background(), namespace)
-			}
-			if err != nil {
-				log.Printf("Error fetching image repositories: %v", err)
-			}
-
-			var kustomizations interface{}
-			if namespace == "all" || namespace == "*" || namespace == "" {
-				kustomizations, err = k8sClient.GetKustomizationsAllNamespaces(context.Background())
-			} else {
-				kustomizations, err = k8sClient.GetKustomizations(context.Background(), namespace)
-			}
-			if err != nil {
-				log.Printf("Error fetching kustomizations: %v", err)
-			}
-
-			var ociRepositories interface{}
-			if namespace == "all" || namespace == "*" || namespace == "" {
-				ociRepositories, err = k8sClient.GetOCIRepositoriesAllNamespaces(context.Background())
-			} else {
-				ociRepositories, err = k8sClient.GetOCIRepositories(context.Background(), namespace)
-			}
-			if err != nil {
-				log.Printf("Error fetching OCI repositories: %v", err)
-			}
-
-			var environments interface{}
-			if namespace == "all" || namespace == "*" || namespace == "" {
-				environments, err = k8sClient.GetEnvironmentsAllNamespaces(context.Background())
-			} else {
-				environments, err = k8sClient.GetEnvironments(context.Background(), namespace)
-			}
-			if err != nil {
-				log.Printf("Error fetching environments: %v", err)
-			}
-
-			// KruiseRollouts: the actual canary-step pipeline data. Frontend
-			// correlates them to each kuberik Rollout via the linked
-			// Kustomization's inventory entries (group: rollouts.kruise.io).
-			var kruiseRollouts interface{}
-			if namespace == "all" || namespace == "*" || namespace == "" {
-				kruiseRollouts, err = k8sClient.GetKruiseRolloutsAllNamespaces(context.Background())
-			} else {
-				kruiseRollouts, err = k8sClient.GetKruiseRollouts(context.Background(), namespace)
-			}
-			if err != nil {
-				log.Printf("Error fetching kruise rollouts: %v", err)
 			}
 
 			// If we're already serving a fan-out leg (header set by the calling hub),
@@ -1138,10 +1168,20 @@ func main() {
 
 			deploymentUID := string(deployment.UID)
 
-			// Get all ReplicaSets in namespace and filter by owner
-			allRS, err := clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
+			// Narrow LIST scope: deployment selector matches all RS + Pods belonging to this deployment.
+			// (RS adds pod-template-hash on top, but base labels still match.)
+			selectorStr := metav1.FormatLabelSelector(deployment.Spec.Selector)
+			listOpts := metav1.ListOptions{LabelSelector: selectorStr}
+
+			// Get RS and Pods once — filter by ownerRef in-memory below to avoid N+1.
+			allRS, err := clientset.AppsV1().ReplicaSets(namespace).List(ctx, listOpts)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list ReplicaSets"})
+				return
+			}
+			allPods, err := clientset.CoreV1().Pods(namespace).List(ctx, listOpts)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list Pods"})
 				return
 			}
 
@@ -1184,12 +1224,6 @@ func main() {
 
 				rsUID := string(rs.UID)
 				isCurrent := rs.Annotations["deployment.kubernetes.io/revision"] == currentRSRevision
-
-				// Get pods owned by this ReplicaSet
-				allPods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
-				if err != nil {
-					continue
-				}
 
 				pods := []PodInfo{}
 				for _, pod := range allPods.Items {
