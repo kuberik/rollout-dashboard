@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	k8sptr "k8s.io/utils/ptr"
+	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -849,76 +851,86 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 
 	fmt.Printf("Kustomization %s/%s inventory has %d entries\n", namespace, name, len(kustomization.Status.Inventory.Entries))
 
-	var managedResources []ManagedResourceStatus
+	entries := kustomization.Status.Inventory.Entries
+	// Fixed-size slot per entry — each goroutine writes its own index, no mutex needed.
+	// nil slot means parse failed and entry was skipped.
+	results := make([]*ManagedResourceStatus, len(entries))
 
-	// Process each entry in the inventory
-	for _, entry := range kustomization.Status.Inventory.Entries {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+	for i, entry := range entries {
+		i, entry := i, entry
+		g.Go(func() error {
+			objMetadata, err := object.ParseObjMetadata(entry.ID)
+			if err != nil {
+				fmt.Printf("Failed to parse inventory entry %s: %v\n", entry.ID, err)
+				return nil
+			}
 
-		// Use Flux's object.ParseObjMetadata to parse the inventory ID
-		objMetadata, err := object.ParseObjMetadata(entry.ID)
-		if err != nil {
-			fmt.Printf("Failed to parse inventory entry %s: %v\n", entry.ID, err)
-			continue
-		}
-
-		// Get the resource
-		obj := &unstructured.Unstructured{}
-		obj.SetGroupVersionKind(schema.GroupVersionKind{
-			Group:   objMetadata.GroupKind.Group,
-			Version: entry.Version,
-			Kind:    objMetadata.GroupKind.Kind,
-		})
-
-		err = c.client.Get(ctx, client.ObjectKey{Namespace: objMetadata.Namespace, Name: objMetadata.Name}, obj)
-		if err != nil {
-			fmt.Printf("Failed to get resource %s/%s: %v\n", objMetadata.Namespace, objMetadata.Name, err)
-			// Resource not found or error
-			managedResources = append(managedResources, ManagedResourceStatus{
-				GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
-				Name:             objMetadata.Name,
-				Namespace:        objMetadata.Namespace,
-				Status:           "NotFound",
-				Message:          fmt.Sprintf("Resource not found: %v", err),
-				LastModified:     time.Time{},
-				Object:           nil, // Resource not found, so no object
+			gvkStr := fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind)
+			obj := &unstructured.Unstructured{}
+			obj.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   objMetadata.GroupKind.Group,
+				Version: entry.Version,
+				Kind:    objMetadata.GroupKind.Kind,
 			})
-			continue
-		}
 
-		// Extract the latest time from managedFields
-		lastModified := time.Time{}
-		if managedFields := obj.GetManagedFields(); len(managedFields) > 0 {
-			for _, field := range managedFields {
-				if field.Time != nil && field.Time.Time.After(lastModified) {
-					lastModified = field.Time.Time
+			if err := c.client.Get(gctx, client.ObjectKey{Namespace: objMetadata.Namespace, Name: objMetadata.Name}, obj); err != nil {
+				fmt.Printf("Failed to get resource %s/%s: %v\n", objMetadata.Namespace, objMetadata.Name, err)
+				results[i] = &ManagedResourceStatus{
+					GroupVersionKind: gvkStr,
+					Name:             objMetadata.Name,
+					Namespace:        objMetadata.Namespace,
+					Status:           "NotFound",
+					Message:          fmt.Sprintf("Resource not found: %v", err),
+					LastModified:     time.Time{},
+					Object:           nil,
+				}
+				return nil
+			}
+
+			lastModified := time.Time{}
+			if managedFields := obj.GetManagedFields(); len(managedFields) > 0 {
+				for _, field := range managedFields {
+					if field.Time != nil && field.Time.Time.After(lastModified) {
+						lastModified = field.Time.Time
+					}
 				}
 			}
-		}
 
-		// Compute status using kstatus
-		result, err := status.Compute(obj)
-		if err != nil {
-			managedResources = append(managedResources, ManagedResourceStatus{
-				GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
+			result, err := status.Compute(obj)
+			if err != nil {
+				results[i] = &ManagedResourceStatus{
+					GroupVersionKind: gvkStr,
+					Name:             objMetadata.Name,
+					Namespace:        objMetadata.Namespace,
+					Status:           "Error",
+					Message:          fmt.Sprintf("Error computing status: %v", err),
+					LastModified:     lastModified,
+					Object:           obj,
+				}
+				return nil
+			}
+
+			results[i] = &ManagedResourceStatus{
+				GroupVersionKind: gvkStr,
 				Name:             objMetadata.Name,
 				Namespace:        objMetadata.Namespace,
-				Status:           "Error",
-				Message:          fmt.Sprintf("Error computing status: %v", err),
+				Status:           string(result.Status),
+				Message:          result.Message,
 				LastModified:     lastModified,
-				Object:           obj, // Include the object even if status computation failed
-			})
-			continue
-		}
-
-		managedResources = append(managedResources, ManagedResourceStatus{
-			GroupVersionKind: fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind),
-			Name:             objMetadata.Name,
-			Namespace:        objMetadata.Namespace,
-			Status:           string(result.Status),
-			Message:          result.Message,
-			LastModified:     lastModified,
-			Object:           obj, // Include the full object
+				Object:           obj,
+			}
+			return nil
 		})
+	}
+	_ = g.Wait()
+
+	managedResources := make([]ManagedResourceStatus, 0, len(results))
+	for _, r := range results {
+		if r != nil {
+			managedResources = append(managedResources, *r)
+		}
 	}
 
 	// Sort managed resources by LastModified time (most recent first)
@@ -1409,63 +1421,112 @@ func (c *Client) GetClusterRolloutSchedule(ctx context.Context, name string) (*r
 // 3. Events for ReplicaSets owned by those Deployments
 func (c *Client) GetEventsForRollout(ctx context.Context, namespace, rolloutName string) ([]corev1.Event, error) {
 	cutoff := time.Now().Add(-2 * time.Hour)
-	var allEvents []corev1.Event
 
-	fetchEvents := func(ns, name string) error {
-		eventList, err := c.clientset.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
-			FieldSelector: "involvedObject.name=" + name,
-		})
-		if err != nil {
-			return err
-		}
-		for _, ev := range eventList.Items {
-			if ev.LastTimestamp.After(cutoff) {
-				allEvents = append(allEvents, ev)
-			}
-		}
-		return nil
-	}
-
-	// Find Deployments via kustomizations linked to the rollout
 	kustomizations, err := c.GetKustomizationsByRolloutAnnotation(ctx, namespace, rolloutName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kustomizations: %w", err)
 	}
 
-	for _, kustomization := range kustomizations.Items {
-		resources, err := c.GetKustomizationManagedResources(ctx, kustomization.Namespace, kustomization.Name)
-		if err != nil {
-			fmt.Printf("Warning: failed to get managed resources for kustomization %s: %v\n", kustomization.Name, err)
-			continue
+	// Phase 1 — walk kustomizations in parallel, collect (kind, namespace, name) of
+	// every Deployment + ReplicaSet we care about, grouped by namespace for one LIST each.
+	type objRef struct{ kind, namespace, name string }
+	var (
+		mu     sync.Mutex
+		byNS   = make(map[string]map[objRef]struct{})
+		addRef = func(ns string, ref objRef) {
+			mu.Lock()
+			defer mu.Unlock()
+			refs, ok := byNS[ns]
+			if !ok {
+				refs = make(map[objRef]struct{})
+				byNS[ns] = refs
+			}
+			refs[ref] = struct{}{}
 		}
-		for _, resource := range resources {
-			if !strings.Contains(resource.GroupVersionKind, "apps/v1/Deployment") {
-				continue
-			}
-			if err := fetchEvents(resource.Namespace, resource.Name); err != nil {
-				fmt.Printf("Warning: failed to get events for deployment %s/%s: %v\n", resource.Namespace, resource.Name, err)
-			}
-			if resource.Object == nil {
-				continue
-			}
-			deploymentUID := string(resource.Object.GetUID())
-			rsList, err := c.clientset.AppsV1().ReplicaSets(resource.Namespace).List(ctx, metav1.ListOptions{})
+	)
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+	for _, kustomization := range kustomizations.Items {
+		kustomization := kustomization
+		g.Go(func() error {
+			resources, err := c.GetKustomizationManagedResources(gctx, kustomization.Namespace, kustomization.Name)
 			if err != nil {
-				fmt.Printf("Warning: failed to list replicasets in %s: %v\n", resource.Namespace, err)
-				continue
+				fmt.Printf("Warning: failed to get managed resources for kustomization %s: %v\n", kustomization.Name, err)
+				return nil
 			}
-			for _, rs := range rsList.Items {
-				for _, ownerRef := range rs.OwnerReferences {
-					if string(ownerRef.UID) == deploymentUID {
-						if err := fetchEvents(rs.Namespace, rs.Name); err != nil {
-							fmt.Printf("Warning: failed to get events for replicaset %s/%s: %v\n", rs.Namespace, rs.Name, err)
+			for _, resource := range resources {
+				if !strings.Contains(resource.GroupVersionKind, "apps/v1/Deployment") {
+					continue
+				}
+				addRef(resource.Namespace, objRef{kind: "Deployment", namespace: resource.Namespace, name: resource.Name})
+				if resource.Object == nil {
+					continue
+				}
+				deploymentUID := string(resource.Object.GetUID())
+				// Narrow RS LIST by deployment selector (RS shares deployment's base labels).
+				var rsListOpts []client.ListOption
+				rsListOpts = append(rsListOpts, client.InNamespace(resource.Namespace))
+				selectorMap, found, _ := unstructured.NestedStringMap(resource.Object.Object, "spec", "selector", "matchLabels")
+				if found && len(selectorMap) > 0 {
+					rsListOpts = append(rsListOpts, client.MatchingLabels(selectorMap))
+				}
+				rsList := &appsv1.ReplicaSetList{}
+				if err := c.client.List(gctx, rsList, rsListOpts...); err != nil {
+					fmt.Printf("Warning: failed to list replicasets in %s: %v\n", resource.Namespace, err)
+					continue
+				}
+				for _, rs := range rsList.Items {
+					for _, ownerRef := range rs.OwnerReferences {
+						if string(ownerRef.UID) == deploymentUID {
+							addRef(rs.Namespace, objRef{kind: "ReplicaSet", namespace: rs.Namespace, name: rs.Name})
+							break
 						}
-						break
 					}
 				}
 			}
-		}
+			return nil
+		})
 	}
+	_ = g.Wait()
+
+	if len(byNS) == 0 {
+		return []corev1.Event{}, nil
+	}
+
+	// Phase 2 — one Events LIST per involved namespace, filter in-memory.
+	// Replaces 2N field-selector calls (one per Deployment + one per RS) with N (=namespaces).
+	var allEvents []corev1.Event
+	var allEventsMu sync.Mutex
+	eg, egctx := errgroup.WithContext(ctx)
+	eg.SetLimit(4)
+	for ns, refs := range byNS {
+		ns, refs := ns, refs
+		eg.Go(func() error {
+			evList, err := c.clientset.CoreV1().Events(ns).List(egctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("Warning: failed to list events in %s: %v\n", ns, err)
+				return nil
+			}
+			matched := make([]corev1.Event, 0)
+			for _, ev := range evList.Items {
+				if !ev.LastTimestamp.After(cutoff) {
+					continue
+				}
+				key := objRef{kind: ev.InvolvedObject.Kind, namespace: ev.InvolvedObject.Namespace, name: ev.InvolvedObject.Name}
+				if _, ok := refs[key]; ok {
+					matched = append(matched, ev)
+				}
+			}
+			if len(matched) > 0 {
+				allEventsMu.Lock()
+				allEvents = append(allEvents, matched...)
+				allEventsMu.Unlock()
+			}
+			return nil
+		})
+	}
+	_ = eg.Wait()
 
 	// Deduplicate by message+reason+involvedObject
 	type dedupeKey struct{ message, reason, objName, objKind string }
