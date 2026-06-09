@@ -44,12 +44,15 @@
 	let showRollbackModal = $state(false);
 	let rollbackVersionTag = $state<string | null>(null);
 	let rollbackExplanation = $state('');
+	const rolloutName = $derived(
+		rollout.metadata?.name || rollout.status?.title || 'Unknown rollout'
+	);
+	const rolloutNamespace = $derived(rollout.metadata?.namespace);
 
 	function findDisplayName(hc: { name: string; namespace?: string }): string {
 		const full = healthChecks.find(
 			(h) =>
-				h.metadata?.name === hc.name &&
-				(!hc.namespace || h.metadata?.namespace === hc.namespace)
+				h.metadata?.name === hc.name && (!hc.namespace || h.metadata?.namespace === hc.namespace)
 		);
 		return full?.metadata?.annotations?.['kuberik.com/display-name'] || hc.name || 'A health check';
 	}
@@ -76,27 +79,49 @@
 </script>
 
 <div class="mb-4">
-	<div class="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-100 via-red-50 to-red-100 shadow-2xl shadow-red-200/60 ring-1 ring-red-300/60 dark:from-red-950 dark:via-red-900 dark:to-red-950 dark:shadow-red-950/50 dark:ring-red-800/60">
+	<div
+		class="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-100 via-red-50 to-red-100 shadow-2xl ring-1 shadow-red-200/60 ring-red-300/60 dark:from-red-950 dark:via-red-900 dark:to-red-950 dark:shadow-red-950/50 dark:ring-red-800/60"
+	>
 		<!-- Background glow decorations -->
 		<div class="pointer-events-none absolute inset-0 overflow-hidden">
-			<div class="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-red-400/8 blur-3xl dark:bg-red-500/10"></div>
-			<div class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full bg-red-300/10 blur-2xl dark:bg-red-400/8"></div>
+			<div
+				class="absolute -top-10 -right-10 h-48 w-48 rounded-full bg-red-400/8 blur-3xl dark:bg-red-500/10"
+			></div>
+			<div
+				class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full bg-red-300/10 blur-2xl dark:bg-red-400/8"
+			></div>
 		</div>
 
-		<div class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5">
+		<div
+			class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5"
+		>
 			<!-- Icon + text -->
 			<div class="flex min-w-0 flex-1 items-center gap-4">
 				<div class="relative shrink-0">
-					<div class="absolute inset-0 animate-ping rounded-full bg-red-500/30 dark:bg-red-500/40"></div>
-					<div class="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50">
+					<div
+						class="absolute inset-0 animate-ping rounded-full bg-red-500/30 dark:bg-red-500/40"
+					></div>
+					<div
+						class="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50"
+					>
 						<ExclamationCircleSolid class="h-6 w-6 text-red-600 dark:text-red-300" />
 					</div>
 				</div>
 				<div class="min-w-0">
 					<div class="flex flex-wrap items-center gap-2">
-						<p class="text-base font-bold tracking-tight text-red-900 dark:text-white">Deployment Failed</p>
+						<p class="text-base font-bold tracking-tight text-red-900 dark:text-white">
+							Deployment Failed
+						</p>
+						<span
+							class="inline-flex max-w-full items-center rounded-full bg-red-200/80 px-2 py-0.5 text-xs font-semibold text-red-800 ring-1 ring-red-300/60 dark:bg-red-800/60 dark:text-red-100 dark:ring-red-700/60"
+							title={rolloutNamespace ? `${rolloutNamespace}/${rolloutName}` : rolloutName}
+						>
+							<span class="truncate">Rollout: {rolloutName}</span>
+						</span>
 						{#if failedHCList.length > 0}
-							<span class="inline-flex items-center rounded-full bg-red-200/80 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-300/60 dark:bg-red-800/60 dark:text-red-300 dark:ring-red-700/60">
+							<span
+								class="inline-flex items-center rounded-full bg-red-200/80 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-300/60 dark:bg-red-800/60 dark:text-red-300 dark:ring-red-700/60"
+							>
 								{failedHCList.length} issue{failedHCList.length > 1 ? 's' : ''}
 							</span>
 						{/if}
@@ -105,7 +130,7 @@
 						{#if failedHCList.length === 1}
 							{@const hcMsg = failedHCList[0].message || ''}
 							{@const hcParts = hcMsg.split(/;\s*/).filter(Boolean)}
-							<p class="break-words font-medium">{findDisplayName(failedHCList[0])}</p>
+							<p class="font-medium break-words">{findDisplayName(failedHCList[0])}</p>
 							{#if hcParts.length > 1}
 								<ul class="mt-0.5 list-disc space-y-0.5 pl-4">
 									{#each hcParts as part}
@@ -118,7 +143,9 @@
 						{:else if failedHCList.length > 1}
 							<ul class="list-disc space-y-0.5 pl-4">
 								{#each failedHCList.slice(0, 6) as hc}
-									<li class="break-words">{findDisplayName(hc)}{hc.message ? ` — ${hc.message}` : ''}</li>
+									<li class="break-words">
+										{findDisplayName(hc)}{hc.message ? ` — ${hc.message}` : ''}
+									</li>
 								{/each}
 								{#if failedHCList.length > 6}
 									<li class="opacity-60">+{failedHCList.length - 6} more</li>
@@ -157,7 +184,13 @@
 						<PlaySolid class="h-3.5 w-3.5" />
 						Retry
 					</button>
-					<Tooltip triggeredBy="#failure-retry-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
+					<Tooltip
+						triggeredBy="#failure-retry-btn"
+						placement="bottom"
+						class="max-w-xs"
+						transition={blur}
+						transitionParams={{ duration: 300 }}
+					>
 						Reset health checks and failed tests, then retry the deployment.
 					</Tooltip>
 				{/if}
@@ -171,7 +204,13 @@
 						<ReplyOutline class="h-3.5 w-3.5" />
 						Rollback
 					</button>
-					<Tooltip triggeredBy="#failure-rollback-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
+					<Tooltip
+						triggeredBy="#failure-rollback-btn"
+						placement="bottom"
+						class="max-w-xs"
+						transition={blur}
+						transitionParams={{ duration: 300 }}
+					>
 						Revert to the previous version.
 						{#if !isDashboardManagingWantedVersion}
 							<br /><span class="text-yellow-300">Disabled: wantedVersion managed externally.</span>
