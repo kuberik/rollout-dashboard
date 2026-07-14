@@ -21,7 +21,7 @@ spec:
       matchLabels:
         app: hello-world
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: hello-world-manifests
@@ -31,7 +31,7 @@ spec:
   secretRef:
     name: github-registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: hello-world-manifests
@@ -89,7 +89,7 @@ spec:
       matchLabels:
         app: hello-world
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: hello-world-app
@@ -99,7 +99,7 @@ spec:
   secretRef:
     name: github-registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: hello-world-app

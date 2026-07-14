@@ -160,6 +160,20 @@ kubectl create configmap dex-ca-cert \
 # --skip-jwt-bearer-tokens lets services with a valid id_token call gated
 # routes directly (multi-cluster hub→spoke fan-out, CI jobs, vite dev ROPC).
 # --cookie-domain shares the session across any subdomain of the canonical host.
+#
+# TODO: this Deployment spec is static, so `kubectl apply` sees it as
+# unchanged across reruns even when dex-ca-cert or oauth2-proxy-secrets
+# below get regenerated (e.g. Dex CA rotates on a rerun). The running pod
+# then keeps serving with whatever CA/secret it loaded at its OWN startup,
+# silently going stale — it can run for hours holding a CA that no longer
+# matches Dex, with no restart ever triggered. Bit us on 2026-07-14: dex-ca
+# rotated, oauth2-proxy kept rejecting every bearer token with a bare
+# "certificate signed by unknown authority" until we noticed and ran
+# `kubectl rollout restart deployment/oauth2-proxy -n auth-system` by hand.
+# Fix: add a `spec.template.metadata.annotations` entry here with a hash of
+# dex-ca.crt (and/or the client secret) computed from the file(s) at script
+# run time, e.g. `checksum/dex-ca: $(sha256sum "${OUTPUT_DIR}/dex-ca.crt")`,
+# so any content change forces a real rolling restart automatically.
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment

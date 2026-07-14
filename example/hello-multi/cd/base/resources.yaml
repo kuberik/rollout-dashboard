@@ -21,7 +21,7 @@ spec:
       matchLabels:
         app: hello-multi
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: hello-multi-app
@@ -31,7 +31,7 @@ spec:
   secretRef:
     name: github-registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: hello-multi-app
