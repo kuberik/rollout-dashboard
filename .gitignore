@@ -1,3 +1,5 @@
 kodata/
 rollout-dashboard
 .gstack/
+*.pem
+.env

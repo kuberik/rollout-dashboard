@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -23,12 +24,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-github/v88/github"
+	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
+	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
+	"github.com/kuberik/rollout-dashboard/pkg/githubapp"
 	"github.com/kuberik/rollout-dashboard/pkg/logs"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
 	"golang.org/x/sync/errgroup"
-	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
-	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -77,6 +80,89 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{
 				"status": "ok",
 			})
+		})
+
+		// --- GitHub App user-authorization (act on behalf of the viewing user) ---
+		// The dashboard fetches commit data as the logged-in user, not as the app
+		// installation, so users only ever see history they can see on GitHub.
+		// The user token lives in an httpOnly cookie; the backend stays stateless.
+
+		// GET /api/auth/github/login — start the user-authorization flow.
+		api.GET("/auth/github/login", func(c *gin.Context) {
+			if !githubapp.Configured() {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "GitHub integration not configured"})
+				return
+			}
+			state := randomToken()
+			returnTo := sanitizeReturnPath(c.Query("return_to"))
+			// Short-lived, httpOnly cookies for CSRF state + post-login redirect target.
+			c.SetCookie(githubStateCookie, state, 600, "/", "", true, true)
+			c.SetCookie(githubReturnCookie, returnTo, 600, "/", "", true, true)
+			redirectURI := localDashboardURL(c) + "/api/auth/github/callback"
+			c.Redirect(http.StatusFound, githubapp.AuthorizeURL(redirectURI, state))
+		})
+
+		// GET /api/auth/github/callback — exchange the code, store the user token.
+		api.GET("/auth/github/callback", func(c *gin.Context) {
+			returnTo := sanitizeReturnPath(readCookie(c, githubReturnCookie))
+			// Clear the transient cookies regardless of outcome.
+			c.SetCookie(githubStateCookie, "", -1, "/", "", true, true)
+			c.SetCookie(githubReturnCookie, "", -1, "/", "", true, true)
+
+			wantState := readCookie(c, githubStateCookie)
+			gotState := c.Query("state")
+			if wantState == "" || gotState == "" || !secureCompare(wantState, gotState) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid oauth state"})
+				return
+			}
+			code := c.Query("code")
+			if code == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "missing authorization code"})
+				return
+			}
+			redirectURI := localDashboardURL(c) + "/api/auth/github/callback"
+			token, err := githubapp.ExchangeCode(c.Request.Context(), code, redirectURI)
+			if err != nil {
+				log.Printf("GitHub code exchange failed: %v", err)
+				c.JSON(http.StatusBadGateway, gin.H{"error": "GitHub authorization failed", "details": err.Error()})
+				return
+			}
+			// Non-expiring user token (app has token expiry disabled). httpOnly so
+			// client JS can't read it; ~1yr maxAge as a client-side hint only.
+			c.SetCookie(githubTokenCookie, token, 365*24*3600, "/", "", true, true)
+			c.Redirect(http.StatusFound, returnTo)
+		})
+
+		// GET /api/auth/github/status — is the current user connected to GitHub?
+		api.GET("/auth/github/status", func(c *gin.Context) {
+			if !githubapp.Configured() {
+				c.JSON(http.StatusOK, gin.H{"configured": false, "connected": false})
+				return
+			}
+			token := readCookie(c, githubTokenCookie)
+			if token == "" {
+				c.JSON(http.StatusOK, gin.H{"configured": true, "connected": false})
+				return
+			}
+			user, err := githubapp.CurrentUser(c.Request.Context(), token)
+			if err != nil {
+				// Token invalid/revoked — drop it so the UI prompts to reconnect.
+				c.SetCookie(githubTokenCookie, "", -1, "/", "", true, true)
+				c.JSON(http.StatusOK, gin.H{"configured": true, "connected": false})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"configured": true,
+				"connected":  true,
+				"login":      user.Login,
+				"avatarUrl":  user.AvatarURL,
+			})
+		})
+
+		// POST /api/auth/github/logout — disconnect (clear the user token).
+		api.POST("/auth/github/logout", func(c *gin.Context) {
+			c.SetCookie(githubTokenCookie, "", -1, "/", "", true, true)
+			c.JSON(http.StatusOK, gin.H{"connected": false})
 		})
 
 		// GET /api/cluster — returns the name and URL of this dashboard instance.
@@ -896,6 +982,159 @@ func main() {
 
 			c.JSON(http.StatusOK, gin.H{
 				"files": contents,
+			})
+		})
+
+		// GET /api/rollouts/:namespace/:name/commits?base=<rev>&head=<rev>
+		// Returns the commit range between two revisions in the rollout's source
+		// repo, via the GitHub App installation (see pkg/githubapp). Requires the
+		// rollout's status.source to be a github.com repo URL.
+		api.GET("/rollouts/:namespace/:name/commits", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+
+			namespace := c.Param("namespace")
+			name := c.Param("name")
+			base := c.Query("base")
+			head := c.Query("head")
+			if base == "" || head == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "base and head query params are required"})
+				return
+			}
+
+			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
+			if err != nil {
+				log.Printf("Error fetching rollout: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "Failed to fetch rollout",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			if rollout.Status.Source == nil {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Rollout has no source repository"})
+				return
+			}
+
+			owner, repo, ok := githubapp.ParseRepoURL(*rollout.Status.Source)
+			if !ok {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Rollout source is not a GitHub repository"})
+				return
+			}
+
+			if base == head {
+				c.JSON(http.StatusOK, gin.H{"ahead": 0, "behind": 0, "commits": []gin.H{}, "additions": 0, "deletions": 0, "changedFiles": 0})
+				return
+			}
+
+			// Act on behalf of the viewing user, not the app installation, so the
+			// commit range is scoped to what this user can see on GitHub.
+			token := readCookie(c, githubTokenCookie)
+			if token == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "github_not_connected"})
+				return
+			}
+			ghClient, err := githubapp.UserClient(token)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to build GitHub client", "details": err.Error()})
+				return
+			}
+
+			compare := func(b, h string) (*github.CommitsComparison, error) {
+				cmp, _, cerr := ghClient.Repositories.CompareCommits(context.Background(), owner, repo, b, h, nil)
+				return cmp, cerr
+			}
+
+			comparison, err := compare(base, head)
+			if err != nil {
+				// A user who can't see the repo gets 404/403 from GitHub — surface
+				// that as "no access" rather than a generic upstream error.
+				var ghErr *github.ErrorResponse
+				if errors.As(err, &ghErr) && ghErr.Response != nil {
+					switch ghErr.Response.StatusCode {
+					case http.StatusNotFound, http.StatusForbidden:
+						c.JSON(http.StatusForbidden, gin.H{"error": "github_no_access"})
+						return
+					case http.StatusUnauthorized:
+						// Token revoked — drop it so the UI reconnects.
+						c.SetCookie(githubTokenCookie, "", -1, "/", "", true, true)
+						c.JSON(http.StatusUnauthorized, gin.H{"error": "github_not_connected"})
+						return
+					}
+				}
+				log.Printf("Error comparing commits %s...%s in %s/%s: %v", base, head, owner, repo, err)
+				c.JSON(http.StatusBadGateway, gin.H{
+					"error":   "Failed to fetch commit range from GitHub",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			// Direction is inferred from the comparison so every caller (forward
+			// deploys AND rollbacks) works with a single base→head convention.
+			// When head is *behind* base (a rollback to an older revision), the
+			// forward range has no commits; re-fetch the swapped range so we can
+			// list the commits that were reverted.
+			direction := "same"
+			active := comparison
+			if comparison.GetAheadBy() > 0 {
+				direction = "forward"
+			} else if comparison.GetBehindBy() > 0 {
+				direction = "rollback"
+				if swapped, serr := compare(head, base); serr == nil {
+					active = swapped
+				}
+			}
+
+			commits := make([]gin.H, 0, len(active.Commits))
+			for _, commit := range active.Commits {
+				var authorLogin, authorURL, avatarURL string
+				if commit.Author != nil {
+					authorLogin = commit.Author.GetLogin()
+					authorURL = commit.Author.GetHTMLURL()
+					avatarURL = commit.Author.GetAvatarURL()
+				}
+				if authorLogin == "" && commit.Commit != nil && commit.Commit.Author != nil {
+					authorLogin = commit.Commit.Author.GetName()
+				}
+				var commitDate string
+				if commit.Commit != nil && commit.Commit.Author != nil && commit.Commit.Author.Date != nil {
+					commitDate = commit.Commit.Author.Date.Format(time.RFC3339)
+				}
+				var message string
+				if commit.Commit != nil {
+					message = commit.Commit.GetMessage()
+				}
+				commits = append(commits, gin.H{
+					"sha":        commit.GetSHA(),
+					"message":    message,
+					"author":     authorLogin,
+					"authorUrl":  authorURL,
+					"avatarUrl":  avatarURL,
+					"commitDate": commitDate,
+					"url":        commit.GetHTMLURL(),
+				})
+			}
+
+			// Aggregate line stats come free with the comparison (no per-commit
+			// fetch), powering compact "+X / −Y · N files" summaries.
+			var additions, deletions int
+			for _, f := range active.Files {
+				additions += f.GetAdditions()
+				deletions += f.GetDeletions()
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"direction":    direction,
+				"ahead":        comparison.GetAheadBy(),
+				"behind":       comparison.GetBehindBy(),
+				"commits":      commits,
+				"additions":    additions,
+				"deletions":    deletions,
+				"changedFiles": len(active.Files),
 			})
 		})
 

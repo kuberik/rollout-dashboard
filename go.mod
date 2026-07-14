@@ -10,6 +10,7 @@ require (
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-containerregistry v0.20.6
+	github.com/google/go-github/v88 v88.0.0
 	github.com/kuberik/environment-controller v0.1.0
 	github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd
 	github.com/kuberik/rollout-controller v0.7.1-0.20260427060950-541b0af4fd8f
@@ -35,6 +36,7 @@ require (
 	github.com/go-openapi/swag/stringutils v0.24.0 // indirect
 	github.com/go-openapi/swag/typeutils v0.24.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.24.0 // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/spf13/cobra v1.10.1 // indirect
@@ -99,7 +101,7 @@ require (
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sync v0.17.0
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/term v0.35.0 // indirect
 	golang.org/x/text v0.29.0 // indirect

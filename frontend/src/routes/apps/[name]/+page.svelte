@@ -18,6 +18,7 @@
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
+	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { Rollout, Environment } from '../../../types';
@@ -83,6 +84,22 @@
 	const hasEnvironmentBinding = $derived(
 		environments.some((e) => e.spec?.rolloutRef?.name === appName)
 	);
+
+	// The environment this cell should promote from: the peer it is most closely
+	// behind (smallest positive distance). Used to show commit drift between
+	// environments ("N commits behind staging").
+	function upstreamPeerFor(cell: Cell): Cell | null {
+		if (!cell.rollout) return null;
+		let best: { peer: Cell; by: number } | null = null;
+		for (const peer of cells) {
+			if (peer === cell || !peer.rollout) continue;
+			const rel = compareRollouts(cell.rollout, peer.rollout);
+			if (rel && rel.kind === 'behind' && typeof rel.by === 'number' && rel.by > 0) {
+				if (!best || rel.by < best.by) best = { peer, by: rel.by };
+			}
+		}
+		return best?.peer ?? null;
+	}
 
 	const appTitle = $derived.by(() => {
 		const titles: string[] = [];
@@ -763,6 +780,8 @@
 									? 'text-blue-600 dark:text-blue-400'
 									: 'text-gray-500 dark:text-gray-400'}
 					{@const recentDeploys = (c.rollout?.status?.history ?? []).slice(0, 5)}
+					{@const upstream = upstreamPeerFor(c)}
+					{@const commitsDashboard = c.sourceURL && c.sourceURL !== localClusterURL ? c.sourceURL : undefined}
 					<article
 						class="environment-theme-scope group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 						style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
@@ -844,6 +863,24 @@
 								</div>
 							</div>
 						</div>
+						<!-- Commit drift: how far this environment is behind the one it
+						     promotes from, as commits (on behalf of the viewing user).
+						     pointer-events-auto/z-10 so its Connect button + links stay
+						     clickable above the whole-card overlay link. -->
+						{#if source && upstream}
+							<div class="pointer-events-auto relative z-10 border-t border-gray-100 px-4 py-2 dark:border-gray-700/60">
+								<CommitSummary
+									namespace={c.rollout?.metadata?.namespace ?? ''}
+									name={c.rollout?.metadata?.name ?? ''}
+									dashboard={commitsDashboard}
+									base={c.rollout?.status?.history?.[0]?.version?.revision}
+									head={upstream.rollout?.status?.history?.[0]?.version?.revision}
+									verb={`behind ${hasEnvironmentBinding ? upstream.envName : (upstream.theme?.label ?? upstream.envName)}`}
+									showAvatars
+									hideWhenEmpty
+								/>
+							</div>
+						{/if}
 					</article>
 				{/each}
 

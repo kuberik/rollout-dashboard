@@ -27,7 +27,8 @@
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
-	import DeployModal from '$lib/components/DeployModal.svelte';
+	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
@@ -223,9 +224,8 @@
 	}
 
 	// Rollback modal
-	let showDeployModal = $state(false);
+	let showChangeVersionModal = $state(false);
 	let selectedVersionTag = $state<string | null>(null);
-	let selectedVersionDisplay = $state<string | null>(null);
 	let deployExplanation = $state('');
 
 	function getDisplayVersion(v: { version?: string; revision?: string; tag: string }) {
@@ -498,6 +498,21 @@
 													{/if}
 												</div>
 											{/if}
+											<!-- What this deploy changed vs. the previous one (lazy: only
+											     fetched once the entry is expanded). -->
+											{#if rollout?.status?.source && rollout.status.history && i + 1 < rollout.status.history.length}
+												<div class="flex items-baseline gap-1.5 text-xs">
+													<span class="flex-shrink-0 text-gray-400">Changes</span>
+													<CommitSummary
+														{namespace}
+														{name}
+														{dashboard}
+														base={rollout.status.history[i + 1]?.version?.revision}
+														head={entry.version?.revision}
+														showAvatars
+													/>
+												</div>
+											{/if}
 											{#if entry.message}
 												<div class="flex items-baseline gap-1.5 text-xs">
 													<span class="flex-shrink-0 text-gray-400">Reason</span>
@@ -564,12 +579,11 @@
 												size="xs"
 												onclick={() => {
 													selectedVersionTag = entry.version.tag;
-													selectedVersionDisplay = getDisplayVersion(entry.version);
 													if (rollout?.status?.history && rollout.status.history.length > 0) {
 														const cur = rollout.status.history[0].version;
 														deployExplanation = `Rollback from ${getDisplayVersion(cur)} to ${getDisplayVersion(entry.version)} due to issues with the current deployment.`;
 													}
-													showDeployModal = true;
+													showChangeVersionModal = true;
 												}}
 											>
 												<UndoOutline class="mr-1 h-3 w-3" />
@@ -629,12 +643,11 @@
 			</div>
 		</div>
 
-		<DeployModal
-			bind:open={showDeployModal}
+		<ChangeVersionModal
+			bind:open={showChangeVersionModal}
 			{rollout}
-			{selectedVersionTag}
-			{selectedVersionDisplay}
 			isPinVersionMode={true}
+			initialSelectedVersion={selectedVersionTag}
 			initialExplanation={deployExplanation}
 			{dashboard}
 		/>

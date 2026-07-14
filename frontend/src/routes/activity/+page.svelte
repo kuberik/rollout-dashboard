@@ -12,6 +12,7 @@
 	import { ClockSolid } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { Environment } from '../../types';
@@ -40,6 +41,12 @@
 		isRunning: boolean;
 		actor: string;
 		actorKind: 'User' | 'System';
+		// Commit range this deploy introduced (previous → this), for the lazy
+		// on-click changelist. null when there's no prior revision to compare.
+		revision: string | null;
+		previousRevision: string | null;
+		source: string | null;
+		dashboard: string | undefined;
 	};
 
 	// Optional env / app filters (clicking an env pill scopes the feed).
@@ -81,6 +88,19 @@
 	// Status class filter. "All" + "Deploys" (Succeeded/Deploying), "In progress" (InProgress/Deploying), "Failures" (Failed)
 	type KindFilter = 'all' | 'deploys' | 'in_progress' | 'failures';
 	let kindFilter = $state<KindFilter>('all');
+
+	// Lazy commit changelist: only fetched when a row is explicitly expanded, so
+	// the (potentially large) feed never fires a GitHub call per entry on load.
+	let expandedActivity = $state(new Set<string>());
+	function activityKey(e: ActivityEntry): string {
+		return `${e.rolloutNamespace}/${e.rolloutName}/${e.timestamp}`;
+	}
+	function toggleActivity(key: string) {
+		const next = new Set(expandedActivity);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		expandedActivity = next;
+	}
 	function matchesKind(bakeStatus: string): boolean {
 		if (kindFilter === 'all') return true;
 		if (kindFilter === 'failures') return bakeStatus === 'Failed';
@@ -116,11 +136,17 @@
 				if (!h.timestamp) continue;
 				const bs = h.bakeStatus || 'None';
 				const currentV = getDisplayVersion(h.version);
-				// Find the previous *different* version in this rollout's history.
+				// Find the previous *different* version in this rollout's history,
+				// capturing its revision for the lazy commit changelist.
 				let previousVersion: string | null = null;
+				let previousRevision: string | null = null;
 				for (let j = i + 1; j < history.length; j++) {
 					const v = getDisplayVersion(history[j].version);
-					if (v && v !== currentV) { previousVersion = v; break; }
+					if (v && v !== currentV) {
+						previousVersion = v;
+						previousRevision = history[j].version?.revision ?? null;
+						break;
+					}
 				}
 				const actorName = h.triggeredBy?.name || 'system';
 				const actorKind: 'User' | 'System' = h.triggeredBy?.kind ?? 'System';
@@ -137,7 +163,14 @@
 					href: withDashboardParam(`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}`, sourceDashboardURL(rollout), localClusterURL),
 					isRunning: bs === 'InProgress' || bs === 'Deploying',
 					actor: actorName,
-					actorKind
+					actorKind,
+					revision: h.version?.revision ?? null,
+					previousRevision,
+					source: rollout.status?.source ?? null,
+					dashboard: (() => {
+						const s = sourceDashboardURL(rollout);
+						return s && s !== localClusterURL ? s : undefined;
+					})()
 				});
 			}
 		}
@@ -382,6 +415,33 @@
 										{/if}
 									</div>
 								</a>
+								<!-- Lazy commit changelist: sibling of the row link (not nested),
+								     fetched only when expanded. Indented to align under the message. -->
+								{#if entry.source && entry.revision && entry.previousRevision}
+									{@const key = activityKey(entry)}
+									{@const expanded = expandedActivity.has(key)}
+									<div class="relative z-10 pb-2 pl-[5.5rem] pr-4">
+										<button
+											type="button"
+											onclick={() => toggleActivity(key)}
+											class="text-[11px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+										>
+											{expanded ? 'Hide changes' : 'Show changes'}
+										</button>
+										{#if expanded}
+											<div class="mt-1">
+												<CommitSummary
+													namespace={entry.rolloutNamespace}
+													name={entry.rolloutName}
+													dashboard={entry.dashboard}
+													base={entry.previousRevision}
+													head={entry.revision}
+													showAvatars
+												/>
+											</div>
+										{/if}
+									</div>
+								{/if}
 							</li>
 						{/each}
 					</ol>

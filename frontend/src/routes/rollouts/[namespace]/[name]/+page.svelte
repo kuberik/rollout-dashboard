@@ -28,7 +28,6 @@
 		Popover,
 		Listgroup,
 		ListgroupItem,
-		Toggle,
 		Clipboard,
 		Progressradial,
 		Sidebar,
@@ -93,8 +92,8 @@
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
-	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
-	import DeployModal from '$lib/components/DeployModal.svelte';
+	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
@@ -299,10 +298,6 @@
 	}));
 	const events = $derived(eventsQuery.data?.events ?? []);
 
-	let annotations = $state<Record<string, Record<string, string>>>({});
-	let loadingAnnotations = $state<Record<string, boolean>>({});
-
-	let showPinModal = $state(false);
 	// removed Clear Pin functionality
 	let selectedVersion = $state<string | null>(null);
 
@@ -319,11 +314,9 @@
 
 	let showClearPinModal = $state(false);
 
-	// New variables for deploy modal
-	let showDeployModal = $state(false);
-	let pinVersionToggle = $state(false);
+	// Change version / deploy modal (picker + live changelist + deploy confirm)
+	let showChangeVersionModal = $state(false);
 	let deployExplanation = $state('');
-	let deployConfirmationVersion = $state('');
 
 	// Recovery-mode pre-confirmation modal state
 	let showRecoveryWarningModal = $state(false);
@@ -342,33 +335,22 @@
 		return null;
 	}
 
-	// Intercept transitions to the deploy confirmation modal: if the action would put the
+	// Intercept transitions to the change-version modal: if the action would put the
 	// rollout into recovery mode, show the warning modal first. The warning modal's
-	// onContinue then opens the actual DeployModal.
-	function requestDeployModal() {
+	// onContinue then opens the actual ChangeVersionModal.
+	function requestChangeVersionModal() {
 		const reason = recoveryModeReason();
 		if (reason) {
 			recoveryWarningReason = reason;
 			showRecoveryWarningModal = true;
 		} else {
-			showDeployModal = true;
+			showChangeVersionModal = true;
 		}
 	}
 
 	// New variables for pin version mode
 	let isPinVersionMode = $state(false);
 
-	// Toggle for showing/hiding "current" resources
-
-	// Pagination variables
-	let currentPage = $state(1);
-	let itemsPerPage = 10;
-
-	// New variables for all repository tags
-	let allRepositoryTags = $state<string[]>([]);
-	let loadingAllTags = $state(false);
-	let searchQuery = $state('');
-	let showAllTags = $state(false);
 	let isReconciling = $state(false);
 
 	// Reset state when rollout changes — without this, version-specific caches
@@ -378,24 +360,15 @@
 		namespace;
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		name;
-		searchQuery = '';
-		showAllTags = false;
-		currentPage = 1;
 		selectedVersion = null;
 		isPinVersionMode = false;
-		annotations = {};
-		loadingAnnotations = {};
-		allRepositoryTags = [];
-		loadingAllTags = false;
 		isReconciling = false;
 	});
 
 	// Reset state when modals close
 	$effect(() => {
-		if (!showPinModal && !showDeployModal && !showRecoveryWarningModal) {
+		if (!showChangeVersionModal && !showRecoveryWarningModal) {
 			selectedVersion = null;
-			searchQuery = '';
-			showAllTags = false;
 			isPinVersionMode = false;
 		}
 	});
@@ -651,59 +624,6 @@
 		}
 	}
 
-	// Computed properties for pagination
-	const reversedVersions = $derived(
-		rollout?.status?.availableReleases ? [...rollout.status.availableReleases].reverse() : []
-	);
-	const totalPages = $derived(Math.ceil(reversedVersions.length / itemsPerPage));
-	const paginatedVersions = $derived(
-		reversedVersions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-	);
-
-	// Computed properties for all tags filtering and display
-	const filteredAllTags = $derived(
-		allRepositoryTags.filter((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-	);
-	const nonStandardTags = $derived(
-		allRepositoryTags.filter(
-			(tag) => !rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(tag)
-		)
-	);
-	const filteredNonStandardTags = $derived(
-		nonStandardTags.filter((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-	);
-
-	// Unified list of all versions for display
-	const allVersionsForDisplay = $derived.by(() => {
-		const availableReleases = rollout?.status?.availableReleases;
-		if (!availableReleases) return [];
-
-		// Start with available releases (standard releases)
-		const standardReleases = [...availableReleases].reverse();
-
-		// Add additional tags that are not in available releases
-		const additionalTags = allRepositoryTags.filter(
-			(tag) => !availableReleases.map((ar) => ar.tag).includes(tag)
-		);
-
-		// Combine: standard releases first, then additional tags
-		return [...standardReleases, ...additionalTags];
-	});
-
-	// Filter the unified list based on search
-	const filteredVersionsForDisplay = $derived(
-		allVersionsForDisplay.filter((version) => {
-			const versionTag = typeof version === 'string' ? version : version.tag;
-			return searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase());
-		})
-	);
-
-	// Pagination for the unified list
-	const totalUnifiedPages = $derived(Math.ceil(filteredVersionsForDisplay.length / itemsPerPage));
-	const paginatedUnifiedVersions = $derived(
-		filteredVersionsForDisplay.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-	);
-
 	// Computed property to filter managed resources - now always shows all resources
 	const filteredManagedResources = $derived(managedResources);
 
@@ -796,79 +716,8 @@
 		return null;
 	});
 
-	function goToPage(page: number) {
-		const maxPages = showAllTags ? totalUnifiedPages : totalPages;
-		if (page >= 1 && page <= maxPages) {
-			currentPage = page;
-			selectedVersion = null; // Reset selection when changing pages
-		}
-	}
-
 	// Note: Data fetching is handled by rolloutQuery with automatic refetch via layout's refetchInterval
 	// Dependent data (managedResources, healthChecks) is fetched via $effect when parent data changes
-
-	async function submitPin(version?: string) {
-		const pinVersion = version ?? selectedVersion;
-		if (!rollout || !pinVersion) return;
-
-		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({
-						version: pinVersion,
-						explanation: deployExplanation
-					})
-				}
-			);
-
-			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
-				if (
-					response.status === 500 &&
-					errorData.details &&
-					errorData.details.includes('dashboard is not managing the wantedVersion field')
-				) {
-					throw new Error(
-						"Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
-					);
-				}
-				throw new Error('Failed to pin version');
-			}
-
-			// Refresh the data
-			setTimeout(async () => {
-				for (let i = 0; i < 10; i++) {
-					await rolloutQuery.refetch();
-					if (rollout?.status?.history?.[0]?.version.tag === pinVersion) {
-						break;
-					}
-				}
-			}, 1000);
-
-			// Show success toast
-			toastType = 'success';
-			toastMessage = `Successfully pinned version`;
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			// Show error toast
-			toastType = 'error';
-			toastMessage = e instanceof Error ? e.message : 'Failed to pin version';
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} finally {
-			showPinModal = false;
-			selectedVersion = null;
-		}
-	}
 
 	async function clearPin() {
 		if (!rollout) return;
@@ -922,64 +771,9 @@
 		}
 	}
 
-	async function getAnnotations(version: string) {
-		if (!rollout) return;
-		loadingAnnotations[version] = true;
-		loadingAnnotations = { ...loadingAnnotations };
-		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`)
-			);
-			if (response.ok) {
-				const data = await response.json();
-				annotations[version] = data.annotations || {};
-			} else {
-				annotations[version] = {};
-			}
-			annotations = { ...annotations };
-		} catch (e) {
-			console.error(`Failed to fetch annotations for ${version}:`, e);
-			annotations[version] = {};
-			annotations = { ...annotations };
-		} finally {
-			loadingAnnotations[version] = false;
-			loadingAnnotations = { ...loadingAnnotations };
-		}
-	}
-
 	// Helper function to get revision information from version object or annotations
 	function getRevisionInfo(versionInfo: { revision?: string; tag: string }): string | undefined {
 		return versionInfo.revision;
-	}
-
-	// Function to load annotations on demand for custom releases when displayed
-	async function loadAnnotationsOnDemand(versionTag: string): Promise<void> {
-		// Only load if not already loaded and this is not a regular release
-		const availableReleaseEntry = rollout?.status?.availableReleases?.find(
-			(entry) => entry?.tag === versionTag
-		);
-		if (!availableReleaseEntry && !annotations[versionTag]) {
-			await getAnnotations(versionTag);
-		}
-	}
-
-	async function getAllRepositoryTags() {
-		if (!rollout) return;
-		loadingAllTags = true;
-		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/tags`)
-			);
-			if (response.ok) {
-				const data = await response.json();
-				allRepositoryTags = data.tags || [];
-			} else {
-				allRepositoryTags = [];
-			}
-		} catch (e) {
-			console.error('Failed to fetch repository tags:', e);
-			allRepositoryTags = [];
-		} finally {
-			loadingAllTags = false;
-		}
 	}
 
 	async function markDeploymentSuccessful(message: string) {
@@ -1479,6 +1273,22 @@
 													{/if}
 												</div>
 											{/if}
+											<!-- What shipped in this deploy: commits since the previous
+											     deploy, on behalf of the viewing user (links to history). -->
+											{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
+												<div class="mt-1.5">
+													<CommitSummary
+														{namespace}
+														{name}
+														{dashboard}
+														base={rollout.status.history[1]?.version?.revision}
+														head={latestEntry.version?.revision}
+														showAvatars
+														hideWhenEmpty
+														href={`/rollouts/${namespace}/${name}/history${dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : ''}`}
+													/>
+												</div>
+											{/if}
 										</div>
 									</div>
 									<!-- Right: time -->
@@ -1539,7 +1349,9 @@
 											onclick={() => {
 												if (isDashboardManagingWantedVersion) {
 													isPinVersionMode = false;
-													showPinModal = true;
+													selectedVersion = null;
+													deployExplanation = '';
+													requestChangeVersionModal();
 												}
 											}}
 										>
@@ -1562,12 +1374,11 @@
 														const previousVersion = rollout.status.history[1];
 														isPinVersionMode = true;
 														selectedVersion = previousVersion.version.tag;
-														pinVersionToggle = true;
 														const currentVersion = rollout.status.history[0].version;
 														const currentVersionName = getDisplayVersion(currentVersion);
 														const targetVersionName = getDisplayVersion(previousVersion.version);
 														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
-														requestDeployModal();
+														requestChangeVersionModal();
 													}
 												}}
 											>
@@ -1811,10 +1622,9 @@
 														onclick={() => {
 															selectedVersion = version;
 															const isCustom = isSelectedVersionCustom(version);
-															const mustPin = isOlderThanCurrent(version) || isCustom;
-															isPinVersionMode = mustPin;
-															pinVersionToggle = mustPin;
-															requestDeployModal();
+															isPinVersionMode = isOlderThanCurrent(version) || isCustom;
+															deployExplanation = '';
+															requestChangeVersionModal();
 														}}
 													>
 														Deploy
@@ -1842,7 +1652,9 @@
 												color="light"
 												onclick={() => {
 													isPinVersionMode = true;
-													showPinModal = true;
+													selectedVersion = null;
+													deployExplanation = '';
+													requestChangeVersionModal();
 												}}
 											>
 												<EditOutline class="me-2 h-4 w-4" />
@@ -1936,205 +1748,6 @@
 		</div>
 	{/if}
 </div>
-
-<Modal bind:open={showPinModal} title="" size="md" class="[&>div]:p-0">
-	<div class="p-6">
-		<!-- Header -->
-		<div class="mb-6 text-center">
-			<div class="text-lg font-semibold text-gray-900 dark:text-white">Select Version</div>
-			<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a version to deploy</p>
-		</div>
-
-		{#if !isDashboardManagingWantedVersion}
-			<Alert color="yellow" class="mb-4 text-sm">
-				<ExclamationCircleSolid class="h-4 w-4" />
-				<span class="font-medium">Warning:</span> Dashboard not managing wantedVersion. Pin may conflict.
-			</Alert>
-		{/if}
-
-		<!-- Search -->
-		<div class="mb-4">
-			<input
-				type="text"
-				placeholder="Search versions..."
-				bind:value={searchQuery}
-				class="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-blue-500"
-			/>
-		</div>
-
-		<!-- Toggle for all versions -->
-		<div
-			class="mb-4 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-800"
-		>
-			<span class="text-sm text-gray-700 dark:text-gray-300">Show all repository versions</span>
-			<Toggle
-				bind:checked={showAllTags}
-				color="blue"
-				onchange={() => {
-					if (showAllTags && allRepositoryTags.length === 0) {
-						getAllRepositoryTags();
-					}
-					currentPage = 1;
-				}}
-			/>
-		</div>
-
-		<!-- Version list -->
-		<div
-			class="mb-4 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700"
-		>
-			{#if showAllTags ? filteredVersionsForDisplay.length > 0 : rollout?.status?.availableReleases}
-				{#each showAllTags ? paginatedUnifiedVersions : paginatedVersions as version}
-					{@const versionTag = typeof version === 'string' ? version : version.tag}
-					{@const availableRelease = rollout?.status?.availableReleases?.find(
-						(ar) => ar.tag === versionTag
-					)}
-					{@const displayVersion = availableRelease
-						? getDisplayVersion(availableRelease)
-						: getDisplayVersion({
-								version: annotations[versionTag]?.['org.opencontainers.image.version'],
-								tag: versionTag
-							})}
-					{@const created =
-						availableRelease?.created ||
-						annotations[versionTag]?.['org.opencontainers.image.created']}
-					{@const isCurrentlyDeployed = rollout?.status?.history?.[0]?.version.tag === versionTag}
-					{@const isCurrentlyPinned = rollout?.spec?.wantedVersion === versionTag}
-					{@const isCustom =
-						showAllTags &&
-						!rollout?.status?.availableReleases?.map((ar) => ar.tag).includes(versionTag)}
-					{@const isSelected = selectedVersion === versionTag}
-					{#if searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase())}
-						{#await loadAnnotationsOnDemand(versionTag)}{/await}
-						<button
-							type="button"
-							class="flex w-full items-center gap-4 border-b border-gray-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 {isSelected
-								? 'bg-blue-50 dark:bg-blue-900/30'
-								: ''}"
-							onclick={() => {
-								selectedVersion = versionTag;
-							}}
-						>
-							<!-- Selection indicator -->
-							<div
-								class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 {isSelected
-									? 'border-blue-500 bg-blue-500'
-									: 'border-gray-300 dark:border-gray-600'}"
-							>
-								{#if isSelected}
-									<CheckOutline class="h-3 w-3 text-white" />
-								{/if}
-							</div>
-
-							<!-- Version info -->
-							<div class="min-w-0 flex-1">
-								<div class="flex items-center gap-2">
-									<span class="font-medium text-gray-900 dark:text-white">{displayVersion}</span>
-									{#if isCurrentlyDeployed}
-										<span
-											class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/50 dark:text-green-400"
-											>Current</span
-										>
-									{/if}
-									{#if isCurrentlyPinned}
-										<span
-											class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/50 dark:text-blue-400"
-											>Pinned</span
-										>
-									{/if}
-									{#if isCustom}
-										<span
-											class="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400"
-											>Custom</span
-										>
-									{/if}
-								</div>
-								{#if created}
-									<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title={new Date(created).toLocaleString()}>
-										{formatTimeAgo(created, $now)}
-									</div>
-								{/if}
-							</div>
-
-							<!-- Actions -->
-							<div
-								class="flex flex-shrink-0 items-center gap-1"
-								onclick={(e) => e.stopPropagation()}
-							>
-								{#if rollout?.status?.source}
-									<GitHubViewButton
-										sourceUrl={rollout.status.source}
-										version={displayVersion}
-										size="xs"
-										color="light"
-									/>
-								{/if}
-							</div>
-						</button>
-					{/if}
-				{/each}
-			{:else}
-				<div class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-					No versions available
-				</div>
-			{/if}
-		</div>
-
-		<!-- Pagination -->
-		{#if (showAllTags ? totalUnifiedPages : totalPages) > 1}
-			<div class="mb-4 flex items-center justify-center gap-3">
-				<Button
-					size="xs"
-					color="light"
-					onclick={() => goToPage(currentPage - 1)}
-					disabled={currentPage === 1}
-				>
-					Previous
-				</Button>
-				<span class="text-sm text-gray-600 dark:text-gray-400">
-					Page {currentPage} of {showAllTags ? totalUnifiedPages : totalPages}
-				</span>
-				<Button
-					size="xs"
-					color="light"
-					onclick={() => goToPage(currentPage + 1)}
-					disabled={currentPage === (showAllTags ? totalUnifiedPages : totalPages)}
-				>
-					Next
-				</Button>
-			</div>
-		{/if}
-
-		<!-- Footer buttons -->
-		<div class="flex gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
-			<Button
-				color="light"
-				class="flex-1"
-				onclick={() => {
-					showPinModal = false;
-					selectedVersion = null;
-					searchQuery = '';
-					showAllTags = false;
-					isPinVersionMode = false;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="blue"
-				class="flex-1"
-				disabled={!selectedVersion}
-				onclick={() => {
-					if (!selectedVersion) return;
-					showPinModal = false;
-					requestDeployModal();
-				}}
-			>
-				Continue
-			</Button>
-		</div>
-	</div>
-</Modal>
 
 <Modal bind:open={showMarkSuccessfulModal} title="Mark Deployment as Successful">
 	<div class="space-y-4">
@@ -2233,12 +1846,11 @@
 	</div>
 </Modal>
 
-<DeployModal
-	bind:open={showDeployModal}
+<ChangeVersionModal
+	bind:open={showChangeVersionModal}
 	{rollout}
-	selectedVersionTag={selectedVersion}
-	selectedVersionDisplay={selectedVersionDisplay()}
 	{isPinVersionMode}
+	initialSelectedVersion={selectedVersion}
 	initialExplanation={deployExplanation}
 	{dashboard}
 	onSuccess={(m) => {
@@ -2260,7 +1872,7 @@
 	reason={recoveryWarningReason}
 	versionDisplay={selectedVersionDisplay()}
 	onContinue={() => {
-		showDeployModal = true;
+		showChangeVersionModal = true;
 	}}
 />
 

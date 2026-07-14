@@ -114,6 +114,24 @@ fi
 kubectl -n kuberik-system create configmap kuberik-cluster-info "${cm_args[@]}" \
   -o yaml --dry-run=client | kubectl apply -f -
 
+# GitHub App user-authorization credentials (see pkg/githubapp) for the commit
+# changelist features, which fetch on behalf of the viewing user. Optional —
+# pass GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET as env vars to enable;
+# skipped otherwise, and the dashboard runs fine without it (those features just
+# report "not configured"). The GitHub App also needs one Callback URL registered
+# — only for the hub (the host the browser loads the UI from); spokes never run
+# the OAuth login flow (they redirect the browser to HUB_URL, and the hub proxies
+# their /api calls with the user's cookie forwarded), so they need no callback:
+#   https://<hub-host>/api/auth/github/callback
+if [ -n "${GITHUB_APP_CLIENT_ID:-}" ] && [ -n "${GITHUB_APP_CLIENT_SECRET:-}" ]; then
+  kubectl -n kuberik-system create secret generic github-app-credentials \
+    --from-literal=clientId="${GITHUB_APP_CLIENT_ID}" \
+    --from-literal=clientSecret="${GITHUB_APP_CLIENT_SECRET}" \
+    -o yaml --dry-run=client | kubectl apply -f -
+else
+  echo "GITHUB_APP_CLIENT_ID/GITHUB_APP_CLIENT_SECRET not set — skipping github-app-credentials Secret (commit changelist features will be disabled)"
+fi
+
 kustomize build deploy/dev | KIND_CLUSTER_NAME="${CLUSTER_NAME}" KO_DOCKER_REPO=kind.local ko apply -f -
 
 echo "Warning: GatewayClass 'eg' not found. Creating it explicitly..."

@@ -13,6 +13,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import CommandPalette from '$lib/CommandPalette.svelte';
+	import GithubConnectButton from '$lib/components/GithubConnectButton.svelte';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { Environment } from '../types';
 
@@ -210,6 +211,7 @@
 			{#if import.meta.env.VITE_APP_VERSION}
 				<Badge color="gray" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
 			{/if}
+			<GithubConnectButton />
 			<button
 				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
 				onclick={() => theme.toggle()}

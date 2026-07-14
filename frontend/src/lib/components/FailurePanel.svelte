@@ -5,7 +5,7 @@
 	import { blur } from 'svelte/transition';
 	import { ExclamationCircleSolid, PlaySolid, ReplyOutline } from 'flowbite-svelte-icons';
 	import { Tooltip } from 'flowbite-svelte';
-	import DeployModal from './DeployModal.svelte';
+	import ChangeVersionModal from './ChangeVersionModal.svelte';
 	import RetryTestsModal from './RetryTestsModal.svelte';
 	import { getDisplayVersion } from '$lib/utils';
 
@@ -190,12 +190,11 @@
 	onSkipTests={() => onRetry(retryTests[0]?.kruiseRolloutName, 'skip')}
 />
 
-<DeployModal
+<ChangeVersionModal
 	bind:open={showRollbackModal}
 	{rollout}
-	selectedVersionTag={rollbackVersionTag}
-	selectedVersionDisplay={rollbackVersionTag}
 	isPinVersionMode={true}
+	initialSelectedVersion={rollbackVersionTag}
 	initialExplanation={rollbackExplanation}
 	{dashboard}
 	{onSuccess}

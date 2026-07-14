@@ -46,6 +46,23 @@ spec:
                   name: kuberik-cluster-info
                   key: hubUrl
                   optional: true
+            # GitHub App user-authorization (see pkg/githubapp): the dashboard
+            # fetches commit data on behalf of the viewing user, so users only
+            # see history they can see on GitHub. Optional — without these the
+            # commit changelist features report "not configured". Create a
+            # github-app-credentials Secret with clientId/clientSecret keys.
+            - name: GITHUB_APP_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: github-app-credentials
+                  key: clientId
+                  optional: true
+            - name: GITHUB_APP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: github-app-credentials
+                  key: clientSecret
+                  optional: true
 ---
 apiVersion: v1
 kind: Service
