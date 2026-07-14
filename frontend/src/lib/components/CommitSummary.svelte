@@ -19,7 +19,7 @@
 		// either is missing, the component renders nothing.
 		base?: string | null;
 		head?: string | null;
-		dashboard?: string;
+		cluster?: string;
 		// 'forward' = commits deployed, 'rollback' = commits reverted. Affects
 		// wording + dot color only.
 		direction?: 'forward' | 'rollback';
@@ -43,7 +43,7 @@
 		name,
 		base = null,
 		head = null,
-		dashboard,
+		cluster,
 		direction = 'forward',
 		verb,
 		showAvatars = false,
@@ -56,8 +56,8 @@
 	const enabled = $derived(!!namespace && !!name && !!base && !!head && base !== head);
 
 	const query = createQuery(() => ({
-		queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', dashboard),
-		queryFn: () => fetchCommits(namespace, name, base!, head!, dashboard),
+		queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
+		queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
 		enabled,
 		staleTime: 60_000
 	}));

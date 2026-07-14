@@ -24,27 +24,27 @@
 	import { getDisplayVersion } from '$lib/utils';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { getBakeStatusColor } from '$lib/bake-status';
-	import type { Rollout } from '../../../../../types';
+	import type { Rollout } from '../../../../../../types';
 	import type {
 		EnvironmentStatusEntry,
 		EnvironmentInfo
-	} from '../../../../../types/environment-types';
+	} from '../../../../../../types/environment-types';
 
 	// Flattened entry with environment field added
 	type DeploymentStatusWithEnv = EnvironmentStatusEntry & { environment: string };
 	import * as dagre from '@dagrejs/dagre';
 
 	// Params
+	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
-	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
 
 	// Fetch rollout data
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
 			name,
-			dashboard,
+			cluster,
 			options: {
 				refetchInterval: 5000
 			}

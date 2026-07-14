@@ -12,8 +12,8 @@
 	export let name: string;
 	export let version: string;
 	// Spoke URL when this rollout lives on a remote cluster — appended as
-	// ?dashboard=<url> so the hub proxies the manifest fetch to that spoke.
-	export let dashboard: string | undefined = undefined;
+	// ?cluster=<name> so the hub proxies the manifest fetch to that spoke.
+	export let cluster: string | undefined = undefined;
 
 	let files: Record<string, string> = {};
 	let loading = false;
@@ -33,9 +33,9 @@
 		loading = true;
 		error = null;
 		try {
-			const dashboardParam = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
+			const clusterParam = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 			const response = await fetch(
-				`/api/rollouts/${namespace}/${name}/manifest/${version}${dashboardParam}`
+				`/api/rollouts/${namespace}/${name}/manifest/${version}${clusterParam}`
 			);
 			if (!response.ok) {
 				throw new Error(`Failed to fetch files: ${response.statusText}`);

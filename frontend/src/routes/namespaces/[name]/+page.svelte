@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
+	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, detectStuck } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
@@ -27,7 +27,7 @@
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
-	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -38,7 +38,7 @@
 		envName: string;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		title: string;
-		sourceURL: string;
+		sourceCluster: string;
 	};
 
 	const apps = $derived.by<AppEntry[]>(() => {
@@ -53,7 +53,7 @@
 					envName: env?.spec?.environment || '',
 					theme,
 					title: r.status?.title || r.metadata?.name || '',
-					sourceURL: sourceDashboardURL(r)
+					sourceCluster: sourceClusterName(r)
 				};
 			})
 			.sort((a, b) => {
@@ -72,7 +72,7 @@
 		version: string;
 		timestamp: string;
 		bakeStatus: string;
-		sourceURL: string;
+		sourceCluster: string;
 	};
 
 	const recentActivity = $derived.by<ActivityEntry[]>(() => {
@@ -89,7 +89,7 @@
 					version: getDisplayVersion(entry.version),
 					timestamp: entry.timestamp,
 					bakeStatus: entry.bakeStatus || 'None',
-					sourceURL: a.sourceURL
+					sourceCluster: a.sourceCluster
 				});
 			}
 		}
@@ -287,7 +287,7 @@
 							{@const stuck = detectStuck(a.rollout, { now: $now })}
 							<li class="environment-theme-scope" style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}>
 								<a
-									href={withDashboardParam(`/rollouts/${a.rollout.metadata?.namespace}/${a.rollout.metadata?.name}`, a.sourceURL, localClusterURL)}
+									href={rolloutPath(a.sourceCluster || localClusterName, a.rollout.metadata?.namespace || '', a.rollout.metadata?.name || '')}
 									class="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 								>
 									<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
@@ -364,7 +364,7 @@
 													<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 												</span>
 												<a
-													href={withDashboardParam(`/rollouts/${namespace}/${a.appName}`, a.sourceURL, localClusterURL)}
+													href={rolloutPath(a.sourceCluster || localClusterName, namespace, a.appName)}
 													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 												>
 													<div class="flex items-baseline justify-between gap-2">

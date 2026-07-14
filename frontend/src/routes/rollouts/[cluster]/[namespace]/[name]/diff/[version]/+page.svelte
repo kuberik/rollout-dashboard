@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { Button } from 'flowbite-svelte';
 	import { ChevronLeftOutline } from 'flowbite-svelte-icons';
-	import type { Rollout } from '../../../../../../types';
+	import type { Rollout } from '../../../../../../../types';
 	import { theme } from '$lib/stores/theme';
 	import { createPatch } from 'diff';
 	import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
@@ -19,9 +19,8 @@
 	let allFiles = new Set<string>();
 	let patches: Record<string, string> = {};
 
-	const { namespace, name, version } = $page.params;
-	const dashboard = $page.url.searchParams.get('dashboard') || undefined;
-	const dashboardSuffix = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
+	const { cluster, namespace, name, version } = $page.params;
+	const clusterParam = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 
 	theme.subscribe((value) => {
 		currentTheme = value;
@@ -52,7 +51,7 @@
 
 	async function loadRolloutDiff() {
 		try {
-			const data = await fetchRollout(namespace as string, name as string, dashboard);
+			const data = await fetchRollout(namespace as string, name as string, cluster);
 			rollout = data.rollout;
 
 			if (!rollout?.status?.history) {
@@ -69,8 +68,8 @@
 
 			// Fetch manifests for both versions
 			const [currentManifest, previousManifest] = await Promise.all([
-				fetch(`/api/rollouts/${namespace}/${name}/manifest/${version}${dashboardSuffix}`).then((r) => r.json()),
-				fetch(`/api/rollouts/${namespace}/${name}/manifest/${previousVersion}${dashboardSuffix}`).then((r) =>
+				fetch(`/api/rollouts/${namespace}/${name}/manifest/${version}${clusterParam}`).then((r) => r.json()),
+				fetch(`/api/rollouts/${namespace}/${name}/manifest/${previousVersion}${clusterParam}`).then((r) =>
 					r.json()
 				)
 			]);
@@ -160,7 +159,7 @@
 
 <div class="w-full px-4 py-8 dark:bg-gray-900">
 	<div class="mb-6">
-		<Button color="light" href={`/rollouts/${namespace}/${name}${dashboardSuffix}`}>
+		<Button color="light" href={`/rollouts/${cluster}/${namespace}/${name}`}>
 			<ChevronLeftOutline class="mr-2 h-4 w-4" />
 			Back to Rollout
 		</Button>

@@ -26,7 +26,7 @@
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
-	import { sourceDashboardURL, rolloutMatchesEnvironment } from '$lib/source-dashboard';
+	import { sourceDashboardURL, sourceClusterName, rolloutPath, rolloutMatchesEnvironment } from '$lib/source-dashboard';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
@@ -106,6 +106,7 @@
 		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
 		rollout: Rollout;
 		sourceURL: string; // dashboard URL this rollout belongs to (empty = local)
+		sourceCluster: string; // cluster NAME this rollout belongs to (for name-based routing)
 	};
 
 	// Build a per-app map: appName → Array<{envName, rollout, env}> sorted by env tier.
@@ -201,7 +202,8 @@
 				stuck: detectStuck(r, { now: $now }),
 				behind,
 				rollout: r,
-				sourceURL: rolloutSourceURL(r)
+				sourceURL: rolloutSourceURL(r),
+			sourceCluster: sourceClusterName(r)
 			};
 		});
 	});
@@ -618,9 +620,7 @@
 				<ul class="divide-y {failedCount > 0 ? 'divide-red-200/60 dark:divide-red-800/40' : 'divide-amber-200/60 dark:divide-amber-800/40'}">
 					{#each attentionItems as item}
 						{@const c = item.card}
-						{@const attentionHref = c.sourceURL && c.sourceURL !== localClusterURL
-							? `/rollouts/${c.ns}/${c.name}?dashboard=${encodeURIComponent(c.sourceURL)}`
-							: `/rollouts/${c.ns}/${c.name}`}
+						{@const attentionHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
 						<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 							<a
 								href={attentionHref}
@@ -683,9 +683,7 @@
 						</div>
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
-								{@const rolloutHref = c.sourceURL && c.sourceURL !== localClusterURL
-									? `/rollouts/${c.ns}/${c.name}?dashboard=${encodeURIComponent(c.sourceURL)}`
-									: `/rollouts/${c.ns}/${c.name}`}
+								{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
 								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
 									<a
 										href={rolloutHref}

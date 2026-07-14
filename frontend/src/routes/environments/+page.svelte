@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
+	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { getDisplayVersion, shortenVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -22,7 +22,7 @@
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
-	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -267,7 +267,7 @@
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 						{#each s.cells as { appName, appTitle, cell } (appName)}
 							{@const r = cell.rollout}
-							{@const detailHref = withDashboardParam(`/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`, sourceDashboardURL(cell.env), localClusterURL)}
+							{@const detailHref = rolloutPath(sourceClusterName(cell.env) || localClusterName, r.metadata?.namespace || '', r.metadata?.name || '')}
 							{@const latest = r.status?.history?.[0]}
 							{@const status = latest?.bakeStatus || 'None'}
 							{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}

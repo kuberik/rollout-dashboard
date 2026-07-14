@@ -30,8 +30,8 @@
 		// version, or a specific release candidate's "Deploy" button).
 		initialSelectedVersion?: string | null;
 		initialExplanation?: string;
-		// Multi-cluster: remote dashboard URL when this rollout lives on a spoke.
-		dashboard?: string;
+		// Multi-cluster: the cluster name when this rollout lives on a spoke.
+		cluster?: string;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
 	}
@@ -42,15 +42,15 @@
 		isPinVersionMode = false,
 		initialSelectedVersion = null,
 		initialExplanation = '',
-		dashboard,
+		cluster,
 		onSuccess = () => {},
 		onError = () => {}
 	}: Props = $props();
 
 	function apiUrl(path: string): string {
-		if (!dashboard) return path;
+		if (!cluster) return path;
 		const sep = path.includes('?') ? '&' : '?';
-		return `${path}${sep}dashboard=${encodeURIComponent(dashboard)}`;
+		return `${path}${sep}cluster=${encodeURIComponent(cluster)}`;
 	}
 
 	// --- Picker state ---------------------------------------------------
@@ -211,7 +211,7 @@
 			rollout?.metadata?.name ?? '',
 			compareBase ?? '',
 			compareHead ?? '',
-			dashboard
+			cluster
 		),
 		queryFn: () =>
 			fetchCommits(
@@ -219,7 +219,7 @@
 				rollout!.metadata!.name!,
 				compareBase!,
 				compareHead!,
-				dashboard
+				cluster
 			),
 		enabled: canFetchCommits
 	}));
@@ -484,7 +484,7 @@
 										<Button
 											size="xs"
 											color="light"
-											href={`/rollouts/${rollout?.metadata?.namespace}/${rollout?.metadata?.name}/diff/${selectedVersion}${dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : ''}`}
+											href={`/rollouts/${cluster}/${rollout?.metadata?.namespace}/${rollout?.metadata?.name}/diff/${selectedVersion}`}
 										>
 											<CodePullRequestSolid class="mr-1 h-3 w-3" />
 											View file diff

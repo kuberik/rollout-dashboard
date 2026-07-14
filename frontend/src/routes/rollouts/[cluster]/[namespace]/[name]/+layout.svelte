@@ -15,18 +15,18 @@
 
 	let { children }: { children: Snippet } = $props();
 
+	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
 	const activeUrl = $derived(page.url.pathname);
-	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
-	// Preserve ?dashboard=<url> across tab navigation so spoke rollouts stay on the spoke.
-	const dashboardSuffix = $derived(dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '');
+	// Base path (cluster embedded) shared by every tab.
+	const base = $derived(`/rollouts/${cluster}/${namespace}/${name}`);
 
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
 			name,
-			dashboard,
+			cluster,
 			options: {
 				refetchInterval: 5000
 			}
@@ -40,37 +40,15 @@
 	);
 
 	const tabs = $derived([
-		{
-			label: 'Overview',
-			href: `/rollouts/${namespace}/${name}${dashboardSuffix}`,
-			icon: ObjectsColumnSolid,
-			show: true
-		},
-		{
-			label: 'History',
-			href: `/rollouts/${namespace}/${name}/history${dashboardSuffix}`,
-			icon: ClockArrowOutline,
-			show: true
-		},
-		{
-			label: 'Environments',
-			href: `/rollouts/${namespace}/${name}/environments${dashboardSuffix}`,
-			icon: LayersSolid,
-			show: hasEnvironment
-		},
-		{
-			label: 'Logs',
-			href: `/rollouts/${namespace}/${name}/logs${dashboardSuffix}`,
-			icon: TerminalOutline,
-			show: true
-		}
+		{ label: 'Overview', href: base, icon: ObjectsColumnSolid, show: true },
+		{ label: 'History', href: `${base}/history`, icon: ClockArrowOutline, show: true },
+		{ label: 'Environments', href: `${base}/environments`, icon: LayersSolid, show: hasEnvironment },
+		{ label: 'Logs', href: `${base}/logs`, icon: TerminalOutline, show: true }
 	]);
 
 	const isActive = (href: string) => {
-		// Compare paths only — the ?dashboard suffix shouldn't affect which tab is active.
-		const path = href.split('?')[0];
-		if (path === `/rollouts/${namespace}/${name}`) return activeUrl === path;
-		return activeUrl.startsWith(path);
+		if (href === base) return activeUrl === href;
+		return activeUrl.startsWith(href);
 	};
 </script>
 

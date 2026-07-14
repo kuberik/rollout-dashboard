@@ -49,17 +49,17 @@ type QueryOverrides<TData> = Omit<
     'queryKey' | 'queryFn'
 >;
 
-export const rolloutQueryKey = (namespace: string, name: string, dashboard?: string) =>
-    ['rollout', namespace, name, dashboard] as const;
+export const rolloutQueryKey = (namespace: string, name: string, cluster?: string) =>
+    ['rollout', namespace, name, cluster] as const;
 
 export const rolloutsListQueryKey = ['rollouts', 'all'] as const;
 
 export async function fetchRollout(
     namespace: string,
     name: string,
-    dashboard?: string
+    cluster?: string
 ): Promise<RolloutResponse> {
-    const params = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
+    const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
     const res = await fetch(`/api/rollouts/${namespace}/${name}${params}`);
     if (!res.ok) {
         if (res.status === 404) {
@@ -106,17 +106,17 @@ export function rolloutsInNamespaceQueryOptions({
 export function rolloutQueryOptions({
     namespace,
     name,
-    dashboard,
+    cluster,
     options
 }: {
     namespace: string;
     name: string;
-    dashboard?: string;
+    cluster?: string;
     options?: QueryOverrides<RolloutResponse>;
 }) {
     return {
-        queryKey: rolloutQueryKey(namespace, name, dashboard),
-        queryFn: () => fetchRollout(namespace, name, dashboard),
+        queryKey: rolloutQueryKey(namespace, name, cluster),
+        queryFn: () => fetchRollout(namespace, name, cluster),
         ...options
     };
 }
@@ -166,9 +166,9 @@ export type PermissionsResponse = {
 export async function fetchRolloutPermissions(
     namespace: string,
     name: string,
-    dashboard?: string
+    cluster?: string
 ): Promise<PermissionsResponse> {
-    const params = dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '';
+    const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
     const res = await fetch(`/api/rollouts/${namespace}/${name}/permissions/all${params}`);
     if (!res.ok) {
         throw new Error('Failed to load permissions');
@@ -176,23 +176,23 @@ export async function fetchRolloutPermissions(
     return (await res.json()) as PermissionsResponse;
 }
 
-export const rolloutPermissionsQueryKey = (namespace: string, name: string, dashboard?: string) =>
-    ['rollout-permissions', namespace, name, dashboard] as const;
+export const rolloutPermissionsQueryKey = (namespace: string, name: string, cluster?: string) =>
+    ['rollout-permissions', namespace, name, cluster] as const;
 
 export function rolloutPermissionsQueryOptions({
     namespace,
     name,
-    dashboard,
+    cluster,
     options
 }: {
     namespace: string;
     name: string;
-    dashboard?: string;
+    cluster?: string;
     options?: QueryOverrides<PermissionsResponse>;
 }) {
     return {
-        queryKey: rolloutPermissionsQueryKey(namespace, name, dashboard),
-        queryFn: () => fetchRolloutPermissions(namespace, name, dashboard),
+        queryKey: rolloutPermissionsQueryKey(namespace, name, cluster),
+        queryFn: () => fetchRolloutPermissions(namespace, name, cluster),
         ...options
     };
 }

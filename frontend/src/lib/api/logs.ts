@@ -26,14 +26,14 @@ export interface LogsStreamData {
 }
 
 // Create EventSource URL for logs streaming.
-// Adds ?dashboard=<url> when set so the hub's spoke-proxy forwards the SSE stream
+// Adds ?cluster=<name> when set so the hub's spoke-proxy forwards the SSE stream
 // to the right cluster.
 export function createLogsStreamUrl(
 	namespace: string,
 	name: string,
 	filterType: string = '',
 	since?: number,
-	dashboard?: string
+	cluster?: string
 ): string {
 	const params = new URLSearchParams();
 	if (filterType) {
@@ -42,8 +42,8 @@ export function createLogsStreamUrl(
 	if (since) {
 		params.set('since', since.toString());
 	}
-	if (dashboard) {
-		params.set('dashboard', dashboard);
+	if (cluster) {
+		params.set('cluster', cluster);
 	}
 	return `/api/rollouts/${namespace}/${name}/pods/logs?${params.toString()}`;
 }
@@ -81,9 +81,9 @@ async function* createLogsStream(
 	since?: number,
 	onPodsUpdate?: (pods: PodInfo[]) => void,
 	signal?: AbortSignal,
-	dashboard?: string
+	cluster?: string
 ): AsyncGenerator<LogLine[], void, unknown> {
-	const url = createLogsStreamUrl(namespace, name, filterType, since, dashboard);
+	const url = createLogsStreamUrl(namespace, name, filterType, since, cluster);
 
 	// The BatchedQueue bridging the EventSource push and Generator pull
 	const batchQueue = new PromiseQueue<LogLine[]>();
@@ -264,20 +264,20 @@ export function logsStreamQueryOptions({
 	filterType = '',
 	since,
 	onPodsUpdate,
-	dashboard
+	cluster
 }: {
 	namespace: string;
 	name: string;
 	filterType?: 'pod' | 'test' | '';
 	since?: number;
 	onPodsUpdate?: (pods: PodInfo[]) => void;
-	dashboard?: string;
+	cluster?: string;
 }) {
 	return queryOptions({
-		queryKey: ['rollouts', namespace, name, 'logs', filterType, since, dashboard],
+		queryKey: ['rollouts', namespace, name, 'logs', filterType, since, cluster],
 		queryFn: streamedQuery({
 			streamFn: async ({ signal }) => {
-				return createLogsStream(namespace, name, filterType, since, onPodsUpdate, signal, dashboard);
+				return createLogsStream(namespace, name, filterType, since, onPodsUpdate, signal, cluster);
 			},
 			refetchMode: 'append', // Append new logs to existing ones
 			reducer: (acc: LogLine[], chunk: LogLine | LogLine[]) => {

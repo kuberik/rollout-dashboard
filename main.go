@@ -178,6 +178,31 @@ func main() {
 			c.JSON(http.StatusOK, ClusterInfo{URL: localURL, Name: name})
 		})
 
+		// GET /api/clusters — the local cluster plus all discovered spokes, as
+		// {name,url} pairs. Powers the frontend cluster switcher and warms the
+		// name→url registry used by the proxy.
+		api.GET("/clusters", func(c *gin.Context) {
+			k8sClient, ok := getK8sClient(c)
+			if !ok {
+				return
+			}
+			localURL := localDashboardURL(c)
+			localName := os.Getenv("CLUSTER_NAME")
+			if localName == "" {
+				localName = ClusterNameFromURL(localURL)
+			}
+			clusters := []ClusterInfo{{URL: localURL, Name: localName}}
+
+			// Discovering spokes is best-effort — a single-cluster dashboard just
+			// returns itself.
+			if envs, err := k8sClient.GetEnvironmentsAllNamespaces(c.Request.Context()); err == nil {
+				spokes := discoverClusters(c.Request.Context(), marshalToRaw(envs), localURL, auth.GetTokenFromContext(c))
+				registry.put(spokes)
+				clusters = append(clusters, spokes...)
+			}
+			c.JSON(http.StatusOK, gin.H{"clusters": clusters})
+		})
+
 		api.GET("/rollouts", func(c *gin.Context) {
 			k8sClient, ok := getK8sClient(c)
 			if !ok {

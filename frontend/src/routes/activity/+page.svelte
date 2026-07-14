@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
+	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { formatTimeAgoCompact, formatTimeAgo, getDisplayVersion } from '$lib/utils';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -23,6 +23,7 @@
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
 	const rollouts = $derived(rolloutsQuery.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(rolloutsQuery.data?.environments?.items || []);
@@ -46,7 +47,7 @@
 		revision: string | null;
 		previousRevision: string | null;
 		source: string | null;
-		dashboard: string | undefined;
+		cluster: string | undefined;
 	};
 
 	// Optional env / app filters (clicking an env pill scopes the feed).
@@ -160,17 +161,18 @@
 					previousVersion,
 					bakeStatus: bs,
 					timestamp: h.timestamp,
-					href: withDashboardParam(`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}`, sourceDashboardURL(rollout), localClusterURL),
+					href: rolloutPath(
+						sourceClusterName(rollout) || localClusterName,
+						rollout.metadata?.namespace || '',
+						rollout.metadata?.name || ''
+					),
 					isRunning: bs === 'InProgress' || bs === 'Deploying',
 					actor: actorName,
 					actorKind,
 					revision: h.version?.revision ?? null,
 					previousRevision,
 					source: rollout.status?.source ?? null,
-					dashboard: (() => {
-						const s = sourceDashboardURL(rollout);
-						return s && s !== localClusterURL ? s : undefined;
-					})()
+					cluster: sourceClusterName(rollout) || localClusterName
 				});
 			}
 		}
@@ -433,7 +435,7 @@
 												<CommitSummary
 													namespace={entry.rolloutNamespace}
 													name={entry.rolloutName}
-													dashboard={entry.dashboard}
+													cluster={entry.cluster}
 													base={entry.previousRevision}
 													head={entry.revision}
 													showAvatars

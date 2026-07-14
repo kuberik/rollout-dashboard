@@ -22,10 +22,10 @@
 		namespace: string;
 		name: string;
 		filterType?: 'pod' | 'test' | '';
-		dashboard?: string;
+		cluster?: string;
 	}
 
-	const { namespace, name, filterType = '', dashboard }: Props = $props();
+	const { namespace, name, filterType = '', cluster }: Props = $props();
 
 	let selectedPod = $state<string | null>(null);
 	let searchQuery = $state('');
@@ -100,7 +100,7 @@
 			name,
 			filterType,
 			onPodsUpdate: handlePodsUpdate,
-			dashboard
+			cluster
 		})
 	);
 	const logsQuery = createQuery(() => logsQueryOptions);

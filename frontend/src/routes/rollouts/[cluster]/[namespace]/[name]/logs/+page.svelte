@@ -5,9 +5,9 @@
 	import { Button } from 'flowbite-svelte';
 	import LogsViewer from '$lib/components/LogsViewer.svelte';
 
+	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
-	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
 
 	// Support ?tab=tests or ?tab=pods query parameter
 	const tabFromUrl = $derived(page.url.searchParams.get('tab'));
@@ -59,9 +59,9 @@
 		<!-- Tab content -->
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 			{#if activeTab === 'pods'}
-				<LogsViewer {namespace} {name} {dashboard} filterType="pod" />
+				<LogsViewer {namespace} {name} {cluster} filterType="pod" />
 			{:else}
-				<LogsViewer {namespace} {name} {dashboard} filterType="test" />
+				<LogsViewer {namespace} {name} {cluster} filterType="test" />
 			{/if}
 		</div>
 	</div>

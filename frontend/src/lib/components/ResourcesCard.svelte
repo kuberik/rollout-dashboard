@@ -16,17 +16,17 @@
 		kustomizations,
 		ociRepositories,
 		filteredManagedResources,
-		dashboard
+		cluster
 	}: {
 		kustomizations: Kustomization[];
 		ociRepositories: OCIRepository[];
 		filteredManagedResources: Record<string, ManagedResourceStatus[]>;
 		// Spoke URL when this rollout lives on a remote cluster — appended as
-		// ?dashboard=<url> so the hub proxies deployment-children lookups too.
-		dashboard?: string;
+		// ?cluster=<name> so the hub proxies deployment-children lookups too.
+		cluster?: string;
 	} = $props();
 
-	const dashboardParam = $derived(dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : '');
+	const clusterParam = $derived(cluster ? `?cluster=${encodeURIComponent(cluster)}` : '');
 
 	// All managed resources (for status summary + "other" section)
 	const allManagedResources = $derived(
@@ -70,7 +70,7 @@
 				expandedDeployments = new Set([...expandedDeployments, key]);
 				if (!deploymentChildren[key]) {
 					deploymentChildren = { ...deploymentChildren, [key]: { replicaSets: [], loading: true } };
-					fetch(`/api/namespaces/${resource.namespace}/deployments/${resource.name}/children${dashboardParam}`)
+					fetch(`/api/namespaces/${resource.namespace}/deployments/${resource.name}/children${clusterParam}`)
 						.then((r) => r.json())
 						.then((data) => {
 							deploymentChildren = { ...deploymentChildren, [key]: { replicaSets: data.replicaSets || [], loading: false } };
@@ -125,7 +125,7 @@
 
 		try {
 			const res = await fetch(
-				`/api/namespaces/${resource.namespace}/deployments/${resource.name}/children${dashboardParam}`
+				`/api/namespaces/${resource.namespace}/deployments/${resource.name}/children${clusterParam}`
 			);
 			if (!res.ok) throw new Error('Failed to fetch children');
 			const data = await res.json();
@@ -152,7 +152,7 @@
 				const ns = key.substring(0, slashIdx);
 				const depName = key.substring(slashIdx + 1);
 				try {
-					const res = await fetch(`/api/namespaces/${ns}/deployments/${depName}/children${dashboardParam}`);
+					const res = await fetch(`/api/namespaces/${ns}/deployments/${depName}/children${clusterParam}`);
 					if (!res.ok) continue;
 					const data = await res.json();
 					deploymentChildren = {

@@ -47,8 +47,8 @@ export const commitsQueryKey = (
     name: string,
     base: string,
     head: string,
-    dashboard?: string
-) => ['rollout-commits', namespace, name, base, head, dashboard] as const;
+    cluster?: string
+) => ['rollout-commits', namespace, name, base, head, cluster] as const;
 
 export const githubStatusQueryKey = ['github-status'] as const;
 
@@ -57,10 +57,10 @@ export async function fetchCommits(
     name: string,
     base: string,
     head: string,
-    dashboard?: string
+    cluster?: string
 ): Promise<CommitsResponse> {
     const params = new URLSearchParams({ base, head });
-    if (dashboard) params.set('dashboard', dashboard);
+    if (cluster) params.set('cluster', cluster);
     const res = await fetch(`/api/rollouts/${namespace}/${name}/commits?${params}`);
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));

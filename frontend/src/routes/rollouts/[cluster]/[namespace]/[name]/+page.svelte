@@ -12,11 +12,11 @@
 		KruiseRollout,
 		Environment,
 		RolloutTest
-	} from '../../../../types';
+	} from '../../../../../types';
 	import type {
 		EnvironmentStatusEntry,
 		EnvironmentInfo
-	} from '../../../../types/environment-types';
+	} from '../../../../../types/environment-types';
 	import {
 		Card,
 		Badge,
@@ -122,17 +122,17 @@
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
-	// ?dashboard=<url> is set when the rollout lives on a remote spoke cluster.
-	// The hub's spoke-proxy middleware forwards every API call (including mutations)
-	// to the named dashboard, so the UI behaves identically regardless of source.
-	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
+	// The cluster name is embedded in the route path. The hub's spoke-proxy
+	// middleware resolves it and forwards every API call (including mutations) to
+	// that cluster, so the UI behaves identically regardless of source.
+	const cluster = $derived(page.params.cluster as string);
 
-	// Append ?dashboard=<url> to an API path so the hub's proxy middleware forwards
-	// to the right spoke. No-op when the rollout is local to the hub.
+	// Append ?cluster=<name> to an API path so the hub's proxy forwards it to the
+	// right cluster (a no-op for the local cluster, resolved server-side).
 	function apiUrl(path: string): string {
-		if (!dashboard) return path;
+		if (!cluster) return path;
 		const sep = path.includes('?') ? '&' : '?';
-		return `${path}${sep}dashboard=${encodeURIComponent(dashboard)}`;
+		return `${path}${sep}cluster=${encodeURIComponent(cluster)}`;
 	}
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
@@ -140,7 +140,7 @@
 		rolloutQueryOptions({
 			namespace,
 			name,
-			dashboard
+			cluster
 		})
 	);
 
@@ -149,7 +149,7 @@
 		rolloutPermissionsQueryOptions({
 			namespace,
 			name,
-			dashboard
+			cluster
 		})
 	);
 
@@ -1154,7 +1154,7 @@
 				</div>
 
 				<!-- ══ SCHEDULE STATUS (blocking / closing-soon) ══ -->
-				<ScheduleStatus {rollout} {dashboard} />
+				<ScheduleStatus {rollout} {cluster} />
 
 				<!-- ══ FAILURE PANEL ══ -->
 				{#if isFailed}
@@ -1167,7 +1167,7 @@
 						{canUpdate}
 						{canModify}
 						{isDashboardManagingWantedVersion}
-						{dashboard}
+						{cluster}
 						onRetry={retryDeployment}
 						onSuccess={(m) => { toastType = 'success'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
 						onError={(m) => { toastType = 'error'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
@@ -1280,12 +1280,12 @@
 													<CommitSummary
 														{namespace}
 														{name}
-														{dashboard}
+														{cluster}
 														base={rollout.status.history[1]?.version?.revision}
 														head={latestEntry.version?.revision}
 														showAvatars
 														hideWhenEmpty
-														href={`/rollouts/${namespace}/${name}/history${dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : ''}`}
+														href={`/rollouts/${cluster}/${namespace}/${name}/history`}
 													/>
 												</div>
 											{/if}
@@ -1310,7 +1310,7 @@
 											namespace={rollout.metadata?.namespace || ''}
 											name={rollout.metadata?.name || ''}
 											version={latestEntry.version.tag}
-											{dashboard}
+											{cluster}
 										/>
 									{/if}
 									{#if rollout?.status?.source}
@@ -1413,7 +1413,7 @@
 							{canUpdate}
 							{namespace}
 							{name}
-							{dashboard}
+							{cluster}
 							onContinue={continueRollout}
 						/>
 
@@ -1710,7 +1710,7 @@
 							</div>
 						{/if}
 						<HealthChecksCard healthChecks={visibleHealthChecks} />
-						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} {dashboard} />
+						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} {cluster} />
 						<EventsCard {events} />
 					</div>
 				</div>
@@ -1852,7 +1852,7 @@
 	{isPinVersionMode}
 	initialSelectedVersion={selectedVersion}
 	initialExplanation={deployExplanation}
-	{dashboard}
+	{cluster}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;

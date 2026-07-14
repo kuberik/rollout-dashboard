@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { sourceDashboardURL, rolloutMatchesEnvironment, withDashboardParam } from '$lib/source-dashboard';
+	import { sourceDashboardURL, sourceClusterName, rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
@@ -30,7 +30,7 @@
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
-	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -40,16 +40,17 @@
 		environment: Environment;
 		rollout: Rollout | null;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
-		sourceURL: string; // dashboard URL this env/rollout lives on (for cross-cluster links)
+		sourceURL: string; // dashboard URL this env/rollout lives on
+		sourceCluster: string; // cluster NAME (for name-based routing)
 	};
 
-	// Append ?dashboard=<url> so a card click opens the rollout on the cluster it
-	// actually lives on. No-op when the rollout is local to this dashboard.
+	// Build the rollout detail path with the source cluster name embedded, so a
+	// card click opens the rollout on the cluster it actually lives on.
 	function rolloutHref(cell: Cell): string {
-		return withDashboardParam(
-			`/rollouts/${cell.rollout?.metadata?.namespace}/${cell.rollout?.metadata?.name}`,
-			cell.sourceURL,
-			localClusterURL
+		return rolloutPath(
+			cell.sourceCluster || localClusterName,
+			cell.rollout?.metadata?.namespace || '',
+			cell.rollout?.metadata?.name || ''
 		);
 	}
 
@@ -60,7 +61,7 @@
 				const envName = env.spec?.environment || '';
 				const rollout = rollouts.find((r) => rolloutMatchesEnvironment(r, env)) || null;
 				const theme = rollout ? getRolloutEnvironmentTheme(rollout, env) : null;
-				return { envName, environment: env, rollout, theme, sourceURL: sourceDashboardURL(env) };
+				return { envName, environment: env, rollout, theme, sourceURL: sourceDashboardURL(env), sourceCluster: sourceClusterName(env) };
 			});
 			return result.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
 		}
@@ -75,7 +76,8 @@
 					environment: {} as Environment,
 					rollout: r,
 					theme,
-					sourceURL: sourceDashboardURL(r)
+					sourceURL: sourceDashboardURL(r),
+					sourceCluster: sourceClusterName(r)
 				};
 			})
 			.sort((a, b) => (a.rollout?.metadata?.namespace || '').localeCompare(b.rollout?.metadata?.namespace || ''));
@@ -139,6 +141,7 @@
 		ns: string;
 		entryId: number;
 		sourceURL: string;
+		sourceCluster: string;
 	};
 
 	const allActivity = $derived.by<ActivityEntry[]>(() => {
@@ -155,7 +158,8 @@
 					rollout: cell.rollout,
 					ns: cell.rollout.metadata?.namespace || '',
 					entryId: entry.id ?? 0,
-					sourceURL: cell.sourceURL
+					sourceURL: cell.sourceURL,
+					sourceCluster: cell.sourceCluster
 				});
 			}
 		}
@@ -781,7 +785,7 @@
 									: 'text-gray-500 dark:text-gray-400'}
 					{@const recentDeploys = (c.rollout?.status?.history ?? []).slice(0, 5)}
 					{@const upstream = upstreamPeerFor(c)}
-					{@const commitsDashboard = c.sourceURL && c.sourceURL !== localClusterURL ? c.sourceURL : undefined}
+					{@const commitsCluster = c.sourceCluster || localClusterName}
 					<article
 						class="environment-theme-scope group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 						style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
@@ -872,7 +876,7 @@
 								<CommitSummary
 									namespace={c.rollout?.metadata?.namespace ?? ''}
 									name={c.rollout?.metadata?.name ?? ''}
-									dashboard={commitsDashboard}
+									cluster={commitsCluster}
 									base={c.rollout?.status?.history?.[0]?.version?.revision}
 									head={upstream.rollout?.status?.history?.[0]?.version?.revision}
 									verb={`behind ${hasEnvironmentBinding ? upstream.envName : (upstream.theme?.label ?? upstream.envName)}`}
@@ -1043,7 +1047,7 @@
 													<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 												</span>
 												<a
-													href={withDashboardParam(`/rollouts/${a.ns}/${a.rollout.metadata?.name}`, a.sourceURL, localClusterURL)}
+													href={rolloutPath(a.sourceCluster || localClusterName, a.ns, a.rollout.metadata?.name || '')}
 													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 												>
 													<div class="flex items-baseline justify-between gap-2">

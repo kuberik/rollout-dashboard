@@ -1,26 +1,31 @@
 import { describe, it, expect } from 'vitest';
-import { SOURCE_DASHBOARD_ANNOTATION, sourceDashboardURL, rolloutMatchesEnvironment, withDashboardParam } from './source-dashboard';
+import {
+	SOURCE_CLUSTER_ANNOTATION,
+	sourceClusterName,
+	rolloutMatchesEnvironment,
+	rolloutPath
+} from './source-dashboard';
 
-const DEV = 'https://kuberik.dev.example.com';
-const PROD = 'https://kuberik.prod.example.com';
+const DEV = 'dev';
+const PROD = 'prod';
 
-function rollout(name: string, namespace: string, source: string) {
-	return { metadata: { name, namespace, annotations: { [SOURCE_DASHBOARD_ANNOTATION]: source } } };
+function rollout(name: string, namespace: string, cluster: string) {
+	return { metadata: { name, namespace, annotations: { [SOURCE_CLUSTER_ANNOTATION]: cluster } } };
 }
-function environment(rolloutName: string, namespace: string, source: string) {
+function environment(rolloutName: string, namespace: string, cluster: string) {
 	return {
-		metadata: { namespace, annotations: { [SOURCE_DASHBOARD_ANNOTATION]: source } },
+		metadata: { namespace, annotations: { [SOURCE_CLUSTER_ANNOTATION]: cluster } },
 		spec: { rolloutRef: { name: rolloutName } }
 	};
 }
 
-describe('sourceDashboardURL', () => {
-	it('reads the source annotation', () => {
-		expect(sourceDashboardURL(rollout('app', 'ns', DEV))).toBe(DEV);
+describe('sourceClusterName', () => {
+	it('reads the source-cluster annotation', () => {
+		expect(sourceClusterName(rollout('app', 'ns', DEV))).toBe(DEV);
 	});
 	it('returns empty string when missing', () => {
-		expect(sourceDashboardURL({ metadata: {} })).toBe('');
-		expect(sourceDashboardURL(undefined)).toBe('');
+		expect(sourceClusterName({ metadata: {} })).toBe('');
+		expect(sourceClusterName(undefined)).toBe('');
 	});
 });
 
@@ -34,16 +39,14 @@ describe('rolloutMatchesEnvironment', () => {
 	// vice versa) depending on merge order, so the app view showed prod's rollout
 	// under dev and clicking dev opened prod.
 	it('does NOT match a rollout from a different cluster with the same name/namespace', () => {
-		const devEnv = environment('app', 'ns', DEV);
-		const prodRollout = rollout('app', 'ns', PROD);
-		expect(rolloutMatchesEnvironment(prodRollout, devEnv)).toBe(false);
+		expect(rolloutMatchesEnvironment(rollout('app', 'ns', PROD), environment('app', 'ns', DEV))).toBe(false);
 	});
 
 	it('picks the same-cluster rollout out of a merged multi-cluster list', () => {
 		const devEnv = environment('app', 'ns', DEV);
 		const merged = [rollout('app', 'ns', PROD), rollout('app', 'ns', DEV)];
 		const matched = merged.find((r) => rolloutMatchesEnvironment(r, devEnv));
-		expect(sourceDashboardURL(matched)).toBe(DEV);
+		expect(sourceClusterName(matched)).toBe(DEV);
 	});
 
 	it('does not match when names differ', () => {
@@ -55,24 +58,14 @@ describe('rolloutMatchesEnvironment', () => {
 	});
 });
 
-describe('withDashboardParam', () => {
-	it('appends ?dashboard= for a remote cluster', () => {
-		expect(withDashboardParam('/rollouts/ns/app', PROD, DEV)).toBe(
-			`/rollouts/ns/app?dashboard=${encodeURIComponent(PROD)}`
-		);
+describe('rolloutPath', () => {
+	it('embeds the cluster name in the path', () => {
+		expect(rolloutPath(PROD, 'ns', 'app')).toBe('/rollouts/prod/ns/app');
 	});
-
-	it('is a no-op when the resource is local to the viewed cluster', () => {
-		expect(withDashboardParam('/rollouts/ns/app', DEV, DEV)).toBe('/rollouts/ns/app');
+	it('appends a sub-route', () => {
+		expect(rolloutPath(DEV, 'ns', 'app', 'history')).toBe('/rollouts/dev/ns/app/history');
 	});
-
-	it('is a no-op when sourceURL is empty', () => {
-		expect(withDashboardParam('/rollouts/ns/app', '', DEV)).toBe('/rollouts/ns/app');
-	});
-
-	it('uses & when the path already has a query string', () => {
-		expect(withDashboardParam('/rollouts/ns/app/logs?tab=tests', PROD, DEV)).toBe(
-			`/rollouts/ns/app/logs?tab=tests&dashboard=${encodeURIComponent(PROD)}`
-		);
+	it('encodes path segments', () => {
+		expect(rolloutPath('c/1', 'n s', 'a?b')).toBe('/rollouts/c%2F1/n%20s/a%3Fb');
 	});
 });

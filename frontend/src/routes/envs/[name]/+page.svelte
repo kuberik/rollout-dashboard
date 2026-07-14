@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
+	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { getDisplayVersion, shortenVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
@@ -28,7 +28,7 @@
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
-	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -39,7 +39,7 @@
 		rollout: Rollout | null;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		title: string;
-		sourceURL: string;
+		sourceCluster: string;
 	};
 
 	const slots = $derived.by<Slot[]>(() => {
@@ -54,7 +54,7 @@
 				rollout,
 				theme,
 				title: rollout?.status?.title || appName,
-				sourceURL: sourceDashboardURL(env)
+				sourceCluster: sourceClusterName(env)
 			};
 		});
 		return result.sort((a, b) => {
@@ -84,7 +84,7 @@
 		bakeStatus: string;
 		ns: string;
 		rollout: Rollout;
-		sourceURL: string;
+		sourceCluster: string;
 	};
 	const recentActivity = $derived.by<ActivityEntry[]>(() => {
 		const list: ActivityEntry[] = [];
@@ -108,7 +108,7 @@
 					bakeStatus: entry.bakeStatus || 'None',
 					ns: s.rollout.metadata?.namespace || '',
 					rollout: s.rollout,
-					sourceURL: s.sourceURL
+					sourceCluster: s.sourceCluster
 				});
 			}
 		}
@@ -471,7 +471,7 @@
 							<li class="group">
 								<div class="flex items-center justify-between gap-4 px-5 py-4">
 									<a
-										href={s.rollout ? withDashboardParam(`/rollouts/${s.rollout.metadata?.namespace}/${s.rollout.metadata?.name}`, s.sourceURL, localClusterURL) : '#'}
+										href={s.rollout ? rolloutPath(s.sourceCluster || localClusterName, s.rollout.metadata?.namespace || '', s.rollout.metadata?.name || '') : '#'}
 										class="flex min-w-0 flex-1 items-center gap-3"
 									>
 										<!-- Status circle. No animate-ping halo — the icon
@@ -613,7 +613,7 @@
 													<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 												</span>
 												<a
-													href={withDashboardParam(`/rollouts/${a.ns}/${a.appName}`, a.sourceURL, localClusterURL)}
+													href={rolloutPath(a.sourceCluster || localClusterName, a.ns, a.appName)}
 													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 												>
 													<div class="flex items-baseline justify-between gap-2">

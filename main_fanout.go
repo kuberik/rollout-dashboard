@@ -25,6 +25,10 @@ var fanoutTransport = func() http.RoundTripper {
 
 const sourceDashboardAnnotation = "rollout-dashboard.kuberik.com/source-dashboard"
 
+// sourceClusterAnnotation records the cluster NAME an item came from (vs. the URL
+// in sourceDashboardAnnotation), so the frontend can build name-based routes.
+const sourceClusterAnnotation = "rollout-dashboard.kuberik.com/source-cluster"
+
 // fanoutHeader marks a request as already being a fan-out leg — the receiver
 // must NOT fan out again, otherwise hub↔spoke topologies create an infinite
 // loop that bottoms out only on per-request timeouts (and meanwhile duplicates
@@ -170,8 +174,9 @@ func extractSpokeURLs(envs *parsedEnvironments, selfURLs []string) []string {
 	return result
 }
 
-// annotateItemsWithSource adds the sourceDashboardAnnotation to every item's metadata.annotations.
-func annotateItemsWithSource(listJSON json.RawMessage, sourceURL string) json.RawMessage {
+// annotateItemsWithSource stamps every item with the source dashboard URL and
+// cluster name so the frontend knows which cluster each merged item came from.
+func annotateItemsWithSource(listJSON json.RawMessage, sourceURL, sourceName string) json.RawMessage {
 	if listJSON == nil {
 		return nil
 	}
@@ -194,6 +199,7 @@ func annotateItemsWithSource(listJSON json.RawMessage, sourceURL string) json.Ra
 			metadata["annotations"] = annotations
 		}
 		annotations[sourceDashboardAnnotation] = sourceURL
+		annotations[sourceClusterAnnotation] = sourceName
 	}
 	result, err := json.Marshal(list)
 	if err != nil {
@@ -304,10 +310,14 @@ func fanOutRollouts(
 	token string,
 ) (map[string]json.RawMessage, []ClusterInfo, []ClusterError) {
 	// Annotate local rollouts before merging.
+	localName := os.Getenv("CLUSTER_NAME")
+	if localName == "" {
+		localName = ClusterNameFromURL(localURL)
+	}
 	mergedKeys := []string{"rollouts", "environments", "kustomizations", "kruiseRollouts"}
 	for _, k := range mergedKeys {
 		if v, ok := localData[k]; ok && len(v) > 0 {
-			localData[k] = annotateItemsWithSource(v, localURL)
+			localData[k] = annotateItemsWithSource(v, localURL, localName)
 		}
 	}
 
@@ -379,10 +389,13 @@ func fanOutRollouts(
 		// Annotate and merge each key.
 		for _, k := range mergedKeys {
 			if v, ok := r.spoke.data[k]; ok && len(v) > 0 {
-				annotated := annotateItemsWithSource(v, r.spoke.url)
+				annotated := annotateItemsWithSource(v, r.spoke.url, r.name)
 				merged[k] = mergeItemLists(merged[k], annotated)
 			}
 		}
 	}
+	// Warm the name→url registry so the proxy can resolve ?cluster=<name> without
+	// re-discovering (list calls happen on every page via the Navbar).
+	registry.put(clusters)
 	return merged, clusters, clusterErrors
 }

@@ -65,15 +65,15 @@
 		return null;
 	});
 
+	const cluster = $derived(page.params.cluster as string | undefined);
 	const namespace = $derived(page.params.namespace as string | undefined);
 	const name = $derived(page.params.name as string | undefined);
-	const dashboard = $derived(page.url.searchParams.get('dashboard') || undefined);
 
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace: namespace || '',
 			name: name || '',
-			dashboard,
+			cluster,
 			options: {
 				refetchInterval: 5000,
 				enabled: isRolloutPage && !!namespace && !!name
@@ -90,7 +90,7 @@
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
-	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
+	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
@@ -232,7 +232,7 @@
 	bind:scope={paletteScope}
 	rollouts={allRollouts}
 	environments={allEnvironments}
-	{localClusterURL}
+	{localClusterName}
 	currentNamespace={namespace}
 	currentName={name}
 	loading={allRolloutsQuery.isLoading}

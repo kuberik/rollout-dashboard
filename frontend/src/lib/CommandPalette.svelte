@@ -24,7 +24,7 @@
 		getRolloutEnvironmentTheme,
 		shortEnvLabel
 	} from '$lib/environment-theme';
-	import { rolloutMatchesEnvironment, sourceDashboardURL, withDashboardParam } from '$lib/source-dashboard';
+	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
 
 	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action';
@@ -34,7 +34,7 @@
 		scope = $bindable(null),
 		rollouts,
 		environments,
-		localClusterURL = '',
+		localClusterName = '',
 		currentNamespace,
 		currentName,
 		loading = false
@@ -43,7 +43,7 @@
 		scope?: ResultKind | null;
 		rollouts: Rollout[];
 		environments: Environment[];
-		localClusterURL?: string;
+		localClusterName?: string;
 		currentNamespace?: string;
 		currentName?: string;
 		loading?: boolean;
@@ -98,14 +98,14 @@
 				// Source cluster must be part of the key: the hub merges rollouts
 				// from multiple clusters, so namespace/name alone is not unique
 				// and would produce duplicate keyed-each keys (crashes the list).
-				key: `rollout:${sourceDashboardURL(r)}|${r.metadata?.namespace}/${r.metadata?.name}`,
+				key: `rollout:${sourceClusterName(r)}|${r.metadata?.namespace}/${r.metadata?.name}`,
 				title: r.metadata?.name || '',
 				pretty:
 					r.status?.title && r.status.title !== r.metadata?.name
 						? r.status.title
 						: undefined,
 				subtitle: r.metadata?.namespace,
-				href: withDashboardParam(`/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`, sourceDashboardURL(r), localClusterURL),
+				href: rolloutPath(sourceClusterName(r) || localClusterName, r.metadata?.namespace || '', r.metadata?.name || ''),
 				envTheme: theme,
 				statusColor: status.color,
 				statusText: status.text,

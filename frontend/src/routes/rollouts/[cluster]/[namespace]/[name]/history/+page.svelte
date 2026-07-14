@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Rollout, Kustomization, ManagedResourceStatus, RolloutTest } from '../../../../../types';
+	import type { Rollout, Kustomization, ManagedResourceStatus, RolloutTest } from '../../../../../../types';
 	import { Badge, Button, Clipboard, Spinner, Alert } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
@@ -38,11 +38,11 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsInNamespaceQueryOptions } from '$lib/api/rollouts';
 
+	const cluster = $derived(get(page).params.cluster as string);
 	const namespace = $derived(get(page).params.namespace as string);
 	const name = $derived(get(page).params.name as string);
-	const dashboard = $derived(get(page).url.searchParams.get('dashboard') || undefined);
 
-	const rolloutQuery = createQuery(() => rolloutQueryOptions({ namespace, name, dashboard }));
+	const rolloutQuery = createQuery(() => rolloutQueryOptions({ namespace, name, cluster }));
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const kustomizations = $derived(
@@ -88,11 +88,9 @@
 					const ksName = ks.metadata!.name as string;
 					const ksNamespace = ks.metadata?.namespace || namespace;
 					try {
-						const dashboardParam = dashboard
-							? `?dashboard=${encodeURIComponent(dashboard)}`
-							: '';
+						const clusterParam = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 						const res = await fetch(
-							`/api/kustomizations/${ksNamespace}/${ksName}/managed-resources${dashboardParam}`
+							`/api/kustomizations/${ksNamespace}/${ksName}/managed-resources${clusterParam}`
 						);
 						if (res.ok) {
 							const data = await res.json();
@@ -506,7 +504,7 @@
 													<CommitSummary
 														{namespace}
 														{name}
-														{dashboard}
+														{cluster}
 														base={rollout.status.history[i + 1]?.version?.revision}
 														head={entry.version?.revision}
 														showAvatars
@@ -560,14 +558,14 @@
 												namespace={rollout.metadata?.namespace || ''}
 												name={rollout.metadata?.name || ''}
 												version={entry.version.tag}
-												{dashboard}
+												{cluster}
 											/>
 										{/if}
 										{#if i < (rollout?.status?.history?.length ?? 0) - 1 && rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 											<Button
 												color="light"
 												size="xs"
-												href={`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version.tag}${dashboard ? `?dashboard=${encodeURIComponent(dashboard)}` : ''}`}
+												href={`/rollouts/${cluster}/${rollout.metadata?.namespace}/${rollout.metadata?.name}/diff/${entry.version.tag}`}
 											>
 												<CodePullRequestSolid class="mr-1 h-3 w-3" />
 												Show diff
@@ -649,7 +647,7 @@
 			isPinVersionMode={true}
 			initialSelectedVersion={selectedVersionTag}
 			initialExplanation={deployExplanation}
-			{dashboard}
+			{cluster}
 		/>
 	{/if}
 </div>

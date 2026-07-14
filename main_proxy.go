@@ -25,23 +25,27 @@ var hopByHopHeaders = map[string]bool{
 	"upgrade":             true,
 }
 
-// SpokeProxyMiddleware proxies any request carrying ?dashboard=<url> to the named
-// remote dashboard, transparently forwarding method, body, headers and SSE streams.
-// Requests without the query param fall through to the local handler.
+// SpokeProxyMiddleware proxies any request carrying ?cluster=<name> to that
+// cluster's dashboard, transparently forwarding method, body, headers and SSE
+// streams. The cluster name is resolved to a URL via the registry (see
+// main_registry.go). Requests without the param, or for the local cluster, fall
+// through to the local handler.
 func SpokeProxyMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		dashboard := c.Query("dashboard")
-		if dashboard == "" {
+		name := c.Query("cluster")
+		if name == "" {
 			c.Next()
 			return
 		}
-		spokeBase := dashboardBaseURL(dashboard)
-		if spokeBase == "" {
-			c.Next()
+		spokeBase, isLocal, err := resolveClusterURL(c, name)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{
+				"error":   "unknown or unreachable cluster",
+				"details": err.Error(),
+			})
 			return
 		}
-		localBase := dashboardBaseURL(localDashboardURL(c))
-		if spokeBase == localBase {
+		if isLocal || spokeBase == "" {
 			c.Next()
 			return
 		}
@@ -51,9 +55,9 @@ func SpokeProxyMiddleware() gin.HandlerFunc {
 }
 
 func proxyToRemote(c *gin.Context, spokeBase string) {
-	// Reconstruct target URL: keep path, strip dashboard from query to prevent recursive proxy.
+	// Reconstruct target URL: keep path, strip cluster from query to prevent recursive proxy.
 	q := c.Request.URL.Query()
-	q.Del("dashboard")
+	q.Del("cluster")
 	target := spokeBase + c.Request.URL.Path
 	if encoded := q.Encode(); encoded != "" {
 		target += "?" + encoded
