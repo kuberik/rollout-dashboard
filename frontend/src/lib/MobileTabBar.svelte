@@ -2,10 +2,11 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { GridOutline, RocketOutline, LayersSolid, ClockOutline } from 'flowbite-svelte-icons';
+	import { ChartOutline, GridOutline, RocketOutline, LayersSolid, ClockOutline } from 'flowbite-svelte-icons';
 
 	const tabs = [
-		{ key: 'rollouts', href: '/', label: 'Rollouts', icon: GridOutline },
+		{ key: 'control', href: '/', label: 'Control', icon: ChartOutline },
+		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Envs', icon: LayersSolid },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
@@ -14,6 +15,7 @@
 	function isActive(href: string): boolean {
 		const path = page.url.pathname;
 		if (href === '/') return path === '/';
+		if (href === '/rollouts') return path === '/rollouts' || path.startsWith('/rollouts/') || path.startsWith('/namespaces/');
 		if (href === '/environments') return path === '/environments' || path.startsWith('/envs/');
 		return path === href || path.startsWith(href + '/');
 	}

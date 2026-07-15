@@ -4,10 +4,11 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import type { ClusterInfo, ClusterError } from '$lib/api/rollouts';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { getDisplayVersion, formatTimeAgo, formatTimeAgoCompact, categorizeFailure, formatStatusTime, compareRollouts, detectStuck, shortenVersion } from '$lib/utils';
-	import type { StuckReason } from '$lib/utils';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
+	import { formatTimeAgo, formatTimeAgoCompact, formatStatusTime, shortenVersion } from '$lib/utils';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import { buildRolloutCards } from '$lib/rollout-cards';
+	import type { RolloutCard, StatusKey } from '$lib/rollout-cards';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -26,7 +27,7 @@
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
-	import { sourceDashboardURL, sourceClusterName, rolloutPath, rolloutMatchesEnvironment } from '$lib/source-dashboard';
+	import { rolloutPath } from '$lib/source-dashboard';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
@@ -41,9 +42,6 @@
 	const spokeClusters = $derived<ClusterInfo[]>(query.data?.clusters || []);
 	const clusterErrors = $derived<ClusterError[]>(query.data?.clusterErrors || []);
 	const localClusterURL = $derived<string>(clusterQuery.data?.url || '');
-
-	// Helper: source dashboard URL for a rollout (set as annotation by hub).
-	const rolloutSourceURL = sourceDashboardURL;
 
 	// True when more than one cluster is represented in the current result set.
 	const isMultiCluster = $derived(spokeClusters.length > 0);
@@ -73,140 +71,13 @@
 	}
 
 	// Derive the label for a rollout's cluster URL.
-	function clusterLabelForCard(c: Card): string {
+	function clusterLabelForCard(c: RolloutCard): string {
 		const url = c.sourceURL || localClusterURL;
 		const found = allClusters.find((cl) => cl.url === url);
 		return found?.name || clusterLabelFromURL(url);
 	}
 
-	function envForRollout(r: Rollout): Environment | undefined {
-		return environments.find((e) => rolloutMatchesEnvironment(r, e));
-	}
-
-	type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
-
-	type Card = {
-		ns: string;
-		name: string;
-		title: string;
-		envKey: string;
-		envDisplay: string;
-		envName: string; // raw env name (e.g. 'staging') for behind-by lookups
-		theme: ReturnType<typeof getRolloutEnvironmentTheme>;
-		version: string | null;
-		timestamp: string | null;
-		bakeStatus: string;
-		statusKey: StatusKey;
-		isRunning: boolean;
-		bakeStatusMessage: string | null;
-		failureCategory: string | null;
-		previousSucceededVersion: string | null;
-		pinnedVersion: string | null;
-		stuck: StuckReason | null;
-		behind: { fromEnv: string; version: string; behindBy: number | null } | null;
-		rollout: Rollout;
-		sourceURL: string; // dashboard URL this rollout belongs to (empty = local)
-		sourceCluster: string; // cluster NAME this rollout belongs to (for name-based routing)
-	};
-
-	// Build a per-app map: appName → Array<{envName, rollout, env}> sorted by env tier.
-	// Used to compute "N versions behind" diagnostics on each card.
-	const appIndex = $derived.by(() => {
-		const map = new Map<string, { envName: string; rollout: Rollout }[]>();
-		for (const env of environments) {
-			const appName = env.spec?.rolloutRef?.name;
-			const envName = env.spec?.environment;
-			if (!appName || !envName) continue;
-			const r = rollouts.find((x) => rolloutMatchesEnvironment(x, env));
-			if (!r) continue;
-			if (!map.has(appName)) map.set(appName, []);
-			map.get(appName)!.push({ envName, rollout: r });
-		}
-		for (const list of map.values()) {
-			list.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
-		}
-		return map;
-	});
-
-	// Find the most relevant peer env for this rollout — the one where my
-	// current version exists as a past deploy. That env has progressed past
-	// me, so we say I'm "behind <env>" — direction derived from data, not
-	// from env-name tier assumptions. If no peer has progressed past me but
-	// my history contains a peer's current version, I'm "ahead" of it.
-	function computeBehind(
-		r: Rollout,
-		envName: string
-	): { fromEnv: string; version: string; behindBy: number | null } | null {
-		if (r.spec?.wantedVersion) return null;
-		const peers = appIndex.get(r.metadata?.name ?? '');
-		if (!peers || peers.length < 2) return null;
-		// Prefer peers that have actually moved past me (kind === 'behind').
-		// Among them, pick the one with the highest behindBy (furthest behind).
-		let best: { fromEnv: string; version: string; behindBy: number | null } | null = null;
-		for (const peer of peers) {
-			if (peer.envName === envName) continue;
-			const rel = compareRollouts(r, peer.rollout);
-			if (!rel || rel.kind !== 'behind') continue;
-			const candidate = { fromEnv: peer.envName, version: rel.otherVersion, behindBy: rel.by };
-			if (!best || (candidate.behindBy ?? 0) > (best.behindBy ?? 0)) best = candidate;
-		}
-		return best;
-	}
-
-	const cards = $derived.by<Card[]>(() => {
-		return rollouts.map((r) => {
-			const latest = r.status?.history?.[0];
-			const env = envForRollout(r);
-			const theme = getRolloutEnvironmentTheme(r, env);
-			const bakeStatus = latest?.bakeStatus || 'None';
-			const isRunning = bakeStatus === 'InProgress' || bakeStatus === 'Deploying';
-			let statusKey: StatusKey;
-			if (bakeStatus === 'Failed') statusKey = 'failed';
-			else if (isRunning) statusKey = 'active';
-			else if (!latest) statusKey = 'pending';
-			else statusKey = 'succeeded';
-			const envDisplay = shortEnvLabel(theme);
-			const envName = env?.spec?.environment ?? '';
-			const behind = envName ? computeBehind(r, envName) : null;
-			// For failed cards: find the most recent succeeded version that's different
-			// from the current one. Gives the user a rollback target at a glance.
-			let previousSucceededVersion: string | null = null;
-			if (bakeStatus === 'Failed') {
-				const currentV = latest?.version ? getDisplayVersion(latest.version) : null;
-				for (const h of r.status?.history ?? []) {
-					if (h.bakeStatus !== 'Succeeded') continue;
-					const v = getDisplayVersion(h.version);
-					if (v && v !== currentV) {
-						previousSucceededVersion = v;
-						break;
-					}
-				}
-			}
-			return {
-				ns: r.metadata?.namespace || '',
-				name: r.metadata?.name || '',
-				title: r.status?.title || r.metadata?.name || '',
-				envKey: theme?.name || '',
-				envDisplay,
-				envName,
-				theme,
-				version: latest?.version ? getDisplayVersion(latest.version) : null,
-				timestamp: latest?.timestamp || null,
-				bakeStatus,
-				statusKey,
-				isRunning,
-				bakeStatusMessage: latest?.bakeStatusMessage || null,
-				failureCategory: bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
-				previousSucceededVersion,
-				pinnedVersion: r.spec?.wantedVersion || null,
-				stuck: detectStuck(r, { now: $now }),
-				behind,
-				rollout: r,
-				sourceURL: rolloutSourceURL(r),
-			sourceCluster: sourceClusterName(r)
-			};
-		});
-	});
+	const cards = $derived<RolloutCard[]>(buildRolloutCards(rollouts, environments, $now));
 
 	// Filters
 	let searchQuery = $state('');
@@ -271,7 +142,7 @@
 		ns: string;
 		clusterURL: string; // source dashboard URL (empty = local)
 		clusterLabel: string; // short cluster name for display
-		cards: Card[];
+		cards: RolloutCard[];
 		failedCount: number;
 		activeCount: number;
 		pendingCount: number;
@@ -338,7 +209,7 @@
 	// Failed comes first, then stuck. Pinned-version cards are intentionally
 	// excluded because the user opted in to that state.
 	const attentionItems = $derived.by(() => {
-		const out: { card: Card; reason: 'failed' | 'stuck'; detail: string }[] = [];
+		const out: { card: RolloutCard; reason: 'failed' | 'stuck'; detail: string }[] = [];
 		for (const c of cards) {
 			if (c.statusKey === 'failed') {
 				const detail = c.failureCategory ? `${c.failureCategory} failed` : 'failed';

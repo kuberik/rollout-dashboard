@@ -1,9 +1,5 @@
 <script lang="ts">
-	import RolloutGrid from '$lib/RolloutGrid.svelte';
+	import ControlCenter from '$lib/ControlCenter.svelte';
 </script>
 
-<svelte:head>
-	<title>kuberik | Rollouts</title>
-</svelte:head>
-
-<RolloutGrid />
+<ControlCenter />

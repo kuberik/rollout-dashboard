@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import {
+		ChartOutline,
 		GridOutline,
 		RocketOutline,
 		LayersSolid,
@@ -13,7 +14,8 @@
 	} from 'flowbite-svelte-icons';
 
 	const NAV = [
-		{ key: 'rollouts', href: '/', label: 'Rollouts', icon: GridOutline },
+		{ key: 'control', href: '/', label: 'Control Center', icon: ChartOutline },
+		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Environments', icon: LayersSolid },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
@@ -37,7 +39,8 @@
 
 	function isActive(href: string): boolean {
 		const path = page.url.pathname;
-		if (href === '/') return path === '/' || path.startsWith('/rollouts/') || path.startsWith('/namespaces/');
+		if (href === '/') return path === '/';
+		if (href === '/rollouts') return path === '/rollouts' || path.startsWith('/rollouts/') || path.startsWith('/namespaces/');
 		if (href === '/environments') return path === '/environments' || path.startsWith('/envs/');
 		return path === href || path.startsWith(href + '/');
 	}

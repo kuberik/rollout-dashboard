@@ -225,7 +225,7 @@
 				No rollouts in namespace <code class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800">{namespace}</code>.
 			</p>
 			<a
-				href="/"
+				href="/rollouts"
 				class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
 			>
 				<ArrowLeftOutline class="h-3.5 w-3.5" /> Back to rollouts

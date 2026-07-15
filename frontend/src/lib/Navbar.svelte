@@ -39,16 +39,18 @@
 	// plain static link (no dropdown) — sidebar is the section switcher.
 	type Section = { key: string; label: string; href: string };
 	const SECTIONS: readonly Section[] = [
-		{ key: 'rollouts', label: 'Rollouts', href: '/' },
+		{ key: 'control', label: 'Control Center', href: '/' },
+		{ key: 'rollouts', label: 'Rollouts', href: '/rollouts' },
 		{ key: 'apps', label: 'Apps', href: '/apps' },
 		{ key: 'environments', label: 'Environments', href: '/environments' },
 		{ key: 'activity', label: 'Activity', href: '/activity' }
 	];
 	const currentSection = $derived.by<Section>(() => {
 		const p = page.url.pathname;
-		if (p.startsWith('/apps')) return SECTIONS[1];
-		if (p.startsWith('/environments') || p.startsWith('/envs/')) return SECTIONS[2];
-		if (p.startsWith('/activity')) return SECTIONS[3];
+		if (p.startsWith('/apps')) return SECTIONS[2];
+		if (p.startsWith('/environments') || p.startsWith('/envs/')) return SECTIONS[3];
+		if (p.startsWith('/activity')) return SECTIONS[4];
+		if (p.startsWith('/rollouts') || p.startsWith('/namespaces/')) return SECTIONS[1];
 		return SECTIONS[0];
 	});
 

@@ -195,7 +195,8 @@
 
 		// 5. Actions (top-level pages)
 		const actions: { title: string; href: string; subtitle?: string }[] = [
-			{ title: 'Rollouts', subtitle: 'Home view', href: '/' },
+			{ title: 'Control Center', subtitle: 'Home view', href: '/' },
+			{ title: 'Rollouts', subtitle: 'Full inventory list', href: '/rollouts' },
 			{ title: 'Apps', subtitle: 'Apps across environments', href: '/apps' },
 			{ title: 'Environments', subtitle: 'Cross-env matrix', href: '/environments' },
 			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' }
