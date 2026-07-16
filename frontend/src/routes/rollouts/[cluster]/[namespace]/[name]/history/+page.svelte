@@ -20,10 +20,12 @@
 		formatTimeAgoCompact,
 		formatDuration,
 		formatDate,
+		getDisplayVersion,
 		extractDatadogInfoFromContainers,
 		buildDatadogTestRunsUrl,
 		buildDatadogLogsUrl
 	} from '$lib/utils';
+	import { versionPathForRollout } from '$lib/version-utils';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -226,10 +228,6 @@
 	let selectedVersionTag = $state<string | null>(null);
 	let deployExplanation = $state('');
 
-	function getDisplayVersion(v: { version?: string; revision?: string; tag: string }) {
-		return v.version || v.revision || v.tag;
-	}
-
 	function formatRevision(revision: string) {
 		let r = revision.includes('@sha1:') ? revision.split('@sha1:')[1] : revision;
 		return r.length > 12 ? r.substring(0, 12) : r;
@@ -412,10 +410,20 @@
 								? 'border-blue-400 shadow-md shadow-blue-100 dark:border-blue-600 dark:shadow-blue-950/50'
 								: 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-800/50"
 						>
-							<!-- Collapsed row (always visible) -->
-							<button
+							<!-- Collapsed row (always visible). A `<div role="button">` rather than a
+							     `<button>` — the version text below needs to be a real nested `<a>`,
+							     which isn't valid inside a `<button>`. -->
+							<div
+								role="button"
+								tabindex="0"
 								class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
 								onclick={() => toggleExpand(i)}
+								onkeydown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										toggleExpand(i);
+									}
+								}}
 							>
 								<!-- Status icon -->
 								<div class="flex-shrink-0">
@@ -425,9 +433,13 @@
 								<!-- Version -->
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-center gap-2">
-										<span class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+										<a
+											href={versionPathForRollout(rollout, name, getDisplayVersion(entry.version))}
+											class="font-mono text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+											onclick={(e) => e.stopPropagation()}
+										>
 											{getDisplayVersion(entry.version)}
-										</span>
+										</a>
 										{#if isCurrent}
 											<Badge color="blue" class="text-xs">Current</Badge>
 										{/if}
@@ -468,7 +480,7 @@
 										<ChevronDownOutline class="h-4 w-4" />
 									{/if}
 								</div>
-							</button>
+							</div>
 
 							<!-- Expanded details -->
 							{#if isExpanded}

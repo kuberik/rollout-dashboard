@@ -5,6 +5,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
+	import { versionPathForRollout } from '$lib/version-utils';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, detectStuck } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
@@ -286,14 +287,16 @@
 							{@const prevV = status === 'Failed' ? previousSucceededVersion(a.rollout, ver) : null}
 							{@const stuck = detectStuck(a.rollout, { now: $now })}
 							<li class="environment-theme-scope" style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}>
-								<a
-									href={rolloutPath(a.sourceCluster || localClusterName, a.rollout.metadata?.namespace || '', a.rollout.metadata?.name || '')}
-									class="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
-								>
-									<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
+								<div class="relative flex items-center gap-3 px-5 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
+									<a
+										href={rolloutPath(a.sourceCluster || localClusterName, a.rollout.metadata?.namespace || '', a.rollout.metadata?.name || '')}
+										class="absolute inset-0 z-0"
+										aria-label="Open rollout {a.rollout.metadata?.name}"
+									></a>
+									<span class="pointer-events-none relative z-[1] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
 										<BakeStatusIcon bakeStatus={status} size="medium" />
 									</span>
-									<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+									<div class="pointer-events-none relative z-[1] flex min-w-0 flex-1 flex-col gap-0.5">
 										<div class="flex min-w-0 items-baseline gap-2">
 											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.rollout.metadata?.name}</span>
 											{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
@@ -306,8 +309,12 @@
 											{/if}
 										</div>
 									</div>
-									<div class="flex shrink-0 flex-col items-end gap-0.5">
-										<span class="font-mono text-sm text-gray-700 dark:text-gray-300" title={ver ?? ''}>{ver ?? '—'}</span>
+									<div class="pointer-events-auto relative z-10 flex shrink-0 flex-col items-end gap-0.5">
+										{#if ver}
+											<a href={versionPathForRollout(a.rollout, a.rollout.metadata?.name || '', ver)} class="font-mono text-sm text-gray-700 hover:underline dark:text-gray-300">{ver}</a>
+										{:else}
+											<span class="font-mono text-sm text-gray-700 dark:text-gray-300">—</span>
+										{/if}
 										{#if latest?.timestamp}
 											<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
 												{formatStatusTime(status, latest.timestamp, $now)}
@@ -315,9 +322,9 @@
 										{/if}
 									</div>
 									{#if a.envName || a.theme}
-										<span class="environment-theme-badge shrink-0 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
+										<span class="pointer-events-none relative z-[1] environment-theme-badge shrink-0 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
 									{/if}
-								</a>
+								</div>
 							</li>
 						{/each}
 					</ul>

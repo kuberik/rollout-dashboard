@@ -9,6 +9,7 @@
 		RocketOutline,
 		LayersSolid,
 		ClockOutline,
+		TagOutline,
 		ChevronDoubleLeftOutline,
 		ChevronDoubleRightOutline
 	} from 'flowbite-svelte-icons';
@@ -18,6 +19,7 @@
 		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Environments', icon: LayersSolid },
+		{ key: 'versions', href: '/versions', label: 'Versions', icon: TagOutline },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
 	] as const;
 

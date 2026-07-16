@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
+	import { versionPath, repoKeyFromSource } from '$lib/version-utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import type { Rollout, Environment } from '../../types';
@@ -30,6 +31,7 @@
 		timestamp: string;
 		href: string;
 		isRunning: boolean;
+		source: string | null;
 	};
 
 	const entries = $derived.by<ActivityEntry[]>(() => {
@@ -66,7 +68,8 @@
 					bakeStatus: bs,
 					timestamp: h.timestamp,
 					href: `/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`,
-					isRunning: bs === 'InProgress' || bs === 'Deploying'
+					isRunning: bs === 'InProgress' || bs === 'Deploying',
+					source: r.status?.source ?? null
 				});
 			}
 		}
@@ -180,11 +183,12 @@
 										{/if}
 										<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 									</span>
-									<a
-										href={a.href}
-										class="block rounded-md -mx-2 px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
-									>
-										<div class="flex items-baseline justify-between gap-2">
+									<div class="relative block rounded-md -mx-2 px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
+										<!-- Whole-row link: absolute overlay so any click on the
+										     row (except the version link below) opens the rollout
+										     detail. -->
+										<a href={a.href} class="absolute inset-0 z-0" aria-label="Open {a.displayName}"></a>
+										<div class="pointer-events-none relative z-[1] flex items-baseline justify-between gap-2">
 											<div class="flex min-w-0 items-baseline gap-1.5">
 												{#if a.envName || a.theme}
 													<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
@@ -195,17 +199,19 @@
 												{hourLabel(a.timestamp)}
 											</span>
 										</div>
-										<div class="mt-0.5 flex items-baseline justify-between gap-2 text-[11px]">
+										<div class="pointer-events-none relative z-[1] mt-0.5 flex items-baseline justify-between gap-2 text-[11px]">
 											<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
 											<span class="flex shrink-0 items-baseline gap-1">
 												{#if a.previousVersion}
 													<span class="font-mono text-gray-400/70 line-through dark:text-gray-500/70">{a.previousVersion}</span>
 													<span class="text-[10px] text-gray-300 dark:text-gray-600">→</span>
 												{/if}
-												<span class="font-mono text-gray-700 dark:text-gray-300">{a.version}</span>
+												{#if a.version}
+													<a href={versionPath(repoKeyFromSource(a.source, a.rolloutName), a.version)} class="pointer-events-auto relative z-10 font-mono text-gray-700 hover:underline dark:text-gray-300">{a.version}</a>
+												{/if}
 											</span>
 										</div>
-									</a>
+									</div>
 								</li>
 							{/each}
 						</ol>

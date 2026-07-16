@@ -28,6 +28,7 @@
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
 	import { rolloutPath } from '$lib/source-dashboard';
+	import { versionPathForRollout } from '$lib/version-utils';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
@@ -556,21 +557,23 @@
 							{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 								{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
 								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
-									<a
-										href={rolloutHref}
-										class="row-grid gap-x-4 gap-y-2 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5"
-									>
+									<div class="relative row-grid gap-x-4 gap-y-2 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5">
+										<!-- Whole-row link: an absolute overlay so any click on the
+										     row (except the version link below) opens the rollout
+										     detail. Interactive children must stay `relative z-10`. -->
+										<a href={rolloutHref} class="absolute inset-0 z-0" aria-label="Open rollout {c.name}"></a>
+
 										<!-- Status icon. No animate-ping halo on list rows — the
 										     icon (pulse for bake, spinner for deploy) is enough
 										     signal; the halo at row scale read as "too much". -->
-										<span class="relative col-start-1 row-span-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)} sm:row-span-1">
+										<span class="pointer-events-none relative z-[1] col-start-1 row-span-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)} sm:row-span-1">
 											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 										</span>
 
 										<!-- Name block: name · pretty title · diagnostic line.
 										     Name is the canonical identifier; status.title is a
 										     muted hint shown only when it adds something. -->
-										<div class="flex min-w-0 flex-col">
+										<div class="pointer-events-none relative z-[1] flex min-w-0 flex-col">
 											<div class="flex min-w-0 items-baseline gap-2">
 												<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{c.name}</span>
 												{#if c.stuck}<StuckBadge reason={c.stuck} size="xs" />{/if}
@@ -596,13 +599,13 @@
 										     rollouts render as stacked tracks so steps don't read
 										     across tracks. Bake stays pending until all tracks
 										     complete — same gating as the rollout detail page. -->
-										<div class="hidden shrink-0 items-center lg:flex">
+										<div class="pointer-events-none relative z-[1] hidden shrink-0 items-center lg:flex">
 											<PipelineGlyph summary={derivePipeline(c.rollout, kruiseRolloutsForRollout(c.rollout, kustomizations, kruiseRollouts))} />
 										</div>
 
 										<!-- 24h sparkline: this rollout's hourly deploy density.
 										     12 buckets (2h each) for visual density. -->
-										<div class="hidden shrink-0 items-center lg:flex" aria-label="24h deploys">
+										<div class="pointer-events-none relative z-[1] hidden shrink-0 items-center lg:flex" aria-label="24h deploys">
 											<DeployVolumeSparkline rollouts={[c.rollout]} hours={24} buckets={12} />
 										</div>
 
@@ -612,11 +615,18 @@
 										     versions (full git SHAs, pinned tags with hex
 										     suffixes) overflow the column. `shortenVersion`
 										     trims obvious SHA-like values for compactness; the
-										     full string is preserved in the `title` attribute. -->
-										<div class="col-start-2 row-start-2 flex min-w-0 flex-col sm:col-start-auto sm:row-start-auto sm:items-end">
+										     full string is preserved in the `title` attribute.
+										     Stays `pointer-events-auto relative z-10` (opting back
+										     in above the row overlay link) so the version itself
+										     can link to its own detail page. -->
+										<div class="pointer-events-auto relative z-10 col-start-2 row-start-2 flex min-w-0 flex-col sm:col-start-auto sm:row-start-auto sm:items-end">
 											<div class="flex min-w-0 max-w-full items-baseline gap-1.5">
 												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
-												<span class="min-w-0 truncate font-mono text-sm font-medium text-gray-900 dark:text-white" title={c.version ?? ''}>{c.version ? shortenVersion(c.version) : '—'}</span>
+												{#if c.version}
+													<a href={versionPathForRollout(c.rollout, c.name, c.version)} class="min-w-0 truncate font-mono text-sm font-medium text-gray-900 hover:underline dark:text-white" title={c.version}>{shortenVersion(c.version)}</a>
+												{:else}
+													<span class="min-w-0 truncate font-mono text-sm font-medium text-gray-900 dark:text-white">—</span>
+												{/if}
 											</div>
 											{#if c.timestamp}
 												<span class="font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatTimeAgo(c.timestamp, $now)}>
@@ -629,9 +639,9 @@
 
 										<!-- Env badge -->
 										{#if c.envDisplay}
-											<span class="environment-theme-badge inline-flex shrink-0 items-center justify-self-center rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
+											<span class="pointer-events-none relative z-[1] environment-theme-badge inline-flex shrink-0 items-center justify-self-center rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
 										{/if}
-									</a>
+									</div>
 								</li>
 							{/each}
 						</ul>

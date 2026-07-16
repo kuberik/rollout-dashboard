@@ -5,6 +5,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { sourceDashboardURL, sourceClusterName, rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
+	import { versionPathForRollout } from '$lib/version-utils';
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
@@ -830,11 +831,15 @@
 						<!-- 3-column body — visual; clicks fall through to the card link. -->
 						<div class="pointer-events-none relative z-[1] grid grid-cols-1 divide-y divide-gray-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0 dark:divide-gray-700/60">
 							<!-- Version -->
-							<div class="px-4 py-3">
+							<div class="pointer-events-auto relative z-10 px-4 py-3">
 								<div class="mb-1 font-mono text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Version</div>
 								<div class="flex flex-wrap items-baseline gap-2">
 									{#if c.rollout?.spec?.wantedVersion}<PinBadge version={c.rollout.spec.wantedVersion} size="xs" />{/if}
-									<span class="font-mono text-base text-gray-900 dark:text-white" title={ver ?? ''}>{ver ?? '—'}</span>
+									{#if ver}
+										<a href={versionPathForRollout(c.rollout, appName, ver)} class="font-mono text-base text-gray-900 hover:underline dark:text-white">{ver}</a>
+									{:else}
+										<span class="font-mono text-base text-gray-900 dark:text-white">—</span>
+									{/if}
 								</div>
 								{#if prevV}
 									<div class="mt-0.5 font-mono text-[11px] text-gray-400 line-through dark:text-gray-500">was {prevV}</div>

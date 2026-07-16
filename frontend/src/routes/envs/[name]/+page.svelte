@@ -5,6 +5,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
+	import { versionPathForRollout } from '$lib/version-utils';
 	import { getDisplayVersion, shortenVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, compareRollouts } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
@@ -536,9 +537,13 @@
 									</div>
 									<div class="flex shrink-0 items-center gap-3">
 										<div class="flex flex-col items-end gap-1">
-											<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300" title={latest ? getDisplayVersion(latest.version) : ''}>
-												{latest ? shortenVersion(getDisplayVersion(latest.version)) : '—'}
-											</span>
+											{#if latest}
+												<a href={versionPathForRollout(s.rollout, s.appName, getDisplayVersion(latest.version))} class="truncate font-mono text-sm font-medium text-gray-700 hover:underline dark:text-gray-300" title={getDisplayVersion(latest.version)}>
+													{shortenVersion(getDisplayVersion(latest.version))}
+												</a>
+											{:else}
+												<span class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">—</span>
+											{/if}
 											{#if latest?.timestamp}
 												<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
 													{formatStatusTime(status, latest.timestamp, $now)}

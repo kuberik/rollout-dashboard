@@ -4,6 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
+	import { versionPathForRollout } from '$lib/version-utils';
 	import { getDisplayVersion, shortenVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, compareRollouts, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -277,19 +278,23 @@
 							{@const stuck = appStuckFor(appName, s.envName, s, $now)}
 							{@const isRunning = status === 'InProgress' || status === 'Deploying'}
 							<li>
-								<a
-									href={detailHref}
-									class="grid items-center gap-4 px-5 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+								<div
+									class="relative grid items-center gap-4 px-5 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
 									style="grid-template-columns: 36px minmax(0, 1.5fr) 180px 110px 60px;"
 								>
+									<!-- Whole-row link: absolute overlay so any click on the
+									     row (except the version link below) opens the rollout
+									     detail. Interactive children stay `relative z-10`. -->
+									<a href={detailHref} class="absolute inset-0 z-0" aria-label="Open rollout {appName}"></a>
+
 									<!-- Status circle. No animate-ping halo — icon (pulse for
 									     bake, spinner for deploy) is the running indicator. -->
-									<span class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
+									<span class="pointer-events-none relative z-[1] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
 										<BakeStatusIcon bakeStatus={status} size="medium" />
 									</span>
 
 									<!-- Title + name + status chip + "was vX" -->
-									<div class="flex min-w-0 flex-col gap-0.5">
+									<div class="pointer-events-none relative z-[1] flex min-w-0 flex-col gap-0.5">
 										<div class="flex min-w-0 items-baseline gap-2">
 											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{appName}</span>
 											{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
@@ -317,7 +322,7 @@
 									</div>
 
 									<!-- 6-tick deploy history strip + summary line -->
-									<div class="hidden flex-col gap-1 sm:flex">
+									<div class="pointer-events-none relative z-[1] hidden flex-col gap-1 sm:flex">
 										<div class="flex items-center gap-1">
 											{#each strip as t, i (t.key)}
 												<span class="inline-block h-1.5 w-3.5 rounded-sm {dotBg(t.status)} {i === strip.length - 1 ? 'opacity-100' : 'opacity-55'}"></span>
@@ -328,18 +333,22 @@
 									</div>
 
 									<!-- Version (pin badge appears to the left of the version) -->
-									<div class="flex items-center justify-end gap-1.5 justify-self-end">
+									<div class="pointer-events-auto relative z-10 flex items-center justify-end gap-1.5 justify-self-end">
 										{#if r.spec?.wantedVersion}<PinBadge version={r.spec.wantedVersion} size="xs" />{/if}
-										<span class="font-mono text-xs text-gray-700 dark:text-gray-300" title={ver ?? ''}>{ver ? shortenVersion(ver) : '—'}</span>
+										{#if ver}
+											<a href={versionPathForRollout(r, appName, ver)} class="font-mono text-xs text-gray-700 hover:underline dark:text-gray-300">{shortenVersion(ver)}</a>
+										{:else}
+											<span class="font-mono text-xs text-gray-700 dark:text-gray-300">—</span>
+										{/if}
 									</div>
 
 									<!-- Age -->
 									{#if latest?.timestamp}
-										<span class="text-right font-mono text-[10px] text-gray-400 dark:text-gray-500 justify-self-end" title={formatTimeAgo(latest.timestamp, $now)}>{formatTimeAgoCompact(latest.timestamp, $now)}</span>
+										<span class="pointer-events-none relative z-[1] text-right font-mono text-[10px] text-gray-400 dark:text-gray-500 justify-self-end" title={formatTimeAgo(latest.timestamp, $now)}>{formatTimeAgoCompact(latest.timestamp, $now)}</span>
 									{:else}
-										<span class="text-right font-mono text-[10px] text-gray-300 dark:text-gray-600 justify-self-end">—</span>
+										<span class="pointer-events-none relative z-[1] text-right font-mono text-[10px] text-gray-300 dark:text-gray-600 justify-self-end">—</span>
 									{/if}
-								</a>
+								</div>
 							</li>
 						{/each}
 					</ul>

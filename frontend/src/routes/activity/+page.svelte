@@ -4,6 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
+	import { versionPath, repoKeyFromSource } from '$lib/version-utils';
 	import { formatTimeAgoCompact, formatTimeAgo, getDisplayVersion } from '$lib/utils';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -370,16 +371,17 @@
 								     circle. Circle column is locked to 28px so the line at
 								     left: px-4 (16) + 14 = 30px sits exactly through the center. -->
 								<span class="absolute left-[30px] w-px bg-gray-200 dark:bg-gray-700/60" style="top: {isFirst ? '50%' : '0'}; bottom: {isLast ? '50%' : '0'};" aria-hidden="true"></span>
-								<a
-									href={entry.href}
-									class="grid w-full min-w-0 grid-cols-[28px_3rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
-								>
+								<div class="relative grid w-full min-w-0 grid-cols-[28px_3rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30">
+									<!-- Whole-row link: absolute overlay so any click on the row
+									     (except the version link below) opens the rollout detail. -->
+									<a href={entry.href} class="absolute inset-0 z-0" aria-label="Open {entry.displayName}"></a>
+
 									<!-- Status circle: 28px wide so the rail at 30px from row
 									     edge passes through its center. The colored bg class
 									     uses `/30` opacity in dark mode, which let the rail
 									     line show through; cover the rail with an opaque
 									     card-bg disc, then layer the colored bg on top. -->
-									<span class="relative z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white ring-2 ring-white dark:bg-gray-800 dark:ring-gray-800">
+									<span class="pointer-events-none relative z-[1] inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white ring-2 ring-white dark:bg-gray-800 dark:ring-gray-800">
 										<span class="absolute inset-0 rounded-full {getStatusCircleClass(entry.bakeStatus)}" aria-hidden="true"></span>
 										<!-- Icon wrapper: own flex centering so inline-block
 										     spinners (StatusSpinner, Flowbite pulse svg) and
@@ -390,10 +392,10 @@
 									</span>
 
 									<!-- Time -->
-									<span class="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" title={formatTimeAgo(entry.timestamp, $now)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
+									<span class="pointer-events-none relative z-[1] font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" title={formatTimeAgo(entry.timestamp, $now)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
 
 									<!-- Inline message: [actor] [verb] [app] to [env] [version] · [msg] -->
-									<div class="flex min-w-0 items-baseline gap-x-2 gap-y-1 text-[12.5px] flex-wrap">
+									<div class="pointer-events-none relative z-[1] flex min-w-0 items-baseline gap-x-2 gap-y-1 text-[12.5px] flex-wrap">
 										<span class="truncate font-medium text-gray-700 dark:text-gray-300">{entry.actor}</span>
 										<span class="text-gray-400 dark:text-gray-500">
 											{#if entry.bakeStatus === 'Failed'}failed{:else if entry.bakeStatus === 'InProgress'}is baking{:else if entry.bakeStatus === 'Deploying'}is deploying{:else if entry.bakeStatus === 'Cancelled'}cancelled{:else}deployed{/if}
@@ -403,7 +405,9 @@
 											<span class="text-gray-400 dark:text-gray-500">to</span>
 											<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(entry.theme) || entry.envName}</span>
 										{/if}
-										<span class="font-mono text-[11px] text-gray-600 dark:text-gray-300">{entry.version}</span>
+										{#if entry.version}
+											<a href={versionPath(repoKeyFromSource(entry.source, entry.rolloutName), entry.version)} class="pointer-events-auto relative z-10 font-mono text-[11px] text-gray-600 hover:underline dark:text-gray-300">{entry.version}</a>
+										{/if}
 										{#if entry.bakeStatus !== 'Succeeded'}
 											<span class="font-mono text-[10px] text-gray-300 dark:text-gray-600">·</span>
 											<span class="font-mono text-[11px] {cfg.textClass}">{cfg.label.toLowerCase()}</span>
@@ -411,12 +415,12 @@
 									</div>
 
 									<!-- "was vX" supplemental line on previous-version transitions -->
-									<div class="hidden shrink-0 items-baseline justify-end sm:flex">
+									<div class="pointer-events-none relative z-[1] hidden shrink-0 items-baseline justify-end sm:flex">
 										{#if entry.previousVersion}
 											<span class="font-mono text-[10px] text-gray-400/70 dark:text-gray-500/70">was <span class="line-through">{entry.previousVersion}</span></span>
 										{/if}
 									</div>
-								</a>
+								</div>
 								<!-- Lazy commit changelist: sibling of the row link (not nested),
 								     fetched only when expanded. Indented to align under the message. -->
 								{#if entry.source && entry.revision && entry.previousRevision}

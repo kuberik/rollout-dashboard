@@ -2,13 +2,14 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { ChartOutline, GridOutline, RocketOutline, LayersSolid, ClockOutline } from 'flowbite-svelte-icons';
+	import { ChartOutline, GridOutline, RocketOutline, LayersSolid, ClockOutline, TagOutline } from 'flowbite-svelte-icons';
 
 	const tabs = [
 		{ key: 'control', href: '/', label: 'Control', icon: ChartOutline },
 		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Envs', icon: LayersSolid },
+		{ key: 'versions', href: '/versions', label: 'Versions', icon: TagOutline },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
 	] as const;
 

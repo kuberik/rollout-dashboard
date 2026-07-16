@@ -89,6 +89,7 @@
 		buildDatadogLogsUrl,
 		detectStuck
 	} from '$lib/utils';
+	import { versionPathForRollout } from '$lib/version-utils';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
@@ -1235,11 +1236,12 @@
 										/>
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-												<span
-													class="text-xl font-bold tracking-tight text-gray-900 dark:text-white"
+												<a
+													href={versionPathForRollout(rollout, name, getDisplayVersion(latestEntry.version))}
+													class="text-xl font-bold tracking-tight text-gray-900 hover:underline dark:text-white"
 												>
 													{getDisplayVersion(latestEntry.version)}
-												</span>
+												</a>
 												<span class="text-sm {latestEntry.bakeStatus === 'Succeeded' ? 'text-green-600 dark:text-green-400' : latestEntry.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : latestEntry.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : latestEntry.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}">
 													{latestEntry.bakeStatus}
 												</span>
