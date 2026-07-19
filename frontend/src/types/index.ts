@@ -11,29 +11,6 @@ export type OCIRepository = components['schemas']['OCIRepository'];
 export type KruiseRollout = components['schemas']['KruiseRollout'];
 export type ManagedResourceStatus = ManagedResourceStatusType;
 
-export type HistoryEntry = {
-	bakeEndTime?: string;
-	bakeStartTime?: string;
-	bakeStatus?: string;
-	bakeStatusMessage?: string;
-	failedHealthChecks?: {
-		message?: string;
-		name: string;
-		namespace: string;
-	}[];
-	id?: number;
-	message?: string;
-	lastRetryTimestamp?: string;
-	timestamp: string;
-	triggeredBy?: {
-		kind: 'User' | 'System';
-		name: string;
-	};
-	version: {
-		created?: string;
-		digest?: string;
-		revision?: string;
-		tag: string;
-		version?: string;
-	};
-};
+// Auto-generated: Extract array element type from Rollout status schema
+type RolloutStatus = Required<Rollout>['status'];
+export type HistoryEntry = Required<RolloutStatus>['history'][number];
