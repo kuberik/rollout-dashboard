@@ -7,16 +7,20 @@
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { formatStatusTime, shortenVersion, parseGoDuration } from '$lib/utils';
+	import { formatStatusTime, shortenVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import { rolloutPath } from '$lib/source-dashboard';
+	import { computeBakeProgress } from '$lib/view-models/bake-progress';
+	import { Button } from 'flowbite-svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import PipelineGlyph from '$lib/components/PipelineGlyph.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
-	import { ChevronRightOutline } from 'flowbite-svelte-icons';
+	import StatusTile from '$lib/components/StatusTile.svelte';
+	import LagChip from '$lib/components/LagChip.svelte';
+	import { ChevronRightOutline, CloseCircleSolid, ClockSolid } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
 
 	const query = createQuery(() =>
@@ -49,10 +53,18 @@
 	const steadyAll = $derived.by<RolloutCard[]>(() =>
 		cards.filter((c) => c.statusKey === 'succeeded' && !c.stuck)
 	);
+	const pendingCards = $derived.by<RolloutCard[]>(() =>
+		cards.filter((c) => c.statusKey === 'pending')
+	);
+	const pendingCount = $derived(pendingCards.length);
+	// Steady section grid also surfaces pending rollouts (no deploy yet) so
+	// they aren't invisible — they're counted separately in the header but
+	// still need a chip so the user knows which app is waiting.
+	const steadySectionAll = $derived<RolloutCard[]>([...steadyAll, ...pendingCards]);
 	const STEADY_PREVIEW = 8;
-	const steadyPreview = $derived(steadyAll.slice(0, STEADY_PREVIEW));
+	const steadySectionPreview = $derived(steadySectionAll.slice(0, STEADY_PREVIEW));
 
-	const pendingCount = $derived(cards.filter((c) => c.statusKey === 'pending').length);
+	const namespaceCount = $derived(new Set(cards.map((c) => c.ns)).size);
 
 	const healthPct = $derived(
 		cards.length > 0 ? Math.round((steadyAll.length / cards.length) * 100) : 0
@@ -77,10 +89,17 @@
 		if (c.bakeStatus !== 'InProgress') return { pct: null };
 		const start = c.rollout.status?.history?.[0]?.bakeStartTime;
 		const bakeTime = c.rollout.spec?.bakeTime;
-		const total = bakeTime ? parseGoDuration(bakeTime) : 0;
-		if (!start || !total) return { pct: null };
-		const elapsed = $now.getTime() - new Date(start).getTime();
-		return { pct: Math.max(0, Math.min(100, Math.round((elapsed / total) * 100))) };
+		const result = computeBakeProgress(start, bakeTime, $now);
+		return { pct: result ? Math.round(result.fraction * 100) : null };
+	}
+
+	// Needs-you action affordance: link to the rollout's detail page (where
+	// the real retry/reconcile/promote controls live) with copy that
+	// matches the specific trouble the card is flagging.
+	function attnActionLabel(c: RolloutCard): string {
+		if (c.statusKey === 'failed') return 'Retry deploy';
+		if (c.stuck?.kind === 'baking') return 'Promote now';
+		return 'Reconcile';
 	}
 </script>
 
@@ -147,55 +166,21 @@
 			class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800"
 		>
 			<div class="flex flex-wrap items-center justify-between gap-6">
-				<div>
+				<div class="min-w-0">
 					<span
 						class="text-[11px] font-semibold tracking-wider text-gray-400 uppercase dark:text-gray-500"
-						>Fleet health</span
+						>Mission control · {namespaceCount} namespace{namespaceCount === 1 ? '' : 's'}</span
 					>
-					<div class="mt-1 flex items-baseline gap-2">
-						<span class="font-mono text-4xl font-light text-gray-900 tabular-nums dark:text-white"
-							>{healthPct}%</span
-						>
-						<span class="text-sm text-gray-500 dark:text-gray-400"
-							>of {cards.length} rollout{cards.length === 1 ? '' : 's'} healthy</span
-						>
+					<div
+						class="font-montserrat mt-1 text-3xl font-light text-gray-900 sm:text-4xl dark:text-white"
+					>
+						{healthPct}% of the fleet is healthy
 					</div>
 				</div>
 				<div class="flex flex-wrap items-center gap-2">
-					<div
-						class="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-red-50/60 px-4 py-2 dark:border-gray-700 dark:bg-red-900/10"
-					>
-						<span class="font-mono text-xl font-light text-red-700 tabular-nums dark:text-red-400"
-							>{needsYou.length}</span
-						>
-						<span
-							class="text-[10px] font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400"
-							>need you</span
-						>
-					</div>
-					<div
-						class="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-blue-50/60 px-4 py-2 dark:border-gray-700 dark:bg-blue-900/10"
-					>
-						<span class="font-mono text-xl font-light text-blue-700 tabular-nums dark:text-blue-400"
-							>{inMotion.length}</span
-						>
-						<span
-							class="text-[10px] font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400"
-							>in motion</span
-						>
-					</div>
-					<div
-						class="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-green-50/60 px-4 py-2 dark:border-gray-700 dark:bg-green-900/10"
-					>
-						<span
-							class="font-mono text-xl font-light text-green-700 tabular-nums dark:text-green-400"
-							>{steadyAll.length}</span
-						>
-						<span
-							class="text-[10px] font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400"
-							>steady</span
-						>
-					</div>
+					<StatusTile n={needsYou.length} label="need you" tone="fail" />
+					<StatusTile n={inMotion.length} label="in motion" />
+					<StatusTile n={steadyAll.length} label="steady" />
 				</div>
 				<div class="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
 					<span class="font-mono tracking-wider uppercase">deploys · 24h</span>
@@ -224,27 +209,29 @@
 									: c.stuck?.kind === 'deploying'
 										? 'deploying >1h'
 										: `behind ${c.stuck?.peerEnv ?? ''}`}
-						<a
-							href={href(c)}
-							class="environment-theme-scope flex flex-col gap-3 rounded-xl border border-gray-200 bg-red-50/40 p-4 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-red-900/10 dark:hover:border-gray-600"
+						<div
+							class="environment-theme-scope flex flex-col gap-3 rounded-xl border border-gray-200 bg-red-50/40 p-4 dark:border-gray-700 dark:bg-red-900/10"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
-							<div class="flex items-center gap-3">
+							<a href={href(c)} class="flex items-center gap-3 hover:opacity-80">
 								<span
-									class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+									class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 										c.bakeStatus
 									)}"
 								>
-									<BakeStatusIcon bakeStatus={c.bakeStatus} size="small" />
+									<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
 								</span>
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
 										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white"
-											>{c.name}</span
+											>{c.title}</span
 										>
 										{#if c.stuck}<StuckBadge reason={c.stuck} size="xs" />{/if}
 									</div>
-									<span class="truncate text-[11px] text-gray-400 dark:text-gray-500">{c.ns}</span>
+									<span
+										class="block truncate font-mono text-[11px] text-gray-400 dark:text-gray-500"
+										>{c.name} · {c.ns}</span
+									>
 								</div>
 								{#if c.envDisplay}
 									<span
@@ -252,25 +239,35 @@
 										>{c.envDisplay}</span
 									>
 								{/if}
-							</div>
-							<div class="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+							</a>
+							<div class="flex items-center gap-1.5 text-xs text-red-700 dark:text-red-400">
+								{#if c.statusKey === 'failed'}
+									<CloseCircleSolid class="h-3.5 w-3.5 shrink-0" />
+								{:else}
+									<ClockSolid class="h-3.5 w-3.5 shrink-0" />
+								{/if}
 								<span class="truncate">{why}</span>
 							</div>
 							<div
 								class="flex items-center justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-700/60"
 							>
-								<PipelineGlyph
-									summary={derivePipeline(
-										c.rollout,
-										kruiseRolloutsForRollout(c.rollout, kustomizations, kruiseRollouts)
-									)}
-								/>
-								<span
-									class="font-mono text-xs text-gray-600 dark:text-gray-300"
-									title={c.version ?? ''}>{c.version ? shortenVersion(c.version) : '—'}</span
+								<div class="flex min-w-0 items-center gap-2">
+									<PipelineGlyph
+										summary={derivePipeline(
+											c.rollout,
+											kruiseRolloutsForRollout(c.rollout, kustomizations, kruiseRollouts)
+										)}
+									/>
+									<span
+										class="font-mono text-xs text-gray-600 dark:text-gray-300"
+										title={c.version ?? ''}>{c.version ? shortenVersion(c.version) : '—'}</span
+									>
+								</div>
+								<Button size="xs" color="light" href={href(c)} class="shrink-0"
+									>{attnActionLabel(c)}</Button
 								>
 							</div>
-						</a>
+						</div>
 					{/each}
 				</div>
 			</section>
@@ -308,12 +305,27 @@
 									<BakeStatusIcon bakeStatus={c.bakeStatus} size="small" />
 								</span>
 								<div class="min-w-0 flex-1">
-									<span class="truncate text-sm font-semibold text-gray-900 dark:text-white"
-										>{c.name}</span
-									>
+									<div class="flex items-center gap-1.5">
+										<span class="truncate text-sm font-semibold text-gray-900 dark:text-white"
+											>{c.title}</span
+										>
+										<span class="relative flex h-1.5 w-1.5 shrink-0" title="live">
+											<span
+												class="absolute inset-0 animate-ping rounded-full {c.bakeStatus ===
+												'Deploying'
+													? 'bg-blue-400/60'
+													: 'bg-yellow-400/60'}"
+											></span>
+											<span
+												class="relative h-1.5 w-1.5 rounded-full {c.bakeStatus === 'Deploying'
+													? 'bg-blue-500'
+													: 'bg-yellow-500'}"
+											></span>
+										</span>
+									</div>
 									<span
 										class="block truncate font-mono text-[11px] text-gray-400 dark:text-gray-500"
-										>{c.version ? shortenVersion(c.version) : '—'}</span
+										>{c.name} · {c.version ? shortenVersion(c.version) : '—'}</span
 									>
 								</div>
 								{#if c.envDisplay}
@@ -376,11 +388,11 @@
 					View all rollouts <ChevronRightOutline class="h-3 w-3" />
 				</a>
 			</div>
-			{#if steadyAll.length === 0}
+			{#if steadySectionAll.length === 0}
 				<p class="text-sm text-gray-400 dark:text-gray-500">No healthy rollouts yet.</p>
 			{:else}
 				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-					{#each steadyPreview as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+					{#each steadySectionPreview as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
@@ -395,7 +407,7 @@
 							</span>
 							<span
 								class="min-w-0 flex-1 truncate text-xs font-medium text-gray-900 dark:text-white"
-								>{c.name}</span
+								>{c.title}</span
 							>
 							{#if c.envDisplay}
 								<span
@@ -406,15 +418,35 @@
 							<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400"
 								>{c.version ? shortenVersion(c.version) : '—'}</span
 							>
+							{#if c.statusKey === 'pending'}
+								<span
+									class="shrink-0 text-[9px] font-semibold tracking-wider text-gray-400 uppercase dark:text-gray-500"
+									>pending</span
+								>
+							{:else if c.behind}
+								{#if c.behind.behindBy}
+									<LagChip behindBy={c.behind.behindBy} />
+								{:else}
+									<span
+										class="shrink-0 text-[9px] font-semibold tracking-wider text-gray-400 uppercase dark:text-gray-500"
+										>behind</span
+									>
+								{/if}
+							{:else}
+								<span
+									class="shrink-0 text-[9px] font-semibold tracking-wider text-green-600 uppercase dark:text-green-400"
+									>newest</span
+								>
+							{/if}
 						</a>
 					{/each}
 				</div>
-				{#if steadyAll.length > steadyPreview.length}
+				{#if steadySectionAll.length > steadySectionPreview.length}
 					<a
 						href="/rollouts"
 						class="mt-2 inline-block text-xs text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
 					>
-						+{steadyAll.length - steadyPreview.length} more in the full rollouts list
+						+{steadySectionAll.length - steadySectionPreview.length} more in the full rollouts list
 					</a>
 				{/if}
 			{/if}
