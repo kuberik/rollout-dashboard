@@ -7,7 +7,7 @@
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { formatStatusTime, shortenVersion } from '$lib/utils';
+	import { formatStatusTime, shortenVersion, parseGoDuration } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
@@ -35,25 +35,6 @@
 
 	function href(c: RolloutCard): string {
 		return rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name);
-	}
-
-	// Parses Go-style durations ("30m", "1h30m", "45s") into milliseconds.
-	// Returns null for anything unparseable — callers fall back to an
-	// indeterminate progress indicator rather than guessing.
-	function parseGoDuration(d: string | undefined | null): number | null {
-		if (!d) return null;
-		const re = /(\d+(?:\.\d+)?)(h|m|s)/g;
-		let total = 0;
-		let matched = false;
-		let m: RegExpExecArray | null;
-		while ((m = re.exec(d))) {
-			matched = true;
-			const n = parseFloat(m[1]);
-			if (m[2] === 'h') total += n * 3600000;
-			else if (m[2] === 'm') total += n * 60000;
-			else total += n * 1000;
-		}
-		return matched ? total : null;
 	}
 
 	const needsYou = $derived.by<RolloutCard[]>(() => {
@@ -95,7 +76,8 @@
 	function bakeProgress(c: RolloutCard): { pct: number | null } {
 		if (c.bakeStatus !== 'InProgress') return { pct: null };
 		const start = c.rollout.status?.history?.[0]?.bakeStartTime;
-		const total = parseGoDuration(c.rollout.spec?.bakeTime);
+		const bakeTime = c.rollout.spec?.bakeTime;
+		const total = bakeTime ? parseGoDuration(bakeTime) : 0;
 		if (!start || !total) return { pct: null };
 		const elapsed = $now.getTime() - new Date(start).getTime();
 		return { pct: Math.max(0, Math.min(100, Math.round((elapsed / total) * 100))) };

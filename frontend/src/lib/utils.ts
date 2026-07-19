@@ -202,6 +202,23 @@ export function formatDuration(timestamp: string, now: Date = new Date()): strin
     return `${diffInYears} year${diffInYears === 1 ? '' : 's'}`;
 }
 
+// Parses Go-style durations ("30m", "1h30m", "45s") into milliseconds.
+// Returns 0 for anything unparseable (callers treat a falsy result as
+// "no/indeterminate duration").
+export function parseGoDuration(d: string): number {
+    if (!d) return 0;
+    const re = /(\d+(?:\.\d+)?)(h|m|s)/g;
+    let total = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(d))) {
+        const n = parseFloat(m[1]);
+        if (m[2] === 'h') total += n * 3600000;
+        else if (m[2] === 'm') total += n * 60000;
+        else total += n * 1000;
+    }
+    return total;
+}
+
 type StatusColor = 'yellow' | 'green' | 'red';
 
 export function getRolloutStatus(deployment: Rollout): { color: StatusColor; text: string } {
