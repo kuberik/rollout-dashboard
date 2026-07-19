@@ -4,6 +4,7 @@
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
 	import { versionPath, repoKeyFromSource } from '$lib/version-utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
+	import { rolloutPath, sourceClusterName } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
 	import type { Rollout, Environment } from '../../types';
 
@@ -11,12 +12,17 @@
 		rollouts,
 		environments = [],
 		limit = 20,
-		activityHref = '/activity'
+		activityHref = '/activity',
+		localClusterName = ''
 	}: {
 		rollouts: Rollout[];
 		environments?: Environment[];
 		limit?: number;
 		activityHref?: string;
+		// Cluster to route to when a rollout carries no source-cluster
+		// annotation (e.g. a single-cluster dashboard, or a detail fetch that
+		// doesn't stamp cross-cluster provenance).
+		localClusterName?: string;
 	} = $props();
 
 	type ActivityEntry = {
@@ -67,7 +73,11 @@
 					previousVersion: prev,
 					bakeStatus: bs,
 					timestamp: h.timestamp,
-					href: `/rollouts/${r.metadata?.namespace}/${r.metadata?.name}`,
+					href: rolloutPath(
+						sourceClusterName(r) || localClusterName,
+						r.metadata?.namespace ?? '',
+						r.metadata?.name ?? ''
+					),
 					isRunning: bs === 'InProgress' || bs === 'Deploying',
 					source: r.status?.source ?? null
 				});
