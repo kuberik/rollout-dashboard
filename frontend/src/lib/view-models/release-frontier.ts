@@ -72,22 +72,28 @@ export function buildReleaseFrontier(
 	// first cell's repoKey is representative of the whole app.
 	const matchedGroups = [...groups.values()].filter((g) => g.cells[0]?.repoKey === repoKey);
 
-	// The frontier's env stops are the union of env names across every
+	// The frontier's env stops are the union of environment tiers across every
 	// matched app (mirrors buildMatrix's envTiers), not just one app's own
-	// cells — otherwise an app that's absent from an env would simply have
-	// no stop for it instead of an explicit 'absent' state.
-	const envNameSet = new Set<string>();
+	// cells — otherwise an app that's absent from an env would simply have no
+	// stop for it instead of an explicit 'absent' state. Derive tiers strictly
+	// from `cell.environment?.spec?.environment` (the real tier); unbound
+	// rollouts, whose `cell.envName` is a namespace fallback rather than a tier,
+	// contribute no tier and must not fold their namespace into the tier set.
+	const tierSet = new Set<string>();
 	for (const group of matchedGroups) {
-		for (const cell of group.cells) envNameSet.add(cell.envName);
+		for (const cell of group.cells) {
+			const tier = cell.environment?.spec?.environment;
+			if (tier) tierSet.add(tier);
+		}
 	}
-	const envNames = sortEnvironmentNames([...envNameSet]);
+	const envNames = sortEnvironmentNames([...tierSet]);
 
 	const apps: FrontierApp[] = matchedGroups.map((group) => {
 		let title = group.appName;
 		const versions = newestFirstVersions(group);
 
 		const stops: FrontierStop[] = envNames.map((envName) => {
-			const cell = group.cells.find((c) => c.envName === envName);
+			const cell = group.cells.find((c) => c.environment?.spec?.environment === envName);
 			if (!cell) return { envName, state: 'absent', version: null };
 			if (cell.rollout.status?.title) title = cell.rollout.status.title;
 			const cellVer = cellVersion(cell);

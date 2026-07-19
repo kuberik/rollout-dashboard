@@ -87,6 +87,24 @@ describe('buildReleaseFrontier', () => {
 		expect(a.total).toBe(1); // absent stops excluded from total
 	});
 
+	it('does not fold an unbound repo-mate rollout namespace into the tier set', () => {
+		// App 'a' is Environment-bound (dev/staging/prod tiers). App 'u' shares
+		// the repo but has NO Environment binding, so groupRolloutsByApp falls
+		// back to grouping it by name with envName = its namespace ('u-ns').
+		// That namespace must not leak into the frontier's tier union.
+		const rollouts: Rollout[] = [
+			...FIXTURE_ROLLOUTS.filter((r) => r.metadata?.name === 'a'),
+			rollout('u', 'u-ns', 'v1', 'App U')
+		];
+		const environments: Environment[] = FIXTURE_ENVS.filter(
+			(e) => e.spec?.rolloutRef?.name === 'a'
+		);
+		const { apps } = buildReleaseFrontier(REPO_KEY_A, 'v2', rollouts, environments);
+		const a = apps.find((x) => x.appName === 'a')!;
+		expect(a.stops.map((s) => s.envName)).toEqual(['dev', 'staging', 'prod']);
+		expect(a.stops.some((s) => s.envName === 'u-ns')).toBe(false);
+	});
+
 	it('orders stops via sortEnvironmentNames', () => {
 		const { apps } = buildReleaseFrontier(REPO_KEY_A, 'v2', FIXTURE_ROLLOUTS, FIXTURE_ENVS);
 		const a = apps.find((x) => x.appName === 'a')!;
