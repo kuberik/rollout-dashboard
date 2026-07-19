@@ -12,6 +12,11 @@ export type MatrixCellVM = {
 	version: string;
 	statusKey: string;
 	behindBy: number;
+	// Raw bakeStatus off the cell's rollout (status.history[0].bakeStatus).
+	// statusKey collapses InProgress(baking) and Deploying into the same
+	// 'active' bucket; components that need to tell baking apart from
+	// deploying (e.g. to color a matrix dot yellow vs blue) read this.
+	bakeStatus: string | undefined;
 };
 
 export type MatrixRow = {
@@ -75,12 +80,14 @@ function buildRow(
 
 		if (cell.rollout.status?.title) title = cell.rollout.status.title;
 
-		const versionInfo = cell.rollout.status?.history?.[0]?.version;
+		const latestHistory = cell.rollout.status?.history?.[0];
+		const versionInfo = latestHistory?.version;
 		const version = versionInfo ? getDisplayVersion(versionInfo) : '';
 		const statusKey = statusByRollout.get(cell.rollout) ?? 'pending';
 		const behindBy = cellLag(group, cell.envName)?.behindBy ?? 0;
+		const bakeStatus = latestHistory?.bakeStatus;
 
-		cells[tier] = { envName: cell.envName, version, statusKey, behindBy };
+		cells[tier] = { envName: cell.envName, version, statusKey, behindBy, bakeStatus };
 		worstLag = Math.max(worstLag, behindBy);
 	}
 

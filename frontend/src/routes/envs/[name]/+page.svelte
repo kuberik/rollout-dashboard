@@ -10,6 +10,7 @@
 	import { cellLag, upstreamCell } from '$lib/view-models/lag';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { StatusKey } from '$lib/rollout-cards';
+	import { historyTicks } from '$lib/view-models/deploy-history';
 	import { getEnvironmentRank } from '$lib/env-order';
 	import { formatTimeAgo, shortenVersion, detectStuck, detectStuckBehind } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
@@ -167,19 +168,10 @@
 		});
 	});
 
-	type HistoryTick = 'ok' | 'fail' | 'active' | 'none';
-	function ticksFor(rollout: Rollout): HistoryTick[] {
-		const history = rollout.status?.history ?? [];
-		return history
-			.slice(0, 5)
-			.reverse()
-			.map((h): HistoryTick => {
-				if (h.bakeStatus === 'Succeeded') return 'ok';
-				if (h.bakeStatus === 'Failed') return 'fail';
-				if (h.bakeStatus === 'InProgress' || h.bakeStatus === 'Deploying') return 'active';
-				return 'none';
-			});
-	}
+	// Ticks strip length shown per app row — matches historyTicks(history,
+	// count)'s tested padding/truncation behavior (Cancelled -> fail,
+	// left-padded with 'none' when there's less than `count` history).
+	const TICKS_COUNT = 5;
 </script>
 
 <svelte:head>
@@ -295,7 +287,8 @@
 							{@const sha = latest?.version?.revision ? shortenVersion(latest.version.revision) : null}
 							{@const message = latest?.message?.trim()}
 							{@const stuck = stuckFor(slot)}
-							{@const ticks = ticksFor(slot.cell.rollout)}
+							{@const rawHistoryCount = slot.cell.rollout.status?.history?.length ?? 0}
+							{@const ticks = historyTicks(slot.cell.rollout.status?.history, TICKS_COUNT)}
 							<li>
 								<a
 									href={rolloutHref(slot.cell)}
@@ -347,7 +340,7 @@
 										{:else}
 											<span class="text-[11px] text-gray-400 dark:text-gray-500">no deploys yet</span>
 										{/if}
-										{#if ticks.length > 1}
+										{#if rawHistoryCount > 1}
 											<DeployHistoryStrip {ticks} />
 										{/if}
 									</div>

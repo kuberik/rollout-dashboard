@@ -8,12 +8,18 @@ import type { Rollout, Environment } from '$lib/../types';
 // `spec.rolloutRef.name` + `spec.environment`, and matches a Rollout via
 // `rolloutMatchesEnvironment` (same namespace + cluster annotation, name ==
 // rolloutRef.name).
-function rollout(name: string, namespace: string, version: string, title?: string): Rollout {
+function rollout(
+  name: string,
+  namespace: string,
+  version: string,
+  title?: string,
+  bakeStatus = 'Succeeded'
+): Rollout {
   return {
     metadata: { name, namespace },
     status: {
       title,
-      history: [{ version: { version }, timestamp: '2026-01-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+      history: [{ version: { version }, timestamp: '2026-01-01T00:00:00Z', bakeStatus }]
     }
   } as unknown as Rollout;
 }
@@ -55,5 +61,17 @@ describe('buildMatrix', () => {
     const { rows } = buildMatrix(FIXTURE_ROLLOUTS, FIXTURE_ENVS);
     const b = rows.find((r) => r.appName === 'b')!;
     expect(b.cells['prod']).toBeNull();
+  });
+
+  it('surfaces bakeStatus so a baking cell can be told apart from a plain Deploying one', () => {
+    const bakingRollouts: Rollout[] = [
+      rollout('a', 'a-dev', 'v3', 'App A', 'InProgress'),
+      rollout('a', 'a-prod', 'v1', 'App A'),
+      rollout('b', 'b-dev', 'v1', 'App B')
+    ];
+    const { rows } = buildMatrix(bakingRollouts, FIXTURE_ENVS);
+    const a = rows.find((r) => r.appName === 'a')!;
+    expect(a.cells['dev']!.statusKey).toBe('active');
+    expect(a.cells['dev']!.bakeStatus).toBe('InProgress');
   });
 });

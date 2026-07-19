@@ -49,3 +49,40 @@ export function getStatusPingClass(bakeStatus?: string): string {
             return 'bg-yellow-400/30';
     }
 }
+
+// Shared translation from the Rollouts-list statusKey vocabulary
+// (succeeded|failed|active|pending) to the bakeStatus values the
+// getStatusCircleClass/getBakeStatusColor helpers expect. Centralised so
+// every view (matrix cells, list rows, ...) that only has a statusKey
+// still renders the same dot color as views that have the raw bakeStatus.
+export function statusKeyToBakeStatus(statusKey: string): string | undefined {
+    switch (statusKey) {
+        case 'succeeded':
+            return 'Succeeded';
+        case 'failed':
+            return 'Failed';
+        case 'active':
+            return 'Deploying';
+        default:
+            return undefined;
+    }
+}
+
+export type HistoryTick = 'ok' | 'fail' | 'active' | 'none';
+
+// Shared translation from a deploy-history tick outcome to the bakeStatus
+// value that produces the matching color, so history strips always match
+// the rest of the app's status coloring rather than inventing a parallel
+// palette.
+export function tickToBakeStatus(tick: HistoryTick): string | undefined {
+    switch (tick) {
+        case 'ok':
+            return 'Succeeded';
+        case 'fail':
+            return 'Failed';
+        case 'active':
+            return 'Deploying';
+        default:
+            return undefined;
+    }
+}
