@@ -19,8 +19,8 @@
 
 ## Design hard rules — never violate these
 
-- **No colored borders anywhere.** Do not use `border-l-4`, `border-t-4`, colored top/left/right/bottom accent strips, or any thickened/colored border variant on cards, sections, or any UI element. This includes status-colored, environment-colored, or any other colored border. It looks amateurish. Use other visual cues (icons, dot indicators, background tints) instead.
-- **No `h-1` / `h-0.5` colored accent bars** at the top or bottom of cards. Same rule — amateurish.
+- **Colored borders are allowed.** (Updated 2026-07-19 — reverses the earlier blanket ban.) Colored borders on cards/sections/elements are fine.
+- **Side/left accent bars only on square-cornered elements.** A colored left/side accent stripe (`border-l-4`, etc.) is OK **only when the element has no border-radius**. Never put a side accent bar on a rounded (`rounded-*`) element — a colored bar clashing with a rounded corner is the look to avoid. Dots, icons, and background tints remain good status signals but are no longer mandatory substitutes.
 - When you discover a design constraint from user feedback, add it here immediately without waiting to be asked.
 
 ## Rollout list visual treatment

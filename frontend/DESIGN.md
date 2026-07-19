@@ -9,7 +9,7 @@ violates an enforced item.
 
 ### Visual treatment
 
-- **No colored borders.** No `border-l-4`, no thickened/coloured top/left/right/bottom strips, no `h-1`/`h-0.5` colored accent bars. Use dot indicators, icons, status circles or background tints (within the rules below) instead.
+- **Colored borders are allowed** (updated 2026-07-19). Colored/thickened borders on elements are fine. A colored **side/left accent bar** (`border-l-4`, etc.) is OK **only on square-cornered elements** — never on a `rounded-*` element. Dots, icons, status circles, and background tints remain good status signals.
 - **No popup hover effects** on list/grid cards. Specifically: no `hover:-translate-y-*`, no `hover:shadow-xl`/`hover:shadow-lg`, no `hover:ring-*` that materialises on hover. Plain `hover:bg-*` colour transitions only.
 - **No status-driven background gradients.** `card-failed`/`card-active` linear-gradient tints are removed and must not be reintroduced. Status is conveyed via the status circle + inline text only.
 - **No long composition / "succeeded vs failed" progress bars.** Removed from page headers (home, /apps, /envs/[name], /namespaces/[name]) and from /activity day headers and /environments env column headers. They look like progress bars but aren't.
