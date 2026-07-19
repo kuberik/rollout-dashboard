@@ -2,12 +2,24 @@
 
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
+	import { Badge } from 'flowbite-svelte';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { getDisplayVersion, formatTimeAgo } from '$lib/utils';
 	import { groupRolloutsByApp, versionPath } from '$lib/version-utils';
 	import { now } from '$lib/stores/time';
-	import { TagOutline } from 'flowbite-svelte-icons';
+	import { TagOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
+
+	// Deterministic, presentational-only color per version string — no
+	// semantic meaning, just a stable visual anchor so the same version
+	// reads consistently wherever it appears in this list.
+	function versionHue(version: string): number {
+		let hash = 0;
+		for (let i = 0; i < version.length; i++) {
+			hash = (hash * 31 + version.charCodeAt(i)) | 0;
+		}
+		return Math.abs(hash) % 360;
+	}
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
@@ -140,14 +152,17 @@
 										href={versionPath(section.repoKey, row.version)}
 										class="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 									>
+										<span
+											class="h-2.5 w-2.5 shrink-0 rounded-full"
+											style="background-color: hsl({versionHue(row.version)}, 65%, 55%)"
+											aria-hidden="true"
+										></span>
 										<span class="min-w-0 flex-1 truncate font-mono text-sm text-gray-900 dark:text-white">
 											{row.version}
 										</span>
 										<span class="hidden shrink-0 sm:block">
 											{#if appList.length > 1}
-												<span class="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-													shared · {appList.length} apps
-												</span>
+												<Badge color="blue" class="text-[11px]">shared · {appList.length} apps</Badge>
 											{:else}
 												<span class="truncate text-xs text-gray-500 dark:text-gray-400">{appList[0]}</span>
 											{/if}
@@ -158,6 +173,7 @@
 										<span class="hidden w-24 shrink-0 text-right text-xs text-gray-400 dark:text-gray-500 sm:block">
 											{formatTimeAgo(new Date(row.mostRecentMs).toISOString(), $now)}
 										</span>
+										<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />
 									</a>
 								</li>
 							{/each}
