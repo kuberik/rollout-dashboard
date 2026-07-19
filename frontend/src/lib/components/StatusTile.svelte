@@ -47,6 +47,11 @@
 	const tileClass = $derived(
 		`flex flex-col items-center gap-1 rounded-lg border bg-white px-4 py-3 text-center transition-colors hover:border-gray-300 dark:bg-gray-800 dark:hover:border-gray-600 disabled:pointer-events-none disabled:opacity-40 ${toneClass} ${selectedClass}`
 	);
+
+	// A tile is a genuine toggle only when it has a click handler. Plain summary
+	// tiles (ControlCenter's fleet counts — no href, no onclick) must NOT announce
+	// themselves as inactive toggle buttons, so aria-pressed is emitted only here.
+	const isToggle = $derived(onclick != null);
 </script>
 
 {#if href}
@@ -58,7 +63,7 @@
 		>
 	</a>
 {:else}
-	<button type="button" {onclick} {disabled} aria-pressed={selected} class={tileClass}>
+	<button type="button" {onclick} {disabled} aria-pressed={isToggle ? selected : undefined} class={tileClass}>
 		{#if color}<span class="mb-0.5 h-2 w-2 shrink-0 rounded-full {dotClass[color]}"></span>{/if}
 		<span class="font-montserrat text-3xl font-semibold text-gray-900 dark:text-gray-100">{n}</span>
 		<span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"

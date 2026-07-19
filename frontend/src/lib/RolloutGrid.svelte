@@ -263,7 +263,6 @@
 					label={t.label}
 					color={t.color}
 					selected={quickFilter === t.key}
-					tone={t.key === 'attention' && t.count > 0 ? 'fail' : 'default'}
 					disabled={t.key !== 'all' && t.count === 0}
 					onclick={() => (quickFilter = t.key)}
 				/>
