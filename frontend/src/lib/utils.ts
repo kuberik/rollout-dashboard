@@ -393,6 +393,34 @@ export function getDisplayVersion(versionInfo: {
 }
 
 /**
+ * Git ref for GitHub tree/commit URLs.
+ * Prefer OCI `org.opencontainers.image.revision` (git SHA) over the display
+ * version: package versions like `0.0.0-7028` are not git refs, so
+ * `/tree/{version}` 404s. Falls back to version, then image tag.
+ */
+export function getGitHubRef(versionInfo: {
+    version?: string;
+    revision?: string;
+    tag?: string;
+}): string {
+    const raw = versionInfo.revision || versionInfo.version || versionInfo.tag || '';
+    return raw.includes('@sha1:') ? (raw.split('@sha1:')[1] ?? raw) : raw;
+}
+
+/** Build `{source}/tree/{ref}` from a git remote URL (HTTPS, SSH, or .git). */
+export function buildGitHubTreeUrl(sourceUrl: string, ref: string): string {
+    if (!sourceUrl || !ref) return '';
+    let url = sourceUrl;
+    if (url.includes('git@github.com:')) {
+        url = url.replace('git@github.com:', 'https://github.com/');
+    }
+    if (url.endsWith('.git')) {
+        url = url.slice(0, -4);
+    }
+    return url.endsWith('/') ? `${url}tree/${ref}` : `${url}/tree/${ref}`;
+}
+
+/**
  * Shorten long version strings for compact display in cells/badges.
  * - Full git SHA (40 hex chars) → first 7 chars (e.g. cf9292d)
  * - Tag with a long hex suffix after a dash (≥12 hex chars, e.g.

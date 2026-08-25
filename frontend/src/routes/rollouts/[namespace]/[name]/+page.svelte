@@ -83,6 +83,8 @@
 		hasFailedBakeStatus,
 		hasUnblockFailedAnnotation,
 		getDisplayVersion,
+		getGitHubRef,
+		buildGitHubTreeUrl,
 		extractURLFromGatewayOrIngress,
 		parseLinkAnnotations,
 		extractDatadogInfoFromContainers,
@@ -535,20 +537,9 @@
 		return typeof version === 'string' ? version : (version?.tag ?? '');
 	}
 
-	// Build GitHub tree URL for a given version
-	function getGitHubUrl(version: string): string {
-		let url = rollout?.status?.source ?? '';
-		if (!url) return '';
-		if (url.includes('github.com')) {
-			url = url.endsWith('/') ? url + 'tree/' + version : url + '/tree/' + version;
-		} else if (url.includes('git@github.com:')) {
-			url = url.replace('git@github.com:', 'https://github.com/') + '/tree/' + version;
-		} else if (url.includes('.git')) {
-			url = url.replace('.git', '') + '/tree/' + version;
-		} else {
-			url = url.endsWith('/') ? url + 'tree/' + version : url + '/tree/' + version;
-		}
-		return url;
+	// Build GitHub tree URL; prefer git revision over display version
+	function getGitHubUrl(versionInfo: { version?: string; revision?: string; tag: string }): string {
+		return buildGitHubTreeUrl(rollout?.status?.source ?? '', getGitHubRef(versionInfo));
 	}
 
 	// Helper function to get dependency env + status for a version
@@ -1508,7 +1499,7 @@
 											size="sm"
 											color="light"
 											class="w-full justify-center sm:w-auto"
-											href={getGitHubUrl(getDisplayVersion(latestEntry.version))}
+											href={getGitHubUrl(latestEntry.version)}
 											target="_blank"
 											rel="noopener noreferrer"
 										>
@@ -1764,25 +1755,8 @@
 														class="!p-1.5"
 														title="View on GitHub"
 														onclick={() => {
-															let url = rollout?.status?.source ?? '';
-															const ver = getDisplayVersion(releaseCandidate);
-															if (url.includes('github.com')) {
-																url = url.endsWith('/')
-																	? url + 'tree/' + ver
-																	: url + '/tree/' + ver;
-															} else if (url.includes('git@github.com:')) {
-																url =
-																	url.replace('git@github.com:', 'https://github.com/') +
-																	'/tree/' +
-																	ver;
-															} else if (url.includes('.git')) {
-																url = url.replace('.git', '') + '/tree/' + ver;
-															} else {
-																url = url.endsWith('/')
-																	? url + 'tree/' + ver
-																	: url + '/tree/' + ver;
-															}
-															window.open(url, '_blank');
+															const url = getGitHubUrl(releaseCandidate);
+															if (url) window.open(url, '_blank');
 														}}
 													>
 														<GithubSolid class="h-3.5 w-3.5" />
@@ -1995,6 +1969,9 @@
 								version: annotations[versionTag]?.['org.opencontainers.image.version'],
 								tag: versionTag
 							})}
+					{@const githubRevision =
+						availableRelease?.revision ||
+						annotations[versionTag]?.['org.opencontainers.image.revision']}
 					{@const created =
 						availableRelease?.created ||
 						annotations[versionTag]?.['org.opencontainers.image.created']}
@@ -2065,6 +2042,7 @@
 									<GitHubViewButton
 										sourceUrl={rollout.status.source}
 										version={displayVersion}
+										revision={githubRevision}
 										size="xs"
 										color="light"
 									/>
