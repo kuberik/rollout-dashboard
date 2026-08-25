@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, getGitHubRef, buildGitHubTreeUrl } from './utils';
 import {
     ENVIRONMENT_THEME_ANNOTATION,
     ENVIRONMENT_THEME_COLOR_ANNOTATION,
@@ -533,5 +533,50 @@ describe('shortenVersion', () => {
 
     it('does not shorten short hex tails (<12 chars)', () => {
         expect(shortenVersion('release-abc1234')).toBe('release-abc1234');
+    });
+});
+
+describe('getGitHubRef', () => {
+    it('prefers revision over package version and tag', () => {
+        expect(getGitHubRef({
+            version: '0.0.0-7028',
+            revision: '0ceef826f41a8889b30e836790371485c027287f',
+            tag: 'main-1787656929-0ceef826f41a8889b30e836790371485c027287f'
+        })).toBe('0ceef826f41a8889b30e836790371485c027287f');
+    });
+
+    it('strips git@sha1: prefix from revision', () => {
+        expect(getGitHubRef({
+            revision: 'git@sha1:0ceef826f41a8889b30e836790371485c027287f',
+            version: '0.0.0-7028',
+            tag: 'v1'
+        })).toBe('0ceef826f41a8889b30e836790371485c027287f');
+    });
+
+    it('falls back to version then tag when revision is missing', () => {
+        expect(getGitHubRef({ version: '82b9b24', tag: 'main-82b9b24' })).toBe('82b9b24');
+        expect(getGitHubRef({ tag: 'main-82b9b24' })).toBe('main-82b9b24');
+        expect(getGitHubRef({})).toBe('');
+    });
+});
+
+describe('buildGitHubTreeUrl', () => {
+    it('appends /tree/{ref} to an HTTPS GitHub URL', () => {
+        expect(buildGitHubTreeUrl(
+            'https://github.com/caffeinelabs/app',
+            '0ceef826f41a8889b30e836790371485c027287f'
+        )).toBe('https://github.com/caffeinelabs/app/tree/0ceef826f41a8889b30e836790371485c027287f');
+    });
+
+    it('converts SSH remotes and strips .git', () => {
+        expect(buildGitHubTreeUrl('git@github.com:caffeinelabs/app.git', 'abc123'))
+            .toBe('https://github.com/caffeinelabs/app/tree/abc123');
+        expect(buildGitHubTreeUrl('https://github.com/caffeinelabs/app.git', 'abc123'))
+            .toBe('https://github.com/caffeinelabs/app/tree/abc123');
+    });
+
+    it('returns empty string when source or ref is missing', () => {
+        expect(buildGitHubTreeUrl('', 'abc')).toBe('');
+        expect(buildGitHubTreeUrl('https://github.com/org/repo', '')).toBe('');
     });
 });
