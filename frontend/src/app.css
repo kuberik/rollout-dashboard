@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @plugin 'flowbite/plugin';
 
@@ -8,110 +8,111 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-primary-50: #fff5f2;
-  --color-primary-100: #fff1ee;
-  --color-primary-200: #ffe4de;
-  --color-primary-300: #ffd5cc;
-  --color-primary-400: #ffbcad;
-  --color-primary-500: #fe795d;
-  --color-primary-600: #ef562f;
-  --color-primary-700: #eb4f27;
-  --color-primary-800: #cc4522;
-  --color-primary-900: #a5371b;
+	--color-primary-50: #fff5f2;
+	--color-primary-100: #fff1ee;
+	--color-primary-200: #ffe4de;
+	--color-primary-300: #ffd5cc;
+	--color-primary-400: #ffbcad;
+	--color-primary-500: #fe795d;
+	--color-primary-600: #ef562f;
+	--color-primary-700: #eb4f27;
+	--color-primary-800: #cc4522;
+	--color-primary-900: #a5371b;
 
-  --color-secondary-50: #f0f9ff;
-  --color-secondary-100: #e0f2fe;
-  --color-secondary-200: #bae6fd;
-  --color-secondary-300: #7dd3fc;
-  --color-secondary-400: #38bdf8;
-  --color-secondary-500: #0ea5e9;
-  --color-secondary-600: #0284c7;
-  --color-secondary-700: #0369a1;
-  --color-secondary-800: #075985;
-  --color-secondary-900: #0c4a6e;
+	--color-secondary-50: #f0f9ff;
+	--color-secondary-100: #e0f2fe;
+	--color-secondary-200: #bae6fd;
+	--color-secondary-300: #7dd3fc;
+	--color-secondary-400: #38bdf8;
+	--color-secondary-500: #0ea5e9;
+	--color-secondary-600: #0284c7;
+	--color-secondary-700: #0369a1;
+	--color-secondary-800: #075985;
+	--color-secondary-900: #0c4a6e;
 
-  --font-montserrat: "Montserrat", sans-serif;
+	--font-montserrat: 'Montserrat', sans-serif;
 }
 
 @source "../node_modules/flowbite-svelte/dist";
 @source "../node_modules/flowbite-svelte-icons/dist";
 
 @layer base {
+	button,
+	[role='button'] {
+		cursor: pointer;
+	}
 
-  button,
-  [role="button"] {
-    cursor: pointer;
-  }
-
-  /* disable chrome cancel button */
-  input[type="search"]::-webkit-search-cancel-button {
-    display: none;
-  }
-
+	/* disable chrome cancel button */
+	input[type='search']::-webkit-search-cancel-button {
+		display: none;
+	}
 }
 
 /* prevent iOS Safari from zooming on input focus — must be unlayered to beat Tailwind utilities */
-input, select, textarea {
-  font-size: max(16px, 1em);
+input,
+select,
+textarea {
+	font-size: max(16px, 1em);
 }
 
 .environment-theme-scope {
-  --rollout-theme-accent: #2563eb;
-  --rollout-theme-text: #1d4ed8;
-  --rollout-theme-border: #bfdbfe;
-  --rollout-theme-surface: #eff6ff;
-  --rollout-theme-dark-surface: #172554;
-  --rollout-theme-dark-text: #93c5fd;
+	--rollout-theme-accent: #2563eb;
+	--rollout-theme-text: #1d4ed8;
+	--rollout-theme-border: #bfdbfe;
+	--rollout-theme-surface: #eff6ff;
+	--rollout-theme-dark-surface: #172554;
+	--rollout-theme-dark-text: #93c5fd;
+	--rollout-theme-dark-border: #1e40af;
 }
 
 .environment-theme-accent {
-  background-color: var(--rollout-theme-accent);
+	background-color: var(--rollout-theme-accent);
 }
 
 .environment-theme-text {
-  color: var(--rollout-theme-text);
+	color: var(--rollout-theme-text);
 }
 
 .environment-theme-border {
-  border-color: var(--rollout-theme-border);
+	border-color: var(--rollout-theme-border);
 }
 
 .environment-theme-surface {
-  background-color: var(--rollout-theme-surface);
-  color: var(--rollout-theme-text);
+	background-color: var(--rollout-theme-surface);
+	color: var(--rollout-theme-text);
 }
 
 .environment-theme-badge {
-  border: 1px solid var(--rollout-theme-border);
-  background-color: color-mix(in srgb, var(--rollout-theme-surface) 72%, transparent);
-  color: var(--rollout-theme-text);
+	border: 1px solid var(--rollout-theme-border);
+	background-color: color-mix(in srgb, var(--rollout-theme-surface) 72%, transparent);
+	color: var(--rollout-theme-text);
 }
 
 /* Full-width themed header band: used as a header on env-themed cards
    like the /apps/[name] pipeline nodes. Saturated enough to clearly
    identify the env, soft enough not to overwhelm the card body. */
 .environment-theme-band {
-  background-color: color-mix(in srgb, var(--rollout-theme-surface) 90%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--rollout-theme-border) 70%, transparent);
+	background-color: color-mix(in srgb, var(--rollout-theme-surface) 90%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--rollout-theme-border) 70%, transparent);
 }
 .dark .environment-theme-band {
-  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 40%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--rollout-theme-accent) 25%, rgb(55 65 81));
+	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 40%, transparent);
+	border-bottom-color: color-mix(in srgb, var(--rollout-theme-accent) 25%, rgb(55 65 81));
 }
 
 .dark .environment-theme-text {
-  color: var(--rollout-theme-dark-text);
+	color: var(--rollout-theme-dark-text);
 }
 
 .dark .environment-theme-surface {
-  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 45%, transparent);
-  color: var(--rollout-theme-dark-text);
+	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 45%, transparent);
+	color: var(--rollout-theme-dark-text);
 }
 
 .dark .environment-theme-badge {
-  border-color: color-mix(in srgb, var(--rollout-theme-accent) 38%, rgb(55 65 81));
-  background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, transparent);
-  color: var(--rollout-theme-dark-text);
+	border-color: var(--rollout-theme-dark-border);
+	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, transparent);
+	color: var(--rollout-theme-dark-text);
 }
 
 /* Rollouts list row layout: two-row grid on mobile (status icon spans
@@ -121,21 +122,21 @@ input, select, textarea {
    to express via the `grid-cols-[...]` arbitrary-value syntax, so we
    put it here. */
 .row-grid {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  align-items: center;
+	display: grid;
+	grid-template-columns: 40px minmax(0, 1fr) auto;
+	grid-template-rows: auto auto;
+	align-items: center;
 }
 @media (min-width: 640px) {
-  .row-grid {
-    grid-template-columns: 40px minmax(0, 1fr) 90px 90px;
-    grid-template-rows: auto;
-  }
+	.row-grid {
+		grid-template-columns: 40px minmax(0, 1fr) 90px 90px;
+		grid-template-rows: auto;
+	}
 }
 @media (min-width: 1024px) {
-  .row-grid {
-    grid-template-columns: 40px minmax(0, 1fr) 150px 130px 110px 90px;
-  }
+	.row-grid {
+		grid-template-columns: 40px minmax(0, 1fr) 130px 160px 100px 80px;
+	}
 }
 
 /* Hide native scrollbar chrome while keeping the element scrollable.
@@ -145,96 +146,839 @@ input, select, textarea {
    we need both display:none AND a zero size — and a more specific selector
    so the dark-mode thumb override doesn't re-show the bar. */
 .no-scrollbar {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
 }
 .no-scrollbar::-webkit-scrollbar,
 .dark .no-scrollbar::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+	display: none;
+	width: 0;
+	height: 0;
 }
 .no-scrollbar::-webkit-scrollbar-thumb,
 .no-scrollbar::-webkit-scrollbar-track,
 .dark .no-scrollbar::-webkit-scrollbar-thumb,
 .dark .no-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+	background: transparent;
 }
 
 /* Svelte Flow visual refinements: match the dashboard chrome instead of
    the library defaults. Edge label chips, hidden handles, no focus ring
    on the canvas, and a subtle attribution if it sneaks back in. */
 .svelte-flow__edge-textbg {
-  fill: rgb(255 255 255);
-  stroke: rgb(229 231 235);
-  stroke-width: 1;
+	fill: rgb(255 255 255);
+	stroke: rgb(229 231 235);
+	stroke-width: 1;
 }
 .dark .svelte-flow__edge-textbg {
-  fill: rgb(31 41 55);
-  stroke: rgb(75 85 99);
+	fill: rgb(31 41 55);
+	stroke: rgb(75 85 99);
 }
 .svelte-flow__handle {
-  opacity: 0;
+	opacity: 0;
 }
 .svelte-flow__renderer:focus-visible {
-  outline: none;
+	outline: none;
 }
 .svelte-flow__attribution {
-  display: none;
+	display: none;
 }
 
 .dark {
-  * {
-    scrollbar-color: #4b5563 #1f2937;
-  }
+	* {
+		scrollbar-color: #4b5563 #1f2937;
+	}
 
-  ::-webkit-scrollbar-track {
-    @apply bg-gray-800;
-  }
+	::-webkit-scrollbar-track {
+		@apply bg-gray-800;
+	}
 
-  ::-webkit-scrollbar-thumb {
-    @apply bg-gray-600;
-  }
+	::-webkit-scrollbar-thumb {
+		@apply bg-gray-600;
+	}
 
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-500;
-  }
+	::-webkit-scrollbar-thumb:hover {
+		@apply bg-gray-500;
+	}
 }
 
 /* Animated gradient border */
 @property --border-angle {
-  inherits: false;
-  initial-value: 0deg;
-  syntax: '<angle>';
+	inherits: false;
+	initial-value: 0deg;
+	syntax: '<angle>';
 }
 
 @keyframes border {
-  to {
-    --border-angle: 360deg;
-  }
+	to {
+		--border-angle: 360deg;
+	}
 }
 
 .animate-border {
-  animation: border 4s linear infinite;
+	animation: border 4s linear infinite;
 }
 
 /* Neon border animation */
 @property --angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
+	syntax: '<angle>';
+	initial-value: 0deg;
+	inherits: false;
 }
 
 @keyframes gradient-rotate {
-  from {
-    --angle: 0deg;
-  }
+	from {
+		--angle: 0deg;
+	}
 
-  to {
-    --angle: 360deg;
-  }
+	to {
+		--angle: 360deg;
+	}
 }
 
 .animate-gradient-rotate {
-  animation: gradient-rotate 3s linear infinite;
+	animation: gradient-rotate 3s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DEPLOY BOARD DESIGN SYSTEM — type scale, chip, panel radius.
+   Defined once here so the values are enforceable and countable rather
+   than re-derived per page. See frontend/DESIGN.md "Closed budget".
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Type scale: 9 roles, exactly 2 uppercase trackings ──────────────
+   Montserrat is the sans DISPLAY + HEADLINE + LABEL face. Body / dense /
+   micro stay on the system stack; code roles on the mono stack. The old
+   9/10/11px sprawl collapses to exactly `t-label` (10px) and `t-micro`
+   (11px). 0.16em tracking on Montserrat, 0.08em on mono — 0.16em on a
+   monospace face looks broken, which is why there are two and only two. */
+.t-display {
+	font-family: var(--font-montserrat);
+	font-size: 24px;
+	font-weight: 300;
+	line-height: 1.15;
+	letter-spacing: 0;
+}
+
+.t-display-id {
+	font-family: var(--font-mono);
+	font-size: 24px;
+	font-weight: 500;
+	line-height: 1.15;
+	letter-spacing: -0.01em;
+}
+
+.t-headline {
+	font-family: var(--font-montserrat);
+	font-size: 17px;
+	font-weight: 600;
+	line-height: 1.35;
+	letter-spacing: 0;
+}
+
+.t-body {
+	font-size: 14px;
+	font-weight: 400;
+	line-height: 1.5;
+}
+
+.t-dense {
+	font-size: 12.5px;
+	font-weight: 400;
+	line-height: 1.45;
+}
+
+.t-micro {
+	font-size: 11px;
+	font-weight: 400;
+	line-height: 1.4;
+}
+
+.t-code {
+	font-family: var(--font-mono);
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.35;
+}
+
+.t-code-sm {
+	font-family: var(--font-mono);
+	font-size: 11.5px;
+	font-weight: 400;
+	line-height: 1.4;
+}
+
+/* The spec's Buttons section mandates 12px/600 for all three button kinds.
+   That is a real 10th role; naming it here stops it being re-invented as a
+   `text-[12px] font-semibold` pair at every call site. */
+.t-button {
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: 0;
+}
+
+.t-label {
+	font-family: var(--font-montserrat);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1.2;
+	text-transform: uppercase;
+	letter-spacing: 0.16em;
+}
+
+/* ── The chip. One geometry, no size prop. Every chip in the product is
+   this box; only the three colour values change (see Chip.svelte).
+
+   MUST live in `@layer components`. Tailwind v4 puts its utilities in
+   `@layer utilities`, and ANY unlayered rule outranks EVERY layered one —
+   so an unlayered `.chip { border: 1px solid transparent }` silently beat
+   the `border-gray-200` / `bg-amber-100` utilities that Chip.svelte uses to
+   colour each role, and every non-env chip rendered a transparent border.
+   Inside `components` the utilities win, which is exactly the intent: the
+   class owns the GEOMETRY, the role owns the COLOUR. ─────────────────── */
+@layer components {
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 20px;
+		padding: 0 6px;
+		border-radius: 4px;
+		border: 1px solid transparent;
+		background-color: transparent;
+		max-width: 12ch;
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		line-height: 1;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		white-space: nowrap;
+		overflow: hidden;
+	}
+
+	/* ── THE 12ch CAP, OPTED OUT OF. One class, one result, in BOTH forms.
+     Set by `Chip`'s `wide` prop; never write it by hand.
+
+     WHY A CLASS AND NOT A UTILITY. `.chip` caps at 12ch so one long
+     environment name cannot eat a row, and that cap is a product-wide
+     contract. Callers used to lift it by passing `max-w-none` through the
+     `class` prop, which worked on a LONE chip (a Tailwind utility outranks
+     this `components` layer) and SILENTLY DID NOTHING on a joined one,
+     because there `class` lands on the `.chip-joined` WRAPPER and never
+     reaches the chip half. Same prop, same value, two different outcomes and
+     no error — which is why the `/versions` service list gave up on the
+     joined form entirely and why three production regions once rendered as
+     three identical `PROD-US…` chips.
+
+     `Chip` puts this class on the `.chip` ELEMENT in both branches, so the
+     opt-out is reachable, greppable, and identical in the lone and joined
+     forms. `.chip-joined` keeps its own `max-width: 100%`, so a wide chip
+     still cannot push its row wider than the row. ───────────────────────── */
+	.chip.chip-wide {
+		max-width: none;
+	}
+
+	/* ── The joined build badge: a rank chip and the build it describes,
+     drawn as ONE box. This is the `/rollouts` unit, which the human named
+     as the thing they like, brought to `/`, `/apps` and `/apps/[name]`.
+
+     It is not a second badge — it is `.chip` with a second half, so the
+     10px/600 mono/uppercase/0.08em geometry stays defined in exactly one
+     place. Two rules make the pair read as one object rather than as two
+     things that happen to touch:
+       · ONE border between the halves. The chip drops its right edge and
+         the value half supplies the shared one, so the seam is 1px, not 2.
+       · the outer corners are the chip's 4px and the inner corners are
+         square, which is what tells the eye the split is internal.
+
+     `/rollouts` draws the same structure at `rounded-md` (6px) over a
+     `green-100` fill inside a `green-200` border. Both are out of budget
+     here — 2 radii, 1 green — so this takes the structure and leaves the
+     palette: the chip half keeps its role colour, the value half is
+     neutral ink on the gray hairline every non-`alarm` role already uses.
+     The value is the identifier, not the state; the state is the chip. */
+	.chip-joined {
+		display: inline-flex;
+		align-items: stretch;
+		min-width: 0;
+		max-width: 100%;
+		/* It is a grid item in both deploy-board tables. Without this it
+       stretches to the whole 152px track and the value half grows a
+       ~98px empty tail inside its own border, which reads as a badge
+       whose width means something. It does not. */
+		justify-self: start;
+	}
+
+	.chip-joined > .chip {
+		flex: none;
+	}
+
+	/* ⛔ EXACTLY TWO HALVES. A FIRST AND A LAST, AND NOTHING BETWEEN THEM.
+     (2026-08-27, from the human: *"I also don't like that we split the badge
+     in up to 4 sections."*)
+
+     These selectors used to read `:not(:last-child)` and `.chip + .chip`,
+     which join N halves — written for an `/apps` bar that was `env + rank +
+     alarm`, and which `/versions/<rev>` then took to FOUR
+     (`[●][PROD][−19][STUCK]`). Naming the first and the last explicitly is
+     what makes the cap structural rather than a convention: a third half
+     keeps its own 4px corners and its own right border, so it renders as a
+     separate box and the mistake is visible in the first screenshot instead
+     of surviving three rounds of review. `Chip` also asserts it in DEV.
+
+     A half that is BOTH first and last is a lone chip and keeps all four
+     corners, which is why both rules carry the opposite `:not()`. */
+	.chip-joined > .chip:first-child:not(:last-child) {
+		border-top-right-radius: 0;
+		border-bottom-right-radius: 0;
+		border-right-width: 0;
+	}
+
+	.chip-joined > .chip:last-child:not(:first-child) {
+		border-top-left-radius: 0;
+		border-bottom-left-radius: 0;
+	}
+
+	/* ── THE MARK GROUP — one environment's badge and the loose ALARM that
+	   belongs to it. ONE subject, bound by proximity.
+
+	   IT IS NOT A PLACE TO PUT A STATUS DOT. It briefly was, when the dot came
+	   out of the badge on 2026-08-27; the human's next sentence deleted the dot
+	   outright (*"I also don't like dots outside of badge"*) and what is left is
+	   the case the group is actually for: a badge that already holds its two
+	   sections and an `alarm` that cannot fit in either. `/versions/<rev>` is
+	   the one, where a production region is BOTH nineteen builds behind and
+	   stuck — `[PROD][−19]` says the first, and `STUCK` sits loose beside it,
+	   which is the form `StuckBadge` already ships on `/`, `/rollouts`,
+	   `/namespaces/<ns>` and the rollout detail page.
+
+	   THE GAP RATIO IS THE WHOLE MECHANISM: 4px inside the group (the scale's
+	   "inside an atom" value), 16px between groups. Measured ink-to-ink on
+	   `/versions/<rev>` at 1440, that is 4px against 16px of pure whitespace
+	   with a shared border inside the badge itself, so a reader never has to
+	   decide which environment an alarm belongs to.
+
+	   `max-width: 100%` and `min-width: 0` so a group inside a fixed track
+	   shrinks the way a lone chip does. It never wraps internally: a badge on
+	   one line and its alarm on the next is the failure this rule prevents. */
+	.chip-mark {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	/* `t-code-sm` metrics (11.5px / 400 mono) — the declared role for mono
+     inside a small line, and the closest legal one to the 11px `/rollouts`
+     draws this half at. NOT `t-code` (13px/500): tried, and it made the
+     badge's second half larger than the rollout NAME it sits beside on `/`
+     (12px) and heavier than the app title on `/apps`. The pair carries its
+     weight through the chip attached to it, not through the sha's size. */
+	.chip-value {
+		display: inline-flex;
+		align-items: center;
+		min-width: 0;
+		height: 20px;
+		padding: 0 6px;
+		border: 1px solid;
+		border-color: var(--color-gray-200);
+		border-top-right-radius: 4px;
+		border-bottom-right-radius: 4px;
+		font-family: var(--font-mono);
+		font-size: 11.5px;
+		font-weight: 400;
+		line-height: 1;
+		color: var(--color-gray-700);
+		white-space: nowrap;
+		overflow: hidden;
+	}
+
+	.dark .chip-value {
+		border-color: var(--color-gray-700);
+		color: var(--color-gray-200);
+	}
+
+	/* THE IDENTIFIER ALONE — the value half with all four corners at 4px.
+	   `/versions`'s Revision cell used to be `[wordless status dot][sha]`, and
+	   that dot half was the sub-badge the human rejected on 2026-08-27. It is
+	   not relocated, it is DELETED: the predicate it encoded ("still live
+	   somewhere" / "rolled past everywhere") is printed as words in that same
+	   row's own `Live` column, three tracks right, so the dot was a duplicate
+	   before it was anything else. The box is left with one half, and it needs
+	   the corner it had been giving up to a neighbour that no longer exists.
+	   ZERO new values: the same 20px height, 6px padding, 1px hairline and 4px
+	   radius the joined form already draws. */
+	.chip-value--solo {
+		border-top-left-radius: 4px;
+		border-bottom-left-radius: 4px;
+		/* Same reason `.chip-joined` sets it: this box is a GRID ITEM in the
+		   `/versions` row, and without it the value half stretches to the whole
+		   fixed track and grows an empty tail inside its own border, which
+		   reads as a badge whose width means something. It does not. */
+		justify-self: start;
+	}
+
+	/* Secondary ink for a repeated sha inside a converged run. Same value the
+     ledger used before the merge — gray-500 / dark gray-400 — so nothing
+     new is spent, and the row that DIFFERS is the one that reads first. */
+	.chip-value--dim {
+		color: var(--color-gray-500);
+	}
+
+	.dark .chip-value--dim {
+		color: var(--color-gray-400);
+	}
+
+	a.chip-value:hover > span {
+		text-decoration: underline;
+	}
+
+	/* THE DOT IS GONE — `.chip-dot` and `.chip-dot--solo` are deleted.
+	   (2026-08-27, from the human: *"I also don't like dots outside of badge,
+	   especially when we have stuck which has its own dot which is also
+	   useless."*)
+
+	   Both classes died in the same pass, for the same reason, and the reason
+	   is worth keeping: A DOT BESIDE A WORD THAT MEANS THE SAME THING IS NOT A
+	   MARK, IT IS A SECOND ENCODING.
+	     · `.chip-dot` was the `alarm` glyph — amber, 4px from the word `STUCK`,
+	       inside a box that is already the only filled chip in the system.
+	     · `.chip-dot--solo` was the deploy-status dot, first as a wordless HALF
+	       of the badge (`[●][PROD]`), then briefly beside it (`● [PROD]`). The
+	       human rejected both placements; the answer was not a third one.
+	   What carries per-environment state now is the badge's SECOND SECTION —
+	   `[PROD][STUCK]` — and nothing at all when there is nothing adverse to
+	   say. See DESIGN.md, "THE DOT IS NOT A MARK ON THIS ROW". */
+}
+
+/* ── THE PROPORTIONAL BAR — one geometry, every page. ────────────────────
+
+   TWO OBJECTS IN THIS PRODUCT SEGMENT A WHOLE BY "WHICH BUILD IS THIS PART
+   ON": `CoverageBar` (a revision's places, on `/versions` and
+   `/versions/<rev>`) and `ExposureBar` (an app's ready pods, on
+   `/apps/<name>`). They are the same idea at two denominators, and they
+   shipped as two independent components with two geometries — 4px radius
+   against square ends, a 12px legend swatch against an 8px one. Different
+   shapes for the same kind of information is the fastest way a UI reads as
+   assembled rather than designed, so the geometry now lives here once and
+   each component supplies only its own HEIGHT.
+
+   THE 1px GUTTER is the product's declared sub-scale hairline, already spent
+   on `DeployVolumeSparkline` and `FleetStrip`; it is reused, not re-invented.
+   THE 4px RADIUS is the chip's, i.e. one of the two legal radii — square ends
+   would be a third value on an object that sits 12px from a chip.
+
+   NOT A COMPOSITION BAR. `DESIGN.md` deletes "long composition / succeeded vs
+   failed progress bars … they look like progress bars but aren't". The test
+   that rule is really applying is whether the bar's extent means what a
+   progress bar's extent means. Here it does: both objects answer "how much of
+   this whole is on this build", which is a proportion of one population, not
+   two unrelated counts composited. This is the one form in the product where
+   the shape and the meaning agree. ─────────────────────────────────────── */
+@layer components {
+	.prop-bar {
+		display: flex;
+		width: 100%;
+		gap: 1px;
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	/* `min-width` is what makes the scale note true — one place inside a
+     13-environment fleet is 5.6px of a full bar and 0.9px of a miniature,
+     and a segment that thin is a rendering artefact, not a mark. It costs
+     the majority segment a few pixels of proportion and buys "this bucket
+     is not empty". Compact bars take the smaller floor from their own rule. */
+	.prop-bar > * {
+		flex-basis: 0;
+		min-width: 6px;
+	}
+
+	/* ── THE KEY SWATCH. One atom, three call sites (`/versions` key,
+     `/versions/<rev>` bucket cards, `/apps/<name>` exposure key).
+
+     It is the bar's OWN fill value at 12px with a 1px border one step up: a
+     legend drawn in a second palette is a second encoding to keep in sync,
+     and at 12px a low-chroma fill alone sits below the threshold where a
+     legend reads. Border is perimeter, not area, so it costs almost nothing
+     against the area rule. ───────────────────────────────────────────── */
+	.cov-swatch {
+		display: block;
+		width: 12px;
+		height: 12px;
+		flex: none;
+		border-radius: 4px;
+		border-width: 1px;
+		border-style: solid;
+	}
+}
+
+/* ── Row affordances: revealed on row hover, at >=lg ONLY.
+
+   This rule set is deliberately scoped to >=lg and does NOT have a
+   below-lg half. `.row-reveal` alone hides nothing on a phone — opacity:0
+   is inside the media query — so any call site that wants the affordance
+   gone at touch width must say `hidden lg:flex` itself. It is written this
+   way round because "hidden" is a layout decision that belongs next to the
+   element, not smuggled into a shared utility.
+
+   The bug this is documented against: `Change version` carried only
+   `row-reveal`, so at 390px it rendered at rest on every healthy row —
+   a control designed to be revealed by hover is always-on wherever hover
+   does not exist. If you add a `.row-reveal` anywhere, verify it at 390px
+   with your eyes, not by reading this file. ──────────────────────────── */
+@media (min-width: 1024px) {
+	.row-reveal {
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+
+	.row-hover:hover .row-reveal,
+	.row-hover:focus-within .row-reveal,
+	.row-reveal:focus-within {
+		opacity: 1;
+	}
+}
+
+/* `:focus-within` above is the keyboard half of the same problem: tabbing
+   into a button sitting at opacity 0 focuses a control the user cannot see,
+   so focus has to reveal it exactly like hover does. */
+
+/* Segmented-control selected state (the Gantt's range pills).
+   NOT a utility pair. `dark:` in this project is `&:where(.dark, .dark *)`,
+   and `:where()` contributes ZERO specificity — so `dark:bg-gray-700` and
+   `bg-gray-50` are both 0,1,0 and the winner is decided by whichever Tailwind
+   happens to emit last. That race was silently lost: the selected pill rendered
+   gray-50/gray-900 in DARK mode, i.e. the spec's dark PRIMARY treatment, giving
+   the page two primary-looking controls. `.dark .pill-selected` is 0,2,0 and
+   cannot lose. Deliberately NOT the primary treatment in either mode: a
+   segmented-control state is not a call to action. */
+@layer components {
+	.pill-selected {
+		border-color: var(--color-gray-400);
+		background-color: var(--color-gray-50);
+		color: var(--color-gray-900);
+	}
+}
+
+.dark .pill-selected {
+	border-color: var(--color-gray-500);
+	background-color: var(--color-gray-700);
+	color: #fff;
+}
+
+/* Env-identity chip colours. Must be declared AFTER `.chip` so they win
+   the border/background cascade at equal specificity. The values come
+   from the `--rollout-theme-*` custom properties that
+   `getEnvironmentThemeStyle()` writes inline, which is what lets a single
+   class carry both light and dark treatments. */
+.chip-env {
+	border-color: var(--rollout-theme-border);
+	background-color: color-mix(in srgb, var(--rollout-theme-surface) 72%, transparent);
+	color: var(--rollout-theme-text);
+}
+
+/* The dark chip edge is a CHOSEN Tailwind step, not `accent` washed toward the
+   card ground. Warm identities cancelled against that blue-gray mix — prod's
+   dark border measured C 0.0612 at hue 67 where its seed is hue 58 at C 0.157 —
+   so the edge could not carry identity. See `environment-theme.ts`. */
+.dark .chip-env {
+	border-color: var(--rollout-theme-dark-border);
+	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, transparent);
+	color: var(--rollout-theme-dark-text);
+}
+
+/* ── Deploy board grids ──────────────────────────────────────────────
+   Column templates live here, next to `.row-grid`, for the same reason
+   that one does: they are too gnarly for `grid-cols-[...]` arbitrary
+   values, and putting them in one place is what makes "every row in this
+   panel shares an edge" true by construction rather than by vigilance.
+
+   Below `lg` both collapse to a stacked composition — the ledger is the
+   DECISION view and has to work at 390px, so it is designed there, not
+   derived by letting a desktop table scroll sideways. */
+.ledger-grid {
+	display: grid;
+	grid-template-columns: 18px minmax(0, 1fr) auto;
+	grid-template-rows: auto auto;
+	align-items: center;
+	column-gap: 12px;
+	row-gap: 8px;
+}
+
+@media (min-width: 1024px) {
+	/* glyph | env | build (chip + sha, joined) | age | state | actions
+     The actions track is 236px, not the 150px first specified. Measured at
+     1280: `Rollback` is 84px, `Review gates →` is 129px, plus the 8px between
+     them — 221px of real content that 150px and then 200px both wrapped onto
+     a second line, pushing the row out of the grid the rest of the ledger is
+     aligned to. A column has to fit its widest real content, and the widest
+     real content is the row that needs a person.
+
+     BUILD AND RANK ARE ONE COLUMN NOW (2026-08-23). They were 96px and 76px
+     with a 12px gap between them, holding a sha and the chip that says how
+     old that sha is — the same fact split across a column boundary, which is
+     precisely what the human called out. Joined, they take 152px of the 184px
+     the pair used to occupy and the 32px goes to the state cell, which is
+     the only track on this row that holds a sentence. 152 is measured, not
+     guessed: the widest real unit is `PIN` + `DIVERGED` + a 9-char version.
+     Anything longer ellipsises inside the value half rather than pushing the
+     grid, because a column that resizes per row is not a column.
+     AGE keeps 48px: `31d` is ~24px. Note the mock was drawn at 1280 with
+     no sidebar; here the sidebar takes 176px, so the row has 1022px, not
+     1200px, and every track has to be honest about it. */
+	.ledger-grid {
+		grid-template-columns: 18px 92px 152px 48px minmax(0, 1fr) 236px;
+		grid-template-rows: auto;
+		row-gap: 0;
+	}
+}
+
+/* ── The promotion ladder ────────────────────────────────────────────
+   Replaced BOTH the Gantt and the Builds table (2026-08-23), which is why
+   there is one grid here where there used to be `.builds-grid` and a
+   624-line chart component.
+
+   MOBILE FIRST, deliberately. The desktop track set is the media query,
+   not the base, because the 390px composition is the designed one: `WHERE`
+   spans two sub-rows so the environment mark stays beside the build it
+   marks, and `WHAT CHANGED` drops to its own full-width line rather than
+   fighting a 168px sha for a 1fr track that does not exist at that width.
+   A ladder derived by letting a four-column table scroll sideways is the
+   defect this page keeps removing.
+
+   THE TRACKS ARE MEASURED AT THE REAL USABLE WIDTH. The mocks are drawn at
+   1280 with no sidebar; here the sidebar takes 176px, so the panel gets
+   1022px, and `WHAT CHANGED` is the only flexible track — every other one
+   is fixed, or the rows stop being a table. */
+.ladder-grid {
+	display: grid;
+	/* WHERE is 82px, not the proposal's 68, and both bumps are measured
+     against the PRODUCT's mono stack rather than the mock's.
+
+     68 -> 74: 68 was measured in JetBrains Mono; `ui-monospace,
+     SFMono-Regular, Menlo…` is ~14% wider, and 68px minus the cell's 12px
+     rule gutter left 56px against the 62px `STAGING` needs — so the most
+     common staging environment in the product ellipsised to `STAGI…`.
+
+     74 -> 82: found by actually rendering the 12-region fixture at 390px,
+     which nobody had done. `PROD ×10` is 69px and had 62 — so the mark
+     rendered `PROD ×…`, dropping THE COUNT, which is the entire payload of
+     the SET collapse. A chip that folds ten environments into one and then
+     truncates the ten is worse than ten chips. 82 - 12 = 70px, which fits
+     `PROD ×10` (69) and `STAGING` (62).
+
+     Residual, stated rather than hidden: a THREE-digit fan-out (`PROD ×100`,
+     76px) still ellipsises here. The chip's 12ch-plus-ellipsis contract is
+     product-wide and this column is not the place to break it; the `title`
+     carries the full count and every environment name.
+
+     The 14px comes out of BUILD, which was carrying 192px for a ~130px
+     joined badge. */
+	grid-template-columns: 82px minmax(0, 1fr) 40px;
+	grid-template-areas:
+		'wh bld age'
+		'wh chg chg';
+	align-items: stretch;
+	column-gap: 12px;
+	row-gap: 8px;
+}
+
+.ladder-grid--divider {
+	grid-template-areas: 'wh dv dv';
+	row-gap: 0;
+}
+
+/* NO COMMIT DATA AT ALL — GitHub unconfigured, or configured and not
+   connected. At phone width the second grid row is DROPPED rather than
+   reserved: `WHAT CHANGED` is not a column that happens to be empty, it is
+   one that will never fill, and a reserved 17px line on every row of a
+   25-build app is ~250px of guaranteed white that reads as a load which
+   never finishes. The desktop track survives (see the `lg` block) because
+   there it is the gutter that puts AGE on the panel's right edge. */
+.ladder-grid--nochanged {
+	grid-template-areas: 'wh bld age';
+	row-gap: 0;
+}
+
+.ladder-grid--nochanged.ladder-grid--divider {
+	grid-template-areas: 'wh dv dv';
+}
+
+/* Row height comes from `.ladder-where`'s 44px minimum, not from row
+   padding, so a row is 44px whether or not it carries a second line. The
+   second line pays for its own space, below.
+   Padding lives on the ROW and never on `.ladder-grid` — the header uses
+   the same grid with its own `py-2`, and an unlayered rule here would beat
+   that utility outright (see the `@layer components` note above `.chip`). */
+.ladder-changed {
+	padding-bottom: 10px;
+}
+
+/* THE `WHERE` CELL. Each environment's chip is printed EXACTLY ONCE on the
+   whole ladder — on the row of the build it is running. A converged row
+   holds 2-4 stacked chips and grows; that growth IS the convergence, and
+   it costs nothing because the rows it grows past are the ones that no
+   longer need marks. */
+.ladder-where {
+	grid-area: wh;
+	position: relative;
+	display: flex;
+	flex-wrap: wrap;
+	align-content: center;
+	align-items: center;
+	gap: 4px;
+	min-height: 44px;
+	padding: 6px 0 6px 12px;
+}
+
+.ladder-where--head {
+	min-height: 0;
+	padding: 0;
+	display: block;
+}
+
+.ladder-grid--divider .ladder-where {
+	min-height: 32px;
+}
+
+/* The CELL bounds the mark, not a second hard-coded number. `.chip` caps at
+   `12ch` in `@layer components`; this unlayered rule releases that cap so
+   the only constraint is the WHERE track width, which is stated once in the
+   grid template above. Two numbers for one width is how `PROD ×10` came to
+   render as `PROD ×…` while the cell it sat in had room to spare. */
+.ladder-where .chip {
+	max-width: 100%;
+}
+
+/* THE RULE — 1px, gray-300, at left:4px, drawn ONLY between the first and
+   last marked row. Half height on the endpoints so it starts and stops at
+   the chips rather than at the row edges.
+
+   ITS HEIGHT IS THE LAG. That is the whole idea, and it is why there is no
+   `point` variant: when every environment is on the same build the first
+   and last marked row are the same row, the component renders no rule at
+   all, and convergence looks like nothing — which is what it is.
+
+   DASHED ACROSS THE TRUNCATION DIVIDER. The window hides builds; the rule
+   crossing that divider must not assert a continuity the page cannot
+   evidence. A retention window is a boundary of knowledge, and the dash is
+   the page saying so. */
+.ladder-rule {
+	position: absolute;
+	left: 4px;
+	width: 1px;
+	background-color: var(--color-gray-300);
+}
+
+.dark .ladder-rule {
+	background-color: var(--color-gray-600);
+}
+
+.ladder-rule--through {
+	top: 0;
+	bottom: 0;
+}
+
+.ladder-rule--from {
+	top: 50%;
+	bottom: 0;
+}
+
+.ladder-rule--to {
+	top: 0;
+	bottom: 50%;
+}
+
+.ladder-rule--dashed {
+	background-color: transparent;
+	background-image: repeating-linear-gradient(
+		to bottom,
+		var(--color-gray-300) 0 3px,
+		transparent 3px 7px
+	);
+}
+
+.dark .ladder-rule--dashed {
+	background-image: repeating-linear-gradient(
+		to bottom,
+		var(--color-gray-600) 0 3px,
+		transparent 3px 7px
+	);
+}
+
+.ladder-build {
+	grid-area: bld;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.ladder-changed {
+	grid-area: chg;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+/* Hidden below `lg` in UNLAYERED css, because `.ladder-changed` is
+   unlayered and would beat Tailwind's `hidden`. */
+.ladder-changed--head {
+	display: none;
+}
+
+.ladder-age {
+	grid-area: age;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+}
+
+.ladder-divider {
+	grid-area: dv;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+@media (min-width: 1024px) {
+	/* WHERE 84 | BUILD 168 | WHAT CHANGED 1fr | AGE 54, gap 12.
+     BUILD is 168 and not the ledger's 152: this column carries the joined
+     `newest`/`−N` chip and a sha on every row of a 25-build app, where the
+     ledger carries it on three. */
+	.ladder-grid {
+		grid-template-columns: 84px 168px minmax(0, 1fr) 54px;
+		grid-template-areas: 'wh bld chg age';
+		row-gap: 0;
+	}
+
+	.ladder-grid--divider {
+		grid-template-areas: 'wh dv dv dv';
+	}
+
+	.ladder-where {
+		padding-left: 14px;
+	}
+
+	.ladder-changed--head {
+		display: flex;
+	}
+
+	/* The track stays at `lg` even with no commit data: it is what puts AGE
+     on the panel's right edge. Only the HEADER goes, so no label stands
+     over a column that will never fill. */
+	.ladder-grid--nochanged {
+		grid-template-areas: 'wh bld chg age';
+	}
+
+	.ladder-grid--nochanged.ladder-grid--divider {
+		grid-template-areas: 'wh dv dv dv';
+	}
+
+	.ladder-changed {
+		padding-bottom: 0;
+	}
 }

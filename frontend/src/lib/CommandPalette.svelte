@@ -8,9 +8,8 @@
 		getRolloutStatus,
 		formatTimeAgoCompact,
 		getDisplayVersion,
-		detectStuck
-	} from '$lib/utils';
-	import { Badge } from 'flowbite-svelte';
+		detectStuck, formatDate } from '$lib/utils';
+	import Chip from '$lib/components/Chip.svelte';
 	import {
 		SearchOutline,
 		GridOutline,
@@ -195,7 +194,7 @@
 
 		// 5. Actions (top-level pages)
 		const actions: { title: string; href: string; subtitle?: string }[] = [
-			{ title: 'Control Center', subtitle: 'Home view', href: '/' },
+			{ title: 'Fleet overview', subtitle: 'Everything at a glance', href: '/' },
 			{ title: 'Rollouts', subtitle: 'Full inventory list', href: '/rollouts' },
 			{ title: 'Apps', subtitle: 'Apps across environments', href: '/apps' },
 			{ title: 'Environments', subtitle: 'Cross-env matrix', href: '/environments' },
@@ -531,13 +530,21 @@
 										     cue). Tooltip still surfaces the bake state. -->
 										<div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
 											{#each r.envCells as ec (ec.envName)}
-												<span
-													class="environment-theme-scope environment-theme-badge inline-flex items-center rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wider"
-													style={ec.theme ? getEnvironmentThemeStyle(ec.theme) : undefined}
+												<!-- DELIBERATELY NOT `wide` (2026-08-26). The strip is a COUNT AND A STATE,
+												     not a list of names: its job is "this app is in 13 places and they are
+												     all green". The row’s identifier is the APP NAME above it, and the
+												     place that prints every region whole is `/apps/<name>`, one keystroke
+												     away, where the chips ARE `wide`. Widening here costs the one surface
+												     whose entire value is scanning many results at once: measured at 1440,
+												     13 chips at 72px wrap to 2 lines inside the 592px result row and to 4
+												     lines at full width, halving how many results fit the 520px scroll
+												     region. Full name is in `title` on every chip. -->
+												<Chip
+													role="env"
+													theme={ec.theme}
+													label={shortEnvLabel(ec.theme) || ec.envName}
 													title={`${ec.envName} · ${ec.version ?? 'no deploy'} · ${ec.bakeStatus}`}
-												>
-													{shortEnvLabel(ec.theme) || ec.envName}
-												</span>
+												/>
 											{/each}
 										</div>
 									{:else if r.pretty || r.subtitle}
@@ -549,28 +556,27 @@
 
 								<!-- Right-side meta: env badge, stuck pill, status dot, time -->
 								{#if r.stuck}
-									<span class="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800 ring-1 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:ring-amber-700/60">stuck</span>
+									<Chip role="alarm" label="stuck" title="Stuck" class="shrink-0" />
 								{/if}
 								{#if r.statusColor}
 									<span class="relative flex h-2 w-2 shrink-0 items-center justify-center" title={r.statusText}>
 										{#if r.statusColor === 'yellow'}
 											<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-60"></span>
 										{/if}
-										<span class="h-2 w-2 rounded-full {r.statusColor === 'green' ? 'bg-green-500' : r.statusColor === 'red' ? 'bg-red-500' : 'bg-yellow-500'}"></span>
+										<span class="h-2 w-2 rounded-full {r.statusColor === 'green' ? 'bg-green-700 dark:bg-green-400' : r.statusColor === 'red' ? 'bg-red-500' : 'bg-yellow-500'}"></span>
 									</span>
 								{/if}
 								{#if r.envTheme}
-									<Badge
-										color="gray"
-										size="small"
-										style={getEnvironmentThemeStyle(r.envTheme)}
-										class="environment-theme-scope environment-theme-badge shrink-0 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
-									>
-										{shortEnvLabel(r.envTheme)}
-									</Badge>
+									<!-- DELIBERATELY NOT `wide` (2026-08-26). The full namespace is printed
+									     on this same row, as the result’s own subtitle -- `edge-mesh-prod-
+									     us-east-1` under `edge-mesh` -- so the chip is a colour/tier cue and
+									     not the identifier. This is the "repeated label whose full name is
+									     adjacent" case, and the palette is a fixed-width overlay that cannot
+									     grow to absorb 147px. -->
+									<Chip role="env" theme={r.envTheme} label={shortEnvLabel(r.envTheme)} class="shrink-0" />
 								{/if}
 								{#if r.timestamp}
-									<span class="hidden shrink-0 font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500 sm:inline">{formatTimeAgoCompact(r.timestamp, $now)}</span>
+									<span class="hidden shrink-0 font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500 sm:inline" title={formatDate(r.timestamp)}>{formatTimeAgoCompact(r.timestamp, $now)}</span>
 								{/if}
 							</button>
 						{/each}

@@ -1,11 +1,12 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo } from '$lib/utils';
-	import { versionPath, repoKeyFromSource } from '$lib/version-utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, formatDate } from '$lib/utils';
+	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { rolloutPath, sourceClusterName } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
+	import Chip from '$lib/components/Chip.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	let {
@@ -13,12 +14,30 @@
 		environments = [],
 		limit = 20,
 		activityHref = '/activity',
-		localClusterName = ''
+		localClusterName = '',
+		showAppName = true,
+		showEnv = true
 	}: {
 		rollouts: Rollout[];
 		environments?: Environment[];
 		limit?: number;
 		activityHref?: string;
+		/**
+		 * False on a page already scoped to ONE environment. Same rule as
+		 * `showAppName`, applied to the other axis: `/envs/prod` reached via an
+		 * `h1` and a URL that both say `prod` was printing a PROD chip on every
+		 * row of the rail. A chip that is identical on every row is a mark that
+		 * cannot mark anything.
+		 */
+		showEnv?: boolean;
+		/**
+		 * False on a page already scoped to ONE app. The app-detail page reached
+		 * via a breadcrumb, an `h1` and a URL that all say `hello-world-app` was
+		 * repeating that string 8 more times down the rail — the row restating
+		 * the one fact its container already guarantees. Env detail and
+		 * namespace detail DO need it, because those rails span many apps.
+		 */
+		showAppName?: boolean;
 		// Cluster to route to when a rollout carries no source-cluster
 		// annotation (e.g. a single-cluster dashboard, or a detail fetch that
 		// doesn't stamp cross-cluster provenance).
@@ -32,6 +51,13 @@
 		envName: string;
 		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
 		version: string;
+		/**
+		 * The git revision behind `version`. Carried so the link can be keyed by
+		 * REVISION — `/versions` groups by commit now, and a display label is
+		 * per-service, so linking by label would land on a page that has to
+		 * resolve it back. null when the deploy carried no revision annotation.
+		 */
+		revision: string | null;
 		previousVersion: string | null;
 		bakeStatus: string;
 		timestamp: string;
@@ -70,6 +96,7 @@
 					envName,
 					theme,
 					version: ver,
+					revision: h.version?.revision ?? null,
 					previousVersion: prev,
 					bakeStatus: bs,
 					timestamp: h.timestamp,
@@ -122,12 +149,16 @@
 		return Array.from(map.values());
 	});
 
+	// Same status ink as `BakeStatusIcon` (-700 light / -400 dark). The rail
+	// used to carry a lighter green, a SECOND green in a product allowed
+	// exactly one; red/yellow/blue had the same drift. Status hue is owned by
+	// the glyph scale, so the dots read from it rather than near it.
 	const STATUS_DOT: Record<string, string> = {
-		Succeeded: 'bg-green-500',
-		Failed: 'bg-red-500',
-		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
-		Cancelled: 'bg-gray-400',
+		Succeeded: 'bg-green-700 dark:bg-green-400',
+		Failed: 'bg-red-700 dark:bg-red-400',
+		InProgress: 'bg-yellow-700 dark:bg-yellow-400',
+		Deploying: 'bg-blue-700 dark:bg-blue-400',
+		Cancelled: 'bg-gray-500 dark:bg-gray-400',
 		None: 'bg-gray-300 dark:bg-gray-600'
 	};
 	const STATUS_TEXT: Record<string, string> = {
@@ -151,36 +182,55 @@
 	}
 </script>
 
+<!-- The `prev -> new` pair. Rendered on line 1 when the app name is suppressed
+     (a page already scoped to one app), on line 2 when it is not. One snippet so
+     the two layouts cannot drift apart. -->
+{#snippet versionSnippet(a: ActivityEntry)}
+	<span class="flex min-w-0 shrink-0 items-baseline gap-1">
+		{#if a.previousVersion}
+			<span class="t-code-sm text-gray-400 line-through dark:text-gray-500">{a.previousVersion}</span>
+			<span class="t-micro text-gray-400 dark:text-gray-500">→</span>
+		{/if}
+		{#if a.version}
+			<a
+				href={buildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
+				class="t-code-sm pointer-events-auto relative z-10 text-gray-700 hover:underline dark:text-gray-300"
+				>{a.version}</a
+			>
+		{/if}
+	</span>
+{/snippet}
+
 <section>
 	<div class="mb-3 flex items-baseline justify-between">
-		<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+		<h2 class="t-label text-gray-500 dark:text-gray-400">
 			Recent activity
 		</h2>
 		<a
 			href={activityHref}
-			class="text-[10px] text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+			class="t-micro text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
 		>view all ›</a>
 	</div>
 	<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
 		{#if entries.length === 0}
 			<div class="flex flex-col items-center px-4 py-10 text-center">
-				<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700/60">
+				<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
 					<span class="block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600"></span>
 				</div>
-				<p class="text-sm font-medium text-gray-700 dark:text-gray-300">No activity yet</p>
-				<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Deployments will appear here as a timeline.</p>
+				<p class="t-dense text-gray-700 dark:text-gray-300">No activity yet</p>
+				<p class="t-micro mt-1 text-gray-400 dark:text-gray-500">Deployments will appear here as a timeline.</p>
 			</div>
 		{:else}
 			<div class="p-4">
 				{#each byDay as group, gi}
 					<div class="{gi > 0 ? 'mt-5' : ''}">
 						<div class="mb-3 flex items-center gap-2">
-							<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{group.label}</span>
+							<span class="t-label text-gray-500 dark:text-gray-400">{group.label}</span>
 							<span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"></span>
-							<span class="font-mono text-[10px] text-gray-300 dark:text-gray-600">{group.entries.length}</span>
+							<span class="t-code-sm text-gray-400 dark:text-gray-500">{group.entries.length}</span>
 						</div>
 						<ol class="relative">
-							<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700/80" aria-hidden="true"></span>
+							<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
 							{#each group.entries as a, ai}
 								{@const isLast = ai === group.entries.length - 1}
 								<li
@@ -193,34 +243,42 @@
 										{/if}
 										<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
 									</span>
-									<div class="relative block rounded-md -mx-2 px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
+									<div class="relative block rounded -mx-2 px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
 										<!-- Whole-row link: absolute overlay so any click on the
 										     row (except the version link below) opens the rollout
 										     detail. -->
 										<a href={a.href} class="absolute inset-0 z-0" aria-label="Open {a.displayName}"></a>
 										<div class="pointer-events-none relative z-[1] flex items-baseline justify-between gap-2">
-											<div class="flex min-w-0 items-baseline gap-1.5">
-												{#if a.envName || a.theme}
-													<span class="environment-theme-badge shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
+											<div class="flex min-w-0 items-baseline gap-2">
+												{#if showEnv && (a.envName || a.theme)}
+													<Chip role="env" theme={a.theme} label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''} wide class="shrink-0" />
 												{/if}
-												<span class="truncate text-sm font-medium text-gray-900 dark:text-white">{a.displayName}</span>
+												{#if showAppName}
+													<span class="t-dense truncate text-gray-900 dark:text-white">{a.displayName}</span>
+												{:else}
+													{@render versionSnippet(a)}
+												{/if}
 											</div>
-											<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
+											<span class="t-code-sm shrink-0 text-gray-400 dark:text-gray-500" title={formatDate(a.timestamp)}>
 												{hourLabel(a.timestamp)}
 											</span>
 										</div>
-										<div class="pointer-events-none relative z-[1] mt-0.5 flex items-baseline justify-between gap-2 text-[11px]">
-											<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
-											<span class="flex shrink-0 items-baseline gap-1">
-												{#if a.previousVersion}
-													<span class="font-mono text-gray-400/70 line-through dark:text-gray-500/70">{a.previousVersion}</span>
-													<span class="text-[10px] text-gray-300 dark:text-gray-600">→</span>
+										<!-- Second line only when it carries something the first
+										     does not. `Succeeded` beside a green dot that already
+										     means succeeded is a word the eye has to read to
+										     discard; it appeared 8 times on one screen. -->
+										{#if showAppName || a.bakeStatus !== 'Succeeded'}
+											<div class="t-micro pointer-events-none relative z-[1] mt-0.5 flex items-baseline justify-between gap-2">
+												{#if a.bakeStatus !== 'Succeeded'}
+													<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
+												{:else}
+													<span></span>
 												{/if}
-												{#if a.version}
-													<a href={versionPath(repoKeyFromSource(a.source, a.rolloutName), a.version)} class="pointer-events-auto relative z-10 font-mono text-gray-700 hover:underline dark:text-gray-300">{a.version}</a>
+												{#if showAppName}
+													{@render versionSnippet(a)}
 												{/if}
-											</span>
-										</div>
+											</div>
+										{/if}
 									</div>
 								</li>
 							{/each}

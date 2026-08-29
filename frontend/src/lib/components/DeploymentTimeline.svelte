@@ -105,35 +105,62 @@
 		return PAD_T + i * ROW_H + ROW_H / 2;
 	}
 
-	function statusColor(s?: string): string {
+	// STATUS → TOKEN CLASSES, NOT RAW HEXES (2026-08-27, colour audit §2b/§2d).
+	//
+	// This returned six literals — `#ef4444`, `#f59e0b`, `#3b82f6`, `#9ca3af`,
+	// `#6b7280` — none of which is a product token. `#f59e0b` is the pre-OKLCH
+	// hex for `amber-500`, i.e. a DUPLICATE of the `stuck` alarm's dot at
+	// dEok 0.0165, spent on `InProgress`; the budget reserves amber for `stuck`
+	// and nothing else, and yellow for baking. The other three were off-token
+	// variants of `red-700`, `blue-700` and the two grays.
+	//
+	// Returning CLASSES rather than a hex also fixes a second defect the hexes
+	// hid: one literal cannot be two themes, so every dot on this chart used to
+	// render the light value on the dark card.
+	//
+	// SUCCEEDED IS NEUTRAL. A timeline's x-axis IS position, and DESIGN.md's own
+	// corollary is that when position carries meaning, colour marks only the
+	// deviation. Measured before this change, `/activity` drew 216 `green-700`
+	// glyphs against 2 red and 2 amber — the norm at 108:1. `Cancelled` and the
+	// unknown default join it: all three mean "nothing to do here", and the
+	// tooltip prints the word.
+	function statusFill(s?: string): string {
 		switch (s) {
-			case 'Succeeded':
-				return '#22c55e';
 			case 'Failed':
-				return '#ef4444';
+				return 'fill-red-700 dark:fill-red-400';
 			case 'InProgress':
-				return '#f59e0b';
+				return 'fill-yellow-700 dark:fill-yellow-400';
 			case 'Deploying':
-				return '#3b82f6';
-			case 'Cancelled':
-				return '#9ca3af';
+				return 'fill-blue-700 dark:fill-blue-400';
 			default:
-				return '#6b7280';
+				return 'fill-gray-500 dark:fill-gray-400';
 		}
 	}
 
-	function statusGlow(s?: string): string {
+	/** Same six states, as background/text utilities, for the HTML tooltip. */
+	function statusInk(s?: string): string {
 		switch (s) {
-			case 'Succeeded':
-				return 'rgba(34,197,94,0.3)';
 			case 'Failed':
-				return 'rgba(239,68,68,0.3)';
+				return 'bg-red-700 dark:bg-red-400';
 			case 'InProgress':
-				return 'rgba(245,158,11,0.3)';
+				return 'bg-yellow-700 dark:bg-yellow-400';
 			case 'Deploying':
-				return 'rgba(59,130,246,0.3)';
+				return 'bg-blue-700 dark:bg-blue-400';
 			default:
-				return 'transparent';
+				return 'bg-gray-500 dark:bg-gray-400';
+		}
+	}
+
+	function statusText(s?: string): string {
+		switch (s) {
+			case 'Failed':
+				return 'text-red-700 dark:text-red-400';
+			case 'InProgress':
+				return 'text-yellow-700 dark:text-yellow-400';
+			case 'Deploying':
+				return 'text-blue-700 dark:text-blue-400';
+			default:
+				return 'text-gray-500 dark:text-gray-400';
 		}
 	}
 
@@ -261,12 +288,25 @@
 <div class="relative w-full select-none" bind:this={containerEl}>
 	<!-- Time range selector -->
 	<div class="mb-3 flex flex-wrap items-center gap-1">
+		<!-- THE LOUDEST OBJECT IN THE PRODUCT WAS THIS BUTTON (2026-08-27,
+		     colour audit §2a). Selected, it was `bg-blue-600 #155dfc` at
+		     presence 207.8 — louder than the `stuck` alarm chip anywhere
+		     (204.1 light / 155.5 dark) and dEok 0.0591 from `Deploying`
+		     `blue-700`, i.e. below the JND. The loudest mark on `/activity`
+		     wore a STATUS hue and meant "you clicked this".
+		     It broke three more rules at once: `rounded-md` (banned radius),
+		     `px-2.5 py-1` (two off-scale spacing values) and a 12px type size
+		     that is not one of the nine roles. All four are fixed here by
+		     adopting the near-neutral selected state the `ALL / DEPLOYS /
+		     IN PROGRESS / FAILURES` row 30px below already uses, so the two
+		     filter rows are one control language instead of two. -->
 		{#each TIME_RANGES as { value, label }}
 			<button
-				class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors {isPreset(timeRange) &&
-				timeRange === value
-					? 'bg-blue-600 text-white shadow-sm'
-					: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}"
+				class="rounded px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors {isPreset(
+					timeRange
+				) && timeRange === value
+					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+					: 'border border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
 				onclick={() => {
 					timeRange = value;
 				}}
@@ -276,7 +316,7 @@
 		{/each}
 		{#if !isPreset(timeRange)}
 			<div
-				class="ml-2 flex items-center gap-1.5 rounded-md bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+				class="ml-2 flex items-center gap-1 rounded border border-gray-200 bg-transparent px-3 py-1 text-[11px] font-medium text-gray-600 dark:border-gray-700 dark:text-gray-300"
 			>
 				<span class="font-mono">
 					{fmtTooltipDate(new Date(timeRange.start).toISOString())} – {fmtTooltipDate(
@@ -284,7 +324,7 @@
 					)}
 				</span>
 				<button
-					class="rounded px-1 hover:bg-blue-200 dark:hover:bg-blue-800"
+					class="rounded px-1 hover:bg-gray-100 dark:hover:bg-gray-700"
 					onclick={() => {
 						timeRange = '7d';
 					}}
@@ -295,7 +335,7 @@
 				</button>
 			</div>
 		{:else}
-			<span class="ml-2 hidden text-xs text-gray-400 sm:inline dark:text-gray-600">
+			<span class="ml-2 hidden text-xs text-gray-500 sm:inline dark:text-gray-400">
 				drag to zoom
 			</span>
 		{/if}
@@ -307,7 +347,7 @@
 		class="relative overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
 	>
 		{#if services.length === 0}
-			<div class="flex h-24 items-center justify-center text-sm text-gray-400 dark:text-gray-600">
+			<div class="flex h-24 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
 				No data
 			</div>
 		{:else}
@@ -405,21 +445,25 @@
 							selectedEntry?.serviceId === svc.id && selectedEntry?.index === origIdx}
 						{@const active = isHov || isSel}
 						{@const r = active ? R_ACTIVE : R_NORMAL}
-						{@const col = statusColor(e.bakeStatus)}
-
-						<!-- Glow ring for active -->
+						<!-- Halo for the active dot. It was four status-tinted rgba
+						     literals (one of them `green-500`, a banned token); the dot
+						     already grows on hover, so the halo only has to say WHICH
+						     one and can be neutral. -->
 						{#if active}
-							<circle cx={x} cy={cy} r={r + 5} fill={statusGlow(e.bakeStatus)} />
+							<circle
+								cx={x}
+								cy={cy}
+								r={r + 5}
+								class="fill-gray-900/10 dark:fill-gray-100/15"
+							/>
 						{/if}
 
 						<circle
 							cx={x}
 							cy={cy}
 							{r}
-							fill={col}
-							stroke={active ? 'white' : 'rgba(255,255,255,0.6)'}
 							stroke-width={active ? 2 : 1}
-							class="cursor-pointer"
+							class="cursor-pointer stroke-white dark:stroke-gray-800 {statusFill(e.bakeStatus)}"
 							role="button"
 							aria-label="Deployment {e.version.version || e.version.tag}"
 							tabindex={0}
@@ -493,14 +537,14 @@
 					y2={PAD_T + services.length * ROW_H}
 					stroke-width={1.5}
 					stroke-dasharray="4 2"
-					class="stroke-blue-400 dark:stroke-blue-600"
+					class="stroke-gray-400 dark:stroke-gray-500"
 				/>
 				<text
 					x={containerWidth - PAD_R - 4}
 					y={PAD_T + 10}
 					text-anchor="end"
 					font-size="9"
-					class="fill-blue-400 dark:fill-blue-600"
+					class="fill-gray-500 dark:fill-gray-400"
 				>
 					now
 				</text>
@@ -526,15 +570,14 @@
 	{#if tooltipEntry}
 		{@const { entry, svcName } = tooltipEntry}
 		<div
-			class="pointer-events-none absolute z-50 rounded-lg border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/95"
+			class="pointer-events-none absolute z-50 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/95"
 			style="left: {tipLeft}px; top: {tipTop}px; width: {TOOLTIP_W}px; transform: {tipAboveDot
 				? 'translateY(-100%)'
 				: 'translateY(0)'};"
 		>
 			<div class="mb-1.5 flex items-center gap-2">
 				<span
-					class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-					style="background: {statusColor(entry.bakeStatus)}"
+					class="h-2.5 w-2.5 flex-shrink-0 rounded-full {statusInk(entry.bakeStatus)}"
 				></span>
 				<span class="font-mono text-xs font-semibold text-gray-900 dark:text-white">
 					{entry.version.version || entry.version.revision?.slice(0, 12) || entry.version.tag}
@@ -542,26 +585,26 @@
 			</div>
 			<div class="text-xs text-gray-500 dark:text-gray-400">{fmtTooltipDate(entry.timestamp)}</div>
 			{#if svcName}
-				<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">{svcName}</div>
+				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{svcName}</div>
 			{/if}
-			<div class="mt-1 text-xs font-medium" style="color: {statusColor(entry.bakeStatus)}">
+			<div class="mt-1 text-xs font-medium {statusText(entry.bakeStatus)}">
 				{entry.bakeStatus || 'Unknown'}
 			</div>
 			{#if entry.triggeredBy}
-				<div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+				<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
 					{entry.triggeredBy.kind === 'User' ? entry.triggeredBy.name : 'System'}
 				</div>
 			{/if}
 		</div>
 	{/if}
 
-	<!-- Legend -->
-	<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-		{#each [['Succeeded', '#22c55e'], ['Failed', '#ef4444'], ['InProgress', '#f59e0b'], ['Deploying', '#3b82f6'], ['Other', '#6b7280']] as [label, color]}
-			<div class="flex items-center gap-1.5">
-				<span class="h-2 w-2 rounded-full" style="background: {color}"></span>
-				<span class="text-xs text-gray-500 dark:text-gray-400">{label}</span>
-			</div>
-		{/each}
-	</div>
+	<!-- THE LEGEND IS DELETED (2026-08-27, colour audit §2c). It listed five
+	     dummy swatches — `● Succeeded ● Failed ● InProgress ● Deploying ● Other` —
+	     under a chart whose dots the tooltip already names. DESIGN.md: *"A page
+	     that needs a legend to explain a missing element is a page whose
+	     encoding is not carrying"*, and the human had the `/apps` footer legend
+	     and its dummy ruler deleted on 2026-08-26 for exactly this. It was also
+	     the only place three of the off-token hexes above were still spelled
+	     out. With `Succeeded` now neutral, the encoding is "coloured = a
+	     deploy that is not finished or not fine", which needs no key. -->
 </div>

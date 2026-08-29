@@ -261,11 +261,15 @@ spec:
           port: 80
 EOF
 
-KIND_CLUSTER_NAME="${CLUSTER_NAME}" "${SCRIPT_DIR}"/build-and-push.sh "${env}"
+# The argument is a release count, not an environment — it used to be "${env}",
+# which is not set until the loop below, so it always fell back to the default.
+# Every iteration publishes a fresh release of each example, so re-running this
+# script (or build-and-push.sh directly) keeps producing new versions to roll.
+KIND_CLUSTER_NAME="${CLUSTER_NAME}" "${SCRIPT_DIR}"/build-and-push.sh 3
 GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
 SCRIPT_DIR=$(dirname "$0")
 for env in ${APP_ENVS}; do
-  for app in hello-world hello-multi; do
+  for app in hello-world hello-multi hello-dep; do
     # kustomize build "example/${app}/app/deployments/${env}" | kubectl apply -f -
     kustomize build "example/${app}/cd/deployments/${env}" | kubectl apply -f -
     kubectl -n ${app}-${env} create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -

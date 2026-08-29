@@ -103,7 +103,7 @@
 				const stroke = !rel
 					? '#9ca3af'
 					: rel.kind === 'same'
-						? '#22c55e'
+						? '#008236'
 						: rel.kind === 'ahead'
 							? '#10b981'
 							: rel.kind === 'behind'

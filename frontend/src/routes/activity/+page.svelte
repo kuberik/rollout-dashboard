@@ -4,8 +4,8 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
-	import { versionPath, repoKeyFromSource } from '$lib/version-utils';
-	import { formatTimeAgoCompact, formatTimeAgo, getDisplayVersion } from '$lib/utils';
+	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
+	import { formatTimeAgoCompact, formatTimeAgo, formatDate, getDisplayVersion } from '$lib/utils';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
@@ -13,7 +13,9 @@
 	import { ClockSolid } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { Environment } from '../../types';
@@ -28,6 +30,44 @@
 
 	const rollouts = $derived(rolloutsQuery.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(rolloutsQuery.data?.environments?.items || []);
+
+	// Fleet deploy timeline: a single lane with every deploy across all
+	// rollouts merged onto one shared time axis (the history-page chart, but
+	// collapsed to one row — not one lane per rollout).
+	type TimeRange = '1h' | '6h' | '1d' | '7d' | '30d' | 'all' | { start: number; end: number };
+	let timelineRange = $state<TimeRange>('7d');
+	const chartServices = $derived.by(() => {
+		const allHistory = rollouts
+			.flatMap((r) => r.status?.history ?? [])
+			.slice()
+			.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+		if (allHistory.length === 0) return [];
+		return [{ id: 'all', name: 'All deploys', history: allHistory, isCurrent: false }];
+	});
+
+	const RANGE_MS: Record<string, number> = {
+		'1h': 3_600_000,
+		'6h': 21_600_000,
+		'1d': 86_400_000,
+		'7d': 604_800_000,
+		'30d': 2_592_000_000
+	};
+	// The timeline's range selector also constrains the event feed below.
+	function inTimelineRange(ts: string): boolean {
+		const t = new Date(ts).getTime();
+		if (timelineRange === 'all') return true;
+		if (typeof timelineRange === 'object') return t >= timelineRange.start && t <= timelineRange.end;
+		return t >= $now.getTime() - (RANGE_MS[timelineRange] ?? Number.POSITIVE_INFINITY);
+	}
+	const rangeLabel = $derived(
+		timelineRange === 'all'
+			? 'all time'
+			: typeof timelineRange === 'object'
+				? 'selected range'
+				: ({ '1h': 'last hour', '6h': 'last 6h', '1d': 'last day', '7d': 'last 7 days', '30d': 'last 30 days' }[
+						timelineRange
+					] ?? '')
+	);
 
 	type ActivityEntry = {
 		rolloutName: string;
@@ -132,7 +172,7 @@
 			const env = environments.find((e) => rolloutMatchesEnvironment(rollout, e));
 			const envName = env?.spec?.environment || '';
 			const theme = env ? getRolloutEnvironmentTheme(rollout, env) : getRolloutEnvironmentTheme(rollout);
-			const limited = history.slice(0, 8);
+			const limited = history.slice(0, 30);
 			for (let i = 0; i < limited.length; i++) {
 				const h = limited[i];
 				if (!h.timestamp) continue;
@@ -178,6 +218,7 @@
 			}
 		}
 		return entries
+			.filter((e) => inTimelineRange(e.timestamp))
 			.filter((e) => !envFilter || e.envName === envFilter)
 			.filter((e) => !appFilter || e.rolloutName === appFilter)
 			.filter((e) => !nsFilter || e.rolloutNamespace === nsFilter)
@@ -222,12 +263,12 @@
 	});
 
 	const STATUS_CONFIG: Record<string, { dotClass: string; textClass: string; label: string }> = {
-		Succeeded: { dotClass: 'bg-green-500', textClass: 'text-green-700 dark:text-green-400', label: 'Succeeded' },
-		Failed:    { dotClass: 'bg-red-500',   textClass: 'text-red-700 dark:text-red-400',     label: 'Failed' },
-		InProgress:{ dotClass: 'bg-yellow-400',textClass: 'text-yellow-700 dark:text-yellow-400', label: 'Baking' },
-		Deploying: { dotClass: 'bg-blue-500',  textClass: 'text-blue-700 dark:text-blue-400',   label: 'Deploying' },
-		Cancelled: { dotClass: 'bg-gray-400',  textClass: 'text-gray-500 dark:text-gray-500',   label: 'Cancelled' },
-		None:      { dotClass: 'bg-gray-300 dark:bg-gray-600', textClass: 'text-gray-400 dark:text-gray-600', label: 'Idle' },
+		Succeeded: { dotClass: 'bg-green-700 dark:bg-green-400', textClass: 'text-green-700 dark:text-green-400', label: 'Succeeded' },
+		Failed:    { dotClass: 'bg-red-700 dark:bg-red-400', textClass: 'text-red-700 dark:text-red-400', label: 'Failed' },
+		InProgress:{ dotClass: 'bg-yellow-700 dark:bg-yellow-400', textClass: 'text-yellow-700 dark:text-yellow-400', label: 'Baking' },
+		Deploying: { dotClass: 'bg-blue-700 dark:bg-blue-400', textClass: 'text-blue-700 dark:text-blue-400', label: 'Deploying' },
+		Cancelled: { dotClass: 'bg-gray-400',  textClass: 'text-gray-500 dark:text-gray-400',   label: 'Cancelled' },
+		None:      { dotClass: 'bg-gray-300 dark:bg-gray-600', textClass: 'text-gray-500 dark:text-gray-400', label: 'Idle' },
 	};
 </script>
 
@@ -240,7 +281,7 @@
 	<div class="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
 		<div class="flex items-baseline gap-3">
 			<h1 class="text-2xl font-light text-gray-900 dark:text-white">Activity</h1>
-			<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{activityFeed.length} events · last 7 days</span>
+			<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{activityFeed.length} events · {rangeLabel}</span>
 		</div>
 		<div class="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
 			<span class="font-mono uppercase tracking-wider">last 24h</span>
@@ -249,6 +290,14 @@
 			
 		</div>
 	</div>
+
+	<!-- Fleet deploy timeline — same chart as the rollout history page,
+	     across every rollout on a shared time axis. -->
+	{#if chartServices.length > 0}
+		<div class="mb-5 overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+			<DeploymentTimeline services={chartServices} bind:timeRange={timelineRange} />
+		</div>
+	{/if}
 
 	<!-- Filter chips: status kind on left, env on right -->
 	<div class="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -262,7 +311,7 @@
 				<button
 					type="button"
 					onclick={() => (kindFilter = f.key)}
-					class="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors
+					class="inline-flex items-center rounded px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors
 						{kindFilter === f.key
 							? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
 							: 'bg-transparent text-gray-500 border border-gray-200 hover:text-gray-700 hover:border-gray-300 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'}"
@@ -275,12 +324,12 @@
 					<button
 						type="button"
 						onclick={() => setEnvFilter(envFilter === e.name ? null : e.name)}
-						class="environment-theme-scope inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-opacity
+						class="environment-theme-scope inline-flex items-center rounded transition-opacity
 							{envFilter === e.name
-								? 'environment-theme-badge ring-1 ring-gray-900/30 dark:ring-gray-100/30'
-								: envFilter === null ? 'environment-theme-badge' : 'environment-theme-badge opacity-40 hover:opacity-100'}"
+								? 'ring-1 ring-gray-900/30 dark:ring-gray-100/30'
+								: envFilter === null ? '' : 'opacity-40 hover:opacity-100'}"
 						style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-					>{shortEnvLabel(e.theme) || e.name}</button>
+					><Chip role="env" theme={e.theme} label={shortEnvLabel(e.theme) || e.name} wide /></button>
 				{/each}
 			</div>
 		{/if}
@@ -293,10 +342,10 @@
 				<button
 					type="button"
 					onclick={clearAppFilter}
-					class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+					class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700"
 					title="Clear app filter"
 				>
-					<span class="text-[9px] text-blue-500/70 dark:text-blue-400/70">app</span>
+					<span class="text-[9px] text-gray-500 dark:text-gray-400">app</span>
 					<span class="font-mono normal-case">{appFilter}</span>
 					<span aria-hidden="true">×</span>
 				</button>
@@ -305,10 +354,10 @@
 				<button
 					type="button"
 					onclick={clearNsFilter}
-					class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700"
+					class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700"
 					title="Clear namespace filter"
 				>
-					<span class="text-[9px] text-gray-500/70 dark:text-gray-400/70">ns</span>
+					<span class="text-[9px] text-gray-500 dark:text-gray-400">ns</span>
 					<span class="font-mono normal-case">{nsFilter}</span>
 					<span aria-hidden="true">×</span>
 				</button>
@@ -317,7 +366,7 @@
 				<button
 					type="button"
 					onclick={clearAllFilters}
-					class="ml-1 text-[11px] text-gray-400 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-500 dark:hover:text-gray-300"
+					class="ml-1 text-[11px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
 				>clear all</button>
 			{/if}
 		</div>
@@ -326,23 +375,23 @@
 	{#if rolloutsQuery.isLoading}
 		<div class="space-y-3">
 			{#each Array(8) as _}
-				<div class="h-[3.75rem] w-full animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-[3.75rem] w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 			{/each}
 		</div>
 	{:else if rolloutsQuery.isError}
-		<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
+		<div class="rounded-xl border border-gray-200 p-4 text-sm text-red-700 dark:border-gray-700 dark:text-red-400">
 			Failed to load activity: {(rolloutsQuery.error as Error).message}
 		</div>
 	{:else if activityFeed.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<ClockSolid class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
+			<ClockSolid class="mb-3 h-10 w-10 text-gray-400 dark:text-gray-500" />
 			{#if activeFilterCount > 0 || envFilter}
 				<p class="text-sm font-medium text-gray-900 dark:text-white">No deploys match these filters</p>
 				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Try widening the scope or resetting.</p>
 				<button
 					type="button"
 					onclick={clearAllFilters}
-					class="mt-3 inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+					class="mt-3 inline-flex items-center gap-1 rounded bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
 				>Clear filters</button>
 			{:else}
 				<p class="text-sm font-medium text-gray-900 dark:text-white">No deploy history</p>
@@ -357,7 +406,7 @@
 					<div class="mb-2 flex items-baseline gap-2 border-b border-gray-100 pb-1 dark:border-gray-700/60">
 						<span class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{dayGroup.label}</span>
 						<span class="flex-1"></span>
-						<span class="font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">{dayGroup.entries.length}</span>
+						<span class="font-mono text-[10px] tabular-nums text-gray-500 dark:text-gray-400">{dayGroup.entries.length}</span>
 					</div>
 
 					<!-- Cluster entries with vertical rail through dots. -->
@@ -392,21 +441,21 @@
 									</span>
 
 									<!-- Time -->
-									<span class="pointer-events-none relative z-[1] font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" title={formatTimeAgo(entry.timestamp, $now)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
+									<span class="pointer-events-none relative z-[1] font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" title={formatDate(entry.timestamp)}>{formatTimeAgoCompact(entry.timestamp, $now)}</span>
 
 									<!-- Inline message: [actor] [verb] [app] to [env] [version] · [msg] -->
 									<div class="pointer-events-none relative z-[1] flex min-w-0 items-baseline gap-x-2 gap-y-1 text-[12.5px] flex-wrap">
 										<span class="truncate font-medium text-gray-700 dark:text-gray-300">{entry.actor}</span>
-										<span class="text-gray-400 dark:text-gray-500">
+										<span class="text-gray-500 dark:text-gray-400">
 											{#if entry.bakeStatus === 'Failed'}failed{:else if entry.bakeStatus === 'InProgress'}is baking{:else if entry.bakeStatus === 'Deploying'}is deploying{:else if entry.bakeStatus === 'Cancelled'}cancelled{:else}deployed{/if}
 										</span>
 										<span class="truncate font-semibold text-gray-900 dark:text-white">{entry.displayName}</span>
 										{#if entry.envName}
-											<span class="text-gray-400 dark:text-gray-500">to</span>
-											<span class="environment-theme-badge inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(entry.theme) || entry.envName}</span>
+											<span class="text-gray-500 dark:text-gray-400">to</span>
+											<Chip role="env" theme={entry.theme} label={shortEnvLabel(entry.theme) || entry.envName} wide class="shrink-0" />
 										{/if}
 										{#if entry.version}
-											<a href={versionPath(repoKeyFromSource(entry.source, entry.rolloutName), entry.version)} class="pointer-events-auto relative z-10 font-mono text-[11px] text-gray-600 hover:underline dark:text-gray-300">{entry.version}</a>
+											<a href={buildPath(repoKeyFromSource(entry.source, entry.rolloutName), entry.revision, entry.version)} class="pointer-events-auto relative z-10 font-mono text-[11px] text-gray-600 hover:underline dark:text-gray-300">{entry.version}</a>
 										{/if}
 										{#if entry.bakeStatus !== 'Succeeded'}
 											<span class="font-mono text-[10px] text-gray-300 dark:text-gray-600">·</span>
@@ -417,7 +466,7 @@
 									<!-- "was vX" supplemental line on previous-version transitions -->
 									<div class="pointer-events-none relative z-[1] hidden shrink-0 items-baseline justify-end sm:flex">
 										{#if entry.previousVersion}
-											<span class="font-mono text-[10px] text-gray-400/70 dark:text-gray-500/70">was <span class="line-through">{entry.previousVersion}</span></span>
+											<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">was <span class="line-through">{entry.previousVersion}</span></span>
 										{/if}
 									</div>
 								</div>
@@ -430,7 +479,7 @@
 										<button
 											type="button"
 											onclick={() => toggleActivity(key)}
-											class="text-[11px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+											class="text-[11px] text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 										>
 											{expanded ? 'Hide changes' : 'Show changes'}
 										</button>

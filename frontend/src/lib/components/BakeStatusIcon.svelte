@@ -37,9 +37,24 @@
 		large: '8'
 	};
 
+	// Literal class map, not a `text-${family}-600` template. Two reasons:
+	// Tailwind cannot see an interpolated class name (these only ever got
+	// generated because the same strings happened to appear elsewhere in
+	// the source), and the status ink is a design token that should be
+	// greppable. -700 rather than -600: it is the shade that clears 4.5:1
+	// on white, and there is exactly ONE green in the product — this one —
+	// which the `newest` rank chip also uses. Pending/None recedes to gray.
+	const TONE: Record<string, string> = {
+		green: 'text-green-700 dark:text-green-400',
+		red: 'text-red-700 dark:text-red-400',
+		yellow: 'text-yellow-700 dark:text-yellow-400',
+		blue: 'text-blue-700 dark:text-blue-400',
+		gray: 'text-gray-500 dark:text-gray-400'
+	};
+
 	function getStatusConfig(status?: string) {
 		const baseColor = getBakeStatusColor(status);
-		const color = `text-${baseColor}-600 dark:text-${baseColor}-400`;
+		const color = TONE[baseColor] ?? TONE.gray;
 
 		switch (status) {
 			case 'Succeeded':

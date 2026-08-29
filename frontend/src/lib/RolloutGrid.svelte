@@ -5,20 +5,17 @@
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import type { ClusterInfo, ClusterError } from '$lib/api/rollouts';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
-	import { formatTimeAgo, formatStatusTime, shortenVersion } from '$lib/utils';
+	import { formatTimeAgoCompact, formatDate, shortenVersion } from '$lib/utils';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { SearchOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
-	import StatusTile from '$lib/components/StatusTile.svelte';
-	import LagChip from '$lib/components/LagChip.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
-	import { computeBakeProgress } from '$lib/view-models/bake-progress';
 	import type { Rollout, Environment } from '../types';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
@@ -165,7 +162,7 @@
 				const as = a.statusKey === 'failed' || a.stuck ? 0 : 1;
 				const bs = b.statusKey === 'failed' || b.stuck ? 0 : 1;
 				if (as !== bs) return as - bs;
-				return a.title.localeCompare(b.title);
+				return a.name.localeCompare(b.name);
 			});
 		}
 		return [...map.values()].sort(
@@ -180,95 +177,22 @@
 	const pendingCardsAll = $derived.by(() => cards.filter((c) => c.statusKey === 'pending'));
 	const healthyCards = $derived.by(() => cards.filter((c) => c.statusKey === 'succeeded' && !c.stuck));
 
-	const namespaceCount = $derived(new Set(cards.map((c) => c.ns)).size);
+	// Compact status filter pills (single-select) shown in the filter bar.
+	const statusPills = $derived([
+		{ key: 'attention' as QuickFilter, label: 'Attention', count: attentionCards.length, dot: 'bg-red-500' },
+		{ key: 'active' as QuickFilter, label: 'In motion', count: inMotionCards.length, dot: 'bg-blue-500' },
+		{ key: 'pending' as QuickFilter, label: 'Pending', count: pendingCardsAll.length, dot: 'bg-gray-400' },
+		{ key: 'healthy' as QuickFilter, label: 'Healthy', count: healthyCards.length, dot: 'bg-green-700 dark:bg-green-400' }
+	]);
 
-	// Activity pulse: how many deploys landed in the last 24h. Gives the user
-	// a sense of cluster cadence (idle weekend vs busy release day).
-	const recent24h = $derived.by(() => {
-		const cutoff = $now.getTime() - 24 * 60 * 60 * 1000;
-		let n = 0;
-		for (const c of cards) {
-			if (!c.timestamp) continue;
-			if (new Date(c.timestamp).getTime() >= cutoff) n++;
-		}
-		return n;
-	});
 
-	// Row "State" line: lifecycle status text per mockup examples ("failing",
-	// "deploying", "baking · Nm left", "on newest"). Independent of the
-	// "Relative position" column, which conveys version currency instead.
-	function stateLine(c: RolloutCard): { text: string; tone: string } {
-		if (c.statusKey === 'failed') return { text: 'failing', tone: 'text-red-600 dark:text-red-400' };
-		if (c.bakeStatus === 'Deploying') {
-			return { text: 'deploying', tone: 'text-blue-600 dark:text-blue-400' };
-		}
-		if (c.bakeStatus === 'InProgress') {
-			const start = c.rollout.status?.history?.[0]?.bakeStartTime;
-			const bakeTime = c.rollout.spec?.bakeTime;
-			const progress = computeBakeProgress(start, bakeTime, $now);
-			if (progress) {
-				const remainingMin = Math.round(Math.max(0, progress.totalMs - progress.elapsedMs) / 60000);
-				return {
-					text: remainingMin > 0 ? `baking · ${remainingMin}m left` : 'baking · <1m left',
-					tone: 'text-yellow-700 dark:text-yellow-400'
-				};
-			}
-			return { text: 'baking', tone: 'text-yellow-700 dark:text-yellow-400' };
-		}
-		if (c.statusKey === 'pending') return { text: 'no deploy', tone: 'text-gray-400 dark:text-gray-500' };
-		return { text: 'on newest', tone: 'text-green-600 dark:text-green-400' };
-	}
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Page header: title + link back to the fleet overview. -->
-	<div class="mb-1 flex items-baseline justify-between gap-3">
+	<!-- Page header -->
+	<div class="mb-4">
 		<h1 class="min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
-		<a href="/" class="shrink-0 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">
-			Control Center <ChevronRightOutline class="h-3 w-3" />
-		</a>
 	</div>
-
-	<!-- Sub line: binding/namespace counts on the left, 24h deploy volume on
-	     the right (per design — no refetch spinner, refetches happen silently). -->
-	{#if cards.length > 0}
-		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-			<p class="text-xs text-gray-500 dark:text-gray-400">
-				{cards.length} app·env binding{cards.length === 1 ? '' : 's'} · {namespaceCount} namespace{namespaceCount === 1 ? '' : 's'}
-			</p>
-			{#if recent24h > 0}
-				<a href="/activity" class="hidden items-center gap-2 text-xs text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 sm:inline-flex" title="View activity">
-					<span class="font-mono uppercase tracking-wider">last 24h</span>
-					<DeployVolumeSparkline {rollouts} hours={24} buckets={20} />
-					<span class="font-mono tabular-nums">{recent24h} deploy{recent24h === 1 ? '' : 's'}</span>
-				</a>
-			{/if}
-		</div>
-	{/if}
-
-	<!-- Filter tiles: All / Needs attention / In motion / Pending / Healthy.
-	     Single-select — click a tile to narrow the list, "All" resets. -->
-	{#if cards.length > 0}
-		{@const tiles = [
-			{ key: 'all' as QuickFilter, label: 'All', count: cards.length, color: 'gray' as const },
-			{ key: 'attention' as QuickFilter, label: 'Needs attention', count: attentionCards.length, color: 'red' as const },
-			{ key: 'active' as QuickFilter, label: 'In motion', count: inMotionCards.length, color: 'blue' as const },
-			{ key: 'pending' as QuickFilter, label: 'Pending', count: pendingCardsAll.length, color: 'gray' as const },
-			{ key: 'healthy' as QuickFilter, label: 'Healthy', count: healthyCards.length, color: 'green' as const }
-		]}
-		<div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-			{#each tiles as t (t.key)}
-				<StatusTile
-					n={t.count}
-					label={t.label}
-					color={t.color}
-					selected={quickFilter === t.key}
-					disabled={t.key !== 'all' && t.count === 0}
-					onclick={() => (quickFilter = t.key)}
-				/>
-			{/each}
-		</div>
-	{/if}
 
 	<!-- Cluster error banner — soft warning, not in the red attention strip. -->
 	{#if clusterErrors.length > 0}
@@ -293,10 +217,28 @@
 					type="text"
 					bind:value={searchQuery}
 					placeholder="Search rollouts…"
-					class="block w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+					class="block w-full rounded border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
 				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-1.5">
+				<!-- Status filter pills (compact, single-select) — replaces the old
+				     tile banner while keeping the filtering it provided. -->
+				{#each statusPills as sp (sp.key)}
+					<button
+						type="button"
+						onclick={() => (quickFilter = quickFilter === sp.key ? 'all' : sp.key)}
+						aria-pressed={quickFilter === sp.key}
+						class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors
+							{quickFilter === sp.key
+								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+								: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+					>
+						<span class="h-[5px] w-[5px] shrink-0 rounded {sp.dot}"></span>
+						{sp.label}
+						<span class="font-mono tabular-nums opacity-60">{sp.count}</span>
+					</button>
+				{/each}
+				<span class="h-4 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
 				{#if isMultiCluster}
 					{#each allClusters as cl}
 						{@const sel = clusterFilters.includes(cl.url)}
@@ -323,12 +265,14 @@
 						type="button"
 						onclick={() => toggleEnv(e.key)}
 						aria-pressed={sel}
-						class="environment-theme-scope inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors
+						class="environment-theme-scope inline-flex items-center rounded transition-opacity
 							{sel
-								? 'environment-theme-badge'
-								: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+								? 'ring-1 ring-gray-900/30 dark:ring-gray-100/30'
+								: envFilters.length === 0
+									? ''
+									: 'opacity-40 hover:opacity-100'}"
 						style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-					>{e.display}</button>
+					><Chip role="env" theme={e.theme} label={e.display} wide /></button>
 				{/each}
 			</div>
 			{#if envFilters.length > 0 || quickFilter !== 'all' || clusterFilters.length > 0 || searchQuery}
@@ -402,7 +346,7 @@
 					href="https://github.com/kuberik/rollout-controller"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+					class="mt-4 inline-flex items-center gap-1.5 rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
 				>
 					Read the docs
 					<span aria-hidden="true">↗</span>
@@ -442,108 +386,77 @@
 						<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" />
 					</a>
 
-					<!-- Rollouts panel with column headers + fixed-width rows so
-					     all rollouts in this namespace align across columns. -->
-					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-						<!-- Column header row (lg only) -->
-						<div class="row-grid hidden gap-x-4 border-b border-gray-100 px-5 py-2 font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:border-gray-700/60 dark:text-gray-500 lg:grid">
-							<span></span>
-							<span>Rollout</span>
-							<span>State</span>
-							<span class="text-right">Relative position</span>
-							<span class="text-right">Build</span>
-							<span class="text-center">Env</span>
-						</div>
-						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
-								{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
-								{@const state = stateLine(c)}
-								<li class="environment-theme-scope" style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}>
-									<div class="relative row-grid gap-x-4 gap-y-2 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 sm:px-5">
-										<!-- Whole-row link: an absolute overlay so any click on the
-										     row (except the version link below) opens the rollout
-										     detail. Interactive children must stay `relative z-10`. -->
-										<a href={rolloutHref} class="absolute inset-0 z-0" aria-label="Open rollout {c.name}"></a>
-
-										<!-- Status circle. No animate-ping halo on list rows — the
-										     icon (pulse for bake, spinner for deploy) is enough
-										     signal; the halo at row scale read as "too much". -->
-										<span class="pointer-events-none relative z-[1] col-start-1 row-span-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)} sm:row-span-1">
-											<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
-										</span>
-
-										<!-- Rollout: title (primary) + app name (mono, secondary). -->
-										<div class="pointer-events-none relative z-[1] flex min-w-0 flex-col">
-											<div class="flex min-w-0 items-baseline gap-2">
-												<span class="truncate text-base font-semibold text-gray-900 dark:text-white">{c.title}</span>
-												{#if c.stuck}<StuckBadge reason={c.stuck} size="xs" />{/if}
-											</div>
-											<span class="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">{c.name}</span>
+<!-- Responsive grid of compact rollout cards. State column dropped
+					     (redundant with the status circle); cards flow into columns so wide
+					     screens are not one stretched row each. -->
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+						{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
+							{@const behindBy = c.behind?.behindBy ?? 0}
+							<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS
+							     EVERY OTHER PAGE'S. This card used to hand-roll it: a
+							     `rounded-md` box (a sixth radius against the legal two), a
+							     10px bold uppercase label half with a FILL (`bg-gray-100`
+							     / `bg-amber-100`), and an 11px mono value half. `/apps`,
+							     `/apps/[name]`, `/` and `/versions` all draw the same two
+							     facts with `Chip`, at `rounded` 4px, text-only, 11px.
+							     Same object, sixth geometry — the exact defect the census
+							     exists to catch.
+							     The amber fill went with it. With production restored to
+							     `#d97706`, an amber `−N` half sat in the same card as an
+							     amber-inked `PROD` env chip; `rank` is red now (see
+							     `Chip.svelte`) and this card no longer overrides it. -->
+							{@const rel =
+								c.statusKey === 'pending'
+									? { role: 'unranked' as const, txt: 'pending' }
+									: !c.behind
+										? { role: 'newest' as const, txt: 'newest' }
+										: { role: 'rank' as const, txt: behindBy ? `−${behindBy}` : 'behind' }}
+							<a
+								href={rolloutHref}
+								class="environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+							>
+								<!-- Identity: status circle + metadata.name (+ title) + env badge -->
+								<div class="flex items-center gap-2.5">
+									<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
+										<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
+									</span>
+									<div class="min-w-0 flex-1">
+										<div class="flex min-w-0 items-baseline gap-1.5">
+											<span class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">{c.name}</span>
+											{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
 										</div>
-
-										<!-- State: deploy lifecycle status line. lg only — the
-										     status circle + StuckBadge already carry the essential
-										     signal at narrower widths. -->
-										<div class="pointer-events-none relative z-[1] hidden shrink-0 flex-col lg:flex">
-											<span class="text-xs font-medium {state.tone}">{state.text}</span>
-											{#if c.failureCategory}
-												<span class="truncate text-[10px] text-red-500/80 dark:text-red-400/70" title={c.bakeStatusMessage ?? ''}>{c.failureCategory}</span>
-											{/if}
-										</div>
-
-										<!-- Relative position: version currency vs. the upstream env
-										     it trails, independent of the State column. -->
-										<div class="pointer-events-none relative z-[1] hidden shrink-0 flex-col items-end lg:flex">
-											{#if c.statusKey === 'pending'}
-												<span class="text-xs text-gray-400 dark:text-gray-500">—</span>
-											{:else if c.behind}
-												{#if c.behind.behindBy}
-													<LagChip behindBy={c.behind.behindBy} />
-												{:else}
-													<span class="text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">behind</span>
-												{/if}
-												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{c.behind.fromEnv}</span>
-											{:else}
-												<span class="text-xs font-semibold uppercase tracking-wider text-green-600 dark:text-green-400">newest</span>
-											{/if}
-										</div>
-
-										<!-- Build: version + age (right side). `min-w-0` on the
-										     version span itself is required for `truncate` to
-										     ellipsize inside flex parents — without it, long
-										     versions (full git SHAs, pinned tags with hex
-										     suffixes) overflow the column. `shortenVersion`
-										     trims obvious SHA-like values for compactness; the
-										     full string is preserved in the `title` attribute.
-										     Stays `pointer-events-auto relative z-10` (opting back
-										     in above the row overlay link) so the version itself
-										     can link to its own detail page. -->
-										<div class="pointer-events-auto relative z-10 col-start-2 row-start-2 flex min-w-0 flex-col sm:col-start-auto sm:row-start-auto sm:items-end">
-											<div class="flex min-w-0 max-w-full items-baseline gap-1.5">
-												{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
-												{#if c.version}
-													<a href={versionPathForRollout(c.rollout, c.name, c.version)} class="min-w-0 truncate font-mono text-sm font-medium text-gray-900 hover:underline dark:text-white" title={c.version}>{shortenVersion(c.version)}</a>
-												{:else}
-													<span class="min-w-0 truncate font-mono text-sm font-medium text-gray-900 dark:text-white">—</span>
-												{/if}
-											</div>
-											{#if c.timestamp}
-												<span class="font-mono text-[10px] {c.isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatTimeAgo(c.timestamp, $now)}>
-													{c.isRunning ? 'started ' : ''}{formatStatusTime(c.bakeStatus, c.timestamp, $now)}
-												</span>
-											{:else}
-												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">no deploy</span>
-											{/if}
-										</div>
-
-										<!-- Env badge -->
-										{#if c.envDisplay}
-											<span class="pointer-events-none relative z-[1] environment-theme-badge inline-flex shrink-0 items-center justify-self-center rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{c.envDisplay}</span>
-										{/if}
+										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-400 dark:text-gray-500">{c.title}</span>{/if}
 									</div>
-								</li>
-							{/each}
-						</ul>
+									{#if c.envDisplay}
+										<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
+									{/if}
+								</div>
+								<!-- Version tag + last change -->
+								<div class="flex items-center justify-between gap-2">
+									<span class="flex min-w-0 items-center gap-1.5">
+										{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
+										<Chip
+											role={rel.role}
+											label={rel.txt}
+											value={c.version ? shortenVersion(c.version) : '—'}
+											valueTitle={c.version ?? 'no build'}
+											valueDim={!c.version}
+											class="min-w-0"
+										/>
+									</span>
+									<span class="flex shrink-0 flex-col items-end leading-tight">
+										{#if c.timestamp}
+											<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400" title={formatDate(c.timestamp)}>{formatTimeAgoCompact(c.timestamp, $now)} ago</span>
+											<span class="text-[9px] text-gray-400 dark:text-gray-500">{c.isRunning ? 'started' : 'updated'}</span>
+										{:else}
+											<span class="text-[10px] text-gray-400 dark:text-gray-500">no deploy</span>
+										{/if}
+									</span>
+								</div>
+							</a>
+						{/each}
 					</div>
 				</section>
 			{/each}

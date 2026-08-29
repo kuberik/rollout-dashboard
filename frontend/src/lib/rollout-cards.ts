@@ -7,6 +7,7 @@ import { getRolloutEnvironmentTheme, shortEnvLabel } from './environment-theme';
 import { getDisplayVersion, categorizeFailure, compareRollouts, detectStuck } from './utils';
 import type { StuckReason } from './utils';
 import { compareEnvironmentNames } from './env-order';
+import { newerReleaseCount } from './view-models/promotion';
 import {
 	sourceDashboardURL,
 	sourceClusterName,
@@ -65,6 +66,20 @@ function buildAppIndex(
 // version exists as a past deploy. That env has progressed past me, so we say
 // I'm "behind <env>" — direction derived from data, not from env-name tier
 // assumptions.
+//
+// HOW FAR behind comes from `newerReleaseCount` (view-models/promotion), NOT
+// from `compareRollouts`. `compareRollouts` can only answer 'behind' when my
+// current version still appears in the peer's `status.history`, and
+// `versionHistoryLimit` is 5 — so the further behind a rollout falls, the more
+// certain it is to age out of its peers' history, return 'divergent', and
+// yield `null` here. Callers that do `(behind?.behindBy ?? 0) === 0` then
+// classify a month-stale production rollout as *steady* and label it `newest`.
+// The alarm went silent exactly when it mattered.
+//
+// `newerReleaseCount` is the controller's own count of releases newer than
+// mine, carries a validity guard for the retention-truncation case, and needs
+// no history overlap at all. `compareRollouts` is kept for peer ATTRIBUTION
+// ("behind which env"), which is the question it is actually good at.
 function computeBehind(
 	r: Rollout,
 	envName: string,
@@ -81,6 +96,32 @@ function computeBehind(
 		const candidate = { fromEnv: peer.envName, version: rel.otherVersion, behindBy: rel.by };
 		if (!best || (candidate.behindBy ?? 0) > (best.behindBy ?? 0)) best = candidate;
 	}
+
+	const myNewer = newerReleaseCount(r);
+	// `null` = lag is unknowable (current version aged out of its own
+	// availableReleases). Say nothing rather than something false, and leave
+	// whatever compareRollouts managed to work out.
+	if (myNewer === null || myNewer === 0) return best;
+
+	// compareRollouts named a peer — keep its attribution, take the accurate count.
+	if (best) return { ...best, behindBy: myNewer };
+
+	// compareRollouts went silent (history overlap lost). Attribute to the
+	// most-advanced peer: the one with the fewest releases still newer than it.
+	let ahead: { envName: string; version: string; newer: number } | null = null;
+	for (const peer of peers) {
+		if (peer.envName === envName) continue;
+		const peerNewer = newerReleaseCount(peer.rollout);
+		if (peerNewer === null || peerNewer >= myNewer) continue; // not ahead of me
+		const peerV = peer.rollout.status?.history?.[0]?.version
+			? getDisplayVersion(peer.rollout.status.history[0].version)
+			: null;
+		if (!peerV) continue;
+		if (!ahead || peerNewer < ahead.newer) {
+			ahead = { envName: peer.envName, version: peerV, newer: peerNewer };
+		}
+	}
+	if (ahead) return { fromEnv: ahead.envName, version: ahead.version, behindBy: myNewer };
 	return best;
 }
 

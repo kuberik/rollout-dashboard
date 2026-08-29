@@ -10,8 +10,7 @@
 		getDisplayVersion,
 		formatTimeAgo,
 		formatStatusTime,
-		categorizeFailure
-	} from '$lib/utils';
+		categorizeFailure, formatDate } from '$lib/utils';
 	import type { StuckReason } from '$lib/utils';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import { getEnvironmentThemeStyle } from '$lib/environment-theme';
@@ -81,7 +80,7 @@
 						{getDisplayVersion(latest.version)}
 					</span>
 					{#if latest.timestamp}
-						<span class="truncate font-mono text-[10px] {isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
+						<span class="truncate font-mono text-[10px] {isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatDate(latest.timestamp)}>
 							{formatStatusTime(status, latest.timestamp, $now)}
 						</span>
 					{/if}

@@ -1,0 +1,179 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-dep
+---
+# ━━━━━━━━━━━━━━━━━━━ hello-api: provides contract "api" ━━━━━━━━━━━━━━━━━━━
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-api-app
+  annotations:
+    dashboard.rollout.kuberik.com/description: "Hello Dep api / __ENVIRONMENT__"
+    dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
+spec:
+  releasesImagePolicy:
+    name: hello-api-app
+  versionHistoryLimit: 5
+  bakeTime: 15s
+  healthCheckSelector:
+    selector:
+      matchLabels:
+        app: hello-dep
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: hello-api-app
+spec:
+  image: ghcr.io/littlechimera/hello-dep/api
+  interval: 60s
+  secretRef:
+    name: github-registry-credentials
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: hello-api-app
+spec:
+  imageRepositoryRef:
+    name: hello-api-app
+  filterTags:
+    pattern: "^rel-(?P<seq>[0-9]+)$"
+    extract: "$seq"
+  policy:
+    numerical:
+      order: asc
+---
+# ━━━━━━━━━━━━━━━━━━━ hello-frontend: consumes contract "api" ━━━━━━━━━━━━━━━━━━━
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-frontend-app
+  annotations:
+    dashboard.rollout.kuberik.com/description: "Hello Dep frontend / __ENVIRONMENT__"
+    dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
+spec:
+  releasesImagePolicy:
+    name: hello-frontend-app
+  versionHistoryLimit: 5
+  bakeTime: 15s
+  healthCheckSelector:
+    selector:
+      matchLabels:
+        app: hello-dep
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: hello-frontend-app
+spec:
+  image: ghcr.io/littlechimera/hello-dep/frontend
+  interval: 60s
+  secretRef:
+    name: github-registry-credentials
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: hello-frontend-app
+spec:
+  imageRepositoryRef:
+    name: hello-frontend-app
+  filterTags:
+    pattern: "^rel-(?P<seq>[0-9]+)$"
+    extract: "$seq"
+  policy:
+    numerical:
+      order: asc
+---
+# hello-frontend releases declare which "api" contract version they were built
+# against, via a com.kuberik.rollout.requires.api OCI annotation. This
+# dependency holds each of those releases back until hello-api has successfully
+# deployed a release whose own contract version
+# (org.opencontainers.image.version) is at least that high — so the provider
+# always advances before the consumer that needs it.
+apiVersion: kuberik.com/v1alpha1
+kind: RolloutDependency
+metadata:
+  name: hello-frontend-needs-api
+spec:
+  rolloutRef:
+    name: hello-frontend-app
+  providerRef:
+    name: hello-api-app
+  contract: api
+---
+# ━━━━━━━━━━━━━━━━━━━ Shared GitOps wiring ━━━━━━━━━━━━━━━━━━━
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: hello-dep
+spec:
+  interval: 60s
+  url: oci://ghcr.io/littlechimera/hello-dep/__ENVIRONMENT__/manifests
+  ref:
+    tag: latest
+  secretRef:
+    name: github-registry-credentials
+---
+# One Kustomization renders both workloads. Each rollout owns exactly one
+# substitution variable, so the two services advance independently.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hello-dep
+  annotations:
+    rollout.kuberik.com/substitute.HELLO_API_VERSION.from: "hello-api-app"
+    rollout.kuberik.com/substitute.HELLO_FRONTEND_VERSION.from: "hello-frontend-app"
+spec:
+  interval: 5m
+  prune: true
+  sourceRef:
+    kind: OCIRepository
+    name: hello-dep
+---
+apiVersion: environments.kuberik.com/v1alpha1
+kind: Environment
+metadata:
+  name: hello-api-app
+spec:
+  rolloutRef:
+    name: hello-api-app
+  backend:
+    type: github
+    project: "LittleChimera/kuberik-testing"
+    secret: "github-token"
+  # Scoped to the example, like hello-world and hello-multi: this becomes the
+  # GitHub environment name, which is repo-global, so a bare "hello-api-app"
+  # would collide with any other example exposing a rollout by that name.
+  name: "hello-dep-api-app"
+---
+# The consumer carries two gates at once: the environment gate, which holds a
+# release until the upstream environment has taken it, and the dependency gate,
+# which holds it until hello-api provides the contract version it needs.
+apiVersion: environments.kuberik.com/v1alpha1
+kind: Environment
+metadata:
+  name: hello-frontend-app
+spec:
+  rolloutRef:
+    name: hello-frontend-app
+  backend:
+    type: github
+    project: "LittleChimera/kuberik-testing"
+    secret: "github-token"
+  name: "hello-dep-frontend-app"
+---
+apiVersion: kuberik.com/v1alpha1
+kind: HealthCheck
+metadata:
+  name: hello-dep-kustomization-health-check
+  labels:
+    app: hello-dep
+  annotations:
+    healthcheck.kuberik.com/kustomization: "hello-dep"
+    kuberik.com/display-name: "Flux Deployment"
+spec:
+  class: "kustomization"

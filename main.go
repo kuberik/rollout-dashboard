@@ -213,17 +213,18 @@ func main() {
 			allNamespaces := namespace == "all" || namespace == "*" || namespace == ""
 
 			var (
-				rollouts          interface{}
-				imagePolicies     interface{}
-				imageRepositories interface{}
-				kustomizations    interface{}
-				ociRepositories   interface{}
-				environments      interface{}
-				kruiseRollouts    interface{}
-				rolloutsErr       error
+				rollouts            interface{}
+				imagePolicies       interface{}
+				imageRepositories   interface{}
+				kustomizations      interface{}
+				ociRepositories     interface{}
+				environments        interface{}
+				kruiseRollouts      interface{}
+				rolloutDependencies interface{}
+				rolloutsErr         error
 			)
 
-			// Fan out the 7 cluster LISTs in parallel. Only rollouts is fatal —
+			// Fan out the 8 cluster LISTs in parallel. Only rollouts is fatal —
 			// the rest log on failure and return partial data (matches prior behavior).
 			g, gctx := errgroup.WithContext(c.Request.Context())
 			g.Go(func() error {
@@ -310,6 +311,22 @@ func main() {
 				}
 				return nil
 			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					rolloutDependencies, err = k8sClient.GetRolloutDependenciesAllNamespaces(gctx)
+				} else {
+					rolloutDependencies, err = k8sClient.GetRolloutDependencies(gctx, namespace)
+				}
+				if err != nil {
+					// Non-fatal by design: a cluster that has not installed the
+					// RolloutDependency CRD fails here with a RESTMapper "no matches
+					// for kind" error, and must still be able to serve its rollouts.
+					log.Printf("Error fetching rollout dependencies: %v", err)
+					rolloutDependencies = nil
+				}
+				return nil
+			})
 			_ = g.Wait()
 
 			if rolloutsErr != nil {
@@ -325,36 +342,39 @@ func main() {
 			// return local data only — fanning out again would create a cycle.
 			if c.GetHeader(fanoutHeader) != "" {
 				c.JSON(http.StatusOK, gin.H{
-					"rollouts":          rollouts,
-					"imagePolicies":     imagePolicies,
-					"imageRepositories": imageRepositories,
-					"kustomizations":    kustomizations,
-					"ociRepositories":   ociRepositories,
-					"environments":      environments,
-					"kruiseRollouts":    kruiseRollouts,
+					"rollouts":            rollouts,
+					"imagePolicies":       imagePolicies,
+					"imageRepositories":   imageRepositories,
+					"kustomizations":      kustomizations,
+					"ociRepositories":     ociRepositories,
+					"environments":        environments,
+					"kruiseRollouts":      kruiseRollouts,
+					"rolloutDependencies": rolloutDependencies,
 				})
 				return
 			}
 
 			// Fan out to discovered spoke dashboards and merge results.
 			localData := map[string]json.RawMessage{
-				"rollouts":       marshalToRaw(rollouts),
-				"environments":   marshalToRaw(environments),
-				"kustomizations": marshalToRaw(kustomizations),
-				"kruiseRollouts": marshalToRaw(kruiseRollouts),
+				"rollouts":            marshalToRaw(rollouts),
+				"environments":        marshalToRaw(environments),
+				"kustomizations":      marshalToRaw(kustomizations),
+				"kruiseRollouts":      marshalToRaw(kruiseRollouts),
+				"rolloutDependencies": marshalToRaw(rolloutDependencies),
 			}
 			localURL := localDashboardURL(c)
 			token := auth.GetTokenFromContext(c)
 			merged, clusters, clusterErrors := fanOutRollouts(c.Request.Context(), localData, localURL, token)
 
 			response := gin.H{
-				"rollouts":          merged["rollouts"],
-				"imagePolicies":     imagePolicies,
-				"imageRepositories": imageRepositories,
-				"kustomizations":    merged["kustomizations"],
-				"ociRepositories":   ociRepositories,
-				"environments":      merged["environments"],
-				"kruiseRollouts":    merged["kruiseRollouts"],
+				"rollouts":            merged["rollouts"],
+				"imagePolicies":       imagePolicies,
+				"imageRepositories":   imageRepositories,
+				"kustomizations":      merged["kustomizations"],
+				"ociRepositories":     ociRepositories,
+				"environments":        merged["environments"],
+				"kruiseRollouts":      merged["kruiseRollouts"],
+				"rolloutDependencies": merged["rolloutDependencies"],
 			}
 			if len(clusters) > 0 {
 				response["clusters"] = clusters
@@ -2097,8 +2117,13 @@ func main() {
 		c.File(filepath.Join(os.Getenv("KO_DATA_PATH"), "index.html"))
 	})
 
-	// Start server
-	if err := r.Run(":8080"); err != nil {
+	// Start server. PORT overrides the default so the binary can be run locally
+	// against a kubeconfig context while the dev cluster already holds :8080.
+	addr := ":8080"
+	if port := os.Getenv("PORT"); port != "" {
+		addr = ":" + port
+	}
+	if err := r.Run(addr); err != nil {
 		log.Printf("Failed to start server: %v", err)
 		os.Exit(1)
 	}

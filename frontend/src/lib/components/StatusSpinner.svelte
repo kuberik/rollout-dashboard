@@ -28,7 +28,7 @@
 			blue: 'border-blue-500/30 border-t-blue-500',
 			orange: 'border-orange-500/30 border-t-orange-500',
 			red: 'border-red-500/30 border-t-red-500',
-			green: 'border-green-500/30 border-t-green-500',
+			green: 'border-green-700/30 border-t-green-700 dark:border-green-400/30 dark:border-t-green-400',
 			gray: 'border-gray-400/30 border-t-gray-500 dark:border-gray-500/30 dark:border-t-gray-300',
 			white: 'border-white/40 border-t-white'
 		}[color]

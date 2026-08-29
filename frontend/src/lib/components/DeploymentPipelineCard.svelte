@@ -28,8 +28,7 @@
 		extractDatadogInfoFromContainers,
 		buildDatadogTestRunsUrl,
 		buildDatadogLogsUrl,
-		buildDatadogTraceSearchUrl
-	} from '$lib/utils';
+		buildDatadogTraceSearchUrl, formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import type { Rollout, RolloutTest, HealthCheck, KruiseRollout } from '../../types';
 
@@ -409,7 +408,7 @@
 	// dashboard) so the pipeline stages don't read as a different style.
 	function circleBg(status: NodeStatus): string {
 		return {
-			done: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
+			done: 'bg-gray-100 text-green-700 dark:bg-gray-700 dark:text-green-400',
 			running: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
 			paused: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
 			failed: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
@@ -433,7 +432,7 @@
 
 	function subDotBg(status: NodeStatus): string {
 		return {
-			done: 'bg-green-500',
+			done: 'bg-green-700 dark:bg-green-400',
 			running: 'bg-blue-500',
 			paused: 'bg-yellow-500',
 			failed: 'bg-red-500',
@@ -444,7 +443,7 @@
 	function leftEdgeAccent(status: NodeStatus, selected: boolean): string {
 		if (!selected) return 'bg-transparent';
 		return {
-			done: 'bg-green-500',
+			done: 'bg-green-700 dark:bg-green-400',
 			running: 'bg-blue-500',
 			paused: 'bg-yellow-500',
 			failed: 'bg-red-500',
@@ -517,7 +516,7 @@
 	);
 
 	function testIconColor(phase: string): string {
-		if (phase === 'Succeeded') return 'text-green-500';
+		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
 		if (phase === 'Failed') return 'text-red-500';
 		if (phase === 'Cancelled') return 'text-gray-400';
 		if (phase === 'Skipped') return 'text-gray-400';
@@ -880,11 +879,11 @@
 				</span>
 
 				{#if node.kind === 'started' && latestEntry.timestamp}
-					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(latestEntry.timestamp, $now)}>
+					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(latestEntry.timestamp)}>
 						{formatTimeAgoCompact(latestEntry.timestamp, $now)}
 					</span>
 				{:else if node.kind === 'bake' && bakeIsSucceeded && latestEntry.bakeEndTime}
-					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(latestEntry.bakeEndTime, $now)}>
+					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(latestEntry.bakeEndTime)}>
 						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)} ·
 						{formatDuration(
 							latestEntry.bakeStartTime || latestEntry.timestamp,
@@ -892,7 +891,7 @@
 						)}
 					</span>
 				{:else if node.kind === 'bake' && bakeIsFailed && latestEntry.bakeEndTime}
-					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(latestEntry.bakeEndTime, $now)}>
+					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(latestEntry.bakeEndTime)}>
 						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)}
 					</span>
 				{:else if node.kind === 'bake' && !bakeIsSucceeded && !bakeIsFailed && rollout.spec?.deployTimeout && !bakeIsDeploying && !bakeIsInProgress}
@@ -1072,7 +1071,7 @@
 					class="h-4 w-4 animate-spin rounded-full border-2 border-blue-500/40 border-t-blue-500"
 				></div>
 			{:else if summary.done === summary.total}
-				<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
+				<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 			{:else}
 				<CodePullRequestSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 			{/if}
@@ -1105,7 +1104,7 @@
 					{summary.done}/{summary.total} done · active
 				</span>
 			{:else if summary.done === summary.total}
-				<span class="text-xs font-medium text-green-600 dark:text-green-400">
+				<span class="text-xs font-medium text-green-700 dark:text-green-400">
 					{summary.total}/{summary.total} done
 				</span>
 			{:else}

@@ -42,7 +42,7 @@
 	const tabs = $derived([
 		{ label: 'Overview', href: base, icon: ObjectsColumnSolid, show: true },
 		{ label: 'History', href: `${base}/history`, icon: ClockArrowOutline, show: true },
-		{ label: 'Environments', href: `${base}/environments`, icon: LayersSolid, show: hasEnvironment },
+		{ label: 'Dependencies', href: `${base}/dependencies`, icon: LayersSolid, show: hasEnvironment },
 		{ label: 'Logs', href: `${base}/logs`, icon: TerminalOutline, show: true }
 	]);
 

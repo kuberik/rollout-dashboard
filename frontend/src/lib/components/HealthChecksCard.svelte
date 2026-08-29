@@ -44,7 +44,7 @@
 				{:else if pendingChecks.length > 0}
 					<ClockSolid class="h-4 w-4 text-yellow-500 dark:text-yellow-400" />
 				{:else}
-					<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
+					<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 				{/if}
 				<span class="text-sm font-semibold text-gray-900 dark:text-white">Health Checks</span>
 			</div>
@@ -53,7 +53,7 @@
 			{:else if pendingChecks.length > 0}
 				<span class="text-xs text-yellow-600 dark:text-yellow-400">{pendingChecks.length} pending · {healthyChecks.length} passing</span>
 			{:else}
-				<span class="text-xs text-green-600 dark:text-green-400">{healthChecks.length}/{healthChecks.length} healthy</span>
+				<span class="text-xs text-green-700 dark:text-green-400">{healthChecks.length}/{healthChecks.length} healthy</span>
 			{/if}
 		</div>
 		{#if problemChecks.length > 0}

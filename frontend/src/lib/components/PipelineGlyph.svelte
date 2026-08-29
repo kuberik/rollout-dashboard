@@ -7,7 +7,7 @@
 
 	function dotClass(s: StageState): string {
 		switch (s) {
-			case 'done': return 'bg-green-500';
+			case 'done': return 'bg-green-700 dark:bg-green-400';
 			case 'active': return 'bg-yellow-400 animate-pulse';
 			case 'fail': return 'bg-red-500';
 			case 'cancelled': return 'bg-gray-400 dark:bg-gray-500';

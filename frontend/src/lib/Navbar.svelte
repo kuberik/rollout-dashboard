@@ -13,8 +13,9 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import CommandPalette from '$lib/CommandPalette.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import GithubConnectButton from '$lib/components/GithubConnectButton.svelte';
-	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
+	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import type { Environment } from '../types';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
@@ -39,12 +40,12 @@
 	// plain static link (no dropdown) — sidebar is the section switcher.
 	type Section = { key: string; label: string; href: string };
 	const SECTIONS: readonly Section[] = [
-		{ key: 'control', label: 'Control Center', href: '/' },
+		{ key: 'control', label: 'Home', href: '/' },
 		{ key: 'rollouts', label: 'Rollouts', href: '/rollouts' },
 		{ key: 'apps', label: 'Apps', href: '/apps' },
 		{ key: 'environments', label: 'Environments', href: '/environments' },
 		{ key: 'activity', label: 'Activity', href: '/activity' },
-		{ key: 'versions', label: 'Versions', href: '/versions' }
+		{ key: 'versions', label: 'Revisions', href: '/versions' }
 	];
 	const currentSection = $derived.by<Section>(() => {
 		const p = page.url.pathname;
@@ -151,7 +152,9 @@
 
 			<!-- Section breadcrumb: section name LINK navigates to the list
 			     page; item chevron opens the unified CommandPalette scoped
-			     to that kind. Same palette everywhere. -->
+			     to that kind. Same palette everywhere. Hidden on the home page —
+			     the logo is the home affordance, no named crumb. -->
+			{#if currentSection.key !== 'control'}
 			<div class="flex min-w-0 items-center gap-1">
 				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
 				<a
@@ -177,13 +180,22 @@
 								{rollout.metadata?.name}
 							</span>
 							{#if rolloutTheme}
-								<Badge
-									color="gray"
-									size="small"
-									class="environment-theme-badge hidden shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider sm:inline-flex"
-								>
-									{rolloutTheme.label}
-								</Badge>
+								<span class="hidden shrink-0 sm:inline-flex">
+									<!-- DELIBERATELY NOT `wide` (2026-08-26). Every other env chip in the
+									     product was widened in the clipping pass; this one and the two in
+									     `CommandPalette` were not. This is CHROME, not content: the breadcrumb
+									     prints the namespace and the rollout name in full immediately to its
+									     left, and the bar is a SINGLE NON-WRAPPING ROW, so a 147px region chip
+									     here takes its width straight out of the rollout name -- the exact
+									     row-eating the 12ch cap exists to prevent. The full name is in `title`,
+									     and the rollout page’s own H1 chip, 60px below it, IS `wide`. -->
+									<Chip
+										role="env"
+										theme={rolloutTheme}
+										label={shortEnvLabel(rolloutTheme) || rolloutTheme.label}
+										title={rolloutTheme.label}
+									/>
+								</span>
 							{/if}
 						</span>
 						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400 md:inline-block">
@@ -210,6 +222,7 @@
 					</button>
 				{/if}
 			</div>
+			{/if}
 		</div>
 		<div class="flex shrink-0 items-center gap-2 sm:gap-2.5">
 			{#if import.meta.env.VITE_APP_VERSION}

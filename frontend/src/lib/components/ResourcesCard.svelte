@@ -169,11 +169,11 @@
 
 	function getPodStatusColor(phase: string, ready: boolean, terminating: boolean): string {
 		if (terminating) return 'text-orange-500 dark:text-orange-400';
-		if (phase === 'Running' && ready) return 'text-green-600 dark:text-green-400';
+		if (phase === 'Running' && ready) return 'text-green-700 dark:text-green-400';
 		if (phase === 'Running' && !ready) return 'text-yellow-600 dark:text-yellow-400';
 		if (phase === 'Pending') return 'text-yellow-600 dark:text-yellow-400';
 		if (phase === 'Failed') return 'text-red-600 dark:text-red-400';
-		if (phase === 'Succeeded') return 'text-green-600 dark:text-green-400';
+		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
 		return 'text-gray-500 dark:text-gray-400';
 	}
 
@@ -195,7 +195,7 @@
 				{:else if notReadyResources.length > 0}
 					<StatusSpinner size="4" color="yellow" />
 				{:else}
-					<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
+					<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 				{/if}
 				<span class="text-sm font-semibold text-gray-900 dark:text-white">Resources</span>
 			</div>
@@ -208,7 +208,7 @@
 			{:else if notReadyResources.length > 0}
 				<span class="text-xs text-yellow-600 dark:text-yellow-400">{notReadyResources.length} not ready</span>
 			{:else}
-				<span class="text-xs text-green-600 dark:text-green-400">{allManagedResources.length}/{allManagedResources.length} ready</span>
+				<span class="text-xs text-green-700 dark:text-green-400">{allManagedResources.length}/{allManagedResources.length} ready</span>
 			{/if}
 		</div>
 
@@ -234,7 +234,7 @@
 							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
 								<StatusSpinner size="4" color="blue" />
 							{:else if isReady}
-								<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
+								<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 							{:else}
 								<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
 							{/if}
@@ -249,7 +249,7 @@
 							{/if}
 						</div>
 						{#if replicas}
-							<span class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-600 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
+							<span class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
 								{replicas.ready}/{replicas.total} <span class="font-normal text-[10px] text-gray-400 dark:text-gray-500">pods</span>
 							</span>
 						{/if}
@@ -288,7 +288,7 @@
 									<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
 										<div class="flex h-4 w-4 shrink-0 items-center justify-center">
 											{#if rs.readyReplicas === rs.desiredReplicas}
-												<CheckCircleSolid class="h-3 w-3 text-green-500 dark:text-green-400" />
+												<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
 											{:else}
 												<StatusSpinner size="3" color="yellow" />
 											{/if}
@@ -302,7 +302,7 @@
 												{/if}
 											</div>
 										</div>
-										<span class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}">
+										<span class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas ? 'text-green-700 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}">
 											{rs.readyReplicas}/{rs.desiredReplicas} <span class="text-[10px] text-gray-400 dark:text-gray-500">pods</span>
 										</span>
 									</div>
@@ -314,7 +314,7 @@
 												{#if pod.terminating}
 													<StatusSpinner size="3" color="orange" />
 												{:else if pod.phase === 'Running' && pod.ready}
-													<CheckCircleSolid class="h-3 w-3 text-green-500 dark:text-green-400" />
+													<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
 												{:else if pod.phase === 'Pending' || (pod.phase === 'Running' && !pod.ready)}
 													<StatusSpinner size="3" color="yellow" />
 												{:else if pod.phase === 'Failed'}
@@ -376,7 +376,7 @@
 							{:else if isReconciling}
 								<StatusSpinner size="4" color="yellow" />
 							{:else if isReady}
-								<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
+								<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 							{:else}
 								<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
 							{/if}
@@ -486,7 +486,7 @@
 								{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
 									<StatusSpinner size="4" color="blue" />
 								{:else if isReady}
-									<CheckCircleSolid class="h-4 w-4 text-green-500 dark:text-green-400" />
+									<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 								{:else}
 									<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
 								{/if}

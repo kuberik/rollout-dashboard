@@ -6,7 +6,7 @@
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, detectStuck } from '$lib/utils';
+	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, detectStuck, formatDate } from '$lib/utils';
 	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -17,6 +17,7 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../../../types';
@@ -158,12 +159,12 @@
 	});
 
 	const STATUS_DOT: Record<string, string> = {
-		Succeeded: 'bg-green-500',
-		Failed: 'bg-red-500',
-		InProgress: 'bg-yellow-400',
-		Deploying: 'bg-blue-500',
-		Cancelled: 'bg-gray-400',
-		None: 'bg-gray-300 dark:bg-gray-600'
+		Succeeded: 'bg-green-700 dark:bg-green-400',
+		Failed: 'bg-red-700 dark:bg-red-400',
+		InProgress: 'bg-yellow-700 dark:bg-yellow-400',
+		Deploying: 'bg-blue-700 dark:bg-blue-400',
+		Cancelled: 'bg-gray-400 dark:bg-gray-500',
+		None: 'bg-gray-200 dark:bg-gray-700'
 	};
 	const STATUS_LABEL: Record<string, string> = {
 		Succeeded: 'Succeeded',
@@ -174,12 +175,15 @@
 		None: 'No deploy'
 	};
 	const STATUS_TEXT: Record<string, string> = {
-		Succeeded: 'text-green-700 dark:text-green-400',
+		// NEUTRAL. This is the only page that printed a state WORD in the state
+		// colour, and the word it coloured was the NORM. The rail's own dot carries
+		// the hue two lines up; the deviations below keep theirs.
+		Succeeded: 'text-gray-500 dark:text-gray-400',
 		Failed: 'text-red-700 dark:text-red-400',
 		InProgress: 'text-yellow-700 dark:text-yellow-400',
 		Deploying: 'text-blue-700 dark:text-blue-400',
-		Cancelled: 'text-gray-500 dark:text-gray-500',
-		None: 'text-gray-400 dark:text-gray-600'
+		Cancelled: 'text-gray-500 dark:text-gray-400',
+		None: 'text-gray-500 dark:text-gray-400'
 	};
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
@@ -215,19 +219,19 @@
 			</div>
 		</div>
 	{:else if query.isError}
-		<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
+		<div class="rounded-xl border border-gray-200 p-4 text-sm text-red-700 dark:border-gray-700 dark:text-red-400">
 			Failed to load: {(query.error as Error).message}
 		</div>
 	{:else if apps.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<LayersSolid class="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
+			<LayersSolid class="mb-3 h-10 w-10 text-gray-500 dark:text-gray-400" />
 			<p class="text-sm font-medium text-gray-900 dark:text-white">Namespace not found</p>
 			<p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
 				No rollouts in namespace <code class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800">{namespace}</code>.
 			</p>
 			<a
 				href="/rollouts"
-				class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+				class="mt-4 inline-flex items-center gap-1 rounded bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
 			>
 				<ArrowLeftOutline class="h-3.5 w-3.5" /> Back to rollouts
 			</a>
@@ -251,19 +255,19 @@
 		<!-- Stat tiles: 4 columns -->
 		<div class="mb-6 grid gap-3 grid-cols-2 sm:grid-cols-4">
 			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Rollouts</div>
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Rollouts</div>
 				<div class="mt-1 font-mono text-2xl font-light text-gray-900 dark:text-white">{apps.length}</div>
 			</div>
 			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Healthy</div>
-				<div class="mt-1 font-mono text-2xl font-light {succeededCount === apps.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}">{succeededCount}</div>
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Healthy</div>
+				<div class="mt-1 font-mono text-2xl font-light text-gray-900 dark:text-white">{succeededCount}</div>
 			</div>
 			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Failing</div>
-				<div class="mt-1 font-mono text-2xl font-light {failedCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-300 dark:text-gray-600'}">{failedCount}</div>
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Failing</div>
+				<div class="mt-1 font-mono text-2xl font-light {failedCount > 0 ? 'text-red-700 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}">{failedCount}</div>
 			</div>
 			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Deploys · 24h</div>
+				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Deploys · 24h</div>
 				<div class="mt-1 flex items-baseline gap-2">
 					<span class="font-mono text-2xl font-light text-gray-900 dark:text-white">{deploys24h}</span>
 					<DeployVolumeSparkline rollouts={apps.map((a) => a.rollout)} hours={24} />
@@ -299,13 +303,13 @@
 									<div class="pointer-events-none relative z-[1] flex min-w-0 flex-1 flex-col gap-0.5">
 										<div class="flex min-w-0 items-baseline gap-2">
 											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.rollout.metadata?.name}</span>
-											{#if stuck}<StuckBadge reason={stuck} size="xs" />{/if}
+											{#if stuck}<StuckBadge reason={stuck} />{/if}
 											{#if a.rollout.spec?.wantedVersion}<PinBadge version={a.rollout.spec.wantedVersion} size="xs" />{/if}
 										</div>
 										<div class="flex min-w-0 items-baseline gap-2">
-											{#if a.title !== a.rollout.metadata?.name}<span class="truncate text-[11px] text-gray-400 dark:text-gray-500">{a.title}</span>{/if}
+											{#if a.title !== a.rollout.metadata?.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{a.title}</span>{/if}
 											{#if failureCategory}
-												<span class="truncate text-[11px] text-red-600 dark:text-red-400" title={latest?.bakeStatusMessage ?? ''}>· {failureCategory} failed{#if prevV} · was <span class="font-mono">{prevV}</span>{/if}</span>
+												<span class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={latest?.bakeStatusMessage ?? ''}>· {failureCategory} failed{#if prevV} · was <span class="font-mono">{prevV}</span>{/if}</span>
 											{/if}
 										</div>
 									</div>
@@ -316,13 +320,13 @@
 											<span class="font-mono text-sm text-gray-700 dark:text-gray-300">—</span>
 										{/if}
 										{#if latest?.timestamp}
-											<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatTimeAgo(latest.timestamp, $now)}>
+											<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatDate(latest.timestamp)}>
 												{formatStatusTime(status, latest.timestamp, $now)}
 											</span>
 										{/if}
 									</div>
 									{#if a.envName || a.theme}
-										<span class="pointer-events-none relative z-[1] environment-theme-badge shrink-0 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
+										<Chip role="env" theme={a.theme} label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''} wide class="pointer-events-none relative z-[1] shrink-0" />
 									{/if}
 								</div>
 							</li>
@@ -336,7 +340,7 @@
 					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Recent activity</h2>
 					<a
 						href={`/activity?ns=${encodeURIComponent(namespace)}`}
-						class="text-[10px] text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+						class="text-[10px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 					>view all ›</a>
 				</div>
 				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -354,7 +358,7 @@
 									<div class="mb-3 flex items-center gap-2">
 										<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{group.label}</span>
 										<span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"></span>
-										<span class="font-mono text-[10px] text-gray-300 dark:text-gray-600">{group.entries.length}</span>
+										<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">{group.entries.length}</span>
 									</div>
 									<ol class="relative">
 										<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700/80" aria-hidden="true"></span>
@@ -372,16 +376,16 @@
 												</span>
 												<a
 													href={rolloutPath(a.sourceCluster || localClusterName, namespace, a.appName)}
-													class="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+													class="block rounded px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 												>
 													<div class="flex items-baseline justify-between gap-2">
 														<div class="flex min-w-0 items-center gap-2">
 															{#if a.envName || a.theme}
-																<span class="environment-theme-badge shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-700/60 dark:text-gray-300">{shortEnvLabel(a.theme) || a.envName || a.theme?.label}</span>
+																<Chip role="env" theme={a.theme} label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''} wide class="shrink-0" />
 															{/if}
 															<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{a.appName}</span>
 														</div>
-														<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500" title={formatTimeAgo(a.timestamp, $now)}>
+														<span class="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400" title={formatDate(a.timestamp)}>
 															{hourLabel(a.timestamp)}
 														</span>
 													</div>

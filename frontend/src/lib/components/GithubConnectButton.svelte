@@ -37,7 +37,7 @@
 		<button
 			type="button"
 			id={menuId}
-			class="flex items-center gap-1.5 rounded-lg bg-gray-100 p-1 pr-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+			class="t-button flex items-center gap-2 rounded bg-gray-100 p-1 pr-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
 			aria-label="GitHub account"
 			title={`Connected as ${status.login}`}
 		>
@@ -46,7 +46,7 @@
 			{:else}
 				<GithubSolid class="h-4 w-4" />
 			{/if}
-			<span class="hidden max-w-24 truncate text-xs font-medium sm:inline">{status.login}</span>
+			<span class="hidden max-w-24 truncate sm:inline">{status.login}</span>
 		</button>
 		<Dropdown triggeredBy={`#${menuId}`} simple class="w-44">
 			<DropdownItem class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -58,7 +58,7 @@
 	{:else}
 		<button
 			type="button"
-			class="flex items-center gap-1.5 rounded-lg bg-gray-100 px-2 py-1.5 text-xs font-medium text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+			class="t-button flex items-center gap-2 rounded border border-gray-200 bg-transparent px-3 py-1 text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
 			onclick={() => connectGithub()}
 			title="Connect your GitHub account to see deployed changes"
 		>

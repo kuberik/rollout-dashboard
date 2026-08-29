@@ -1,0 +1,193 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-dep
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-dep-script
+data:
+  app.py: |
+    import json
+    import os
+    import urllib.error
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    # ROLE is "api" (the contract provider) or "frontend" (the consumer).
+    ROLE = os.environ.get("ROLE", "api")
+    # The release tag this pod was deployed at, substituted by Flux from the
+    # version the Rollout selected.
+    RELEASE = os.environ.get("RELEASE", "unknown")
+    # For a consumer: the provider it depends on, so the running pods show the
+    # deployed pairing the dependency gate produced.
+    UPSTREAM = os.environ.get("UPSTREAM", "")
+
+    def upstream_state():
+        """Report what the provider we depend on is currently serving."""
+        if not UPSTREAM:
+            return None
+        try:
+            with urllib.request.urlopen(UPSTREAM, timeout=2) as response:
+                return json.loads(response.read().decode())
+        except (urllib.error.URLError, ValueError, OSError) as err:
+            return {"error": str(err)}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = {
+                "role": ROLE,
+                "release": RELEASE,
+                "upstream": upstream_state(),
+            }
+            payload = json.dumps(body, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    if __name__ == "__main__":
+        port = int(os.environ.get("PORT", 8080))
+        HTTPServer(("", port), Handler).serve_forever()
+---
+# ━━━━━━━━━━━━━━━━━━━ hello-api: provides contract "api" ━━━━━━━━━━━━━━━━━━━
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-api
+  labels:
+    app: hello-dep
+    role: api
+spec:
+  minReadySeconds: 5
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-dep
+      role: api
+  template:
+    metadata:
+      labels:
+        app: hello-dep
+        role: api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/littlechimera/hello-dep/api:${HELLO_API_VERSION}
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/app/app.py"]
+          env:
+            - name: ROLE
+              value: api
+            - name: RELEASE
+              value: ${HELLO_API_VERSION}
+            - name: PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 2
+          volumeMounts:
+            - name: app-script
+              mountPath: /app/app.py
+              subPath: app.py
+      volumes:
+        - name: app-script
+          configMap:
+            name: hello-dep-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-api
+  labels:
+    app: hello-dep
+    role: api
+spec:
+  selector:
+    app: hello-dep
+    role: api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# ━━━━━━━━━━━━━━━━━━━ hello-frontend: consumes contract "api" ━━━━━━━━━━━━━━━━━━━
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-frontend
+  labels:
+    app: hello-dep
+    role: frontend
+spec:
+  minReadySeconds: 5
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-dep
+      role: frontend
+  template:
+    metadata:
+      labels:
+        app: hello-dep
+        role: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/littlechimera/hello-dep/frontend:${HELLO_FRONTEND_VERSION}
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/app/app.py"]
+          env:
+            - name: ROLE
+              value: frontend
+            - name: RELEASE
+              value: ${HELLO_FRONTEND_VERSION}
+            - name: UPSTREAM
+              value: http://hello-api/
+            - name: PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 2
+          volumeMounts:
+            - name: app-script
+              mountPath: /app/app.py
+              subPath: app.py
+      volumes:
+        - name: app-script
+          configMap:
+            name: hello-dep-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-frontend
+  labels:
+    app: hello-dep
+    role: frontend
+spec:
+  selector:
+    app: hello-dep
+    role: frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

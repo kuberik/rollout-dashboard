@@ -300,6 +300,15 @@ func fetchSpokeClusterName(ctx context.Context, spokeURL, token string) string {
 	return ClusterNameFromURL(spokeURL)
 }
 
+// mergedKeys are the response keys that fan-out merges across clusters. Each is a
+// Kubernetes list object whose items get stamped with the source dashboard URL and
+// cluster name, so a merged item stays attributable to the cluster it came from.
+// rolloutDependencies is here for the same reason rollouts is: a consumer, its
+// provider and their dependency always live in one namespace on one cluster, and
+// flattening two clusters' dependencies into an unattributed list makes them
+// indistinguishable.
+var mergedKeys = []string{"rollouts", "environments", "kustomizations", "kruiseRollouts", "rolloutDependencies"}
+
 // fanOutRollouts fans out GET /api/rollouts to all discovered spoke dashboards
 // and merges the results with localData. localData values must be json.RawMessage.
 // Returns merged data, cluster list, and per-cluster errors.
@@ -314,7 +323,6 @@ func fanOutRollouts(
 	if localName == "" {
 		localName = ClusterNameFromURL(localURL)
 	}
-	mergedKeys := []string{"rollouts", "environments", "kustomizations", "kruiseRollouts"}
 	for _, k := range mergedKeys {
 		if v, ok := localData[k]; ok && len(v) > 0 {
 			localData[k] = annotateItemsWithSource(v, localURL, localName)

@@ -385,8 +385,782 @@ const mkFleetEnvironment = (s: FleetSpec) => ({
 	}
 });
 
-const mockFleetRollouts = FLEET.map(mkFleetRollout);
-const mockFleetEnvironments = FLEET.map(mkFleetEnvironment);
+// ─────────────────────────────────────────────────────────────────────────
+// `checkout-edge` — the HIGH-FREQUENCY fixture (added 2026-08-23).
+//
+// WHY THIS EXISTS. Every rollout in the live kind clusters has a history of
+// at most 5 entries, so the Gantt's merge path (`coalesceSegments`, which
+// folds anything under 3px into the segment that FOLLOWS it) had never once
+// run against a genuinely busy app. The previous round proved the fixed
+// right-hand live-sha column survives high deploy frequency by SQUEEZING the
+// panel to 200px — sound arithmetic, since a 10x narrower track is
+// arithmetically the same as 10x the deploys, but it is not the same data.
+// A squeezed track still has five segments in it.
+//
+// So this app has 30 deploys across three environments, and it is built to
+// contain the cases that actually break a time chart:
+//
+//   · TWO DEPLOYS IN THE SAME MINUTE (dev, 4517m ago) — a ZERO-width
+//     segment. Not "narrow": zero. It must merge, not divide by itself.
+//   · A BURST THEN A LONG QUIET GAP (dev: 7 deploys inside 33 minutes, then
+//     63 hours of nothing, then 10 more). The gap segment is ~900px and the
+//     burst is ~8px total, on the same lane, at the same scale.
+//   · THE LIVE BUILD AS THE NARROWEST SEGMENT ON ITS LANE (dev deployed 2
+//     minutes ago -> 0.5px). This is the case the right-to-left merge walk
+//     exists for: the group must take the LIVE build's identity, never the
+//     dead one that owns 96% of the lane.
+//   · A NON-MONOTONIC LANE (staging runs 93c04da, is replaced by two newer
+//     builds, then rolls BACK to 93c04da). Ember is an ordinal ramp, so this
+//     lane legitimately goes hot -> hotter -> cold, and that is the encoding
+//     working, not a bug to "fix".
+//   · SEGMENTS OLDER THAN THE `fit` WINDOW (prod's four oldest deploys) plus
+//     one that STRADDLES the window's left edge and must still be drawn.
+//
+// The ladder is 25 builds, which is past Ember's 12-stop cap on purpose:
+// rank >= 11 collapses to ash, so a real busy app is the case where the
+// "everything old is ash" degradation is visible rather than theoretical.
+//
+// Reach it with:  MOCK_API=1 npx vite --port 5199
+//                 https://localhost:5199/apps/checkout-edge
+const HF_APP = 'checkout-edge';
+
+/** [sha, createdMinutesAgo] — newest first, so the index IS the rank. */
+const HF_BUILDS: [string, number][] = [
+	['9a1f4c2', 12],
+	['4d0b7e8', 35],
+	['c62a913', 650],
+	['7f38e0d', 662],
+	['e51c9a4', 674],
+	['20b6d7f', 683],
+	['bd94f13', 691],
+	['a07e5c8', 698],
+	['36fd2b1', 704],
+	['cb18a4e', 710],
+	['81e3f09', 902],
+	['5c7b2da', 910],
+	['0d6c31b', 4497],
+	['e8a52f7', 4506],
+	['93c04da', 4514],
+	['1b7fe25', 4521],
+	['77ac9e3', 4526],
+	['ae40b18', 4527],
+	['62d1c05', 4530],
+	['d09e6f4', 4610],
+	['b7e0d41', 4910],
+	['c3a9f22', 5110],
+	['55f1a2c', 5160],
+	['3e9d780', 5210],
+	['2c8b409', 5260]
+];
+
+// OLDEST-FIRST, which is the real API's contract for `availableReleases` —
+// `newerReleaseCount` computes lag as `length - 1 - indexOf(current)`. Seeded
+// newest-first by mistake once, and the whole ledger inverted: every env read
+// as stuck with 24 builds waiting, including the one running the newest build.
+const hfReleases = HF_BUILDS.map(([sha, createdMinAgo]) => ({
+	tag: sha,
+	version: sha,
+	revision: `${sha}000000000000000000000000000000000`.slice(0, 40),
+	created: hcAgo(createdMinAgo)
+})).reverse();
+
+/** [sha, deployedMinutesAgo] — OLDEST first here; reversed on the way out,
+ *  because `status.history` is newest-first in the real API. */
+type HfDeploy = [string, number];
+
+const HF_LANES: {
+	env: 'dev' | 'staging' | 'prod';
+	bake: 'Succeeded' | 'Failed' | 'InProgress' | 'Deploying';
+	deploys: HfDeploy[];
+}[] = [
+	{
+		env: 'dev',
+		// Live 2 minutes ago and still Deploying -> a blue ring, and a live
+		// segment 0.5px wide at 1440. The narrowest mark on the chart is the
+		// one the reader most needs; that is the whole point of this lane.
+		bake: 'Deploying',
+		deploys: [
+			// ── burst A: 7 deploys inside 33 minutes, ~3.1 days ago
+			['62d1c05', 4520],
+			['ae40b18', 4517],
+			['77ac9e3', 4517], // ← same minute as the line above: zero-width
+			['1b7fe25', 4511],
+			['93c04da', 4504],
+			['e8a52f7', 4496],
+			['0d6c31b', 4487],
+			// ── 63 hours of nothing ────────────────────────────────────────
+			// ── burst B: 8 deploys inside an hour, ~11 hours ago
+			['cb18a4e', 700],
+			['36fd2b1', 694],
+			['a07e5c8', 688],
+			['bd94f13', 681],
+			['20b6d7f', 673],
+			['e51c9a4', 664],
+			['7f38e0d', 652],
+			['c62a913', 640],
+			// ── and two more just now
+			['4d0b7e8', 25],
+			['9a1f4c2', 2]
+		]
+	},
+	{
+		env: 'staging',
+		bake: 'Succeeded',
+		deploys: [
+			['93c04da', 4400],
+			['e8a52f7', 4395],
+			['0d6c31b', 4392],
+			['93c04da', 4386], // ← re-deployed after being replaced twice
+			['5c7b2da', 900],
+			['81e3f09', 892],
+			['c62a913', 300]
+		]
+	},
+	{
+		env: 'prod',
+		// InProgress since 4600 minutes ago trips `detectStuck`'s 1h bake
+		// threshold, so prod carries the amber `stuck` chip — the object that
+		// must stay the loudest thing on the page no matter how hot the ramp
+		// gets at this density.
+		bake: 'InProgress',
+		deploys: [
+			['2c8b409', 5250],
+			['3e9d780', 5200],
+			['55f1a2c', 5150],
+			['c3a9f22', 5100],
+			['b7e0d41', 4900], // ← straddles the `fit` window's left edge
+			['d09e6f4', 4600] // ← oldest LIVE deploy, so it defines `fit`
+		]
+	}
+];
+
+const mkHfRollout = (lane: (typeof HF_LANES)[number]) => {
+	const ns = `${HF_APP}-${lane.env}`;
+	const ordered = [...lane.deploys].reverse(); // newest first
+	const history = ordered.map(([sha, minAgo], i) => ({
+		version: { tag: sha, version: sha },
+		timestamp: hcAgo(minAgo),
+		message: i === 0 ? 'Automatic promotion' : '*Automatic deployment*',
+		triggeredBy: { kind: 'System', name: 'System' },
+		bakeStatus: i === 0 ? lane.bake : ('Succeeded' as const),
+		bakeStartTime: hcAgo(minAgo),
+		...(i === 0 && lane.bake === 'InProgress' ? {} : { bakeEndTime: hcAgo(Math.max(minAgo - 1, 0)) })
+	}));
+	const [currentVersion] = ordered[0];
+	const previousVersion = ordered[1]?.[0];
+	return {
+		apiVersion: 'kuberik.com/v1alpha1',
+		kind: 'Rollout',
+		metadata: { name: HF_APP, namespace: ns, labels: { environment: lane.env } },
+		spec: {
+			releasesImagePolicy: `${ns}/${HF_APP}`,
+			// Deliberately larger than the 10 the other fixtures use: a busy app
+			// that truncates its own history at 10 cannot exercise the merge.
+			versionHistoryLimit: 40,
+			minBakeTime: '5m'
+		},
+		status: {
+			wantedVersion: currentVersion,
+			currentVersion,
+			previousVersion,
+			availableReleases: hfReleases,
+			history
+		}
+	};
+};
+
+const mkHfEnvironment = (lane: (typeof HF_LANES)[number]) => ({
+	apiVersion: 'environments.kuberik.com/v1alpha1',
+	kind: 'Environment',
+	metadata: { name: HF_APP, namespace: `${HF_APP}-${lane.env}` },
+	spec: { environment: lane.env, name: HF_APP, rolloutRef: { name: HF_APP } },
+	status: {
+		currentVersion: [...lane.deploys].reverse()[0][0],
+		lastStatusChangeTime: hcAgo([...lane.deploys].reverse()[0][1])
+	}
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// `payments-core` — the MULTI-REGION fixture (added 2026-08-23).
+//
+// WHY THIS EXISTS. `RegionSet.svelte` is the one genuinely new atom the
+// deploy-board spec asked for, and it is the component that MAKES the
+// "production regions are a SET" rule structural rather than advisory. Not
+// one app in either kind cluster has more than a single prod-tier
+// Environment, so `isFanOut` has been false on every render the component
+// has ever had, and every line of it — the auto-fit tile grid, the summary,
+// `splitRegions` promoting an adverse region out into its own row — had
+// only ever been exercised by unit tests against fake objects.
+//
+// Three stages and six prod regions, in DELIBERATELY DIFFERENT states,
+// because "is the prod fleet consistent?" is only a question worth asking
+// when the answer can be no:
+//
+//   · FOUR regions converged on `9b7e410` — the fan-out working.
+//   · ONE region (`sa-east`) a build behind. Behind is DRIFT, not an alarm:
+//     it stays a tile, it carries no colour, and it is the single straggler
+//     that makes the set row's promote target unambiguous.
+//   · ONE region (`eu-central`) running `d0ff17e`, which is on NO
+//     environment's `availableReleases`. That is the diverged case, and it
+//     is why the fixture exists in this exact shape: it is promoted OUT of
+//     the tile set into its own full ledger row, prints `DIVERGED` where a
+//     rank chip would be, and takes the verdict line off the lag story
+//     entirely. Its deploy is recent, so it cannot be confused with a build
+//     that merely aged out of the retention window.
+//
+// The stages are deliberately quiet (dev and test converged, staging one
+// behind) so that the loudest thing on the page is the prod fan-out, which
+// is the object under test.
+//
+// Reach it with:  MOCK_API=1 npx vite --port 5199
+//                 https://localhost:5199/apps/payments-core
+const MR_APP = 'payments-core';
+
+/** [sha, createdMinutesAgo] — newest first, so the index IS the rank. */
+const MR_BUILDS: [string, number][] = [
+	['f4a2c19', 40],
+	['c0d3e88', 300],
+	['9b7e410', 1500],
+	['2a55f0c', 2900],
+	['71ce0b3', 4300],
+	['e6b4d92', 5800],
+	['8ad1f57', 7200],
+	['3c92e04', 9000],
+	['b58a7d1', 11000],
+	['47f0c6a', 13000]
+];
+
+/** The off-line build. It is NOT in MR_BUILDS, so no environment lists it
+ *  as available — which is exactly what makes `eu-central` diverged rather
+ *  than behind. Created 5 hours ago, i.e. well inside the window the
+ *  release line still covers, so `divergedFromLine` cannot mistake it for
+ *  a build that simply aged out. */
+const MR_OFF_LINE: [string, number] = ['d0ff17e', 300];
+
+const MR_CREATED = new Map<string, number>([...MR_BUILDS, MR_OFF_LINE]);
+
+const mrVersion = (sha: string) => ({
+	tag: sha,
+	version: sha,
+	revision: `${sha}000000000000000000000000000000000`.slice(0, 40),
+	created: hcAgo(MR_CREATED.get(sha) ?? 0)
+});
+
+// OLDEST-FIRST, the real API's contract for `availableReleases`.
+const mrReleases = MR_BUILDS.map(([sha]) => mrVersion(sha)).reverse();
+
+type MrLane = {
+	env: string;
+	bake: 'Succeeded' | 'Failed' | 'InProgress' | 'Deploying';
+	/** [sha, deployedMinutesAgo] — OLDEST first; reversed on the way out. */
+	deploys: [string, number][];
+};
+
+const MR_LANES: MrLane[] = [
+	// ── stages: a LINE. Reading order is promotion order.
+	{ env: 'dev', bake: 'Succeeded', deploys: [['9b7e410', 1490], ['c0d3e88', 290], ['f4a2c19', 30]] },
+	{ env: 'test', bake: 'Succeeded', deploys: [['9b7e410', 1480], ['c0d3e88', 280], ['f4a2c19', 25]] },
+	{ env: 'staging', bake: 'Succeeded', deploys: [['2a55f0c', 2880], ['9b7e410', 1460], ['c0d3e88', 260]] },
+
+	// ── production: a SET. Four converged, one behind, one off the line.
+	{ env: 'prod-us-east', bake: 'Succeeded', deploys: [['71ce0b3', 4200], ['2a55f0c', 2800], ['9b7e410', 1400]] },
+	{ env: 'prod-us-west', bake: 'Succeeded', deploys: [['71ce0b3', 4180], ['2a55f0c', 2780], ['9b7e410', 1380]] },
+	{ env: 'prod-eu-west', bake: 'Succeeded', deploys: [['71ce0b3', 4160], ['2a55f0c', 2760], ['9b7e410', 1360]] },
+	{ env: 'prod-ap-south', bake: 'Succeeded', deploys: [['71ce0b3', 4140], ['2a55f0c', 2740], ['9b7e410', 1340]] },
+	// Behind by one build. Still a tile: drift is not an alarm.
+	{ env: 'prod-sa-east', bake: 'Succeeded', deploys: [['71ce0b3', 4120], ['2a55f0c', 2720]] },
+	// Off the release line. Promoted OUT of the set into its own row.
+	{ env: 'prod-eu-central', bake: 'Succeeded', deploys: [['71ce0b3', 4100], ['2a55f0c', 2700], [MR_OFF_LINE[0], 290]] }
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// `edge-mesh` — the TWELVE-REGION fixture.
+//
+// The spec's hard requirement for the region set is that it "must hold at
+// 12 regions with no horizontal scroll". `regions.test.ts` proves the grid
+// template can never overflow, which is the arithmetic; this is the pixels.
+// Two regions behind rather than one, deliberately: with two stragglers
+// there is no single-rollout promote target, so this fixture is also the
+// case where the set row correctly carries NO action at all.
+const EM_APP = 'edge-mesh';
+const EM_BUILDS: [string, number][] = [
+	['5e1a903', 55],
+	['a92c6f4', 900],
+	['16d8b70', 2600],
+	['cf03e2d', 5200]
+];
+const EM_CREATED = new Map<string, number>(EM_BUILDS);
+const emVersion = (sha: string) => ({
+	tag: sha,
+	version: sha,
+	revision: `${sha}000000000000000000000000000000000`.slice(0, 40),
+	created: hcAgo(EM_CREATED.get(sha) ?? 0)
+});
+const emReleases = EM_BUILDS.map(([sha]) => emVersion(sha)).reverse();
+const EM_REGIONS = [
+	'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+	'eu-west-1', 'eu-central-1', 'eu-north-1',
+	'ap-south-1', 'ap-southeast-2', 'ap-northeast-1',
+	'sa-east-1', 'af-south-1'
+];
+const EM_LANES: MrLane[] = [
+	{ env: 'dev', bake: 'Succeeded', deploys: [['16d8b70', 2590], ['a92c6f4', 890], ['5e1a903', 50]] },
+	...EM_REGIONS.map((region, i): MrLane => ({
+		env: `prod-${region}`,
+		bake: 'Succeeded',
+		// The last two regions are one build behind the other ten.
+		deploys:
+			i < 10
+				? [['cf03e2d', 5100 - i], ['16d8b70', 2500 - i], ['a92c6f4', 800 - i]]
+				: [['cf03e2d', 5100 - i], ['16d8b70', 2500 - i]]
+	}))
+];
+
+/** Shared builder for the two multi-region fixtures. Same shape as
+ *  `mkHfRollout`, but the history entries carry `created` on the version —
+ *  which the live API does and the older fixtures do not, and which is what
+ *  lets the ladder rank an off-line build by its real release time rather
+ *  than by when someone happened to deploy it. */
+function mkRegionRollout(app: string, releases: unknown[], toVersion: (sha: string) => unknown) {
+	return (lane: MrLane) => {
+		const ns = `${app}-${lane.env}`;
+		const ordered = [...lane.deploys].reverse(); // newest first
+		const history = ordered.map(([sha, minAgo], i) => ({
+			version: toVersion(sha),
+			timestamp: hcAgo(minAgo),
+			message: i === 0 ? 'Automatic promotion' : '*Automatic deployment*',
+			triggeredBy: { kind: 'System', name: 'System' },
+			bakeStatus: i === 0 ? lane.bake : ('Succeeded' as const),
+			bakeStartTime: hcAgo(minAgo),
+			...(i === 0 && lane.bake === 'InProgress' ? {} : { bakeEndTime: hcAgo(Math.max(minAgo - 1, 0)) })
+		}));
+		const [currentVersion] = ordered[0];
+		const previousVersion = ordered[1]?.[0];
+		return {
+			apiVersion: 'kuberik.com/v1alpha1',
+			kind: 'Rollout',
+			metadata: { name: app, namespace: ns, labels: { environment: lane.env } },
+			spec: {
+				releasesImagePolicy: `${ns}/${app}`,
+				versionHistoryLimit: 20,
+				minBakeTime: '5m'
+			},
+			status: {
+				wantedVersion: currentVersion,
+				currentVersion,
+				previousVersion,
+				availableReleases: releases,
+				history
+			}
+		};
+	};
+}
+
+const mkRegionEnvironment = (app: string) => (lane: MrLane) => ({
+	apiVersion: 'environments.kuberik.com/v1alpha1',
+	kind: 'Environment',
+	metadata: { name: app, namespace: `${app}-${lane.env}` },
+	spec: { environment: lane.env, name: app, rolloutRef: { name: app } },
+	status: {
+		currentVersion: [...lane.deploys].reverse()[0][0],
+		lastStatusChangeTime: hcAgo([...lane.deploys].reverse()[0][1])
+	}
+});
+
+const mockMrRollouts = MR_LANES.map(mkRegionRollout(MR_APP, mrReleases, mrVersion));
+const mockMrEnvironments = MR_LANES.map(mkRegionEnvironment(MR_APP));
+const mockEmRollouts = EM_LANES.map(mkRegionRollout(EM_APP, emReleases, emVersion));
+const mockEmEnvironments = EM_LANES.map(mkRegionEnvironment(EM_APP));
+
+const mockHfRollouts = HF_LANES.map(mkHfRollout);
+const mockHfEnvironments = HF_LANES.map(mkHfEnvironment);
+
+const mockFleetRollouts = [
+	...FLEET.map(mkFleetRollout),
+	...mockHfRollouts,
+	...mockMrRollouts,
+	...mockEmRollouts
+];
+const mockFleetEnvironments = [
+	...FLEET.map(mkFleetEnvironment),
+	...mockHfEnvironments,
+	...mockMrEnvironments,
+	...mockEmEnvironments
+];
+
+// -------------------------------------------------------------------------
+// THE DEPENDENCIES FIXTURE (added 2026-08-29).
+//
+// WHY THIS EXISTS. `RolloutDependency` is new, and the live hub carries
+// exactly ONE shape of it: `hello-frontend-app` with a single `api` contract
+// present in all three environments, satisfied, whose only blocked release is
+// the app's OLDEST build. That is the QUIET case, and it is the right default
+// for a page whose whole discipline is "never draw the norm" - but it means
+// the adverse half of
+// `/rollouts/<cluster>/<ns>/<name>/dependencies` cannot be seen on live data
+// at all, and neither can any of the shapes a real fleet will produce.
+//
+// So there are two fixtures, and they are deliberately opposite:
+//
+//   A. `hello-frontend-app` - THE LIVE SHAPE, COPIED. Three environments, one
+//      contract, gated everywhere, satisfied, blocking only `rel-2`. This is
+//      the regression fixture for SILENCE: the page must render two lines per
+//      contract and nothing else. If a future change makes this fixture draw
+//      a mark, that change is marking the norm.
+//
+//   B. `checkout-api` - EVERY SHAPE LIVE DATA LACKS, in one rollout:
+//        · SEVEN environments, so the chain is exercised past the 3 the
+//          cluster has and the 320px column is measured at a real N;
+//        · a genuinely UNSATISFIED dependency (`Satisfied=False`) whose
+//          blocked release is NEWER than what the environment runs - the one
+//          state the page is built to surface;
+//        · THREE contracts on one rollout, so the block list has to sort
+//          (adverse first) rather than just render;
+//        · a provider in ANOTHER NAMESPACE (`platform-prod`), so the "in
+//          <namespace>" clause and the cross-namespace provider link render;
+//        · a contract that gates only SOME environments, so the `no gate in`
+//          line renders - the asymmetry case, which the live cluster does not
+//          have and which a future cluster might;
+//        · a provider with NO deployed contract version, so the
+//          "no contract version read yet" branch renders instead of a cause
+//          the data cannot evidence;
+//        · a blocked tag that is NOT on the ladder, which must still be drawn
+//          rather than silently dropped.
+//
+// The JSON below matches the API byte for byte, including the two fields the
+// dashboard resolves SERVER-SIDE and the frontend therefore never re-derives:
+// `spec.contract` and `spec.providerRef.namespace` are always populated.
+// -------------------------------------------------------------------------
+
+const DEP_APP = 'hello-frontend-app';
+const DEP_ENVS = ['dev', 'staging', 'prod'] as const;
+/** Oldest first, exactly as the hub serves `availableReleases`. */
+const DEP_RELEASES = [
+	{ tag: 'rel-2', version: '2.1.0-2', revision: 'e87f059fd602466f1c13e293210b3d2e430504c8', created: '2026-07-29T15:20:18Z' },
+	{ tag: 'rel-63', version: '2.63.0-63', revision: '66e4133a4289eec3b88439b2069b617c8435975f', created: '2026-07-29T16:53:38Z' },
+	{ tag: 'rel-64', version: '2.64.0-64', revision: '83755067c4c76bc112258b901108ec03699f7f4d', created: '2026-07-29T16:54:14Z' },
+	{ tag: 'rel-66', version: '2.66.0-66', revision: '9f10e494d560c1db68aef5203e3afdc5fd9e1e10', created: '2026-07-29T16:58:53Z' }
+];
+
+const depHistory = (tags: string[], agoMin: number, bake = 'Succeeded') =>
+	tags.map((t, i) => {
+		const rel = DEP_RELEASES.find((r) => r.tag === t)!;
+		return {
+			id: tags.length - i,
+			version: { tag: rel.tag, version: rel.version, revision: rel.revision, created: rel.created },
+			timestamp: hcAgo(agoMin + i * 90),
+			bakeStatus: i === 0 ? bake : 'Succeeded',
+			bakeStatusMessage: 'Bake time completed successfully (no errors within bake time).'
+		};
+	});
+
+const mkDepRollout = (env: string) => ({
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'Rollout',
+	metadata: { name: DEP_APP, namespace: `hello-dep-${env}`, labels: { environment: env } },
+	spec: { releasesImagePolicy: `hello-dep-${env}/${DEP_APP}`, versionHistoryLimit: 10, minBakeTime: '5m' },
+	status: {
+		wantedVersion: 'rel-66',
+		currentVersion: 'rel-66',
+		availableReleases: DEP_RELEASES,
+		history: depHistory(['rel-66', 'rel-64', 'rel-63', 'rel-2'], 30)
+	}
+});
+
+const mkDepEnvironment = (env: string) => ({
+	apiVersion: 'environments.kuberik.com/v1alpha1',
+	kind: 'Environment',
+	metadata: { name: DEP_APP, namespace: `hello-dep-${env}` },
+	spec: { environment: env, name: 'hello-dep-frontend-app', rolloutRef: { name: DEP_APP } },
+	status: { currentVersion: 'rel-66', lastStatusChangeTime: hcAgo(30) }
+});
+
+/** The chain every `hello-frontend-app` detail response reports. */
+const DEP_ENV_INFOS = [
+	{ environment: 'dev', history: depHistory(['rel-66', 'rel-64', 'rel-63', 'rel-2'], 30) },
+	{
+		environment: 'staging',
+		relationship: { environment: 'dev', type: 'After' },
+		history: depHistory(['rel-66', 'rel-64', 'rel-63', 'rel-2'], 34)
+	},
+	{
+		environment: 'prod',
+		relationship: { environment: 'staging', type: 'After' },
+		history: depHistory(['rel-66', 'rel-64', 'rel-63', 'rel-2'], 40)
+	}
+];
+
+/** Fixture A - the live shape, copied field for field. */
+const mkLiveDependency = (env: string) => ({
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'RolloutDependency',
+	metadata: {
+		name: 'hello-frontend-needs-api',
+		namespace: `hello-dep-${env}`,
+		annotations: { 'rollout-dashboard.kuberik.com/source-cluster': env === 'prod' ? 'prod' : 'dev' }
+	},
+	spec: {
+		contract: 'api',
+		providerRef: { name: 'hello-api-app', namespace: `hello-dep-${env}` },
+		rolloutRef: { name: DEP_APP }
+	},
+	status: {
+		providedVersion: '1.66.0',
+		providedTag: 'rel-66',
+		admittedVersions: ['rel-63', 'rel-64', 'rel-66'],
+		blockedReleases: [{ tag: 'rel-2', requiredVersion: '1.1.0', reason: 'ConstraintNotSatisfied' }],
+		gateName: 'dependency-hello-frontend-needs-api',
+		conditions: [
+			{ type: 'Ready', status: 'True', reason: 'GateSynced', message: 'Gate dependency-hello-frontend-needs-api allows 3 release(s)' },
+			{ type: 'Satisfied', status: 'True', reason: 'DependencySatisfied', message: 'No release is waiting on contract "api"' }
+		]
+	}
+});
+
+// ── FIXTURE B - `checkout-api`, seven environments, three contracts ──────
+
+const CK_APP = 'checkout-api';
+/** Seven, in `After` order. Two of them are prod REGIONS, which are a SET. */
+const CK_ENVS = [
+	'dev',
+	'staging',
+	'prod-eu-central',
+	'prod-us-east-1',
+	'prod-us-east-2',
+	'prod-ap-southeast-2',
+	'prod-af-south-1'
+] as const;
+
+/** Oldest first, again matching the hub's own ordering. */
+const CK_RELEASES = [
+	{ tag: 'b-40', version: '4.40.0-40', created: '2026-08-01T09:00:00Z' },
+	{ tag: 'b-41', version: '4.41.0-41', created: '2026-08-04T09:00:00Z' },
+	{ tag: 'b-42', version: '4.42.0-42', created: '2026-08-09T09:00:00Z' },
+	{ tag: 'b-43', version: '4.43.0-43', created: '2026-08-16T09:00:00Z' },
+	{ tag: 'b-44', version: '4.44.0-44', created: '2026-08-24T09:00:00Z' },
+	{ tag: 'b-45', version: '4.45.0-45', created: '2026-08-28T09:00:00Z' }
+];
+
+/**
+ * What each environment is running. dev is on head; staging and the first two
+ * regions are HELD BEHIND IT BY A CONTRACT, which is what makes the hop counts
+ * on the chain and the blocked rows in the contract block tell one story.
+ */
+const CK_LIVE: Record<string, string> = {
+	dev: 'b-45',
+	staging: 'b-43',
+	'prod-eu-central': 'b-43',
+	'prod-us-east-1': 'b-42',
+	'prod-us-east-2': 'b-42',
+	'prod-ap-southeast-2': 'b-42',
+	'prod-af-south-1': 'b-40'
+};
+const CK_BAKE: Record<string, string> = {
+	dev: 'Succeeded',
+	staging: 'Succeeded',
+	'prod-eu-central': 'Succeeded',
+	'prod-us-east-1': 'Succeeded',
+	'prod-us-east-2': 'InProgress',
+	'prod-ap-southeast-2': 'Succeeded',
+	'prod-af-south-1': 'Failed'
+};
+
+const ckHistory = (env: string) => {
+	const head = CK_RELEASES.findIndex((r) => r.tag === CK_LIVE[env]);
+	const tags = CK_RELEASES.slice(0, head + 1).reverse();
+	return tags.map((r, i) => ({
+		id: tags.length - i,
+		version: { tag: r.tag, version: r.version, created: r.created },
+		timestamp: hcAgo(60 + i * 240),
+		bakeStatus: i === 0 ? CK_BAKE[env] : 'Succeeded',
+		...(i === 0 && CK_BAKE[env] === 'Failed'
+			? { bakeStatusMessage: 'HighErrorRate firing in af-south-1' }
+			: {})
+	}));
+};
+
+const mkCkRollout = (env: string) => ({
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'Rollout',
+	metadata: { name: CK_APP, namespace: `${CK_APP}-${env}`, labels: { environment: env } },
+	spec: { releasesImagePolicy: `${CK_APP}-${env}/${CK_APP}`, versionHistoryLimit: 20, minBakeTime: '5m' },
+	status: {
+		wantedVersion: CK_LIVE[env],
+		currentVersion: CK_LIVE[env],
+		availableReleases: CK_RELEASES,
+		history: ckHistory(env)
+	}
+});
+
+const mkCkEnvironment = (env: string) => ({
+	apiVersion: 'environments.kuberik.com/v1alpha1',
+	kind: 'Environment',
+	metadata: { name: CK_APP, namespace: `${CK_APP}-${env}` },
+	spec: { environment: env, name: 'checkout-api-service', rolloutRef: { name: CK_APP } },
+	status: { currentVersion: CK_LIVE[env], lastStatusChangeTime: hcAgo(60) }
+});
+
+/** The seven-node chain, a LINE through staging then a fan-out into regions. */
+const CK_ENV_INFOS = CK_ENVS.map((env) => ({
+	environment: env,
+	...(env === 'dev'
+		? {}
+		: env === 'staging'
+			? { relationship: { environment: 'dev', type: 'After' } }
+			: { relationship: { environment: 'staging', type: 'After' } }),
+	history: ckHistory(env)
+}));
+
+const ckDep = (args: {
+	env: string;
+	contract: string;
+	provider: string;
+	providerNamespace: string;
+	providedVersion?: string;
+	providedTag?: string;
+	admitted: string[];
+	blocked: { tag: string; requiredVersion?: string; reason?: string }[];
+	satisfied: boolean;
+}) => ({
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'RolloutDependency',
+	metadata: {
+		name: `${CK_APP}-needs-${args.contract}`,
+		namespace: `${CK_APP}-${args.env}`,
+		annotations: { 'rollout-dashboard.kuberik.com/source-cluster': 'prod' }
+	},
+	spec: {
+		contract: args.contract,
+		providerRef: { name: args.provider, namespace: args.providerNamespace },
+		rolloutRef: { name: CK_APP }
+	},
+	status: {
+		...(args.providedVersion ? { providedVersion: args.providedVersion } : {}),
+		...(args.providedTag ? { providedTag: args.providedTag } : {}),
+		admittedVersions: args.admitted,
+		blockedReleases: args.blocked,
+		gateName: `dependency-${CK_APP}-needs-${args.contract}`,
+		conditions: [
+			{ type: 'Ready', status: 'True', reason: 'GateSynced', message: `Gate allows ${args.admitted.length} release(s)` },
+			args.satisfied
+				? { type: 'Satisfied', status: 'True', reason: 'DependencySatisfied', message: `No release is waiting on contract "${args.contract}"` }
+				: { type: 'Satisfied', status: 'False', reason: 'ReleasesBlocked', message: `${args.blocked.length} release(s) waiting on contract "${args.contract}"` }
+		]
+	}
+});
+
+const mockDependencies = [
+	// FIXTURE A - the live shape, one gate per environment, all satisfied.
+	...DEP_ENVS.map(mkLiveDependency),
+
+	// FIXTURE B.1 - THE ADVERSE ONE. `payments` is unsatisfied in staging and
+	// in two prod regions, and the builds it blocks are NEWER than what each
+	// of them runs, so every one of them is a build somebody wants. The
+	// provider lives in ANOTHER NAMESPACE.
+	...['staging', 'prod-eu-central', 'prod-us-east-1'].map((env) =>
+		ckDep({
+			env,
+			contract: 'payments',
+			provider: 'payments-core',
+			providerNamespace: 'platform-prod',
+			providedVersion: '2.4.1',
+			providedTag: 'pay-241',
+			admitted: ['b-40', 'b-41', 'b-42', 'b-43'],
+			blocked: [
+				{ tag: 'b-45', requiredVersion: '^3.0.0', reason: 'ConstraintNotSatisfied' },
+				{ tag: 'b-44', requiredVersion: '3.0.0', reason: 'ProviderVersionTooOld' }
+			],
+			satisfied: false
+		})
+	),
+	// The other four regions are gated too, but on builds they are already
+	// past, so they stay quiet. `prod-af-south-1` is behind ALL of them, so
+	// its blocked builds ARE wanted - the case where one region in a fleet is
+	// the only one holding a blocked candidate.
+	...['prod-us-east-2', 'prod-ap-southeast-2'].map((env) =>
+		ckDep({
+			env,
+			contract: 'payments',
+			provider: 'payments-core',
+			providerNamespace: 'platform-prod',
+			providedVersion: '2.4.1',
+			providedTag: 'pay-241',
+			admitted: ['b-40', 'b-41', 'b-42'],
+			blocked: [{ tag: 'b-43', requiredVersion: '~2.9.0', reason: 'ConstraintNotSatisfied' }],
+			satisfied: false
+		})
+	),
+
+	// FIXTURE B.2 - THE ASYMMETRY. `identity` gates only dev and staging, so
+	// five of the seven environments have no gate at all. Satisfied, and its
+	// only blocked build is one dev is already past, so the block renders its
+	// two lines plus the `no gate in` line and NOTHING else.
+	...['dev', 'staging'].map((env) =>
+		ckDep({
+			env,
+			contract: 'identity',
+			provider: 'identity-svc',
+			providerNamespace: `${CK_APP}-${env}`,
+			providedVersion: '7.2.0',
+			providedTag: 'id-720',
+			admitted: ['b-41', 'b-42', 'b-43', 'b-44', 'b-45'],
+			blocked: [{ tag: 'b-40', requiredVersion: '8.0.0', reason: 'ConstraintNotSatisfied' }],
+			satisfied: true
+		})
+	),
+
+	// FIXTURE B.3 - NO CONTRACT VERSION READ YET, and a blocked tag that is
+	// NOT on the ladder. The page must state the observable rather than name
+	// a cause, and must still draw the unknown tag rather than drop it.
+	ckDep({
+		env: 'dev',
+		contract: 'search',
+		provider: 'search-api',
+		providerNamespace: 'platform-prod',
+		admitted: [],
+		blocked: [{ tag: 'b-46-rc1', requiredVersion: '>=1.0.0', reason: 'ProviderHasNoDeployedRelease' }],
+		satisfied: false
+	})
+];
+
+const mockDepRollouts = [...DEP_ENVS.map(mkDepRollout), ...CK_ENVS.map(mkCkRollout)];
+const mockDepEnvironments = [...DEP_ENVS.map(mkDepEnvironment), ...CK_ENVS.map(mkCkEnvironment)];
+
+/** Detail responses, keyed `namespace/name`, for the two fixture apps. */
+const mockDepDetails: Record<string, unknown> = Object.fromEntries([
+	...DEP_ENVS.map((env) => [
+		`hello-dep-${env}/${DEP_APP}`,
+		{
+			rollout: mkDepRollout(env),
+			kustomizations: { items: [] },
+			ociRepositories: { items: [] },
+			rolloutGates: { items: [] },
+			environment: {
+				...mkDepEnvironment(env),
+				status: { ...mkDepEnvironment(env).status, environmentInfos: DEP_ENV_INFOS }
+			},
+			kruiseRollout: null,
+			rolloutTests: { items: [] }
+		}
+	]),
+	...CK_ENVS.map((env) => [
+		`${CK_APP}-${env}/${CK_APP}`,
+		{
+			rollout: mkCkRollout(env),
+			kustomizations: { items: [] },
+			ociRepositories: { items: [] },
+			rolloutGates: { items: [] },
+			environment: {
+				...mkCkEnvironment(env),
+				status: { ...mkCkEnvironment(env).status, environmentInfos: CK_ENV_INFOS }
+			},
+			kruiseRollout: null,
+			rolloutTests: { items: [] }
+		}
+	])
+]);
+
 const mockClusters = [
 	{ name: 'dev',     url: 'https://kuberik-dev.example.com' },
 	{ name: 'staging', url: 'https://kuberik-staging.example.com' },
@@ -407,8 +1181,14 @@ export function mockApiPlugin(): Plugin {
 				if (req.url === '/api/rollouts') {
 					return res.end(
 						JSON.stringify({
-							rollouts: { items: [mockRolloutResponse.rollout, ...mockFleetRollouts] },
-							environments: { items: mockFleetEnvironments },
+							rollouts: {
+								items: [mockRolloutResponse.rollout, ...mockFleetRollouts, ...mockDepRollouts]
+							},
+							environments: { items: [...mockFleetEnvironments, ...mockDepEnvironments] },
+							// The `rolloutDependencies` sibling collection, exactly as the
+							// hub serves it. See THE DEPENDENCIES FIXTURE above for what
+							// each entry is there to exercise.
+							rolloutDependencies: { items: mockDependencies },
 							kustomizations: { items: [] },
 							kruiseRollouts: { items: [] },
 							clusters: mockClusters,
@@ -420,6 +1200,19 @@ export function mockApiPlugin(): Plugin {
 				// GET /api/rollouts/:namespace/:name
 				if (req.url === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}`) {
 					return res.end(JSON.stringify(mockRolloutResponse));
+				}
+
+				// GET /api/rollouts/:namespace/:name for the DEPENDENCIES fixtures.
+				// Matched with the query string stripped, because the detail route
+				// carries `?cluster=<name>` on a multi-cluster payload and this
+				// mock advertises three clusters.
+				{
+					const path = req.url.split('?')[0];
+					const m = path.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)$/);
+					if (m) {
+						const detail = mockDepDetails[`${m[1]}/${m[2]}`];
+						if (detail) return res.end(JSON.stringify(detail));
+					}
 				}
 
 				// GET /api/rollouts/:namespace/:name/permissions/all

@@ -10,6 +10,14 @@ count=${1:-5}
 SCRIPT_DIR=$(realpath $(dirname "$0"))
 PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 
+# hello-dep publishes a pair of releases per iteration: hello-api provides the
+# "api" contract, hello-frontend consumes it and declares a caret constraint on
+# the version it was built against.
+#
+# Unlike hello-world and hello-multi, which record a git short SHA in
+# org.opencontainers.image.version, hello-dep records a real semantic version:
+# the dependency gate compares those versions, so they have to be orderable.
+
 BASE_DIR="example/hello-world"
 OCI_ARTIFACT_NAME="hello-world"
 
@@ -62,6 +70,89 @@ build_and_push() {
     rm -rf "${temp_dir}.tar.gz"
 }
 
+# Publish one hello-dep service release.
+# $1 = role (api|frontend), $2 = release ordinal, $3 = contract version triple,
+# $4 = git revision, remaining args are extra buildx annotations.
+#
+# The ordinal is appended to the triple as a SemVer *pre-release* identifier
+# (1.0.0-3), never as build metadata (1.0.0+3): build metadata is ignored for
+# precedence, so every build of one triple would tie. The dependency gate
+# strips the suffix and compares triples only.
+#
+# The ordinal must NOT be used as org.opencontainers.image.revision: the
+# environment controller passes that value to the GitHub Deployments API as the
+# deployment ref, which 422s on anything that is not a real git ref.
+publish_dep_image() {
+    local role=$1 seq=$2 triple=$3 revision=$4
+    shift 4
+
+    local image="${REGISTRY}/hello-dep/${role}"
+    local tag="rel-${seq}"
+
+    echo "Publishing ${image}:${tag} (contract version ${triple}-${seq})"
+    docker buildx build --push \
+      --platform linux/amd64 \
+      --provenance true \
+      --annotation "index:org.opencontainers.image.version=${triple}-${seq}" \
+      --annotation "index:org.opencontainers.image.source=https://github.com/${REPO_NAME}" \
+      --annotation "index:org.opencontainers.image.revision=${revision}" \
+      --annotation "index:org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --annotation "index:org.opencontainers.image.title=Hello Dep ${role}" \
+      --annotation "index:org.opencontainers.image.description=hello-dep ${role} service, release ${tag}" \
+      "$@" \
+      -t "${image}:${tag}" \
+      dep
+
+    kind load docker-image "${image}:${tag}" --name "${KIND_CLUSTER_NAME:-rollout-dev}" || true
+}
+
+# Publish one hello-dep release pair.
+#
+# The ordinal is the commit height of the kuberik-testing repo, which advances
+# on every iteration AND across runs. Deriving it from the loop index instead
+# would pin the tags to rel-1..rel-N, so a second run would republish the same
+# tags and the rollouts would never see a new release — the same reason
+# hello-world keys its tags off the commit sha rather than the iteration.
+#
+# Both services bump their contract together and the frontend requires the api
+# release published alongside it, so the dependency gate holds the frontend on
+# every iteration until the api half has baked. That is the topological
+# ordering being demonstrated, and it now happens continuously rather than once.
+publish_dep_releases() {
+    local revision=$1
+    local seq
+    seq=$(git rev-list --count HEAD)
+
+    # Contract versions advance with the ordinal so they are monotonic across
+    # runs, which is what the gate compares.
+    local api_contract="1.${seq}.0"
+    local frontend_contract="2.${seq}.0"
+
+    publish_dep_image api "${seq}" "${api_contract}" "${revision}"
+    publish_dep_image frontend "${seq}" "${frontend_contract}" "${revision}" \
+      --annotation "index:com.kuberik.rollout.requires.api=^${api_contract}"
+}
+
+# hello-dep manifests are published under a fixed "latest" tag: neither of its
+# rollouts drives the manifest OCIRepository, they only substitute the image
+# versions into it.
+push_dep_manifests() {
+    for env in $ENVIRONMENTS; do
+        local temp_dir
+        temp_dir=$(mktemp -d)
+        echo "Pushing hello-dep manifests for environment: $env"
+        kustomize build "dep/app/deployments/${env}" -o "${temp_dir}"
+        flux push artifact \
+          "oci://${REGISTRY}/hello-dep/${env}/manifests:latest" \
+          --path "${temp_dir}" \
+          --source="https://github.com/${REPO_NAME}" \
+          --revision="latest" \
+          --annotations="org.opencontainers.image.title=Hello Dep manifests / ${env}" \
+          --annotations="org.opencontainers.image.description=Hello Dep manifests / ${env}"
+        rm -rf "${temp_dir}"
+    done
+}
+
 temp_dir=$(mktemp -d)
 trap "rm -rf $temp_dir" EXIT
 
@@ -73,16 +164,23 @@ trap "rm -rf $temp_dir" EXIT
     # so its paths don't collide with hello-world.
     mkdir -p multi
     cp -r $PROJECT_ROOT/example/hello-multi/* multi/
+    # Third example (dependency-gated rollouts) likewise gets its own subdir.
+    mkdir -p dep
+    cp -r $PROJECT_ROOT/example/hello-dep/* dep/
     git add .
     git commit -m "Initial commit"
 
-    for count in {1..$count}; do
+    push_dep_manifests
+
+    # NOTE: brace expansion happens before parameter expansion, so `{1..$count}`
+    # expands to the literal string "{1..5}" and iterates exactly once. Use seq.
+    for iteration in $(seq 1 "$count"); do
         sleep 1
         (
             cd app/base
             echo "timestamp=date:$(date +%s)" > app.env
             git add .
-            git commit -m "Add patch${count}"
+            git commit -m "Add patch${iteration}"
         )
 
         # Push commits to the repository
@@ -119,5 +217,7 @@ trap "rm -rf $temp_dir" EXIT
             build_and_push "$env" "app/deployments/${env}" "hello-world" "Hello World"
             build_and_push "$env" "multi/app/deployments/${env}" "hello-multi" "Hello Multi"
         done
+
+        publish_dep_releases "${version}"
     done
 )

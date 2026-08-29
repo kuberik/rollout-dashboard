@@ -302,7 +302,7 @@
 					<div
 						class="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs dark:bg-green-950/30"
 					>
-						<CheckCircleSolid class="h-3 w-3 text-green-500" />
+						<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
 						<span class="font-semibold text-green-700 dark:text-green-400">{succeeded}</span>
 					</div>
 					<div
@@ -456,7 +456,7 @@
 
 								<!-- Time + actor -->
 								<div class="hidden flex-shrink-0 text-right sm:block">
-									<div class="text-xs text-gray-500 dark:text-gray-400" title={formatTimeAgo(entry.timestamp, $now)}>
+									<div class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(entry.timestamp)}>
 										{formatTimeAgoCompact(entry.timestamp, $now)}
 									</div>
 									{#if entry.triggeredBy}
@@ -520,6 +520,7 @@
 														base={rollout.status.history[i + 1]?.version?.revision}
 														head={entry.version?.revision}
 														showAvatars
+														showMessages
 													/>
 												</div>
 											{/if}

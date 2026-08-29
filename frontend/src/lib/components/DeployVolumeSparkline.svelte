@@ -80,10 +80,14 @@
 		title={isHourly ? `${total} deploys over last ${hours}h` : `${total} deploys over last ${bucketCount} days`}
 	>
 		{#each bucketValues as count, i}
+			<!-- Square, and the ONE green. `rounded-sm` is off the 2-value radius
+			     budget and rounding a 3px-wide bar turns it into a blob anyway;
+			     `emerald-400` was a second green in a product allowed exactly
+			     one, and a lighter one than the status glyph it sits beside. -->
 			<span
-				class="flex-1 rounded-sm {count > 0
-					? 'bg-emerald-400 dark:bg-emerald-500/80'
-					: 'bg-gray-200 dark:bg-gray-700/60'}"
+				class="flex-1 {count > 0
+					? 'bg-green-700 dark:bg-green-400'
+					: 'bg-gray-200 dark:bg-gray-700'}"
 				style="height: {count === 0 ? '20%' : Math.max(30, (count / max) * 100)}%"
 				title={`${count} deploy${count === 1 ? '' : 's'} ${label(i)}`}
 			></span>

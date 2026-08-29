@@ -49,7 +49,15 @@
 
 	// `cluster` is the cluster name when the rollout lives on a remote cluster;
 	// it's appended as ?cluster=<name> so the hub proxies the call to that cluster.
-	let { rollout, cluster }: { rollout: Rollout; cluster?: string } = $props();
+	// `compact` renders a single neutral line instead of the full amber
+	// AlertPanel — for surfaces where the amber is reserved for `stuck` and a
+	// time-bounded schedule wait is NOT stuck. Same data, same fetch, same
+	// nextTransition maths; presentation only.
+	let {
+		rollout,
+		cluster,
+		compact = false
+	}: { rollout: Rollout; cluster?: string; compact?: boolean } = $props();
 
 	let allSchedules = $state<Array<RolloutSchedule | ClusterRolloutSchedule>>([]);
 	let loading = $state(true);
@@ -231,11 +239,19 @@
 		}
 	});
 
-	async function fetchSchedules() {
+	// Takes its identifiers as ARGUMENTS. It used to read `rollout.metadata.*`
+	// and `cluster` off reactive state, and it was called from inside an
+	// `$effect` — so every one of those reads was a tracked dependency and the
+	// effect re-subscribed continuously. Measured on the one app that has a
+	// schedule gate: 153 identical `/schedules` requests in 15 seconds, ~10/s,
+	// while an app WITHOUT a schedule gate sat at 9 total. Same class of defect
+	// as the `/commits` storm, in a different mechanism: this one is a Svelte 5
+	// effect-dependency bug, not a query-config bug.
+	async function fetchSchedules(namespace: string, name: string, clusterName?: string) {
 		try {
-			const clusterParam = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
+			const clusterParam = clusterName ? `?cluster=${encodeURIComponent(clusterName)}` : '';
 			const response = await fetch(
-				`/api/rollouts/${rollout.metadata.namespace}/${rollout.metadata.name}/schedules${clusterParam}`
+				`/api/rollouts/${namespace}/${name}/schedules${clusterParam}`
 			);
 			if (!response.ok) throw new Error('Failed to fetch schedules');
 
@@ -250,11 +266,26 @@
 		}
 	}
 
-	// Use effect to fetch and auto-refresh
+	// One primitive key is the effect's ONLY tracked dependency, so it
+	// re-subscribes when the rollout identity genuinely changes and never
+	// because a poll replaced an object.
+	const scheduleKey = $derived(
+		`${rollout?.metadata?.namespace ?? ''}/${rollout?.metadata?.name ?? ''}/${cluster ?? ''}`
+	);
+
 	$effect(() => {
-		fetchSchedules();
-		const interval = setInterval(fetchSchedules, 30000);
-		return () => clearInterval(interval);
+		const [ns, name, clusterName] = scheduleKey.split('/');
+		if (!ns || !name) return;
+		let cancelled = false;
+		const run = () => {
+			if (!cancelled) void fetchSchedules(ns, name, clusterName || undefined);
+		};
+		run();
+		const interval = setInterval(run, 30000);
+		return () => {
+			cancelled = true;
+			clearInterval(interval);
+		};
 	});
 
 	function formatTimeUntil(isoString: string): string {
@@ -278,7 +309,27 @@
 	}
 </script>
 
-{#if !loading && !error && allSchedules.length > 0}
+{#if compact}
+	<!-- Compact form: one line, neutral. A schedule block has a clock and
+	     clears on its own, so it must not borrow the amber that means `stuck`. -->
+	{#if !loading && !error && allSchedules.length > 0 && isBlocked}
+		<!-- On the type scale (`t-micro`, 11/400) and the 4px spacing scale.
+		     The calendar glyph is gone: it needed a 2px optical nudge that
+		     exists on no scale, and the sentence already says "window". -->
+		<p class="t-micro text-gray-400 dark:text-gray-500">
+			{#if nextChange}
+				Deploy window opens in <span class="text-gray-600 dark:text-gray-300"
+					>{formatTimeUntil(nextChange)}</span
+				>
+				· {formatTime(nextChange)}
+			{:else}
+				Blocked by {blockingSchedules.length} deploy schedule{blockingSchedules.length === 1
+					? ''
+					: 's'}
+			{/if}
+		</p>
+	{/if}
+{:else if !loading && !error && allSchedules.length > 0}
 	{#if isBlocked}
 		<AlertPanel
 			severity="warning"
@@ -325,7 +376,7 @@
 								class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 {schedule
 									.spec.action === 'Deny'
 									? 'bg-red-100 text-red-700 ring-red-300/60 dark:bg-red-500/20 dark:text-red-200 dark:ring-red-700/50'
-									: 'bg-emerald-100 text-emerald-700 ring-emerald-300/60 dark:bg-emerald-500/20 dark:text-emerald-200 dark:ring-emerald-700/50'}"
+									: 'bg-gray-100 text-green-700 ring-gray-200 dark:bg-gray-700 dark:text-green-400 dark:ring-gray-600'}"
 							>
 								{schedule.spec.action}
 							</span>

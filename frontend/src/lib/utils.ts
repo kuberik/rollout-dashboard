@@ -164,7 +164,16 @@ export function formatTimeAgoCompact(start: string, end: Date = new Date()): str
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h`;
     const d = Math.floor(h / 24);
-    if (d < 30) return `${d}d`;
+    // Stay in days out to ~3 months. On an ops dashboard "32d" and "24d" are
+    // directly comparable at a glance; "1mo" vs "24d" makes an 8-day gap read
+    // as far larger and a 32-day-stale production rollout read as merely
+    // "a month-ish". Rounding away precision exactly where staleness starts to
+    // matter is the wrong trade.
+    if (d < 90) return `${d}d`;
+    // Because days now run to 90, Math.floor(90/30) means the first month
+    // value reachable here is 3 — `1mo` and `2mo` can never be emitted. If you
+    // are tempted to "simplify" this, note that lowering the 90 above is what
+    // would make them reachable, and that rounding is the bug this replaced.
     const mo = Math.floor(d / 30);
     if (mo < 12) return `${mo}mo`;
     return `${Math.floor(mo / 12)}y`;
@@ -172,7 +181,23 @@ export function formatTimeAgoCompact(start: string, end: Date = new Date()): str
 
 export function formatDuration(timestamp: string, now: Date = new Date()): string {
     const date = new Date(timestamp);
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    return formatDurationMs(now.getTime() - date.getTime());
+}
+
+/**
+ * The same long-form wording as `formatDuration`, from a raw millisecond
+ * span rather than a timestamp.
+ *
+ * Exists because the stuck detectors already hand callers a `durationMs` /
+ * `peerAdvancedMs` / `waitingMs` and every one of them was converting it
+ * back into a fake timestamp (`new Date(Date.now() - ms).toISOString()`)
+ * purely to get a phrase out. That round-trip re-reads the clock, so the
+ * string could disagree with the number it was formatting. `formatDuration`
+ * now delegates here, so there is exactly ONE set of unit boundaries and
+ * the existing boundary tests still pin them.
+ */
+export function formatDurationMs(ms: number): string {
+    const diffInSeconds = Math.floor(ms / 1000);
 
     if (diffInSeconds < 60) {
         return `${diffInSeconds} second${diffInSeconds === 1 ? '' : 's'}`;
@@ -189,13 +214,22 @@ export function formatDuration(timestamp: string, now: Date = new Date()): strin
     }
 
     const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 30) {
+    // Matches formatTimeAgoCompact: stay in days out to ~3 months so "31 days"
+    // and "23 days" stay directly comparable. "1 month" vs "23 days" makes an
+    // 8-day gap read as far larger than it is, and it is the long form that
+    // sits next to the compact one in the promotion UI.
+    if (diffInDays < 90) {
         return `${diffInDays} day${diffInDays === 1 ? '' : 's'}`;
     }
 
+    // Days run to 90 above, so Math.floor(90/30) makes 3 the smallest month
+    // value reachable here: "1 month" and "2 months" cannot be produced, and a
+    // `=== 1 ? '' : 's'` singular branch would be dead code. Always plural.
+    // (The years branch below keeps its singular form — "1 year" IS reachable,
+    // at diffInMonths 12..23.) Pinned by the boundary tests in utils.test.ts.
     const diffInMonths = Math.floor(diffInDays / 30);
     if (diffInMonths < 12) {
-        return `${diffInMonths} month${diffInMonths === 1 ? '' : 's'}`;
+        return `${diffInMonths} months`;
     }
 
     const diffInYears = Math.floor(diffInMonths / 12);
@@ -407,6 +441,34 @@ export function getDisplayVersion(versionInfo: {
     tag: string;
 }): string {
     return versionInfo.version || versionInfo.revision || versionInfo.tag;
+}
+
+/**
+ * A deploy message, as PLAIN TEXT.
+ *
+ * `Rollout.status.history[].message` is authored in Markdown by whatever
+ * triggered the deploy, and the controller's own automatic promotions write
+ * `*Automatic deployment*`. Every surface that printed it rendered the
+ * asterisks literally — seven of them on one `/envs/*` screen — which reads as
+ * a broken template rather than as emphasis.
+ *
+ * We strip rather than render. A deploy board is not a Markdown host: turning
+ * an operator-authored string into HTML is a new injection surface for exactly
+ * one visual effect (italics) that carries no information here. Stripping the
+ * markers keeps the sentence and drops the noise.
+ *
+ * Handles the emphasis forms the controller and humans actually produce —
+ * `**bold**`, `*italic*`, `_italic_`, `` `code` `` — and leaves anything else
+ * (including a lone asterisk that is part of the prose) untouched.
+ */
+export function plainMessage(message: string | null | undefined): string {
+    if (!message) return '';
+    return message
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*\n]+)\*/g, '$1')
+        .replace(/(^|\s)_([^_\n]+)_(?=\s|$)/g, '$1$2')
+        .replace(/`([^`\n]+)`/g, '$1')
+        .trim();
 }
 
 /**

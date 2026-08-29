@@ -1,4 +1,5 @@
 import type { Environment, Rollout } from '../types';
+import { getDisplayVersion } from './utils';
 import { rolloutMatchesEnvironment, sourceClusterName, sourceDashboardURL } from './source-dashboard';
 import { getRolloutEnvironmentTheme, type EnvironmentTheme } from './environment-theme';
 import { compareEnvironmentNames } from './env-order';
@@ -76,13 +77,89 @@ export function versionPath(repoKey: string, version: string): string {
 	return `/versions/${repoSlug(repoKey)}/${encodeURIComponent(version)}`;
 }
 
+// ── REVISION IS THE IDENTITY, THE LABEL IS ONLY A NAME FOR IT ────────────
+//
+// A build has two names: the git REVISION it was built from, and whatever
+// each service labels that build (`1.66.0-66`, `2.66.0-66`, or the short sha
+// itself when no semver annotation exists). The revision is the same string
+// for every service; the label is not. Keying the version pages by the label
+// therefore fragmented one commit into as many rows as it had labels — `/versions`
+// printed `9f10e49` three times with three different ranks, because the rank
+// was measuring position in a list of LABEL strings rather than a ladder.
+//
+// So the canonical URL is keyed by revision. `versionPath` survives for the
+// case where no revision is known (and for old links, which the detail page
+// resolves and rewrites), but nothing new should be built on it.
+
+/**
+ * URL form of a revision: TWELVE characters, not seven.
+ *
+ * A 7-char sha is a display convention, not a unique key — git itself only
+ * guarantees uniqueness at the length it computes per repository, and this
+ * page is happy to grow to thousands of builds. 12 is git's own default for
+ * `core.abbrev` on a large repo. The page still DISPLAYS 7; only the URL
+ * carries the longer form, and the detail page resolves any prefix.
+ */
+export function revisionSlug(revision: string): string {
+	return revision.length > 12 ? revision.slice(0, 12) : revision;
+}
+
+/** Short display form. Seven characters, everywhere the sha is shown. */
+export function shortRevision(revision: string): string {
+	return revision.length > 7 ? revision.slice(0, 7) : revision;
+}
+
+/** Single source of truth for linking to a revision's detail page. */
+export function revisionPath(repoKey: string, revision: string): string {
+	return `/versions/${repoSlug(repoKey)}/${encodeURIComponent(revisionSlug(revision))}`;
+}
+
+/**
+ * The git revision a rollout knows this display version by, or null.
+ *
+ * Looks in `availableReleases` first (the release line, which always carries
+ * the OCI-annotation revision) and falls back to deploy history, so a build
+ * that has aged out of the release list is still resolvable.
+ */
+export function revisionFor(
+	rollout: Rollout | null | undefined,
+	displayVersion: string | null | undefined
+): string | null {
+	if (!rollout || !displayVersion) return null;
+	const status = rollout.status;
+	for (const rel of status?.availableReleases ?? []) {
+		if (rel.revision && getDisplayVersion(rel) === displayVersion) return rel.revision;
+	}
+	for (const h of status?.history ?? []) {
+		const v = h.version;
+		if (v?.revision && getDisplayVersion(v) === displayVersion) return v.revision;
+	}
+	return null;
+}
+
+/**
+ * The canonical link for a build: revision-keyed when we know the revision,
+ * label-keyed only as a fallback. Every call site should go through this or
+ * through `versionPathForRollout`, so that adding a resolution source later
+ * is one edit rather than fourteen.
+ */
+export function buildPath(
+	repoKey: string,
+	revision: string | null | undefined,
+	version: string
+): string {
+	return revision ? revisionPath(repoKey, revision) : versionPath(repoKey, version);
+}
+
 // Convenience for inline call sites that hold a rollout but not a repoKey.
+// It resolves the revision INTERNALLY, which is why the URL migration to
+// revision keys touched none of the nine call sites that use it.
 export function versionPathForRollout(
 	rollout: Rollout | null | undefined,
 	fallbackName: string,
 	version: string
 ): string {
-	return versionPath(repoKeyFor(rollout, fallbackName), version);
+	return buildPath(repoKeyFor(rollout, fallbackName), revisionFor(rollout, version), version);
 }
 
 export type AppCell = {

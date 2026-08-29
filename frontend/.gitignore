@@ -25,3 +25,8 @@ vite.config.ts.timestamp-*
 
 # Paraglide
 src/lib/paraglide
+.gstack/
+
+# Stray SvelteKit output from tooling runs
+src/.svelte-kit/
+src/lib/view-models/.svelte-kit/

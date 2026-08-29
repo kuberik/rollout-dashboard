@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, formatTimeAgoCompact, formatDuration, plainMessage } from './utils';
 import {
     ENVIRONMENT_THEME_ANNOTATION,
     ENVIRONMENT_THEME_COLOR_ANNOTATION,
     ENVIRONMENT_THEME_LABEL_ANNOTATION,
     getEnvironmentThemeStyle,
-    getRolloutEnvironmentTheme
+    getRolloutEnvironmentTheme,
+    mixWith,
+    oklabChroma
 } from './environment-theme';
 
 describe('Field Manager Validation', () => {
@@ -251,7 +253,36 @@ describe('environment themes', () => {
         expect(getRolloutEnvironmentTheme(null)).toBeNull();
     });
 
-    it('maps production to a non-red preset theme', () => {
+    // THE IDENTITY RAMP IS THE ORIGINAL, AND IT IS CLOSED (2026-08-25).
+    //
+    // dev #16a34a · staging #7c3aed · prod #d97706 · test #0891b2. Four rounds
+    // of hue-solving replaced them (amber -> slate -> rust #7c2d12 -> #8f3b00
+    // -> magenta #b50e91) and the human rejected every one:
+    //
+    //   "they need to fit in with the rest of the colors of the pages. i don't
+    //    know why you changed them in the first place. the one we had
+    //    originally before you started doing changes were completely fine."
+    //
+    // Those rounds were each a locally correct fix to a measured collision, so
+    // the tests they left behind assert the OPPOSITE of what is now true —
+    // `expect(dev).not.toBe('#16a34a')` asserts that the human's own decision
+    // is a bug. They are rewritten below, not loosened.
+    //
+    // TWO OF THESE SEEDS DO COLLIDE WITH A STATUS HUE, deliberately, and each
+    // collision is resolved on the STATUS mark instead:
+    //   · prod is amber, the `stuck` family -> `rank` (`−N`) gave up amber and
+    //     took red; `alarm` stays the only chip with a fill AND a glyph AND a
+    //     coloured border, so it still outranks every identity mark.
+    //   · dev is green, the `Succeeded` family -> "one green" became "one green
+    //     FOR STATE"; identity is separated by SHAPE. Guarded below.
+    it('maps production to the amber preset, and keeps it clear of red', () => {
+        // There is nothing left for a COLOUR test to assert about prod vs the
+        // `stuck` amber: they share a hue family on purpose and are separated
+        // by mark, not hue. What is still a real guard — and matters more than
+        // it did — is prod's distance from RED. Red is now the ink of `Failed`,
+        // `diverged` AND `rank`, and on `/apps` a `−N` chip renders as the very
+        // next half of the SAME joined box as a prod env chip. Drift prod back
+        // toward rust and those two halves stop being separable at 11px.
         const theme = getRolloutEnvironmentTheme({
             metadata: {
                 annotations: {
@@ -262,12 +293,18 @@ describe('environment themes', () => {
 
         expect(theme?.label).toBe('Production');
         expect(theme?.color).toBe('#d97706');
-        expect(theme?.color).not.toMatch(/^#(?:dc2626|ef4444|f87171)$/);
+        expect(hueGap(theme!.color, '#c10007')).toBeGreaterThan(25); // red-700
+        expect(hueGap(theme!.color, '#ff6467')).toBeGreaterThan(25); // red-400
     });
 
     it('infers production from an Environment name containing prod', () => {
         const theme = getRolloutEnvironmentTheme({ metadata: { annotations: {} } } as any, 'eu-prod-1');
 
+        // FIXED 2026-08-27. `resolveThemeLabel` used to return the preset word
+        // `Production` here, which collapsed `eu-prod-1`, `us-prod-2` and
+        // `ap-prod-1` onto one indistinguishable mark. An environment's label
+        // is its own name; the preset word survives only for a rollout that
+        // declares a theme with no Environment attached.
         expect(theme?.label).toBe('eu-prod-1');
         expect(theme?.color).toBe('#d97706');
     });
@@ -278,6 +315,8 @@ describe('environment themes', () => {
             { spec: { environment: 'development-west' } } as any
         );
 
+        // Same rule as above: the identity was inferred FROM this name, so the
+        // name is what prints.
         expect(theme?.label).toBe('development-west');
         expect(theme?.color).toBe('#16a34a');
     });
@@ -310,11 +349,36 @@ describe('environment themes', () => {
             'eu-prod-1'
         );
 
+        // A `theme-color` annotation recolours the chip; it does not rename the
+        // environment. The colour comes from the annotation (and therefore from
+        // `computedRamp`/`mixWith`, the one surviving caller); the word still
+        // comes from the environment.
         expect(theme?.label).toBe('eu-prod-1');
         expect(theme?.color).toBe('#0ea5e9');
     });
 
-    it('maps development to the green preset theme', () => {
+    it('keeps dev identity and the Succeeded green apart by SHAPE, not by hue', () => {
+        // THIS TEST'S PREMISE WAS INVERTED, so its name changed with it. It used
+        // to be `maps development to the cyan preset theme, not the Succeeded
+        // green` and asserted `expect(color).not.toBe('#16a34a')` — i.e. it
+        // asserted that the value the human chose is a bug.
+        //
+        // dev IS the success hue now: #16a34a is OKLCH hue 149.2 and green-700
+        // is 149.0. The RULE moved instead of the colour. "There is exactly ONE
+        // green" became "there is exactly one green FOR STATE; identity is a
+        // separate axis" — and what keeps the two from reading as two instances
+        // of one signal is that they are never the same MARK:
+        //
+        //   · a state green is a FILLED disc or a check ring: no border, no
+        //     text, chroma ~0.15 across its whole area.
+        //   · an identity green is a bordered RECTANGLE that always prints its
+        //     own name, whose fill is a 90% white mix — an order of presence
+        //     quieter than the disc's ink.
+        //
+        // That is the invariant worth guarding, because it is the one whose
+        // breakage would actually reintroduce the defect: give the dev chip a
+        // saturated fill and it becomes a green blob beside a green disc, and
+        // the shape argument collapses.
         const theme = getRolloutEnvironmentTheme({
             metadata: {
                 annotations: {
@@ -325,6 +389,17 @@ describe('environment themes', () => {
 
         expect(theme?.label).toBe('Development');
         expect(theme?.color).toBe('#16a34a');
+
+        // Same hue as the success green — STATED, not avoided, so that a future
+        // edit which "fixes" it by re-hueing dev fails here and has to come read
+        // this comment first.
+        expect(hueGap(theme!.color, '#008236')).toBeLessThan(2);
+
+        // ...and separated on the axis that actually does the work: the chip's
+        // FILL is nowhere near the disc's ink.
+        expect(oklabChroma(theme!.surfaceColor)).toBeLessThan(oklabChroma('#008236') * 0.2);
+        // A chip is a rectangle with an edge, never a blob.
+        expect(theme!.borderColor).not.toBe(theme!.surfaceColor);
     });
 
     it('uses a custom hex color annotation with an optional label', () => {
@@ -364,6 +439,222 @@ describe('environment themes', () => {
 
         expect(theme).not.toBeNull();
         expect(getEnvironmentThemeStyle(theme!)).toContain('--rollout-theme-accent: #7c3aed');
+    });
+
+    // ── THE RESTORED PALETTE ────────────────────────────────────────────────
+    //
+    // These four seeds and the two fixed mixes that derive from them are the
+    // palette the human calls "completely fine". What they guard is no longer a
+    // solved invariant — it is the exact values, and the fact that the
+    // DERIVATION was reverted with them. Restoring the seeds alone would have
+    // restored the hues at the wrong weights.
+    //
+    // `hueGap` is declared here but used by tests ABOVE it, which is safe: a
+    // `describe` body runs to completion during collection, so every `const` in
+    // it is initialised before any `it` callback executes.
+    const oklabHue = (hex: string) => {
+        const lin = (v: number) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+        const [r, g, b] = [1, 3, 5].map((i) => lin(parseInt(hex.slice(i, i + 2), 16) / 255));
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        const s2 = Math.cbrt(0.088302462 * r + 0.2817188376 * g + 0.6299787005 * b);
+        const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s2;
+        const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s2;
+        const h = (Math.atan2(B, A) * 180) / Math.PI;
+        return h < 0 ? h + 360 : h;
+    };
+
+    /** Shortest angular distance between two hues, in degrees. */
+    const hueGap = (a: string, b: string) => {
+        const d = Math.abs(oklabHue(a) - oklabHue(b));
+        return Math.min(d, 360 - d);
+    };
+
+    const themeFor = (name: string) =>
+        getRolloutEnvironmentTheme(
+            { metadata: { annotations: { [ENVIRONMENT_THEME_ANNOTATION]: name } } } as any
+        )!;
+
+    it('uses the original four identity seeds', () => {
+        expect(themeFor('dev').color).toBe('#16a34a');
+        expect(themeFor('staging').color).toBe('#7c3aed');
+        expect(themeFor('prod').color).toBe('#d97706');
+        expect(themeFor('test').color).toBe('#0891b2');
+    });
+
+    // ── COMPUTED → CHOSEN (2026-08-27) ──────────────────────────────────────
+    //
+    // THIS TEST USED TO ASSERT THE MIXES, and it was right to until the mixes
+    // were the defect. It read:
+    //
+    //     expect(prod.borderColor).toBe('#f1cea5');   // mixWith(seed, #fff, .64)
+    //     expect(prod.surfaceColor).toBe('#fbf1e6');  // mixWith(seed, #fff, .90)
+    //
+    // Five derivations x four environments produced TWENTY colours that exist
+    // in no palette and have no designed relationship to one another, which is
+    // why `prod` ink measured 4.18:1 and `dev` 4.33:1 over their own fills at
+    // 10px — both under the 4.5 floor, and neither pair chosen by anyone.
+    //
+    // THE SEEDS DID NOT MOVE. The supporting values are Tailwind v4 steps from
+    // each seed's own ramp now, in both themes. If you are here because this
+    // test failed: do NOT restore a mix. Change the step, and record the new
+    // contrast in DESIGN.md.
+    it('paints the presets from CHOSEN Tailwind steps, never from a mix', () => {
+        const prod = themeFor('prod');
+        expect(prod.textColor).toBe('#7b3306'); // amber-900
+        expect(prod.borderColor).toBe('#fee685'); // amber-200
+        expect(prod.surfaceColor).toBe('#fffbeb'); // amber-50
+        expect(prod.darkSurfaceColor).toBe('#461901'); // amber-950
+        expect(prod.darkBorderColor).toBe('#973c00'); // amber-800
+        expect(prod.darkTextColor).toBe('#fef3c6'); // amber-100
+
+        const staging = themeFor('staging');
+        expect(staging.textColor).toBe('#5d0ec0'); // violet-800
+        expect(staging.borderColor).toBe('#c4b4ff'); // violet-300
+        expect(staging.surfaceColor).toBe('#f5f3ff'); // violet-50
+        expect(staging.darkSurfaceColor).toBe('#2f0d68'); // violet-950
+        expect(staging.darkBorderColor).toBe('#4d179a'); // violet-900
+        expect(staging.darkTextColor).toBe('#ddd6ff'); // violet-200
+
+        expect(themeFor('dev').textColor).toBe('#008236'); // green-700
+        expect(themeFor('test').textColor).toBe('#007595'); // cyan-700
+
+        // NOT a mix of its own seed, on any channel. This is the assertion that
+        // fails first if someone reintroduces the derivation.
+        for (const name of ['dev', 'staging', 'prod', 'test']) {
+            const t = themeFor(name);
+            expect(t.borderColor).not.toBe(mixWith(t.color, '#ffffff', 0.64));
+            expect(t.surfaceColor).not.toBe(mixWith(t.color, '#ffffff', 0.9));
+            expect(t.textColor).not.toBe(mixWith(t.color, '#000000', 0.18));
+        }
+    });
+
+    it('keeps the computed fallback for a hand-picked colour, unchanged', () => {
+        // A `theme-color` annotation is an arbitrary hex. It has NO RAMP, so
+        // there are no steps to choose and `mixWith` is still the answer — this
+        // is the one path it is allowed on. The values below are byte for byte
+        // what a custom env rendered before the presets moved to chosen steps,
+        // including `darkBorderColor`, which used to be produced in CSS as
+        // `color-mix(in srgb, accent 38%, gray-700)` and is stated in TS now.
+        const theme = getRolloutEnvironmentTheme({
+            metadata: {
+                annotations: {
+                    [ENVIRONMENT_THEME_COLOR_ANNOTATION]: '#0EA5E9',
+                    [ENVIRONMENT_THEME_LABEL_ANNOTATION]: 'Sandbox'
+                }
+            }
+        } as any)!;
+
+        expect(theme.color).toBe('#0ea5e9');
+        expect(theme.textColor).toBe(mixWith('#0ea5e9', '#000000', 0.18));
+        expect(theme.borderColor).toBe(mixWith('#0ea5e9', '#ffffff', 0.64));
+        expect(theme.surfaceColor).toBe(mixWith('#0ea5e9', '#ffffff', 0.9));
+        expect(theme.darkSurfaceColor).toBe(mixWith('#0ea5e9', '#000000', 0.7));
+        expect(theme.darkTextColor).toBe(mixWith('#0ea5e9', '#ffffff', 0.42));
+        expect(theme.darkBorderColor).toBe(mixWith('#0ea5e9', '#364153', 0.62));
+    });
+
+    it('does not let a custom colour hijack a preset ramp', () => {
+        // `prod` + an explicit hex: the NAME still resolves the preset (so the
+        // label stays `Production`), but the COLOUR is hand-picked, so every
+        // supporting value must come from the computed fallback rather than
+        // from amber's chosen steps.
+        const theme = getRolloutEnvironmentTheme({
+            metadata: {
+                annotations: {
+                    [ENVIRONMENT_THEME_ANNOTATION]: 'prod',
+                    [ENVIRONMENT_THEME_COLOR_ANNOTATION]: '#b50e91'
+                }
+            }
+        } as any)!;
+
+        expect(theme.color).toBe('#b50e91');
+        expect(theme.borderColor).toBe(mixWith('#b50e91', '#ffffff', 0.64));
+        expect(theme.borderColor).not.toBe('#fee685');
+    });
+
+    it('has no bandColor — the surface IS the band mix again', () => {
+        // `bandColor` existed only to hold the old 90% mix once `surfaceColor`
+        // was solved to something stronger. With the 90% mix back where it was,
+        // it was the same value under a second name and no CSS read it.
+        const prod = themeFor('prod') as unknown as Record<string, unknown>;
+        expect(prod.bandColor).toBeUndefined();
+        expect(getEnvironmentThemeStyle(themeFor('prod'))).not.toContain('--rollout-theme-band');
+    });
+
+    it('keeps every env surface far below the `stuck` chip fill', () => {
+        // THE ONE INVARIANT THAT SURVIVES THE REVERT, and the reason prod may
+        // share amber's hue family without becoming an alarm. `alarm` is the
+        // only chip with a fill AND a glyph AND a coloured border; the widest
+        // margin is the fill. amber-200 is oklch(.924 .12 95.746) = 0.120 here,
+        // and the loudest env surface (staging) is 0.025 — 4.8x quieter. Prod's
+        // is 0.018, 6.6x quieter.
+        const alarmFill = oklabChroma('#fee685');
+        for (const name of ['dev', 'staging', 'test', 'prod']) {
+            expect(oklabChroma(themeFor(name).surfaceColor)).toBeLessThan(alarmFill * 0.25);
+        }
+    });
+
+    it('keeps the `rank` red separable from production’s ink', () => {
+        // THE RULE MOVED, NOT THE COLOUR. `rank` (`−N`) gave amber up and took
+        // the product's red, the hue `diverged` already prints in, because on
+        // `/apps` a `−N` chip renders as the very next half of the SAME joined
+        // box as a prod env chip.
+        //
+        // ⚠️ THIS TEST USED TO MEASURE HUE ALONE (`hueGap > 25`) AND HUE ALONE
+        // IS THE WRONG INSTRUMENT when the two inks differ in lightness and
+        // chroma as well. Tailwind's amber ramp is NOT iso-hue — amber-600 is
+        // hue 58.3 but amber-900, the only step dark enough to clear 4.5:1 over
+        // an amber-50 fill, is hue 45.9. Judged on angle that reads as a
+        // regression (30.7° → 17.4°); judged on the distance a reader actually
+        // sees, it is an IMPROVEMENT, because the new ink is both darker and
+        // less chromatic than the one it replaces:
+        //
+        //     prod ink vs red-700, dEok:  #b26205 0.1340  →  #7b3306 0.1421
+        //
+        // The seed's own hue gap is asserted separately (and unchanged) in
+        // 'maps production to the amber preset, and keeps it clear of red'.
+        const dEok = (a: string, b: string) => {
+            const lab = (hex: string) => {
+                const c = oklabChroma(hex); // forces the same conversion path
+                const h = (oklabHue(hex) * Math.PI) / 180;
+                return { a: c * Math.cos(h), b: c * Math.sin(h) };
+            };
+            const A = lab(a);
+            const B = lab(b);
+            const lum = (hex: string) => {
+                const lin = (v: number) =>
+                    v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+                const [r, g, bl] = [1, 3, 5].map((i) =>
+                    lin(parseInt(hex.slice(i, i + 2), 16) / 255)
+                );
+                const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * bl);
+                const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * bl);
+                const s2 = Math.cbrt(0.088302462 * r + 0.2817188376 * g + 0.6299787005 * bl);
+                return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s2;
+            };
+            return Math.hypot(lum(a) - lum(b), A.a - B.a, A.b - B.b);
+        };
+
+        const prod = themeFor('prod');
+        // ~0.14, five times the ~0.027 JND for a 10px glyph.
+        expect(dEok(prod.textColor, '#c10007')).toBeGreaterThan(0.13); // red-700
+        expect(dEok(prod.darkTextColor, '#ff6467')).toBeGreaterThan(0.13); // red-400
+    });
+
+    it('never prints an identity in the alarm’s own dark ink', () => {
+        // `alarm` is `dark:text-amber-200` and prod shares amber's hue family.
+        // Prod's dark ink steps to amber-100 for exactly this reason. Its LIGHT
+        // ink IS amber-900, the alarm's light ink, and that is deliberate: what
+        // separates the two chips is the FILL — 10.6x the chroma — which is the
+        // mechanism DESIGN.md names as the reason `alarm` is the only chip with
+        // one. Sharing an INK is free; sharing a FILL would not be.
+        for (const name of ['dev', 'staging', 'prod', 'test']) {
+            const t = themeFor(name);
+            expect(t.darkTextColor).not.toBe('#fee685'); // amber-200
+            expect(t.surfaceColor).not.toBe('#ffb900'); // amber-400, the alarm fill
+            expect(t.darkSurfaceColor).not.toBe('#7b3306'); // amber-900, dark alarm fill
+        }
     });
 });
 
@@ -533,5 +824,136 @@ describe('shortenVersion', () => {
 
     it('does not shorten short hex tails (<12 chars)', () => {
         expect(shortenVersion('release-abc1234')).toBe('release-abc1234');
+    });
+});
+
+// ── Time formatters ──────────────────────────────────────────────────────
+// These had ZERO coverage while carrying ~20 call sites (activity, apps,
+// namespaces, rollouts, rollouts/history, StuckBadge). The day/month cutover
+// was moved 30 -> 90 so that a 31-day-stale rollout reads "31d" rather than
+// "1mo" — "1mo" next to "23d" makes an 8-day gap look far larger than it is.
+// These tests pin that boundary so the rounding bug cannot come back quietly.
+
+const T0 = new Date('2026-08-22T00:00:00Z');
+// Build a timestamp exactly `n` units before T0.
+const ago = (ms: number) => new Date(T0.getTime() - ms).toISOString();
+const SEC = 1000, MIN = 60 * SEC, HOUR = 60 * MIN, DAY = 24 * HOUR;
+
+describe('formatTimeAgoCompact', () => {
+    it('seconds below a minute', () => {
+        expect(formatTimeAgoCompact(ago(0), T0)).toBe('0s');
+        expect(formatTimeAgoCompact(ago(1 * SEC), T0)).toBe('1s');
+        expect(formatTimeAgoCompact(ago(59 * SEC), T0)).toBe('59s');
+    });
+
+    it('rolls over s -> m -> h -> d at each boundary', () => {
+        expect(formatTimeAgoCompact(ago(60 * SEC), T0)).toBe('1m');
+        expect(formatTimeAgoCompact(ago(59 * MIN), T0)).toBe('59m');
+        expect(formatTimeAgoCompact(ago(60 * MIN), T0)).toBe('1h');
+        expect(formatTimeAgoCompact(ago(23 * HOUR), T0)).toBe('23h');
+        expect(formatTimeAgoCompact(ago(24 * HOUR), T0)).toBe('1d');
+    });
+
+    it('THE BOUNDARY: 89d stays in days, 90d crosses to months', () => {
+        expect(formatTimeAgoCompact(ago(89 * DAY), T0)).toBe('89d');
+        expect(formatTimeAgoCompact(ago(90 * DAY), T0)).toBe('3mo');
+    });
+
+    it('keeps day precision across the old 30-day cutover (the actual bug)', () => {
+        // 31d is the live prod case: it must NOT collapse to "1mo".
+        expect(formatTimeAgoCompact(ago(23 * DAY), T0)).toBe('23d');
+        expect(formatTimeAgoCompact(ago(29 * DAY), T0)).toBe('29d');
+        expect(formatTimeAgoCompact(ago(30 * DAY), T0)).toBe('30d');
+        expect(formatTimeAgoCompact(ago(31 * DAY), T0)).toBe('31d');
+    });
+
+    it('months start at 3 — 1mo and 2mo are unreachable by construction', () => {
+        const emitted = new Set<string>();
+        for (let d = 0; d <= 400; d++) emitted.add(formatTimeAgoCompact(ago(d * DAY), T0));
+        expect(emitted.has('1mo')).toBe(false);
+        expect(emitted.has('2mo')).toBe(false);
+        expect(emitted.has('3mo')).toBe(true);
+    });
+
+    it('crosses to years at 12 months', () => {
+        expect(formatTimeAgoCompact(ago(359 * DAY), T0)).toBe('11mo');
+        expect(formatTimeAgoCompact(ago(360 * DAY), T0)).toBe('1y');
+    });
+});
+
+describe('formatDuration', () => {
+    it('singular vs plural on the small units', () => {
+        expect(formatDuration(ago(1 * SEC), T0)).toBe('1 second');
+        expect(formatDuration(ago(2 * SEC), T0)).toBe('2 seconds');
+        expect(formatDuration(ago(1 * MIN), T0)).toBe('1 minute');
+        expect(formatDuration(ago(2 * MIN), T0)).toBe('2 minutes');
+        expect(formatDuration(ago(1 * HOUR), T0)).toBe('1 hour');
+        expect(formatDuration(ago(2 * HOUR), T0)).toBe('2 hours');
+    });
+
+    it('THE SINGULAR/PLURAL DAY BOUNDARY: 1 day vs 2 days', () => {
+        expect(formatDuration(ago(1 * DAY), T0)).toBe('1 day');
+        expect(formatDuration(ago(2 * DAY), T0)).toBe('2 days');
+    });
+
+    it('THE BOUNDARY: 89 days stays in days, 90 days crosses to months', () => {
+        expect(formatDuration(ago(89 * DAY), T0)).toBe('89 days');
+        expect(formatDuration(ago(90 * DAY), T0)).toBe('3 months');
+    });
+
+    it('keeps day precision across the old 30-day cutover', () => {
+        expect(formatDuration(ago(30 * DAY), T0)).toBe('30 days');
+        expect(formatDuration(ago(31 * DAY), T0)).toBe('31 days');
+    });
+
+    it('months are always plural — "1 month"/"2 months" are unreachable', () => {
+        const emitted = new Set<string>();
+        for (let d = 0; d <= 400; d++) emitted.add(formatDuration(ago(d * DAY), T0));
+        expect(emitted.has('1 month')).toBe(false);
+        expect(emitted.has('2 months')).toBe(false);
+        expect(emitted.has('3 months')).toBe(true);
+    });
+
+    it('but the YEARS singular branch is still live — "1 year" is reachable', () => {
+        expect(formatDuration(ago(359 * DAY), T0)).toBe('11 months');
+        expect(formatDuration(ago(360 * DAY), T0)).toBe('1 year');
+        expect(formatDuration(ago(720 * DAY), T0)).toBe('2 years');
+    });
+});
+
+describe('plainMessage', () => {
+    // The controller writes its automatic promotions as Markdown emphasis, and
+    // every surface that printed the string rendered the asterisks literally —
+    // seven of them on one `/envs/*` screen.
+    it('strips the emphasis the controller actually emits', () => {
+        expect(plainMessage('*Automatic deployment*')).toBe('Automatic deployment');
+        expect(plainMessage('**Automatic deployment**')).toBe('Automatic deployment');
+        expect(plainMessage('_rolled back_')).toBe('rolled back');
+        expect(plainMessage('deployed `9a1f4c2`')).toBe('deployed 9a1f4c2');
+    });
+
+    it('leaves prose that merely contains the characters alone', () => {
+        expect(plainMessage('scale 2 * 3 replicas')).toBe('scale 2 * 3 replicas');
+        expect(plainMessage('bump kube_state_metrics')).toBe('bump kube_state_metrics');
+    });
+
+    it('is empty, never undefined, for a missing message', () => {
+        expect(plainMessage(undefined)).toBe('');
+        expect(plainMessage(null)).toBe('');
+        expect(plainMessage('   ')).toBe('');
+    });
+});
+
+describe('shortenVersion — the 38-zero revision', () => {
+    // `/envs/staging` printed `c0d3e880000000000000000000000000000000` where
+    // every other page printed `c0d3e88`: the string was 38 chars, so the
+    // 40-hex test missed it and the raw revision went straight to the DOM. The
+    // fix is at the call site (use `getDisplayVersion`, the shared helper), but
+    // the boundary is worth pinning.
+    it('shortens a real 40-char sha and passes anything shorter through', () => {
+        const sha40 = 'c0d3e88' + '0'.repeat(33);
+        expect(sha40).toHaveLength(40);
+        expect(shortenVersion(sha40)).toBe('c0d3e88');
+        expect(shortenVersion(sha40.slice(0, 38))).toHaveLength(38);
     });
 });

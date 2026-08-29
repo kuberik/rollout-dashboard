@@ -30,7 +30,7 @@
 			case 'Current':
 			case 'Ready':
 			case 'Succeeded':
-				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
+				return { icon: CheckCircleSolid, color: 'text-green-700 dark:text-green-400' };
 			case 'Unhealthy':
 			case 'Failed':
 			case 'Error':

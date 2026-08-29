@@ -4,7 +4,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import {
-		ChartOutline,
+		HomeOutline,
 		GridOutline,
 		RocketOutline,
 		LayersSolid,
@@ -15,11 +15,11 @@
 	} from 'flowbite-svelte-icons';
 
 	const NAV = [
-		{ key: 'control', href: '/', label: 'Control Center', icon: ChartOutline },
+		{ key: 'control', href: '/', label: 'Home', icon: HomeOutline },
 		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Environments', icon: LayersSolid },
-		{ key: 'versions', href: '/versions', label: 'Versions', icon: TagOutline },
+		{ key: 'versions', href: '/versions', label: 'Revisions', icon: TagOutline },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
 	] as const;
 

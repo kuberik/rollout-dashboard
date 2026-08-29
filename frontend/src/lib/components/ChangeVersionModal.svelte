@@ -453,7 +453,7 @@
 												: ''}{/if}
 									</span>
 								{:else if direction === 'forward'}
-									<ArrowUpOutline class="h-4 w-4 text-green-600 dark:text-green-400" />
+									<ArrowUpOutline class="h-4 w-4 text-green-700 dark:text-green-400" />
 									<span class="text-green-700 dark:text-green-400">
 										Deploy{#if commitsQuery.data}&nbsp;— ships {commitsQuery.data.commits.length} commit{commitsQuery
 												.data.commits.length !== 1
@@ -526,7 +526,7 @@
 									<ul class="space-y-3">
 										{#each commitsQuery.data.commits as commit (commit.sha)}
 											<li class="flex gap-2.5">
-												<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {direction === 'rollback' ? 'bg-amber-500' : 'bg-green-500'}"
+												<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {direction === 'rollback' ? 'bg-amber-500' : 'bg-green-700 dark:bg-green-400'}"
 												></span>
 												<div class="min-w-0 flex-1">
 													<a
@@ -635,7 +635,7 @@
 			<div
 				class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {localToastType ===
 				'success'
-					? 'bg-green-100 text-green-500 dark:bg-green-800 dark:text-green-200'
+					? 'bg-gray-100 text-green-700 dark:bg-gray-700 dark:text-green-400'
 					: 'bg-red-100 text-red-500 dark:bg-red-800 dark:text-red-200'}"
 			>
 				<ExclamationCircleSolid class="h-5 w-5" />

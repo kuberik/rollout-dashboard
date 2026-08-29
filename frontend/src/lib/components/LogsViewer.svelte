@@ -777,8 +777,8 @@
 				{/if}
 			</div>
 			<div class="flex items-center gap-1">
-				<span class="hidden text-green-500 sm:inline">Streaming</span>
-				<span class="h-2 w-2 animate-pulse rounded-full bg-green-500"></span>
+				<span class="hidden text-green-700 sm:inline dark:text-green-400">Streaming</span>
+				<span class="h-2 w-2 animate-pulse rounded-full bg-green-700 dark:bg-green-400"></span>
 			</div>
 		</div>
 	{/if}

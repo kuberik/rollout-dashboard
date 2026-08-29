@@ -91,6 +91,7 @@
 	} from '$lib/utils';
 	import { versionPathForRollout } from '$lib/version-utils';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
@@ -597,7 +598,7 @@
 		if (!status) return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
 		switch (status.toLowerCase()) {
 			case 'success':
-				return { icon: CheckCircleSolid, color: 'text-green-600 dark:text-green-400' };
+				return { icon: CheckCircleSolid, color: 'text-green-700 dark:text-green-400' };
 			case 'failure':
 				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
 			case 'in_progress':
@@ -1107,7 +1108,7 @@
 				{@const failedHCList = latestEntry?.failedHealthChecks || []}
 				{@const statusStripClass =
 					latestEntry.bakeStatus === 'Succeeded'
-						? 'bg-green-500'
+						? 'bg-green-700 dark:bg-green-400'
 						: latestEntry.bakeStatus === 'Failed'
 							? 'bg-red-500'
 							: latestEntry.bakeStatus === 'InProgress'
@@ -1133,10 +1134,10 @@
 						{#if currentEnv}
 							<a
 								href={`/envs/${encodeURIComponent(currentEnv)}`}
-								class="environment-theme-scope environment-theme-badge shrink-0 self-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-80 {rolloutTheme ? '' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}"
+								class="environment-theme-scope inline-flex shrink-0 self-center rounded transition-opacity hover:opacity-80"
 								style={rolloutThemeStyle}
 								title="View all apps in {currentEnv}"
-							>{currentEnv}</a>
+							><Chip role="env" theme={rolloutTheme} label={currentEnv} title="View all apps in {currentEnv}" wide /></a>
 						{/if}
 						<a
 							href={`/apps/${rollout.metadata?.name}`}
@@ -1242,7 +1243,7 @@
 												>
 													{getDisplayVersion(latestEntry.version)}
 												</a>
-												<span class="text-sm {latestEntry.bakeStatus === 'Succeeded' ? 'text-green-600 dark:text-green-400' : latestEntry.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : latestEntry.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : latestEntry.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}">
+												<span class="text-sm {latestEntry.bakeStatus === 'Succeeded' ? 'text-green-700 dark:text-green-400' : latestEntry.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : latestEntry.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : latestEntry.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}">
 													{latestEntry.bakeStatus}
 												</span>
 												{#if stuckReason}
@@ -1276,7 +1277,7 @@
 												</div>
 											{/if}
 											<!-- What shipped in this deploy: commits since the previous
-											     deploy, on behalf of the viewing user (links to history). -->
+											     deploy, on behalf of the viewing user (click to expand the messages). -->
 											{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
 												<div class="mt-1.5">
 													<CommitSummary
@@ -1287,7 +1288,7 @@
 														head={latestEntry.version?.revision}
 														showAvatars
 														hideWhenEmpty
-														href={`/rollouts/${cluster}/${namespace}/${name}/history`}
+														expandable
 													/>
 												</div>
 											{/if}
@@ -1295,7 +1296,7 @@
 									</div>
 									<!-- Right: time -->
 									<div class="shrink-0 text-right text-xs text-gray-400 dark:text-gray-500">
-										<div class="flex items-center justify-end gap-1" title={formatTimeAgo(latestEntry.timestamp, $now)}>
+										<div class="flex items-center justify-end gap-1" title={formatDate(latestEntry.timestamp)}>
 											<ClockSolid class="h-3 w-3" />
 											<span>{formatTimeAgoCompact(latestEntry.timestamp, $now)}</span>
 										</div>
@@ -1545,7 +1546,7 @@
 													class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
 												>
 													{#if releaseCandidate.created}
-														<span class="flex items-center gap-1" title={formatTimeAgo(releaseCandidate.created, $now)}>
+														<span class="flex items-center gap-1" title={formatDate(releaseCandidate.created)}>
 															<ClockSolid class="h-3 w-3" />
 															{formatTimeAgoCompact(releaseCandidate.created, $now)}
 														</span>
@@ -1669,7 +1670,7 @@
 								<div
 									class="flex flex-col items-center gap-2 py-10 text-gray-400 dark:text-gray-500"
 								>
-									<CheckCircleSolid class="h-8 w-8 text-green-400 dark:text-green-500" />
+									<CheckCircleSolid class="h-8 w-8 text-green-700 dark:text-green-400" />
 									<p class="text-sm">Up to date — no upgrades available</p>
 								</div>
 							{/if}

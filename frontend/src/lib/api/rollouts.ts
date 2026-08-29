@@ -6,7 +6,8 @@ import type {
     RolloutGate,
     Environment,
     RolloutTest,
-    KruiseRollout
+    KruiseRollout,
+    RolloutDependency
 } from '../../types';
 
 export type RolloutResponse = {
@@ -38,6 +39,12 @@ export type RolloutsListResponse = {
     // correlates each kuberik Rollout to its KruiseRollouts via the linked
     // Kustomization's inventory entries (group: rollouts.kruise.io).
     kruiseRollouts?: { items: KruiseRollout[] };
+    // RolloutDependency objects across the queried namespaces and clusters. Each
+    // item carries the same source-cluster annotation as `rollouts`; a consumer,
+    // its provider and the dependency always share one namespace on one cluster.
+    // Null/absent when the source cluster has no RolloutDependency CRD installed —
+    // that is not an error and is not reported in clusterErrors.
+    rolloutDependencies?: { items: RolloutDependency[] } | null;
     // Multi-cluster: discovered spoke clusters (absent when single-cluster).
     clusters?: ClusterInfo[];
     // Multi-cluster: spokes that could not be reached.
