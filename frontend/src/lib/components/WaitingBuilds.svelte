@@ -147,7 +147,10 @@
 		     head inside a task rendered at the same weight competes with the
 		     panel it sits in. This is a unit, not a section. -->
 		<p class="wb-row wb-head" aria-hidden="true">
-			<span class="wb-age t-micro text-gray-500 dark:text-gray-400">released</span>
+			<!-- `released` on its own labelled a column of ages and left the
+			     reader to work out released WHEN and released FROM WHAT.
+			     `ready since` says what the number under it measures. -->
+			<span class="wb-age t-micro text-gray-500 dark:text-gray-400">ready since</span>
 		</p>
 	{/if}
 	<ul class="wb-list">

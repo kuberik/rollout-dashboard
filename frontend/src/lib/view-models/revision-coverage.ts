@@ -177,20 +177,37 @@ export type RevisionCoverage = {
 	reachable: boolean;
 };
 
+/**
+ * ⭐ THE NOVICE TEST OWNS THESE FIVE STRINGS.
+ *
+ * From the human: *"Key point of good UX is that it draws people in where
+ * necessary so that they don't need to be an expert in the tool to know how to
+ * use it."* The old names were `Live here` / `Moved ahead` / `Not yet` /
+ * `Can't place` — four phrases that only parse once you already hold the model
+ * of a build moving along a release line. They are the bar's only explanation,
+ * on both revision pages, so every one of them had to survive a reader who has
+ * never opened kuberik.
+ *
+ * Each is now a complete predicate about the build the page is about, in the
+ * present tense, with no product noun in it: `Running it now`, `Failing`,
+ * `Already moved on`, `Not here yet`, `On a different line`. The DESCRIPTION is
+ * the sentence the card prints under its list, and it now says WHO/WHAT rather
+ * than restating the title in other words.
+ */
 const TITLE: Record<CoverageKey, string> = {
-	live: 'Live here',
-	failing: 'Failing on it',
-	ahead: 'Moved ahead',
-	notYet: 'Not yet',
-	unplaceable: 'Can’t place'
+	live: 'Running it now',
+	failing: 'Failing',
+	ahead: 'Already moved on',
+	notYet: 'Not here yet',
+	unplaceable: 'On a different line'
 };
 
 const DESCRIPTION: Record<CoverageKey, string> = {
-	live: 'running this build now',
-	failing: 'deployed here, and the deploy is not healthy',
-	ahead: 'already on a newer build — rolled past this one',
-	notYet: 'the promotion has not reached here yet',
-	unplaceable: 'the release line does not place this build against what is running'
+	live: 'These are running this build right now.',
+	failing: 'This build is deployed here, and the deploy is not healthy.',
+	ahead: 'These have already deployed a newer build, so this one is behind them.',
+	notYet: 'This build has not been deployed here yet.',
+	unplaceable: 'These follow a different release line, so this build has no position against what they run.'
 };
 
 /**
@@ -470,6 +487,86 @@ export type CoverageSegment = {
 	/** Carried per segment so the bar needs no second prop; see `coverageFill`. */
 	reachable: boolean;
 };
+
+/**
+ * ⭐ THE BUILD'S ONE-LINE ANSWER, IN WORDS A NOVICE ALREADY OWNS.
+ *
+ * `/versions` printed `has places left to reach`, `partly rolled past` and
+ * `live everywhere it is carried`; the human named all three as strings that
+ * assume the domain. They were also computed in the PAGE, so the list row's
+ * word and the lead panel's word were two implementations of one sentence and
+ * could drift.
+ *
+ * One function now, read off the same buckets the bar is drawn from, so the
+ * glyph, the word and the bar cannot disagree. Every phrase is CONCRETE — it
+ * carries the count it is about — because `3 places still to go` is a fact a
+ * reader can check against the bar beside it and `has places left to reach` is
+ * a claim they have to take on faith.
+ *
+ * PRIORITY IS SEVERITY, not bucket order: something failing outranks something
+ * merely unfinished, which outranks something being replaced.
+ */
+export type BuildState = {
+	key: 'failing' | 'notYet' | 'ahead' | 'done' | 'nowhere';
+	/** The row's word. Lower case: it follows a sha in running text. */
+	word: string;
+	/** The long form, for a `title` — same fact, room to name the unit. */
+	title: string;
+};
+
+export function buildState(coverage: RevisionCoverage): BuildState {
+	const n = (key: CoverageKey) =>
+		coverage.buckets.find((b) => b.key === key)?.slots.length ?? 0;
+	const plural = (c: number) => (c === 1 ? '' : 's');
+
+	const failing = n('failing');
+	if (failing > 0)
+		return {
+			key: 'failing',
+			word: `failing in ${failing} place${plural(failing)}`,
+			title: `Deployed in ${failing} place${plural(failing)} where the deploy is not healthy`
+		};
+
+	/*
+	 * BETWEEN "STILL ARRIVING" AND "BEING REPLACED", THE BIGGER NUMBER WINS.
+	 *
+	 * A fixed `notYet` > `ahead` order said `1 place still to go` about a build
+	 * that one place had yet to take and SIX had already rolled past — true, and
+	 * the opposite of what is happening to it. The larger bucket is the one the
+	 * bar is mostly drawn from, so the word and the shape beside it agree.
+	 * `failing` is not in this comparison: one unhealthy place outranks any
+	 * amount of ordinary movement.
+	 */
+	const notYet = n('notYet');
+	const ahead = n('ahead') + n('unplaceable');
+
+	if (notYet > 0 && (notYet >= ahead || coverage.liveCount === 0))
+		return {
+			key: 'notYet',
+			word: `${notYet} place${plural(notYet)} still to go`,
+			title: `${notYet} place${plural(notYet)} have not deployed this build yet`
+		};
+
+	if (ahead > 0 && coverage.liveCount > 0)
+		return {
+			key: 'ahead',
+			word: `${ahead} place${plural(ahead)} moved on`,
+			title: `${ahead} place${plural(ahead)} have already deployed a newer build`
+		};
+
+	if (coverage.liveCount === 0)
+		return {
+			key: 'nowhere',
+			word: 'not running anywhere',
+			title: 'No service is running this build right now'
+		};
+
+	return {
+		key: 'done',
+		word: 'fully rolled out',
+		title: 'Every place that can run this build is running it'
+	};
+}
 
 export function coverageSegments(coverage: RevisionCoverage): CoverageSegment[] {
 	return coverage.buckets.map((b) => ({

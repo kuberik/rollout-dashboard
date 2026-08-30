@@ -113,6 +113,95 @@ When nothing is failing/deploying/baking but the fleet is not fully on head the 
 `None` — `PauseSolid` on the gray disc, which `BakeStatusIcon` already owns. Same rule now
 gates `/apps/[name]`'s `State` rollup going green.
 
+### THE REVISION PAGES — ENTRY POINT, PLAIN ENGLISH, THREE NEW COMPONENTS (2026-08-30)
+
+> *"Designer should create new components when it's advantageous to get a better UX … Key point
+> of good UX is that it draws people in where necessary so that they don't need to be an expert
+> in the tool to know how to use it."*
+
+`/versions` presented eleven near-identical rows and asked the reader to find the interesting
+one; the banner was the only thing that led. Three objects now carry the page, and each is
+shared by the list and the detail page so the two cannot drift:
+
+- **`RevisionLead.svelte`** — the entry point. Identifier at 24px, the state sentence under it,
+  the measurement at 24px on the same baseline, the 26px bar directly under the count that
+  names it, `FleetSpread` under the bar. On `/versions` it is **the newest build anything is
+  running**, chosen by RANK and never by health — this is not the deleted "highlight the broken
+  row" band under a new name. On `/versions/<rev>` it is the hero (`spread={false}`, because
+  there the bucket cards ARE the spread). **ONE lead per page, not one per repo:** on a
+  7-repo cluster, seven 24px identifiers down one page is a list of headlines and therefore no
+  headline.
+- **`FleetSpread.svelte`** — the coverage bar said in words: one group per bucket carrying the
+  bar's own fill as a 10px swatch, a plain-English name, a count, and the real environments as
+  wrapped chips per service. **It is not the rejected legend**: that was a key built from a
+  DUMMY graphic; every swatch here sits on a group of real places and disappears with them.
+  Verified at a 13-region fan-out — 14 chips wrap inside one column at 1440 and six lines at
+  390, with no layout break.
+- **`BuildStateMark.svelte`** — one glyph and one sentence, from `buildState()` in
+  `revision-coverage.ts`. The phrase was computed in the page and drawn three ways; it is
+  written once now, so the bar, the glyph and the words cannot disagree.
+
+**THE NOVICE TEST — every string that assumed the domain, and what it became.** `6 of 9 places
+live` → `Running in 6 of 9 places`, with **the unit defined once** (*"A place is one service in
+one environment"*) where its number first appears — the word cannot be deleted, because
+`/api/rollouts` carries no pod counts and a pod ratio would be invented. `has places left to
+reach` → `3 places still to go`. `partly rolled past` → `8 places moved on`. `live everywhere it
+is carried` → `fully rolled out`. `Live here` / `Moved ahead` / `Not yet` / `Can't place` →
+`Running it now` / `Already moved on` / `Not here yet` / `On a different line`. `HELD BY
+ghd-p2fld` → `Deploys here are paused on a schedule`, with the generated gate names kept BELOW
+as evidence. `Superseded` → `Already on 7c14e2a, and newer builds are ahead of this one`.
+`Rolled past` → `No longer running anywhere`. `Built, never deployed` → `Never deployed`, with
+the sentence that says what that means. `Builds on the ladder` → `Commits your services can
+deploy`. `Places · 15 service × environment` → `Places to deploy to · 15`. `Ships as` → `What
+each service calls it`. **Concrete beats abstract:** every state phrase now carries the count it
+is about, so a reader can check it against the bar beside it.
+
+**Two row defects, both measured.** The state glyph sat in a 20px box at x=41 while the sha and
+the service list started at x=64 — three left edges on one card. The track is now exactly the
+16px glyph, so the card has two: the glyph, and everything else at one x. And the `›` trailed
+the age string inside the rollup stack, which floated it mid-row at 390; it is now absolutely
+positioned at the row's right edge and centred on the whole row (measured: 1px).
+
+**One defect only a fan-out finds.** At 13 regions the detail page's `Not here yet` printed the
+byte-identical sentence thirteen times. Places whose reasons and gate names are identical now
+collapse into ONE row of wrapped chips; a place with a `Promote` button never groups, because
+the button names its environment and two of them on a row have a target you infer from position.
+
+### ⛔ A GLYPH ALIGNS TO ITS HEADLINE'S LINE BOX, NEVER TO THE TEXT BLOCK'S CENTRE
+
+> *"I see that at least revisions are broken on mobile."*
+
+**This defect has now shipped twice.** `/apps/[name]`'s `!` glyph was centred against a
+multi-line sentence and fixed; days later `AlertPanel`'s 40px disc was found doing the same
+thing on `/versions` at 390 — **icon centre y=294, headline centre y=207, 87px apart**. Both
+times the mechanism is one line of CSS: `display:flex; align-items:center` on a row holding a
+glyph and a text column. That centres the glyph on WHATEVER the column happens to be, which is
+one line on a desktop and five on a phone, so the glyph drifts down the paragraph as the
+viewport narrows. It reads as broken because the glyph is pointing at a sentence it does not
+belong to.
+
+**The rule:** a glyph that belongs to a headline is positioned against **the headline's own
+line box**, and it contributes **no layout height** — so it can never push the headline off its
+baseline either.
+
+`AlertPanel` now implements it, and it is the shared banner on `/`, `/apps`, `/apps/[name]`,
+`/environments`, `/envs/[name]`, `/versions`, `/versions/<rev>` and rollout detail
+(via `ScheduleStatus`), so no page can lose it again:
+
+- the icon and the text are a **two-row grid**, not a flex row;
+- column 1 row 1 is an empty stretched cell; the 40px disc is `absolute top-3 -translate-y-1/2`
+  inside it — `top-3` is 12px, half of the `text-base` headline's 24px line box;
+- the message and footnote are row 2, column 2.
+
+Deliberately **not** `top-1/2`: row 1 also holds the `extra` chips, which wrap onto a second
+line at 390, and half of a wrapped row is not the headline either.
+
+**Measured after, icon-centre minus headline-first-line-centre, light and dark, 390 and 1440:**
+1px on all five pages that render a banner (1px is sub-pixel rounding of the line box).
+
+**Fix a shared defect in the shared component.** The `/apps/[name]` fix was made on the page,
+which is exactly why it came back somewhere else.
+
 ### A GATE IS NOT A BREAKAGE, AND A PIN OUTRANKS A GATE
 
 > *"`NEEDS A DECISION — 3 items` offers no decisions — every card gives only `Investigate` and
@@ -157,6 +246,120 @@ when the answer is all of them. The caption carries what the mark cannot (`2 bui
 
 `/` and `/rollouts` keep 11 and 27 icons and radii {4, 12} — structurally untouched. The one
 deliberate cross-page change is the `−N` chip colour above.
+
+## THE NOVICE PASS — `/apps`, `/apps/[name]`, `/environments`, `/envs/[name]` (2026-08-30)
+
+The composition pass above was the floor: these pages now look like the same product as rollout
+detail. This pass is about whether **a competent engineer who has never seen kuberik can use them
+in five seconds.** They failed that badly, and every failure was the same failure — *the product
+spelled its own internals on the screen and expected the reader to already know them.*
+
+> *"Key point of good UX is that it draws people in where necessary so that they don't need to be
+> an expert in the tool to know how to use it."*
+
+### The rule that replaces the vocabulary
+
+**Prefer language that states the CONSEQUENCE over language that states the MECHANISM.** Every
+term below was replaced against that test, and **nothing but strings changed** in the great
+majority of them — same chips, same roles, same colour values, same geometry.
+
+| was | now | why the old one failed |
+|---|---|---|
+| `3/3 on head`, `0/3 on head` | `All up to date`, `1 of 7 up to date` | `head` is git's word for a pointer |
+| `head` chip | `newest` chip | ditto, and every other string already said "newest" |
+| `−19` chip | `19 behind` chip | a signed integer beside a build id reads as a diff, and names no unit |
+| `diverged` chip | `unreleased` chip | git's word for two branches; the fact is "never released anywhere" |
+| `pending` chip | `never deployed` chip | names a state machine, not the fact |
+| `BEHIND NEWEST · 19 builds` | `FURTHEST BEHIND THE NEWEST · 19 versions` | a distance with only one end |
+| `held by 2 gates`, `HELD BY ghd-p2fld` | `BlockReason` — see below | a count of objects, and a generated k8s name, presented as explanations |
+| `1 of 8 converged` | `1 of 8 the same version everywhere` | "converged" |
+| `1 of 8 fleets on one build` | `1 of 8 the same version everywhere` | "fleet", "build" |
+| `1 in motion` | `1 deploying now` | |
+| `Lead` column, `not observed` | `To prod`, `no full trip yet` | DORA jargon; instrument's voice |
+| `PROD-X is 3 builds behind` | `PROD-X is 3 versions behind the newest` | behind *what* |
+| `4 builds` (fleet caption) | `4 versions live` | a quantity with no verdict |
+| `Throughput` · `25% on newest` | `How it's going` · `1 of 4 up to date` | a percentage of four hides its denominator |
+| `Median bake` | `Typical deploy` | "bake" is this product's own word |
+| `Promotion chain` column | `Path to here` | names a mechanism |
+| bare `17` between chain chips | `17` + a header gloss (desktop) / `17 waiting` (phone) | a quantity of an unnamed thing |
+| `Exposure` | `How much is on the newest` | progressive-delivery literature, not a thing on screen |
+| `State` card | `Where it's running` | |
+| `Needs a decision` (offering only `Investigate`) | `Needs you` | the title claimed something the card did not deliver |
+| `Waiting` | `Waiting, nothing to do` | the whole point of the card is that nobody must act |
+| `Promote` | `Deploy newest` | names a concept not yet taught, on the least undoable control |
+| `Review gates` | `See what's blocking` | names a Kubernetes object kind |
+| `Change Version` | `Pick a different version` / `Release the hold` | names a field |
+| `Rollback` | `Go back a version` | |
+| `released` (queue column) | `ready since` | released *when*, from *what* |
+| `3 BUILDS` | `3 versions` | |
+| `unchanged for 1h` | `no progress for 1h` | |
+
+⚠️ **`/` AND `/rollouts` STILL PRINT `−N`, AND THAT IS A KNOWN, DELIBERATE SPLIT.** They are under
+the standing *"do not change the rollout list and detail and home pages"* constraint, so the
+product now spells the same fact two ways. **This is debt, not a decision** — when `/` or
+`/rollouts` is next opened, `RolloutGrid`'s `label={`−${n}`}` is the call site.
+
+### Three new components, and what each buys
+
+- **`UpToDate.svelte`** — the "is this thing current" verdict: a LITERAL glyph for consistency
+  (`CodeMergeSolid` = one version everywhere, `CodeBranchSolid` = split, `PauseSolid` = nothing
+  deployed) plus `N of M up to date` at 14px in the reference page's own rollup idiom. Lifted out
+  of `/apps`, which is where the human accepted it on the fifth attempt. **Its value is WORDING
+  reuse, not code reuse**: two pages asked the same question and were spelling it two ways.
+  ⛔ It is NOT used on `/environments` — `spread` counts distinct versions of ONE app, and across
+  the different apps in an environment that number is meaningless. An object whose glyph would be
+  a lie on a page does not go on that page.
+- **`BlockReason.svelte`** — *"an opaque generated gate name presented as an explanation"* was the
+  charge. Two lines, always in this order: the CONSEQUENCE in ordinary English including whether a
+  person is needed, then the name, on its own line, prefixed `rule:` in muted mono so it reads as
+  a handle to go look up. The split (`awaitingApproval` needs a person / `notPassing` clears
+  itself) is `promotionBlock`'s own STRUCTURAL split, never a match on the generated name. On
+  `/environments`, `/envs/[name]` and `/apps/[name]`.
+- **`NextStep.svelte`** — owns the VERB VOCABULARY. Callers pass the STATE; the label, icon and
+  emphasis come from one table, so the same problem offers the same words on all four pages and
+  `Investigate` can never appear where a decision is wanted. `.btn` at 14px, never `.t-button`.
+
+### Being actionable, and what it is NOT
+
+`/apps` rows gained a step column: **empty on every settled row**, a button on the rows that need a
+person. It is the page's entry point — before it, four rows were near-identical and the eye had
+nowhere to land but the banner.
+
+⛔ **AND `/environments` DELIBERATELY DOES NOT DO THE SAME.** Offering `Deploy newest` on every
+trailing environment put **fourteen identical buttons** on the 22-environment fixture and destroyed
+the entry point the change existed to create; it was also wrong on the merits, because promoting is
+the controller's job and being behind is the normal state. A verb is offered there **only when
+something will not resolve without one**. Likewise `See what's blocking` is not offered on a card
+that has already printed, 200px above, the sentence the button promised to fetch.
+
+### `/environments` — the grid holes, and masonry
+
+A CSS grid equalises ROW height. Four stages in three columns left **~350px of blank white** under
+`dev` and `test`, the largest empty area in the product, and the region bracket had four more holes
+of 90–150px. `items-start` stops the CARDS stretching and cannot stop the ROW being tall. Both
+brackets are `column-count` flows now (`.env-stack` / `.env-stack-item`, 1 / 2 / 3 at the same
+breakpoints the grid used). Reading order survives: the stage bracket is a LINE read left to right,
+which is the axis a column flow preserves; the region bracket is a SET ranked worst-first, and
+worst-first read down the first column is still worst-first.
+
+### Measured
+
+| page | icons in `<main>` | radii | all four combinations |
+|---|---|---|---|
+| `/apps` | 19 → **40** | 8 + 12 + 4 | looked at, 1440 + 390, both themes |
+| `/apps/[name]` | 13 → **21** | 8 + 12 + 4 | ditto |
+| `/environments` | 3 → **113** | 8 + 12 + 4 | ditto |
+| `/envs/[name]` | **24** | 8 + 12 + 4 | ditto |
+
+`scrollWidth === clientWidth` at 390 on all four, both themes; **zero clipped chips, buttons or
+headings** at 1440 (the two that were clipping — `prod-ap-southeast-2` and `prod-ap-northeast-1`
+card titles — are fixed by dropping `wide` from the card-header env chip, which is legitimate only
+because the full name is the `h2` immediately to its left).
+
+⚠️ **ONE CHANGE LANDED OUTSIDE THESE FOUR PAGES.** `StageChain.svelte` is shared with
+`/rollouts/<cluster>/<ns>/<name>/dependencies`, which now also renders `14 behind` and `unreleased`
+instead of `−14` and `diverged`. That is the point — a term the product spells two ways is a term
+nobody learns — but it is a change to a page outside this brief and is recorded here as one.
 
 ## ⛔ AN ENVIRONMENT'S LABEL IS ITS OWN NAME. NEVER THE PRESET WORD. (2026-08-28)
 

@@ -21,7 +21,6 @@
 	} from '$lib/view-models/revision-ledger';
 	import {
 		revisionCoverage,
-		coverageSegments,
 		coverageSwatch,
 		type CoverageKey,
 		type CoverageSlotVM
@@ -48,7 +47,7 @@
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 	import Chip from '$lib/components/Chip.svelte';
-	import CoverageBar from '$lib/components/CoverageBar.svelte';
+	import RevisionLead from '$lib/components/RevisionLead.svelte';
 	import type { Rollout, Environment } from '../../../types';
 
 	/**
@@ -194,14 +193,6 @@
 
 	// THE COVERAGE.
 	const coverage = $derived(row ? revisionCoverage(row, coarse) : null);
-	const segments = $derived(coverage ? coverageSegments(coverage) : []);
-	const barLabel = $derived(
-		coverage
-			? `${coverage.liveCount} of ${coverage.totalCount} places live · ` +
-					coverage.buckets.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`).join(' · ')
-			: ''
-	);
-
 	const rep = $derived.by(() => {
 		const cell = row?.services[0]?.slots[0]?.cell;
 		if (!cell) return null;
@@ -298,7 +289,9 @@
 		const envs = [...new Set(blockedSlots.map((s) => s.envLabel))].join(', ');
 		const apps = [...new Set(blockedSlots.map((s) => s.appName))];
 		const who = apps.length === 1 ? apps[0] : `${apps.length} services`;
-		return `${who} cannot take this build in ${envs}. It is live in ${coverage.liveCount} of ${coverage.totalCount} places.`;
+		// THE BANNER SAYS THE BLOCK AND ONLY THE BLOCK — the hero directly under
+		// it states the coverage at 24px over the bar that draws it.
+		return `${who} cannot deploy it in ${envs} yet.`;
 	});
 
 	// THE ONE MUTATING CONTROL, and the same wiring as before: preselect
@@ -360,11 +353,18 @@
 			out.push({
 				icon: CalendarMonthSolid,
 				tone: 'tone-mute',
+				// ⭐ `HELD BY ghd-p2fld` IS GONE. The human named it as a string that
+				// assumes the domain, and it is worse than that: `ghd-p2fld` is a
+				// GENERATED object name, so the sentence's only content was an
+				// identifier the reader has never seen. The names are evidence and
+				// they still print, under the claim, in `gates` — where a reader who
+				// does know the cluster can use them and one who does not can ignore
+				// them.
 				text: until
-					? `Window closed — opens in ${until}`
+					? `Deploys here are paused for another ${until}`
 					: w?.names.length
-						? `Held by ${w.names.join(', ')}`
-						: 'A gate is not passing — it clears on its own',
+						? 'Deploys here are paused on a schedule'
+						: 'A check has not passed yet — it clears on its own',
 				gates: s.notPassingGates
 			});
 		}
@@ -389,15 +389,58 @@
 			out.push({
 				icon: HourglassOutline,
 				tone: 'tone-mute',
+				// NUMBER-NEUTRAL ON PURPOSE. Places sharing a reason render as ONE
+				// row (see `notYetGroups`), so `this place runs X` would read as a
+				// singular claim over thirteen chips.
 				text: s.candidate
 					? s.runs
 						? `Ready to deploy — still on ${s.runs}`
 						: 'Ready to deploy here'
 					: s.runs
-						? `Superseded — this place is on ${s.runs}, and newer builds are ahead of this one`
-						: 'Superseded by newer builds',
+						? `Already on ${s.runs}, and newer builds are ahead of this one`
+						: 'Skipped — newer builds are ahead of this one',
 				gates: []
 			});
+		}
+		return out;
+	}
+
+	/**
+	 * ⭐ PLACES HELD FOR THE SAME REASON ARE ONE ROW, NOT THIRTEEN.
+	 *
+	 * Found by running the page against a 13-region fan-out under `MOCK_API=1`:
+	 * `Not here yet` printed one row per place, and thirteen of them carried the
+	 * byte-identical sentence *"Skipped — this place runs 7c14e2a, and newer
+	 * builds are ahead of this one"*. That is the furniture the good pages never
+	 * draw — a graphic (or a sentence) that is the same on every row carries no
+	 * information after the first one, and it buried the two rows that DID have
+	 * their own story.
+	 *
+	 * The bucket's design note said each place here has its own story, and that
+	 * is true of a 3-environment app and false at 13 regions. So the grouping is
+	 * on the STORY, not on a count: places whose reasons and gate names are
+	 * identical collapse into one row whose environments are wrapped chips.
+	 *
+	 * A PLACE WITH AN ACTION NEVER GROUPS. `promoteTag` means a button, the
+	 * button names its environment, and two buttons cannot share a row without
+	 * the reader inferring the target from position — so those keep one row
+	 * each, which is also where the reader most needs the room.
+	 */
+	type NotYetGroup = { key: string; appName: string; slots: CoverageSlotVM[]; reasons: Reason[] };
+
+	function notYetGroups(slots: CoverageSlotVM[]): NotYetGroup[] {
+		const out: NotYetGroup[] = [];
+		for (const s of slots) {
+			const reasons = reasonsFor(s);
+			const key = s.promoteTag
+				? `solo:${s.appName}/${s.envName}`
+				: `${s.appName}|${reasons.map((r) => `${r.text}·${r.gates.join(',')}`).join('§')}`;
+			let g = out.find((o) => o.key === key);
+			if (!g) {
+				g = { key, appName: s.appName, slots: [], reasons };
+				out.push(g);
+			}
+			g.slots.push(s);
 		}
 		return out;
 	}
@@ -488,23 +531,25 @@
 			`/api/rollouts` carries no pod counts, so a pod ratio here would be
 			invented; `places` is the honest unit and the caption names it.
 		-->
-		<div class="rev-hero">
-			<div class="min-w-0">
-				<div class="t-label text-gray-500 dark:text-gray-400">Tracking revision</div>
-				<div class="mt-1 flex flex-wrap items-baseline gap-3">
-					<h1 class="t-display-id text-gray-900 dark:text-white">{row.short}</h1>
-					<span class="t-code-sm min-w-0 truncate text-gray-500 dark:text-gray-400"
-						>{ledger.repoLabel}</span
-					>
-				</div>
-			</div>
+		<!--
+			⭐ THE HERO IS `RevisionLead`, THE SAME OBJECT `/versions` LEADS WITH.
+			Identifier at 24px, state word beside it, measurement at 24px on the same
+			baseline, the 26px bar directly under the count that names it. The list
+			and the detail page are now ONE OBJECT AT TWO SCALES rather than two
+			heroes that rhyme — which is what `REVISION-PAGES.md` asks of the bar,
+			applied to the thing the bar sits inside.
 
-			<div class="rev-count">
-				<span class="t-display text-gray-900 dark:text-white">{coverage.liveCount}</span>
-				<span class="t-body text-gray-500 dark:text-gray-400">/{coverage.totalCount}</span>
-				<div class="t-label text-gray-500 dark:text-gray-400">places live</div>
-			</div>
-		</div>
+			`spread={false}`: here the bucket CARDS are the spread, at full size and
+			carrying the gates and the actions. Drawing both would print the same
+			environments twice on one screen.
+		-->
+		<RevisionLead short={row.short} eyebrow="Tracking build" {coverage} spread={false}>
+			{#snippet meta()}
+				<span class="t-code-sm min-w-0 truncate text-gray-500 dark:text-gray-400"
+					>{ledger.repoLabel}</span
+				>
+			{/snippet}
+		</RevisionLead>
 
 		<!--
 			SECOND LINE OF THE HERO, AND IT DEGRADES HONESTLY. Concept 07 puts the
@@ -532,11 +577,16 @@
 			</p>
 		{/if}
 
+		<!-- THE UNIT IS DEFINED WHERE ITS NUMBER IS, ON THE SCOPE LINE, in seven
+		     words. `places live` was on the human's list of strings that assume the
+		     domain, and the word cannot simply be dropped: `/api/rollouts` carries
+		     no pod counts, so a (service, environment) slot is the honest unit and a
+		     pod ratio would be invented. So the page says what it means, once. -->
 		<p class="t-micro mt-1 text-gray-500 dark:text-gray-400">
 			{row.services.length} service{row.services.length === 1 ? '' : 's'} · {coverage.totalCount} place{coverage.totalCount ===
 			1
 				? ''
-				: 's'}
+				: 's'} (one service in one environment)
 			{#if row.lastDeployMs}
 				· last deployed {formatTimeAgo(new Date(row.lastDeployMs).toISOString(), $now)}
 			{:else}
@@ -586,7 +636,7 @@
 				icon={blockedSlots.some((s) => s.notPassingGates.length > 0)
 					? CalendarMonthSolid
 					: UserCircleSolid}
-				title="This build is blocked from going further"
+				title="{row.short} can’t go any further yet"
 				message={bannerMessage}
 				footnote={bannerFootnote}
 				class="mt-5"
@@ -596,7 +646,7 @@
 						role="alarm"
 						label="{blockedSlots.length} blocked"
 						wide
-						title="{blockedSlots.length} (service, environment) places are held by a gate"
+						title="{blockedSlots.length} places — a place is one service in one environment — are waiting on a gate"
 					/>
 				{/snippet}
 			</AlertPanel>
@@ -613,9 +663,6 @@
 			its count as the rollup. The explanation is the object, not a key built
 			from a dummy graphic — which the human has rejected twice.
 		-->
-		<div class="mt-4">
-			<CoverageBar {segments} label={barLabel} />
-		</div>
 
 		<div class="rev-cols mt-4">
 			<!--
@@ -661,16 +708,44 @@
 								is the bucket that must stay actionable.
 							-->
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-								{#each bucket.slots as s (s.appName + '/' + s.envName)}
+								{#each notYetGroups(bucket.slots) as g (g.key)}
+									{@const solo = g.slots.length === 1 ? g.slots[0] : null}
 									<li class="px-4 py-3">
 										<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-											<!-- `[ENV][−N]` and nothing more, with `STUCK` loose 4px
-											     beside it in the same `.chip-mark` group — the form
-											     `StuckBadge` already ships on `/`, `/rollouts` and the
-											     rollout detail page. -->
-											<span class="chip-mark">
-												{#if s.currentRank !== null && s.currentRank > 0}
-													<span class="chip-joined">
+											<!-- ⭐ THE SERVICE LEADS, ITS ENVIRONMENTS WRAP AFTER IT.
+											     One row per REASON, not per place, so a 13-region fan-out
+											     held by one gate is one row with thirteen chips instead
+											     of thirteen rows carrying one sentence thirteen times.
+											     The link goes to the ROLLOUT, never to `/apps/<name>`:
+											     the rollout is the object the gate is attached to and
+											     the page that can clear it. -->
+											<a
+												href={placeHref(g.slots[0])}
+												class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
+												title="Open the {g.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
+												><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
+													class="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
+													aria-hidden="true"
+												/></a
+											>
+											{#each g.slots as s (s.envName)}
+												<!-- `[ENV][−N]` and nothing more, with `STUCK` loose 4px
+												     beside it in the same `.chip-mark` group — the form
+												     `StuckBadge` already ships on `/`, `/rollouts` and the
+												     rollout detail page. -->
+												<span class="chip-mark">
+													{#if s.currentRank !== null && s.currentRank > 0}
+														<span class="chip-joined">
+															<Chip
+																role="env"
+																theme={s.slot.cell.theme}
+																label={s.envLabel}
+																wide
+																title="{s.envLabel.toUpperCase()} — {s.statusWord}"
+															/>
+															<Chip role="rank" label={`−${s.currentRank}`} />
+														</span>
+													{:else}
 														<Chip
 															role="env"
 															theme={s.slot.cell.theme}
@@ -678,46 +753,23 @@
 															wide
 															title="{s.envLabel.toUpperCase()} — {s.statusWord}"
 														/>
-														<Chip role="rank" label={`−${s.currentRank}`} />
-													</span>
-												{:else}
-													<Chip
-														role="env"
-														theme={s.slot.cell.theme}
-														label={s.envLabel}
-														wide
-														title="{s.envLabel.toUpperCase()} — {s.statusWord}"
-													/>
-												{/if}
-												{#if s.stuck}
-													<Chip
-														role="alarm"
-														label="stuck"
-														title="{s.envLabel.toUpperCase()} is stuck"
-													/>
-												{/if}
-											</span>
-											<!-- ⭐ THE LINK GOES TO THE ROLLOUT, NOT TO `/apps/<name>`.
-											     The page knew the environment and threw it away, so a
-											     DEV row and a STAGING row of one service resolved to the
-											     same URL. The rollout is the object the gate is attached
-											     to and the page that can clear it. -->
-											<a
-												href={placeHref(s)}
-												class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
-												title="Open the {s.envLabel.toUpperCase()} rollout for {s.appName}"
-												><span class="min-w-0 truncate">{s.appName}</span><ChevronRightOutline
-													class="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
-													aria-hidden="true"
-												/></a
-											>
+													{/if}
+													{#if s.stuck}
+														<Chip
+															role="alarm"
+															label="stuck"
+															title="{s.envLabel.toUpperCase()} is stuck"
+														/>
+													{/if}
+												</span>
+											{/each}
 										</div>
 
 										<!-- CRITERION 3, ON THE ROW THAT STATES THE PROBLEM — and
 										     each reason carries a glyph naming WHAT KIND of gate it
 										     is, plus the clear time when the cluster publishes one. -->
 										<div class="mt-2 flex flex-col gap-1.5">
-											{#each reasonsFor(s) as r, i (i)}
+											{#each g.reasons as r, i (i)}
 												{@const ReasonIcon = r.icon}
 												<div class="flex items-start gap-2">
 													<ReasonIcon
@@ -749,21 +801,23 @@
 											{/each}
 										</div>
 
-										{#if s.promoteTag}
+										{#if solo?.promoteTag}
 											<!-- `secondary`, never `primary`: the loudest control on a
 											     deploy surface must not be the one that changes
 											     production. The label names the environment, because two
 											     buttons reading `Promote` eight pixels apart have a
-											     target the reader has to infer from position. -->
+											     target the reader has to infer from position. And a
+											     place with an action never shares a row, so this button
+											     always has exactly one target. -->
 											<div class="mt-2.5">
 												<button
 													type="button"
 													class="btn btn-secondary"
-													onclick={() => openPromote(s.slot, s.promoteTag!)}
-													title={`Deploy ${row.short} to ${s.appName} in ${s.envName}`}
+													onclick={() => openPromote(solo.slot, solo.promoteTag!)}
+													title={`Deploy ${row.short} to ${solo.appName} in ${solo.envName}`}
 												>
 													<ArrowRightOutline class="h-4 w-4" />
-													Promote to {s.envLabel}
+													Promote to {solo.envLabel}
 												</button>
 											</div>
 										{/if}
@@ -847,9 +901,9 @@
 			-->
 			<Card
 				icon={TagSolid}
-				title="Ships as"
+				title="What each service calls it"
 				verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
-				verdictTitle="One revision, one row per service, each ranked on its own ladder"
+				verdictTitle="One commit, one row per service — each service names and ranks it on its own"
 				padded={false}
 				class="self-start"
 			>
@@ -876,7 +930,7 @@
 										label={chip.label}
 										title={svc.diverged
 											? 'On no environment’s release list — promotion does not arrive at it'
-											: `${chip.label} of the ${rank.of.replace('of ', '')} builds on ${svc.appName}’s own ladder`}
+											: `${chip.label} of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
 										value={svc.label}
 										valueTitle={svc.label}
 										class="min-w-0"
@@ -887,7 +941,7 @@
 									<Chip
 										role="unranked"
 										label="unknown"
-										title="This service’s ladder does not resolve a rank for this build"
+										title="This service does not list this build, so it has no position for it"
 										value={svc.label}
 										class="min-w-0"
 									/>
@@ -908,7 +962,9 @@
 				<p
 					class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
 				>
-					Each rank is a position on that service's own release ladder, not on a shared one.
+					Every service counts its own builds, so <span class="t-code-sm">newest</span> here means
+				newest for that service. Two services from one repo can be on different builds and both be
+				up to date.
 				</p>
 			</Card>
 		</div>
@@ -931,27 +987,10 @@
 	 * markup.
 	 */
 
-	/* Two columns, baselines aligned — concept 07's hero. At phone width the
-	   count drops under the identity rather than shrinking beside it. */
-	.rev-hero {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 16px;
-		align-items: baseline;
-	}
-
-	.rev-count {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 4px;
-		text-align: right;
-		justify-content: flex-end;
-	}
-
-	.rev-count :global(.t-label) {
-		width: 100%;
-	}
+	/* THE HERO'S GEOMETRY MOVED INTO `RevisionLead.svelte` WITH THE HERO. It was
+	   `.rev-hero` / `.rev-count` here and a near-identical pair was about to be
+	   written on `/versions`; one object owns it now, so the two pages cannot
+	   drift apart by a gap value. */
 
 	/* TWO COLUMNS WITH A REAL RIGHT RAIL — `COMPOSITION-GRAMMAR.md` §7. The
 	   rail holds one self-contained card that answers "under what names", which
@@ -1053,10 +1092,4 @@
 	 * ellipsising, and the badge is the one thing on the row that carries
 	 * information the reader came for.
 	 */
-	@media (max-width: 639px) {
-		.rev-hero {
-			gap: 8px;
-		}
-
-	}
 </style>

@@ -150,11 +150,26 @@
 					{#if n.version === null}
 						<Chip role="unranked" label="not deployed" title="{n.title} has never deployed" />
 					{:else if n.diverged}
+						<!-- ⛔ `diverged` AND `−N` BOTH FAILED THE NOVICE TEST.
+						     (2026-08-30) `diverged` is git's word for two branches and
+						     this is not that — the environment is running a version
+						     that was never released anywhere. `−2` is a signed
+						     integer beside a build id, which reads as a diff and
+						     names no unit. Same two roles, same two colour values,
+						     same geometry; only the words moved.
+
+						     ⚠️ THIS IS A SHARED COMPONENT. Its other call site is
+						     `/rollouts/<cluster>/<ns>/<name>/dependencies`, which
+						     sees the same new words. That is the point — a term the
+						     product spells two ways is a term nobody learns — but it
+						     is a change outside `/apps/[name]` and is reported as
+						     one. -->
 						<Chip
 							role="diverged"
-							label="diverged"
+							wide
+							label="unreleased"
 							value={n.version}
-							title="{n.title} runs a build that is on no environment's release line"
+							title="{n.title} runs a version that is on no environment's release list"
 						/>
 					{:else if n.rank === 0}
 						<!-- ON HEAD: THE BUILD ALONE. NO RANK WORD. (2026-08-29)
@@ -209,9 +224,12 @@
 					{:else if n.rank > 0}
 						<Chip
 							role={n.quiet ? 'count' : 'rank'}
-							label="−{n.rank}"
+							label="{n.rank} behind"
 							value={n.version}
-							title="{n.title} is {n.rank} build{n.rank === 1 ? '' : 's'} behind the newest"
+							title="{n.title} is {n.rank} version{n.rank === 1
+								? ''
+								: 's'} older than the newest one this app has"
+							wide
 						/>
 					{:else}
 						<Chip

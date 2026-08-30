@@ -146,37 +146,77 @@
 		<div
 			class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5"
 		>
-			<div class="flex min-w-0 flex-1 items-center gap-4">
-				<div class="relative shrink-0">
-					{#if pulse}
-						<div class="absolute inset-0 animate-ping rounded-full {palette.ping}"></div>
-					{/if}
-					<div
-						class="relative flex h-10 w-10 items-center justify-center rounded-full {palette.iconWrap}"
-					>
-						<Icon class="h-6 w-6 {palette.iconColor}" />
-					</div>
-				</div>
-				<div class="min-w-0">
-					<div class="flex flex-wrap items-center gap-2">
-						<p class="text-base font-bold tracking-tight {palette.title}">{title}</p>
-						{#if extra}{@render extra()}{/if}
-					</div>
-					{#if message}
-						{#if quoted}
-							<blockquote
-								class="mt-1.5 border-l-2 pl-3 text-sm break-words italic {palette.message} {palette.quoteBorder}"
-							>
-								{message}
-							</blockquote>
-						{:else}
-							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
+			<!--
+				⭐ THE ICON IS ALIGNED TO THE HEADLINE'S LINE BOX, NOT TO THE TEXT
+				BLOCK'S CENTRE. This is a two-row grid, not a flex row, and that is
+				the whole fix.
+
+				THE DEFECT, MEASURED AT 390 ON `/versions`: the icon's centre sat
+				**87px below the headline's centre** (icon 294, headline 207). A
+				`flex items-center` row centres a 40px glyph against WHATEVER the text
+				column happens to be — one line on desktop, five lines on a phone — so
+				the icon floated beside the middle of the paragraph, pointing at a
+				sentence it does not belong to. It reads as broken because it is.
+
+				THIS IS A RECURRENCE. The identical defect was fixed days earlier on
+				`/apps/[name]`'s `!` glyph — a glyph centred against a multi-line
+				sentence — and it came back here because the fix was made on the PAGE
+				and not on the SHARED OBJECT. It is fixed in the component now, so
+				every page that renders a banner (`/`, `/apps`, `/apps/[name]`,
+				`/environments`, `/envs/[name]`, `/versions`, `/versions/<rev>`,
+				rollout detail via `ScheduleStatus`) gets it and none can lose it.
+
+				HOW: column 1 row 1 is an empty stretched cell — the grid row's own
+				height, which IS the headline's line box (or taller, if `extra` chips
+				wrap into it). The 40px disc is absolutely positioned at that cell's
+				`top: 50%`, so it centres on the HEADLINE whether the message below is
+				zero lines or five. The disc contributes no height, so it can never
+				push the headline off its own baseline; it overflows symmetrically
+				into the 16-20px of banner padding, which is where the reference page
+				puts it too.
+			-->
+			<div class="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4">
+				<div class="relative col-start-1 row-start-1 w-10">
+					<!-- `top-3` IS THE HEADLINE'S HALF-LEADING, NOT A NUDGE. The title is
+					     always `text-base` — 16px on a 24px line box — so 12px is the
+					     centre of its FIRST LINE, and the disc is translated back by its
+					     own half-height onto exactly that point. Deliberately not
+					     `top-1/2`: this row also holds the `extra` chips, which wrap onto
+					     a second line at 390, and half of a wrapped row is not the
+					     headline either. -->
+					<div class="absolute top-3 left-0 h-10 w-10 -translate-y-1/2">
+						{#if pulse}
+							<div class="absolute inset-0 animate-ping rounded-full {palette.ping}"></div>
 						{/if}
-					{/if}
-					{#if footnote}
-						<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
-					{/if}
+						<div
+							class="relative flex h-10 w-10 items-center justify-center rounded-full {palette.iconWrap}"
+						>
+							<Icon class="h-6 w-6 {palette.iconColor}" />
+						</div>
+					</div>
 				</div>
+				<div class="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center gap-2">
+					<p class="text-base font-bold tracking-tight {palette.title}">{title}</p>
+					{#if extra}{@render extra()}{/if}
+				</div>
+				{#if message || footnote}
+					<div class="col-start-2 row-start-2 min-w-0">
+						{#if message}
+							{#if quoted}
+								<blockquote
+									class="mt-1.5 border-l-2 pl-3 text-sm break-words italic {palette.message} {palette.quoteBorder}"
+								>
+									{message}
+								</blockquote>
+							{:else}
+								<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
+							{/if}
+						{/if}
+						{#if footnote}
+							<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			{#if actions}

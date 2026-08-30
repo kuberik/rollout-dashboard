@@ -116,6 +116,8 @@
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import NextStep from '$lib/components/NextStep.svelte';
+	import BlockReason from '$lib/components/BlockReason.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import type { Rollout, Environment } from '../../../types';
 
@@ -141,7 +143,27 @@
 	 * `[clock] 22h` pair the reference page prints on all nineteen of its
 	 * upgrade rows.
 	 */
-	const ROW_GRID = 'lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,1fr)_132px_56px_112px]';
+	/**
+	 * ⛔ THE VERSION TRACK IS 176px, NOT 132, AND THE ACTION TRACK IS 152.
+	 * (2026-08-30) Both were sized against words that no longer exist. `−19`
+	 * became `19 behind` and `head` became `newest`, so the joined box grew
+	 * from ~118px to ~162px and clipped itself to `19 BEHI… d09e6…` — a rank
+	 * and a build id BOTH ellipsised, which is the whole cell. `Promote`
+	 * became `Deploy newest`, which is ~148px with its 16px icon and 32px of
+	 * padding against a 112px track.
+	 *
+	 * ⛔ AND THE CHAIN TRACK IS `1.4fr` AGAINST THE APP'S `1fr`. Taking the
+	 * width evenly out of two `1fr` tracks was measured and reverted inside one
+	 * pass: the list column is 840px at 1440 with the 320px rail, so each `1fr`
+	 * fell to 185px and the three-link `DEV › 2 › STAGING › 17 › PROD` (~195px)
+	 * wrapped `PROD` onto a second line on every row. The two tracks were never
+	 * carrying comparable content — a chain is 3–4 chips plus its gap numbers,
+	 * an app name is one string — and splitting the cost equally between them
+	 * charged the wrong one. Measured after: app 163px against `checkout-edge`
+	 * + its `stuck` alarm at ~156px, chain 229px. The four-link `payments-core`
+	 * chain still wraps, as it did before.
+	 */
+	const ROW_GRID = 'lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,1.4fr)_156px_56px_152px]';
 
 	const envName = $derived(page.params.name as string);
 
@@ -576,6 +598,23 @@
 		return Math.round((rankable.filter((r) => r.rank.kind === 'newest').length / rankable.length) * 100);
 	});
 
+	/**
+	 * THE SAME SHARE, SAID AS A COUNT RATHER THAN A PERCENTAGE.
+	 *
+	 * `25% on newest` failed the novice test twice over: `on newest` is this
+	 * product's own shorthand, and a percentage of four items hides its own
+	 * denominator — `25%` of four apps and `25%` of two hundred are not the
+	 * same statement, and only one of them is worth reading. `1 of 4 up to
+	 * date` is the reference page's own `3/3 healthy` rollup idiom and it is
+	 * the phrase `/apps` and `/apps/[name]` now print for the same fact.
+	 *
+	 * The DENOMINATOR IS THE RANKABLE ROWS, exactly as `promotionRate`'s is:
+	 * an `unknown` rank means the ladder could not answer, and `DESIGN.md`
+	 * forbids rendering an unresolvable comparison as a claim.
+	 */
+	const rankableCount = $derived(rows.filter((r) => r.rank.kind !== 'unknown').length);
+	const onNewestCount = $derived(rows.filter((r) => r.rank.kind === 'newest').length);
+
 	/** THE ONE QUANTITY `/environments` ranks on, restated at this scope. */
 	const deepest = $derived.by<{ by: number; appName: string } | null>(() => {
 		let out: { by: number; appName: string } | null = null;
@@ -879,9 +918,16 @@
 						>
 							<span></span>
 							<span>App</span>
-							<span>Promotion chain</span>
-							<span>Build</span>
-							<span>Age</span>
+							<!-- `Promotion chain` names a mechanism. `Path to here` names
+							     what the reader is looking at: the places a version passes
+							     through before it lands in this one. -->
+							<span class="min-w-0"
+								>Path to here<span class="font-normal tracking-normal normal-case"
+									> · a number is versions waiting to move on</span
+								></span
+							>
+							<span>Version</span>
+							<span>Deployed</span>
 							<span></span>
 						</div>
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -931,6 +977,21 @@
 												>{row.title}</span
 											>
 										{/if}
+										<!-- ── WHY NOTHING NEWER HAS COME, ON THE ROW THAT IS
+										     WAITING. The row already offered `See what's
+										     blocking`, which tells a reader a blocker exists and
+										     nothing about it; the answer fits on one line and
+										     the whole point of that line is that it says whether
+										     a PERSON is needed. Same object, same wording, as
+										     `/environments` and `/apps/[name]`. It renders only
+										     on a row that is actually blocked. -->
+										{#if row.block.blocked}
+											<BlockReason
+												awaiting={row.block.awaitingApprovalGates}
+												notPassing={row.block.notPassingGates}
+												pinnedTo={row.slot.cell.rollout.spec?.wantedVersion ?? null}
+											/>
+										{/if}
 									</div>
 
 									<div
@@ -971,13 +1032,43 @@
 															aria-hidden="true"
 														/>
 														{#if link.gap && link.gap > 0}
+															<!-- ⛔ THE NOUN IS IN THE COLUMN HEADER, NOT IN THE PILL,
+															     AND THAT WAS MEASURED. A bare `17` between two
+															     environment chips is a quantity of an unnamed thing,
+															     and the only place the thing WAS named was a `title`
+															     a phone cannot open — so the word had to appear
+															     somewhere on the screen.
+
+															     `17 waiting` in the pill was built and photographed
+															     first. It costs ~48px per gap, which pushed the
+															     THREE-link chain — the product's most common shape,
+															     3 of the 4 rows on this fixture — onto two lines, and
+															     the break landed between a chevron and its own
+															     number: `DEV › 2 waiting › STAGING ›` / `17 waiting
+															     PROD`. Doubling the height of every row to name a
+															     thing once per row is the wrong trade; naming it ONCE
+															     per TABLE, in the header, is what a column header is
+															     for. The header is prose, not a graphic with a key —
+															     the object the human has twice deleted is a legend
+															     built from a DUMMY GRAPHIC, and this is neither. -->
+															<!-- THE NOUN APPEARS EXACTLY ONCE PER SCREEN, AT EVERY
+															     WIDTH. Below `lg` the column header is hidden — that
+															     is the row's own deliberate mobile layout, not an
+															     oversight — so the gloss carrying the word on desktop
+															     is not on the screen at all and the pill fell back to
+															     a bare number with no unit. The phone has the width
+															     the desktop table did not: the chain gets a full row
+															     of its own there, so the word rides in the pill.
+															     `&nbsp;` and not a plain space — Svelte collapses
+															     whitespace adjacent to a tag boundary and it rendered
+															     `2waiting`. -->
 															<span
 																class="-ml-0.5 shrink-0 rounded bg-gray-100 px-1 font-mono text-[10px] leading-4 font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
-																title="{link.gap} build{link.gap === 1
+																title="{link.gap} version{link.gap === 1
 																	? ''
-																	: 's'} in {chain[i - 1].tier} have not reached {link.tier}"
+																	: 's'} have reached {chain[i - 1].tier} and have not yet reached {link.tier}"
 															>
-																{link.gap}
+																{link.gap}<span class="lg:hidden">&nbsp;waiting</span>
 															</span>
 														{/if}
 													{/if}
@@ -1023,33 +1114,51 @@
 									<div
 										class="col-start-2 col-end-4 row-start-3 flex min-w-0 items-center lg:col-start-4 lg:col-end-5 lg:row-start-1"
 									>
+										<!-- ⛔ THE WORDS, NOT THE ROLES. (2026-08-30) `−N` → `N
+										     behind`, `head` → `newest`, `diverged` → `unreleased`,
+										     `pending` → `never deployed`. Same four `Chip` roles,
+										     same four colour values, same joined-box geometry.
+										     `rankLabel` is the SHARED formatter and it still
+										     returns `−N`, so this call site spells its own label
+										     rather than changing a string `/` and `/rollouts`
+										     also render. -->
 										{#if !row.version}
-											<Chip role="unranked" label="pending" title="No deploy yet" class="min-w-0" />
+											<Chip
+												role="unranked"
+												label="never deployed"
+												title="This app has never deployed here"
+												wide
+												class="min-w-0"
+											/>
 										{:else if row.rank.kind === 'diverged'}
 											<Chip
 												role="diverged"
-												label="diverged"
-												title="Running a build that is on no environment’s release list"
+												label="unreleased"
+												title="Running a version that is on no environment’s release list"
 												value={row.version}
 												valueHref={row.versionHref}
+												wide
 												class="min-w-0"
 											/>
 										{:else if rankIsAdverse(row.rank)}
 											<Chip
 												role={rankRole(row.rank) ?? 'rank'}
-												label={rankLabel(row.rank) ?? ''}
-												title="{rankBehindBy(row.rank)} build{rankBehindBy(row.rank) === 1
+												label="{rankBehindBy(row.rank)} behind"
+												title="{row.appName} here is {rankBehindBy(row.rank)} version{rankBehindBy(
+													row.rank
+												) === 1
 													? ''
-													: 's'} behind {row.appName}'s newest"
+													: 's'} older than the newest one it has"
 												value={row.version}
 												valueHref={row.versionHref}
+												wide
 												class="min-w-0"
 											/>
 										{:else}
 											<Chip
 												role="head"
-												label="head"
-												title="{row.version} — the newest build this app has"
+												label="newest"
+												title="{row.version} — the newest version this app has"
 												value={row.version}
 												valueHref={row.versionHref}
 												class="min-w-0"
@@ -1071,22 +1180,30 @@
 												? 'flex'
 												: 'hidden lg:flex'}"
 										>
+											<!-- ⛔ `Promote` AND `Review gates` BOTH WENT. `Promote`
+											     names a concept this product has not taught the
+											     reader yet, and it is the least undoable control on
+											     the page; `Review gates` names a Kubernetes object
+											     kind. `NextStep` owns the verbs now, so the same
+											     state offers the same words here, on `/apps`,
+											     on `/apps/[name]` and on `/environments`. -->
 											{#if row.promoteTag}
-												<button
-													type="button"
-													class="btn {row.primary ? 'btn-primary' : 'btn-secondary'}"
+												<NextStep
+													step="promote"
+													primary={row.primary}
 													onclick={() => openPromote(row.slot.cell, row.promoteTag!)}
-													title="Deploy the newest build every gate allows"
-												>
-													Promote
-												</button>
+													title="Deploys {row.promoteTag}, the newest version every rule already allows"
+												/>
 											{:else}
-												<a
+												<!-- ⛔ NOT `unblock`. The row prints WHY it is blocked,
+												     in words, two lines above this button; a control
+												     offering to go and reveal a sentence already on
+												     screen is furniture. `Open` is what the link does. -->
+												<NextStep
+													step="open"
 													href={rolloutHref(row.slot.cell)}
-													class="btn {row.primary ? 'btn-primary' : 'btn-secondary'}"
-												>
-													{row.block.blockingGates.length > 0 ? 'Review gates' : 'Open'}
-												</a>
+													primary={row.primary}
+												/>
 											{/if}
 										</div>
 									{:else}
@@ -1108,10 +1225,12 @@
 				{#if rows.length > 0}
 					<Card
 						icon={ChartMixedOutline}
-						title="Throughput"
-						verdict={promotionRate === null ? '—' : `${promotionRate}% on newest`}
+						title="How it’s going"
+						verdict={promotionRate === null
+							? '—'
+							: `${onNewestCount} of ${rankableCount} up to date`}
 						verdictTone={promotionRate === 100 ? 'good' : 'neutral'}
-						verdictTitle="Share of apps here running their app's newest build"
+						verdictTitle="Apps here running the newest version they have"
 					>
 						<dl class="space-y-3">
 							<div class="flex items-baseline justify-between gap-3">
@@ -1133,11 +1252,11 @@
 							</div>
 							<div class="flex items-baseline justify-between gap-3">
 								<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-									<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Median bake
+									<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical deploy
 								</dt>
 								<dd
 									class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-									title="Median measured bake window across this environment's deploy history"
+									title="How long a deploy here usually takes to finish and be watched, measured across this environment's history"
 								>
 									{medianBakeMs === null ? '—' : formatDurationMs(medianBakeMs)}
 								</dd>
@@ -1149,7 +1268,10 @@
 							     column of distances reads as a measurement. -->
 							<div class="flex items-baseline justify-between gap-3">
 								<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-									<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Behind newest
+									<CodeBranchOutline
+										class="h-3.5 w-3.5 shrink-0"
+										aria-hidden="true"
+									/>Furthest behind
 								</dt>
 								<dd class="flex min-w-0 items-baseline gap-2">
 									{#if deepest}

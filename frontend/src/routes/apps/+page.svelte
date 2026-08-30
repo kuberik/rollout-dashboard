@@ -109,7 +109,7 @@
 	import { buildMatrix } from '$lib/view-models/matrix';
 	import type { MatrixCellVM } from '$lib/view-models/matrix';
 	import type { RankVerdict } from '$lib/view-models/env-rank';
-	import { buildFleetStrip, fleetCaption } from '$lib/view-models/fleet-strip';
+	import { buildFleetStrip } from '$lib/view-models/fleet-strip';
 	import { promotionBlock } from '$lib/view-models/promotion';
 	import type { PromotionBlock } from '$lib/view-models/promotion';
 	import type { FleetEnv, FleetStripVM, FleetTone } from '$lib/view-models/fleet-strip';
@@ -132,12 +132,18 @@
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import UpToDate from '$lib/components/UpToDate.svelte';
+	import NextStep from '$lib/components/NextStep.svelte';
+	import type { Step } from '$lib/components/NextStep.svelte';
+	// THE BANNER BORROWS `BlockReason`'S SENTENCE, NOT ITS MARKUP. The
+	// component paints `gray-500` prose for a white card; the banner is a
+	// filled amber field and owns its own ink. Sharing the FUNCTION is what
+	// stops the most-read line on the page from spelling the fact a second
+	// way, which is exactly what it was doing.
+	import { blockReason } from '$lib/components/BlockReason.svelte';
 	import {
 		RocketSolid,
 		ExclamationCircleSolid,
-		CheckCircleSolid,
-		CodeBranchSolid,
-		CodeMergeSolid,
 		ClockSolid,
 		ChevronRightOutline,
 		PauseSolid,
@@ -225,16 +231,6 @@
 		circle: CellState;
 		rank: number;
 		fleet: FleetStripVM;
-		/**
-		 * THE CAPTION UNDER THE FLEET VERDICT, and it never restates it. The
-		 * mark says `N/M on head`; this says the things a distance cannot —
-		 * how many BUILDS the fleet is split across, and the environments that
-		 * have no distance at all (`pending`, `diverged`, `unknown`). When
-		 * there is none of that it prints the fleet's own denominator
-		 * (`across N environments`), which is the one number the mark's `M`
-		 * does NOT carry: `M` counts environments that have DEPLOYED.
-		 */
-		fleetNote: string;
 		/** The whole statement, for the cell's `title`. */
 		fleetFull: string;
 		lead: LeadTimeVM | null;
@@ -251,6 +247,28 @@
 		converged: boolean;
 		/** The pinned environment furthest behind, if any. The banner's cause. */
 		heldCell: RowCell | null;
+		/**
+		 * ── THE ROW'S NEXT STEP, AND WHY A LIST ROW HAS ONE AT ALL ───────
+		 *
+		 * `DESIGN-INTENT.md`: *"Be actionable. Showing a problem without
+		 * offering the action is an unfinished design."* This page stated a
+		 * problem on every attention row and offered nothing on any of them —
+		 * the row was a link to somewhere else and the reader had to guess
+		 * what was waiting for them there.
+		 *
+		 * It also had no VISUAL ENTRY POINT. Four rows rendered near-identical
+		 * and the eye had nowhere to land except the banner. A column that is
+		 * EMPTY on every settled row and holds a button on the two that need a
+		 * person is the cheapest possible answer to that: the eye lands on
+		 * exactly the rows where something is wanted, which is what "draw the
+		 * reader in" means in practice.
+		 *
+		 * `null` on a row where nothing is wanted. An action on every row is a
+		 * column of noise, and it would be marking the norm.
+		 */
+		step: Step | null;
+		/** Which environment the step is about — the button's `title`. */
+		stepEnv: string;
 	};
 
 	// ⛔ `STATUS_DOT_CLASS` IS DELETED (2026-08-27). There is no per-environment
@@ -464,24 +482,68 @@
 	// ink in every state.
 
 	/**
-	 * THE FLEET CAPTION. `fleetCaption` is the shared string and stays the
-	 * cell's `title`; this is the one line UNDER the mark, and its whole job is
-	 * to not repeat it. The mark prints `onHead/deployed`, so this drops both
-	 * of those numbers and prints only what has no distance.
+	 * THE ROW'S ONE STEP, chosen worst-first from the same facts the row's
+	 * marks are drawn from. The ORDER is the whole content of this function:
+	 *
+	 *   1. a deploy FAILED          → look at it. Not a decision; a fault.
+	 *   2. a version is PINNED      → the pin refuses every promotion and it is
+	 *                                 the one thing a person put there. It
+	 *                                 outranks every rule, because a rule holds
+	 *                                 the NEXT version and a pin holds all of
+	 *                                 them. This is the ordering a live UX
+	 *                                 critique caught the product getting
+	 *                                 backwards: *"that panel blamed HELD BY
+	 *                                 hello-world-manual-approval; the actual
+	 *                                 cause was the pin."*
+	 *   3. a rule wants an APPROVAL → nothing moves until a person picks. The
+	 *                                 only real DECISION on this page.
+	 *   4. STUCK                    → look at it.
+	 *   5. a newer version is ALLOWED and nobody has deployed it → deploy it.
+	 *   6. a rule that clears itself → read what it is, then do nothing.
+	 *
+	 * ⛔ THE STEP IS A LINK, NOT A MUTATION, AND THAT IS DELIBERATE. An app may
+	 * have several environments in the same state, and a list-level `Deploy`
+	 * would have to silently pick one — a control whose target the reader
+	 * cannot see is worse than no control. The label names the decision and the
+	 * click lands one hop from it, on the page that owns the modal. What is NOT
+	 * allowed here is the defect the human named: a stated problem offering
+	 * `Investigate` where a DECISION is what is wanted. `approve` and `promote`
+	 * are decisions and are labelled as such.
 	 */
-	function fleetNote(vm: FleetStripVM): string {
+	function nextStep(cells: RowCell[]): { step: Step; env: string } | null {
+		const fail = cells.find((c) => c.state === 'fail');
+		if (fail) return { step: 'investigate', env: fail.envLabel.toUpperCase() };
+		const held = cells.find((c) => c.held);
+		if (held) return { step: 'unpin', env: held.envLabel.toUpperCase() };
+		const approve = cells.find((c) => c.block.awaitingApprovalGates.length > 0 && c.behindBy > 0);
+		if (approve) return { step: 'approve', env: approve.envLabel.toUpperCase() };
+		const stuck = cells.find((c) => c.state === 'stuck');
+		if (stuck) return { step: 'investigate', env: stuck.envLabel.toUpperCase() };
+		const ready = cells.find((c) => c.block.deployableCount > 0 && c.behindBy > 0);
+		if (ready) return { step: 'promote', env: ready.envLabel.toUpperCase() };
+		const waiting = cells.find((c) => c.block.notPassingGates.length > 0 && c.behindBy > 0);
+		if (waiting) return { step: 'unblock', env: waiting.envLabel.toUpperCase() };
+		return null;
+	}
+
+	/**
+	 * THE FLEET CELL'S TOOLTIP, IN THE SAME ENGLISH THE CELL PRINTS.
+	 *
+	 * `fleetCaption` in `view-models/fleet-strip.ts` is the shared string and
+	 * it says `3 of 7 on head · 2 builds · 1 diverged` — three pieces of
+	 * insider vocabulary in one line. It has its own tests and other callers,
+	 * so it is left alone; the tooltip on THIS page is spelled here instead.
+	 * A tooltip that has to be translated is not a tooltip.
+	 */
+	function plainFleetTitle(vm: FleetStripVM): string {
 		if (vm.total === 0) return 'no environments';
-		if (vm.deployed === 0) return 'never deployed';
-		const parts: string[] = [];
-		if (vm.spread > 1) parts.push(`${vm.spread} builds`);
-		if (vm.pending > 0) parts.push(`${vm.pending} pending`);
-		if (vm.diverged > 0) parts.push(`${vm.diverged} diverged`);
-		if (vm.unknown > 0) parts.push(`${vm.unknown} unknown`);
-		if (parts.length > 0) return parts.join(' · ');
-		// `deployed` is the mark's denominator; `total` is not, and on a fleet
-		// with a never-deployed environment they differ. Printing the whole
-		// count here is the only place that difference is visible.
-		return `across ${vm.total} environment${vm.total === 1 ? '' : 's'}`;
+		if (vm.deployed === 0) return 'never deployed anywhere';
+		const parts = [`${vm.onHead} of ${vm.deployed} running the newest version`];
+		if (vm.spread > 1) parts.push(`${vm.spread} different versions live`);
+		if (vm.pending > 0) parts.push(`${vm.pending} never deployed`);
+		if (vm.diverged > 0) parts.push(`${vm.diverged} running a version nobody released`);
+		if (vm.unknown > 0) parts.push(`${vm.unknown} whose version could not be placed`);
+		return parts.join(' · ');
 	}
 
 	/** `status.history` reduced to what `lead-time.ts` reads. */
@@ -655,12 +717,19 @@
 					(best, c) => (best === null || c.behindBy > best.behindBy ? c : best),
 					null
 				);
+				// `is 3 builds behind` — behind WHAT? The sentence never said, and
+				// on a page whose whole subject is distance from the newest build
+				// that is the one word it could not afford to leave out.
 				lede = worstFree
-					? `${worstFree.envLabel.toUpperCase()} is ${worstFree.behindBy} build${worstFree.behindBy === 1 ? '' : 's'} behind`
+					? `${worstFree.envLabel.toUpperCase()} is ${worstFree.behindBy} version${worstFree.behindBy === 1 ? '' : 's'} behind the newest`
 					: '';
 			}
 
+			const step = nextStep(cells);
+
 			rows.push({
+				step: step?.step ?? null,
+				stepEnv: step?.env ?? '',
 				appName: mrow.appName,
 				desc: descriptionFor(mrow.appName, mrow.title),
 				cells,
@@ -672,8 +741,7 @@
 				circle: circleState(cells),
 				rank,
 				fleet,
-				fleetNote: fleetNote(fleet),
-				fleetFull: fleetCaption(fleet),
+				fleetFull: plainFleetTitle(fleet),
 				lead,
 				deploys7d,
 				rolloutsForSpark: group.cells.map((c) => c.rollout),
@@ -703,6 +771,33 @@
 			return (b.lead?.medianMs ?? 0) - (a.lead?.medianMs ?? 0);
 		});
 	});
+
+	/**
+	 * WHY THE BUTTON SAYS WHAT IT SAYS — the row's `title`, and the sentence a
+	 * reader gets before they commit to a click. The button carries the VERB;
+	 * this carries the CONSEQUENCE, which is the pairing the novice test asks
+	 * for everywhere on these pages.
+	 */
+	const STEP_WHY: Record<Step, string> = {
+		investigate: 'its last deploy failed or it has stopped moving',
+		unpin: 'someone pinned a version here, so nothing newer can deploy',
+		approve: 'a newer version exists and a person has to pick it',
+		promote: 'a newer version is allowed here and nobody has deployed it',
+		unblock: 'newer versions are on hold until a check or time window passes',
+		rollback: 'the version running here is worse than the one before it',
+		open: 'open this app'
+	};
+
+	/**
+	 * THE ONE FILLED BUTTON ON THE PAGE. It goes on the highest-ranked row
+	 * where a person can actually ADVANCE something — never on `investigate`,
+	 * which moves nothing, and never on `unblock`, which needs nobody. `null`
+	 * when there is no such row, and then the page has no primary at all,
+	 * which is the correct state for a fleet with nothing to decide.
+	 */
+	const primaryStepApp = $derived(
+		appRows.find((a) => a.step === 'approve' || a.step === 'promote')?.appName ?? null
+	);
 
 	const attnCount = $derived(appRows.filter((a) => a.rank === 0).length);
 	const motionCount = $derived(appRows.filter((a) => a.rank === 1).length);
@@ -788,10 +883,12 @@
 				severity: 'error',
 				icon: ExclamationCircleSolid,
 				title: `${app.appName} — ${cell.envLabel.toUpperCase()}’s last deploy failed`,
+				// `promotes` NAMES A MECHANISM THE READER HAS NOT BEEN TAUGHT.
+				// What they need is the consequence: newer versions stop here.
 				message:
 					envs > 1
-						? `${plural(envs, 'environment')} of this app are failing. Nothing promotes past them until a deploy succeeds.`
-						: `Nothing promotes past ${cell.envLabel.toUpperCase()} until a deploy succeeds.`,
+						? `${plural(envs, 'environment')} of this app are failing. No newer version gets past them until a deploy succeeds.`
+						: `No newer version gets past ${cell.envLabel.toUpperCase()} until a deploy there succeeds.`,
 				footnote: cell.timestamp
 					? `Last attempt ${formatTimeAgoCompact(cell.timestamp, $now)} ago · ${formatDate(cell.timestamp)}`
 					: undefined,
@@ -805,15 +902,17 @@
 		for (const app of appRows) {
 			const cell = app.heldCell;
 			if (!cell) continue;
+			// THE PIN SENTENCE IS `BlockReason`'S, not a second spelling of it.
+			const pin = blockReason({ pinnedTo: cell.wantedVersion || cell.version });
 			return {
 				severity: 'pinned',
 				icon: PauseSolid,
 				title: `${cell.envLabel.toUpperCase()} is pinned on ${app.appName}`,
-				message: `Held at ${cell.wantedVersion ?? cell.version}. ${plural(
+				message: `${pin ? `${pin.line}. ` : ''}${plural(
 					cell.behindBy,
-					'newer build'
-				)} available, and none will deploy until the pin is cleared.`,
-				footnote: 'Automated promotion into this environment is paused, not broken.',
+					'newer version'
+				)} available, and none will deploy until someone releases the hold.`,
+				footnote: 'Automatic updates into this environment are off, not broken.',
 				app: app.appName,
 				pulse: false
 			};
@@ -827,9 +926,12 @@
 				severity: 'warning',
 				icon: ExclamationCircleSolid,
 				title: `${app.appName} — ${cell.envLabel.toUpperCase()} is stuck`,
+				// `unchanged for 1h` → `no progress for 1h`, the same swap the
+				// rest of the pass made: "unchanged" is a fact about a field,
+				// "no progress" is a fact about the deploy.
 				message: cell.timestamp
-					? `Unchanged for ${formatTimeAgoCompact(cell.timestamp, $now)} and nothing is holding it on purpose.`
-					: 'Unchanged long enough that it will not clear on its own.',
+					? `No progress for ${formatTimeAgoCompact(cell.timestamp, $now)} and nothing is holding it on purpose.`
+					: 'No progress for long enough that it will not clear on its own.',
 				app: app.appName,
 				pulse: true
 			};
@@ -866,16 +968,55 @@
 			const app = worst.app;
 			const cell = worst.c;
 			const env = cell.envLabel.toUpperCase();
-			const waiting = plural(cell.block.candidateCount, 'build');
+
+			// ── THE MOST-READ SENTENCE ON THE PAGE, AND IT WAS THE LAST ONE
+			//    STILL SPEAKING THE OLD LANGUAGE. It read:
+			//
+			//      "19 builds ready and none approved. Nothing promotes into
+			//       PROD until hello-world-manual-approval allows one."
+			//
+			//    Three separate failures of the novice test, all of which the
+			//    rest of this pass had already fixed everywhere else:
+			//
+			//    · `builds` — the product renamed every one of these to
+			//      `versions`, and the row two lines below now says
+			//      `24 versions behind`.
+			//    · `promotes` — a mechanism verb. A first-time reader does not
+			//      have it, and the sentence's job is the CONSEQUENCE.
+			//    · the raw gate name INLINE, inside the explanation, exactly
+			//      the *"opaque generated name presented as an explanation"*
+			//      that `BlockReason` was built to kill. It is a handle, so it
+			//      is demoted to the footnote and prefixed `rule:`.
+			//
+			// ⚠️ AND THE NUMBER IS THE ROW'S NUMBER NOW. `candidateCount` (19)
+			//    is how many versions the rule is weighing; `behindBy` (24) is
+			//    the distance the row prints as `24 behind` and the lede prints
+			//    as `PROD is 24 versions behind the newest`. Both were true,
+			//    and a banner disagreeing with the row under it is the worst
+			//    possible way to be right. The banner speaks the row's number.
+			//
+			// CONSEQUENCE FIRST, COUNT SECOND — and the count is a SEPARATE
+			// sentence rather than the row's own. At 390 the banner sits ~200px
+			// above the row, and an earlier draft opened with `PROD is 24
+			// versions behind the newest`, which is byte-identical to the lede
+			// under the app name: agreement is the ask, a stutter is not.
+			const reason = blockReason({
+				awaiting: cell.block.awaitingApprovalGates,
+				notPassing: cell.block.notPassingGates
+			});
+			const n = cell.behindBy;
+			const waiting = `${n} version${n === 1 ? ' is' : 's are'} waiting for ${env}.`;
+			const message = reason ? `${reason.line}. ${waiting}` : waiting;
+			// The identifier, dressed as one: muted, on its own line, and
+			// labelled with the word that says what it is.
+			const rule = reason?.names ? `rule: ${reason.names}` : undefined;
 			if (cell.block.awaitingApprovalGates.length > 0) {
 				return {
 					severity: 'warning',
 					icon: ExclamationCircleSolid,
 					title: `${app.appName} — ${env} is waiting on an approval`,
-					message: `${waiting} ready and none approved. Nothing promotes into ${env} until ${cell.block.awaitingApprovalGates.join(
-						', '
-					)} allows one.`,
-					footnote: 'This will not clear on its own.',
+					message,
+					footnote: rule,
 					app: app.appName,
 					pulse: true
 				};
@@ -883,9 +1024,12 @@
 			return {
 				severity: 'info',
 				icon: ClockSolid,
-				title: `${app.appName} — ${env} is waiting on a gate`,
-				message: `${waiting} ready and held by ${cell.block.notPassingGates.join(', ')}.`,
-				footnote: 'A schedule or health gate. It clears on its own.',
+				// NOT `is waiting on a gate` — `gate` is the name of a
+				// Kubernetes object kind, which is why `Review gates` became
+				// `See what's blocking` everywhere else on these pages.
+				title: `${app.appName} — ${env} is waiting on a check`,
+				message,
+				footnote: rule,
 				app: app.appName,
 				pulse: false
 			};
@@ -912,7 +1056,7 @@
 					>
 				{/if}
 				{#if motionCount > 0}
-					· {motionCount} in motion
+					· {motionCount} deploying now
 				{/if}
 				<!-- THE FLEET-LEVEL ANSWER TO CRITERION 1, in one number, before
 				     any row is read: how many of these apps have every
@@ -920,7 +1064,7 @@
 				     counts above it are severity and severity leads — the same
 				     order `/` puts its sections in. Neutral ink: this is a
 				     summary of marks that are all already on screen. -->
-				· {convergedCount} of {appRows.length} converged
+				· {convergedCount} of {appRows.length} the same version everywhere
 			</p>
 		{/if}
 	</div>
@@ -1040,12 +1184,12 @@
 					<Card
 						icon={ExclamationCircleSolid}
 						iconClass="text-amber-500 dark:text-amber-400"
-						title="Needs attention"
+						title="Needs you"
 						verdict="{attentionRows.length} of {appRows.length} app{appRows.length === 1
 							? ''
 							: 's'}"
 						verdictTone="adverse"
-						verdictTitle="Apps with an environment that is failing or stuck"
+						verdictTitle="Apps with an environment that is failing or has stopped moving"
 						padded={false}
 					>
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -1066,12 +1210,10 @@
 			<div class="apps-panel">
 				<Card
 					icon={RocketSolid}
-					title={attentionRows.length > 0 ? 'Everything else' : 'Apps'}
-					verdict="{convergedCount} of {appRows.length} fleet{appRows.length === 1
-						? ''
-						: 's'} on one build"
+					title={attentionRows.length > 0 ? 'Everything else' : 'All apps'}
+					verdict="{convergedCount} of {appRows.length} the same version everywhere"
 					verdictTone={convergedCount === appRows.length ? 'good' : 'neutral'}
-					verdictTitle="A fleet is consistent when every deployed environment runs the same build"
+					verdictTitle="Counts the apps whose environments are all running one and the same version"
 					padded={false}
 				>
 					<!-- THE COLUMN HEADER ROW. Same idiom as `/rollouts`, which pins
@@ -1084,12 +1226,13 @@
 					>
 						<span class="apps-id t-label text-gray-500 dark:text-gray-400">App</span>
 						<span class="apps-fleet t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-							>Fleet</span
+							>Up to date</span
 						>
 						<span class="apps-act t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
 							>Deploys · 7d</span
 						>
-						<span class="apps-lead t-label text-gray-500 dark:text-gray-400">Lead</span>
+						<span class="apps-lead t-label text-gray-500 dark:text-gray-400">To prod</span>
+						<span class="apps-step"></span>
 						<span class="apps-chev"></span>
 					</div>
 
@@ -1111,14 +1254,26 @@
      from a steady one, the gray band comes back under another name. The card
      is the mark; the row is a row. -->
 {#snippet appRow(app: AppRow)}
-	<a
-		href="/apps/{app.appName}"
-		class="apps-row px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+	<!-- ── THE ROW IS A DIV WITH A STRETCHED LINK, not an `<a>`. ──────────
+	     It had to change shape to hold a button: a `<button>` inside an
+	     `<a>` is invalid HTML and browsers resolve it by discarding the
+	     nesting, so the control would have been unreachable by keyboard.
+
+	     The whole row is still one click target — the app name's link
+	     carries `after:absolute after:inset-0`, the standard stretched-link
+	     pattern — and the step button sits above it on `z-[1]`. Focus order
+	     is name, then step, which is the order a reader wants them in. -->
+	<div
+		class="apps-row relative px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
 	>
 		<!-- ── APP ──────────────────────────────────────────────────────────
 		     Status circle, name, and the one sentence that names the
 		     environment the shape cannot. -->
 		<span class="apps-id flex min-w-0 items-center gap-3">
+			<!-- `not fully promoted` WAS MISSED BY THE NOVICE PASS: a mechanism
+			     word, on the column the pass had just renamed `Up to date`. It
+			     is what a screen reader heard while the eye read
+			     `0 of 3 up to date`. -->
 			<span
 				class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 					circleBakeStatus(app.circle, app.fullyOnHead)
@@ -1126,13 +1281,15 @@
 			>
 				<BakeStatusIcon bakeStatus={circleBakeStatus(app.circle, app.fullyOnHead)} size="medium" />
 				<span class="sr-only"
-					>{STATUS_WORD[app.worst]}{app.fullyOnHead ? '' : ' · not fully promoted'}</span
+					>{STATUS_WORD[app.worst]}{app.fullyOnHead ? '' : ' · not up to date everywhere'}</span
 				>
 			</span>
 			<span class="flex min-w-0 flex-col gap-1">
 				<span class="flex min-w-0 items-baseline gap-2">
-					<span class="t-code min-w-0 truncate font-semibold text-gray-900 dark:text-white"
-						>{app.appName}</span
+					<a
+						href="/apps/{app.appName}"
+						class="t-code min-w-0 truncate font-semibold text-gray-900 after:absolute after:inset-0 after:content-[''] dark:text-white"
+						>{app.appName}</a
 					>
 					{#if app.desc}
 						<span class="apps-desc t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
@@ -1169,10 +1326,16 @@
 							{#if cell.state === 'stuck'}
 								<Chip role="alarm" label="stuck" title="{cell.envLabel.toUpperCase()} is stuck" />
 							{:else if cell.rank.kind === 'diverged'}
+								<!-- ⛔ THE WORD IS NOT `diverged`. That is git's word for two
+								     branches, and this is not that: the environment is running a
+								     build that was never released to anywhere. `unreleased` is
+								     the fact, in a word a reader already owns. Same red role,
+								     same chip, zero colour values changed. -->
 								<Chip
 									role="diverged"
-									label="diverged"
-									title="Running a build that is on no environment’s release list"
+									label="unreleased"
+									title="Running a version that is on no environment’s release list"
+									wide
 								/>
 							{:else if cell.state === 'fail'}
 								<Chip
@@ -1235,31 +1398,29 @@
 		     and never restates the mark. -->
 		<span class="apps-fleet flex min-w-0 flex-col gap-1">
 			<span class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-				>Fleet</span
+				>Up to date</span
 			>
-			<span class="apps-mark flex min-w-0 items-center gap-1.5" title={app.fleetFull}>
-				{#if app.fleet.deployed === 0}
-					<PauseSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
-					<span class="t-body text-gray-500 dark:text-gray-400">not deployed</span>
-				{:else if app.fullyOnHead}
-					<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
-					<span class="t-body font-medium text-green-700 tabular-nums dark:text-green-400"
-						>{app.fleet.onHead}/{app.fleet.deployed} on head</span
-					>
-				{:else}
-					{#if app.converged}
-						<CodeMergeSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
-					{:else}
-						<CodeBranchSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
-					{/if}
-					<span class="t-body font-medium text-gray-900 tabular-nums dark:text-white"
-						>{app.fleet.onHead}/{app.fleet.deployed} on head</span
-					>
-				{/if}
-			</span>
-			<span class="t-micro truncate text-gray-500 dark:text-gray-400" title={app.fleetFull}
-				>{app.fleetNote}</span
-			>
+			<!-- ⛔ `N/M ON HEAD` IS GONE, AND ONLY THE WORDS CHANGED. (2026-08-30)
+			     `head` is git's name for a pointer, not a person's name for a
+			     state, and `0/3 on head` gives a reader who has never seen this
+			     tool no way to tell whether it is bad. `1 of 7 up to date` is
+			     the same numerator, the same denominator, the same two glyphs
+			     and the same two colour values.
+
+			     It is `UpToDate` now rather than inline markup because
+			     `/environments` and `/apps/[name]` ask the identical question
+			     and were spelling it three different ways. A reader should
+			     learn this object ONCE. -->
+			<UpToDate
+				onHead={app.fleet.onHead}
+				deployed={app.fleet.deployed}
+				total={app.fleet.total}
+				spread={app.fleet.spread}
+				pending={app.fleet.pending}
+				diverged={app.fleet.diverged}
+				unknown={app.fleet.unknown}
+				title={app.fleetFull}
+			/>
 		</span>
 
 		<!-- ── DEPLOYS · 7d ─────────────────────────────────────────────────
@@ -1303,13 +1464,13 @@
 		     them apart at a glance once the inline labels drop away at desktop
 		     width. -->
 		<span class="apps-lead flex min-w-0 flex-col gap-1">
-			<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400">Lead</span>
+			<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400">To prod</span>
 			{#if app.lead}
 				<span
 					class="apps-mark flex items-center gap-1.5"
-					title="Median of {app.lead.samples} build{app.lead.samples === 1
+					title="Typical time a version takes to get from {app.lead.fromLabel} to {app.lead.toLabel}, measured over {app.lead.samples} version{app.lead.samples === 1
 						? ''
-						: 's'} observed travelling {app.lead.fromLabel} → {app.lead.toLabel}"
+						: 's'} that made the whole trip"
 				>
 					<ClockSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
 					<span class="t-body font-medium text-gray-900 tabular-nums dark:text-white"
@@ -1322,12 +1483,12 @@
 			{:else}
 				<span
 					class="apps-mark flex items-center gap-1.5"
-					title="No build has been observed travelling the whole chain inside this app’s retained deploy history"
+					title="No version has gone all the way from the first environment to production inside the deploy history kept for this app"
 				>
 					<ClockSolid class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
 					<span class="t-body text-gray-500 dark:text-gray-400">—</span>
 				</span>
-				<span class="t-micro truncate text-gray-500 dark:text-gray-400">not observed</span>
+				<span class="t-micro truncate text-gray-500 dark:text-gray-400">no full trip yet</span>
 			{/if}
 		</span>
 
@@ -1335,10 +1496,38 @@
 		     drills through carries this chevron (`Show 8 ready resources ›`,
 		     the resource rows); `/apps` was the one list in the product whose
 		     rows were navigable with nothing on them to say it. -->
+		<!-- ── THE NEXT STEP ────────────────────────────────────────────────
+		     `DESIGN-INTENT.md`: *"showing a problem without offering the action
+		     is an unfinished design."* Every row that states a problem now
+		     names the step, and every row that does not renders NOTHING — an
+		     action on every row is a column of noise and would be marking the
+		     norm.
+
+		     THIS IS ALSO THE PAGE'S ENTRY POINT. Before it, four rows were
+		     near-identical and the eye had nowhere to land but the banner; the
+		     one filled button is now the obvious place to start and everything
+		     else recedes, which is the whole of the "draw the reader in" ask.
+
+		     ONE FILLED PRIMARY, on the row where a person can actually advance
+		     something (`approve` / `promote`). `investigate` and `unblock` stay
+		     secondary: neither moves anything. The banner's own control is
+		     `.btn-secondary` on a filled ground, so the page still has exactly
+		     one blue button. -->
+		{#if app.step}
+			<span class="apps-step relative z-[1] flex items-center justify-end">
+				<NextStep
+					step={app.step}
+					href="/apps/{app.appName}"
+					primary={app.appName === primaryStepApp}
+					title="{app.stepEnv} — {STEP_WHY[app.step]}"
+				/>
+			</span>
+		{/if}
+
 		<span class="apps-chev flex items-center justify-end">
 			<ChevronRightOutline class="h-4 w-4 text-gray-300 dark:text-gray-600" />
 		</span>
-	</a>
+	</div>
 {/snippet}
 
 <style>
@@ -1376,10 +1565,30 @@
 		grid-template-areas:
 			'id    id'
 			'fleet fleet'
-			'lead  act';
+			'lead  act'
+			'step  step';
 		align-items: start;
 		column-gap: 12px;
 		row-gap: 12px;
+	}
+
+	/* ── THE STEP IS FULL WIDTH ON A PHONE, AND IT IS THE LAST THING IN THE
+	   CARD. A 44px-tall control stretched across the card is the one element
+	   here that a thumb is actually meant to hit, and putting it under the
+	   measurements rather than beside the name is the order the reader wants:
+	   what is this, how is it doing, what do I do. `:empty` collapses the
+	   row entirely on the rows that have no step, so a settled card is not
+	   12px taller than it needs to be. */
+	.apps-step {
+		grid-area: step;
+		/* A GRID ITEM'S FLOOR IS `min-content` UNLESS YOU SAY OTHERWISE, and
+		   the button inside is `white-space: nowrap`, so min-content is the
+		   whole label. Without this the CELL silently grows past its track
+		   instead of the track being wrong in a way anyone can see. */
+		min-width: 0;
+	}
+	.apps-step :global(.btn) {
+		width: 100%;
 	}
 
 	/* THE CHEVRON IS DESKTOP-ONLY. At 390 the whole card is the tap target and
@@ -1464,6 +1673,24 @@
 	   product-wide: each row is its own grid, so an intrinsic track sizes per
 	   row and the columns stop lining up down the list. One flexible track,
 	   everything else fixed. */
+	/* ── THE STEP TRACK APPEARS AT 900px OF PANEL, NOT AT 720. ────────────
+	   Measured, not chosen. The five existing tracks plus a 200px step and
+	   five 16px gaps plus the panel's own `px-4` take 720px, and the app-name
+	   track needs ~180px before the longest name in either fixture starts
+	   ellipsising — the one string on the row a reader navigates by. 900 is
+	   the first width where both fit with the chip row still able to wrap
+	   beside them.
+
+	   Between 720 and 899 the row keeps its five-track form and the step
+	   goes back to being a full-width band under it, exactly as on a phone:
+	   the control is never hidden, only moved. `grid-template-areas` on the
+	   720 rule below therefore keeps a `step` row. */
+	@container (min-width: 720px) and (max-width: 899px) {
+		.apps-step :global(.btn) {
+			width: auto;
+		}
+	}
+
 	@container (min-width: 720px) {
 		.apps-row {
 			/* Five fixed tracks now: the 20px chevron is the fifth. Every
@@ -1471,11 +1698,13 @@
 			   reverted product-wide, because each row is its own grid and an
 			   intrinsic track sizes per row, so the columns stop lining up
 			   down the list. One flexible track, everything else fixed. */
-			grid-template-columns: minmax(0, 1fr) 164px 128px 76px 20px;
-			grid-template-areas: 'id fleet act lead chev';
+			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 20px;
+			grid-template-areas:
+				'id fleet act lead chev'
+				'step step step step step';
 			align-items: center;
 			column-gap: 16px;
-			row-gap: 0;
+			row-gap: 12px;
 		}
 
 		.apps-chev {
@@ -1515,6 +1744,47 @@
 		/* The header cells are labels, not stacks. */
 		.apps-row--head > span {
 			display: block;
+		}
+	}
+
+	/* ── SIX TRACKS. The step gets its own column and stops being a band.
+	   ⛔ THE TRACK IS 200px BECAUSE THE WIDEST BUTTON IS 197.3px. Do not
+	   shrink it back.
+
+	   THE DEFECT IT FIXES, measured on the live cluster at 1440 in light:
+	   the track was 158px, `Choose a version` renders at 178.5px, and the
+	   cell is `justify-end` — so the button hung 20px PAST ITS OWN TRACK to
+	   the LEFT and painted itself over the `To prod` cell, whose content ran
+	   to x=1189 while the button started at x=1185. On the one row that has
+	   a button. It reads as a rendering fault, which is the exact class of
+	   defect the gray row-band was rejected for twice.
+
+	   A fixed track cannot be sized by its content (`auto` was tried and
+	   reverted product-wide: each row is its own grid, so an intrinsic track
+	   sizes per row and the columns stop lining up down the list). So the
+	   track is sized to `NextStep`'s LONGEST LABEL instead, measured in the
+	   browser at 14px/500 with the 16px icon, the 8px gap and 16px of padding
+	   on each side:
+
+	     See what's blocking  197.3   Go back a version  183.9
+	     Choose a version     178.5   Release the hold   174.8
+	     Deploy newest        161.8   Investigate        136.2   Open  95.4
+
+	   ⚠️ IF A LABEL IS ADDED TO `NextStep`, RE-MEASURE. The `max-width` below
+	   is the seatbelt, not the fix: it makes a too-long label WRAP inside its
+	   own track rather than paint over the column beside it, because a button
+	   covering a value is worse than a button that wraps. */
+	@container (min-width: 900px) {
+		.apps-row {
+			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 200px 20px;
+			grid-template-areas: 'id fleet act lead step chev';
+			row-gap: 0;
+		}
+
+		.apps-step :global(.btn) {
+			width: auto;
+			max-width: 100%;
+			white-space: normal;
 		}
 	}
 </style>

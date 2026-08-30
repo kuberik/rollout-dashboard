@@ -126,12 +126,17 @@
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import BlockReason from '$lib/components/BlockReason.svelte';
+	import NextStep from '$lib/components/NextStep.svelte';
+	import type { Step } from '$lib/components/NextStep.svelte';
 	import { now } from '$lib/stores/time';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
 		CalendarWeekSolid,
+		UserCircleSolid,
+		HourglassSolid,
 		ChevronRightOutline,
 		ChevronDownOutline,
 		CodeBranchOutline,
@@ -228,6 +233,16 @@
 		/** Newer builds that exist but which no gate currently allows. */
 		blockedCandidates: number;
 		blockingGates: string[];
+		/**
+		 * `blockingGates` SPLIT BY WHAT WOULD CLEAR THEM. The split is
+		 * `promotionBlock`'s own and it is STRUCTURAL, never a pattern match on
+		 * the generated name — `awaitingApproval` needs a PERSON, `notPassing`
+		 * clears itself. Carried up here because the card's reason line has to
+		 * say which, and a card that renders both the same way is telling a
+		 * reader to act on something that needs no action.
+		 */
+		awaitingGates: string[];
+		notPassingGates: string[];
 		timestamp: string | null;
 		/** Sort key inside a card. Failing first, then stuck, then depth. */
 		severity: number;
@@ -248,8 +263,15 @@
 		stuck: number;
 		/** THE ONE QUANTITY. `null` when nothing here is behind. */
 		deepest: { by: number; appName: string } | null;
+		/** How many apps here are behind. 0, 1 and 2+ are three different cards. */
+		behindCount: number;
 		/** Gate names refusing every newer build of at least one app here. */
 		gates: Set<string>;
+		/** Those names, split by whether a PERSON has to move. See `EnvApp`. */
+		awaitingGates: string[];
+		notPassingGates: string[];
+		/** The one thing to do here, worst-first. `open` when nothing is wrong. */
+		step: Step;
 		lastDeployTs: string | null;
 		severity: number;
 	};
@@ -320,6 +342,8 @@
 						deployable: block.deployableCount,
 						blockedCandidates: block.blocked ? block.candidateCount : 0,
 						blockingGates: block.blockingGates,
+						awaitingGates: block.awaitingApprovalGates,
+						notPassingGates: block.notPassingGates,
 						timestamp: latest?.timestamp ?? null,
 						severity:
 							state === 'failing'
@@ -359,8 +383,14 @@
 			const failing = apps.filter((a) => a.state === 'failing').length;
 			const stuck = apps.filter((a) => a.state === 'stuck').length;
 			const gates = new Set<string>();
-			for (const a of apps)
-				if (a.blockedCandidates > 0) for (const g of a.blockingGates) gates.add(g);
+			const awaitingGates = new Set<string>();
+			const notPassingGates = new Set<string>();
+			for (const a of apps) {
+				if (a.blockedCandidates === 0) continue;
+				for (const g of a.blockingGates) gates.add(g);
+				for (const g of a.awaitingGates) awaitingGates.add(g);
+				for (const g of a.notPassingGates) notPassingGates.add(g);
+			}
 
 			out.set(tier, {
 				tier,
@@ -384,7 +414,39 @@
 				failing,
 				stuck,
 				deepest,
+				behindCount: apps.filter((a) => a.behindBy > 0).length,
 				gates,
+				awaitingGates: [...awaitingGates],
+				notPassingGates: [...notPassingGates],
+				/**
+				 * THE CARD'S STEP, worst-first, from the same facts its marks
+				 * are drawn from — a deploy that failed and a place waiting on
+				 * a person are not the same errand and may not offer the same
+				 * verb. `open` is the FLOOR, not a default: it means there is
+				 * nothing to do here, which is a true and useful thing for a
+				 * card to say.
+				 */
+				// ⛔ `promote` IS DELIBERATELY NOT ONE OF THESE, AND IT WAS TRIED.
+				// Offering `Deploy newest` on every trailing environment put
+				// FOURTEEN identical buttons on the 22-environment fixture and
+				// destroyed the page's entry point — the one blue button it was
+				// supposed to lead the eye to was drowned by thirteen gray twins
+				// of itself. It was also wrong on the merits: being behind is
+				// *"the normal state of a promotion pipeline"* and promoting is
+				// the controller's job, so a button on all of them is asking a
+				// person to hand-crank the norm. A verb is offered here only
+				// when something will NOT resolve without one.
+				// ⛔ AND `unblock` IS NOT ONE EITHER. `See what's blocking` sat in
+				// the footer of a card that had just printed, 200px above it, the
+				// exact sentence that button promised to go and fetch. A control
+				// offering to reveal something already on screen is furniture.
+				// A rule that clears itself gets `Open`, which is the truth.
+				step:
+					failing > 0 || stuck > 0
+						? 'investigate'
+						: awaitingGates.size > 0
+							? 'approve'
+							: 'open',
 				lastDeployTs,
 				severity: failing > 0 ? 4 : stuck > 0 ? 3 : (deepest?.by ?? 0) > 0 ? 1 : 0
 			});
@@ -419,6 +481,34 @@
 		// order IS promotion order for a LINE. Do not sort this.
 		return envTiers.filter((t) => !inFleet.has(t)).map((t) => cardsByTier.get(t)!);
 	});
+
+	/**
+	 * WHY EACH VERB IS OFFERED — the footer control's `title`, and the sentence
+	 * a reader gets before committing to a click.
+	 */
+	const STEP_WHY: Record<Step, string> = {
+		investigate: 'something here has failed or has stopped moving',
+		approve: 'a newer version exists and a person has to pick it',
+		promote: 'a newer version is allowed here and nobody has deployed it',
+		unblock: 'newer versions are on hold until a check or time window passes',
+		unpin: 'someone pinned a version here, so nothing newer can deploy',
+		rollback: 'the version running here is worse than the one before it',
+		open: 'nothing needs you here — open it to see what is running'
+	};
+
+	/**
+	 * THE ONE FILLED BUTTON ON A PAGE OF UP TO 22 CARDS. It goes on the worst
+	 * place where a person can actually ADVANCE something. `investigate` never
+	 * gets it (it moves nothing) and `open` never gets it (there is nothing to
+	 * move). With no such card the page has no primary, which is correct for a
+	 * fleet with nothing to decide.
+	 */
+	const primaryStepTier = $derived(
+		[...stageCards, ...regionCards]
+			.slice()
+			.sort((a, b) => b.severity - a.severity || (b.deepest?.by ?? 0) - (a.deepest?.by ?? 0))
+			.find((c) => c.step === 'approve' || c.step === 'promote')?.tier ?? null
+	);
 
 	/**
 	 * DISTINCT APPS THAT ARE ACTUALLY BOUND TO AN ENVIRONMENT — not
@@ -479,7 +569,7 @@
 						: `${failing.length} deploys have failed`,
 				message:
 					failing.length === 1
-						? 'The last deploy did not complete. Nothing newer will promote past it.'
+						? 'The last deploy did not complete, and nothing newer can go out until one does.'
 						: failing.map((f) => `${f.a.appName} · ${f.c.tier}`).join(' · '),
 				href: failing.length === 1 ? a.rolloutHref : c.href,
 				action: failing.length === 1 ? 'Open rollout' : `Open ${c.tier}`
@@ -498,7 +588,7 @@
 						: `${stuck.length} rollouts are stuck`,
 				message:
 					stuck.length === 1
-						? 'It has not advanced for longer than this app takes to deploy.'
+						? 'It has been running longer than a deploy of this app normally takes.'
 						: stuck.map((s) => `${s.a.appName} · ${s.c.tier}`).join(' · '),
 				href: stuck.length === 1 ? a.rolloutHref : c.href,
 				action: stuck.length === 1 ? 'Open rollout' : `Open ${c.tier}`
@@ -519,12 +609,23 @@
 			if (held > 0 && (!worst || held > worst.held)) worst = { c, held, gates };
 		}
 		if (worst) {
-			const g = worst.gates.size;
+			// ⛔ `waiting on 2 gates` COUNTS OBJECTS, WHICH IS NOT A REASON.
+			// The two kinds do not have the same consequence and must not be
+			// summed: one needs a PERSON and the other clears itself. The
+			// headline states which, and the second line says what happens
+			// next, which is the only thing a reader can act on.
+			const needsPerson = worst.c.awaitingGates.length > 0;
 			return {
 				severity: 'warning',
-				icon: CalendarWeekSolid,
-				title: `Promotion into ${worst.c.tier} is blocked`,
-				message: `${worst.held} newer build${worst.held === 1 ? '' : 's'} ${worst.held === 1 ? 'is' : 'are'} waiting on ${g} gate${g === 1 ? '' : 's'}. Nothing will promote until ${g === 1 ? 'it clears' : 'they clear'}.`,
+				// The glyph and the sentence must agree. A calendar on `someone has
+				// to approve this` says the opposite of the words beside it.
+				icon: needsPerson ? UserCircleSolid : HourglassSolid,
+				title: needsPerson
+					? `Nothing new can deploy to ${worst.c.tier} until someone approves it`
+					: `Newer versions for ${worst.c.tier} are on hold`,
+				message: needsPerson
+					? `${worst.held} newer version${worst.held === 1 ? '' : 's'} ${worst.held === 1 ? 'is' : 'are'} ready and none of them is approved. This will not clear on its own.`
+					: `${worst.held} newer version${worst.held === 1 ? '' : 's'} ${worst.held === 1 ? 'is' : 'are'} ready and waiting on a check or a deploy window. It clears on its own.`,
 				href: worst.c.href,
 				action: `Open ${worst.c.tier}`
 			};
@@ -595,11 +696,27 @@
 		{#if a.state === 'stuck'}
 			<Chip role="alarm" label="stuck" title="{a.appName} has not advanced past its deploy threshold" />
 		{/if}
+		<!-- ⛔ THE THREE WORDS IN THESE CHIPS ALL FAILED THE NOVICE TEST, AND
+		     ONLY THE WORDS CHANGED. (2026-08-30) Same three roles, same three
+		     colour values, same joined-box geometry, same `wide`.
+
+		       `−19`     → `19 behind`. A bare signed integer next to a build id
+		                   reads as a diff, and nothing on the row said what it
+		                   was behind. The eyebrow above it glossed it on THIS
+		                   page and on no other, which is exactly how a term
+		                   becomes insider vocabulary.
+		       `head`    → `newest`. `head` is git's name for a pointer. Every
+		                   other string on this page already says "newest", so
+		                   the chip was the one place a reader had to translate.
+		       `diverged`→ `unreleased`. Git's word for two branches; the fact
+		                   is that the version running here was never released
+		                   to anywhere.
+		       `pending` → `never deployed`. The fact, not the state machine. -->
 		{#if a.rank.kind === 'diverged'}
 			<Chip
 				role="diverged"
-				label="diverged"
-				title="Running a build that is on no environment’s release list"
+				label="unreleased"
+				title="Running a version that is on no environment’s release list"
 				value={a.version}
 				valueHref={a.versionHref}
 				wide
@@ -607,8 +724,10 @@
 		{:else if a.behindBy > 0}
 			<Chip
 				role="rank"
-				label={`−${a.behindBy}`}
-				title="{a.behindBy} build{a.behindBy === 1 ? '' : 's'} behind {a.appName}'s newest"
+				label={`${a.behindBy} behind`}
+				title="{a.appName} here is {a.behindBy} version{a.behindBy === 1
+					? ''
+					: 's'} older than the newest one it has"
 				value={a.version}
 				valueHref={a.versionHref}
 				wide
@@ -616,13 +735,18 @@
 		{:else if a.version}
 			<Chip
 				role="head"
-				label="head"
-				title="{a.version} — the newest build this app has"
+				label="newest"
+				title="{a.version} — the newest version this app has"
 				value={a.version}
 				valueHref={a.versionHref}
 			/>
 		{:else}
-			<Chip role="unranked" label="pending" title="No deploy yet" />
+			<Chip
+				role="unranked"
+				label="never deployed"
+				title="This app has never deployed here"
+				wide
+			/>
 		{/if}
 	</li>
 {/snippet}
@@ -654,7 +778,22 @@
 		padded={false}
 	>
 		{#snippet rollup()}
-			<Chip role="env" theme={c.theme} label={c.badge} title={c.tier} wide />
+			<!-- ⛔ NOT `wide` — AND THAT IS NOT THE 12ch DEFECT COMING BACK.
+			     (2026-08-30) The rule that killed the truncated chip is *"three
+			     regions rendered as `PROD-US…` is one indistinguishable mark"*,
+			     and it bites when the chip is the ONLY identifier on the object.
+			     Here the object's FULL addressable name is the `h2` immediately
+			     to its left, at 14px/600 — the chip is carrying the environment's
+			     identity COLOUR, not its identity.
+
+			     Measured at 1440 with the three-column stack: a ~390px card
+			     header holding a 16px icon, `prod-ap-southeast-2` at ~140px, a
+			     `wide` `AP-SOUTHEAST-2` at ~105px and `2/2 healthy` at ~68px
+			     overflows, and the element that gave way was the `h2` — the page
+			     printed `prod-ap-southe…` while the chip beside it spelled the
+			     same segment out in full. Two of the eighteen region cards did
+			     this. The 12ch cap gives the name back its 35px. -->
+			<Chip role="env" theme={c.theme} label={c.badge} title={c.tier} />
 			<span
 				class="text-xs font-medium whitespace-nowrap {c.failing > 0
 					? 'text-red-700 dark:text-red-400'
@@ -682,22 +821,36 @@
 		     SENTENCE with a green check rather than a `0`: `0 builds` reads
 		     as a measurement of nothing, and this page has one job that a
 		     zero cannot do — say that a place is current. -->
+		<!-- ⛔ THE ROLL-UP IS SUPPRESSED WHEN THERE IS NOTHING TO ROLL UP.
+		     (2026-08-30) A card with exactly ONE app behind printed a 20px `1`,
+		     an eyebrow and the app's name — and then printed the same fact
+		     again 30px below as `[1 behind][a92c6f4]` on the app's own row. On
+		     the 22-environment fixture that was TWELVE cards whose entire body
+		     above the rows restated the single row under it. A summary of one
+		     item is not a summary; it is the item, said twice, in a bigger
+		     font. It draws when it genuinely aggregates — two or more apps
+		     behind — and the reason line draws whenever there is a reason. -->
+		{#if c.apps.length === 0 || c.behindCount > 1 || c.behindCount === 0 || c.awaitingGates.length > 0 || c.notPassingGates.length > 0}
 		<div class="border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
 			{#if c.apps.length === 0}
-				<p class="text-xs text-gray-500 dark:text-gray-400">Nothing is deployed here yet.</p>
-			{:else if c.deepest}
+				<p class="text-xs text-gray-500 dark:text-gray-400">No app has ever deployed here.</p>
+			{:else if c.deepest && c.behindCount > 1}
+				<!-- ⛔ `BEHIND NEWEST · 19 builds` DID NOT SAY BEHIND WHAT. The
+				     eyebrow names the comparison in full now — the number is a
+				     distance and a distance with no second end is not readable
+				     by anyone who has not been told what the second end is. -->
 				<p
 					class="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-gray-400"
 				>
 					<ArrowUpOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-					Behind newest
+					Furthest behind the newest
 				</p>
 				<p class="mt-1 flex items-baseline gap-2">
 					<span class="text-xl font-bold text-gray-900 tabular-nums dark:text-white"
 						>{c.deepest.by}</span
 					>
 					<span class="text-xs text-gray-500 dark:text-gray-400"
-						>build{c.deepest.by === 1 ? '' : 's'}</span
+						>version{c.deepest.by === 1 ? '' : 's'}</span
 					>
 					<span class="min-w-0 truncate font-mono text-[11.5px] text-gray-500 dark:text-gray-400"
 						>{c.deepest.appName}</span
@@ -715,24 +868,33 @@
 				     don't understand what these gray bars mean"*); a mark that
 				     needs a legend has no place here, so the mark IS its own
 				     legend. -->
-				{#if c.gates.size > 0}
-					<p
-						class="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"
-						title="Every newer build is refused by: {[...c.gates].join(', ')}"
-					>
-						<CalendarWeekSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-						held by {c.gates.size} gate{c.gates.size === 1 ? '' : 's'}
-					</p>
-				{/if}
-			{:else}
+				<!-- ⛔ `held by 2 gates` IS DEAD, AND SO IS `HELD BY ghd-p2fld`.
+				     A count of gates is not a reason and a generated Kubernetes
+				     object name is not an explanation. `BlockReason` states the
+				     CONSEQUENCE first — including whether a person is needed —
+				     and demotes the name to a muted mono `rule:` handle. Same
+				     object on `/apps/[name]` and `/envs/[name]`, so the reader
+				     learns it once. -->
+				<BlockReason
+					awaiting={c.awaitingGates}
+					notPassing={c.notPassingGates}
+					class="mt-1.5"
+				/>
+			{:else if c.behindCount === 0}
 				<p class="flex items-center gap-2">
 					<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
 					<span class="text-[13px] text-gray-900 dark:text-white"
-						>All {c.apps.length} app{c.apps.length === 1 ? '' : 's'} on their newest build</span
+						>All {c.apps.length} app{c.apps.length === 1 ? '' : 's'} here are up to date</span
 					>
 				</p>
+				<BlockReason awaiting={c.awaitingGates} notPassing={c.notPassingGates} class="mt-1.5" />
+			{:else}
+				<!-- Exactly one app behind: its own row says how far, so the only
+				     thing left worth printing is WHY nothing newer has come. -->
+				<BlockReason awaiting={c.awaitingGates} notPassing={c.notPassingGates} />
 			{/if}
 		</div>
+		{/if}
 
 		<!-- ── THE DEVIATIONS, then the fold ───────────────────────────── -->
 		{#if c.deviations.length > 0}
@@ -772,10 +934,10 @@
 			>
 				{#if isOpen}
 					<ChevronDownOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-					Hide {c.settled.length} settled app{c.settled.length === 1 ? '' : 's'}
+					Hide {c.settled.length} up-to-date app{c.settled.length === 1 ? '' : 's'}
 				{:else}
 					<ChevronRightOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-					Show {c.settled.length} app{c.settled.length === 1 ? '' : 's'} on their newest build
+					Show {c.settled.length} up-to-date app{c.settled.length === 1 ? '' : 's'}
 				{/if}
 			</button>
 		{/if}
@@ -797,10 +959,21 @@
 					<span class="truncate">no deploys yet</span>
 				{/if}
 			</span>
-			<a href={c.href} class="btn btn-secondary shrink-0">
-				Open
-				<ChevronRightOutline aria-hidden="true" />
-			</a>
+			<!-- ⛔ `Open` IS NOT AN ACTION, IT IS A DOOR. On a card that has just
+			     said something is failing, stuck or waiting on a person, the one
+			     control offering only `Open` is the defect the human named on
+			     `/apps/[name]`: *"every card gives only `Investigate` and `View
+			     on GitHub` — neither is a decision."* The verb now comes from
+			     the card's own worst fact, through the same `NextStep` table the
+			     other three pages use, and it falls back to `Open` only when
+			     there is genuinely nothing to do here. -->
+			<NextStep
+				step={c.step}
+				href={c.href}
+				primary={c.tier === primaryStepTier}
+				title={STEP_WHY[c.step]}
+				class="shrink-0"
+			/>
 		</div>
 	</Card>
 {/snippet}
@@ -872,8 +1045,10 @@
 					>
 						<CodeBranchOutline class="h-3.5 w-3.5" aria-hidden="true" />
 						{regionCards.length > 0 ? 'Pipeline stages' : 'Environments'}
+						<!-- `4 in promotion order` assumed the reader knew what a
+						     promotion order is. This says which way it runs. -->
 						<span class="font-normal tracking-normal normal-case"
-							>· {stageCards.length} in promotion order</span
+							>· a version starts on the left and ends on the right</span
 						>
 					</h2>
 					<!-- `items-start` — a grid stretches its items to the tallest in the row
@@ -891,9 +1066,41 @@
 					     would land on the APP NAME, which is the only string on the row a
 					     reader navigates by, and a row of empty grid beside a short card
 					     costs nothing that a reader needs. -->
-					<div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+					<!-- ⛔ THE STAGE BRACKET IS A MASONRY COLUMN FLOW, NOT A GRID.
+					     (2026-08-30)
+
+					     A CSS grid equalises ROW HEIGHT. With four stages in
+					     three columns, `dev`, `test` and `staging` take row 1 and
+					     `prod` starts row 2 — and row 1 is as tall as `staging`,
+					     which on the 22-environment fixture carries six app rows.
+					     Measured at 1440: ~350px of blank white under `dev` and
+					     `test`, the largest empty area anywhere in the product,
+					     directly under the page's own banner. `items-start`
+					     (already here, and kept) stops the CARDS stretching; it
+					     cannot stop the ROW being tall.
+
+					     `columns` packs by column instead, so a short card is
+					     followed immediately by the next one and the hole cannot
+					     form. READING ORDER SURVIVES because it is still
+					     top-to-bottom then left-to-right within each column, and
+					     because the section is `· a version starts on the left
+					     and ends on the right` — a LINE read left to right, which
+					     is exactly the axis `columns` preserves. `break-inside`
+					     keeps a card whole.
+
+					     THE SET BRACKET BELOW TAKES THE SAME FLOW, and the first
+					     version of this change did not — the note here claimed
+					     worst-first ranking put the tall cards top-left where a
+					     grid would waste nothing. Measured on the 22-environment
+					     fixture that was simply false: four holes of 90–150px
+					     under `prod-ap-south`, `prod-us-east`, `prod-sa-east` and
+					     `prod-eu-west`. A reader scanning eighteen cards for a red
+					     header is hurt by every one of them, and a SET read down
+					     the first column instead of across the first row is still
+					     worst-first. -->
+					<div class="env-stack items-start gap-4">
 						{#each stageCards as c (c.tier)}
-							{@render envCard(c)}
+							<div class="env-stack-item">{@render envCard(c)}</div>
 						{/each}
 					</div>
 				</section>
@@ -910,18 +1117,18 @@
 						class="mb-3 flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-gray-400"
 					>
 						<GlobeSolid class="h-3.5 w-3.5" aria-hidden="true" />
-						Production fleet
+						Production regions
 						<span class="font-normal tracking-normal normal-case"
-							>· {regionCards.length} regions, worst first</span
+							>· {regionCards.length}, the ones furthest behind first</span
 						>
 					</h2>
 					<!-- `items-start` — a grid stretches its items to the tallest in the row by
 					     default, and a card whose body is one green line beside a card with
 					     eight rows becomes 200px of hollow white with a footer pinned to the
 					     bottom. Sized to content, each card ends where its content does. -->
-					<div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+					<div class="env-stack items-start gap-4">
 						{#each regionCards as c (c.tier)}
-							{@render envCard(c)}
+							<div class="env-stack-item">{@render envCard(c)}</div>
 						{/each}
 					</div>
 				</section>
@@ -929,3 +1136,32 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* MASONRY BY COLUMN FLOW. One column below `md`, two to `xl`, three above
+	   — the same three steps the region grid uses, so the two brackets line up
+	   on one another's column edges. `column-gap` doubles as the horizontal
+	   gutter; `margin-bottom` is the vertical one, because `gap` does not
+	   apply to a multicol container's items. */
+	.env-stack {
+		column-count: 1;
+		column-gap: 16px;
+	}
+
+	.env-stack-item {
+		break-inside: avoid;
+		margin-bottom: 16px;
+	}
+
+	@media (min-width: 768px) {
+		.env-stack {
+			column-count: 2;
+		}
+	}
+
+	@media (min-width: 1280px) {
+		.env-stack {
+			column-count: 3;
+		}
+	}
+</style>

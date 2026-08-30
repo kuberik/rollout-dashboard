@@ -154,6 +154,7 @@
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import StageChain from '$lib/components/StageChain.svelte';
 	import ExposureBar from '$lib/components/ExposureBar.svelte';
+	import BlockReason from '$lib/components/BlockReason.svelte';
 	import WaitingBuilds from '$lib/components/WaitingBuilds.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -733,6 +734,33 @@
 		for (const f of envFacts) {
 			if (!f.adverse) continue;
 			const waiting = waitingIsTheStory(f) ? waitingBuildsFor(f) : [];
+			// ── AN ADVERSE ENVIRONMENT CAN ALSO BE AWAITING A DECISION, AND
+			//    THE EARLIER FIX MISSED EXACTLY THAT CASE. (2026-08-30)
+			//
+			// `block.blocked` was un-folded from `adverse` so a gate-blocked
+			// environment would stop rendering the BROKEN branch — but the
+			// gate loop below skips anything already `adverse`, and on the LIVE
+			// cluster `hello-world-app`'s PROD and STAGING are BOTH: stuck
+			// (nothing has moved for a day) AND awaiting an approval (the gate
+			// refuses every one of the 19 builds queued behind it). They took
+			// the adverse branch, so the card printed `Someone has to approve a
+			// newer version` and then offered `Investigate` and `View on
+			// GitHub` — the very pairing the human named, surviving under the
+			// very fix that was supposed to remove it.
+			//
+			// The two facts are not in competition and neither may be dropped.
+			// The environment IS stuck, so it keeps its `stuck` alarm — the
+			// loudest mark in the product, and it may not be softened for a
+			// state that has genuinely stalled. And the way OUT of the stall is
+			// a person picking a build, so the row also gets the decision: the
+			// same filled `Deploy <build>` through the same modal rollout
+			// detail's own `Available Version Upgrades` list uses.
+			//
+			// ⛔ ONLY FOR AN APPROVAL GATE. A `notPassing` gate clears itself;
+			// putting a deploy button on it would be asking a person to act on
+			// something that needs nobody, which is the mirror-image defect.
+			const approval = f.block.awaitingApprovalGates.length > 0;
+			const head = approval ? (waitingBuildsFor(f)[0] ?? null) : null;
 			out.push({
 				id: `adverse:${f.key}`,
 				kind: 'adverse',
@@ -743,8 +771,8 @@
 				pinned: null,
 				upstream: null,
 				waiting,
-				promoteVersion: null,
-				promoteTag: null,
+				promoteVersion: head?.version ?? null,
+				promoteTag: head?.tag ?? null,
 				pods: f.pods,
 				sinceMs: sinceMsOf(f)
 			});
@@ -899,7 +927,7 @@
 		const span = t.sinceMs !== null ? compactMs(t.sinceMs) : null;
 		if (t.kind === 'adverse') {
 			// The namespace is rendered by the markup, as a link.
-			return { state: span ? `unchanged for ${span}` : 'unchanged', source: null };
+			return { state: span ? `no progress for ${span}` : 'no progress', source: null };
 		}
 		if (!t.lead.version) return { state: 'never deployed', source: null };
 		const by = t.lead.origin && t.lead.origin !== 'automatic' ? t.lead.origin : null;
@@ -996,8 +1024,9 @@
 		if (!down || !down.version) return { waiting: 0, label: '' };
 		if (up.rank < 0 || down.rank < 0 || down.diverged) return { waiting: 0, label: '' };
 		const n = down.rank - up.rank;
-		if (n > 0) return { waiting: n, label: `${n} waiting` };
-		if (n < 0) return { waiting: 0, label: `${-n} ahead` };
+		if (n > 0)
+			return { waiting: n, label: `${n} version${n === 1 ? '' : 's'} waiting to move` };
+		if (n < 0) return { waiting: 0, label: `${-n} version${n === -1 ? '' : 's'} ahead` };
 		return { waiting: 0, label: '' };
 	}
 	const chainHops = $derived.by<(Hop | null)[]>(() =>
@@ -1052,15 +1081,22 @@
 		const builds = new Set(live.map((f) => f.version as string));
 		return builds.size === 1
 			? { label: 'all agree', agree: true }
-			: { label: `${builds.size} builds`, agree: false };
+			: { label: `${builds.size} versions`, agree: false };
 	});
 
-	/** Header count for the state column: `N/M on newest`. */
+	/**
+	 * The rollup on the state card.
+	 *
+	 * ⛔ IT SAID `1/7 on newest`. `on newest` is this product's own shorthand
+	 * and nothing on the page taught it; `1 of 7 up to date` is the phrase
+	 * `/apps`, `/environments` and `/envs/[name]` now all print for the same
+	 * fact, in the reference page's own `3/3 healthy` rollup idiom.
+	 */
 	const stateCount = $derived.by<string>(() => {
 		const deployed = envFacts.filter((f) => f.version);
 		if (deployed.length === 0) return 'nothing deployed';
 		const onNewest = deployed.filter((f) => f.rank === 0).length;
-		return `${onNewest}/${deployed.length} on newest`;
+		return `${onNewest} of ${deployed.length} up to date`;
 	});
 
 	/**
@@ -1458,8 +1494,8 @@
 						iconClass={taskCount > 0
 							? 'text-amber-500 dark:text-amber-400'
 							: 'text-gray-400 dark:text-gray-500'}
-						title="Needs a decision"
-						verdict="{taskCount} item{taskCount === 1 ? '' : 's'}"
+						title="Needs you"
+						verdict="{taskCount} environment{taskCount === 1 ? '' : 's'}"
 						verdictTone={taskCount > 0 ? 'adverse' : 'neutral'}
 						padded={false}
 					>
@@ -1744,8 +1780,9 @@
 													{#if f.diverged}
 														<Chip
 															role="diverged"
-															label="diverged"
-															title="Running a build that is on no environment's release list"
+															label="unreleased"
+															wide
+															title="Running a version that is on no environment's release list"
 														/>
 													{/if}
 													{#if t.pinned}
@@ -1756,21 +1793,6 @@
 													     button naming the way out. -->
 														<PinBadge version={t.pinned} size="xs" />
 													{/if}
-													{#if t.gate}
-														<!-- THE GATE'S NAME — the one fact on a blocked task
-													     that no mark can carry, so it BECOMES a mark: the
-													     neutral `[label][value]` badge every other page
-													     already uses. Gray, because a gate's name is an
-													     identity; the adverse verdict is on the `stuck`
-													     chip beside it. -->
-														<Chip
-															role="unranked"
-															label={t.gate.word}
-															value={t.gate.names}
-															title="{f.title} is {t.gate.word} {t.gate.names}"
-															class="min-w-0"
-														/>
-													{/if}
 												</span>
 
 												{#if t.upstream}
@@ -1779,6 +1801,30 @@
 													>
 												{/if}
 											</div>
+
+											<!-- ⛔ `HELD BY ghd-p2fld` IS DEAD. (2026-08-30)
+										     > *"an opaque generated gate name presented as an
+										     > explanation."*
+
+										     It was a `[held by][<gate name>]` badge, and the badge
+										     was doing the job of a sentence: a reader was expected
+										     to infer from a Kubernetes object's generated name
+										     whether anything was wrong, whether it would clear on
+										     its own, and whether they were the one who had to move.
+										     None of those is recoverable from `ghd-p2fld`.
+
+										     `BlockReason` states the CONSEQUENCE first, in ordinary
+										     English, and demotes the name to a muted mono `rule:`
+										     handle so it reads as something to go look up rather
+										     than as the reason. The same object, with the same
+										     words, is on `/environments` and `/envs/[name]`. -->
+											{#if t.gate}
+												<BlockReason
+													awaiting={f.block.awaitingApprovalGates}
+													notPassing={f.block.notPassingGates}
+													class="mt-1.5"
+												/>
+											{/if}
 
 											<!-- WHAT IS WAITING — the commits that have not shipped.
 										     A person deciding to promote is deciding about the
@@ -1900,31 +1946,53 @@
 													{/if}
 													<!-- THE OTHER TWO WAYS OUT, both secondary: pin a
 												     different build, or go read the gate. -->
+													<!-- `Change Version` names a field; `Pick a different
+												     version` names what happens. Same modal. -->
 													<button
 														type="button"
 														class="btn btn-secondary"
 														onclick={() => openChangeVersion(f.cell)}
 													>
 														<EditOutline />
-														Change Version
+														Pick a different version
 													</button>
 													<a href={rolloutHref(f.cell)} class="btn btn-secondary">
 														<SearchOutline />
 														Investigate
 													</a>
 												{:else if t.kind === 'held'}
+													<!-- A PIN. The step is to undo it or move it, and
+												     `Change Version` named neither. -->
 													<button
 														type="button"
 														class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
 														onclick={() => openChangeVersion(f.cell)}
 													>
 														<EditOutline />
-														Change Version
+														Release the hold
 													</button>
 												{:else}
+													<!-- THE DECISION FIRST, WHERE THERE IS ONE. A stuck
+												     environment whose every queued build is refused by
+												     an approval gate is broken AND waiting on a person;
+												     the way out is the person, so the filled control is
+												     the act, and `Investigate` drops to secondary
+												     behind it. -->
+													{#if t.promoteTag}
+														<button
+															type="button"
+															class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+															onclick={() => openPromote(f.cell, t.promoteTag, t.promoteVersion)}
+														>
+															<ArrowRightOutline />
+															Deploy {t.promoteVersion ?? ''}
+														</button>
+													{/if}
 													<a
 														href={rolloutHref(f.cell)}
-														class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+														class="btn {i === 0 && !t.promoteTag
+															? 'btn-primary'
+															: 'btn-secondary'}"
 													>
 														<SearchOutline />
 														Investigate
@@ -1943,7 +2011,7 @@
 															onclick={() => openRollback(f.cell)}
 														>
 															<ReplyOutline />
-															Rollback
+															Go back a version
 														</button>
 													{/if}
 													{#if f.cell.sourceURL && f.version}
@@ -2048,27 +2116,19 @@
 					{#if waitingItems.length > 0}
 						<Card
 							icon={ClockSolid}
-							title="Waiting"
+							title="Waiting, nothing to do"
 							verdict="{waitingItems.length} environment{waitingItems.length === 1 ? '' : 's'}"
-							verdictTitle="Held by a schedule or health gate. These clear on their own."
+							verdictTitle="On hold behind a check or a deploy window. These clear on their own."
 							padded={false}
 						>
 							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
 								{#each waitingItems as t (t.id)}
 									{@const f = t.lead}
-									<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3">
+									<li class="px-4 py-3">
+										<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 										<Chip role="env" theme={f.cell.theme} label={f.label} wide />
-										{#if t.gate}
-											<Chip
-												role="unranked"
-												label={t.gate.word}
-												value={t.gate.names}
-												title="{f.title} is {t.gate.word} {t.gate.names}"
-												class="min-w-0"
-											/>
-										{/if}
 										<span class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
-											{t.waiting.length} build{t.waiting.length === 1 ? '' : 's'} queued
+											{t.waiting.length} newer version{t.waiting.length === 1 ? '' : 's'} ready
 										</span>
 										<!-- Same glyph the decision card's foot link carries: a
 										     link that leaves the page says so. -->
@@ -2078,6 +2138,15 @@
 											title="Open the {f.title} rollout"
 											>{f.namespace}<ArrowUpRightFromSquareOutline class="h-3 w-3 shrink-0" /></a
 										>
+										</div>
+										<!-- The whole point of this card is that NOTHING has to be
+										     done here, so the line that says WHY is the only thing
+										     it owes the reader. Same object as everywhere else. -->
+										<BlockReason
+											awaiting={f.block.awaitingApprovalGates}
+											notPassing={f.block.notPassingGates}
+											class="mt-1.5"
+										/>
 									</li>
 								{/each}
 							</ul>
@@ -2089,10 +2158,10 @@
 				<div class="ab-state">
 					<Card
 						icon={GridSolid}
-						title="State"
+						title="Where it’s running"
 						verdict={stateCount}
 						verdictTone={stateOnNewest ? 'good' : 'neutral'}
-						verdictTitle="Environments running the newest build"
+						verdictTitle="Environments running the newest version this app has"
 						padded={false}
 					>
 						<!-- 1 · THE STAGE CHAIN -->
@@ -2138,9 +2207,10 @@
 											<Chip
 												role="count"
 												label={fleetVerdict.label}
+												wide
 												title={fleetVerdict.agree
-													? 'Every production region runs the same build'
-													: 'Production regions are split across builds'}
+													? 'Every production region runs the same version'
+													: 'Production regions are running different versions'}
 											/>
 										</span>
 									{/if}
@@ -2153,7 +2223,14 @@
 						<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
 							<div class="mb-2 flex items-center gap-2">
 								<ChartMixedOutline class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
-								<h3 class="t-label text-gray-500 dark:text-gray-400">Exposure</h3>
+								<!-- ⛔ `EXPOSURE` NAMES A CONCEPT FROM PROGRESSIVE-DELIVERY
+								     LITERATURE, not a thing on the screen. Under it sits a
+								     bar of pods by version and a percentage; what a reader
+								     wants to know is how much of what is actually serving is
+								     on the new version. The heading says that now. -->
+								<h3 class="t-label text-gray-500 dark:text-gray-400">
+									How much is on the newest
+								</h3>
 							</div>
 							<ExposureBar
 								segments={exposure.segments}

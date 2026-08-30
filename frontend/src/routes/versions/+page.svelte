@@ -14,28 +14,31 @@
 	import {
 		revisionCoverage,
 		coverageSegments,
+		buildState,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { now } from '$lib/stores/time';
 	import {
+		ArchiveSolid,
 		ArrowRightOutline,
 		ArrowUpRightFromSquareOutline,
 		CalendarMonthSolid,
-		CheckCircleSolid,
 		ChevronDownOutline,
 		ChevronRightOutline,
 		CodeBranchOutline,
-		ExclamationCircleSolid,
 		HourglassOutline,
+		PlaySolid,
 		RocketSolid,
 		TagOutline,
 		UserCircleSolid
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import BuildStateMark from '$lib/components/BuildStateMark.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import CoverageBar from '$lib/components/CoverageBar.svelte';
+	import RevisionLead from '$lib/components/RevisionLead.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	/**
@@ -189,26 +192,41 @@
 	}
 
 	/**
-	 * THE ROW'S ONE-GLYPH ANSWER — and the third channel that teaches the bar.
+	 * THE ROW'S ONE-GLYPH ANSWER MOVED OUT OF THIS FILE.
 	 *
-	 * It VARIES down the card, which is the only reason it is allowed to exist:
-	 * *"nothing on the good pages draws a graphic that is identical on nine
-	 * rows out of eleven."* Every value below is read off the buckets the bar
-	 * is drawn from, so the glyph and the bar cannot disagree.
+	 * It was `rowMark()` here, and the words it produced — `has places left to
+	 * reach`, `partly rolled past`, `live everywhere it is carried` — are three
+	 * of the strings the human named as assuming the domain. They are now
+	 * `buildState()` in `revision-coverage.ts`, rendered by
+	 * `BuildStateMark.svelte`, so the phrase is written once, carries the count
+	 * it is about, and is the same sentence on the row, on the lead and on the
+	 * detail page.
 	 */
-	function rowMark(cov: RevisionCoverage): {
-		icon: typeof CheckCircleSolid;
-		tone: string;
-		word: string;
-	} {
-		const has = (k: string) => cov.buckets.some((b) => b.key === k && b.slots.length > 0);
-		if (has('failing'))
-			return { icon: ExclamationCircleSolid, tone: 'tone-bad', word: 'failing somewhere' };
-		if (has('notYet'))
-			return { icon: HourglassOutline, tone: 'tone-mute', word: 'has places left to reach' };
-		if (has('ahead'))
-			return { icon: ArrowRightOutline, tone: 'tone-mute', word: 'partly rolled past' };
-		return { icon: CheckCircleSolid, tone: 'tone-live', word: 'live everywhere it is carried' };
+
+	/**
+	 * ⭐ THE PAGE'S ENTRY POINT — the newest build anything is running.
+	 *
+	 * *"There should be an obvious entry point — the one revision that matters
+	 * right now — and a clear, quiet path to everything else."* `rows` is sorted
+	 * newest-first by BUILD CREATION time, so `rows[0]` is that build: the one
+	 * furthest along the ladder that any service has actually taken. It is
+	 * chosen by RANK, a stable structural property — never by health — so this
+	 * is not the deleted "highlight the broken row" pattern under a new name.
+	 * On a repo whose newest build IS broken, the state mark says so, and the
+	 * banner above says it louder.
+	 */
+	function leadRow(repo: RepoLedger): RevisionRow | null {
+		return repo.rows[0] ?? null;
+	}
+
+	/** Everything still running that is NOT the lead — the quiet path. */
+	function restRows(repo: RepoLedger, lead: RevisionRow | null): RevisionRow[] {
+		return liveRows(repo).filter((r) => r.revision !== lead?.revision);
+	}
+
+	function commitUrlFor(repoKey: string, revision: string): string | null {
+		const base = repoUrl(repoKey);
+		return base ? `${base}/commit/${revision}` : null;
 	}
 
 	/* ── THE PAGE'S ONE BLOCKING FACT ────────────────────────────────────────
@@ -278,12 +296,22 @@
 		return best;
 	});
 
+	/**
+	 * THE BANNER SAYS THE BLOCK AND ONLY THE BLOCK.
+	 *
+	 * It used to open with `0afab6f is live in 6 of 9 places` — the same
+	 * sentence the lead panel now states directly underneath, at 24px, over the
+	 * bar that draws it. Two objects eight pixels apart saying one thing is how
+	 * a page ends up with no lead at all. The coverage belongs to the lead; the
+	 * banner keeps the one fact only it has: WHO cannot take this build, WHERE,
+	 * and WHEN that clears.
+	 */
 	const bannerMessage = $derived.by(() => {
 		const b = blockage;
 		if (!b) return '';
 		const where = b.envs.join(', ');
 		const who = b.apps.length === 1 ? b.apps[0] : `${b.apps.length} services`;
-		return `${b.head.short} is live in ${b.cov.liveCount} of ${b.cov.totalCount} places. ${who} cannot take it in ${where}.`;
+		return `${who} cannot deploy it in ${where} yet.`;
 	});
 
 	const bannerFootnote = $derived.by(() => {
@@ -327,8 +355,15 @@
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	<h1 class="t-display min-w-0 truncate text-gray-900 dark:text-white">Revisions</h1>
+	<!--
+		THE SUBTITLE IS THE PAGE'S ONLY DEFINITION, AND IT DEFINES THE NOUN IN
+		THE HEADING. A reader who has never opened kuberik does not know what a
+		"revision" is; they do know what a commit is and what deploying is. One
+		sentence binds the three, and every string below can then be plain.
+	-->
 	<p class="t-body mt-1 text-gray-500 dark:text-gray-400">
-		Every commit this fleet knows about, and how far across it each one got.
+		One commit, one build. Here is every build your services can deploy, and how far each one has
+		got.
 	</p>
 
 	{#if query.isLoading}
@@ -358,9 +393,9 @@
 	{:else if ledgers.length === 0}
 		<div class="flex flex-col items-center justify-center py-16 text-center">
 			<TagOutline class="mb-3 h-8 w-8 text-gray-500 dark:text-gray-400" />
-			<p class="t-body font-semibold text-gray-900 dark:text-white">No revisions yet</p>
+			<p class="t-body font-semibold text-gray-900 dark:text-white">Nothing built yet</p>
 			<p class="t-body mt-1 max-w-sm text-gray-500 dark:text-gray-400">
-				A commit appears here once a rollout has deployed it.
+				A commit shows up here as soon as one of your services can deploy it.
 			</p>
 		</div>
 	{:else}
@@ -376,7 +411,7 @@
 			<AlertPanel
 				severity="warning"
 				icon={blockage.window.length > 0 ? CalendarMonthSolid : UserCircleSolid}
-				title="The newest build cannot advance"
+				title="{blockage.head.short} can’t go any further yet"
 				message={bannerMessage}
 				footnote={bannerFootnote}
 				class="mt-5"
@@ -386,21 +421,39 @@
 						role="alarm"
 						label="{blockage.slots.length} blocked"
 						wide
-						title="{blockage.slots.length} (service, environment) places are held by a gate"
+						title="{blockage.slots.length} places — a place is one service in one environment — are waiting on a gate"
 					/>
 				{/snippet}
 				{#snippet actions()}
-					<a class="btn btn-secondary" href={revisionPath(blockage.repo.repoKey, blockage.head.revision)}>
+					<!-- THE ACTION NAMES WHAT IT DOES, NOT WHAT IT OPENS. `Open 0afab6f`
+					     asked the reader to already know that the build's page is where a
+					     gate is explained and cleared. This says so. -->
+					<a
+						class="btn btn-secondary"
+						href={revisionPath(blockage.repo.repoKey, blockage.head.revision)}
+					>
 						<ArrowRightOutline class="h-4 w-4" />
-						Open {blockage.head.short}
+						See what’s blocking it
 					</a>
 				{/snippet}
 			</AlertPanel>
 		{/if}
 
 		{#each ledgers as repo (repo.repoKey)}
-			{@const live = liveRows(repo)}
-			{@const past = pastRows(repo)}
+			<!--
+				⭐ ONE LEAD ON THE PAGE, NOT ONE PER REPO. *"A page with three banners
+				has no banner"* is the same arithmetic for an entry point: on the mock
+				cluster there are SEVEN source repos, and a lead panel per repo drew
+				seven 24px identifiers down one page, which is a list of headlines and
+				therefore no headline. `ledgers` is sorted by most recent deploy, so
+				the first repo is the one something happened to most recently — and it
+				is the same repo the banner above picks its blocking fact from, so the
+				two objects at the top of the page are about one build.
+			-->
+			{@const lead = repo === ledgers[0] ? leadRow(repo) : null}
+			{@const leadCov = lead ? revisionCoverage(lead, coarse) : null}
+			{@const live = restRows(repo, lead)}
+			{@const past = pastRows(repo).filter((r) => r.revision !== lead?.revision)}
 			<!-- ASKED ONCE PER PANEL, NOT PER ROW AND NOT PER REPO. A card whose
 			     every row ships under its own sha has no names to report, so the
 			     84px name track is 84px of nothing on every one of its rows —
@@ -410,41 +463,121 @@
 			{@const namedLive = repoNamesBuilds(live)}
 			{@const namedPast = repoNamesBuilds(past)}
 			{@const url = repoUrl(repo.repoKey)}
-			<div class="rev-cols mt-5">
+
+			<!--
+				⭐ THE ENTRY POINT. THE ONE BUILD SOMEONE OPENED THIS PAGE ABOUT.
+				*"The page currently presents eleven near-identical rows and asks the
+				reader to find the interesting one … There should be an obvious entry
+				point — the one revision that matters right now — and a clear, quiet
+				path to everything else."*
+
+				It is the NEWEST build any service is running, chosen by rank and never
+				by health, so this is not the deleted "highlight the broken row" band
+				under a new name. `RevisionLead` states it at 24px over a 26px bar with
+				`FleetSpread` naming every segment in words underneath — so a reader who
+				has never seen kuberik can answer "what is this, where is it, is prod on
+				it" without clicking, without a legend and without a tour.
+			-->
+			{#if lead && leadCov}
+				<!-- NO GREEN ON THIS HEADER. `DESIGN.md`: a green tick on a list
+				     surface is a claim that the whole fleet is on head, and this card
+				     draws the newest build whether or not that is true. The state
+				     colour lives on `BuildStateMark` inside, where it is computed. -->
+				<Card
+					icon={RocketSolid}
+					title="Newest build in use"
+					verdict={buildState(leadCov).word}
+					verdictTitle={buildState(leadCov).title}
+					class="mt-5"
+				>
+					<RevisionLead
+						short={lead.short}
+						href={revisionPath(repo.repoKey, lead.revision)}
+						eyebrow="Newest build"
+						coverage={leadCov}
+						unitNote
+					>
+						{#if rowNamesBuild(lead)}
+							{#snippet meta()}
+								<!-- CRITERION 3 AT LEAD SCALE, AND ONLY WHEN THERE IS ONE. The
+								     names this commit ships under, one line each, services
+								     running off them. A build whose every service ships it under
+								     its own sha has no names to report — and `FleetSpread` below
+								     already prints every one of those services beside the
+								     environments it is in, so printing them again here would be
+								     the same list twice, 40px apart. -->
+								{@render names(lead, true)}
+							{/snippet}
+						{/if}
+						<!-- BUTTONS LOOK LIKE BUTTONS — `.btn`, 14px, 8px 16px, with an
+						     icon, the geometry measured off `View on GitHub` on the
+						     reference page. Both are READ-ONLY: every mutating control on
+						     a revision lives on its own page. -->
+						<a class="btn btn-secondary" href={revisionPath(repo.repoKey, lead.revision)}>
+							<ArrowRightOutline class="h-4 w-4" />
+							Open {lead.short}
+						</a>
+						{#if commitUrlFor(repo.repoKey, lead.revision)}
+							<a
+								class="btn btn-secondary"
+								href={commitUrlFor(repo.repoKey, lead.revision)}
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<ArrowUpRightFromSquareOutline class="h-4 w-4" />
+								View commit
+							</a>
+						{/if}
+					</RevisionLead>
+				</Card>
+			{/if}
+
+			<div class="rev-cols mt-4">
 				<div class="flex min-w-0 flex-col gap-4">
 					<!--
-						CARD 1 — THE PAGE'S SUBJECT.
-						Criterion 1 is *"what's still out there vs fully rolled past"*, and
-						this round answers it with STRUCTURE rather than with the word
-						`rolled past` in a table cell: the two answers are two cards, so
-						the reader counts them instead of reading them.
+						CARD 1 — THE QUIET PATH. Everything else still running, one line of
+						answer each, ordered newest first so position still carries rank.
+						The lead is not repeated here: it is the same object one card up,
+						and a list that reprints its own headline has two leads and
+						therefore none.
 					-->
 					<Card
-						icon={RocketSolid}
-						iconClass="tone-live"
-						title="Live across the fleet"
-						verdict="{live.length} of {repo.rows.length} deployed"
-						verdictTitle="{live.length} of the {repo.rows.length} revisions this repo has deployed are still running somewhere"
+						icon={PlaySolid}
+						title={lead ? 'Also still running' : 'Still running'}
+						verdict="{live.length} build{live.length === 1 ? '' : 's'}"
+						verdictTitle="Older builds that some service is still running"
 						padded={false}
 					>
 						{#if live.length === 0}
 							<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
-								Nothing this repo has deployed is still running. Every place has moved on.
+								{lead
+									? 'Nothing older is still running — every place is on the build above.'
+									: 'Nothing this repo has deployed is still running. Every place has moved on.'}
 							</p>
 						{:else}
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each live as row (row.revision)}
 									{@const cov = coverageByRevision.get(row.revision)}
-									{@const mark = cov ? rowMark(cov) : null}
 									<li class="rev-row hover:bg-gray-50 dark:hover:bg-gray-700/40">
-										<!-- THE STATE GLYPH. It varies down the card — mint tick,
-										     gray hourglass, gray arrow, red circle — so it is a
-										     mark on a deviation, not furniture. It is also the
-										     third channel that teaches the bar's colour. -->
-										<span class="rev-mark {mark?.tone ?? 'tone-mute'}">
-											{#if mark}
-												{@const MarkIcon = mark.icon}
-												<MarkIcon class="h-4 w-4" aria-hidden="true" />
+										<!--
+											⭐ ONE GLYPH, ONE SENTENCE, ONE OBJECT — and the row's left
+											edge stops being ragged.
+
+											It was a 20px box in its own column whose ICON landed at
+											x=41 while the sha started at 64 and the service list at 64
+											— three x's down one card, which is what "ragged" was
+											naming. The glyph now sits in a 16px track that is exactly
+											the icon, so the card has TWO x's: the glyph, and
+											everything else.
+
+											`BuildStateMark` also carries the word, so the glyph and
+											the phrase can never disagree, and the phrase itself is
+											`buildState()`'s — `3 places still to go`, not `has places
+											left to reach`.
+										-->
+										<span class="rev-mark">
+											{#if cov}
+												<BuildStateMark coverage={cov} showWord={false} />
 											{/if}
 										</span>
 
@@ -453,11 +586,11 @@
 												<a
 													class="rev-sha t-code text-gray-900 hover:underline dark:text-white"
 													href={revisionPath(repo.repoKey, row.revision)}
-													title="{row.revision} — {mark?.word ?? ''}">{row.short}</a
+													title={row.revision}>{row.short}</a
 												>
-												<span class="t-micro text-gray-500 dark:text-gray-400"
-													>{mark?.word ?? ''}</span
-												>
+												{#if cov}
+													<BuildStateMark coverage={cov} showGlyph={false} />
+												{/if}
 											</div>
 
 											<!--
@@ -485,27 +618,37 @@
 										-->
 										<div class="rev-roll">
 											<span class="t-dense text-gray-700 dark:text-gray-200">
-												{row.liveSlots} of {row.totalSlots}
-												<span class="text-gray-500 dark:text-gray-400">places live</span>
+												Running in {row.liveSlots} of {row.totalSlots}
+												<span class="text-gray-500 dark:text-gray-400">places</span>
 											</span>
 											{#if cov}
 												<CoverageBar
 													segments={coverageSegments(cov)}
 													compact
 													class="mt-1.5"
-													label="{cov.liveCount} of {cov.totalCount} places live · {cov.buckets
+													label="running in {cov.liveCount} of {cov.totalCount} places · {cov.buckets
 														.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
 														.join(' · ')}"
 												/>
 											{/if}
-											<span class="t-micro mt-1 block text-gray-500 dark:text-gray-400">
-												<span title={ageTitle(row)}>{ageOf(row)}</span>
-												<ChevronRightOutline
-													class="ml-1 inline h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
-													aria-hidden="true"
-												/>
-											</span>
+											<span
+												class="t-micro mt-1 block text-gray-500 dark:text-gray-400"
+												title={ageTitle(row)}>{ageOf(row)}</span
+											>
 										</div>
+
+										<!--
+											⭐ THE CHEVRON IS THE ROW'S AFFORDANCE, SO IT SITS AT THE
+											ROW'S EDGE. It used to trail the age string inside the
+											rollup stack, which put it mid-row at 390 — floating beside
+											nothing, pointing at nothing. It is now its own track,
+											hard-right, vertically centred on the whole row, which is
+											the form the reference page uses on every `Resources` row
+											and on `Show 8 ready resources ›`.
+										-->
+										<span class="rev-go" aria-hidden="true">
+											<ChevronRightOutline class="h-4 w-4 text-gray-300 dark:text-gray-600" />
+										</span>
 									</li>
 								{/each}
 							</ul>
@@ -519,10 +662,10 @@
 					-->
 					{#if past.length > 0}
 						<Card
-							icon={ArrowRightOutline}
-							title="Rolled past"
-							verdict="{past.length} revision{past.length === 1 ? '' : 's'}"
-							verdictTitle="Deployed at least once; every place that carried them has moved on"
+							icon={ArchiveSolid}
+							title="No longer running anywhere"
+							verdict="{past.length} build{past.length === 1 ? '' : 's'}"
+							verdictTitle="Deployed at least once; every place that ran them has since moved on"
 							padded={false}
 						>
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -544,11 +687,10 @@
 											<span class="t-micro text-gray-500 dark:text-gray-400" title={ageTitle(row)}
 												>{ageOf(row)}</span
 											>
-											<ChevronRightOutline
-												class="ml-2 inline h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
-												aria-hidden="true"
-											/>
 										</div>
+										<span class="rev-go" aria-hidden="true">
+											<ChevronRightOutline class="h-4 w-4 text-gray-300 dark:text-gray-600" />
+										</span>
 									</li>
 								{/each}
 							</ul>
@@ -556,7 +698,7 @@
 								{@render more(
 									() => (expandPast = { ...expandPast, [repo.repoKey]: !expandPast[repo.repoKey] }),
 									expandPast[repo.repoKey],
-									`${past.length - FOLD} older revision${past.length - FOLD === 1 ? '' : 's'}`
+									`${past.length - FOLD} older build${past.length - FOLD === 1 ? '' : 's'}`
 								)}
 							{/if}
 						</Card>
@@ -577,9 +719,9 @@
 					{#if repo.pending.length > 0}
 						<Card
 							icon={HourglassOutline}
-							title="Built, never deployed"
+							title="Never deployed"
 							verdict="{repo.pending.length} build{repo.pending.length === 1 ? '' : 's'}"
-							verdictTitle="On the release ladder; no service has ever run them"
+							verdictTitle="Your services could deploy these; none of them has"
 							padded={false}
 						>
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -600,7 +742,7 @@
 											title={ageTitle(row)}>{ageOf(row)}</span
 										>
 										<ChevronRightOutline
-											class="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
+											class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600"
 											aria-hidden="true"
 										/>
 									</li>
@@ -617,6 +759,15 @@
 									`${repo.pending.length - FOLD} more build${repo.pending.length - FOLD === 1 ? '' : 's'}`
 								)}
 							{/if}
+							<!-- THE CARD SAYS WHAT ITS ROWS ARE, in the reference's own
+							     footer form. `Built, never deployed` was a title a reader had
+							     to already understand; this is the sentence that makes it
+							     mean something the first time. -->
+							<p
+								class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
+							>
+								Your services can deploy these commits. None of them has yet.
+							</p>
 						</Card>
 					{/if}
 
@@ -634,14 +785,20 @@
 						padded={false}
 					>
 						<dl class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{@render fact('Builds on the ladder', String(repo.knownRevisions))}
+							{@render fact('Commits your services can deploy', String(repo.knownRevisions))}
 							{@render fact('Deployed at least once', String(repo.rows.length))}
-							{@render fact('Still running somewhere', String(live.length))}
-							{@render fact(
-								'Places',
-								`${repo.slotCount} service × environment`
-							)}
+							{@render fact('Still running somewhere', String(repo.rows.length - past.length))}
+							{@render fact('Places to deploy to', String(repo.slotCount))}
 						</dl>
+						<!-- THE UNIT, DEFINED WHERE ITS NUMBER IS. `15 service × environment`
+						     was notation; this is the sentence, and the lead panel says the
+						     same thing in the same words at the top of the page. -->
+						<p class="t-micro px-4 py-2.5 text-gray-500 dark:text-gray-400">
+							A place is one service in one environment — {repo.serviceCount} service{repo.serviceCount ===
+							1
+								? ''
+								: 's'} across their environments.
+						</p>
 						{#if url}
 							<div class="px-4 py-3">
 								<a class="btn btn-secondary" href={url} target="_blank" rel="noopener noreferrer">
@@ -761,7 +918,7 @@
 	.rev-row {
 		position: relative;
 		display: grid;
-		grid-template-columns: 20px minmax(0, 1fr) 200px;
+		grid-template-columns: 16px minmax(0, 1fr) 200px 16px;
 		gap: 12px;
 		padding: 12px 16px;
 		align-items: start;
@@ -772,7 +929,7 @@
 	   one fact. `flex-wrap` so a repo with five services still degrades to two
 	   lines rather than overflowing. */
 	.rev-row--quiet {
-		grid-template-columns: minmax(0, 1fr) 96px;
+		grid-template-columns: minmax(0, 1fr) 96px 16px;
 		padding-top: 8px;
 		padding-bottom: 8px;
 		align-items: baseline;
@@ -790,10 +947,38 @@
 		margin-top: 0;
 	}
 
+	/*
+	 * ⭐ THE GLYPH TRACK IS EXACTLY THE GLYPH — 16px, no box around it.
+	 *
+	 * It was a 20px box holding a 16px icon, which put the icon's own left edge
+	 * 2px inside the track and gave the card THREE left x's: the glyph at 41,
+	 * the sha at 64, the service list at 64. The human called it ragged and it
+	 * was. At 16px the track IS the icon, so the card has exactly two: the
+	 * glyph, and everything else.
+	 *
+	 * `height: 20px` centres it on the sha's own 20px line box, so the glyph
+	 * sits on the identifier's line rather than at the top of a two-line cell —
+	 * the same rule the banner's 40px disc now follows.
+	 */
 	.rev-mark {
 		display: flex;
 		align-items: center;
 		height: 20px;
+	}
+
+	/*
+	 * THE ROW'S AFFORDANCE, AT THE ROW'S EDGE AND CENTRED ON THE WHOLE ROW.
+	 * It trailed the age string before, which floated it mid-row at 390. A
+	 * chevron that does not sit at the edge of the thing it opens is pointing
+	 * at nothing.
+	 */
+	.rev-go {
+		position: absolute;
+		right: 16px;
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
 	}
 
 	.rev-roll {
@@ -810,33 +995,12 @@
 		inset: 0;
 	}
 
-	/* THE TWO GLYPH INKS. Both are values the product already owns: the mint is
-	   the `newest` chip's and `ExposureBar`'s newest segment, so the tick and
-	   the bar's live segment are literally the same colour saying the same
-	   thing. Zero new colour values. */
-	.tone-live {
-		color: #426d64;
-	}
-
-	:global(.dark) .tone-live {
-		color: #83b0a8;
-	}
-
-	.tone-bad {
-		color: var(--color-red-700);
-	}
-
-	:global(.dark) .tone-bad {
-		color: var(--color-red-400);
-	}
-
-	.tone-mute {
-		color: var(--color-gray-400);
-	}
-
-	:global(.dark) .tone-mute {
-		color: var(--color-gray-500);
-	}
+	/* THE GLYPH INKS MOVED TO `BuildStateMark.svelte`, WITH THE GLYPH. They were
+	   declared here and handed to `Card` as `iconClass`, where a Svelte-scoped
+	   class cannot reach — the rule matched nothing and the icon rendered gray
+	   the whole time. Scoped styles only style this component's own markup, so
+	   a colour that has to travel is a colour that belongs to the component it
+	   lands in. */
 
 	/*
 	 * THE NAMES CELL — a stack of lines, each line a two-track grid.
@@ -923,10 +1087,17 @@
 	 */
 	@media (max-width: 639px) {
 		.rev-row {
-			grid-template-columns: 20px minmax(0, 1fr);
+			grid-template-columns: 16px minmax(0, 1fr) 16px;
 			gap: 8px 12px;
 		}
 
+		.rev-row--quiet {
+			grid-template-columns: minmax(0, 1fr) auto 16px;
+		}
+
+		/* SECOND BAND, SECOND COLUMN — so the count, the bar and the age all
+		   start at the SAME x as the sha and the service names above them. The
+		   row therefore has one text edge at 390, not two. */
 		.rev-roll {
 			grid-column: 2;
 			text-align: left;
