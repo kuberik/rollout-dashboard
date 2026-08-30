@@ -8,6 +8,8 @@ import { getDisplayVersion, categorizeFailure, compareRollouts, detectStuck } fr
 import type { StuckReason } from './utils';
 import { compareEnvironmentNames } from './env-order';
 import { newerReleaseCount } from './view-models/promotion';
+import { rankVerdictsByRollout, rankBehindBy } from './view-models/env-rank';
+import type { RankVerdict } from './view-models/env-rank';
 import {
 	sourceDashboardURL,
 	sourceClusterName,
@@ -15,6 +17,61 @@ import {
 } from './source-dashboard';
 
 export type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
+
+/**
+ * ⛔ GOING BACKWARDS IS A DIFFERENT EVENT FROM GOING FORWARDS, AND EVERY LIST
+ * SURFACE DREW IT AS THE SAME EVENT.
+ *
+ * A live UX critique rolled production back to a one-hour-old build. `/`
+ * rendered it *"exactly like a forward deploy"* — same circle, same chip, same
+ * `updated 4m ago`. Nothing said the word. On the live hub right now,
+ * `hello-world-prod/hello-world-app` is in exactly that state: history `id 3`
+ * is `51b976a` at `availableReleases` index **0**, immediately after `id 2`
+ * `aa17645` at index **7**.
+ *
+ * `availableReleases` is ordered oldest → newest by the controller, so the
+ * comparison needs nothing but the rollout object: if the version now running
+ * sits EARLIER in that list than the one it replaced, the rollout moved
+ * backwards.
+ *
+ * ⚠️ IT RETURNS `null` RATHER THAN GUESSING. A version that is not in
+ * `availableReleases` at all (a custom tag, or one that has aged out of the
+ * list) has no position, so there is no ordering to compare and the honest
+ * answer is silence. An absent record is not an observation.
+ */
+export type RollbackMark = {
+	/** Display version the rollout came FROM. */
+	from: string;
+	/** Display version it went back TO. */
+	to: string;
+	/** How many releases backwards, in `availableReleases` positions. */
+	by: number;
+};
+
+// The OCI tag identifies a release; `version` is the display form. Real
+// cluster payloads carry both. Preferring `tag` and falling back to `version`
+// keeps one comparison working against either shape.
+function releaseKey(v: { tag?: string; version?: string } | undefined): string | null {
+	return v?.tag || v?.version || null;
+}
+
+export function detectRollback(r: Rollout): RollbackMark | null {
+	const history = r.status?.history ?? [];
+	const releases = r.status?.availableReleases ?? [];
+	if (history.length < 2 || releases.length === 0) return null;
+	const nowKey = releaseKey(history[0]?.version);
+	const prevKey = releaseKey(history[1]?.version);
+	if (!nowKey || !prevKey || nowKey === prevKey) return null;
+	const nowIdx = releases.findIndex((x) => releaseKey(x) === nowKey);
+	const prevIdx = releases.findIndex((x) => releaseKey(x) === prevKey);
+	if (nowIdx === -1 || prevIdx === -1) return null;
+	if (nowIdx >= prevIdx) return null;
+	return {
+		from: getDisplayVersion(history[1].version),
+		to: getDisplayVersion(history[0].version),
+		by: prevIdx - nowIdx
+	};
+}
 
 export type RolloutCard = {
 	ns: string;
@@ -33,7 +90,24 @@ export type RolloutCard = {
 	failureCategory: string | null;
 	previousSucceededVersion: string | null;
 	pinnedVersion: string | null;
+	/** Non-null when the CURRENT version is older than the one it replaced. */
+	rolledBack: RollbackMark | null;
 	stuck: StuckReason | null;
+	/**
+	 * ⛔ THE RANK. READ THIS, NEVER `behind`, FOR ANYTHING DISPLAYED.
+	 *
+	 * The shared product-wide verdict from `view-models/env-rank.ts` — the
+	 * SAME object `/apps`, `/apps/[name]`, `/environments`, `/envs/*` and
+	 * `/versions` print. `behind` below is peer ATTRIBUTION only.
+	 */
+	rank: RankVerdict;
+	/**
+	 * WHICH environment this one is behind, and what that one is running.
+	 * Attribution, not measurement: `behindBy` is copied off `rank` so the two
+	 * cannot disagree, and `null` here means "no peer to name", never
+	 * "up to date". A card with `behind: null` and `rank.kind === 'behind'` is
+	 * a perfectly ordinary rollout — see the note on `computeBehind`.
+	 */
 	behind: { fromEnv: string; version: string; behindBy: number | null } | null;
 	rollout: Rollout;
 	sourceURL: string; // dashboard URL this rollout belongs to (empty = local)
@@ -67,19 +141,30 @@ function buildAppIndex(
 // I'm "behind <env>" — direction derived from data, not from env-name tier
 // assumptions.
 //
-// HOW FAR behind comes from `newerReleaseCount` (view-models/promotion), NOT
-// from `compareRollouts`. `compareRollouts` can only answer 'behind' when my
-// current version still appears in the peer's `status.history`, and
-// `versionHistoryLimit` is 5 — so the further behind a rollout falls, the more
-// certain it is to age out of its peers' history, return 'divergent', and
-// yield `null` here. Callers that do `(behind?.behindBy ?? 0) === 0` then
-// classify a month-stale production rollout as *steady* and label it `newest`.
-// The alarm went silent exactly when it mattered.
+// ⛔ THIS FUNCTION NO LONGER MEASURES ANYTHING. IT ONLY NAMES A PEER.
+// (2026-08-30) The measurement moved to `view-models/env-rank.ts`, which is
+// the product's ONE denominator. What was here produced the worst defect in
+// the product, and both halves of it are worth keeping written down:
 //
-// `newerReleaseCount` is the controller's own count of releases newer than
-// mine, carries a validity guard for the retention-truncation case, and needs
-// no history overlap at all. `compareRollouts` is kept for peer ATTRIBUTION
-// ("behind which env"), which is the question it is actually good at.
+//   1. IT COUNTED AGAINST THE ROLLOUT'S OWN `availableReleases`. On the live
+//      hub `hello-world-app` runs the IDENTICAL build `991829b` in dev and in
+//      staging, and their own release lists are 16 and 15 entries long, so
+//      this printed `−15` on one row and would have printed `−14` on the row
+//      directly beneath it. A rank that changes between two environments
+//      running the same sha is not a rank.
+//   2. WORSE, WHEN IT COULD NOT ANSWER IT RETURNED `null`, AND
+//      `RolloutGrid`/`ControlCenter` RENDERED `null` AS THE WORD `newest`.
+//      staging fell into exactly that hole — `compareRollouts` went silent
+//      (no history overlap) and no peer had a SMALLER own-list count — so
+//      `/rollouts` printed `dev −15 991829b` and `staging newest 991829b`
+//      on adjacent rows of one page, for one build. One page contradicting
+//      itself, which is not two definitions disagreeing.
+//
+// `compareRollouts` survives for peer ATTRIBUTION ("behind which env"), which
+// is the question it is actually good at, and `newerReleaseCount` survives for
+// picking the most-advanced peer when history overlap is lost. Neither may
+// produce a number that reaches a chip: `behindBy` is overwritten from the
+// ladder rank by the caller.
 function computeBehind(
 	r: Rollout,
 	envName: string,
@@ -131,6 +216,10 @@ export function buildRolloutCards(
 	now: Date
 ): RolloutCard[] {
 	const appIndex = buildAppIndex(rollouts, environments);
+	// ONE LADDER PER APP, built once for the whole fleet — the same derivation
+	// `/apps` and `/environments` read. See env-rank.ts for why this and not
+	// each rollout's own `availableReleases`.
+	const ranks = rankVerdictsByRollout(rollouts, environments);
 	return rollouts.map((r) => {
 		const latest = r.status?.history?.[0];
 		const env = environments.find((e) => rolloutMatchesEnvironment(r, e));
@@ -144,7 +233,11 @@ export function buildRolloutCards(
 		else statusKey = 'succeeded';
 		const envDisplay = shortEnvLabel(theme);
 		const envName = env?.spec?.environment ?? '';
-		const behind = envName ? computeBehind(r, envName, appIndex) : null;
+		const rank: RankVerdict = ranks.get(r) ?? { kind: 'unknown' };
+		// Attribution keeps its peer; the NUMBER comes off the ladder so the
+		// card and the app row cannot print two answers for one rollout.
+		const attribution = envName ? computeBehind(r, envName, appIndex) : null;
+		const behind = attribution ? { ...attribution, behindBy: rankBehindBy(rank) } : null;
 		// For failed cards: find the most recent succeeded version that's different
 		// from the current one. Gives the user a rollback target at a glance.
 		let previousSucceededVersion: string | null = null;
@@ -177,7 +270,9 @@ export function buildRolloutCards(
 				bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
 			previousSucceededVersion,
 			pinnedVersion: r.spec?.wantedVersion || null,
+			rolledBack: detectRollback(r),
 			stuck: detectStuck(r, { now }),
+			rank,
 			behind,
 			rollout: r,
 			sourceURL: sourceDashboardURL(r),

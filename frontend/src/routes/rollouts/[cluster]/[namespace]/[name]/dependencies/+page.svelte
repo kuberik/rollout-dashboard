@@ -152,6 +152,7 @@
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { groupRolloutsByApp } from '$lib/version-utils';
 	import type { Rollout, Environment, RolloutDependency } from '../../../../../../types';
+	import { pollWhenHealthy } from '$lib/api/errors';
 	import {
 		dependencySourceCluster,
 		releaseMetadataUnresolved,
@@ -181,7 +182,7 @@
 	const name = $derived(page.params.name as string);
 
 	const rolloutQuery = createQuery(() =>
-		rolloutQueryOptions({ namespace, name, cluster, options: { refetchInterval: 5000 } })
+		rolloutQueryOptions({ namespace, name, cluster, options: { refetchInterval: pollWhenHealthy(5000) } })
 	);
 
 	/**
@@ -201,7 +202,7 @@
 	 * navigation from a list page rather than a second request.
 	 */
 	const listQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { refetchInterval: 15000 } })
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000) } })
 	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);

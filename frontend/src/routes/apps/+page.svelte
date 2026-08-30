@@ -150,9 +150,10 @@
 		ArrowRightOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: 15000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
 	);
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
@@ -387,7 +388,7 @@
 		}
 
 		const theme = cell?.theme ?? null;
-		const held = pinned && vm.behindBy > 0;
+		const held = pinned && vm.rank.kind !== 'newest';
 
 		if (vm.statusKey === 'failed')
 			return { state: 'fail', theme, held, wantedVersion, block, timestamp };
@@ -398,7 +399,13 @@
 			return { state: 'baking', theme, held, wantedVersion, block, timestamp };
 		if (vm.statusKey === 'pending')
 			return { state: 'pending', theme, held: false, wantedVersion, block, timestamp };
-		if (vm.behindBy === 0)
+		// ⛔ `behindBy === 0` IS NOT `onNewest`. (2026-08-30) `rankBehindBy`
+		// returns 0 for THREE different verdicts — `newest`, `diverged` and
+		// `unknown` — and `matrix.ts`'s own doc comment says so. Testing the
+		// number therefore filed "we cannot resolve this comparison" under
+		// the page's good-news state. The verdict decides; the number is for
+		// counting only.
+		if (vm.rank.kind === 'newest')
 			return { state: 'onNewest', theme, held, wantedVersion, block, timestamp };
 		const behindState: CellState = vm.behindBy >= 2 ? 'behind2' : 'behind1';
 		return { state: behindState, theme, held, wantedVersion, block, timestamp };

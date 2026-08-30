@@ -1,4 +1,5 @@
 import type { QueryKey, QueryObserverOptions } from '@tanstack/svelte-query';
+import { apiJson } from './errors';
 import type {
     Rollout,
     Kustomization,
@@ -61,36 +62,35 @@ export const rolloutQueryKey = (namespace: string, name: string, cluster?: strin
 
 export const rolloutsListQueryKey = ['rollouts', 'all'] as const;
 
+/**
+ * ⛔ A 404 IS NO LONGER SWALLOWED INTO `{ rollout: null }`.
+ *
+ * It used to be, and the result was a page that could not tell "this rollout
+ * has no history yet" from "this rollout does not exist". It also never fired
+ * on the live cluster, because the backend answers **500** for a missing
+ * rollout (verified: `500` + `details: '... "does-not-exist" not found'`), so
+ * the branch that existed to handle absence was dead code while the real case
+ * fell through to `throw new Error('Failed to load rollout')` — a string that
+ * threw the server's sentence away and left the query retrying forever.
+ *
+ * Both now become an `ApiError` carrying `status` and the server's `details`,
+ * and `ApiError.isMissing` is the single place that knows both shapes.
+ */
 export async function fetchRollout(
     namespace: string,
     name: string,
     cluster?: string
 ): Promise<RolloutResponse> {
     const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
-    const res = await fetch(`/api/rollouts/${namespace}/${name}${params}`);
-    if (!res.ok) {
-        if (res.status === 404) {
-            return { rollout: null };
-        }
-        throw new Error('Failed to load rollout');
-    }
-    return (await res.json()) as RolloutResponse;
+    return apiJson<RolloutResponse>(`/api/rollouts/${namespace}/${name}${params}`);
 }
 
 export async function fetchRolloutsList(): Promise<RolloutsListResponse> {
-    const res = await fetch('/api/rollouts');
-    if (!res.ok) {
-        throw new Error('Failed to fetch rollouts');
-    }
-    return (await res.json()) as RolloutsListResponse;
+    return apiJson<RolloutsListResponse>('/api/rollouts');
 }
 
 export async function fetchRolloutsInNamespace(namespace: string): Promise<RolloutsListResponse> {
-    const res = await fetch(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`);
-    if (!res.ok) {
-        throw new Error('Failed to fetch rollouts');
-    }
-    return (await res.json()) as RolloutsListResponse;
+    return apiJson<RolloutsListResponse>(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`);
 }
 
 export const rolloutsInNamespaceQueryKey = (namespace: string) =>
@@ -141,9 +141,7 @@ export function rolloutsListQueryOptions({
 }
 
 export async function fetchClusterInfo(): Promise<ClusterInfo> {
-    const res = await fetch('/api/cluster');
-    if (!res.ok) throw new Error('Failed to fetch cluster info');
-    return (await res.json()) as ClusterInfo;
+    return apiJson<ClusterInfo>('/api/cluster');
 }
 
 export const clusterInfoQueryKey = ['cluster-info'] as const;
@@ -176,11 +174,9 @@ export async function fetchRolloutPermissions(
     cluster?: string
 ): Promise<PermissionsResponse> {
     const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
-    const res = await fetch(`/api/rollouts/${namespace}/${name}/permissions/all${params}`);
-    if (!res.ok) {
-        throw new Error('Failed to load permissions');
-    }
-    return (await res.json()) as PermissionsResponse;
+    return apiJson<PermissionsResponse>(
+        `/api/rollouts/${namespace}/${name}/permissions/all${params}`
+    );
 }
 
 export const rolloutPermissionsQueryKey = (namespace: string, name: string, cluster?: string) =>
@@ -213,14 +209,7 @@ export async function fetchRolloutTests(
     namespace: string,
     name: string
 ): Promise<RolloutTestsResponse> {
-    const res = await fetch(`/api/rollouts/${namespace}/${name}/rollout-tests`);
-    if (!res.ok) {
-        if (res.status === 404) {
-            return { rolloutTests: { items: [] } };
-        }
-        throw new Error('Failed to load rollout tests');
-    }
-    return (await res.json()) as RolloutTestsResponse;
+    return apiJson<RolloutTestsResponse>(`/api/rollouts/${namespace}/${name}/rollout-tests`);
 }
 
 export const rolloutTestsQueryKey = (namespace: string, name: string) =>

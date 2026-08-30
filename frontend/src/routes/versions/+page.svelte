@@ -40,6 +40,7 @@
 	import CoverageBar from '$lib/components/CoverageBar.svelte';
 	import RevisionLead from '$lib/components/RevisionLead.svelte';
 	import type { Rollout, Environment } from '../../types';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	/**
 	 * `/versions` — THE REVISION LEDGER.
@@ -130,7 +131,7 @@
 	 */
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
 	);
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);

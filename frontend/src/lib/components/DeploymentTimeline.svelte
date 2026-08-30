@@ -4,6 +4,14 @@
 		bakeStatus?: string;
 		version: { tag: string; version?: string; revision?: string };
 		message?: string;
+		/**
+		 * WHAT the dot is about, when the LANE does not say it. `/activity`
+		 * groups lanes by ENVIRONMENT, so without this a reader hovering a dot
+		 * learns the version and the place and not which rollout moved.
+		 * Optional: the history page's lane IS the service, so it passes none
+		 * and the tooltip renders exactly as before.
+		 */
+		subject?: string;
 		triggeredBy?: { kind: 'User' | 'System'; name: string };
 	};
 
@@ -34,13 +42,50 @@
 		services,
 		timeRange = $bindable<TimeRange>('7d'),
 		selectedEntry = null as { serviceId: string; index: number } | null,
-		onEntryClick = undefined as ((serviceId: string, index: number) => void) | undefined
+		onEntryClick = undefined as ((serviceId: string, index: number) => void) | undefined,
+		onRangeChange = undefined as ((range: TimeRange) => void) | undefined,
+		labelWidth = 130,
+		labelEmptyLanes = false,
+		rowHeight = 52
 	}: {
 		services: ServiceRow[];
 		timeRange?: TimeRange;
 		selectedEntry?: { serviceId: string; index: number } | null;
 		onEntryClick?: (serviceId: string, index: number) => void;
+		/**
+		 * Fires whenever the READER moves the window — a preset button or a
+		 * brush-zoom, never a programmatic change. `/activity` opens on a
+		 * window computed to fit the data and must know when to stop doing
+		 * that; `bind:` alone cannot tell the two apart. Optional, so the
+		 * history page's plain `bind:timeRange` is untouched.
+		 */
+		onRangeChange?: (range: TimeRange) => void;
+		/**
+		 * The lane-name gutter. 130px was sized for `hello-world-manifests`;
+		 * a lane named `prod` wants a third of that, and the difference is
+		 * plot width — i.e. resolution — on the page that needs it most.
+		 */
+		labelWidth?: number;
+		/**
+		 * Draw `No deployments in this period` on EVERY empty lane, not just
+		 * the current one. Opt-in: the history page has one lane and states
+		 * this only for the service being viewed, and that must not change.
+		 */
+		labelEmptyLanes?: boolean;
+		/**
+		 * Lane height. 52px is right for one lane and wrong for twenty-two: a
+		 * 22-environment fleet made this chart 1,144px tall, i.e. the whole
+		 * viewport before the reader reached a single event. A 5px dot needs
+		 * ~24px of lane, so the caller drops to ~26 when it has many.
+		 */
+		rowHeight?: number;
 	} = $props();
+
+	/** Set the window on the reader's behalf and tell the caller it was them. */
+	function pickRange(next: TimeRange) {
+		timeRange = next;
+		onRangeChange?.(next);
+	}
 
 	// Responsive width
 	let containerEl: HTMLDivElement | undefined = $state();
@@ -56,11 +101,9 @@
 	});
 
 	// Layout constants
-	const LABEL_W = 130;
 	const PAD_R = 24;
 	const PAD_T = 16;
 	const PAD_B = 38;
-	const ROW_H = 52;
 	const R_NORMAL = 5;
 	const R_ACTIVE = 8;
 
@@ -92,6 +135,11 @@
 	const bounds = $derived(computeBounds(timeRange));
 	const startMs = $derived(bounds.startMs);
 	const endMs = $derived(bounds.endMs);
+	const LABEL_W = $derived(labelWidth);
+	const ROW_H = $derived(rowHeight);
+	/** Characters that fit the gutter. `ui-monospace` at 11px measures ~6.6px
+	    per glyph, and the label is right-anchored 10px in from `LABEL_W`. */
+	const LABEL_CHARS = $derived(Math.max(6, Math.floor((LABEL_W - 14) / 6.7)));
 	const plotW = $derived(Math.max(100, containerWidth - LABEL_W - PAD_R));
 	const chartH = $derived(PAD_T + Math.max(1, services.length) * ROW_H + PAD_B);
 
@@ -237,7 +285,7 @@
 		brushStartX = null;
 		brushEndX = null;
 		if (b - a < 6) return;
-		timeRange = { start: pixelToMs(a), end: pixelToMs(b) };
+		pickRange({ start: pixelToMs(a), end: pixelToMs(b) });
 	}
 
 	// Axis ticks — auto-pick interval based on range size
@@ -251,8 +299,18 @@
 			[14 * 86_400_000, 86_400_000],
 			[60 * 86_400_000, 5 * 86_400_000]
 		];
-		const iv = thresholds.find(([lim]) => rangeMs < lim)?.[1] ?? rangeMs / 6;
+		let iv = thresholds.find(([lim]) => rangeMs < lim)?.[1] ?? rangeMs / 6;
 		const showTime = rangeMs < 3 * 86_400_000;
+
+		// ⚠️ THE INTERVAL WAS CHOSEN FROM THE RANGE ALONE, AND A LABEL HAS A
+		// WIDTH. At 390 the plot is ~270px and a 7-day range asked for seven
+		// `Aug 24`-sized labels in it, which rendered as `Aug 24Aug 25Aug 26…`
+		// — one continuous string of overlapping glyphs. Double the interval
+		// until each label has room. `Aug 24` measures ~44px at 10px and
+		// `14:00` ~30px; the floors below carry a gutter.
+		const minPx = showTime ? 44 : 58;
+		let guard = 0;
+		while (plotW * (iv / rangeMs) < minPx && guard++ < 12) iv *= 2;
 
 		const ticks: { x: number; label: string }[] = [];
 		let t = Math.ceil(startMs / iv) * iv;
@@ -307,9 +365,7 @@
 				) && timeRange === value
 					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
 					: 'border border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-				onclick={() => {
-					timeRange = value;
-				}}
+				onclick={() => pickRange(value)}
 			>
 				{label}
 			</button>
@@ -412,7 +468,7 @@
 							? 'fill-blue-700 dark:fill-blue-400'
 							: 'fill-gray-500 dark:fill-gray-400'}
 					>
-						{truncate(svc.name, 17)}
+						{truncate(svc.name, LABEL_CHARS)}
 					</text>
 
 					<!-- Separator after label -->
@@ -484,7 +540,7 @@
 					{/each}
 
 					<!-- Empty period label -->
-					{#if entries.length === 0 && svc.isCurrent}
+					{#if entries.length === 0 && (svc.isCurrent || labelEmptyLanes)}
 						<text
 							x={LABEL_W + plotW / 2}
 							y={cy + 4}
@@ -583,6 +639,9 @@
 					{entry.version.version || entry.version.revision?.slice(0, 12) || entry.version.tag}
 				</span>
 			</div>
+			{#if entry.subject}
+				<div class="text-xs font-medium text-gray-700 dark:text-gray-200">{entry.subject}</div>
+			{/if}
 			<div class="text-xs text-gray-500 dark:text-gray-400">{fmtTooltipDate(entry.timestamp)}</div>
 			{#if svcName}
 				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{svcName}</div>

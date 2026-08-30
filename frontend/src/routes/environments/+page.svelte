@@ -145,9 +145,10 @@
 		ArrowUpOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: 15000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
@@ -728,6 +729,23 @@
 				title="{a.appName} here is {a.behindBy} version{a.behindBy === 1
 					? ''
 					: 's'} older than the newest one it has"
+				value={a.version}
+				valueHref={a.versionHref}
+				wide
+			/>
+		{:else if a.rank.kind === 'unknown' && a.version}
+			<!-- ⛔ AN UNRESOLVABLE COMPARISON IS NOT `newest`. (2026-08-30) This
+			     chain used to fall from `behindBy > 0` straight to `head/newest`,
+			     so every verdict the ladder could not place — a build aged out of
+			     every release list, an app with no release metadata at all —
+			     printed the page's good-news word. Same `unranked` role the
+			     never-deployed branch below already uses; the word is `unknown`,
+			     which is what `rankLabel` now returns and the only honest thing
+			     to say. -->
+			<Chip
+				role="unranked"
+				label="unknown"
+				title="{a.appName} here is running {a.version}, which cannot be placed on this app’s build ladder"
 				value={a.version}
 				valueHref={a.versionHref}
 				wide

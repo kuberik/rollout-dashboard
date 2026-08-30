@@ -8,10 +8,16 @@
 		ArrowUpOutline,
 		ReplyOutline,
 		CodePullRequestSolid,
-		GithubSolid
+		GithubSolid,
+		PauseSolid
 	} from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { hasForceDeployAnnotation, getDisplayVersion, formatTimeAgo } from '$lib/utils';
+	import {
+		manualDeployNote,
+		autoDeployState,
+		type AutoDeployState
+	} from '$lib/view-models/auto-deploy';
 	import {
 		fetchCommits,
 		commitsQueryKey,
@@ -24,6 +30,17 @@
 	interface Props {
 		open: boolean;
 		rollout: Rollout | null;
+		/**
+		 * ⭐ THE GATE STATE, RESTATED WHERE THE DECISION IS MADE.
+		 *
+		 * The critique's charge was exact: the page showed a full-width amber
+		 * *"Deployments currently blocked"* banner, the reader opened this
+		 * modal, typed the sha, pressed Deploy Now — and production changed
+		 * immediately. The modal is the last screen before the change and it
+		 * said nothing at all about the gate, so the only statement the reader
+		 * had was the one that was wrong.
+		 */
+		autoDeploy?: AutoDeployState | null;
 		// If true, force pin mode and disable toggle (used for rollback)
 		isPinVersionMode?: boolean;
 		// Pre-select a version when the modal opens (e.g. rollback's previous
@@ -39,6 +56,7 @@
 	let {
 		open = $bindable(),
 		rollout,
+		autoDeploy = null,
 		isPinVersionMode = false,
 		initialSelectedVersion = null,
 		initialExplanation = '',
@@ -234,6 +252,40 @@
 	);
 
 	// --- Deploy footer logic ------------------------------------------------
+	/**
+	 * ⭐ THE FRICTION NOW MATCHES THE CONSEQUENCE.
+	 *
+	 * A live UX critique found the gradient INVERTED: `Continue to next stage`
+	 * moved production traffic and cut a bake short with **no dialog at all**,
+	 * while deploying one listed version made you **type the sha**. Both ends
+	 * were wrong, and adding a modal everywhere would only have made the
+	 * cheapest action as expensive as the most dangerous one.
+	 *
+	 * Typing is kept for the two cases a reader genuinely cannot predict or
+	 * cheaply undo:
+	 *
+	 * - **a ROLLBACK.** Going backwards re-runs older code against data the
+	 *   newer code has already touched; it is a different KIND of event, not a
+	 *   smaller one, and it pins as a side effect.
+	 * - **a CUSTOM version** — a tag that is not in `availableReleases`, so
+	 *   nothing on screen has vouched for it and the changelist above may be
+	 *   empty.
+	 *
+	 * It is dropped for a forward deploy to a listed release candidate. That is
+	 * the same move the controller makes unattended; the commit list for it is
+	 * displayed immediately above the button; and `Go back a version` is one
+	 * click away. Making it expensive taught people to type without reading.
+	 */
+	const needsTypedConfirmation = $derived(direction === 'rollback' || isCustomVersion);
+	/**
+	 * The caller may hand us the state it already derived (rollout detail does,
+	 * because it holds the full gate objects and so can print their published
+	 * pretty names). Every OTHER call site — history, `/versions/<rev>`,
+	 * `/envs/<name>`, `/apps/<name>`, `FailurePanel` — gets the same truth
+	 * derived from the rollout alone rather than getting silence.
+	 */
+	const gateState = $derived(autoDeploy ?? autoDeployState(rollout));
+	const gateNote = $derived(manualDeployNote(gateState));
 	const mustPin = $derived(isPinVersionMode || isOlderThanCurrent || isCustomVersion);
 	const pinVersionToggleComputed = $derived(mustPin || rollout?.spec?.wantedVersion !== undefined);
 	const isPinVersionToggleDisabled = $derived(mustPin || hasForceDeployAnnotation(rollout ?? undefined));
@@ -563,6 +615,16 @@
 
 					<!-- Deploy footer -->
 					<div class="shrink-0 space-y-3 border-t border-gray-200 p-4 dark:border-gray-700">
+						{#if gateNote}
+							<!-- Same `Alert color="blue"` at 12px the force-deploy note already
+							     uses: informational, because it does NOT hold this action. Its
+							     whole job is to stop the amber banner on the page behind this
+							     modal from being the reader's only statement about the gate. -->
+							<Alert color="blue" class="text-xs">
+								<PauseSolid class="h-4 w-4" />
+								{gateNote}
+							</Alert>
+						{/if}
 						{#if rollout && hasForceDeployAnnotation(rollout)}
 							<Alert color="blue" class="text-xs">
 								<ExclamationCircleSolid class="h-4 w-4" />
@@ -589,29 +651,36 @@
 							class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 						></textarea>
 
-						<div>
-							<label
-								for="cvm-confirm-version"
-								class="mb-1 block text-xs text-gray-500 dark:text-gray-400"
-							>
-								Type <span class="font-semibold text-blue-600 dark:text-blue-400"
-									>{getDisplaySelectedVersion()}</span
-								> to confirm
-							</label>
-							<input
-								id="cvm-confirm-version"
-								type="text"
-								bind:value={deployConfirmationVersion}
-								class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
-							/>
-						</div>
+						{#if needsTypedConfirmation}
+							<div>
+								<label
+									for="cvm-confirm-version"
+									class="mb-1 block text-xs text-gray-500 dark:text-gray-400"
+								>
+									{direction === 'rollback'
+										? 'Going backwards. Type'
+										: 'This version is not in the release list. Type'}
+									<span class="font-semibold text-blue-600 dark:text-blue-400"
+										>{getDisplaySelectedVersion()}</span
+									> to confirm
+								</label>
+								<input
+									id="cvm-confirm-version"
+									type="text"
+									bind:value={deployConfirmationVersion}
+									class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+								/>
+							</div>
+						{/if}
 
 						<div class="flex gap-2">
 							<Button color="light" class="flex-1" onclick={() => (open = false)}>Cancel</Button>
 							<Button
 								color={direction === 'rollback' ? 'yellow' : 'blue'}
 								class="flex-1"
-								disabled={deployConfirmationVersion !== getDisplaySelectedVersion() || direction === 'same'}
+								disabled={(needsTypedConfirmation &&
+									deployConfirmationVersion !== getDisplaySelectedVersion()) ||
+									direction === 'same'}
 								onclick={handleDeploy}
 							>
 								{#if direction === 'rollback'}

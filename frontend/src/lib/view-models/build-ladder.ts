@@ -96,14 +96,19 @@ export function buildLadder(cells: AppCell[]): BuildLadder {
 	 * `newest`. A sha is a hash; sorting by it is sorting by noise, and it fails
 	 * silently because the output still looks like a rank.
 	 *
-	 * So two fallbacks, in this order:
+	 * So three fallbacks, in this order:
 	 *   1. `created` — a fact about the build.
-	 *   2. THE ENV-ORDER RANK OF THE ENVIRONMENT CURRENTLY RUNNING IT. A
+	 *   2. ITS POSITION IN AN `availableReleases` LIST THAT CONTAINS IT. The
+	 *      list is oldest-first by contract, so `len - 1 - idx` counts the
+	 *      builds a single rollout can prove are newer. See `newerInLine`
+	 *      below for the 25-build under-report this fixes, and for why it is
+	 *      the MAX across lists and not the MIN.
+	 *   3. THE ENV-ORDER RANK OF THE ENVIRONMENT CURRENTLY RUNNING IT. A
 	 *      promotion chain guarantees a build reaches dev before staging before
 	 *      prod, so of two builds that are live right now, the one live further
 	 *      UPSTREAM is the newer one. This is the strongest signal available
 	 *      without release metadata.
-	 *   3. Latest deploy time. Only reached for builds that are live NOWHERE —
+	 *   4. Latest deploy time. Only reached for builds that are live NOWHERE —
 	 *      superseded entries in some environment's history — where the chain
 	 *      argument does not apply and "when did anyone last run it" is all
 	 *      there is.
@@ -121,6 +126,38 @@ export function buildLadder(cells: AppCell[]): BuildLadder {
 	 */
 	const deployedMs = new Map<string, number>();
 	const envRank = new Map<string, number>();
+	/**
+	 * HOW MANY BUILDS ARE NEWER THAN THIS ONE, AS THE LIST THAT KNOWS MOST
+	 * ABOUT IT ATTESTS. `availableReleases` is OLDEST-FIRST by the API's
+	 * contract, so `len - 1 - idx` counts the entries a single rollout can
+	 * PROVE are newer than this build.
+	 *
+	 * ⛔ THIS SIGNAL WAS BEING THROWN AWAY, AND IT UNDER-REPORTED BY 25. When
+	 * no rollout publishes `created` (a bare fixture, an app with no image
+	 * policy wired, `orders-api` in the mock), every `createdMs` is 0 and the
+	 * sort fell straight through to "which environment is running it" — so a
+	 * production sitting at index 8 of its own 33-entry release list, with 24
+	 * entries provably newer, ranked **1**, because dev happened to be running
+	 * the only build above it. Array position is not noise the way a sha is:
+	 * it is the controller's own ordering and it is a property of the BUILD
+	 * within a list, not of whichever environment happens to run it. So it
+	 * sits directly under `created` and above env order.
+	 *
+	 * ⚠️ IT IS THE MAX ACROSS LISTS, NOT THE MIN, AND THE DIFFERENCE IS NOT
+	 * COSMETIC. Two rollouts' lists have different HEADS whenever one has seen
+	 * a release the other has not, so "distance from the end" is not on a
+	 * common scale between them. Taking the MIN lets a build sitting near the
+	 * end of a SHORT list jump above a build further from the end of a LONG
+	 * one — measured on the aged-out fixture, it ranked `rel-5`, `rel-6` and
+	 * `rel-7` as NEWER than the build that sits at index 8 of the very list
+	 * that contains all four. That is a sort that contradicts its own input.
+	 * The MAX is the most pessimistic proof available and preserves each
+	 * list's internal order; where two builds never co-occur in any list their
+	 * true relation is genuinely undetermined, and over-stating a lag is the
+	 * safe direction — under-stating one is what this whole pass exists to
+	 * stop.
+	 */
+	const newerInLine = new Map<string, number>();
 
 	const absorb = (raw: Raw | undefined | null) => {
 		const version = displayOf(raw);
@@ -151,7 +188,14 @@ export function buildLadder(cells: AppCell[]): BuildLadder {
 	// such no matter which environment's history also happens to mention it.
 	let onReleaseLine = true;
 	for (const c of cells) {
-		for (const r of c.rollout.status?.availableReleases ?? []) absorb(r as Raw);
+		const releases = c.rollout.status?.availableReleases ?? [];
+		releases.forEach((r, i) => {
+			absorb(r as Raw);
+			const v = displayOf(r as Raw);
+			if (!v) return;
+			const newer = releases.length - 1 - i;
+			newerInLine.set(v, Math.max(newerInLine.get(v) ?? -Infinity, newer));
+		});
 	}
 	onReleaseLine = false;
 	for (const c of cells) {
@@ -174,6 +218,9 @@ export function buildLadder(cells: AppCell[]): BuildLadder {
 
 	const builds = [...seen.values()].sort((a, b) => {
 		if (b.createdMs !== a.createdMs) return b.createdMs - a.createdMs;
+		const na = newerInLine.get(a.version) ?? Number.POSITIVE_INFINITY;
+		const nb = newerInLine.get(b.version) ?? Number.POSITIVE_INFINITY;
+		if (na !== nb) return na - nb;
 		const ra = envRank.get(a.version) ?? Number.POSITIVE_INFINITY;
 		const rb = envRank.get(b.version) ?? Number.POSITIVE_INFINITY;
 		if (ra !== rb) return ra - rb;

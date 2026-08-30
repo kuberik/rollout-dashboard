@@ -180,11 +180,12 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization } from '../../../types';
 	import type { ManagedResourceStatus } from '../../../types/managed-resource';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	const appName = $derived(page.params.name as string);
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
@@ -469,7 +470,7 @@
 		},
 		enabled: podTargets.some((t) => t.refs !== null && t.refs.length > 0),
 		staleTime: 30_000,
-		refetchInterval: 30_000
+		refetchInterval: pollWhenHealthy(30_000)
 	}));
 	const podsByEnv = $derived<Record<string, number>>(podsQuery.data ?? {});
 

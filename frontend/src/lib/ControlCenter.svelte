@@ -6,6 +6,7 @@
 	import type { ClusterError } from '$lib/api/rollouts';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
+	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { shortenVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
@@ -16,13 +17,16 @@
 	import { Button } from 'flowbite-svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import PinBadge from '$lib/components/PinBadge.svelte';
+	import RollbackBadge from '$lib/components/RollbackBadge.svelte';
 	import RolloutStepper from '$lib/components/RolloutStepper.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { ChevronRightOutline, CloseCircleSolid, ClockSolid } from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 
@@ -54,11 +58,19 @@
 	const healthy = $derived.by<RolloutCard[]>(() =>
 		cards.filter((c) => c.statusKey === 'succeeded' && !c.stuck)
 	);
+	// ⛔ THE SPLIT READS `rank`, NOT `behind`. (2026-08-30) `c.behind` was
+	// `null` whenever the old per-rollout derivation could not answer, and
+	// `(null ?? 0) === 0` put those rollouts in STEADY — where the card then
+	// printed the word `newest`. On the live hub that filed `hello-world-app`
+	// in staging, nineteen builds behind, under "Steady", on the same page
+	// where its dev twin — running the IDENTICAL build — sat under "Trailing".
+	// `rankBehindBy` is 0 only for `newest`, `diverged` and `unknown`, and the
+	// last two are not steady either, so they are split out below.
 	const trailing = $derived.by<RolloutCard[]>(() =>
-		healthy.filter((c) => (c.behind?.behindBy ?? 0) > 0)
+		healthy.filter((c) => rankBehindBy(c.rank) > 0 || c.rank.kind === 'diverged')
 	);
 	const steadyAll = $derived.by<RolloutCard[]>(() =>
-		healthy.filter((c) => (c.behind?.behindBy ?? 0) === 0)
+		healthy.filter((c) => c.rank.kind === 'newest' || c.rank.kind === 'unknown')
 	);
 	const pendingCards = $derived.by<RolloutCard[]>(() =>
 		cards.filter((c) => c.statusKey === 'pending')
@@ -427,10 +439,29 @@
 							     `−1 vs dev` in a 10px sans that is in no type role. The
 							     upstream env moves into the title; amber goes back to being
 							     `stuck` and nothing else. -->
+							<!-- ⛔ THE NUMBER AND THE WORD BOTH COME OFF `c.rank` NOW.
+							     (2026-08-30) `−${c.behind.behindBy}` counted against this
+							     rollout's OWN release list, which gave two different numbers
+							     to two environments running one build. It is the shared
+							     ladder rank — `env-rank.ts` — and the spelling is `19 behind`,
+							     the one every rebuilt page already uses. Same Chip, same
+							     roles, same geometry. -->
+							<!-- ⛔ `/` SAID NEITHER OF THESE. A live UX critique rolled production
+							     back to a one-hour-old build and *"`/` rendered it exactly like a
+							     forward deploy — nothing said 'rollback', nothing said the version
+							     was pinned"*. `/rollouts` had the pin mark already; this page, the
+							     one a reader opens first, did not carry it at all. Both marks are
+							     the components those rows already use, in the same slot, at the
+							     same 9px, so nothing new is introduced to either page. -->
+							{#if c.rolledBack}
+								<RollbackBadge from={c.rolledBack.from} to={c.rolledBack.to} by={c.rolledBack.by} size="xs" />
+							{/if}
+							{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
 							<Chip
-								role="rank"
-								label={`−${c.behind?.behindBy ?? 0}`}
-								title={`${c.behind?.behindBy ?? 0} build${c.behind?.behindBy === 1 ? '' : 's'} behind ${c.behind?.fromEnv ?? 'upstream'}`}
+								role={rankRole(c.rank)}
+								label={rankLabel(c.rank)}
+								title={rankTitle(c.rank, c.envDisplay || c.name)}
+								wide
 								value={c.version ? shortenVersion(c.version) : '—'}
 								valueTitle={c.version ?? undefined}
 								class="min-w-0 shrink-0"
@@ -504,6 +535,14 @@
 							     that does not exist in the scale, in a second geometry, for
 							     the exact fact `/rollouts` states with a chip attached to the
 							     sha. One badge now, and the word is inside the one chip. -->
+							<!-- ⛔ FOUR BRANCHES BECAME TWO, AND THE `{:else}` THAT
+							     PRINTED `newest` IS THE ONE THAT HAD TO GO. (2026-08-30)
+							     It was reached whenever `c.behind` was null, which is what
+							     the old derivation returned for "cannot say" — so the
+							     card's most confident word was rendered from its least
+							     confident state. The verdict decides now, and an
+							     unresolvable one prints `unknown` in the `unranked` role.
+							     Same Chip, same roles, same geometry. -->
 							{#if c.statusKey === 'pending'}
 								<Chip
 									role="rank"
@@ -513,29 +552,23 @@
 									valueTitle={c.version ?? undefined}
 									class="min-w-0 shrink-0"
 								/>
-							{:else if c.behind && c.behind.behindBy}
-								<Chip
-									role="rank"
-									label={`−${c.behind.behindBy}`}
-									title={`${c.behind.behindBy} build${c.behind.behindBy === 1 ? '' : 's'} behind the newest release`}
-									value={c.version ? shortenVersion(c.version) : '—'}
-									valueTitle={c.version ?? undefined}
-									class="min-w-0 shrink-0"
-								/>
-							{:else if c.behind}
-								<Chip
-									role="rank"
-									label="behind"
-									title="Behind the newest release"
-									value={c.version ? shortenVersion(c.version) : '—'}
-									valueTitle={c.version ?? undefined}
-									class="min-w-0 shrink-0"
-								/>
 							{:else}
+								<!-- ⛔ `/` SAID NEITHER OF THESE. A live UX critique rolled production
+								     back to a one-hour-old build and *"`/` rendered it exactly like a
+								     forward deploy — nothing said 'rollback', nothing said the version
+								     was pinned"*. `/rollouts` had the pin mark already; this page, the
+								     one a reader opens first, did not carry it at all. Both marks are
+								     the components those rows already use, in the same slot, at the
+								     same 9px, so nothing new is introduced to either page. -->
+								{#if c.rolledBack}
+									<RollbackBadge from={c.rolledBack.from} to={c.rolledBack.to} by={c.rolledBack.by} size="xs" />
+								{/if}
+								{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
 								<Chip
-									role="newest"
-									label="newest"
-									title="On the newest build"
+									role={rankRole(c.rank)}
+									label={rankLabel(c.rank)}
+									title={rankTitle(c.rank, c.envDisplay || c.name)}
+									wide
 									value={c.version ? shortenVersion(c.version) : '—'}
 									valueTitle={c.version ?? undefined}
 									class="min-w-0 shrink-0"

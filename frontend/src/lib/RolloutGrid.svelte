@@ -10,18 +10,21 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
+	import { rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { SearchOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
+	import RollbackBadge from '$lib/components/RollbackBadge.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../types';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
@@ -392,7 +395,6 @@
 					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
 						{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
-							{@const behindBy = c.behind?.behindBy ?? 0}
 							<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS
 							     EVERY OTHER PAGE'S. This card used to hand-roll it: a
 							     `rounded-md` box (a sixth radius against the legal two), a
@@ -406,12 +408,34 @@
 							     `#d97706`, an amber `−N` half sat in the same card as an
 							     amber-inked `PROD` env chip; `rank` is red now (see
 							     `Chip.svelte`) and this card no longer overrides it. -->
+							<!-- ⛔ THE VALUE IN THIS BADGE WAS WRONG, AND ON ONE PAGE IT
+							     CONTRADICTED ITSELF. (2026-08-30) It read `c.behind`, which
+							     counted against the ROLLOUT'S OWN `availableReleases` and
+							     returned `null` whenever it could not answer — and `null`
+							     fell through to the word `newest` on the line above. On the
+							     live hub `hello-world-app` runs the same build `991829b` in
+							     dev and staging and this printed `dev −15 991829b` beside
+							     `staging newest 991829b`. Same build, adjacent rows, one
+							     page, two verdicts.
+
+							     It reads `c.rank` now — `view-models/env-rank.ts`, the ONE
+							     denominator, the same object `/apps` and `/environments`
+							     print. `unknown` renders the `unranked` role and the WORD
+							     `unknown`: DESIGN.md's rule is that an unresolvable
+							     comparison never gets rendered as a definite claim, and
+							     `newest` was the most definite claim available.
+
+							     GEOMETRY UNCHANGED: same `Chip`, same joined badge, same
+							     four roles. Only the number and, for `behind`, the spelling
+							     (`−19` → `19 behind`, matching every other page). -->
 							{@const rel =
 								c.statusKey === 'pending'
-									? { role: 'unranked' as const, txt: 'pending' }
-									: !c.behind
-										? { role: 'newest' as const, txt: 'newest' }
-										: { role: 'rank' as const, txt: behindBy ? `−${behindBy}` : 'behind' }}
+									? { role: 'unranked' as const, txt: 'pending', tip: 'No deploy yet' }
+									: {
+											role: rankRole(c.rank),
+											txt: rankLabel(c.rank),
+											tip: rankTitle(c.rank, c.envDisplay || c.name)
+										}}
 							<a
 								href={rolloutHref}
 								class="environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
@@ -436,10 +460,31 @@
 								<!-- Version tag + last change -->
 								<div class="flex items-center justify-between gap-2">
 									<span class="flex min-w-0 items-center gap-1.5">
+										<!-- ⛔ A ROLLBACK USED TO BE INDISTINGUISHABLE FROM A DEPLOY
+										     ON EVERY LIST SURFACE. A live UX critique rolled production
+										     back to a one-hour-old build and this card drew it exactly
+										     like a forward one. `RollbackBadge` is `PinBadge`'s geometry
+										     character for character and sits in `PinBadge`'s own slot —
+										     the marks that qualify the build, left of the joined chip. -->
+										{#if c.rolledBack}
+											<RollbackBadge
+												from={c.rolledBack.from}
+												to={c.rolledBack.to}
+												by={c.rolledBack.by}
+												size="xs"
+											/>
+										{/if}
 										{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
+										<!-- `wide` LIFTS THE 12ch CAP, and it is REQUIRED by the
+										     new label. `−19` fit; `19 BEHIND` at the chip's uppercase
+										     tracking renders `19 BEHI…`, which is not a word. Same
+										     opt-out `/environments` and `/envs/*` already use for
+										     this exact string. -->
 										<Chip
 											role={rel.role}
 											label={rel.txt}
+											title={rel.tip}
+											wide
 											value={c.version ? shortenVersion(c.version) : '—'}
 											valueTitle={c.version ?? 'no build'}
 											valueDim={!c.version}

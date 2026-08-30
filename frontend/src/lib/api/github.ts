@@ -1,3 +1,5 @@
+import { ApiError, apiJson } from './errors';
+
 export type CommitInfo = {
     sha: string;
     message: string;
@@ -25,10 +27,22 @@ export type CommitsResponse = {
 // (not-connected) vs. a "you don't have access" note vs. a generic error.
 export type CommitsError = 'not_connected' | 'no_access' | 'error';
 
-export class FetchCommitsError extends Error {
+/**
+ * ⛔ IT EXTENDS `ApiError` NOW, AND THAT IS THE WHOLE POINT.
+ *
+ * A live UX critique measured **16 consecutive 401s** on this endpoint,
+ * retried indefinitely, flooding the console with nothing visible on screen.
+ * The cause was that this was a plain `Error`: it carried no status, so the
+ * query client's retry policy could not tell "the user has not connected
+ * GitHub" (an answer — a person has to act) from "the server hiccuped" (worth
+ * one more try). Carrying the status makes `isRetryable` correct for free, and
+ * `reason` stays for the three different things the UI SAYS.
+ */
+export class FetchCommitsError extends ApiError {
     reason: CommitsError;
-    constructor(reason: CommitsError, message: string) {
-        super(message);
+    constructor(reason: CommitsError, message: string, status = 0, detail = '', url = '') {
+        super(status, message, detail || message, url);
+        this.name = 'FetchCommitsError';
         this.reason = reason;
     }
 }
@@ -61,24 +75,50 @@ export async function fetchCommits(
 ): Promise<CommitsResponse> {
     const params = new URLSearchParams({ base, head });
     if (cluster) params.set('cluster', cluster);
-    const res = await fetch(`/api/rollouts/${namespace}/${name}/commits?${params}`);
+    const url = `/api/rollouts/${namespace}/${name}/commits?${params}`;
+    const res = await fetch(url).catch(() => null);
+    if (!res) {
+        throw new FetchCommitsError('error', 'No response from the server', 0, '', url);
+    }
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         if (body.error === 'github_not_connected') {
-            throw new FetchCommitsError('not_connected', 'Connect GitHub to see changes');
+            throw new FetchCommitsError(
+                'not_connected',
+                'Connect GitHub to see changes',
+                res.status,
+                'GitHub account not connected',
+                url
+            );
         }
         if (body.error === 'github_no_access') {
-            throw new FetchCommitsError('no_access', 'You do not have access to this repository');
+            throw new FetchCommitsError(
+                'no_access',
+                'You do not have access to this repository',
+                res.status,
+                body.details || 'No access to this repository',
+                url
+            );
         }
-        throw new FetchCommitsError('error', body.error || 'Failed to fetch commit range');
+        throw new FetchCommitsError(
+            'error',
+            body.error || 'Failed to fetch commit range',
+            res.status,
+            body.details || body.error || '',
+            url
+        );
     }
     return (await res.json()) as CommitsResponse;
 }
 
 export async function fetchGithubStatus(): Promise<GithubStatus> {
-    const res = await fetch('/api/auth/github/status');
-    if (!res.ok) return { configured: false, connected: false };
-    return (await res.json()) as GithubStatus;
+    // Not being able to ask IS the answer here: "GitHub is not available to
+    // you". There is nothing for the reader to do about it and nothing to
+    // print, so this one legitimately swallows.
+    return apiJson<GithubStatus>('/api/auth/github/status').catch(() => ({
+        configured: false,
+        connected: false
+    }));
 }
 
 // Full-page navigation to start the OAuth flow (a 302 to GitHub can't be

@@ -107,7 +107,11 @@ describe('env-rank — the one denominator', () => {
 		rollouts[2] = rollout('app', 'prod', [{ sha: 'fff9999', agoMin: 20 }], RELEASES);
 		const g = groupRolloutsByApp(rollouts, environments).get('app')!;
 		expect(rankVerdictFor(g, 'prod')).toEqual({ kind: 'diverged' });
-		expect(rankLabel(rankVerdictFor(g, 'prod'))).toBe('diverged');
+		// ⛔ THE WORD IS `unreleased`, NOT `diverged`. (2026-08-30) `diverged`
+		// is git's name for two branches; the fact is that this build was never
+		// released to any environment. `rankLabel` is the ONE formatter now, so
+		// every page prints this word and no call site may spell its own.
+		expect(rankLabel(rankVerdictFor(g, 'prod'))).toBe('unreleased');
 		expect(rankBehindBy(rankVerdictFor(g, 'prod'))).toBe(0);
 	});
 
@@ -117,9 +121,14 @@ describe('env-rank — the one denominator', () => {
 		const g = groupRolloutsByApp(rollouts, environments).get('app')!;
 		const v = rankVerdictFor(g, 'prod');
 		expect(v).toEqual({ kind: 'unknown' });
-		// Silence, not a zero — a `0` here would render as "newest".
-		expect(rankLabel(v)).toBeNull();
-		expect(rankRole(v)).toBeNull();
+		// ⛔ THE WORD `unknown`, NOT `null`, AND NOT A ZERO. (2026-08-30)
+		// Returning `null` here is what caused the worst defect in the product:
+		// four call sites treated "the formatter has nothing to say" as their
+		// `{:else}` and printed the word `newest` into it. A total formatter
+		// removes the branch that could go wrong.
+		expect(rankLabel(v)).toBe('unknown');
+		expect(rankRole(v)).toBe('unranked');
+		expect(rankBehindBy(v)).toBe(0);
 	});
 
 	it('orders by release time, not by sha, when no availableReleases are published', () => {
@@ -145,8 +154,11 @@ describe('env-rank — the one denominator', () => {
 		expect(rankRole({ kind: 'newest' })).toBe('newest');
 		expect(rankRole({ kind: 'behind', by: 3 })).toBe('rank');
 		expect(rankRole({ kind: 'diverged' })).toBe('diverged');
-		expect(rankRole({ kind: 'unknown' })).toBeNull();
-		expect(rankLabel({ kind: 'behind', by: 19 })).toBe('−19');
+		expect(rankRole({ kind: 'unknown' })).toBe('unranked');
+		// ⛔ `N behind`, NOT `−N`. One spelling, product-wide.
+		expect(rankLabel({ kind: 'behind', by: 19 })).toBe('19 behind');
+		expect(rankLabel({ kind: 'behind', by: 1 })).toBe('1 behind');
+		expect(rankLabel({ kind: 'newest' })).toBe('newest');
 		expect(rankIsAdverse({ kind: 'newest' })).toBe(false);
 		expect(rankIsAdverse({ kind: 'behind', by: 1 })).toBe(true);
 		expect(rankIsAdverse({ kind: 'diverged' })).toBe(true);

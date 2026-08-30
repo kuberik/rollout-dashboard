@@ -67,7 +67,6 @@
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import {
 		rankVerdicts,
-		rankLabel,
 		rankRole,
 		rankBehindBy,
 		rankIsAdverse
@@ -78,6 +77,7 @@
 		promotionBlock,
 		detectStuckPromotion
 	} from '$lib/view-models/promotion';
+	import { pollWhenHealthy } from '$lib/api/errors';
 	import type { PromotionBlock } from '$lib/view-models/promotion';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { StatusKey } from '$lib/rollout-cards';
@@ -168,7 +168,7 @@
 	const envName = $derived(page.params.name as string);
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
@@ -1118,10 +1118,15 @@
 										     behind`, `head` → `newest`, `diverged` → `unreleased`,
 										     `pending` → `never deployed`. Same four `Chip` roles,
 										     same four colour values, same joined-box geometry.
-										     `rankLabel` is the SHARED formatter and it still
-										     returns `−N`, so this call site spells its own label
-										     rather than changing a string `/` and `/rollouts`
-										     also render. -->
+										     `rankLabel` IS THE SHARED FORMATTER AND IT NOW RETURNS
+										     THESE WORDS (updated 2026-08-30) — `N behind`,
+										     `unreleased`, `unknown`, `newest`. `/` and
+										     `/rollouts` render the same strings from the same
+										     function, so the split this note recorded is closed.
+										     These call sites keep their explicit branches only
+										     because each carries a page-specific `title` and,
+										     for `newest`, the `head` role rather than the mint
+										     one — the per-row-repetition argument in DESIGN.md. -->
 										{#if !row.version}
 											<Chip
 												role="unranked"
@@ -1149,6 +1154,23 @@
 												) === 1
 													? ''
 													: 's'} older than the newest one it has"
+												value={row.version}
+												valueHref={row.versionHref}
+												wide
+												class="min-w-0"
+											/>
+										{:else if row.rank.kind === 'unknown'}
+											<!-- ⛔ AN UNRESOLVABLE COMPARISON IS NOT `newest`.
+											     (2026-08-30) The `{:else}` below was reached by
+											     `unknown` as well as by `newest`, so a build the
+											     ladder could not place printed the page's
+											     good-news word. `unranked` + `unknown` — the same
+											     role the never-deployed branch above uses, and
+											     the word `rankLabel` now returns. -->
+											<Chip
+												role="unranked"
+												label="unknown"
+												title="{row.appName} here is running {row.version}, which cannot be placed on this app’s build ladder"
 												value={row.version}
 												valueHref={row.versionHref}
 												wide

@@ -351,9 +351,7 @@ function buildRow(
 			labelDiffers: label !== short && !revision.startsWith(label),
 			rank: placed ? placed.rank : null,
 			ladderLength: ctx.ladder.builds.length,
-			diverged: placed
-				? divergedFromLine(ctx.ladder, placed.version, lastDeployMs)
-				: false,
+			diverged: placed ? divergedFromLine(ctx.ladder, placed.version, lastDeployMs) : false,
 			slots,
 			liveSlots: slots.filter((s) => s.onIt).length
 		});
@@ -540,9 +538,7 @@ export function buildRevisionLedger(
 			a.revision.localeCompare(b.revision);
 
 		const rows = [...deployed]
-			.map((rev) =>
-				buildRow(rev, createdMs.get(rev) ?? 0, lastDeployMs.get(rev) ?? 0, repo.ctxs)
-			)
+			.map((rev) => buildRow(rev, createdMs.get(rev) ?? 0, lastDeployMs.get(rev) ?? 0, repo.ctxs))
 			.filter((r) => r.services.length > 0)
 			// Newest first, by BUILD CREATION time — the same ordering the ladder
 			// itself uses. Deploy recency is only the tiebreak, because a promotion
@@ -581,12 +577,16 @@ export function buildRevisionLedger(
 	return out.sort((a, b) => b.lastDeployMs - a.lastDeployMs);
 }
 
-
 /** The rank sentence for the detail table — one rank, its own denominator. */
 export function rankSentence(service: RevisionService): { rank: string; of: string } | null {
 	if (service.rank === null || service.ladderLength === 0) return null;
+	// ⛔ `N behind`, NOT `−N`. (2026-08-30) `env-rank.ts`'s `rankLabel` is the
+	// product's one spelling and this was the last derivation still producing
+	// the signed-integer form — it reached the screen as `hello-multi-app −1
+	// 6f9524e of 32` on `/versions/<rev>`, a page whose other three rank chips
+	// already said `19 behind`. Same chip, same role, same geometry.
 	return {
-		rank: service.rank === 0 ? 'newest' : `−${service.rank}`,
+		rank: service.rank === 0 ? 'newest' : `${service.rank} behind`,
 		of: `of ${service.ladderLength}`
 	};
 }

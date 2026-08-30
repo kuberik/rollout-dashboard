@@ -318,12 +318,13 @@
 		     exists on no scale, and the sentence already says "window". -->
 		<p class="t-micro text-gray-500 dark:text-gray-400">
 			{#if nextChange}
-				Deploy window opens in <span class="text-gray-600 dark:text-gray-300"
+				Automatic deploys resume in <span class="text-gray-600 dark:text-gray-300"
 					>{formatTimeUntil(nextChange)}</span
 				>
 				· {formatTime(nextChange)}
 			{:else}
-				Blocked by {blockingSchedules.length} deploy schedule{blockingSchedules.length === 1
+				Automatic deploys paused by {blockingSchedules.length} schedule{blockingSchedules.length ===
+				1
 					? ''
 					: 's'}
 			{/if}
@@ -331,12 +332,39 @@
 	{/if}
 {:else if !loading && !error && allSchedules.length > 0}
 	{#if isBlocked}
+		<!--
+			⛔ THIS BANNER USED TO SAY SOMETHING FALSE, AND IT WAS FALSE FOR
+			EXACTLY THE ACTION THE READER WAS ABOUT TO TAKE.
+
+			It said *"Deployments currently blocked. Will be allowed in 2d 1h."*
+			A live UX critique read that, pressed the blue `Deploy` twelve pixels
+			below it, typed the sha, and **production changed immediately** — and
+			the page then rendered the new version `Deploying` with this banner
+			still above it.
+
+			The controller is unambiguous about why
+			(`rollout_controller.go`, gating logic):
+
+			    if !r.hasManualDeployment(&rollout) && len(history) > 0 {
+			        if !gatesPassing { return }   // nothing happens
+			    }
+
+			and `hasManualDeployment` is true whenever `spec.wantedVersion` is set
+			or the `force-deploy` annotation is present — i.e. for every deploy a
+			person starts from this page. **A gate holds back AUTOMATIC PROMOTION
+			ONLY.** So the banner names what is actually paused, and the second
+			line states the other half rather than leaving the reader to discover
+			it by changing production.
+
+			Composition is untouched: same `AlertPanel`, same `warning`, same
+			calendar glyph, same chip on the right. Only the words moved.
+		-->
 		<AlertPanel
 			severity="warning"
-			title="Deployments currently blocked"
+			title="Automatic deploys are paused"
 			message={nextChange
-				? `Will be allowed in ${formatTimeUntil(nextChange)} (${formatTime(nextChange)}).`
-				: 'Check schedule rules for deployment windows.'}
+				? `Nothing promotes itself until ${formatTimeUntil(nextChange)} (${formatTime(nextChange)}). A deploy you start by hand still applies immediately.`
+				: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
 			icon={CalendarWeekSolid}
 			pulse
 		>
@@ -361,7 +389,9 @@
 				<div class="flex items-center gap-2">
 					<CalendarWeekSolid class="h-4 w-4 text-amber-600 dark:text-amber-300" />
 					<p class="text-sm font-semibold tracking-tight">
-						{blockingSchedulesFull.length === 1 ? 'Blocking schedule' : 'Blocking schedules'}
+						{blockingSchedulesFull.length === 1
+							? 'Schedule holding automatic deploys'
+							: 'Schedules holding automatic deploys'}
 					</p>
 				</div>
 			</div>
@@ -393,7 +423,9 @@
 						{/if}
 						{#if schedule.status?.nextTransition}
 							<p class="mt-2 text-xs text-amber-700/80 dark:text-amber-300/70">
-								Allowed in <span class="font-medium">{formatTimeUntil(schedule.status.nextTransition)}</span>
+								Automatic deploys resume in <span class="font-medium"
+									>{formatTimeUntil(schedule.status.nextTransition)}</span
+								>
 								· {formatTime(schedule.status.nextTransition)}
 							</p>
 						{/if}
@@ -404,8 +436,8 @@
 	{:else if isAllowed && isClosingSoon && !isWarningDismissed}
 		<AlertPanel
 			severity="warning"
-			title="Deployment window closing soon"
-			message={`Window closes in ${formatTimeUntil(nextChange!)} (${formatTime(nextChange!)}).`}
+			title="Automatic deploys pause soon"
+			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} (${formatTime(nextChange!)}). Deploys you start by hand are not affected.`}
 			icon={ClockSolid}
 		>
 			{#snippet actions()}

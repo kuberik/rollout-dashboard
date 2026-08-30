@@ -1,8 +1,56 @@
+import type { Rollout, Environment } from '$lib/../types';
 import type { AppGroup, AppCell } from '$lib/version-utils';
+import { groupRolloutsByApp } from '$lib/version-utils';
 import { getDisplayVersion } from '$lib/utils';
 import { buildLadder, divergedFromLine } from './build-ladder';
 
 /**
+ * ⛔ WHAT "N BEHIND" MEANS, AND WHY IT IS THIS AND NOT THE OTHER TWO.
+ * (Decided 2026-08-30, from three surfaces disagreeing about one rollout.)
+ *
+ * **N behind = the rank of the build an environment is RUNNING on its APP'S
+ * BUILD LADDER** — the union, across every environment of that app, of every
+ * rollout's `availableReleases` plus every build any of them has actually
+ * deployed, ordered newest-first by release creation time (`build-ladder.ts`).
+ *
+ * There were three defensible denominators and the product was silently
+ * mixing them. Measured on the live hub, `hello-world-app`, cluster settled:
+ *
+ *   |          | dev 991829b | staging 991829b | prod 51b976a |
+ *   |----------|-------------|-----------------|--------------|
+ *   | own list |     15      |       14        |      19      |
+ *   | LADDER   |   **19**    |     **19**      |    **24**    |
+ *
+ * **(1) THE ROLLOUT'S OWN `availableReleases` / `releaseCandidates` LOSES.**
+ * It is a real quantity — *"what could this rollout deploy next"* — and the
+ * product still prints it, as `N versions waiting to move` (`promotion.ts`).
+ * It cannot be the RANK, because it is not a property of the build. dev and
+ * staging run the IDENTICAL build `991829b` and their own lists answer 15 and
+ * 14, because each rollout's gates and retention admit a different subset. Put
+ * that in a chip attached to a sha and the same sha carries two numbers on
+ * adjacent rows. A reader cannot act on a number that moves when a DIFFERENT
+ * rollout's window rolls.
+ *
+ * **(2) EVERY BUILD THE REPO PRODUCED LOSES.** `/versions` groups by repo, and
+ * apps that share a source repo ship independent streams — `hello-world-app`
+ * and `hello-multi-app` are both built out of `kuberik-testing`. Ranking one
+ * against the other's builds is a comparison that cannot be resolved, and
+ * DESIGN.md's rule is that those print `unknown`, not a number.
+ *
+ * **(3) THE LADDER WINS, AND IT EXPLAINS THE ASYMMETRY RATHER THAN HIDING IT.**
+ * dev publishes 16 releases, staging 15, prod 20. Those are not three ladders;
+ * they are three WINDOWS onto one ladder of 25 builds. The union is the app's
+ * real history and each rollout's own list is a view of it — which is exactly
+ * why the union is the denominator for "how old is this code" and each
+ * rollout's own list is the denominator for "what can move next". Two
+ * questions, two numbers, and now neither is spelled in the other's words.
+ *
+ * It is also the only candidate that is per-APP and shared, which is what
+ * `/apps` and `/environments` need: those pages RANK ENVIRONMENTS AGAINST EACH
+ * OTHER, and a ranking needs one denominator or it is not a ranking.
+ *
+ * ── THE ORIGINAL 2026-08-23 NOTE, WHICH THIS EXTENDS ──────────────────────
+ *
  * ONE DENOMINATOR FOR "HOW FAR BEHIND IS THIS ENVIRONMENT", PRODUCT-WIDE.
  *
  * `/apps/[name]` already had the right answer and called it THE ONE
@@ -88,36 +136,73 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 	return out;
 }
 
+/**
+ * EVERY ROLLOUT ON THE CLUSTER, RANKED, KEYED BY ROLLOUT OBJECT.
+ *
+ * `/` and `/rollouts` do not have an `AppGroup` in hand — they render a flat
+ * list of rollouts — and that is the whole reason they went on inventing their
+ * own answer for three rounds. This is the flat-list door onto the same
+ * derivation: it groups the fleet exactly as `/apps` does and ranks every cell
+ * against its own app's ladder, so a rollout card and an app row cannot print
+ * different numbers for one rollout.
+ *
+ * Rollouts with no `Environment` binding still get a group (by rollout name,
+ * one cell per namespace — `groupRolloutsByApp`'s own fallback), so nothing
+ * silently drops out and renders as `newest`.
+ */
+export function rankVerdictsByRollout(
+	rollouts: Rollout[],
+	environments: Environment[]
+): Map<Rollout, RankVerdict> {
+	const out = new Map<Rollout, RankVerdict>();
+	for (const group of groupRolloutsByApp(rollouts, environments).values()) {
+		const ranks = rankVerdicts(group);
+		for (const cell of group.cells) out.set(cell.rollout, ranks.get(cell) ?? { kind: 'unknown' });
+	}
+	return out;
+}
+
 /** One environment tier's verdict within an app, or `unknown` if unbound. */
 export function rankVerdictFor(group: AppGroup, envTier: string): RankVerdict {
-	const cell = group.cells.find(
-		(c) => (c.environment?.spec?.environment ?? c.envName) === envTier
-	);
+	const cell = group.cells.find((c) => (c.environment?.spec?.environment ?? c.envName) === envTier);
 	if (!cell) return { kind: 'unknown' };
 	return rankVerdicts(group).get(cell) ?? { kind: 'unknown' };
 }
 
 /**
- * The chip label, or null when there is nothing honest to print.
+ * THE CHIP LABEL — ONE SPELLING, PRODUCT-WIDE, AND IT IS TOTAL.
  *
- * `unknown` returns null on purpose. DESIGN.md: never render an unresolvable
- * comparison as a definite claim — silence beats a confident wrong number.
+ * ⛔ It used to return `null` for `unknown`, and every call site then spelled
+ * its own fallback. Four of them fell through to the word `newest`, which is
+ * the exact defect DESIGN.md forbids: *never render an unresolvable comparison
+ * as a definite claim.* Returning `null` invited the fallback; returning the
+ * WORD removes the branch. `unknown` is a legible answer and it is the honest
+ * one — the `unranked` Chip role exists for precisely this.
+ *
+ * ⛔ AND IT IS `N behind`, NOT `−N`. (2026-08-30) A signed integer beside a
+ * build id reads as a diff and names no unit. `/environments`, `/envs/*`,
+ * `/apps` and the dependencies tab already said `N behind` while `/`,
+ * `/rollouts` and `/versions/<rev>` still said `−N` — one fact, two spellings,
+ * which is how a term becomes insider vocabulary. It is spelled here now, so
+ * no page can spell it a third way.
  */
-export function rankLabel(v: RankVerdict): string | null {
+export function rankLabel(v: RankVerdict): string {
 	switch (v.kind) {
 		case 'newest':
 			return 'newest';
 		case 'behind':
-			return `−${v.by}`;
+			return `${v.by} behind`;
 		case 'diverged':
-			return 'diverged';
+			// Not git's word. The fact is that this build was never released
+			// to any environment — see the vocabulary table in DESIGN.md.
+			return 'unreleased';
 		default:
-			return null;
+			return 'unknown';
 	}
 }
 
-/** The Chip role that matches the verdict, or null when nothing prints. */
-export function rankRole(v: RankVerdict): 'newest' | 'rank' | 'diverged' | null {
+/** The Chip role that matches the verdict. Total — `unknown` is `unranked`. */
+export function rankRole(v: RankVerdict): 'newest' | 'rank' | 'diverged' | 'unranked' {
 	switch (v.kind) {
 		case 'newest':
 			return 'newest';
@@ -126,7 +211,25 @@ export function rankRole(v: RankVerdict): 'newest' | 'rank' | 'diverged' | null 
 		case 'diverged':
 			return 'diverged';
 		default:
-			return null;
+			return 'unranked';
+	}
+}
+
+/**
+ * The `title` for a rank chip, in one voice. `subject` names what is being
+ * ranked — an app name on a per-environment page, an environment label on a
+ * per-app one.
+ */
+export function rankTitle(v: RankVerdict, subject: string): string {
+	switch (v.kind) {
+		case 'newest':
+			return `${subject} is on the newest version this app has`;
+		case 'behind':
+			return `${subject} is ${v.by} version${v.by === 1 ? '' : 's'} older than the newest one this app has`;
+		case 'diverged':
+			return `${subject} is running a version that is on no environment’s release list`;
+		default:
+			return `${subject}'s distance from the newest version cannot be resolved`;
 	}
 }
 

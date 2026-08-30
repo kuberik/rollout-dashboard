@@ -12,6 +12,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { SvelteFlowProvider } from '@xyflow/svelte';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -28,7 +29,7 @@
 			name,
 			cluster,
 			options: {
-				refetchInterval: 5000
+				refetchInterval: pollWhenHealthy(5000)
 			}
 		})
 	);
@@ -51,7 +52,7 @@
 	 * instance, and that instance has its own tab.
 	 */
 	const listQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { refetchInterval: 15000 } })
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000) } })
 	);
 
 	const environment = $derived(rolloutQuery.data?.environment);

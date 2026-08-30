@@ -17,6 +17,7 @@
 	import GithubConnectButton from '$lib/components/GithubConnectButton.svelte';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import type { Environment } from '../types';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 	let switcherOpen = $state(false);
@@ -80,7 +81,7 @@
 			name: name || '',
 			cluster,
 			options: {
-				refetchInterval: 5000,
+				refetchInterval: pollWhenHealthy(5000),
 				enabled: isRolloutPage && !!namespace && !!name
 			}
 		})

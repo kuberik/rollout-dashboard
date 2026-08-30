@@ -21,6 +21,196 @@ Run anything that compiles with the sandbox disabled, or hand the test run to th
 Healthy `en.js` is **160 bytes**. Full write-up in
 `.agents-context/ENVIRONMENT.md`.
 
+## ⛔ "N BEHIND" HAS ONE DEFINITION NOW, AND THE OLD ONE MADE A PAGE CONTRADICT ITSELF (2026-08-30)
+
+> Measured on the live hub, `hello-world-app`, cluster fully settled, nothing deploying:
+>
+> ```
+> /rollouts     dev −15 991829b │ staging  newest 991829b │ prod −19 51b976a
+> /apps/[name]  19 behind       │ 19 behind               │ 24 behind
+> ```
+>
+> **dev and staging run the IDENTICAL build `991829b`, on the same page, in adjacent rows —
+> one said `−15`, the other said `newest`.** That is not two defensible definitions
+> disagreeing. That is one page contradicting itself.
+
+### THE DEFINITION, AND THE ARGUMENT FOR IT
+
+**`N behind` = the rank of the build an environment is RUNNING on its APP'S BUILD LADDER** —
+the union, across every environment of that app, of every rollout's `availableReleases` plus
+every build any of them has actually deployed, ordered newest-first by release creation time.
+That is `view-models/build-ladder.ts`, read through `view-models/env-rank.ts`. **One
+derivation, one module, and every surface reads it.**
+
+Three denominators were defensible and the codebase was silently mixing them. On
+`hello-world-app`:
+
+| | dev `991829b` | staging `991829b` | prod `51b976a` |
+|---|---|---|---|
+| **1. this rollout's own `availableReleases`** | 15 | **14** | 19 |
+| **2. the app's ladder (union) — CHOSEN** | **19** | **19** | **24** |
+| **3. every build the repo produced** | unresolvable | unresolvable | unresolvable |
+
+**(1) THE ROLLOUT'S OWN LIST LOSES, AND ITS OWN NUMBERS ARE THE PROOF.** It is a real
+quantity — *"what could this rollout deploy next"* — and the product still prints it, as
+`N versions waiting to move` and `15 newer versions ready`. It cannot be the RANK, because it
+is **not a property of the build**: dev and staging run one sha and their own lists answer 15
+and 14, because each rollout's gates and retention admit a different subset. Put that in a
+chip attached to a sha and the same sha carries two numbers on adjacent rows. **A person
+cannot act on a number that moves when a DIFFERENT rollout's window rolls.** This is the same
+argument that ruled out the hop lag in 2026-08-23, applied one level down.
+
+**(2) THE LADDER WINS, AND IT EXPLAINS THE ASYMMETRY RATHER THAN HIDING IT.** dev publishes
+16 releases, staging 15, prod 20 — the asymmetry the brief called out as real data. Those are
+**not three ladders; they are three WINDOWS onto one ladder of 25 builds.** The union is the
+app's history; each rollout's list is a view of it. That is exactly why the union answers
+*"how old is the code running here"* and each rollout's own list answers *"what can move next"*
+— two questions, two numbers, and neither is now spelled in the other's words. It is also the
+only candidate that is per-APP and shared, which `/apps` and `/environments` require: those
+pages RANK ENVIRONMENTS AGAINST EACH OTHER, and a ranking needs one denominator or it is not
+a ranking.
+
+**(3) REPO-WIDE LOSES.** `/versions` groups by repo and apps that share a source repo ship
+independent streams — `hello-world-app` and `hello-multi-app` are both built out of
+`kuberik-testing` and are 19 and 0 behind respectively. Ranking one against the other's builds
+is a comparison that cannot be resolved, and this file's own rule is that those print
+`unknown`.
+
+### THE MECHANISM — TWO BUGS IN ONE FUNCTION
+
+`rollout-cards.ts::computeBehind`, which fed `/` and `/rollouts` and nothing else:
+
+1. **It counted against the rollout's own `availableReleases`**, so dev printed `−15` where
+   staging would have printed `−14` for one build.
+2. **Worse: when it could not answer it returned `null`, and both call sites rendered `null`
+   as the word `newest`.** staging fell into exactly that hole — `compareRollouts` went silent
+   (no history overlap) and no peer had a smaller own-list count. **The card's most confident
+   word was rendered from its least confident state.** `ControlCenter`'s
+   `(behind?.behindBy ?? 0) === 0` did the same thing one level up and filed a
+   nineteen-builds-behind staging under **Steady**.
+
+`computeBehind` still exists and **no longer measures anything** — it names a peer.
+`behind.behindBy` is overwritten from the ladder rank so the two cannot disagree.
+
+### `rankLabel` IS TOTAL NOW, AND THAT IS THE STRUCTURAL FIX
+
+It used to return `null` for `unknown`, which **invited every call site to spell its own
+fallback** — and four of them fell through to `newest`. A `null` return is a branch waiting to
+go wrong. Every verdict has a word now:
+
+| verdict | label | `Chip` role |
+|---|---|---|
+| `newest` | `newest` | `newest` (`head` where a page argues per-row repetition) |
+| `behind` | **`N behind`** | `rank` |
+| `diverged` | `unreleased` | `diverged` |
+| `unknown` | **`unknown`** | `unranked` |
+
+`rankRole` is total for the same reason, and `rankTitle` writes the tooltip so the three pages
+that had hand-rolled one now share a voice.
+
+### ⛔ `−N` IS GONE FROM EVERY CHIP IN THE PRODUCT
+
+The debt this file logged on 2026-08-30 (*"`/` AND `/rollouts` STILL PRINT `−N`, AND THAT IS A
+KNOWN, DELIBERATE SPLIT"*) is closed, and two more call sites nobody had logged went with it:
+
+| call site | was | now |
+|---|---|---|
+| `RolloutGrid.svelte` (`/rollouts`) | `−15` / `newest` | `19 behind` |
+| `ControlCenter.svelte` (`/`), Trailing + Steady | `−N` / `newest` | `N behind` |
+| `versions/[...slug]` stage chips | `−19` | `19 behind` |
+| `revision-ledger.ts::rankSentence` | `−1` | `1 behind` |
+
+**The one `−N` left in the product is deliberate:** `/apps/[name]`'s 24px `tk-glyph` in the
+gap column. It is a **display-id glyph in a fixed-width grid track**, not a chip — `19 behind`
+at 24px would be a layout change, which this pass explicitly was not. Its `title` already
+reads `19 builds behind the newest`. Logged, not hidden.
+
+### THE COST, MEASURED — `wide` IS REQUIRED, IT IS NOT A PREFERENCE
+
+`19 BEHIND` at the chip's uppercase tracking exceeds `.chip`'s 12ch cap and rendered
+**`19 BEHI…`** on `/` and `/rollouts`. A truncated label is not a word, so both call sites take
+`wide` — **the same opt-out `/environments` and `/envs/*` already use for this exact
+string**, and the only sanctioned way to lift the cap. Measured after, at 1440 and 390, both
+themes: `scrollWidth === clientWidth`, and **0 clipped chips of 22 on `/` and 33 on
+`/rollouts`**.
+
+⚠️ **It costs ~35px on the badge, and one row pays for it.** On `/` at 1440 the Trailing card
+for `hello-world-prod` carries THREE chips (`PROD` + a new `ROLLED BACK` + the rank badge) in a
+400px track and now ellipsises its name to `hello…`. The other two Trailing cards, which carry
+two chips, do not truncate. The rank badge alone does not cause it; the third chip does.
+
+### ⛔ A PINNED ROLLOUT NOW SHOWS ITS RANK ON `/` AND `/rollouts`
+
+`computeBehind` returned `null` for anything with a `spec.wantedVersion`, and `null` rendered
+as `newest`. So a rollout **pinned twenty-three builds back was the product's good-news word**
+on the two pages the human uses most. A pin is a REASON a rollout is behind, not a reason it is
+not, and `PinBadge` already sits beside the chip to name the cause — which is exactly what
+`/apps` and `/apps/[name]` already did (*"the actual cause was the pin, which the page never
+mentions"*). Confirmed live: `hello-multi-app` in prod was pinned to `aa17645` mid-pass and
+`/rollouts`, `/apps/hello-multi-app` and `/environments` all print `23 behind`.
+
+### THE BEFORE/AFTER, EVERY SURFACE, `hello-world-app` ON THE LIVE HUB
+
+| surface | dev `991829b` | staging `991829b` | prod `51b976a` |
+|---|---|---|---|
+| `/` — **before** | `−15` (Trailing) | **`newest` (Steady)** | `−19` (Trailing) |
+| `/` — after | `19 behind` | `19 behind` | `24 behind` — all three Trailing |
+| `/rollouts` — **before** | `−15` | **`newest`** | `−19` |
+| `/rollouts` — after | `19 behind` | `19 behind` | `24 behind` |
+| `/apps` | `19` | `19` | `24` — unchanged |
+| `/apps/[name]` | `19 behind` | `19 behind` | `24 behind` — unchanged |
+| `/environments` | `19 behind` | `19 behind` | `24 behind` — unchanged |
+| dependencies tab | `19 behind` | `19 behind` | `24 behind` — unchanged |
+| `/versions/<rev>` — before | `−19` | `−19` | `−24` |
+| `/versions/<rev>` — after | `19 behind` | `19 behind` | `24 behind` |
+| API, own list | 15 | 14 | 19 — **still printed, as `N versions waiting to move`** |
+
+`hello-multi-app` (converged) and `hello-api-app` / `hello-frontend-app` read `newest`
+everywhere, before and after.
+
+### ⚠️ A SECOND BUG THE LADDER WAS HIDING — IT UNDER-REPORTED BY 25
+
+`buildLadder` ordered by `created`, then by *which environment is running it*. When **no**
+rollout publishes `created` (a bare fixture, an app with no image policy wired, `orders-api`
+in the mock) every `createdMs` is 0 and the env-order fallback ran alone — so a production
+sitting at index 8 of its own 33-entry release list, with 24 entries **provably** newer,
+ranked **1**, because dev happened to be running the only build above it.
+
+**`availableReleases` array position is a signal the ladder was throwing away.** The list is
+oldest-first by contract, so `len − 1 − idx` counts the builds a single rollout can prove are
+newer. It sits directly under `created` and above env order.
+
+⚠️ **It is the MAX across lists, not the MIN.** Two lists have different HEADS whenever one has
+seen a release the other has not, so "distance from the end" is not on a common scale between
+them. Taking the MIN lets a build near the end of a SHORT list jump above a build further from
+the end of a LONG one — measured, it ranked `rel-5`, `rel-6` and `rel-7` as newer than the
+build at index 8 of **the very list that contains all four**: a sort contradicting its own
+input. The MAX is the most pessimistic proof, preserves each list's internal order, and where
+two builds never co-occur in any list their relation is genuinely undetermined — **over-stating
+a lag is the safe direction; under-stating one is what this whole pass exists to stop.** Live
+data always carries `created`, so this never fires on the hub.
+
+### THE TESTS THAT PIN IT
+
+`view-models/rank-agreement.test.ts` — 14 tests, built on a synthesised copy of the live shape
+(25 builds, three lists of 16 / 15 / 20). Every one fails on the old behaviour:
+
+- **the dev-vs-staging contradiction, as one assertion** — two environments on the identical
+  build get the identical verdict.
+- no card prints `newest` when it is 19 behind; no card prints a label starting `−`.
+- **shrinking a rollout's retention window 15 → 4 entries does not move its rank.**
+- the card, the matrix cell and the ladder agree rollout by rollout; the fleet-wide door
+  (`rankVerdictsByRollout`) agrees with the per-app one.
+- Steady/Trailing split by verdict, not by a falsy number.
+- every verdict formats to a non-empty word that is not `0`.
+- **a fan-out fixture** — four prod regions on one build whose own lists say 6, 2, 4 and 1,
+  and whose ladder rank is one number.
+
+`env-rank.test.ts` and `rollout-cards.test.ts` were updated where they asserted the OLD
+contract, and each change carries the reason inline. `rollout-cards.test.ts`'s aged-out
+fixture moves **24 → 26**: 24 was prod's own-list count; the union additionally holds dev's
+head and the build prod's list replaced.
+
 ## ⛔ DARK IS NOT A DERIVATION OF LIGHT — THE CONTRAST PASS (2026-08-30)
 
 > *"some icons on the dark theme are black and therefore have poor visibility. i'm wondering
@@ -499,10 +689,11 @@ majority of them — same chips, same roles, same colour values, same geometry.
 | `3 BUILDS` | `3 versions` | |
 | `unchanged for 1h` | `no progress for 1h` | |
 
-⚠️ **`/` AND `/rollouts` STILL PRINT `−N`, AND THAT IS A KNOWN, DELIBERATE SPLIT.** They are under
-the standing *"do not change the rollout list and detail and home pages"* constraint, so the
-product now spells the same fact two ways. **This is debt, not a decision** — when `/` or
-`/rollouts` is next opened, `RolloutGrid`'s `label={`−${n}`}` is the call site.
+~~⚠️ **`/` AND `/rollouts` STILL PRINT `−N`, AND THAT IS A KNOWN, DELIBERATE SPLIT.**~~
+✅ **CLOSED 2026-08-30.** Both pages print `N behind` now, from `rankLabel` in `env-rank.ts`,
+which is total and is the product's ONE spelling. Two more `−N` call sites nobody had logged
+went with it (`/versions/<rev>`, `rankSentence`). See *"`N BEHIND` HAS ONE DEFINITION NOW"* at
+the top of this file — the labels were the small half of that change; the NUMBERS were wrong.
 
 ### Three new components, and what each buys
 
@@ -2644,6 +2835,14 @@ Silence about a cause beats a confident wrong cause. It is the same rule as
 ### ONE rank, product-wide — `env-rank.ts` (2026-08-23)
 
 > *"one rollout, three pages, three numbers."*
+
+⚠️ **THIS ROUND FIXED FOUR OF THE SIX SURFACES AND MISSED `/` AND `/rollouts` ENTIRELY**, which
+kept their own derivation for another week and produced the worse version of the same defect —
+one PAGE printing two verdicts for one build. Closed 2026-08-30; see *"`N BEHIND` HAS ONE
+DEFINITION NOW"* at the top of this file. The lesson is in the miss: this note said *"`/apps`,
+`/environments`, `/envs/*` and `/apps/[name]` all read it"* and treated that as done, when the
+two pages under the do-not-touch constraint were the ones nobody had checked. **A "one
+derivation" claim is only true if the exemptions are enumerated.**
 
 `−N` is a chip geometry the whole product shares, and four surfaces were filling it from
 four different derivations. Measured on `checkout-edge` in prod, one rollout, one render:

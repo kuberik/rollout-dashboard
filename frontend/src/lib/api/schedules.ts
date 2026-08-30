@@ -22,6 +22,8 @@
  * READ-ONLY. Nothing here mutates anything.
  */
 
+import { apiJson } from './errors';
+
 type ScheduleLike = {
 	metadata?: { name?: string; annotations?: Record<string, string> };
 	spec?: { action?: 'Allow' | 'Deny' };
@@ -65,9 +67,10 @@ export async function fetchScheduleWindow(
 	cluster?: string
 ): Promise<ScheduleWindow> {
 	const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
-	const res = await fetch(`/api/rollouts/${namespace}/${name}/schedules${params}`);
-	if (!res.ok) throw new Error(`schedules ${res.status}`);
-	const data = await res.json();
+	const data = await apiJson<{
+		rolloutSchedules?: { items?: ScheduleLike[] };
+		clusterRolloutSchedules?: { items?: ScheduleLike[] };
+	}>(`/api/rollouts/${namespace}/${name}/schedules${params}`);
 	const all: ScheduleLike[] = [
 		...(data?.rolloutSchedules?.items ?? []),
 		...(data?.clusterRolloutSchedules?.items ?? [])

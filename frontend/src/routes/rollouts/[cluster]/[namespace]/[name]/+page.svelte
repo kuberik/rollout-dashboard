@@ -89,7 +89,9 @@
 		buildDatadogLogsUrl,
 		detectStuck
 	} from '$lib/utils';
+	import { pollWhenHealthy } from '$lib/api/errors';
 	import { versionPathForRollout } from '$lib/version-utils';
+	import { autoDeployState, clearPinOutcome } from '$lib/view-models/auto-deploy';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { now } from '$lib/stores/time';
@@ -98,6 +100,7 @@
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 	import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
@@ -169,8 +172,24 @@
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
 	const stuckReason = $derived(detectStuck(rollout, { now: $now }));
-	const loading = $derived(rolloutQuery.isLoading);
-	let error: string | null = $state(null);
+	/**
+	 * ⛔ `isLoading` IS NOT "THE REQUEST HAS NOT COME BACK YET".
+	 *
+	 * TanStack's `isLoading` is `isPending && isFetching`, and with the old
+	 * unbounded retry policy a query that could never succeed never left
+	 * `pending` — so `{#if loading}` stayed true for the life of the tab.
+	 * Measured on `/rollouts/prod/hello-world-prod/does-not-exist`: **fifteen
+	 * 500s in 35 seconds**, five skeleton blocks on screen, no message, no way
+	 * back, and the server's own sentence (`... "does-not-exist" not found`)
+	 * discarded by a `throw new Error('Failed to load rollout')`.
+	 *
+	 * `loading` is now guarded on NOT being in the error state, and `error` is
+	 * the query's own error rather than a `$state` variable that nothing ever
+	 * assigned. See `$lib/api/errors` for the retry policy that lets the query
+	 * reach `error` at all.
+	 */
+	const loading = $derived(rolloutQuery.isLoading && !rolloutQuery.isError);
+	const error = $derived(rolloutQuery.isError ? rolloutQuery.error : null);
 
 	// Derive directly from the query so that when route params change the
 	// lists go back to empty while the new query is in flight, rather than
@@ -199,6 +218,17 @@
 	const deploymentBlockedCondition = $derived(
 		rollout?.status?.conditions?.find((c) => c.type === 'DeploymentBlocked' && c.status === 'True')
 	);
+
+	/**
+	 * WHAT IS ACTUALLY HELD, DERIVED ONCE FOR THE WHOLE PAGE.
+	 *
+	 * Four surfaces used to guess at this separately and two of them guessed
+	 * wrong: the schedule banner said manual deploys were blocked (they are
+	 * not) and the clear-pin dialog said the rollout would advance (it does
+	 * not). `view-models/auto-deploy` reads the controller's own structural
+	 * split, and everything below reads it from there.
+	 */
+	const autoDeploy = $derived(autoDeployState(rollout, rolloutGates));
 	const bakeFailureDisabledCondition = $derived(
 		rollout?.status?.conditions?.find((c) => c.type === 'BakeFailureDisabled' && c.status === 'True')
 	);
@@ -243,7 +273,7 @@
 			return result;
 		},
 		enabled: kustomizations.length > 0,
-		refetchInterval: 5000
+		refetchInterval: pollWhenHealthy(5000)
 	}));
 	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
 		managedResourcesQuery.data ?? {}
@@ -258,7 +288,7 @@
 			return res.json();
 		},
 		enabled: Boolean(rollout?.spec?.healthCheckSelector),
-		refetchInterval: 5000
+		refetchInterval: pollWhenHealthy(5000)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
 
@@ -296,7 +326,7 @@
 			if (!res.ok) return { events: [] };
 			return res.json();
 		},
-		refetchInterval: 5000
+		refetchInterval: pollWhenHealthy(5000)
 	}));
 	const events = $derived(eventsQuery.data?.events ?? []);
 
@@ -1061,7 +1091,13 @@
 			</div>
 		</div>
 	{:else if error}
-		<div class="px-4 py-8 sm:px-5"><Alert color="red">{error}</Alert></div>
+		<ErrorState
+			{error}
+			subject="this rollout"
+			backHref="/rollouts"
+			backLabel="Back to all rollouts"
+			onRetry={() => rolloutQuery.refetch()}
+		/>
 	{:else if !rollout}
 		<div class="px-4 py-8 sm:px-5"><Alert color="yellow">Release not found</Alert></div>
 	{:else}
@@ -1178,10 +1214,19 @@
 
 				<!-- ══ DEPLOYMENT BLOCKED ══ -->
 				{#if deploymentBlockedCondition && !isFailed && latestEntry.bakeStatus !== 'Deploying' && latestEntry.bakeStatus !== 'InProgress'}
+					<!--
+						Same correction as the schedule banner. `DeploymentBlocked` is
+						the controller's condition for "health checks are unhealthy",
+						and it is consulted inside `if !r.hasManualDeployment(...)` —
+						so it stops the controller, not a person. The footnote is the
+						same sentence the schedule banner uses, deliberately: one fact,
+						one wording, learned once.
+					-->
 					<AlertPanel
 						severity="warning"
-						title="Deployment paused"
+						title="Automatic deploys are paused"
 						message={deploymentBlockedCondition.message || 'Health checks are unhealthy.'}
+						footnote="A deploy you start by hand still applies immediately."
 						pulse
 					/>
 				{/if}
@@ -1465,7 +1510,7 @@
 								>
 									<PauseSolid class="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
 									<p class="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
-										Automated upgrades paused — rollout is pinned to a version.
+										Automatic deploys paused — this rollout is pinned to a version.
 									</p>
 									{#if canModify}
 										<Button
@@ -1501,13 +1546,37 @@
 														{getDisplayVersion(releaseCandidate)}
 													</span>
 													{#if isBlocked}
+														<!--
+															⛔ THE CHIP USED TO SAY `Blocked` AND IT SAT TWELVE
+															PIXELS FROM AN ENABLED `Deploy` BUTTON THAT IGNORES
+															THE GATE. A live UX critique pressed that button and
+															production changed immediately.
+
+															A gate filters AUTOMATIC promotion only
+															(`rollout_controller.go`: the gate early-return is
+															inside `if !r.hasManualDeployment(...)`), so `Blocked`
+															was false about the one control next to it. `Manual
+															only` is the same fact stated as a consequence, and it
+															is now the sentence that EXPLAINS the enabled button
+															rather than contradicting it.
+
+															Same span, same yellow, same 12px — only the word and
+															the popover moved.
+														-->
 														<span
 															class="inline-flex cursor-help items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
 														>
-															Blocked <QuestionCircleOutline class="h-3 w-3" />
+															Manual only <QuestionCircleOutline class="h-3 w-3" />
 														</span>
-														<Popover class="max-w-sm text-sm" title="Blocked by Gates">
+														<Popover class="max-w-sm text-sm" title="Won't deploy on its own">
 															<div class="space-y-2 p-1">
+																<p class="text-xs text-gray-600 dark:text-gray-300">
+																	Nothing will promote this version automatically. Pressing
+																	<span class="font-medium text-gray-900 dark:text-white"
+																		>Deploy</span
+																	> applies it immediately — gates only hold back automatic
+																	promotion.
+																</p>
 																{#each blockingGates as gate}
 																	<div class="flex items-start gap-2">
 																		<ExclamationCircleSolid
@@ -1817,9 +1886,20 @@
 
 <Modal bind:open={showClearPinModal} title="Clear Version Pin">
 	<div class="space-y-4">
+		<!--
+			⛔ THIS PROMISED SOMETHING IT COULD NOT KEEP. It said "Automated
+			upgrades will resume and the rollout will advance to the latest
+			release candidate" — unconditionally. A live UX critique cleared the
+			pin on a rollout whose schedule gate was closed and it advanced
+			ZERO, because the gate really does block automatic promotion. The
+			one screen therefore claimed manual deploys were blocked (false) and
+			that clearing the pin would advance (false), in opposite directions.
+			`clearPinOutcome` reads the rollout's OTHER holds and says which of
+			the two sentences is true right now.
+		-->
 		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Remove the version pin for <strong>{rollout?.metadata?.name}</strong>? Automated upgrades
-			will resume and the rollout will advance to the latest release candidate.
+			Remove the version pin for <strong>{rollout?.metadata?.name}</strong>?
+			{clearPinOutcome(autoDeploy)}
 		</p>
 		{#if !isDashboardManagingWantedVersion}
 			<p class="text-xs text-amber-600 dark:text-amber-400">
@@ -1852,6 +1932,7 @@
 <ChangeVersionModal
 	bind:open={showChangeVersionModal}
 	{rollout}
+	{autoDeploy}
 	{isPinVersionMode}
 	initialSelectedVersion={selectedVersion}
 	initialExplanation={deployExplanation}

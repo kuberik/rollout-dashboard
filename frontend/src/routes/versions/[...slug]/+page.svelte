@@ -49,6 +49,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import RevisionLead from '$lib/components/RevisionLead.svelte';
 	import type { Rollout, Environment } from '../../../types';
+	import { pollWhenHealthy } from '$lib/api/errors';
 
 	/**
 	 * ONE REVISION — RELEASE COVERAGE.
@@ -133,7 +134,7 @@
 	const urlKey = $derived(parsed.key);
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
 	);
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -743,7 +744,15 @@
 																wide
 																title="{s.envLabel.toUpperCase()} — {s.statusWord}"
 															/>
-															<Chip role="rank" label={`−${s.currentRank}`} />
+															<!-- ⛔ `−N` → `N behind`. (2026-08-30) The last
+															     `−N` in the product. Same `rank` role, same
+															     joined box; a signed integer beside a build id
+															     reads as a diff and names no unit. -->
+															<Chip
+																role="rank"
+																label={`${s.currentRank} behind`}
+																title="{s.envLabel.toUpperCase()} is running a version {s.currentRank} older than the newest one this app has"
+															/>
 														</span>
 													{:else}
 														<Chip
@@ -930,7 +939,9 @@
 										label={chip.label}
 										title={svc.diverged
 											? 'On no environment’s release list — promotion does not arrive at it'
-											: `${chip.label} of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
+											: chip.role === 'newest'
+												? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`
+												: `${chip.label} the newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
 										value={svc.label}
 										valueTitle={svc.label}
 										class="min-w-0"

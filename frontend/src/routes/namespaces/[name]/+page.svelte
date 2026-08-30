@@ -1,25 +1,74 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	/**
+	 * ══ `/namespaces/[name]` — ONTO THE GRAMMAR ═══════════════════════════
+	 *
+	 * This was **the last page in the product drawing its own caption-over-box
+	 * chrome around an activity rail.** `/apps/[name]` and `/envs/[name]` both
+	 * wrap `ActivityRail` in a `Card` with `chrome={false}`; this page did not
+	 * even call `ActivityRail` — it carried a HAND-COPIED 70-line duplicate of
+	 * it, with its own `STATUS_DOT` / `STATUS_TEXT` / `STATUS_LABEL` tables,
+	 * its own day grouping and its own dot rail. Two copies of one object is
+	 * how the two came to disagree: the rail's own copy had already been
+	 * taught to print `prev → new`, to drop the word `Succeeded` beside a
+	 * green dot, and to link a build by REVISION; this copy had none of it.
+	 * The duplicate is deleted and the shared component is called.
+	 *
+	 * ── THE FOUR STAT TILES ARE GONE, AND THAT IS THE SAME DEFECT ──────────
+	 * `ROLLOUTS 5` / `HEALTHY 4` / `FAILING 0` / `DEPLOYS·24H 12` were four
+	 * `t-label` captions floating over four bordered boxes — the shape
+	 * `COMPOSITION-GRAMMAR.md` names as what every rejected page is made of —
+	 * spending four 24px numerals on numbers the page states again eight
+	 * pixels below. `FAILING 0` in particular is a 24px numeral drawing the
+	 * NORM, and it is the tile the colour audit caught at **1.47:1**.
+	 *
+	 * They are replaced by the `/apps` idiom: ONE summary sentence under the
+	 * `h1`, and the two real verdicts moved into the two card headers where
+	 * the reference page keeps its rollups. The 24h sparkline went with them —
+	 * see `lastDeploy` below for the number it was drawing and why it was
+	 * unreadable beside the list it sat next to.
+	 *
+	 * ── COLOUR ────────────────────────────────────────────────────────────
+	 * The audit's three findings on this page: green on a 24px numeral (the
+	 * tile is gone), the word `Succeeded` printed as PROSE in the state hue
+	 * (`ActivityRail` does not print it at all — a green dot already said it),
+	 * and `FAILING 0` at 1.47:1 (gone with the tile). Nothing on this page
+	 * spends a status hue on the norm now.
+	 */
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, categorizeFailure, formatStatusTime, detectStuck, formatDate } from '$lib/utils';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
+	import {
+		getDisplayVersion,
+		categorizeFailure,
+		formatStatusTime,
+		formatTimeAgo,
+		detectStuck,
+		formatDate
+	} from '$lib/utils';
+	import {
+		getRolloutEnvironmentTheme,
+		getEnvironmentThemeStyle,
+		shortEnvLabel
+	} from '$lib/environment-theme';
 	import { now } from '$lib/stores/time';
-	import { Spinner } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
-		LayersSolid
+		LayersSolid,
+		RocketSolid,
+		ClockSolid,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
-	import { getStatusCircleClass, getStatusPingClass } from '$lib/bake-status';
+	import Card from '$lib/components/Card.svelte';
+	import ActivityRail from '$lib/components/ActivityRail.svelte';
+	import { getStatusCircleClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../../../types';
 
 	const namespace = $derived(page.params.name as string);
@@ -66,74 +115,6 @@
 			});
 	});
 
-	type ActivityEntry = {
-		appName: string;
-		title: string;
-		envName: string;
-		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
-		version: string;
-		timestamp: string;
-		bakeStatus: string;
-		sourceCluster: string;
-	};
-
-	const recentActivity = $derived.by<ActivityEntry[]>(() => {
-		const list: ActivityEntry[] = [];
-		for (const a of apps) {
-			const history = a.rollout.status?.history;
-			if (!history) continue;
-			for (const entry of history) {
-				list.push({
-					appName: a.rollout.metadata?.name || '',
-					title: a.title,
-					envName: a.envName,
-					theme: a.theme,
-					version: getDisplayVersion(entry.version),
-					timestamp: entry.timestamp,
-					bakeStatus: entry.bakeStatus || 'None',
-					sourceCluster: a.sourceCluster
-				});
-			}
-		}
-		list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-		return list.slice(0, 20);
-	});
-
-	type DayGroup = { label: string; key: string; entries: ActivityEntry[] };
-	function dayKey(ts: string): string {
-		const d = new Date(ts);
-		return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-	}
-	function dayLabel(ts: string, refNow: Date): string {
-		const d = new Date(ts);
-		const today = new Date(refNow.getFullYear(), refNow.getMonth(), refNow.getDate());
-		const that = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-		const days = Math.round((today.getTime() - that.getTime()) / 86_400_000);
-		if (days === 0) return 'Today';
-		if (days === 1) return 'Yesterday';
-		if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
-		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-	}
-	const activityByDay = $derived.by<DayGroup[]>(() => {
-		const refNow = $now;
-		const map = new Map<string, DayGroup>();
-		for (const a of recentActivity) {
-			const key = dayKey(a.timestamp);
-			let g = map.get(key);
-			if (!g) {
-				g = { label: dayLabel(a.timestamp, refNow), key, entries: [] };
-				map.set(key, g);
-			}
-			g.entries.push(a);
-		}
-		return Array.from(map.values());
-	});
-
-	function hourLabel(ts: string): string {
-		const d = new Date(ts);
-		return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-	}
-
 	const failedCount = $derived(
 		apps.filter((a) => a.rollout.status?.history?.[0]?.bakeStatus === 'Failed').length
 	);
@@ -143,48 +124,64 @@
 			return s === 'InProgress' || s === 'Deploying';
 		}).length
 	);
-	const succeededCount = $derived(
-		apps.filter((a) => a.rollout.status?.history?.[0]?.bakeStatus === 'Succeeded').length
-	);
-	const deploys24h = $derived.by(() => {
-		const cutoff = $now.getTime() - 24 * 60 * 60 * 1000;
-		let n = 0;
+	/**
+	 * ⛔ NOT `deploys in the last 24h`, AND THE SPARKLINE IS GONE WITH IT.
+	 *
+	 * The tile said `DEPLOYS · 24H  0` while the rail beside it listed EIGHT
+	 * deploys, because the newest one is 34 hours old. Both numbers were
+	 * right and the pair was unreadable at a glance — the same shape as the
+	 * green tick beside `PROD is 14 builds behind`. And `DeployVolumeSparkline`
+	 * over an empty 24h window draws literally nothing, so the page carried a
+	 * blank graphic captioned with a zero.
+	 *
+	 * `last deploy 1d ago` is the fact a reader actually wants from a
+	 * namespace header — how fresh is this place — and it can never contradict
+	 * the list under it.
+	 */
+	const lastDeploy = $derived.by<string | null>(() => {
+		let newest: string | null = null;
 		for (const a of apps) {
 			for (const h of a.rollout.status?.history ?? []) {
 				if (!h.timestamp) continue;
-				if (new Date(h.timestamp).getTime() >= cutoff) n++;
+				if (!newest || new Date(h.timestamp).getTime() > new Date(newest).getTime())
+					newest = h.timestamp;
 			}
 		}
-		return n;
+		return newest;
+	});
+	/**
+	 * `ActivityRail`'s own rule, applied by DATA rather than by assumption:
+	 * *"a chip that is identical on every row is a mark that cannot mark
+	 * anything."* A namespace is not an environment, so the chip is CORRECT in
+	 * general — and on a namespace that happens to hold one environment it is
+	 * eight copies of one word.
+	 */
+	const showEnvInRail = $derived(
+		new Set(apps.map((a) => shortEnvLabel(a.theme) || a.envName)).size > 1
+	);
+	const activityCount = $derived.by(() => {
+		let n = 0;
+		for (const a of apps) n += (a.rollout.status?.history ?? []).length;
+		return Math.min(n, 20);
 	});
 
-	const STATUS_DOT: Record<string, string> = {
-		Succeeded: 'bg-green-700 dark:bg-green-400',
-		Failed: 'bg-red-700 dark:bg-red-400',
-		InProgress: 'bg-yellow-700 dark:bg-yellow-400',
-		Deploying: 'bg-blue-700 dark:bg-blue-400',
-		Cancelled: 'bg-gray-400 dark:bg-gray-500',
-		None: 'bg-gray-200 dark:bg-gray-700'
-	};
-	const STATUS_LABEL: Record<string, string> = {
-		Succeeded: 'Succeeded',
-		Failed: 'Failed',
-		InProgress: 'Baking',
-		Deploying: 'Deploying',
-		Cancelled: 'Cancelled',
-		None: 'No deploy'
-	};
-	const STATUS_TEXT: Record<string, string> = {
-		// NEUTRAL. This is the only page that printed a state WORD in the state
-		// colour, and the word it coloured was the NORM. The rail's own dot carries
-		// the hue two lines up; the deviations below keep theirs.
-		Succeeded: 'text-gray-500 dark:text-gray-400',
-		Failed: 'text-red-700 dark:text-red-400',
-		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Deploying: 'text-blue-700 dark:text-blue-400',
-		Cancelled: 'text-gray-500 dark:text-gray-400',
-		None: 'text-gray-500 dark:text-gray-400'
-	};
+	/**
+	 * THE CARD'S ANSWER, TAKEN WITHOUT READING A ROW. It states what it
+	 * MEASURED — the last deploy of each rollout — and goes green only when
+	 * that is true of every one of them. It deliberately does NOT say
+	 * "healthy": a clean last deploy is not the same claim as a fleet on the
+	 * newest version, and conflating the two is the exact pair `/apps` shipped
+	 * as a lie (a green tick beside `PROD is 14 builds behind`).
+	 */
+	const rolloutsRollup = $derived.by(() => {
+		const n = apps.length;
+		if (failedCount > 0)
+			return { text: `${failedCount} of ${n} failing`, tone: 'adverse' as const };
+		if (activeCount > 0)
+			return { text: `${activeCount} deploying now`, tone: 'active' as const };
+		return { text: `all ${n} deployed cleanly`, tone: 'good' as const };
+	});
+
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}
@@ -210,199 +207,192 @@
 				<div class="h-8 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 				<div class="h-4 w-1/3 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
 			</div>
-			<div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
-				{#each Array(4) as _}<div class="h-20 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>{/each}
-			</div>
 			<div class="grid gap-6 lg:grid-cols-[1fr_320px]">
-				<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
-				<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			</div>
 		</div>
 	{:else if query.isError}
-		<div class="rounded-xl border border-gray-200 p-4 text-sm text-red-700 dark:border-gray-700 dark:text-red-400">
+		<div
+			class="rounded-xl border border-gray-200 p-4 text-sm text-red-700 dark:border-gray-700 dark:text-red-400"
+		>
 			Failed to load: {(query.error as Error).message}
 		</div>
 	{:else if apps.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
 			<LayersSolid class="mb-3 h-10 w-10 text-gray-500 dark:text-gray-400" />
-			<p class="text-sm font-medium text-gray-900 dark:text-white">Namespace not found</p>
-			<p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-				No rollouts in namespace <code class="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800">{namespace}</code>.
+			<p class="t-body font-semibold text-gray-900 dark:text-white">Namespace not found</p>
+			<p class="t-dense mt-1 max-w-sm text-gray-500 dark:text-gray-400">
+				No rollouts in namespace
+				<code class="t-code-sm rounded bg-gray-100 px-1 dark:bg-gray-800">{namespace}</code>.
 			</p>
-			<a
-				href="/rollouts"
-				class="mt-4 inline-flex items-center gap-1 rounded bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-			>
-				<ArrowLeftOutline class="h-3.5 w-3.5" /> Back to rollouts
+			<a href="/rollouts" class="btn btn-secondary mt-4">
+				<ArrowLeftOutline />
+				Back to rollouts
 			</a>
 		</div>
 	{:else}
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-baseline justify-between gap-3">
-				<h1 class="min-w-0 truncate font-mono text-2xl font-light text-gray-900 dark:text-white">{namespace}</h1>
-				
-			</div>
-			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-xs text-gray-500 dark:text-gray-400">
-				<span>namespace</span>
-				<span class="text-gray-500 dark:text-gray-400">·</span>
-				<span class="tabular-nums">{apps.length}</span> rollout{apps.length === 1 ? '' : 's'}
-				{#if failedCount > 0}<span class="font-medium text-red-600 dark:text-red-400">· {failedCount} failing</span>{/if}
-				{#if activeCount > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} in progress</span>{/if}
-			</div>
+		<!-- ══ HEADER — the `/apps` idiom: an h1 and ONE sentence ═══════════ -->
+		<div class="mb-5 min-w-0">
+			<h1 class="t-display-id min-w-0 truncate text-gray-900 dark:text-white">{namespace}</h1>
+			<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+				Namespace · {apps.length} rollout{apps.length === 1 ? '' : 's'}
+				{#if failedCount > 0}
+					· <span class="font-medium text-gray-700 dark:text-gray-200">{failedCount} failing</span>
+				{/if}
+				{#if activeCount > 0}
+					· {activeCount} deploying now
+				{/if}
+				{#if lastDeploy}
+					· last deploy {formatTimeAgo(lastDeploy, $now)}
+				{/if}
+			</p>
 		</div>
 
-		<!-- Stat tiles: 4 columns -->
-		<div class="mb-6 grid gap-3 grid-cols-2 sm:grid-cols-4">
-			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Rollouts</div>
-				<div class="mt-1 font-mono text-2xl font-light text-gray-900 dark:text-white">{apps.length}</div>
-			</div>
-			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Healthy</div>
-				<div class="mt-1 font-mono text-2xl font-light text-gray-900 dark:text-white">{succeededCount}</div>
-			</div>
-			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Failing</div>
-				<div class="mt-1 font-mono text-2xl font-light {failedCount > 0 ? 'text-red-700 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}">{failedCount}</div>
-			</div>
-			<div class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<div class="font-mono text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Deploys · 24h</div>
-				<div class="mt-1 flex items-baseline gap-2">
-					<span class="font-mono text-2xl font-light text-gray-900 dark:text-white">{deploys24h}</span>
-					<DeployVolumeSparkline rollouts={apps.map((a) => a.rollout)} hours={24} />
-				</div>
-			</div>
-		</div>
-
-		<!-- Two-column body: rollouts list + activity rail -->
-		<div class="grid gap-6 lg:grid-cols-[1fr_320px]">
-			<section>
-				<h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-					Rollouts in {namespace}
-				</h2>
-				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each apps as a (a.rollout.metadata?.name)}
-							{@const latest = a.rollout.status?.history?.[0]}
-							{@const status = latest?.bakeStatus || 'None'}
-							{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
-							{@const failureCategory = status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
-							{@const prevV = status === 'Failed' ? previousSucceededVersion(a.rollout, ver) : null}
-							{@const stuck = detectStuck(a.rollout, { now: $now })}
-							<li class="environment-theme-scope" style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}>
-								<div class="relative flex items-center gap-3 px-5 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
-									<a
-										href={rolloutPath(a.sourceCluster || localClusterName, a.rollout.metadata?.namespace || '', a.rollout.metadata?.name || '')}
-										class="absolute inset-0 z-0"
-										aria-label="Open rollout {a.rollout.metadata?.name}"
-									></a>
-									<span class="pointer-events-none relative z-[1] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(status)}">
-										<BakeStatusIcon bakeStatus={status} size="medium" />
-									</span>
-									<div class="pointer-events-none relative z-[1] flex min-w-0 flex-1 flex-col gap-0.5">
-										<div class="flex min-w-0 items-baseline gap-2">
-											<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">{a.rollout.metadata?.name}</span>
-											{#if stuck}<StuckBadge reason={stuck} />{/if}
-											{#if a.rollout.spec?.wantedVersion}<PinBadge version={a.rollout.spec.wantedVersion} size="xs" />{/if}
-										</div>
-										<div class="flex min-w-0 items-baseline gap-2">
-											{#if a.title !== a.rollout.metadata?.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{a.title}</span>{/if}
-											{#if failureCategory}
-												<span class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={latest?.bakeStatusMessage ?? ''}>· {failureCategory} failed{#if prevV} · was <span class="font-mono">{prevV}</span>{/if}</span>
-											{/if}
-										</div>
+		<div class="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
+			<!-- ══ WHAT RUNS HERE ══════════════════════════════════════════ -->
+			<Card
+				icon={RocketSolid}
+				title="Rollouts"
+				verdict={rolloutsRollup.text}
+				verdictTone={rolloutsRollup.tone}
+				verdictTitle="Counts the last deploy of every rollout in this namespace"
+				padded={false}
+				class="min-w-0"
+			>
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each apps as a (a.rollout.metadata?.name)}
+						{@const latest = a.rollout.status?.history?.[0]}
+						{@const status = latest?.bakeStatus || 'None'}
+						{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
+						{@const failureCategory =
+							status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
+						{@const prevV = status === 'Failed' ? previousSucceededVersion(a.rollout, ver) : null}
+						{@const stuck = detectStuck(a.rollout, { now: $now })}
+						<li
+							class="environment-theme-scope"
+							style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
+						>
+							<div
+								class="relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+							>
+								<a
+									href={rolloutPath(
+										a.sourceCluster || localClusterName,
+										a.rollout.metadata?.namespace || '',
+										a.rollout.metadata?.name || ''
+									)}
+									class="absolute inset-0 z-0"
+									aria-label="Open rollout {a.rollout.metadata?.name}"
+								></a>
+								<span
+									class="pointer-events-none relative z-[1] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+										status
+									)}"
+								>
+									<BakeStatusIcon bakeStatus={status} size="medium" />
+								</span>
+								<div class="pointer-events-none relative z-[1] flex min-w-0 flex-1 flex-col gap-0.5">
+									<div class="flex min-w-0 items-baseline gap-2">
+										<span class="t-code truncate font-semibold text-gray-900 dark:text-white"
+											>{a.rollout.metadata?.name}</span
+										>
+										{#if stuck}<StuckBadge reason={stuck} />{/if}
+										{#if a.rollout.spec?.wantedVersion}<PinBadge
+												version={a.rollout.spec.wantedVersion}
+												size="xs"
+											/>{/if}
 									</div>
-									<div class="pointer-events-auto relative z-10 flex shrink-0 flex-col items-end gap-0.5">
-										{#if ver}
-											<a href={versionPathForRollout(a.rollout, a.rollout.metadata?.name || '', ver)} class="font-mono text-sm text-gray-700 hover:underline dark:text-gray-300">{ver}</a>
-										{:else}
-											<span class="font-mono text-sm text-gray-700 dark:text-gray-300">—</span>
-										{/if}
-										{#if latest?.timestamp}
-											<span class="font-mono text-[10px] {isRunning(status) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatDate(latest.timestamp)}>
-												{formatStatusTime(status, latest.timestamp, $now)}
-											</span>
+									<div class="flex min-w-0 items-baseline gap-2">
+										{#if a.title !== a.rollout.metadata?.name}<span
+												class="t-micro truncate text-gray-500 dark:text-gray-400">{a.title}</span
+											>{/if}
+										{#if failureCategory}
+											<span
+												class="t-micro truncate text-gray-500 dark:text-gray-400"
+												title={latest?.bakeStatusMessage ?? ''}
+												>· {failureCategory} failed{#if prevV}
+													· was <span class="font-mono">{prevV}</span>{/if}</span
+											>
 										{/if}
 									</div>
-									{#if a.envName || a.theme}
-										<Chip role="env" theme={a.theme} label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''} wide class="pointer-events-none relative z-[1] shrink-0" />
+								</div>
+								<div
+									class="pointer-events-auto relative z-10 flex shrink-0 flex-col items-end gap-0.5"
+								>
+									{#if ver}
+										<a
+											href={versionPathForRollout(
+												a.rollout,
+												a.rollout.metadata?.name || '',
+												ver
+											)}
+											class="t-code text-gray-700 hover:underline dark:text-gray-200">{ver}</a
+										>
+									{:else}
+										<span class="t-code text-gray-700 dark:text-gray-200">—</span>
+									{/if}
+									{#if latest?.timestamp}
+										<span
+											class="t-code-sm {isRunning(status)
+												? 'text-yellow-700 dark:text-yellow-400'
+												: 'text-gray-500 dark:text-gray-400'}"
+											title={formatDate(latest.timestamp)}
+										>
+											{formatStatusTime(status, latest.timestamp, $now)}
+										</span>
 									{/if}
 								</div>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			</section>
+								{#if a.envName || a.theme}
+									<Chip
+										role="env"
+										theme={a.theme}
+										label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''}
+										wide
+										class="pointer-events-none relative z-[1] shrink-0"
+									/>
+								{/if}
+								<!-- THE ROW OPENS SOMETHING, AND NOTHING SAID SO. The whole
+								     row has been a link since before this pass and carried no
+								     affordance at all; `/apps` and `/versions` rows both end
+								     in this chevron. -->
+								<ChevronRightOutline
+									class="pointer-events-none relative z-[1] h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+									aria-hidden="true"
+								/>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			</Card>
 
-			<aside>
-				<div class="mb-3 flex items-baseline justify-between">
-					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Recent activity</h2>
+			<!-- ══ WHAT JUST HAPPENED ═══════════════════════════════════════
+			     THE SHARED RAIL, IN A TITLED CARD. `chrome={false}` hands the
+			     frame to `Card` so the two do not nest — the same call
+			     `/apps/[name]` and `/envs/[name]` already make. The 24h
+			     sparkline is the rollup: it summarises exactly the list under
+			     it, which is the only place it carries anything. -->
+			<Card icon={ClockSolid} title="Recent activity" padded={false} class="min-w-0">
+				{#snippet rollup()}
+					<span class="t-micro tabular-nums text-gray-500 dark:text-gray-400"
+						>{activityCount} deploy{activityCount === 1 ? '' : 's'}</span
+					>
 					<a
 						href={`/activity?ns=${encodeURIComponent(namespace)}`}
-						class="text-[10px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-					>view all ›</a>
-				</div>
-				<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-					{#if recentActivity.length === 0}
-						<div class="flex flex-col items-center px-4 py-10 text-center">
-							<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700/60">
-								<span class="block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600"></span>
-							</div>
-							<p class="text-sm font-medium text-gray-700 dark:text-gray-300">No activity yet</p>
-						</div>
-					{:else}
-						<div class="p-4">
-							{#each activityByDay as group, gi}
-								<div class="{gi > 0 ? 'mt-5' : ''}">
-									<div class="mb-3 flex items-center gap-2">
-										<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{group.label}</span>
-										<span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"></span>
-										<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">{group.entries.length}</span>
-									</div>
-									<ol class="relative">
-										<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700/80" aria-hidden="true"></span>
-										{#each group.entries as a, ai}
-											{@const isLast = ai === group.entries.length - 1}
-											<li
-												class="environment-theme-scope relative pl-6 {isLast ? '' : 'pb-3'}"
-												style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
-											>
-												<span class="absolute left-0 top-1 inline-flex h-3.5 w-3.5 items-center justify-center">
-													{#if isRunning(a.bakeStatus)}
-														<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[a.bakeStatus]}"></span>
-													{/if}
-													<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
-												</span>
-												<a
-													href={rolloutPath(a.sourceCluster || localClusterName, namespace, a.appName)}
-													class="block rounded px-2 py-1 -mx-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
-												>
-													<div class="flex items-baseline justify-between gap-2">
-														<div class="flex min-w-0 items-center gap-2">
-															{#if a.envName || a.theme}
-																<Chip role="env" theme={a.theme} label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''} wide class="shrink-0" />
-															{/if}
-															<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{a.appName}</span>
-														</div>
-														<span class="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400" title={formatDate(a.timestamp)}>
-															{hourLabel(a.timestamp)}
-														</span>
-													</div>
-													<div class="mt-0.5 flex items-center justify-between gap-2">
-														<span class="text-[11px] {STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}">{STATUS_LABEL[a.bakeStatus]}</span>
-														<span class="font-mono text-[11px] text-gray-700 dark:text-gray-300">{a.version}</span>
-													</div>
-												</a>
-											</li>
-										{/each}
-									</ol>
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			</aside>
+						class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+						>view all ›</a
+					>
+				{/snippet}
+				<ActivityRail
+					rollouts={apps.map((a) => a.rollout)}
+					{environments}
+					limit={20}
+					{localClusterName}
+					showEnv={showEnvInRail}
+					chrome={false}
+					activityHref={`/activity?ns=${encodeURIComponent(namespace)}`}
+				/>
+			</Card>
 		</div>
 	{/if}
 </div>

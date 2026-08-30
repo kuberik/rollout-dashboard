@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { Button, Spinner, Tooltip } from 'flowbite-svelte';
+	import { Button, Modal, Spinner, Tooltip } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -30,6 +30,7 @@
 		buildDatadogLogsUrl,
 		buildDatadogTraceSearchUrl, formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { stageAdvance, type StageAdvance } from '$lib/view-models/stage-advance';
 	import type { Rollout, RolloutTest, HealthCheck, KruiseRollout } from '../../types';
 
 	type ValidKruiseRollout = {
@@ -550,6 +551,31 @@
 		}
 		return true;
 	}
+	/**
+	 * The stage the reader has asked to advance, held until they confirm. `null`
+	 * closes the dialog. Holding the DERIVED `adv` rather than re-deriving it in
+	 * the dialog means the sentence they confirm is character-for-character the
+	 * sentence they read on the button's caption.
+	 */
+	let pendingAdvance = $state<{ adv: StageAdvance; sd: any } | null>(null);
+	let advanceModalOpen = $state(false);
+
+	function askAdvance(adv: StageAdvance, sd: any) {
+		pendingAdvance = { adv, sd };
+		advanceModalOpen = true;
+	}
+
+	function cancelAdvance() {
+		advanceModalOpen = false;
+		pendingAdvance = null;
+	}
+
+	function confirmAdvance() {
+		const p = pendingAdvance;
+		advanceModalOpen = false;
+		pendingAdvance = null;
+		if (p) onContinue(p.sd.kr.rolloutResource.name, p.sd.kr.rolloutResource.namespace);
+	}
 </script>
 
 <!-- ━━━━━━━━━━━━━━━━━━━━━━ snippets ━━━━━━━━━━━━━━━━━━━━━━ -->
@@ -973,16 +999,44 @@
 			</div>
 
 			{#if sd.isCurrentStep && !sd.isPastStep && sd.isStepPaused && canUpdate}
-				<div>
-					<Button
-						size="sm"
-						color="blue"
-						onclick={() =>
-							onContinue(sd.kr.rolloutResource.name, sd.kr.rolloutResource.namespace)}
-					>
-						<PlaySolid class="mr-1.5 h-3.5 w-3.5" />
-						{sd.isLastStep ? 'Finish rollout' : 'Continue to next stage'}
-					</Button>
+				{@const adv = stageAdvance(
+					{
+						stepNum: sd.stepNum,
+						isLastStep: sd.isLastStep,
+						canarySteps: sd.kr.canarySteps,
+						annotations: sd.kr.kruiseRollout?.metadata?.annotations || {},
+						trackName: sd.kr.kruiseRollout?.metadata?.name,
+						multipleTracks: pipelineValidRollouts.length > 1
+					},
+					$now
+				)}
+				<!--
+					⛔ THIS BUTTON USED TO SAY `Continue to next stage` AND FIRE
+					INSTANTLY. A live UX critique pressed it and moved a PRODUCTION
+					canary 1/9 → 2/9, skipping 13 seconds of remaining bake, with no
+					dialog — on the same page where deploying one listed version made
+					you type the sha. The friction was inverted.
+
+					Two changes, and deliberately not "a modal everywhere":
+
+					1. THE LABEL AND A CAPTION NOW SAY WHAT WILL HAPPEN — which stage,
+					   what share of traffic, which track when there is more than one,
+					   and how much bake is being cut short. The caption is visible AT
+					   REST, which is the part that also works on a touch screen where
+					   a tooltip does not exist.
+					2. ONE CONFIRMATION CLICK, NO TYPING. This moves live traffic and
+					   pressing it again cannot undo it, so it earns a dialog — but it
+					   is a decision a reader can verify from the sentence in front of
+					   them, so it does not earn a transcription exercise.
+				-->
+				<div class="flex flex-col gap-1.5">
+					<div>
+						<Button size="sm" color="blue" title={adv.consequence} onclick={() => askAdvance(adv, sd)}>
+							<PlaySolid class="mr-1.5 h-3.5 w-3.5" />
+							{adv.label}
+						</Button>
+					</div>
+					<p class="max-w-md text-xs text-gray-500 dark:text-gray-400">{adv.consequence}</p>
 				</div>
 			{/if}
 		{/if}
@@ -1236,3 +1290,18 @@
 		</ol>
 	</div>
 </div>
+
+{#if pendingAdvance}
+	<Modal bind:open={advanceModalOpen} title={pendingAdvance.adv.confirmTitle} size="sm" autoclose={false}>
+		<div class="space-y-4">
+			<p class="text-sm text-gray-600 dark:text-gray-400">{pendingAdvance.adv.consequence}</p>
+			<div class="flex justify-end gap-2">
+				<Button color="light" onclick={cancelAdvance}>Cancel</Button>
+				<Button color="blue" onclick={confirmAdvance}>
+					<PlaySolid class="mr-1.5 h-3.5 w-3.5" />
+					{pendingAdvance.adv.label}
+				</Button>
+			</div>
+		</div>
+	</Modal>
+{/if}
