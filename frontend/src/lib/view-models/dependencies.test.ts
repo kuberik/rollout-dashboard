@@ -418,7 +418,7 @@ describe('hopBetween - a count or nothing, never a fabricated zero', () => {
 	);
 
 	it('counts the builds waiting on an edge', () => {
-		expect(hopBetween(rows[0], rows[1])).toEqual({ waiting: 2, label: '2 waiting' });
+		expect(hopBetween(rows[0], rows[1])).toEqual({ waiting: 2, label: '2 versions waiting to move' });
 	});
 
 	it('prints nothing when the edge is in sync', () => {
@@ -431,7 +431,7 @@ describe('hopBetween - a count or nothing, never a fabricated zero', () => {
 	});
 
 	it('reports a downstream that is AHEAD without calling it waiting', () => {
-		expect(hopBetween(rows[1], rows[0])).toEqual({ waiting: 0, label: '2 ahead' });
+		expect(hopBetween(rows[1], rows[0])).toEqual({ waiting: 0, label: '2 versions ahead' });
 	});
 });
 

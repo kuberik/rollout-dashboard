@@ -17,11 +17,16 @@
 	 * one"* — which is the exact defect this component was built to kill, still
 	 * alive in the most-read line on the page. One function, two renderers.
 	 */
-	import { LockSolid, UserCircleSolid, HourglassSolid } from 'flowbite-svelte-icons';
+	import {
+		LockSolid,
+		UserCircleSolid,
+		HourglassSolid,
+		ShareNodesSolid
+	} from 'flowbite-svelte-icons';
 
 	export type BlockReason = {
 		/** Which structural branch fired. For callers that pick their own icon. */
-		kind: 'pinned' | 'awaiting' | 'notPassing';
+		kind: 'pinned' | 'awaiting' | 'notPassing' | 'contract';
 		icon: typeof LockSolid;
 		/** The consequence. Ordinary English, and it says who has to move. */
 		line: string;
@@ -68,6 +73,62 @@
 			};
 		}
 		return null;
+	}
+
+	/**
+	 * ⭐ THE FOURTH BRANCH — A CROSS-SERVICE CONTRACT (`RolloutDependency`).
+	 *
+	 * It is here and not in a fourth component because it is the SAME defect
+	 * this file exists to kill, one object further out. The dependency
+	 * controller publishes a generated `RolloutGate` — `dependency-<name>` —
+	 * and the dependencies page was printing its constraint and the
+	 * controller's own `reason` enum (`ConstraintNotSatisfied`) as if either
+	 * were an explanation. Neither tells a reader whether this is their
+	 * problem.
+	 *
+	 * WHAT THE CONSEQUENCE ACTUALLY IS, and it is a THIRD thing, not one of
+	 * the two above: this does not clear itself the way a schedule window
+	 * does, and nobody here can approve it either. **Somebody has to ship the
+	 * other service.** So it gets its own sentence rather than borrowing
+	 * `awaiting`'s "someone has to approve" (wrong — approval is not the
+	 * mechanism) or `notPassing`'s "clears on its own" (wrong — it will sit
+	 * there forever until a provider release lands).
+	 *
+	 * ⛔ `reason` IS AN OPEN STRING AND IS NOT SWITCHED ON. The same
+	 * dependency reports `ConstraintNotSatisfied` on the spoke and
+	 * `ProviderVersionTooOld` on the hub, so a friendly label per case would
+	 * ship its fallback. It rides in `names`, beside the gate name, where the
+	 * component already dresses text as A HANDLE YOU CAN GO LOOK UP rather
+	 * than as prose.
+	 *
+	 * The CONSTRAINT (`^1.67.0`) is printed verbatim in the sentence and NOT
+	 * paraphrased: a bare version is an EXACT match in Masterminds semver, so
+	 * "at least 1.67.0" would be a lie with better grammar.
+	 */
+	export function contractBlockReason({
+		provider,
+		contract,
+		requiredVersion,
+		providedVersion,
+		gateName = null,
+		reason = null
+	}: {
+		provider: string;
+		contract: string;
+		requiredVersion?: string | null;
+		providedVersion?: string | null;
+		gateName?: string | null;
+		reason?: string | null;
+	}): BlockReason {
+		const need = requiredVersion ? `${contract} ${requiredVersion}` : `a newer ${contract}`;
+		// NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent providedVersion
+		// says the gate has not READ one; it does not say the provider is
+		// behind, so the sentence stops at the observable.
+		const line = providedVersion
+			? `Needs ${need} from ${provider}, which is on ${providedVersion} — someone has to ship ${provider} first`
+			: `Needs ${need} from ${provider}, and no version of it has been read yet`;
+		const names = [gateName, reason].filter(Boolean).join(' · ') || null;
+		return { kind: 'contract', icon: ShareNodesSolid, line, names };
 	}
 </script>
 
@@ -127,6 +188,7 @@
 		awaiting = [],
 		notPassing = [],
 		pinnedTo = null,
+		reason: given = null,
 		class: className = ''
 	}: {
 		/**
@@ -147,10 +209,18 @@
 		notPassing?: string[];
 		/** `spec.wantedVersion`. When set, it is the cause and rules are not. */
 		pinnedTo?: string | null;
+		/**
+		 * AN ALREADY-BUILT REASON, for a caller whose branch is not one of the
+		 * three gate branches above — today that is `contractBlockReason`, and
+		 * it wins over the lists. The RENDERING stays here, which is the whole
+		 * point: consequence line, then the identifier on its own line dressed
+		 * as a handle, in one place, so no page can spell it its own way again.
+		 */
+		reason?: BlockReason | null;
 		class?: string;
 	} = $props();
 
-	const reason = $derived(blockReason({ awaiting, notPassing, pinnedTo }));
+	const reason = $derived(given ?? blockReason({ awaiting, notPassing, pinnedTo }));
 </script>
 
 {#if reason}

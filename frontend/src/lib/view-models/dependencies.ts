@@ -199,6 +199,25 @@ export type ContractEnvEntry = {
 	pastTags: string[];
 	satisfied: boolean;
 	ready: boolean;
+	/**
+	 * ⭐ THE PROVIDER'S DEPLOYED CONTRACT VERSION, PER ENVIRONMENT.
+	 *
+	 * A `RolloutDependency` is per-environment, and so is the PROVIDER it
+	 * points at: `hello-frontend-app` in `hello-dep-staging` is gated on
+	 * `hello-api-app` in `hello-dep-staging`, which is a different rollout from
+	 * the `hello-api-app` in `hello-dep-prod`. They routinely run different
+	 * builds - that is what a promotion pipeline IS.
+	 *
+	 * The block used to fold this to the FIRST non-null and print it as "the"
+	 * provider version, which on the live cluster rendered
+	 * `in hello-dep-prod` on the DEV rollout's page. One number for N
+	 * genuinely different numbers is a claim the data does not support, so it
+	 * is kept per entry and the block only prints ONE when they agree.
+	 */
+	providedVersion: string | null;
+	providedTag: string | null;
+	/** Namespace of the provider Rollout THIS environment is gated on. */
+	providerNamespace: string;
 };
 
 /**
@@ -236,10 +255,26 @@ export type ContractBlock = {
 	key: string;
 	contract: string;
 	providerName: string;
+	/**
+	 * Namespace of the provider THIS PAGE should link to - the one gating
+	 * `preferEnv` when that environment is gated, else the first entry's.
+	 */
 	providerNamespace: string;
-	/** Contract version the provider has deployed. Null when it has none. */
+	/**
+	 * Contract version the provider has deployed, for `preferEnv`. Null when
+	 * the gate has read none.
+	 */
 	providedVersion: string | null;
 	providedTag: string | null;
+	/**
+	 * TRUE WHEN THE GATED ENVIRONMENTS DISAGREE about what the provider is on.
+	 *
+	 * The normal case is one number and the block prints it once. When the
+	 * providers themselves are at different points of their own promotion -
+	 * staging's `hello-api-app` ahead of prod's - there is no single number and
+	 * the page lists them per environment instead of picking one.
+	 */
+	providedVaries: boolean;
 	/** Environments gated on this contract, in promotion order. */
 	entries: ContractEnvEntry[];
 	/** The adverse rows: one per blocked build, newest first. */
@@ -292,8 +327,14 @@ export function contractBlocks(args: {
 	order: Build[];
 	/** Tag currently deployed in each environment. */
 	currentTagOf: (env: string) => string | null;
+	/**
+	 * The environment whose page this is. When it is gated on a contract, ITS
+	 * provider - not an arbitrary sibling's - is the one the block names and
+	 * links to. Omitted, the first entry wins, which is the old behaviour.
+	 */
+	preferEnv?: string;
 }): ContractBlock[] {
-	const { deps, envOf, envOrder, order, currentTagOf } = args;
+	const { deps, envOf, envOrder, order, currentTagOf, preferEnv } = args;
 	const byContract = new Map<string, ContractBlock>();
 
 	for (const dep of deps) {
@@ -313,6 +354,7 @@ export function contractBlocks(args: {
 				providerNamespace: dep.spec?.providerRef?.namespace ?? dep.metadata?.namespace ?? '',
 				providedVersion: null,
 				providedTag: null,
+				providedVaries: false,
 				ungatedEnvs: [],
 				entries: [],
 				blocked: [],
@@ -322,13 +364,6 @@ export function contractBlocks(args: {
 			};
 			byContract.set(key, block);
 		}
-		// The provider's deployed contract version is a fact about the
-		// PROVIDER, so every gate on this contract reports the same one. Take
-		// the first non-null rather than re-stating it per environment.
-		if (block.providedVersion === null && dep.status?.providedVersion) {
-			block.providedVersion = dep.status.providedVersion;
-			block.providedTag = dep.status.providedTag ?? null;
-		}
 		const split = splitBlocked(dep.status?.blockedReleases, order, currentTagOf(env));
 		block.entries.push({
 			env,
@@ -337,7 +372,10 @@ export function contractBlocks(args: {
 			wanted: split.wanted,
 			pastTags: split.past.map((x) => x.tag),
 			satisfied: isSatisfied(dep),
-			ready: isReady(dep)
+			ready: isReady(dep),
+			providedVersion: dep.status?.providedVersion ?? null,
+			providedTag: dep.status?.providedTag ?? null,
+			providerNamespace: dep.spec?.providerRef?.namespace ?? ns
 		});
 	}
 
@@ -351,6 +389,35 @@ export function contractBlocks(args: {
 		b.ungatedEnvs = envOrder.filter((e) => !gated.has(e));
 		b.ungated = b.ungatedEnvs.length;
 		b.adverse = b.entries.some((e) => e.wanted.length > 0);
+
+		/**
+		 * WHOSE PROVIDER THE BLOCK SPEAKS FOR.
+		 *
+		 * This page is ONE rollout in ONE environment, so when that environment
+		 * is gated its own gate is the authority - not whichever sibling the
+		 * API happened to serve first. The old first-non-null fold is exactly
+		 * what printed `in hello-dep-prod` on the DEV rollout's page.
+		 *
+		 * A block still falls back to the first entry that read a version at
+		 * all: an ungated `preferEnv` (the asymmetry case) must not blank a
+		 * number every other environment agrees on.
+		 */
+		const own = preferEnv ? b.entries.find((e) => e.env === preferEnv) : undefined;
+		const head = own ?? b.entries.find((e) => e.providedVersion) ?? b.entries[0];
+		if (head) {
+			b.providedVersion = head.providedVersion;
+			b.providedTag = head.providedTag;
+			b.providerNamespace = head.providerNamespace;
+			if (b.providedVersion === null) {
+				const other = b.entries.find((e) => e.providedVersion);
+				if (other) {
+					b.providedVersion = other.providedVersion;
+					b.providedTag = other.providedTag;
+				}
+			}
+		}
+		b.providedVaries =
+			new Set(b.entries.map((e) => e.providedVersion).filter((v) => v !== null)).size > 1;
 
 		const past = new Set<string>();
 		for (const e of b.entries) for (const t of e.pastTags) past.add(t);
@@ -523,7 +590,12 @@ export function hopBetween(up: ChainEnv | null, down: ChainEnv | null): ChainHop
 	if (!up.tag || !down.tag) return { waiting: 0, label: '' };
 	if (up.rank < 0 || down.rank < 0) return { waiting: 0, label: '' };
 	const n = down.rank - up.rank;
-	if (n > 0) return { waiting: n, label: `${n} waiting` };
-	if (n < 0) return { waiting: 0, label: `${-n} ahead` };
+	// THE UNIT IS NAMED. A bare `2 waiting` is a quantity of an unnamed thing
+	// — the novice-pass defect `/apps/[name]` fixed by spelling it
+	// `2 versions waiting to move`. Same words here, so the product spells one
+	// fact one way.
+	if (n > 0)
+		return { waiting: n, label: `${n} version${n === 1 ? '' : 's'} waiting to move` };
+	if (n < 0) return { waiting: 0, label: `${-n} version${n === -1 ? '' : 's'} ahead` };
 	return { waiting: 0, label: '' };
 }

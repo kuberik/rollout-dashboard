@@ -868,28 +868,61 @@ const mkDepRollout = (env: string) => ({
 	}
 });
 
+/**
+ * `spec.relationship` IS THE `After` EDGE, AND IT IS WHERE THE ORDER COMES
+ * FROM NOW. The hub serves it on every one of this app's environments
+ * (`staging After dev`, `prod After staging`) even though its
+ * `status.environmentInfos` is empty — which is exactly why the chain can be
+ * ordered correctly from data the old code never looked at.
+ */
+const DEP_AFTER: Record<string, string | null> = { dev: null, staging: 'dev', prod: 'staging' };
+
 const mkDepEnvironment = (env: string) => ({
 	apiVersion: 'environments.kuberik.com/v1alpha1',
 	kind: 'Environment',
 	metadata: { name: DEP_APP, namespace: `hello-dep-${env}` },
-	spec: { environment: env, name: 'hello-dep-frontend-app', rolloutRef: { name: DEP_APP } },
+	spec: {
+		environment: env,
+		name: 'hello-dep-frontend-app',
+		rolloutRef: { name: DEP_APP },
+		...(DEP_AFTER[env] ? { relationship: { environment: DEP_AFTER[env], type: 'After' } } : {})
+	},
 	status: { currentVersion: 'rel-66', lastStatusChangeTime: hcAgo(30) }
 });
 
-/** The chain every `hello-frontend-app` detail response reports. */
-const DEP_ENV_INFOS = [
-	{ environment: 'dev', history: depHistory(['rel-66', 'rel-64', 'rel-63', 'rel-2'], 30) },
-	{
-		environment: 'staging',
-		relationship: { environment: 'dev', type: 'After' },
-		history: depHistory(['rel-66', 'rel-64', 'rel-63', 'rel-2'], 34)
-	},
-	{
-		environment: 'prod',
-		relationship: { environment: 'staging', type: 'After' },
-		history: depHistory(['rel-66', 'rel-64', 'rel-63', 'rel-2'], 40)
-	}
-];
+/**
+ * ⛔ THE DEGENERATE `environmentInfos` THE HUB ACTUALLY SERVES FOR THIS APP,
+ * AND IT IS THE REGRESSION FIXTURE FOR A SHIPPED FALSEHOOD.
+ *
+ * This used to be three fully-populated entries with `After` edges and four
+ * history rows each, i.e. the shape `hello-world-app` has. That is NOT what
+ * `hello-frontend-app` serves. Measured on the hub, every one of its three
+ * namespaces returns exactly one self-entry with no relationship and no
+ * history:
+ *
+ *     "environmentInfos": [ { "environment": "dev" } ]
+ *
+ * because the environment-controller's GitHub-deployments backend has
+ * recorded nothing under this app's `spec.name`. The dependencies page read
+ * that as an OBSERVATION and rendered a one-node chain whose single node
+ * printed `not deployed` — for an app running `2.66.0-66` in all three
+ * environments. **A fixture more generous than production is a fixture that
+ * cannot see production's bugs**, and this one hid that defect for as long as
+ * it existed.
+ *
+ * The page now builds its chain from the ROLLOUTS and takes only the ORDER
+ * from the `After` edges (`Environment.spec.relationship`, which IS populated
+ * — see `mkDepEnvironment`). With this fixture restored to the live shape,
+ * `/rollouts/dev/hello-dep-dev/hello-frontend-app/dependencies` must still
+ * render THREE nodes, each on `2.66.0-66`. If it ever renders one again, or
+ * says `never deployed`, this fixture is what catches it.
+ *
+ * The seven-node populated case is not lost: `CK_ENV_INFOS` below is fully
+ * populated and exercises it.
+ */
+const DEP_ENV_INFOS_BY_ENV: Record<string, unknown[]> = Object.fromEntries(
+	DEP_ENVS.map((env) => [env, [{ environment: env }]])
+);
 
 /** Fixture A - the live shape, copied field for field. */
 const mkLiveDependency = (env: string) => ({
@@ -1220,7 +1253,10 @@ const mockDepDetails: Record<string, unknown> = Object.fromEntries([
 			rolloutGates: { items: [] },
 			environment: {
 				...mkDepEnvironment(env),
-				status: { ...mkDepEnvironment(env).status, environmentInfos: DEP_ENV_INFOS }
+				status: {
+					...mkDepEnvironment(env).status,
+					environmentInfos: DEP_ENV_INFOS_BY_ENV[env]
+				}
 			},
 			kruiseRollout: null,
 			rolloutTests: { items: [] }

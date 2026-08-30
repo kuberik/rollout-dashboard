@@ -566,6 +566,157 @@ because the full name is the `h2` immediately to its left).
 instead of `−14` and `diverged`. That is the point — a term the product spells two ways is a term
 nobody learns — but it is a change to a page outside this brief and is recorded here as one.
 
+## THE DEPENDENCIES TAB — BOTH PASSES, AND A SHIPPED FALSEHOOD (2026-08-30)
+
+`/rollouts/<cluster>/<ns>/<name>/dependencies`. From the human: ***"dependencies page is
+absolute meeh."*** The cause was structural — **this page was built before
+`COMPOSITION-GRAMMAR.md` existed and no agent owned it during either pass since**, so it
+still had the exact shape all six rejected pages had: `t-label` eyebrows over bare
+`rounded-xl` boxes, **zero icons**, no card headers, no rollups, a 13px type ceiling, and
+mechanism vocabulary throughout.
+
+### ⛔ AND IT WAS STATING SOMETHING FALSE. THE CAUSE WAS THE SOURCE, NOT THE CHIP.
+
+The DEV node of `hello-frontend-app` rendered a truncated `NOT DEP…` chip — *"this
+environment has never deployed"* — beside a promotion chain with **one** node, for an app
+running in three. `/apps/hello-frontend-app` said `DEV 2.66.0-66 · STAGING 2.66.0-66 ·
+PROD 2.66.0-66 · 3 of 3 up to date`, and the API agreed.
+
+**Both defects are ONE bug: the chain was derived entirely from
+`Environment.status.environmentInfos`.** Measured on the hub, all three of this app's
+namespaces serve exactly
+
+```json
+"environmentInfos": [ { "environment": "dev" } ]
+```
+
+— one self-entry, **no `relationship`, no `history`** — because the environment-controller's
+GitHub-deployments backend has recorded nothing under this app's `spec.name`. `chain()`
+produced one row; `currentEntry()` returned null for it; `StageChain` renders that as
+`not deployed`. Every step was locally correct and the output was a confident lie, because
+**an EMPTY MIRROR was being read as an OBSERVATION.**
+
+**The fix is the source.** The chain is built from the app's **ROLLOUTS** —
+`Rollout.status.history`, which the rollout controller wrote when it deployed, and which is
+the same source `/apps/[name]` reads. That is exactly why that page was right about this app
+while this one was wrong. `environmentInfos` is still UNIONED IN so an environment the
+rollout list cannot see is never lost, but it may no longer be the only witness for "never
+deployed". The ORDER comes from the `After` edges, read from each sibling `Environment`'s own
+**`spec.relationship`** (which IS populated on the hub) with `environmentInfos[].relationship`
+as the fallback.
+
+**The general rule: AN ABSENT RECORD IS NOT AN OBSERVATION.** Nothing on the page says "never
+deployed" unless a ROLLOUT with an empty history says so.
+
+⚠️ **THE FIXTURE WAS MORE GENEROUS THAN PRODUCTION, WHICH IS WHY NO TEST COULD SEE THIS.**
+`dev-mock-api.ts`'s `DEP_ENV_INFOS` carried three fully-populated entries with `After` edges
+and four history rows each — the shape `hello-world-app` has, not the shape this app serves.
+It is now the live degenerate shape and is the regression fixture: if
+`/rollouts/dev/hello-dep-dev/hello-frontend-app/dependencies` ever renders one node again, or
+says `never deployed`, that fixture catches it. **A fixture more generous than production is a
+fixture that cannot see production's bugs.**
+
+**Verified against real data:** the tab now renders `dev 2.66.0-66 · staging 2.66.0-66 ·
+prod 2.66.0-66`, `All up to date`. And on `hello-world-app` it prints
+`dev 19 behind 991829b · staging 19 behind 991829b · 5 versions waiting to move ·
+prod 24 behind 51b976a` — **character for character what `/apps/hello-world-app` prints**,
+which is the check that the two pages now share one source of truth.
+
+### Two more falsehoods the same fold produced
+
+- **`in hello-dep-prod` ON THE DEV PAGE.** `contractBlocks` folded `providedVersion` /
+  `providerNamespace` to the FIRST non-null across every environment's gate. But a
+  `RolloutDependency` is per-environment and **so is the provider it points at** —
+  `hello-api-app` in staging is a different rollout from `hello-api-app` in prod, and they
+  routinely run different builds. The block now takes `preferEnv` (this page's own
+  environment) as the authority, keeps `providedVersion` per entry, and publishes
+  `providedVaries`. When the providers agree it prints ONE badge; when they genuinely differ
+  it lists them per environment instead of picking one and printing it as the truth.
+- **A HOP BETWEEN TWO PRODUCTION REGIONS.** The old `chainHops` drew a rail and a count
+  between every consecutive PAIR, so `prod-af-south-1 → prod-ap-southeast-2` printed
+  `2 versions ahead` for a comparison that is not a promotion, and a SOLID rail (= "in sync")
+  wherever two siblings' ranks matched. *"Stages are a LINE. Production regions are a SET."*
+  A hop is now drawn only where the next row is this row's `After` child **and this row has
+  exactly one child**. Inside a fan-out nothing is drawn; each region's own `N behind` chip
+  carries its distance.
+
+### The composition pass
+
+- Both regions are `Card` — 8px radius, 47px header, 16px icon, right-aligned rollup.
+  `Waiting on other services` rolls up `Nothing held` / `4 versions held`;
+  `Where it's running` rolls up **`UpToDate`**, the same object and the same words `/apps`
+  uses, so a reader learns it once.
+- The one blocking fact is an **`AlertPanel`** (amber — a contract block neither clears
+  itself nor clears on approval; *somebody has to ship the other service*), with a `.btn`
+  at 14px via **`NextStep`** (`step="open"`) when a single provider is the cause.
+- A 24px `h1` + env chip + one gray line, the same header the Overview tab uses. Before this
+  the page's largest type was a **10px `t-label` eyebrow**.
+- Each contract row gained the reference page's own row idiom: 16px glyph, name, joined
+  `[API][1.66.0]` badge, and an `ml-auto` rollup (`in 5 of 7 environments`) — which is also
+  where the asymmetry moved to, out of the middle of an 11px evidence line.
+
+⚠️ **`max-w-[360px]` / `max-w-[44rem]` ON THE CARDS, NOT ON THE GRID TRACK**, so the caps hold
+in BOTH shapes. With no contract card the grid has no template and the chain stretched to the
+full 1024px, which put every environment chip **~800px from the build badge it belongs to** —
+`StageChain` right-aligns that badge, so a wide card is the same proximity inversion the
+`/apps` convergence bar was rebuilt to fix. And the rail is **360px, not 320**: at 320 the
+`Card` title clipped to `Where it's run…` against `UpToDate`'s ~117px rollup.
+
+### The novice pass
+
+| was | now |
+|---|---|
+| `CONTRACT GATES` (eyebrow) | `Waiting on other services` (card title) |
+| `PROMOTION CHAIN` (eyebrow) | `Where it's running` — `/apps/[name]`'s own words |
+| `NEEDS api` | `[API][1.66.0]` — a bare `NEEDS` names a mechanism and carries no number, and the number is the whole of *"is it far enough along yet"* |
+| `deployed 1.66.0 · rel-66` | `Now on api 1.66.0, from rel-66` |
+| `in hello-dep-prod` | `runs in platform-prod`, and only when it really is another namespace |
+| `gates 2 of 7 environments` | `in 2 of 7 environments` (row rollup) + `not needed in <names>` |
+| `2 older builds blocked` | `also holds 2 older versions nobody is trying to deploy` |
+| `blocked` chip | `held` chip — same `blocked` ROLE, same red, only the word moved |
+| `requires api ^3.0.0 · ConstraintNotSatisfied` | **`BlockReason`** — `Needs payments ^3.0.0 from payments-core, which is on 2.4.1 — someone has to ship payments-core first`, with `rule: dependency-… · ConstraintNotSatisfied` demoted below it in muted mono |
+| `2 waiting` (hop) | `2 versions waiting to move` — `/apps/[name]`'s wording |
+| `NOT DEP…` (truncated at `.chip`'s 12ch cap) | gone; and where it is genuinely true the chip is `wide` |
+
+**`BlockReason` gained a fourth branch, `contract`, and it is in the shared component on
+purpose.** It is the same defect that file exists to kill, one object further out: the
+dependency controller publishes a generated `RolloutGate` (`dependency-<name>`) and the page
+was printing it, and the controller's own `reason` enum, as if either were an explanation.
+The consequence is a THIRD thing, not one of the existing two — it does **not** clear itself
+like a schedule window, and nobody here can approve it either — so it gets its own sentence
+rather than borrowing one that would be wrong. ⛔ **`reason` IS AN OPEN STRING AND IS NOT
+SWITCHED ON**: the same dependency reports `ConstraintNotSatisfied` on the spoke and
+`ProviderVersionTooOld` on the hub, so a friendly label per case would ship its fallback. It
+rides in `names`, beside the gate name, where the component already dresses text as a handle.
+The semver constraint is printed **verbatim** — a bare version is an EXACT match in
+Masterminds semver, so "at least 1.1.0" would be a lie with better grammar.
+
+### Nothing draws `Satisfied=True`
+
+It is the norm and true on every gate on the live cluster. No green tick, no "satisfied" chip,
+no per-environment row for it. The card states its rollup once, in neutral gray, and the
+adverse case — `blockedReleases` newer than what the holding environment runs — is the only
+thing that spends colour. `splitBlocked` still keeps the live `rel-2` block (the app's OLDEST
+build, blocked while every environment runs `rel-66`) out of the banner and out of the drawn
+rows, because that is the gate WORKING and no action follows from it.
+
+### Measured
+
+| | before | after |
+|---|---|---|
+| SVG icons (live, converged, 1 contract) | **0** | **5** |
+| SVG icons (`MOCK_API=1`, 3 contracts, 7 envs) | 0 | **14** |
+| radii | 12 + 4 | **8 + 4** (12 from `AlertPanel` when a version is held) |
+| type range | 13 → 10 | **24 → 10** |
+| chain nodes on `hello-frontend-app` | 1, `not deployed` | **3, all `2.66.0-66`** |
+
+All four combinations looked at on the live example (1440 + 390, light + dark) and on the
+`MOCK_API=1` adverse fixture. `scrollWidth === clientWidth` at 390 and 1440 in both themes;
+**zero clipped headings, chips or buttons** on either. `/`, `/rollouts` and the Overview,
+History and Logs tabs are untouched — the only shared files changed are `BlockReason.svelte`
+(additive: one optional prop, one new exported function; its four existing call sites render
+identically) and `view-models/dependencies.ts`, which no other page imports.
+
 ## ⛔ AN ENVIRONMENT'S LABEL IS ITS OWN NAME. NEVER THE PRESET WORD. (2026-08-28)
 
 **Do not "fix" this back to the preset label.** `resolveThemeLabel` in
