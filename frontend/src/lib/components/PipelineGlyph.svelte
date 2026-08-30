@@ -45,7 +45,7 @@
 		     height (2 rows of h-1.5 + gap-0.5 = ~14px). -->
 		{@const trackCount = summary.tracks.length}
 		{@const blockH = trackCount * 6 + (trackCount - 1) * 2}
-		<svg width="10" height={blockH} viewBox="0 0 10 {blockH}" class="shrink-0 text-gray-300 dark:text-gray-600" aria-hidden="true">
+		<svg width="10" height={blockH} viewBox="0 0 10 {blockH}" class="shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true">
 			{#each summary.tracks as _, ti}
 				{@const trackCenter = ti * 8 + 3}
 				{@const bakeCenter = blockH / 2}

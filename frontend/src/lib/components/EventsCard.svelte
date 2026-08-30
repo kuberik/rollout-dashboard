@@ -18,11 +18,11 @@
 			Recent Events
 		</h5>
 		{#if events.length > 0}
-			<span class="text-xs text-gray-400 dark:text-gray-500">{events.length} event{events.length !== 1 ? 's' : ''}</span>
+			<span class="text-xs text-gray-500 dark:text-gray-400">{events.length} event{events.length !== 1 ? 's' : ''}</span>
 		{/if}
 	</div>
 	{#if events.length === 0}
-		<p class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">No recent events</p>
+		<p class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No recent events</p>
 	{:else}
 		<div class="divide-y divide-gray-100 dark:divide-gray-700">
 			{#each visibleEvents as event}
@@ -36,7 +36,7 @@
 						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
 							<span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{event.reason}</span>
 							<span class="text-xs text-gray-500 dark:text-gray-400">{event.involvedObject?.kind}/{event.involvedObject?.name}</span>
-							<span class="ml-auto text-xs text-gray-400 dark:text-gray-500">{formatTimeAgo(event.lastTimestamp, $now)}</span>
+							<span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{formatTimeAgo(event.lastTimestamp, $now)}</span>
 						</div>
 						<p class="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{event.message}</p>
 					</div>

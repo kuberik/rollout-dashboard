@@ -384,7 +384,7 @@
 		</div>
 	{:else if activityFeed.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<ClockSolid class="mb-3 h-10 w-10 text-gray-400 dark:text-gray-500" />
+			<ClockSolid class="mb-3 h-10 w-10 text-gray-500 dark:text-gray-400" />
 			{#if activeFilterCount > 0 || envFilter}
 				<p class="text-sm font-medium text-gray-900 dark:text-white">No deploys match these filters</p>
 				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Try widening the scope or resetting.</p>
@@ -458,7 +458,7 @@
 											<a href={buildPath(repoKeyFromSource(entry.source, entry.rolloutName), entry.revision, entry.version)} class="pointer-events-auto relative z-10 font-mono text-[11px] text-gray-600 hover:underline dark:text-gray-300">{entry.version}</a>
 										{/if}
 										{#if entry.bakeStatus !== 'Succeeded'}
-											<span class="font-mono text-[10px] text-gray-300 dark:text-gray-600">·</span>
+											<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">·</span>
 											<span class="font-mono text-[11px] {cfg.textClass}">{cfg.label.toLowerCase()}</span>
 										{/if}
 									</div>

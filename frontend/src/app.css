@@ -37,6 +37,20 @@
 @source "../node_modules/flowbite-svelte-icons/dist";
 
 @layer base {
+	/* ⚠️ DARK HAD NO BASE INK, so anything that did not name its own colour
+	   INHERITED BLACK — the root shell computes `color: rgb(0,0,0)` in dark.
+	   That is the mechanism behind the black glyphs on `/versions`: a rule
+	   that failed to apply left `currentColor` resolving to the initial
+	   value, which is invisible on a `gray-900` page and 21:1 on a white one,
+	   so the same bug is silent in light and catastrophic in dark.
+	   `@layer base` is deliberate: EVERY Tailwind utility and every
+	   `@layer components` rule outranks it, so this can only ever catch an
+	   element that names no colour at all. Measured before/after across the
+	   twelve audited pages: zero elements changed colour. */
+	html.dark {
+		color: var(--color-gray-100);
+	}
+
 	button,
 	[role='button'] {
 		cursor: pointer;
@@ -325,6 +339,58 @@ textarea {
 	line-height: 1.2;
 	text-transform: uppercase;
 	letter-spacing: 0.16em;
+}
+
+/* ── THE THREE GLYPH INKS — `tone-live` / `tone-mute` / `tone-bad`.
+
+   ⚠️ THESE LIVED IN TWO `<style>` BLOCKS AND NEITHER OF THEM EVER PAINTED
+   ANYTHING. They were declared scoped, inside `BuildStateMark.svelte` and
+   `routes/versions/[...slug]/+page.svelte`, and applied to a `<Glyph>` —
+   i.e. to a CHILD COMPONENT's root `<svg>`. Svelte 5 does not put the
+   scoping hash on a child component's elements, so `.tone-mute.svelte-hash`
+   matched nothing and every glyph fell back to the flowbite icon's own
+   `color="currentColor"` presentation attribute, which resolved to PURE
+   BLACK.
+
+   IN LIGHT THAT IS 21:1 AND LOOKS DELIBERATE. IN DARK IT IS 1.43:1 ON THE
+   CARD AND 1.18:1 ON THE PAGE — invisible, and the defect the human saw
+   ("some icons on the dark theme are black"). This is exactly the failure
+   mode of treating dark as a derivation of light: the bug was equally
+   present in both themes and only one theme could show it.
+
+   They are GLOBAL now, so they cannot be lost by a component boundary
+   again. Values: the mint is the `newest` chip's / `ExposureBar`'s own
+   `#426d64` / `#83b0a8`; `tone-bad` is the product red; `tone-mute` is the
+   product's muted ink pair (`gray-500` light / `gray-400` dark) — the same
+   pair `Chip`'s NEUTRAL role and `.chip-value--dim` already spend. Zero new
+   colour values.
+
+   `@layer components`, not unlayered: a call site that legitimately needs a
+   different ink passes a Tailwind utility and it must win. ──────────── */
+@layer components {
+	.tone-live {
+		color: #426d64;
+	}
+
+	.dark .tone-live {
+		color: #83b0a8;
+	}
+
+	.tone-bad {
+		color: var(--color-red-700);
+	}
+
+	.dark .tone-bad {
+		color: var(--color-red-400);
+	}
+
+	.tone-mute {
+		color: var(--color-gray-500);
+	}
+
+	.dark .tone-mute {
+		color: var(--color-gray-400);
+	}
 }
 
 /* ── The chip. One geometry, no size prop. Every chip in the product is
@@ -680,7 +746,12 @@ textarea {
 
 	.dark .btn-secondary {
 		background-color: var(--color-gray-800);
-		border-color: var(--color-gray-600);
+		/* `gray-600` measured 1.94:1 against the `gray-800` card it sits on —
+		   under the 3:1 non-text floor, i.e. a button whose own boundary is
+		   not reliably visible. `gray-500` is 3.01:1 on the card and 3.62:1
+		   on the `gray-900` page ground, and it is a step the ink vocabulary
+		   already spends. Light is unchanged. */
+		border-color: var(--color-gray-500);
 		color: var(--color-gray-100);
 	}
 
@@ -704,7 +775,13 @@ textarea {
 
 	.dark .btn-primary {
 		background-color: var(--color-blue-600);
-		border-color: var(--color-blue-600);
+		/* THE FILL IS THE BOUNDARY ON A FILLED BUTTON, and in dark
+		   `blue-600` on the `gray-800` card is 2.79:1 — under 3:1, where the
+		   same button in light is 6.83:1. The FILL cannot move (white ink on
+		   `blue-500` is 3.73:1 and fails 4.5 for 14px text), so the border
+		   carries it: `blue-500` is 3.96:1 against the card and is already
+		   this button's own hover fill. Zero new values. */
+		border-color: var(--color-blue-500);
 	}
 
 	.dark .btn-primary:hover {

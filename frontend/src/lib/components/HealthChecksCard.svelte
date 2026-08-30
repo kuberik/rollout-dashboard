@@ -68,7 +68,7 @@
 								</span>
 								<div class="flex shrink-0 items-center gap-2 text-xs">
 									{#if hc.status?.lastChangeTime}
-										<span class="text-gray-400 dark:text-gray-500">{formatTimeAgo(hc.status.lastChangeTime, $now)}</span>
+										<span class="text-gray-500 dark:text-gray-400">{formatTimeAgo(hc.status.lastChangeTime, $now)}</span>
 									{/if}
 									<span class="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-700 dark:bg-red-900/50 dark:text-red-300">
 										{hc.status?.status || 'Unknown'}
@@ -80,7 +80,7 @@
 								{@const expanded = expandedMessages.has(key)}
 								<p class="text-sm leading-relaxed text-gray-600 dark:text-gray-400" class:line-clamp-3={!expanded}>{hc.status.message}</p>
 								{#if hc.status.message.length > 200}
-									<button onclick={() => toggleMessage(key)} class="mt-1 text-xs text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+									<button onclick={() => toggleMessage(key)} class="mt-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
 										{expanded ? 'Show less' : 'Show more'}
 									</button>
 								{/if}
@@ -102,7 +102,7 @@
 								{@const expanded = expandedMessages.has(key)}
 								<p class="mt-0.5 text-sm leading-relaxed text-gray-600 dark:text-gray-400" class:line-clamp-3={!expanded}>{hc.status.message}</p>
 								{#if hc.status.message.length > 200}
-									<button onclick={() => toggleMessage(key)} class="mt-1 text-xs text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+									<button onclick={() => toggleMessage(key)} class="mt-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
 										{expanded ? 'Show less' : 'Show more'}
 									</button>
 								{/if}

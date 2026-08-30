@@ -52,7 +52,7 @@
 		// Keep colour only for the one thing worth shouting — failures. The
 		// meter bar already carries deploying/baking/complete colour, so the
 		// caption text stays neutral otherwise.
-		const capTone = failN ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500';
+		const capTone = failN ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400';
 		return { ordered, total, doneN, cap, capTone };
 	});
 
@@ -81,7 +81,7 @@
 		{/each}
 	</div>
 	<div class="mt-1.5 flex items-center gap-2 text-[10px] leading-none">
-		<span class="shrink-0 text-gray-400 dark:text-gray-500">{meter.doneN}/{meter.total} stages done</span>
+		<span class="shrink-0 text-gray-500 dark:text-gray-400">{meter.doneN}/{meter.total} stages done</span>
 		{#if trailing}
 			<span class="shrink-0 font-medium {meter.capTone}">{meter.cap}</span>
 			<span class="ml-auto flex shrink-0 items-center gap-2">{@render trailing()}</span>

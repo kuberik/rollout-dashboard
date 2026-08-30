@@ -490,7 +490,7 @@
 							y={cy + 4}
 							text-anchor="middle"
 							font-size="11"
-							class="fill-gray-400 dark:fill-gray-600"
+							class="fill-gray-500 dark:fill-gray-400"
 						>
 							No deployments in this period
 						</text>
@@ -504,7 +504,7 @@
 					x2={containerWidth - PAD_R}
 					y2={PAD_T + services.length * ROW_H}
 					stroke-width={1}
-					class="stroke-gray-300 dark:stroke-gray-600"
+					class="stroke-gray-500 dark:stroke-gray-400"
 				/>
 
 				<!-- X-axis ticks + labels -->
@@ -515,7 +515,7 @@
 						x2={tick.x}
 						y2={PAD_T + services.length * ROW_H + 5}
 						stroke-width={1}
-						class="stroke-gray-400 dark:stroke-gray-500"
+						class="stroke-gray-500 dark:stroke-gray-400"
 					/>
 					<text
 						x={tick.x}
@@ -523,7 +523,7 @@
 						text-anchor="middle"
 						font-size="10"
 						font-family="ui-sans-serif, system-ui, sans-serif"
-						class="fill-gray-400 dark:fill-gray-500"
+						class="fill-gray-500 dark:fill-gray-400"
 					>
 						{tick.label}
 					</text>
@@ -537,7 +537,7 @@
 					y2={PAD_T + services.length * ROW_H}
 					stroke-width={1.5}
 					stroke-dasharray="4 2"
-					class="stroke-gray-400 dark:stroke-gray-500"
+					class="stroke-gray-500 dark:stroke-gray-400"
 				/>
 				<text
 					x={containerWidth - PAD_R - 4}

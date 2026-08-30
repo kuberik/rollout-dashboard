@@ -156,7 +156,7 @@
 {#if reason}
 	{@const Icon = reason.icon}
 	<p class="flex min-w-0 items-start gap-1.5 {className}">
-		<Icon class="mt-px h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+		<Icon class="mt-px h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
 		<span class="min-w-0">
 			<span class="t-micro block text-gray-500 dark:text-gray-400">{reason.line}</span>
 			{#if reason.names}
@@ -171,7 +171,7 @@
 				     A `block` gives it the full width first, and `break-all` then
 				     only fires on a name genuinely wider than the card. -->
 				<span
-					class="t-code-sm block break-all text-gray-400 dark:text-gray-500"
+					class="t-code-sm block break-all text-gray-500 dark:text-gray-400"
 					title="The rule blocking this: {reason.names}">rule: {reason.names}</span
 				>
 			{/if}

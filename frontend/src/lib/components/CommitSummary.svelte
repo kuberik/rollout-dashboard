@@ -173,7 +173,7 @@
 		<!-- deliberately empty -->
 	{:else if count === 0}
 		{#if !hideWhenEmpty}
-			<span class="text-xs text-gray-400 dark:text-gray-500 {className}">No commit changes</span>
+			<span class="text-xs text-gray-500 dark:text-gray-400 {className}">No commit changes</span>
 		{/if}
 	{:else}
 		{@const inner = `${count} commit${count !== 1 ? 's' : ''} ${verbText}`}
@@ -186,7 +186,7 @@
 					class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400"
 				>
 					<span class="h-1.5 w-1.5 shrink-0 rounded-full {dotClass}"></span>
-					<CodeBranchSolid class="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500" />
+					<CodeBranchSolid class="h-3 w-3 shrink-0 text-gray-500 dark:text-gray-400" />
 					{inner}
 					{#if open}
 						<ChevronUpOutline class="h-3 w-3 shrink-0" />
@@ -203,16 +203,16 @@
 						: ''}"
 				>
 					<span class="h-1.5 w-1.5 shrink-0 rounded-full {dotClass}"></span>
-					<CodeBranchSolid class="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500" />
+					<CodeBranchSolid class="h-3 w-3 shrink-0 text-gray-500 dark:text-gray-400" />
 					{inner}
 				</svelte:element>
 			{/if}
 
 			{#if showStats && data}
-				<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">
+				<span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">
 					<span class="text-green-700 dark:text-green-400">+{data.additions}</span>
 					<span class="text-red-500 dark:text-red-400">−{data.deletions}</span>
-					<span class="text-gray-300 dark:text-gray-600">·</span>
+					<span class="text-gray-500 dark:text-gray-400">·</span>
 					{data.changedFiles} file{data.changedFiles !== 1 ? 's' : ''}
 				</span>
 			{/if}
@@ -254,7 +254,7 @@
 							>{formatCommitMessage(c.message)}</span
 						>
 						{#if c.author}
-							<span class="shrink-0 text-[10px] text-gray-400 dark:text-gray-500">{c.author}</span>
+							<span class="shrink-0 text-[10px] text-gray-500 dark:text-gray-400">{c.author}</span>
 						{/if}
 					</li>
 				{/each}

@@ -76,7 +76,7 @@
 			onclick={toggle}
 			aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 			title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-			class="inline-flex w-full items-center {collapsed ? 'justify-center' : 'gap-2.5'} rounded-md px-2 py-2 text-xs font-medium text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700/40 dark:hover:text-gray-300"
+			class="inline-flex w-full items-center {collapsed ? 'justify-center' : 'gap-2.5'} rounded-md px-2 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/40 dark:hover:text-gray-300"
 		>
 			{#if collapsed}
 				<ChevronDoubleRightOutline class="h-3.5 w-3.5 shrink-0" />

@@ -41,7 +41,7 @@
 					<ExclamationCircleSolid class="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" />
 					<span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-800 dark:text-gray-200">{getDisplayName(test)}</span>
 					{#if (test.status?.retryCount ?? 0) > 0}
-						<span class="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+						<span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">
 							{test.status?.retryCount}× retried
 						</span>
 					{/if}

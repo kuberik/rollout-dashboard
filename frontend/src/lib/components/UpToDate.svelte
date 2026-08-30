@@ -120,7 +120,7 @@
 		<Icon
 			class="h-4 w-4 shrink-0 {allCurrent
 				? 'text-green-700 dark:text-green-400'
-				: 'text-gray-400 dark:text-gray-500'}"
+				: 'text-gray-500 dark:text-gray-400'}"
 		/>
 		<span
 			class="t-body truncate {allCurrent

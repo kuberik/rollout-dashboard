@@ -647,7 +647,7 @@
 											and on `Show 8 ready resources ›`.
 										-->
 										<span class="rev-go" aria-hidden="true">
-											<ChevronRightOutline class="h-4 w-4 text-gray-300 dark:text-gray-600" />
+											<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 										</span>
 									</li>
 								{/each}
@@ -689,7 +689,7 @@
 											>
 										</div>
 										<span class="rev-go" aria-hidden="true">
-											<ChevronRightOutline class="h-4 w-4 text-gray-300 dark:text-gray-600" />
+											<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 										</span>
 									</li>
 								{/each}
@@ -742,7 +742,7 @@
 											title={ageTitle(row)}>{ageOf(row)}</span
 										>
 										<ChevronRightOutline
-											class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600"
+											class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
 											aria-hidden="true"
 										/>
 									</li>

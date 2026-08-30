@@ -63,6 +63,33 @@
 		class: className = 'mb-4'
 	}: Props = $props();
 
+	/**
+	 * ⛔ THE ALPHA LADDER IS GONE FROM THE MESSAGE AND THE FOOTNOTE IN LIGHT,
+	 * AND IT IS NOT COMING BACK. Measured pixel-wise off a screenshot (the
+	 * container is a GRADIENT, so `getComputedStyle` on an ancestor reports
+	 * `transparent` and every earlier number computed against the page ground
+	 * was wrong), all four severities, 1440:
+	 *
+	 *   light   icon 2.57-3.69 | message 3.34-4.20 | footnote 2.35-3.11
+	 *   dark    icon 6.17-6.78 | message 5.68-6.08 | footnote 3.58-3.83
+	 *
+	 * There is NO alpha that works in light: `<hue>-700` at 95% over the
+	 * `<hue>-50/100` gradient is still only 4.46:1, under the 4.5 floor. So
+	 * the message and the footnote are the FULL 700 step in light and the
+	 * ladder is carried by SIZE (16px/700 bold title, 14px message, 12px
+	 * footnote), which is the ladder the reference page's own cards use.
+	 * In dark the alpha still has headroom and is kept, raised 55% -> 70% on
+	 * the footnote (3.58 -> ~5.8).
+	 *
+	 * The ICON is the 700 step in light too: `<hue>-600` on the `<hue>-200`
+	 * disc measured 2.57 (warning) and 2.65 (pinned), under the 3:1 non-text
+	 * floor — the disc is a FILL, so the glyph is competing with a mid-ramp
+	 * ground, not with white. Dark (`<hue>-300` on the `<hue>-500/20` disc)
+	 * was already 6.2-6.8 and is untouched.
+	 *
+	 * ZERO NEW COLOUR VALUES: every step used here is one the product already
+	 * spends.
+	 */
 	const palette = $derived.by(() => {
 		switch (severity) {
 			case 'error':
@@ -73,10 +100,10 @@
 					glowB: 'bg-red-300/10 dark:bg-red-400/8',
 					ping: 'bg-red-500/30 dark:bg-red-500/40',
 					iconWrap: 'bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50',
-					iconColor: 'text-red-600 dark:text-red-300',
+					iconColor: 'text-red-700 dark:text-red-300',
 					title: 'text-red-900 dark:text-white',
-					message: 'text-red-700/75 dark:text-red-200/75',
-					footnote: 'text-red-700/60 dark:text-red-200/55',
+					message: 'text-red-900 dark:text-red-200/75',
+					footnote: 'text-red-900 dark:text-red-200/70',
 					quoteBorder: 'border-red-400/60 dark:border-red-500/40',
 					defaultIcon: ExclamationCircleSolid
 				};
@@ -89,10 +116,10 @@
 					ping: 'bg-amber-500/25 dark:bg-amber-500/30',
 					iconWrap:
 						'bg-amber-200 ring-2 ring-amber-400/60 dark:bg-amber-500/20 dark:ring-amber-500/50',
-					iconColor: 'text-amber-600 dark:text-amber-300',
+					iconColor: 'text-amber-700 dark:text-amber-300',
 					title: 'text-amber-900 dark:text-white',
-					message: 'text-amber-700/80 dark:text-amber-200/75',
-					footnote: 'text-amber-700/60 dark:text-amber-200/55',
+					message: 'text-amber-900 dark:text-amber-200/75',
+					footnote: 'text-amber-900 dark:text-amber-200/70',
 					quoteBorder: 'border-amber-400/60 dark:border-amber-500/40',
 					defaultIcon: ExclamationCircleSolid
 				};
@@ -105,10 +132,10 @@
 					ping: 'bg-orange-500/25 dark:bg-orange-500/30',
 					iconWrap:
 						'bg-orange-200 ring-2 ring-orange-400/60 dark:bg-orange-500/20 dark:ring-orange-500/50',
-					iconColor: 'text-orange-600 dark:text-orange-300',
+					iconColor: 'text-orange-700 dark:text-orange-300',
 					title: 'text-orange-900 dark:text-white',
-					message: 'text-orange-700/80 dark:text-orange-200/75',
-					footnote: 'text-orange-700/60 dark:text-orange-200/55',
+					message: 'text-orange-900 dark:text-orange-200/75',
+					footnote: 'text-orange-900 dark:text-orange-200/70',
 					quoteBorder: 'border-orange-400/60 dark:border-orange-500/40',
 					defaultIcon: PauseSolid
 				};
@@ -121,10 +148,10 @@
 					glowB: 'bg-blue-300/10 dark:bg-blue-400/8',
 					ping: 'bg-blue-500/25 dark:bg-blue-500/30',
 					iconWrap: 'bg-blue-200 ring-2 ring-blue-400/60 dark:bg-blue-500/20 dark:ring-blue-500/50',
-					iconColor: 'text-blue-600 dark:text-blue-300',
+					iconColor: 'text-blue-700 dark:text-blue-300',
 					title: 'text-blue-900 dark:text-white',
-					message: 'text-blue-700/80 dark:text-blue-200/75',
-					footnote: 'text-blue-700/60 dark:text-blue-200/55',
+					message: 'text-blue-900 dark:text-blue-200/75',
+					footnote: 'text-blue-900 dark:text-blue-200/70',
 					quoteBorder: 'border-blue-400/60 dark:border-blue-500/40',
 					defaultIcon: InfoCircleSolid
 				};

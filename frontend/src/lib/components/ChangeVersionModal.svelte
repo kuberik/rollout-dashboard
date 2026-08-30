@@ -319,7 +319,7 @@
 		>
 			<div class="text-base font-semibold text-gray-900 dark:text-white">Change Version</div>
 			{#if rollout?.metadata?.name}
-				<span class="text-gray-300 dark:text-gray-600">/</span>
+				<span class="text-gray-500 dark:text-gray-400">/</span>
 				<code class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">{rollout.metadata.name}</code>
 			{/if}
 			<div class="flex-1"></div>
@@ -346,7 +346,7 @@
 						type="text"
 						placeholder="Search versions..."
 						bind:value={searchQuery}
-						class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+						class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 					/>
 					<div class="flex items-center justify-between">
 						<span class="text-xs text-gray-500 dark:text-gray-400">Show all repo tags</span>
@@ -400,7 +400,7 @@
 										{/if}
 									</div>
 									{#if created}
-										<div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+										<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
 											{formatTimeAgo(created)}
 										</div>
 									{/if}
@@ -430,7 +430,7 @@
 			<!-- RIGHT: changelist + deploy -->
 			<div class="flex-col overflow-hidden md:flex {selectedVersion ? 'flex' : 'hidden'}">
 				{#if !selectedVersion}
-					<div class="flex flex-1 items-center justify-center p-8 text-center text-sm text-gray-400 dark:text-gray-500">
+					<div class="flex flex-1 items-center justify-center p-8 text-center text-sm text-gray-500 dark:text-gray-400">
 						Select a version to preview what will change.
 					</div>
 				{:else}
@@ -477,7 +477,7 @@
 						{#if direction !== 'same'}
 							<div>
 								<div class="mb-2 flex items-center justify-between">
-									<span class="text-xs font-semibold tracking-wide text-gray-400 uppercase dark:text-gray-500">
+									<span class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
 										{direction === 'rollback' ? 'Commits reverted' : 'Commits deployed'}
 									</span>
 									{#if supportsManifestDiff}
@@ -493,15 +493,15 @@
 								</div>
 
 								{#if !rollout?.status?.source}
-									<p class="text-sm text-gray-400 dark:text-gray-500">
+									<p class="text-sm text-gray-500 dark:text-gray-400">
 										No source repository linked — commit changelist unavailable.
 									</p>
 								{:else if !selectedRevision}
-									<p class="text-sm text-gray-400 dark:text-gray-500">
+									<p class="text-sm text-gray-500 dark:text-gray-400">
 										No commit revision known for this version — changelist unavailable.
 									</p>
 								{:else if commitsQuery.isLoading}
-									<p class="text-sm text-gray-400 dark:text-gray-500">Loading commits…</p>
+									<p class="text-sm text-gray-500 dark:text-gray-400">Loading commits…</p>
 								{:else if commitsError === 'not_connected'}
 									<div class="flex flex-col items-start gap-2">
 										<p class="text-sm text-gray-500 dark:text-gray-400">
@@ -515,11 +515,11 @@
 										</Button>
 									</div>
 								{:else if commitsError === 'no_access'}
-									<p class="text-sm text-gray-400 dark:text-gray-500">
+									<p class="text-sm text-gray-500 dark:text-gray-400">
 										You don't have access to this repository on GitHub. You can still proceed.
 									</p>
 								{:else if commitsQuery.isError}
-									<p class="text-sm text-gray-400 dark:text-gray-500">
+									<p class="text-sm text-gray-500 dark:text-gray-400">
 										Unable to load commit history. You can still proceed.
 									</p>
 								{:else if commitsQuery.data && commitsQuery.data.commits.length > 0}
@@ -537,7 +537,7 @@
 													>
 														{formatCommitMessage(commit.message)}
 													</a>
-													<div class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+													<div class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
 														<span>{commit.author || 'unknown'}</span>
 														<span>·</span>
 														<code>{commit.sha.slice(0, 7)}</code>
@@ -553,7 +553,7 @@
 										{/each}
 									</ul>
 								{:else}
-									<p class="text-sm text-gray-400 dark:text-gray-500">
+									<p class="text-sm text-gray-500 dark:text-gray-400">
 										No commit changes detected between versions.
 									</p>
 								{/if}
@@ -586,7 +586,7 @@
 							bind:value={deployExplanation}
 							placeholder="Why are you deploying this version? (optional)"
 							rows="2"
-							class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+							class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 						></textarea>
 
 						<div>
@@ -602,7 +602,7 @@
 								id="cvm-confirm-version"
 								type="text"
 								bind:value={deployConfirmationVersion}
-								class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+								class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 							/>
 						</div>
 

@@ -1183,7 +1183,7 @@
 				<div class="apps-panel">
 					<Card
 						icon={ExclamationCircleSolid}
-						iconClass="text-amber-500 dark:text-amber-400"
+						iconClass="text-amber-600 dark:text-amber-400"
 						title="Needs you"
 						verdict="{attentionRows.length} of {appRows.length} app{appRows.length === 1
 							? ''
@@ -1472,7 +1472,7 @@
 						? ''
 						: 's'} that made the whole trip"
 				>
-					<ClockSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+					<ClockSolid class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 					<span class="t-body font-medium text-gray-900 tabular-nums dark:text-white"
 						>{compactSpan(app.lead.medianMs)}</span
 					>
@@ -1485,7 +1485,7 @@
 					class="apps-mark flex items-center gap-1.5"
 					title="No version has gone all the way from the first environment to production inside the deploy history kept for this app"
 				>
-					<ClockSolid class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+					<ClockSolid class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 					<span class="t-body text-gray-500 dark:text-gray-400">—</span>
 				</span>
 				<span class="t-micro truncate text-gray-500 dark:text-gray-400">no full trip yet</span>
@@ -1525,7 +1525,7 @@
 		{/if}
 
 		<span class="apps-chev flex items-center justify-end">
-			<ChevronRightOutline class="h-4 w-4 text-gray-300 dark:text-gray-600" />
+			<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 		</span>
 	</div>
 {/snippet}

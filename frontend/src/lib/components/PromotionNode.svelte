@@ -80,7 +80,7 @@
 						{getDisplayVersion(latest.version)}
 					</span>
 					{#if latest.timestamp}
-						<span class="truncate font-mono text-[10px] {isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'}" title={formatDate(latest.timestamp)}>
+						<span class="truncate font-mono text-[10px] {isRunning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}" title={formatDate(latest.timestamp)}>
 							{formatStatusTime(status, latest.timestamp, $now)}
 						</span>
 					{/if}
@@ -97,12 +97,12 @@
 			{/if}
 
 			{#if r?.metadata?.namespace}
-				<div class="mt-auto truncate font-mono text-[10px] text-gray-400 dark:text-gray-500">
+				<div class="mt-auto truncate font-mono text-[10px] text-gray-500 dark:text-gray-400">
 					{r.metadata.namespace}
 				</div>
 			{/if}
 		{:else}
-			<div class="flex items-center gap-3 text-gray-400 dark:text-gray-500">
+			<div class="flex items-center gap-3 text-gray-500 dark:text-gray-400">
 				<span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
 					<span class="h-3 w-3 rounded-full border border-dashed border-gray-300 dark:border-gray-600"></span>
 				</span>

@@ -392,7 +392,7 @@
 
 				{#if filteredHistory.length === 0}
 					<div
-						class="flex h-24 items-center justify-center rounded-xl border border-dashed border-gray-200 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-600"
+						class="flex h-24 items-center justify-center rounded-xl border border-dashed border-gray-200 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
 					>
 						No deployments in this time range
 					</div>

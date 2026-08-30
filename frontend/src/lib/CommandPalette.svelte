@@ -419,7 +419,7 @@
 					placeholder={scope ? `Search ${KIND_LABEL[scope].toLowerCase()}…` : 'Search rollouts, apps, environments, namespaces…'}
 					autocomplete="off"
 					spellcheck="false"
-					class="flex-1 border-0 bg-transparent p-0 text-base text-gray-900 placeholder-gray-400 outline-none focus:outline-none focus:ring-0 sm:text-sm dark:text-white"
+					class="flex-1 border-0 bg-transparent p-0 text-base text-gray-900 placeholder-gray-500 outline-none focus:outline-none focus:ring-0 sm:text-sm dark:text-white"
 				/>
 				<kbd
 					class="hidden shrink-0 rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-block"
@@ -448,7 +448,7 @@
 						return c;
 					})()}
 					<div class="px-2 pb-1 pt-2">
-						<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Browse</span>
+						<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Browse</span>
 					</div>
 					<div class="grid gap-1.5 px-1 sm:grid-cols-2">
 						{#each (['rollout','app','env','namespace'] as ResultKind[]) as kind, kindIdx}
@@ -468,12 +468,12 @@
 									<span class="text-sm font-medium text-gray-900 dark:text-white">{KIND_LABEL[kind]}</span>
 									<span class="text-[11px] text-gray-500 dark:text-gray-400">{kindCounts[kind]} {kindCounts[kind] === 1 ? KIND_SINGULAR[kind] : KIND_LABEL[kind].toLowerCase()}</span>
 								</span>
-								<span class="text-gray-300 group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" aria-hidden="true">›</span>
+								<span class="text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" aria-hidden="true">›</span>
 							</button>
 						{/each}
 					</div>
 					<div class="mt-3 border-t border-gray-100 px-2 pb-1 pt-3 dark:border-gray-700/60">
-						<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Or type to search across everything</span>
+						<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Or type to search across everything</span>
 					</div>
 				{:else if filtered.length === 0}
 					<div class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -483,9 +483,9 @@
 				{:else}
 					{#each grouped as group (group.kind)}
 						<div class="flex items-center gap-2 px-3 pb-1 pt-2">
-							<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{group.label}</span>
+							<span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{group.label}</span>
 							<span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"></span>
-							<span class="font-mono text-[10px] tabular-nums text-gray-300 dark:text-gray-600">{group.items.length}</span>
+							<span class="font-mono text-[10px] tabular-nums text-gray-500 dark:text-gray-400">{group.items.length}</span>
 						</div>
 						{#each group.items as item (item.result.key)}
 							{@const r = item.result}
@@ -520,7 +520,7 @@
 									<div class="flex min-w-0 items-baseline gap-2">
 										<span class="truncate text-sm font-medium {isActive ? 'text-blue-700 dark:text-blue-200' : 'text-gray-900 dark:text-white'}">{r.title}</span>
 										{#if r.version}
-											<span class="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">{r.version}</span>
+											<span class="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400">{r.version}</span>
 										{/if}
 									</div>
 									{#if r.kind === 'app' && r.envCells && r.envCells.length > 0}
@@ -576,7 +576,7 @@
 									<Chip role="env" theme={r.envTheme} label={shortEnvLabel(r.envTheme)} class="shrink-0" />
 								{/if}
 								{#if r.timestamp}
-									<span class="hidden shrink-0 font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500 sm:inline" title={formatDate(r.timestamp)}>{formatTimeAgoCompact(r.timestamp, $now)}</span>
+									<span class="hidden shrink-0 font-mono text-[10px] tabular-nums text-gray-500 dark:text-gray-400 sm:inline" title={formatDate(r.timestamp)}>{formatTimeAgoCompact(r.timestamp, $now)}</span>
 								{/if}
 							</button>
 						{/each}

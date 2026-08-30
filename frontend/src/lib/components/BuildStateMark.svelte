@@ -133,27 +133,9 @@
 		line-height: 20px;
 	}
 
-	.tone-live {
-		color: #426d64;
-	}
-
-	:global(.dark) .tone-live {
-		color: #83b0a8;
-	}
-
-	.tone-bad {
-		color: var(--color-red-700);
-	}
-
-	:global(.dark) .tone-bad {
-		color: var(--color-red-400);
-	}
-
-	.tone-mute {
-		color: var(--color-gray-400);
-	}
-
-	:global(.dark) .tone-mute {
-		color: var(--color-gray-500);
-	}
+	/* ⛔ THE THREE GLYPH INKS MOVED TO `app.css` AND MUST STAY THERE.
+	   Declared here they were SCOPED, and the class lands on a `<Glyph>` —
+	   a child component's `<svg>`, which Svelte 5 does not give the scoping
+	   hash. The rules matched nothing; every glyph rendered PURE BLACK
+	   (1.43:1 on the dark card). Do not move them back into a component. */
 </style>

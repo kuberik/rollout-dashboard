@@ -163,7 +163,7 @@
 				>{currentSection.label}</a>
 
 				{#if detailContext?.kind === 'rollout' && rollout}
-					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+					<span class="select-none text-base text-gray-500 dark:text-gray-400" aria-hidden="true">/</span>
 					<button
 						type="button"
 						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
@@ -175,7 +175,7 @@
 							<span class="hidden truncate text-sm text-gray-500 dark:text-gray-400 sm:inline">
 								{rollout.metadata?.namespace}
 							</span>
-							<span class="hidden text-gray-300 dark:text-gray-600 sm:inline">/</span>
+							<span class="hidden text-gray-500 dark:text-gray-400 sm:inline">/</span>
 							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">
 								{rollout.metadata?.name}
 							</span>
@@ -198,13 +198,13 @@
 								</span>
 							{/if}
 						</span>
-						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400 md:inline-block">
+						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200 md:inline-block">
 							{isMac ? '⌘K' : 'Ctrl K'}
 						</kbd>
-						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
 					</button>
 				{:else if detailContext?.kind === 'item'}
-					<span class="select-none text-base text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+					<span class="select-none text-base text-gray-500 dark:text-gray-400" aria-hidden="true">/</span>
 					{@const itemScope = appDetailMatch ? 'app' : envDetailMatch ? 'env' : nsDetailMatch ? 'namespace' : null}
 					<button
 						type="button"
@@ -217,7 +217,7 @@
 							{detailContext.item}
 						</span>
 						{#if itemScope}
-							<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+							<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
 						{/if}
 					</button>
 				{/if}

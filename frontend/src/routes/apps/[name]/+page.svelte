@@ -1492,8 +1492,8 @@
 					<Card
 						icon={ExclamationCircleSolid}
 						iconClass={taskCount > 0
-							? 'text-amber-500 dark:text-amber-400'
-							: 'text-gray-400 dark:text-gray-500'}
+							? 'text-amber-600 dark:text-amber-400'
+							: 'text-gray-500 dark:text-gray-400'}
 						title="Needs you"
 						verdict="{taskCount} environment{taskCount === 1 ? '' : 's'}"
 						verdictTone={taskCount > 0 ? 'adverse' : 'neutral'}
@@ -2186,7 +2186,7 @@
 								     reference page carries 115 of them and every titled
 								     region has one; the rejected pages carried four in
 								     total. -->
-									<CodeBranchSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+									<CodeBranchSolid class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 									<h3 class="t-label text-gray-500 dark:text-gray-400">
 										Production · {fleetNodes.length} regions
 									</h3>
@@ -2222,7 +2222,7 @@
 						<!-- 3 · EXPOSURE -->
 						<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
 							<div class="mb-2 flex items-center gap-2">
-								<ChartMixedOutline class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+								<ChartMixedOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 								<!-- ⛔ `EXPOSURE` NAMES A CONCEPT FROM PROGRESSIVE-DELIVERY
 								     LITERATURE, not a thing on the screen. Under it sits a
 								     bar of pods by version and a percentage; what a reader

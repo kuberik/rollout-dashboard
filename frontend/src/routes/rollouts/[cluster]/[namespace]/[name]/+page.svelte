@@ -1295,7 +1295,7 @@
 										</div>
 									</div>
 									<!-- Right: time -->
-									<div class="shrink-0 text-right text-xs text-gray-400 dark:text-gray-500">
+									<div class="shrink-0 text-right text-xs text-gray-500 dark:text-gray-400">
 										<div class="flex items-center justify-end gap-1" title={formatDate(latestEntry.timestamp)}>
 											<ClockSolid class="h-3 w-3" />
 											<span>{formatTimeAgoCompact(latestEntry.timestamp, $now)}</span>
@@ -1428,7 +1428,7 @@
 							<div
 								class="flex items-center gap-2.5 border-b border-gray-100 px-5 py-3.5 dark:border-gray-700"
 							>
-								<CodeOutline class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+								<CodeOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 								<span class="text-sm font-semibold text-gray-900 dark:text-white"
 									>Available Version Upgrades</span
 								>
@@ -1668,7 +1668,7 @@
 								</div>
 							{:else}
 								<div
-									class="flex flex-col items-center gap-2 py-10 text-gray-400 dark:text-gray-500"
+									class="flex flex-col items-center gap-2 py-10 text-gray-500 dark:text-gray-400"
 								>
 									<CheckCircleSolid class="h-8 w-8 text-green-700 dark:text-green-400" />
 									<p class="text-sm">Up to date — no upgrades available</p>
@@ -1702,7 +1702,7 @@
 												<span class="text-sm text-gray-700 dark:text-gray-300"
 													>{datadogServiceInfo.service}</span
 												>
-												<span class="ml-1.5 text-xs text-gray-400 dark:text-gray-500"
+												<span class="ml-1.5 text-xs text-gray-500 dark:text-gray-400"
 													>APM service</span
 												>
 											</div>
@@ -1722,7 +1722,7 @@
 				<div class="mx-auto max-w-2xl py-6">
 					<div class="flex flex-col items-center rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
 						<div class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
-							<ClockSolid class="h-5 w-5 text-gray-400 dark:text-gray-500" />
+							<ClockSolid class="h-5 w-5 text-gray-500 dark:text-gray-400" />
 						</div>
 						<h2 class="text-base font-semibold text-gray-900 dark:text-white">No deploys yet</h2>
 						<p class="mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
@@ -1738,7 +1738,7 @@
 										<li class="flex items-center justify-between px-3 py-2 text-left">
 											<span class="font-mono text-sm text-gray-800 dark:text-gray-200">{getDisplayVersion(rc)}</span>
 											{#if rc.created}
-												<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{formatTimeAgoCompact(rc.created, $now)}</span>
+												<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">{formatTimeAgoCompact(rc.created, $now)}</span>
 											{/if}
 										</li>
 									{/each}

@@ -187,8 +187,8 @@
 		Failed: 'text-red-700 dark:text-red-400',
 		InProgress: 'text-yellow-700 dark:text-yellow-400',
 		Deploying: 'text-blue-700 dark:text-blue-400',
-		Cancelled: 'text-gray-500 dark:text-gray-500',
-		None: 'text-gray-400 dark:text-gray-600'
+		Cancelled: 'text-gray-500 dark:text-gray-400',
+		None: 'text-gray-500 dark:text-gray-400'
 	};
 	const STATUS_LABEL: Record<string, string> = {
 		Succeeded: 'Succeeded',
@@ -209,10 +209,10 @@
 {#snippet versionSnippet(a: ActivityEntry)}
 	<span class="flex min-w-0 shrink-0 items-baseline gap-1">
 		{#if a.previousVersion}
-			<span class="t-code-sm text-gray-400 line-through dark:text-gray-500"
+			<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
 				>{a.previousVersion}</span
 			>
-			<span class="t-micro text-gray-400 dark:text-gray-500">→</span>
+			<span class="t-micro text-gray-500 dark:text-gray-400">→</span>
 		{/if}
 		{#if a.version}
 			<a
@@ -230,7 +230,7 @@
 			<h2 class="t-label text-gray-500 dark:text-gray-400">Recent activity</h2>
 			<a
 				href={activityHref}
-				class="t-micro text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+				class="t-micro text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 				>view all ›</a
 			>
 		</div>
@@ -248,7 +248,7 @@
 					<span class="block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600"></span>
 				</div>
 				<p class="t-dense text-gray-700 dark:text-gray-300">No activity yet</p>
-				<p class="t-micro mt-1 text-gray-400 dark:text-gray-500">
+				<p class="t-micro mt-1 text-gray-500 dark:text-gray-400">
 					Deployments will appear here as a timeline.
 				</p>
 			</div>
@@ -261,7 +261,7 @@
 							<span
 								class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"
 							></span>
-							<span class="t-code-sm text-gray-400 dark:text-gray-500">{group.entries.length}</span>
+							<span class="t-code-sm text-gray-500 dark:text-gray-400">{group.entries.length}</span>
 						</div>
 						<ol class="relative">
 							<span
@@ -320,7 +320,7 @@
 												{/if}
 											</div>
 											<span
-												class="t-code-sm shrink-0 text-gray-400 dark:text-gray-500"
+												class="t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
 												title={formatDate(a.timestamp)}
 											>
 												{hourLabel(a.timestamp)}

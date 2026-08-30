@@ -215,7 +215,7 @@
 				<div class="mb-3 flex items-center gap-2">
 					<span class="h-[5px] w-[5px] shrink-0 rounded bg-red-500"></span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Needs you now</h2>
-					<span class="font-mono text-xs text-gray-400 dark:text-gray-500">{needsYou.length}</span>
+					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{needsYou.length}</span>
 				</div>
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
 					{#each needsYou as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
@@ -249,7 +249,7 @@
 										{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
 									</div>
 									<span
-										class="block truncate text-[11px] text-gray-400 dark:text-gray-500"
+										class="block truncate text-[11px] text-gray-500 dark:text-gray-400"
 										>{#if c.title && c.title !== c.name}{c.title} · {/if}<span class="font-mono">{c.ns}</span></span
 									>
 								</div>
@@ -297,8 +297,8 @@
 						<span class="relative h-[5px] w-[5px] rounded bg-blue-500"></span>
 					</span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">In motion</h2>
-					<span class="font-mono text-xs text-gray-400 dark:text-gray-500">{inMotion.length}</span>
-					<span class="text-xs text-gray-400 dark:text-gray-500"
+					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{inMotion.length}</span>
+					<span class="text-xs text-gray-500 dark:text-gray-400"
 						>deploying &amp; baking right now</span
 					>
 				</div>
@@ -338,7 +338,7 @@
 										</span>
 									</div>
 									<span
-										class="block truncate text-[11px] text-gray-400 dark:text-gray-500"
+										class="block truncate text-[11px] text-gray-500 dark:text-gray-400"
 										>{#if c.title && c.title !== c.name}{c.title} · {/if}<span class="font-mono">{c.version ? shortenVersion(c.version) : '—'}</span></span
 									>
 								</div>
@@ -362,7 +362,7 @@
 									{/each}
 								</div>
 								{#if next}
-									<span class="shrink-0 text-gray-400 dark:text-gray-500"
+									<span class="shrink-0 text-gray-500 dark:text-gray-400"
 										>next: <span class="font-medium text-gray-600 dark:text-gray-300">{next}</span
 										></span
 									>
@@ -381,8 +381,8 @@
 				<div class="mb-3 flex items-center gap-2">
 					<span class="h-[5px] w-[5px] shrink-0 rounded bg-amber-500"></span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Trailing</h2>
-					<span class="font-mono text-xs text-gray-400 dark:text-gray-500">{trailing.length}</span>
-					<span class="text-xs text-gray-400 dark:text-gray-500">healthy, but behind a newer build</span>
+					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{trailing.length}</span>
+					<span class="text-xs text-gray-500 dark:text-gray-400">healthy, but behind a newer build</span>
 				</div>
 				<!-- THE COMPACT ROW PICKS ITS OWN COLUMN COUNT (2026-08-26). It used to be
 				     `sm:grid-cols-2 xl:grid-cols-3`, and `xl` is 1280 — where three columns
@@ -446,9 +446,9 @@
 			<div class="mb-3 flex items-center gap-2">
 				<span class="h-[5px] w-[5px] shrink-0 rounded bg-green-700 dark:bg-green-400"></span>
 				<h2 class="text-base font-semibold text-gray-900 dark:text-white">Steady</h2>
-				<span class="font-mono text-xs text-gray-400 dark:text-gray-500">{steadyAll.length}</span>
+				<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{steadyAll.length}</span>
 				{#if pendingCount > 0}
-					<span class="text-xs text-gray-400 dark:text-gray-500">· {pendingCount} pending</span>
+					<span class="text-xs text-gray-500 dark:text-gray-400">· {pendingCount} pending</span>
 				{/if}
 				<a
 					href="/rollouts"
@@ -458,7 +458,7 @@
 				</a>
 			</div>
 			{#if steadySectionAll.length === 0}
-				<p class="text-sm text-gray-400 dark:text-gray-500">No healthy rollouts yet.</p>
+				<p class="text-sm text-gray-500 dark:text-gray-400">No healthy rollouts yet.</p>
 			{:else}
 				<!-- THE COMPACT ROW PICKS ITS OWN COLUMN COUNT (2026-08-26). It used to be
 				     `sm:grid-cols-2 xl:grid-cols-3`, and `xl` is 1280 — where three columns
@@ -547,7 +547,7 @@
 				{#if steadySectionAll.length > steadySectionPreview.length}
 					<a
 						href="/rollouts"
-						class="mt-2 inline-block text-xs text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+						class="mt-2 inline-block text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 					>
 						+{steadySectionAll.length - steadySectionPreview.length} more in the full rollouts list
 					</a>

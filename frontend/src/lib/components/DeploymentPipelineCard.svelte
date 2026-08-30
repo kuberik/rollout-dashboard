@@ -412,7 +412,7 @@
 			running: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
 			paused: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
 			failed: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
-			pending: 'bg-gray-100 text-gray-400 dark:bg-gray-700/60 dark:text-gray-500'
+			pending: 'bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400'
 		}[status];
 	}
 
@@ -782,7 +782,7 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="mt-1.5 pl-5 text-xs italic text-gray-400 dark:text-gray-500">
+				<p class="mt-1.5 pl-5 text-xs italic text-gray-500 dark:text-gray-400">
 					No tests configured
 				</p>
 			{/if}
@@ -895,7 +895,7 @@
 						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)}
 					</span>
 				{:else if node.kind === 'bake' && !bakeIsSucceeded && !bakeIsFailed && rollout.spec?.deployTimeout && !bakeIsDeploying && !bakeIsInProgress}
-					<span class="text-xs text-gray-400 dark:text-gray-500">
+					<span class="text-xs text-gray-500 dark:text-gray-400">
 						{(() => {
 							const deploymentTime = new Date(latestEntry.timestamp).getTime();
 							const timeoutMs = parseDuration(rollout.spec.deployTimeout);
@@ -1038,7 +1038,7 @@
 {#snippet groupHeader(info: { name: string; index: number; total: number })}
 	<li aria-hidden="false" class="px-4 pt-4 pb-1">
 		<div
-			class="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500"
+			class="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
 		>
 			<ArrowsRepeatOutline class="h-3 w-3 flex-shrink-0" />
 			<span class="truncate">{info.name}</span>

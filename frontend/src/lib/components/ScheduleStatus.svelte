@@ -316,7 +316,7 @@
 		<!-- On the type scale (`t-micro`, 11/400) and the 4px spacing scale.
 		     The calendar glyph is gone: it needed a 2px optical nudge that
 		     exists on no scale, and the sentence already says "window". -->
-		<p class="t-micro text-gray-400 dark:text-gray-500">
+		<p class="t-micro text-gray-500 dark:text-gray-400">
 			{#if nextChange}
 				Deploy window opens in <span class="text-gray-600 dark:text-gray-300"
 					>{formatTimeUntil(nextChange)}</span

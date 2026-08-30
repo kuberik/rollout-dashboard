@@ -724,7 +724,7 @@
 												class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
 												title="Open the {g.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 												><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
-													class="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
+													class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
 													aria-hidden="true"
 												/></a
 											>
@@ -790,7 +790,7 @@
 															<div class="mt-0.5 flex flex-wrap gap-x-2">
 																{#each r.gates as gate (gate)}
 																	<span
-																		class="t-code-sm text-gray-400 dark:text-gray-500"
+																		class="t-code-sm text-gray-500 dark:text-gray-400"
 																		title="Gate {gate}">{gate}</span
 																	>
 																{/each}
@@ -835,7 +835,7 @@
 													class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
 													title="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 													><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
-														class="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
+														class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
 														aria-hidden="true"
 													/></a
 												>
@@ -1023,29 +1023,11 @@
 	   mint is the `newest` chip's and `ExposureBar`'s newest segment, so the
 	   `Live here` card's tick is literally the same colour as the bar segment
 	   it explains. Zero new colour values. */
-	.tone-live {
-		color: #426d64;
-	}
-
-	:global(.dark) .tone-live {
-		color: #83b0a8;
-	}
-
-	.tone-bad {
-		color: var(--color-red-700);
-	}
-
-	:global(.dark) .tone-bad {
-		color: var(--color-red-400);
-	}
-
-	.tone-mute {
-		color: var(--color-gray-400);
-	}
-
-	:global(.dark) .tone-mute {
-		color: var(--color-gray-500);
-	}
+	/* ⛔ THE THREE GLYPH INKS MOVED TO `app.css` AND MUST STAY THERE.
+	   Declared here they were SCOPED, and the class lands on a `<Glyph>` —
+	   a child component's `<svg>`, which Svelte 5 does not give the scoping
+	   hash. The rules matched nothing; every glyph rendered PURE BLACK
+	   (1.43:1 on the dark card). Do not move them back into a component. */
 
 	/*
 	 * NAME OVER BUILD — STACKED, AT EVERY WIDTH.

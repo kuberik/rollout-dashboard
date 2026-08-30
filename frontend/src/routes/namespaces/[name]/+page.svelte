@@ -245,7 +245,7 @@
 			</div>
 			<div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-xs text-gray-500 dark:text-gray-400">
 				<span>namespace</span>
-				<span class="text-gray-300 dark:text-gray-600">·</span>
+				<span class="text-gray-500 dark:text-gray-400">·</span>
 				<span class="tabular-nums">{apps.length}</span> rollout{apps.length === 1 ? '' : 's'}
 				{#if failedCount > 0}<span class="font-medium text-red-600 dark:text-red-400">· {failedCount} failing</span>{/if}
 				{#if activeCount > 0}<span class="font-medium text-yellow-700 dark:text-yellow-400">· {activeCount} in progress</span>{/if}

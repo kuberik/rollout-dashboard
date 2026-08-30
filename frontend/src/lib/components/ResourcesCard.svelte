@@ -236,7 +236,7 @@
 							{:else if isReady}
 								<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+								<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 							{/if}
 						</div>
 						<div class="min-w-0 flex-1">
@@ -250,7 +250,7 @@
 						</div>
 						{#if replicas}
 							<span class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
-								{replicas.ready}/{replicas.total} <span class="font-normal text-[10px] text-gray-400 dark:text-gray-500">pods</span>
+								{replicas.ready}/{replicas.total} <span class="font-normal text-[10px] text-gray-500 dark:text-gray-400">pods</span>
 							</span>
 						{/if}
 						<span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium
@@ -303,7 +303,7 @@
 											</div>
 										</div>
 										<span class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas ? 'text-green-700 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}">
-											{rs.readyReplicas}/{rs.desiredReplicas} <span class="text-[10px] text-gray-400 dark:text-gray-500">pods</span>
+											{rs.readyReplicas}/{rs.desiredReplicas} <span class="text-[10px] text-gray-500 dark:text-gray-400">pods</span>
 										</span>
 									</div>
 
@@ -329,7 +329,7 @@
 													<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">Pod</span>
 												</div>
 												{#if pod.message}
-													<span class="block break-words text-[10px] text-gray-400 dark:text-gray-500">{pod.message}</span>
+													<span class="block break-words text-[10px] text-gray-500 dark:text-gray-400">{pod.message}</span>
 												{/if}
 											</div>
 											{#if pod.restarts > 0}
@@ -338,7 +338,7 @@
 												</span>
 											{/if}
 											{#if pod.age}
-												<span class="shrink-0 text-[10px] text-gray-400 dark:text-gray-500">{pod.age}</span>
+												<span class="shrink-0 text-[10px] text-gray-500 dark:text-gray-400">{pod.age}</span>
 											{/if}
 											<span class="shrink-0 text-[10px] font-medium {getPodStatusColor(pod.phase, pod.ready, pod.terminating)}">
 												{getPodStatusLabel(pod.phase, pod.ready, pod.terminating)}
@@ -347,12 +347,12 @@
 									{/each}
 
 									{#if (rs.pods?.length ?? 0) === 0}
-										<p class="pb-1 pl-14 pr-4 text-[10px] text-gray-400 dark:text-gray-500">No pods</p>
+										<p class="pb-1 pl-14 pr-4 text-[10px] text-gray-500 dark:text-gray-400">No pods</p>
 									{/if}
 								{/each}
 
 								{#if childData.replicaSets.filter((rs: any) => rs.desiredReplicas > 0).length === 0}
-									<p class="px-9 py-2 text-xs text-gray-400 dark:text-gray-500">No active ReplicaSets</p>
+									<p class="px-9 py-2 text-xs text-gray-500 dark:text-gray-400">No active ReplicaSets</p>
 								{/if}
 							{/if}
 						</div>
@@ -378,7 +378,7 @@
 							{:else if isReady}
 								<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+								<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 							{/if}
 						</div>
 						<div class="min-w-0 flex-1">
@@ -434,7 +434,7 @@
 							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
 								<StatusSpinner size="4" color="blue" />
 							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+								<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 							{/if}
 						</div>
 						<div class="min-w-0 flex-1">
@@ -488,7 +488,7 @@
 								{:else if isReady}
 									<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 								{:else}
-									<ExclamationCircleSolid class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+									<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 								{/if}
 							</div>
 							<div class="min-w-0 flex-1">

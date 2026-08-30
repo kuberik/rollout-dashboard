@@ -772,7 +772,7 @@
 		iconClass={c.failing > 0
 			? 'text-red-600 dark:text-red-400'
 			: c.stuck > 0
-				? 'text-amber-500 dark:text-amber-400'
+				? 'text-amber-600 dark:text-amber-400'
 				: 'text-green-700 dark:text-green-400'}
 		title={c.tier}
 		padded={false}

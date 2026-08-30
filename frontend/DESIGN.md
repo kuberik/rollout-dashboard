@@ -21,6 +21,211 @@ Run anything that compiles with the sandbox disabled, or hand the test run to th
 Healthy `en.js` is **160 bytes**. Full write-up in
 `.agents-context/ENVIRONMENT.md`.
 
+## ⛔ DARK IS NOT A DERIVATION OF LIGHT — THE CONTRAST PASS (2026-08-30)
+
+> *"some icons on the dark theme are black and therefore have poor visibility. i'm wondering
+> what else you missed then."*
+
+The second sentence was the assignment. **Every `<svg>`, every text node, every border and
+every chip in `<main>` was measured against its REAL composited background** — canvas-resolved
+(`ctx.fillStyle = c` then `getImageData`, never divided by alpha), the whole ancestor stack
+composited, cumulative `opacity` folded in — on twelve pages × two themes × 1440 and 390.
+**8,164 measured rows.**
+
+### The three root causes, all of them systemic, none of them per-page
+
+**1. THE PRODUCT HAD TWO SPELLINGS OF ITS MUTED INK AND ONLY THE MINORITY ONE FAILED.**
+`text-gray-500 dark:text-gray-400` was already the majority token — **249 call sites**. A
+minority of **99** spelled the same role one step fainter on each side
+(`text-gray-400 dark:text-gray-500`, 82 sites; `text-gray-300 dark:text-gray-600`, 17), and
+those are exactly the ones that fail:
+
+| pair | light on white | dark on `gray-800` card | dark on `gray-900` page |
+|---|---|---|---|
+| `gray-300` / `gray-600` | **1.47** | **1.94** | **2.35** |
+| `gray-400` / `gray-500` | **2.60** | **3.03** | 3.62 |
+| `gray-500` / `gray-400` ✅ | **4.90** | **5.74** | **6.91** |
+
+All 99 were collapsed onto the majority pair. It clears **4.5:1 for text and 3:1 for non-text
+in both themes on both grounds**, and it removes `gray-300` and `gray-600` from the INK
+vocabulary entirely (they stay as border/surface values). **Zero new colour values** — the
+target pair was already the most-spent one in the product, including `Chip`'s own `NEUTRAL`
+constant and `.chip-value--dim`. The hover partners moved with the base
+(`hover:text-gray-600` → `-700`, `dark:hover:text-gray-300` → `-200`) so no hover state
+collapsed onto its own resting colour. `placeholder-gray-400`/`dark:placeholder-gray-500`
+took the same swap — there were two placeholder conventions and only one of them passed.
+
+This is the SAME defect this file already recorded once, on the other side: *"the muted gray
+pair was measured too dark once before (`text-gray-400` at 2.60:1 light)"*. It is one token,
+and it is fixed once.
+
+**2. ⛔ `tone-live` / `tone-mute` / `tone-bad` WERE DEAD CSS AND EVERY GLYPH RENDERED PURE
+BLACK.** This is the bug the human saw, and the mechanism is a Svelte 5 rule, not a colour
+choice. The three inks were declared in TWO `<style>` blocks — `BuildStateMark.svelte` and
+`routes/versions/[...slug]/+page.svelte` — and applied to a `<Glyph>`, i.e. to a CHILD
+COMPONENT's root `<svg>`. **Svelte 5 does not put the scoping hash on a child component's
+elements**, so `.tone-mute.svelte-hash` matched nothing, `currentColor` fell back to the
+initial value, and 24 glyphs on `/versions` and `/versions/<rev>` painted `#000000`:
+
+| | before | after |
+|---|---|---|
+| `tone-mute` on the `gray-800` card | **1.43:1** | **5.64:1** |
+| `tone-mute` on the `gray-900` page | **1.18:1** | **6.91:1** |
+| `tone-live` (the mint) | **1.43:1** | **6.11:1** |
+
+**IN LIGHT THE IDENTICAL BUG MEASURES 21:1 AND LOOKS DELIBERATE.** That is the whole thesis
+of this section: the defect was equally present in both themes and only one theme could
+show it, so verifying light and reporting dark could never have found it. The three inks are
+GLOBAL in `app.css` now (`@layer components`, so a call site can still override with a
+utility) and cannot be lost to a component boundary again. **Do not move them back into a
+component.**
+
+**3. DARK HAD NO BASE INK AT ALL.** The app shell computes `color: rgb(0, 0, 0)` in dark, so
+anything that fails to name its own colour inherits BLACK — which is the ambient condition
+that turned cause 2 into an invisible glyph rather than a wrong-coloured one.
+`app.css` now carries `html.dark { color: var(--color-gray-100) }` in **`@layer base`**,
+which every Tailwind utility and every `@layer components` rule outranks, so it can only ever
+catch an element that names no colour. **Measured before/after over all 8,164 rows: zero
+elements changed colour.** It is a net, not a paint.
+
+### Beyond icons — what the sweep found
+
+- **THE FILLED BANNER'S ALPHA LADDER WAS UNMEASURABLE BY THE USUAL METHOD AND FAILED IN BOTH
+  THEMES.** `AlertPanel`'s container is a GRADIENT, so `getComputedStyle` on it returns
+  `transparent` and every contrast number computed against the page ground was wrong.
+  Re-measured **pixel-wise off a screenshot**, all four severities:
+
+  | | icon | message | footnote |
+  |---|---|---|---|
+  | light before | **2.57 – 3.69** | **3.34 – 4.20** | **2.35 – 3.11** |
+  | light after | 3.86 – 4.80 | 7.4 – 8.7 | 7.4 – 8.7 |
+  | dark before | 6.17 – 6.78 | 5.68 – 6.08 | **3.58 – 3.83** |
+  | dark after | 6.17 – 6.78 | 5.68 – 6.08 | 4.89 – 5.26 |
+
+  **There is no alpha that works in light**: `<hue>-700` at 95% over the `<hue>-50/100`
+  gradient is still 4.46:1. So in light the message and the footnote are the **full
+  `<hue>-900` — the value the TITLE already prints on the same object**, and the ladder is
+  carried by size and weight (16px/700 bold → 14px → 12px). **Zero new colour values.** In
+  dark the alpha has headroom and is kept, raised 55% → 70% on the footnote. The icon moved
+  `<hue>-600` → `<hue>-700` in light only: it sits on the `<hue>-200` DISC, not on white, so
+  it was competing with a mid-ramp ground.
+
+- **THE DARK PRIMARY BUTTON HAD NO BOUNDARY.** `blue-600` on the `gray-800` card is
+  **2.79:1**, against **6.83:1** for the same button in light. The FILL cannot move (white on
+  `blue-500` is 3.73:1 and fails 4.5 for 14px), so the BORDER carries it: `blue-500`, which is
+  already this button's own hover fill → **3.96:1**. `.dark .btn-secondary`'s border went
+  `gray-600` → `gray-500`: **1.94 → 3.03** on the card, 3.62 on the page. Zero new values.
+
+- **`DeploymentTimeline`'s x-axis, ticks, tick labels and "no deployments" label** were on the
+  faint pairs (2.35:1 dark). They are on the muted token now (4.90 / 6.91). Its GRIDLINES
+  (`stroke-gray-200 dark:stroke-gray-700`, 1.2:1) and its dot HALO
+  (`stroke-white dark:stroke-gray-800`, 1.0:1 by construction) are deliberately left: a
+  gridline is decoration and a halo is a knockout that is SUPPOSED to match the ground.
+
+- **`text-amber-500 dark:text-amber-400`** (the warning glyph on `/apps`, `/apps/[name]`,
+  `/environments`, `/envs/[name]`) was **2.13:1 in light** and 8.50:1 in dark — the light half
+  of a pair nobody had measured. Light moved to `amber-600`: 3.25:1.
+
+### ⚠️ BORDERS AND CHIPS ARE FINE IN DARK, AND DARK IS THE STRONGER THEME ON BOTH
+
+This was the expected finding and it is the opposite of true. Measured:
+
+| object | light | dark |
+|---|---|---|
+| card border (`gray-200` / `dark:gray-700`) vs the page ground | 1.24 | **1.72** |
+| card GROUND vs page ground | **1.00 — white card on a white page** | **1.20** |
+| list divider (`gray-100` / `dark:gray-700/60`) | 1.10 | **1.23** |
+| `.btn-secondary` border | **1.47** | 3.03 (after) |
+
+**In dark the card is a lighter plane on a darker page and the border is a second signal; in
+light the card and the page are BOTH `#ffffff` and the 1.24:1 hairline is doing 100% of the
+work.** If a composed layout reads flat, it reads flat in LIGHT. Nothing was changed here —
+it is a light-mode observation, recorded for whoever opens the ground question.
+
+Chips are healthy in dark and were never the problem — ink on its own fill, `<main>`,
+1440: identity `dev` **12.26–14.13**, `staging` **10.95–12.51**, `prod` **13.58–15.57**,
+`test` (same construction); status `NEUTRAL` **5.64**, mint `newest` **6.11**, `ADVERSE`
+(red-400) **5.11**, `alarm` **7.28**. Light is the weaker theme here too (`dev` **4.76**, the
+floor). **The environment palette was not touched.**
+
+### Per page, icons under 3:1 and text under its own floor, before → after
+
+`<main>`, both themes, both widths. The floor is 3:1 for a glyph and 4.5:1 for text (3:1 for
+text ≥24px or ≥18.7px bold).
+
+| page | icons <3:1 dark | icons <3:1 light | text fails dark | text fails light |
+|---|---|---|---|---|
+| `/apps` | **7 → 0** | **11 → 0** | 0 → 0 | 2 → 0 |
+| `/apps/[name]` | 0 → 0 | **9 → 0** | **13 → 0** | **14 → 0** |
+| `/environments` | 0 → 0 | **4 → 0** | 3 → 0 | 4 → 0 |
+| `/envs/[name]` | 0 → 0 | **13 → 0** | **20 → 0** | **21 → 0** |
+| `/versions` | **19 → 0** | **21 → 0** | 0 → 0 | 2 → 0 |
+| `/versions/<rev>` | **13 → 0** | **7 → 0** | 5 → 0 | 7 → 0 |
+| `/activity` | 1 → 1 † | 1 → 1 † | 0 → 0 | 0 → 0 |
+| `/namespaces/<ns>` | 0 → 0 | 0 → 0 | 1 → 0 | 1 → 0 |
+| rollout detail › dependencies | 0 → 0 | 0 → 0 | 0 → 0 | 0 → 0 |
+
+Worst offender per page, dark: `/versions` **1.43 → 5.64**, `/versions/<rev>` **1.18 → 5.64**,
+`/apps` **1.94 → 4.60**, `/envs/prod` **3.03 → 5.25**. † the one remaining `/activity` entry
+is the timeline's gridline/halo described above, which is 1.21:1 by design.
+
+### THE THREE REFERENCE PAGES — what reached them, and what was left alone
+
+`/`, `/rollouts` and rollout detail were audited and **not restyled**. Every change that
+reaches them is a SHARED TOKEN fix, named above, and each one closes a contrast failure:
+
+| page | before | after |
+|---|---|---|
+| `/` | 4 text fails dark (3.67), 4 light (2.60) | **0 / 0** |
+| `/rollouts` | 9 icons dark (2.35), 10 light (1.47); 61 text fails per theme | **0 icons dark, 1 light; 4 text fails per theme** |
+| rollout detail | 1 icon dark (1.43), 8 light (1.00); 6 text dark, 8 light | **0 icons dark, 5 light; 2 text dark, 3 light** |
+
+⚠️ **FIVE DEFECTS ON THOSE PAGES ARE PAGE-LOCAL AND WERE DELIBERATELY LEFT.** Reporting them
+rather than fixing them, because a page-local edit to these three is out of bounds:
+
+1. **`/rollouts` — `<span class="font-mono tabular-nums opacity-60">` (`RolloutGrid.svelte:238`),
+   the promotion-chain count. `opacity-60` composites to 2.32:1 light / 3.27:1 dark at 11px.**
+   This is DIM-INSTEAD-OF-EXPLAIN, the pattern this file has already rejected twice; the fix
+   is to delete the opacity, not to pick a colour.
+2. **rollout detail — `text-orange-600 dark:text-orange-400` on `19 upgrades available`**,
+   3.58:1 light at 12px.
+3. **rollout detail — `text-blue-400 dark:text-blue-500`** on the resource link glyph
+   (`ResourcesCard.svelte:407`), 2.57:1 light.
+4. **rollout detail — the resource-kind pills** (`bg-gray-100 text-gray-500` /
+   `dark:bg-gray-700 dark:text-gray-400`) at 10px: **4.39:1 light, 3.96:1 dark**, both under
+   4.5.
+5. **`/rollouts` + rollout detail — bare `text-gray-400` with NO dark partner** (search glyph,
+   two icon buttons). 2.60:1 in light; dark passes at 5.74. A single-value ink in a
+   two-theme product is a bug in itself.
+
+### COLOUR VALUES ADDED AND REMOVED — the whole list
+
+**ADDED: none.** Every value written in this pass is a step the product already spends:
+`gray-500`, `gray-400`, `blue-500`, `amber-600`, and the `<hue>-900` inks that
+`AlertPanel`'s own title already prints.
+
+**REMOVED from the ink vocabulary:** `gray-300` and `gray-600` as TEXT/ICON inks (they remain
+as border and surface values); the composited alphas `text-<hue>-700/80` and
+`text-<hue>-700/60` in the light banner; `#000000` as a rendered glyph ink.
+
+### HOW TO MEASURE THIS, so the next pass does not get it wrong
+
+- `getComputedStyle` returns `oklch()` / `oklab()` in this app. **Resolve every colour through
+  a 1×1 canvas and read the pixel. Do not parse the string, and do not divide by alpha** —
+  `getImageData` is already un-premultiplied (this file records that trap once already).
+- **Composite the WHOLE ancestor chain**, not "the first ancestor with a background". Alpha
+  fills over the dark card's chromatic ground (`C 0.0335 @ 257.7°`) are exactly where dark
+  diverges from light.
+- **A gradient defeats all of the above.** `backgroundColor` is `transparent` on
+  `bg-gradient-to-r`. For `AlertPanel` — the only gradient object in the product — screenshot
+  the element and take the modal pixel as the ground and the 1st-percentile luminance
+  outlier as the ink.
+- `<line>` and `<polyline>` compute `fill: black` and paint no fill; a stroke within 1.1:1 of
+  its ground is a knockout halo. Both produce phantom failures if not excluded.
+
+**Gates after the pass: vitest 20 files / 347 tests, 0 failures; `svelte-check` 4 errors /
+0 warnings; `paraglide/messages/en.js` 160 bytes.**
+
 ## THE COMPOSITION PASS — `/apps` AND `/apps/[name]` (2026-08-30)
 
 **Read `.agents-context/design/COMPOSITION-GRAMMAR.md` before this file.** Six pages were

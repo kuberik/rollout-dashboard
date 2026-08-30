@@ -217,7 +217,7 @@
 					type="text"
 					bind:value={searchQuery}
 					placeholder="Search rollouts…"
-					class="block w-full rounded border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+					class="block w-full rounded border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
 				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-1.5">
@@ -279,7 +279,7 @@
 				<button
 					type="button"
 					onclick={clearFilters}
-					class="text-[11px] text-gray-400 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-500 dark:hover:text-gray-300"
+					class="text-[11px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
 				>clear</button>
 			{/if}
 		</div>
@@ -327,14 +327,14 @@
 							</span>
 							<div class="flex flex-col">
 								<span class="text-base font-bold text-gray-900 dark:text-white">My App</span>
-								<span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">my-app</span>
+								<span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">my-app</span>
 							</div>
 						</div>
 						<span class="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:bg-gray-700 dark:text-gray-300">PROD</span>
 					</div>
 					<div class="mt-2 flex items-baseline justify-between gap-3 pl-12">
 						<span class="font-mono text-sm font-medium text-gray-700 dark:text-gray-300">v1.2.3</span>
-						<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">2h</span>
+						<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">2h</span>
 					</div>
 				</div>
 			</div>
@@ -373,17 +373,17 @@
 					>
 						<div class="flex min-w-0 items-baseline gap-2">
 							{#if isMultiCluster}
-								<span class="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">{g.clusterLabel}</span>
-								<span class="shrink-0 text-gray-300 dark:text-gray-600" aria-hidden="true">/</span>
+								<span class="shrink-0 font-mono text-[11px] text-gray-500 dark:text-gray-400">{g.clusterLabel}</span>
+								<span class="shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true">/</span>
 							{/if}
 							<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{g.ns}</h2>
-							<span class="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">
+							<span class="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
 								{g.cards.length} rollout{g.cards.length === 1 ? '' : 's'}{#if g.attentionCount > 0}
 									· <span class="font-medium text-red-600 dark:text-red-400">{g.attentionCount} need attention</span>
 								{/if}
 							</span>
 						</div>
-						<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400" />
+						<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
 					</a>
 
 <!-- Responsive grid of compact rollout cards. State column dropped
@@ -427,7 +427,7 @@
 											<span class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">{c.name}</span>
 											{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
 										</div>
-										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-400 dark:text-gray-500">{c.title}</span>{/if}
+										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{c.title}</span>{/if}
 									</div>
 									{#if c.envDisplay}
 										<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
@@ -449,9 +449,9 @@
 									<span class="flex shrink-0 flex-col items-end leading-tight">
 										{#if c.timestamp}
 											<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400" title={formatDate(c.timestamp)}>{formatTimeAgoCompact(c.timestamp, $now)} ago</span>
-											<span class="text-[9px] text-gray-400 dark:text-gray-500">{c.isRunning ? 'started' : 'updated'}</span>
+											<span class="text-[9px] text-gray-500 dark:text-gray-400">{c.isRunning ? 'started' : 'updated'}</span>
 										{:else}
-											<span class="text-[10px] text-gray-400 dark:text-gray-500">no deploy</span>
+											<span class="text-[10px] text-gray-500 dark:text-gray-400">no deploy</span>
 										{/if}
 									</span>
 								</div>

@@ -895,7 +895,7 @@
 					iconClass={failingCount > 0
 						? 'text-red-600 dark:text-red-400'
 						: stuckCount > 0
-							? 'text-amber-500 dark:text-amber-400'
+							? 'text-amber-600 dark:text-amber-400'
 							: 'text-green-700 dark:text-green-400'}
 					title="Running now"
 					verdict={rows.length === 0
@@ -1028,7 +1028,7 @@
 														     tone, and two red marks on one row about the same
 														     app is the same fact spent twice. -->
 														<ChevronRightOutline
-															class="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500"
+															class="h-3 w-3 shrink-0 text-gray-500 dark:text-gray-400"
 															aria-hidden="true"
 														/>
 														{#if link.gap && link.gap > 0}
