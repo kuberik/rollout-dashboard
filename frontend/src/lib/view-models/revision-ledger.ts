@@ -59,6 +59,17 @@ export type RevisionSlot = {
 	currentRank: number | null;
 	/** The OCI tag a promote to the row's revision would deploy here, or null. */
 	promoteTag: string | null;
+	/**
+	 * THE SERVICE'S TAG FOR THIS BUILD, UNCONDITIONED.
+	 *
+	 * `promoteTag` is already filtered by `isDeployable`, so it collapses three
+	 * different situations — no tag at all, the build is not a candidate here,
+	 * and a gate refuses it — into one `null`. The revision pages have to tell
+	 * the last two apart: attributing a gate to a build the rollout was never
+	 * going to deploy anyway is a cause named from evidence that establishes
+	 * something else.
+	 */
+	tag: string | null;
 };
 
 /** One service's relationship to a revision. */
@@ -190,6 +201,28 @@ export type RepoLedger = {
 	 * truncation, and on the live cluster the difference is 26 of 37.
 	 */
 	knownRevisions: number;
+	/**
+	 * THE BUILDS NOBODY HAS TAKEN — `knownRevisions` minus `rows`, as ROWS.
+	 *
+	 * These used to be a NUMBER and nothing else. The subtitle said `16 of 34
+	 * revisions deployed` and the page listed sixteen; the other eighteen were
+	 * named in a count and reachable from nowhere in the product — no row, no
+	 * link, no detail page. A live UX critique called that out and it is the
+	 * page's own first criterion failing: *"what's still out there?"* is a
+	 * question about builds that have NOT landed at least as much as about
+	 * builds that have.
+	 *
+	 * They are built by the SAME `buildRow` as the deployed ones, so a pending
+	 * revision is not a second kind of object: it has services, labels, ranks,
+	 * slots and a coverage of `0 of N`, and its `Not yet` bucket carries the
+	 * gates that are the reason it is still here. That makes the detail page
+	 * work for it unchanged — and for a blocked build it is the most useful
+	 * page in the product, because every one of its places is a place the
+	 * promotion has not reached.
+	 *
+	 * Newest first, same comparator as `rows`.
+	 */
+	pending: RevisionRow[];
 	serviceCount: number;
 	slotCount: number;
 	lastDeployMs: number;
@@ -306,7 +339,8 @@ function buildRow(
 					cell,
 					onIt,
 					currentRank: curPlaced ? curPlaced.rank : null,
-					promoteTag: onIt || !tag || !isDeployable(cell.rollout, tag) ? null : tag
+					promoteTag: onIt || !tag || !isDeployable(cell.rollout, tag) ? null : tag,
+					tag
 				};
 			})
 			.sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
@@ -499,6 +533,12 @@ export function buildRevisionLedger(
 			}
 		}
 
+		const byRecency = (a: RevisionRow, b: RevisionRow) =>
+			b.createdMs - a.createdMs ||
+			a.minRank - b.minRank ||
+			b.lastDeployMs - a.lastDeployMs ||
+			a.revision.localeCompare(b.revision);
+
 		const rows = [...deployed]
 			.map((rev) =>
 				buildRow(rev, createdMs.get(rev) ?? 0, lastDeployMs.get(rev) ?? 0, repo.ctxs)
@@ -513,21 +553,25 @@ export function buildRevisionLedger(
 			// reaches prod after dev, so the latest deploy in wall-clock time is
 			// routinely of the oldest build, and a page that drops the `−N` chip
 			// because "row position is the rank" must not let the two disagree.
-			.sort(
-				(a, b) =>
-					b.createdMs - a.createdMs ||
-					a.minRank - b.minRank ||
-					b.lastDeployMs - a.lastDeployMs ||
-					a.revision.localeCompare(b.revision)
-			);
+			.sort(byRecency);
 
 		if (rows.length === 0) continue;
+
+		// THE OTHER SIDE OF THE SCOPE LINE, MADE REACHABLE. See `pending` on
+		// `RepoLedger`: these are the ladder's builds that no service has ever
+		// deployed. They were a number in a subtitle and nothing else.
+		const pending = [...known]
+			.filter((rev) => !deployed.has(rev))
+			.map((rev) => buildRow(rev, createdMs.get(rev) ?? 0, 0, repo.ctxs))
+			.filter((r) => r.services.length > 0)
+			.sort(byRecency);
 
 		out.push({
 			repoKey,
 			repoLabel: repo.label,
 			rows,
 			knownRevisions: known.size,
+			pending,
 			serviceCount: repo.ctxs.length,
 			slotCount: repo.ctxs.reduce((n, c) => n + c.cells.length, 0),
 			lastDeployMs: rows.reduce((n, r) => Math.max(n, r.lastDeployMs), 0)
@@ -559,13 +603,31 @@ export function rankSentence(service: RevisionService): { rank: string; of: stri
 export function resolveRevision(ledger: RepoLedger | null, segment: string): string | null {
 	if (!ledger || !segment) return null;
 	const needle = segment.toLowerCase();
+	// DEPLOYED FIRST, THEN PENDING — but both resolve. A build that has never
+	// left the registry now has a row (`RepoLedger.pending`) and therefore a
+	// page; refusing to resolve it here is what made the scope line's other
+	// eighteen revisions unreachable. Order matters only for an ambiguous
+	// prefix, and a build somebody has run is the likelier subject.
 	for (const row of ledger.rows) {
 		if (row.revision.toLowerCase().startsWith(needle)) return row.revision;
 	}
-	for (const row of ledger.rows) {
+	for (const row of ledger.pending) {
+		if (row.revision.toLowerCase().startsWith(needle)) return row.revision;
+	}
+	for (const row of [...ledger.rows, ...ledger.pending]) {
 		for (const s of row.services) {
 			if (s.label === segment) return row.revision;
 		}
 	}
 	return null;
+}
+
+/** A revision's row, deployed or not. The detail page's one lookup. */
+export function findRow(ledger: RepoLedger | null, revision: string | null): RevisionRow | null {
+	if (!ledger || !revision) return null;
+	return (
+		ledger.rows.find((r) => r.revision === revision) ??
+		ledger.pending.find((r) => r.revision === revision) ??
+		null
+	);
 }

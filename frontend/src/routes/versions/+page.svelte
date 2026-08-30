@@ -5,161 +5,125 @@
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { formatTimeAgoCompact, formatDate } from '$lib/utils';
 	import { revisionPath } from '$lib/version-utils';
-	import { buildRevisionLedger, rowNamesBuild, type RevisionRow } from '$lib/view-models/revision-ledger';
-	import { revisionCoverage, coverageSegments, type RevisionCoverage } from '$lib/view-models/revision-coverage';
+	import {
+		buildRevisionLedger,
+		rowNamesBuild,
+		type RevisionRow,
+		type RepoLedger
+	} from '$lib/view-models/revision-ledger';
+	import {
+		revisionCoverage,
+		coverageSegments,
+		type RevisionCoverage
+	} from '$lib/view-models/revision-coverage';
+	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { now } from '$lib/stores/time';
-	import { TagOutline } from 'flowbite-svelte-icons';
+	import {
+		ArrowRightOutline,
+		ArrowUpRightFromSquareOutline,
+		CalendarMonthSolid,
+		CheckCircleSolid,
+		ChevronDownOutline,
+		ChevronRightOutline,
+		CodeBranchOutline,
+		ExclamationCircleSolid,
+		HourglassOutline,
+		RocketSolid,
+		TagOutline,
+		UserCircleSolid
+	} from 'flowbite-svelte-icons';
+	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import CoverageBar from '$lib/components/CoverageBar.svelte';
 	import type { Rollout, Environment } from '../../types';
 
 	/**
-	 * `/versions` — THE REVISION LEDGER, RANKED BY COVERAGE.
-	 *
-	 * The row is the COMMIT, not the label. See `view-models/revision-ledger.ts`
-	 * for why (one commit was rendering as three rows with three different
-	 * ranks, and claiming three services when five carried it).
+	 * `/versions` — THE REVISION LEDGER.
 	 *
 	 * ───────────────────────────────────────────────────────────────────────
-	 * ROUND FOUR. THREE ROUNDS FAILED ON ONE WORD — "RAW" — AND THE FOURTH
-	 * STOPPED ITERATING THE CELL.
+	 * ROUND FIVE, AND IT IS NOT A FIFTH TABLE.
 	 * ───────────────────────────────────────────────────────────────────────
 	 *
-	 * Round 1 put the services in a wrapped paragraph. Round 2 put one service
-	 * per line, which measured better (7.9x proximity) and was called raw
-	 * anyway. Round 3 hung an `[AS][label]` badge on the deviating lines. Still
-	 * raw. Three attempts at the SERVICES CELL, and the verdict never moved,
-	 * which is the signal that the cell was not the defect.
+	 * Four rounds rearranged one five-column table and the verdict never moved:
+	 * *"criminally underdesigned"*. The measured diagnosis is in
+	 * `.agents-context/design/COMPOSITION-GRAMMAR.md` and it is two numbers —
+	 * the page the human calls beautiful carries **115 SVG icons** and cards at
+	 * **8px and 12px**; this page carried **0 icons** and one 12px radius. Not a
+	 * subtle gap.
 	 *
-	 * So this round did what the human asked for instead: loaded the three
-	 * pages they call the best ones — `/`, `/rollouts` and a rollout detail —
-	 * and took the row apart against them. TWO THINGS ARE TRUE OF ALL THREE
-	 * AND WERE TRUE OF NONE OF THIS PAGE:
+	 * THE CAUSE WAS STRUCTURAL. Every rule the previous rounds enforced was a
+	 * REDUCTION rule — closed colour budget, two radii, mark-the-deviation, the
+	 * ink ceiling, cut anything that mostly draws the norm. Each was earned, and
+	 * run without a countervailing COMPOSITION rule they converge on exactly one
+	 * thing: small gray text in undifferentiated rows. `DESIGN.md`'s "exactly
+	 * two radii" rule literally forbade the 8px card the good pages are built
+	 * from. **Compose first; apply the budget to what you built.**
 	 *
-	 *   1. THE GRAPHIC IS THE DEVIATION, NOT THE FURNITURE. On `/`, one
-	 *      rollout is `Trailing` and it sits alone above fourteen `Steady`
-	 *      ones; the eye lands on it before you read a word. On `/rollouts`
-	 *      the status mark is the same green tick on every card *because every
-	 *      card is healthy* — the moment one is not, one mark differs. Nothing
-	 *      on those pages draws a graphic that is identical on nine rows out of
-	 *      eleven. THIS PAGE DID: nine of eleven revisions are rolled past, and
-	 *      each drew a full-width flat gray coverage bar. Eleven bars, two of
-	 *      which carried information. The rest were furniture that looked like
-	 *      data, and they diluted the two that were data by a factor of five.
+	 * WHAT THE PAGE IS NOW — three titled cards and a rail, each with a 16px
+	 * icon and a right-aligned rollup, which is the grammar of every region on
+	 * rollout detail:
 	 *
-	 *   2. THE QUIET HALF OF A PAIR IS A COLUMN, NOT A SENTENCE. Every object
-	 *      on those pages puts its identifier in a FIXED SLOT — `[NEWEST]
-	 *      [1.66.0-66]` is always bottom-left of a `/rollouts` card, always
-	 *      right-aligned in a `/` pill. This page's second cell was a run of
-	 *      service names whose left edge was the same five strings, repeated
-	 *      forty times down the page, carrying nothing. The VARIABLE was the
-	 *      label, and the label was the thing being hidden.
+	 *   · `Live across the fleet` — the revisions still running somewhere. The
+	 *     page's subject. Each row carries the coverage bar, a state glyph, and
+	 *     its names.
+	 *   · `Rolled past` — history. One quiet line each, no bar, because a
+	 *     revision nothing runs has no wavefront to plot. Progressive
+	 *     disclosure past six, the `Show 8 ready resources ›` habit.
+	 *   · `Built, never deployed` (rail) — ⭐ THE DEFECT THIS ROUND CLOSES.
+	 *     The subtitle said `16 of 34 revisions deployed` and the page listed
+	 *     sixteen; the other EIGHTEEN were named in a count and reachable from
+	 *     nowhere in the product. A live UX critique called them *"arguably the
+	 *     most interesting"* and it is right — they are the page's own first
+	 *     criterion, *"what's still out there?"*, and the answer includes builds
+	 *     nobody has taken. They are now rows with links, and
+	 *     `RepoLedger.pending` builds them with the same `buildRow` as the rest,
+	 *     so their detail page works unchanged.
+	 *   · The repo card — the scope line, as an object with a header and a
+	 *     `View on GitHub` button, instead of a gray eyebrow.
 	 *
-	 * WHAT THE ROW IS NOW.
-	 *
-	 *   · `Ships as` is ONE LINE PER NAME, not one line per service, with the
-	 *     name in a fixed 84px track so the names form a COLUMN down the whole
-	 *     page. `9f10e49` has three lines because it has three names; `3cc206c`
-	 *     has one because it has one. Criterion 3 — *"which services ship it,
-	 *     and under what labels"* — stops being a paragraph you read and
-	 *     becomes a count you can see. Nothing is dropped: every service is
-	 *     still named, on the line of the name it ships under.
-	 *   · A ROW WHOSE ONLY NAME IS THE REVISION DOES NOT PRINT IT TWICE. Six
-	 *     of the eleven rows read `3cc206c │ 3cc206c │ hello-multi-app · …`,
-	 *     the identical string 60px apart, which is the purest form of *"text
-	 *     doesn't cut it and just pollutes"*. Suppressing it costs the reader
-	 *     nothing: there is exactly ONE group, so no absence sits beside a
-	 *     presence to be decoded, and the fact it stated is already stated by
-	 *     the sha at the head of the row. See `rowNamesBuild` for why this is
-	 *     not the `labelDiffers` rule returning.
-	 *     THE SERVICES DO NOT MOVE. The 84px track stays open and empty and
-	 *     they stay pinned to track 2, so their left edge is x=513 on all
-	 *     eleven rows. What the reader gains is a THIRD reading of the column
-	 *     for free: five rows carry names and six are blank, so *which commits
-	 *     were renamed by somebody* is now legible from across the room, with
-	 *     no mark, no colour and no word spent on it.
-	 *   · AND THE NAME TRACK ITSELF DISAPPEARS IN A REPO THAT NEVER RENAMES
-	 *     ANYTHING. Asked once per PANEL, not per row — see `repoNamesBuilds`.
-	 *     A repo whose services all ship every build under its own sha has no
-	 *     names to report, and the track degenerates into a second copy of the
-	 *     `Revision` column; measured on the mock fleet, `checkout-edge`
-	 *     printed `4d0b7e8  4d0b7e8  checkout-edge` twenty-five rows running.
-	 *     The header then reads `Services`, and every row of that table is
-	 *     rendered the same way, so there is still nothing to infer.
-	 *   · THE BAR IS DRAWN ONLY WHERE THERE IS COVERAGE. A revision nothing
-	 *     runs has no wavefront to plot, and its old all-gray bar was a
-	 *     statement of that dressed as a measurement. Two bars on the page now,
-	 *     and they are the only chromatic marks on it, so the page's first
-	 *     criterion — *"what's still out there?"* — is answered before you read.
-	 *     The `Live` column still prints `rolled past` in words on those rows,
-	 *     so the empty track is explained on its own row and is not a mystery.
-	 *
-	 * MEASURED, live cluster, 1440: the service cell went from 40 lines to 19,
-	 * of which 13 carry a name. Bars 11 → 2. Chromatic elements 7 → 3.
-	 * Badges 8 → 0. Headers unmoved at 337 / 417 / 975 / 1147 / 1223, and the
-	 * services hold one x — 513 — on every row.
+	 * THE BANNER. When the newest build cannot advance, that is a page-level
+	 * blocking fact and it gets `AlertPanel` — a filled field, a 40px circular
+	 * icon, the concrete consequence with a clear time when the cluster
+	 * publishes one. This is the object rollout detail draws its schedule gate
+	 * in. It is not "drift framing": drift is normal and gets no banner, a GATE
+	 * refusing every candidate is not.
 	 *
 	 * ───────────────────────────────────────────────────────────────────────
-	 * THE LEGEND IS GONE, AND SO IS THE RULE IT WAS EXPLAINING.
+	 * HOW THE COVERAGE BAR READS WITH NO LEGEND
 	 * ───────────────────────────────────────────────────────────────────────
 	 *
-	 * The footer key and its caption (*"a service with no AS badge ships this
-	 * revision under its own sha"*) are deleted. The human has rejected legends
-	 * twice and a caption in prose is a legend.
+	 * The human has rejected legends twice, so the bar has to teach itself. It
+	 * does, three ways, and none of them is a swatch key:
 	 *
-	 * BUT DELETING THE CAPTION ALONE WOULD HAVE LEFT THE OBJECT UNEXPLAINED,
-	 * which is the trade the `/apps` ruler made three times before it was cut.
-	 * The caption existed because the page had an EXCEPTION RULE — print a
-	 * label only where it differs from the row's own sha — and an exception
-	 * rule cannot be read off a row: a line with no label is indistinguishable
-	 * from missing data.
-	 *
-	 * SO THE RULE WAS DELETED, NOT THE EXPLANATION. Grouping by name means
-	 * every group prints its own name, including the group whose name IS the
-	 * revision. A reader never sees a present label beside an absent one, so
-	 * there is nothing to infer and nothing to state. `9f10e49` reading
-	 * `1.66.0-66 · 2.66.0-66 · 9f10e49` says "three names, one of them the
-	 * commit's own" without a word of prose. The detail page's `valueDim` and
-	 * its matching caption went the same way, so the two pages now express one
-	 * rule — *a name shown is always shown in full* — instead of two.
+	 *   1. THE COUNT SITS DIRECTLY ABOVE IT, in the same fixed track and to the
+	 *      same width: `6 of 9 places live` over a bar that is two-thirds mint.
+	 *      One glance binds the number to the segment, on every row, forever.
+	 *   2. THE BAR IS ONLY EVER DRAWN WHERE IT MEASURES SOMETHING. Rolled-past
+	 *      revisions are in another card and draw none, so the reader never has
+	 *      to decode an all-gray bar.
+	 *   3. THE GLYPH SAYS THE SAME THING IN A THIRD CHANNEL — a mint tick for
+	 *      "everywhere it can be", a gray hourglass for "still has places to
+	 *      reach", a red circle for "failing somewhere". Redundancy across
+	 *      channels is the reference page's own habit (`✓ 51b976a Succeeded`
+	 *      beside `5/5 done`).
 	 *
 	 * ───────────────────────────────────────────────────────────────────────
-	 * COLOUR
+	 * KEPT, DELIBERATELY — the parts that were right
 	 * ───────────────────────────────────────────────────────────────────────
 	 *
-	 * Measured before: 2 distinct chromatic values over 7 elements (light and
-	 * dark alike). After: the same 2 values over 3 elements. What went:
-	 *
-	 *   · THE LEGEND'S THREE SWATCHES. Two chromatic, one gray.
-	 *   · THE MINT ON THE `14/15` COUNT — the newest arrival on this page and
-	 *     the one that answers *"there are some new colors there too"*. It came
-	 *     in on 2026-08-27 to mark the page's first question, and DESIGN.md's
-	 *     own rule kills it: **colour goes on MARKS, never on PROSE.** A count
-	 *     in a column is prose. The mint 12px to its left, in the bar, is the
-	 *     mark, and it says the same thing at higher precision.
-	 *   · THIRTEEN GRAY `ahead` SEGMENTS, with the bars that carried them.
-	 *
-	 * The two survivors are the coverage bar's `live` mint and its `notYet`
-	 * amber, both governed by DESIGN.md's FIELD CEILING, both argued there at
-	 * length, and both left alone: §1 requires the adverse segment to
-	 * out-chroma the rest (0.188 vs 0.0503, 3.7x) and the corollary forbids a
-	 * gray `live`. Two is the floor that section sets for this object, and the
-	 * page is now at it.
-	 *
-	 * ───────────────────────────────────────────────────────────────────────
-	 * KEPT, DELIBERATELY
-	 * ───────────────────────────────────────────────────────────────────────
-	 *
-	 *  1. REVISION KEYING — 11 rows for 11 revisions, never keyed on labels.
-	 *  2. NO `−N` CHIP ON THE ROWS — row position is the rank, and the order is
-	 *     untouched: one list, newest first, no sectioning. Splitting live from
-	 *     rolled-past into two panels was tried on paper and rejected for
-	 *     exactly this: it would have put ranks 0 and 4 in one panel and 1,2,3
-	 *     in another, and position would have stopped meaning anything. The bar
-	 *     separates them without moving them.
-	 *  3. THE SCOPE IS IN THE EYEBROW: `11 of 37 revisions deployed`.
-	 *  4. Repo grouping is a SCOPE LABEL, not a grouping mechanism.
+	 *  1. REVISION KEYING. Rows are commits, never label strings. See
+	 *     `view-models/revision-ledger.ts` for the defect that closes.
+	 *  2. THE SCOPE STATEMENT — `16 of 34 revisions deployed` — and now both
+	 *     halves are reachable rather than one being a number in a caption.
+	 *  3. LABEL GROUPS and the `rowNamesBuild` suppression: a row whose only
+	 *     name is its own revision does not print it twice, and the column's
+	 *     emptiness is a free third reading.
+	 *  4. Repo grouping is a SCOPE, not a grouping mechanism.
 	 *  5. Every mutating control stays on the detail page.
+	 *  6. NO `−N` CHIP ON THE ROWS. Order is newest-first within each card, so
+	 *     position still carries rank; and `−N` renders RED product-wide, which
+	 *     would make ordinary distance read as failure sixteen times over.
 	 */
 
 	const query = createQuery(() =>
@@ -183,15 +147,7 @@
 		return () => clearInterval(id);
 	});
 
-	/**
-	 * revision → coverage, and ONLY for the rows that have any.
-	 *
-	 * A revision nothing runs has no wavefront: every one of its places is in
-	 * the `ahead` bucket by construction, so the bar it produced was a single
-	 * flat gray fill on nine of eleven rows. The map is now built only where
-	 * the object has something to draw, which is also what stops the page
-	 * spending eleven bucketing passes to render two bars.
-	 */
+	/** revision → coverage, for every row that has a live place. */
 	const coverageByRevision = $derived.by(() => {
 		const m = new Map<string, RevisionCoverage>();
 		for (const repo of ledgers) {
@@ -202,41 +158,26 @@
 		return m;
 	});
 
+	/** The two halves of the ledger, split on the page's FIRST criterion. */
+	function liveRows(repo: RepoLedger): RevisionRow[] {
+		return repo.rows.filter((r) => r.liveSlots > 0);
+	}
+	function pastRows(repo: RepoLedger): RevisionRow[] {
+		return repo.rows.filter((r) => r.liveSlots === 0);
+	}
+
 	/**
 	 * DOES THIS REPO RENAME ANYTHING? A PANEL-LEVEL QUESTION, ASKED ONCE.
 	 *
-	 * Criterion 3 is *"which services ship it, and under what labels"*. In a
-	 * repo where no service has ever called a build anything but its own sha,
-	 * there ARE no labels — and the name track degenerates into a second copy
-	 * of the `Revision` column, printed once per row. Measured on the mock
-	 * fleet, which is five single-service repos: `checkout-edge` rendered
-	 * `4d0b7e8   4d0b7e8   checkout-edge` twenty-five times running.
-	 *
-	 * THIS IS NOT THE EXCEPTION RULE COMING BACK, AND THE DIFFERENCE IS WHERE
-	 * THE QUESTION IS ASKED. The rule that was deleted was per-CELL — print a
-	 * label only where it differs — so one row could show a name and the row
-	 * under it show a blank, and a reader had to be told which meant what.
-	 * This is per-PANEL: inside any one table every row is rendered the same
-	 * way, and the column header names what the column holds. A column that is
-	 * identical to the row key on every row of a table is that table not having
-	 * the column, which is the same finding DESIGN.md records for
-	 * `/environments`' rollup — *"18 identical green ticks directly above the
-	 * words 18 healthy"* — one fact, drawn twice.
-	 *
-	 * The predicate is deliberately about the REPO and not the row: one row
-	 * with a rename anywhere in the panel keeps the track on every row of it,
-	 * so the names stay a column and the alignment that makes them countable
-	 * survives.
+	 * In a repo where no service has ever called a build anything but its own
+	 * sha there ARE no labels, and the name track degenerates into a second copy
+	 * of the revision. Asked per PANEL and not per row, so inside any one card
+	 * every row renders the same way and there is nothing to infer.
 	 */
 	function repoNamesBuilds(rows: RevisionRow[]): boolean {
 		return rows.some(rowNamesBuild);
 	}
 
-	/*
-	 * COMPACT, because `/apps` and `/rollouts` are compact. This page printed
-	 * `27 days ago` where every other list prints `27d ago` — the same fact in
-	 * two vocabularies.
-	 */
 	function ageOf(row: RevisionRow): string {
 		const ms = row.lastDeployMs || row.createdMs;
 		return ms ? `${formatTimeAgoCompact(new Date(ms).toISOString(), $now)} ago` : '';
@@ -246,33 +187,171 @@
 		const ms = row.lastDeployMs || row.createdMs;
 		return ms ? formatDate(new Date(ms).toISOString()) : '';
 	}
+
+	/**
+	 * THE ROW'S ONE-GLYPH ANSWER — and the third channel that teaches the bar.
+	 *
+	 * It VARIES down the card, which is the only reason it is allowed to exist:
+	 * *"nothing on the good pages draws a graphic that is identical on nine
+	 * rows out of eleven."* Every value below is read off the buckets the bar
+	 * is drawn from, so the glyph and the bar cannot disagree.
+	 */
+	function rowMark(cov: RevisionCoverage): {
+		icon: typeof CheckCircleSolid;
+		tone: string;
+		word: string;
+	} {
+		const has = (k: string) => cov.buckets.some((b) => b.key === k && b.slots.length > 0);
+		if (has('failing'))
+			return { icon: ExclamationCircleSolid, tone: 'tone-bad', word: 'failing somewhere' };
+		if (has('notYet'))
+			return { icon: HourglassOutline, tone: 'tone-mute', word: 'has places left to reach' };
+		if (has('ahead'))
+			return { icon: ArrowRightOutline, tone: 'tone-mute', word: 'partly rolled past' };
+		return { icon: CheckCircleSolid, tone: 'tone-live', word: 'live everywhere it is carried' };
+	}
+
+	/* ── THE PAGE'S ONE BLOCKING FACT ────────────────────────────────────────
+	 *
+	 * The frontier of the newest deployed build. If a gate refuses every
+	 * candidate in one or more places, that is the fleet-level headline and it
+	 * gets the banner. Derived ONLY from `promotionBlock`'s evidence (carried
+	 * through `revision-coverage.ts`) — DESIGN.md: *"`waiting on a gate` is a
+	 * lie with better grammar"* when no gate list established it.
+	 */
+	const blockage = $derived.by(() => {
+		for (const repo of ledgers) {
+			const head = repo.rows[0];
+			if (!head) continue;
+			const cov = revisionCoverage(head, coarse);
+			const stuckSlots = cov.buckets
+				.find((b) => b.key === 'notYet')
+				?.slots.filter((s) => s.blockingGates.length > 0);
+			if (!stuckSlots || stuckSlots.length === 0) continue;
+			return {
+				repo,
+				head,
+				cov,
+				slots: stuckSlots,
+				apps: [...new Set(stuckSlots.map((s) => s.appName))],
+				envs: [...new Set(stuckSlots.map((s) => s.envLabel))],
+				approval: [...new Set(stuckSlots.flatMap((s) => s.awaitingApprovalGates))],
+				window: [...new Set(stuckSlots.flatMap((s) => s.notPassingGates))]
+			};
+		}
+		return null;
+	});
+
+	/*
+	 * WHEN DOES THE WINDOW OPEN? One GET per blocked rollout, cached by key.
+	 *
+	 * The rollout detail page says *"Will be allowed in 1d 3h (8/31/2026,
+	 * 1:00:00 PM)"*; this page knew the gate and printed a generated object
+	 * name. The endpoint is the same one `ScheduleStatus` reads and the
+	 * arithmetic is lifted into `api/schedules.ts` so the two cannot disagree.
+	 * Read-only, and it never blocks a render: the banner states the block with
+	 * or without a time, and gains the clause when the answer arrives.
+	 */
+	let windows = $state<Record<string, ScheduleWindow>>({});
+	$effect(() => {
+		const b = blockage;
+		if (!b) return;
+		for (const s of b.slots) {
+			if (s.notPassingGates.length === 0 || !s.rolloutRef) continue;
+			const key = `${s.rolloutRef.cluster}/${s.rolloutRef.namespace}/${s.rolloutRef.name}`;
+			if (windows[key]) continue;
+			fetchScheduleWindow(s.rolloutRef.namespace, s.rolloutRef.name, s.rolloutRef.cluster)
+				.then((w) => {
+					windows = { ...windows, [key]: w };
+				})
+				.catch(() => {});
+		}
+	});
+
+	/** The earliest moment any blocking window on the page opens. */
+	const opensIn = $derived.by(() => {
+		let best: string | null = null;
+		for (const w of Object.values(windows)) {
+			if (!w.blocked || !w.nextTransition) continue;
+			if (!best || new Date(w.nextTransition) < new Date(best)) best = w.nextTransition;
+		}
+		return best;
+	});
+
+	const bannerMessage = $derived.by(() => {
+		const b = blockage;
+		if (!b) return '';
+		const where = b.envs.join(', ');
+		const who = b.apps.length === 1 ? b.apps[0] : `${b.apps.length} services`;
+		return `${b.head.short} is live in ${b.cov.liveCount} of ${b.cov.totalCount} places. ${who} cannot take it in ${where}.`;
+	});
+
+	const bannerFootnote = $derived.by(() => {
+		const b = blockage;
+		if (!b) return undefined;
+		const parts: string[] = [];
+		if (b.window.length > 0) {
+			const until = opensIn ? formatTimeUntil(opensIn, $now) : null;
+			parts.push(
+				until
+					? `A deployment window is closed — it opens in ${until} (${new Date(opensIn!).toLocaleString()}).`
+					: `${b.window.length} gate${b.window.length === 1 ? '' : 's'} not passing — ${b.window.join(', ')}.`
+			);
+		}
+		if (b.approval.length > 0) {
+			parts.push(
+				`${b.approval.length} gate${b.approval.length === 1 ? '' : 's'} need an approval or an external check: ${b.approval.join(', ')}.`
+			);
+		}
+		return parts.length > 0 ? parts.join(' ') : undefined;
+	});
+
+	/* PROGRESSIVE DISCLOSURE — `Show 8 ready resources ›`, the reference's own
+	   control. The card states its rollup, prints what matters, and hides the
+	   tail behind one button. It does not print all 18 rows and it does not
+	   omit them, which is the trade that made the old page unreachable. */
+	const FOLD = 6;
+	let expandPast = $state<Record<string, boolean>>({});
+	let expandPending = $state<Record<string, boolean>>({});
+
+	function repoUrl(repoKey: string): string | null {
+		if (!repoKey.startsWith('repo:')) return null;
+		const body = repoKey.slice('repo:'.length);
+		return body.includes('/') ? `https://${body}` : null;
+	}
 </script>
 
 <svelte:head>
 	<title>kuberik | Revisions</title>
 </svelte:head>
 
-<div class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	<h1 class="t-display min-w-0 truncate text-gray-900 dark:text-white">Revisions</h1>
 	<p class="t-body mt-1 text-gray-500 dark:text-gray-400">
-		Every commit that has been deployed, and how far across the fleet each one got.
+		Every commit this fleet knows about, and how far across it each one got.
 	</p>
 
 	{#if query.isLoading}
-		<div
-			class="mt-6 divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
-		>
-			{#each Array(8) as _}
-				<div class="flex items-center gap-3 px-4 py-3">
-					<div class="h-2 w-2 shrink-0 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-					<div class="h-3 w-20 shrink-0 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-					<div class="h-3 flex-1 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-				</div>
-			{/each}
+		<div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+			<div
+				class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+			>
+				<div class="h-[47px] animate-pulse bg-gray-50 dark:bg-gray-700/40"></div>
+				{#each Array(6) as _}
+					<div class="flex items-center gap-3 px-4 py-3">
+						<div class="h-4 w-4 shrink-0 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+						<div class="h-3 w-20 shrink-0 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+						<div class="h-3 flex-1 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+					</div>
+				{/each}
+			</div>
+			<div
+				class="h-48 animate-pulse rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+			></div>
 		</div>
 	{:else if query.isError}
 		<div
-			class="t-body mt-6 rounded-xl border border-gray-200 p-4 text-red-700 dark:border-gray-700 dark:text-red-400"
+			class="t-body mt-6 rounded-lg border border-gray-200 p-4 text-red-700 dark:border-gray-700 dark:text-red-400"
 		>
 			Failed to load: {(query.error as Error).message}
 		</div>
@@ -285,329 +364,499 @@
 			</p>
 		</div>
 	{:else}
+		<!--
+			THE ONE BLOCKING FACT, AS A FILLED FIELD.
+			`AlertPanel` IS rollout detail's schedule-gate banner — 40px circular
+			icon, bold headline, the concrete consequence underneath, a chip on the
+			right. `COMPOSITION-GRAMMAR.md` §4: this is what *"attention pulled by
+			design, not text"* looks like, against the neutral gray row-band the
+			human said *"feels like a bug"*. ONE banner: a page with three has none.
+		-->
+		{#if blockage}
+			<AlertPanel
+				severity="warning"
+				icon={blockage.window.length > 0 ? CalendarMonthSolid : UserCircleSolid}
+				title="The newest build cannot advance"
+				message={bannerMessage}
+				footnote={bannerFootnote}
+				class="mt-5"
+			>
+				{#snippet extra()}
+					<Chip
+						role="alarm"
+						label="{blockage.slots.length} blocked"
+						wide
+						title="{blockage.slots.length} (service, environment) places are held by a gate"
+					/>
+				{/snippet}
+				{#snippet actions()}
+					<a class="btn btn-secondary" href={revisionPath(blockage.repo.repoKey, blockage.head.revision)}>
+						<ArrowRightOutline class="h-4 w-4" />
+						Open {blockage.head.short}
+					</a>
+				{/snippet}
+			</AlertPanel>
+		{/if}
+
 		{#each ledgers as repo (repo.repoKey)}
-			{@const named = repoNamesBuilds(repo.rows)}
-			<section class="mt-6">
-				<!-- REPO GROUPING, DEMOTED. An eyebrow, not a panel. The SCOPE line is
-				     here and it names both numbers: DESIGN.md forbids silently
-				     dropping 26 of 37 builds off a list. -->
-				<div class="mb-2 flex flex-wrap items-baseline gap-2">
-					<span class="t-label min-w-0 truncate text-gray-500 dark:text-gray-400"
-						>{repo.repoLabel}</span
+			{@const live = liveRows(repo)}
+			{@const past = pastRows(repo)}
+			<!-- ASKED ONCE PER PANEL, NOT PER ROW AND NOT PER REPO. A card whose
+			     every row ships under its own sha has no names to report, so the
+			     84px name track is 84px of nothing on every one of its rows —
+			     which is exactly what `Rolled past` was rendering. Per CARD, every
+			     row inside one card is still drawn the same way, so there is
+			     nothing for a reader to infer from a present-vs-absent track. -->
+			{@const namedLive = repoNamesBuilds(live)}
+			{@const namedPast = repoNamesBuilds(past)}
+			{@const url = repoUrl(repo.repoKey)}
+			<div class="rev-cols mt-5">
+				<div class="flex min-w-0 flex-col gap-4">
+					<!--
+						CARD 1 — THE PAGE'S SUBJECT.
+						Criterion 1 is *"what's still out there vs fully rolled past"*, and
+						this round answers it with STRUCTURE rather than with the word
+						`rolled past` in a table cell: the two answers are two cards, so
+						the reader counts them instead of reading them.
+					-->
+					<Card
+						icon={RocketSolid}
+						iconClass="tone-live"
+						title="Live across the fleet"
+						verdict="{live.length} of {repo.rows.length} deployed"
+						verdictTitle="{live.length} of the {repo.rows.length} revisions this repo has deployed are still running somewhere"
+						padded={false}
 					>
-					<span class="t-micro text-gray-500 dark:text-gray-400">
-						{repo.rows.length} of {repo.knownRevisions} revisions deployed · {repo.serviceCount} service{repo.serviceCount ===
-						1
-							? ''
-							: 's'} · newest first
-					</span>
-				</div>
-
-				<div
-					class="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
-				>
-					<!-- COLUMN HEADERS, the `/rollouts` habit. They are what turn five
-					     aligned cells into five columns, and they are what lets the
-					     coverage column be read as one comparison rather than as a
-					     scatter of unrelated graphics. Hidden at phone width, where the
-					     row is three bands rather than five tracks. -->
-					<div class="rev-row rev-head">
-						<span class="t-label text-gray-500 dark:text-gray-400">Revision</span>
-						<!-- THE HEADER NAMES WHAT THE COLUMN HOLDS, and the column holds
-						     two different things in the two cases. `Ships as` when there are
-						     names to report; `Services` when the repo has never renamed a
-						     build and the cell is a service list and nothing else. A header
-						     reading `Ships as` over a column of bare service names would be
-						     the caption problem again, one word long. -->
-						<span class="t-label text-gray-500 dark:text-gray-400"
-							>{named ? 'Ships as' : 'Services'}</span
-						>
-						<span class="t-label text-gray-500 dark:text-gray-400">Coverage</span>
-						<span class="t-label text-gray-500 dark:text-gray-400">Live</span>
-						<span class="t-label text-right text-gray-500 dark:text-gray-400">Last</span>
-					</div>
-
-					{#each repo.rows as row (row.revision)}
-						{@const cov = coverageByRevision.get(row.revision)}
-						<div class="rev-row hover:bg-gray-50 dark:hover:bg-gray-700/40">
-							<!-- THE SHA, IN ITS OWN BOX. NO MARK BESIDE IT.
-
-							     This cell used to be a joined `[wordless status dot][sha]`, and
-							     the human rejected that sub-badge on 2026-08-27 — then rejected
-							     the dot outside the badge too. So it is not moved, it is DELETED,
-							     and here that costs nothing at all: the predicate it encoded
-							     ("still live somewhere" / "rolled past everywhere") is now
-							     carried TWICE over — by whether this row draws a bar at all, and
-							     by the words in the `Live` column three tracks right.
-							     `Chip` with a `value` and no `label` renders the value half alone,
-							     all four corners at the chip's 4px — same 20px box, same 6px
-							     padding, same hairline, no empty half. -->
-							<!-- THE CLASS IS ON A WRAPPER, NOT ON `Chip`. Svelte 5 prunes a
-							     scoped selector it cannot see matched in this component's own
-							     markup, and a `class` handed to a child component is opaque to
-							     it — `.rev-sha` and its stretched-link rule were both being
-							     dropped as dead CSS, which is a silent loss of the row's click
-							     target, not just a warning. The wrapper is the grid item; the
-							     chip sits inside it. -->
-							<span class="rev-sha">
-								<Chip
-									value={row.short}
-									valueHref={revisionPath(repo.repoKey, row.revision)}
-									valueTitle="{row.revision} · {row.liveSlots > 0
-										? 'still live somewhere'
-										: 'rolled past everywhere'}"
-								/>
-							</span>
-
-							<!--
-								ONE LINE PER NAME. NOT ONE LINE PER SERVICE.
-
-								THE AXIS TURNED, AND THAT IS THE WHOLE CHANGE. Three rounds put
-								the SERVICE on the left of this cell and hung the label off it;
-								the human called all three raw. The service is the constant —
-								the same five strings, forty times down eleven rows, and the
-								left edge of the cell carried none of the page's variation. The
-								NAME is the variable, and the name is what criterion 3 is about:
-								*"versions can be labeled different for different versions on
-								the same revision"*.
-
-								So the name goes in a FIXED 84px TRACK on the left and the
-								services that use it run out to its right. Two consequences,
-								both of them the point:
-
-								  · THE NAMES FORM A COLUMN DOWN THE PAGE. Count the lines in
-								    this cell and you have counted the names the commit ships
-								    under — three for `9f10e49`, one for `3cc206c`. That is
-								    criterion 3 as a SHAPE, at a glance, with no reading. It is
-								    the `/rollouts` habit: `[NEWEST][1.66.0-66]` is in the same
-								    slot of every card, so a scan down the column compares
-								    like with like.
-								  · IT COMPRESSES BY HALF. Six of eleven revisions have exactly
-								    one name, so their whole cell is one line where it used to
-								    be three. Measured on the live cluster: 40 lines → 19.
-
-								AND IT DELETED THE EXCEPTION RULE. Every group prints its name,
-								including the group whose name is the revision's own sha. There
-								is no "only when it differs", so there is nothing to explain,
-								so the caption and the footer key that used to explain it are
-								gone rather than merely hidden. See `RevisionLabelGroup`.
-
-								NO BADGES. Round 3's `[AS][label]` chip existed to bind a label
-								to the one service it belonged to across a 12px gap. A group
-								does not need binding: the services on a line share the name at
-								the head of that line by construction, and alignment in a fixed
-								track is a stronger grouping cue than any box. Eight chips went
-								to zero and the cell got quieter, not louder.
-							-->
-							<span class="rev-names {named ? '' : 'rev-names--unnamed'}">
-								{#each row.labelGroups as g (g.label)}
-									<span class="rev-name-row">
-										<!-- THE NAME. Mono, primary ink, in the track. Mono because
-										     every identifier in this product is mono; primary ink
-										     because it is the one thing in this cell the reader came
-										     for. It carries NO colour: DESIGN.md puts colour on
-										     marks, and this is a word. -->
-										{#if named && rowNamesBuild(row)}<span
-											class="rev-name t-code-sm text-gray-900 dark:text-white"
-											title={g.isOwnSha
-												? `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision under its own sha`
-												: `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision as ${g.label}`}>{g.label}</span
-										>{/if}
-										<!-- THE SERVICES THAT USE IT. Secondary ink, because a
-										     service is never the subject of this page — the
-										     revision is — and that is the same ink the bucket cards
-										     and the detail table print it in.
-
-										     THE MIDDOT IS LOAD-BEARING. Round 1's run failed
-										     because labels and names alternated inside it and one
-										     gap had to mean both "next field" and "next service".
-										     Everything after the name here IS a service, so the run
-										     has one possible reading; the separator makes that true
-										     at any wrap point rather than only at this width.
-
-										     IT TRAILS ITS OWN NAME RATHER THAN LEADING THE NEXT
-										     ONE, and that is a 390px decision. Each service is one
-										     flex item — `name ·` — so the run breaks BETWEEN
-										     services and a wrapped line can never open with an
-										     orphaned separator. A leading middot on line two reads
-										     as a bullet, which is a different object. -->
-										<span class="rev-name-svcs">
-											{#each g.services as svc, i (svc.appName)}
-												<span class="rev-svc">
-													<span class="rev-svc-name t-dense text-gray-700 dark:text-gray-200"
-														>{svc.appName}</span
-													>
-													{#if svc.diverged}
-														<!-- A build on no environment's release line. Its rank
-														     is not a distance — promoting N times never arrives
-														     at it — so it is marked here, on the service it is
-														     true of. -->
-														<Chip
-															role="diverged"
-															label="diverged"
-															class="shrink-0"
-															title="{svc.appName} lists this build on no environment’s release line"
-														/>
-													{/if}
-													{#if i < g.services.length - 1}<span
-															class="rev-sep t-dense text-gray-500 dark:text-gray-400"
-															aria-hidden="true">·</span
-														>{/if}
-												</span>
-											{/each}
+						{#if live.length === 0}
+							<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+								Nothing this repo has deployed is still running. Every place has moved on.
+							</p>
+						{:else}
+							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+								{#each live as row (row.revision)}
+									{@const cov = coverageByRevision.get(row.revision)}
+									{@const mark = cov ? rowMark(cov) : null}
+									<li class="rev-row hover:bg-gray-50 dark:hover:bg-gray-700/40">
+										<!-- THE STATE GLYPH. It varies down the card — mint tick,
+										     gray hourglass, gray arrow, red circle — so it is a
+										     mark on a deviation, not furniture. It is also the
+										     third channel that teaches the bar's colour. -->
+										<span class="rev-mark {mark?.tone ?? 'tone-mute'}">
+											{#if mark}
+												{@const MarkIcon = mark.icon}
+												<MarkIcon class="h-4 w-4" aria-hidden="true" />
+											{/if}
 										</span>
-									</span>
+
+										<div class="min-w-0">
+											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+												<a
+													class="rev-sha t-code text-gray-900 hover:underline dark:text-white"
+													href={revisionPath(repo.repoKey, row.revision)}
+													title="{row.revision} — {mark?.word ?? ''}">{row.short}</a
+												>
+												<span class="t-micro text-gray-500 dark:text-gray-400"
+													>{mark?.word ?? ''}</span
+												>
+											</div>
+
+											<!--
+												CRITERION 3, AND IT IS UNCHANGED FROM THE ROUND THAT GOT
+												IT RIGHT. One line per NAME, not per service: the name
+												sits in a fixed track and the services that ship under it
+												run out to its right, so `how many names does this commit
+												have` is a count you can SEE. A row whose only name is
+												its own revision prints nothing here (`rowNamesBuild`) and
+												the column's emptiness becomes a third reading for free.
+											-->
+											{@render names(row, namedLive)}
+										</div>
+
+										<!--
+											THE ROLLUP, AT ROW SCALE — a stack, not three columns.
+											Count on top, bar under it at the same width, age under
+											that. THE COUNT DIRECTLY ABOVE THE BAR IS WHAT MAKES THE
+											BAR READ WITH NO LEGEND: `6 of 9 places live` over a bar
+											two-thirds mint binds the number to the segment in one
+											glance, on every row.
+											The track is FIXED so the bars are comparable down the
+											column, which is criterion 2 and the list's whole reason
+											to exist.
+										-->
+										<div class="rev-roll">
+											<span class="t-dense text-gray-700 dark:text-gray-200">
+												{row.liveSlots} of {row.totalSlots}
+												<span class="text-gray-500 dark:text-gray-400">places live</span>
+											</span>
+											{#if cov}
+												<CoverageBar
+													segments={coverageSegments(cov)}
+													compact
+													class="mt-1.5"
+													label="{cov.liveCount} of {cov.totalCount} places live · {cov.buckets
+														.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
+														.join(' · ')}"
+												/>
+											{/if}
+											<span class="t-micro mt-1 block text-gray-500 dark:text-gray-400">
+												<span title={ageTitle(row)}>{ageOf(row)}</span>
+												<ChevronRightOutline
+													class="ml-1 inline h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
+													aria-hidden="true"
+												/>
+											</span>
+										</div>
+									</li>
 								{/each}
-							</span>
+							</ul>
+						{/if}
+					</Card>
 
-							<!-- THE BAR, AND ONLY WHERE THERE IS ONE TO DRAW.
-
-							     Nine of eleven revisions are rolled past. Each of them used to
-							     draw a full-width flat gray bar — one bucket, `ahead`, at 100% —
-							     which is a graphic that is identical on nine rows and therefore
-							     carries nothing, while diluting the two rows where the bar IS
-							     the answer. Not one of the three pages the human calls the best
-							     draws furniture that looks like data.
-							     The track stays, because a proportional bar is only comparable
-							     against the bar above it if the two are drawn to the same width
-							     and at the same x. What is left is two marks on the page, and
-							     they are the page's first criterion answered before you read. -->
-							<!-- THE SPAN IS ALWAYS RENDERED, and that is not laziness. Every
-							     row is its own grid and its five children auto-place in source
-							     order, so dropping the element entirely would slide `Live` into
-							     the coverage track on nine rows and the columns would stop being
-							     columns. It holds the track open on desktop and takes itself out
-							     of flow at phone width, where the tracks are explicit. -->
-							<span class="rev-cov {cov ? '' : 'rev-cov--empty'}">
-								{#if cov}
-									<CoverageBar
-										segments={coverageSegments(cov)}
-										compact
-										label="{cov.liveCount} of {cov.totalCount} places live · {cov.buckets
-											.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
-											.join(' · ')}"
-									/>
-								{/if}
-							</span>
-
-							<!-- THE ABSOLUTE, beside the proportional. `rolled past` rather
-							     than `0 of 9`, because a zero numerator is the one value in
-							     this column that is a different KIND of fact — and because it
-							     is what explains the empty coverage track on its own row,
-							     rather than leaving an absence to be inferred.
-
-							     NEUTRAL, AND THAT IS A REMOVAL (2026-08-27, round four). The
-							     numerator was mint — added in the colour-placement pass to
-							     mark the page's first question, and the value the human meant
-							     by *"there are some new colors there too"*. DESIGN.md: colour
-							     goes on MARKS, never on PROSE. A count in a column is prose;
-							     the bar 12px to its left is the mark, and it says the same
-							     thing with more precision. Two chromatic elements removed, no
-							     information lost. -->
-							{#if row.liveSlots === 0}
-								<span class="rev-where t-dense text-gray-500 dark:text-gray-400">rolled past</span>
-							{:else}
-								<span class="rev-where t-dense text-gray-700 dark:text-gray-200"
-									>{row.liveSlots}<span class="text-gray-500 dark:text-gray-400"
-										>/{row.totalSlots}</span
-									></span
-								>
+					<!--
+						CARD 2 — HISTORY. No bar on any row, and that is the argument for
+						the split: a revision nothing runs has no wavefront to plot, and
+						nine identical flat-gray bars were furniture that looked like data.
+					-->
+					{#if past.length > 0}
+						<Card
+							icon={ArrowRightOutline}
+							title="Rolled past"
+							verdict="{past.length} revision{past.length === 1 ? '' : 's'}"
+							verdictTitle="Deployed at least once; every place that carried them has moved on"
+							padded={false}
+						>
+							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+								{#each expandPast[repo.repoKey] ? past : past.slice(0, FOLD) as row (row.revision)}
+									<li class="rev-row rev-row--quiet hover:bg-gray-50 dark:hover:bg-gray-700/40">
+										<!-- NO GLYPH HERE, AND THAT IS THE RULE WORKING. Every row in
+										     this card has the same answer — the card header says it
+										     once — so a per-row mark would be identical twelve times
+										     over, which is the furniture the good pages never draw. -->
+										<div class="rev-quiet-body">
+											<a
+												class="rev-sha t-code shrink-0 text-gray-700 hover:underline dark:text-gray-200"
+												href={revisionPath(repo.repoKey, row.revision)}
+												title={row.revision}>{row.short}</a
+											>
+											{@render names(row, namedPast)}
+										</div>
+										<div class="rev-roll">
+											<span class="t-micro text-gray-500 dark:text-gray-400" title={ageTitle(row)}
+												>{ageOf(row)}</span
+											>
+											<ChevronRightOutline
+												class="ml-2 inline h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
+												aria-hidden="true"
+											/>
+										</div>
+									</li>
+								{/each}
+							</ul>
+							{#if past.length > FOLD}
+								{@render more(
+									() => (expandPast = { ...expandPast, [repo.repoKey]: !expandPast[repo.repoKey] }),
+									expandPast[repo.repoKey],
+									`${past.length - FOLD} older revision${past.length - FOLD === 1 ? '' : 's'}`
+								)}
 							{/if}
-
-							<span class="rev-age t-micro text-gray-500 dark:text-gray-400" title={ageTitle(row)}
-								>{ageOf(row)}</span
-							>
-						</div>
-					{/each}
+						</Card>
+					{/if}
 				</div>
-			</section>
+
+				<div class="flex min-w-0 flex-col gap-4">
+					<!--
+						⭐ THE CARD THAT CLOSES THE UNREACHABLE-REVISIONS DEFECT.
+						`16 of 34 revisions deployed` used to be a caption, and the
+						eighteen builds in the difference had no row, no link and no page
+						anywhere in the product. They are the page's own first criterion:
+						a build nobody has taken is very much *"still out there"*. Every
+						one is a link now, and its detail page is the most actionable page
+						in the product for it — `0 of N places live`, and the whole `Not
+						yet` bucket naming the gates that are the reason.
+					-->
+					{#if repo.pending.length > 0}
+						<Card
+							icon={HourglassOutline}
+							title="Built, never deployed"
+							verdict="{repo.pending.length} build{repo.pending.length === 1 ? '' : 's'}"
+							verdictTitle="On the release ladder; no service has ever run them"
+							padded={false}
+						>
+							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+								{#each expandPending[repo.repoKey] ? repo.pending : repo.pending.slice(0, FOLD) as row (row.revision)}
+									<li
+										class="flex items-baseline gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40"
+									>
+										<a
+											class="t-code min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
+											href={revisionPath(repo.repoKey, row.revision)}
+											title={row.revision}>{row.short}</a
+										>
+										<span class="t-micro ml-auto shrink-0 text-gray-500 dark:text-gray-400">
+											{row.services.length} service{row.services.length === 1 ? '' : 's'}
+										</span>
+										<span
+											class="t-micro w-14 shrink-0 text-right text-gray-500 dark:text-gray-400"
+											title={ageTitle(row)}>{ageOf(row)}</span
+										>
+										<ChevronRightOutline
+											class="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600"
+											aria-hidden="true"
+										/>
+									</li>
+								{/each}
+							</ul>
+							{#if repo.pending.length > FOLD}
+								{@render more(
+									() =>
+										(expandPending = {
+											...expandPending,
+											[repo.repoKey]: !expandPending[repo.repoKey]
+										}),
+									expandPending[repo.repoKey],
+									`${repo.pending.length - FOLD} more build${repo.pending.length - FOLD === 1 ? '' : 's'}`
+								)}
+							{/if}
+						</Card>
+					{/if}
+
+					<!--
+						THE SCOPE LINE, AS AN OBJECT. It was a 10px gray eyebrow floating
+						above a bordered box — the exact shape `COMPOSITION-GRAMMAR.md`
+						names as what keeps getting rejected. It states both halves of the
+						boundary (`DESIGN.md` forbids silently dropping builds off a list)
+						and both halves are now reachable.
+					-->
+					<Card
+						icon={CodeBranchOutline}
+						title={repo.repoLabel}
+						verdict="{repo.serviceCount} service{repo.serviceCount === 1 ? '' : 's'}"
+						padded={false}
+					>
+						<dl class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{@render fact('Builds on the ladder', String(repo.knownRevisions))}
+							{@render fact('Deployed at least once', String(repo.rows.length))}
+							{@render fact('Still running somewhere', String(live.length))}
+							{@render fact(
+								'Places',
+								`${repo.slotCount} service × environment`
+							)}
+						</dl>
+						{#if url}
+							<div class="px-4 py-3">
+								<a class="btn btn-secondary" href={url} target="_blank" rel="noopener noreferrer">
+									<ArrowUpRightFromSquareOutline class="h-4 w-4" />
+									View repository
+								</a>
+							</div>
+						{/if}
+					</Card>
+				</div>
+			</div>
 		{/each}
 	{/if}
 </div>
 
+{#snippet fact(term: string, value: string)}
+	<div class="flex items-baseline justify-between gap-3 px-4 py-2.5">
+		<dt class="t-dense min-w-0 truncate text-gray-500 dark:text-gray-400">{term}</dt>
+		<dd class="t-dense shrink-0 text-gray-900 dark:text-white">{value}</dd>
+	</div>
+{/snippet}
+
+{#snippet more(toggle: () => void, open: boolean | undefined, label: string)}
+	<!-- `Show 8 ready resources ›` — the reference's progressive-disclosure
+	     control, verbatim in form. The card states its rollup, prints what
+	     matters, and hides the tail behind ONE button. -->
+	<button
+		type="button"
+		class="flex w-full items-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-left text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700/60 dark:text-gray-400 dark:hover:bg-gray-700/40 dark:hover:text-gray-200"
+		onclick={toggle}
+	>
+		{#if open}
+			<ChevronDownOutline class="h-3.5 w-3.5 shrink-0" />
+			Hide {label}
+		{:else}
+			<ChevronRightOutline class="h-3.5 w-3.5 shrink-0" />
+			Show {label}
+		{/if}
+	</button>
+{/snippet}
+
+{#snippet names(row: RevisionRow, named: boolean)}
+	<span class="rev-names {named ? '' : 'rev-names--unnamed'}">
+		{#each row.labelGroups as g (g.label)}
+			<span class="rev-name-row">
+				{#if named && rowNamesBuild(row)}<span
+						class="rev-name t-code-sm text-gray-900 dark:text-white"
+						title={g.isOwnSha
+							? `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision under its own sha`
+							: `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision as ${g.label}`}
+						>{g.label}</span
+					>{/if}
+				<span class="rev-name-svcs">
+					{#each g.services as svc, i (svc.appName)}
+						<span class="rev-svc">
+							<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200">{svc.appName}</span>
+							{#if svc.diverged}
+								<!-- A build on no environment's release line. Its rank is not a
+								     distance — promoting N times never arrives at it — so it is
+								     marked here, on the service it is true of. -->
+								<Chip
+									role="diverged"
+									label="diverged"
+									class="shrink-0"
+									title="{svc.appName} lists this build on no environment’s release line"
+								/>
+							{/if}
+							{#if i < g.services.length - 1}<span
+									class="rev-sep t-body text-gray-500 dark:text-gray-400"
+									aria-hidden="true">·</span
+								>{/if}
+						</span>
+					{/each}
+				</span>
+			</span>
+		{/each}
+	</span>
+{/snippet}
+
 <style>
 	/*
-	 * GEOMETRY ONLY. Colour and visibility stay in utilities, per the `app.css`
-	 * layering note: a Svelte-scoped rule outranks a Tailwind utility, so
-	 * anything declared here is un-overridable from the markup.
+	 * GEOMETRY AND THE TWO GLYPH INKS ONLY. Everything else stays in utilities,
+	 * per the `app.css` layering note: a Svelte-scoped rule outranks a Tailwind
+	 * utility, so anything declared here is un-overridable from the markup.
+	 */
+
+	/* TWO COLUMNS WITH A REAL RIGHT RAIL — `COMPOSITION-GRAMMAR.md` §7. The
+	   rail is not a sidebar of scraps; it is a stack of small complete answers
+	   (what nobody has taken, and what this repo is). It collapses under the
+	   main column below `lg`, where a 340px rail beside a coverage bar would
+	   leave neither enough width. */
+	.rev-cols {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 16px;
+		align-items: start;
+	}
+
+	@media (min-width: 1024px) {
+		.rev-cols {
+			grid-template-columns: minmax(0, 1fr) 340px;
+		}
+	}
+
+	/*
+	 * THE ROW: glyph · identity+names · a right-aligned ROLLUP STACK.
 	 *
-	 * FIVE FIXED TRACKS AND ONE FLEXIBLE ONE. `Coverage`, `Live` and `Last` are
-	 * fixed because a column whose left edge moves with its content is not a
-	 * column. The coverage track is fixed for the stronger reason: a
-	 * proportional bar is only comparable against the bar above it if the two
-	 * are drawn to the same width.
+	 * NOT A FIFTH FIVE-COLUMN TABLE. The rollup is one track holding three
+	 * stacked lines — count, bar, age — which is the card-header rollup habit
+	 * applied at row scale, and it is what lets a reader take the row's answer
+	 * without reading the row.
 	 *
-	 * THE REVISION TRACK IS FIXED TOO, AND THAT IS A BUG FIX. It was `auto`,
-	 * and every row in this panel is its OWN grid — the header is not a grid
-	 * row of the data, it is a sibling — so `auto` resolved separately per row:
-	 * 61.8px over the word `REVISION` and 80.5px over the sha chip. Column
-	 * headers that do not sit over their column are worse than no headers, and
-	 * this page's whole claim is that its cells are columns. 68px is the value
-	 * half's measured 62.5px for a 7-character `shortRevision` plus a hair.
+	 * The rollup track is FIXED at 200px because a proportional bar is only
+	 * comparable against the bar above it if the two are drawn to the same
+	 * width and at the same x. That comparison is criterion 2.
 	 */
 	.rev-row {
 		position: relative;
 		display: grid;
-		grid-template-columns: 68px minmax(0, 1fr) 160px 64px 56px;
+		grid-template-columns: 20px minmax(0, 1fr) 200px;
 		gap: 12px;
 		padding: 12px 16px;
+		align-items: start;
+	}
+
+	/* HISTORY IS ONE LINE PER REVISION. Two lines each turned twelve settled
+	   facts into twenty-four, and the sha and the services it shipped under are
+	   one fact. `flex-wrap` so a repo with five services still degrades to two
+	   lines rather than overflowing. */
+	.rev-row--quiet {
+		grid-template-columns: minmax(0, 1fr) 96px;
+		padding-top: 8px;
+		padding-bottom: 8px;
 		align-items: baseline;
 	}
 
-	/* The bar has no baseline of its own, so it is centred against the row's
-	   text rather than sitting on an imaginary one. */
-	.rev-cov {
-		align-self: center;
+	.rev-quiet-body {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 4px 16px;
 		min-width: 0;
 	}
 
-	/* The stretched link: ONE anchor with real text (the sha), whose ::after
-	   covers the row. The row has no button in it any more, but the trick stays
-	   because it is what keeps the whole row clickable without wrapping
+	.rev-quiet-body .rev-names {
+		margin-top: 0;
+	}
+
+	.rev-mark {
+		display: flex;
+		align-items: center;
+		height: 20px;
+	}
+
+	.rev-roll {
+		text-align: right;
+		min-width: 0;
+	}
+
+	/* THE STRETCHED LINK — one anchor with real text (the sha) whose ::after
+	   covers the row, so the whole row is a click target without wrapping
 	   interactive content in an anchor. */
-	.rev-sha {
-		justify-self: start;
-		min-width: 0;
-	}
-
-	.rev-sha :global(.chip-value)::after {
+	.rev-sha::after {
 		content: '';
 		position: absolute;
 		inset: 0;
 	}
 
+	/* THE TWO GLYPH INKS. Both are values the product already owns: the mint is
+	   the `newest` chip's and `ExposureBar`'s newest segment, so the tick and
+	   the bar's live segment are literally the same colour saying the same
+	   thing. Zero new colour values. */
+	.tone-live {
+		color: #426d64;
+	}
+
+	:global(.dark) .tone-live {
+		color: #83b0a8;
+	}
+
+	.tone-bad {
+		color: var(--color-red-700);
+	}
+
+	:global(.dark) .tone-bad {
+		color: var(--color-red-400);
+	}
+
+	.tone-mute {
+		color: var(--color-gray-400);
+	}
+
+	:global(.dark) .tone-mute {
+		color: var(--color-gray-500);
+	}
+
 	/*
 	 * THE NAMES CELL — a stack of lines, each line a two-track grid.
 	 *
-	 * Row gap zero: the lines are held apart by their own leading, which is
-	 * what makes a stack read as a list rather than as N separate objects. No
-	 * `line-height` is declared here on purpose — the leading is `.t-dense`'s
-	 * own 1.45, and a second value would be a tenth type role that only this
-	 * cell has.
+	 * 84px, AND IT IS A COLUMN, NOT A GAP. The NAME is the variable and the
+	 * service is the constant, so the name gets the fixed left track and the
+	 * services hang off it — which is what turns "how many names does this
+	 * commit have" into something you can see rather than read.
+	 * `minmax(84px, max-content)` rather than a hard 84px: a longer label
+	 * pushes its own line rather than ellipsising into another label. A pushed
+	 * line loses cross-row alignment on that line only; a clipped label loses
+	 * the identifier.
 	 */
 	.rev-names {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
+		margin-top: 2px;
 	}
 
-	/*
-	 * 84px, AND IT IS A COLUMN, NOT A GAP.
-	 *
-	 * The whole move this round is that the NAME is the variable and the
-	 * service is the constant, so the name gets the fixed left track and the
-	 * services hang off it. A fixed track means the names line up across every
-	 * line of every row on the page — which is what turns "how many names does
-	 * this commit have" into something you can see rather than read.
-	 *
-	 * 84px is the widest live label (`1.66.0-66`, 9 characters of
-	 * `t-code-sm`) at ~72px plus the same hair the revision track takes.
-	 * `minmax(84px, max-content)` rather than a hard `84px`: a longer label
-	 * pushes its own line rather than ellipsising into another label, which is
-	 * the defect that killed the badge attempt one round ago at the 12ch cap.
-	 * A pushed line loses the cross-row alignment on that line only; a clipped
-	 * label loses the identifier.
-	 */
 	.rev-name-row {
 		display: grid;
 		grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
@@ -621,28 +870,22 @@
 		white-space: nowrap;
 	}
 
-	/*
-	 * THE SERVICES ARE PINNED TO TRACK 2, NOT AUTO-PLACED INTO IT.
-	 *
-	 * A row whose only name is the revision's own sha does not print a name
-	 * (`rowNamesBuild`), so the services are that grid's only child — and an
-	 * auto-placed only child lands in track 1. That would start the services
-	 * at 417 on six rows and 513 on five, which is precisely the raggedness
-	 * the name track was introduced to remove. Pinned, the empty 84px track
-	 * still holds, `Ships as` still sits over the column it names, and the
-	 * services keep ONE left edge down the whole table whether or not the row
-	 * above them printed a name.
-	 */
+	/* PINNED TO TRACK 2, NOT AUTO-PLACED INTO IT. A row whose only name is its
+	   own sha prints no name, so the services would otherwise land in track 1
+	   and start at a different x from the rows above — precisely the raggedness
+	   the name track exists to remove. */
 	.rev-name-svcs {
 		grid-column: 2;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: 8px;
+		min-width: 0;
 	}
 
-	/* NO NAMES ANYWHERE IN THIS REPO, SO NO NAME TRACK AT ALL. Different
-	   case, and it is a whole-PANEL one: holding 84px open on every row of a
-	   table that can never fill it is 84px of nothing. The cell collapses to
-	   the run of services, the header reads `Services`, and the services take
-	   the x the names would have had — so both forms of the panel still share
-	   one left edge with their own header. */
+	/* NO NAMES ANYWHERE IN THIS REPO, SO NO NAME TRACK AT ALL. A whole-PANEL
+	   question: holding 84px open on every row of a card that can never fill it
+	   is 84px of nothing. */
 	.rev-names--unnamed .rev-name-row {
 		grid-template-columns: minmax(0, 1fr);
 		column-gap: 0;
@@ -652,33 +895,6 @@
 		grid-column: 1;
 	}
 
-	/*
-	 * THE SERVICES THAT SHARE ONE NAME — A WRAPPING RUN, NOT A PARAGRAPH.
-	 *
-	 * `flex-wrap` rather than inline flow, and that is a 390px bug fix, not a
-	 * preference. Inline flow breaks at WHITESPACE, and this run is emitted
-	 * with none between the separator and the name it belongs to — so with
-	 * `nowrap` on the names the whole run became one unbreakable box and ran
-	 * 120px off the right edge of a phone. Flex items give the run explicit
-	 * break points at the only places a break is legal: between services.
-	 *
-	 * THE TWO GAPS ARE 4 AND 8, IN THAT ORDER, AND THE ORDER IS THE POINT. A
-	 * name sits 4px from its own trailing dot and 8px from the next name, so
-	 * proximity says the dot belongs to the name BEFORE it — which is what
-	 * makes a wrapped line legible when the dot ends up last on the line.
-	 * Both values are on the declared 4/8/12/16/24 scale; an earlier pass had
-	 * them at 6px and 10px, which was both off-scale and backwards.
-	 * Row gap 0: wrapped lines are held apart by `.t-dense`'s own leading, the
-	 * same way the name lines above them are.
-	 */
-	.rev-name-svcs {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		column-gap: 8px;
-		min-width: 0;
-	}
-
 	.rev-svc {
 		display: flex;
 		align-items: baseline;
@@ -686,12 +902,9 @@
 		min-width: 0;
 	}
 
-	/* A NAME NEVER BREAKS ACROSS TWO LINES. At 390 the run wrapped inside
-	   `hello-world-app`, printing `hello-world-` above `app` — a service
-	   rendered as two strings, which is the same defect as ellipsising two
-	   services to one string, in the other direction. The run breaks between
-	   services only, and a name that cannot fit ellipsises rather than
-	   splitting: an ellipsised name still identifies, a split one does not. */
+	/* A NAME NEVER BREAKS ACROSS TWO LINES. The run breaks between services
+	   only; a name that cannot fit ellipsises rather than splitting, because an
+	   ellipsised name still identifies and a split one does not. */
 	.rev-svc-name {
 		min-width: 0;
 		overflow: hidden;
@@ -699,84 +912,58 @@
 		white-space: nowrap;
 	}
 
-	.rev-where,
-	.rev-age {
-		white-space: nowrap;
-	}
-
-	.rev-age {
-		text-align: right;
-	}
-
 	/*
 	 * PHONE WIDTH IS A DESIGN, NOT A FALLBACK.
 	 *
-	 * A five-track row cannot narrow to 390px — the sha alone is 96px and the
-	 * names cell is a list. So the row becomes THREE BANDS and the column
-	 * headers are dropped, because a header over a stacked band is a label for
-	 * nothing.
-	 *
-	 * The ORDER is the argument. Band 1 is identity and the count (sha · live ·
-	 * age) on one line. Band 2 is THE BAR, full width — at 358px it is the
-	 * clearest it ever gets, and it is the one object that answers "do I care
-	 * about this row". On a rolled-past row the band collapses to nothing,
-	 * because there is no bar, and the row is two bands instead of three: the
-	 * rows that matter are physically taller than the ones that do not, which
-	 * is the same allocation the desktop layout makes with ink.
-	 * Band 3 is the names list, which is the detail and reads last.
+	 * A 200px rollup track cannot sit beside a names list at 358px of content,
+	 * so the row becomes TWO BANDS: identity and names on top, the rollup
+	 * below, full width, with the count and the age on one line and THE BAR
+	 * SPANNING THE WHOLE ROW — at 358px it is the clearest it ever gets, and it
+	 * is the one object that answers "do I care about this row".
 	 */
 	@media (max-width: 639px) {
 		.rev-row {
-			grid-template-columns: minmax(0, auto) 1fr auto;
-			gap: 8px;
+			grid-template-columns: 20px minmax(0, 1fr);
+			gap: 8px 12px;
 		}
 
-		.rev-head {
-			display: none;
-		}
-
-		.rev-sha {
-			grid-column: 1;
-		}
-
-		.rev-where {
+		.rev-roll {
 			grid-column: 2;
-			justify-self: end;
+			text-align: left;
+			display: flex;
+			flex-wrap: wrap;
+			align-items: baseline;
+			gap: 4px 12px;
 		}
 
-		.rev-age {
-			grid-column: 3;
+		/* The bar takes its own full-width line under the count and the age,
+		   which are now peers on one line above it. */
+		.rev-roll :global(.cov) {
+			width: 100%;
+			margin-top: 0;
 		}
 
-		/* AND THE BAND DISAPPEARS WHEN THERE IS NO BAR. An empty grid item is
-		   not free at phone width — it still takes a grid row and the 8px row
-		   gap on either side of it, so nine rolled-past rows were paying 16px
-		   each for a band with nothing in it. Removed from flow, a rolled-past
-		   row is two bands and a live row is three: the rows that matter are
-		   physically taller than the ones that do not, which is the same
-		   allocation the desktop layout makes with ink. */
-		.rev-cov {
-			grid-column: 1 / -1;
-			order: 1;
-			margin-top: 4px;
-		}
-
-		.rev-cov--empty {
-			display: none;
-		}
-
-		.rev-names {
-			grid-column: 1 / -1;
-			order: 2;
-			margin-top: 4px;
-		}
-
-		/* The name track shrinks but never goes away — the alignment it buys is
-		   worth more at 390 than at 1440, because the services wrap under
-		   themselves and the indent is what says which name they belong to. */
+		/*
+		 * THE NAME TRACK BECOMES A LINE, NOT A COLUMN, AT 390.
+		 *
+		 * A fixed 72-84px track buys cross-row alignment, which is worth paying
+		 * for at 1440 and is not at 390: it left the services 215px of a
+		 * 358px content width and wrapped `hello-multi-app · hello-world-app ·
+		 * hello-world-manifests` onto three lines on every row of the card,
+		 * while the track itself was empty on all but one of them.
+		 *
+		 * Stacked, the name is the HEADING of its group and the services start
+		 * at the cell's own left edge, so they still share one x down the whole
+		 * card — the same alignment, bought with a line break instead of 84px.
+		 */
 		.rev-name-row {
-			grid-template-columns: minmax(72px, max-content) minmax(0, 1fr);
-			column-gap: 8px;
+			grid-template-columns: minmax(0, 1fr);
+			column-gap: 0;
+		}
+
+		.rev-name,
+		.rev-name-svcs {
+			grid-column: 1;
 		}
 	}
 </style>

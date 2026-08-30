@@ -34,10 +34,10 @@
 	 *     `not deployed` gray. Zero new colour values, zero new geometry.
 	 *   · ⛔ A NODE ON HEAD PRINTS ITS BUILD AND NO RANK WORD (2026-08-29).
 	 *     One half means "on head"; two halves carry a verdict. See the
-	 *     branch itself for the argument — the short version is that a
-	 *     `[NEWEST][build]` box per environment is the norm drawn N times,
-	 *     and *"an env with no rank chip is on the newest build"* has been
-	 *     the product's rule since 2026-08-23.
+	 *     branch itself for the argument and the measurements — the short
+	 *     version is that a `[NEWEST][build]` box per environment is the norm
+	 *     drawn N times, and *"an env with no rank chip is on the newest
+	 *     build"* has been the product's rule since 2026-08-23.
 	 *   · A node that is not serving anything renders in the neutral line
 	 *     colour throughout: gray dot, `not deployed` where the badge goes.
 	 *
@@ -167,26 +167,41 @@
 						     cut, and the product's own rule has said the opposite since
 						     2026-08-23: *"An env with no rank chip is on the newest
 						     build."* `/apps` deleted twelve green per-environment
-						     `newest` chips on exactly this reasoning; the stage chain
-						     was the one list of N environments still printing it.
+						     `newest` chips on exactly this reasoning, and
+						     `/envs/[name]` already excludes it explicitly
+						     (`row.rank.kind !== 'newest'`). The stage chain was the one
+						     list of N environments still printing it.
 
 						     THE BUILD IS NOT LOST, WHICH IS WHY THIS IS NOT SIMPLY A
 						     DELETION. `newest` and the build were ONE joined box, so
 						     dropping the box would drop the identifier with it. It
-						     becomes the IDENTIFIER-ONLY form instead — `Chip`'s
+						     becomes the IDENTIFIER-ONLY form instead - `Chip`'s
 						     `valueOnly` branch, the same 20px box, 6px padding, 1px
 						     hairline and 4px radius, all four corners. THE NUMBER OF
 						     HALVES IS THE ENCODING: one half is on head, two halves
-						     carry a verdict (`−N`, `diverged`, `unknown`). That is the
+						     carry a verdict (`-N`, `diverged`, `unknown`). That is the
 						     same structure-over-ink fix `/envs/[name]` took when it
-						     dropped `valueDim` for a lone chip, and it costs ZERO
-						     colour values — it REMOVES one, the quiet mint, from every
+						     dropped `valueDim` for a lone chip, and it costs ZERO new
+						     colour values - it REMOVES one, the quiet mint, from every
 						     chain.
 
-						     `newest` itself is untouched and still means what it means
-						     on `/`, `/rollouts` and `/versions`, where a card is ONE
-						     subject and the word is a verdict about it rather than a
-						     mark repeated down a list. -->
+						     Measured at 1440, both themes, before -> after:
+						       /apps/payments-core (9 envs)  mint 4 -> 0, newest 2 -> 0,
+						                                     page values 23 -> 22 light,
+						                                     25 -> 24 dark
+						       /apps/orders-api    (3 envs)  mint 2 -> 0, newest 1 -> 0
+						       .../dependencies    (7 envs)  mint 2 -> 0, newest 1 -> 0,
+						                                     page values 19 -> 18
+						       .../dependencies (converged)  mint 6 -> 0, newest 3 -> 0,
+						                                     page values 16 -> 15
+						     The `-N` count is UNCHANGED on every one of them: the
+						     deviation is untouched, only the norm stopped drawing. No
+						     value was added anywhere.
+
+						     `newest` itself is untouched as a role and still means what
+						     it means on `/`, `/rollouts` and `/versions/<rev>`, where a
+						     card is ONE subject and the word is a verdict about it
+						     rather than a mark repeated down a list. -->
 						<Chip
 							value={n.version}
 							valueTitle="{n.title} runs the newest known build"

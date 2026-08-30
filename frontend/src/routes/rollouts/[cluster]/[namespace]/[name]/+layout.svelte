@@ -10,7 +10,7 @@
 	} from 'flowbite-svelte-icons';
 	import { type Snippet } from 'svelte';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { rolloutQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { SvelteFlowProvider } from '@xyflow/svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -33,16 +33,43 @@
 		})
 	);
 
+	/**
+	 * THE DEPENDENCIES TAB HAS TWO SOURCES, AND GATING IT ON ONE HID IT FROM
+	 * THE ROLLOUTS THAT NEED IT MOST.
+	 *
+	 * The tab used to be `Environments` and showed only when the rollout had
+	 * an `Environment` with `environmentInfos` — which is right for the
+	 * promotion chain and wrong for the other axis. A rollout with a
+	 * `RolloutDependency` and NO `Environment` binding is exactly the case
+	 * where a cross-service contract gate is the ONLY thing holding it back,
+	 * and it could not reach the tab at all.
+	 *
+	 * `rolloutDependencies` rides the LIST payload, whose key is shared with
+	 * `/rollouts`, so this is a cache read on any navigation from a list page.
+	 * The predicate is deliberately narrow — THIS rollout, in THIS namespace.
+	 * A gate in a sibling environment's namespace gates a different rollout
+	 * instance, and that instance has its own tab.
+	 */
+	const listQuery = createQuery(() =>
+		rolloutsListQueryOptions({ options: { refetchInterval: 15000 } })
+	);
+
 	const environment = $derived(rolloutQuery.data?.environment);
 
 	const hasEnvironment = $derived(
 		environment?.status?.environmentInfos && environment.status.environmentInfos.length > 0
 	);
 
+	const hasDependencies = $derived(
+		(listQuery.data?.rolloutDependencies?.items ?? []).some(
+			(d) => d.spec?.rolloutRef?.name === name && d.metadata?.namespace === namespace
+		)
+	);
+
 	const tabs = $derived([
 		{ label: 'Overview', href: base, icon: ObjectsColumnSolid, show: true },
 		{ label: 'History', href: `${base}/history`, icon: ClockArrowOutline, show: true },
-		{ label: 'Dependencies', href: `${base}/dependencies`, icon: LayersSolid, show: hasEnvironment },
+		{ label: 'Dependencies', href: `${base}/dependencies`, icon: LayersSolid, show: hasEnvironment || hasDependencies },
 		{ label: 'Logs', href: `${base}/logs`, icon: TerminalOutline, show: true }
 	]);
 

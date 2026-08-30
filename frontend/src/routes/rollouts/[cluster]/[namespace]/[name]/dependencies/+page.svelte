@@ -182,6 +182,26 @@
 
 	const currentEnv = $derived(environment?.spec?.environment ?? '');
 
+	/**
+	 * THE KEY A CONTRACT GATE IS FILED UNDER, WHICH IS NOT ALWAYS AN
+	 * ENVIRONMENT.
+	 *
+	 * A `RolloutDependency` lives in a namespace, and the page turns that
+	 * namespace into an environment tier so gates line up with the chain.
+	 * A rollout bound to NO `Environment` has no tier — and that is exactly
+	 * the rollout for which a contract gate is the only thing holding it
+	 * back. Keyed on the tier alone the gate was unplaceable and the page
+	 * rendered "no environment relationships and no contract gates" over a
+	 * dependency the API had served.
+	 *
+	 * So the key falls back to the NAMESPACE, which is what
+	 * `groupRolloutsByApp` already does for an unbound rollout. It is a
+	 * grouping key and never printed: the env chip stays gated on a real
+	 * binding, because DESIGN.md's rule is that a rollout with no
+	 * `Environment` must not be shown as having one.
+	 */
+	const currentEnvKey = $derived(currentEnv || namespace);
+
 	// ── AXIS 1 · THE PROMOTION CHAIN ────────────────────────────────────
 	const chainRows = $derived(chain(environmentInfos, order));
 	const envOrder = $derived(chainRows.map((r) => r.env));
@@ -318,19 +338,28 @@
 		for (const s of siblings.values()) if (s.namespace) m.set(s.namespace, s.env);
 		// This rollout's own namespace is known from the route even when the
 		// list has not arrived, so its own gate is never invisible.
-		if (currentEnv) m.set(namespace, currentEnv);
+		m.set(namespace, currentEnvKey);
 		return m;
 	});
 
-	const currentTagByEnv = $derived.by<Map<string, string | null>>(
-		() => new Map(chainRows.map((r) => [r.env, r.tag] as const))
-	);
+	const currentTagByEnv = $derived.by<Map<string, string | null>>(() => {
+		const m = new Map(chainRows.map((r) => [r.env, r.tag] as const));
+		// With no `Environment` there is no chain to read the running build
+		// from, so it comes off the rollout's own newest history entry. Without
+		// this `splitBlocked` gets a null current tag and treats EVERY blocked
+		// build as wanted — which would be right by accident here and wrong the
+		// moment a gate blocks something already deployed past.
+		if (!m.has(currentEnvKey)) {
+			m.set(currentEnvKey, rollout?.status?.history?.[0]?.version?.tag ?? null);
+		}
+		return m;
+	});
 
 	const blocks = $derived(
 		contractBlocks({
 			deps,
 			envOf: (ns) => envByNamespace.get(ns) ?? null,
-			envOrder: envOrder.length > 0 ? envOrder : currentEnv ? [currentEnv] : [],
+			envOrder: envOrder.length > 0 ? envOrder : [currentEnvKey],
 			order,
 			currentTagOf: (env) => currentTagByEnv.get(env) ?? null
 		})
@@ -434,7 +463,13 @@
 				     every N. It is also the Direction B split the app page uses:
 				     the thing that can BLOCK on the left, read-only state on the
 				     right. -->
-				<section class="min-w-0">
+				<!-- `max-w-[44rem]` for the same reason the chain takes 320px: with no
+				     promotion chain to sit beside — a rollout gated by a contract and
+				     bound to no `Environment` — the grid has no template and this
+				     section would stretch to the full 1024px to hold one two-line
+				     card. In the two-column form the track measures ~680px, so this
+				     is a near-no-op there. -->
+				<section class="min-w-0 max-w-[44rem]">
 					<h2 class="t-label mb-3 text-gray-500 dark:text-gray-400">Contract gates</h2>
 					<div class="{PANEL} overflow-hidden">
 						<ul class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -603,19 +638,27 @@
 										     `/versions` bucket-card grouping. Measured on the
 										     seven-environment fixture, two builds held in four
 										     environments went from EIGHT rows with the constraint
-										     printed four times to TWO rows. -->
-										<p class="mt-1 flex min-w-0 flex-wrap items-center gap-2 pl-1">
-											<span class="t-micro text-gray-500 dark:text-gray-400">held in</span>
-											{#each w.envs as env (env)}
-												<Chip
-													role="env"
-													theme={themeFor(env)}
-													label={shortEnvLabel(themeFor(env)) || env}
-													title={env}
-													wide
-												/>
-											{/each}
-										</p>
+										     printed four times to TWO rows.
+
+										     ONLY WHEN THERE IS A CHAIN TO NAME INTO. A rollout
+										     bound to no `Environment` has exactly one place and no
+										     tier, so `held in <this one>` would print the page's own
+										     subject back at it — and the chip would have to invent
+										     an environment identity the rollout does not have. -->
+										{#if hasChain}
+											<p class="mt-1 flex min-w-0 flex-wrap items-center gap-2 pl-1">
+												<span class="t-micro text-gray-500 dark:text-gray-400">held in</span>
+												{#each w.envs as env (env)}
+													<Chip
+														role="env"
+														theme={themeFor(env)}
+														label={shortEnvLabel(themeFor(env)) || env}
+														title={env}
+														wide
+													/>
+												{/each}
+											</p>
+										{/if}
 									{/each}
 								</li>
 							{/each}

@@ -11,6 +11,26 @@
 
 	type Severity = 'error' | 'warning' | 'info' | 'pinned';
 
+	/**
+	 * ⭐ THIS IS THE PRODUCT'S FILLED BANNER. Do not build a second one.
+	 *
+	 * It is the object rollout detail renders its schedule gate in — a
+	 * full-width amber field, a 40px circular icon, a bold headline
+	 * (*"Deployments currently blocked"*), a second line carrying the concrete
+	 * consequence (*"Will be allowed in 1d 3h (8/31/2026, 1:00:00 PM)"*) and a
+	 * chip on the right. `COMPOSITION-GRAMMAR.md` §4 names it as what
+	 * *"attention pulled by design, not text"* actually looks like, against
+	 * the neutral gray row-band that shipped on `/apps` and `/environments`
+	 * and that the human said *"feels like a bug"*.
+	 *
+	 * A FILL AT BANNER SCALE IS LEGITIMATE. The `area x chroma` ink ceiling
+	 * was derived for MARKS COMPETING ON A ROW and does not govern a
+	 * page-level banner. It still governs chips: `alarm` remains the only
+	 * chip with a fill.
+	 *
+	 * USE IT FOR THE PAGE'S ONE BLOCKING FACT, and only that. A page with
+	 * three banners has no banner.
+	 */
 	interface Props {
 		severity?: Severity;
 		title: string;
@@ -21,6 +41,13 @@
 		pulse?: boolean;
 		actions?: Snippet;
 		extra?: Snippet;
+		/**
+		 * LAYOUT ONLY — the outer margin. Defaults to `mb-4`, which is right
+		 * when the banner sits inside a card stack and wrong when a page needs
+		 * its own rhythm above the first card. Never pass colour: the severity
+		 * palette is the whole point of the component.
+		 */
+		class?: string;
 	}
 
 	let {
@@ -32,7 +59,8 @@
 		icon,
 		pulse = false,
 		actions,
-		extra
+		extra,
+		class: className = 'mb-4'
 	}: Props = $props();
 
 	const palette = $derived.by(() => {
@@ -44,8 +72,7 @@
 					glowA: 'bg-red-400/8 dark:bg-red-500/10',
 					glowB: 'bg-red-300/10 dark:bg-red-400/8',
 					ping: 'bg-red-500/30 dark:bg-red-500/40',
-					iconWrap:
-						'bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50',
+					iconWrap: 'bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50',
 					iconColor: 'text-red-600 dark:text-red-300',
 					title: 'text-red-900 dark:text-white',
 					message: 'text-red-700/75 dark:text-red-200/75',
@@ -93,8 +120,7 @@
 					glowA: 'bg-blue-400/8 dark:bg-blue-500/10',
 					glowB: 'bg-blue-300/10 dark:bg-blue-400/8',
 					ping: 'bg-blue-500/25 dark:bg-blue-500/30',
-					iconWrap:
-						'bg-blue-200 ring-2 ring-blue-400/60 dark:bg-blue-500/20 dark:ring-blue-500/50',
+					iconWrap: 'bg-blue-200 ring-2 ring-blue-400/60 dark:bg-blue-500/20 dark:ring-blue-500/50',
 					iconColor: 'text-blue-600 dark:text-blue-300',
 					title: 'text-blue-900 dark:text-white',
 					message: 'text-blue-700/80 dark:text-blue-200/75',
@@ -108,20 +134,26 @@
 	const Icon = $derived(icon ?? palette.defaultIcon);
 </script>
 
-<div class="mb-4">
+<div class={className}>
 	<div class="relative overflow-hidden rounded-xl {palette.container}">
 		<div class="pointer-events-none absolute inset-0 overflow-hidden">
-			<div class="absolute -right-10 -top-10 h-48 w-48 rounded-full {palette.glowA} blur-3xl"></div>
-			<div class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full {palette.glowB} blur-2xl"></div>
+			<div class="absolute -top-10 -right-10 h-48 w-48 rounded-full {palette.glowA} blur-3xl"></div>
+			<div
+				class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full {palette.glowB} blur-2xl"
+			></div>
 		</div>
 
-		<div class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5">
+		<div
+			class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5"
+		>
 			<div class="flex min-w-0 flex-1 items-center gap-4">
 				<div class="relative shrink-0">
 					{#if pulse}
 						<div class="absolute inset-0 animate-ping rounded-full {palette.ping}"></div>
 					{/if}
-					<div class="relative flex h-10 w-10 items-center justify-center rounded-full {palette.iconWrap}">
+					<div
+						class="relative flex h-10 w-10 items-center justify-center rounded-full {palette.iconWrap}"
+					>
 						<Icon class="h-6 w-6 {palette.iconColor}" />
 					</div>
 				</div>
@@ -132,15 +164,17 @@
 					</div>
 					{#if message}
 						{#if quoted}
-							<blockquote class="mt-1.5 border-l-2 pl-3 italic break-words text-sm {palette.message} {palette.quoteBorder}">
+							<blockquote
+								class="mt-1.5 border-l-2 pl-3 text-sm break-words italic {palette.message} {palette.quoteBorder}"
+							>
 								{message}
 							</blockquote>
 						{:else}
-							<p class="mt-0.5 break-words text-sm {palette.message}">{message}</p>
+							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
 						{/if}
 					{/if}
 					{#if footnote}
-						<p class="mt-1 break-words text-xs {palette.footnote}">{footnote}</p>
+						<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
 					{/if}
 				</div>
 			</div>

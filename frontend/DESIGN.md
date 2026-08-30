@@ -21,6 +21,143 @@ Run anything that compiles with the sandbox disabled, or hand the test run to th
 Healthy `en.js` is **160 bytes**. Full write-up in
 `.agents-context/ENVIRONMENT.md`.
 
+## THE COMPOSITION PASS — `/apps` AND `/apps/[name]` (2026-08-30)
+
+**Read `.agents-context/design/COMPOSITION-GRAMMAR.md` before this file.** Six pages were
+rebuilt against the rules below and every one was rejected, and the diagnosis is arithmetic,
+not taste: **every rule in this file is a REDUCTION rule.** Closed colour budget, two radii,
+mark-the-deviation, the ink ceiling, cut anything that mostly draws the norm. Run without a
+countervailing composition discipline they converge on one thing — small gray text in
+undifferentiated rows.
+
+Measured on the running product: rollout detail **115** SVG icons in `<main>`, radii 8px +
+12px, *"beautiful"*. `/apps` **4** icons, 12px only, rejected. `/versions` **0**, *"criminally
+underdesigned"*.
+
+**Compose first, then apply the budget to what you built. Never the other way round.**
+
+### What is superseded, and what still holds
+
+| rule | status |
+|---|---|
+| "exactly two radii: 12px panels, 4px chips" | **superseded.** 8px is the CARD radius and the good page is built from it. 12px stays for the outermost panel, 4px for chips. |
+| the ink ceiling (`area × chroma` vs the alarm) | **scoped to marks competing on a row.** It does not govern a page-level banner or a card header. A fill at banner scale is legitimate. `alarm` is still the only CHIP with a fill. |
+| "mark the deviation, never the norm" | **holds for repeated marks in a list.** It never meant a page should have no colour, no icons and no fills. |
+| "one filled primary per page" | **holds, for ACTIONS.** A filled banner is not a primary action. |
+| colour count as a target | **wrong framing.** Six status + four identity hues is a CEILING; the good pages spend more of it than the rejected ones. |
+| nine type roles | **holds as a scale.** Range must be at least 24 → 12; the rejected pages cluster at 10–13. |
+
+### The three shared primitives — use these, do not invent a fourth
+
+- **`src/lib/components/Card.svelte`** — the product's titled panel. 8px radius, white on the
+  tinted ground, 1px neutral border, near-zero shadow, `min-h-47px` header with a 16px icon, a
+  **14px/600** title and a **right-aligned rolled-up verdict** (`3/3 healthy`, `2 items`,
+  `3 of 4 fleets on one build`). Every number is `getComputedStyle` off the reference page;
+  note the title is 14px, not the 16px `COMPOSITION-GRAMMAR.md` states.
+  **A panel with no header and no rollup is the shape that keeps getting rejected.**
+- **`src/lib/components/AlertPanel.svelte`** — the FILLED BANNER, and it already existed: it is
+  what rollout detail renders its schedule gate and its version pin in. 40px circular icon,
+  bold headline, a second line with the concrete consequence, `actions` on the right.
+  Severities `error` / `warning` / `pinned` / `info`. It gained one prop, `class` (default
+  `mb-4`). **Do not build a second banner.**
+- **`.btn` / `.btn-secondary` / `.btn-primary`** in `app.css` — 14px/500, `padding: 8px 16px`,
+  `border-radius: 8px`, 16px icon. Measured off `View on GitHub` / `Change Version` /
+  `Rollback`. ⚠️ **`.t-button` (12px/600) is the REJECTED pages' size.** Do not use it for
+  anything a reader is meant to press.
+
+### ⛔ `−N` IS NEUTRAL GRAY. RED MEANS ADVERSE.
+
+From a live UX critique: *"`−N` chips render RED across the product, so normal pipeline drift
+reads as failure while a pinned prod rollout gets a calm gray-amber chip."* `Chip`'s `rank`
+role is `NEUTRAL` now, and `/apps/[name]`'s 24px `−N` gap glyph with it.
+
+`DESIGN-INTENT.md` already said so and was overridden by two rounds of local colour reasoning:
+*"Rank chips are mint for `newest` and NEUTRAL GRAY for `−N from newest` — never amber."* It is
+not amber and it is not red. The predicate the red violated is this file's own enforced rule:
+*"'Drift' is not a valid status"* — being behind is the normal state of a promotion pipeline
+and may not wear the failure hue.
+
+**The ink-hierarchy argument that put red there assumed `newest` is the NORM and `−N` the
+deviation.** On the live cluster the opposite is true: most environments trail and reaching
+head is the rare, informative event, so quiet mint on the rarer state and no colour at all on
+the repeated one is "mark the deviation" applied correctly. Red keeps `diverged`, `failing` and
+`blocked` — states that will not clear on their own. **ZERO colour values change.** This is
+visible on `/` and `/rollouts`.
+
+### ⛔ THE NEUTRAL ROW BAND IS DEAD, ON BOTH PAGES.
+
+> *"i don't like that you're highlighting a stuck row like this… it feels like a bug. is this
+> what you implemented when i said there should be a better way to mark something as needing
+> attention rather than just a badge? there are many examples on the rest of the page that are
+> much better."*
+
+Both tombstones that argued for it (`/apps`'s `bg-gray-100 dark:bg-gray-700/60`,
+`/apps/[name]`'s `tk--broken` recess) are **arithmetically right and wrongly concluded.** They
+proved no CHROMATIC field is affordable at ~70,000px² and then reached for the only channel
+left — LIGHTNESS — which is the channel a browser spends on `:disabled`, on a skeleton and on a
+dimmed row. A gray band on a white list reads as *this one is broken*, not as *look here*.
+
+**What marks attention instead:** a FILLED BANNER for the page's one blocking fact, and
+MEMBERSHIP OF A TITLED CARD for the set (`Needs attention`, `Needs a decision`, `Waiting`).
+The rows inside a card are byte-identical to the rows in any other card — on `/apps` they are
+literally one `{#snippet}` — because the moment one row can be styled differently from its
+neighbour this comes back under a new name.
+
+### A GREEN TICK MEANS THE WHOLE FLEET IS ON HEAD. NOTHING WEAKER.
+
+`/apps` showed a green tick beside `hello-world-app — PROD is 14 builds behind`. The circle
+painted the row's true BAKE glyph and prod's last deploy had succeeded, so both halves were
+locally right and the pair was a lie. A bake status answers *"did the last deploy work"*; a
+list row's reader asks *"is this app OK"*, and those diverge on exactly the rows that matter.
+When nothing is failing/deploying/baking but the fleet is not fully on head the circle falls to
+`None` — `PauseSolid` on the gray disc, which `BakeStatusIcon` already owns. Same rule now
+gates `/apps/[name]`'s `State` rollup going green.
+
+### A GATE IS NOT A BREAKAGE, AND A PIN OUTRANKS A GATE
+
+> *"`NEEDS A DECISION — 3 items` offers no decisions — every card gives only `Investigate` and
+> `View on GitHub`. One of the three genuinely is a decision (a manual-approval gate) and is
+> rendered identically to the two that are not."*
+
+`block.blocked` was folded into `adverse`, so every gate-blocked environment rendered the BROKEN
+branch, whose whole action row is two links. `promotionBlock` already draws the line
+structurally and the page now uses it:
+
+- **`awaitingApproval`** — the gate published an allow-list and nothing is on it. Only a person
+  moves that. **A DECISION**: a filled `Deploy <build>` (the same modal rollout detail's own
+  `Available Version Upgrades` list uses), plus `Change Version` and `Investigate`.
+- **`notPassing`** — a schedule window or a health check. Clears itself. **NOT a decision**: its
+  own `Waiting` card, its own rollup, and deliberately **no action button**.
+
+**And a PIN outranks every gate.** *"While prod was pinned, that panel blamed `HELD BY
+hello-world-manual-approval`; the actual cause was the pin, which the page never mentions."* A
+gate holds the next promotion; a pin refuses all of them, so while `spec.wantedVersion` is set
+no gate is the cause even though every gate is also blocking. The `held` loop claims the
+environment before the gate loop runs, and the banner checks the pin before the gate.
+
+### `/apps`'s FLEET COLUMN — the fifth attempt, and it is not a graphic
+
+> *"i don't like that fleet by build got simpler - it provides almost no information now."*
+
+A `2 BUILDS` chip over an 11px caption is a QUANTITY with no verdict attached. It is now TWO
+CHANNELS and no legend: a **glyph for consistency** (`CodeMergeSolid` = every deployed
+environment on one build, `CodeBranchSolid` = split, `PauseSolid` = nothing deployed — merge and
+branch are LITERAL, so unlike the four rejected strip forms there is nothing to teach), and a
+**count for distance** at 14px in the reference's own rollup idiom: `3/3 on head`. Green only
+when the answer is all of them. The caption carries what the mark cannot (`2 builds`,
+`N pending`, `N diverged`) and never restates it.
+
+### Measured before → after
+
+| page | icons in `<main>` | card radii | type range |
+|---|---|---|---|
+| rollout detail (reference, unchanged) | 115 | 8 + 12 | 24 → 10 |
+| `/apps` | **4 → 19** | 12 only → **8 + 12** | 24 → 10, 14px ×10 |
+| `/apps/[name]` | **6 → 13** | 12 + 4 → **8 + 12 + 4** | 24 → 10, 14px ×5 |
+
+`/` and `/rollouts` keep 11 and 27 icons and radii {4, 12} — structurally untouched. The one
+deliberate cross-page change is the `−N` chip colour above.
+
 ## ⛔ AN ENVIRONMENT'S LABEL IS ITS OWN NAME. NEVER THE PRESET WORD. (2026-08-28)
 
 **Do not "fix" this back to the preset label.** `resolveThemeLabel` in

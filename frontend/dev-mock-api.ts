@@ -1050,9 +1050,78 @@ const ckDep = (args: {
 	}
 });
 
+// -- FIXTURE C - A ROLLOUT WITH A CONTRACT GATE AND NO `Environment` ------
+//
+// The case the tab used to hide from. `standalone-api` is bound to no
+// Environment resource, so it has no `environmentInfos` and no promotion
+// chain at all - and a `RolloutDependency` is the ONLY thing holding it
+// back. The tab must appear (`show: hasEnvironment || hasDependencies`) and
+// the page must render the contract section alone without looking broken.
+const SA_APP = 'standalone-api';
+const SA_NS = 'standalone-prod';
+const SA_RELEASES = [
+	{ tag: 's-10', version: '1.10.0-10', created: '2026-08-10T09:00:00Z' },
+	{ tag: 's-11', version: '1.11.0-11', created: '2026-08-20T09:00:00Z' },
+	{ tag: 's-12', version: '1.12.0-12', created: '2026-08-27T09:00:00Z' }
+];
+const mkSaRollout = () => ({
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'Rollout',
+	metadata: { name: SA_APP, namespace: SA_NS },
+	spec: { releasesImagePolicy: `${SA_NS}/${SA_APP}`, versionHistoryLimit: 10, minBakeTime: '5m' },
+	status: {
+		wantedVersion: 's-10',
+		currentVersion: 's-10',
+		availableReleases: SA_RELEASES,
+		history: [
+			{
+				version: { tag: 's-10', version: '1.10.0-10' },
+				timestamp: hcAgo(2400),
+				bakeStatus: 'Succeeded'
+			}
+		]
+	}
+});
+const mockSaDependency = {
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'RolloutDependency',
+	metadata: {
+		name: `${SA_APP}-needs-ledger`,
+		namespace: SA_NS,
+		annotations: { 'rollout-dashboard.kuberik.com/source-cluster': 'prod' }
+	},
+	spec: {
+		contract: 'ledger',
+		providerRef: { name: 'ledger-core', namespace: 'platform-prod' },
+		rolloutRef: { name: SA_APP }
+	},
+	status: {
+		providedVersion: '5.1.0',
+		providedTag: 'led-510',
+		admittedVersions: ['s-10'],
+		blockedReleases: [
+			{ tag: 's-12', requiredVersion: '^6.0.0', reason: 'ConstraintNotSatisfied' },
+			{ tag: 's-11', requiredVersion: '>=5.4.0', reason: 'ProviderVersionTooOld' }
+		],
+		gateName: `dependency-${SA_APP}-needs-ledger`,
+		conditions: [
+			{ type: 'Ready', status: 'True', reason: 'GateSynced', message: 'Gate allows 1 release(s)' },
+			{
+				type: 'Satisfied',
+				status: 'False',
+				reason: 'ReleasesBlocked',
+				message: '2 release(s) waiting on contract "ledger"'
+			}
+		]
+	}
+};
+
 const mockDependencies = [
 	// FIXTURE A - the live shape, one gate per environment, all satisfied.
 	...DEP_ENVS.map(mkLiveDependency),
+
+	// FIXTURE C - the no-Environment rollout.
+	mockSaDependency,
 
 	// FIXTURE B.1 - THE ADVERSE ONE. `payments` is unsatisfied in staging and
 	// in two prod regions, and the builds it blocks are NEWER than what each
@@ -1124,11 +1193,24 @@ const mockDependencies = [
 	})
 ];
 
-const mockDepRollouts = [...DEP_ENVS.map(mkDepRollout), ...CK_ENVS.map(mkCkRollout)];
+
+const mockDepRollouts = [...DEP_ENVS.map(mkDepRollout), ...CK_ENVS.map(mkCkRollout), mkSaRollout()];
 const mockDepEnvironments = [...DEP_ENVS.map(mkDepEnvironment), ...CK_ENVS.map(mkCkEnvironment)];
 
-/** Detail responses, keyed `namespace/name`, for the two fixture apps. */
+/** Detail responses, keyed `namespace/name`, for the fixture apps. */
 const mockDepDetails: Record<string, unknown> = Object.fromEntries([
+	[
+		`${SA_NS}/${SA_APP}`,
+		{
+			rollout: mkSaRollout(),
+			kustomizations: { items: [] },
+			ociRepositories: { items: [] },
+			rolloutGates: { items: [] },
+			// NO `environment` key at all - this rollout is bound to none.
+			kruiseRollout: null,
+			rolloutTests: { items: [] }
+		}
+	],
 	...DEP_ENVS.map((env) => [
 		`hello-dep-${env}/${DEP_APP}`,
 		{

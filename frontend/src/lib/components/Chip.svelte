@@ -315,7 +315,44 @@
 		// Deliberately TEXT-ONLY. `alarm` keeps the fill AND the coloured
 		// border, so a stuck environment still outranks a merely trailing one
 		// when both sit on the same row.
-		rank: ADVERSE,
+		//
+		// ⛔ AND IT IS NOT RED ANY MORE EITHER. (2026-08-30) `−N` IS NEUTRAL GRAY.
+		//
+		// From a live UX critique of the running product: *"`−N` chips render RED
+		// across the product, so normal pipeline drift reads as failure while a
+		// pinned prod rollout gets a calm gray-amber chip. Fix the semantics: red
+		// must mean adverse."* That is the whole charge and it is correct. On
+		// `/apps/hello-world-app` the STATE rail printed `−19 −19 −24` in the same
+		// `red-700` as `Failed`, on an app whose three environments had all
+		// deployed successfully.
+		//
+		// `DESIGN-INTENT.md` already said so and had been overridden by two rounds
+		// of local colour reasoning: *"Rank chips are mint for `newest` and
+		// NEUTRAL GRAY for `−N from newest` — never amber."* It is not amber and it
+		// is not red; it is gray.
+		//
+		// THE PREDICATE THE RED VIOLATED. *"Drift is the normal state of a
+		// promotion pipeline. The only adverse state is stuck"* — so `−N` is not a
+		// deviation at all, and painting the pipeline's steady state in the failure
+		// hue is the loudest possible way to say nothing. The product's own enforced
+		// rule is one line above it in DESIGN.md: *"'Drift' is not a valid status."*
+		//
+		// WHAT ABOUT THE INK HIERARCHY THIS BREAKS? DESIGN.md holds `−N` above
+		// `newest` in ink so *"the deviation stays dominant"*. That argument
+		// assumed `newest` is the NORM and `−N` the deviation, and on the live
+		// cluster the opposite is true: most environments trail and reaching head
+		// is the rare, informative event. `COMPOSITION-GRAMMAR.md` scopes the rule
+		// to *"repeated marks in a list"* — in a fleet list the repeated mark IS
+		// `−N`. So quiet mint on the rarer state and no colour at all on the
+		// repeated one is the rule applied correctly, not abandoned.
+		//
+		// RED STILL MEANS ADVERSE, and it keeps all three genuinely adverse roles:
+		// `diverged` (off every release line), `failing` (the deploy failed), and
+		// `blocked` (a contract gate refuses it). Those are states that will not
+		// clear on their own. Being four builds behind clears itself on the next
+		// promotion. ZERO colour values change — `rank` moves onto the gray
+		// `count`/`head`/`unranked` already spend.
+		rank: NEUTRAL,
 		// `failing` IS THE WORD THE RED DOT CANNOT SAY. It exists because
 		// `/apps` was stating an attention row's fact twice — a lede sentence
 		// `STAGING is failing` beside a joined box `[●][STAGING]` — and the two

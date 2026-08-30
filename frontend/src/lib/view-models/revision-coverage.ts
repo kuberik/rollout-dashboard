@@ -1,6 +1,6 @@
 import type { RevisionRow, RevisionService, RevisionSlot } from './revision-ledger';
 import { detectStuck, detectStuckBehind, getDisplayVersion } from '$lib/utils';
-import { promotionBlock } from './promotion';
+import { promotionBlock, promotionCandidates } from './promotion';
 import { shortEnvLabel } from '$lib/environment-theme';
 
 /**
@@ -89,8 +89,48 @@ export type CoverageSlotVM = {
 	 * better grammar."*
 	 */
 	blockingGates: string[];
+	/**
+	 * THE SAME GATES, SPLIT BY WHAT WOULD CLEAR THEM — `promotionBlock`'s own
+	 * structural split, carried through instead of thrown away.
+	 *
+	 * A live UX critique found this page rendering `waiting on ghd-p2fld,
+	 * schedule-gate-nwm62`: two generated object names, no type, no owner, no
+	 * clear time, while the rollout detail page three clicks away says *"will
+	 * be allowed in 2d 1h"*. The split is already computed and it is exactly
+	 * the missing distinction:
+	 *
+	 *   · `awaitingApproval` — the gate published an allow-list and this build
+	 *     is not on it. Only a PERSON (or an external system) changes that.
+	 *   · `notPassing` — no allow-list, simply not passing. Time- or
+	 *     condition-bounded: a schedule window, a health check. It clears on
+	 *     its own, and `api/schedules.ts` can say when.
+	 *
+	 * It is STRUCTURAL, never name-based: gate names like `schedule-gate-q25wv`
+	 * are generated and must not be pattern-matched.
+	 */
+	awaitingApprovalGates: string[];
+	notPassingGates: string[];
+	/**
+	 * IS THIS BUILD EVEN IN THE RUNNING HERE?
+	 *
+	 * `status.releaseCandidates` is the controller's own answer to *"what could
+	 * this rollout deploy next"*. A build that is not on it is not something the
+	 * gates are refusing — it is a build the rollout was never going to take,
+	 * because nine newer ones sit in front of it.
+	 *
+	 * THIS EXISTS BECAUSE THE PAGE WAS NAMING A CAUSE FROM THE WRONG EVIDENCE.
+	 * `promotionBlock` answers a question about the rollout's NEWEST candidate,
+	 * and the page attached its gate list to whatever revision was on screen. On
+	 * a never-deployed build nine steps back the page rendered *"blocked from
+	 * going further — a deployment window is closed"*, which is true of the
+	 * rollout and false of this build. `DESIGN.md`: *"`waiting on a gate` is a
+	 * lie with better grammar."*
+	 */
+	candidate: boolean;
 	/** The tag a promote would deploy here, or null when no promote is legal. */
 	promoteTag: string | null;
+	/** Namespace / name / cluster of the rollout serving this slot. */
+	rolloutRef: { namespace: string; name: string; cluster: string } | null;
 };
 
 export type CoverageBucket = {
@@ -110,10 +150,29 @@ export type RevisionCoverage = {
 	/** Non-empty buckets only, in `COVERAGE_ORDER`. Bar segments and cards both. */
 	buckets: CoverageBucket[];
 	/**
-	 * CAN THIS BUILD STILL ARRIVE ANYWHERE? False when it is live in no place
-	 * at all — every environment that ships it has rolled past. It is the
-	 * predicate `coverageFill` uses to decide whether `Not yet` is still an
-	 * adverse fact or merely an old one; see the block above `coverageFill`.
+	 * CAN THIS BUILD STILL ARRIVE ANYWHERE?
+	 *
+	 * The predicate `coverageFill` uses to decide whether `Not yet` is still an
+	 * adverse fact or merely an old one — see the block above `coverageFill`.
+	 *
+	 * ⚠️ IT WAS `liveCount > 0` AND THAT WAS A PROXY, NOT THE QUESTION. The
+	 * colour audit was right that a build every environment has rolled past
+	 * should not paint a large amber segment, and it reached for the only signal
+	 * available at the time. `candidate` is now available and it IS the
+	 * question: `status.releaseCandidates` is the controller's own list of what
+	 * a place could deploy next, so a build on it can still arrive there by
+	 * definition.
+	 *
+	 * The proxy failed in exactly one direction, and `RepoLedger.pending` made
+	 * that case reachable: a build that has NEVER been deployed but is newer
+	 * than what three environments are running is live in zero places, is a
+	 * legal candidate in all three, and is held there by a gate. Under the old
+	 * predicate its whole bar went gray — "this build is nowhere and that is
+	 * settled" — while the banner above it said a schedule window opens in 1d
+	 * 3h. Two objects on one page disagreeing about the same fact.
+	 *
+	 * The audit's own case is unaffected: a build everything has rolled past
+	 * appears on nobody's candidate list, so it still takes the gray.
 	 */
 	reachable: boolean;
 };
@@ -328,7 +387,19 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
 		for (const slot of service.slots) {
 			const state = slotState(slot, refNow, service.slots);
 			const key = classify(service, slot, state);
-			const block = key === 'notYet' ? promotionBlock(slot.cell.rollout) : null;
+			// A CANDIDATE IS A BUILD THE CONTROLLER WOULD CONSIDER. Compared on the
+			// TAG, which is what `allowedVersions` and `releaseCandidates` are keyed
+			// on — comparing the display version makes every gate look like it
+			// blocks everything (see `promotion.ts`, `gateKeyOf`).
+			const candidate =
+				!!slot.tag &&
+				promotionCandidates(slot.cell.rollout).some(
+					(c) => (c.tag ?? c.version ?? c.revision ?? '') === slot.tag
+				);
+			// Gates are only attributable where the build is actually in the
+			// running. Everywhere else the honest statement is the observable.
+			const block = key === 'notYet' && candidate ? promotionBlock(slot.cell.rollout) : null;
+			const meta = slot.cell.rollout?.metadata;
 			byKey.get(key)!.push({
 				key,
 				appName: service.appName,
@@ -348,7 +419,23 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
 						? slot.currentRank - service.rank
 						: null,
 				blockingGates: block?.blocked ? block.blockingGates : [],
-				promoteTag: slot.promoteTag
+				awaitingApprovalGates: block?.blocked ? block.awaitingApprovalGates : [],
+				notPassingGates: block?.blocked ? block.notPassingGates : [],
+				candidate,
+				promoteTag: slot.promoteTag,
+				// WHERE THE PROBLEM ACTUALLY LIVES. Every `Not yet` row used to
+				// link to `/apps/<name>` — so a DEV row and a STAGING row of the
+				// same service resolved to ONE url, and the page discarded the
+				// environment it had just printed. The rollout is the object the
+				// gate is attached to and the page that can clear it.
+				rolloutRef:
+					meta?.name && meta?.namespace
+						? {
+								namespace: meta.namespace,
+								name: meta.name,
+								cluster: slot.cell.sourceCluster || ''
+							}
+						: null
 			});
 		}
 	}
@@ -361,8 +448,14 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
 	}
 
 	const liveCount = (byKey.get('live')!.length || 0) + (byKey.get('failing')!.length || 0);
+	const stillArriving = byKey.get('notYet')!.some((s) => s.candidate);
 
-	return { liveCount, totalCount: row.totalSlots, buckets, reachable: liveCount > 0 };
+	return {
+		liveCount,
+		totalCount: row.totalSlots,
+		buckets,
+		reachable: liveCount > 0 || stillArriving
+	};
 }
 
 /**

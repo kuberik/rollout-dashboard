@@ -3,7 +3,11 @@
 <script lang="ts">
 	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, formatDate } from '$lib/utils';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
-	import { getRolloutEnvironmentTheme, getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
+	import {
+		getRolloutEnvironmentTheme,
+		getEnvironmentThemeStyle,
+		shortEnvLabel
+	} from '$lib/environment-theme';
 	import { rolloutPath, sourceClusterName } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
 	import Chip from '$lib/components/Chip.svelte';
@@ -16,7 +20,8 @@
 		activityHref = '/activity',
 		localClusterName = '',
 		showAppName = true,
-		showEnv = true
+		showEnv = true,
+		chrome = true
 	}: {
 		rollouts: Rollout[];
 		environments?: Environment[];
@@ -30,6 +35,21 @@
 		 * cannot mark anything.
 		 */
 		showEnv?: boolean;
+		/**
+		 * FALSE WHEN THE CALLER IS ALREADY A `Card`.
+		 *
+		 * This component draws its own `t-label` caption above its own bordered
+		 * box — the "caption floating over a box" shape that
+		 * `COMPOSITION-GRAMMAR.md` identifies as the one every rejected page is
+		 * built from, against a reference page where every region is a TITLED
+		 * CARD with an icon and a right-aligned rollup. `/apps/[name]` wraps it
+		 * in `Card` now; passing `chrome={false}` drops the caption and the box
+		 * so the two do not nest.
+		 *
+		 * DEFAULT TRUE, so `/envs/[name]` — the other call site, owned by
+		 * another pass — renders byte-identically.
+		 */
+		chrome?: boolean;
 		/**
 		 * False on a page already scoped to ONE app. The app-detail page reached
 		 * via a breadcrumb, an `h1` and a URL that all say `hello-world-app` was
@@ -76,9 +96,7 @@
 					e.spec?.rolloutRef?.name === r.metadata?.name
 			);
 			const envName = env?.spec?.environment ?? '';
-			const theme = env
-				? getRolloutEnvironmentTheme(r, env)
-				: getRolloutEnvironmentTheme(r);
+			const theme = env ? getRolloutEnvironmentTheme(r, env) : getRolloutEnvironmentTheme(r);
 			for (let i = 0; i < history.length; i++) {
 				const h = history[i];
 				if (!h.timestamp) continue;
@@ -86,7 +104,10 @@
 				let prev: string | null = null;
 				for (let j = i + 1; j < history.length; j++) {
 					const v = getDisplayVersion(history[j].version);
-					if (v && v !== ver) { prev = v; break; }
+					if (v && v !== ver) {
+						prev = v;
+						break;
+					}
 				}
 				const bs = h.bakeStatus || 'None';
 				list.push({
@@ -188,7 +209,9 @@
 {#snippet versionSnippet(a: ActivityEntry)}
 	<span class="flex min-w-0 shrink-0 items-baseline gap-1">
 		{#if a.previousVersion}
-			<span class="t-code-sm text-gray-400 line-through dark:text-gray-500">{a.previousVersion}</span>
+			<span class="t-code-sm text-gray-400 line-through dark:text-gray-500"
+				>{a.previousVersion}</span
+			>
 			<span class="t-micro text-gray-400 dark:text-gray-500">→</span>
 		{/if}
 		{#if a.version}
@@ -202,64 +225,104 @@
 {/snippet}
 
 <section>
-	<div class="mb-3 flex items-baseline justify-between">
-		<h2 class="t-label text-gray-500 dark:text-gray-400">
-			Recent activity
-		</h2>
-		<a
-			href={activityHref}
-			class="t-micro text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
-		>view all ›</a>
-	</div>
-	<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+	{#if chrome}
+		<div class="mb-3 flex items-baseline justify-between">
+			<h2 class="t-label text-gray-500 dark:text-gray-400">Recent activity</h2>
+			<a
+				href={activityHref}
+				class="t-micro text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+				>view all ›</a
+			>
+		</div>
+	{/if}
+	<div
+		class={chrome
+			? 'overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800'
+			: ''}
+	>
 		{#if entries.length === 0}
 			<div class="flex flex-col items-center px-4 py-10 text-center">
-				<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
+				<div
+					class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700"
+				>
 					<span class="block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600"></span>
 				</div>
 				<p class="t-dense text-gray-700 dark:text-gray-300">No activity yet</p>
-				<p class="t-micro mt-1 text-gray-400 dark:text-gray-500">Deployments will appear here as a timeline.</p>
+				<p class="t-micro mt-1 text-gray-400 dark:text-gray-500">
+					Deployments will appear here as a timeline.
+				</p>
 			</div>
 		{:else}
 			<div class="p-4">
 				{#each byDay as group, gi}
-					<div class="{gi > 0 ? 'mt-5' : ''}">
+					<div class={gi > 0 ? 'mt-5' : ''}>
 						<div class="mb-3 flex items-center gap-2">
 							<span class="t-label text-gray-500 dark:text-gray-400">{group.label}</span>
-							<span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"></span>
+							<span
+								class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"
+							></span>
 							<span class="t-code-sm text-gray-400 dark:text-gray-500">{group.entries.length}</span>
 						</div>
 						<ol class="relative">
-							<span class="absolute left-[7px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
+							<span
+								class="absolute top-1.5 bottom-1.5 left-[7px] w-px bg-gray-200 dark:bg-gray-700"
+								aria-hidden="true"
+							></span>
 							{#each group.entries as a, ai}
 								{@const isLast = ai === group.entries.length - 1}
 								<li
 									class="environment-theme-scope relative pl-6 {isLast ? '' : 'pb-3'}"
 									style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
 								>
-									<span class="absolute left-0 top-1 inline-flex h-3.5 w-3.5 items-center justify-center">
+									<span
+										class="absolute top-1 left-0 inline-flex h-3.5 w-3.5 items-center justify-center"
+									>
 										{#if isRunning(a.bakeStatus)}
-											<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[a.bakeStatus]}"></span>
+											<span
+												class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[
+													a.bakeStatus
+												]}"
+											></span>
 										{/if}
-										<span class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[a.bakeStatus] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"></span>
+										<span
+											class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[
+												a.bakeStatus
+											] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"
+										></span>
 									</span>
-									<div class="relative block rounded -mx-2 px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
+									<div
+										class="relative -mx-2 block rounded px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+									>
 										<!-- Whole-row link: absolute overlay so any click on the
 										     row (except the version link below) opens the rollout
 										     detail. -->
-										<a href={a.href} class="absolute inset-0 z-0" aria-label="Open {a.displayName}"></a>
-										<div class="pointer-events-none relative z-[1] flex items-baseline justify-between gap-2">
+										<a href={a.href} class="absolute inset-0 z-0" aria-label="Open {a.displayName}"
+										></a>
+										<div
+											class="pointer-events-none relative z-[1] flex items-baseline justify-between gap-2"
+										>
 											<div class="flex min-w-0 items-baseline gap-2">
 												{#if showEnv && (a.envName || a.theme)}
-													<Chip role="env" theme={a.theme} label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''} wide class="shrink-0" />
+													<Chip
+														role="env"
+														theme={a.theme}
+														label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''}
+														wide
+														class="shrink-0"
+													/>
 												{/if}
 												{#if showAppName}
-													<span class="t-dense truncate text-gray-900 dark:text-white">{a.displayName}</span>
+													<span class="t-dense truncate text-gray-900 dark:text-white"
+														>{a.displayName}</span
+													>
 												{:else}
 													{@render versionSnippet(a)}
 												{/if}
 											</div>
-											<span class="t-code-sm shrink-0 text-gray-400 dark:text-gray-500" title={formatDate(a.timestamp)}>
+											<span
+												class="t-code-sm shrink-0 text-gray-400 dark:text-gray-500"
+												title={formatDate(a.timestamp)}
+											>
 												{hourLabel(a.timestamp)}
 											</span>
 										</div>
@@ -268,9 +331,13 @@
 										     means succeeded is a word the eye has to read to
 										     discard; it appeared 8 times on one screen. -->
 										{#if showAppName || a.bakeStatus !== 'Succeeded'}
-											<div class="t-micro pointer-events-none relative z-[1] mt-0.5 flex items-baseline justify-between gap-2">
+											<div
+												class="t-micro pointer-events-none relative z-[1] mt-0.5 flex items-baseline justify-between gap-2"
+											>
 												{#if a.bakeStatus !== 'Succeeded'}
-													<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}>{STATUS_LABEL[a.bakeStatus]}</span>
+													<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}
+														>{STATUS_LABEL[a.bakeStatus]}</span
+													>
 												{:else}
 													<span></span>
 												{/if}

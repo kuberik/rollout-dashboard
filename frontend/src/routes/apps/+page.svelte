@@ -110,6 +110,8 @@
 	import type { MatrixCellVM } from '$lib/view-models/matrix';
 	import type { RankVerdict } from '$lib/view-models/env-rank';
 	import { buildFleetStrip, fleetCaption } from '$lib/view-models/fleet-strip';
+	import { promotionBlock } from '$lib/view-models/promotion';
+	import type { PromotionBlock } from '$lib/view-models/promotion';
 	import type { FleetEnv, FleetStripVM, FleetTone } from '$lib/view-models/fleet-strip';
 	import { leadTime, compactSpan } from '$lib/view-models/lead-time';
 	import type { LeadEnv, LeadTimeVM } from '$lib/view-models/lead-time';
@@ -127,7 +129,20 @@
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import Card from '$lib/components/Card.svelte';
+	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
+	import {
+		RocketSolid,
+		ExclamationCircleSolid,
+		CheckCircleSolid,
+		CodeBranchSolid,
+		CodeMergeSolid,
+		ClockSolid,
+		ChevronRightOutline,
+		PauseSolid,
+		ArrowRightOutline
+	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 
 	const query = createQuery(() =>
@@ -168,6 +183,25 @@
 		state: CellState;
 		/** Pinned to a wanted version — the lag is deliberate, not drift. */
 		held: boolean;
+		/**
+		 * THE BUILD SOMEONE PINNED IT TO. Carried because the page's banner has
+		 * to be able to NAME THE CAUSE: a live UX critique found this page (and
+		 * `/apps/[name]`) blaming an approval gate for a production that was
+		 * behind, when *"the actual cause was the pin, which the page never
+		 * mentions"*. A cause you cannot name is a cause you will get wrong.
+		 */
+		wantedVersion: string | null;
+		/**
+		 * WHY NOTHING NEWER HAS ARRIVED — the SHARED derivation
+		 * (`view-models/promotion.ts`), the same one `/apps/[name]` and rollout
+		 * detail use. Its split is the whole reason the banner can be honest:
+		 * `awaitingApprovalGates` is a gate that has an opinion and the answer
+		 * is NO — only a person changes that; `notPassingGates` is a schedule
+		 * window or a health check, which clears on its own. A page that renders
+		 * those two the same way is telling a reader to act on something that
+		 * needs no action.
+		 */
+		block: PromotionBlock;
 		timestamp: string | null;
 	};
 
@@ -191,8 +225,16 @@
 		circle: CellState;
 		rank: number;
 		fleet: FleetStripVM;
-		/** The caption WITHOUT `N builds` — that is the column's own chip. */
-		fleetLine: string;
+		/**
+		 * THE CAPTION UNDER THE FLEET VERDICT, and it never restates it. The
+		 * mark says `N/M on head`; this says the things a distance cannot —
+		 * how many BUILDS the fleet is split across, and the environments that
+		 * have no distance at all (`pending`, `diverged`, `unknown`). When
+		 * there is none of that it prints the fleet's own denominator
+		 * (`across N environments`), which is the one number the mark's `M`
+		 * does NOT carry: `M` counts environments that have DEPLOYED.
+		 */
+		fleetNote: string;
 		/** The whole statement, for the cell's `title`. */
 		fleetFull: string;
 		lead: LeadTimeVM | null;
@@ -200,6 +242,15 @@
 		rolloutsForSpark: Rollout[];
 		mostRecentTs: string | null;
 		lede: string;
+		/**
+		 * EVERY DEPLOYED ENVIRONMENT IS ON HEAD. The predicate the green tick
+		 * is now gated on, and the one criterion 1 actually asks about.
+		 */
+		fullyOnHead: boolean;
+		/** Deployed environments sitting on ONE build — consistent, head or not. */
+		converged: boolean;
+		/** The pinned environment furthest behind, if any. The banner's cause. */
+		heldCell: RowCell | null;
 	};
 
 	// ⛔ `STATUS_DOT_CLASS` IS DELETED (2026-08-27). There is no per-environment
@@ -287,12 +338,23 @@
 		tier: string,
 		vm: MatrixCellVM,
 		refNow: Date
-	): { state: CellState; theme: EnvironmentTheme | null; held: boolean; timestamp: string | null } {
+	): {
+		state: CellState;
+		theme: EnvironmentTheme | null;
+		held: boolean;
+		wantedVersion: string | null;
+		block: PromotionBlock;
+		timestamp: string | null;
+	} {
 		const cell = group.cells.find((c) => c.environment?.spec?.environment === tier);
 		const rollout = cell?.rollout ?? null;
 		const bakeStatus = rollout?.status?.history?.[0]?.bakeStatus || 'None';
 		const timestamp = rollout?.status?.history?.[0]?.timestamp ?? null;
 		const pinned = !!rollout?.spec?.wantedVersion;
+		// `spec.wantedVersion` is already the plain tag string — NOT a version
+		// object, so it does not go through `getDisplayVersion`.
+		const wantedVersion = rollout?.spec?.wantedVersion ?? null;
+		const block = promotionBlock(rollout);
 
 		let stuckReason = detectStuck(rollout, { now: refNow });
 		if (!stuckReason && cell) {
@@ -309,14 +371,19 @@
 		const theme = cell?.theme ?? null;
 		const held = pinned && vm.behindBy > 0;
 
-		if (vm.statusKey === 'failed') return { state: 'fail', theme, held, timestamp };
-		if (stuckReason) return { state: 'stuck', theme, held, timestamp };
-		if (bakeStatus === 'Deploying') return { state: 'deploying', theme, held, timestamp };
-		if (bakeStatus === 'InProgress') return { state: 'baking', theme, held, timestamp };
-		if (vm.statusKey === 'pending') return { state: 'pending', theme, held: false, timestamp };
-		if (vm.behindBy === 0) return { state: 'onNewest', theme, held, timestamp };
+		if (vm.statusKey === 'failed')
+			return { state: 'fail', theme, held, wantedVersion, block, timestamp };
+		if (stuckReason) return { state: 'stuck', theme, held, wantedVersion, block, timestamp };
+		if (bakeStatus === 'Deploying')
+			return { state: 'deploying', theme, held, wantedVersion, block, timestamp };
+		if (bakeStatus === 'InProgress')
+			return { state: 'baking', theme, held, wantedVersion, block, timestamp };
+		if (vm.statusKey === 'pending')
+			return { state: 'pending', theme, held: false, wantedVersion, block, timestamp };
+		if (vm.behindBy === 0)
+			return { state: 'onNewest', theme, held, wantedVersion, block, timestamp };
 		const behindState: CellState = vm.behindBy >= 2 ? 'behind2' : 'behind1';
-		return { state: behindState, theme, held, timestamp };
+		return { state: behindState, theme, held, wantedVersion, block, timestamp };
 	}
 
 	/**
@@ -346,7 +413,34 @@
 		return 'onNewest';
 	}
 
-	function circleBakeStatus(state: CellState): string | undefined {
+	/**
+	 * ⛔ A GREEN TICK MEANS THE WHOLE FLEET IS ON HEAD. NOTHING WEAKER. (2026-08-30)
+	 *
+	 * From a live UX critique of the running product: *"`/apps` shows a GREEN
+	 * TICK beside `hello-world-app — PROD is 14 builds behind`."* It did, and
+	 * the code above explains exactly why: the circle painted the row's true
+	 * BAKE glyph, prod's last deploy succeeded, so `Succeeded` → green tick,
+	 * 8px from a sentence saying production is two dozen builds stale.
+	 *
+	 * Both halves of that were locally right and the pair was a lie. A bake
+	 * status answers *"did the last deploy work"*; the reader of a LIST row is
+	 * asking *"is this app OK"*, and those diverge precisely on the rows that
+	 * matter. The tick is the strongest all-clear the product owns and it was
+	 * being spent on an app nobody had promoted in three weeks.
+	 *
+	 * THE FIX COSTS NO NEW VALUE AND NO NEW GLYPH. When nothing is failing,
+	 * deploying or baking but the fleet is NOT fully on head, the circle falls
+	 * to `None` — `PauseSolid` on the gray disc, which `BakeStatusIcon` and
+	 * `getStatusCircleClass` already own. "Not moving" is exactly what an app
+	 * whose production is 24 builds behind is doing, and gray is not an alarm:
+	 * being behind is *"the normal state of a promotion pipeline"* and must not
+	 * borrow red or amber. It just may not borrow the ALL-CLEAR either.
+	 *
+	 * `held` (someone pinned it) resolves to the same gray pause on purpose —
+	 * a pin is the most literal reading of "paused" there is. Which of the two
+	 * it is gets named by the banner and by the row's `sr-only` text.
+	 */
+	function circleBakeStatus(state: CellState, fullyOnHead: boolean): string | undefined {
 		switch (state) {
 			case 'fail':
 				return 'Failed';
@@ -357,7 +451,9 @@
 			case 'pending':
 				return 'None';
 			default:
-				return 'Succeeded'; // onNewest, behind1, behind2 — the deploy itself succeeded
+				// onNewest / behind1 / behind2 — the deploy itself succeeded, so
+				// the question is no longer "did it work" but "did it arrive".
+				return fullyOnHead ? 'Succeeded' : 'None';
 		}
 	}
 
@@ -366,6 +462,27 @@
 	// would tint already carries a mark (the row glyph is red when an env
 	// failed, the strip's mark is amber when one is stuck). The lede is neutral
 	// ink in every state.
+
+	/**
+	 * THE FLEET CAPTION. `fleetCaption` is the shared string and stays the
+	 * cell's `title`; this is the one line UNDER the mark, and its whole job is
+	 * to not repeat it. The mark prints `onHead/deployed`, so this drops both
+	 * of those numbers and prints only what has no distance.
+	 */
+	function fleetNote(vm: FleetStripVM): string {
+		if (vm.total === 0) return 'no environments';
+		if (vm.deployed === 0) return 'never deployed';
+		const parts: string[] = [];
+		if (vm.spread > 1) parts.push(`${vm.spread} builds`);
+		if (vm.pending > 0) parts.push(`${vm.pending} pending`);
+		if (vm.diverged > 0) parts.push(`${vm.diverged} diverged`);
+		if (vm.unknown > 0) parts.push(`${vm.unknown} unknown`);
+		if (parts.length > 0) return parts.join(' · ');
+		// `deployed` is the mark's denominator; `total` is not, and on a fleet
+		// with a never-deployed environment they differ. Printing the whole
+		// count here is the only place that difference is visible.
+		return `across ${vm.total} environment${vm.total === 1 ? '' : 's'}`;
+	}
 
 	/** `status.history` reduced to what `lead-time.ts` reads. */
 	function leadDeploys(cell: AppCell) {
@@ -394,7 +511,12 @@
 			for (const tier of matrix.envTiers) {
 				const vm = mrow.cells[tier];
 				if (!vm) continue;
-				const { state, theme, held, timestamp } = classifyCell(group, tier, vm, refNow);
+				const { state, theme, held, wantedVersion, block, timestamp } = classifyCell(
+					group,
+					tier,
+					vm,
+					refNow
+				);
 				cells.push({
 					tier,
 					envLabel: shortEnvLabel(vm.envName) || vm.envName,
@@ -404,6 +526,8 @@
 					behindBy: vm.behindBy,
 					state,
 					held,
+					wantedVersion,
+					block,
 					timestamp
 				});
 			}
@@ -548,13 +672,21 @@
 				circle: circleState(cells),
 				rank,
 				fleet,
-				fleetLine: fleetCaption(fleet, { omitSpread: true }),
+				fleetNote: fleetNote(fleet),
 				fleetFull: fleetCaption(fleet),
 				lead,
 				deploys7d,
 				rolloutsForSpark: group.cells.map((c) => c.rollout),
 				mostRecentTs,
-				lede
+				lede,
+				fullyOnHead: fleet.deployed > 0 && fleet.onHead === fleet.deployed,
+				converged: fleet.deployed > 0 && fleet.spread === 1,
+				heldCell: cells
+					.filter((c) => c.held)
+					.reduce<RowCell | null>(
+						(best, c) => (best === null || c.behindBy > best.behindBy ? c : best),
+						null
+					)
 			});
 		}
 		// WORST FIRST, and "worst" now has three tiers rather than two.
@@ -574,10 +706,193 @@
 
 	const attnCount = $derived(appRows.filter((a) => a.rank === 0).length);
 	const motionCount = $derived(appRows.filter((a) => a.rank === 1).length);
+
+	// ── ATTENTION IS A CARD, NOT A ROW BAND. (2026-08-30) ────────────────────
+	//
+	// > *"i don't like that you're highlighting a stuck row like this… it feels
+	// > like a bug. is this what you implemented when i said there should be a
+	// > better way to mark something as needing attention rather than just a
+	// > badge? there are many examples on the rest of the page that are much
+	// > better."*
+	//
+	// The thing being rejected is the full-bleed neutral GROUND the tombstone
+	// two screens up argues for. The arithmetic in that tombstone is right and
+	// the conclusion was wrong: it proved that no CHROMATIC row band is
+	// affordable and then reached for the only remaining channel, lightness —
+	// which is the channel a browser uses for `:disabled`, for a loading
+	// skeleton and for a dimmed row. A gray band on a white list does not read
+	// as "look here", it reads as "this one is broken", which is what the human
+	// said in three words.
+	//
+	// THE EXAMPLE THEY MEAN IS THE ONE ON ROLLOUT DETAIL: a filled banner for
+	// the blocking fact, and titled cards for the sets. So attention is carried
+	// by MEMBERSHIP OF A TITLED CARD — `Needs attention`, its own icon, its own
+	// right-aligned rollup — and by the banner above it. The rows themselves are
+	// identical in every card: no band, no second hover treatment, nothing that
+	// can be mistaken for a rendering fault.
+	//
+	// The predicate is unchanged (`rank === 0` — failing or stuck, never merely
+	// behind or diverged), so the card's rollup and the header's count still
+	// cannot disagree.
+	const attentionRows = $derived(appRows.filter((a) => a.rank === 0));
+	const steadyRows = $derived(appRows.filter((a) => a.rank !== 0));
 	/** The one sentence the page can say about the whole fleet. */
 	const convergedCount = $derived(
 		appRows.filter((a) => a.fleet.deployed > 0 && a.fleet.spread === 1).length
 	);
+
+	// ── THE PAGE'S ONE BLOCKING FACT, WITH ITS CAUSE AND ITS CONSEQUENCE ─────
+	//
+	// `COMPOSITION-GRAMMAR.md` §4: the blocking fact gets a FILLED banner — a
+	// 40px circular icon, a bold headline, a second line carrying the concrete
+	// consequence, a control on the right. That object already exists in this
+	// product (`AlertPanel`, which is what rollout detail renders its schedule
+	// gate and its version pin in), so this spends no new component and no new
+	// colour; it just stops `/apps` being the one page that had no way to say
+	// "here is why nothing is moving".
+	//
+	// ⛔ THE CAUSE MUST BE THE REAL CAUSE. A live UX critique of this product
+	// found the app page blaming `HELD BY hello-world-manual-approval` for a
+	// production that was two dozen builds behind when *"the actual cause was
+	// the PIN, which the page never mentions."* A pin outranks every gate: a
+	// gate holds the NEXT promotion, a pin refuses ALL of them, so while
+	// `spec.wantedVersion` is set no other explanation is even reachable. It is
+	// therefore checked BEFORE stuck and before lag — the only thing above it
+	// is a deploy that actually failed, which is a fact about the past that a
+	// pin cannot explain away.
+	//
+	// ONE BANNER. Not one per app. A page with six banners has none, and the
+	// SET of apps that need a person is what the `Needs attention` card is for
+	// — the banner's job is the single worst fact and the action that answers
+	// it. When there is no blocking fact at all it renders nothing: an
+	// all-clear banner is the norm being marked.
+	type Blocker = {
+		severity: 'error' | 'warning' | 'pinned' | 'info';
+		icon: typeof ExclamationCircleSolid;
+		title: string;
+		message: string;
+		footnote?: string;
+		app: string;
+		pulse: boolean;
+	};
+
+	const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+	const blocker = $derived.by<Blocker | null>(() => {
+		// 1 — A DEPLOY THAT FAILED. The only fact a pin cannot explain.
+		for (const app of appRows) {
+			const cell = app.cells.find((c) => c.state === 'fail');
+			if (!cell) continue;
+			const envs = app.cells.filter((c) => c.state === 'fail').length;
+			return {
+				severity: 'error',
+				icon: ExclamationCircleSolid,
+				title: `${app.appName} — ${cell.envLabel.toUpperCase()}’s last deploy failed`,
+				message:
+					envs > 1
+						? `${plural(envs, 'environment')} of this app are failing. Nothing promotes past them until a deploy succeeds.`
+						: `Nothing promotes past ${cell.envLabel.toUpperCase()} until a deploy succeeds.`,
+				footnote: cell.timestamp
+					? `Last attempt ${formatTimeAgoCompact(cell.timestamp, $now)} ago · ${formatDate(cell.timestamp)}`
+					: undefined,
+				app: app.appName,
+				pulse: true
+			};
+		}
+
+		// 2 — A PIN. Checked before `stuck`, because a pinned environment is
+		//     ALSO usually stuck and the pin is the thing a person can undo.
+		for (const app of appRows) {
+			const cell = app.heldCell;
+			if (!cell) continue;
+			return {
+				severity: 'pinned',
+				icon: PauseSolid,
+				title: `${cell.envLabel.toUpperCase()} is pinned on ${app.appName}`,
+				message: `Held at ${cell.wantedVersion ?? cell.version}. ${plural(
+					cell.behindBy,
+					'newer build'
+				)} available, and none will deploy until the pin is cleared.`,
+				footnote: 'Automated promotion into this environment is paused, not broken.',
+				app: app.appName,
+				pulse: false
+			};
+		}
+
+		// 3 — STUCK. A state that has lasted, with nobody holding it on purpose.
+		for (const app of appRows) {
+			const cell = app.cells.find((c) => c.state === 'stuck');
+			if (!cell) continue;
+			return {
+				severity: 'warning',
+				icon: ExclamationCircleSolid,
+				title: `${app.appName} — ${cell.envLabel.toUpperCase()} is stuck`,
+				message: cell.timestamp
+					? `Unchanged for ${formatTimeAgoCompact(cell.timestamp, $now)} and nothing is holding it on purpose.`
+					: 'Unchanged long enough that it will not clear on its own.',
+				app: app.appName,
+				pulse: true
+			};
+		}
+
+		// 4 — A GATE REFUSING EVERY CANDIDATE, and the two kinds are NOT the
+		//     same banner. `promotionBlock` splits them structurally (never by
+		//     matching generated gate names): `awaitingApproval` means the gate
+		//     published an allow-list and nothing is on it — only a person moves
+		//     that — while `notPassing` is a schedule window or a health check,
+		//     which clears itself. Rendering both amber would tell a reader to
+		//     act on something that needs no action, which is the same defect
+		//     class as painting normal drift red.
+		//
+		//     THE WORST ONE, NOT THE FIRST ONE. `cells` is in promotion order,
+		//     so `find` returns DEV — the environment nearest the front of the
+		//     pipeline and therefore the least consequential place to be stuck.
+		//     Measured on the live cluster: it banner-ed `DEV is waiting on a
+		//     gate` while PRODUCTION sat 24 builds behind an approval gate two
+		//     rows below. Rank instead: a gate that needs a PERSON outranks one
+		//     that clears itself, and within each kind the deepest lag wins.
+		{
+			const candidates = appRows.flatMap((app) =>
+				app.cells.filter((c) => c.block.blocked && c.behindBy > 0).map((c) => ({ app, c }))
+			);
+			candidates.sort((x, y) => {
+				const ax = x.c.block.awaitingApprovalGates.length > 0 ? 0 : 1;
+				const ay = y.c.block.awaitingApprovalGates.length > 0 ? 0 : 1;
+				if (ax !== ay) return ax - ay;
+				return y.c.behindBy - x.c.behindBy;
+			});
+			const worst = candidates[0];
+			if (!worst) return null;
+			const app = worst.app;
+			const cell = worst.c;
+			const env = cell.envLabel.toUpperCase();
+			const waiting = plural(cell.block.candidateCount, 'build');
+			if (cell.block.awaitingApprovalGates.length > 0) {
+				return {
+					severity: 'warning',
+					icon: ExclamationCircleSolid,
+					title: `${app.appName} — ${env} is waiting on an approval`,
+					message: `${waiting} ready and none approved. Nothing promotes into ${env} until ${cell.block.awaitingApprovalGates.join(
+						', '
+					)} allows one.`,
+					footnote: 'This will not clear on its own.',
+					app: app.appName,
+					pulse: true
+				};
+			}
+			return {
+				severity: 'info',
+				icon: ClockSolid,
+				title: `${app.appName} — ${env} is waiting on a gate`,
+				message: `${waiting} ready and held by ${cell.block.notPassingGates.join(', ')}.`,
+				footnote: 'A schedule or health gate. It clears on its own.',
+				app: app.appName,
+				pulse: false
+			};
+		}
+
+		return null;
+	});
 </script>
 
 <svelte:head>
@@ -664,328 +979,367 @@
 			</div>
 		</div>
 	{:else}
-		<div
-			class="apps-panel overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
-		>
-			<!-- THE COLUMN HEADER ROW. Same idiom as `/rollouts`, which pins its
-			     rows to a fixed grid under a sticky `Rollout · Pipeline · 24h ·
-			     Version·age` header. It exists here for the same reason: three
-			     of the four columns are measurements, and a measurement with no
-			     name is a decoration. Hidden below the container breakpoint,
-			     where each cell prints its own inline label instead.
+		<!-- ══ THE PAGE'S ONE BLOCKING FACT ═══════════════════════════════════
+		     A FILLED banner: 40px circular icon, bold headline, a second line
+		     with the concrete consequence, a control on the right. It is the
+		     same `AlertPanel` rollout detail renders its schedule gate and its
+		     version pin in — the object `COMPOSITION-GRAMMAR.md` §4 names as
+		     what *"attention pulled by design, not text"* actually looks like,
+		     and the example the human meant when they rejected the gray row
+		     band as *"feels like a bug"*.
 
-			     `Fleet` again, not `Fleet by build`: the column no longer draws
-			     a build axis, so a header that names one would be labelling a
-			     graphic that is not there. -->
-			<div class="apps-row apps-row--head border-b border-gray-200 px-4 py-2 dark:border-gray-700">
-				<span class="apps-id t-label text-gray-500 dark:text-gray-400">App</span>
-				<span class="apps-fleet t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-					>Fleet</span
-				>
-				<span class="apps-act t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-					>Deploys · 7d</span
-				>
-				<span class="apps-lead t-label text-gray-500 dark:text-gray-400">Lead</span>
-			</div>
+		     THE INK CEILING DOES NOT GOVERN IT. That measurement was derived
+		     for MARKS COMPETING ON A ROW — it is what keeps the `stuck` alarm
+		     the loudest chip — and a page-level banner is not on a row and
+		     competes with nothing. `alarm` is still the only CHIP with a fill.
 
-			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-				{#each appRows as app (app.appName)}
-					<li>
-						<a
-							href="/apps/{app.appName}"
-							class="apps-row px-4 py-3 transition-colors {app.rank === 0
-								? 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-700'
-								: 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}"
+		     ONE, NEVER ONE PER APP. The SET of apps needing a person is the
+		     `Needs attention` card below; the banner's job is the single worst
+		     fact, its CAUSE and the way out. -->
+		{#if blocker}
+			<AlertPanel
+				severity={blocker.severity}
+				icon={blocker.icon}
+				title={blocker.title}
+				message={blocker.message}
+				footnote={blocker.footnote}
+				pulse={blocker.pulse}
+				class="mb-5"
+			>
+				{#snippet actions()}
+					<a href="/apps/{blocker.app}" class="btn btn-secondary">
+						Open {blocker.app}
+						<ArrowRightOutline />
+					</a>
+				{/snippet}
+			</AlertPanel>
+		{/if}
+
+		<div class="flex flex-col gap-4">
+			<!-- ══ NEEDS ATTENTION ════════════════════════════════════════════
+			     MEMBERSHIP OF THIS CARD IS THE MARK. The row inside it is
+			     byte-identical to a row in the card below — no band, no second
+			     hover, nothing a reader can mistake for a rendering fault. What
+			     marks it is a titled card with its own icon and its own
+			     right-aligned rollup, which is the device every region of
+			     rollout detail uses and the one the human calls beautiful.
+
+			     It renders only when non-empty. An empty `0 apps` card would be
+			     the norm being marked, and the page is silent when the fleet is
+			     healthy — the same behaviour `/` has. -->
+			{#if attentionRows.length > 0}
+				<!-- THE CONTAINER-QUERY SCOPE IS A DIV THIS PAGE OWNS, not the
+				     `Card`'s own root. Svelte's scoped CSS is compiled per
+				     component: a class passed to a child component's `class`
+				     prop lands on that child's element, which never carries this
+				     component's scoping hash, so `.apps-panel { container-type }`
+				     silently would not apply and every row would render in its
+				     390px stacked form at 1440. Measured that exact failure
+				     before wrapping. -->
+				<div class="apps-panel">
+					<Card
+						icon={ExclamationCircleSolid}
+						iconClass="text-amber-500 dark:text-amber-400"
+						title="Needs attention"
+						verdict="{attentionRows.length} of {appRows.length} app{appRows.length === 1
+							? ''
+							: 's'}"
+						verdictTone="adverse"
+						verdictTitle="Apps with an environment that is failing or stuck"
+						padded={false}
+					>
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each attentionRows as app (app.appName)}
+								<li>{@render appRow(app)}</li>
+							{/each}
+						</ul>
+					</Card>
+				</div>
+			{/if}
+
+			<!-- ══ EVERY APP ══════════════════════════════════════════════════
+			     THE ROLLUP IS CRITERION 1, ANSWERED BEFORE A ROW IS READ:
+			     *"which apps' fleets are consistent?"* — `3 of 4 fleets on one
+			     build`. It is the `3/3 healthy` / `10/10 ready` idiom from the
+			     reference page, and it goes GREEN only when the answer is all
+			     of them. -->
+			<div class="apps-panel">
+				<Card
+					icon={RocketSolid}
+					title={attentionRows.length > 0 ? 'Everything else' : 'Apps'}
+					verdict="{convergedCount} of {appRows.length} fleet{appRows.length === 1
+						? ''
+						: 's'} on one build"
+					verdictTone={convergedCount === appRows.length ? 'good' : 'neutral'}
+					verdictTitle="A fleet is consistent when every deployed environment runs the same build"
+					padded={false}
+				>
+					<!-- THE COLUMN HEADER ROW. Same idiom as `/rollouts`, which pins
+				     its rows to a fixed grid under a sticky header. Three of the
+				     four columns are measurements, and a measurement with no name
+				     is a decoration. Hidden below the container breakpoint, where
+				     each cell prints its own inline label instead. -->
+					<div
+						class="apps-row apps-row--head border-b border-gray-200 px-4 py-2 dark:border-gray-700"
+					>
+						<span class="apps-id t-label text-gray-500 dark:text-gray-400">App</span>
+						<span class="apps-fleet t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
+							>Fleet</span
 						>
-							<!-- ── APP ─────────────────────────────────────────
-							     Status circle, name, and the one sentence that
-							     names the environment the shape cannot. -->
-							<span class="apps-id flex min-w-0 items-center gap-3">
-								<span
-									class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-										circleBakeStatus(app.circle)
-									)}"
-								>
-									<BakeStatusIcon bakeStatus={circleBakeStatus(app.circle)} size="medium" />
-									<span class="sr-only">{STATUS_WORD[app.worst]}</span>
-								</span>
-								<span class="flex min-w-0 flex-col gap-1">
-									<span class="flex min-w-0 items-baseline gap-2">
-										<span
-											class="t-code min-w-0 truncate font-semibold text-gray-900 dark:text-white"
-											>{app.appName}</span
-										>
-										{#if app.desc}
-											<span
-												class="apps-desc t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
-												>{app.desc}</span
-											>
-										{/if}
-									</span>
-									<!-- THE MARK ROW. `gap-x-4 sm:gap-x-6` — 16px, 24px from
-									     `sm` — is not a spacing whim, it is the denominator of
-									     the proximity ratio that makes a LOOSE status dot
-									     legible on a row carrying 3 to 13 environments. Each
-									     unit binds its dot to its badge at 4px; the units are
-									     16-24px apart. Measured ink-to-ink at 1440: 11px within
-									     against 31px between, 2.82x. The joined `[●][ENV][WORD]`
-									     box this replaces measured 13px against 22px at the old
-									     `gap-x-2` — 1.69x, below the 2-3x Gestalt proximity
-									     needs, i.e. the box was carrying the whole group on its
-									     own. 16px rather than 24px below `sm` because 24px
-									     pushes `checkout-edge` — the row that is actually stuck
-									     — from one line to two at 390. -->
-									<span class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 sm:gap-x-6">
-										<!-- ONLY THE ENVIRONMENTS THAT NEED A PERSON get a
-										     named box. Twelve regions one build behind are a
-										     shape and the strip draws it; a stuck region is a
-										     target and a target needs a name.
+						<span class="apps-act t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
+							>Deploys · 7d</span
+						>
+						<span class="apps-lead t-label text-gray-500 dark:text-gray-400">Lead</span>
+						<span class="apps-chev"></span>
+					</div>
 
-										     THE BOX IS THE WHOLE STATEMENT, and it comes FIRST
-										     now. It carries the environment's identity colour,
-										     its status hue, and — since 2026-08-26 — the WORD:
-										     `stuck`, `failing` or `diverged`. Before that the
-										     word for a failed deploy lived only in the lede, so
-										     the row said `STAGING is failing` beside
-										     `[● STAGING]` and every stuck row said `PROD is
-										     stuck` beside `[● PROD][STUCK]` — the same fact,
-										     twice, on the one line that matters.
-
-										     `wide` on the env chip is load-bearing and is the
-										     reason the sentence is safe to drop: `.chip`'s 12ch
-										     cap rendered `PROD-EU-CENTRAL` as `PROD-EU…`, so
-										     the lede was the only place the row spelled the
-										     target out. `class="max-w-none"` cannot do this job
-										     — see `Chip`'s `wide` prop. -->
-										{#each app.adverse as cell (cell.tier)}
-											<!-- ONE ENVIRONMENT, ONE BADGE, TWO SECTIONS:
-											     `[NAME][STATE]`. Nothing else, and nothing beside it.
-
-											     THERE IS NO STATUS DOT ON THIS ROW ANY MORE. It was a
-											     third HALF of this box until 2026-08-27 (`[●][PROD][STUCK]`),
-											     then briefly a loose mark 4px to its left, and the human
-											     rejected both: *"I don't like that status dot is in a separate
-											     subbadge"*, then *"I also don't like dots outside of badge"*.
-											     Two placements rejected is not a request for a third — it is
-											     a request for the mark to go, and it goes.
-
-											     IT COSTS LESS THAN IT LOOKS, because the WORD was already
-											     doing most of the dot's job. Every box in this list is an
-											     adverse environment and every one prints `stuck`, `failing` or
-											     `diverged` — so on a `[STAGING][FAILING]` unit the red dot was
-											     saying, in colour, the word printed 1px to its right. WHAT IS
-											     GENUINELY LOST is the in-flight case: a stuck environment that
-											     is ALSO mid-deploy used to show an amber box with a blue dot.
-											     That now reads at row scope (the status circle) and at
-											     environment scope one click away on `/apps/<name>`; it is
-											     stated in the unit's tooltip here, which still carries the
-											     deploy-status word.
-
-											     `wide` on the env chip is load-bearing and is the reason the
-											     lede sentence is safe to drop: `.chip`'s 12ch cap rendered
-											     `PROD-EU-CENTRAL` as `PROD-EU…`, so the sentence was the only
-											     place the row spelled the target out. -->
-											<span
-												class="chip-joined shrink-0"
-												title="{cell.envLabel}{cell.version
-													? ` · ${cell.version}`
-													: ''} · {STATUS_WORD[cell.state]}"
-											>
-												<Chip
-													role="env"
-													theme={cell.theme}
-													label={cell.envLabel}
-													wide
-													title="{cell.envLabel}{cell.version
-														? ` · ${cell.version}`
-														: ''} · {STATUS_WORD[cell.state]}"
-												/>
-												{#if cell.state === 'stuck'}
-													<Chip
-														role="alarm"
-														label="stuck"
-														title="{cell.envLabel.toUpperCase()} is stuck"
-													/>
-												{:else if cell.rank.kind === 'diverged'}
-													<Chip
-														role="diverged"
-														label="diverged"
-														title="Running a build that is on no environment\u2019s release list"
-													/>
-												{:else if cell.state === 'fail'}
-													<!-- THE WORD THE DELETED RED DOT USED TO SAY IN COLOUR.
-													     Text-only, the same red as `rank` and `diverged`, so
-													     `alarm` keeps the only fill on the page. -->
-													<Chip
-														role="failing"
-														label="failing"
-														title="{cell.envLabel.toUpperCase()}\u2019s last deploy failed"
-													/>
-												{/if}
-											</span>
-										{/each}
-										{#if app.adverseMore > 0}
-											<!-- COUNTED, NOT DROPPED — and NAMED in the tooltip, so
-											     the cap costs a hover rather than the fact. -->
-											<span
-												class="t-micro shrink-0 text-gray-500 dark:text-gray-400"
-												title={app.adverseRest}>+{app.adverseMore} more</span
-											>
-										{/if}
-										<!-- THE SENTENCE SAYS WHAT NO BOX SAYS. Never an
-										     environment that already has one. -->
-										{#if app.lede}
-											<span class="t-micro truncate text-gray-500 dark:text-gray-400"
-												>{app.lede}</span
-											>
-										{/if}
-									</span>
-								</span>
-							</span>
-
-							<!-- ── FLEET ────────────────────────────────────────
-							     Criterion 1: *"which apps' fleets are consistent?"*
-
-							     ⛔ `FleetStrip` IS GONE FROM THIS COLUMN. (2026-08-27)
-							     > *"fleet by build is both not stylistically concise with
-							     > the rest of dashboard and is still not clear what it
-							     > shows"* — the human, on the THIRD form of this object.
-
-							     Two charges, and both are fair.
-
-							     STYLE. Load `/` and `/rollouts` — the human's own three
-							     best pages — and the vocabulary for multi-environment
-							     state is CHIPS, prose and a dot-and-connector pipeline
-							     glyph. A bespoke mark-and-gap run graphic existed nowhere
-							     else in the product; it was a fourth idiom on a page whose
-							     other three columns are a chip cluster, a sparkline and a
-							     number.
-
-							     CLARITY. Its encoding was PROXIMITY — *marks that touch
-							     run the same build* — and proximity is a relation the
-							     reader has to be TAUGHT, because nothing on the mark says
-							     what its neighbour means. The teaching device was the
-							     footer legend, and the human deleted that on 2026-08-26.
-							     Three forms failed in a row (12-slot ruler, ruler with a
-							     head anchor, mark-and-gap runs); the constant across all
-							     three was not the drawing, it was that the reader has no
-							     motive to decode it. *"Drift is the normal state of a
-							     promotion pipeline. The only adverse state is stuck."* A
-							     column that is never adverse was being given the most
-							     graphic weight on the row.
-
-							     WHAT ANSWERS THE CRITERION NOW: the count of builds, as a
-							     WORD in the product's own `count` chip — the same chip
-							     `/apps/[name]` already prints its fleet verdict in
-							     (*"`role` ... is always `count` now"*). One chip = the
-							     fleet is split N ways. NO chip = converged, because the
-							     norm is not marked. It is unambiguous with no legend, it
-							     is a chip like everything else on the row, and it sits at
-							     ONE x down 50 rows, so the column can be scanned for
-							     presence.
-
-							     The `head <sha>` chip goes with the strip: it existed to
-							     NAME the strip's leftmost run, and *"relative version
-							     beats absolute — the sha is usually noise"*
-							     (`DESIGN-INTENT.md`). The 84px it and the strip give back
-							     goes to `App`, where the adverse boxes live. -->
-							<span class="apps-fleet flex min-w-0 flex-col gap-1">
-								<span
-									class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-									>Fleet</span
-								>
-								<span class="apps-mark flex min-w-0 items-center">
-									{#if app.fleet.spread > 1}
-										<Chip
-											role="count"
-											label={`${app.fleet.spread} builds`}
-											title="This app's {app.fleet
-												.deployed} deployed environments are split across {app.fleet
-												.spread} different builds"
-											wide
-											class="shrink-0"
-										/>
-									{/if}
-								</span>
-								<span
-									class="t-micro truncate text-gray-500 dark:text-gray-400"
-									title={app.fleetFull}>{app.fleetLine}</span
-								>
-							</span>
-
-							<!-- ── DEPLOYS · 7d ─────────────────────────────────
-							     Criterion 2. Below `SPARK_MIN` the count stands
-							     alone: a sparkline of empty buckets is a shrug drawn
-							     at the size of data.
-							
-							     THE LAST-DEPLOY TIME MOVED HERE from the deleted
-							     `Head` column. Volume and recency are one question —
-							     is this app churning or asleep — and on the rows where
-							     the sparkline says nothing (`0 deploys`, no chart
-							     drawn) `28d ago` is the only thing that answers it. -->
-							<span class="apps-act flex min-w-0 flex-col gap-1">
-								<span
-									class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-									>Deploys · 7d</span
-								>
-								<!-- THE CHART SITS IN THE SAME 20px MARK LINE THE FLEET CHIP
-								     AND THE LEAD FIGURE DO, and it holds that height when
-								     there is no chart. At 390 `Lead` and `Deploys` are two
-								     columns of one card: without the reserved band a row
-								     with a sparkline put its caption at y170 and the row
-								     beside it put its caption at y149, so the pair had no
-								     baseline at all — the phone form of the exact defect
-								     `.env-line` fixed on the desktop row. -->
-								<span class="apps-mark flex items-center">
-									{#if app.deploys7d >= SPARK_MIN}
-										<DeployVolumeSparkline rollouts={app.rolloutsForSpark} days={SPARK_DAYS} />
-									{/if}
-								</span>
-								<span class="t-micro truncate text-gray-500 dark:text-gray-400"
-									>{app.deploys7d} deploy{app.deploys7d === 1
-										? ''
-										: 's'}{#if app.mostRecentTs}{' · '}<span title={formatDate(app.mostRecentTs)}
-											>{formatTimeAgoCompact(app.mostRecentTs, $now)} ago</span
-										>{/if}</span
-								>
-							</span>
-
-							<!-- ── LEAD ─────────────────────────────────────────
-							     Criterion 3. Median MEASURED time from the first
-							     environment to the first production region. An
-							     em-dash when no build has been observed making the
-							     whole trip inside the retained history — never an
-							     estimate. -->
-							<span class="apps-lead flex min-w-0 flex-col gap-1">
-								<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400">Lead</span>
-								{#if app.lead}
-									<span
-										class="apps-mark t-dense flex items-center text-gray-900 tabular-nums dark:text-white"
-										title="Median of {app.lead.samples} build{app.lead.samples === 1
-											? ''
-											: 's'} observed travelling {app.lead.fromLabel} → {app.lead.toLabel}"
-										>{compactSpan(app.lead.medianMs)}</span
-									>
-									<span class="t-micro truncate text-gray-500 dark:text-gray-400"
-										>{app.lead.fromLabel} → {app.lead.toLabel}</span
-									>
-								{:else}
-									<span
-										class="apps-mark t-dense flex items-center text-gray-500 dark:text-gray-400"
-										title="No build has been observed travelling the whole chain inside this app’s retained deploy history"
-										>—</span
-									>
-									<span class="t-micro truncate text-gray-500 dark:text-gray-400">not observed</span
-									>
-								{/if}
-							</span>
-						</a>
-					</li>
-				{/each}
-			</ul>
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each steadyRows as app (app.appName)}
+							<li>{@render appRow(app)}</li>
+						{/each}
+					</ul>
+				</Card>
+			</div>
 		</div>
 	{/if}
 </div>
+
+<!-- ══ ONE APP ROW ═══════════════════════════════════════════════════════════
+     A SNIPPET, AND THAT IS LOAD-BEARING. It is rendered by both the
+     `Needs attention` card and the `Everything else` card, and it must be the
+     SAME markup in both: the moment an attention row can be styled differently
+     from a steady one, the gray band comes back under another name. The card
+     is the mark; the row is a row. -->
+{#snippet appRow(app: AppRow)}
+	<a
+		href="/apps/{app.appName}"
+		class="apps-row px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+	>
+		<!-- ── APP ──────────────────────────────────────────────────────────
+		     Status circle, name, and the one sentence that names the
+		     environment the shape cannot. -->
+		<span class="apps-id flex min-w-0 items-center gap-3">
+			<span
+				class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+					circleBakeStatus(app.circle, app.fullyOnHead)
+				)}"
+			>
+				<BakeStatusIcon bakeStatus={circleBakeStatus(app.circle, app.fullyOnHead)} size="medium" />
+				<span class="sr-only"
+					>{STATUS_WORD[app.worst]}{app.fullyOnHead ? '' : ' · not fully promoted'}</span
+				>
+			</span>
+			<span class="flex min-w-0 flex-col gap-1">
+				<span class="flex min-w-0 items-baseline gap-2">
+					<span class="t-code min-w-0 truncate font-semibold text-gray-900 dark:text-white"
+						>{app.appName}</span
+					>
+					{#if app.desc}
+						<span class="apps-desc t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
+							>{app.desc}</span
+						>
+					{/if}
+				</span>
+				<!-- THE MARK ROW. `gap-x-4 sm:gap-x-6` is the denominator of the
+				     proximity ratio that keeps each unit bound to itself at 4px
+				     while the units sit 16-24px apart. Measured ink-to-ink at
+				     1440: 11px within against 31px between, 2.82x. -->
+				<span class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 sm:gap-x-6">
+					{#each app.adverse as cell (cell.tier)}
+						<!-- ONE ENVIRONMENT, ONE BADGE, TWO SECTIONS: `[NAME][STATE]`.
+						     `wide` on the env chip is load-bearing: `.chip`'s 12ch cap
+						     renders `PROD-EU-CENTRAL` as `PROD-EU…`, and three regions
+						     truncated to the same eight characters is the defect that
+						     killed the convergence bar. -->
+						<span
+							class="chip-joined shrink-0"
+							title="{cell.envLabel}{cell.version ? ` · ${cell.version}` : ''} · {STATUS_WORD[
+								cell.state
+							]}"
+						>
+							<Chip
+								role="env"
+								theme={cell.theme}
+								label={cell.envLabel}
+								wide
+								title="{cell.envLabel}{cell.version ? ` · ${cell.version}` : ''} · {STATUS_WORD[
+									cell.state
+								]}"
+							/>
+							{#if cell.state === 'stuck'}
+								<Chip role="alarm" label="stuck" title="{cell.envLabel.toUpperCase()} is stuck" />
+							{:else if cell.rank.kind === 'diverged'}
+								<Chip
+									role="diverged"
+									label="diverged"
+									title="Running a build that is on no environment’s release list"
+								/>
+							{:else if cell.state === 'fail'}
+								<Chip
+									role="failing"
+									label="failing"
+									title="{cell.envLabel.toUpperCase()}’s last deploy failed"
+								/>
+							{/if}
+						</span>
+					{/each}
+					{#if app.adverseMore > 0}
+						<!-- COUNTED, NOT DROPPED — and NAMED in the tooltip. -->
+						<span class="t-micro shrink-0 text-gray-500 dark:text-gray-400" title={app.adverseRest}
+							>+{app.adverseMore} more</span
+						>
+					{/if}
+					<!-- THE SENTENCE SAYS WHAT NO BOX SAYS. Never an environment
+					     that already has one. -->
+					{#if app.lede}
+						<span class="t-micro truncate text-gray-500 dark:text-gray-400">{app.lede}</span>
+					{/if}
+				</span>
+			</span>
+		</span>
+
+		<!-- ── FLEET ────────────────────────────────────────────────────────
+		     Criterion 1: *"which apps' fleets are consistent?"*
+
+		     ⛔ THE `N BUILDS` CHIP IS GONE. (2026-08-30)
+		     > *"i don't like that fleet by build got simpler - it provides almost
+		     > no information now."*
+
+		     It was right. The cell had been reduced to a `2 BUILDS` chip over an
+		     11px caption, which is a QUANTITY with no verdict attached: two
+		     builds across three environments is completely normal mid-promotion
+		     and identical in ink to two builds where one of them is three weeks
+		     stale. The reader had to do the comparison the column existed to do.
+
+		     WHAT REPLACES IT USES TWO CHANNELS AND NO LEGEND.
+
+		       · A GLYPH FOR CONSISTENCY. `CodeMergeSolid` when every deployed
+		         environment is on one build, `CodeBranchSolid` when they are
+		         split, `PauseSolid` when nothing has deployed. Merge and branch
+		         are LITERAL — they are what the fact looks like — so unlike the
+		         four rejected strip forms there is nothing to teach. This is the
+		         charge that killed those: their encoding was PROXIMITY, which a
+		         reader has to be told about, and the footer legend that told them
+		         was deleted.
+		       · A COUNT FOR DISTANCE, at 14px, in the reference page's own
+		         `3/3 healthy` / `10/10 ready` idiom: `3/3 on head`. One x down
+		         fifty rows, tabular, so the column scans as a column.
+
+		     GREEN ONLY WHEN THE ANSWER IS YES — every deployed environment on
+		     head. Otherwise neutral gray, because being behind is *"the normal
+		     state of a promotion pipeline"* and may not borrow an adverse hue.
+		     ZERO new colour values: the one product green and the muted gray.
+
+		     The caption carries what the mark cannot — the spread, and the
+		     states that have no distance (`pending`, `diverged`, `unknown`) —
+		     and never restates the mark. -->
+		<span class="apps-fleet flex min-w-0 flex-col gap-1">
+			<span class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
+				>Fleet</span
+			>
+			<span class="apps-mark flex min-w-0 items-center gap-1.5" title={app.fleetFull}>
+				{#if app.fleet.deployed === 0}
+					<PauseSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+					<span class="t-body text-gray-500 dark:text-gray-400">not deployed</span>
+				{:else if app.fullyOnHead}
+					<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
+					<span class="t-body font-medium text-green-700 tabular-nums dark:text-green-400"
+						>{app.fleet.onHead}/{app.fleet.deployed} on head</span
+					>
+				{:else}
+					{#if app.converged}
+						<CodeMergeSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+					{:else}
+						<CodeBranchSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+					{/if}
+					<span class="t-body font-medium text-gray-900 tabular-nums dark:text-white"
+						>{app.fleet.onHead}/{app.fleet.deployed} on head</span
+					>
+				{/if}
+			</span>
+			<span class="t-micro truncate text-gray-500 dark:text-gray-400" title={app.fleetFull}
+				>{app.fleetNote}</span
+			>
+		</span>
+
+		<!-- ── DEPLOYS · 7d ─────────────────────────────────────────────────
+		     Criterion 2. Below `SPARK_MIN` the count stands alone: a sparkline
+		     of empty buckets is a shrug drawn at the size of data. The
+		     last-deploy time lives here because volume and recency are one
+		     question — is this app churning or asleep. -->
+		<span class="apps-act flex min-w-0 flex-col gap-1">
+			<span class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
+				>Deploys · 7d</span
+			>
+			<!-- THE CHART SITS IN THE SAME 20px MARK LINE the fleet verdict and
+			     the lead figure do, and it HOLDS that height when there is no
+			     chart, so a row with a sparkline and a row without share a
+			     baseline at 390. -->
+			<span class="apps-mark flex items-center gap-1.5">
+				{#if app.deploys7d >= SPARK_MIN}
+					<DeployVolumeSparkline rollouts={app.rolloutsForSpark} days={SPARK_DAYS} />
+				{:else}
+					<span class="t-body font-medium text-gray-900 tabular-nums dark:text-white"
+						>{app.deploys7d}</span
+					>
+				{/if}
+			</span>
+			<span class="t-micro truncate text-gray-500 dark:text-gray-400"
+				>{app.deploys7d} deploy{app.deploys7d === 1 ? '' : 's'}{#if app.mostRecentTs}{' · '}<span
+						title={formatDate(app.mostRecentTs)}
+						>{formatTimeAgoCompact(app.mostRecentTs, $now)} ago</span
+					>{/if}</span
+			>
+		</span>
+
+		<!-- ── LEAD ─────────────────────────────────────────────────────────
+		     Criterion 3. Median MEASURED time from the first environment to the
+		     first production region. An em-dash when no build has been observed
+		     making the whole trip inside the retained history — never an
+		     estimate.
+
+		     THE CLOCK IS NOT DECORATION. This column and `Deploys · 7d` both
+		     print a bare number in the same 20px band; the glyph is what tells
+		     them apart at a glance once the inline labels drop away at desktop
+		     width. -->
+		<span class="apps-lead flex min-w-0 flex-col gap-1">
+			<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400">Lead</span>
+			{#if app.lead}
+				<span
+					class="apps-mark flex items-center gap-1.5"
+					title="Median of {app.lead.samples} build{app.lead.samples === 1
+						? ''
+						: 's'} observed travelling {app.lead.fromLabel} → {app.lead.toLabel}"
+				>
+					<ClockSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+					<span class="t-body font-medium text-gray-900 tabular-nums dark:text-white"
+						>{compactSpan(app.lead.medianMs)}</span
+					>
+				</span>
+				<span class="t-micro truncate text-gray-500 dark:text-gray-400"
+					>{app.lead.fromLabel} → {app.lead.toLabel}</span
+				>
+			{:else}
+				<span
+					class="apps-mark flex items-center gap-1.5"
+					title="No build has been observed travelling the whole chain inside this app’s retained deploy history"
+				>
+					<ClockSolid class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+					<span class="t-body text-gray-500 dark:text-gray-400">—</span>
+				</span>
+				<span class="t-micro truncate text-gray-500 dark:text-gray-400">not observed</span>
+			{/if}
+		</span>
+
+		<!-- THE ROW IS A LINK AND SAYS SO. Every list on rollout detail that
+		     drills through carries this chevron (`Show 8 ready resources ›`,
+		     the resource rows); `/apps` was the one list in the product whose
+		     rows were navigable with nothing on them to say it. -->
+		<span class="apps-chev flex items-center justify-end">
+			<ChevronRightOutline class="h-4 w-4 text-gray-300 dark:text-gray-600" />
+		</span>
+	</a>
+{/snippet}
 
 <style>
 	/* THE PANEL IS ITS OWN CONTAINER. Every breakpoint below is a container
@@ -1026,6 +1380,14 @@
 		align-items: start;
 		column-gap: 12px;
 		row-gap: 12px;
+	}
+
+	/* THE CHEVRON IS DESKTOP-ONLY. At 390 the whole card is the tap target and
+	   a 16px glyph in the corner of a three-row stack has nothing to point at;
+	   the affordance it buys on a table row is bought by the card itself
+	   here. */
+	.apps-chev {
+		display: none;
 	}
 
 	/* THE DESCRIPTION IS NOT A PHONE FACT. `status.title` is free text beside
@@ -1104,11 +1466,21 @@
 	   everything else fixed. */
 	@container (min-width: 720px) {
 		.apps-row {
-			grid-template-columns: minmax(0, 1fr) 164px 128px 76px;
-			grid-template-areas: 'id fleet act lead';
+			/* Five fixed tracks now: the 20px chevron is the fifth. Every
+			   non-flexible track is a FIXED width — `auto` was tried and
+			   reverted product-wide, because each row is its own grid and an
+			   intrinsic track sizes per row, so the columns stop lining up
+			   down the list. One flexible track, everything else fixed. */
+			grid-template-columns: minmax(0, 1fr) 164px 128px 76px 20px;
+			grid-template-areas: 'id fleet act lead chev';
 			align-items: center;
 			column-gap: 16px;
 			row-gap: 0;
+		}
+
+		.apps-chev {
+			display: flex;
+			grid-area: chev;
 		}
 
 		.apps-row--head {

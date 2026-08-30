@@ -158,6 +158,8 @@
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import Card from '$lib/components/Card.svelte';
+	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import { Button } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
@@ -165,7 +167,15 @@
 		EditOutline,
 		ReplyOutline,
 		ArrowRightOutline,
-		SearchOutline
+		SearchOutline,
+		ExclamationCircleSolid,
+		ClockSolid,
+		PauseSolid,
+		CheckCircleSolid,
+		ChartMixedOutline,
+		ArrowUpRightFromSquareOutline,
+		CodeBranchSolid,
+		GridSolid
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization } from '../../../types';
 	import type { ManagedResourceStatus } from '../../../types/managed-resource';
@@ -422,7 +432,11 @@
 	);
 	const podQueryKey = $derived(
 		podTargets
-			.map((t) => (t.refs === null ? `${t.key}:?` : `${t.key}:${t.cluster}:${t.refs.map((r) => `${r.ns}/${r.name}`).join(',')}`))
+			.map((t) =>
+				t.refs === null
+					? `${t.key}:?`
+					: `${t.key}:${t.cluster}:${t.refs.map((r) => `${r.ns}/${r.name}`).join(',')}`
+			)
 			.join('|')
 	);
 	const podsQuery = createQuery(() => ({
@@ -520,7 +534,31 @@
 				stuckSpan: stuck && span !== null ? compactMs(span) : null,
 				diverged,
 				held: !!c.rollout.spec?.wantedVersion,
-				adverse: status === 'Failed' || block.blocked || stuck !== null || diverged,
+				// ⛔ `block.blocked` IS NOT ADVERSE. (2026-08-30)
+				//
+				// A live UX critique of the running product: *"`NEEDS A DECISION —
+				// 3 items` offers no decisions — every card gives only `Investigate`
+				// and `View on GitHub`. One of the three genuinely IS a decision (a
+				// manual-approval gate) and is rendered identically to the two that
+				// are not."* This predicate is why. Every gate-blocked environment
+				// was `adverse`, `adverse` renders the BROKEN branch, and the broken
+				// branch's whole action row is `Investigate` + `View on GitHub` —
+				// two links, on a column headed `Needs a decision`.
+				//
+				// A gate-blocked environment is not broken. Its deploy succeeded, it
+				// is serving, and the only thing that has not happened is the NEXT
+				// promotion. What it is depends entirely on WHICH KIND of gate, and
+				// `promotionBlock` already draws that line structurally: an
+				// `awaitingApproval` gate published an allow-list and nothing is on
+				// it — only a person moves that, so it is a DECISION — while a
+				// `notPassing` gate is a schedule window or a health check, which
+				// clears itself and is therefore not a decision at all. Both were
+				// being filed under "broken" and offered the same two links.
+				//
+				// Adverse now means what the word means: the deploy failed, a state
+				// has lasted past its detector, or the build is off every release
+				// line.
+				adverse: status === 'Failed' || stuck !== null || diverged,
 				prod: hasEnvironmentBinding && isProdTier(c.envName),
 				pods: typeof podsByEnv[key] === 'number' ? podsByEnv[key] : null,
 				origin: originClause(c)
@@ -561,7 +599,20 @@
 	//
 	// A BROKEN region is never folded either: it has its own cause, its own
 	// span and its own next step.
-	type TaskKind = 'adverse' | 'held' | 'promote';
+	// FIVE KINDS, AND THE SPLIT IS BY WHO HAS TO ACT.
+	//
+	//   adverse  something is broken           → Investigate / Rollback
+	//   held     someone pinned it             → Change Version   (a person did this)
+	//   approve  a gate refuses every build    → Deploy           (a person must decide)
+	//   promote  a build is ready to move      → Promote          (a person may decide)
+	//   waiting  a schedule or health gate     → nothing          (it clears itself)
+	//
+	// The first four are DECISIONS and share one column. `waiting` is not a
+	// decision and does not belong under a header that says it is; it gets its
+	// own card, with no action, because offering a control for something that
+	// needs no action is how the column ended up offering `Investigate` five
+	// times.
+	type TaskKind = 'adverse' | 'held' | 'approve' | 'promote' | 'waiting';
 	type Task = {
 		id: string;
 		kind: TaskKind;
@@ -719,6 +770,45 @@
 			});
 		}
 
+		// ── gate-blocked: a DECISION or a WAIT, never both ───────────────
+		//
+		// Runs AFTER the pinned loop, and that order is the fix for a reported
+		// defect: *"while prod was pinned, that panel blamed `HELD BY
+		// hello-world-manual-approval`; the actual cause was the PIN, which the
+		// page never mentions."* A pin refuses every candidate, so a pinned
+		// environment is ALSO gate-blocked and both descriptions are true — but
+		// only one is the cause, and it is the one a person chose. `f.held`
+		// claims the environment first and the gate never gets to speak for it.
+		for (const f of envFacts) {
+			if (f.adverse || f.held) continue;
+			if (!f.block.blocked) continue;
+			const approval = f.block.awaitingApprovalGates.length > 0;
+			const queue = waitingBuildsFor(f);
+			const head = queue[0] ?? null;
+			out.push({
+				id: `${approval ? 'approve' : 'waiting'}:${f.key}`,
+				kind: approval ? 'approve' : 'waiting',
+				members: [f],
+				lead: f,
+				label: f.label,
+				gate: gateMark(f),
+				pinned: null,
+				upstream: upstreamOf(f)?.title ?? null,
+				waiting: queue,
+				// THE DECISION IS A SPECIFIC BUILD, and it is the newest WAITING
+				// one — `newestDeployableCandidate` returns null here by
+				// definition, because no candidate is deployable while the gate
+				// refuses them all. Deploying past a refusing gate is a control
+				// the product already offers on rollout detail's own
+				// `Available Version Upgrades` list; this is the same act with
+				// the same modal, moved to where the decision is stated.
+				promoteVersion: approval ? (head?.version ?? null) : null,
+				promoteTag: approval ? (head?.tag ?? null) : null,
+				pods: f.pods,
+				sinceMs: sinceMsOf(f)
+			});
+		}
+
 		// ── promotable, folded by DECISION ───────────────────────────────
 		const buckets = new Map<string, EnvFacts[]>();
 		for (const f of envFacts) {
@@ -762,12 +852,14 @@
 					? 0
 					: t.lead.stuck
 						? 1
-						: t.lead.block.blocked
-							? 2
-							: 3
+						: 2
 				: t.kind === 'held'
-					? 4
-					: 5;
+					? 3
+					: t.kind === 'approve'
+						? 4
+						: t.kind === 'promote'
+							? 5
+							: 6;
 		return out.sort((a, b) => grade(a) - grade(b) || b.lead.rank - a.lead.rank);
 	});
 
@@ -814,8 +906,18 @@
 		return { state: null, source: by };
 	}
 
+	/**
+	 * THE DECISION COLUMN HOLDS DECISIONS. `waiting` is filtered out here and
+	 * rendered in its own card below — a schedule window is a fact about the
+	 * clock, and a column that counts it as an "item" is overstating what is
+	 * being asked of the reader by exactly the number of self-clearing gates
+	 * the app happens to have.
+	 */
+	const decisions = $derived(tasks.filter((t) => t.kind !== 'waiting'));
+	const waitingItems = $derived(tasks.filter((t) => t.kind === 'waiting'));
+
 	/** Header count for the act column. */
-	const taskCount = $derived(tasks.length);
+	const taskCount = $derived(decisions.length);
 
 	// ── OBJECT 2 · THE STATE COLUMN ──────────────────────────────────────
 	//
@@ -961,6 +1063,18 @@
 		return `${onNewest}/${deployed.length} on newest`;
 	});
 
+	/**
+	 * EVERY DEPLOYED ENVIRONMENT IS ON THE NEWEST BUILD — the predicate that
+	 * lets the card's rollup go GREEN, and nothing weaker. This is the same
+	 * rule `/apps` now applies to its status circle after a live critique
+	 * caught it printing a green tick beside *"PROD is 14 builds behind"*: the
+	 * product's strongest all-clear may only be spent on an actual all-clear.
+	 */
+	const stateOnNewest = $derived.by<boolean>(() => {
+		const deployed = envFacts.filter((f) => f.version);
+		return deployed.length > 0 && deployed.every((f) => f.rank === 0);
+	});
+
 	// ── OBJECT 3 · EXPOSURE ──────────────────────────────────────────────
 	type Segment = { version: string; pods: number; percent: number; newest: boolean };
 	const exposure = $derived.by<{
@@ -1098,6 +1212,97 @@
 	/** Which folded tasks have their extra targets revealed. */
 	let expanded = $state<Record<string, boolean>>({});
 	const TARGETS_SHOWN = 4;
+	// ── THE PAGE'S ONE BLOCKING FACT ─────────────────────────────────────────
+	//
+	// `COMPOSITION-GRAMMAR.md` §4, and the object the human named as the good
+	// example when they rejected the gray row band: a FILLED banner with a 40px
+	// circular icon, a bold headline and a second line carrying the concrete
+	// consequence. This page had no such object — its heading line printed the
+	// app name and a deploy count, and the reason nothing had promoted in three
+	// weeks was three cards down in 11px gray.
+	//
+	// ⛔ THE CAUSE ORDER IS THE SAME AS THE TASK ORDER, AND FOR THE SAME
+	// REASON. A pin outranks a gate: a gate holds the next promotion, a pin
+	// refuses all of them, so while `spec.wantedVersion` is set no gate is the
+	// cause even though every gate is also blocking. This is the exact defect
+	// reported against this page — *"while prod was pinned, that panel blamed
+	// `HELD BY hello-world-manual-approval`; the actual cause was the pin, which
+	// the page never mentions."*
+	type PageBlocker = {
+		severity: 'error' | 'warning' | 'pinned' | 'info';
+		icon: typeof ExclamationCircleSolid;
+		title: string;
+		message: string;
+		footnote?: string;
+		pulse: boolean;
+	};
+
+	const pageBlocker = $derived.by<PageBlocker | null>(() => {
+		const nb = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+		const failed = envFacts.find((f) => f.status === 'Failed');
+		if (failed) {
+			return {
+				severity: 'error',
+				icon: ExclamationCircleSolid,
+				title: `${failed.title.toUpperCase()}’s last deploy failed`,
+				message: `Nothing promotes past ${failed.title.toUpperCase()} until a deploy succeeds.`,
+				pulse: true
+			};
+		}
+
+		const pinned = envFacts.find((f) => f.held);
+		if (pinned) {
+			return {
+				severity: 'pinned',
+				icon: PauseSolid,
+				title: `${pinned.title.toUpperCase()} is pinned`,
+				message: `Held at ${pinned.cell.rollout.spec?.wantedVersion ?? pinned.version}. ${nb(
+					pinned.block.candidateCount,
+					'newer build'
+				)} available, and none will deploy until the pin is cleared.`,
+				footnote: 'The gates on this environment are blocking too, but the pin is the cause.',
+				pulse: false
+			};
+		}
+
+		const stuck = envFacts.find((f) => f.stuck);
+		if (stuck) {
+			return {
+				severity: 'warning',
+				icon: ExclamationCircleSolid,
+				title: `${stuck.title.toUpperCase()} is stuck`,
+				message: stuck.stuckSpan
+					? `Unchanged for ${stuck.stuckSpan} and nothing is holding it on purpose.`
+					: 'Unchanged long enough that it will not clear on its own.',
+				pulse: true
+			};
+		}
+
+		// The deepest approval-gated environment. Ranked, never `find`: `cells`
+		// is in promotion order, so the first hit is DEV — the least
+		// consequential place in the pipeline to be blocked.
+		const gated = envFacts
+			.filter((f) => f.block.blocked && f.block.awaitingApprovalGates.length > 0)
+			.sort((a, b) => b.rank - a.rank)[0];
+		if (gated) {
+			return {
+				severity: 'warning',
+				icon: ExclamationCircleSolid,
+				title: `${gated.title.toUpperCase()} is waiting on an approval`,
+				message: `${nb(
+					gated.block.candidateCount,
+					'build'
+				)} ready and none approved. Nothing promotes into ${gated.title.toUpperCase()} until ${gated.block.awaitingApprovalGates.join(
+					', '
+				)} allows one.`,
+				footnote: 'This will not clear on its own.',
+				pulse: true
+			};
+		}
+
+		return null;
+	});
 </script>
 
 <svelte:head>
@@ -1207,6 +1412,28 @@
 			</div>
 		</section>
 
+		<!-- ═══ THE PAGE'S ONE BLOCKING FACT ════════════════════════════════
+		     The same `AlertPanel` rollout detail renders its schedule gate and
+		     its version pin in — 40px circular icon, bold headline, the concrete
+		     consequence on the second line. `COMPOSITION-GRAMMAR.md` §4 names
+		     this as what *"attention pulled by design, not text"* looks like,
+		     and it is the object the human pointed at when they rejected the
+		     gray row band as *"feels like a bug"*.
+
+		     ONE. The SET of things needing a person is the `Needs a decision`
+		     card below; this states the single worst fact and its CAUSE. -->
+		{#if pageBlocker}
+			<AlertPanel
+				severity={pageBlocker.severity}
+				icon={pageBlocker.icon}
+				title={pageBlocker.title}
+				message={pageBlocker.message}
+				footnote={pageBlocker.footnote}
+				pulse={pageBlocker.pulse}
+				class="mb-6"
+			/>
+		{/if}
+
 		<!-- ═══ ACT | STATE ═════════════════════════════════════════════════
 		     The study's `minmax(0,1fr) 340px`, collapsing to one column below
 		     860px. The breakpoint is a CONTAINER query, not a viewport one:
@@ -1219,39 +1446,43 @@
 		     history back under the tasks. -->
 		<div class="ab-wrap">
 			<div class="ab-grid">
-				<!-- ── ACT ────────────────────────────────────────────────── -->
-				<section
-					class="ab-act overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-				>
-					{@render columnHead(
-						'Needs a decision',
-						`${taskCount} item${taskCount === 1 ? '' : 's'}`,
-						taskCount > 0 ? 'bg-red-700 dark:bg-red-400' : 'bg-gray-500 dark:bg-gray-400',
-						null
-					)}
-
-					{#if tasks.length === 0}
-						<!-- The calm sentence. A quiet column is what a healthy app
+				<!-- ── ACT ──────────────────────────────────────────────────
+				     THE WRAPPER OWNS THE GRID AREA, not the `Card`. Svelte's
+				     scoped CSS is compiled per component, so `.ab-act` passed
+				     through a child's `class` prop would land on an element that
+				     never carries this component's scoping hash and the grid
+				     area would silently not apply. -->
+				<div class="ab-act flex flex-col gap-4">
+					<Card
+						icon={ExclamationCircleSolid}
+						iconClass={taskCount > 0
+							? 'text-amber-500 dark:text-amber-400'
+							: 'text-gray-400 dark:text-gray-500'}
+						title="Needs a decision"
+						verdict="{taskCount} item{taskCount === 1 ? '' : 's'}"
+						verdictTone={taskCount > 0 ? 'adverse' : 'neutral'}
+						padded={false}
+					>
+						{#if tasks.length === 0}
+							<!-- The calm sentence. A quiet column is what a healthy app
 						     looks like, and it is the shape this direction is FOR. -->
-						<!-- ONE line, Direction B's own words. The second line — *"What
+							<!-- ONE line, Direction B's own words. The second line — *"What
 						     each environment is running is in the state column"* — was
 						     wayfinding for a column that is 24px to its right, has its
 						     own header reading `State`, and is the only other thing on
 						     the screen. -->
-						<div class="px-4 py-4">
-							<p class="t-dense text-gray-700 dark:text-gray-300">
-								Nothing here needs you.
-							</p>
-						</div>
-					{:else}
-						<ul class="divide-y divide-gray-200 dark:divide-gray-700">
-							{#each tasks as t, i (t.id)}
-								{@const f = t.lead}
-								{@const broken = t.kind === 'adverse'}
-								{@const foot = footNote(t)}
-								{@const circled = broken && f.status !== 'Succeeded'}
-								<li>
-									<!-- THE TINTED GROUND is the study's one use of a status
+							<div class="px-4 py-4">
+								<p class="t-dense text-gray-700 dark:text-gray-300">Nothing here needs you.</p>
+							</div>
+						{:else}
+							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+								{#each decisions as t, i (t.id)}
+									{@const f = t.lead}
+									{@const broken = t.kind === 'adverse'}
+									{@const foot = footNote(t)}
+									{@const circled = broken && f.status !== 'Succeeded'}
+									<li>
+										<!-- THE TINTED GROUND is the study's one use of a status
 									     background, and it is on a TASK, not on a card. It is a
 									     FILL, not an edge stripe, which is what the enforced
 									     rule bans. Only the broken grade wears it: a promotion
@@ -1311,7 +1542,7 @@
 									     Top and bottom the tint meets the `divide-y` seam; at
 									     the ends of the list the panel's `overflow-hidden`
 									     clips it into the 12px corner. -->
-									<!-- ⛔ THE BROKEN TASK IS A RECESS NOW, AND IN DARK IT IS THE
+										<!-- ⛔ THE BROKEN TASK IS A RECESS NOW, AND IN DARK IT IS THE
 									     PAGE SHOWING THROUGH THE CARD (2026-08-27).
 
 									     The human's instruction has a positive half: *"design
@@ -1356,16 +1587,45 @@
 									     so at equal padding it was also the SHORTEST row, and
 									     density was arguing against the ground. 8px of extra
 									     height makes the recess a band rather than a stripe. -->
-									<div
-										class="tk px-4 {broken ? 'py-4' : 'py-3'} {t.waiting.length === 0
-											? 'tk--nobody'
-											: ''} {circled ? 'tk--circle' : ''} {broken
-											? 'tk--broken bg-gray-100 dark:bg-gray-700/60'
-											: ''}"
-									>
-										<!-- IDENTITY — the gap slot leads. A number for a
+										<!-- ⛔ THE GRAY RECESS IS GONE. (2026-08-30)
+									     > *"i don't like that you're highlighting a stuck row
+									     > like this… it feels like a bug. is this what you
+									     > implemented when i said there should be a better way
+									     > to mark something as needing attention rather than
+									     > just a badge? there are many examples on the rest of
+									     > the page that are much better."*
+
+									     The measurement above is right — no CHROMATIC field is
+									     affordable at 70,000px² — and the conclusion drawn from
+									     it was wrong. Having proved that hue is unaffordable it
+									     reached for the only channel left, LIGHTNESS, which is
+									     the channel a browser spends on `:disabled`, on a
+									     loading skeleton and on a dimmed row. A gray band on a
+									     white list does not read as *look here*; it reads as
+									     *this one is not working*, which is the sentence the
+									     human wrote.
+
+									     WHAT MARKS ATTENTION INSTEAD is the thing the human
+									     named as the good example: a FILLED BANNER at the top of
+									     the page for the blocking fact, and a TITLED CARD around
+									     the set. Both are objects with headers and rollups, both
+									     already exist in the product, and neither can be
+									     mistaken for a rendering fault. Inside the card the rows
+									     are identical — the moment one row can be styled
+									     differently from its neighbour, this comes back under a
+									     new name.
+
+									     `py-4` on a broken task survives: it carries the least
+									     content (no build ledger, one button) and at equal
+									     padding it was the shortest row on the page. -->
+										<div
+											class="tk px-4 {broken ? 'py-4' : 'py-3'} {t.waiting.length === 0
+												? 'tk--nobody'
+												: ''} {circled ? 'tk--circle' : ''} {broken ? 'tk--broken' : ''}"
+										>
+											<!-- IDENTITY — the gap slot leads. A number for a
 										     promotable environment, `!` for a broken one. -->
-										<!-- THE GAP SLOT IS ITS OWN GRID COLUMN, not a flex item.
+											<!-- THE GAP SLOT IS ITS OWN GRID COLUMN, not a flex item.
 										     As a flex item it wrapped: the cluster beside it is
 										     wider than a 390px row, so the row broke and left a
 										     24px `−4` alone on a line of its own. A two-column
@@ -1380,27 +1640,39 @@
 										     to the CHIP band and nothing else — and above 620px
 										     the sentence returns to the same line, so the dense
 										     desktop row is unchanged. -->
-										<div class="tk-id">
-											{#if broken}
-												<span
-													class="tk-glyph t-display-id text-red-700 dark:text-red-400"
-													aria-hidden="true">!</span
-												>
-											{:else if f.rank > 0}
-												<span
-													class="tk-glyph t-display-id text-red-700 dark:text-red-400"
-													title="{f.rank} build{f.rank === 1 ? '' : 's'} behind the newest"
-													>−{f.rank}</span
-												>
-											{:else}
-												<span class="tk-glyph t-display-id text-gray-500 dark:text-gray-400"
-													>·</span
-												>
-											{/if}
+											<div class="tk-id">
+												{#if broken}
+													<span
+														class="tk-glyph t-display-id text-red-700 dark:text-red-400"
+														aria-hidden="true">!</span
+													>
+												{:else if f.rank > 0}
+													<!-- ⛔ NOT RED. (2026-08-30) This was `red-700` at
+												     24px — the single largest chromatic mark on the
+												     page — printed on every environment that is
+												     merely behind. From a live UX critique: *"`−N`
+												     chips render RED across the product, so normal
+												     pipeline drift reads as failure."* It is the
+												     same defect as `Chip`'s `rank` role and takes
+												     the same fix and the same argument: *"drift is
+												     the normal state of a promotion pipeline; the
+												     only adverse state is stuck"*, so a distance
+												     may not wear the failure hue. Red is left to
+												     the `!`, which means something broke. -->
+													<span
+														class="tk-glyph t-display-id text-gray-500 dark:text-gray-400"
+														title="{f.rank} build{f.rank === 1 ? '' : 's'} behind the newest"
+														>−{f.rank}</span
+													>
+												{:else}
+													<span class="tk-glyph t-display-id text-gray-500 dark:text-gray-400"
+														>·</span
+													>
+												{/if}
 
-											<span class="tk-chips">
-												{#if circled}
-													<!-- The status circle earns its place here and
+												<span class="tk-chips">
+													{#if circled}
+														<!-- The status circle earns its place here and
 													     nowhere else on the page: when the DEPLOY is
 													     what is wrong, the status IS the subject.
 													     Full colour — red failed, YELLOW baking,
@@ -1413,32 +1685,33 @@
 													     tick beside a red `!` is two marks arguing
 													     about the same row. Mark the deviation, not
 													     the norm. -->
-													<span
-														class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-															f.status
-														)}"
-														title="{f.title} — {dotFor(f.status).word}"
-													>
-														<BakeStatusIcon bakeStatus={f.status} size="medium" />
-														<span class="sr-only">{dotFor(f.status).word}</span>
-													</span>
-												{/if}
-												<Chip
-													role="env"
-													theme={f.cell.theme}
-													label={t.label}
-													title={t.members.map((m) => m.title).join(' · ')}
-													wide class="min-w-0 shrink-0"
-												/>
-												{#if t.members.length > 1}
+														<span
+															class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+																f.status
+															)}"
+															title="{f.title} — {dotFor(f.status).word}"
+														>
+															<BakeStatusIcon bakeStatus={f.status} size="medium" />
+															<span class="sr-only">{dotFor(f.status).word}</span>
+														</span>
+													{/if}
 													<Chip
-														role="count"
-														label="×{t.members.length}"
+														role="env"
+														theme={f.cell.theme}
+														label={t.label}
 														title={t.members.map((m) => m.title).join(' · ')}
+														wide
+														class="min-w-0 shrink-0"
 													/>
-												{/if}
-												{#if broken && f.status === 'Failed'}
-													<!-- `failing` IS THE WORD THE RED DOT CANNOT SAY —
+													{#if t.members.length > 1}
+														<Chip
+															role="count"
+															label="×{t.members.length}"
+															title={t.members.map((m) => m.title).join(' · ')}
+														/>
+													{/if}
+													{#if broken && f.status === 'Failed'}
+														<!-- `failing` IS THE WORD THE RED DOT CANNOT SAY —
 													     `Chip`'s own words, and the role exists for
 													     exactly this substitution. Deleting the
 													     `Deploy failed` sentence left the task with a
@@ -1453,61 +1726,61 @@
 													     not a duplicate: it carries the HUE that tells
 													     failed from baking from deploying, and
 													     `/apps` already ships this exact pair. -->
-													<Chip
-														role="failing"
-														label="failed"
-														title="{f.title}'s last deploy failed"
-													/>
-												{/if}
-												{#if f.stuck}
-													<Chip
-														role="alarm"
-														label="stuck"
-														value={f.stuckSpan}
-														valueTitle={stuckTitle(f.stuck)}
-														title={stuckTitle(f.stuck)}
-													/>
-												{/if}
-												{#if f.diverged}
-													<Chip
-														role="diverged"
-														label="diverged"
-														title="Running a build that is on no environment's release list"
-													/>
-												{/if}
-												{#if t.pinned}
-													<!-- THE PIN IS A MARK, NOT `Pinned to v1.2.3`. The
+														<Chip
+															role="failing"
+															label="failed"
+															title="{f.title}'s last deploy failed"
+														/>
+													{/if}
+													{#if f.stuck}
+														<Chip
+															role="alarm"
+															label="stuck"
+															value={f.stuckSpan}
+															valueTitle={stuckTitle(f.stuck)}
+															title={stuckTitle(f.stuck)}
+														/>
+													{/if}
+													{#if f.diverged}
+														<Chip
+															role="diverged"
+															label="diverged"
+															title="Running a build that is on no environment's release list"
+														/>
+													{/if}
+													{#if t.pinned}
+														<!-- THE PIN IS A MARK, NOT `Pinned to v1.2.3`. The
 													     product's own pin badge, the same one
 													     `/envs/[name]` puts on a pinned row, with the
 													     version in its title and the `Change Version`
 													     button naming the way out. -->
-													<PinBadge version={t.pinned} size="xs" />
-												{/if}
-												{#if t.gate}
-													<!-- THE GATE'S NAME — the one fact on a blocked task
+														<PinBadge version={t.pinned} size="xs" />
+													{/if}
+													{#if t.gate}
+														<!-- THE GATE'S NAME — the one fact on a blocked task
 													     that no mark can carry, so it BECOMES a mark: the
 													     neutral `[label][value]` badge every other page
 													     already uses. Gray, because a gate's name is an
 													     identity; the adverse verdict is on the `stuck`
 													     chip beside it. -->
-													<Chip
-														role="unranked"
-														label={t.gate.word}
-														value={t.gate.names}
-														title="{f.title} is {t.gate.word} {t.gate.names}"
-														class="min-w-0"
-													/>
+														<Chip
+															role="unranked"
+															label={t.gate.word}
+															value={t.gate.names}
+															title="{f.title} is {t.gate.word} {t.gate.names}"
+															class="min-w-0"
+														/>
+													{/if}
+												</span>
+
+												{#if t.upstream}
+													<span class="tk-reason t-code-sm text-gray-500 dark:text-gray-400"
+														>behind {t.upstream}</span
+													>
 												{/if}
-											</span>
+											</div>
 
-											{#if t.upstream}
-												<span class="tk-reason t-code-sm text-gray-500 dark:text-gray-400"
-													>behind {t.upstream}</span
-												>
-											{/if}
-										</div>
-
-										<!-- WHAT IS WAITING — the commits that have not shipped.
+											<!-- WHAT IS WAITING — the commits that have not shipped.
 										     A person deciding to promote is deciding about the
 										     changes, not about the number.
 
@@ -1519,25 +1792,25 @@
 										     component owns the truncation so its `+N more` can
 										     expand in place instead of sitting inert under three
 										     links. -->
-										{#if t.waiting.length > 0}
-											<div class="tk-why min-w-0">
-												<WaitingBuilds
-													namespace={f.namespace}
-													name={f.cell.rollout.metadata?.name ?? ''}
-													cluster={cellCluster(f.cell)}
-													base={f.revision}
-													head={t.waiting[0]?.revision ?? null}
-													builds={t.waiting.map((b) => ({
-														version: b.version,
-														revision: b.revision,
-														createdMs: b.createdMs
-													}))}
-													{commitsAvailable}
-												/>
-											</div>
-										{/if}
+											{#if t.waiting.length > 0}
+												<div class="tk-why min-w-0">
+													<WaitingBuilds
+														namespace={f.namespace}
+														name={f.cell.rollout.metadata?.name ?? ''}
+														cluster={cellCluster(f.cell)}
+														base={f.revision}
+														head={t.waiting[0]?.revision ?? null}
+														builds={t.waiting.map((b) => ({
+															version: b.version,
+															revision: b.revision,
+															createdMs: b.createdMs
+														}))}
+														{commitsAvailable}
+													/>
+												</div>
+											{/if}
 
-										<!-- THE ACTION, IN THE GAP. Every button on this page is
+											<!-- THE ACTION, IN THE GAP. Every button on this page is
 										     in this column, and each one names exactly one
 										     rollout — a folded task renders one target per
 										     member rather than a single control whose subject is
@@ -1549,95 +1822,154 @@
 										     than Flowbite `color="dark"`, which resolves to
 										     `bg-gray-800` in BOTH themes and would make the
 										     primary the quietest control on a gray-800 card. -->
-										<div class="tk-act flex shrink-0 flex-wrap items-center gap-2">
-											{#if t.kind === 'promote'}
-												{@const shown = expanded[t.id]
-													? t.members
-													: t.members.slice(0, TARGETS_SHOWN)}
-												{#each shown as m, mi (m.key)}
-													<Button
-														size="xs"
-														color="light"
-														class="rounded {i === 0 && mi === 0
-															? '!border-gray-900 !bg-gray-900 !text-white hover:!bg-gray-700 dark:!border-white dark:!bg-white dark:!text-gray-900 dark:hover:!bg-gray-200'
-															: ''}"
-														onclick={() => openPromote(m.cell, t.promoteTag, t.promoteVersion)}
-													>
-														<ArrowRightOutline class="me-2 h-4 w-4" />
-														{#if t.members.length === 1}
-															Promote {t.promoteVersion ?? ''}
-														{:else}
-															{m.label}
-														{/if}
-													</Button>
-												{/each}
-												{#if t.members.length > TARGETS_SHOWN && !expanded[t.id]}
+											<div class="tk-act flex shrink-0 flex-wrap items-center gap-2">
+												{#if t.kind === 'promote'}
+													{@const shown = expanded[t.id]
+														? t.members
+														: t.members.slice(0, TARGETS_SHOWN)}
+													{#each shown as m, mi (m.key)}
+														<!-- 14px, `8px 16px`, 8px radius — the product's
+													     button, `app.css`'s `.btn`. It was a Flowbite
+													     `size="xs"` with a hand-rolled black override,
+													     i.e. 12px text and a fourth button geometry;
+													     `COMPOSITION-GRAMMAR.md` §5 measures the
+													     reference page's controls at 14px and notes
+													     that is *"larger than the 10-12px the
+													     redesigned pages use for nearly everything"*. -->
+														<button
+															type="button"
+															class="btn {i === 0 && mi === 0 ? 'btn-primary' : 'btn-secondary'}"
+															onclick={() => openPromote(m.cell, t.promoteTag, t.promoteVersion)}
+														>
+															<ArrowRightOutline />
+															{#if t.members.length === 1}
+																Promote {t.promoteVersion ?? ''}
+															{:else}
+																{m.label}
+															{/if}
+														</button>
+													{/each}
+													{#if t.members.length > TARGETS_SHOWN && !expanded[t.id]}
+														<button
+															type="button"
+															class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+															onclick={() => (expanded = { ...expanded, [t.id]: true })}
+															>+{t.members.length - TARGETS_SHOWN} more</button
+														>
+													{/if}
+												{:else if t.kind === 'approve'}
+													<!-- ⭐ THE DECISION THIS COLUMN IS NAMED AFTER.
+												     (2026-08-30)
+												     > *"`NEEDS A DECISION — 3 items` offers no
+												     > decisions — every card gives only
+												     > `Investigate` and `View on GitHub`. One of
+												     > the three genuinely is a decision (a
+												     > manual-approval gate) and is rendered
+												     > identically to the two that are not."*
+
+												     An approval gate has published an allow-list
+												     and nothing is on it. No amount of waiting
+												     changes that; a PERSON does. So the control is
+												     the act itself — deploy the newest waiting
+												     build past the gate — and it is FILLED,
+												     because it is the one primary action on the
+												     row and this is the row the page exists for.
+
+												     IT IS NOT AN INVENTED CONTROL. Rollout detail
+												     already puts a filled `Deploy` on every
+												     `Blocked` candidate in its own
+												     `Available Version Upgrades` list, through
+												     this same modal. The act was always reachable;
+												     it was two clicks away on another page while
+												     the column that named the decision offered a
+												     search icon. -->
+													<!-- ONE FILLED PRIMARY PER PAGE, and it is the
+												     FIRST decision. That rule survives the
+												     composition pass intact — it was always about
+												     ACTIONS, and a column where every row shouts
+												     has no first row. -->
+													{#if t.promoteTag}
+														<button
+															type="button"
+															class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+															onclick={() => openPromote(f.cell, t.promoteTag, t.promoteVersion)}
+														>
+															<ArrowRightOutline />
+															Deploy {t.promoteVersion ?? ''}
+														</button>
+													{/if}
+													<!-- THE OTHER TWO WAYS OUT, both secondary: pin a
+												     different build, or go read the gate. -->
 													<button
 														type="button"
-														class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-														onclick={() => (expanded = { ...expanded, [t.id]: true })}
-														>+{t.members.length - TARGETS_SHOWN} more</button
+														class="btn btn-secondary"
+														onclick={() => openChangeVersion(f.cell)}
 													>
-												{/if}
-											{:else if t.kind === 'held'}
-												<Button
-													size="xs"
-													color="light"
-													class="rounded {i === 0
-														? '!border-gray-900 !bg-gray-900 !text-white hover:!bg-gray-700 dark:!border-white dark:!bg-white dark:!text-gray-900 dark:hover:!bg-gray-200'
-														: ''}"
-													onclick={() => openChangeVersion(f.cell)}
-												>
-													<EditOutline class="me-2 h-4 w-4" />
-													Change Version
-												</Button>
-											{:else}
-												<Button
-													size="xs"
-													color="light"
-													href={rolloutHref(f.cell)}
-													class="rounded {i === 0
-														? '!border-gray-900 !bg-gray-900 !text-white hover:!bg-gray-700 dark:!border-white dark:!bg-white dark:!text-gray-900 dark:hover:!bg-gray-200'
-														: ''}"
-												>
-													<SearchOutline class="me-2 h-4 w-4" />
-													Investigate
-												</Button>
-												<!-- ROLLBACK IS OFFERED ONLY WHERE THE BUILD ITSELF
+														<EditOutline />
+														Change Version
+													</button>
+													<a href={rolloutHref(f.cell)} class="btn btn-secondary">
+														<SearchOutline />
+														Investigate
+													</a>
+												{:else if t.kind === 'held'}
+													<button
+														type="button"
+														class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+														onclick={() => openChangeVersion(f.cell)}
+													>
+														<EditOutline />
+														Change Version
+													</button>
+												{:else}
+													<a
+														href={rolloutHref(f.cell)}
+														class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+													>
+														<SearchOutline />
+														Investigate
+													</a>
+													<!-- ROLLBACK IS OFFERED ONLY WHERE THE BUILD ITSELF
 												     IS THE SUSPECT — a failed deploy, or one wedged
 												     mid-bake or mid-deploy. An environment held by
 												     an approval gate deployed perfectly well and is
 												     waiting on the NEXT build; putting `Rollback`
 												     on it offers to undo something that is not
 												     wrong. -->
-												{#if previousTag(f.cell) && (f.status === 'Failed' || f.stuck?.kind === 'baking' || f.stuck?.kind === 'deploying')}
-													<Button
-														size="xs"
-														color="light"
-														class="rounded"
-														onclick={() => openRollback(f.cell)}
-													>
-														<ReplyOutline class="me-2 h-4 w-4" />
-														Rollback
-													</Button>
-												{/if}
-												{#if f.cell.sourceURL && f.version}
-													<!-- Only on a broken task: the current build is
+													{#if previousTag(f.cell) && (f.status === 'Failed' || f.stuck?.kind === 'baking' || f.stuck?.kind === 'deploying')}
+														<button
+															type="button"
+															class="btn btn-secondary"
+															onclick={() => openRollback(f.cell)}
+														>
+															<ReplyOutline />
+															Rollback
+														</button>
+													{/if}
+													{#if f.cell.sourceURL && f.version}
+														<!-- Only on a broken task: the current build is
 													     the suspect there. On a promotable task the
 													     builds worth opening are the WAITING ones,
 													     and every one of them is already a link. -->
-													<GitHubViewButton
-														sourceUrl={f.cell.sourceURL}
-														version={f.version}
-														size="xs"
-														color="light"
-														class="rounded"
-													/>
+														<!-- `size="sm"`, not `xs`, and NO `class="rounded"`.
+													     Flowbite's `sm` is 14px / `8px 16px` /
+													     `rounded-lg` — the same three numbers `.btn`
+													     is built from — so this sits in the row as a
+													     peer instead of as a 12px 4px-radius outlier.
+													     The COMPONENT is untouched on purpose: its
+													     other call site is under `/rollouts/…/history`,
+													     which is part of the reference page. -->
+														<GitHubViewButton
+															sourceUrl={f.cell.sourceURL}
+															version={f.version}
+															size="sm"
+															color="light"
+														/>
+													{/if}
 												{/if}
-											{/if}
-										</div>
+											</div>
 
-										<!-- THE FOOT NOTE, CUT TO ONE CLAUSE. See `footNote`:
+											<!-- THE FOOT NOTE, CUT TO ONE CLAUSE. See `footNote`:
 										     the sha, the pod count and the `automatic` trigger are
 										     all gone, and a promotable task has no foot line at
 										     all. What is left on a broken task is STALENESS — the
@@ -1648,31 +1980,37 @@
 										     thing. The whole `<p>` disappears when neither half
 										     has anything, so a promotable task loses the line
 										     rather than reserving an empty one. -->
-										{#if foot.state || broken || foot.source}
-											<p
-												class="tk-foot t-code-sm flex min-w-0 flex-wrap items-baseline gap-x-4 text-gray-500 dark:text-gray-400"
-											>
-												{#if foot.state}
-													<span class="min-w-0 truncate">{foot.state}</span>
-												{/if}
-												{#if broken}
-													<a
-														href={rolloutHref(f.cell)}
-														class="tk-foot-src truncate hover:text-gray-700 hover:underline dark:hover:text-gray-300"
-														title="Open the {f.title} rollout">{f.namespace}</a
-													>
-												{:else if foot.source}
-													<span class="tk-foot-src truncate">{foot.source}</span>
-												{/if}
-											</p>
-										{/if}
-									</div>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-					{#if githubDisconnected && tasks.some((t) => t.waiting.length > 0)}
-						<!-- Panel-level, exactly ONCE — never one prompt per task, and
+											{#if foot.state || broken || foot.source}
+												<p
+													class="tk-foot t-code-sm flex min-w-0 flex-wrap items-baseline gap-x-4 text-gray-500 dark:text-gray-400"
+												>
+													{#if foot.state}
+														<span class="min-w-0 truncate">{foot.state}</span>
+													{/if}
+													{#if broken}
+														<!-- A LINK THAT LEAVES THE PAGE SAYS SO. Every
+														     drill-through link on the reference page
+														     carries this glyph; this one was bare text
+														     that happened to underline on hover. -->
+														<a
+															href={rolloutHref(f.cell)}
+															class="tk-foot-src inline-flex min-w-0 items-center gap-1 truncate hover:text-gray-700 hover:underline dark:hover:text-gray-300"
+															title="Open the {f.title} rollout"
+															><span class="truncate">{f.namespace}</span
+															><ArrowUpRightFromSquareOutline class="h-3 w-3 shrink-0" /></a
+														>
+													{:else if foot.source}
+														<span class="tk-foot-src truncate">{foot.source}</span>
+													{/if}
+												</p>
+											{/if}
+										</div>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+						{#if githubDisconnected && tasks.some((t) => t.waiting.length > 0)}
+							<!-- Panel-level, exactly ONCE — never one prompt per task, and
 						     never at all when there is no build list for it to fill.
 						     An unavailable integration does not get a row of its own.
 
@@ -1682,47 +2020,110 @@
 						     rationale, 48 characters of it, under a ledger whose
 						     middle column is visibly empty. The empty column IS the
 						     explanation; the button only has to name what it does. -->
-						<button
-							type="button"
-							class="t-micro w-full border-t border-gray-200 px-4 py-2 text-left text-gray-500 hover:text-gray-700 hover:underline dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-							onclick={() => connectGithub()}
-							title="Connect GitHub to see what each waiting build changes"
+							<button
+								type="button"
+								class="t-micro w-full border-t border-gray-200 px-4 py-2 text-left text-gray-500 hover:text-gray-700 hover:underline dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+								onclick={() => connectGithub()}
+								title="Connect GitHub to see what each waiting build changes"
+							>
+								Connect GitHub
+							</button>
+						{/if}
+					</Card>
+
+					<!-- ── WAITING — NOT A DECISION, AND NOW NOT IN THE COLUMN
+					     THAT CLAIMS IT IS. (2026-08-30)
+
+					     A gate that published no allow-list and is simply not
+					     passing right now is a schedule window or a health
+					     check: it clears on its own, nobody has to do anything,
+					     and it was being counted as an "item" under a header
+					     reading `Needs a decision` and given the same
+					     `Investigate` link as a failed deploy. That is how the
+					     column came to offer no decisions.
+
+					     Its own card, its own rollup, and DELIBERATELY NO
+					     ACTION BUTTON. Offering a control for something that
+					     needs no action is the defect, not the cure. -->
+					{#if waitingItems.length > 0}
+						<Card
+							icon={ClockSolid}
+							title="Waiting"
+							verdict="{waitingItems.length} environment{waitingItems.length === 1 ? '' : 's'}"
+							verdictTitle="Held by a schedule or health gate. These clear on their own."
+							padded={false}
 						>
-							Connect GitHub
-						</button>
+							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+								{#each waitingItems as t (t.id)}
+									{@const f = t.lead}
+									<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3">
+										<Chip role="env" theme={f.cell.theme} label={f.label} wide />
+										{#if t.gate}
+											<Chip
+												role="unranked"
+												label={t.gate.word}
+												value={t.gate.names}
+												title="{f.title} is {t.gate.word} {t.gate.names}"
+												class="min-w-0"
+											/>
+										{/if}
+										<span class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
+											{t.waiting.length} build{t.waiting.length === 1 ? '' : 's'} queued
+										</span>
+										<!-- Same glyph the decision card's foot link carries: a
+										     link that leaves the page says so. -->
+										<a
+											href={rolloutHref(f.cell)}
+											class="t-micro ms-auto inline-flex shrink-0 items-center gap-1 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+											title="Open the {f.title} rollout"
+											>{f.namespace}<ArrowUpRightFromSquareOutline class="h-3 w-3 shrink-0" /></a
+										>
+									</li>
+								{/each}
+							</ul>
+						</Card>
 					{/if}
-				</section>
+				</div>
 
 				<!-- ── STATE ──────────────────────────────────────────────── -->
-				<aside
-					class="ab-state overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-				>
-					{@render columnHead('State', stateCount, null, null)}
+				<div class="ab-state">
+					<Card
+						icon={GridSolid}
+						title="State"
+						verdict={stateCount}
+						verdictTone={stateOnNewest ? 'good' : 'neutral'}
+						verdictTitle="Environments running the newest build"
+						padded={false}
+					>
+						<!-- 1 · THE STAGE CHAIN -->
+						<div class="px-4 py-3">
+							<StageChain nodes={chainNodes} hops={chainHops} />
+						</div>
 
-					<!-- 1 · THE STAGE CHAIN -->
-					<div class="px-4 py-3">
-						<StageChain nodes={chainNodes} hops={chainHops} />
-					</div>
-
-					<!-- 2 · THE PRODUCTION FLEET — a rule, a verdict in words,
+						<!-- 2 · THE PRODUCTION FLEET — a rule, a verdict in words,
 					     then the nodes with no rails. Regions are a SET. -->
-					{#if isFanOut}
-						{#if fleetHop}
-							<div class="ab-fleethop px-4">
-								<span class="ab-rail {fleetHop.waiting > 0 ? 'ab-rail--gap' : ''}"></span>
-								<span class="t-code-sm truncate text-gray-500 dark:text-gray-400"
-									>{fleetHop.label}</span
-								>
-							</div>
-						{/if}
-						<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-							<div class="mb-2 flex items-center gap-2">
-								<h3 class="t-label text-gray-500 dark:text-gray-400">
-									Production · {fleetNodes.length} regions
-								</h3>
-								{#if fleetVerdict}
-									<span class="ms-auto">
-<!-- ALWAYS `count`, NEVER `rank` (2026-08-27, colour audit §10).
+						{#if isFanOut}
+							{#if fleetHop}
+								<div class="ab-fleethop px-4">
+									<span class="ab-rail {fleetHop.waiting > 0 ? 'ab-rail--gap' : ''}"></span>
+									<span class="t-code-sm truncate text-gray-500 dark:text-gray-400"
+										>{fleetHop.label}</span
+									>
+								</div>
+							{/if}
+							<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+								<div class="mb-2 flex items-center gap-2">
+									<!-- A SUB-HEADER INSIDE A CARD STILL GETS AN ICON. The
+								     reference page carries 115 of them and every titled
+								     region has one; the rejected pages carried four in
+								     total. -->
+									<CodeBranchSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+									<h3 class="t-label text-gray-500 dark:text-gray-400">
+										Production · {fleetNodes.length} regions
+									</h3>
+									{#if fleetVerdict}
+										<span class="ms-auto">
+											<!-- ALWAYS `count`, NEVER `rank` (2026-08-27, colour audit §10).
 										     This read `role={fleetVerdict.agree ? 'count' : 'rank'}`,
 										     so `3 BUILDS` printed in `rank`'s adverse red whenever
 										     the production fleet spanned more than one build.
@@ -1734,43 +2135,64 @@
 										     mid-promotion is the normal state, not an adverse
 										     one. What IS adverse about a region is already on
 										     that region's own node. -->
-										<Chip
-											role="count"
-											label={fleetVerdict.label}
-											title={fleetVerdict.agree
-												? 'Every production region runs the same build'
-												: 'Production regions are split across builds'}
-										/>
-									</span>
-								{/if}
+											<Chip
+												role="count"
+												label={fleetVerdict.label}
+												title={fleetVerdict.agree
+													? 'Every production region runs the same build'
+													: 'Production regions are split across builds'}
+											/>
+										</span>
+									{/if}
+								</div>
+								<StageChain nodes={fleetNodes} />
 							</div>
-							<StageChain nodes={fleetNodes} />
+						{/if}
+
+						<!-- 3 · EXPOSURE -->
+						<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+							<div class="mb-2 flex items-center gap-2">
+								<ChartMixedOutline class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+								<h3 class="t-label text-gray-500 dark:text-gray-400">Exposure</h3>
+							</div>
+							<ExposureBar
+								segments={exposure.segments}
+								totalPods={exposure.totalPods}
+								newestPercent={exposure.newestPercent}
+								unknownEnvironments={exposure.unknown}
+								loading={podsQuery.isLoading}
+							/>
 						</div>
-					{/if}
+					</Card>
+				</div>
 
-					<!-- 3 · EXPOSURE -->
-					<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-						<h3 class="t-label mb-2 text-gray-500 dark:text-gray-400">Exposure</h3>
-						<ExposureBar
-							segments={exposure.segments}
-							totalPods={exposure.totalPods}
-							newestPercent={exposure.newestPercent}
-							unknownEnvironments={exposure.unknown}
-							loading={podsQuery.isLoading}
+				<!-- ── HISTORY — criterion 1. What HAPPENED, in order. ───────
+				     A TITLED CARD like every other region on the page.
+				     `ActivityRail` drew its own `t-label` caption above its own
+				     bordered box, which is the exact "caption floating over a
+				     box" shape `COMPOSITION-GRAMMAR.md` names as what the
+				     rejected pages are made of. `chrome={false}` drops that so
+				     the two do not nest; the prop defaults TRUE so
+				     `/envs/[name]`, the other call site, is untouched. -->
+				<div class="ab-hist min-w-0">
+					<Card icon={ClockSolid} title="Recent activity">
+						{#snippet rollup()}
+							<a
+								href="/activity"
+								class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+								>view all ›</a
+							>
+						{/snippet}
+						<ActivityRail
+							rollouts={cells.map((c) => c.rollout)}
+							{environments}
+							limit={10}
+							{localClusterName}
+							showAppName={false}
+							chrome={false}
 						/>
-					</div>
-				</aside>
-
-				<!-- ── HISTORY — criterion 1. What HAPPENED, in order. ─────── -->
-				<section class="ab-hist min-w-0">
-					<ActivityRail
-						rollouts={cells.map((c) => c.rollout)}
-						{environments}
-						limit={10}
-						{localClusterName}
-						showAppName={false}
-					/>
-				</section>
+					</Card>
+				</div>
 			</div>
 		</div>
 
