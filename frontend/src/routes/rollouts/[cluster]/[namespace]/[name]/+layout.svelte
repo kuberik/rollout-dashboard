@@ -5,7 +5,7 @@
 	import {
 		ObjectsColumnSolid,
 		ClockArrowOutline,
-		LayersSolid,
+		ShareNodesSolid,
 		TerminalOutline
 	} from 'flowbite-svelte-icons';
 	import { type Snippet } from 'svelte';
@@ -60,16 +60,48 @@
 		environment?.status?.environmentInfos && environment.status.environmentInfos.length > 0
 	);
 
+	/**
+	 * ⭐ A `RolloutDependency` IS AN EDGE AND IT HAS TWO ENDS. THIS USED TO
+	 * MATCH ONE.
+	 *
+	 * The predicate was `rolloutRef.name === name` — the CONSUMER end only —
+	 * which is the same bug one grade up from the one above it: a rollout that
+	 * PROVIDES a contract and consumes none has no `rolloutRef` pointing at it
+	 * anywhere, so if it also had no `Environment` binding the tab did not
+	 * appear at all. `hello-api-app` is exactly that rollout on the live
+	 * cluster, and it is the one whose owner most needs to know somebody is
+	 * gated on it before they roll back.
+	 *
+	 * `providerRef.namespace` is resolved server-side, but it is defaulted here
+	 * too: the CRD lets it be empty, in which case it means the dependency's
+	 * own namespace.
+	 */
 	const hasDependencies = $derived(
 		(listQuery.data?.rolloutDependencies?.items ?? []).some(
-			(d) => d.spec?.rolloutRef?.name === name && d.metadata?.namespace === namespace
+			(d) =>
+				(d.spec?.rolloutRef?.name === name && d.metadata?.namespace === namespace) ||
+				(d.spec?.providerRef?.name === name &&
+					(d.spec?.providerRef?.namespace || d.metadata?.namespace) === namespace)
 		)
 	);
 
 	const tabs = $derived([
 		{ label: 'Overview', href: base, icon: ObjectsColumnSolid, show: true },
 		{ label: 'History', href: `${base}/history`, icon: ClockArrowOutline, show: true },
-		{ label: 'Dependencies', href: `${base}/dependencies`, icon: LayersSolid, show: hasEnvironment || hasDependencies },
+		// ⛔ THE ICON IS A GRAPH, NOT A STACK. `LayersSolid` was chosen when this
+		// tab was called `Environments` — stacked layers read as stacked
+		// environments — and it survived the rename. For a relation BETWEEN two
+		// services it says nothing. `ShareNodesSolid` is three nodes joined by
+		// two edges, i.e. the smallest possible dependency graph, and it is
+		// already the product's mark for this exact relation: `BlockReason`'s
+		// contract branch and the dependencies page's own banner both draw it.
+		// Zero new vocabulary.
+		{
+			label: 'Dependencies',
+			href: `${base}/dependencies`,
+			icon: ShareNodesSolid,
+			show: hasEnvironment || hasDependencies
+		},
 		{ label: 'Logs', href: `${base}/logs`, icon: TerminalOutline, show: true }
 	]);
 

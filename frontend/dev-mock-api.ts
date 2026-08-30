@@ -1108,7 +1108,10 @@ const mkSaRollout = () => ({
 		availableReleases: SA_RELEASES,
 		history: [
 			{
-				version: { tag: 's-10', version: '1.10.0-10' },
+				// `requires` IS THE FLOOR THE PROVIDER PAGE READS. It rides on the
+				// release a consumer HAS DEPLOYED, exactly as the live hub serves it
+				// on `hello-frontend-app` (`{ api: '^1.66.0' }`).
+				version: { tag: 's-10', version: '1.10.0-10', requires: { ledger: '>=5.0.0' } },
 				timestamp: hcAgo(2400),
 				bakeStatus: 'Succeeded'
 			}
@@ -1149,6 +1152,200 @@ const mockSaDependency = {
 	}
 };
 
+
+// -------------------------------------------------------------------------
+// FIXTURE D - THE PROVIDER SIDE (added 2026-08-30).
+//
+// WHY THIS EXISTS. Every fixture above is written from the CONSUMER end, and
+// so was every selector in the app: `spec.rolloutRef`. Nothing anywhere
+// selected `spec.providerRef`, so the rollouts that other services are
+// standing on had no fixture, no page and no tab. The live hub has exactly
+// one such rollout (`hello-api-app`) and it is the QUIET case - one consumer,
+// satisfied. These three are the shapes it lacks:
+//
+//   · `ledger-core`   BLOCKING ONLY. Two DIFFERENT consumer services
+//                     (`standalone-api`, `payments-svc`) are held on it, so
+//                     the card has to group by service and the banner has to
+//                     take its plural branch. It consumes nothing, and it is
+//                     bound to NO `Environment`, which is precisely the
+//                     rollout the old `show:` predicate hid the tab from.
+//   · `payments-svc` BOTH ENDS AT ONCE. Held by `ledger-core` (so the
+//                     blocked-by card and the amber banner render) AND
+//                     holding `checkout-api` in five namespaces plus
+//                     `orders-api` in one (so the blocking card renders
+//                     beneath it). It is the fixture for the rule that the
+//                     two banners never stack.
+//   · `orders-api`    A consumer with NO `Environment`, so its place renders
+//                     as a NAMESPACE handle rather than a tier chip - the
+//                     branch that refuses to invent an environment.
+//
+// The causal chain is real and is the point: `ledger-core` is on 5.1.0, so
+// `payments-svc` cannot ship `3.0.0`, so `checkout-api` cannot ship `b-45`.
+// Every number below is consistent with the gates already written above -
+// `pay-241`/`2.4.1` and `led-510`/`5.1.0` are the values fixtures B and C
+// already publish as `providedVersion`.
+//
+// "A rollout that is NEITHER" needs no fixture: it is `hello-world-app`, the
+// mock's main response, and it is the norm this page must stay silent on.
+// -------------------------------------------------------------------------
+
+// ⛔ THE PROVIDER IS `payments-svc`, NOT `payments-core`, AND THAT IS A
+// MEASUREMENT. `MR_APP` above is an unrelated multi-region fixture app already
+// called `payments-core`, and `groupRolloutsByApp` keys on the rollout NAME, so
+// adding a second service with that name made ONE app out of two: the provider
+// page's promotion chain rendered the multi-region app's nine environments and
+// the contract card counted `in 1 of 10 environments`. Two unrelated services
+// sharing a name is a fixture mistake, not a page defect - renamed rather than
+// worked around.
+const PLATFORM_NS = 'platform-prod';
+
+const PAY_RELEASES = [
+	{ tag: 'pay-239', version: '2.3.9', created: '2026-07-20T09:00:00Z' },
+	{ tag: 'pay-241', version: '2.4.1', created: '2026-08-02T09:00:00Z' },
+	{ tag: 'pay-300', version: '3.0.0', created: '2026-08-26T09:00:00Z' }
+];
+
+const LEDGER_RELEASES = [
+	{ tag: 'led-510', version: '5.1.0', created: '2026-07-15T09:00:00Z' },
+	{ tag: 'led-600', version: '6.0.0', created: '2026-08-28T09:00:00Z' }
+];
+
+const ORD_RELEASES = [
+	{ tag: 'o-12', version: '1.12.0-12', created: '2026-08-05T09:00:00Z' },
+	{ tag: 'o-13', version: '1.13.0-13', created: '2026-08-27T09:00:00Z' }
+];
+
+const mkPlainRollout = (args: {
+	name: string;
+	namespace: string;
+	releases: { tag: string; version: string; created: string }[];
+	current: string;
+	requires?: Record<string, string>;
+}) => ({
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'Rollout',
+	metadata: { name: args.name, namespace: args.namespace },
+	spec: {
+		releasesImagePolicy: `${args.namespace}/${args.name}`,
+		versionHistoryLimit: 10,
+		minBakeTime: '5m'
+	},
+	status: {
+		wantedVersion: args.current,
+		currentVersion: args.current,
+		availableReleases: args.releases,
+		history: [
+			{
+				id: 1,
+				version: {
+					...args.releases.find((r) => r.tag === args.current)!,
+					...(args.requires ? { requires: args.requires } : {})
+				},
+				timestamp: hcAgo(300),
+				bakeStatus: 'Succeeded'
+			}
+		]
+	}
+});
+
+const mkPlainDependency = (args: {
+	name: string;
+	namespace: string;
+	consumer: string;
+	contract: string;
+	provider: string;
+	providerNamespace: string;
+	providedVersion: string;
+	providedTag: string;
+	admitted: string[];
+	blocked: { tag: string; requiredVersion?: string; reason?: string }[];
+}) => ({
+	apiVersion: 'kuberik.com/v1alpha1',
+	kind: 'RolloutDependency',
+	metadata: {
+		name: args.name,
+		namespace: args.namespace,
+		annotations: { 'rollout-dashboard.kuberik.com/source-cluster': 'prod' }
+	},
+	spec: {
+		contract: args.contract,
+		providerRef: { name: args.provider, namespace: args.providerNamespace },
+		rolloutRef: { name: args.consumer }
+	},
+	status: {
+		providedVersion: args.providedVersion,
+		providedTag: args.providedTag,
+		admittedVersions: args.admitted,
+		blockedReleases: args.blocked,
+		gateName: `dependency-${args.name}`,
+		conditions: [
+			{ type: 'Ready', status: 'True', reason: 'GateSynced', message: `Gate allows ${args.admitted.length} release(s)` },
+			{
+				type: 'Satisfied',
+				status: 'False',
+				reason: 'ReleasesBlocked',
+				message: `${args.blocked.length} release(s) waiting on contract "${args.contract}"`
+			}
+		]
+	}
+});
+
+const mockProviderRollouts = [
+	mkPlainRollout({
+		name: 'payments-svc',
+		namespace: PLATFORM_NS,
+		releases: PAY_RELEASES,
+		current: 'pay-241',
+		requires: { ledger: '>=5.0.0' }
+	}),
+	mkPlainRollout({
+		name: 'ledger-core',
+		namespace: PLATFORM_NS,
+		releases: LEDGER_RELEASES,
+		current: 'led-510'
+	}),
+	mkPlainRollout({
+		name: 'orders-api',
+		namespace: 'orders-prod',
+		releases: ORD_RELEASES,
+		current: 'o-12',
+		requires: { payments: '^2.0.0' }
+	})
+];
+
+const mockProviderDependencies = [
+	// `payments-svc` is HELD by `ledger-core`: 3.0.0 wants ledger ^6.0.0 and
+	// ledger-core has deployed 5.1.0. This is what makes `checkout-api`'s block
+	// upstream have a cause rather than being an isolated red row.
+	mkPlainDependency({
+		name: 'payments-svc-needs-ledger',
+		namespace: PLATFORM_NS,
+		consumer: 'payments-svc',
+		contract: 'ledger',
+		provider: 'ledger-core',
+		providerNamespace: PLATFORM_NS,
+		providedVersion: '5.1.0',
+		providedTag: 'led-510',
+		admitted: ['pay-239', 'pay-241'],
+		blocked: [{ tag: 'pay-300', requiredVersion: '^6.0.0', reason: 'ConstraintNotSatisfied' }]
+	}),
+	// A SECOND, DIFFERENT consumer service on `payments-svc`, in a namespace
+	// with no `Environment` - so the card groups by service and one group's
+	// place renders as a namespace handle.
+	mkPlainDependency({
+		name: 'orders-api-needs-payments',
+		namespace: 'orders-prod',
+		consumer: 'orders-api',
+		contract: 'payments',
+		provider: 'payments-svc',
+		providerNamespace: PLATFORM_NS,
+		providedVersion: '2.4.1',
+		providedTag: 'pay-241',
+		admitted: ['o-12'],
+		blocked: [{ tag: 'o-13', requiredVersion: '^3.0.0', reason: 'ConstraintNotSatisfied' }]
+	})
+];
+
 const mockDependencies = [
 	// FIXTURE A - the live shape, one gate per environment, all satisfied.
 	...DEP_ENVS.map(mkLiveDependency),
@@ -1164,7 +1361,7 @@ const mockDependencies = [
 		ckDep({
 			env,
 			contract: 'payments',
-			provider: 'payments-core',
+			provider: 'payments-svc',
 			providerNamespace: 'platform-prod',
 			providedVersion: '2.4.1',
 			providedTag: 'pay-241',
@@ -1184,7 +1381,7 @@ const mockDependencies = [
 		ckDep({
 			env,
 			contract: 'payments',
-			provider: 'payments-core',
+			provider: 'payments-svc',
 			providerNamespace: 'platform-prod',
 			providedVersion: '2.4.1',
 			providedTag: 'pay-241',
@@ -1223,15 +1420,37 @@ const mockDependencies = [
 		admitted: [],
 		blocked: [{ tag: 'b-46-rc1', requiredVersion: '>=1.0.0', reason: 'ProviderHasNoDeployedRelease' }],
 		satisfied: false
-	})
+	}),
+
+	// FIXTURE D - the two gates that give the PROVIDER side something to draw.
+	...mockProviderDependencies
 ];
 
 
-const mockDepRollouts = [...DEP_ENVS.map(mkDepRollout), ...CK_ENVS.map(mkCkRollout), mkSaRollout()];
+const mockDepRollouts = [
+	...DEP_ENVS.map(mkDepRollout),
+	...CK_ENVS.map(mkCkRollout),
+	mkSaRollout(),
+	...mockProviderRollouts
+];
 const mockDepEnvironments = [...DEP_ENVS.map(mkDepEnvironment), ...CK_ENVS.map(mkCkEnvironment)];
 
 /** Detail responses, keyed `namespace/name`, for the fixture apps. */
 const mockDepDetails: Record<string, unknown> = Object.fromEntries([
+	// FIXTURE D - the provider rollouts. NO `environment` key on any of them:
+	// they are bound to no Environment, which is the case the dependencies tab
+	// used to hide from entirely.
+	...mockProviderRollouts.map((r) => [
+		`${r.metadata.namespace}/${r.metadata.name}`,
+		{
+			rollout: r,
+			kustomizations: { items: [] },
+			ociRepositories: { items: [] },
+			rolloutGates: { items: [] },
+			kruiseRollout: null,
+			rolloutTests: { items: [] }
+		}
+	]),
 	[
 		`${SA_NS}/${SA_APP}`,
 		{

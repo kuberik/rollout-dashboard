@@ -15,6 +15,44 @@
 	 * holding `prod depends on staging` beside `frontend depends on api` would
 	 * put two different relations in one badge.
 	 *
+	 * ── ⭐ 2026-08-30 · THE EDGE HAS TWO ENDS AND THE PAGE ONLY HAD ONE ──
+	 *
+	 * From the human: *"We had a half previously when dependencies tab was
+	 * environments. So that we can see both ways. What it's blocking and what
+	 * it's blocked by."* Correct, and measurable: every selector in the product
+	 * matched `spec.rolloutRef` — the CONSUMER end — and NOTHING anywhere
+	 * matched `spec.providerRef`. So the tab could answer *"what am I waiting
+	 * on"* and could never answer *"who is waiting on me"*, and the rollout
+	 * where the second question is the whole point got an empty page:
+	 * `hello-api-app`, the provider `hello-frontend-app` is gated on in all
+	 * three environments, showed NOTHING, because it consumes nothing.
+	 *
+	 * ⛔ THE THIRD CARD IS NOT THE SECOND ONE MIRRORED, AND THE REASON IS
+	 * STRUCTURAL. `Waiting on other services` has N providers, each with its
+	 * own version, so its subject is THE OTHER SERVICE and the number beside it
+	 * is THEIRS. `Services waiting on this` has exactly ONE version and it is
+	 * OURS, which every gate pointing at this rollout reads the same — so the
+	 * subject is THAT NUMBER, stated once at the top, with the services
+	 * standing on it hanging beneath. Mirroring the layout would have printed
+	 * our own version once per consumer.
+	 *
+	 * The WEIGHTS differ too, which is the other half of the human's question.
+	 * Being blocked is a TASK — somebody must ship, and the card is a list of
+	 * those somebodies. Being a provider is a CONSEQUENCE: nothing asks the
+	 * reader to act until a consumer is genuinely held, and what the card
+	 * carries the rest of the time is THE FLOOR UNDER THIS ROLLOUT, read off
+	 * `requires` on a release the consumer HAS DEPLOYED
+	 * (`hello-frontend-app` runs `2.66.0-66`, which needs `api ^1.66.0`). That
+	 * is an observation about a running system, not a warning the UI invented,
+	 * and it is exactly what a person about to roll back needs.
+	 *
+	 * ⛔ AND THE NORM IS STILL NOT DRAWN. Most rollouts block nobody and are
+	 * blocked by nobody. NEITHER contract card renders unless a
+	 * `RolloutDependency` names this rollout on that end, so an ordinary
+	 * rollout sees exactly what it saw before — the chain, alone — and a
+	 * rollout with nothing on any axis does not get the tab at all. See the
+	 * empty-state comment in the markup.
+	 *
 	 * ── ⛔ THE PAGE WAS SAYING SOMETHING FALSE, AND THE FIX IS THE SOURCE ──
 	 *
 	 * From the human, on the live cluster: the DEV node of
@@ -98,6 +136,7 @@
 	import {
 		ServerSolid,
 		ShareNodesSolid,
+		CodeForkSolid,
 		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -113,17 +152,27 @@
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { groupRolloutsByApp } from '$lib/version-utils';
 	import type { Rollout, Environment, RolloutDependency } from '../../../../../../types';
-	import { dependencySourceCluster } from '../../../../../../types/rollout-dependency-types';
+	import {
+		dependencySourceCluster,
+		releaseMetadataUnresolved,
+		releaseRequires
+	} from '../../../../../../types/rollout-dependency-types';
 	import {
 		buildOrder,
 		chain,
 		contractBlocks,
+		currentEntry,
+		displayOfTag,
 		hopBetween,
+		providedContracts,
 		rankOfTag,
 		type ChainEnv,
+		type ConsumerState,
 		type ContractBlock,
+		type Dependent,
 		type EnvHistoryEntry,
 		type EnvInfo,
+		type ProvidedContract,
 		type Release
 	} from '$lib/view-models/dependencies';
 
@@ -442,7 +491,7 @@
 	 * payload is where they ride today; reading the detail payload too costs
 	 * one line and means this page keeps working if they ever arrive there.
 	 */
-	const deps = $derived.by<RolloutDependency[]>(() => {
+	const allDeps = $derived.by<RolloutDependency[]>(() => {
 		const fromList = listQuery.data?.rolloutDependencies?.items;
 		const fromDetail = (
 			rolloutQuery.data as { rolloutDependencies?: { items?: RolloutDependency[] } }
@@ -451,16 +500,25 @@
 		const seen = new Set<string>();
 		const out: RolloutDependency[] = [];
 		for (const d of all) {
-			// A dependency gates the Rollout named in `rolloutRef`, in its own
-			// namespace. Anything pointing at another rollout is not this page's.
-			if (d?.spec?.rolloutRef?.name !== name) continue;
-			const k = `${d.metadata?.namespace ?? ''}/${d.metadata?.name ?? ''}`;
-			if (seen.has(k)) continue;
+			const k = `${d?.metadata?.namespace ?? ''}/${d?.metadata?.name ?? ''}`;
+			if (!d?.spec || seen.has(k)) continue;
 			seen.add(k);
 			out.push(d);
 		}
 		return out;
 	});
+
+	/**
+	 * ⭐ THE TWO ENDS OF THE EDGE, SELECTED SEPARATELY.
+	 *
+	 * A `RolloutDependency` names a CONSUMER (`spec.rolloutRef`, always in the
+	 * dependency's own namespace) and a PROVIDER (`spec.providerRef`, which may
+	 * be anywhere). Until now only the first was ever selected, so the page
+	 * could answer "what am I waiting on" and could never answer "who is
+	 * waiting on me" — and the rollout for which the second question is the
+	 * whole point (a provider that consumes nothing) got an empty page.
+	 */
+	const deps = $derived(allDeps.filter((d) => d.spec?.rolloutRef?.name === name));
 
 	/** Namespace of every environment of this app, so a dependency can be placed. */
 	const envByNamespace = $derived.by<Map<string, string>>(() => {
@@ -511,9 +569,132 @@
 		return b.entries.filter((e) => e.providedVersion);
 	}
 
+	// ── AXIS 3 · WHAT THIS ROLLOUT IS HOLDING ───────────────────────────
+	//
+	// ⛔ SCOPED TO THIS ROLLOUT INSTANCE, WHICH IS THE OPPOSITE OF AXIS 2 AND
+	// IS DELIBERATE. The contract card folds this app's environments together
+	// because it is describing what the APP consumes. This card's subject is
+	// ONE NUMBER — the contract version THIS rollout has deployed — and the
+	// `hello-api-app` in `hello-dep-staging` is a different rollout serving a
+	// different number, with its own page. Folding its consumers in here would
+	// print one version for two, which is the `in hello-dep-prod` defect one
+	// axis over.
+
+	/** Every rollout the list can see, for resolving a consumer. */
+	const rolloutByKey = $derived.by<Map<string, Rollout>>(() => {
+		const m = new Map<string, Rollout>();
+		for (const r of listRollouts) {
+			const ns = r.metadata?.namespace ?? '';
+			const n = r.metadata?.name ?? '';
+			if (ns && n) m.set(`${ns}/${n}`, r);
+		}
+		return m;
+	});
+
+	/** The `Environment` bound to one rollout, so a consumer can wear its tier. */
+	const environmentByKey = $derived.by<Map<string, Environment>>(() => {
+		const m = new Map<string, Environment>();
+		for (const e of listEnvironments) {
+			const ns = e.metadata?.namespace ?? '';
+			const rn = e.spec?.rolloutRef?.name ?? '';
+			if (ns && rn) m.set(`${ns}/${rn}`, e);
+		}
+		return m;
+	});
+
+	/**
+	 * WHAT ONE CONSUMER IS RUNNING, AND WHAT THAT RELEASE ASKS OF US.
+	 *
+	 * `requires` is read off the release the consumer HAS DEPLOYED, which is
+	 * what makes the floor under this rollout an observation rather than a
+	 * warning the UI invented: on the live hub `hello-frontend-app` runs
+	 * `2.66.0-66`, whose `com.kuberik.rollout.requires.api` is `^1.66.0`, and
+	 * this rollout serves `1.66.0`.
+	 *
+	 * ⛔ NULL, NOT AN EMPTY STATE, WHEN THE ROLLOUT CANNOT BE SEEN. Returning
+	 * a zero-value here would let the card say "never deployed" about a
+	 * service this dashboard simply cannot reach — the exact class of claim
+	 * the chain was rebuilt to stop making.
+	 */
+	function consumerStateFor(ns: string, cname: string, contract: string): ConsumerState | null {
+		const r = rolloutByKey.get(`${ns}/${cname}`);
+		if (!r) return null;
+		const releases: Release[] = [];
+		for (const rel of r.status?.availableReleases ?? []) releases.push(rel as Release);
+		for (const h of r.status?.history ?? []) if (h.version) releases.push(h.version as Release);
+		const ord = buildOrder(releases);
+		const history = (r.status?.history ?? []) as unknown as EnvHistoryEntry[];
+		const cur = currentEntry({ environment: ns, history });
+		const tag = cur?.version?.tag ?? null;
+		const requires = releaseRequires(cur?.version)?.[contract] ?? null;
+		return {
+			order: ord,
+			currentTag: tag,
+			currentDisplay: tag ? displayOfTag(ord, tag) : null,
+			requires,
+			// A missing constraint and an UNREADABLE manifest are different
+			// facts, and only the second may be reported as one.
+			requiresUnresolved: !requires && releaseMetadataUnresolved(cur?.version),
+			neverDeployed: history.length === 0
+		};
+	}
+
+	const provided: ProvidedContract[] = $derived(
+		providedContracts({
+			deps: allDeps,
+			provider: name,
+			providerNamespace: namespace,
+			consumerState: consumerStateFor,
+			clusterOf: (d) => dependencySourceCluster(d) ?? null
+		})
+	);
+
+	/**
+	 * The generated `RolloutGate` this relation publishes. It is a HANDLE, not
+	 * an explanation — `BlockReason` dresses it as one — and it is the SAME
+	 * object the consumer's own page names, so the two ends of the edge quote
+	 * one identifier rather than two.
+	 */
+	function gateNameOf(d: Dependent): string | null {
+		return d.places[0]?.dep?.status?.gateName ?? null;
+	}
+
+	function consumerHref(d: Dependent): string | undefined {
+		const p = d.places[0];
+		if (!p) return undefined;
+		return rolloutPath(p.cluster || cluster, p.namespace, d.name, 'dependencies');
+	}
+
+	/**
+	 * The tier chip for one consumer instance, or null when it has no
+	 * `Environment` binding — in which case the page prints the NAMESPACE and
+	 * invents no tier, DESIGN.md's rule that a rollout with no `Environment`
+	 * must not be shown as having one.
+	 */
+	function placeTheme(ns: string, rn: string): EnvironmentTheme | null {
+		const env = environmentByKey.get(`${ns}/${rn}`);
+		if (!env?.spec?.environment) return null;
+		return getRolloutEnvironmentTheme(rolloutByKey.get(`${ns}/${rn}`) ?? null, env);
+	}
+
 	const hasChain = $derived(chainRows.length > 0);
 	const hasContracts = $derived(blocks.length > 0);
-	const twoColumns = $derived(hasChain && hasContracts);
+	const hasDependents = $derived(provided.length > 0);
+	const twoColumns = $derived(hasChain && (hasContracts || hasDependents));
+
+	/** Consumer services this rollout is currently holding, across contracts. */
+	const heldConsumers = $derived(
+		provided.flatMap((c) => c.dependents.filter((d) => d.adverse).map((d) => ({ c, d })))
+	);
+	/**
+	 * BOTH COUNTS ARE OVER DISTINCT SERVICES, NOT OVER ROWS. A consumer gated
+	 * on two contracts of this rollout is ONE service on both sides of the
+	 * fraction; counting rows would let the header print `2 of 1 held`.
+	 */
+	const dependentCount = $derived(
+		new Set(provided.flatMap((c) => c.dependents.map((d) => d.name))).size
+	);
+	const heldCount = $derived(new Set(heldConsumers.map(({ d }) => d.name)).size);
 
 	// ── THE PAGE'S ONE BLOCKING FACT ────────────────────────────────────
 	//
@@ -526,7 +707,7 @@
 	const heldTags = $derived(new Set(adverse.flatMap((b) => b.blocked.map((w) => w.tag))));
 	const heldProviders = $derived([...new Set(adverse.map((b) => b.providerName))]);
 
-	const banner = $derived.by(() => {
+	const blockedBanner = $derived.by(() => {
 		if (heldTags.size === 0) return null;
 		const n = heldTags.size;
 		const one = heldProviders.length === 1;
@@ -537,9 +718,62 @@
 				: `${heldProviders.length} other services have to move first. Nothing newer goes out here until they do.`,
 			footnote: `Waiting on ${adverse.map((b) => b.contract).join(', ')}`,
 			href: one ? providerHref(adverse[0]) : null,
-			provider: one ? heldProviders[0] : null
+			label: one ? `Open ${heldProviders[0]}` : null
 		};
 	});
+
+	/**
+	 * ⭐ THE SECOND BANNER, AND THE RULE THAT KEEPS THERE BEING ONE.
+	 *
+	 * When another service cannot deploy because THIS rollout has not shipped a
+	 * new enough contract, the stoppage is real, it does not clear itself, and
+	 * the person who can end it is reading this page. That is the same weight
+	 * the blocked-by banner carries and it gets the same object.
+	 *
+	 * ⛔ THEY NEVER STACK, and the blocked-by one wins. You cannot ship the
+	 * thing they are waiting for until you can move yourself, so the banner
+	 * that names YOUR stoppage is the one step that is available; the consumers
+	 * are still stated, in their own card, four rows down. Two amber fields on
+	 * one page would leave the page with no loudest object at all.
+	 */
+	const holdingBanner = $derived.by(() => {
+		if (heldConsumers.length === 0) return null;
+		const names = [...new Set(heldConsumers.map(({ d }) => d.name))];
+		const one = names.length === 1;
+		const contracts = [...new Set(heldConsumers.map(({ c }) => c.contract))];
+		// Keyed by SERVICE and tag: two different services can build the same
+		// tag string, and counting those as one version would understate it.
+		const versions = new Set(
+			heldConsumers.flatMap(({ d }) => d.holds.map((h) => `${d.name}/${h.tag}`))
+		).size;
+		const plural = versions === 1 ? '' : 's';
+		return {
+			title: one
+				? `${names[0]} can't deploy until this one ships`
+				: `${names.length} services can't deploy until this one ships`,
+			message: one
+				? `${versions} version${plural} of ${names[0]} need${plural ? '' : 's'} a newer ${contracts.join(', ')} than this rollout is serving.`
+				: `Between them, ${versions} version${plural} need a newer ${contracts.join(', ')} than this rollout is serving.`,
+			footnote: `Waiting on this: ${names.join(', ')}`,
+			href: one ? consumerHref(heldConsumers[0].d) : null,
+			label: one ? `Open ${names[0]}` : null
+		};
+	});
+
+	const banner = $derived(blockedBanner ?? holdingBanner);
+
+	/**
+	 * THE LEDE IS DERIVED, because the page genuinely answers a different
+	 * question in each of its shapes and a fixed sentence would promise a half
+	 * that is not there.
+	 */
+	const lede = $derived(
+		hasDependents
+			? hasContracts
+				? 'What has to ship before this app can move, and what cannot move until it does.'
+				: 'Other services can only run what this app has deployed.'
+			: 'What has to happen before a newer version of this app can go out.'
+	);
 </script>
 
 <svelte:head>
@@ -583,17 +817,30 @@
 						/>
 					{/if}
 				</div>
-				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-					What has to happen before a newer version of this app can go out.
-				</p>
+				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{lede}</p>
 			</div>
 
-			{#if !hasChain && !hasContracts}
+			{#if !hasChain && !hasContracts && !hasDependents}
+				<!-- ⛔ THE EMPTY STATE IS DELIBERATE AND IT IS ONE SENTENCE, NOT TWO
+				     EMPTY CARDS. Most rollouts block nobody and are blocked by
+				     nobody, and a page that draws a `Waiting on other services` card
+				     and a `Services waiting on this` card with nothing in
+				     either would be the norm drawn twice, at card scale, on almost
+				     every rollout in the product. Three components have been cut for
+				     less. Neither card renders at all unless a `RolloutDependency`
+				     names this rollout on that end.
+
+				     And this state is mostly UNREACHABLE by design: the tab's own
+				     `show:` predicate is `hasEnvironment || hasDependencies`, and
+				     `hasDependencies` now matches BOTH ends of the edge, so a
+				     rollout with nothing on any axis has no tab to land on. The
+				     sentence exists for the seconds before the list arrives and for
+				     a rollout whose gates were deleted while the page was open. -->
 				<div
 					class="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
 				>
-					Nothing else has to happen first. This rollout waits on no other service, and it is
-					not part of a promotion chain.
+					Nothing else has to happen first. This rollout waits on no other service, nothing
+					waits on it, and it is not part of a promotion chain.
 				</div>
 			{:else}
 				{#if banner}
@@ -609,12 +856,12 @@
 						footnote={banner.footnote}
 					>
 						{#snippet actions()}
-							{#if banner.href && banner.provider}
+							{#if banner.href && banner.label}
 								<NextStep
 									step="open"
 									href={banner.href}
-									label="Open {banner.provider}"
-									title="Open the {banner.provider} rollout"
+									label={banner.label}
+									title={banner.label}
 								/>
 							{/if}
 						{/snippet}
@@ -867,6 +1114,267 @@
 												/>
 											</div>
 										{/each}
+									</li>
+								{/each}
+							</ul>
+						</Card>
+					{/if}
+
+					{#if hasDependents}
+						<!-- ── AXIS 3 · WHAT THIS ROLLOUT IS HOLDING ───────────────
+						     ⛔ THIS IS NOT THE CONTRACT CARD MIRRORED, AND THE
+						     DIFFERENCE IS WHERE THE SUBJECT LIVES.
+
+						     The contract card has N providers, each with its own
+						     version, so its subject is THE OTHER SERVICE, once per
+						     row, and the number beside it is THEIRS. Here there is
+						     exactly ONE version and it is OURS — the release this
+						     rollout has deployed, which every gate pointing at it
+						     reads the same. So the subject is THAT NUMBER, stated
+						     once at the top, and the services standing on it hang
+						     beneath it. A second copy of the contract card's geometry
+						     would have printed our own version once per consumer.
+
+						     The weights differ too. Being blocked is a task: the card
+						     above is a list of things somebody must do. Being a
+						     provider is a CONSEQUENCE — nothing here asks the reader
+						     to act until a consumer is actually held, and what the
+						     card carries in the meantime is the floor under this
+						     rollout, read off a release that is genuinely deployed
+						     (`requires`), so a person about to change the version can
+						     see what is standing on the current one. -->
+						<Card
+							icon={CodeForkSolid}
+							title="Services waiting on this"
+							verdict={heldCount > 0
+								? `${heldCount} of ${dependentCount} held`
+								: `${dependentCount} service${dependentCount === 1 ? '' : 's'}`}
+							verdictTone={heldCount > 0 ? 'adverse' : 'neutral'}
+							verdictTitle={heldCount > 0
+								? 'Services with a version they cannot deploy until this rollout ships a newer contract'
+								: 'Services gated on the contract version this rollout has deployed'}
+							padded={false}
+							class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
+						>
+							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+								{#each provided as c (c.key)}
+									<li class="px-4 py-4">
+										<!-- THE SUBJECT LINE — OUR OWN NUMBER, ONCE. The word
+										     carries the verb and the joined badge carries the
+										     `[contract][version]` pair in the same form the
+										     contract card uses for a provider's, so a reader who
+										     has learned one has learned both. -->
+										<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
+											<!-- ⛔ `Serving` IS A 12px CAPTION, NOT A 14px HEADING, AND
+											     THAT IS THE HIERARCHY FIX. Measured on the live provider
+											     page at 1440: with the word at 14px/600 it matched the
+											     CONSUMER NAMES below it exactly, so the card had two
+											     peers and no lead, and the eye had nothing to scan. The
+											     names are what a reader is looking for — who is standing
+											     on me — so they keep 14/600 and are the only things in
+											     this body that have it. The premise keeps its WEIGHT in
+											     the chip, which is a bordered box and reads without
+											     borrowing type size. -->
+											<span class="text-xs text-gray-500 dark:text-gray-400">Serving</span>
+											{#if c.providedVersion && !c.providedVaries}
+												<Chip
+													role="count"
+													label={c.contract}
+													value={c.providedVersion}
+													wide
+													title="This rollout has deployed {c.contract} {c.providedVersion}"
+													valueTitle="The contract version every service below is gated on"
+													class="shrink-0"
+												/>
+											{:else}
+												<span class="t-code-sm text-gray-500 dark:text-gray-400"
+													>{c.contract}</span
+												>
+											{/if}
+										</div>
+
+										<!-- THE CONSEQUENCE, ONCE PER CONTRACT. It is what makes
+										     this card a warning rather than a task list, and it
+										     is definitionally true of a `RolloutDependency` — it
+										     names no cause it cannot evidence. -->
+										<p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+											{#if c.providedVaries}
+												<!-- The gates disagree about what they have read from
+												     this one rollout, so there is no single number and
+												     the page does not pick one. Each row prints its
+												     own below. -->
+												The gates have read different versions from this rollout.
+											{:else if c.providedTag}
+												From <span class="t-code-sm">{c.providedTag}</span> ·
+											{:else if !c.providedVersion}
+												<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
+												     `providedVersion` says the gate has read none; it
+												     does not say this rollout has deployed nothing. -->
+												No version of {c.contract} has been read from this rollout yet ·
+											{/if}
+											{#if !c.providedVaries}
+												what this serves decides which versions they can run
+											{/if}
+										</p>
+
+										<ul class="mt-4 space-y-4">
+											{#each c.dependents as d (d.key)}
+												{@const unresolved = d.places.some((p) => p.state?.requiresUnresolved)}
+												{@const nowhere = d.places.every((p) => p.state?.neverDeployed)}
+												<li class="min-w-0">
+													<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+														<a
+															href={consumerHref(d)}
+															class="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+															title="Open {d.name} and see this same relation from its side"
+														>
+															<span class="min-w-0 truncate">{d.name}</span>
+															<ArrowUpRightFromSquareOutline
+																class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
+																aria-hidden="true"
+															/>
+														</a>
+														<!-- WHERE IT RUNS. A consumer bound to an
+														     `Environment` wears its tier; one that is not
+														     wears its NAMESPACE as a handle, because a
+														     rollout with no Environment has no tier and
+														     inventing one is the defect DESIGN.md names.
+
+														     ⛔ THE PLACES ARE NAMED IN EXACTLY ONE ROW, AND
+														     IT IS THE ROW THAT KNOWS SOMETHING ABOUT THEM.
+														     Measured on the seven-environment fixture:
+														     `checkout-api` is gated in five namespaces on
+														     three different held builds, and printing the
+														     full set here as well as on each hold rendered
+														     THIRTEEN environment chips for ONE consumer,
+														     over three wrapped lines. The holds carry the
+														     places that DIFFER (`b-45` in three of them,
+														     `b-43` in the other two) — that distinction is
+														     the whole content — so when a consumer has
+														     holds this row states only HOW MANY, in the
+														     same right-aligned neutral count the contract
+														     card uses for its own asymmetry. A consumer
+														     with ONE place always names it: a count of one
+														     is not a fact, and it would leave the row with
+														     no location at all. -->
+														{#if d.places.length > 1 && d.holds.length > 0}
+															<span
+																class="ml-auto shrink-0 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+																title="Gated on this in {d.places
+																	.map((p) => p.namespace)
+																	.join(', ')}"
+															>
+																in {d.places.length} places
+															</span>
+														{:else}
+															{#each d.places as p (p.namespace)}
+															{@const th = placeTheme(p.namespace, d.name)}
+															{#if th}
+																<Chip
+																	role="env"
+																	theme={th}
+																	label={shortEnvLabel(th) || p.namespace}
+																	title="{d.name} in {p.namespace}"
+																	wide
+																/>
+															{:else}
+																	<span
+																		class="t-code-sm text-gray-500 dark:text-gray-400"
+																		title="{d.name} in {p.namespace}">{p.namespace}</span
+																	>
+																{/if}
+															{/each}
+														{/if}
+													</div>
+
+													<!-- ⭐ THE FLOOR UNDER THIS ROLLOUT, AS AN
+													     OBSERVATION. `requires` is read off the release
+													     the consumer HAS DEPLOYED, so this is a fact
+													     about a running system and not a warning the UI
+													     made up. It is printed VERBATIM: a bare version
+													     is an EXACT match in Masterminds semver.
+													     Everything here prints only when it has a
+													     witness — an unreachable consumer says so, an
+													     unreadable manifest says so, and neither is
+													     rendered as "it needs nothing". -->
+													<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+														{#if d.unobserved}
+															This dashboard cannot see {d.name} to say what it is running
+														{:else if d.runningVaries}
+															Each place runs its own version of {d.name}
+														{:else if d.running}
+															Running <span class="t-code-sm">{d.running}</span
+															>{#if d.requires && !d.requiresVaries}, which needs {c.contract}
+																<span class="t-code-sm">{d.requires}</span>{:else if d.requiresVaries}, and
+																its places ask different things of {c.contract}{:else if unresolved}, and
+																what it needs of {c.contract} could not be read{/if}
+														{:else if nowhere}
+															Has deployed nothing here yet
+														{/if}
+														{#if d.pastTags.length > 0}
+															<!-- Counted once, never drawn. These are held
+															     builds the consumer is already PAST — the gate
+															     working on candidates nobody will deploy. -->
+															· also holds {d.pastTags.length} older
+															{d.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying
+															to deploy
+														{/if}
+													</p>
+
+													<!-- THE ADVERSE CASE, AND THE ONLY THING IN THIS CARD
+													     THAT SPENDS AN ADVERSE COLOUR. Same mark, same
+													     sentence and same left rule as the contract card:
+													     one relation stated identically from both ends. -->
+													{#each d.holds as h (h.key)}
+														<div
+															class="mt-2 border-l-2 border-red-700/40 pl-3 dark:border-red-400/40"
+														>
+															<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+																<Chip
+																	role="blocked"
+																	label="held"
+																	value={h.display}
+																	valueTitle={h.tag}
+																	wide
+																	title="{d.name} cannot deploy {h.tag} until this rollout serves a newer {c.contract}"
+																	class="shrink-0"
+																/>
+																{#if d.places.length > 1}
+																	<span class="text-xs text-gray-500 dark:text-gray-400">in</span>
+																	{#each h.places as ns (ns)}
+																		{@const th = placeTheme(ns, d.name)}
+																		{#if th}
+																			<Chip
+																				role="env"
+																				theme={th}
+																				label={shortEnvLabel(th) || ns}
+																				title={ns}
+																				wide
+																			/>
+																		{:else}
+																			<span class="t-code-sm text-gray-500 dark:text-gray-400"
+																				>{ns}</span
+																			>
+																		{/if}
+																	{/each}
+																{/if}
+															</div>
+															<BlockReason
+																class="mt-1.5"
+																reason={contractBlockReason({
+																	provider: name,
+																	contract: c.contract,
+																	requiredVersion: h.requiredVersion,
+																	providedVersion: c.providedVersion,
+																	gateName: gateNameOf(d),
+																	reason: h.reason
+																})}
+															/>
+														</div>
+													{/each}
+												</li>
+											{/each}
+										</ul>
 									</li>
 								{/each}
 							</ul>
