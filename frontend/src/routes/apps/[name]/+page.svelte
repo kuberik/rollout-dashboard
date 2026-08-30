@@ -722,6 +722,28 @@
 		return f.block.blocked || f.stuck?.kind === 'promotion' || f.stuck?.kind === 'behind';
 	}
 
+	/**
+	 * IS THE RUNNING BUILD THE THING TO GO AND LOOK AT?
+	 *
+	 * Yes when the deploy failed, or wedged mid-bake or mid-deploy — the build
+	 * put itself there. No when the environment is merely stuck behind a gate:
+	 * that deploy succeeded and is serving, and what a person is deciding
+	 * about is the queue in front of it. `Go back a version` was already
+	 * gated on exactly this; `View on GitHub` was not, so a gate-blocked row
+	 * carried three buttons where the decision is two-way.
+	 *
+	 * ⛔ `diverged` IS NOT IN HERE, AND `View on GitHub` ADDS IT BACK AT ITS
+	 * OWN CALL SITE. An environment running a build that is on no release line
+	 * IS a row where the running build is the thing to go and look at — that
+	 * is the whole content of `unreleased` — so the GitHub link belongs on it.
+	 * `Go back a version` does not: rolling a diverged environment back is a
+	 * guess about which build it should have been on, and this page has never
+	 * offered it. Two questions, two conditions, one of them shared.
+	 */
+	function buildIsSuspect(f: EnvFacts): boolean {
+		return f.status === 'Failed' || f.stuck?.kind === 'baking' || f.stuck?.kind === 'deploying';
+	}
+
 	function sinceMsOf(f: EnvFacts): number | null {
 		if (!f.timestamp) return null;
 		const t = new Date(f.timestamp).getTime();
@@ -913,11 +935,14 @@
 	 *   the norm on three of four tasks. `by <name>` SURVIVES, because a
 	 *   human-triggered deploy is the deviation and the person's name is a
 	 *   fact no mark carries.
-	 * · `unchanged for <span>` on a BROKEN task — SURVIVES. Staleness is the
-	 *   difference between a deploy that failed a minute ago and one that has
-	 *   been failing for four days, and nothing else on the page states it: a
-	 *   broken task has no `stuck` chip unless a detector fired, and the
-	 *   activity rail below is per-deploy, not per-state.
+	 * · `unchanged for <span>` on a BROKEN task — SURVIVES ONLY WITHOUT A
+	 *   `stuck` CHIP (narrowed 2026-08-30). Where a detector fired, the chip's
+	 *   own value half already prints the span and this restated it verbatim.
+	 *   Where none fired — a failed deploy — it is the only statement of
+	 *   staleness on the page, because the activity rail below is per-deploy,
+	 *   not per-state.
+	 * · the NAMESPACE — DELETED 2026-08-30. It was a link to
+	 *   `rolloutHref(f.cell)`, which is the `Investigate` button's own href.
 	 * · the whole line on a PROMOTABLE task — DELETED. `WaitingBuilds` already
 	 *   prints a `released` age against every build in the queue, which is the
 	 *   same question answered against better subjects.
@@ -927,7 +952,22 @@
 	function footNote(t: Task): { state: string | null; source: string | null } {
 		const span = t.sinceMs !== null ? compactMs(t.sinceMs) : null;
 		if (t.kind === 'adverse') {
-			// The namespace is rendered by the markup, as a link.
+			// ⛔ NOT WHEN THE `stuck` CHIP ALREADY PRINTS A SPAN. (2026-08-30)
+			//
+			// > *"a `STUCK` chip with `1d` in it, and a `no progress for 1d`
+			// > line. … would the reader lose a fact, or only a restatement?"*
+			//
+			// Measured on the live cluster: `hello-world-app`'s PROD row wore
+			// `[STUCK][1d]` and then said `no progress for 1d` 130px below it.
+			// Two renderings of one duration, and the chip is the louder and
+			// the more precise of the two — `stuckSpan` is how long the
+			// DETECTOR has fired, which is the number that made the row a task.
+			//
+			// It SURVIVES where there is no chip: a deploy that failed has no
+			// stuck detector behind it, and then the difference between a
+			// minute ago and four days ago is the whole severity of the row and
+			// nothing else on the page states it.
+			if (t.lead.stuckSpan) return { state: null, source: null };
 			return { state: span ? `no progress for ${span}` : 'no progress', source: null };
 		}
 		if (!t.lead.version) return { state: 'never deployed', source: null };
@@ -947,6 +987,41 @@
 
 	/** Header count for the act column. */
 	const taskCount = $derived(decisions.length);
+
+	/**
+	 * ⭐ IS THERE AN ACT COLUMN AT ALL? (2026-08-30)
+	 *
+	 * > *"it also looks a bit weird when there are no actions needed."*
+	 *
+	 * On a healthy app the page opened with `Needs you · 0 environments` over
+	 * a body reading *"Nothing here needs you."* — a 47px header bar, a
+	 * right-aligned rollup and a 120px card spent, in the page's most
+	 * prominent slot, on ABSENCE. It is also the exact structural defect that
+	 * has cut nine components from this product: an object that MOSTLY DRAWS
+	 * THE NORM. Measured on the `hello-frontend-app` fixture the card occupied
+	 * y=133 → y=249 to carry one sentence, and pushed the only list on the
+	 * left column 140px down the page.
+	 *
+	 * WHAT REPLACES IT IS NOT A QUIETER CARD, IT IS THE ABSENCE OF ONE. When
+	 * nothing needs a person the act column does not render, and `Recent
+	 * activity` — already on the page, already a real list, already the thing
+	 * a healthy app's reader came for — takes the top-left slot. NO HOLE IS
+	 * LEFT WHERE A LIST WOULD BE: the list moves up into it.
+	 *
+	 * AND THE REASSURANCE IS NOT DELETED, IT IS PROMOTED TO A MEASUREMENT.
+	 * The state card must render either way, its header carries a hard
+	 * right-aligned rollup by construction, and on a healthy app that rollup
+	 * reads `3 of 3 up to date` in the product's one state green. That is the
+	 * grammar's own `3/3 healthy` idiom: a reader takes the card's answer
+	 * without reading a row of it, and the answer is COUNTED rather than
+	 * claimed. A sentence asserting nothing is wrong is a weaker object than
+	 * a fraction proving it.
+	 *
+	 * ⛔ `waitingItems` KEEPS THE COLUMN ALIVE. A schedule window holding a
+	 * promotion is not a decision, but it IS something happening, and its card
+	 * says so in its own title. Only a page with neither drops the column.
+	 */
+	const hasAct = $derived(decisions.length > 0 || waitingItems.length > 0);
 
 	// ── OBJECT 2 · THE STATE COLUMN ──────────────────────────────────────
 	//
@@ -1482,14 +1557,16 @@
 		     state column ABOVE the timeline. On desktop the grid areas put
 		     history back under the tasks. -->
 		<div class="ab-wrap">
-			<div class="ab-grid">
+			<div class="ab-grid {hasAct ? '' : 'ab-grid--noact'}">
 				<!-- ── ACT ──────────────────────────────────────────────────
 				     THE WRAPPER OWNS THE GRID AREA, not the `Card`. Svelte's
 				     scoped CSS is compiled per component, so `.ab-act` passed
 				     through a child's `class` prop would land on an element that
 				     never carries this component's scoping hash and the grid
 				     area would silently not apply. -->
+				{#if hasAct}
 				<div class="ab-act flex flex-col gap-4">
+					{#if decisions.length > 0}
 					<Card
 						icon={ExclamationCircleSolid}
 						iconClass={taskCount > 0
@@ -1500,18 +1577,10 @@
 						verdictTone={taskCount > 0 ? 'adverse' : 'neutral'}
 						padded={false}
 					>
-						{#if tasks.length === 0}
-							<!-- The calm sentence. A quiet column is what a healthy app
-						     looks like, and it is the shape this direction is FOR. -->
-							<!-- ONE line, Direction B's own words. The second line — *"What
-						     each environment is running is in the state column"* — was
-						     wayfinding for a column that is 24px to its right, has its
-						     own header reading `State`, and is the only other thing on
-						     the screen. -->
-							<div class="px-4 py-4">
-								<p class="t-dense text-gray-700 dark:text-gray-300">Nothing here needs you.</p>
-							</div>
-						{:else}
+						<!-- ⛔ THERE IS NO EMPTY BRANCH ANY MORE. The card renders
+						     only when it has rows; see `hasAct`. A card whose body is
+						     one sentence saying nothing is wrong was the page's most
+						     prominent object spent on absence. -->
 							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
 								{#each decisions as t, i (t.id)}
 									{@const f = t.lead}
@@ -1819,12 +1888,24 @@
 										     handle so it reads as something to go look up rather
 										     than as the reason. The same object, with the same
 										     words, is on `/environments` and `/envs/[name]`. -->
+											<!-- ⭐ COMPACT — ONE LINE, NOT THREE. (2026-08-30)
+										     The full sentence is two clauses: what is blocking,
+										     and whether a person is needed. THIS CARD IS TITLED
+										     `Needs you`, and the gates that clear themselves are
+										     in the card below it headed `Waiting, nothing to do`
+										     — so the second clause is true of every row here and
+										     is the panel's own header. Printed per row it marked
+										     the norm, in 71 characters that wrapped to two lines.
+										     What survives is the consequence in four words plus
+										     the `rule:` handle, on the one line. -->
 											{#if t.gate}
-												<BlockReason
-													awaiting={f.block.awaitingApprovalGates}
-													notPassing={f.block.notPassingGates}
-													class="mt-1.5"
-												/>
+												<div class="tk-gate min-w-0">
+													<BlockReason
+														awaiting={f.block.awaitingApprovalGates}
+														notPassing={f.block.notPassingGates}
+														compact
+													/>
+												</div>
 											{/if}
 
 											<!-- WHAT IS WAITING — the commits that have not shipped.
@@ -2005,7 +2086,7 @@
 												     waiting on the NEXT build; putting `Rollback`
 												     on it offers to undo something that is not
 												     wrong. -->
-													{#if previousTag(f.cell) && (f.status === 'Failed' || f.stuck?.kind === 'baking' || f.stuck?.kind === 'deploying')}
+													{#if previousTag(f.cell) && buildIsSuspect(f)}
 														<button
 															type="button"
 															class="btn btn-secondary"
@@ -2015,11 +2096,18 @@
 															Go back a version
 														</button>
 													{/if}
-													{#if f.cell.sourceURL && f.version}
-														<!-- Only on a broken task: the current build is
-													     the suspect there. On a promotable task the
-													     builds worth opening are the WAITING ones,
-													     and every one of them is already a link. -->
+													{#if f.cell.sourceURL && f.version && (buildIsSuspect(f) || f.diverged)}
+														<!-- ⛔ NARROWED TO THE ROWS WHERE THE RUNNING BUILD
+													     IS ACTUALLY THE SUSPECT (2026-08-30) — the same
+													     predicate `Go back a version` above already
+													     uses, and for the same reason. An environment
+													     stuck behind an approval gate DEPLOYED FINE:
+													     its running build is not what a person is here
+													     to look at, the QUEUE is, and offering to open
+													     that build on GitHub is a third control on a
+													     row whose decision is a two-way one. On a
+													     failed or wedged deploy the build IS the
+													     suspect and the button stays. -->
 														<!-- `size="sm"`, not `xs`, and NO `class="rounded"`.
 													     Flowbite's `sm` is 14px / `8px 16px` /
 													     `rounded-lg` — the same three numbers `.btn`
@@ -2038,37 +2126,34 @@
 												{/if}
 											</div>
 
-											<!-- THE FOOT NOTE, CUT TO ONE CLAUSE. See `footNote`:
-										     the sha, the pod count and the `automatic` trigger are
-										     all gone, and a promotable task has no foot line at
-										     all. What is left on a broken task is STALENESS — the
-										     difference between a deploy that failed a minute ago
-										     and one that has been failing four days — and, hard
-										     right on the task's own margin, the namespace as a
-										     LINK, which is the half a person needs to open the
-										     thing. The whole `<p>` disappears when neither half
-										     has anything, so a promotable task loses the line
-										     rather than reserving an empty one. -->
-											{#if foot.state || broken || foot.source}
+											<!-- THE FOOT NOTE, NOW USUALLY ABSENT. See `footNote`.
+										     The sha, the pod count and the `automatic` trigger
+										     went on 2026-08-27; STALENESS and the NAMESPACE LINK
+										     went on 2026-08-30.
+
+										     ⛔ THE NAMESPACE LINK WAS A SECOND CONTROL AIMED AT
+										     THE FIRST ONE'S TARGET. Its `href` was
+										     `rolloutHref(f.cell)`, character for character the
+										     `Investigate` button's — a bare-text link to the same
+										     page as a 14px button 40px above it, on a row the
+										     human counted eleven elements on. The namespace STRING
+										     is not a fact this page owes a reader either: the app
+										     name and the environment already name the rollout, and
+										     the page it opens prints its own namespace in the
+										     breadcrumb.
+
+										     What can still print here is STALENESS on a failed
+										     deploy that no `stuck` chip covers, and `by <name>`
+										     when a PERSON triggered the deploy. Both are
+										     deviations. The whole `<p>` disappears otherwise. -->
+											{#if foot.state || foot.source}
 												<p
 													class="tk-foot t-code-sm flex min-w-0 flex-wrap items-baseline gap-x-4 text-gray-500 dark:text-gray-400"
 												>
 													{#if foot.state}
 														<span class="min-w-0 truncate">{foot.state}</span>
 													{/if}
-													{#if broken}
-														<!-- A LINK THAT LEAVES THE PAGE SAYS SO. Every
-														     drill-through link on the reference page
-														     carries this glyph; this one was bare text
-														     that happened to underline on hover. -->
-														<a
-															href={rolloutHref(f.cell)}
-															class="tk-foot-src inline-flex min-w-0 items-center gap-1 truncate hover:text-gray-700 hover:underline dark:hover:text-gray-300"
-															title="Open the {f.title} rollout"
-															><span class="truncate">{f.namespace}</span
-															><ArrowUpRightFromSquareOutline class="h-3 w-3 shrink-0" /></a
-														>
-													{:else if foot.source}
+													{#if foot.source}
 														<span class="tk-foot-src truncate">{foot.source}</span>
 													{/if}
 												</p>
@@ -2077,7 +2162,6 @@
 									</li>
 								{/each}
 							</ul>
-						{/if}
 						{#if githubDisconnected && tasks.some((t) => t.waiting.length > 0)}
 							<!-- Panel-level, exactly ONCE — never one prompt per task, and
 						     never at all when there is no build list for it to fill.
@@ -2099,6 +2183,7 @@
 							</button>
 						{/if}
 					</Card>
+					{/if}
 
 					<!-- ── WAITING — NOT A DECISION, AND NOW NOT IN THE COLUMN
 					     THAT CLAIMS IT IS. (2026-08-30)
@@ -2143,9 +2228,17 @@
 										<!-- The whole point of this card is that NOTHING has to be
 										     done here, so the line that says WHY is the only thing
 										     it owes the reader. Same object as everywhere else. -->
+										<!-- COMPACT, like every other blocked row on this page.
+										     This card's own title is `Waiting, nothing to do`, so
+										     the long form's second clause — *"this clears on its
+										     own"* — is the header restated once per row. And one
+										     object rendered two ways 200px apart on one screen is
+										     the inconsistency that reads as assembled, not
+										     designed. -->
 										<BlockReason
 											awaiting={f.block.awaitingApprovalGates}
 											notPassing={f.block.notPassingGates}
+											compact
 											class="mt-1.5"
 										/>
 									</li>
@@ -2154,6 +2247,7 @@
 						</Card>
 					{/if}
 				</div>
+				{/if}
 
 				<!-- ── STATE ──────────────────────────────────────────────── -->
 				<div class="ab-state">
@@ -2309,6 +2403,15 @@
 	.ab-act {
 		grid-area: act;
 	}
+	/* NO ACT COLUMN → NO ACT ROW. Left as a template area with no element in
+	   it the grid still spends a 24px gap on a row of zero height, which is a
+	   visible seam under the page header on exactly the page that is supposed
+	   to look calm. The history card takes the slot instead. */
+	.ab-grid--noact {
+		grid-template-areas:
+			'state'
+			'hist';
+	}
 	.ab-state {
 		grid-area: state;
 	}
@@ -2325,6 +2428,9 @@
 				'act state'
 				'hist state';
 			column-gap: 24px;
+		}
+		.ab-grid--noact {
+			grid-template-areas: 'hist state';
 		}
 	}
 
@@ -2366,6 +2472,7 @@
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-areas:
 			'id'
+			'gate'
 			'why'
 			'act'
 			'foot';
@@ -2373,12 +2480,22 @@
 		column-gap: 16px;
 		row-gap: 8px;
 	}
+	/* THE WHY LINE IS PLACED, NOT AUTO-FLOWED. Left to auto-placement it fell
+	   into the first free implicit cell, which after the desktop template put
+	   `why` and `act` on one row was the row BELOW the buttons — so the row
+	   read chips, then the evidence and the action, then the reason for both.
+	   It belongs under the chips it explains. */
+	.tk-gate {
+		grid-area: gate;
+		min-width: 0;
+	}
 
 	/* A task with no build list — a failed deploy, a pin, a diverged
 	   environment — loses the band rather than reserving an empty one. */
 	.tk--nobody {
 		grid-template-areas:
 			'id'
+			'gate'
 			'act'
 			'foot';
 	}
@@ -2453,8 +2570,25 @@
 		}
 	}
 
+	/* THE SUMMARY LINE SITS LEVEL WITH THE FIRST BUTTON, at every height the
+	   block can take. `why` and `act` share a row from 620px up, and the row's
+	   height is now whichever of the two is taller — which changed three times
+	   in one pass: a closed summary (15px) under a button row (38px), an OPEN
+	   ledger (400px) beside two buttons, and a folded `PROD ×10` task whose
+	   buttons wrap to two rows beside a closed summary.
+
+	   Centring the cell fixes only the first; pinning it fixes only the
+	   second. A 38px FLOOR with the content centred inside it fixes all three:
+	   38 is the measured `.btn` height, so a one-line summary lands on the
+	   button's own centre, and anything taller than 38px simply exceeds the
+	   floor and centres in its own box, which is a no-op. */
 	.tk-why {
 		grid-area: why;
+		align-self: start;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		min-height: 38px;
 	}
 	.tk-act {
 		grid-area: act;
@@ -2507,9 +2641,20 @@
 	   buttons take ~380px, leaving the build list a real column. */
 	@container (min-width: 620px) {
 		.tk {
-			grid-template-columns: minmax(0, 1fr) auto;
+			/* ⛔ THE `why` TRACK HAS A FLOOR NOW (2026-08-30). It was
+			   `minmax(0, 1fr)`, which was survivable while the waiting builds
+			   were a multi-line block that could compress — a folded `PROD ×10`
+			   task carries FOUR region buttons plus `+6 more` in the `auto`
+			   track, and on `edge-mesh` the 1fr collapsed to ~110px. Now that
+			   `why` is ONE LINE and that line is the fact the ledger was reduced
+			   to, collapsing it truncates the fact: measured, it rendered
+			   `1 version ready · 1…`. 240px holds `N versions ready · oldest Nd
+			   ago` at 11px, and past that floor the BUTTONS wrap instead, which
+			   they are already laid out to do. */
+			grid-template-columns: minmax(min(100%, 240px), 1fr) auto;
 			grid-template-areas:
 				'id id'
+				'gate gate'
 				'why act'
 				'foot foot';
 			align-items: center;
@@ -2517,10 +2662,18 @@
 		.tk--nobody {
 			grid-template-areas:
 				'id act'
+				'gate gate'
 				'foot foot';
 		}
 		.tk-act {
 			justify-content: flex-end;
+			/* PINNED TO THE TOP OF ITS ROW, not centred in it. `why` and `act`
+			   share a row and `why` now OPENS: with the ledger expanded to 19
+			   builds the row is ~400px tall and centred buttons floated halfway
+			   down it, 200px from the line that names what they act on. Collapsed
+			   the row's height IS the button height, so this changes nothing
+			   there — the summary stays optically level with the labels. */
+			align-self: start;
 		}
 	}
 </style>

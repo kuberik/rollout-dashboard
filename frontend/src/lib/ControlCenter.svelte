@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import type { ClusterError } from '$lib/api/rollouts';
-	import { buildRolloutCards } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardVerdict } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
@@ -17,8 +17,6 @@
 	import { Button } from 'flowbite-svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
-	import PinBadge from '$lib/components/PinBadge.svelte';
-	import RollbackBadge from '$lib/components/RollbackBadge.svelte';
 	import RolloutStepper from '$lib/components/RolloutStepper.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { ChevronRightOutline, CloseCircleSolid, ClockSolid } from 'flowbite-svelte-icons';
@@ -415,6 +413,13 @@
 				     the fixed 3-column grid did. -->
 				<div class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(24rem,1fr))]">
 					{#each trailing as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+						<!-- `{@const}` has to be the immediate child of the `{#each}`, not of
+						     the `<a>` — Svelte 5 refuses it anywhere else. -->
+						{@const verdict = cardVerdict(
+							c,
+							rankLabel(c.rank),
+							rankTitle(c.rank, c.envDisplay || c.name)
+						)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
@@ -446,21 +451,20 @@
 							     ladder rank — `env-rank.ts` — and the spelling is `19 behind`,
 							     the one every rebuilt page already uses. Same Chip, same
 							     roles, same geometry. -->
-							<!-- ⛔ `/` SAID NEITHER OF THESE. A live UX critique rolled production
-							     back to a one-hour-old build and *"`/` rendered it exactly like a
-							     forward deploy — nothing said 'rollback', nothing said the version
-							     was pinned"*. `/rollouts` had the pin mark already; this page, the
-							     one a reader opens first, did not carry it at all. Both marks are
-							     the components those rows already use, in the same slot, at the
-							     same 9px, so nothing new is introduced to either page. -->
-							{#if c.rolledBack}
-								<RollbackBadge from={c.rolledBack.from} to={c.rolledBack.to} by={c.rolledBack.by} size="xs" />
-							{/if}
-							{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
+							<!-- ⛔ `/` SAID NOTHING WHEN PRODUCTION WENT BACKWARDS, AND THE FIRST FIX
+							     COST THE APP NAME. A live UX critique rolled prod back to a one-hour-old
+							     build and *"`/` rendered it exactly like a forward deploy"*; adding a
+							     `ROLLED BACK` and a `PINNED` mark beside this chip then took the name's
+							     width to ZERO on a 398px row and overflowed it (415/398). `cardVerdict`
+							     puts the word INSIDE the chip that already states a verdict and keeps the
+							     rank sentence in the same chip's title — same element, same role, same
+							     geometry, nothing added to the row. `pinned` goes through the same
+							     chip for the same reason — a loose `PINNED` mark took this name
+							     to 85 of 108 on its own. -->
 							<Chip
 								role={rankRole(c.rank)}
-								label={rankLabel(c.rank)}
-								title={rankTitle(c.rank, c.envDisplay || c.name)}
+								label={verdict.label}
+								title={verdict.title}
 								wide
 								value={c.version ? shortenVersion(c.version) : '—'}
 								valueTitle={c.version ?? undefined}
@@ -553,21 +557,25 @@
 									class="min-w-0 shrink-0"
 								/>
 							{:else}
-								<!-- ⛔ `/` SAID NEITHER OF THESE. A live UX critique rolled production
-								     back to a one-hour-old build and *"`/` rendered it exactly like a
-								     forward deploy — nothing said 'rollback', nothing said the version
-								     was pinned"*. `/rollouts` had the pin mark already; this page, the
-								     one a reader opens first, did not carry it at all. Both marks are
-								     the components those rows already use, in the same slot, at the
-								     same 9px, so nothing new is introduced to either page. -->
-								{#if c.rolledBack}
-									<RollbackBadge from={c.rolledBack.from} to={c.rolledBack.to} by={c.rolledBack.by} size="xs" />
-								{/if}
-								{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
+								<!-- ⛔ `/` SAID NOTHING WHEN PRODUCTION WENT BACKWARDS, AND THE FIRST FIX
+								     COST THE APP NAME. A live UX critique rolled prod back to a one-hour-old
+								     build and *"`/` rendered it exactly like a forward deploy"*; adding a
+								     `ROLLED BACK` and a `PINNED` mark beside this chip then took the name's
+								     width to ZERO on a 398px row and overflowed it (415/398). `cardVerdict`
+								     puts the word INSIDE the chip that already states a verdict and keeps the
+								     rank sentence in the same chip's title — same element, same role, same
+								     geometry, nothing added to the row. `pinned` goes through the same
+								     chip for the same reason — a loose `PINNED` mark took this name
+								     to 85 of 108 on its own. -->
+								{@const verdict = cardVerdict(
+									c,
+									rankLabel(c.rank),
+									rankTitle(c.rank, c.envDisplay || c.name)
+								)}
 								<Chip
 									role={rankRole(c.rank)}
-									label={rankLabel(c.rank)}
-									title={rankTitle(c.rank, c.envDisplay || c.name)}
+									label={verdict.label}
+									title={verdict.title}
 									wide
 									value={c.version ? shortenVersion(c.version) : '—'}
 									valueTitle={c.version ?? undefined}

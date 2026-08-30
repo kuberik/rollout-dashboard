@@ -282,8 +282,8 @@ export function buildRolloutCards(
 }
 
 /**
- * ⛔ THE VERDICT HALF OF THE CARD'S CHIP HOLDS EXACTLY ONE WORD, AND ON A
- * ROLLED-BACK ROLLOUT THAT WORD IS `rolled back`.
+ * ⛔ THE VERDICT HALF OF THE CARD'S CHIP HOLDS EXACTLY ONE WORD. IT IS THE
+ * MOST SPECIFIC TRUE ONE.
  *
  * The first attempt at "say the word rollback on the list surfaces" added a
  * `RollbackBadge` and a `PinBadge` as LOOSE MARKS on `/`'s row. Measured at
@@ -292,36 +292,54 @@ export function buildRolloutCards(
  *     [PROD][ROLLED BACK][PINNED][23 BEHIND][aa17645]   name width 0 of 108
  *     hello…[PROD][ROLLED BACK][24 BEHIND][51b976a]     name width 45 of 108
  *                                                       scrollWidth 415 / 398
+ *     hello…[DEV][PINNED][19 BEHIND][991829b]           name width 85 of 108
  *
  * **The app name is the primary identifier and is never the thing that gets
  * sacrificed** — a card reading `PROD · ROLLED BACK · PINNED · 23 BEHIND` with
  * no name tells an operator nothing about WHAT rolled back. The row is a
- * single 398px line; it can carry a circle, a name, an env chip and one
+ * single ~398px line; it carries a circle, a name, an env chip and ONE
  * `[verdict][build]` chip, and that is the whole budget.
  *
- * So nothing is added. The chip that already states the verdict states the
- * more urgent one, and the rank sentence moves into the same chip's `title`
- * beside the rollback's own arithmetic — both facts kept, one of them
- * promoted. `COMPOSITION-GRAMMAR.md`'s two-half rule is untouched and `/`
- * renders exactly the elements it rendered before.
+ * So nothing is added to the row. The chip that already states a verdict
+ * states the most specific one available, and everything it displaces moves
+ * into the same chip's `title`:
  *
- * ⚠️ THE PIN IS NOT LOST BY BEING UNSPOKEN HERE. Rolling back PINS by
- * construction — `ChangeVersionModal`'s `mustPin` is true whenever the picked
- * version is older than the current one, and the dialog says so — so `rolled
- * back` and `pinned` co-occur, and spending two marks on one act is the
- * redundancy this row cannot afford. A rollout pinned WITHOUT going backwards
- * still shows `PinBadge`, because there the pin is the only fact there is.
+ * | state | word | why it outranks the one below |
+ * |---|---|---|
+ * | rolled back | `rolled back` | somebody moved production BACKWARDS. It is a different KIND of event from a deploy and it is the one an operator must not miss. |
+ * | pinned | `pinned` | it is not drifting, it is HELD, and the hold is the reason the rank is what it is. |
+ * | neither | the rank | `19 behind` / `newest` / `unknown`, unchanged. |
+ *
+ * ⚠️ NOTHING IS DELETED, ONLY DEMOTED. The rank sentence — `env-rank.ts`'s
+ * own `rankTitle`, including the count the lag pass made true — is appended to
+ * every title, so a rolled-back card still answers "behind by how much?" on
+ * hover and on its own page. `COMPOSITION-GRAMMAR.md`'s two-half rule is
+ * untouched and `/` renders exactly the elements it rendered before.
+ *
+ * ⚠️ AND `rolled back` OUTRANKS `pinned` RATHER THAN JOINING IT. Rolling back
+ * PINS by construction — `ChangeVersionModal`'s `mustPin` is true whenever the
+ * picked version is older than the current one, and the rollback dialog says
+ * `Required for rollback` — so the two co-occur on every rollback and spending
+ * two marks on one act is redundancy the row cannot afford.
  */
 export function cardVerdict(
-	c: Pick<RolloutCard, 'rolledBack'>,
+	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'>,
 	rankWord: string,
 	rankSentence: string
 ): { label: string; title: string } {
-	if (!c.rolledBack) return { label: rankWord, title: rankSentence };
-	const { from, to, by } = c.rolledBack;
-	const plural = by === 1 ? '' : 's';
-	return {
-		label: 'rolled back',
-		title: `Rolled back ${by} version${plural}: ${from} → ${to}. ${rankSentence}`
-	};
+	if (c.rolledBack) {
+		const { from, to, by } = c.rolledBack;
+		const plural = by === 1 ? '' : 's';
+		return {
+			label: 'rolled back',
+			title: `Rolled back ${by} version${plural}: ${from} → ${to}. ${rankSentence}`
+		};
+	}
+	if (c.pinnedVersion) {
+		return {
+			label: 'pinned',
+			title: `Pinned to ${c.pinnedVersion} — automatic deploys are paused until the pin is cleared. ${rankSentence}`
+		};
+	}
+	return { label: rankWord, title: rankSentence };
 }

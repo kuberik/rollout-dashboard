@@ -17,7 +17,7 @@
 	 * describe one object in one vocabulary — the right says how many, the
 	 * left says which. One hairline, no new colour value.
 	 *
-	 * Each row is a three-column LEDGER — `sha · what changed · released` —
+	 * Each row is a three-column LEDGER — `sha · what changed · ready since` —
 	 * with the ages right-aligned and tabular, so the repeated age reads as
 	 * an aligned column under a head that names it ONCE, instead of three
 	 * ragged lines each re-printing the word "released". The message column
@@ -32,9 +32,52 @@
 	 * this product answers "what is in this build" when GitHub is not
 	 * connected, so rather than navigate somewhere that answers a different
 	 * question, the list is EVIDENCE and the task's targets are its buttons.
-	 * `+N more` is therefore not inert text under three links: it is the one
-	 * control in the block, and it expands the queue in place — the same
-	 * gesture as the `+N more` on the task's own action row.
+	 * The list is therefore EVIDENCE, and it sits behind the one control in
+	 * the block — see the disclosure note below.
+	 *
+	 * ── ⭐ IT IS A DISCLOSURE NOW, AND THE SUMMARY IS THE FACT (2026-08-30) ─
+	 *
+	 * > *"does a reader deciding whether to approve a deploy need three build
+	 * > ids and their ages in the card, or only how many are waiting and since
+	 * > when? … the card should read in ONE GLANCE, not five."*
+	 *
+	 * Measured on the live cluster's `hello-world-app`, the open ledger spent
+	 * EIGHT of a task row's nineteen text elements: a `ready since` column
+	 * head, three shas, three ages, and a `+16 more` control. What those eight
+	 * elements said was `0afab6f 1d / c1ecfe5 1d / 45d2662 1d`.
+	 *
+	 * Apply the file's own test — would the reader lose a FACT, or only a
+	 * restatement?
+	 *
+	 *   · THE COUNT and THE AGE are facts, and neither was legible: the count
+	 *     had to be reconstructed as `3 + 16` from a control's label, and the
+	 *     age was printed three times under a head that named it once.
+	 *   · THE THREE SHAS ARE NOT A FACT A DECIDER USES. A 7-hex sha is an
+	 *     identifier with no ordering, no size and no subject. **And on the
+	 *     shipped state of this product GitHub is not connected**, so the
+	 *     message column — the entire reason a sha is worth printing — is
+	 *     empty. Three opaque tokens and three identical `1d`s is the
+	 *     densest, least decidable eighth of the card.
+	 *   · CONNECTED, the messages ARE worth reading — but reading three of
+	 *     nineteen commit subjects is not how "should PROD take a newer
+	 *     build" gets decided either. It is evidence you open, not a fact you
+	 *     glance at.
+	 *
+	 * So the ledger keeps every row it had and moves behind ONE control whose
+	 * label is the fact it replaced: `19 versions ready · oldest 1d ago`. One
+	 * text element instead of eight, the two facts stated rather than
+	 * reconstructed, and the evidence one click away instead of gone.
+	 *
+	 * `+N more` IS DELETED WITH IT. Two nested disclosures on one queue —
+	 * open the block, then open the tail — is a control whose only job was to
+	 * undo a truncation that no longer happens. Expanded means expanded.
+	 *
+	 * ⛔ THE COUNT IS WORDED `ready`, NOT `waiting`. The state column's hop
+	 * prints `N versions waiting to move` for `rank(down) − rank(up)` — the
+	 * builds between two environments — and this list is
+	 * `promotionCandidates`, the builds THIS environment could take. On the
+	 * live cluster those are 5 and 19. Two different true numbers 340px apart
+	 * must not share a verb.
 	 *
 	 * ── THE COMMITS REQUEST ─────────────────────────────────────────────
 	 * ONE request per TASK, not per build: the range is
@@ -53,6 +96,7 @@
 	} from '$lib/api/github';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { ChevronRightOutline } from 'flowbite-svelte-icons';
 
 	type WaitingBuild = {
 		version: string;
@@ -77,21 +121,51 @@
 		base?: string | null;
 		/** Revision of the newest waiting build — the range's head. */
 		head?: string | null;
-		/** Newest first. The FULL queue — this component does the truncating. */
+		/** Newest first. The FULL queue — the disclosure shows all of it. */
 		builds: WaitingBuild[];
-		/** How many rows before `+N more`. */
+		/**
+		 * ⛔ VESTIGIAL. The queue is either summarised or shown whole; there is
+		 * no middle truncation any more. Kept so the prop is not a breaking
+		 * change for a caller that still passes it.
+		 */
 		limit?: number;
 		commitsAvailable?: boolean;
 	} = $props();
 
-	let expanded = $state(false);
+	let open = $state(false);
 
-	const shown = $derived(expanded ? builds : builds.slice(0, limit));
-	const hidden = $derived(Math.max(0, builds.length - limit));
 	const anyAge = $derived(builds.some((b) => b.createdMs > 0));
 
+	/**
+	 * THE SUMMARY — the two facts the ledger was being read for, stated.
+	 *
+	 * `oldest` is the LAST entry's age, because the queue is newest-first: the
+	 * oldest waiting build is how long this edge has been backed up, which is
+	 * the number a person weighs against "is it worth a deploy". The newest
+	 * build's own age is already on the primary button's version.
+	 */
+	const oldestMs = $derived.by<number | null>(() => {
+		let best: number | null = null;
+		for (const b of builds) {
+			if (!(b.createdMs > 0)) continue;
+			if (best === null || b.createdMs < best) best = b.createdMs;
+		}
+		return best;
+	});
+	const summary = $derived.by<string>(() => {
+		const n = builds.length;
+		const count = `${n} version${n === 1 ? '' : 's'} ready`;
+		if (oldestMs === null) return count;
+		const age = formatTimeAgoCompact(new Date(oldestMs).toISOString(), $now);
+		return n === 1 ? `${count} · ${age} ago` : `${count} · oldest ${age} ago`;
+	});
+
+	// ONLY ONCE THE LEDGER IS OPEN. The messages are the only thing this
+	// request feeds and nothing renders them while the block is a one-line
+	// summary, so a closed task costs no network at all — on `edge-mesh` that
+	// is one saved request per task on every page load.
 	const enabled = $derived(
-		commitsAvailable && !!namespace && !!name && !!base && !!head && base !== head
+		open && commitsAvailable && !!namespace && !!name && !!base && !!head && base !== head
 	);
 
 	// Same discipline as `CommitSummary`: a commit range is immutable and an
@@ -137,7 +211,23 @@
 	}
 </script>
 
-<div class="wb min-w-0 {anyMessage ? '' : 'wb--nomsg'}">
+<div class="wb min-w-0 {anyMessage && open ? '' : 'wb--nomsg'}">
+	<!-- THE ONE CONTROL, AND ITS LABEL IS THE FACT. Closed it is the whole
+	     block; open it is the block's head. A chevron and not a `+N more`:
+	     this opens a thing that is there, it does not lengthen a list. -->
+	<button
+		type="button"
+		class="wb-toggle t-micro flex min-w-0 items-center gap-1 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+		aria-expanded={open}
+		onclick={() => (open = !open)}
+	>
+		<ChevronRightOutline
+			class="h-3 w-3 shrink-0 transition-transform {open ? 'rotate-90' : ''}"
+			aria-hidden="true"
+		/>
+		<span class="truncate">{summary}</span>
+	</button>
+	{#if open}
 	{#if anyAge}
 		<!-- The column head. It carries the word ONCE so every row below can
 		     be a bare, aligned, tabular age.
@@ -154,7 +244,7 @@
 		</p>
 	{/if}
 	<ul class="wb-list">
-		{#each shown as b (b.version)}
+		{#each builds as b (b.version)}
 			{@const msg = messageFor(b)}
 			{@const age = ageOf(b)}
 			<li class="wb-row">
@@ -165,19 +255,8 @@
 				{/if}
 			</li>
 		{/each}
-		{#if hidden > 0}
-			<li class="wb-row wb-morerow">
-				<button
-					type="button"
-					class="wb-more t-micro text-gray-500 hover:text-gray-900 hover:underline dark:text-gray-400 dark:hover:text-white"
-					aria-expanded={expanded}
-					onclick={() => (expanded = !expanded)}
-				>
-					{expanded ? 'Show fewer' : `+${hidden} more`}
-				</button>
-			</li>
-		{/if}
 	</ul>
+	{/if}
 </div>
 
 <style>
@@ -239,6 +318,7 @@
 		max-width: 100%;
 	}
 	.wb-head {
+		margin-top: 8px;
 		margin-bottom: 4px;
 	}
 	.wb-sha {
@@ -256,14 +336,10 @@
 		white-space: nowrap;
 	}
 
-	/* The one control in the block. It spans the ledger so it reads as the
-	   queue's last row rather than as a caption under it. */
-	.wb-morerow {
-		margin-top: 4px;
-	}
-	.wb-more {
-		grid-column: 1 / -1;
-		justify-self: start;
+	/* THE DISCLOSURE. It is the block when closed and the block's head when
+	   open, so it sits at the ledger's own left edge — NOT at the rail's 13px
+	   indent, because it is not one of the things hanging on the rail. */
+	.wb-toggle {
 		text-align: left;
 	}
 </style>

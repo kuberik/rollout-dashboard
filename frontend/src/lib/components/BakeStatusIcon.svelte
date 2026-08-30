@@ -2,7 +2,6 @@
 
 <script lang="ts">
 	import StatusSpinner from './StatusSpinner.svelte';
-	import { Spinner } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -44,6 +43,9 @@
 	// greppable. -700 rather than -600: it is the shade that clears 4.5:1
 	// on white, and there is exactly ONE green in the product — this one —
 	// which the `newest` rank chip also uses. Pending/None recedes to gray.
+	// `yellow` is spent TWICE: by the static glyph below and — since the
+	// contrast fix — by the InProgress bake mark's `currentColor`, so the
+	// running bake and the settled bake print the same yellow.
 	const TONE: Record<string, string> = {
 		green: 'text-green-700 dark:text-green-400',
 		red: 'text-red-700 dark:text-red-400',
@@ -80,11 +82,57 @@
 
 <!-- In-flight states: Deploying is an actively-running deploy → rotating
      border spinner. InProgress is the bake window — the rollout is just
-     watching health checks — → Flowbite's `pulse` spinner (concentric
-     dots radiating out), which reads as "passive watch" rather than
-     "actively transferring". -->
+     watching health checks — → concentric dots radiating out, which reads
+     as "passive watch" rather than "actively transferring".
+
+     ⛔ THIS IS NOT `<Spinner type="pulse" color="yellow">` ANY MORE, AND IT
+     MUST NOT GO BACK. Flowbite's pulse spinner is three circles that ALL
+     animate `opacity: 0.9 → 0` while expanding, painted `fill-yellow-400`,
+     with `animate-pulse` (a second 1 → 0.5 opacity fade) stacked on the
+     `<svg>` on top of that. It therefore has NO mark that is present at
+     rest, and its brightest instant measured **1.05–1.41:1 in light** on
+     the `bg-yellow-100` status disc — the icon a reader looks at to know
+     something is baking right now was effectively invisible on `/`,
+     `/rollouts`, rollout detail, `/apps` and `/envs`. The 2026-08-30
+     contrast sweep never caught it because no rollout was mid-bake on the
+     live cluster while it ran.
+
+     Two things fix it and both are free:
+     · a SOLID CORE at full opacity, so the mark can never fall below its
+       floor mid-cycle — this is exactly why the blue `Deploying` spinner
+       passed (its `border-t` arc is opaque) and this one did not;
+     · the LIGHT ink steps `yellow-400` → `yellow-700`, which is `TONE.yellow`,
+       the ink this component's own static yellow glyph already prints. Zero
+       new colour values, and baking stays YELLOW — it does not drift toward
+       amber or toward the blue that `Deploying` owns.
+     The radiating waves keep Flowbite's original geometry and rhythm
+     (r 18→46, 1.5s, three waves 0.5s apart) so the motion is unchanged. -->
 {#if bakeStatus === 'InProgress'}
-	<Spinner type="pulse" size={spinnerSizes[size]} color="yellow" class={className} />
+	<svg
+		class="{sizeClasses[size]} shrink-0 {TONE.yellow} {className}"
+		viewBox="0 0 100 100"
+		aria-hidden="true"
+	>
+		{#each [0, 0.5, 1] as begin (begin)}
+			<circle cx="50" cy="50" r="18" fill="currentColor" opacity="0">
+				<animate
+					attributeName="r"
+					values="18;46"
+					begin="{begin}s"
+					dur="1.5s"
+					repeatCount="indefinite"
+				/>
+				<animate
+					attributeName="opacity"
+					values="0.5;0"
+					begin="{begin}s"
+					dur="1.5s"
+					repeatCount="indefinite"
+				/>
+			</circle>
+		{/each}
+		<circle cx="50" cy="50" r="18" fill="currentColor" />
+	</svg>
 {:else if bakeStatus === 'Deploying'}
 	<StatusSpinner color="blue" size={spinnerSizes[size]} class={className} />
 {:else}

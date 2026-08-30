@@ -30,6 +30,26 @@
 		icon: typeof LockSolid;
 		/** The consequence. Ordinary English, and it says who has to move. */
 		line: string;
+		/**
+		 * ⭐ THE SAME CONSEQUENCE IN FOUR WORDS — for a caller whose surround
+		 * already carries the other half of `line`. (2026-08-30)
+		 *
+		 * `line` is two clauses: WHAT is blocking, and WHETHER A PERSON IS
+		 * NEEDED. On `/apps/[name]` the second clause is the CARD'S OWN TITLE —
+		 * a task inside `Needs you` needs a person by construction, and the
+		 * gates that clear themselves are in a different card headed
+		 * `Waiting, nothing to do`. Printed on every row of that card the
+		 * clause marks the norm, and it cost two wrapped lines to do it:
+		 * measured on the live cluster, *"Someone has to approve a newer
+		 * version — this will not clear on its own"* is 71 characters and broke
+		 * across two lines in an 850px card.
+		 *
+		 * So `short` keeps the clause that is a FACT and drops the clause the
+		 * surround states — while still choosing words that carry the split
+		 * lexically (`Needs a person to approve` vs `Clears on its own`), so it
+		 * is not merely the long line truncated. See the `compact` prop.
+		 */
+		short: string;
 		/** The handle, not the explanation. Render as `rule: <names>`. */
 		names: string | null;
 	};
@@ -53,6 +73,7 @@
 				kind: 'pinned',
 				icon: LockSolid,
 				line: `Held on ${pinnedTo} on purpose — automatic updates are off here`,
+				short: 'Held on purpose',
 				names: null
 			};
 		}
@@ -61,6 +82,7 @@
 				kind: 'awaiting',
 				icon: UserCircleSolid,
 				line: 'Someone has to approve a newer version — this will not clear on its own',
+				short: 'Needs a person to approve',
 				names: awaiting.join(', ')
 			};
 		}
@@ -69,6 +91,7 @@
 				kind: 'notPassing',
 				icon: HourglassSolid,
 				line: 'Newer versions are on hold until a check or time window passes — this clears on its own',
+				short: 'Clears on its own',
 				names: notPassing.join(', ')
 			};
 		}
@@ -128,7 +151,15 @@
 			? `Needs ${need} from ${provider}, which is on ${providedVersion} — someone has to ship ${provider} first`
 			: `Needs ${need} from ${provider}, and no version of it has been read yet`;
 		const names = [gateName, reason].filter(Boolean).join(' · ') || null;
-		return { kind: 'contract', icon: ShareNodesSolid, line, names };
+		// The short form keeps the one clause a mark cannot carry: WHICH OTHER
+		// SERVICE has to move. The version arithmetic stays in `line`.
+		return {
+			kind: 'contract',
+			icon: ShareNodesSolid,
+			line,
+			short: `Needs ${provider} to ship first`,
+			names
+		};
 	}
 </script>
 
@@ -189,6 +220,7 @@
 		notPassing = [],
 		pinnedTo = null,
 		reason: given = null,
+		compact = false,
 		class: className = ''
 	}: {
 		/**
@@ -217,13 +249,55 @@
 		 * as a handle, in one place, so no page can spell it its own way again.
 		 */
 		reason?: BlockReason | null;
+		/**
+		 * ⭐ ONE LINE INSTEAD OF THREE. (2026-08-30)
+		 *
+		 * > *"again too much text… Eleven distinct text elements for one fact."*
+		 *
+		 * The two-line consequence plus a `rule:` line on its own line is THREE
+		 * rendered lines per blocked row. In a card whose title already says a
+		 * person is needed, that is one fact spelled at full length under a
+		 * heading that spelled it once.
+		 *
+		 * Compact prints `<icon> <short> · rule: <names>` on ONE line: the
+		 * consequence in four words, then the identifier, still muted, still
+		 * mono, still prefixed with the word that says it is a handle rather
+		 * than a reason. NOTHING IS DROPPED — the `rule:` name is the one fact
+		 * on a blocked task that no mark on the page can carry, and it is
+		 * exactly the fact this component was built to keep while refusing to
+		 * let it pose as the explanation.
+		 *
+		 * ⛔ NOT THE DEFAULT. `/environments` and the dependencies page render
+		 * this outside any surround that states who has to act, so they keep
+		 * the full sentence. The prop is the caller's assertion that its own
+		 * heading already carries the second clause.
+		 */
+		compact?: boolean;
 		class?: string;
 	} = $props();
 
 	const reason = $derived(given ?? blockReason({ awaiting, notPassing, pinnedTo }));
 </script>
 
-{#if reason}
+{#if reason && compact}
+	{@const Icon = reason.icon}
+	<!-- ONE LINE, AND IT WRAPS AS A LINE rather than as a paragraph: the
+	     identifier is `whitespace-nowrap` so a 12-character gate name is never
+	     torn in half (the defect the block form's `break-all` was added for),
+	     and the consequence takes the slack instead. -->
+	<p class="t-micro flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 {className}">
+		<span class="inline-flex min-w-0 items-baseline gap-1.5 text-gray-500 dark:text-gray-400">
+			<Icon class="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden="true" />
+			<span class="min-w-0">{reason.short}</span>
+		</span>
+		{#if reason.names}
+			<span
+				class="t-code-sm truncate text-gray-500 dark:text-gray-400"
+				title="The rule blocking this: {reason.names}">rule: {reason.names}</span
+			>
+		{/if}
+	</p>
+{:else if reason}
 	{@const Icon = reason.icon}
 	<p class="flex min-w-0 items-start gap-1.5 {className}">
 		<Icon class="mt-px h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />

@@ -8,15 +8,13 @@
 	import { formatTimeAgoCompact, formatDate, shortenVersion } from '$lib/utils';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
-	import { buildRolloutCards } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardVerdict } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { SearchOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import PinBadge from '$lib/components/PinBadge.svelte';
-	import RollbackBadge from '$lib/components/RollbackBadge.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../types';
 	import { rolloutPath } from '$lib/source-dashboard';
@@ -428,13 +426,18 @@
 							     GEOMETRY UNCHANGED: same `Chip`, same joined badge, same
 							     four roles. Only the number and, for `behind`, the spelling
 							     (`−19` → `19 behind`, matching every other page). -->
+							{@const verdict = cardVerdict(
+								c,
+								rankLabel(c.rank),
+								rankTitle(c.rank, c.envDisplay || c.name)
+							)}
 							{@const rel =
 								c.statusKey === 'pending'
 									? { role: 'unranked' as const, txt: 'pending', tip: 'No deploy yet' }
 									: {
 											role: rankRole(c.rank),
-											txt: rankLabel(c.rank),
-											tip: rankTitle(c.rank, c.envDisplay || c.name)
+											txt: verdict.label,
+											tip: verdict.title
 										}}
 							<a
 								href={rolloutHref}
@@ -463,18 +466,16 @@
 										<!-- ⛔ A ROLLBACK USED TO BE INDISTINGUISHABLE FROM A DEPLOY
 										     ON EVERY LIST SURFACE. A live UX critique rolled production
 										     back to a one-hour-old build and this card drew it exactly
-										     like a forward one. `RollbackBadge` is `PinBadge`'s geometry
-										     character for character and sits in `PinBadge`'s own slot —
-										     the marks that qualify the build, left of the joined chip. -->
-										{#if c.rolledBack}
-											<RollbackBadge
-												from={c.rolledBack.from}
-												to={c.rolledBack.to}
-												by={c.rolledBack.by}
-												size="xs"
-											/>
-										{/if}
-										{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
+										     like a forward one.
+
+										     THE WORD GOES IN THE CHIP, NOT BESIDE IT. `/`'s row is the
+										     tight one — loose `ROLLED BACK` and `PINNED` marks there took
+										     the app name's width to ZERO — and a fact spelled two ways on
+										     two list surfaces is a fact nobody learns, so both pages state
+										     it the same way through `cardVerdict`. That is also why
+										     `PinBadge` is gone from HERE: this card had the room, but the
+										     word `pinned` may not live in a badge on one list and inside
+										     the chip on the other. -->
 										<!-- `wide` LIFTS THE 12ch CAP, and it is REQUIRED by the
 										     new label. `−19` fit; `19 BEHIND` at the chip's uppercase
 										     tracking renders `19 BEHI…`, which is not a word. Same

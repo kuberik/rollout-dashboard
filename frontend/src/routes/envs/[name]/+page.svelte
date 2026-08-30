@@ -909,8 +909,17 @@
 					padded={false}
 				>
 					{#if rows.length === 0}
-						<p class="px-4 py-10 text-center text-[13px] text-gray-500 dark:text-gray-400">
-							No apps deployed to {envName} yet.
+						<!-- ⛔ NOT A 10-UNIT CENTRED VOID (2026-08-30). `py-10
+						     text-center` builds a 96px empty box around one sentence
+						     and then the whole right rail is suppressed below it, so
+						     an environment with nothing in it rendered as a page-wide
+						     hole where a list would be. The card's own rollup already
+						     says `nothing deployed`; the body only owes the reader the
+						     ONE thing the rollup cannot say, which is where to go
+						     next. Same padding as a row, left-aligned like a row. -->
+						<p class="px-4 py-3 text-[13px] text-gray-500 dark:text-gray-400">
+							Nothing is deployed to {envName} yet. Apps appear here the first time one
+							promotes into it.
 						</p>
 					{:else}
 						<div
@@ -986,10 +995,25 @@
 										     `/environments` and `/apps/[name]`. It renders only
 										     on a row that is actually blocked. -->
 										{#if row.block.blocked}
+											<!-- ⭐ COMPACT, THE SAME AS `/apps/[name]`'S TASK ROWS
+											     (2026-08-30). The long sentence is two clauses and
+											     the second — *"this will not clear on its own"* /
+											     *"this clears on its own"* — is what the SHORT form
+											     still says, in four words instead of seventeen:
+											     `Needs a person to approve` against `Clears on its
+											     own`. Nothing about who has to move is lost.
+
+											     What IS lost is three rendered lines per blocked
+											     row inside a `1fr` cell that also carries the app
+											     name, its OCI title, the chain and the build badge.
+											     The two detail pages now spell one fact one way,
+											     which is the cross-page agreement this repo keeps
+											     paying for when it does not have it. -->
 											<BlockReason
 												awaiting={row.block.awaitingApprovalGates}
 												notPassing={row.block.notPassingGates}
 												pinnedTo={row.slot.cell.rollout.spec?.wantedVersion ?? null}
+												compact
 											/>
 										{/if}
 									</div>

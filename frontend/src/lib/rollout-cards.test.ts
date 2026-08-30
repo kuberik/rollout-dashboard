@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRolloutCards, detectRollback } from './rollout-cards';
+import { buildRolloutCards, detectRollback, cardVerdict } from './rollout-cards';
 import { rankBehindBy, rankLabel } from './view-models/env-rank';
 
 // Fixtures reproduce the live `hello-world-app` shape that exposed the bug:
@@ -248,5 +248,64 @@ describe('detectRollback', () => {
 		});
 		const cards = buildRolloutCards([rolledBack], ENVIRONMENTS, NOW);
 		expect(cardFor('hello-world-prod', cards).rolledBack?.by).toBe(3);
+	});
+});
+
+/**
+ * ⛔ THE FIRST FIX FOR "SAY THE WORD ROLLBACK" COST THE APP NAME.
+ *
+ * Measured on `/` at 1440 light with loose `ROLLED BACK` + `PINNED` marks:
+ *
+ *     [PROD][ROLLED BACK][PINNED][23 BEHIND][aa17645]  name width 0 of 108
+ *     hello…[PROD][ROLLED BACK][24 BEHIND][51b976a]    scrollWidth 415 / 398
+ *
+ * The row holds one verdict chip. These tests pin WHICH verdict it holds and
+ * that the other fact survives in the title rather than being deleted.
+ */
+describe('cardVerdict', () => {
+	const rank = ['24 behind', 'prod is 24 versions behind the newest'] as const;
+	const back = { from: 'aa17645', to: '51b976a', by: 7 };
+
+	it('passes the rank straight through when nothing happened to it', () => {
+		const v = cardVerdict({ rolledBack: null, pinnedVersion: null }, ...rank);
+		expect(v.label).toBe('24 behind');
+		expect(v.title).toBe(rank[1]);
+	});
+
+	it('promotes the rollback to the visible word', () => {
+		const v = cardVerdict({ rolledBack: back, pinnedVersion: null }, ...rank);
+		expect(v.label).toBe('rolled back');
+	});
+
+	it('promotes the pin when nothing went backwards', () => {
+		const v = cardVerdict({ rolledBack: null, pinnedVersion: 'main-abc' }, ...rank);
+		expect(v.label).toBe('pinned');
+		expect(v.title).toContain('main-abc');
+		expect(v.title).toContain('automatic deploys are paused');
+	});
+
+	/**
+	 * A rollback PINS by construction (`ChangeVersionModal.mustPin`), so both
+	 * are true on every rollback. Two marks for one act is what took the app
+	 * name's width to zero on `/`.
+	 */
+	it('says ROLLED BACK, not PINNED, when both are true', () => {
+		const v = cardVerdict({ rolledBack: back, pinnedVersion: 'main-abc' }, ...rank);
+		expect(v.label).toBe('rolled back');
+	});
+
+	it('keeps BOTH facts — the rank sentence survives in every title', () => {
+		expect(cardVerdict({ rolledBack: back, pinnedVersion: null }, ...rank).title).toContain(rank[1]);
+		expect(cardVerdict({ rolledBack: null, pinnedVersion: 'x' }, ...rank).title).toContain(rank[1]);
+	});
+
+	it('spells the rollback distance', () => {
+		const v = cardVerdict({ rolledBack: back, pinnedVersion: null }, ...rank);
+		expect(v.title).toContain('Rolled back 7 versions: aa17645 → 51b976a');
+	});
+
+	it('says "1 version", not "1 versions"', () => {
+		const v = cardVerdict({ rolledBack: { from: 'b', to: 'a', by: 1 }, pinnedVersion: null }, ...rank);
+		expect(v.title).toContain('Rolled back 1 version:');
 	});
 });
