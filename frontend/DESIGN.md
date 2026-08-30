@@ -3618,6 +3618,83 @@ Each of these is a real measurement. Each was refused for a stated reason, not s
 
 ## Recently addressed (do not regress)
 
+- ✅ **2026-08-30 — `/apps/[name]`'s `Needs you` row went from 19 text elements to 9, and a
+  healthy app's page no longer renders a card to say nothing is wrong.** From the human:
+  *"i also don't like apps this part. it looks a bit too mesy compared with the rest. again too
+  much text. it also looks a bit weird when there are no actions needed."* Counted in-browser on
+  the live cluster's `hello-world-app`, walking the text nodes inside `.tk`: **19 before, 9
+  after**, on both stuck rows.
+  - **THE WAITING-BUILDS LEDGER IS A DISCLOSURE, AND ITS SUMMARY IS THE FACT.** It spent EIGHT
+    of the nineteen — a `ready since` column head, three shas, three ages, and `+16 more` — to
+    print `0afab6f 1d / c1ecfe5 1d / 45d2662 1d`. The two facts a person deciding a promotion
+    uses are HOW MANY and SINCE WHEN, and neither was legible: the count had to be
+    reconstructed as `3 + 16` off a control's label, and the age was printed three times under
+    a head that named it once. **A 7-hex sha is not a fact a decider uses** — and on the
+    shipped state of this product GitHub is not connected, so the message column that is the
+    entire reason to print a sha is empty. One control now carries `19 versions ready · oldest
+    1d ago` and opens the FULL queue (no `+N more`; two nested disclosures on one list is a
+    control whose only job was undoing a truncation that no longer happens). The commits
+    request is gated on `open`, so a closed task costs no network.
+    - ⛔ **THE COUNT IS WORDED `ready`, NEVER `waiting`.** The state column's hop 340px right
+      prints `N versions waiting to move` for `rank(down) − rank(up)`; this is
+      `promotionCandidates`. On the live cluster those are 5 and 19. **Two different true
+      numbers on one screen may not share a verb.**
+  - **`BlockReason` has a `compact` form: one line, `<icon> <short> · rule: <names>`.** The
+    full sentence is two clauses — what is blocking, and whether a person is needed — and on
+    `/apps/[name]` the second clause is the CARD'S OWN TITLE (`Needs you`, with the
+    self-clearing gates in a separate card headed `Waiting, nothing to do`). Printed per row it
+    marked the norm in 71 characters that wrapped to two lines. `short` still carries the split
+    lexically (`Needs a person to approve` vs `Clears on its own`), so it is not the long line
+    truncated. The `rule:` handle survives verbatim — it is the one fact on a blocked task no
+    mark can carry. **`break-all`, never `truncate`**: measured on `/envs/prod`'s ~205px app
+    cell, `truncate` rendered `rule: hello-world-manu…`, an identifier clipped to something
+    nobody can look up.
+    - ⚠️ **`compact` IS OPT-IN AND ONLY `/apps/[name]` AND `/envs/[name]` PASS IT.**
+      `/environments` and the dependencies page render the same object outside any surround
+      that states who has to act, so they keep the long sentence. Two renderings of one object
+      now exist in the product. Someone should decide whether the short form is right
+      everywhere.
+  - **`no progress for <span>` is cut wherever a `stuck` chip prints a span.** The PROD row
+    wore `[STUCK][1d]` and then said `no progress for 1d` 130px below it. It survives on a
+    FAILED deploy, which has no detector behind it and therefore no chip.
+  - **The namespace link is cut.** Its `href` was `rolloutHref(f.cell)` — character for
+    character the `Investigate` button's, so it was a bare-text second control aimed at the
+    first one's target.
+  - **`View on GitHub` is narrowed to rows where the running build is the suspect** — failed,
+    wedged mid-bake, wedged mid-deploy, or `diverged`. A gate-blocked environment deployed
+    fine and is serving; what a person is deciding about is the queue in front of it.
+  - **THE HEALTHY-APP PAGE DOES NOT RENDER A `Needs you` CARD AT ALL.** It used to open with
+    `Needs you · 0 environments` over one sentence — a 47px header bar, a right-aligned rollup
+    and ~120px of the page's most prominent slot spent on ABSENCE, which is also the
+    mostly-draws-the-norm defect that has cut nine components from this product. **The slot is
+    not left empty and it is not filled with a quieter card: `Recent activity` moves up into
+    it** — already on the page, already a real list, and what a healthy app's reader came for.
+    **The reassurance is promoted from a claim to a MEASUREMENT**: the state card must render
+    either way, and on a healthy app its rollup reads `3 of 3 up to date` in the product's one
+    state green. That is the reference page's own `3/3 healthy` idiom. `waitingItems` keeps the
+    column alive — a schedule window is not a decision but it IS something happening.
+  - **`/envs/[name]`'s empty environment lost its 96px centred void** (`py-10 text-center`),
+    which sat above a right rail that is suppressed at zero rows — a page-wide hole where a
+    list would be. It is a row-shaped line at row padding now, and it says what makes an app
+    appear.
+  - **Two geometry repairs the cuts exposed.** `.tk`'s `why` track gained a
+    `minmax(min(100%, 240px), 1fr)` floor — while the ledger was a compressible multi-line
+    block a `PROD ×10` task's four region buttons could squeeze it, and on `edge-mesh` the
+    one-line summary rendered `1 version ready · 1…`; the buttons wrap instead now. And
+    `.tk-why` got a **38px floor with its content centred** (38 = the measured `.btn` height)
+    while `.tk-act` pins to `start`, so the summary sits level with the first button whether
+    the row is 38px, 400px of open ledger, or two wrapped rows of region buttons.
+  - **Verified** at 1440 and 390 in both themes, on the live cluster (`hello-world-app`, two
+    stuck approval-gated environments) and on `MOCK_API=1` for `hello-frontend-app` (healthy),
+    `checkout-worker` (one failed deploy, 7 elements), `payments-core` (9 envs → **4 tasks**)
+    and `edge-mesh` (13 envs → **2 tasks**, the growth-with-decisions property intact). 390
+    `scrollWidth === clientWidth` on both pages. `svelte-check` unchanged at 4 errors / 0
+    warnings; vitest 0 failed.
+  - ⚠️ **NOT TOUCHED, AND STILL A SLOT SPENT ON ABSENCE:** on an app whose ready-pod counts do
+    not resolve, the state card's third sub-section renders the heading `How much is on the
+    newest` over a bare em-dash. `ExposureBar` chooses that em-dash deliberately and records
+    why. Worth a decision by whoever owns that component.
+
 - ✅ **2026-08-27 — THE FLEET RULER IS DELETED. `/apps`'s criterion-1 object is the FLEET
   STRIP.** From the human, on the second round of repairs to the ruler: *"Fleet by build barely
   improved."* Two rounds had been spent on it — round one gave all twelve empty rank stations a

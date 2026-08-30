@@ -281,10 +281,13 @@
 
 {#if reason && compact}
 	{@const Icon = reason.icon}
-	<!-- ONE LINE, AND IT WRAPS AS A LINE rather than as a paragraph: the
-	     identifier is `whitespace-nowrap` so a 12-character gate name is never
-	     torn in half (the defect the block form's `break-all` was added for),
-	     and the consequence takes the slack instead. -->
+	<!-- ONE LINE WHERE THERE IS ROOM, AND A WRAP WHERE THERE IS NOT — never a
+	     TRUNCATION. `truncate` was tried and measured on `/envs/prod`, whose
+	     app cell is ~205px: it rendered `rule: hello-world-manu…`, i.e. an
+	     identifier clipped to something no reader can go and look up, which is
+	     worse than the two-line handle the block form already accepts.
+	     `break-all` is the block form's own answer and only fires on a name
+	     genuinely wider than its column. -->
 	<p class="t-micro flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 {className}">
 		<span class="inline-flex min-w-0 items-baseline gap-1.5 text-gray-500 dark:text-gray-400">
 			<Icon class="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden="true" />
@@ -292,7 +295,7 @@
 		</span>
 		{#if reason.names}
 			<span
-				class="t-code-sm truncate text-gray-500 dark:text-gray-400"
+				class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400"
 				title="The rule blocking this: {reason.names}">rule: {reason.names}</span
 			>
 		{/if}
