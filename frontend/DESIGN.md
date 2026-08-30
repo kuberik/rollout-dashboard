@@ -416,6 +416,217 @@ as border and surface values); the composited alphas `text-<hue>-700/80` and
 **Gates after the pass: vitest 20 files / 347 tests, 0 failures; `svelte-check` 4 errors /
 0 warnings; `paraglide/messages/en.js` 160 bytes.**
 
+## `/activity` AND `/namespaces/<ns>` — BOTH PASSES, AND A CONTROL THAT DID NOTHING (2026-08-30)
+
+`/activity` is **the only page that received neither the composition pass nor the novice
+pass**, and a live UX critique found it also had the **worst attention ordering in the
+product**. Five findings, all reproducible on the live cluster.
+
+### ⛔ 1. `Show changes` EXPANDED TO NOTHING, AND THE MECHANISM WAS A CORRECT RULE
+
+> *"Clicking flips the label to `Hide changes` and reveals ZERO content. It is the only
+> affordance answering 'what changed?', the operator's most common question."*
+
+`CommitSummary` renders **deliberately nothing** on error, and its own comment says why: it
+is drawn one-per-row unattended, where an error string repeated forty times *"is how a page
+comes to look broken on arrival."* That is right — **for an ambient object nobody asked
+for.** `/activity`'s expander is the opposite: a reader PRESSED it. **An explicit request
+earns an explicit answer, and a control that does nothing is worse than no control.**
+
+So the two are separated rather than merged. `CommitSummary` is untouched;
+**`ChangeList.svelte`** owns the on-demand case and its contract is that *every branch
+renders something*: skeleton → commit list → `Nothing changed in the source between these
+two versions.` → **a plain sentence naming the reason, plus the way out.**
+
+**The way out is the load-bearing part.** `/api/auth/github/status` reports
+`configured: false` on this cluster — the server has no GitHub App at all — so
+*"Connect GitHub"* would have been a SECOND dead control. But **the answer does not need
+kuberik's token**: the rollout carries `status.source`, and
+`github.com/<owner>/<repo>/compare/<base>...<head>` is a public URL that answers the
+question directly. The failure branch ships the ANSWER, not an apology. `Connect GitHub` is
+offered only when the server says the app IS configured and the user simply has not
+connected — the one case where pressing it changes the outcome.
+
+The query is `enabled` only while the panel is open, so a 60-row feed fires zero commit
+requests until somebody asks a question. Verified live: `401 github_not_connected` →
+`This kuberik has no GitHub connection set up, so it cannot list the commits itself.` +
+`See the diff on GitHub` → `https://github.com/littlechimera/kuberik-testing/compare/aa17645…...0afab6f…`.
+
+### ⛔ 2. ROWS FOR DIFFERENT ENVIRONMENTS WERE BYTE-IDENTICAL — AND IT WAS A GUARD
+
+> *"Two rows at `1m`: `rollout-controller deployed hello-world-manifests 56d1725 was
+> f368353`, twice, for two different environments. Some events carry `to PROD`; most do
+> not."*
+
+**THE PAGE ALREADY HAD THE ANSWER AND REFUSED TO PRINT IT.** The env chip was rendered
+`{#if entry.envName}`, and `envName` comes only from a matching `Environment` OBJECT. The
+three `hello-world-manifests` rollouts have no `Environment`; they carry
+`dashboard.rollout.kuberik.com/theme: prod|dev|staging`, which the page was ALREADY using
+to tint the row's `environment-theme-scope`. **The product knew the environment, painted the
+row with it, and would not name it.** The guard is `entry.theme || entry.envLabel` now and
+the label falls through `shortEnvLabel(theme)` → `prod` / `staging` / `dev`. Env chips went
+from 24/39 rows to 39/39.
+
+Three more disambiguators, in the order a reader meets them:
+
+- **the version transition moved onto the row** — `f368353 → 56d1725`, the pair
+  `ActivityRail` already prints. It used to be `was <s>f368353</s>` in a fifth column that
+  was `hidden` below `sm`, so **on a phone two deploys of the same app differed by nothing
+  at all**;
+- **the namespace prints only when the chip is not enough** — computed per render: when two
+  events in view share BOTH an app name and an environment. On this cluster it fires zero
+  times, which is the point. Marking the norm here would put a namespace on all sixty rows;
+- **the actor prints only when a PERSON triggered it.** `rollout-controller` was the first
+  word of all 39 rows — the norm, restated 39 times. `by admin@example.com` now appears on
+  exactly the rows where a human did something.
+
+### 3. THE CHART WAS EMPTY BY DEFAULT — WINDOW *AND* SUBJECT
+
+A hardcoded `7d` against a cluster whose activity was all in the last hour: 37 deploys as
+one dot at `now` across ~1100px of empty grid. Two changes:
+
+- **the window is computed to fit the data** — the smallest preset that contains the oldest
+  event — and **stops being computed the moment the reader touches a button**
+  (`DeploymentTimeline` gained `onRangeChange`, which fires for a preset press or a
+  brush-zoom but never for a programmatic change; `bind:` alone cannot tell those apart, and
+  the history page's plain `bind:timeRange` is untouched). It is derived off `Date.now()`
+  and not the `$now` store on purpose: a ticking clock would fight the reader for the
+  control every second.
+- **the chart earned its space by changing what it plots.** It was ONE lane called
+  `All deploys` — a strip plot of the list already beneath it. It is **one lane per
+  environment** now, ordered by `env-order.ts`, so it answers what the feed cannot at a
+  glance: *did prod get these deploys too, and how long after dev?* The tooltip gained an
+  optional `subject` (the rollout name), because the lane no longer says it.
+
+Three sizing defects only the 22-environment fixture finds, all fixed in the component:
+**(a)** `ROW_H` was a const 52 → 22 lanes made a **1,144px** chart, the whole viewport
+before one event; it is a `rowHeight` prop and the page drops to 26 above six lanes (704px).
+**(b)** the label gutter is a `labelWidth` prop and the truncation length now DERIVES from
+it — at 92px the old fixed `truncate(name, 17)` ran `prod-ap-northeast-1` off the left edge
+of the SVG. Measured after: **zero SVG labels with `getBBox().x < 0`.**
+**(c)** the axis interval was chosen from the RANGE alone and a label has a WIDTH — at 390
+seven `Aug 24`-sized labels in a 270px plot rendered as `Aug 24Aug 25Aug 26…`, one string of
+overlapping glyphs. The interval doubles until each label has room.
+
+### 4. THE `7d` PILL — VERIFIED NEUTRAL, NOT RE-FIXED
+
+The critique measured it at **207.8 presence**, louder than the `stuck` alarm anywhere in
+the product and 0.059 dEok from `Deploying` blue — a CONTROL wearing a STATE's hue. The
+2026-08-27 colour pass had already neutralised it; re-measured here and it is the same
+near-neutral `gray-900` / `gray-100` selected state the status filters use. **Both filter
+rows are one control language.**
+
+### 5. THE LEGEND — AND THE OBJECT THAT LOOKED LIKE ONE
+
+`DeploymentTimeline`'s five-swatch key was deleted on 2026-08-27 and **is not in the DOM**.
+The only remaining LEGEND-SHAPED object was the row of env chips floating at the far right
+of the filter bar — controls, in the position a colour key goes, on a page whose owner has
+had two legends deleted. They sit in **one control strip** with the state filters now, after
+a divider, with `aria-pressed` and a `Show only PROD` title on each.
+
+**What does the legend's job instead:** the day card's right-aligned rollup
+(`12 deploys · 1 failed`, `39 deploys · all fine`), the state word printed in plain English
+on every row that is not the norm, and the banner.
+
+### THE COMPOSITION, AND THE VOCABULARY
+
+- **Every region is a titled `Card`** — `When deploys happened` (rollup: the window, because
+  those buttons also scope the feed below), and **one card per time cluster** with a 16px
+  icon and a right-aligned rollup. **Membership of the card is the only grouping mark**;
+  rows inside a card holding a failure are byte-identical to rows anywhere else, so the
+  dead gray attention band cannot come back under a new name. The header icon takes red ONLY
+  for the deviation — seven green clocks on a 7-day feed would be the norm at header scale.
+- **The page's one blocking fact is an `AlertPanel`**: `3 deploys failed` /
+  `checkout-worker in staging failed 5 minutes ago, on a02f1c4.` /
+  `Press Failed below to see all 3.` / `Open checkout-worker` via `NextStep`.
+- **The 24h sparkline is CUT.** It sat 40px above a chart of the same array at higher
+  resolution and printed `LAST 24H 0 deploys` beside 39 events. Same rule that cut
+  `DeployHistoryStrip`: an object reading the same array as the object beside it is cut.
+- **Four status filters became three.** `All / Deploys / In progress / Failures` had
+  `Deploys` meaning Succeeded+Deploying — "everything except failures", which is what `All`
+  already is on a healthy cluster, overlapping `In progress` on one of its two values. Now
+  `All / In flight / Failed`.
+
+| was | now | why the old one failed |
+|---|---|---|
+| `rollout-controller deployed X to PROD` | `[PROD] X` | the actor was the norm, 39 times; the verb is what a row IS |
+| `Succeeded` (39 times) | nothing | the disc says it, and the version pair says what it did |
+| `Baking` | `live, being checked` | `bake` is this product's own word |
+| `Deploying` | `going live` | names a state machine |
+| `Failed` | `deploy failed` | |
+| `Cancelled` | `stopped` | |
+| `was <s>f368353</s>` | `f368353 → 56d1725` | a strike-through in a fifth column, hidden on phones |
+| `Show changes` | `What changed` | |
+| `Deploys` / `In progress` / `Failures` | `In flight` / `Failed` | a filter whose result cannot be predicted will not be pressed |
+| `Older` | `Earlier` | |
+| `last 7 days` | `the last 7 days`, in a sentence | |
+
+### `/namespaces/<ns>` — THE LAST CAPTION-OVER-BOX RAIL, AND A COPY OF A SHARED COMPONENT
+
+It was **the last `ActivityRail` caller drawing its own chrome** — and in fact it did not
+call `ActivityRail` at all: it carried a **hand-copied 70-line duplicate** with its own
+`STATUS_DOT` / `STATUS_TEXT` / `STATUS_LABEL` tables, its own day grouping and its own dot
+rail. Two copies of one object is how the two came to disagree — the shared rail had already
+been taught to print `prev → new`, to drop the word `Succeeded` beside a green dot, and to
+link a build by REVISION, and this copy had none of it. **The duplicate is deleted and the
+shared component is called**, in a `Card` with `chrome={false}`, exactly as `/apps/[name]`
+and `/envs/[name]` do.
+
+`showEnv` is passed **by data**, not by assumption: `ActivityRail`'s own rule is *"a chip
+identical on every row is a mark that cannot mark anything"*, and a namespace is not an
+environment — so the chip is correct in general and was eight copies of `PROD` here.
+
+**THE FOUR STAT TILES ARE GONE, AND THAT IS THE SAME DEFECT.** `ROLLOUTS 5` / `HEALTHY 4` /
+`FAILING 0` / `DEPLOYS·24H 12` were four `t-label` captions floating over four bordered
+boxes, spending four 24px numerals on numbers the page states again 8px below. They are
+replaced by the `/apps` idiom — one summary sentence under the `h1` — and the two real
+verdicts moved into the two card headers (`all 2 deployed cleanly`, `8 deploys`).
+
+The rollup deliberately does **not** say "healthy": a clean last deploy is not the same
+claim as a fleet on the newest version, and conflating the two is the pair `/apps` shipped as
+a lie (a green tick beside `PROD is 14 builds behind`). It says what it measured.
+
+**`DEPLOYS · 24H` was replaced by `last deploy 1 day ago`, and that is a correctness fix.**
+The tile read `0` while the rail beside it listed EIGHT deploys, because the newest is 34
+hours old. Both numbers were right and the pair was unreadable at a glance. And
+`DeployVolumeSparkline` over an empty 24h window draws **literally nothing**, so the page
+carried a blank graphic captioned with a zero. `last deploy N ago` is the fact a namespace
+header is actually asked for, and it cannot contradict the list under it.
+
+The three colour-audit findings on this page are closed with the tiles: green on a 24px
+numeral, the word `Succeeded` printed as PROSE in the state hue (the shared rail does not
+print it at all), and `FAILING 0` at **1.47:1**. Rows also gained the `ChevronRightOutline`
+`/apps` and `/versions` rows carry — the whole row had been a link since before this pass
+and said so with nothing.
+
+### Measured
+
+| page | icons in `<main>` | radii | type range | dark-contrast, 4 combos |
+|---|---|---|---|---|
+| rollout detail (reference, unchanged) | 115 | 4 + 6 + 8 + 12 | 24 → 10 | — |
+| `/activity` | **93** | 4 + 8 + 12 | 24 → 10 (+ a 9px SVG axis annotation) | **0 text / 0 icon** |
+| `/namespaces/<ns>` | 4 † | 4 + 8 | 24 → 10 | **0 text / 0 icon** |
+
+† the rail draws status as CSS dots, not SVG, so this count is inherited from
+`ActivityRail` and matches what `/apps/[name]` and `/envs/[name]` score for the same region.
+
+`scrollWidth === clientWidth` at 390 on both pages, both themes. Contrast measured with
+canvas-resolved colours against the real composited background (whole ancestor chain,
+cumulative opacity folded in), `<line>`/`<polyline>` and sub-1.1:1 knockout halos excluded,
+gradients skipped. Also run against `MOCK_API=1` for volume (60 events, 26 rollouts, 22
+environments, failing + in-flight + stuck): **0 text fails in both themes at both widths.**
+
+### ⚠️ ONE ICON FAILURE FOUND, AND IT IS NOT ON THESE PAGES — REPORTED, NOT FIXED
+
+Under `MOCK_API=1` in LIGHT, the `InProgress` glyph measures **1.21 – 1.37:1** on its own
+`bg-yellow-100` disc. It is Flowbite's `<Spinner type="pulse" color="yellow">` in
+`BakeStatusIcon.svelte:87`, whose circles paint `fill-yellow-400`. **This is a shared atom
+and it renders identically on `/`, `/rollouts`, rollout detail, `/apps` and `/envs`
+wherever a rollout is baking** — the live cluster simply has no baking rollout, which is why
+the 2026-08-30 sweep recorded `/activity` at "1 → 1 † (the timeline gridline)" and never saw
+it. Fixing it means moving `color="yellow"` off `yellow-400`, which reaches three protected
+pages, so it is recorded here rather than changed.
+
 ## THE COMPOSITION PASS — `/apps` AND `/apps/[name]` (2026-08-30)
 
 **Read `.agents-context/design/COMPOSITION-GRAMMAR.md` before this file.** Six pages were

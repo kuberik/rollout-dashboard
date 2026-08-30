@@ -280,3 +280,48 @@ export function buildRolloutCards(
 		};
 	});
 }
+
+/**
+ * ⛔ THE VERDICT HALF OF THE CARD'S CHIP HOLDS EXACTLY ONE WORD, AND ON A
+ * ROLLED-BACK ROLLOUT THAT WORD IS `rolled back`.
+ *
+ * The first attempt at "say the word rollback on the list surfaces" added a
+ * `RollbackBadge` and a `PinBadge` as LOOSE MARKS on `/`'s row. Measured at
+ * 1440 light, the cost was immediate and unacceptable:
+ *
+ *     [PROD][ROLLED BACK][PINNED][23 BEHIND][aa17645]   name width 0 of 108
+ *     hello…[PROD][ROLLED BACK][24 BEHIND][51b976a]     name width 45 of 108
+ *                                                       scrollWidth 415 / 398
+ *
+ * **The app name is the primary identifier and is never the thing that gets
+ * sacrificed** — a card reading `PROD · ROLLED BACK · PINNED · 23 BEHIND` with
+ * no name tells an operator nothing about WHAT rolled back. The row is a
+ * single 398px line; it can carry a circle, a name, an env chip and one
+ * `[verdict][build]` chip, and that is the whole budget.
+ *
+ * So nothing is added. The chip that already states the verdict states the
+ * more urgent one, and the rank sentence moves into the same chip's `title`
+ * beside the rollback's own arithmetic — both facts kept, one of them
+ * promoted. `COMPOSITION-GRAMMAR.md`'s two-half rule is untouched and `/`
+ * renders exactly the elements it rendered before.
+ *
+ * ⚠️ THE PIN IS NOT LOST BY BEING UNSPOKEN HERE. Rolling back PINS by
+ * construction — `ChangeVersionModal`'s `mustPin` is true whenever the picked
+ * version is older than the current one, and the dialog says so — so `rolled
+ * back` and `pinned` co-occur, and spending two marks on one act is the
+ * redundancy this row cannot afford. A rollout pinned WITHOUT going backwards
+ * still shows `PinBadge`, because there the pin is the only fact there is.
+ */
+export function cardVerdict(
+	c: Pick<RolloutCard, 'rolledBack'>,
+	rankWord: string,
+	rankSentence: string
+): { label: string; title: string } {
+	if (!c.rolledBack) return { label: rankWord, title: rankSentence };
+	const { from, to, by } = c.rolledBack;
+	const plural = by === 1 ? '' : 's';
+	return {
+		label: 'rolled back',
+		title: `Rolled back ${by} version${plural}: ${from} → ${to}. ${rankSentence}`
+	};
+}
