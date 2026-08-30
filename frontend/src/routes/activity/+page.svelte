@@ -68,7 +68,7 @@
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
 	import { formatTimeAgoCompact, formatTimeAgo, formatDate, getDisplayVersion } from '$lib/utils';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, BAKE_WORD } from '$lib/bake-status';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -482,12 +482,21 @@
 	 * already says so. The row's own version pair (`f368353 → 56d1725`) is
 	 * what a succeeded deploy actually changed.
 	 */
+	/**
+	 * ⚠️ `InProgress` LOST ITS PHRASE, AND THAT IS THE POINT (2026-08-30).
+	 * This page shipped `live, being checked` while five other surfaces still
+	 * said `baking` — one state, two spellings, which is the split the
+	 * `N behind` pass cost a day to close. The word is `bake-status.ts`'s now
+	 * and the phrase survives as the row's `title`, where a sentence belongs.
+	 * `Deploying` keeps `going live`: that IS the shared word's sibling and
+	 * changing it is a different decision than the one this pass made.
+	 */
 	const STATE_WORD: Record<string, string | null> = {
 		Succeeded: null,
 		Deploying: 'going live',
-		InProgress: 'live, being checked',
-		Failed: 'deploy failed',
-		Cancelled: 'stopped',
+		InProgress: BAKE_WORD.InProgress,
+		Failed: BAKE_WORD.Failed,
+		Cancelled: BAKE_WORD.Cancelled,
 		None: 'no result yet'
 	};
 	const STATE_INK: Record<string, string> = {

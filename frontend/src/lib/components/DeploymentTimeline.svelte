@@ -29,6 +29,33 @@
 		return typeof tr === 'string';
 	}
 
+	/**
+	 * ⭐ A DOT'S NAME WAS THE VERSION AND NOTHING ELSE.
+	 *
+	 * Measured on `/activity` 2026-08-30: forty tab stops, each announcing
+	 * `Deployment 0afab6f` — the SAME string eight times in a row, because a
+	 * build lands in eight places. Position on the chart carried the lane, the
+	 * time and the outcome, and position is the one channel a non-visual reader
+	 * does not have. The name now carries all four.
+	 */
+	function dotLabel(svc: ServiceRow, e: HistoryEntry): string {
+		const version = e.version.version || e.version.tag;
+		const outcome =
+			e.bakeStatus === 'Succeeded'
+				? 'succeeded'
+				: e.bakeStatus === 'Failed'
+					? 'failed'
+					: e.bakeStatus === 'Baking' || e.bakeStatus === 'InProgress'
+						? 'still baking'
+						: (e.bakeStatus ?? 'unknown outcome').toLowerCase();
+		const when = (() => {
+			const t = new Date(e.timestamp);
+			return isNaN(t.getTime()) ? '' : `, ${t.toLocaleString()}`;
+		})();
+		const subject = e.subject ? `${e.subject} in ` : '';
+		return `${version} on ${subject}${svc.name} — ${outcome}${when}`;
+	}
+
 	const TIME_RANGES: { value: PresetRange; label: string }[] = [
 		{ value: '1h', label: '1h' },
 		{ value: '6h', label: '6h' },
@@ -420,8 +447,9 @@
 					hovId = null;
 					hovIdx = null;
 				}}
-				role="img"
-				aria-label="Deployment timeline chart"
+				role="group"
+				aria-label="Deployment timeline — one mark per deploy, newest to the right. Every mark is also a row in the list below."
+
 			>
 				<!-- Row backgrounds -->
 				{#each services as svc, i}
@@ -521,7 +549,7 @@
 							stroke-width={active ? 2 : 1}
 							class="cursor-pointer stroke-white dark:stroke-gray-800 {statusFill(e.bakeStatus)}"
 							role="button"
-							aria-label="Deployment {e.version.version || e.version.tag}"
+							aria-label={dotLabel(svc, e)}
 							tabindex={0}
 							onmouseenter={() => {
 								if (brushStartX !== null) return;

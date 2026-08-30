@@ -1,12 +1,10 @@
 <script lang="ts">
 	import type { Rollout, Kustomization, ManagedResourceStatus, RolloutTest } from '../../../../../../types';
-	import { Badge, Button, Clipboard, Spinner, Alert } from 'flowbite-svelte';
+	import { Badge, Button, Spinner, Alert } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
-		CheckOutline,
-		ClipboardCleanSolid,
 		CodePullRequestSolid,
 		UndoOutline,
 		UserSolid,
@@ -30,6 +28,7 @@
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import CopyButton from '$lib/components/CopyButton.svelte';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
@@ -634,17 +633,11 @@
 												color="light"
 											/>
 										{/if}
-										<Clipboard value={entry.version.tag} size="xs" color="light">
-											{#snippet children(success)}
-												{#if success}
-													<CheckOutline class="mr-1 h-3 w-3" />
-													Copied
-												{:else}
-													<ClipboardCleanSolid class="mr-1 h-3 w-3" />
-													Copy Tag
-												{/if}
-											{/snippet}
-										</Clipboard>
+										<CopyButton
+											value={entry.version.tag}
+											label={`version ${getDisplayVersion(entry.version)}`}
+											text="Copy Tag"
+										/>
 									</div>
 								</div>
 							{/if}

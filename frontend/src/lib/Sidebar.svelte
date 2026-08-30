@@ -48,11 +48,13 @@
 	}
 </script>
 
-<aside
+<!-- `div`, not `aside`: a section rail is not complementary content, and the
+     `aside` was publishing a second landmark named "Sections" wrapping a nav of
+     the same name. The `nav` below is the landmark; this is just its box. -->
+<div
 	class="hidden shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-white py-3 transition-[width] duration-150 dark:border-gray-700 dark:bg-gray-800 sm:flex {collapsed ? 'w-12' : 'w-44'}"
-	aria-label="Sections"
 >
-	<nav class="flex flex-1 flex-col gap-0.5 px-2">
+	<nav id="sidebar-sections" class="flex flex-1 flex-col gap-0.5 px-2" aria-label="Sections">
 		{#each NAV as n (n.key)}
 			{@const active = isActive(n.href)}
 			<a
@@ -74,6 +76,8 @@
 		<button
 			type="button"
 			onclick={toggle}
+			aria-expanded={!collapsed}
+			aria-controls="sidebar-sections"
 			aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 			title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 			class="inline-flex w-full items-center {collapsed ? 'justify-center' : 'gap-2.5'} rounded-md px-2 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/40 dark:hover:text-gray-300"
@@ -86,4 +90,4 @@
 			{/if}
 		</button>
 	</div>
-</aside>
+</div>

@@ -885,9 +885,9 @@
 		{#if !hideHeader}
 			<!-- Detail header: title + status + meta -->
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-				<h6 class="text-base font-bold tracking-tight text-gray-900 sm:text-lg dark:text-white">
+				<h3 class="text-base font-bold tracking-tight text-gray-900 sm:text-lg dark:text-white">
 					{node.longLabel}
-				</h6>
+				</h3>
 				{#if hasMultipleKRs && node.krName}
 					<span
 						class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600 dark:bg-gray-700 dark:text-gray-300"
@@ -1044,9 +1044,20 @@
 		<!-- Final bake content -->
 		{#if node.kind === 'bake'}
 			<div class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
-				<span id="bake-help-icon">
-					<QuestionCircleOutline class="mt-0.5 h-3.5 w-3.5 cursor-help flex-shrink-0" />
-				</span>
+				<!-- Was a bare `span[tabindex=0]` (flowbite's `Tooltip` adds the
+				     tabindex): a focus stop on rollout detail with no role and no
+				     name, which a screen reader announced as nothing at all. A
+				     `button` in a flex row is blockified exactly like the span was,
+				     and Tailwind's preflight strips its chrome — measured
+				     pixel-identical in both themes. -->
+				<button
+					type="button"
+					id="bake-help-icon"
+					aria-label="What the final bake window means"
+					class="cursor-help"
+				>
+					<QuestionCircleOutline class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+				</button>
 				<Tooltip triggeredBy="#bake-help-icon" placement="top" class="max-w-xs text-xs">
 					After deployment, the new version bakes in production for a configured period. Health
 					checks are monitored during this time. If all checks pass throughout the bake window,
@@ -1129,7 +1140,7 @@
 			{:else}
 				<CodePullRequestSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 			{/if}
-			<span class="text-sm font-semibold text-gray-900 dark:text-white">Deployment Pipeline</span>
+			<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Deployment Pipeline</h2>
 		</div>
 		<div class="flex items-center gap-3">
 			{#if !isAutoSelected}

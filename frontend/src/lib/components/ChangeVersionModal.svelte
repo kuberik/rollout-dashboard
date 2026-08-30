@@ -26,6 +26,8 @@
 		FetchCommitsError,
 		type CommitsError
 	} from '$lib/api/github';
+	import { modalFocusReturn } from '$lib/a11y.svelte';
+	import { announce } from '$lib/stores/announce.svelte';
 
 	interface Props {
 		open: boolean;
@@ -64,6 +66,16 @@
 		onSuccess = () => {},
 		onError = () => {}
 	}: Props = $props();
+
+	/**
+	 * Verified by tabbing the running app: the native `<dialog>` under
+	 * `flowbite`'s `Modal` already traps focus and makes the page behind inert
+	 * (`dialog.matches(':modal')` is true, and 40 Tab presses never left it).
+	 * What it does NOT do is restore focus, because the element is inside
+	 * `{#if open}` and is destroyed rather than closed — measured landing on
+	 * `<body>`. This puts it back on `Change Version`.
+	 */
+	modalFocusReturn(() => open);
 
 	function apiUrl(path: string): string {
 		if (!cluster) return path;
@@ -335,9 +347,14 @@
 					? 'Successfully pinned and deployed version'
 					: 'Force deploy initiated, version rolling out soon'
 			);
+			announce(
+				`${pinVersionToggle ? 'Pinned and deployed' : 'Deploy requested for'} ${getDisplaySelectedVersion()}.`
+			);
 			open = false;
 		} catch (e) {
-			notifyError(e instanceof Error ? e.message : 'Failed to deploy version');
+			const message = e instanceof Error ? e.message : 'Failed to deploy version';
+			notifyError(message);
+			announce(message, 'assertive');
 		}
 	}
 
@@ -362,14 +379,19 @@
 	}
 </script>
 
-<Modal bind:open title="" size="lg" class="[&>div]:p-0">
+<!-- `aria-labelledby` rather than `title`: the header is a two-part crumb
+     (`Change Version / <rollout>`) that `Modal`'s own `title` slot cannot
+     render, and without either the dialog announced as an unnamed "dialog". -->
+<Modal bind:open title="" size="lg" class="[&>div]:p-0" aria-labelledby="cvm-title">
 	<div class="flex max-h-[85vh] flex-col">
 		<!-- Header. pr-14 reserves space for the modal's floating close (✕) in the
 		     top-right corner so the right-aligned mobile Back button clears it. -->
 		<div
 			class="flex shrink-0 items-center gap-2 border-b border-gray-200 py-4 pl-5 pr-14 dark:border-gray-700"
 		>
-			<div class="text-base font-semibold text-gray-900 dark:text-white">Change Version</div>
+			<h2 id="cvm-title" class="text-base font-semibold text-gray-900 dark:text-white">
+				Change Version
+			</h2>
 			{#if rollout?.metadata?.name}
 				<span class="text-gray-500 dark:text-gray-400">/</span>
 				<code class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">{rollout.metadata.name}</code>
@@ -401,11 +423,16 @@
 						class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 					/>
 					<div class="flex items-center justify-between">
-						<span class="text-xs text-gray-500 dark:text-gray-400">Show all repo tags</span>
+						<!-- The `span` was decoration: measured, the checkbox behind this
+						     Toggle was the first tab stop in the dialog and had NO name. -->
+						<span id="cvm-showall-label" class="text-xs text-gray-500 dark:text-gray-400"
+							>Show all repo tags</span
+						>
 						<Toggle
 							bind:checked={showAllTags}
 							size="small"
 							color="blue"
+							aria-labelledby="cvm-showall-label"
 							onchange={() => {
 								if (showAllTags && allRepositoryTags.length === 0) getAllRepositoryTags();
 								currentPage = 1;
@@ -414,7 +441,7 @@
 					</div>
 				</div>
 
-				<div class="flex-1 overflow-y-auto">
+				<div class="flex-1 overflow-y-auto" role="group" aria-label="Available versions">
 					{#if paginatedVersions.length > 0}
 						{#each paginatedVersions as version (typeof version === 'string' ? version : version.tag)}
 							{@const versionTag = typeof version === 'string' ? version : version.tag}
@@ -434,6 +461,7 @@
 							{#await loadAnnotationsOnDemand(versionTag)}{/await}
 							<button
 								type="button"
+								aria-pressed={isSelected}
 								class="flex w-full items-start gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800 {isSelected
 									? 'bg-blue-50 dark:bg-blue-900/30'
 									: ''}"
@@ -575,7 +603,10 @@
 										Unable to load commit history. You can still proceed.
 									</p>
 								{:else if commitsQuery.data && commitsQuery.data.commits.length > 0}
-									<ul class="space-y-3">
+									<ul
+										class="space-y-3"
+										aria-label={direction === 'rollback' ? 'Commits reverted' : 'Commits deployed'}
+									>
 										{#each commitsQuery.data.commits as commit (commit.sha)}
 											<li class="flex gap-2.5">
 												<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {direction === 'rollback' ? 'bg-amber-500' : 'bg-green-700 dark:bg-green-400'}"

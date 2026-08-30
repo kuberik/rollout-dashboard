@@ -1,4 +1,5 @@
 import type { Rollout, Kustomization, OCIRepository } from "../types";
+import { BAKE_WORD } from './bake-status';
 
 
 export function formatDate(dateString: string): string {
@@ -16,9 +17,11 @@ export function formatTimeAgo(start: string, end: Date = new Date()): string {
     return `${formatDuration(start, end)} ago`;
 }
 
-// For in-flight rollouts (Baking/Deploying), prepend the verb so the
-// timestamp clearly reads as time-in-state — a baking rollout sitting
-// at 'baking 2h' jumps out as stuck, while 'baking 30s' looks normal.
+// For in-flight rollouts (checking/deploying), prepend the verb so the
+// timestamp clearly reads as time-in-state — a rollout sitting at
+// 'checking 2h' jumps out as stuck, while 'checking 30s' looks normal.
+// THE VERBS COME FROM `bake-status.ts`'s ONE TABLE (2026-08-30): `baking`
+// was this product's own word and is now `checking` everywhere at once.
 // Returns just the timestamp for terminal states (timestamp alone is
 // clear when there's no ongoing process).
 export function formatStatusTime(
@@ -28,8 +31,8 @@ export function formatStatusTime(
 ): string {
     if (!timestamp) return '';
     const t = formatTimeAgoCompact(timestamp, now);
-    if (bakeStatus === 'InProgress') return `baking ${t}`;
-    if (bakeStatus === 'Deploying') return `deploying ${t}`;
+    if (bakeStatus === 'InProgress') return `${BAKE_WORD.InProgress} ${t}`;
+    if (bakeStatus === 'Deploying') return `${BAKE_WORD.Deploying} ${t}`;
     return t;
 }
 
@@ -85,7 +88,7 @@ export function compareRollouts(
 }
 
 // 'Stuck' = a rollout that should be progressing but isn't. Two cases:
-//   1. baking/deploying state has been running too long (default >1h)
+//   1. checking/deploying state has been running too long (default >1h)
 //   2. (cross-env) this rollout is behind a peer for too long (default >24h)
 // Returns null when not stuck so callers can `{#if isStuck(...)}` cleanly.
 export type StuckReason =

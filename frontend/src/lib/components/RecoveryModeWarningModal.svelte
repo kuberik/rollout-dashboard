@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { Modal, Button } from 'flowbite-svelte';
 	import { ExclamationCircleSolid } from 'flowbite-svelte-icons';
+	import { modalFocusReturn } from '$lib/a11y.svelte';
 
 	type Reason = 'previous-failed' | 'unhealthy-health-checks';
 
@@ -22,6 +23,10 @@
 		onCancel = () => {}
 	}: Props = $props();
 
+	// Native `<dialog>` handles the trap and the inert background; it cannot
+	// restore focus here because the element is destroyed, not closed.
+	modalFocusReturn(() => open);
+
 	const title = $derived(
 		reason === 'previous-failed' ? 'Recovery deploy' : 'Deploy during incident'
 	);
@@ -34,25 +39,25 @@
 	});
 </script>
 
-<Modal bind:open size="md" autoclose={false}>
+<Modal bind:open size="md" autoclose={false} aria-labelledby="rmw-title" aria-describedby="rmw-summary">
 	<div class="space-y-4">
 		<div class="flex items-start gap-3">
 			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 ring-2 ring-amber-300/60 dark:bg-amber-500/20 dark:ring-amber-500/50">
 				<ExclamationCircleSolid class="h-6 w-6 text-amber-600 dark:text-amber-300" />
 			</div>
 			<div class="min-w-0">
-				<h3 class="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
+				<h2 id="rmw-title" class="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
 				{#if versionDisplay}
 					<p class="text-sm text-gray-500 dark:text-gray-400">Version {versionDisplay}</p>
 				{/if}
 			</div>
 		</div>
 
-		<p class="text-sm text-gray-700 dark:text-gray-300">{summary}</p>
+		<p id="rmw-summary" class="text-sm text-gray-700 dark:text-gray-300">{summary}</p>
 
 		<div class="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
-			<p class="font-medium">In recovery mode:</p>
-			<ul class="mt-1.5 list-disc space-y-1 pl-5">
+			<p id="rmw-recovery-heading" class="font-medium">In recovery mode:</p>
+			<ul class="mt-1.5 list-disc space-y-1 pl-5" aria-labelledby="rmw-recovery-heading">
 				<li>Health check failures will <strong>not</strong> mark this deployment as failed.</li>
 				<li>The deployment will sit waiting for health checks to recover.</li>
 				{#if reason === 'unhealthy-health-checks'}

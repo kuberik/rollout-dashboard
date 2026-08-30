@@ -31,27 +31,45 @@
 		/** The consequence. Ordinary English, and it says who has to move. */
 		line: string;
 		/**
-		 * ⭐ THE SAME CONSEQUENCE IN FOUR WORDS — for a caller whose surround
-		 * already carries the other half of `line`. (2026-08-30)
+		 * ⭐ THE SAME CONSEQUENCE IN ONE CLAUSE. THE COMPONENT RENDERS THIS FOR
+		 * EVERY GATE BRANCH, ON EVERY PAGE. (2026-08-30)
 		 *
 		 * `line` is two clauses: WHAT is blocking, and WHETHER A PERSON IS
-		 * NEEDED. On `/apps/[name]` the second clause is the CARD'S OWN TITLE —
-		 * a task inside `Needs you` needs a person by construction, and the
-		 * gates that clear themselves are in a different card headed
-		 * `Waiting, nothing to do`. Printed on every row of that card the
-		 * clause marks the norm, and it cost two wrapped lines to do it:
-		 * measured on the live cluster, *"Someone has to approve a newer
-		 * version — this will not clear on its own"* is 71 characters and broke
-		 * across two lines in an 850px card.
+		 * NEEDED. `short` keeps the clause that is a FACT and drops the one that
+		 * is a gloss on it — while choosing words that carry the person/no-person
+		 * split LEXICALLY (`Needs a person to approve` against
+		 * `Waiting on a check or a time window`), so it is not the long line
+		 * truncated and no surround has to supply the missing half.
 		 *
-		 * So `short` keeps the clause that is a FACT and drops the clause the
-		 * surround states — while still choosing words that carry the split
-		 * lexically (`Needs a person to approve` vs `Clears on its own`), so it
-		 * is not merely the long line truncated. See the `compact` prop.
+		 * Measured on the live cluster, the long `awaiting` line is 71
+		 * characters and wrapped to two lines in an 850px card; with the
+		 * `rule:` handle under it that is THREE rendered lines for one fact.
 		 */
 		short: string;
 		/** The handle, not the explanation. Render as `rule: <names>`. */
 		names: string | null;
+		/**
+		 * ⛔ WHICH RENDERING. IT IS A PROPERTY OF THE BLOCK, NOT OF THE CALLER.
+		 * (2026-08-30)
+		 *
+		 * This was a `compact` PROP, and two of the five callers passed it. So
+		 * the same object said the same fact two different ways in one product
+		 * — `/apps/[name]` and `/envs/[name]` on one line, `/environments` and
+		 * the dependencies tab in a two-clause sentence — which is exactly the
+		 * `−N` versus `N behind` split that cost a dedicated pass to close, and
+		 * a prop that lets a caller choose is a split waiting to be reopened.
+		 *
+		 * The three GATE branches are `short`: their consequence is one clause
+		 * and the words carry the person/no-person split themselves, so no
+		 * surround is load-bearing and no page needs the long form.
+		 *
+		 * `contract` is `long`, and it is not an exception granted to a caller.
+		 * Its sentence carries the semver constraint VERBATIM (`^1.67.0`) and
+		 * the provider's current version — facts no mark on the row carries,
+		 * which this component's own rule forbids paraphrasing. A four-word
+		 * form would delete them, not relocate them.
+		 */
+		form: 'short' | 'long';
 	};
 
 	/**
@@ -73,8 +91,14 @@
 				kind: 'pinned',
 				icon: LockSolid,
 				line: `Held on ${pinnedTo} on purpose — automatic updates are off here`,
-				short: 'Held on purpose',
-				names: null
+				// KEEPS THE VERSION. `Held on purpose` dropped it, and the
+				// version is the FACT here — `automatic updates are off here`
+				// is a gloss on `on purpose`, which is the droppable clause.
+				// `PinBadge` beside this prints the word `pinned` and puts the
+				// version only in a tooltip, so nothing else on the row says it.
+				short: `Held on ${pinnedTo} on purpose`,
+				names: null,
+				form: 'short'
 			};
 		}
 		if (awaiting.length > 0) {
@@ -83,7 +107,8 @@
 				icon: UserCircleSolid,
 				line: 'Someone has to approve a newer version — this will not clear on its own',
 				short: 'Needs a person to approve',
-				names: awaiting.join(', ')
+				names: awaiting.join(', '),
+				form: 'short'
 			};
 		}
 		if (notPassing.length > 0) {
@@ -91,8 +116,18 @@
 				kind: 'notPassing',
 				icon: HourglassSolid,
 				line: 'Newer versions are on hold until a check or time window passes — this clears on its own',
-				short: 'Clears on its own',
-				names: notPassing.join(', ')
+				// ⛔ `Clears on its own` WAS THE WRONG HALF. The long line's two
+				// clauses are the FACT (what is holding it) and the GLOSS (that
+				// it resolves itself); the short form kept the gloss and dropped
+				// the fact — and inside `/apps/[name]`'s card headed
+				// `Waiting, nothing to do` it was that title, restated once per
+				// row, i.e. an object drawing the norm. Naming the check and the
+				// window states the fact AND implies the gloss (checks and clocks
+				// resolve themselves), and it still reads as the opposite of
+				// `Needs a person to approve` without borrowing a surround.
+				short: 'Waiting on a check or a time window',
+				names: notPassing.join(', '),
+				form: 'short'
 			};
 		}
 		return null;
@@ -158,7 +193,13 @@
 			icon: ShareNodesSolid,
 			line,
 			short: `Needs ${provider} to ship first`,
-			names
+			names,
+			// ⛔ LONG, ALWAYS. See `form` on the type: the constraint and the
+			// provider's current version are in `line` and nowhere else on the
+			// page, so the short form is a DELETION here rather than a fold.
+			// `short` is kept for a caller that has both facts adjacent already;
+			// nothing renders it today.
+			form: 'long'
 		};
 	}
 </script>
@@ -220,7 +261,6 @@
 		notPassing = [],
 		pinnedTo = null,
 		reason: given = null,
-		compact = false,
 		class: className = ''
 	}: {
 		/**
@@ -249,37 +289,21 @@
 		 * as a handle, in one place, so no page can spell it its own way again.
 		 */
 		reason?: BlockReason | null;
-		/**
-		 * ⭐ ONE LINE INSTEAD OF THREE. (2026-08-30)
-		 *
-		 * > *"again too much text… Eleven distinct text elements for one fact."*
-		 *
-		 * The two-line consequence plus a `rule:` line on its own line is THREE
-		 * rendered lines per blocked row. In a card whose title already says a
-		 * person is needed, that is one fact spelled at full length under a
-		 * heading that spelled it once.
-		 *
-		 * Compact prints `<icon> <short> · rule: <names>` on ONE line: the
-		 * consequence in four words, then the identifier, still muted, still
-		 * mono, still prefixed with the word that says it is a handle rather
-		 * than a reason. NOTHING IS DROPPED — the `rule:` name is the one fact
-		 * on a blocked task that no mark on the page can carry, and it is
-		 * exactly the fact this component was built to keep while refusing to
-		 * let it pose as the explanation.
-		 *
-		 * ⛔ NOT THE DEFAULT. `/environments` and the dependencies page render
-		 * this outside any surround that states who has to act, so they keep
-		 * the full sentence. The prop is the caller's assertion that its own
-		 * heading already carries the second clause.
-		 */
-		compact?: boolean;
 		class?: string;
 	} = $props();
 
 	const reason = $derived(given ?? blockReason({ awaiting, notPassing, pinnedTo }));
 </script>
 
-{#if reason && compact}
+<!-- ⛔ THE RENDERING IS THE BLOCK'S, NOT THE CALLER'S. (2026-08-30)
+
+     This was a `compact` prop and only two of five callers passed it, so
+     `/apps/[name]` and `/envs/[name]` printed one line while `/environments`
+     and the dependencies tab printed the two-clause sentence — ONE OBJECT
+     SAYING ONE FACT TWO WAYS IN ONE PRODUCT, which is the split `−N` versus
+     `N behind` already cost a pass to close. `form` comes off the block, so
+     a page cannot have an opinion about it. -->
+{#if reason && reason.form === 'short'}
 	{@const Icon = reason.icon}
 	<!-- ONE LINE WHERE THERE IS ROOM, AND A WRAP WHERE THERE IS NOT — never a
 	     TRUNCATION. `truncate` was tried and measured on `/envs/prod`, whose

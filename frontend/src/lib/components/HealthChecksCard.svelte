@@ -46,7 +46,7 @@
 				{:else}
 					<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 				{/if}
-				<span class="text-sm font-semibold text-gray-900 dark:text-white">Health Checks</span>
+				<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Health Checks</h2>
 			</div>
 			{#if failedChecks.length > 0}
 				<span class="text-xs font-semibold text-red-600 dark:text-red-400">{failedChecks.length} failing{pendingChecks.length > 0 ? ` · ${pendingChecks.length} pending` : ''} · {healthyChecks.length} passing</span>

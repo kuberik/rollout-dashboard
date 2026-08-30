@@ -618,8 +618,14 @@
 
 		{#if commitUrl}
 			<div class="mt-4 flex flex-wrap gap-2">
-				<a class="btn btn-secondary" href={commitUrl} target="_blank" rel="noopener noreferrer">
-					<ArrowUpRightFromSquareOutline class="h-4 w-4" />
+				<a
+					class="btn btn-secondary"
+					href={commitUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label={`View the commit for ${row.short} on GitHub — opens in a new tab`}
+				>
+					<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 					View commit
 				</a>
 			</div>
@@ -723,6 +729,7 @@
 											<a
 												href={placeHref(g.slots[0])}
 												class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
+												aria-label="Open the {g.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 												title="Open the {g.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 												><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
 													class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
@@ -842,6 +849,7 @@
 												<a
 													href={placeHref(rg.slots[0])}
 													class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
+													aria-label="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 													title="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 													><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
 														class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"

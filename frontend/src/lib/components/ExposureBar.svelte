@@ -1,5 +1,53 @@
 <svelte:options runes={true} />
 
+<script module lang="ts">
+	export type ExposureSegment = {
+		version: string;
+		pods: number;
+		/** 0-100, already rounded for display. */
+		percent: number;
+		newest: boolean;
+	};
+
+	/**
+	 * ⛔ WHETHER THERE IS ANYTHING TO DRAW — AND THE HEADING ASKS THIS TOO.
+	 * (2026-08-30)
+	 *
+	 * `/api/rollouts` carries no ready-pod counts, so on a cluster whose
+	 * managed-resources call answers nothing this object has NO NUMBER. It used
+	 * to render an em dash for that, under the heading `How much is on the
+	 * newest` — a header and a slot spent to say "no data", which is the same
+	 * defect that had just removed the `Needs you` card from a healthy app one
+	 * card over.
+	 *
+	 * The em dash's argument was that it is *"the product's own idiom for a
+	 * metric that has nothing to measure"* — and that argument holds for a TILE
+	 * in a fixed grid of tiles, where the neighbours keep the row's shape and
+	 * the dash reads as "this one, unlike those, has no value". This is not a
+	 * tile. It is the third and last section of a card, with its own 16px glyph
+	 * and its own heading, and a section is not a slot in a row: nothing next to
+	 * it makes the dash mean anything.
+	 *
+	 * ⚠️ AND THE ABSENCE IS NOT ACTIONABLE. `Ready-pod counts are not available
+	 * for this app` names an API gap, not something the reader can change, and
+	 * this file's rule is that an object which mostly draws the norm — or here,
+	 * the nothing — is cut. So the SECTION does not render. The predicate lives
+	 * here rather than in the page because the heading and the bar must appear
+	 * and disappear together, and a page re-deriving "did this resolve?" is how
+	 * the two come to disagree.
+	 *
+	 * ⛔ NEVER A FABRICATED RATIO. Unchanged: `newestPercent === null` is the
+	 * honest answer whenever no environment reported a pod count, and it now
+	 * costs the reader nothing to read.
+	 */
+	export function hasExposure(
+		newestPercent: number | null,
+		segments: readonly ExposureSegment[]
+	): boolean {
+		return newestPercent !== null && segments.length > 0;
+	}
+</script>
+
 <script lang="ts">
 	/**
 	 * EXPOSURE — Direction B's state half, object 3.
@@ -42,13 +90,7 @@
 	 * both sit in a narrow column beside 11px mono.
 	 */
 
-	type Segment = {
-		version: string;
-		pods: number;
-		/** 0-100, already rounded for display. */
-		percent: number;
-		newest: boolean;
-	};
+	type Segment = ExposureSegment;
 
 	let {
 		segments,
@@ -76,25 +118,15 @@
 
 {#if loading}
 	<div class="h-2 w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700" aria-hidden="true"></div>
-{:else if newestPercent === null || segments.length === 0}
-	<!-- NEVER A FABRICATED RATIO — and never a SENTENCE about the absence
-	     either (2026-08-27). `Ready-pod counts are not available for this app.`
-	     was a 47-character explanation standing in for a number, in a 340px
-	     column, on a page the human has just told us is over-written:
-	     *"Text doesn't cut it and just pollutes."*
+{:else if !hasExposure(newestPercent, segments)}
+	<!-- NOTHING. The em dash that stood here is gone, and so is the heading
+	     above it — the page guards BOTH on `hasExposure`. See the note in the
+	     module block: a header and a slot spent to say "no data" is the same
+	     object this file's own rules cut everywhere else.
 
-	     The em dash is the product's own idiom for a metric that has nothing
-	     to measure — `/envs/[name]`'s `Median bake` tile prints exactly this
-	     when no bake window resolved — so an unmeasurable exposure now reads
-	     the same way as every other unmeasurable metric in the dashboard, at
-	     the size a measured one would have had. The sentence survives in the
-	     `title`, which is where a reason belongs. -->
-	<p
-		class="t-headline text-gray-500 dark:text-gray-400"
-		title="Ready-pod counts are not available for this app"
-	>
-		—
-	</p>
+	     This branch survives as a GUARD, not as a rendering: a caller that
+	     forgets `hasExposure` gets an empty section rather than a fabricated
+	     ratio or a NaN. -->
 {:else}
 	<p class="flex items-baseline gap-2">
 		<span class="t-headline text-gray-900 dark:text-white">{newestPercent}%</span>

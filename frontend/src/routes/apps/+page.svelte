@@ -126,7 +126,7 @@
 	import { now } from '$lib/stores/time';
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import type { EnvironmentTheme } from '$lib/environment-theme';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, BAKE_WORD } from '$lib/bake-status';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -283,15 +283,17 @@
 	// row states whether an adverse environment's last deploy succeeded, failed
 	// or is still in flight, so it may not be dropped with the mark it used to
 	// annotate.
+	// ONE SPELLING, FROM `bake-status.ts` (2026-08-30). `baking` was this
+	// product's own word and this table was one of six copies of it.
 	const STATUS_WORD: Record<CellState, string> = {
-		fail: 'deploy failed',
+		fail: BAKE_WORD.Failed,
 		stuck: 'stuck',
 		pending: 'never deployed',
-		deploying: 'deploying',
-		baking: 'baking',
-		onNewest: 'deploy succeeded',
-		behind1: 'deploy succeeded',
-		behind2: 'deploy succeeded'
+		deploying: BAKE_WORD.Deploying,
+		baking: BAKE_WORD.InProgress,
+		onNewest: BAKE_WORD.Succeeded,
+		behind1: BAKE_WORD.Succeeded,
+		behind2: BAKE_WORD.Succeeded
 	};
 
 	const FLEET_TONE: Record<CellState, FleetTone> = {
@@ -1526,6 +1528,7 @@
 					step={app.step}
 					href="/apps/{app.appName}"
 					primary={app.appName === primaryStepApp}
+					subject={app.appName}
 					title="{app.stepEnv} — {STEP_WHY[app.step]}"
 				/>
 			</span>

@@ -10,7 +10,7 @@
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { shortenVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, BAKE_WORD, bakeTitle } from '$lib/bake-status';
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { computeBakeProgress } from '$lib/view-models/bake-progress';
@@ -98,16 +98,16 @@
 		return next?.spec?.environment ? shortEnvLabel(next.spec.environment) : null;
 	}
 
-	// Per-track status detail for an in-motion card. Baking is a whole-rollout
-	// phase (one line). Deploying is reported per active canary track — each
+	// Per-track status detail for an in-motion card. The check window is a
+	// whole-rollout phase (one line). Deploying is reported per active canary track — each
 	// track's name + how far its canary steps have advanced (the real
 	// substitute for the mock's per-track pod counts, which the list API
 	// doesn't carry).
 	// Each message is split into parts so only the status VERB is coloured
-	// (deploying=blue / baking=yellow); the track name + detail stay neutral.
+	// (deploying=blue / checking=yellow); the track name + detail stay neutral.
 	function motionMessages(
 		c: RolloutCard
-	): { track: string | null; verb: string; verbTone: string; detail: string }[] {
+	): { track: string | null; verb: string; verbTone: string; title: string; detail: string }[] {
 		const summary = derivePipeline(
 			c.rollout,
 			kruiseRolloutsForRollout(c.rollout, kustomizations, kruiseRollouts)
@@ -121,7 +121,13 @@
 				? `· ${Math.round(p.elapsedMs / 60000)}m of ${Math.round(p.totalMs / 60000)}m`
 				: '';
 			return [
-				{ track: null, verb: 'baking', verbTone: 'text-yellow-700 dark:text-yellow-400', detail }
+				{
+					track: null,
+					verb: BAKE_WORD.InProgress,
+					verbTone: 'text-yellow-700 dark:text-yellow-400',
+					title: bakeTitle('InProgress'),
+					detail
+				}
 			];
 		}
 
@@ -131,8 +137,9 @@
 			const idx = t.stages.indexOf('active');
 			return {
 				track: multi && t.name && t.name !== 'deploy' ? t.name : null,
-				verb: 'deploying',
+				verb: BAKE_WORD.Deploying,
 				verbTone: 'text-blue-600 dark:text-blue-400',
+				title: bakeTitle('Deploying'),
 				detail: idx >= 0 ? `· step ${idx + 1}/${t.stages.length}` : ''
 			};
 		});
@@ -235,9 +242,9 @@
 									? `${c.failureCategory} failed`
 									: 'deploy failed'
 								: c.stuck?.kind === 'baking'
-									? 'baking >1h'
+									? `${BAKE_WORD.InProgress} >1h`
 									: c.stuck?.kind === 'deploying'
-										? 'deploying >1h'
+										? `${BAKE_WORD.Deploying} >1h`
 										: `behind ${c.stuck?.peerEnv ?? ''}`}
 						<div
 							class="environment-theme-scope flex flex-col gap-3 rounded-xl border border-gray-200 bg-red-50/40 p-4 dark:border-gray-700 dark:bg-red-900/10"
@@ -309,7 +316,7 @@
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">In motion</h2>
 					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{inMotion.length}</span>
 					<span class="text-xs text-gray-500 dark:text-gray-400"
-						>deploying &amp; baking right now</span
+						>deploying &amp; checking right now</span
 					>
 				</div>
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -367,7 +374,7 @@
 								<div class="flex min-w-0 flex-col gap-0.5">
 									{#each motionMessages(c) as msg (msg.track ?? msg.verb)}
 										<span class="truncate text-gray-500 dark:text-gray-400">
-											{#if msg.track}<b class="font-semibold text-gray-700 dark:text-gray-300">{msg.track}</b>{' '}{/if}<span class="font-medium {msg.verbTone}">{msg.verb}</span>{#if msg.detail}{' '}{msg.detail}{/if}
+											{#if msg.track}<b class="font-semibold text-gray-700 dark:text-gray-300">{msg.track}</b>{' '}{/if}<span class="font-medium {msg.verbTone}" title={msg.title}>{msg.verb}</span>{#if msg.detail}{' '}{msg.detail}{/if}
 										</span>
 									{/each}
 								</div>

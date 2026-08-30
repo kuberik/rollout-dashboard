@@ -116,6 +116,8 @@
  *   proximity answers same-versus-different without naming which build.
  */
 
+import { BAKE_WORD } from '$lib/bake-status';
+
 /** Deploy state of one environment. Same vocabulary as `/apps`'s `CellState`. */
 export type FleetTone = 'settled' | 'fail' | 'stuck' | 'deploying' | 'baking' | 'pending';
 
@@ -221,12 +223,13 @@ function distanceWord(rank: number | null, diverged: boolean, pending: boolean):
 	return `${rank} build${rank === 1 ? '' : 's'} behind head`;
 }
 
+// One spelling, from `bake-status.ts`. See the note there on `baking`.
 const TONE_WORD: Record<FleetTone, string> = {
-	fail: 'deploy failed',
+	fail: BAKE_WORD.Failed,
 	stuck: 'stuck',
-	deploying: 'deploying',
-	baking: 'baking',
-	settled: 'deploy succeeded',
+	deploying: BAKE_WORD.Deploying,
+	baking: BAKE_WORD.InProgress,
+	settled: BAKE_WORD.Succeeded,
 	pending: 'never deployed'
 };
 

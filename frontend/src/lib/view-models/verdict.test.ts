@@ -161,7 +161,7 @@ describe('verdictSentence — precedence', () => {
 				version: 'd09e6f4'
 			})
 		]);
-		expect(s).toBe('prod is 19 builds behind, baking for 3 days.');
+		expect(s).toBe('prod is 19 builds behind, checking for 3 days.');
 		expect(s).not.toMatch(/gate|approval|window/i);
 	});
 
@@ -232,7 +232,7 @@ describe('verdictSentence — precedence', () => {
 			dev,
 			env({ label: 'prod', behind: null, stuck: true, stuckKind: 'baking', stuckForMs: 2 * HOURS })
 		]);
-		expect(s).toBe('prod is behind, baking for 2 hours.');
+		expect(s).toBe('prod is behind, checking for 2 hours.');
 		expect(s).not.toMatch(/gate|approval|window/i);
 	});
 
@@ -247,7 +247,7 @@ describe('verdictSentence — precedence', () => {
 				stuckForMs: 26 * HOURS
 			})
 		]);
-		expect(s).toBe('prod has been baking for 1 day.');
+		expect(s).toBe('prod has been checking for 1 day.');
 		expect(s!.match(/\./g)).toHaveLength(1);
 	});
 
@@ -285,7 +285,7 @@ describe('verdictSentence — precedence', () => {
 
 	it('3. baking when nothing is deploying', () => {
 		const s = verdictSentence([dev, env({ label: 'staging', status: 'InProgress', behind: 1 })]);
-		expect(s).toBe('staging is baking.');
+		expect(s).toBe('staging is checking.');
 	});
 
 	it('4. converged, with the sha', () => {

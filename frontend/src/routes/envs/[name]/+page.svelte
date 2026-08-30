@@ -112,7 +112,7 @@
 		CodeBranchOutline
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, bakeWord } from '$lib/bake-status';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
@@ -125,7 +125,7 @@
 	 * THE STATUS CIRCLE — the repo's atom, not a dot. `getStatusCircleClass()`
 	 * gives the per-status tinted ground and `BakeStatusIcon` the COLOURED
 	 * glyph inside: Succeeded GREEN check, Failed RED exclamation, InProgress
-	 * (baking) YELLOW pulse, Deploying BLUE spinner, none GRAY pause. Baking
+	 * (checking) YELLOW pulse, Deploying BLUE spinner, none GRAY pause. Checking
 	 * and Deploying are different states and may never share a hue, which is
 	 * why this page draws the atom instead of reimplementing it.
 	 */
@@ -293,22 +293,17 @@
 	}
 	type StuckReason = NonNullable<ReturnType<typeof stuckFor>>;
 
-	/** NEVER NAMES A CAUSE IT CANNOT EVIDENCE. */
+	/**
+	 * NEVER NAMES A CAUSE IT CANNOT EVIDENCE.
+	 *
+	 * ⛔ AND IT NO LONGER NAMES THE BAKE (2026-08-30). This was the product's
+	 * densest patch of its own vocabulary — `Bake succeeded` / `Bake failed` /
+	 * `Baking` / `Bake cancelled`, four strings naming a CRD field on the page
+	 * whose `Median bake` tile the novice pass had already renamed to
+	 * `Typical deploy`. One table now, in `bake-status.ts`.
+	 */
 	function stateLabel(status: string): string {
-		switch (status) {
-			case 'Succeeded':
-				return 'Bake succeeded';
-			case 'Failed':
-				return 'Bake failed';
-			case 'InProgress':
-				return 'Baking';
-			case 'Deploying':
-				return 'Deploying';
-			case 'Cancelled':
-				return 'Bake cancelled';
-			default:
-				return 'No deploy yet';
-		}
+		return bakeWord(status);
 	}
 
 	type Row = {
@@ -995,25 +990,19 @@
 										     `/environments` and `/apps/[name]`. It renders only
 										     on a row that is actually blocked. -->
 										{#if row.block.blocked}
-											<!-- ⭐ COMPACT, THE SAME AS `/apps/[name]`'S TASK ROWS
-											     (2026-08-30). The long sentence is two clauses and
-											     the second — *"this will not clear on its own"* /
-											     *"this clears on its own"* — is what the SHORT form
-											     still says, in four words instead of seventeen:
-											     `Needs a person to approve` against `Clears on its
-											     own`. Nothing about who has to move is lost.
-
-											     What IS lost is three rendered lines per blocked
-											     row inside a `1fr` cell that also carries the app
-											     name, its OCI title, the chain and the build badge.
-											     The two detail pages now spell one fact one way,
-											     which is the cross-page agreement this repo keeps
-											     paying for when it does not have it. -->
+											<!-- ⭐ ONE LINE, AND THE COMPONENT DECIDES IT
+											     (2026-08-30). The short form is what every gate
+											     block renders now, on every page — the `compact`
+											     prop this call site used to pass is gone, because
+											     two of five callers passed it and the other three
+											     printed the same fact as a two-clause sentence.
+											     What it buys here is three rendered lines saved
+											     inside a `1fr` cell that also carries the app name,
+											     its OCI title, the chain and the build badge. -->
 											<BlockReason
 												awaiting={row.block.awaitingApprovalGates}
 												notPassing={row.block.notPassingGates}
 												pinnedTo={row.slot.cell.rollout.spec?.wantedVersion ?? null}
-												compact
 											/>
 										{/if}
 									</div>
@@ -1237,6 +1226,7 @@
 												<NextStep
 													step="promote"
 													primary={row.primary}
+													subject={row.slot.cell.rollout.metadata?.name}
 													onclick={() => openPromote(row.slot.cell, row.promoteTag!)}
 													title="Deploys {row.promoteTag}, the newest version every rule already allows"
 												/>
@@ -1249,6 +1239,7 @@
 													step="open"
 													href={rolloutHref(row.slot.cell)}
 													primary={row.primary}
+													subject={row.slot.cell.rollout.metadata?.name}
 												/>
 											{/if}
 										</div>
@@ -1358,6 +1349,7 @@
 							<a
 								href={`/activity?env=${encodeURIComponent(envName)}`}
 								class="text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+								aria-label={`View all activity in ${envName}`}
 								>view all ›</a
 							>
 						{/snippet}

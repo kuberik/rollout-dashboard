@@ -2,6 +2,7 @@ import type { RevisionRow, RevisionService, RevisionSlot } from './revision-ledg
 import { detectStuck, detectStuckBehind, getDisplayVersion } from '$lib/utils';
 import { promotionBlock, promotionCandidates } from './promotion';
 import { shortEnvLabel } from '$lib/environment-theme';
+import { BAKE_WORD } from '$lib/bake-status';
 
 /**
  * RELEASE COVERAGE — the one question the revision pages exist to answer.
@@ -334,13 +335,17 @@ const DOT: Record<string, string> = {
 	ok: 'bg-gray-500 dark:bg-gray-400'
 };
 
+// THE WORDS COME FROM `bake-status.ts` (2026-08-30). This table used to
+// spell `baking` itself, which is how one state came to have two spellings
+// on adjacent pages. Only the two states that are NOT a bake status —
+// `stuck` and `pending` — are written here.
 const WORD: Record<string, string> = {
-	fail: 'deploy failed',
+	fail: BAKE_WORD.Failed,
 	stuck: 'stuck',
 	pending: 'never deployed',
-	deploying: 'deploying',
-	baking: 'baking',
-	ok: 'deploy succeeded'
+	deploying: BAKE_WORD.Deploying,
+	baking: BAKE_WORD.InProgress,
+	ok: BAKE_WORD.Succeeded
 };
 
 type SlotState = keyof typeof DOT;

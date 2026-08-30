@@ -58,6 +58,7 @@
  */
 
 import { formatDurationMs as span } from '$lib/utils';
+import { BAKE_WORD } from '$lib/bake-status';
 
 /** The discriminant of whatever stuck detector fired, verbatim. */
 export type VerdictStuckKind = 'baking' | 'deploying' | 'behind' | 'promotion';
@@ -135,7 +136,8 @@ function builds(n: number): string {
  * nothing in front of it is not a sentence.
  *
  * The root words are the ledger's `adverseState` words on purpose —
- * baking/deploying/not moving — because the verdict line and the row
+ * checking/deploying/not moving, from `bake-status.ts`'s ONE table — because
+ * the verdict line and the row
  * 200px below it describe the same environment, and two objects naming
  * one cause with two different nouns is its own defect.
  */
@@ -146,10 +148,12 @@ function stuckPhrase(env: VerdictEnv): { tail: string; solo: string } {
 	// No gate said no. Everything below describes only what is OBSERVABLE.
 	const forSpan = env.stuckForMs !== null ? ` for ${span(env.stuckForMs)}` : '';
 	if (env.stuckKind === 'baking') {
-		return { tail: `baking${forSpan}`, solo: `has been baking${forSpan}` };
+		const w = BAKE_WORD.InProgress;
+		return { tail: `${w}${forSpan}`, solo: `has been ${w}${forSpan}` };
 	}
 	if (env.stuckKind === 'deploying') {
-		return { tail: `deploying${forSpan}`, solo: `has been deploying${forSpan}` };
+		const w = BAKE_WORD.Deploying;
+		return { tail: `${w}${forSpan}`, solo: `has been ${w}${forSpan}` };
 	}
 	// 'behind', 'promotion', and the genuinely-unknown case all collapse
 	// here. They differ in which detector noticed, not in anything an
@@ -215,7 +219,7 @@ export function verdictSentence(envs: readonly VerdictEnv[]): string | null {
 	const deploying = envs.find((e) => e.status === 'Deploying');
 	if (deploying) return `${deploying.label} is deploying.`;
 	const baking = envs.find((e) => e.status === 'InProgress');
-	if (baking) return `${baking.label} is baking.`;
+	if (baking) return `${baking.label} is ${BAKE_WORD.InProgress}.`;
 
 	// 5 — converged.
 	if (envs.every((e) => e.behind === 0)) {

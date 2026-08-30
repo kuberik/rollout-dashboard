@@ -4,6 +4,7 @@
 	import { Modal, Button } from 'flowbite-svelte';
 	import { ExclamationCircleSolid, RefreshOutline, ForwardStepOutline } from 'flowbite-svelte-icons';
 	import type { RolloutTest } from '../../types';
+	import { modalFocusReturn } from '$lib/a11y.svelte';
 
 	interface Props {
 		open: boolean;
@@ -14,30 +15,33 @@
 
 	let { open = $bindable(), failedTests, onRetryTests, onSkipTests }: Props = $props();
 
+	// See `a11y.svelte.ts`: the dialog traps focus natively but cannot return it.
+	modalFocusReturn(() => open);
+
 	function getDisplayName(test: RolloutTest): string {
 		return test.metadata?.annotations?.['kuberik.com/display-name'] || test.metadata?.name || 'Unknown test';
 	}
 </script>
 
-<Modal bind:open title="" size="sm" class="[&>div]:p-0">
+<Modal bind:open title="" size="sm" class="[&>div]:p-0" aria-labelledby="rtm-title" aria-describedby="rtm-sub">
 	<div class="p-6">
 		<!-- Header with icon -->
 		<div class="mb-5 flex flex-col items-center text-center">
 			<div class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
 				<ExclamationCircleSolid class="h-6 w-6 text-red-600 dark:text-red-400" />
 			</div>
-			<h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+			<h2 id="rtm-title" class="text-lg font-semibold text-gray-900 dark:text-white">
 				{failedTests.length === 1 ? '1 Test Failed' : `${failedTests.length} Tests Failed`}
-			</h3>
-			<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+			</h2>
+			<p id="rtm-sub" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
 				How would you like to proceed?
 			</p>
 		</div>
 
 		<!-- Failed tests list -->
-		<div class="mb-5 space-y-1">
+		<ul class="mb-5 space-y-1" aria-label="Failed tests">
 			{#each failedTests as { test }}
-				<div class="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 dark:bg-red-900/20">
+				<li class="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 dark:bg-red-900/20">
 					<ExclamationCircleSolid class="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" />
 					<span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-800 dark:text-gray-200">{getDisplayName(test)}</span>
 					{#if (test.status?.retryCount ?? 0) > 0}
@@ -45,9 +49,9 @@
 							{test.status?.retryCount}× retried
 						</span>
 					{/if}
-				</div>
+				</li>
 			{/each}
-		</div>
+		</ul>
 
 		<!-- Actions -->
 		<div class="space-y-3">

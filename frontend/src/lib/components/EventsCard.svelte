@@ -13,10 +13,10 @@
 
 <div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 	<div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-		<h5 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
 			<CalendarWeekSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 			Recent Events
-		</h5>
+		</h2>
 		{#if events.length > 0}
 			<span class="text-xs text-gray-500 dark:text-gray-400">{events.length} event{events.length !== 1 ? 's' : ''}</span>
 		{/if}

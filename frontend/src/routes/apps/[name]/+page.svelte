@@ -104,7 +104,7 @@
 	 * ══ RULES CARRIED OVER, NOT RE-LITIGATED ════════════════════════════
 	 *
 	 *   · NO GANTT, NO EMBER, NO PER-SHA COLOUR — `DESIGN.md`'s tombstone.
-	 *   · SIX STATUS HUES AND THEY ARE SPENT: green succeeded, YELLOW baking,
+	 *   · SIX STATUS HUES AND THEY ARE SPENT: green succeeded, YELLOW checking,
 	 *     BLUE deploying (never the same value), red failed, amber stuck,
 	 *     gray pending. The status circle keeps its tint.
 	 *   · AMBER IS `stuck` AND NOTHING ELSE FOR STATE. The study paints a
@@ -147,13 +147,13 @@
 		type PromotionBlock
 	} from '$lib/view-models/promotion';
 	import { regionLabel } from '$lib/view-models/regions';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, BAKE_WORD } from '$lib/bake-status';
 	import Chip from '$lib/components/Chip.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import StageChain from '$lib/components/StageChain.svelte';
-	import ExposureBar from '$lib/components/ExposureBar.svelte';
+	import ExposureBar, { hasExposure } from '$lib/components/ExposureBar.svelte';
 	import BlockReason from '$lib/components/BlockReason.svelte';
 	import WaitingBuilds from '$lib/components/WaitingBuilds.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
@@ -311,12 +311,15 @@
 		// product's ONE red as `red-700` / `red-400` — the pair `rank`,
 		// `diverged`, `failing` and `ActivityRail`'s own Failed dot all print —
 		// and `red-500` was a second dark red on this page spent on nothing else.
-		Failed: { cls: 'bg-red-700 dark:bg-red-400', word: 'deploy failed' },
-		Deploying: { cls: 'bg-blue-700 dark:bg-blue-400', word: 'deploying' },
-		InProgress: { cls: 'bg-yellow-700 dark:bg-yellow-400', word: 'baking' },
-		Succeeded: { cls: 'bg-green-700 dark:bg-green-400', word: 'deploy succeeded' },
-		Cancelled: { cls: 'bg-gray-300 dark:bg-gray-600', word: 'bake cancelled' },
-		None: { cls: 'bg-gray-300 dark:bg-gray-600', word: 'no bake status' }
+		// ⛔ THE WORDS ARE `bake-status.ts`'S, NOT THIS PAGE'S (2026-08-30).
+		// `baking`, `bake cancelled` and `no bake status` were three more
+		// spellings of the product's own field name. See `BAKE_WORD`.
+		Failed: { cls: 'bg-red-700 dark:bg-red-400', word: BAKE_WORD.Failed },
+		Deploying: { cls: 'bg-blue-700 dark:bg-blue-400', word: BAKE_WORD.Deploying },
+		InProgress: { cls: 'bg-yellow-700 dark:bg-yellow-400', word: BAKE_WORD.InProgress },
+		Succeeded: { cls: 'bg-green-700 dark:bg-green-400', word: BAKE_WORD.Succeeded },
+		Cancelled: { cls: 'bg-gray-300 dark:bg-gray-600', word: BAKE_WORD.Cancelled },
+		None: { cls: 'bg-gray-300 dark:bg-gray-600', word: BAKE_WORD.None }
 	};
 	function dotFor(status: string) {
 		return DOT[status] ?? DOT.None;
@@ -347,7 +350,7 @@
 		if (!reason) return 'Promotion is not moving';
 		const forMs = stuckForMs(reason);
 		const span = forMs === null ? null : formatDurationMs(forMs);
-		if (reason.kind === 'baking') return `Baking for ${span}`;
+		if (reason.kind === 'baking') return `Checking for ${span}`;
 		if (reason.kind === 'deploying') return `Deploying for ${span}`;
 		if (reason.kind === 'behind') return `Behind ${reason.peerEnv}, which moved on ${span} ago`;
 		const n = reason.candidateCount;
@@ -1888,22 +1891,19 @@
 										     handle so it reads as something to go look up rather
 										     than as the reason. The same object, with the same
 										     words, is on `/environments` and `/envs/[name]`. -->
-											<!-- ⭐ COMPACT — ONE LINE, NOT THREE. (2026-08-30)
-										     The full sentence is two clauses: what is blocking,
-										     and whether a person is needed. THIS CARD IS TITLED
-										     `Needs you`, and the gates that clear themselves are
-										     in the card below it headed `Waiting, nothing to do`
-										     — so the second clause is true of every row here and
-										     is the panel's own header. Printed per row it marked
-										     the norm, in 71 characters that wrapped to two lines.
-										     What survives is the consequence in four words plus
-										     the `rule:` handle, on the one line. -->
+											<!-- ⭐ ONE LINE, NOT THREE — and the component decides
+										     that now, not this page. (2026-08-30) A gate block's
+										     consequence is one clause; the long two-clause form
+										     wrapped to two lines here and, with the `rule:` handle
+										     under it, spent three rendered lines on one fact. The
+										     `compact` prop that used to say so is GONE: two of five
+										     callers passed it, so one object said one fact two ways
+										     in one product. See `form` in `BlockReason.svelte`. -->
 											{#if t.gate}
 												<div class="tk-gate min-w-0">
 													<BlockReason
 														awaiting={f.block.awaitingApprovalGates}
 														notPassing={f.block.notPassingGates}
-														compact
 													/>
 												</div>
 											{/if}
@@ -2228,17 +2228,15 @@
 										<!-- The whole point of this card is that NOTHING has to be
 										     done here, so the line that says WHY is the only thing
 										     it owes the reader. Same object as everywhere else. -->
-										<!-- COMPACT, like every other blocked row on this page.
-										     This card's own title is `Waiting, nothing to do`, so
-										     the long form's second clause — *"this clears on its
-										     own"* — is the header restated once per row. And one
-										     object rendered two ways 200px apart on one screen is
-										     the inconsistency that reads as assembled, not
-										     designed. -->
+										<!-- ⚠️ AND THE SHORT FORM STOPPED RESTATING THIS CARD'S
+										     TITLE. It used to read `Clears on its own` under a
+										     header that says `Waiting, nothing to do` — an object
+										     drawing the norm, once per row. It names the check or
+										     the window now, which is the half the long line had
+										     and the surround does not. -->
 										<BlockReason
 											awaiting={f.block.awaitingApprovalGates}
 											notPassing={f.block.notPassingGates}
-											compact
 											class="mt-1.5"
 										/>
 									</li>
@@ -2314,27 +2312,41 @@
 							</div>
 						{/if}
 
-						<!-- 3 · EXPOSURE -->
-						<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-							<div class="mb-2 flex items-center gap-2">
-								<ChartMixedOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
-								<!-- ⛔ `EXPOSURE` NAMES A CONCEPT FROM PROGRESSIVE-DELIVERY
-								     LITERATURE, not a thing on the screen. Under it sits a
-								     bar of pods by version and a percentage; what a reader
-								     wants to know is how much of what is actually serving is
-								     on the new version. The heading says that now. -->
-								<h3 class="t-label text-gray-500 dark:text-gray-400">
-									How much is on the newest
-								</h3>
+						<!-- 3 · EXPOSURE — AND IT DOES NOT RENDER WHEN THERE IS
+						     NOTHING TO MEASURE. (2026-08-30)
+
+						     `/api/rollouts` carries no ready-pod counts; they come from a
+						     per-rollout managed-resources call that answers nothing on some
+						     clusters. This section used to print the heading over a bare em
+						     dash in that case — a header and a slot spent to say "no data",
+						     which is exactly the object removed from the `Needs you` card
+						     one card up. The heading and the bar are guarded by the SAME
+						     predicate, `hasExposure`, which lives in the component so the
+						     two cannot disagree; the loading skeleton still shows while the
+						     answer is on its way, because a pending fact is not an absent
+						     one. NO NUMBER IS EVER INVENTED — that rule is untouched. -->
+						{#if podsQuery.isLoading || hasExposure(exposure.newestPercent, exposure.segments)}
+							<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+								<div class="mb-2 flex items-center gap-2">
+									<ChartMixedOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
+									<!-- ⛔ `EXPOSURE` NAMES A CONCEPT FROM PROGRESSIVE-DELIVERY
+									     LITERATURE, not a thing on the screen. Under it sits a
+									     bar of pods by version and a percentage; what a reader
+									     wants to know is how much of what is actually serving is
+									     on the new version. The heading says that now. -->
+									<h3 class="t-label text-gray-500 dark:text-gray-400">
+										How much is on the newest
+									</h3>
+								</div>
+								<ExposureBar
+									segments={exposure.segments}
+									totalPods={exposure.totalPods}
+									newestPercent={exposure.newestPercent}
+									unknownEnvironments={exposure.unknown}
+									loading={podsQuery.isLoading}
+								/>
 							</div>
-							<ExposureBar
-								segments={exposure.segments}
-								totalPods={exposure.totalPods}
-								newestPercent={exposure.newestPercent}
-								unknownEnvironments={exposure.unknown}
-								loading={podsQuery.isLoading}
-							/>
-						</div>
+						{/if}
 					</Card>
 				</div>
 
@@ -2352,6 +2364,7 @@
 							<a
 								href="/activity"
 								class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+								aria-label="View all activity"
 								>view all ›</a
 							>
 						{/snippet}

@@ -380,6 +380,7 @@
 					<a
 						href={`/activity?ns=${encodeURIComponent(namespace)}`}
 						class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+						aria-label={`View all activity for ${namespace}`}
 						>view all ›</a
 					>
 				{/snippet}

@@ -892,7 +892,17 @@
 				     CONSEQUENCE first — including whether a person is needed —
 				     and demotes the name to a muted mono `rule:` handle. Same
 				     object on `/apps/[name]` and `/envs/[name]`, so the reader
-				     learns it once. -->
+				     learns it once.
+
+				     ⭐ AND IT IS THE SAME RENDERING NOW (2026-08-30). This page
+				     printed the two-clause sentence while the two detail pages
+				     printed one line, because the form was a caller's PROP. It
+				     is a property of the block, so the fact reads identically
+				     wherever it appears. Nothing is lost here: the short form's
+				     words carry the person/no-person split themselves
+				     (`Needs a person to approve` against `Waiting on a check or
+				     a time window`), so this page never needed the surround the
+				     long form was assuming. -->
 				<BlockReason
 					awaiting={c.awaitingGates}
 					notPassing={c.notPassingGates}
@@ -989,6 +999,7 @@
 				step={c.step}
 				href={c.href}
 				primary={c.tier === primaryStepTier}
+				subject={c.tier}
 				title={STEP_WHY[c.step]}
 				class="shrink-0"
 			/>

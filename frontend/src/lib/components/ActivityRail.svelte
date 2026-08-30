@@ -231,6 +231,7 @@
 			<a
 				href={activityHref}
 				class="t-micro text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+				aria-label="View all recent activity"
 				>view all ›</a
 			>
 		</div>

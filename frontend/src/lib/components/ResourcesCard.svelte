@@ -170,8 +170,8 @@
 	function getPodStatusColor(phase: string, ready: boolean, terminating: boolean): string {
 		if (terminating) return 'text-orange-500 dark:text-orange-400';
 		if (phase === 'Running' && ready) return 'text-green-700 dark:text-green-400';
-		if (phase === 'Running' && !ready) return 'text-yellow-600 dark:text-yellow-400';
-		if (phase === 'Pending') return 'text-yellow-600 dark:text-yellow-400';
+		if (phase === 'Running' && !ready) return 'text-yellow-700 dark:text-yellow-400';
+		if (phase === 'Pending') return 'text-yellow-700 dark:text-yellow-400';
 		if (phase === 'Failed') return 'text-red-600 dark:text-red-400';
 		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
 		return 'text-gray-500 dark:text-gray-400';
@@ -197,7 +197,7 @@
 				{:else}
 					<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 				{/if}
-				<span class="text-sm font-semibold text-gray-900 dark:text-white">Resources</span>
+				<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Resources</h2>
 			</div>
 			{#if notReadyResources.filter(r => ['Unhealthy','Failed','Error'].includes(r.status || '')).length > 0}
 				{@const failedCount = notReadyResources.filter(r => ['Unhealthy','Failed','Error'].includes(r.status || '')).length}
@@ -206,7 +206,7 @@
 					{failedCount} failed{reconcilingCount > 0 ? ` · ${reconcilingCount} reconciling` : ''}
 				</span>
 			{:else if notReadyResources.length > 0}
-				<span class="text-xs text-yellow-600 dark:text-yellow-400">{notReadyResources.length} not ready</span>
+				<span class="text-xs text-yellow-700 dark:text-yellow-400">{notReadyResources.length} not ready</span>
 			{:else}
 				<span class="text-xs text-green-700 dark:text-green-400">{allManagedResources.length}/{allManagedResources.length} ready</span>
 			{/if}
@@ -242,14 +242,14 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
 								<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">Deployment</span>
+								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">Deployment</span>
 							</div>
 							{#if resource.message && !isReady}
 								<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
 							{/if}
 						</div>
 						{#if replicas}
-							<span class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
+							<span class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
 								{replicas.ready}/{replicas.total} <span class="font-normal text-[10px] text-gray-500 dark:text-gray-400">pods</span>
 							</span>
 						{/if}
@@ -257,18 +257,25 @@
 							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-							: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}">
+							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
 							{resource.status || 'Unknown'}
 						</span>
+						<!-- A chevron is not a name. `title` alone made this announce as
+						     "Show pods" with no indication of WHICH deployment, and
+						     `aria-expanded` was missing entirely, so the state the glyph
+						     carries visually was carried by nothing else. -->
 						<button
+							type="button"
 							onclick={() => toggleDeploymentChildren(resource)}
-							class="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+							class="shrink-0 rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+							aria-expanded={isExpanded}
+							aria-label={`${isExpanded ? 'Hide' : 'Show'} pods for ${resource.name}`}
 							title={isExpanded ? 'Hide pods' : 'Show pods'}
 						>
 							{#if isExpanded}
-								<ChevronDownOutline class="h-3.5 w-3.5" />
+								<ChevronDownOutline class="h-3.5 w-3.5" aria-hidden="true" />
 							{:else}
-								<ChevronRightOutline class="h-3.5 w-3.5" />
+								<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" />
 							{/if}
 						</button>
 					</div>
@@ -296,13 +303,13 @@
 										<div class="min-w-0 flex-1">
 											<div class="flex items-center gap-1">
 												<span class="truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{rs.name}</span>
-												<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">ReplicaSet</span>
+												<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">ReplicaSet</span>
 												{#if rs.isCurrentRS}
 													<span class="shrink-0 rounded bg-blue-100 px-1 py-0.5 text-[10px] text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">current</span>
 												{/if}
 											</div>
 										</div>
-										<span class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas ? 'text-green-700 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}">
+										<span class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'}">
 											{rs.readyReplicas}/{rs.desiredReplicas} <span class="text-[10px] text-gray-500 dark:text-gray-400">pods</span>
 										</span>
 									</div>
@@ -326,14 +333,14 @@
 											<div class="min-w-0 flex-1">
 												<div class="flex items-center gap-1">
 													<span class="truncate text-[11px] text-gray-600 dark:text-gray-400">{pod.name}</span>
-													<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">Pod</span>
+													<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">Pod</span>
 												</div>
 												{#if pod.message}
 													<span class="block break-words text-[10px] text-gray-500 dark:text-gray-400">{pod.message}</span>
 												{/if}
 											</div>
 											{#if pod.restarts > 0}
-												<span class="shrink-0 rounded bg-orange-100 px-1 py-0.5 text-[10px] text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+												<span class="shrink-0 rounded bg-orange-100 px-1 py-0.5 text-[10px] text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
 													{pod.restarts}r
 												</span>
 											{/if}
@@ -384,7 +391,7 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
 								<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">HTTPRoute</span>
+								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">HTTPRoute</span>
 							</div>
 							{#if resource.message && !isReady}
 								<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
@@ -394,7 +401,7 @@
 							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-							: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}">
+							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
 							{resource.status || 'Unknown'}
 						</span>
 					</div>
@@ -404,7 +411,7 @@
 						<div class="border-t border-gray-100 bg-gray-50/50 dark:border-gray-700/50 dark:bg-gray-800/50">
 							{#each urls as url}
 								<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
-									<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-blue-400 dark:text-blue-500" />
+									<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-blue-600 dark:text-blue-400" />
 									<a
 										href={url}
 										target="_blank"
@@ -440,7 +447,7 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
 								<span class="truncate text-xs text-gray-700 dark:text-gray-300">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">{resource.type}</span>
+								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
 							</div>
 							{#if resource.message}
 								<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
@@ -449,7 +456,7 @@
 						<span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium
 							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
-							: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}">
+							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
 							{resource.status || 'Unknown'}
 						</span>
 					</div>
@@ -460,19 +467,22 @@
 		<!-- Ready resources (hidden by default) -->
 		{#if collapsibleOtherResources.length > 0}
 			<button
+				type="button"
 				onclick={() => { showOtherResources = !showOtherResources; }}
+				aria-expanded={showOtherResources}
+				aria-controls="resources-card-ready"
 				class="flex w-full items-center gap-1.5 border-t border-gray-100 px-4 py-2 text-left text-xs text-gray-500 hover:bg-gray-50 dark:border-gray-700/50 dark:text-gray-400 dark:hover:bg-gray-700/30"
 			>
 				{#if showOtherResources}
-					<ChevronDownOutline class="h-3 w-3" />
+					<ChevronDownOutline class="h-3 w-3" aria-hidden="true" />
 				{:else}
-					<ChevronRightOutline class="h-3 w-3" />
+					<ChevronRightOutline class="h-3 w-3" aria-hidden="true" />
 				{/if}
 				{showOtherResources ? 'Hide' : 'Show'} {collapsibleOtherResources.length} ready resource{collapsibleOtherResources.length !== 1 ? 's' : ''}
 			</button>
 
 			{#if showOtherResources}
-				<div class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/50 dark:border-gray-700/50">
+				<div id="resources-card-ready" class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/50 dark:border-gray-700/50">
 					{#each collapsibleOtherResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
 						{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
 						{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
@@ -494,7 +504,7 @@
 							<div class="min-w-0 flex-1">
 								<div class="flex items-center gap-1.5">
 									<span class="truncate text-xs text-gray-700 dark:text-gray-300">{resource.name}</span>
-									<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">{resource.type}</span>
+									<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
 								</div>
 								{#if resource.message && !isReady}
 									<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
@@ -504,7 +514,7 @@
 								{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 								: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 								: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-								: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}">
+								: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
 								{resource.status || 'Unknown'}
 							</span>
 						</div>

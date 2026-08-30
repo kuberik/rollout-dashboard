@@ -92,6 +92,18 @@
 		primary = false,
 		/** Overrides the table's label. For naming the thing: `Deploy 4.45.0-45`. */
 		label = null,
+		/**
+		 * ⭐ WHAT THE VERB ACTS ON, FOR THE ACCESSIBLE NAME ONLY.
+		 *
+		 * The visible labels are deliberately short — `Open`, `Investigate`,
+		 * `Choose a version` — because the row around them names the subject.
+		 * A screen-reader user gets the links list and no row: dumping the
+		 * accessibility tree of `/environments` on 2026-08-30 produced three
+		 * links called `Open`, `Open prod` and `Choose a version` with no way to
+		 * tell which environment any of them belonged to. `subject` is appended
+		 * to `aria-label` and to nothing else, so not one pixel moves.
+		 */
+		subject = null,
 		title,
 		class: className = ''
 	}: {
@@ -100,17 +112,19 @@
 		onclick?: (() => void) | null;
 		primary?: boolean;
 		label?: string | null;
+		subject?: string | null;
 		title?: string;
 		class?: string;
 	} = $props();
 
 	const spec = $derived(STEP[step]);
 	const text = $derived(label ?? spec.label);
+	const ariaLabel = $derived(subject ? `${text} — ${subject}` : undefined);
 	const cls = $derived(`btn ${primary ? 'btn-primary' : 'btn-secondary'} ${className}`);
 </script>
 
 {#if href}
-	<a {href} class={cls} {title}>
+	<a {href} class={cls} {title} aria-label={ariaLabel}>
 		{#if step === 'open'}
 			{text}
 			<spec.icon class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -120,7 +134,7 @@
 		{/if}
 	</a>
 {:else}
-	<button type="button" class={cls} {title} onclick={() => onclick?.()}>
+	<button type="button" class={cls} {title} aria-label={ariaLabel} onclick={() => onclick?.()}>
 		<spec.icon class="h-4 w-4 shrink-0" aria-hidden="true" />
 		{text}
 	</button>

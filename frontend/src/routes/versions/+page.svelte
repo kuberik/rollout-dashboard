@@ -432,8 +432,9 @@
 					<a
 						class="btn btn-secondary"
 						href={revisionPath(blockage.repo.repoKey, blockage.head.revision)}
+						aria-label={`See what’s blocking build ${blockage.head.short ?? blockage.head.revision}`}
 					>
-						<ArrowRightOutline class="h-4 w-4" />
+						<ArrowRightOutline class="h-4 w-4" aria-hidden="true" />
 						See what’s blocking it
 					</a>
 				{/snippet}
@@ -524,8 +525,9 @@
 								href={commitUrlFor(repo.repoKey, lead.revision)}
 								target="_blank"
 								rel="noopener noreferrer"
+								aria-label={`View the commit for ${lead.short} on GitHub — opens in a new tab`}
 							>
-								<ArrowUpRightFromSquareOutline class="h-4 w-4" />
+								<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 								View commit
 							</a>
 						{/if}

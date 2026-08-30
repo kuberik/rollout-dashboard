@@ -132,6 +132,7 @@
 <nav
 	class="environment-theme-scope sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 	style={rolloutThemeStyle}
+	aria-label="Global"
 >
 	{#if rolloutTheme}
 		<div class="h-1 w-full environment-theme-accent" aria-hidden="true"></div>
@@ -169,6 +170,8 @@
 						type="button"
 						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
 						class="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
+						aria-haspopup="dialog"
+						aria-expanded={switcherOpen}
 						aria-label="Switch rollout (⌘K)"
 						title={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
 					>
@@ -212,6 +215,8 @@
 						onclick={() => { if (itemScope) { paletteScope = itemScope; switcherOpen = true; } }}
 						disabled={!itemScope}
 						class="group flex min-w-0 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-gray-700/60 dark:disabled:hover:bg-transparent"
+						aria-haspopup={itemScope ? 'dialog' : undefined}
+						aria-expanded={itemScope ? switcherOpen : undefined}
 						aria-label={`Switch ${currentSection.label.toLowerCase()}`}
 					>
 						<span class="truncate text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
@@ -233,7 +238,8 @@
 			<button
 				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
 				onclick={() => theme.toggle()}
-				aria-label="Toggle dark mode"
+				aria-label={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+				title={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
 			>
 				{#if currentTheme === 'dark'}
 					<SunSolid class="h-4 w-4 sm:h-5 sm:w-5" />

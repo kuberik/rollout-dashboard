@@ -213,7 +213,9 @@
 	{#if cards.length > 0}
 		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
 			<div class="relative min-w-0 flex-1 sm:max-w-xs">
-				<SearchOutline class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+				<SearchOutline
+					class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
+				/>
 				<input
 					type="text"
 					bind:value={searchQuery}
@@ -236,7 +238,13 @@
 					>
 						<span class="h-[5px] w-[5px] shrink-0 rounded {sp.dot}"></span>
 						{sp.label}
-						<span class="font-mono tabular-nums opacity-60">{sp.count}</span>
+						<!-- No `opacity-60` here. It composited to 2.32:1 in light /
+						     3.27:1 in dark at 11px, and dimming instead of explaining is
+						     the pattern `DESIGN.md` has now rejected twice (it is why
+						     `valueDim` came out of `/envs/[name]`). The count inherits
+						     the pill's own ink, which is the muted token in the resting
+						     state and the knockout in the selected one - both measured. -->
+						<span class="font-mono tabular-nums">{sp.count}</span>
 					</button>
 				{/each}
 				<span class="h-4 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>

@@ -28,7 +28,6 @@
 		Popover,
 		Listgroup,
 		ListgroupItem,
-		Clipboard,
 		Progressradial,
 		Sidebar,
 		SidebarGroup,
@@ -52,8 +51,6 @@
 		PauseSolid,
 		PlaySolid,
 		RefreshOutline,
-		CheckOutline,
-		ClipboardCleanSolid,
 		MessageDotsOutline,
 		CalendarWeekSolid,
 		QuestionCircleOutline,
@@ -97,6 +94,8 @@
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import CopyButton from '$lib/components/CopyButton.svelte';
+	import { announce } from '$lib/stores/announce.svelte';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -166,6 +165,49 @@
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+
+	/**
+	 * ⭐ A DEPLOY FINISHING IS THE ONE THING THIS PAGE EXISTS TO TELL SOMEONE,
+	 *    AND UNTIL NOW IT ONLY EVER SAID IT IN PIXELS.
+	 *
+	 * The page repolls every 5s and repaints in place. Nothing navigates, so a
+	 * screen reader is given no reason to re-read anything: an operator who is
+	 * not looking at the screen learned that their deploy had gone green, or
+	 * red, never. The first observation after mount is swallowed on purpose —
+	 * announcing the state the page LOADED in would be noise, not news.
+	 */
+	let lastAnnouncedDeploy: string | null = null;
+	$effect(() => {
+		const entry = rollout?.status?.history?.[0];
+		if (!entry) return;
+		const key = `${entry.version?.tag ?? ''}|${entry.bakeStatus ?? ''}`;
+		if (lastAnnouncedDeploy === null) {
+			lastAnnouncedDeploy = key;
+			return;
+		}
+		if (lastAnnouncedDeploy === key) return;
+		lastAnnouncedDeploy = key;
+
+		const subject = rollout?.metadata?.name ?? 'This rollout';
+		const version = entry.version ? getDisplayVersion(entry.version) : 'a new version';
+		switch (entry.bakeStatus) {
+			case 'Succeeded':
+				announce(`${subject}: ${version} finished baking successfully.`);
+				break;
+			case 'Failed':
+				announce(`${subject}: ${version} failed.`, 'assertive');
+				break;
+			case 'Deploying':
+				announce(`${subject}: deploying ${version}.`);
+				break;
+			case 'InProgress':
+			case 'Baking':
+				announce(`${subject}: ${version} is baking.`);
+				break;
+			default:
+				announce(`${subject}: ${version} is now ${String(entry.bakeStatus ?? 'in an unknown state')}.`);
+		}
+	});
 	const environment = $derived(rolloutQuery.data?.environment);
 	const rolloutTheme = $derived(rollout ? getRolloutEnvironmentTheme(rollout, environment) : null);
 	const rolloutThemeStyle = $derived(
@@ -1563,11 +1605,18 @@
 															Same span, same yellow, same 12px — only the word and
 															the popover moved.
 														-->
-														<span
+														<!-- A `button`, not a `span`: flowbite's `Popover` makes its
+														     trigger focusable, so this was already a tab stop on every
+														     release-candidate row with no role at all. Flex item either
+														     way, preflight strips the button chrome — same 12px, same
+														     yellow, same pill. -->
+														<button
+															type="button"
+															aria-label={`Manual only — ${getDisplayVersion(releaseCandidate)} will not deploy on its own`}
 															class="inline-flex cursor-help items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
 														>
-															Manual only <QuestionCircleOutline class="h-3 w-3" />
-														</span>
+															Manual only <QuestionCircleOutline class="h-3 w-3" aria-hidden="true" />
+														</button>
 														<Popover class="max-w-sm text-sm" title="Won't deploy on its own">
 															<div class="space-y-2 p-1">
 																<p class="text-xs text-gray-600 dark:text-gray-300">
@@ -1645,7 +1694,8 @@
 														size="xs"
 														color="light"
 														class="!p-1.5"
-														title="View on GitHub"
+														title={`View ${getDisplayVersion(releaseCandidate)} on GitHub`}
+														aria-label={`View ${getDisplayVersion(releaseCandidate)} on GitHub`}
 														onclick={() => {
 															let url = rollout?.status?.source ?? '';
 															const ver = getDisplayVersion(releaseCandidate);
@@ -1671,20 +1721,15 @@
 														<GithubSolid class="h-3.5 w-3.5" />
 													</Button>
 												{/if}
-												<Clipboard
+												<!-- Was `Clipboard` with an icon-only snippet: a button
+												     with NO accessible name, nineteen of them on this
+												     page, that reported a blocked clipboard only to
+												     devtools. See `CopyButton.svelte`. -->
+												<CopyButton
 													value={releaseCandidate.tag}
-													size="xs"
-													color="light"
+													label={`version ${getDisplayVersion(releaseCandidate)}`}
 													class="!p-1.5"
-												>
-													{#snippet children(success)}
-														{#if success}
-															<CheckOutline class="h-3.5 w-3.5" />
-														{:else}
-															<ClipboardCleanSolid class="h-3.5 w-3.5" />
-														{/if}
-													{/snippet}
-												</Clipboard>
+												/>
 												{#if canModify}
 													<Button
 														size="xs"
@@ -1754,9 +1799,7 @@
 									class="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 								>
 									<ArrowUpRightFromSquareOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-									<span class="text-sm font-semibold text-gray-900 dark:text-white"
-										>External Links</span
-									>
+									<h2 class="text-sm font-semibold text-gray-900 dark:text-white">External Links</h2>
 								</div>
 								<div class="divide-y divide-gray-100 dark:divide-gray-700">
 									{#if datadogServiceInfo}

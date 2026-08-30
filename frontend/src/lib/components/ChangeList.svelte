@@ -155,14 +155,23 @@
 	const canConnect = $derived(
 		statusQuery.data?.configured === true && statusQuery.data?.connected !== true
 	);
+
+	const panelId = `changelist-${Math.random().toString(36).slice(2, 9)}`;
 </script>
 
 {#if rangeOk}
 	<div class={className}>
+		<!-- `/activity` renders this control ~20 times on one screen. Before the
+		     `aria-label`, the links-and-buttons list a screen reader gives read
+		     `What changed` twenty times over with nothing to tell them apart.
+		     The visible words do not change — the row above them says which
+		     deploy this is, and a sighted reader has that row. -->
 		<button
 			type="button"
 			onclick={() => (open = !open)}
 			aria-expanded={open}
+			aria-controls={panelId}
+			aria-label={`What changed in ${name}${head ? ` at ${head.slice(0, 7)}` : ''}`}
 			class="t-micro inline-flex items-center gap-1 rounded text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 		>
 			<CodeBranchSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -175,7 +184,7 @@
 		</button>
 
 		{#if open}
-			<div class="mt-2 rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+			<div id={panelId} class="mt-2 rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
 				{#if query.isLoading}
 					<span
 						class="inline-block h-3 w-40 max-w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"

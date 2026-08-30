@@ -141,6 +141,7 @@
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import BlockReason, { contractBlockReason } from '$lib/components/BlockReason.svelte';
+	import { BAKE_WORD } from '$lib/bake-status';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import NextStep from '$lib/components/NextStep.svelte';
@@ -364,12 +365,13 @@
 	 * dot — so a converged chain carries no status colour at all.
 	 */
 	const DOT: Record<string, { cls: string; word: string }> = {
-		Failed: { cls: 'bg-red-700 dark:bg-red-400', word: 'deploy failed' },
-		Deploying: { cls: 'bg-blue-700 dark:bg-blue-400', word: 'deploying' },
-		InProgress: { cls: 'bg-yellow-700 dark:bg-yellow-400', word: 'baking' },
-		Succeeded: { cls: 'bg-green-700 dark:bg-green-400', word: 'deploy succeeded' },
-		Cancelled: { cls: 'bg-gray-300 dark:bg-gray-600', word: 'bake cancelled' },
-		None: { cls: 'bg-gray-300 dark:bg-gray-600', word: 'no deploy recorded' }
+		Failed: { cls: 'bg-red-700 dark:bg-red-400', word: BAKE_WORD.Failed },
+		Deploying: { cls: 'bg-blue-700 dark:bg-blue-400', word: BAKE_WORD.Deploying },
+		InProgress: { cls: 'bg-yellow-700 dark:bg-yellow-400', word: BAKE_WORD.InProgress },
+		Succeeded: { cls: 'bg-green-700 dark:bg-green-400', word: BAKE_WORD.Succeeded },
+		Cancelled: { cls: 'bg-gray-300 dark:bg-gray-600', word: BAKE_WORD.Cancelled },
+		// `no deploy recorded` was this page's own fourth spelling of `None`.
+		None: { cls: 'bg-gray-300 dark:bg-gray-600', word: BAKE_WORD.None }
 	};
 
 	/**
