@@ -35,6 +35,21 @@
 		severity?: Severity;
 		title: string;
 		message?: string;
+		/**
+		 * ⭐ THE ONLY REASON THIS EXISTS: `FailurePanel` WAS A COPY OF THIS
+		 * COMPONENT because its message is a LIST, not a sentence. A rollout can
+		 * fail on six health checks at once, and a `message: string` could only
+		 * render that as one run-on line. So the copy was made, and then
+		 * `AlertPanel`'s alpha-ladder contrast fix never reached it — the exact
+		 * failure mode `DESIGN.md` records: *"a shared object copied into a
+		 * second file will not receive the shared object's next fix."*
+		 *
+		 * It renders inside the SAME `{palette.message}` wrapper `message` uses,
+		 * at the same 14px, so a snippet cannot smuggle in a second ink ladder.
+		 * Pass one or the other, never both. Do not use it to escape the
+		 * severity palette — that is what the palette is for.
+		 */
+		messageBody?: Snippet;
 		footnote?: string;
 		quoted?: boolean;
 		icon?: Component;
@@ -54,6 +69,7 @@
 		severity = 'info',
 		title,
 		message,
+		messageBody,
 		footnote,
 		quoted = false,
 		icon,
@@ -226,9 +242,13 @@
 					<p class="text-base font-bold tracking-tight {palette.title}">{title}</p>
 					{#if extra}{@render extra()}{/if}
 				</div>
-				{#if message || footnote}
+				{#if message || messageBody || footnote}
 					<div class="col-start-2 row-start-2 min-w-0">
-						{#if message}
+						{#if messageBody}
+							<div class="mt-0.5 text-sm break-words {palette.message}">
+								{@render messageBody()}
+							</div>
+						{:else if message}
 							{#if quoted}
 								<blockquote
 									class="mt-1.5 border-l-2 pl-3 text-sm break-words italic {palette.message} {palette.quoteBorder}"

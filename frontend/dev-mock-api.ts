@@ -316,6 +316,60 @@ type FleetSpec = {
 	previousVersion?: string;
 	deployedAgoMin: number;
 };
+
+/**
+ * ⚠️ FORCED-FAILURE STATE, ENV-GATED AND INERT BY DEFAULT.
+ *
+ * `FailurePanel` only renders when the head history entry has
+ * `bakeStatus: 'Failed'` AND at least one health check is `Unhealthy`. The
+ * fixture above is a HEALTHY rollout, so the whole failure banner — the single
+ * most colour-heavy object on rollout detail — could not be reached from the
+ * mock at all, and the last two contrast passes had to hand-edit this file to
+ * see it. Hand-editing a fixture other agents are also serving is how a
+ * screenshot gets polluted.
+ *
+ * `MOCK_FAIL=1 MOCK_API=1 vite dev` mutates the two fixtures in place. Without
+ * the variable NOTHING below runs and the fixtures are byte-identical to what
+ * they were.
+ */
+if (process.env.MOCK_FAIL) {
+	(mockRolloutResponse.rollout.metadata.annotations as Record<string, string>)[
+		'rollout-dashboard.kuberik.com/source-cluster'
+	] = 'dev';
+	const head = mockRolloutResponse.rollout.status.history[0] as Record<string, unknown>;
+	head.bakeStatus = 'Failed';
+	head.bakeStatusMessage =
+		'Readiness probe timed out after 30s; 2/3 replicas never became ready; last restart 40s ago';
+	// `FailurePanel` prefers `failedHealthChecks` over `bakeStatusMessage`.
+	//   MOCK_FAIL=1  -> no failed checks, so the banner renders the
+	//                   `bakeStatusMessage` split into a 3-item list.
+	//   MOCK_FAIL=2  -> two failed checks, which renders the MULTI-CHECK list
+	//                   AND the `N issues` chip, i.e. `AlertPanel`'s `extra`
+	//                   snippet. Both message shapes are worth a look; neither
+	//                   is reachable without this block.
+	if (process.env.MOCK_FAIL !== '1') {
+		(head as Record<string, unknown>).failedHealthChecks = [
+			{
+				name: 'hello-world-prometheus-high-error-rate',
+				namespace: APP_NAMESPACE,
+				message: 'error rate 12.4% over a 1% budget; upstream checkout-api returning 503'
+			},
+			{
+				name: 'hello-world-prometheus-app-down',
+				namespace: APP_NAMESPACE,
+				message: 'no healthy endpoints for 4m'
+			}
+		];
+	}
+	for (const hc of mockHealthChecks.healthChecks) {
+		if (hc.metadata.name.includes('prometheus')) {
+			hc.status.status = 'Unhealthy';
+			hc.status.message =
+				'alert firing for 6m · error rate 12.4% over a 1% budget; upstream checkout-api returning 503';
+		}
+	}
+}
+
 const FLEET: FleetSpec[] = [
 	{ app: 'orders-api',      env: 'dev',     bake: 'Succeeded',  currentVersion: 'e936e6f', previousVersion: '01ab7c9', deployedAgoMin: 4 * 60 + 12 },
 	{ app: 'orders-api',      env: 'staging', bake: 'Succeeded',  currentVersion: '01ab7c9', previousVersion: '7d2918a', deployedAgoMin: 22 * 60 },
@@ -1534,8 +1588,56 @@ export function mockApiPlugin(): Plugin {
 					);
 				}
 
+				// ⚠️ MATCH WITH THE QUERY STRING STRIPPED. This mock advertises three
+				// clusters, so every rollout-detail fetch carries `?cluster=<name>`
+				// and an exact `===` on the bare path NEVER matched — rollout detail
+				// was unreachable under `MOCK_API` and rendered *"This rollout does
+				// not exist"*, which is the one state a contrast pass most needs to
+				// see. The dependencies branch below already stripped the query; the
+				// four `hello-world` branches did not.
+				const reqPath = req.url.split('?')[0];
+
+				// GET /api/rollouts/:namespace/:name/events — MOCK_FAIL only. Nothing
+				// in the base fixture ever produced a `Normal` event, so
+				// `EventsCard`'s INFO GLYPH (the 2.64:1 single-value blue this pass
+				// collapsed) had no reachable state in either the mock or the live
+				// cluster. One Normal + one Warning is the minimum that renders both
+				// glyph branches side by side.
+				if (
+					process.env.MOCK_FAIL &&
+					reqPath === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}/events`
+				) {
+					return res.end(
+						JSON.stringify({
+							events: [
+								{
+									type: 'Normal',
+									reason: 'ScalingReplicaSet',
+									involvedObject: { kind: 'Deployment', name: ROLLOUT_NAME },
+									message: `Scaled up replica set ${ROLLOUT_NAME}-6f8b9c4d7 to 3`,
+									lastTimestamp: new Date(Date.now() - 4 * 60 * 1000).toISOString()
+								},
+								{
+									type: 'Warning',
+									reason: 'Unhealthy',
+									involvedObject: { kind: 'Pod', name: `${ROLLOUT_NAME}-6f8b9c4d7-x2k9p` },
+									message: 'Readiness probe failed: HTTP probe failed with statuscode: 503',
+									lastTimestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString()
+								},
+								{
+									type: 'Normal',
+									reason: 'Pulled',
+									involvedObject: { kind: 'Pod', name: `${ROLLOUT_NAME}-6f8b9c4d7-m4j7q` },
+									message: 'Container image "hello-world:f68d0ac" already present on machine',
+									lastTimestamp: new Date(Date.now() - 90 * 1000).toISOString()
+								}
+							]
+						})
+					);
+				}
+
 				// GET /api/rollouts/:namespace/:name
-				if (req.url === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}`) {
+				if (reqPath === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}`) {
 					return res.end(JSON.stringify(mockRolloutResponse));
 				}
 
@@ -1553,12 +1655,12 @@ export function mockApiPlugin(): Plugin {
 				}
 
 				// GET /api/rollouts/:namespace/:name/permissions/all
-				if (req.url === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}/permissions/all`) {
+				if (reqPath === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}/permissions/all`) {
 					return res.end(JSON.stringify(mockPermissions));
 				}
 
 				// GET /api/rollouts/:namespace/:name/rollout-tests
-				if (req.url === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}/rollout-tests`) {
+				if (reqPath === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}/rollout-tests`) {
 					const rolloutTestObject = mockManagedResources.managedResources.find(
 						(r) => r.groupVersionKind === 'rollout.kuberik.com/v1alpha1/RolloutTest'
 					);
@@ -1571,7 +1673,7 @@ export function mockApiPlugin(): Plugin {
 				}
 
 				// GET /api/rollouts/:namespace/:name/health-checks
-				if (req.url === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}/health-checks`) {
+				if (reqPath === `/api/rollouts/${NAMESPACE}/${ROLLOUT_NAME}/health-checks`) {
 					return res.end(JSON.stringify(mockHealthChecks));
 				}
 

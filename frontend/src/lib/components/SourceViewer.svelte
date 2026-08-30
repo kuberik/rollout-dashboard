@@ -103,7 +103,7 @@
 				<div class="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
 			</div>
 		{:else if error}
-			<div class="p-4 text-red-500">{error}</div>
+			<div class="p-4 text-red-600 dark:text-red-400">{error}</div>
 		{:else}
 			<Tabs>
 				{#each Object.entries(files) as [filename, content]}

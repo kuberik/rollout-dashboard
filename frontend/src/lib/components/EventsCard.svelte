@@ -30,7 +30,7 @@
 					{#if event.type === 'Warning'}
 						<ExclamationCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-700 dark:text-yellow-400" />
 					{:else}
-						<InfoCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400 dark:text-blue-400" />
+						<InfoCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
 					{/if}
 					<div class="min-w-0 flex-1">
 						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">

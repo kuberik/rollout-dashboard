@@ -410,7 +410,7 @@
 	function circleBg(status: NodeStatus): string {
 		return {
 			done: 'bg-gray-100 text-green-700 dark:bg-gray-700 dark:text-green-400',
-			running: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+			running: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
 			paused: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
 			failed: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
 			pending: 'bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400'
@@ -518,7 +518,7 @@
 
 	function testIconColor(phase: string): string {
 		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
-		if (phase === 'Failed') return 'text-red-500';
+		if (phase === 'Failed') return 'text-red-500 dark:text-red-400';
 		if (phase === 'Cancelled') return 'text-gray-500 dark:text-gray-400';
 		if (phase === 'Skipped') return 'text-gray-500 dark:text-gray-400';
 		if (phase === 'Pending') return 'text-yellow-700 dark:text-yellow-400';

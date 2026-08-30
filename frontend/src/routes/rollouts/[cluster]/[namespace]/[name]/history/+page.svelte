@@ -338,7 +338,7 @@
 					<div
 						class="flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs dark:bg-red-950/30"
 					>
-						<ExclamationCircleSolid class="h-3 w-3 text-red-500" />
+						<ExclamationCircleSolid class="h-3 w-3 text-red-500 dark:text-red-400" />
 						<span class="font-semibold text-red-700 dark:text-red-400">{failed}</span>
 					</div>
 					<div
@@ -528,12 +528,12 @@
 												<div class="flex items-center gap-1.5 text-xs">
 													<span class="text-gray-500 dark:text-gray-400">Deployed by</span>
 													{#if entry.triggeredBy.kind === 'User'}
-														<UserSolid class="h-3 w-3 text-gray-500" />
+														<UserSolid class="h-3 w-3 text-gray-500 dark:text-gray-400" />
 														<span class="font-medium text-gray-700 dark:text-gray-300">
 															{entry.triggeredBy.name}
 														</span>
 													{:else}
-														<CogSolid class="h-3 w-3 text-gray-500" />
+														<CogSolid class="h-3 w-3 text-gray-500 dark:text-gray-400" />
 														<span class="font-medium text-gray-700 dark:text-gray-300">System</span>
 													{/if}
 												</div>

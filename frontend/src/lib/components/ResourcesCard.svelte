@@ -288,7 +288,7 @@
 									<StatusSpinner size="4" color="gray" /> Loading...
 								</div>
 							{:else if childData?.error}
-								<p class="px-4 py-2 text-xs text-red-500">{childData.error}</p>
+								<p class="px-4 py-2 text-xs text-red-600 dark:text-red-400">{childData.error}</p>
 							{:else if childData}
 								{#each childData.replicaSets.filter((rs: any) => rs.desiredReplicas > 0) as rs}
 									<!-- ReplicaSet row -->
@@ -305,7 +305,7 @@
 												<span class="truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{rs.name}</span>
 												<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">ReplicaSet</span>
 												{#if rs.isCurrentRS}
-													<span class="shrink-0 rounded bg-blue-100 px-1 py-0.5 text-[10px] text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">current</span>
+													<span class="shrink-0 rounded bg-blue-100 px-1 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">current</span>
 												{/if}
 											</div>
 										</div>

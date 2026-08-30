@@ -780,7 +780,7 @@
 					<span class="hidden sm:inline">• {uniquePods.length} {uniquePods.length === 1 ? 'pod' : 'pods'}</span>
 				{/if}
 				{#if searchQuery}
-					<span class="text-blue-500">"{searchQuery}"</span>
+					<span class="text-blue-600 dark:text-blue-400">"{searchQuery}"</span>
 				{/if}
 			</div>
 			<div class="flex items-center gap-1">

@@ -211,7 +211,7 @@
 			{#if showStats && data}
 				<span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">
 					<span class="text-green-700 dark:text-green-400">+{data.additions}</span>
-					<span class="text-red-500 dark:text-red-400">−{data.deletions}</span>
+					<span class="text-red-600 dark:text-red-400">−{data.deletions}</span>
 					<span class="text-gray-500 dark:text-gray-400">·</span>
 					{data.changedFiles} file{data.changedFiles !== 1 ? 's' : ''}
 				</span>

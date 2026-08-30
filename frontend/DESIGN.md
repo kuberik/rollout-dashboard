@@ -4612,3 +4612,195 @@ before the deploy counts as done"* and `deploying` carries its sibling.
 may never share a value is untouched. Two distinct verbs for two distinct phases — the new
 version is still going out, versus it is already serving and being watched — is the whole
 reason the table has two rows for them.
+
+---
+
+## ⛔ THE BLUE ROLE IS COLLAPSED, AND THE DEFECT HAS A SHAPE NOW (2026-08-30)
+
+Third instance of the same defect this branch has now fixed three times — gray (249 good vs
+99 faint), yellow (17 vs 24), blue. **The shape is always the same: a role has a majority
+spelling that passes, a minority spelling that does not, and the minority survives every
+sweep because nobody ever renders the state it lives in.**
+
+### THE CENSUS — 37 blue ink sites, split by the GROUND they sit on
+
+A "blue role" is not one role. It is three, because contrast is a property of the pair, not
+of the ink:
+
+| ground | light | dark | n | verdict |
+|---|---|---|---|---|
+| **neutral** (white card / `gray-800` card) | `blue-600` | `blue-400` | **14** | **MAJORITY.** 5.25 light / 5.56 dark |
+| neutral | `blue-700` | `blue-400` | 6 | passes (6.83 / 5.56) — status-word spelling, left alone |
+| neutral, hover partner | `blue-600` | `blue-400` | 3 | passes |
+| neutral | `blue-400` | `blue-400` | **1** | **⛔ 2.64 light** — `EventsCard:33`, single-value ink |
+| neutral | `blue-500` | *(none)* | **1** | **⛔ 3.76 light / 3.90 dark** — `LogsViewer:783`, bare |
+| **blue fill** (`bg-blue-50/100`) | `blue-700` | `blue-300`/`blue-400` | **6** | **MAJORITY.** 5.60 on `blue-100`, 6.28 on `blue-50` |
+| blue fill | `blue-600` | `blue-400` | **2** | **⛔ 4.30 light** at 10px — `ResourcesCard:308`, `DeploymentPipelineCard:413` |
+| theme-invariant dark ground (`bg-gray-900` terminal) | `blue-400` | — | 1 | **correct.** 6.72 on `gray-900`. One ink is right when the ground does not move |
+| banner (`AlertPanel` info) | `blue-900` / `blue-700` | `blue-200/xx` / `blue-300` | 5 | gradient ground, already measured, untouched |
+
+**THE DARK HALF WAS RIGHT IN ALL FOUR FAILURES.** `blue-400 dark:blue-400` is 5.56 in dark.
+`blue-600` on `blue-900/30` is 5.96 in dark. `blue-500` on `gray-800` is the one that also
+failed dark, and it is the only one. Same diagnosis the yellow pass wrote down: *a two-theme
+pair can be half-right, and the half that is right hides the half that is not.*
+
+### COLLAPSED — 4 sites, ZERO new colour values
+
+| site | before | after | light | dark |
+|---|---|---|---|---|
+| `EventsCard:33` info glyph | `blue-400 dark:blue-400` | `blue-600 dark:blue-400` | **2.64 → 5.25** | 5.56 → 5.56 |
+| `LogsViewer:783` search echo | `text-blue-500` (bare) | `blue-600 dark:blue-400` | **3.76 → 5.25** | **3.90 → 5.56** |
+| `ResourcesCard:308` `current` chip | `bg-blue-100 text-blue-600` | `text-blue-700` | **4.30 → 5.60** | 5.96 → 5.96 |
+| `DeploymentPipelineCard:413` `running` | `bg-blue-100 text-blue-600` | `text-blue-700` | **4.30 → 5.60** | 5.96 → 5.96 |
+
+`EventsCard:49`, ten lines below the broken glyph in the same file, already said
+`text-blue-600 dark:text-blue-400`. The fix was written next to the defect the whole time.
+
+### ⚠️ HOW THESE WERE MEASURED, because a regex over `oklch()` got it wrong before
+
+Chrome serialises `getComputedStyle(el).color` for a Tailwind v4 ramp step **as
+`oklch(...)`, not as `rgb()`**. Parsing that string is how an earlier pass in this project
+produced a badly wrong number. Every figure above comes from **canvas resolution**: paint the
+ground into a 1×1 `CanvasRenderingContext2D`, paint the colour string over it, `getImageData`.
+The browser does the oklch → sRGB conversion and the alpha composite, and it is the same
+conversion the compositor does. The backdrop is the **whole ancestor chain**, composited
+outermost-inward with each layer's **cumulative** `opacity` (the product of its own and every
+ancestor's) folded into the paint.
+
+Cross-check that the instrument is right: it reproduces this file's own recorded **2.64** for
+`EventsCard`'s glyph to the digit, and the **4.30 → 5.60** chip pair measured through a probe
+injected into the live page against the real stylesheet.
+
+⚠️ **A gradient ancestor reports `backgroundColor: transparent`,** so the walker falls through
+to the page ground and reads OPTIMISTICALLY high on `AlertPanel`. Those numbers stay on the
+pixel method this file already records for that component.
+
+### THE HUE CONSTRAINT — `Deploying` and `checking` do not converge, and blue did not move
+
+`blue-600` h **262.87°** vs `yellow-700` h **62.52°** — **Δh 159.66°, ΔE(OKLab) 0.3675** at a
+lightness gap of **0.83 points**, which is as close to a matched-lightness comparison as the
+two ramps get. Against the amber the product paints in light, `amber-600`: **Δh 150.52°,
+ΔE 0.4186**. For scale, `blue-600` vs `blue-700` — two steps of the SAME ramp, which nobody
+calls a confusion pair — is ΔE **0.0591**. The status hues are six times further apart than
+that.
+
+**And blue did not move as a hue at all.** Every collapse is within the blue ramp:
+`blue-400 → blue-600` is Δh **9.45°**, `blue-600 → blue-700` is Δh **1.54°**. The one thing
+that changed is lightness, which is the whole point.
+
+| token | L | C | h° |
+|---|---|---|---|
+| `blue-400` | 70.36 | 0.1586 | 253.42 |
+| `blue-600` | 54.65 | 0.2455 | **262.87** |
+| `blue-700` | 48.78 | 0.2432 | 264.40 |
+| `yellow-700` | 55.48 | 0.1271 | **62.52** |
+| `amber-600` | 66.71 | 0.1685 | 53.38 |
+
+### THE SAME CENSUS, EVERY OTHER HUE — and red was the next one
+
+Comment prose was stripped before counting; four earlier "bare yellow" hits were sentences
+inside `<!-- -->` blocks describing the yellow fix, not code.
+
+**Single-value ink (`text-X-N dark:text-X-N`) product-wide: 2.** One was the blue glyph
+above. The other is rollout detail's pinned Flowbite Alert (`bg-yellow-100 text-yellow-700`
+in both themes) and it is **deliberate and already documented** — Flowbite paints
+`dark:bg-yellow-200`, a LIGHTER fill than `yellow-100`, so one ink genuinely serves both.
+**A single value is only a bug when the ground moves.**
+
+That is also why `LogsViewer:146–154, 744` are correct as bare single-theme ink: the log body
+is `bg-gray-900 dark:bg-gray-950`, a terminal that is dark in BOTH themes, and
+`FailurePanel:177`'s `text-yellow-300` is inside a Flowbite `Tooltip`, same story.
+
+| hue | spellings | majority | minority that failed |
+|---|---|---|---|
+| green | 1 (`green-700 dark:green-400` ×35) | unanimous | none |
+| yellow | 1 (`yellow-700 dark:yellow-400` ×24) | unanimous *(fixed by the yellow pass)* | none left |
+| **red** | **5** | `red-600 dark:red-400` ×17 text · `red-500 dark:red-400` ×11 **icons** | see below |
+| amber | 6 | banner-scoped, gradient grounds | none measured under floor |
+| blue | 9 → **6** | see the table above | 4, all collapsed |
+
+**`red-500` is CORRECT for icons and WRONG for text.** 3.81 on white clears the 3:1 non-text
+floor and misses the 4.5 text floor, so the same token is right eleven times and wrong four —
+which is precisely why a token census with no notion of *what the mark is* would have passed
+it. Collapsed onto spellings the product already spends:
+
+| site | what it is | before | after | light | dark |
+|---|---|---|---|---|---|
+| `SourceViewer:106` | error prose | `text-red-500` bare | `red-600 dark:red-400` | **3.81 → 4.77** | **3.85 → 5.08** |
+| `ResourcesCard:291` | error prose, 12px | `text-red-500` bare | `red-600 dark:red-400` | **3.71 → 4.65** | **3.85 → 5.08** |
+| `CommitSummary:214` | `−N` diff stat, 11px | `red-500 dark:red-400` | `red-600 dark:red-400` | **3.81 → 4.77** | 6.14 → 6.14 |
+| `DeploymentPipelineCard:521` | failed-test glyph | `text-red-500` bare | `red-500 dark:red-400` | 3.81 (icon, ok) | 3.85 → 5.08 |
+| `history:341` | failed-count glyph | `text-red-500` bare | `red-500 dark:red-400` | 3.48 on `red-50` (icon, ok) | **4.15 → 5.47** |
+| `history:531`, `:536` | author/system glyphs | `text-gray-500` bare | `gray-500 dark:gray-400` | 4.84 (icon, ok) | **3.03 → 5.64** |
+
+`red-600` and not `red-700` on `CommitSummary`'s `−N` **on purpose**: it sits beside
+`+N` in `green-700`, which is **4.95**, and `red-600` is **4.77**. `red-700` would be 6.42 and
+would make deletions shout at additions. *This is not the `−N` rank chip the file bans red
+on — that rule is about promotion drift. A git diff's deletion count is adverse by
+definition.*
+
+### ⛔ `FailurePanel` IS AN `AlertPanel` CALL SITE NOW, AND THE FOLD ALSO FIXED THE GLYPH
+
+The previous pass recorded *"`FailurePanel` should become an `AlertPanel` call site; it is
+ink-matched for now."* It is folded. Diffing the two palettes token by token: the gradient,
+both glows, the ping, the 40px disc, the icon, title, message and footnote were **byte-
+identical**, which is exactly why `AlertPanel`'s alpha-ladder fix had to be re-applied here by
+hand one file later. The only `AlertPanel` token absent from the copy was `quoteBorder`,
+which needs `quoted` and is not passed.
+
+**What it carried that `AlertPanel` did not, and what unblocked the fold:** the message is a
+**LIST**, not a sentence — a rollout can fail on six health checks at once, plus a `+N more`
+tail — and `AlertPanel`'s `message` is typed `string`. That is now an optional
+**`messageBody?: Snippet`**, rendered inside the component's own `{palette.message}` wrapper
+at the same 14px so a snippet cannot smuggle in a second ink ladder. `extra` (the `N issues`
+chip), `actions` (Retry/Rollback + their Tooltips) and `pulse` already existed. Zero call
+sites of `AlertPanel` change: the new branch is `{#if messageBody}` ahead of the existing
+`{#if message}`.
+
+**AND IT GAINED A FIX IT COULD NOT HAVE RECEIVED.** The copy used `flex items-center` for the
+icon row — the exact defect `AlertPanel` documents at **87px** on `/versions`, where a 40px
+disc centres against a five-line paragraph instead of its headline. Verified at 390: the disc
+now sits on the *"Deployment Failed"* line box with a three-item list below it.
+
+### Measured, `<main>`, canvas-resolved, both themes, 1440 and 390
+
+| page / state | light under-floor | dark under-floor |
+|---|---|---|
+| rollout detail, `MOCK_FAIL` (`FailurePanel` + events + failed pipeline) | **0** | **0** |
+| rollout detail, live cluster (`/rollouts/dev/hello-world-dev/hello-world-app`) | **0** | **1** † |
+| `/rollouts/.../history`, `MOCK_FAIL` | **0** | **0** |
+| `/` | **0** | **0** |
+| `/rollouts` | **0** | **0** |
+
+† the one survivor is the **Datadog brand logo's `path.st0`** (1.71 — a knockout inside a
+vendor SVG), the same exclusion this file already grants. **`EventsCard`'s 2.64 glyph and
+`ResourcesCard`'s 2.57 link, the two blue failures this file recorded as reported-not-fixed,
+are both gone.**
+
+### ADDED: none. Every value spent here was already in `src`
+
+`blue-600`, `blue-700`, `blue-400`, `red-600`, `red-400`, `gray-500`, `gray-400`. The blue ink
+site count is unchanged at **37** — nine distinct spellings became six, and not one new colour
+was introduced.
+
+### ⚠️ `MOCK_API` COULD NOT REACH ROLLOUT DETAIL AT ALL, AND THAT IS WHY THE MINORITY SURVIVED
+
+`dev-mock-api.ts` matched the detail endpoints with `req.url === '/api/rollouts/<ns>/<name>'`,
+but the mock advertises three clusters, so every detail fetch carries `?cluster=<name>` and
+the comparison **never matched**. `MOCK_API` rendered *"This rollout does not exist"* for the
+one page a contrast pass most needs. Four branches now strip the query, the way the
+dependencies branch already did.
+
+Two fixtures are added behind **`MOCK_FAIL=1`** and are inert without it: the head history
+entry goes `Failed` with a multi-part `bakeStatusMessage` (which is what renders
+`FailurePanel`), and `/events` answers with two `Normal` + one `Warning` event.
+`MOCK_FAIL=2` additionally sets two `failedHealthChecks`, which is the branch that
+renders the multi-check list AND the `N issues` chip — `AlertPanel`'s `extra` snippet. **Nothing in
+the base fixture ever produced a `Normal` event, so `EventsCard`'s info glyph — the 2.64:1
+ink — had no reachable state in the mock OR on the live cluster.** That is not a coincidence;
+it is the mechanism. Reach it with:
+
+```
+MOCK_FAIL=1 MOCK_API=1 npx vite dev --port 5242
+https://localhost:5242/rollouts/dev/default/hello-world
+```
