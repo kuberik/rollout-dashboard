@@ -74,6 +74,7 @@
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
+	import { inertSiblings, trapFocus, modalFocusReturn } from '$lib/a11y.svelte';
 
 	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action';
 
@@ -96,6 +97,21 @@
 		currentName?: string;
 		loading?: boolean;
 	} = $props();
+
+	/**
+	 * ⭐ THE ONE OVERLAY IN THE PRODUCT THAT IS NOT A NATIVE `<dialog>`.
+	 *
+	 * It always had `role="dialog"` and `aria-modal="true"` — and those are a
+	 * PROMISE, not a mechanism. Measured on 2026-08-30 by opening the palette
+	 * from the navbar and pressing Tab: the fifteenth press was still inside,
+	 * the sixteenth landed on the sidebar's `Home` link, underneath the
+	 * backdrop, with the palette still open on top of it. `aria-modal` had told
+	 * a screen reader to ignore a page that Tab could still walk, and closing
+	 * the palette left focus on `<body>` rather than on the control that opened
+	 * it. The three flowbite `Modal`s never had this bug because a native
+	 * `<dialog>` opened with `showModal()` does all three for free.
+	 */
+	modalFocusReturn(() => open);
 
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let listEl = $state<HTMLDivElement | null>(null);
@@ -550,13 +566,26 @@
 {#snippet resultRow(r: Result, idx: number)}
 	{@const isActive = idx === selectedIndex}
 	{@const Icon = KIND_ICON[r.kind]}
+	<!-- `blue-50/70`, NOT `blue-50`. MEASURED: the muted ink pair this
+	     product spends everywhere (`gray-500` / `gray-400`) clears 4.5 on
+	     white by 0.4 and NOTHING ELSE. A full-strength `blue-50` fill drops
+	     the row's subtitle, its age and its rank chip to 4.44 — under the
+	     floor, on the one row a reader is looking at. The alpha ladder,
+	     canvas-resolved against the composited white: 1.0 = 4.44,
+	     0.8 = 4.52, 0.7 = 4.56, 0.6 = 4.60. `/70` is the first step that
+	     clears with room and keeps a visible cursor; the ACTIVE TITLE going
+	     `blue-700` is the other half of the affordance and is untouched.
+	     Dark is `blue-900/40` and never failed (0 of 0 rows). -->
 	<button
 		type="button"
+		role="option"
+		id={`cp-opt-${idx}`}
+		aria-selected={isActive}
 		data-idx={idx}
 		aria-current={r.isCurrent ? 'page' : undefined}
 		title={r.isCurrent ? 'Currently open' : undefined}
 		class="group relative flex w-full items-start gap-3 overflow-hidden rounded-lg px-3 py-2 text-left transition-colors {isActive
-			? 'bg-blue-50 dark:bg-blue-900/40'
+			? 'bg-blue-50/70 dark:bg-blue-900/40'
 			: 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
 		onclick={() => pick(r)}
 		onmouseenter={() => (selectedIndex = idx)}
@@ -580,7 +609,8 @@
 				)}"
 				title="{bakeWord(r.bakeStatus)} — {bakeTitle(r.bakeStatus)}"
 			>
-				<BakeStatusIcon bakeStatus={r.bakeStatus} size="small" />
+				<!-- `decorative`: the `sr-only` word is already printed right here. -->
+				<BakeStatusIcon bakeStatus={r.bakeStatus} size="small" decorative />
 				<span class="sr-only">{bakeWord(r.bakeStatus)}</span>
 			</span>
 		{:else}
@@ -705,6 +735,8 @@
 		role="dialog"
 		aria-modal="true"
 		aria-label="Command palette"
+		use:inertSiblings
+		use:trapFocus
 	>
 		<button
 			type="button"
@@ -740,11 +772,22 @@
 						>
 					</span>
 				{/if}
+				<!-- Combobox semantics. Arrow keys move `selectedIndex` but focus never
+				     leaves this input, so before `aria-activedescendant` a screen reader
+				     was told NOTHING as the reader arrowed down a list of rollouts. -->
 				<input
 					bind:this={searchInput}
 					value={query}
 					oninput={onInput}
 					type="text"
+					role="combobox"
+					aria-label={scope
+						? `Search ${KIND_LABEL[scope].toLowerCase()}`
+						: 'Search rollouts, apps, environments and namespaces'}
+					aria-expanded="true"
+					aria-controls="command-palette-results"
+					aria-autocomplete="list"
+					aria-activedescendant={`cp-opt-${selectedIndex}`}
 					placeholder={scope
 						? `Search ${KIND_LABEL[scope].toLowerCase()}…`
 						: 'Search rollouts, apps, environments, namespaces…'}
@@ -766,7 +809,13 @@
 				</button>
 			</div>
 
-			<div bind:this={listEl} class="flex-1 overflow-y-auto p-2 sm:max-h-[60vh] sm:flex-none">
+			<div
+				bind:this={listEl}
+				id="command-palette-results"
+				role="listbox"
+				aria-label="Results"
+				class="flex-1 overflow-y-auto p-2 sm:max-h-[60vh] sm:flex-none"
+			>
 				{#if loading && allResults.length === 0}
 					<div class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</div>
 				{:else if inPicker}
@@ -783,7 +832,7 @@
 						return c;
 					})()}
 					{#if attentionShown.length > 0}
-						<div class="flex items-center gap-2 px-3 pb-1 pt-2">
+						<div class="flex items-center gap-2 px-3 pb-1 pt-2" role="presentation">
 							<span
 								class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
 								>Needs you</span
@@ -809,19 +858,22 @@
 							</p>
 						{/if}
 					{/if}
-					<div class="px-2 pb-1 pt-2">
+					<div class="px-2 pb-1 pt-2" role="presentation">
 						<span
 							class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
 							>Browse</span
 						>
 					</div>
-					<div class="grid gap-1.5 px-1 sm:grid-cols-2">
+					<div class="grid gap-1.5 px-1 sm:grid-cols-2" role="presentation">
 						{#each PICKER_KINDS as kind, kindIdx}
 							{@const KIcon = KIND_ICON[kind]}
 							{@const tileIdx = attentionShown.length + kindIdx}
 							{@const sel = tileIdx === selectedIndex}
 							<button
 								type="button"
+								role="option"
+								id={`cp-opt-${tileIdx}`}
+								aria-selected={sel}
 								data-idx={tileIdx}
 								onclick={() => {
 									scope = kind;
@@ -830,7 +882,7 @@
 								}}
 								onmouseenter={() => (selectedIndex = tileIdx)}
 								class="group flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-3 text-left transition-colors dark:border-gray-700 {sel
-									? 'bg-blue-50 dark:bg-blue-900/30'
+									? 'bg-blue-50/70 dark:bg-blue-900/30'
 									: 'bg-gray-50/50 hover:bg-gray-100 dark:bg-gray-700/30 dark:hover:bg-gray-700/60'}"
 							>
 								<span
@@ -856,7 +908,7 @@
 							</button>
 						{/each}
 					</div>
-					<div class="mt-3 border-t border-gray-100 px-2 pb-1 pt-3 dark:border-gray-700/60">
+					<div class="mt-3 border-t border-gray-100 px-2 pb-1 pt-3 dark:border-gray-700/60" role="presentation">
 						<span
 							class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
 							>Or type to search across everything</span
@@ -869,7 +921,7 @@
 					</div>
 				{:else}
 					{#each grouped as group (group.kind)}
-						<div class="flex items-center gap-2 px-3 pb-1 pt-2">
+						<div class="flex items-center gap-2 px-3 pb-1 pt-2" role="presentation">
 							<span
 								class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
 								>{group.label}</span

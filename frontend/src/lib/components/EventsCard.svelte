@@ -28,7 +28,7 @@
 			{#each visibleEvents as event}
 				<div class="flex items-start gap-3 px-4 py-2.5">
 					{#if event.type === 'Warning'}
-						<ExclamationCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-500 dark:text-yellow-400" />
+						<ExclamationCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-700 dark:text-yellow-400" />
 					{:else}
 						<InfoCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400 dark:text-blue-400" />
 					{/if}

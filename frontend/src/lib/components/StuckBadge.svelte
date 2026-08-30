@@ -46,6 +46,7 @@
 	import type { StuckReason } from '$lib/utils';
 	import type { PromotionStuckReason } from '$lib/view-models/promotion';
 	import { formatTimeAgoCompact } from '$lib/utils';
+	import { BAKE_WORD } from '$lib/bake-status';
 	import Chip from '$lib/components/Chip.svelte';
 
 	let {
@@ -55,8 +56,13 @@
 	} = $props();
 
 	const titleText = $derived.by(() => {
-		if (reason.kind === 'baking') return `Stuck — baking for ${formatTimeAgoCompact(new Date(Date.now() - reason.durationMs).toISOString())}`;
-		if (reason.kind === 'deploying') return `Stuck — deploying for ${formatTimeAgoCompact(new Date(Date.now() - reason.durationMs).toISOString())}`;
+		// THE VERB IS `bake-status.ts`'S ONE WORD (2026-08-30). This title was
+		// the SEVENTH copy of `baking` and the only one on `/`, `/rollouts`,
+		// `/namespaces/*` and rollout detail — a tooltip, so no pixel moves,
+		// but a tooltip is where a reader goes when the mark is not enough and
+		// it may not answer in a vocabulary no other surface still uses.
+		if (reason.kind === 'baking') return `Stuck — ${BAKE_WORD.InProgress} for ${formatTimeAgoCompact(new Date(Date.now() - reason.durationMs).toISOString())}`;
+		if (reason.kind === 'deploying') return `Stuck — ${BAKE_WORD.Deploying} for ${formatTimeAgoCompact(new Date(Date.now() - reason.durationMs).toISOString())}`;
 		if (reason.kind === 'promotion') {
 			const waitingAgo = formatTimeAgoCompact(new Date(Date.now() - reason.waitingMs).toISOString());
 			const n = reason.candidateCount;

@@ -519,10 +519,10 @@
 	function testIconColor(phase: string): string {
 		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
 		if (phase === 'Failed') return 'text-red-500';
-		if (phase === 'Cancelled') return 'text-gray-400';
-		if (phase === 'Skipped') return 'text-gray-400';
-		if (phase === 'Pending') return 'text-yellow-500';
-		return 'text-gray-400';
+		if (phase === 'Cancelled') return 'text-gray-500 dark:text-gray-400';
+		if (phase === 'Skipped') return 'text-gray-500 dark:text-gray-400';
+		if (phase === 'Pending') return 'text-yellow-700 dark:text-yellow-400';
+		return 'text-gray-500 dark:text-gray-400';
 	}
 
 	function nodeAccentRow(node: StageNode): string {

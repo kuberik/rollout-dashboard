@@ -42,7 +42,7 @@
 				{#if failedChecks.length > 0}
 					<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
 				{:else if pendingChecks.length > 0}
-					<ClockSolid class="h-4 w-4 text-yellow-500 dark:text-yellow-400" />
+					<ClockSolid class="h-4 w-4 text-yellow-700 dark:text-yellow-400" />
 				{:else}
 					<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
 				{/if}
@@ -51,7 +51,7 @@
 			{#if failedChecks.length > 0}
 				<span class="text-xs font-semibold text-red-600 dark:text-red-400">{failedChecks.length} failing{pendingChecks.length > 0 ? ` · ${pendingChecks.length} pending` : ''} · {healthyChecks.length} passing</span>
 			{:else if pendingChecks.length > 0}
-				<span class="text-xs text-yellow-600 dark:text-yellow-400">{pendingChecks.length} pending · {healthyChecks.length} passing</span>
+				<span class="text-xs text-yellow-700 dark:text-yellow-400">{pendingChecks.length} pending · {healthyChecks.length} passing</span>
 			{:else}
 				<span class="text-xs text-green-700 dark:text-green-400">{healthChecks.length}/{healthChecks.length} healthy</span>
 			{/if}

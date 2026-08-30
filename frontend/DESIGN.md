@@ -21,6 +21,252 @@ Run anything that compiles with the sandbox disabled, or hand the test run to th
 Healthy `en.js` is **160 bytes**. Full write-up in
 `.agents-context/ENVIRONMENT.md`.
 
+## ⛔ `baking` IS DEAD. THE WORD IS `checking`, ON EVERY SURFACE. (2026-08-30)
+
+**Do not re-open this.** It was the last term the product spelled two ways, and it stayed
+open through two passes because it is live in seven places and each one owned its own copy
+of the string.
+
+### THE RULING
+
+`bake` is the CRD's field name — `spec.bakeTime`, `status.history[].bakeStatus`. It is not
+English, not Kubernetes and not git. A competent engineer who has never seen kuberik cannot
+tell from `baking` whether anything is wrong, whether it clears itself, or whether they are
+the one who has to move. That is mechanism-over-consequence, which this file already bans,
+and it is the same argument that renamed `Median bake` → `Typical deploy` and that
+`/activity` accepted when it shipped `live, being checked`.
+
+**The word is `checking`, and the sentence is `The new version is live and is being watched
+before the deploy counts as done`, which rides in the `title` of whatever prints the word.**
+
+⚠️ **WHY A WORD AND NOT `/activity`'S PHRASE.** `live, being checked` is better prose and it
+is what the TITLE still says. It cannot be the product's word because four of the seven
+slots that hold this string are not sentences — `baking >1h`, `deploying & baking right
+now`, `baking 2h`, and a status dot's one-word label. A phrase with a comma does not decline
+into those, and spelling it two ways is the defect being closed. `/activity` therefore
+LOSES `live, being checked` from its row and keeps it in the row's title. That is a
+deliberate downgrade of prose in exchange for one vocabulary.
+
+⚠️ **THE HUE DISTINCTION IS UNTOUCHED AND ZERO COLOUR VALUES MOVE.** This file binds this
+state to YELLOW and `Deploying` to BLUE and says they may never share a value. `checking`
+and `deploying` are two distinct verbs for two distinct phases — the new version is going
+out, versus the new version is already serving and is being watched — so the rename sharpens
+the distinction rather than blurring it.
+
+⛔ **AND THE WHOLE FAMILY WENT WITH IT.** Renaming the verb and leaving `Bake succeeded` /
+`Bake failed` / `Bake cancelled` / `no bake status` behind is how the split happened the
+first time. The terminal words are `/activity`'s, because that is the page that already did
+this work.
+
+### ONE TABLE — `bake-status.ts::BAKE_WORD` / `bakeWord()` / `bakeTitle()`
+
+The reason this could split at all is that **seven modules each kept a copy of the word.**
+They read one table now, the same structural fix `rankLabel` got:
+
+| bakeStatus | word | was |
+|---|---|---|
+| `Succeeded` | `deploy succeeded` | `Succeeded` / `Bake succeeded` / `deploy succeeded` |
+| `Failed` | `deploy failed` | `Failed` / `Bake failed` / `deploy failed` |
+| `InProgress` | **`checking`** | `baking` / `Baking` / `live, being checked` |
+| `Deploying` | `deploying` | `deploying` / `Deploying` |
+| `Cancelled` | `stopped` | `Cancelled` / `bake cancelled` / `stopped` |
+| `None` | `no deploy yet` | `No deploy` / `no bake status` / `no deploy recorded` |
+
+### EVERY SURFACE IT TOUCHED
+
+| file | what it printed | where it renders |
+|---|---|---|
+| `lib/ControlCenter.svelte` | `baking`, `baking >1h`, `deploying & baking right now` | **`/`** — visible text, a WORD change and nothing else moves |
+| `routes/activity/+page.svelte` | `live, being checked` | `/activity` row state |
+| `routes/apps/+page.svelte` `STATUS_WORD` | `baking` | `/apps` — visible in the row rollup + badge titles |
+| `routes/apps/[name]/+page.svelte` `DOT` + `stuckTitle` | `baking`, `bake cancelled`, `no bake status`, `Baking for 3d` | node titles |
+| `routes/envs/[name]/+page.svelte` `stateLabel` | `Bake succeeded` / `Bake failed` / `Baking` / `Bake cancelled` | row titles — the densest patch of the product's own vocabulary anywhere |
+| dependencies tab `DOT` | `baking`, `bake cancelled`, `no deploy recorded` | chain node titles |
+| `lib/components/ActivityRail.svelte` `STATUS_LABEL` | `Baking`, `Failed`, `Cancelled`, `No deploy` | **visible** on `/apps/[name]`, `/envs/[name]`, `/namespaces/<ns>` |
+| `lib/components/StuckBadge.svelte` | `Stuck — baking for 1h` | title on `/`, `/rollouts`, `/namespaces/*`, rollout detail — **tooltip only, no pixel moves** |
+| `lib/components/DeploymentTimeline.svelte` | `still baking` | the accessible name of every in-flight dot |
+| `lib/utils.ts::formatStatusTime` | `baking 2h` | `/namespaces/<ns>`, `PromotionNode` |
+| `view-models/revision-coverage.ts` `WORD` | `baking` | `/versions`, `/versions/<rev>`, `FleetSpread` titles |
+| `view-models/fleet-strip.ts` `TONE_WORD` | `baking` | strip tooltips |
+| `view-models/verdict.ts` | `is baking.`, `has been baking for 3d` | not rendered today; 4 test assertions updated with it |
+
+⚠️ **`ActivityRail`'s WHOLE TABLE MOVED, NOT JUST ONE ROW.** Swapping only `Baking` would
+leave `checking` in a column that also prints `Failed` and `Cancelled` — one register inside
+one list. The register difference IS the drift: `/activity` renders the identical rail rows
+as `deploy failed` / `stopped`. `Succeeded` is never reached; the row is guarded on it
+because the green dot already says so.
+
+⚠️ **`/activity` KEEPS `going live` FOR `Deploying`, AND THAT IS NOW THE ONE OPEN SPLIT.**
+Every other surface says `deploying`. It is not the same class of defect — `deploying` is
+ordinary English and passes the novice test, where `baking` did not — and closing it reaches
+`/`, `/rollouts` and rollout detail with six more strings. **Logged, scoped out, not
+forgotten.**
+
+### ⛔ TWO PLACES STILL SAY `Bake`, BOTH ON ROLLOUT DETAIL, BOTH DELIBERATELY LEFT
+
+1. **`DeploymentPipelineCard.svelte`** — `Bake`, `Baking`, `Final Bake`, `Baked`,
+   `Bake timer`. These are PIPELINE STEP NAMES (`Started · Deploy · Bake`), a different slot
+   from a status word, and they are on the page this file protects from visual change.
+2. **`routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte:195,204`** — two
+   `announce()` strings (`finished baking successfully`, `is baking`) in an `aria-live`
+   region. Invisible, but a11y strings, and an accessibility pass owned that file at the
+   time. Not touched to avoid clobbering it.
+
+Both are worth closing in the pass that next opens rollout detail.
+
+## ⛔ `BlockReason` HAS ONE RENDERING, AND THE BLOCK CHOOSES IT (2026-08-30)
+
+> The `compact` prop was passed by **two of five callers**. So `/apps/[name]` and
+> `/envs/[name]` printed one line while `/environments` and the dependencies tab printed the
+> two-clause sentence — **one object saying one fact two ways in one product**, which is
+> exactly the `−N` versus `N behind` split.
+
+**The prop is deleted.** `BlockReason` carries `form: 'short' | 'long'`, set by the factory
+that builds it. A caller cannot have an opinion, so the split cannot reopen.
+
+- **The three GATE branches are `short`.** Their consequence is one clause, and the words
+  carry the person/no-person split lexically, so no surround is load-bearing:
+  `Needs a person to approve` against `Waiting on a check or a time window`.
+- **`contract` is `long`, and that is not an exception granted to a caller.** Its sentence
+  carries the semver constraint VERBATIM (`Needs payments ^3.0.0 from payments-svc, which is
+  on 2.4.1 — someone has to ship payments-svc first`) plus the provider's current version.
+  Neither fact is on the row, and this component's own rule forbids paraphrasing the
+  constraint — a bare version is an EXACT match in Masterminds semver. The short form would
+  DELETE those facts, not relocate them.
+
+### ⛔ TWO OF THE THREE `short` STRINGS WERE WRONG AND HAD TO BE FIXED FIRST
+
+| branch | was | now | why |
+|---|---|---|---|
+| `notPassing` | `Clears on its own` | **`Waiting on a check or a time window`** | The long line's clauses are the FACT (what is holding it) and the GLOSS (that it resolves itself). The short form kept the GLOSS — and inside `/apps/[name]`'s card headed **`Waiting, nothing to do`** that was the card's own title, restated once per row: an object drawing the norm. Naming the check and the window states the fact and implies the gloss, and still reads as the opposite of `Needs a person to approve`. |
+| `pinned` | `Held on purpose` | **`Held on <version> on purpose`** | It dropped the VERSION, which is the fact. `automatic updates are off here` is the gloss on `on purpose` and is the droppable clause. `PinBadge` beside it prints the word `pinned` and puts the version only in a tooltip, so nothing else on the row says it. |
+
+`line` is untouched and still used: `/apps`'s and `/environments`' page banners borrow the
+SENTENCE (not the markup) for their `AlertPanel`, where a filled banner has the room and the
+ink for it. **One function, two renderers** — that split is by object type, not by caller.
+
+## ⛔ THE EXPOSURE SECTION DOES NOT RENDER WHEN THERE IS NOTHING TO MEASURE (2026-08-30)
+
+`/apps/[name]`'s state card printed the heading **`How much is on the newest`** over a bare
+**em dash** whenever ready-pod counts did not resolve — a header and a slot spent to say "no
+data", which is the object this same pass had just removed from the `Needs you` card one
+card up.
+
+**The em dash's argument was that it is the product's idiom for a metric with nothing to
+measure — and that argument holds for a TILE in a fixed grid of tiles**, where the
+neighbours keep the row's shape and the dash reads as *this one, unlike those, has no
+value*. This is not a tile. It is the third and last section of a card, with its own 16px
+glyph and its own heading, and nothing beside it makes the dash mean anything.
+
+**And the absence is not actionable.** `Ready-pod counts are not available for this app`
+names an API gap (`/api/rollouts` carries no pod counts; they come from a per-rollout
+managed-resources call), not something a reader can change. So the section is cut.
+
+- the predicate is **`hasExposure(newestPercent, segments)`, exported from
+  `ExposureBar.svelte`'s module block**, and the PAGE guards the heading with it. It lives in
+  the component because the heading and the bar must appear and disappear together, and a
+  page re-deriving "did this resolve?" is how the two come to disagree.
+- **the loading skeleton still shows while the answer is in flight.** A pending fact is not
+  an absent one.
+- ⛔ **NO NUMBER IS EVER INVENTED.** Unchanged.
+
+Measured: live hub `/apps/hello-world-app` still renders `0% of 6 ready pods on newest` with
+its bar and key; `MOCK_API=1` `/apps/checkout-api`, where the pods never resolve, now ends
+the card after the Production region list with no orphan heading.
+
+## THE COMMAND PALETTE CARRIES TRIAGE SIGNAL (2026-08-30)
+
+> *"Command palette works well; results carry version + env and age but no health, lag or pin
+> state, so the fastest navigation surface carries no triage signal. '36 results' shows
+> before you type anything."*
+
+**It derives nothing of its own.** Every fact it lacked was already computed:
+`buildRolloutCards` + `cardVerdict` are what `/` draws its cards from, and `env-rank.ts` is
+the product's one `N behind`. Reading the same objects is also the only way a palette row and
+the page it opens cannot disagree.
+
+### THE ROW — LINE 1 IS IDENTITY, LINE 2 IS STATE
+
+```
+[status disc] checkout-api                                    [PROD]  1h
+              checkout-api-prod-us-east-2   [stuck][3 behind|4.42.0-42]
+```
+
+- **the leading slot is the STATUS ATOM on a rollout row** — `getStatusCircleClass` +
+  `BakeStatusIcon`, the same disc `/` puts on its cards. It replaced a KIND icon that was
+  identical on every row of a group whose header already names the kind. Apps, environments
+  and namespaces keep their glyph: none has a single bake state, and inventing one is the
+  "green tick beside PROD is 14 behind" lie.
+- **the joined `[verdict][build]` chip is `/`'s own row unit**, and the verdict is
+  `cardVerdict`'s — `rolled back` > `pinned` > the rank word. A pin and a rollback have a
+  word here for the first time, and the sha stops being a loose mono span beside the name
+  with nothing to say about it. **`wide` is required**, not preferred: `19 BEHIND` and
+  `ROLLED BACK` both exceed `.chip`'s 12ch cap at the uppercase tracking.
+- **the state chips are `ms-auto` on line 2**, so they form a COLUMN down the list while the
+  namespace truncates into what is left. A palette row is scanned vertically; chips starting
+  at a different x on every row cannot be scanned at all. Measured at 390:
+  `scrollWidth === clientWidth`, **0 clipped chips of 49**.
+- **apps, environments and namespaces get a `N need you` alarm chip** — a count of the
+  rollouts under them that failed or stopped moving, and nothing at all when it is 0. Apps
+  also get the app's **deepest** `N behind`, the number `/apps` already prints.
+- **ties in a search now break WORST-FIRST.** Two rollouts of one app score the same on the
+  app's name and the failing one is the one being looked for.
+- **the state is searchable**: `stuck`, `pinned`, `rolled back`, `19 behind`, `checking`.
+  A reader who can see a word and cannot type it is being asked to remember which page lists
+  it.
+
+⛔ **THE `Ready` DOT IS DELETED.** It was `getRolloutStatus` — the Kubernetes `Ready`
+CONDITION, which no other surface in this product renders. Measured under `MOCK_API=1`, TEN
+CONSECUTIVE ROWS printed the same yellow `Unknown` dot, because none of those rollouts
+publishes the condition. A mark identical on every row that is also not the fact the reader
+wants is worse than no mark: it occupied the slot the real health signal needed.
+
+### WHAT AN EMPTY QUERY SHOWS
+
+`128 results` used to print in the footer while the BODY showed a four-tile category picker
+— the one number on the screen counted a set nobody had asked for and nothing on screen was
+showing.
+
+- **`Needs you` sits above the picker, cursor already on its first row.** Same predicate as
+  `/`'s own first card — failed, or stuck — read off the same cards, worst-first. ⌘K + Enter
+  goes straight to the worst thing on the cluster.
+- ⛔ **it draws nothing when nothing is wrong.** A `Needs you — 0` header is a slot spent on
+  absence. On the healthy live hub the default screen is exactly the picker it always was.
+- **capped at 6**, with the header printing the TRUE total and an `and N more` line. Past six
+  this stops being a triage list and becomes the list already at `/`. The cap hides rows; it
+  may never hide the number.
+- **the footer count renders only when it counts what is on screen.** Nothing replaces it —
+  the `Needs you` header and each tile carry their own count, and a slot kept warm for a
+  number is the same defect as a slot kept warm for an em dash.
+
+### `blue-50/70`, NOT `blue-50` — the active row, measured
+
+The muted ink pair the product spends everywhere (`gray-500` / `gray-400`) clears 4.5:1 on
+white by 0.4 **and nothing else**, so any tint under it fails. A full-strength `bg-blue-50`
+active row drops its own subtitle, age and rank chip to **4.44**. Canvas-resolved alpha
+ladder against the composited white: `1.0 = 4.44 · 0.8 = 4.52 · 0.7 = 4.56 · 0.6 = 4.60`.
+`/70` is the first step that clears with room and keeps a visible cursor; the active title
+going `blue-700` is the other half of the affordance and is untouched. Dark
+(`blue-900/40`) never failed.
+
+### Measured
+
+Canvas-resolved against the real composited background, whole ancestor chain, cumulative
+opacity folded in, `sr-only` and sub-2px nodes excluded, and the palette's entry animation
+waited out (a mid-animation read reports every row at ~2:1 and is not a finding).
+
+| surface | light 1440 | light 390 | dark 1440 | dark 390 |
+|---|---|---|---|---|
+| palette, empty query (`MOCK_API=1`, 4 needing a person) | 0 | 0 | 0 | 0 |
+| palette, `hello-world` on the live hub | 0 | 0 | 0 | 0 |
+| `/apps/[name]`, `/environments`, `/envs/[name]`, `/activity`, dependencies | 0 | 0 | 0 | 0 |
+
+⚠️ **ONE PRE-EXISTING RESIDUE CLOSED ON THE WAY.** The dependencies tab still had two
+`text-gray-400 dark:text-gray-500` icons — the faint pair the 2026-08-30 contrast pass
+collapsed in 99 other places — at **2.60:1** in light. Swapped to the majority pair. Zero
+new colour values.
+
+
 ## ⛔ "N BEHIND" HAS ONE DEFINITION NOW, AND THE OLD ONE MADE A PAGE CONTRADICT ITSELF (2026-08-30)
 
 > Measured on the live hub, `hello-world-app`, cluster fully settled, nothing deploying:
@@ -551,7 +797,7 @@ on every row that is not the norm, and the banner.
 |---|---|---|
 | `rollout-controller deployed X to PROD` | `[PROD] X` | the actor was the norm, 39 times; the verb is what a row IS |
 | `Succeeded` (39 times) | nothing | the disc says it, and the version pair says what it did |
-| `Baking` | `live, being checked` | `bake` is this product's own word |
+| `Baking` | ~~`live, being checked`~~ → **`checking`** | `bake` is this product's own word. ⚠️ The phrase was superseded the same day: it could not decline into the four non-sentence slots the other six surfaces hold, so the WORD is `bake-status.ts`'s and the phrase is the row's `title`. See *"`baking` IS DEAD"* at the top of this file. |
 | `Deploying` | `going live` | names a state machine |
 | `Failed` | `deploy failed` | |
 | `Cancelled` | `stopped` | |
@@ -3351,7 +3597,7 @@ adjacency stops being safe.**
 
 ### Colour palette discipline
 
-- Reuse status colours: green (succeeded/healthy), red (failed), yellow (InProgress / baking — RESERVED for baking only), blue (Deploying), amber (stuck), gray (pending/no-deploy/behind context). InProgress and Deploying are NOT the same state and must NOT share a colour.
+- Reuse status colours: green (succeeded/healthy), red (failed), yellow (InProgress — the state the product now CALLS `checking`, and this hue is RESERVED for it), blue (Deploying), amber (stuck), gray (pending/no-deploy/behind context). InProgress and Deploying are NOT the same state and must NOT share a colour. The 2026-08-30 rename moved the WORD only; no colour value moved.
 - Env theme colours (dev/staging/prod/etc.) belong to env badges and the env band on /apps/[name] pipeline nodes. They do not apply to the card body.
 - Stop adding new colour scopes. Audit existing colour uses before adding any new tint.
 
@@ -4130,3 +4376,117 @@ Each of these is a real measurement. Each was refused for a stated reason, not s
 - Always test mobile AND desktop before declaring something done.
 - Check this document before adding any new visual element.
 - When new feedback lands, append it here so it survives session compaction.
+
+## ⛔ THE YELLOW ROLE HAD THREE SPELLINGS AND ONLY THE MAJORITY ONE PASSED (2026-08-30)
+
+Same shape as the gray-ink root cause recorded above, one hue over. **`text-yellow-700
+dark:text-yellow-400` was already the majority spelling — 15 ink sites.** A minority spelled
+the identical role one or two steps lighter on the LIGHT side only (`text-yellow-600
+dark:text-yellow-400`, `text-yellow-500 dark:text-yellow-400`, and two bare `text-yellow-500`
+with no dark partner at all), and those are exactly the ones that fail:
+
+| light ink, white card / white page | contrast | after |
+|---|---|---|
+| `yellow-500` | **1.91** | → `yellow-700` **4.93** |
+| `yellow-600` | **2.94** | → `yellow-700` **4.93** |
+| `orange-600` | **3.58** | → `orange-700` **5.22** |
+| `gray-400` (bare, no dark partner) | **2.60** | → `gray-500 dark:gray-400` **4.84** |
+
+**THE DARK HALF DID NOT MOVE — IT IS BYTE-IDENTICAL BEFORE AND AFTER.** Every minority
+spelling already said `dark:text-yellow-400`; only the light half was wrong. That is the
+whole diagnosis: *a two-theme pair can be half-right, and the half that is right hides the
+half that is not.*
+
+### THE HUE PROOF — the darker yellow step does NOT drift into amber
+
+`stuck` / warning owns AMBER and baking owns YELLOW, so a darker yellow must not close the
+gap. Measured OKLCH (Tailwind v4 `--color-*`), and the comparison that matters is at
+MATCHED LIGHTNESS, because neither ramp is iso-hue and both rotate warm as they darken:
+
+| step | L | h° | vs amber at the same step | Δh | ΔE(OKLab) |
+|---|---|---|---|---|---|
+| `yellow-500` | 79.5% | 86.05 | `amber-500` 76.9% / 70.08 | 15.97° | 0.058 |
+| `yellow-600` | 68.1% | 75.83 | `amber-600` 66.6% / 58.32 | 17.52° | 0.057 |
+| **`yellow-700`** | **55.4%** | **66.44** | `amber-700` 55.5% / 49.00 | **17.44°** | **0.053** |
+
+**The yellow↔amber separation is FLAT across the ramp (16.0° → 17.5° → 17.4°). Moving
+500 → 700 widens it by 1.5°, it does not close it.** Against the amber the product actually
+paints in light (`amber-600`, from the earlier pass), `yellow-700` is **ΔE 0.122 — more than
+double the 0.057 that `yellow-600` had from the same amber**, because it also drops 11.2
+lightness points. The naive worry ("yellow-700 at 66.44° is *below* amber-500 at 70.08°")
+compares across a 21.5-point lightness gap and is not a confusion pair.
+
+BAKING vs DEPLOYING never share a value and never come close: `yellow-700` h **66.44°** vs
+`blue-600` h **262.88°**, 196.4° apart, and they are different tokens, not different steps.
+
+### ⛔ `AlertPanel`'s FIXES DID NOT REACH `FailurePanel`, BECAUSE IT IS A COPY
+
+`FailurePanel.svelte` is a hand-rolled duplicate of `AlertPanel`'s `error` severity and it
+still carried the alpha ladder that `AlertPanel` had already removed. Measured pixel-wise off a
+screenshot (the container is a GRADIENT):
+
+| | light before → after | dark before → after |
+|---|---|---|
+| message (`red-700/75` → `red-900`) | **4.06 → 8.51** | 4.80 → 4.89 |
+| footnote (`red-700/60` → `red-900`, dark `/55` → `/70`) | **3.12 → 8.46** | **3.20 → 4.59** |
+| icon (`red-600` → `red-700`) | on the `red-200` disc, matched to `AlertPanel` | unchanged |
+
+**A shared object copied into a second file will not receive the shared object's next fix.**
+`FailurePanel` should become an `AlertPanel` call site; it is ink-matched for now.
+
+### THE ERROR STATE WAS THE LEAST READABLE TEXT IN THE PRODUCT
+
+`<Alert color="yellow">Release not found</Alert>` — Flowbite paints `bg-yellow-100
+text-yellow-500` / `dark:bg-yellow-200 dark:text-yellow-600` — measured **1.78:1 in light and
+2.53:1 in dark at 14px**, on BOTH the overview tab and the history tab. Four words, no cause,
+no way out, and unreadable.
+
+Both are `AlertPanel severity="warning"` now, with `ErrorState`'s exact contract and
+`errorConsequence`'s exact missing-object sentence, so the two states read as one fact:
+*This rollout does not exist* / *It may have been deleted, or the address may be wrong.* /
+the address that was queried / **`Try again` + `Back to all rollouts`**. Measured after:
+light title **8.42**, message **8.66**, footnote **8.73**, icon **4.04**; dark **14.25 /
+4.85 / 4.44 / 10.25**.
+
+⚠️ **The footnote in `AlertPanel`'s `warning` severity is the weakest of the four
+severities in dark** (`amber-200/70` on `amber-900`): **4.44** by the extreme-pixel method,
+against the **4.89–5.26** this file records for the component. That is a sampling difference
+on a 12px antialiased glyph, and it is `AlertPanel`'s number, not one this pass introduced —
+but it is the only banner text within 0.1 of the floor and it should be re-measured before
+the next severity change.
+
+A third Flowbite `Alert color="yellow"` survives on rollout detail (*"Current version is
+custom"*). Its COMPOSITION is untouched — protected page — but its ink is pinned to
+`bg-yellow-100 text-yellow-700` in both themes, the product's own spelling for yellow ink on
+a yellow fill: **1.78 → 4.59 light**, and **4.24 → 4.59 dark** (Flowbite's `dark:bg-yellow-200`
+is a lighter fill than `yellow-100`, which is why the fill is pinned too).
+
+### ADDED: none. Every value spent here was already in `src`
+
+`yellow-700`, `orange-700`, `gray-500`, `gray-700`, `red-900`, `red-700`, `bg-yellow-100`.
+`gray-300` and `gray-600` stayed out of the ink vocabulary; the one hover partner that moved
+went `dark:hover:text-gray-300` → `-200`, as the gray sweep did.
+
+### Measured, `<main>`, both themes, 1440 and 390
+
+| page / state | light before → after | dark before → after |
+|---|---|---|
+| rollout detail, live cluster (`/rollouts/dev/hello-world-dev/hello-world-app`) | **6 → 2** | 0 → 0 |
+| rollout detail, `MOCK_API` with pending + reconciling + candidates + custom | **8 → 2** | 0 → 0 |
+| rollout detail, `MOCK_API` failing (`FailurePanel`) | **5 → 2** | 0 → 0 |
+| rollout detail, missing release | **1 → 0** | **1 → 0** |
+| `/rollouts/.../history` | **6 → 1** | **1 → 1** † |
+| `/rollouts/.../dependencies` | 1 → 0 | 0 → 0 |
+
+`scrollWidth === clientWidth` at 390 in every state, both themes. † the survivor on `history`
+is `<rect class="fill-blue-50">`, the timeline's plot BAND — a ground, not a mark, the same
+exclusion this file already grants gridlines.
+
+**The two survivors on rollout detail are named and out of scope:** the Datadog brand logo's
+`path.st0` (1.00 — a knockout inside a vendor SVG) and **`text-blue-400 dark:text-blue-400`
+on `EventsCard`'s info glyph, 2.64:1 light** — the same defect class as the
+`ResourcesCard.svelte:407` link glyph this file already records at 2.57, and the same
+single-value-ink-in-a-two-theme-product bug. The blue role has not been collapsed yet.
+`/rollouts` and `/` show one pre-existing failure each: `BakeStatusIcon`'s
+`<Spinner color="yellow">` circles, which paint `fill-yellow-400` regardless of the
+`text-yellow-700` on their parent — already recorded above as reported-not-fixed.

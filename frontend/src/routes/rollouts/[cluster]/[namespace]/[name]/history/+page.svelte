@@ -11,7 +11,9 @@
 		CogSolid,
 		ChevronDownOutline,
 		ChevronUpOutline,
-		LayersSolid
+		LayersSolid,
+		RefreshOutline,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -33,6 +35,7 @@
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
+	import AlertPanel from '$lib/components/AlertPanel.svelte';
 
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
@@ -277,15 +280,43 @@
 			<Alert color="red">{error}</Alert>
 		</div>
 	{:else if !rollout}
+		<!--
+			Same object, same words, same actions as the overview tab's missing
+			state — see the note there. The Flowbite `Alert color="yellow"` this
+			replaces measured **1.78:1 light / 2.53:1 dark at 14px**
+			(`bg-yellow-100 text-yellow-500`), the worst-read text in the product,
+			and it said four words with no way out of the page.
+		-->
 		<div class="p-4">
-			<Alert color="yellow">Release not found</Alert>
+			<AlertPanel
+				severity="warning"
+				class=""
+				title="This rollout does not exist"
+				message="It may have been deleted, or the address may be wrong."
+				footnote={`The server answered for ${namespace}/${name} and returned no release.`}
+			>
+				{#snippet actions()}
+					<button type="button" class="btn btn-secondary" onclick={() => rolloutQuery.refetch()}>
+						<RefreshOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Try again
+					</button>
+					<a href="/rollouts" class="btn btn-secondary">
+						Back to all rollouts
+						<ChevronRightOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+					</a>
+				{/snippet}
+			</AlertPanel>
 		</div>
 	{:else}
 		<div class="flex-1 overflow-y-auto p-3 sm:p-5">
 			<!-- Page header + stats bar -->
 			<div class="mb-5 flex flex-wrap items-start justify-between gap-4">
 				<div>
-					<h2 class="text-xl font-bold text-gray-900 dark:text-white">Deployment History</h2>
+					<!-- `h1`, not `h2`: this tab is a page and it had NO `h1` at all —
+					     its outline started at level 2, so "jump to the heading" landed
+					     nowhere. Tailwind's preflight resets every heading to inherited
+					     size and weight, so the level is the only thing that changes. -->
+					<h1 class="text-xl font-bold text-gray-900 dark:text-white">Deployment History</h1>
 					<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
 						All deployments for <span class="font-mono">{name}</span>
 					</p>
@@ -295,7 +326,7 @@
 					<div
 						class="flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs dark:bg-gray-800"
 					>
-						<span class="text-gray-500 dark:text-gray-400">Total</span>
+						<span class="text-gray-700 dark:text-gray-400">Total</span>
 						<span class="font-semibold text-gray-900 dark:text-white">{totalDeploys}</span>
 					</div>
 					<div
@@ -382,7 +413,7 @@
 					<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
 						Deployments
 						{#if filteredHistory.length !== totalDeploys}
-							<span class="ml-1.5 font-normal text-gray-400">
+							<span class="ml-1.5 font-normal text-gray-500 dark:text-gray-400">
 								({filteredHistory.length} of {totalDeploys})
 							</span>
 						{/if}
@@ -459,7 +490,7 @@
 										{formatTimeAgoCompact(entry.timestamp, $now)}
 									</div>
 									{#if entry.triggeredBy}
-										<div class="mt-0.5 flex items-center justify-end gap-1 text-xs text-gray-400">
+										<div class="mt-0.5 flex items-center justify-end gap-1 text-xs text-gray-500 dark:text-gray-400">
 											{#if entry.triggeredBy.kind === 'User'}
 												<UserSolid class="h-3 w-3" />
 												{entry.triggeredBy.name}
@@ -472,7 +503,7 @@
 								</div>
 
 								<!-- Expand chevron -->
-								<div class="flex-shrink-0 text-gray-400">
+								<div class="flex-shrink-0 text-gray-500 dark:text-gray-400">
 									{#if isExpanded}
 										<ChevronUpOutline class="h-4 w-4" />
 									{:else}
@@ -495,7 +526,7 @@
 											</div>
 											{#if entry.triggeredBy}
 												<div class="flex items-center gap-1.5 text-xs">
-													<span class="text-gray-400">Deployed by</span>
+													<span class="text-gray-500 dark:text-gray-400">Deployed by</span>
 													{#if entry.triggeredBy.kind === 'User'}
 														<UserSolid class="h-3 w-3 text-gray-500" />
 														<span class="font-medium text-gray-700 dark:text-gray-300">
@@ -511,7 +542,7 @@
 											     fetched once the entry is expanded). -->
 											{#if rollout?.status?.source && rollout.status.history && i + 1 < rollout.status.history.length}
 												<div class="flex items-baseline gap-1.5 text-xs">
-													<span class="flex-shrink-0 text-gray-400">Changes</span>
+													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Changes</span>
 													<CommitSummary
 														{namespace}
 														{name}
@@ -525,7 +556,7 @@
 											{/if}
 											{#if entry.message}
 												<div class="flex items-baseline gap-1.5 text-xs">
-													<span class="flex-shrink-0 text-gray-400">Reason</span>
+													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Reason</span>
 													<span class="italic text-gray-600 dark:text-gray-400">{entry.message}</span>
 												</div>
 											{/if}
@@ -542,7 +573,7 @@
 												<div
 													class="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-2.5 py-1.5 dark:bg-gray-800"
 												>
-													<ClockSolid class="h-3.5 w-3.5 text-gray-500" />
+													<ClockSolid class="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
 													<span class="text-xs font-medium text-gray-700 dark:text-gray-300">
 														Bake: {formatDuration(entry.bakeStartTime, new Date(entry.bakeEndTime))}
 													</span>

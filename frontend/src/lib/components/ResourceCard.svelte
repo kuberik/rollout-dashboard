@@ -38,7 +38,7 @@
 			case 'Pending':
 			case 'InProgress':
 			case 'Reconciling':
-				return { icon: null as any, color: 'text-yellow-600 dark:text-yellow-400', isSpinner: true };
+				return { icon: null as any, color: 'text-yellow-700 dark:text-yellow-400', isSpinner: true };
 			default:
 				return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
 		}

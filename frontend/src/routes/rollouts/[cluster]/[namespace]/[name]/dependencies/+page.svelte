@@ -942,7 +942,7 @@
 											>
 												<span class="min-w-0 truncate">{b.providerName}</span>
 												<ArrowUpRightFromSquareOutline
-													class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
+													class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
 													aria-hidden="true"
 												/>
 											</a>
@@ -1233,7 +1233,7 @@
 														>
 															<span class="min-w-0 truncate">{d.name}</span>
 															<ArrowUpRightFromSquareOutline
-																class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
+																class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
 																aria-hidden="true"
 															/>
 														</a>

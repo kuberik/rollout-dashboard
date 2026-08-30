@@ -60,7 +60,8 @@
 		CogSolid,
 		ArrowUpRightFromSquareOutline,
 		ArrowUpOutline,
-		GithubSolid
+		GithubSolid,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -675,7 +676,7 @@
 				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
 			case 'in_progress':
 			case 'pending':
-				return { icon: ClockSolid, color: 'text-yellow-600 dark:text-yellow-400' };
+				return { icon: ClockSolid, color: 'text-yellow-700 dark:text-yellow-400' };
 			default:
 				return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
 		}
@@ -1141,7 +1142,45 @@
 			onRetry={() => rolloutQuery.refetch()}
 		/>
 	{:else if !rollout}
-		<div class="px-4 py-8 sm:px-5"><Alert color="yellow">Release not found</Alert></div>
+		<!--
+			⛔ THIS WAS A FLOWBITE `Alert color="yellow"` AND IT WAS THE LEAST
+			READABLE TEXT IN THE PRODUCT. `bg-yellow-100 text-yellow-500` measured
+			**1.78:1 in light and 2.53:1 in dark at 14px** — the error state was
+			harder to read than every ordinary row around it, which is exactly
+			backwards. A Flowbite `Alert` is also not this product's vocabulary:
+			`AlertPanel` is the object every other blocking fact here uses.
+
+			It now says the three things `ErrorState` (twelve lines above, same
+			branch chain) guarantees: a headline a novice understands, what
+			happens next, and a way out. The wording is deliberately IDENTICAL to
+			`errorConsequence`'s missing-object sentence so the two states read as
+			one fact and not as two dialects.
+
+			⚠️ The footnote is NOT a server sentence — there isn't one. The
+			request SUCCEEDED and came back without a release, which is a
+			different fact from a failed request, so the footnote states the
+			address that was asked for. Never invent a quote from the server.
+		-->
+		<div class="px-4 py-8 sm:px-5">
+			<AlertPanel
+				severity="warning"
+				class=""
+				title="This rollout does not exist"
+				message="It may have been deleted, or the address may be wrong."
+				footnote={`The server answered for ${namespace}/${name}${cluster ? ` on ${cluster}` : ''} and returned no release.`}
+			>
+				{#snippet actions()}
+					<button type="button" class="btn btn-secondary" onclick={() => rolloutQuery.refetch()}>
+						<RefreshOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Try again
+					</button>
+					<a href="/rollouts" class="btn btn-secondary">
+						Back to all rollouts
+						<ChevronRightOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+					</a>
+				{/snippet}
+			</AlertPanel>
+		</div>
 	{:else}
 		<div class="px-4 pt-4 pb-10 sm:px-5">
 			{#if rollout.status?.history?.[0]}
@@ -1342,7 +1381,7 @@
 												<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
 													{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 														<span
-															class="flex items-center gap-1 text-orange-600 dark:text-orange-400"
+															class="flex items-center gap-1 text-orange-700 dark:text-orange-400"
 														>
 															<ArrowUpOutline class="h-3 w-3" />{rollout.status
 																.releaseCandidates.length}
@@ -1352,7 +1391,7 @@
 														</span>
 													{/if}
 													{#if isCurrentVersionCustom}
-														<span class="font-medium text-yellow-600 dark:text-yellow-400"
+														<span class="font-medium text-yellow-700 dark:text-yellow-400"
 															>Custom version</span
 														>
 													{/if}
@@ -1532,7 +1571,7 @@
 									onclick={reconcileFluxResources}
 									disabled={isReconciling}
 									aria-label="Refresh available versions"
-									class="ml-auto rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+									class="ml-auto rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
 								>
 									{#if isReconciling}
 										<StatusSpinner size="4" color="gray" />
@@ -1629,7 +1668,7 @@
 																{#each blockingGates as gate}
 																	<div class="flex items-start gap-2">
 																		<ExclamationCircleSolid
-																			class="mt-0.5 h-4 w-4 shrink-0 text-yellow-600 dark:text-yellow-400"
+																			class="mt-0.5 h-4 w-4 shrink-0 text-yellow-700 dark:text-yellow-400"
 																		/>
 																		<div class="min-w-0">
 																			<p class="font-medium text-gray-900 dark:text-white">
@@ -1643,7 +1682,7 @@
 																				</p>
 																			{/if}
 																			{#if gate.status?.status}
-																				<p class="text-xs text-yellow-600 dark:text-yellow-400">
+																				<p class="text-xs text-yellow-700 dark:text-yellow-400">
 																					Status: {gate.status.status}
 																				</p>
 																			{/if}
@@ -1734,6 +1773,7 @@
 													<Button
 														size="xs"
 														color="blue"
+														aria-label={`Deploy version ${getDisplayVersion(releaseCandidate)}`}
 														disabled={!isDashboardManagingWantedVersion &&
 															!hasForceDeployAnnotation(rollout)}
 														onclick={() => {
@@ -1753,7 +1793,23 @@
 								</ul>
 							{:else if isCurrentVersionCustom}
 								<div class="p-5">
-									<Alert color="yellow">
+									<!--
+										INK ONLY, AND IT IS THE SECOND HALF OF THE SAME DEFECT. Flowbite's
+										`yellow` Alert paints `bg-yellow-100 text-yellow-500` in light and
+										`dark:bg-yellow-200 dark:text-yellow-600` in dark — the same 1.78:1 /
+										2.53:1 pair the missing-release banner was rebuilt out of. Leaving one
+										of the two behind is precisely the "minority spelling survives the
+										sweep" failure this pass exists to end.
+									
+										The fill is light in BOTH themes here (Flowbite paints `dark:bg-yellow-200`),
+										so one ink serves both — but `yellow-700` on `yellow-200` is only
+										4.24:1, so the fill is pinned to `yellow-100` in dark as well and
+										`text-yellow-700` on `bg-yellow-100` is already the product's own
+										spelling for yellow ink on a yellow fill (`HealthChecksCard:111`,
+										`ResourcesCard` x4, the `Manual only` chip). Zero new colour values,
+										and the composition of this card is untouched.
+									-->
+									<Alert color="yellow" class="bg-yellow-100 text-yellow-700 dark:bg-yellow-100 dark:text-yellow-700">
 										<div class="flex items-center gap-3">
 											<InfoCircleSolid class="h-5 w-5" />
 											<span class="text-lg font-medium">Current version is custom</span>
@@ -1818,7 +1874,7 @@
 													>APM service</span
 												>
 											</div>
-											<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-gray-400" />
+											<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
 										</a>
 									{/if}
 								</div>

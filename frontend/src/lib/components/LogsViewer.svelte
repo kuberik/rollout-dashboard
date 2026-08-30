@@ -429,13 +429,20 @@
 		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 			<!-- Auto-scroll and wrap toggles -->
 			<div class="flex items-center gap-3 sm:gap-4">
+				<!-- The two `Toggle`s render an `sr-only` checkbox whose label sat
+				     BESIDE them as a plain `span`, so both announced as an unnamed
+				     checkbox. Two of the twenty-seven tab stops on the Logs tab. -->
 				<div class="flex items-center gap-2">
-					<Toggle bind:checked={autoScroll} size="small" />
-					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Follow</span>
+					<Toggle bind:checked={autoScroll} size="small" aria-labelledby="logs-follow-label" />
+					<span id="logs-follow-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
+						>Follow</span
+					>
 				</div>
 				<div class="flex items-center gap-2">
-					<Toggle bind:checked={wrapLines} size="small" />
-					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Wrap</span>
+					<Toggle bind:checked={wrapLines} size="small" aria-labelledby="logs-wrap-label" />
+					<span id="logs-wrap-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
+						>Wrap</span
+					>
 				</div>
 			</div>
 			<!-- Filter dropdowns -->

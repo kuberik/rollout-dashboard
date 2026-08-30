@@ -10,15 +10,39 @@
 		CircleMinusSolid,
 		RefreshOutline
 	} from 'flowbite-svelte-icons';
-	import { getBakeStatusColor } from '$lib/bake-status';
+	import { getBakeStatusColor, bakeWord } from '$lib/bake-status';
 
 	interface Props {
 		bakeStatus?: string;
 		size?: 'small' | 'medium' | 'large';
 		class?: string;
+		/**
+		 * ⭐ COLOUR AND SHAPE ARE THE ONLY TWO CHANNELS THIS ATOM HAD, AND ONE
+		 *    OF THEM IS INVISIBLE TO A SCREEN READER.
+		 *
+		 * A red-green colour-blind reader was already served — every status
+		 * gets its OWN GLYPH (check / exclamation / clock / refresh / minus /
+		 * pause), so the shape channel is intact. A non-visual reader was not:
+		 * dumping the accessibility tree of `/rollouts` on 2026-08-30, the
+		 * fifteen row links read `hello-api-app Hello Dep api DEV NEWEST
+		 * 1.66.0-66 1d ago updated` — the rank, the build and the age, and NOT
+		 * ONE WORD about whether the deploy succeeded, failed or is still
+		 * baking. `bakeWord` already exists; the disc simply never spent it.
+		 *
+		 * The word is `sr-only` — absolutely positioned, zero layout, no
+		 * tooltip — so `/`, `/rollouts` and rollout detail do not move a pixel.
+		 * Pass `decorative` where the same word is already printed beside the
+		 * disc, so the row is not read twice.
+		 */
+		decorative?: boolean;
 	}
 
-	let { bakeStatus, size = 'medium', class: className = '' }: Props = $props();
+	let {
+		bakeStatus,
+		size = 'medium',
+		class: className = '',
+		decorative = false
+	}: Props = $props();
 
 	// All icons (static and spinning) share the same h-_ w-_ footprint
 	// at each size, so running rows on the activity rail don't read
@@ -107,6 +131,9 @@
        amber or toward the blue that `Deploying` owns.
      The radiating waves keep Flowbite's original geometry and rhythm
      (r 18→46, 1.5s, three waves 0.5s apart) so the motion is unchanged. -->
+{#if !decorative}
+	<span class="sr-only">{bakeWord(bakeStatus)}</span>
+{/if}
 {#if bakeStatus === 'InProgress'}
 	<svg
 		class="{sizeClasses[size]} shrink-0 {TONE.yellow} {className}"

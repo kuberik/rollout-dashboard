@@ -170,9 +170,9 @@
 			<div class="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
 		</div>
 	{:else if error}
-		<div class="p-4 text-red-500">{error}</div>
+		<div class="p-4 text-red-600 dark:text-red-400">{error}</div>
 	{:else if !rollout}
-		<div class="p-4 text-yellow-500">Rollout not found</div>
+		<div class="p-4 text-yellow-700 dark:text-yellow-400">Rollout not found</div>
 	{:else}
 		<div class="mb-6">
 			<h2 class="text-2xl font-bold text-gray-900 dark:text-white">

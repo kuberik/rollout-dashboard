@@ -30,3 +30,9 @@ src/lib/paraglide
 # Stray SvelteKit output from tooling runs
 src/.svelte-kit/
 src/lib/view-models/.svelte-kit/
+
+# Playwright demo capture — raw webm and the encoded mp4s. 6MB of binary that
+# nothing in the build reads; keeping it untracked is what stops it being swept
+# into a commit by `git add -A`.
+demos/
+recordings-raw/

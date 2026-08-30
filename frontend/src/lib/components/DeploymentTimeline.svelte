@@ -1,4 +1,9 @@
 <script lang="ts">
+	// One vocabulary for the deploy states — see `bake-status.ts`. This dot
+	// label used to say `still baking`, the product's own field name, inside
+	// the accessible name of every in-flight dot on `/activity`.
+	import { BAKE_WORD } from '$lib/bake-status';
+
 	type HistoryEntry = {
 		timestamp: string;
 		bakeStatus?: string;
@@ -46,7 +51,7 @@
 				: e.bakeStatus === 'Failed'
 					? 'failed'
 					: e.bakeStatus === 'Baking' || e.bakeStatus === 'InProgress'
-						? 'still baking'
+						? `still ${BAKE_WORD.InProgress}`
 						: (e.bakeStatus ?? 'unknown outcome').toLowerCase();
 		const when = (() => {
 			const t = new Date(e.timestamp);

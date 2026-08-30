@@ -679,7 +679,7 @@
      the same three values and the switch was a no-op reading as a live rule.
      Deleted rather than left as a dead lever. If `rank` ever goes back to
      red, the group-scope switch is the fix and this is where to find it. -->
-{#snippet appRow(a: EnvApp)}
+{#snippet appRow(a: EnvApp, tier: string)}
 	<li class="flex items-center gap-2.5 px-4 py-2.5">
 		<span
 			class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
@@ -689,8 +689,13 @@
 		>
 			<BakeStatusIcon bakeStatus={a.bakeStatus} size="small" />
 		</span>
+		<!-- The visible text is the app name and nothing else, which is right:
+		     the card's own `h2` says the environment. A links list has no cards
+		     in it — dumping this page's accessibility tree produced FOUR links
+		     called `hello-world-app`, one per environment, indistinguishable. -->
 		<a
 			href={a.rolloutHref}
+			aria-label={`${a.appName} in ${tier} — ${a.state}`}
 			class="min-w-0 flex-1 truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
 			>{a.appName}</a
 		>
@@ -928,7 +933,7 @@
 		{#if c.deviations.length > 0}
 			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 				{#each c.deviations as a (a.key)}
-					{@render appRow(a)}
+					{@render appRow(a, c.tier)}
 				{/each}
 			</ul>
 		{/if}
@@ -938,14 +943,14 @@
 				class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/60 dark:border-gray-700/60"
 			>
 				{#each c.settled as a (a.key)}
-					{@render appRow(a)}
+					{@render appRow(a, c.tier)}
 				{/each}
 			</ul>
 		{:else if c.settled.length > 0}
 			{#if isOpen}
 				<ul class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/60 dark:border-gray-700/60">
 					{#each c.settled as a (a.key)}
-						{@render appRow(a)}
+						{@render appRow(a, c.tier)}
 					{/each}
 				</ul>
 			{/if}

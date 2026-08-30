@@ -12,6 +12,7 @@
 	import { now } from '$lib/stores/time';
 	import Chip from '$lib/components/Chip.svelte';
 	import type { Rollout, Environment } from '../../types';
+	import { BAKE_WORD } from '$lib/bake-status';
 
 	let {
 		rollouts,
@@ -190,14 +191,24 @@
 		Cancelled: 'text-gray-500 dark:text-gray-400',
 		None: 'text-gray-500 dark:text-gray-400'
 	};
-	const STATUS_LABEL: Record<string, string> = {
-		Succeeded: 'Succeeded',
-		Failed: 'Failed',
-		InProgress: 'Baking',
-		Deploying: 'Deploying',
-		Cancelled: 'Cancelled',
-		None: 'No deploy'
-	};
+	/**
+	 * ⛔ THE RAIL SPEAKS `/activity`'S VOCABULARY NOW, NOT ITS OWN. (2026-08-30)
+	 *
+	 * This was a sixth private copy of the status words, and `InProgress` in it
+	 * read `Baking` — the product's own CRD field name, printed to a reader, on
+	 * `/apps/[name]`, `/envs/[name]` and `/namespaces/<ns>`. The word is
+	 * `bake-status.ts`'s one table now.
+	 *
+	 * ⚠️ AND THE WHOLE TABLE GOES, NOT JUST THAT ONE ROW. Swapping only
+	 * `Baking` would leave `checking` in a column that also prints `Failed` and
+	 * `Cancelled`, i.e. one register inside one list. The register difference
+	 * IS the drift: `/activity` renders the identical rail rows as
+	 * `deploy failed` / `going live` / `stopped`, and two objects describing one
+	 * event in two registers is what "assembled, not designed" looks like.
+	 * `Succeeded` is never reached — the row below is guarded on it, because
+	 * the green dot has already said so.
+	 */
+	const STATUS_LABEL: Record<string, string> = BAKE_WORD;
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}

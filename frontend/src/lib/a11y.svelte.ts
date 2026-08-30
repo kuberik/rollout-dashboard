@@ -35,8 +35,13 @@ export function focusables(root: HTMLElement): HTMLElement[] {
 	return Array.from(root.querySelectorAll<HTMLElement>(sel)).filter((el) => {
 		if (el.hasAttribute('inert') || el.closest('[inert]')) return false;
 		if (el.getAttribute('aria-hidden') === 'true') return false;
-		const r = el.getBoundingClientRect();
-		return r.width > 0 || r.height > 0 || el === document.activeElement;
+		// `checkVisibility` covers `display:none`, `visibility:hidden`,
+		// `content-visibility` and the `hidden` attribute in one call. It is
+		// deliberately NOT a `getBoundingClientRect()` size test: jsdom gives
+		// every element a zero rect, so a size test makes this function return
+		// nothing at all under vitest and silently untestable.
+		if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
+		return true;
 	});
 }
 
@@ -115,10 +120,16 @@ export function modalFocusReturn(isOpen: () => boolean) {
 		const el = lastFocused;
 		if (!el) return;
 		lastFocused = null;
-		// The dialog is still transitioning out and will call `dialog.close()`
-		// on teardown, which moves focus itself. Land after that.
-		setTimeout(() => {
-			if (el.isConnected) el.focus();
-		}, 0);
+		// ⚠️ TIMING, MEASURED. A single `setTimeout(0)` is NOT enough and was
+		// verified not to work: the overlay is still transitioning out (100ms),
+		// and its teardown calls `dialog.close()`, which blanks focus to
+		// `<body>` AFTER we have restored it. So restore immediately, then
+		// re-check past the transition and restore again if something took it.
+		const restore = () => {
+			if (el.isConnected && document.activeElement !== el) el.focus();
+		};
+		restore();
+		setTimeout(restore, 0);
+		setTimeout(restore, 180);
 	});
 }

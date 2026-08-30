@@ -89,7 +89,7 @@
 				<div class="relative shrink-0">
 					<div class="absolute inset-0 animate-ping rounded-full bg-red-500/30 dark:bg-red-500/40"></div>
 					<div class="relative flex h-10 w-10 items-center justify-center rounded-full bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50">
-						<ExclamationCircleSolid class="h-6 w-6 text-red-600 dark:text-red-300" />
+						<ExclamationCircleSolid class="h-6 w-6 text-red-700 dark:text-red-300" />
 					</div>
 				</div>
 				<div class="min-w-0">
@@ -101,7 +101,7 @@
 							</span>
 						{/if}
 					</div>
-					<div class="mt-0.5 text-sm text-red-700/75 dark:text-red-200/75">
+					<div class="mt-0.5 text-sm text-red-900 dark:text-red-200/75">
 						{#if failedHCList.length === 1}
 							{@const hcMsg = failedHCList[0].message || ''}
 							{@const hcParts = hcMsg.split(/;\s*/).filter(Boolean)}
@@ -140,7 +140,7 @@
 							<p>An error occurred during deployment.</p>
 						{/if}
 					</div>
-					<p class="mt-1 text-xs text-red-700/60 dark:text-red-200/55">
+					<p class="mt-1 text-xs text-red-900 dark:text-red-200/70">
 						Automated deployments are paused until this is resolved.
 					</p>
 				</div>
