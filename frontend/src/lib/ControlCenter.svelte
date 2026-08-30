@@ -417,8 +417,24 @@
 				     truncated (was 3 cols / 9); 1024 → 2 cols, unchanged; 390 → 1 col.
 				     `auto-fill` and not `auto-fit` so a section holding one or two rollouts
 				     keeps card-width cards instead of stretching one to 1216px, which is what
-				     the fixed 3-column grid did. -->
-				<div class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(24rem,1fr))]">
+				     the fixed 3-column grid did.
+
+				     ⛔ THE FLOOR IS `min(24rem,100%)`, NOT `24rem` (2026-08-30). A grid track
+				     minimum is a HARD minimum — it does not shrink to fit its container. At
+				     390 the row is 358px (390 minus two 16px page gutters) and the track stayed
+				     384px, so every card on `/` ran 10px past the viewport and had its right
+				     border and the right edge of its BUILD chip sliced off. `docScrollWidth ===
+				     clientWidth` did NOT catch it, because an ancestor clips overflow: the page
+				     did not scroll, it just cut the cards. `min(24rem,100%)` resolves the 100%
+				     against the ROW — the width this grid was rewritten to ask about in the
+				     first place. Wherever the row is at least 24rem the floor IS 24rem and
+				     nothing moves (1440 → 3 cols at 400px, 1280 → 2 at 528px, 1024 → 2, all
+				     verified pixel-identical); where the row is narrower, the single column is
+				     the row. Same shape as the `minmax(0,1fr)` this file already uses
+				     everywhere else: a floor that cannot exceed its container. -->
+				<div
+				class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+				>
 					{#each trailing as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!-- `{@const}` has to be the immediate child of the `{#each}`, not of
 						     the `<a>` — Svelte 5 refuses it anywhere else. -->
@@ -429,7 +445,7 @@
 						)}
 						<a
 							href={href(c)}
-							class="environment-theme-scope flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<span
@@ -442,41 +458,53 @@
 							<span class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
 								>{c.name}</span
 							>
-							{#if c.envDisplay}
-								<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
-							{/if}
-							<!-- The rank and the build it describes, joined — the same unit
-							     `/rollouts` uses and the same `Chip`. They were two loose
-							     items here: a 10px mono sha and, next to it, an amber
-							     `−1 vs dev` in a 10px sans that is in no type role. The
-							     upstream env moves into the title; amber goes back to being
-							     `stuck` and nothing else. -->
-							<!-- ⛔ THE NUMBER AND THE WORD BOTH COME OFF `c.rank` NOW.
-							     (2026-08-30) `−${c.behind.behindBy}` counted against this
-							     rollout's OWN release list, which gave two different numbers
-							     to two environments running one build. It is the shared
-							     ladder rank — `env-rank.ts` — and the spelling is `19 behind`,
-							     the one every rebuilt page already uses. Same Chip, same
-							     roles, same geometry. -->
-							<!-- ⛔ `/` SAID NOTHING WHEN PRODUCTION WENT BACKWARDS, AND THE FIRST FIX
-							     COST THE APP NAME. A live UX critique rolled prod back to a one-hour-old
-							     build and *"`/` rendered it exactly like a forward deploy"*; adding a
-							     `ROLLED BACK` and a `PINNED` mark beside this chip then took the name's
-							     width to ZERO on a 398px row and overflowed it (415/398). `cardVerdict`
-							     puts the word INSIDE the chip that already states a verdict and keeps the
-							     rank sentence in the same chip's title — same element, same role, same
-							     geometry, nothing added to the row. `pinned` goes through the same
-							     chip for the same reason — a loose `PINNED` mark took this name
-							     to 85 of 108 on its own. -->
-							<Chip
-								role={rankRole(c.rank)}
-								label={verdict.label}
-								title={verdict.title}
-								wide
-								value={c.version ? shortenVersion(c.version) : '—'}
-								valueTitle={c.version ?? undefined}
-								class="min-w-0 shrink-0"
-							/>
+							<!-- ⛔ AT PHONE WIDTH THE VERDICT GETS ITS OWN LINE (2026-08-30). The row is
+							     name + env chip + rank/build chip, and at 390 the card is 358px wide: the
+							     name was left ~130px and four of ten ellipsised. `hello-world…` on this
+							     cluster is BOTH `hello-world-app` and `hello-world-manifests` — truncating
+							     the identifier that answers "which one" is a desktop row derived down, not
+							     a phone design. Below `sm` the card is a 2-column grid: dot + name on line
+							     1, the chips on line 2 aligned under the name. This wrapper carries them.
+							     ⚠️ `sm:contents` IS LOAD-BEARING. At ≥640 the wrapper stops generating a
+							     box and the chips are direct flex children of the `<a>` again, so 1440 /
+							     1280 / 1024 are pixel-identical to before — verified, not assumed. -->
+							<div class="col-start-2 flex min-w-0 items-center gap-2 sm:contents">
+								{#if c.envDisplay}
+									<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
+								{/if}
+								<!-- The rank and the build it describes, joined — the same unit
+								     `/rollouts` uses and the same `Chip`. They were two loose
+								     items here: a 10px mono sha and, next to it, an amber
+								     `−1 vs dev` in a 10px sans that is in no type role. The
+								     upstream env moves into the title; amber goes back to being
+								     `stuck` and nothing else. -->
+								<!-- ⛔ THE NUMBER AND THE WORD BOTH COME OFF `c.rank` NOW.
+								     (2026-08-30) `−${c.behind.behindBy}` counted against this
+								     rollout's OWN release list, which gave two different numbers
+								     to two environments running one build. It is the shared
+								     ladder rank — `env-rank.ts` — and the spelling is `19 behind`,
+								     the one every rebuilt page already uses. Same Chip, same
+								     roles, same geometry. -->
+								<!-- ⛔ `/` SAID NOTHING WHEN PRODUCTION WENT BACKWARDS, AND THE FIRST FIX
+								     COST THE APP NAME. A live UX critique rolled prod back to a one-hour-old
+								     build and *"`/` rendered it exactly like a forward deploy"*; adding a
+								     `ROLLED BACK` and a `PINNED` mark beside this chip then took the name's
+								     width to ZERO on a 398px row and overflowed it (415/398). `cardVerdict`
+								     puts the word INSIDE the chip that already states a verdict and keeps the
+								     rank sentence in the same chip's title — same element, same role, same
+								     geometry, nothing added to the row. `pinned` goes through the same
+								     chip for the same reason — a loose `PINNED` mark took this name
+								     to 85 of 108 on its own. -->
+								<Chip
+									role={rankRole(c.rank)}
+									label={verdict.label}
+									title={verdict.title}
+									wide
+									value={c.version ? shortenVersion(c.version) : '—'}
+									valueTitle={c.version ?? undefined}
+									class="min-w-0 shrink-0"
+								/>
+							</div>
 						</a>
 					{/each}
 				</div>
@@ -518,12 +546,28 @@
 				     truncated (was 3 cols / 9); 1024 → 2 cols, unchanged; 390 → 1 col.
 				     `auto-fill` and not `auto-fit` so a section holding one or two rollouts
 				     keeps card-width cards instead of stretching one to 1216px, which is what
-				     the fixed 3-column grid did. -->
-				<div class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(24rem,1fr))]">
+				     the fixed 3-column grid did.
+
+				     ⛔ THE FLOOR IS `min(24rem,100%)`, NOT `24rem` (2026-08-30). A grid track
+				     minimum is a HARD minimum — it does not shrink to fit its container. At
+				     390 the row is 358px (390 minus two 16px page gutters) and the track stayed
+				     384px, so every card on `/` ran 10px past the viewport and had its right
+				     border and the right edge of its BUILD chip sliced off. `docScrollWidth ===
+				     clientWidth` did NOT catch it, because an ancestor clips overflow: the page
+				     did not scroll, it just cut the cards. `min(24rem,100%)` resolves the 100%
+				     against the ROW — the width this grid was rewritten to ask about in the
+				     first place. Wherever the row is at least 24rem the floor IS 24rem and
+				     nothing moves (1440 → 3 cols at 400px, 1280 → 2 at 528px, 1024 → 2, all
+				     verified pixel-identical); where the row is narrower, the single column is
+				     the row. Same shape as the `minmax(0,1fr)` this file already uses
+				     everywhere else: a floor that cannot exceed its container. -->
+				<div
+				class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+				>
 					{#each steadySectionPreview as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<a
 							href={href(c)}
-							class="environment-theme-scope flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<span
@@ -537,58 +581,70 @@
 								class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
 								>{c.name}</span
 							>
-							{#if c.envDisplay}
-								<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
-							{/if}
-							<!-- Same joined unit. Before this the card printed the sha in
-							     10px mono and then, beside it, a bare 9px uppercase word —
-							     `newest` in green, `pending`/`behind` in gray — a type role
-							     that does not exist in the scale, in a second geometry, for
-							     the exact fact `/rollouts` states with a chip attached to the
-							     sha. One badge now, and the word is inside the one chip. -->
-							<!-- ⛔ FOUR BRANCHES BECAME TWO, AND THE `{:else}` THAT
-							     PRINTED `newest` IS THE ONE THAT HAD TO GO. (2026-08-30)
-							     It was reached whenever `c.behind` was null, which is what
-							     the old derivation returned for "cannot say" — so the
-							     card's most confident word was rendered from its least
-							     confident state. The verdict decides now, and an
-							     unresolvable one prints `unknown` in the `unranked` role.
-							     Same Chip, same roles, same geometry. -->
-							{#if c.statusKey === 'pending'}
-								<Chip
-									role="rank"
-									label="pending"
-									title="No deploy yet"
-									value={c.version ? shortenVersion(c.version) : '—'}
-									valueTitle={c.version ?? undefined}
-									class="min-w-0 shrink-0"
-								/>
-							{:else}
-								<!-- ⛔ `/` SAID NOTHING WHEN PRODUCTION WENT BACKWARDS, AND THE FIRST FIX
-								     COST THE APP NAME. A live UX critique rolled prod back to a one-hour-old
-								     build and *"`/` rendered it exactly like a forward deploy"*; adding a
-								     `ROLLED BACK` and a `PINNED` mark beside this chip then took the name's
-								     width to ZERO on a 398px row and overflowed it (415/398). `cardVerdict`
-								     puts the word INSIDE the chip that already states a verdict and keeps the
-								     rank sentence in the same chip's title — same element, same role, same
-								     geometry, nothing added to the row. `pinned` goes through the same
-								     chip for the same reason — a loose `PINNED` mark took this name
-								     to 85 of 108 on its own. -->
-								{@const verdict = cardVerdict(
-									c,
-									rankLabel(c.rank),
-									rankTitle(c.rank, c.envDisplay || c.name)
-								)}
-								<Chip
-									role={rankRole(c.rank)}
-									label={verdict.label}
-									title={verdict.title}
-									wide
-									value={c.version ? shortenVersion(c.version) : '—'}
-									valueTitle={c.version ?? undefined}
-									class="min-w-0 shrink-0"
-								/>
-							{/if}
+							<!-- ⛔ AT PHONE WIDTH THE VERDICT GETS ITS OWN LINE (2026-08-30). The row is
+							     name + env chip + rank/build chip, and at 390 the card is 358px wide: the
+							     name was left ~130px and four of ten ellipsised. `hello-world…` on this
+							     cluster is BOTH `hello-world-app` and `hello-world-manifests` — truncating
+							     the identifier that answers "which one" is a desktop row derived down, not
+							     a phone design. Below `sm` the card is a 2-column grid: dot + name on line
+							     1, the chips on line 2 aligned under the name. This wrapper carries them.
+							     ⚠️ `sm:contents` IS LOAD-BEARING. At ≥640 the wrapper stops generating a
+							     box and the chips are direct flex children of the `<a>` again, so 1440 /
+							     1280 / 1024 are pixel-identical to before — verified, not assumed. -->
+							<div class="col-start-2 flex min-w-0 items-center gap-2 sm:contents">
+								{#if c.envDisplay}
+									<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
+								{/if}
+								<!-- Same joined unit. Before this the card printed the sha in
+								     10px mono and then, beside it, a bare 9px uppercase word —
+								     `newest` in green, `pending`/`behind` in gray — a type role
+								     that does not exist in the scale, in a second geometry, for
+								     the exact fact `/rollouts` states with a chip attached to the
+								     sha. One badge now, and the word is inside the one chip. -->
+								<!-- ⛔ FOUR BRANCHES BECAME TWO, AND THE `{:else}` THAT
+								     PRINTED `newest` IS THE ONE THAT HAD TO GO. (2026-08-30)
+								     It was reached whenever `c.behind` was null, which is what
+								     the old derivation returned for "cannot say" — so the
+								     card's most confident word was rendered from its least
+								     confident state. The verdict decides now, and an
+								     unresolvable one prints `unknown` in the `unranked` role.
+								     Same Chip, same roles, same geometry. -->
+								{#if c.statusKey === 'pending'}
+									<Chip
+										role="rank"
+										label="pending"
+										title="No deploy yet"
+										value={c.version ? shortenVersion(c.version) : '—'}
+										valueTitle={c.version ?? undefined}
+										class="min-w-0 shrink-0"
+									/>
+								{:else}
+									<!-- ⛔ `/` SAID NOTHING WHEN PRODUCTION WENT BACKWARDS, AND THE FIRST FIX
+									     COST THE APP NAME. A live UX critique rolled prod back to a one-hour-old
+									     build and *"`/` rendered it exactly like a forward deploy"*; adding a
+									     `ROLLED BACK` and a `PINNED` mark beside this chip then took the name's
+									     width to ZERO on a 398px row and overflowed it (415/398). `cardVerdict`
+									     puts the word INSIDE the chip that already states a verdict and keeps the
+									     rank sentence in the same chip's title — same element, same role, same
+									     geometry, nothing added to the row. `pinned` goes through the same
+									     chip for the same reason — a loose `PINNED` mark took this name
+									     to 85 of 108 on its own. -->
+									{@const verdict = cardVerdict(
+										c,
+										rankLabel(c.rank),
+										rankTitle(c.rank, c.envDisplay || c.name)
+									)}
+									<Chip
+										role={rankRole(c.rank)}
+										label={verdict.label}
+										title={verdict.title}
+										wide
+										value={c.version ? shortenVersion(c.version) : '—'}
+										valueTitle={c.version ?? undefined}
+										class="min-w-0 shrink-0"
+									/>
+								{/if}
+							</div>
 						</a>
 					{/each}
 				</div>

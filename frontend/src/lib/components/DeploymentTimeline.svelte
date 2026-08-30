@@ -248,6 +248,121 @@
 		return history.map((e, i) => ({ e, i })).filter(({ e }) => new Date(e.timestamp).getTime() >= startMs);
 	}
 
+	/**
+	 * ⭐ FORTY TAB STOPS OF THE SAME SHAPE. THE LANE IS THE TAB STOP NOW.
+	 *
+	 * Measured on `/activity` 2026-08-30: a keyboard reader crossed ~40 focus
+	 * stops before the first row of the list, every one of them a 5px circle.
+	 * That is NOT a focus-ORDER defect — the order was already visual, and the
+	 * names were already good (`0afab6f on hello-multi-app in dev — succeeded,
+	 * 8/29/2026, 11:22:39 AM`), so a semantics pass had nothing left to fix and
+	 * correctly declined it. The defect is ARITY: `Tab` is the control for
+	 * moving between WIDGETS, and this chart was handing it forty marks of one
+	 * widget. The standard answer is the composite-widget roving tabindex, and
+	 * the composite here is the LANE: `/activity` plots one lane per
+	 * environment, the history page plots one per service.
+	 *
+	 * So: each lane is a `role="group"` holding its marks; exactly ONE mark per
+	 * lane carries `tabindex=0` and the rest carry `-1`; `Tab` moves between
+	 * lanes, `←`/`→` move along a lane in the direction the x-axis already
+	 * means, `Home`/`End` jump to the oldest/newest visible mark, `Enter` and
+	 * `Space` activate. On `/activity` that is 40 stops → one per environment.
+	 *
+	 * ⚠️ THE CURSOR IS A POSITION IN THE *VISIBLE* ENTRIES, NOT A HISTORY
+	 * INDEX. Brush-zoom and the range presets change what is drawn; a cursor
+	 * into `svc.history` would point at a mark that is no longer on screen.
+	 * It is clamped on read for the same reason, and it DEFAULTS TO THE LAST
+	 * (newest, right-most) mark — the deploy an operator opened this page for —
+	 * so `←` walks backwards in time, which is the direction the axis says.
+	 *
+	 * ⚠️ FOCUS OPENS THE TOOLTIP. The tooltip was the only place the message,
+	 * the actor and the previous version were readable, and it was mouse-only.
+	 * `onfocus` drives the same `hov*` state a hover does, so arrowing along a
+	 * lane reads the same card a mouse reader gets. Nothing about the drawing
+	 * changes for a pointer user.
+	 */
+	let laneCursor = $state<Record<string, number>>({});
+
+	/**
+	 * ⚠️ `order` EXISTS BECAUSE DOM ORDER IS NOT SCREEN ORDER. A rollout's
+	 * `history` arrives NEWEST FIRST, so the dots are painted right-to-left and
+	 * `pos + 1` walks BACKWARDS along the axis. `→` has exactly one meaning on
+	 * a chart with a time axis — later — so the keys move through `order`
+	 * (positions sorted by timestamp ascending, i.e. left to right) and never
+	 * through the array index. Caught by keyboard test, not by reading: `Home`
+	 * landed on 11:22 and `End` on 10:29.
+	 */
+	const lanes = $derived(
+		services.map((svc, i) => {
+			const entries = visibleEntries(svc.history);
+			const order = entries
+				.map((_, pos) => pos)
+				.sort(
+					(a, b) =>
+						new Date(entries[a].e.timestamp).getTime() -
+						new Date(entries[b].e.timestamp).getTime()
+				);
+			return { svc, i, entries, order };
+		})
+	);
+
+	/** The one mark in this lane that is in the tab order. Defaults to the
+	    right-most (newest) — the deploy the operator came here for. */
+	function cursorFor(id: string, order: number[]): number {
+		if (order.length === 0) return -1;
+		const c = laneCursor[id];
+		return c === undefined || order.indexOf(c) === -1 ? order[order.length - 1] : c;
+	}
+
+	function laneLabel(name: string, count: number): string {
+		if (count === 0) return `${name} — no deploys in this period`;
+		return count === 1
+			? `${name} — 1 deploy`
+			: `${name} — ${count} deploys, left and right arrows to move between them`;
+	}
+
+	function onDotKey(
+		ev: KeyboardEvent & { currentTarget: SVGCircleElement },
+		svcId: string,
+		pos: number,
+		order: number[],
+		activate: () => void
+	) {
+		const rank = order.indexOf(pos);
+		const last = order.length - 1;
+		let next = pos;
+		switch (ev.key) {
+			case 'ArrowRight':
+				next = order[Math.min(last, rank + 1)];
+				break;
+			case 'ArrowLeft':
+				next = order[Math.max(0, rank - 1)];
+				break;
+			case 'Home':
+				next = order[0];
+				break;
+			case 'End':
+				next = order[last];
+				break;
+			case 'Enter':
+			case ' ':
+				ev.preventDefault();
+				activate();
+				return;
+			default:
+				return;
+		}
+		// Swallow the arrow even when it lands on the end of the lane, so a
+		// held arrow key does not silently start scrolling the page instead.
+		ev.preventDefault();
+		if (next === pos) return;
+		laneCursor[svcId] = next;
+		const dots = ev.currentTarget
+			.closest('g[data-lane]')
+			?.querySelectorAll<SVGCircleElement>('circle[data-dot]');
+		dots?.[next]?.focus();
+	}
+
 	// Hover / tooltip state — anchored to the dot, not the cursor
 	let hovId = $state<string | null>(null);
 	let hovIdx = $state<number | null>(null);
@@ -453,7 +568,7 @@
 					hovIdx = null;
 				}}
 				role="group"
-				aria-label="Deployment timeline — one mark per deploy, newest to the right. Every mark is also a row in the list below."
+				aria-label="Deployment timeline — one mark per deploy, newest to the right. Every mark is also a row in the list below. Each lane is one tab stop; left and right arrows move between the marks in a lane."
 
 			>
 				<!-- Row backgrounds -->
@@ -486,9 +601,9 @@
 				{/each}
 
 				<!-- Per-service swimlanes -->
-				{#each services as svc, i}
+				{#each lanes as { svc, entries, order }, i}
 					{@const cy = rowCY(i)}
-					{@const entries = visibleEntries(svc.history)}
+					{@const cursor = cursorFor(svc.id, order)}
 
 					<!-- Label -->
 					<text
@@ -526,51 +641,74 @@
 							: 'stroke-gray-200 dark:stroke-gray-700'}
 					/>
 
-					<!-- Deployment dots -->
-					{#each entries as { e, i: origIdx }}
-						{@const x = tsToX(e.timestamp)}
-						{@const isHov = hovId === svc.id && hovIdx === origIdx}
-						{@const isSel =
-							selectedEntry?.serviceId === svc.id && selectedEntry?.index === origIdx}
-						{@const active = isHov || isSel}
-						{@const r = active ? R_ACTIVE : R_NORMAL}
-						<!-- Halo for the active dot. It was four status-tinted rgba
-						     literals (one of them `green-500`, a banned token); the dot
-						     already grows on hover, so the halo only has to say WHICH
-						     one and can be neutral. -->
-						{#if active}
+					<!-- Deployment dots.
+					     ⛔ ONE TAB STOP PER LANE, NOT ONE PER MARK — see `onDotKey`.
+					     The `<g>` is the composite widget: it is named, it holds the
+					     marks, and exactly one of them is in the tab order at a time.
+					     `data-lane` / `data-dot` are how the key handler finds its
+					     siblings without minting an id per dot (two timelines can be
+					     on one page, and ids would collide). -->
+					<g data-lane={svc.id} role="group" aria-label={laneLabel(svc.name, entries.length)}>
+						{#each entries as { e, i: origIdx }, pos}
+							{@const x = tsToX(e.timestamp)}
+							{@const isHov = hovId === svc.id && hovIdx === origIdx}
+							{@const isSel =
+								selectedEntry?.serviceId === svc.id && selectedEntry?.index === origIdx}
+							{@const active = isHov || isSel}
+							{@const r = active ? R_ACTIVE : R_NORMAL}
+							<!-- Halo for the active dot. It was four status-tinted rgba
+							     literals (one of them `green-500`, a banned token); the dot
+							     already grows on hover, so the halo only has to say WHICH
+							     one and can be neutral. -->
+							{#if active}
+								<circle
+									cx={x}
+									cy={cy}
+									r={r + 5}
+									class="fill-gray-900/10 dark:fill-gray-100/15"
+								/>
+							{/if}
+
 							<circle
 								cx={x}
 								cy={cy}
-								r={r + 5}
-								class="fill-gray-900/10 dark:fill-gray-100/15"
+								{r}
+								data-dot=""
+								stroke-width={active ? 2 : 1}
+								class="cursor-pointer stroke-white dark:stroke-gray-800 {statusFill(e.bakeStatus)}"
+								role="button"
+								aria-label={dotLabel(svc, e)}
+								tabindex={pos === cursor ? 0 : -1}
+								onmouseenter={() => {
+									if (brushStartX !== null) return;
+									hovId = svc.id;
+									hovIdx = origIdx;
+									hovDotX = x;
+									hovDotY = cy;
+								}}
+								onmouseleave={() => {
+									hovId = null;
+									hovIdx = null;
+								}}
+								onfocus={() => {
+									laneCursor[svc.id] = pos;
+									hovId = svc.id;
+									hovIdx = origIdx;
+									hovDotX = x;
+									hovDotY = cy;
+								}}
+								onblur={() => {
+									if (hovId === svc.id && hovIdx === origIdx) {
+										hovId = null;
+										hovIdx = null;
+									}
+								}}
+								onclick={() => onEntryClick?.(svc.id, origIdx)}
+								onkeydown={(ev) =>
+									onDotKey(ev, svc.id, pos, order, () => onEntryClick?.(svc.id, origIdx))}
 							/>
-						{/if}
-
-						<circle
-							cx={x}
-							cy={cy}
-							{r}
-							stroke-width={active ? 2 : 1}
-							class="cursor-pointer stroke-white dark:stroke-gray-800 {statusFill(e.bakeStatus)}"
-							role="button"
-							aria-label={dotLabel(svc, e)}
-							tabindex={0}
-							onmouseenter={() => {
-								if (brushStartX !== null) return;
-								hovId = svc.id;
-								hovIdx = origIdx;
-								hovDotX = x;
-								hovDotY = cy;
-							}}
-							onmouseleave={() => {
-								hovId = null;
-								hovIdx = null;
-							}}
-							onclick={() => onEntryClick?.(svc.id, origIdx)}
-							onkeydown={(ev) => ev.key === 'Enter' && onEntryClick?.(svc.id, origIdx)}
-						/>
-					{/each}
+						{/each}
+					</g>
 
 					<!-- Empty period label -->
 					{#if entries.length === 0 && (svc.isCurrent || labelEmptyLanes)}

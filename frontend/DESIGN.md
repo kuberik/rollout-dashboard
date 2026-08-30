@@ -4490,3 +4490,125 @@ single-value-ink-in-a-two-theme-product bug. The blue role has not been collapse
 `/rollouts` and `/` show one pre-existing failure each: `BakeStatusIcon`'s
 `<Spinner color="yellow">` circles, which paint `fill-yellow-400` regardless of the
 `text-yellow-700` on their parent — already recorded above as reported-not-fixed.
+
+---
+
+## ⛔ `/` OVERFLOWED AT 390 AND `scrollWidth` SAID IT DID NOT (2026-08-30)
+
+**`/` is one of the two reference pages, and it was cutting its own cards off on a phone.**
+The Trailing and Steady grids are
+`[grid-template-columns:repeat(auto-fill,minmax(24rem,1fr))]` — the rewrite this file records
+above, which replaced a viewport breakpoint with a question about the ROW's width. It is the
+right question. **But a grid track minimum is a HARD minimum: it does not shrink to fit its
+container.** At 390 the row is 358px (390 minus two 16px page gutters) and the track stayed
+**384px**, so every card ran **10px past the viewport** with its right border and the right
+edge of its BUILD chip sliced off — `991829b` rendered `991829` with no border beside it, on
+ten cards at once.
+
+⚠️ **AND THE STANDING TEST MISSED IT.** This file asserts `scrollWidth === clientWidth` at 390
+on page after page. It was TRUE here: `documentElement.scrollWidth` read 390 against a 390
+clientWidth, because an ancestor clips overflow — **the page did not scroll, it just cut the
+cards.** The test that finds this is `getBoundingClientRect().right > clientWidth`, element by
+element. **Add it to the 390 census; `scrollWidth` alone is not a horizontal-overflow test.**
+
+The floor is **`min(24rem,100%)`** now. Wherever the row is at least 24rem the floor IS 24rem
+and nothing moves — 1440 → 3 columns at 400px, 1280 → 2 at 528px, 1024 → 2 — and where the
+row is narrower, the single column is the row. Same shape as the `minmax(0,1fr)` this file
+already uses everywhere else: a floor that cannot exceed its container.
+
+**Verified pixel-identical at 1440, not assumed.** Live data moves under a screenshot diff on
+this cluster (a rollback landed mid-pass), so the proof is a geometry census instead: every
+card and **every descendant of every card**, `x/y/w/h` to 0.01px, captured with the new track
+and again with the old track forced back on via inline style in the same page instant.
+**Identical, line for line.**
+
+### The 390 fix that was NOT worse: the row gets a second line, it does not get an ellipsis
+
+Un-clipping the cards costs the name 26px, and that is not free: measured immediately after,
+**four of ten app names ellipsised**. On this cluster `hello-world…` is BOTH
+`hello-world-app` and `hello-world-manifests`. This file's own rule from the `wide` chip pass
+is *"trading one ellipsised identifier for another is not a fix"*, and truncating the
+identifier that answers *which one* is a desktop row derived down — the exact thing
+*"mobile is designed deliberately, not derived"* forbids.
+
+So **below `sm` the compact card is a 2-column grid**: dot + name on line 1, the env chip and
+the rank/build chip on line 2, aligned under the name. At ≥640 it is the flex row it always
+was. The chips ride in a wrapper whose class is **`sm:contents`** — at ≥640 the wrapper stops
+generating a box and the chips are direct flex children of the `<a>` again, which is why
+1440 is untouched. Result at 390: **0 elements past the viewport, 0 truncated names**, full
+borders, complete build ids, both themes.
+
+| `/` at 390 | before | after |
+|---|---|---|
+| elements past the viewport | 10 | **0** |
+| truncated app names | 0 (they were being CUT, not ellipsised) | **0** |
+| card right border drawn | no | **yes** |
+
+## ⛔ A CHART IS ONE WIDGET. IT WAS SPENDING FORTY TAB STOPS (2026-08-30)
+
+`/activity`'s timeline gave a keyboard reader **~40 focus stops before the first row of the
+feed**, every one a 5px circle. **This is not a focus-ORDER defect** — the order was already
+visual and the marks already carry good names
+(`0afab6f on hello-multi-app in dev — succeeded, 8/29/2026, 11:22:39 AM`, earned by an
+earlier pass). A semantics pass had nothing left to fix and correctly declined it. **The
+defect is ARITY.** `Tab` is the control for moving between WIDGETS; this chart was handing it
+forty marks of one widget.
+
+The answer is the standard composite-widget roving tabindex, and **the composite is the
+LANE** — `/activity` plots one lane per environment, the history page one per service:
+
+- each lane is a `role="group"` named `dev — 13 deploys, left and right arrows to move
+  between them`
+- exactly **one mark per lane carries `tabindex=0`**, the rest `-1`
+- `Tab` moves between lanes · `←`/`→` along a lane · `Home`/`End` to the oldest/newest visible
+  mark · `Enter`/`Space` activate
+- the cursor defaults to the **newest (right-most)** mark, the deploy the operator opened the
+  page for
+
+**Measured on the live hub: 42 marks → 3 tab stops.** Every mark keeps its `role="button"`
+and its full accessible name, so a screen reader browsing the tree still enumerates all 42;
+only the tab order changed.
+
+⚠️ **`onfocus` OPENS THE TOOLTIP.** The tooltip held the message, the actor and the previous
+version and was mouse-only. Focus now drives the same state hover does, so arrowing along a
+lane reads the same card a pointer reader gets. Nothing about the drawing changes for a
+pointer user, in either theme, at either width.
+
+⚠️ **DOM ORDER IS NOT SCREEN ORDER, AND THE FIRST VERSION GOT IT BACKWARDS.** A rollout's
+`history` arrives newest-first, so the dots are painted right-to-left and `pos + 1` walks
+BACKWARDS along the axis. `→` has exactly one meaning on a time axis. The keys move through a
+per-lane `order` array (positions sorted by timestamp ascending) and never through the array
+index. **Caught by a keyboard test, not by reading the code:** `Home` landed on 11:22 and
+`End` on 10:29.
+
+## ⛔ `going live` IS DEAD. THE LAST PRIVATE SPELLING ON `/activity` IS CLOSED (2026-08-30)
+
+**This supersedes two entries above** — the ⚠️ paragraph that reads *"`/activity` KEEPS
+`going live` FOR `Deploying`, AND THAT IS NOW THE ONE OPEN SPLIT"*, and the row
+`| `Deploying` | `going live` | names a state machine |` in the `/activity` vocabulary table.
+Both were true when written and are now history. (They are left in place rather than edited
+because this file had concurrent writers the night this landed.)
+
+**The ruling is the `checking` ruling, applied again.** `going live` is better prose than
+`deploying` and it is *not* the same class of defect `baking` was — it is ordinary English, a
+novice can act on it, and that is exactly why it was logged and scoped out once. But the
+defect it leaves is the same shape, and it is not smaller for the reader: **a product that
+calls one state two names on two adjacent pages is teaching the operator that there are two
+states.** `/` prints `deploying`; `/rollouts`, rollout detail, `ActivityRail`, `/apps` and
+`/envs` print `deploying`; `/activity` printed `going live` for the identical `bakeStatus`.
+
+So the WORD is `bake-status.ts`'s `BAKE_WORD.Deploying` and the SENTENCE rides in the
+`title`, where `BAKE_TITLE.Deploying` already spells the consequence `going live` was
+carrying: **"The new version is still going out."** `/activity`'s `STATE_WORD` now holds no
+string of its own except `Succeeded: null` (the norm says nothing) and `None`.
+
+⚠️ **AND THE `title` IS NEWLY WIRED, WHICH IS HALF THE RULING.** The `checking` pass promised
+the phrase would survive *"as the row's `title`, where a sentence belongs"* and the `title`
+was never attached — the state word on `/activity` was a bare span. `bakeTitle(bakeStatus)`
+is on it now, so `checking` finally carries *"The new version is live and is being watched
+before the deploy counts as done"* and `deploying` carries its sibling.
+
+⚠️ **NO HUE MOVES.** `deploying` is blue, `checking` is yellow, and this file's rule that they
+may never share a value is untouched. Two distinct verbs for two distinct phases — the new
+version is still going out, versus it is already serving and being watched — is the whole
+reason the table has two rows for them.

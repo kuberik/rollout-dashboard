@@ -68,7 +68,7 @@
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
 	import { formatTimeAgoCompact, formatTimeAgo, formatDate, getDisplayVersion } from '$lib/utils';
-	import { getStatusCircleClass, BAKE_WORD } from '$lib/bake-status';
+	import { getStatusCircleClass, BAKE_WORD, bakeTitle } from '$lib/bake-status';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -488,12 +488,25 @@
 	 * said `baking` — one state, two spellings, which is the split the
 	 * `N behind` pass cost a day to close. The word is `bake-status.ts`'s now
 	 * and the phrase survives as the row's `title`, where a sentence belongs.
-	 * `Deploying` keeps `going live`: that IS the shared word's sibling and
-	 * changing it is a different decision than the one this pass made.
+	 *
+	 * ⛔ AND `Deploying` FOLLOWED IT THE SAME DAY. `going live` was the last
+	 * private spelling on this page: every other surface — `/`, `/rollouts`,
+	 * rollout detail, `ActivityRail`, `/apps`, `/envs` — says `deploying`.
+	 * It is a smaller class of defect than `baking` was, because `going live`
+	 * is ordinary English and a novice can act on it, so it was logged and
+	 * scoped out once. But the defect it leaves is the same shape and it is
+	 * not smaller for the reader: a product that calls ONE state two names on
+	 * two adjacent pages is teaching the operator that there are two states.
+	 * The ruling is the `checking` ruling, applied again — the WORD is
+	 * `bake-status.ts`'s and the SENTENCE rides in the `title`, where
+	 * `BAKE_TITLE.Deploying` already spells the consequence `going live` was
+	 * carrying (*"The new version is still going out"*). The blue/yellow hue
+	 * split between `deploying` and `checking` is untouched; both verbs stay
+	 * distinct, which is the whole reason this table has two rows for them.
 	 */
 	const STATE_WORD: Record<string, string | null> = {
 		Succeeded: null,
-		Deploying: 'going live',
+		Deploying: BAKE_WORD.Deploying,
 		InProgress: BAKE_WORD.InProgress,
 		Failed: BAKE_WORD.Failed,
 		Cancelled: BAKE_WORD.Cancelled,
@@ -783,8 +796,16 @@
 											>
 										{/if}
 										{#if word}
-											<span class="t-micro relative {STATE_INK[entry.bakeStatus] ?? ''}"
-												>{word}</span
+											<!-- The one-word state, with its sentence in the
+											     `title` — this is the second half of the
+											     `bake-status.ts` ruling. The word has to decline
+											     into a four-item baseline row, so it cannot be a
+											     phrase; the consequence that distinguishes
+											     `checking` from `deploying` (already serving vs
+											     still going out) is what `bakeTitle` carries. -->
+											<span
+												class="t-micro relative {STATE_INK[entry.bakeStatus] ?? ''}"
+												title={bakeTitle(entry.bakeStatus)}>{word}</span
 											>
 										{/if}
 										{#if entry.actorKind === 'User'}

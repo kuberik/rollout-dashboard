@@ -203,8 +203,10 @@
 	 * `Baking` would leave `checking` in a column that also prints `Failed` and
 	 * `Cancelled`, i.e. one register inside one list. The register difference
 	 * IS the drift: `/activity` renders the identical rail rows as
-	 * `deploy failed` / `going live` / `stopped`, and two objects describing one
+	 * `deploy failed` / `deploying` / `stopped`, and two objects describing one
 	 * event in two registers is what "assembled, not designed" looks like.
+	 * (`/activity` said `going live` there until 2026-08-30; the last private
+	 * spelling on that page now goes through `BAKE_WORD` like the rest.)
 	 * `Succeeded` is never reached — the row below is guarded on it, because
 	 * the green dot has already said so.
 	 */
