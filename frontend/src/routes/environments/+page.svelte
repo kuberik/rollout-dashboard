@@ -130,7 +130,7 @@
 	} from '$lib/utils';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import type { EnvironmentTheme } from '$lib/environment-theme';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, bakeTitle, BAKE_WORD } from '$lib/bake-status';
 	import Chip from '$lib/components/Chip.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -264,6 +264,32 @@
 	/** The worst true thing about one app in one environment. */
 	type AppState = 'failing' | 'stuck' | 'deploying' | 'baking' | 'behind' | 'healthy' | 'pending';
 
+	/**
+	 * ⛔ `AppState` IS AN INTERNAL DISCRIMINANT AND IT WAS BEING PRINTED.
+	 * (2026-08-31)
+	 *
+	 * The row's status disc carried `title={a.state}` and its link carried
+	 * `aria-label={`${appName} in ${tier} — ${a.state}`}`, so a reader hovering
+	 * a green tick was told `behind`, and a screen-reader user on a rollout
+	 * mid-check heard **`baking`** — the CRD's own field name, on a page that
+	 * spells that state `checking` everywhere else. Two defects in one
+	 * attribute: a word the product has retired, and a tooltip that names a
+	 * different fact from the glyph it is attached to.
+	 *
+	 * These are the product's own words. `bake-status.ts` owns the four that
+	 * describe a deploy; the three that do not (`stuck`, `behind`, `pending`)
+	 * are spelled the way `/`, `/rollouts` and `env-rank.ts` already spell them.
+	 */
+	const APP_STATE_WORD: Record<AppState, string> = {
+		failing: BAKE_WORD.Failed,
+		stuck: 'not moving',
+		deploying: BAKE_WORD.Deploying,
+		baking: BAKE_WORD.InProgress,
+		behind: 'behind',
+		healthy: 'running',
+		pending: 'never deployed'
+	};
+
 	type EnvApp = {
 		key: string;
 		appName: string;
@@ -300,6 +326,8 @@
 		 * *hello-world-app*. A join across the wrong grain reads as a fact.
 		 */
 		story: BlockingStory;
+		/** The same story, subjected for the page-level banner (app + env). */
+		pageStory: BlockingStory;
 		timestamp: string | null;
 		/** Sort key inside a card. Failing first, then stuck, then depth. */
 		severity: number;
@@ -406,6 +434,16 @@
 						awaitingGates: block.awaitingApprovalGates,
 						notPassingGates: block.notPassingGates,
 						story: blockingStory(cell.rollout, gateContext, { place: tier, now: $now }),
+						// THE SAME STORY, SUBJECTED FOR THE PAGE BANNER. Inside a card
+						// the environment is fixed and `DEV is waiting on an approval` is
+						// exact; the page-level banner sits above THREE environment cards
+						// and two apps, so there it has to name both. Same pure function,
+						// same facts — only the subject differs.
+						pageStory: blockingStory(cell.rollout, gateContext, {
+							place: tier,
+							subject: `${group.appName} in ${tier.toUpperCase()}`,
+							now: $now
+						}),
 						timestamp: latest?.timestamp ?? null,
 						severity:
 							state === 'failing'
@@ -733,9 +771,17 @@
 		}
 		if (worstBlocked) {
 			return {
-				story: worstBlocked.app.story,
-				href: worstBlocked.c.href,
-				action: `Open ${worstBlocked.c.tier}`
+				// ⛔ `story` NAMES ONLY THE ENVIRONMENT, AND THIS BANNER IS ABOVE
+				// EVERY ENVIRONMENT. (2026-08-31) It read *"DEV is waiting on an
+				// approval"* on a page with two apps in DEV; the app appeared
+				// nowhere in the banner, not even in the CTA, which said
+				// `Open dev`. The failed and stuck branches above have always
+				// named both (`alpha-app failed to deploy in dev`) — only the
+				// blocked branch lost the app, because it reused a sentence
+				// written for a surface where the app is already fixed.
+				story: worstBlocked.app.pageStory,
+				href: worstBlocked.app.rolloutHref,
+				action: `Open ${worstBlocked.app.appName}`
 			};
 		}
 
@@ -792,7 +838,7 @@
 			class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 				a.bakeStatus
 			)}"
-			title={a.state}
+			title={bakeTitle(a.bakeStatus)}
 		>
 			<BakeStatusIcon bakeStatus={a.bakeStatus} size="small" />
 		</span>
@@ -802,7 +848,7 @@
 		     called `hello-world-app`, one per environment, indistinguishable. -->
 		<a
 			href={a.rolloutHref}
-			aria-label={`${a.appName} in ${tier} — ${a.state}`}
+			aria-label={`${a.appName} in ${tier} — ${APP_STATE_WORD[a.state]}`}
 			class="min-w-0 flex-1 truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
 			>{a.appName}</a
 		>

@@ -132,7 +132,12 @@ export function autoDeployWhy(state: AutoDeployState): string {
 				parts.push('it is pinned to one version');
 				break;
 			case 'failed':
-				parts.push('the last deploy failed its bake');
+				// NOT `failed its bake`. `bake` is the CRD's field name and the
+				// product's word for that phase is `checking` (`bake-status.ts`).
+				// This clause sits inside `Automatic promotion is paused right
+				// now — …`, which is prose an operator reads, so it takes the
+				// product's spelling like every other sentence.
+				parts.push('the last deploy failed its checks');
 				break;
 		}
 	}

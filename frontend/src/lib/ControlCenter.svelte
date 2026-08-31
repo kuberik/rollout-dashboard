@@ -605,7 +605,18 @@
 				</a>
 			</div>
 			{#if steadySectionAll.length === 0}
-				<p class="text-sm text-gray-500 dark:text-gray-400">No healthy rollouts yet.</p>
+				<!-- ⛔ NOT `No healthy rollouts yet.` (2026-08-31)
+				     This page's own Trailing header defines that word: *"healthy,
+				     but behind a newer build"*. With six rollouts filed under
+				     Trailing, one section said six are healthy and the section
+				     below it said none are — one page, two answers, and the
+				     empty state was the one that was false. `Steady` is not
+				     `healthy`; it is `healthy AND at the head of its own release
+				     list`, and that is the only thing this line may claim is
+				     absent. -->
+				<p class="text-sm text-gray-500 dark:text-gray-400">
+					Nothing is at the head of its own release list yet.
+				</p>
 			{:else}
 				<!-- THE COMPACT ROW PICKS ITS OWN COLUMN COUNT (2026-08-26). It used to be
 				     `sm:grid-cols-2 xl:grid-cols-3`, and `xl` is 1280 — where three columns

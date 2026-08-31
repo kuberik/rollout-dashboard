@@ -580,14 +580,30 @@ export function joinClauses(parts: string[]): string {
 export function blockingStory(
 	rollout: Rollout | null | undefined,
 	ctx: GateContext = EMPTY_GATE_CONTEXT,
-	options: { place?: string | null; now?: Date } = {}
+	options: { place?: string | null; subject?: string | null; now?: Date } = {}
 ): BlockingStory {
 	const namespace = rollout?.metadata?.namespace;
 	const block: PromotionBlock = promotionBlock(rollout);
 	const pinnedTo = rollout?.spec?.wantedVersion ?? null;
 	const candidateCount = promotionCandidates(rollout).length;
 	const place = options.place ? options.place.toUpperCase() : null;
-	const subject = place ?? 'this service';
+	/**
+	 * ⭐ THE SUBJECT IS THE CALLER'S, BECAUSE WHAT IDENTIFIES A ROLLOUT
+	 * DEPENDS ON THE PAGE. (2026-08-31)
+	 *
+	 * `place` alone answers "which environment", and that is the whole subject
+	 * on a surface where the APP is already fixed — rollout detail, `/apps`,
+	 * `/apps/<name>`. On `/environments` it is fixed the other way round: the
+	 * page's own banner spoke for one rollout and said *"DEV is waiting on an
+	 * approval"* on a page listing two apps in three environments, with the
+	 * app name nowhere in the banner. The sentence was TRUE and it did not say
+	 * what it was about, which is the second half of the same defect.
+	 *
+	 * So a caller that has both axes passes both, verbatim — and verbatim
+	 * matters: `place` is upper-cased because an environment label is a chip
+	 * elsewhere in the product, and upper-casing an APP name would rename it.
+	 */
+	const subject = options.subject || place || 'this service';
 	const now = options.now ?? new Date();
 
 	// A PIN OUTRANKS EVERY GATE and short-circuits. A gate holds the NEXT

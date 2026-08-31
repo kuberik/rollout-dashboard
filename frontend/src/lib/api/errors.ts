@@ -173,7 +173,16 @@ export function errorHeadline(error: unknown, subject = 'this page'): string {
 		return error.status === 403 ? "You don't have access to this" : 'Your session has expired';
 	}
 	if (error.isMissing) {
-		return `${subject[0].toUpperCase()}${subject.slice(1)} does not exist`;
+		// ⛔ TOTAL, BECAUSE THIS IS THE FAILURE PAGE. `subject[0]` on an empty
+		// string is `undefined`, and `.toUpperCase()` on it THROWS — inside the
+		// one function whose entire job is to render when something else has
+		// already gone wrong. A caller passing `''` (a prop threaded from an
+		// unresolved route param, say) turned a legible 404 into a blank screen
+		// with a console trace, which is the eternal-skeleton finding again by a
+		// different route. Falling back to the default subject keeps the
+		// sentence true and the page alive.
+		const s = subject || 'this page';
+		return `${s[0].toUpperCase()}${s.slice(1)} does not exist`;
 	}
 	// ⭐ NAME THE THING THAT IS WRONG, NOT THE PAGE THAT NOTICED. A 503 is not
 	// "could not load the rollout list" — the rollout list is fine, the server

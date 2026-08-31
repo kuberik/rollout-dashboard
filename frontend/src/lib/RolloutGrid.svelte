@@ -72,8 +72,22 @@
 		}
 	}
 
-	// Derive the label for a rollout's cluster URL.
+	// Derive the label for a rollout's cluster.
+	//
+	// ⛔ THE NAME FIRST, THE URL ONLY AS A FALLBACK. (2026-08-31)
+	// `source-dashboard.ts` says it in its own header: the hub stamps the
+	// cluster NAME "used for name-based routing" and the dashboard URL is
+	// "legacy; kept for compatibility". This function read only the legacy one,
+	// so a rollout carrying `source-cluster` and no `source-dashboard` produced
+	// an EMPTY label — and `<ClusterMark>` then rendered the word `cluster`
+	// with nothing after it, with a `title` reading `Cluster  — the Kubernetes
+	// cluster these rollouts run on`. A label that names nothing is worse than
+	// no label: it tells the reader the answer is on screen.
+	//
+	// `rolloutPath()` already routes on `c.sourceCluster`, so reading it here
+	// also means the name in the header is the name in the URL.
 	function clusterLabelForCard(c: RolloutCard): string {
+		if (c.sourceCluster) return c.sourceCluster;
 		const url = c.sourceURL || localClusterURL;
 		const found = allClusters.find((cl) => cl.url === url);
 		return found?.name || clusterLabelFromURL(url);
@@ -176,7 +190,15 @@
 		const map = new Map<string, NsGroup>();
 		for (const c of filtered) {
 			// Key by cluster+ns so same namespace on different clusters is separate.
-			const groupKey = (c.sourceURL || '') + '|' + c.ns;
+			//
+			// ⛔ THE KEY IS THE CLUSTER'S IDENTITY, NOT ONE OF ITS TWO NAMES.
+			// (2026-08-31) It was `sourceURL` alone — the LEGACY annotation — so
+			// two rollouts with the same name in the same namespace on two
+			// clusters, stamped with `source-cluster` and no `source-dashboard`,
+			// collapsed into one group. The `{#each ... (key)}` below then threw
+			// `each_key_duplicate` and `/rollouts` rendered nothing at all. The
+			// hub/spoke topology is exactly where that pair of rollouts exists.
+			const groupKey = (c.sourceCluster || c.sourceURL || '') + '|' + c.ns;
 			let g = map.get(groupKey);
 			if (!g) {
 				const cURL = c.sourceURL || localClusterURL;
@@ -463,7 +485,7 @@
 		</div>
 	{:else}
 		<div class="space-y-6">
-			{#each grouped as g (g.clusterURL + '|' + g.ns)}
+			{#each grouped as g (g.clusterLabel + '|' + g.clusterURL + '|' + g.ns)}
 				<section>
 					<!--
 						⛔ THE LEADING WORD IN THIS HEADER USED TO BE THE CLUSTER, AND IT

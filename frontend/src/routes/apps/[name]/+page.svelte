@@ -1629,6 +1629,29 @@
 
 		const stuck = envFacts.find((f) => f.stuck);
 		if (stuck) {
+			// ⛔ `nothing is holding it on purpose` IS A CLAIM FROM ABSENCE, AND IT
+			// WAS FALSE ON THIS PAGE'S OWN EVIDENCE. (2026-08-31) The banner said
+			// it while the environment row 60px below said *"Waiting for someone
+			// to approve it — This will not clear on its own"*. One page, two
+			// answers to "is anything holding this?", and the louder object had
+			// the wrong one. `stuck` and `blocked` are independent facts (a
+			// rollout can be wedged AND gated), and the banner had only ever been
+			// told about the first.
+			//
+			// When a gate is holding it the banner says so in `blockingStory`'s
+			// own words, so the sentence at the top of the page and the sentence
+			// in the row are the same sentence.
+			const span = stuck.stuckSpan ? `Unchanged for ${stuck.stuckSpan}.` : 'Unchanged long enough that it will not clear on its own.';
+			if (stuck.story.blocked) {
+				return {
+					severity: 'warning',
+					icon: ExclamationCircleSolid,
+					title: `${stuck.title.toUpperCase()} is stuck`,
+					message: `${span} ${stuck.story.consequence}`,
+					footnote: stuck.story.resolution,
+					pulse: true
+				};
+			}
 			return {
 				severity: 'warning',
 				icon: ExclamationCircleSolid,

@@ -15,4 +15,20 @@ Object.defineProperty(window, 'matchMedia', {
 	}))
 });
 
+// jsdom has no ResizeObserver, and `DeploymentTimeline` measures its own width
+// in an `$effect`. Without this any test that renders `/activity` with real
+// data throws an UNHANDLED error — which vitest reports outside the test that
+// caused it, so it reads as a random failure somewhere else.
+if (!('ResizeObserver' in globalThis)) {
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		writable: true,
+		configurable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	});
+}
+
 // add more mocks here if you need them

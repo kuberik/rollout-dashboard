@@ -57,7 +57,7 @@
 				/>
 			{/each}
 		</svg>
-		<span class="block h-1.5 w-1.5 rounded-full {dotClass(summary.bake)}" title="Bake"></span>
+		<span class="block h-1.5 w-1.5 rounded-full {dotClass(summary.bake)}" title="Check window"></span>
 	{:else}
 		<span class="inline-flex items-center">
 			{#each summary.tracks[0]?.stages ?? [] as s, i}
@@ -67,7 +67,7 @@
 				<span class="block h-2 w-2 rounded-full {dotClass(s)}"></span>
 			{/each}
 			<span class="h-px w-2 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
-			<span class="block h-2 w-2 rounded-full {dotClass(summary.bake)}" title="Bake"></span>
+			<span class="block h-2 w-2 rounded-full {dotClass(summary.bake)}" title="Check window"></span>
 		</span>
 	{/if}
 </span>

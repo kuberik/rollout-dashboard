@@ -37,13 +37,33 @@
 		name: string;
 		class?: string;
 	} = $props();
+
+	/**
+	 * ⛔ A LABEL THAT NAMES NOTHING IS WORSE THAN NO LABEL. (2026-08-31)
+	 *
+	 * With an empty `name` this rendered the word `cluster` followed by
+	 * nothing, and its own tooltip read `Cluster  — the Kubernetes cluster
+	 * these rollouts run on`. It tells the reader the answer is on screen when
+	 * it is not — the same shape as the `−N`-from-`null` defect, one object
+	 * over. That state is reachable: the label was derived from the LEGACY
+	 * `source-dashboard` annotation, and a rollout carrying only
+	 * `source-cluster` produced an empty string.
+	 *
+	 * `/rollouts` now prefers the cluster NAME, so the empty case should not
+	 * arise; this refuses to draw at all if it ever does again. A missing
+	 * qualifier is a namespace with no qualifier, which is what the page looked
+	 * like before the mark existed.
+	 */
+	const named = $derived((name ?? '').trim());
 </script>
 
+{#if named}
 <span
 	class="inline-flex min-w-0 items-center gap-1 {className}"
-	title={`Cluster ${name} — the Kubernetes cluster these rollouts run on, not the environment they serve`}
+	title={`Cluster ${named} — the Kubernetes cluster these rollouts run on, not the environment they serve`}
 >
 	<ServerOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
 	<span class="shrink-0 text-[10px] leading-none">cluster</span>
-	<span class="truncate font-mono text-[11px] font-semibold leading-none">{name}</span>
+	<span class="truncate font-mono text-[11px] font-semibold leading-none">{named}</span>
 </span>
+{/if}

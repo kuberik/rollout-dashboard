@@ -815,7 +815,7 @@
 												>
 													<ClockSolid class="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
 													<span class="text-xs font-medium text-gray-700 dark:text-gray-300">
-														Bake: {formatDuration(entry.bakeStartTime, new Date(entry.bakeEndTime))}
+														Checked for {formatDuration(entry.bakeStartTime, new Date(entry.bakeEndTime))}
 													</span>
 												</div>
 											{/if}
