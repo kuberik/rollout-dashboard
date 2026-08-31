@@ -88,7 +88,7 @@
 		detectStuck
 	} from '$lib/utils';
 	import { pollWhenHealthy } from '$lib/api/errors';
-	import { versionPathForRollout } from '$lib/version-utils';
+	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
 	import { autoDeployState } from '$lib/view-models/auto-deploy';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -1339,16 +1339,41 @@
 				{/if}
 
 				<!-- ══ PINNED VERSION ══ -->
+				<!--
+					⛔ THIS BANNER USED TO ECHO THE DEPLOY MESSAGE AS AN ITALIC PULL
+					QUOTE, AND IT NEVER SAID WHICH VERSION. (2026-08-31)
+
+					TWO DEFECTS, ONE CAUSE. The quote was `AlertPanel`'s `quoted`
+					branch: a `border-l-2` coloured edge inside a `rounded-xl` field —
+					*"no rounded box with a single coloured edge stripe"*, banned twice,
+					and side accent bars are legal only on SQUARE elements. It has been
+					deleted from the shared component, not just from this call, so it
+					cannot come back on the next banner someone adds.
+
+					AND THE STRING IT QUOTED WAS NOT ABOUT THE PIN. `latestEntry.message`
+					is the last DEPLOY's audit line. When the pin triggers a deploy it
+					reads `Pinned version`, which is the heading again in lower case; when
+					someone pins the build that is already running, it is whatever that
+					deploy said (`*Automatic deployment*`) — attributed, under a heading
+					reading `Version pinned`, to an action it has nothing to do with.
+
+					WHAT REPLACES IT IS THE FACT THE BANNER WAS MISSING: the build the
+					pin is holding, under the name the rest of the product uses
+					(`991829b`, via the shared `displayVersionForTag` — `wantedVersion`
+					itself is the sixty-character OCI tag), and the consequence.
+				-->
 				{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 					{@const trig = latestEntry?.triggeredBy}
 					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
 					{@const pinnedBy = author ? `Pinned by ${author}` : 'Pinned'}
+					{@const pinnedTo =
+						displayVersionForTag(rollout, rollout.spec.wantedVersion) ||
+						rollout.spec.wantedVersion}
 					<AlertPanel
 						severity="pinned"
 						title="Version pinned"
-						message={latestEntry?.message}
-						quoted={!!latestEntry?.message}
-						footnote="{pinnedBy} · Automated deployments are paused until the pin is cleared."
+						message="Held on {pinnedTo} — no newer build will deploy here while the pin is set."
+						footnote="{pinnedBy} · Automatic deployments resume as soon as the pin is cleared."
 					/>
 				{/if}
 

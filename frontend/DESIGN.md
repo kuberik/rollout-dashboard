@@ -5270,3 +5270,62 @@ table now (`bakeWord`/`bakeTitle`, `resourceStatusWord`). The controller's
 `bakeStatusMessage` is not rewritten — it is the cluster's text — but it is no longer
 printed when the deploy succeeded, where it only restated `Checked · Done` in the old
 vocabulary.
+
+## The cluster and the environment are two families, and they collide by name
+
+`/rollouts` printed its group headers as `<cluster> / <namespace>`. On the live hub/spoke
+that renders `dev / hello-world-staging` — with every row inside it correctly marked
+**STAGING**. The leading word is the *cluster*; an operator scanning at 3am reads it as
+the *environment*. The collision is real and cannot be renamed away: the spoke cluster is
+called `dev` and it hosts the staging namespaces.
+
+The same page's filter row had the accessible names `prod`, `dev`, `dev`, `staging`,
+`prod` — two families rendered adjacent, unlabelled, with one word meaning two different
+things twice, wrapping at 390 into mixed rows with an orphan and a dangling divider rule.
+
+**The rule: an environment is an UPPERCASE coloured `Chip`; a cluster is
+`<ClusterMark>` — the word `cluster`, a server glyph, lowercase, neutral, inheriting
+`currentColor`.** Three cues, and the first of them is a word, because a glyph alone has
+to be learned. The same token is used in the section header and in the filter pill, so
+the two teach each other.
+
+Two layout rules came with it:
+
+- **The namespace leads its own group header.** Groups are grouped and sorted by
+  namespace, so the namespace is the title and the cluster is a qualifier on it. There is
+  no cluster name in first position left to misread, and the sort key starts at the same
+  x on every group. The count moves to a right-aligned rollup beside the chevron —
+  `COMPOSITION-GRAMMAR.md` §1's shape.
+- **A filter row is one wrap group per family, never one run of everything.** Families
+  separated by `gap-x-4` wrap inside themselves, so a family can never strand a member on
+  a line belonging to another family. This replaced two 1px divider rules that were doing
+  the separating badly and dangling at line ends.
+
+Labels inside a chip are the chip's own content. They are not the "filter-label column"
+the standing rules ban, and no dropdown, `All` pill or table view was introduced.
+
+## An OCI tag is not a build name — `displayVersionForTag`
+
+`spec.wantedVersion` is a TAG (`main-1787999329-991829b6ab3bdb0100ac0a44d8867460732159f7`)
+while every other surface names that same build `991829b`, from the `version` annotation.
+Both `/apps` and `/apps/<name>` printed the sixty-character form inside a pin banner.
+
+`version-utils.displayVersionForTag(rollout, tag)` is the one lookup: `availableReleases`
+first, deploy history second, `shortenVersion` only for a tag the rollout has never heard
+of. **It is a lookup, not a regex** — the display name is data the release carries, not
+something a pattern can derive. The tag stays reachable (two builds of one commit share a
+display version and differ only in the tag's timestamp), so a caller that shortens should
+keep the long form in a `title`.
+
+## `AlertPanel` has no `quoted` prop, and must not get one again
+
+It rendered `message` as a `border-l-2` blockquote: a coloured edge stripe inside a
+`rounded-xl` field — *"no rounded box with a single coloured edge stripe"*, banned twice,
+and side accent bars are legal only on **square** elements.
+
+Its one caller was rollout detail's `Version pinned` banner, and the string it quoted was
+not even about the pin: `latestEntry.message` is the last *deploy's* audit line, which
+reads `Pinned version` (the heading again, in italics) when the pin triggered a deploy and
+`*Automatic deployment*` when someone pinned the build already running. **A banner echoing
+its own heading is not emphasis; the fill is already the emphasis.** What replaced it is
+the fact the banner never carried: which build the pin is holding, and the consequence.

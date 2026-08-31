@@ -104,7 +104,7 @@
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { groupRolloutsByApp } from '$lib/version-utils';
+	import { groupRolloutsByApp, displayVersionForTag } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { buildMatrix } from '$lib/view-models/matrix';
 	import type { MatrixCellVM } from '$lib/view-models/matrix';
@@ -219,6 +219,12 @@
 		 * mentions"*. A cause you cannot name is a cause you will get wrong.
 		 */
 		wantedVersion: string | null;
+		/**
+		 * THE SAME BUILD, UNDER THE NAME THE REST OF THE PRODUCT USES
+		 * (`991829b`, not the sixty-character OCI tag). Resolved once, in
+		 * `classifyCell`, through `version-utils.displayVersionForTag`.
+		 */
+		wantedDisplay: string | null;
 		/**
 		 * WHY NOTHING NEWER HAS ARRIVED — the SHARED derivation
 		 * (`view-models/promotion.ts`), the same one `/apps/[name]` and rollout
@@ -401,6 +407,7 @@
 		theme: EnvironmentTheme | null;
 		held: boolean;
 		wantedVersion: string | null;
+		wantedDisplay: string | null;
 		block: PromotionBlock;
 		story: BlockingStory;
 		timestamp: string | null;
@@ -413,6 +420,17 @@
 		// `spec.wantedVersion` is already the plain tag string — NOT a version
 		// object, so it does not go through `getDisplayVersion`.
 		const wantedVersion = rollout?.spec?.wantedVersion ?? null;
+		// ⛔ AND THE TAG IS NOT A NAME A READER CAN USE. (2026-08-31) The banner
+		// below printed `wantedVersion` verbatim, so a live critique found this
+		// page saying *"Held on
+		// main-1787999329-991829b6ab3bdb0100ac0a44d8867460732159f7 on purpose"* —
+		// sixty characters naming a build that every OTHER surface in the
+		// product, this page's own rows included, calls `991829b`. The tag is
+		// kept beside it because it is the addressable form; the DISPLAY name is
+		// resolved through `displayVersionForTag`, the one shared lookup.
+		const wantedDisplay = wantedVersion
+			? displayVersionForTag(rollout, wantedVersion) || wantedVersion
+			: null;
 		const block = promotionBlock(rollout);
 		const story = blockingStory(rollout, ctx, { place: tier, now: refNow });
 
@@ -432,14 +450,14 @@
 		const held = pinned && vm.rank.kind !== 'newest';
 
 		if (vm.statusKey === 'failed')
-			return { state: 'fail', theme, held, wantedVersion, block, story, timestamp };
-		if (stuckReason) return { state: 'stuck', theme, held, wantedVersion, block, story, timestamp };
+			return { state: 'fail', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
+		if (stuckReason) return { state: 'stuck', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
 		if (bakeStatus === 'Deploying')
-			return { state: 'deploying', theme, held, wantedVersion, block, story, timestamp };
+			return { state: 'deploying', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
 		if (bakeStatus === 'InProgress')
-			return { state: 'baking', theme, held, wantedVersion, block, story, timestamp };
+			return { state: 'baking', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
 		if (vm.statusKey === 'pending')
-			return { state: 'pending', theme, held: false, wantedVersion, block, story, timestamp };
+			return { state: 'pending', theme, held: false, wantedVersion, wantedDisplay, block, story, timestamp };
 		// ⛔ `behindBy === 0` IS NOT `onNewest`. (2026-08-30) `rankBehindBy`
 		// returns 0 for THREE different verdicts — `newest`, `diverged` and
 		// `unknown` — and `matrix.ts`'s own doc comment says so. Testing the
@@ -447,9 +465,9 @@
 		// the page's good-news state. The verdict decides; the number is for
 		// counting only.
 		if (vm.rank.kind === 'newest')
-			return { state: 'onNewest', theme, held, wantedVersion, block, story, timestamp };
+			return { state: 'onNewest', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
 		const behindState: CellState = vm.behindBy >= 2 ? 'behind2' : 'behind1';
-		return { state: behindState, theme, held, wantedVersion, block, story, timestamp };
+		return { state: behindState, theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
 	}
 
 	/**
@@ -669,7 +687,7 @@
 			for (const tier of matrix.envTiers) {
 				const vm = mrow.cells[tier];
 				if (!vm) continue;
-				const { state, theme, held, wantedVersion, block, story, timestamp } = classifyCell(
+				const { state, theme, held, wantedVersion, wantedDisplay, block, story, timestamp } = classifyCell(
 					group,
 					tier,
 					vm,
@@ -687,6 +705,7 @@
 					state,
 					held,
 					wantedVersion,
+					wantedDisplay,
 					block,
 					story,
 					timestamp
@@ -1026,7 +1045,15 @@
 			const cell = app.heldCell;
 			if (!cell) continue;
 			// THE PIN SENTENCE IS `BlockReason`'S, not a second spelling of it.
-			const pin = blockReason({ pinnedTo: cell.wantedVersion || cell.version });
+			//
+			// ⛔ IT IS HANDED THE DISPLAY NAME, NOT THE TAG. `wantedVersion` is
+			// the raw OCI tag and this banner printed it verbatim — sixty
+			// characters of `main-1787999329-991829b6ab3…` inside a sentence, for
+			// a build the rows below call `991829b`. `cell.version` (the fallback,
+			// for a pin on the running build) was already the display form, so the
+			// banner said the same build two different ways depending on which
+			// branch fired.
+			const pin = blockReason({ pinnedTo: cell.wantedDisplay || cell.version });
 			return {
 				severity: 'pinned',
 				icon: PauseSolid,

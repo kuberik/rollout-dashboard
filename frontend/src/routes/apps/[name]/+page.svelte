@@ -125,7 +125,7 @@
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, connectGithub } from '$lib/api/github';
 	import { rolloutPath, sourceDashboardURL } from '$lib/source-dashboard';
-	import { groupRolloutsByApp } from '$lib/version-utils';
+	import { groupRolloutsByApp, displayVersionForTag } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { getEnvironmentRank, compareEnvironmentNames } from '$lib/env-order';
 	import { shortEnvLabel } from '$lib/environment-theme';
@@ -1570,7 +1570,12 @@
 				severity: 'pinned',
 				icon: PauseSolid,
 				title: `${pinned.title.toUpperCase()} is pinned`,
-				message: `Held at ${pinned.cell.rollout.spec?.wantedVersion ?? pinned.version}. ${nb(
+				// ⛔ THE RAW OCI TAG, IN A SENTENCE. The same defect the critique
+				// caught on `/apps`: `spec.wantedVersion` is
+				// `main-1787999329-991829b6ab3…` and this page's own rail calls
+				// that build `991829b`. `displayVersionForTag` is the one shared
+				// lookup from tag to the name the product prints.
+				message: `Held at ${displayVersionForTag(pinned.cell.rollout, pinned.cell.rollout.spec?.wantedVersion) || pinned.version}. ${nb(
 					pinned.block.candidateCount,
 					'newer build'
 				)} available, and none will deploy until the pin is cleared.`,

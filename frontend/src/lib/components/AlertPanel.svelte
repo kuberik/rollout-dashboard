@@ -30,6 +30,17 @@
 	 *
 	 * USE IT FOR THE PAGE'S ONE BLOCKING FACT, and only that. A page with
 	 * three banners has no banner.
+	 *
+	 * ⛔ THERE IS NO `quoted` PROP AND THERE MUST NOT BE ONE AGAIN.
+	 * (2026-08-31) It rendered `message` as a `border-l-2` blockquote — a
+	 * coloured edge stripe inside a `rounded-xl` field, which is the shape the
+	 * human has banned twice: *"no rounded box with a single coloured edge
+	 * stripe — dots, badges, or the text itself carry status"*, and side accent
+	 * bars are legal only on SQUARE, non-rounded elements. Its one caller (the
+	 * pinned banner on rollout detail) was also using it to echo the last
+	 * deploy's audit string under a heading that already said the same thing.
+	 * If a message needs a different voice from the headline, change the
+	 * WORDS; the banner's fill is already the emphasis.
 	 */
 	interface Props {
 		severity?: Severity;
@@ -51,7 +62,6 @@
 		 */
 		messageBody?: Snippet;
 		footnote?: string;
-		quoted?: boolean;
 		icon?: Component;
 		pulse?: boolean;
 		actions?: Snippet;
@@ -71,7 +81,6 @@
 		message,
 		messageBody,
 		footnote,
-		quoted = false,
 		icon,
 		pulse = false,
 		actions,
@@ -120,7 +129,6 @@
 					title: 'text-red-900 dark:text-white',
 					message: 'text-red-900 dark:text-red-200/75',
 					footnote: 'text-red-900 dark:text-red-200/70',
-					quoteBorder: 'border-red-400/60 dark:border-red-500/40',
 					defaultIcon: ExclamationCircleSolid
 				};
 			case 'warning':
@@ -136,7 +144,6 @@
 					title: 'text-amber-900 dark:text-white',
 					message: 'text-amber-900 dark:text-amber-200/75',
 					footnote: 'text-amber-900 dark:text-amber-200/70',
-					quoteBorder: 'border-amber-400/60 dark:border-amber-500/40',
 					defaultIcon: ExclamationCircleSolid
 				};
 			case 'pinned':
@@ -152,7 +159,6 @@
 					title: 'text-orange-900 dark:text-white',
 					message: 'text-orange-900 dark:text-orange-200/75',
 					footnote: 'text-orange-900 dark:text-orange-200/70',
-					quoteBorder: 'border-orange-400/60 dark:border-orange-500/40',
 					defaultIcon: PauseSolid
 				};
 			case 'info':
@@ -168,7 +174,6 @@
 					title: 'text-blue-900 dark:text-white',
 					message: 'text-blue-900 dark:text-blue-200/75',
 					footnote: 'text-blue-900 dark:text-blue-200/70',
-					quoteBorder: 'border-blue-400/60 dark:border-blue-500/40',
 					defaultIcon: InfoCircleSolid
 				};
 		}
@@ -249,15 +254,7 @@
 								{@render messageBody()}
 							</div>
 						{:else if message}
-							{#if quoted}
-								<blockquote
-									class="mt-1.5 border-l-2 pl-3 text-sm break-words italic {palette.message} {palette.quoteBorder}"
-								>
-									{message}
-								</blockquote>
-							{:else}
-								<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
-							{/if}
+							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
 						{/if}
 						{#if footnote}
 							<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>

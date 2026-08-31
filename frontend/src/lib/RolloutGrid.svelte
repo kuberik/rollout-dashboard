@@ -22,6 +22,7 @@
 	import { now } from '$lib/stores/time';
 	import { SearchOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import ClusterMark from '$lib/components/ClusterMark.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import type { Rollout, Environment } from '../types';
 	import { rolloutPath } from '$lib/source-dashboard';
@@ -264,6 +265,28 @@
 					class="block w-full rounded border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
 				/>
 			</div>
+			<!--
+				⛔ FIVE CHIPS WHOSE ACCESSIBLE NAMES WERE `prod`, `dev`, `dev`,
+				`staging`, `prod`. (2026-08-31)
+
+				Two families — clusters and environments — rendered adjacent with
+				nothing but a 1px divider between them, so the SAME WORD appeared
+				twice meaning two different things, and at 390 they wrapped into
+				three mixed rows with an orphaned `PROD` on the last and the
+				divider dangling at the end of a line.
+
+				THE ROW IS THREE WRAP GROUPS NOW, not one run of eleven items.
+				Each family is its own `flex-wrap` container separated by
+				`gap-x-4`, so a family wraps INSIDE itself and can never leave one
+				member stranded on a line belonging to another family. The two
+				divider rules are gone with it: they were doing the separating,
+				badly, and `<ClusterMark>` now says `cluster` in words.
+
+				NO LABEL COLUMN, NO DROPDOWN, NO `All` PILL — the standing rules
+				for this page hold. The label lives INSIDE the chip, which is the
+				chip's own content, not a second column.
+			-->
+			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
 			<div class="flex flex-wrap items-center gap-1.5">
 				<!-- Status filter pills (compact, single-select) — replaces the old
 				     tile banner while keeping the filtering it provided. -->
@@ -288,33 +311,33 @@
 						<span class="font-mono tabular-nums">{sp.count}</span>
 					</button>
 				{/each}
-				<span class="h-4 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
-				{#if isMultiCluster}
+			</div>
+			{#if isMultiCluster && allClusters.length > 0}
+				<div class="flex flex-wrap items-center gap-1.5">
 					{#each allClusters as cl}
 						{@const sel = clusterFilters.includes(cl.url)}
 						<button
 							type="button"
 							onclick={() => toggleCluster(cl.url)}
 							aria-pressed={sel}
-							class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors
+							class="inline-flex items-center rounded-full border px-2.5 py-1 transition-colors
 								{sel
 									? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
 									: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
 						>
-							<svg class="h-2 w-2 shrink-0" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true"><circle cx="4" cy="4" r="4"/></svg>
-							{cl.name}
+							<ClusterMark name={cl.name} />
 						</button>
 					{/each}
-					{#if allClusters.length > 0}
-						<span class="h-4 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
-					{/if}
-				{/if}
+				</div>
+			{/if}
+			<div class="flex flex-wrap items-center gap-1.5">
 				{#each knownEnvs as e}
 					{@const sel = envFilters.includes(e.key)}
 					<button
 						type="button"
 						onclick={() => toggleEnv(e.key)}
 						aria-pressed={sel}
+						aria-label={`Environment ${e.display}`}
 						class="environment-theme-scope inline-flex items-center rounded transition-opacity
 							{sel
 								? 'ring-1 ring-gray-900/30 dark:ring-gray-100/30'
@@ -324,6 +347,7 @@
 						style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
 					><Chip role="env" theme={e.theme} label={e.display} wide /></button>
 				{/each}
+			</div>
 			</div>
 			{#if envFilters.length > 0 || quickFilter !== 'all' || clusterFilters.length > 0 || searchQuery}
 				<button
@@ -432,24 +456,52 @@
 		<div class="space-y-6">
 			{#each grouped as g (g.clusterURL + '|' + g.ns)}
 				<section>
-					<!-- Namespace header: shows cluster prefix when multi-cluster. -->
+					<!--
+						⛔ THE LEADING WORD IN THIS HEADER USED TO BE THE CLUSTER, AND IT
+						WAS READ AS THE ENVIRONMENT. (2026-08-31)
+
+						It rendered `<cluster> / <namespace>` — on the live hub that is
+						`dev / hello-world-staging`, with every row inside it correctly
+						marked **STAGING**. From the critique: *"An operator scanning at
+						3am reads the header."* The two words genuinely differ here (the
+						spoke cluster is named `dev` and hosts the staging namespaces),
+						so this is not a naming bug to be fixed upstream; the DISPLAY has
+						to say which is which.
+
+						THREE CHANGES, and the first one is the fix:
+
+						1. THE NAMESPACE LEADS. Groups are grouped and sorted by
+						   namespace, so the namespace is this section's title and the
+						   cluster is a qualifier on it. There is no longer a cluster
+						   name in first position to be misread — and the sort key now
+						   starts at the same x on every group, which it could not do
+						   behind a variable-width prefix.
+						2. The cluster is a `<ClusterMark>`: the word `cluster`, a server
+						   glyph, lowercase — the SAME token the filter row uses, so the
+						   two teach each other.
+						3. The count moves to a RIGHT-ALIGNED ROLLUP beside the chevron,
+						   which is `COMPOSITION-GRAMMAR.md` §1's shape for a titled
+						   region and lets a reader take the group's answer without
+						   reading a row of it.
+					-->
 					<a
 						href={`/namespaces/${g.ns}`}
 						class="group mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-2 dark:border-gray-700/60"
 					>
-						<div class="flex min-w-0 items-baseline gap-2">
-							{#if isMultiCluster}
-								<span class="shrink-0 font-mono text-[11px] text-gray-500 dark:text-gray-400">{g.clusterLabel}</span>
-								<span class="shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true">/</span>
-							{/if}
+						<div class="flex min-w-0 items-center gap-2">
 							<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{g.ns}</h2>
-							<span class="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
+							{#if isMultiCluster}
+								<ClusterMark name={g.clusterLabel} class="shrink-0 text-gray-500 dark:text-gray-400" />
+							{/if}
+						</div>
+						<div class="flex shrink-0 items-center gap-2">
+							<span class="text-[11px] text-gray-500 dark:text-gray-400">
 								{g.cards.length} rollout{g.cards.length === 1 ? '' : 's'}{#if g.attentionCount > 0}
 									· <span class="font-medium text-red-600 dark:text-red-400">{g.attentionCount} need attention</span>
 								{/if}
 							</span>
+							<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
 						</div>
-						<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
 					</a>
 
 <!-- Responsive grid of compact rollout cards. State column dropped

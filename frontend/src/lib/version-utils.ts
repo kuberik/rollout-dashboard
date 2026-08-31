@@ -1,5 +1,5 @@
 import type { Environment, Rollout } from '../types';
-import { getDisplayVersion } from './utils';
+import { getDisplayVersion, shortenVersion } from './utils';
 import { rolloutMatchesEnvironment, sourceClusterName, sourceDashboardURL } from './source-dashboard';
 import { getRolloutEnvironmentTheme, type EnvironmentTheme } from './environment-theme';
 import { compareEnvironmentNames } from './env-order';
@@ -107,6 +107,41 @@ export function revisionSlug(revision: string): string {
 /** Short display form. Seven characters, everywhere the sha is shown. */
 export function shortRevision(revision: string): string {
 	return revision.length > 7 ? revision.slice(0, 7) : revision;
+}
+
+/**
+ * ⭐ THE ONE PLACE A RAW OCI TAG BECOMES THE BUILD NAME THE PRODUCT PRINTS.
+ *
+ * `spec.wantedVersion` is a TAG —
+ * `main-1787999329-991829b6ab3bdb0100ac0a44d8867460732159f7` — while every
+ * other surface in the product names that same build `991829b`, the
+ * `version` annotation `getDisplayVersion` reads. A live critique caught
+ * `/apps` printing the 60-character form inside its pin banner: sixty
+ * characters of tag in a sentence an operator has to read at 3am, naming a
+ * build they cannot match against anything else on screen.
+ *
+ * The resolution is a LOOKUP, not a regex: the tag's display name lives in
+ * the rollout's own `availableReleases` (and, for a build that has aged out
+ * of that list, its deploy history). `shortenVersion` is the fallback for a
+ * tag this rollout has never heard of — a hand-typed custom version — and it
+ * keeps the tag's shape rather than inventing a sha.
+ *
+ * THE LONG FORM IS NOT DISCARDED, it is demoted: two builds of the same
+ * commit share a display version and differ only in the tag's timestamp, so
+ * every caller that shortens should keep the tag reachable in a `title`.
+ */
+export function displayVersionForTag(
+	rollout: Rollout | null | undefined,
+	tag: string | null | undefined
+): string {
+	if (!tag) return '';
+	for (const rel of rollout?.status?.availableReleases ?? []) {
+		if (rel.tag === tag) return getDisplayVersion(rel);
+	}
+	for (const h of rollout?.status?.history ?? []) {
+		if (h.version?.tag === tag) return getDisplayVersion(h.version);
+	}
+	return shortenVersion(tag);
 }
 
 /** Single source of truth for linking to a revision's detail page. */
