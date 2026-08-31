@@ -107,3 +107,36 @@ export function formatTimeUntil(iso: string, now: Date = new Date()): string | n
 	if (hours > 0) return `${hours}h ${minutes % 60}m`;
 	return `${minutes}m`;
 }
+
+/**
+ * The RAW schedule objects for one rollout.
+ *
+ * `fetchScheduleWindow` reduces to a page-level "is anything closed, and when
+ * does the earliest one open" — which is the right shape for a banner about a
+ * whole page and the WRONG shape for attributing ONE gate. A card that says
+ * `schedule-gate-nwm62` needs that gate's own schedule: its pretty name and its
+ * own `nextTransition`. The join is published — `RolloutSchedule.status
+ * .managedGates` lists the gates a schedule owns — and `withSchedules` in
+ * `view-models/blocking-story` consumes exactly this shape.
+ *
+ * Same endpoint, same request, so nothing here can disagree with the window.
+ * READ-ONLY.
+ */
+export type ScheduleObject = {
+	metadata?: { name?: string; annotations?: Record<string, string> };
+	spec?: { action?: 'Allow' | 'Deny' };
+	status?: { active?: boolean; nextTransition?: string; managedGates?: string[] };
+};
+
+export async function fetchScheduleObjects(
+	namespace: string,
+	name: string,
+	cluster?: string
+): Promise<ScheduleObject[]> {
+	const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
+	const data = await apiJson<{
+		rolloutSchedules?: { items?: ScheduleObject[] };
+		clusterRolloutSchedules?: { items?: ScheduleObject[] };
+	}>(`/api/rollouts/${namespace}/${name}/schedules${params}`);
+	return [...(data?.rolloutSchedules?.items ?? []), ...(data?.clusterRolloutSchedules?.items ?? [])];
+}

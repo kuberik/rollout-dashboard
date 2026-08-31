@@ -155,7 +155,17 @@
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import StageChain from '$lib/components/StageChain.svelte';
 	import ExposureBar, { hasExposure } from '$lib/components/ExposureBar.svelte';
-	import BlockReason from '$lib/components/BlockReason.svelte';
+	import BlockingStoryLines from '$lib/components/BlockingStoryLines.svelte';
+	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
+	import {
+		buildGateContext,
+		withSchedules,
+		blockingStory,
+		shortStory,
+		type GateContext,
+		type BlockingStory
+	} from '$lib/view-models/blocking-story';
+	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
 	import WaitingBuilds from '$lib/components/WaitingBuilds.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -513,6 +523,8 @@
 	type EnvFacts = {
 		cell: AppCell;
 		key: string;
+		/** EVERY gate holding this environment, each with how it clears. */
+		story: BlockingStory;
 		label: string;
 		title: string;
 		namespace: string;
@@ -546,10 +558,60 @@
 		return generic ? 'automatic' : `by ${t.name}`;
 	}
 
+	/**
+	 * ⭐ THE GATE JOIN TABLE. Built from the SAME `/api/rollouts` payload the
+	 * page already has: `Environment.status.rolloutGateRef` names the gate the
+	 * environment controller owns and `spec.relationship` says which
+	 * environment has to deploy first, `RolloutDependency.status.gateName` does
+	 * the same for a cross-service contract.
+	 *
+	 * ⛔ WITHOUT IT, `ghd-p2fld` WAS CAPTIONED `Needs a person to approve`.
+	 * Three of the four things that write a `RolloutGate` publish an allow-list,
+	 * so "has an allow-list ⇒ a person must approve it" is wrong three times out
+	 * of four, and it is wrong in the worst direction: it sends someone at 3am
+	 * to find a human who cannot approve a controller-owned object.
+	 */
+	let scheduleObjects = $state<Record<string, ScheduleObject[]>>({});
+	const gateContext = $derived.by<GateContext>(() => {
+		let ctx = buildGateContext({
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null
+		});
+		for (const [ns, objs] of Object.entries(scheduleObjects)) ctx = withSchedules(ctx, ns, objs);
+		return ctx;
+	});
+
+	/*
+	 * WHEN DOES THE WINDOW OPEN? One GET per environment whose block includes a
+	 * gate with no allow-list, cached by namespace. Same endpoint and same
+	 * arithmetic `/versions` and the rollout detail page already run — lifted
+	 * into `api/schedules.ts` so three surfaces cannot disagree about when a
+	 * window reopens. It never blocks a render: the story states the block with
+	 * or without a clock, and gains the clock when the answer lands.
+	 */
+	$effect(() => {
+		for (const c of cells) {
+			const ns = c.rollout.metadata?.namespace;
+			const name = c.rollout.metadata?.name;
+			if (!ns || !name) continue;
+			if (!promotionBlock(c.rollout).notPassingGates.length) continue;
+			if (scheduleObjects[ns]) continue;
+			fetchScheduleObjects(ns, name, cellCluster(c) || undefined)
+				.then((objs) => {
+					scheduleObjects = { ...scheduleObjects, [ns]: objs };
+				})
+				.catch(() => {});
+		}
+	});
+
 	const envFacts = $derived.by<EnvFacts[]>(() =>
 		cells.map((c) => {
 			const status = cellStatus(c);
 			const block = promotionBlock(c.rollout);
+			const story = blockingStory(c.rollout, gateContext, {
+				place: fullEnvLabel(c),
+				now: $now
+			});
 			const stuck = stuckFor(c);
 			const diverged = divergedFor(c);
 			const span = stuckForMs(stuck);
@@ -557,6 +619,7 @@
 			return {
 				cell: c,
 				key,
+				story,
 				label: envLabel(c),
 				title: fullEnvLabel(c),
 				namespace: c.rollout.metadata?.namespace ?? '',
@@ -610,12 +673,23 @@
 	 * that no mark on this page can carry, and the reason this survives the
 	 * prose cut at all.
 	 */
+	// ⛔ IT USED TO NAME ONE GATE OUT OF THREE, AND IT PICKED BY ALLOW-LIST.
+	// For prod `hello-world-app` the API reports three gates holding it —
+	// `ghd-xm669` (the environment controller's), `hello-world-manual-approval`
+	// (a person's) and `schedule-gate-zvsqr` (**failing**) — and this returned
+	// `held by ghd-xm669, hello-world-manual-approval`: two gates, neither of
+	// them the failing one, under a word that was wrong for the first. The mark
+	// now comes off `blockingStory`, so it names the whole set and the WORD
+	// matches what each of them actually is.
 	function gateMark(f: EnvFacts): { word: string; names: string } | null {
-		const held = f.block.awaitingApprovalGates;
-		const waiting = f.block.notPassingGates;
-		if (held.length > 0) return { word: 'held by', names: held.join(', ') };
-		if (waiting.length > 0) return { word: 'waiting on', names: waiting.join(', ') };
-		return null;
+		if (!f.story.blocked || f.story.gates.length === 0) return null;
+		const word =
+			f.story.person.length > 0
+				? 'needs approval'
+				: f.story.upstream.length > 0
+					? 'waiting on'
+					: 'window closed';
+		return { word, names: f.story.gates.map((g) => g.id).join(', ') };
 	}
 
 	// ── OBJECT 1 · NEEDS A DECISION ──────────────────────────────────────
@@ -846,7 +920,13 @@
 			// ⛔ ONLY FOR AN APPROVAL GATE. A `notPassing` gate clears itself;
 			// putting a deploy button on it would be asking a person to act on
 			// something that needs nobody, which is the mirror-image defect.
-			const approval = f.block.awaitingApprovalGates.length > 0;
+			// ⛔ `awaitingApprovalGates` IS NOT "NEEDS A PERSON". It means the
+			// gate published an allow-list, and the environment controller and
+			// the dependency controller both publish one — so STAGING, held
+			// only by `ghd-p2fld` (its upstream has not deployed this build)
+			// and a closed window, was filed under `Needs you`. Nobody there
+			// needs to do anything. `story.person` is the classified bucket.
+			const approval = f.story.person.length > 0;
 			const head = approval ? (waitingBuildsFor(f)[0] ?? null) : null;
 			out.push({
 				id: `adverse:${f.key}`,
@@ -897,7 +977,13 @@
 		for (const f of envFacts) {
 			if (f.adverse || f.held) continue;
 			if (!f.block.blocked) continue;
-			const approval = f.block.awaitingApprovalGates.length > 0;
+			// ⛔ `awaitingApprovalGates` IS NOT "NEEDS A PERSON". It means the
+			// gate published an allow-list, and the environment controller and
+			// the dependency controller both publish one — so STAGING, held
+			// only by `ghd-p2fld` (its upstream has not deployed this build)
+			// and a closed window, was filed under `Needs you`. Nobody there
+			// needs to do anything. `story.person` is the classified bucket.
+			const approval = f.story.person.length > 0;
 			const queue = waitingBuildsFor(f);
 			const head = queue[0] ?? null;
 			out.push({
@@ -1463,30 +1549,48 @@
 			};
 		}
 
-		// The deepest approval-gated environment. Ranked, never `find`: `cells`
-		// is in promotion order, so the first hit is DEV — the least
-		// consequential place in the pipeline to be blocked.
-		const gated = envFacts
-			.filter((f) => f.block.blocked && f.block.awaitingApprovalGates.length > 0)
-			.sort((a, b) => b.rank - a.rank)[0];
-		if (gated) {
-			return {
-				severity: 'warning',
-				icon: ExclamationCircleSolid,
-				title: `${gated.title.toUpperCase()} is waiting on an approval`,
-				message: `${nb(
-					gated.block.candidateCount,
-					'build'
-				)} ready and none approved. Nothing promotes into ${gated.title.toUpperCase()} until ${gated.block.awaitingApprovalGates.join(
-					', '
-				)} allows one.`,
-				footnote: 'This will not clear on its own.',
-				pulse: true
-			};
-		}
-
+		// ⛔ THIS BRANCH IS GONE AND THE REASON IS THE WORST BUG THE CRITIC FOUND.
+		//
+		// It filtered on `awaitingApprovalGates.length > 0` and then printed
+		// *"STAGING is waiting on an approval … Nothing promotes into STAGING
+		// until `ghd-p2fld` allows one. **This will not clear on its own.**"*
+		// At the same second, rollout detail — one `Investigate` click away —
+		// said *"Automatic deploys are paused … until 13h 34m."* The API said
+		// BOTH were true: `ghd-p2fld` published an empty allow-list AND
+		// `schedule-gate-nwm62` was not passing. One page said escalate at 3am,
+		// the other said go back to bed, and neither said both.
+		//
+		// Worse, the one it named was misattributed. `ghd-p2fld` belongs to the
+		// **environment controller** — its allow-list is the set of builds
+		// STAGING's upstream has already deployed — so *"waiting on an
+		// approval"* named a human who does not exist.
+		//
+		// `blockingStory` is now the only thing on any page that answers this,
+		// and `blockedEnv` below picks WHICH environment to speak for, never
+		// WHICH GATE within it.
 		return null;
 	});
+
+	/**
+	 * The environment to put the blocking banner on: deepest in the pipeline
+	 * first, because a block in PROD is the one that matters. Ranked, never
+	 * `find` — `cells` is in promotion order and the first hit would be DEV.
+	 */
+	// ⛔ `f.rank` IS THE LAG, NOT THE PIPELINE POSITION (`rankOfCell` returns
+	// `v.by`). Sorting on it put DEV — 16 behind — above PROD at 15, i.e. the
+	// least consequential place in the pipeline on the page's one banner.
+	// `getEnvironmentRank` is the promotion order, and a block that needs a
+	// PERSON outranks every position.
+	const blockedEnv = $derived(
+		envFacts
+			.filter((f) => f.story.blocked)
+			.sort(
+				(a, b) =>
+					(b.story.person.length > 0 ? 1 : 0) - (a.story.person.length > 0 ? 1 : 0) ||
+					(a.story.selfClearing ? 1 : 0) - (b.story.selfClearing ? 1 : 0) ||
+					getEnvironmentRank(b.cell.envName) - getEnvironmentRank(a.cell.envName)
+			)[0] ?? null
+	);
 </script>
 
 <svelte:head>
@@ -1616,6 +1720,10 @@
 				pulse={pageBlocker.pulse}
 				class="mb-6"
 			/>
+		{:else if blockedEnv}
+			<!-- ⭐ THE SAME OBJECT, THE SAME WORDS, AS ROLLOUT DETAIL. Whatever
+			     `Investigate` takes you to now agrees with what you clicked. -->
+			<BlockingStoryPanel story={blockedEnv.story} class="mb-6" />
 		{/if}
 
 		<!-- ═══ ACT | STATE ═════════════════════════════════════════════════
@@ -1968,12 +2076,16 @@
 										     `compact` prop that used to say so is GONE: two of five
 										     callers passed it, so one object said one fact two ways
 										     in one product. See `form` in `BlockReason.svelte`. -->
+											<!-- ⭐ EVERY GATE, NOT THE FIRST ONE THAT MATCHED.
+										     `BlockReason` returned one branch — `pinned`, then
+										     `awaiting`, then `notPassing` — so PROD, held by an
+										     environment-controller gate, an approval gate AND a
+										     failing schedule gate, printed one line about the
+										     approval and captioned the controller's gate `Needs a
+										     person to approve`. Nobody can approve that object. -->
 											{#if t.gate}
 												<div class="tk-gate min-w-0">
-													<BlockReason
-														awaiting={f.block.awaitingApprovalGates}
-														notPassing={f.block.notPassingGates}
-													/>
+													<BlockingStoryLines story={f.story} />
 												</div>
 											{/if}
 
@@ -2303,11 +2415,7 @@
 										     drawing the norm, once per row. It names the check or
 										     the window now, which is the half the long line had
 										     and the surround does not. -->
-										<BlockReason
-											awaiting={f.block.awaitingApprovalGates}
-											notPassing={f.block.notPassingGates}
-											class="mt-1.5"
-										/>
+										<BlockingStoryLines story={f.story} />
 									</li>
 								{/each}
 							</ul>

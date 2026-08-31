@@ -102,12 +102,21 @@
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
+	import { rolloutMatchesEnvironment, rolloutPath, sourceClusterName } from '$lib/source-dashboard';
 	import { groupRolloutsByApp, versionPathForRollout } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { rankVerdicts, rankBehindBy, rankIsAdverse } from '$lib/view-models/env-rank';
 	import type { RankVerdict } from '$lib/view-models/env-rank';
 	import { promotionBlock } from '$lib/view-models/promotion';
+	import {
+		buildGateContext,
+		withSchedules,
+		blockingStory,
+		type GateContext,
+		type BlockingStory
+	} from '$lib/view-models/blocking-story';
+	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
+	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
 	import { regionLabel } from '$lib/view-models/regions';
 	import { getEnvironmentRank, sortEnvironmentNames } from '$lib/env-order';
 	import { buildRolloutCards } from '$lib/rollout-cards';
@@ -126,7 +135,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import BlockReason from '$lib/components/BlockReason.svelte';
+	import BlockingStoryLines from '$lib/components/BlockingStoryLines.svelte';
 	import NextStep from '$lib/components/NextStep.svelte';
 	import type { Step } from '$lib/components/NextStep.svelte';
 	import { now } from '$lib/stores/time';
@@ -155,6 +164,39 @@
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
+
+	/**
+	 * ⭐ THE GATE JOIN TABLE — the same one `/apps`, `/apps/<name>` and rollout
+	 * detail build, from the payload this page already has. It is what turns
+	 * `ghd-p2fld` from *"needs a person to approve"* (a wrong instruction: no
+	 * human can approve an environment-controller gate) into *"dev has to
+	 * deploy it first"*.
+	 */
+	let scheduleObjects = $state<Record<string, ScheduleObject[]>>({});
+	const gateContext = $derived.by<GateContext>(() => {
+		let ctx = buildGateContext({
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null
+		});
+		for (const [ns, objs] of Object.entries(scheduleObjects)) ctx = withSchedules(ctx, ns, objs);
+		return ctx;
+	});
+
+	/* One GET per held rollout, cached by namespace — see `/apps`. */
+	$effect(() => {
+		for (const r of rollouts) {
+			const ns = r.metadata?.namespace;
+			const name = r.metadata?.name;
+			if (!ns || !name || scheduleObjects[ns]) continue;
+			const b = promotionBlock(r);
+			if (!b.blocked || b.notPassingGates.length === 0) continue;
+			fetchScheduleObjects(ns, name, sourceClusterName(r) || undefined)
+				.then((objs) => {
+					scheduleObjects = { ...scheduleObjects, [ns]: objs };
+				})
+				.catch(() => {});
+		}
+	});
 
 	const groups = $derived.by<Map<string, AppGroup>>(() =>
 		groupRolloutsByApp(rollouts, environments)
@@ -244,6 +286,17 @@
 		 */
 		awaitingGates: string[];
 		notPassingGates: string[];
+		/**
+		 * ⭐ EVERY gate holding THIS app in THIS environment, each with how it
+		 * clears — the shared `view-models/blocking-story` derivation.
+		 *
+		 * ⛔ IT IS PER-APP AND THAT IS THE BUG IT FIXES. The card used to print
+		 * `Furthest behind the newest — 20 versions, hello-world-app` and then a
+		 * reason line built from the UNION of every app's gates in the tier, so
+		 * gates belonging to *hello-multi* were rendered under a heading naming
+		 * *hello-world-app*. A join across the wrong grain reads as a fact.
+		 */
+		story: BlockingStory;
 		timestamp: string | null;
 		/** Sort key inside a card. Failing first, then stuck, then depth. */
 		severity: number;
@@ -263,7 +316,7 @@
 		failing: number;
 		stuck: number;
 		/** THE ONE QUANTITY. `null` when nothing here is behind. */
-		deepest: { by: number; appName: string } | null;
+		deepest: { by: number; appName: string; app: EnvApp } | null;
 		/** How many apps here are behind. 0, 1 and 2+ are three different cards. */
 		behindCount: number;
 		/** Gate names refusing every newer build of at least one app here. */
@@ -271,6 +324,10 @@
 		/** Those names, split by whether a PERSON has to move. See `EnvApp`. */
 		awaitingGates: string[];
 		notPassingGates: string[];
+		/** The single app whose block the card speaks for. Never a union. */
+		blockedApp: EnvApp | null;
+		/** How many apps here are held by a gate. The header's second rollup. */
+		heldCount: number;
 		/** The one thing to do here, worst-first. `open` when nothing is wrong. */
 		step: Step;
 		lastDeployTs: string | null;
@@ -345,6 +402,7 @@
 						blockingGates: block.blockingGates,
 						awaitingGates: block.awaitingApprovalGates,
 						notPassingGates: block.notPassingGates,
+						story: blockingStory(cell.rollout, gateContext, { place: tier, now: $now }),
 						timestamp: latest?.timestamp ?? null,
 						severity:
 							state === 'failing'
@@ -376,13 +434,35 @@
 			const deviations = apps.filter((a) => a.severity > 0);
 			const settled = apps.filter((a) => a.severity === 0);
 
-			let deepest: { by: number; appName: string } | null = null;
+			// ⛔ `deepest` CARRIES THE APP, NOT JUST ITS NAME. The summary block
+			// below prints `20 versions · hello-world-app` and then a reason
+			// line; while the reason came from the card's UNION of gates, that
+			// line could name gates belonging to *hello-multi* under a heading
+			// about *hello-world-app*. Carrying the app makes the two halves of
+			// one sentence come from one rollout, which is the only way the
+			// join can be right.
+			let deepest: { by: number; appName: string; app: EnvApp } | null = null;
 			for (const a of apps)
 				if (a.behindBy > 0 && (!deepest || a.behindBy > deepest.by))
-					deepest = { by: a.behindBy, appName: a.appName };
+					deepest = { by: a.behindBy, appName: a.appName, app: a };
 
 			const failing = apps.filter((a) => a.state === 'failing').length;
 			const stuck = apps.filter((a) => a.state === 'stuck').length;
+
+			// ⭐ THE CARD'S BLOCK IS ONE APP'S BLOCK, RANKED — never a union.
+			// A union answers a question nobody asked ("which gate names appear
+			// anywhere in prod") and reads as an answer to the one they did
+			// ("why is hello-world-app stuck"). Needs-a-person first, then the
+			// deepest lag, so the card speaks for the app most worth opening.
+			const blockedApps = apps.filter((a) => a.story.blocked);
+			blockedApps.sort(
+				(a, b) =>
+					(b.story.person.length > 0 ? 1 : 0) - (a.story.person.length > 0 ? 1 : 0) ||
+					(a.story.selfClearing ? 1 : 0) - (b.story.selfClearing ? 1 : 0) ||
+					b.behindBy - a.behindBy
+			);
+			const blockedApp = blockedApps[0] ?? null;
+
 			const gates = new Set<string>();
 			const awaitingGates = new Set<string>();
 			const notPassingGates = new Set<string>();
@@ -419,6 +499,25 @@
 				gates,
 				awaitingGates: [...awaitingGates],
 				notPassingGates: [...notPassingGates],
+				blockedApp,
+				/**
+				 * ⭐ WHAT `healthy` IS ACTUALLY CLAIMING, and it was claiming it
+				 * with the wrong word. (finding 14)
+				 *
+				 * The rollup counted apps that are not failing, not stuck and not
+				 * never-deployed — a true and useful number — and printed it as
+				 * `4/4 healthy` in green **above a body reading `20 BEHIND` and
+				 * naming a gate holding it**. A green rollup over a red body is
+				 * the same lie as two pages disagreeing, at card scale.
+				 *
+				 * Two changes, no information lost. The word narrows to what it
+				 * measures — `4/4 running`, i.e. every app here deployed and is
+				 * serving — and the card gains a SECOND rollup for the fact the
+				 * body is about: how many are held. The header now agrees with
+				 * what is underneath it, and it still answers criterion 1 at a
+				 * glance.
+				 */
+				heldCount: apps.filter((a) => a.story.blocked).length,
 				/**
 				 * THE CARD'S STEP, worst-first, from the same facts its marks
 				 * are drawn from — a deploy that failed and a place waiting on
@@ -442,10 +541,14 @@
 				// exact sentence that button promised to go and fetch. A control
 				// offering to reveal something already on screen is furniture.
 				// A rule that clears itself gets `Open`, which is the truth.
+				// ⛔ `approve` USED TO FIRE ON ANY ALLOW-LIST GATE, which put an
+				// `Approve` verb on cards held only by the environment controller
+				// — a gate nobody can approve. It now fires on the classified
+				// `person` bucket and nothing else.
 				step:
 					failing > 0 || stuck > 0
 						? 'investigate'
-						: awaitingGates.size > 0
+						: apps.some((a) => a.story.person.length > 0)
 							? 'approve'
 							: 'open',
 				lastDeployTs,
@@ -546,14 +649,20 @@
 	 * a promotion pipeline; a banner that fires on it fires always, which is
 	 * exactly the defect of the headline this replaces.
 	 */
-	type Banner = {
-		severity: 'error' | 'warning';
-		icon: typeof ExclamationCircleSolid;
-		title: string;
-		message: string;
-		href: string;
-		action: string;
-	};
+	// TWO SHAPES, ONE SLOT — see `/apps`. The failed/stuck branches state a
+	// fact this page derives; the blocked branch hands back a `BlockingStory`
+	// and lets `BlockingStoryPanel` render it, so the sentence about gates is
+	// spelled in exactly one place in the product.
+	type Banner =
+		| {
+				severity: 'error' | 'warning';
+				icon: typeof ExclamationCircleSolid;
+				title: string;
+				message: string;
+				href: string;
+				action: string;
+		  }
+		| { story: BlockingStory; href: string; action: string };
 
 	const banner = $derived.by<Banner | null>(() => {
 		const all = [...cardsByTier.values()];
@@ -596,39 +705,34 @@
 			};
 		}
 
-		// BLOCKED. Attributed to the environment holding the MOST builds, which
-		// is the one where clearing the gate moves the most.
-		let worst: { c: EnvCard; held: number; gates: Set<string> } | null = null;
+		// ⛔ BLOCKED — AND IT USED TO ASK THE WRONG QUESTION ABOUT THE WRONG
+		// GRAIN. It took the environment holding the most builds, then read
+		// `awaitingGates` — the UNION over every app in that tier — to decide
+		// whether a PERSON was needed. Both halves were wrong: an allow-list
+		// gate is written by the environment controller three times out of
+		// four, so *"until someone approves it"* named a human who does not
+		// exist, and a union means the app it names and the gate it blames can
+		// be two different rollouts.
+		//
+		// The banner now speaks for ONE rollout — `blockedApp`, the card's own
+		// ranked pick — and its words are `blockingStory`'s, so the sentence
+		// here, the lines in the card body, and rollout detail's banner are all
+		// the same sentence about the same object.
+		let worstBlocked: { c: EnvCard; app: EnvApp } | null = null;
 		for (const c of all) {
-			let held = 0;
-			const gates = new Set<string>();
-			for (const a of c.apps) {
-				if (a.blockedCandidates <= 0) continue;
-				held = Math.max(held, a.blockedCandidates);
-				for (const g of a.blockingGates) gates.add(g);
-			}
-			if (held > 0 && (!worst || held > worst.held)) worst = { c, held, gates };
+			if (!c.blockedApp) continue;
+			const better =
+				!worstBlocked ||
+				(c.blockedApp.story.person.length > 0 && worstBlocked.app.story.person.length === 0) ||
+				(c.blockedApp.story.person.length > 0 === worstBlocked.app.story.person.length > 0 &&
+					c.blockedApp.blockedCandidates > worstBlocked.app.blockedCandidates);
+			if (better) worstBlocked = { c, app: c.blockedApp };
 		}
-		if (worst) {
-			// ⛔ `waiting on 2 gates` COUNTS OBJECTS, WHICH IS NOT A REASON.
-			// The two kinds do not have the same consequence and must not be
-			// summed: one needs a PERSON and the other clears itself. The
-			// headline states which, and the second line says what happens
-			// next, which is the only thing a reader can act on.
-			const needsPerson = worst.c.awaitingGates.length > 0;
+		if (worstBlocked) {
 			return {
-				severity: 'warning',
-				// The glyph and the sentence must agree. A calendar on `someone has
-				// to approve this` says the opposite of the words beside it.
-				icon: needsPerson ? UserCircleSolid : HourglassSolid,
-				title: needsPerson
-					? `Nothing new can deploy to ${worst.c.tier} until someone approves it`
-					: `Newer versions for ${worst.c.tier} are on hold`,
-				message: needsPerson
-					? `${worst.held} newer version${worst.held === 1 ? '' : 's'} ${worst.held === 1 ? 'is' : 'are'} ready and none of them is approved. This will not clear on its own.`
-					: `${worst.held} newer version${worst.held === 1 ? '' : 's'} ${worst.held === 1 ? 'is' : 'are'} ready and waiting on a check or a deploy window. It clears on its own.`,
-				href: worst.c.href,
-				action: `Open ${worst.c.tier}`
+				story: worstBlocked.app.story,
+				href: worstBlocked.c.href,
+				action: `Open ${worstBlocked.c.tier}`
 			};
 		}
 
@@ -817,22 +921,49 @@
 			     same segment out in full. Two of the eighteen region cards did
 			     this. The 12ch cap gives the name back its 35px. -->
 			<Chip role="env" theme={c.theme} label={c.badge} title={c.tier} />
+			<!-- ⭐ `4/4 healthy` SAT IN GREEN OVER A BODY READING `20 BEHIND` AND
+			     NAMING A GATE HOLDING IT. (finding 14)
+
+			     The number was never wrong — it counts apps that are not
+			     failing, not stuck and not never-deployed — but `healthy` is a
+			     verdict on the WHOLE card and the card's own body was
+			     contradicting it. Two changes, and no fact is lost:
+
+			       · the word narrows to what it measures. `4/4 running` claims
+			         only that every app here deployed and is serving, which is
+			         exactly the predicate behind the number.
+			       · a SECOND rollup carries the fact the body is about. `3 held`
+			         in amber, beside it, so the header answers criterion 1 and
+			         still agrees with what is underneath it.
+
+			     ⛔ NOT a colour change on the first chip. Recolouring `running`
+			     amber would delete the good news, and "every app here is
+			     serving" is true and worth saying while three of them wait on a
+			     gate — that is the whole distinction this pass exists to draw. -->
 			<span
 				class="text-xs font-medium whitespace-nowrap {c.failing > 0
 					? 'text-red-700 dark:text-red-400'
 					: c.stuck > 0
 						? 'text-gray-500 dark:text-gray-400'
 						: 'text-green-700 dark:text-green-400'}"
-				title="{c.healthy} of {c.apps.length} apps here are deployed and settled"
+				title="{c.healthy} of {c.apps.length} apps here are deployed and serving"
 			>
 				{#if c.failing > 0}
 					{c.failing} failing
 				{:else if c.stuck > 0}
 					{c.stuck} stuck
 				{:else}
-					{c.healthy}/{c.apps.length} healthy
+					{c.healthy}/{c.apps.length} running
 				{/if}
 			</span>
+			{#if c.heldCount > 0 && c.failing === 0 && c.stuck === 0}
+				<span
+					class="text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-400"
+					title="{c.heldCount} of {c.apps.length} apps here have newer versions that no gate will let in yet"
+				>
+					{c.heldCount} held
+				</span>
+			{/if}
 		{/snippet}
 
 		<!-- ── CRITERION 3, THE ONE QUANTITY ────────────────────────────
@@ -853,11 +984,20 @@
 		     item is not a summary; it is the item, said twice, in a bigger
 		     font. It draws when it genuinely aggregates — two or more apps
 		     behind — and the reason line draws whenever there is a reason. -->
-		{#if c.apps.length === 0 || c.behindCount > 1 || c.behindCount === 0 || c.awaitingGates.length > 0 || c.notPassingGates.length > 0}
+		<!-- ⭐ A HELD LAG EARNS THE SUMMARY EVEN WHEN IT IS THE ONLY ONE.
+		     (finding 14) The rule above — *"a summary of one item is the item,
+		     said twice, in a bigger font"* — is right about a SETTLED row, and
+		     it is what left the DEV card with neither the number nor the reason
+		     while STAGING and PROD had both, on the very card this page's own
+		     banner points at. A blocked row is not the same case: the row can
+		     print `20 behind`, and it cannot print WHY nothing newer is coming.
+		     The number and the reason belong to one object, so they are drawn
+		     together, and the eyebrow says which of the two shapes it is. -->
+		{#if c.apps.length === 0 || c.behindCount > 1 || c.behindCount === 0 || (c.blockedApp?.behindBy ?? 0) > 0 || c.awaitingGates.length > 0 || c.notPassingGates.length > 0}
 		<div class="border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
 			{#if c.apps.length === 0}
 				<p class="text-xs text-gray-500 dark:text-gray-400">No app has ever deployed here.</p>
-			{:else if c.deepest && c.behindCount > 1}
+			{:else if c.deepest && (c.behindCount > 1 || (c.blockedApp?.behindBy ?? 0) > 0)}
 				<!-- ⛔ `BEHIND NEWEST · 19 builds` DID NOT SAY BEHIND WHAT. The
 				     eyebrow names the comparison in full now — the number is a
 				     distance and a distance with no second end is not readable
@@ -866,7 +1006,7 @@
 					class="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-gray-400"
 				>
 					<ArrowUpOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-					Furthest behind the newest
+					{c.behindCount > 1 ? 'Furthest behind the newest' : 'Behind the newest'}
 				</p>
 				<p class="mt-1 flex items-baseline gap-2">
 					<span class="text-xl font-bold text-gray-900 tabular-nums dark:text-white"
@@ -891,28 +1031,28 @@
 				     don't understand what these gray bars mean"*); a mark that
 				     needs a legend has no place here, so the mark IS its own
 				     legend. -->
-				<!-- ⛔ `held by 2 gates` IS DEAD, AND SO IS `HELD BY ghd-p2fld`.
-				     A count of gates is not a reason and a generated Kubernetes
-				     object name is not an explanation. `BlockReason` states the
-				     CONSEQUENCE first — including whether a person is needed —
-				     and demotes the name to a muted mono `rule:` handle. Same
-				     object on `/apps/[name]` and `/envs/[name]`, so the reader
-				     learns it once.
-
-				     ⭐ AND IT IS THE SAME RENDERING NOW (2026-08-30). This page
-				     printed the two-clause sentence while the two detail pages
-				     printed one line, because the form was a caller's PROP. It
-				     is a property of the block, so the fact reads identically
-				     wherever it appears. Nothing is lost here: the short form's
-				     words carry the person/no-person split themselves
-				     (`Needs a person to approve` against `Waiting on a check or
-				     a time window`), so this page never needed the surround the
-				     long form was assuming. -->
-				<BlockReason
-					awaiting={c.awaitingGates}
-					notPassing={c.notPassingGates}
-					class="mt-1.5"
-				/>
+				<!-- ⛔ THIS LINE USED TO BE A UNION, AND THAT IS AN ATTRIBUTION
+				     BUG, NOT A ROUNDING ERROR. (finding 7)
+				
+				     The heading two lines up names ONE app — `20 versions ·
+				     hello-world-app` — and the reason under it was built from
+				     `c.awaitingGates` / `c.notPassingGates`, the union of every
+				     app's gates in this tier. On the live cluster that printed
+				     gates belonging to *hello-multi* under a heading about
+				     *hello-world-app*. A join across the wrong grain reads as a
+				     fact, and this one sent readers to the wrong object.
+				
+				     `blockedApp` is the ONE app the card speaks for, ranked
+				     needs-a-person first, and `deepest.app` is the one the
+				     heading names. They are the same rollout whenever the
+				     deepest lag is held, which is the case this branch draws.
+				
+				     ⛔ AND IT LISTS EVERY GATE. `BlockReason` printed the first
+				     matching branch, so an environment held by an approval AND a
+				     closed window rendered one line about the approval. -->
+				<BlockingStoryLines story={(c.deepest.app.story.blocked
+					? c.deepest.app
+					: (c.blockedApp ?? c.deepest.app)).story} />
 			{:else if c.behindCount === 0}
 				<p class="flex items-center gap-2">
 					<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
@@ -920,11 +1060,22 @@
 						>All {c.apps.length} app{c.apps.length === 1 ? '' : 's'} here are up to date</span
 					>
 				</p>
-				<BlockReason awaiting={c.awaitingGates} notPassing={c.notPassingGates} class="mt-1.5" />
-			{:else}
-				<!-- Exactly one app behind: its own row says how far, so the only
-				     thing left worth printing is WHY nothing newer has come. -->
-				<BlockReason awaiting={c.awaitingGates} notPassing={c.notPassingGates} />
+				{#if c.blockedApp}
+					<!-- Up to date AND held: the gate is holding a build nobody here
+					     is behind on yet. Named, because it is about to matter. -->
+					<p class="t-micro mt-1.5 min-w-0 truncate text-gray-500 dark:text-gray-400">
+						{c.blockedApp.appName}
+					</p>
+					<BlockingStoryLines story={c.blockedApp.story} />
+				{/if}
+			{:else if c.blockedApp}
+				<!-- Exactly one app behind and it is held: its own row says how
+				     far, so the only thing left worth printing is WHY nothing
+				     newer has come — every gate, and for each, what clears it. -->
+				<p class="t-micro min-w-0 truncate text-gray-500 dark:text-gray-400">
+					{c.blockedApp.appName}
+				</p>
+				<BlockingStoryLines story={c.blockedApp.story} />
 			{/if}
 		</div>
 		{/if}
@@ -1053,20 +1204,30 @@
 			</p>
 		</div>
 	{:else}
-		{#if banner}
+		{#snippet bannerAction(href: string, action: string)}
+			<a {href} class="btn btn-secondary">
+				{action}
+				<ChevronRightOutline aria-hidden="true" />
+			</a>
+		{/snippet}
+		{#if banner && 'story' in banner}
+			{@const b = banner}
+			<!-- ⭐ THE SAME OBJECT AND THE SAME WORDS AS `/apps`, `/apps/<name>`
+			     and rollout detail. Whatever you click through to now agrees
+			     with what you clicked. -->
+			<BlockingStoryPanel story={b.story}>
+				{#snippet actions()}{@render bannerAction(b.href, b.action)}{/snippet}
+			</BlockingStoryPanel>
+		{:else if banner}
+			{@const b = banner}
 			<AlertPanel
-				severity={banner.severity}
-				title={banner.title}
-				message={banner.message}
-				icon={banner.icon}
-				pulse={banner.severity === 'error'}
+				severity={b.severity}
+				title={b.title}
+				message={b.message}
+				icon={b.icon}
+				pulse={b.severity === 'error'}
 			>
-				{#snippet actions()}
-					<a href={banner.href} class="btn btn-secondary">
-						{banner.action}
-						<ChevronRightOutline aria-hidden="true" />
-					</a>
-				{/snippet}
+				{#snippet actions()}{@render bannerAction(b.href, b.action)}{/snippet}
 			</AlertPanel>
 		{/if}
 

@@ -8,6 +8,8 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout } from '$lib/types';
 	import AlertPanel from './AlertPanel.svelte';
+	import type { BlockingStory } from '$lib/view-models/blocking-story';
+	import { iconForStory } from './BlockingStoryPanel.svelte';
 
 	type RolloutSchedule = {
 		metadata: { name: string; namespace: string };
@@ -53,11 +55,32 @@
 	// AlertPanel — for surfaces where the amber is reserved for `stuck` and a
 	// time-bounded schedule wait is NOT stuck. Same data, same fetch, same
 	// nextTransition maths; presentation only.
+	// ⭐ `story` AND `onSchedules` EXIST TO STOP THIS COMPONENT SPEAKING FOR THE
+	// WHOLE PAGE. A closed deploy window is often ONE of several things holding
+	// a rollout, and this banner used to state it as if it were the only one —
+	// which is how rollout detail came to say *"nothing promotes itself until
+	// 1:00 PM"* about a rollout that was ALSO waiting on an upstream deploy and
+	// an approval. When the parent hands down a `BlockingStory` that is actually
+	// blocked, the banner renders the story's words; the schedule popover and
+	// the not-blocked line are unchanged and still this component's job.
+	//
+	// `onSchedules` hands the already-fetched objects back UP so the parent can
+	// build its gate→schedule join from them. A second `/schedules` request here
+	// would be the third fetch of the same fact on one page.
 	let {
 		rollout,
 		cluster,
-		compact = false
-	}: { rollout: Rollout; cluster?: string; compact?: boolean } = $props();
+		compact = false,
+		story = null,
+		onSchedules
+	}: {
+		rollout: Rollout;
+		cluster?: string;
+		compact?: boolean;
+		story?: BlockingStory | null;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		onSchedules?: (schedules: any[]) => void;
+	} = $props();
 
 	let allSchedules = $state<Array<RolloutSchedule | ClusterRolloutSchedule>>([]);
 	let loading = $state(true);
@@ -259,6 +282,7 @@
 			const rolloutSchedules = data.rolloutSchedules?.items || [];
 			const clusterSchedules = data.clusterRolloutSchedules?.items || [];
 			allSchedules = [...rolloutSchedules, ...clusterSchedules];
+			onSchedules?.(allSchedules);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load schedules';
 		} finally {
@@ -359,13 +383,22 @@
 			Composition is untouched: same `AlertPanel`, same `warning`, same
 			calendar glyph, same chip on the right. Only the words moved.
 		-->
+		<!-- ⭐ THE WORDS COME FROM THE PAGE'S STORY WHEN THERE IS ONE. Same
+		     `AlertPanel`, same glyph, same chip — only the sentence widens from
+		     "a window is closed" to every gate actually holding this rollout,
+		     each with whether it clears on a clock, on another deploy, or on a
+		     person. The fallback below is the schedule-only wording, which is
+		     still correct on a surface that hands down no story. -->
 		<AlertPanel
-			severity="warning"
-			title="Automatic deploys are paused"
-			message={nextChange
-				? `Nothing promotes itself until ${formatTimeUntil(nextChange)} (${formatTime(nextChange)}). A deploy you start by hand still applies immediately.`
-				: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
-			icon={CalendarWeekSolid}
+			severity={story?.blocked ? story.severity : 'warning'}
+			title={story?.blocked ? story.headline : 'Automatic deploys are paused'}
+			message={story?.blocked
+				? story.consequence
+				: nextChange
+					? `Nothing promotes itself until ${formatTimeUntil(nextChange)} (${formatTime(nextChange)}). A deploy you start by hand still applies immediately.`
+					: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
+			footnote={story?.blocked ? story.resolution : undefined}
+			icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
 			pulse
 		>
 			{#snippet actions()}

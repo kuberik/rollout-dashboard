@@ -108,6 +108,12 @@
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
 	import ScheduleStatus from '$lib/components/ScheduleStatus.svelte';
+	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
+	import {
+		buildGateContext,
+		withSchedules,
+		blockingStory
+	} from '$lib/view-models/blocking-story';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { getBakeStatusColor } from '$lib/bake-status';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
@@ -272,6 +278,39 @@
 	 * split, and everything below reads it from there.
 	 */
 	const autoDeploy = $derived(autoDeployState(rollout, rolloutGates));
+
+	/**
+	 * ⭐ THE ONE BLOCKING STORY, and it is the SAME function `/apps`,
+	 * `/apps/<name>` and `/environments` call.
+	 *
+	 * This page and `/apps/<name>` used to answer the 3am question differently
+	 * for the SAME rollout at the SAME second — this one said *"Automatic
+	 * deploys are paused … until 13h 34m"* (go back to bed) while `/apps` said
+	 * *"waiting on an approval … this will not clear on its own"* (escalate).
+	 * Both were reading one gate out of two. `blockingStory` reads EVERY gate
+	 * holding the rollout and says, for each, whether it clears on a clock,
+	 * needs another deploy, or needs a person.
+	 *
+	 * The join table is built from what THIS endpoint already returns —
+	 * `environment` (its `status.rolloutGateRef` names the promotion gate and
+	 * `spec.relationship` says which environment has to go first) — plus the
+	 * schedules `ScheduleStatus` is already fetching, handed back rather than
+	 * requested a second time.
+	 */
+	let scheduleObjects = $state<any[]>([]);
+	const gateContext = $derived.by(() => {
+		const base = buildGateContext({
+			environments: environment ? { items: [environment] } : null,
+			rolloutDependencies: null
+		});
+		return withSchedules(base, rollout?.metadata?.namespace, scheduleObjects);
+	});
+	const blockStory = $derived(
+		blockingStory(rollout, gateContext, {
+			place: environment?.spec?.environment ?? null,
+			now: $now
+		})
+	);
 	const bakeFailureDisabledCondition = $derived(
 		rollout?.status?.conditions?.find((c) => c.type === 'BakeFailureDisabled' && c.status === 'True')
 	);
@@ -1273,7 +1312,23 @@
 				</div>
 
 				<!-- ══ SCHEDULE STATUS (blocking / closing-soon) ══ -->
-				<ScheduleStatus {rollout} {cluster} />
+				<!-- ⭐ ONE BLOCKING STORY. `ScheduleStatus` owns the schedule popover and
+				     the "next window" line; when a gate is actually holding the
+				     rollout it renders `blockStory`'s words rather than its own, so
+				     a schedule that is one of three reasons is no longer printed as
+				     if it were the only one. The panel below covers the case
+				     `ScheduleStatus` cannot see at all — held by an approval or by
+				     an upstream deploy, with no schedule involved — which is
+				     precisely where this page used to render nothing. -->
+				<ScheduleStatus
+					{rollout}
+					{cluster}
+					story={blockStory}
+					onSchedules={(s) => (scheduleObjects = s)}
+				/>
+				{#if blockStory.blocked && blockStory.clock.length === 0}
+					<BlockingStoryPanel story={blockStory} />
+				{/if}
 
 				<!-- ══ FAILURE PANEL ══ -->
 				{#if isFailed}

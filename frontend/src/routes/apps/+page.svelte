@@ -111,6 +111,16 @@
 	import type { RankVerdict } from '$lib/view-models/env-rank';
 	import { buildFleetStrip } from '$lib/view-models/fleet-strip';
 	import { promotionBlock } from '$lib/view-models/promotion';
+	import {
+		buildGateContext,
+		withSchedules,
+		blockingStory,
+		type GateContext,
+		type BlockingStory
+	} from '$lib/view-models/blocking-story';
+	import { sourceClusterName } from '$lib/source-dashboard';
+	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
+	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
 	import type { PromotionBlock } from '$lib/view-models/promotion';
 	import type { FleetEnv, FleetStripVM, FleetTone } from '$lib/view-models/fleet-strip';
 	import { leadTime, compactSpan } from '$lib/view-models/lead-time';
@@ -209,6 +219,19 @@
 		 * needs no action.
 		 */
 		block: PromotionBlock;
+		/**
+		 * ⭐ EVERY GATE HOLDING THIS CELL, each with whether it clears on a
+		 * clock, on another deploy, or on a person — the SHARED
+		 * `view-models/blocking-story` derivation, the same object
+		 * `/apps/[name]`, `/environments` and rollout detail render.
+		 *
+		 * `block` above splits gates by whether they published an allow-list,
+		 * which is structural and TRUE but is not the same question as who has
+		 * to move: three of the four things that write a `RolloutGate` publish
+		 * an allow-list, so this page captioned an environment-controller gate
+		 * *"waiting on an approval"* and named a human who cannot exist.
+		 */
+		story: BlockingStory;
 		timestamp: string | null;
 	};
 
@@ -358,13 +381,15 @@
 		group: AppGroup,
 		tier: string,
 		vm: MatrixCellVM,
-		refNow: Date
+		refNow: Date,
+		ctx: GateContext
 	): {
 		state: CellState;
 		theme: EnvironmentTheme | null;
 		held: boolean;
 		wantedVersion: string | null;
 		block: PromotionBlock;
+		story: BlockingStory;
 		timestamp: string | null;
 	} {
 		const cell = group.cells.find((c) => c.environment?.spec?.environment === tier);
@@ -376,6 +401,7 @@
 		// object, so it does not go through `getDisplayVersion`.
 		const wantedVersion = rollout?.spec?.wantedVersion ?? null;
 		const block = promotionBlock(rollout);
+		const story = blockingStory(rollout, ctx, { place: tier, now: refNow });
 
 		let stuckReason = detectStuck(rollout, { now: refNow });
 		if (!stuckReason && cell) {
@@ -393,14 +419,14 @@
 		const held = pinned && vm.rank.kind !== 'newest';
 
 		if (vm.statusKey === 'failed')
-			return { state: 'fail', theme, held, wantedVersion, block, timestamp };
-		if (stuckReason) return { state: 'stuck', theme, held, wantedVersion, block, timestamp };
+			return { state: 'fail', theme, held, wantedVersion, block, story, timestamp };
+		if (stuckReason) return { state: 'stuck', theme, held, wantedVersion, block, story, timestamp };
 		if (bakeStatus === 'Deploying')
-			return { state: 'deploying', theme, held, wantedVersion, block, timestamp };
+			return { state: 'deploying', theme, held, wantedVersion, block, story, timestamp };
 		if (bakeStatus === 'InProgress')
-			return { state: 'baking', theme, held, wantedVersion, block, timestamp };
+			return { state: 'baking', theme, held, wantedVersion, block, story, timestamp };
 		if (vm.statusKey === 'pending')
-			return { state: 'pending', theme, held: false, wantedVersion, block, timestamp };
+			return { state: 'pending', theme, held: false, wantedVersion, block, story, timestamp };
 		// ⛔ `behindBy === 0` IS NOT `onNewest`. (2026-08-30) `rankBehindBy`
 		// returns 0 for THREE different verdicts — `newest`, `diverged` and
 		// `unknown` — and `matrix.ts`'s own doc comment says so. Testing the
@@ -408,9 +434,9 @@
 		// the page's good-news state. The verdict decides; the number is for
 		// counting only.
 		if (vm.rank.kind === 'newest')
-			return { state: 'onNewest', theme, held, wantedVersion, block, timestamp };
+			return { state: 'onNewest', theme, held, wantedVersion, block, story, timestamp };
 		const behindState: CellState = vm.behindBy >= 2 ? 'behind2' : 'behind1';
-		return { state: behindState, theme, held, wantedVersion, block, timestamp };
+		return { state: behindState, theme, held, wantedVersion, block, story, timestamp };
 	}
 
 	/**
@@ -571,6 +597,49 @@
 		return getEnvironmentRank(envName) >= 7;
 	}
 
+	/**
+	 * ⭐ THE GATE JOIN TABLE, built once from the payload this page already has.
+	 *
+	 * `Environment.status.rolloutGateRef` names the gate the environment
+	 * controller owns and `spec.relationship` says which environment has to
+	 * deploy first; `RolloutDependency.status.gateName` does the same for a
+	 * cross-service contract. Without it this page blamed
+	 * `hello-world-manual-approval` for a prod rollout that was ALSO held by a
+	 * failing schedule gate and by the environment controller — three gates,
+	 * one named, and not the failing one.
+	 */
+	let scheduleObjects = $state<Record<string, ScheduleObject[]>>({});
+	const gateContext = $derived.by<GateContext>(() => {
+		let ctx = buildGateContext({
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null
+		});
+		for (const [ns, objs] of Object.entries(scheduleObjects)) ctx = withSchedules(ctx, ns, objs);
+		return ctx;
+	});
+
+	/*
+	 * WHEN DOES THE WINDOW OPEN? One GET per rollout that is actually held by a
+	 * gate with no allow-list, cached by namespace and never re-requested — on
+	 * the live fleet that is 3 requests, not 15. Same endpoint and the same
+	 * arithmetic `/versions` and rollout detail already run.
+	 */
+	$effect(() => {
+		for (const r of rollouts) {
+			const ns = r.metadata?.namespace;
+			const name = r.metadata?.name;
+			if (!ns || !name) continue;
+			if (scheduleObjects[ns]) continue;
+			const b = promotionBlock(r);
+			if (!b.blocked || b.notPassingGates.length === 0) continue;
+			fetchScheduleObjects(ns, name, sourceClusterName(r) || undefined)
+				.then((objs) => {
+					scheduleObjects = { ...scheduleObjects, [ns]: objs };
+				})
+				.catch(() => {});
+		}
+	});
+
 	const appRows = $derived.by<AppRow[]>(() => {
 		const refNow = $now;
 		const rows: AppRow[] = [];
@@ -582,11 +651,12 @@
 			for (const tier of matrix.envTiers) {
 				const vm = mrow.cells[tier];
 				if (!vm) continue;
-				const { state, theme, held, wantedVersion, block, timestamp } = classifyCell(
+				const { state, theme, held, wantedVersion, block, story, timestamp } = classifyCell(
 					group,
 					tier,
 					vm,
-					refNow
+					refNow,
+					gateContext
 				);
 				cells.push({
 					tier,
@@ -599,6 +669,7 @@
 					held,
 					wantedVersion,
 					block,
+					story,
 					timestamp
 				});
 			}
@@ -887,15 +958,21 @@
 	// — the banner's job is the single worst fact and the action that answers
 	// it. When there is no blocking fact at all it renders nothing: an
 	// all-clear banner is the norm being marked.
-	type Blocker = {
-		severity: 'error' | 'warning' | 'pinned' | 'info';
-		icon: typeof ExclamationCircleSolid;
-		title: string;
-		message: string;
-		footnote?: string;
-		app: string;
-		pulse: boolean;
-	};
+	// ⭐ TWO SHAPES, ONE SLOT. The first four branches state a fact this page
+	// derives itself (a failed deploy, a pin, a stuck state); the gate branch
+	// hands back a `BlockingStory` and lets `BlockingStoryPanel` render it, so
+	// the sentence about gates is spelled in exactly one place in the product.
+	type Blocker =
+		| {
+				severity: 'error' | 'warning' | 'pinned' | 'info';
+				icon: typeof ExclamationCircleSolid;
+				title: string;
+				message: string;
+				footnote?: string;
+				app: string;
+				pulse: boolean;
+		  }
+		| { story: BlockingStory; app: string };
 
 	const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
@@ -963,102 +1040,43 @@
 			};
 		}
 
-		// 4 — A GATE REFUSING EVERY CANDIDATE, and the two kinds are NOT the
-		//     same banner. `promotionBlock` splits them structurally (never by
-		//     matching generated gate names): `awaitingApproval` means the gate
-		//     published an allow-list and nothing is on it — only a person moves
-		//     that — while `notPassing` is a schedule window or a health check,
-		//     which clears itself. Rendering both amber would tell a reader to
-		//     act on something that needs no action, which is the same defect
-		//     class as painting normal drift red.
+		// 4 — A GATE REFUSING EVERY CANDIDATE — and it is ONE STORY NOW, not one
+		//     gate out of three.
+		//
+		// ⛔ WHAT THIS BRANCH USED TO DO. It ranked on
+		// `awaitingApprovalGates.length > 0`, took `blockReason`'s first match,
+		// and printed *"Someone has to approve a newer version"* with ONE gate
+		// name in the footnote. On the live cluster prod `hello-world-app` was
+		// held by three gates — `ghd-xm669` (the environment controller's),
+		// `hello-world-manual-approval` (a person's) and `schedule-gate-zvsqr`
+		// (**failing**) — and this page blamed the second, `/apps/<name>` named
+		// the first two, and rollout detail said "1 schedule". Three surfaces,
+		// three different culprits, and the failing gate on none of them.
+		//
+		// `blockingStory` names EVERY gate holding it and says, for each,
+		// whether it clears on a clock, on another deploy, or on a person. The
+		// ranking below is over ENVIRONMENTS, never over gates within one.
 		//
 		//     THE WORST ONE, NOT THE FIRST ONE. `cells` is in promotion order,
 		//     so `find` returns DEV — the environment nearest the front of the
 		//     pipeline and therefore the least consequential place to be stuck.
 		//     Measured on the live cluster: it banner-ed `DEV is waiting on a
-		//     gate` while PRODUCTION sat 24 builds behind an approval gate two
-		//     rows below. Rank instead: a gate that needs a PERSON outranks one
-		//     that clears itself, and within each kind the deepest lag wins.
+		//     gate` while PRODUCTION sat 24 builds behind. Rank instead: a block
+		//     that needs a PERSON outranks one that clears itself, and within
+		//     each kind the deepest lag wins.
 		{
 			const candidates = appRows.flatMap((app) =>
-				app.cells.filter((c) => c.block.blocked && c.behindBy > 0).map((c) => ({ app, c }))
+				app.cells.filter((c) => c.story.blocked && c.behindBy > 0).map((c) => ({ app, c }))
 			);
 			candidates.sort((x, y) => {
-				const ax = x.c.block.awaitingApprovalGates.length > 0 ? 0 : 1;
-				const ay = y.c.block.awaitingApprovalGates.length > 0 ? 0 : 1;
+				const ax = x.c.story.person.length > 0 ? 0 : x.c.story.selfClearing ? 2 : 1;
+				const ay = y.c.story.person.length > 0 ? 0 : y.c.story.selfClearing ? 2 : 1;
 				if (ax !== ay) return ax - ay;
 				return y.c.behindBy - x.c.behindBy;
 			});
 			const worst = candidates[0];
 			if (!worst) return null;
-			const app = worst.app;
-			const cell = worst.c;
-			const env = cell.envLabel.toUpperCase();
-
-			// ── THE MOST-READ SENTENCE ON THE PAGE, AND IT WAS THE LAST ONE
-			//    STILL SPEAKING THE OLD LANGUAGE. It read:
-			//
-			//      "19 builds ready and none approved. Nothing promotes into
-			//       PROD until hello-world-manual-approval allows one."
-			//
-			//    Three separate failures of the novice test, all of which the
-			//    rest of this pass had already fixed everywhere else:
-			//
-			//    · `builds` — the product renamed every one of these to
-			//      `versions`, and the row two lines below now says
-			//      `24 versions behind`.
-			//    · `promotes` — a mechanism verb. A first-time reader does not
-			//      have it, and the sentence's job is the CONSEQUENCE.
-			//    · the raw gate name INLINE, inside the explanation, exactly
-			//      the *"opaque generated name presented as an explanation"*
-			//      that `BlockReason` was built to kill. It is a handle, so it
-			//      is demoted to the footnote and prefixed `rule:`.
-			//
-			// ⚠️ AND THE NUMBER IS THE ROW'S NUMBER NOW. `candidateCount` (19)
-			//    is how many versions the rule is weighing; `behindBy` (24) is
-			//    the distance the row prints as `24 behind` and the lede prints
-			//    as `PROD is 24 versions behind the newest`. Both were true,
-			//    and a banner disagreeing with the row under it is the worst
-			//    possible way to be right. The banner speaks the row's number.
-			//
-			// CONSEQUENCE FIRST, COUNT SECOND — and the count is a SEPARATE
-			// sentence rather than the row's own. At 390 the banner sits ~200px
-			// above the row, and an earlier draft opened with `PROD is 24
-			// versions behind the newest`, which is byte-identical to the lede
-			// under the app name: agreement is the ask, a stutter is not.
-			const reason = blockReason({
-				awaiting: cell.block.awaitingApprovalGates,
-				notPassing: cell.block.notPassingGates
-			});
-			const n = cell.behindBy;
-			const waiting = `${n} version${n === 1 ? ' is' : 's are'} waiting for ${env}.`;
-			const message = reason ? `${reason.line}. ${waiting}` : waiting;
-			// The identifier, dressed as one: muted, on its own line, and
-			// labelled with the word that says what it is.
-			const rule = reason?.names ? `rule: ${reason.names}` : undefined;
-			if (cell.block.awaitingApprovalGates.length > 0) {
-				return {
-					severity: 'warning',
-					icon: ExclamationCircleSolid,
-					title: `${app.appName} — ${env} is waiting on an approval`,
-					message,
-					footnote: rule,
-					app: app.appName,
-					pulse: true
-				};
-			}
-			return {
-				severity: 'info',
-				icon: ClockSolid,
-				// NOT `is waiting on a gate` — `gate` is the name of a
-				// Kubernetes object kind, which is why `Review gates` became
-				// `See what's blocking` everywhere else on these pages.
-				title: `${app.appName} — ${env} is waiting on a check`,
-				message,
-				footnote: rule,
-				app: app.appName,
-				pulse: false
-			};
+			return { story: worst.c.story, app: worst.app.appName };
 		}
 
 		return null;
@@ -1177,22 +1195,29 @@
 		     ONE, NEVER ONE PER APP. The SET of apps needing a person is the
 		     `Needs attention` card below; the banner's job is the single worst
 		     fact, its CAUSE and the way out. -->
-		{#if blocker}
+		{#snippet openApp(app: string)}
+			<a href="/apps/{app}" class="btn btn-secondary">
+				Open {app}
+				<ArrowRightOutline />
+			</a>
+		{/snippet}
+		{#if blocker && 'story' in blocker}
+			{@const b = blocker}
+			<BlockingStoryPanel story={b.story} class="mb-5">
+				{#snippet actions()}{@render openApp(b.app)}{/snippet}
+			</BlockingStoryPanel>
+		{:else if blocker}
+			{@const b = blocker}
 			<AlertPanel
-				severity={blocker.severity}
-				icon={blocker.icon}
-				title={blocker.title}
-				message={blocker.message}
-				footnote={blocker.footnote}
-				pulse={blocker.pulse}
+				severity={b.severity}
+				icon={b.icon}
+				title={b.title}
+				message={b.message}
+				footnote={b.footnote}
+				pulse={b.pulse}
 				class="mb-5"
 			>
-				{#snippet actions()}
-					<a href="/apps/{blocker.app}" class="btn btn-secondary">
-						Open {blocker.app}
-						<ArrowRightOutline />
-					</a>
-				{/snippet}
+				{#snippet actions()}{@render openApp(b.app)}{/snippet}
 			</AlertPanel>
 		{/if}
 

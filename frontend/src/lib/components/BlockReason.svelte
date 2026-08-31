@@ -17,12 +17,7 @@
 	 * one"* — which is the exact defect this component was built to kill, still
 	 * alive in the most-read line on the page. One function, two renderers.
 	 */
-	import {
-		LockSolid,
-		UserCircleSolid,
-		HourglassSolid,
-		ShareNodesSolid
-	} from 'flowbite-svelte-icons';
+	import { LockSolid, HourglassSolid, ShareNodesSolid } from 'flowbite-svelte-icons';
 
 	export type BlockReason = {
 		/** Which structural branch fired. For callers that pick their own icon. */
@@ -104,9 +99,32 @@
 		if (awaiting.length > 0) {
 			return {
 				kind: 'awaiting',
-				icon: UserCircleSolid,
-				line: 'Someone has to approve a newer version — this will not clear on its own',
-				short: 'Needs a person to approve',
+				// ⚠️ NOT `UserCircleSolid`, AND NOT `Needs a person to approve`.
+				// (2026-08-31)
+				//
+				// This branch fires on "the rule published an allow-list and no
+				// available version is on it", and THREE different things write
+				// an allow-list: a person by hand, the environment controller
+				// (`Environment.status.rolloutGateRef` — its list is the builds
+				// the upstream environment has already deployed) and the
+				// dependency controller. Only the first can be approved by
+				// anybody. On the live cluster the two gates this branch was
+				// most often shown for — `ghd-p2fld`, `ghd-xm669` — are the
+				// environment controller's, so `Needs a person to approve` was
+				// a WRONG INSTRUCTION: it sends someone at 3am to find a human
+				// who does not exist for that object.
+				//
+				// ⭐ THE JOIN THAT TELLS THEM APART IS IN
+				// `view-models/blocking-story.ts`, and `<BlockingStoryLines>`
+				// renders it: it names every gate AND says, for each, whether it
+				// clears on a clock, on another deploy, or on a person. A caller
+				// that can reach the `/api/rollouts` payload should use that.
+				// This component takes two bare string lists and CANNOT do the
+				// join, so it says the one thing that is true of all three
+				// writers and asks nobody to act.
+				icon: LockSolid,
+				line: 'No newer version is on this rule\u2019s allow-list, and it will not clear until whatever maintains that list changes it',
+				short: 'No newer version is allowed yet',
 				names: awaiting.join(', '),
 				form: 'short'
 			};

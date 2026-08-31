@@ -4927,3 +4927,198 @@ drift is the normal state of a promotion pipeline; the adverse state is stuck.
 
 The buckets are questions, not a pie. `needsYou` and `inMotion` deliberately overlap; only
 `trailing` and `steady` are disjoint, and their union is exactly `healthy`.
+
+## The history tab says the word "rollback" at rest (2026-08-31)
+
+The page whose entire job is history was the one page that hid the one event an operator
+most needs to see. On the live hub, `hello-world-prod/hello-world-app` showed **five green
+ticks, five `Succeeded` badges and a header reading `100% success`** — and two of those five
+deploys had moved production *backwards*. The word appeared only after expanding a row, and
+what it said there was `Pinned version`, the API's audit string, which loses the rollback
+entirely. `/` and `/rollouts` have flagged the same state at rest for weeks.
+
+**The account and the record are two different objects, and the page now draws both.**
+
+- The **account** is derived: `history-marks.ts::deployActs` asks, for every adjacent pair in
+  `status.history`, whether the release that landed sits *earlier* in `availableReleases`
+  than the one it replaced. Same rule as `rollout-cards.ts::detectRollback`, applied `n`
+  times instead of once — and `history-marks.test.ts` asserts the two agree at index 0 on
+  every fixture, so the list surfaces and the history tab cannot drift into two stories.
+  It returns `null` rather than guessing when a release has no position.
+- The **record** is `entry.message`, whatever the API wrote. It is labelled **`Recorded
+  note`** now, not `Reason`, because on this cluster it says `Force deploy` for a deploy no
+  UI ever called forced. Naming it for what it is stops the two from being read as one claim.
+
+Three consequences, all at rest: a neutral-strong `↩ Rolled back` chip on the row, the
+sentence (`Rolled back 14 releases: 0afab6f → 991829b.`) under it, and a `2 rolled back`
+pill in the header beside `100% success` — both are true, and a success rate can never
+contain a rollback, because a rollback *is* a successful deploy.
+
+**The `Succeeded` badge is gone from succeeded rows.** Five rows, five green ticks, five
+green pills saying what the tick beside them already said: the norm was spending the row's
+whole colour budget, which is why the deviation could not get a word in. Anything that is
+not `Succeeded` still gets its badge. The always-on red `0 failed` pill is gone for the same
+reason.
+
+### The time axis was not showing time
+
+Two defects, one theme — the resolution was lying about itself.
+
+**The window.** A hard-coded `7d` on a rollout whose whole history spans 38 hours drew six
+empty days and two smudges in the right-hand eighth of the plot. The history tab opens on
+`all`, which `computeBounds` reads as FIT (earliest event → now, +5%). No `rangeTouched`
+latch, unlike `/activity`: `all` is a window re-derived from the data, not a value that
+fights the reader for the control.
+
+**The collisions.** Fitting cannot separate a 23:09 and a 23:15 deploy inside a 38-hour
+span — at 1,050px that is 3px, i.e. one 5px mark on top of another. `spreadOverlaps` fans
+colliding marks *vertically inside their own lane*, bounded so it never crosses into the
+lane above or below. `x` is never touched, so nothing lies about when; the y-axis inside a
+swimlane carries no meaning to spend, which is exactly why it is the channel that can absorb
+this. **It is opt-in (`fanOverlaps`) and `/activity` does not take it** — its lanes are whole
+environments, eight builds landing in one minute is a normal Tuesday there, and fanned they
+become a bead-chain that reads as if height meant something.
+
+**Rollbacks are marked on the chart too**, as a concentric ring in the mark's own ink — no
+new colour, survives greyscale — plus `, rolled back` in the dot's accessible name and a line
+in the tooltip. Only the current rollout's lane is marked: a sibling lane is a different
+release stream and this rollout's ordering has no standing to rank it.
+
+**The lane-name gutter is a ceiling, not a constant.** 130px of a ~310px chart at 390 was
+42% of the width; it is capped at 30% of the container, which is inert at 1440 and gives the
+axis a quarter more room on a phone.
+
+### `1d`, `1d`, `1d` for three rows six minutes apart
+
+`formatTimeAgoCompact` is correct and **unchanged** — seventeen callers depend on exactly
+what it does, and "how stale is this" is the right question on a list of *different* things.
+On a list of *one* thing ordered by time the question is "when, and how far apart", and a
+formatter whose coarsest bucket is a day cannot answer it. The exact clock (`Aug 30, 23:15`)
+leads the row now and the relative time is demoted to the second line. Below `sm` the clock
+rides the main column, because the whole time column was `hidden sm:block` and the row said
+nothing about when at 390. The card's rollup uses a local `spanLabel` for the same reason:
+`formatDurationMs` would render the 37-hour span as `1 day`.
+
+## Every unmatched route has a designed state (2026-08-31)
+
+The product had **no `+error.svelte` at all**, so every address SvelteKit could not match
+rendered the framework's own two words — `404 Not Found`, no navbar, no sidebar, no link
+out. A critic reached it by typing `/environments/<unknown>`, which the product's own
+vocabulary invites: the section is called Environments and the detail route is
+`/envs/<name>`.
+
+The new page is the rollout not-found state the critic praised, generalised: what happened,
+what it means, the address that was queried, and a way out — in the same `AlertPanel` every
+other blocking fact uses. **It also guesses, carefully:** the first URL segment is looked up
+in the same six destinations the sidebar prints, so `/environments/foo` offers Environments
+before Home, and an unrecognised segment offers Home and says nothing clever. The guess can
+only ever name a place that exists.
+
+`AlertPanel` lays actions out in a non-wrapping row, which is right for the two-button states
+that built it; the caller supplies its own wrapping box rather than changing the panel.
+
+## The Logs tab stopped calling a stream a load (2026-08-31)
+
+`Loading...` stayed up, with a spinner, above hundreds of delivered lines. It was not a
+timing bug: TanStack holds `isFetching` true for the entire life of a stream, so
+`isPending || isFetching` is true forever, and a reader shown that label has to decide
+whether the log in front of them is complete.
+
+Three states, three different sentences:
+
+| state | what it says | where |
+|---|---|---|
+| connecting, nothing yet | spinner + `Connecting to pods…` | header |
+| open, lines landing | `Streaming ●` | footer, **and only there** |
+| closed | `Stream closed ●` in gray | footer |
+
+The footer's `Streaming ●` used to draw whenever a line had *ever* arrived — after the stream
+closed and after it errored. A live mark that cannot go out is decoration, not a status; it
+is gated on the query now. The header no longer repeats it.
+
+The empty state printed `No logs available (Total: 0, Filtered: 0)` — two internal counters,
+one string for two different problems. Silent pods and a filter hiding everything are now
+told apart, and only one of them gets an action (`Clear filters`).
+
+---
+
+## One blocking story per rollout (2026-08-31)
+
+**The rule: no page derives its own answer to "why is nothing newer deploying".**
+`src/lib/view-models/blocking-story.ts` is the only place that answers it, and
+`/apps`, `/apps/<name>`, `/environments` and rollout detail all render its output.
+
+### Why it exists
+
+For the same rollout at the same second, two pages said opposite things:
+
+| surface | said |
+|---|---|
+| `/apps/hello-world-app` | *"STAGING is waiting on an approval … `ghd-p2fld` … **This will not clear on its own.***" |
+| rollout detail | *"Automatic deploys are paused … **until 13h 34m (1:00:00 PM)***." |
+
+Both were reading one gate out of two. One said escalate at 3am, the other said go
+back to bed, and the `Investigate` CTA on the first led to the second.
+
+### A gate's `passing` and its allow-list are two different facts
+
+Read off `rollout-controller/internal/controller/rollout_controller.go`: a gate that
+is `passing: false` never publishes an allow-list, and a gate with an allow-list is
+`passing`. **But "has an allow-list" does not mean "a person must approve it"** —
+three different writers publish one:
+
+| writer | sets | clears when | joinable from |
+|---|---|---|---|
+| `RolloutSchedule` | `passing` | the clock reaches the window | `status.managedGates` + `status.nextTransition` |
+| `Environment` (env controller) | `allowedVersions` | the **upstream environment** deploys it | `Environment.status.rolloutGateRef` + `spec.relationship` |
+| `RolloutDependency` | `allowedVersions` | the **provider service** ships | `status.gateName` + `spec.providerRef` |
+| a human, by `kubectl` | `allowedVersions` | **a person acts** | nothing — the fallthrough |
+
+So `ghd-p2fld` captioned *"Needs a person to approve"* was a **wrong instruction**,
+not a vague one: no human can approve an environment-controller gate.
+
+**Never pattern-match a gate name.** `ghd-`, `schedule-gate-` and `dependency-` are
+`generateName` prefixes. Every classification is a join on a published reference, and
+all of them come from the `/api/rollouts` payload the pages already have (schedules
+need one extra GET per held rollout, cached by namespace).
+
+### The four answers, and the one that means escalate
+
+`clock` · `check` · `upstream` · **`person`**. Only `person` means wake someone up.
+`severity` is `warning` unless everything clears without anyone.
+
+### The three strings, rendered verbatim
+
+- `headline` — *"Three things are holding PROD"*. With more than one gate it **counts
+  them**, because naming one gate as if it were the whole story was the defect.
+- `consequence` — every gate, worst-first, behind ONE opener: *"Nothing promotes
+  itself until …"*, which is the rollout detail page's own wording. Every clause is a
+  lowercase noun clause so the sentence never capitalises an environment name.
+- `verdict` / `resolution` — the 3am answer. `resolution` adds *"A deploy you start by
+  hand still applies immediately"*: a gate holds **automatic promotion only**, verified
+  by force-deploying through three closed gates. That clause is a page-level promise —
+  banners carry `resolution`, card rows carry `verdict`, or it is the same sentence
+  three times in one viewport.
+
+### The two renderers
+
+- `BlockingStoryPanel.svelte` — the page-level filled banner (grammar §4: 40px circular
+  icon, headline, consequence, footnote). One per page. Its `iconForStory` is exported
+  so every surface picks the same glyph: a calendar over *"someone has to approve
+  this"* says the opposite of the words beside it.
+- `BlockingStoryLines.svelte` — the same story inside a card, one line per gate. No
+  fill: a second filled object in a card flattens the one the page is allowed.
+
+### `healthy` was claiming more than it measured
+
+`/environments` printed a green `4/4 healthy` above a body reading `20 BEHIND` and
+naming a gate. The number was right; the word was a verdict on the whole card. It is
+`4/4 running` now — *deployed and serving*, exactly the predicate behind the count —
+with a second amber `N held` rollup carrying the fact the body is about.
+
+### Attribute at the grain you print at
+
+`/environments` printed `20 versions · hello-world-app` and then a reason line built
+from the **union** of every app's gates in that tier, so gates belonging to
+*hello-multi* appeared under a heading about *hello-world-app*. A card speaks for ONE
+rollout, ranked needs-a-person first. A join across the wrong grain reads as a fact.
