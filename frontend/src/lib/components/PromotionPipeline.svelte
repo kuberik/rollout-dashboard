@@ -1,0 +1,421 @@
+<svelte:options runes={true} />
+
+<script module lang="ts">
+	import type { EnvironmentTheme } from '$lib/environment-theme';
+
+	export type Station = {
+		key: string;
+		/** Chip label — the region token in a fan-out, the env name otherwise. */
+		label: string;
+		title: string;
+		theme: EnvironmentTheme | null;
+		/** Display sha, or null when this environment has never deployed. */
+		version: string | null;
+		/** Own-list rank. 0 = newest, -1 = not placeable on the ladder. */
+		rank: number;
+		diverged: boolean;
+		/** Raw bake status — drives the circle's tint and its glyph. */
+		status: string;
+		/** The word for the circle, for screen readers and the tooltip. */
+		statusWord: string;
+		/** `23m` — how long the running build has been here. */
+		age: string | null;
+		ageTitle: string | null;
+		href?: string;
+		/**
+		 * A production region on the build the fleet agreed on: it keeps the
+		 * full number and the full sha and gives up only the colour, so the
+		 * regions that DIFFER are the ones that stand out. `StageChain`'s own
+		 * rule, unchanged.
+		 */
+		quiet?: boolean;
+	};
+
+	export type Hop = {
+		/** Builds waiting to cross this edge. Drives dashed vs solid. */
+		waiting: number;
+		label: string;
+	};
+</script>
+
+<script lang="ts">
+	/**
+	 * THE PROMOTION PIPELINE — the app-detail page's SUBJECT.
+	 *
+	 * ══ WHY THIS EXISTS ═════════════════════════════════════════════════
+	 *
+	 * > *"App with no issues looks weird, like something is missing."*
+	 *
+	 * It was missing. `/apps/<name>` split into an ACT column and a 340px
+	 * STATE rail; when nothing needs a person the act column does not render,
+	 * and what was left was a reverse-chronological activity log beside a
+	 * narrow rail — a page whose main object had been deleted. The rail held
+	 * the answers to two of the page's three criteria (*which env runs what*,
+	 * *is the prod fleet consistent*) at 340px and 11px, and the main column
+	 * spent its whole width on the third.
+	 *
+	 * ⛔ THE FIX IS NOT AN ALL-CLEAR CARD. A card that says "nothing is wrong"
+	 * is still a card spent on absence, and the human has rejected descriptive
+	 * text on this page by name. The fix is that the page's SUBJECT — the
+	 * promotion chain — stops being a sidebar and becomes the main column's
+	 * lead object, in EVERY state. The healthy page is then the same
+	 * composition with the alarm absent, not a different page.
+	 *
+	 * ══ THE FORM IS THE REFERENCE PAGE'S OWN ════════════════════════════
+	 *
+	 * Measured on `/rollouts/<cluster>/<ns>/<name>` — the page the human calls
+	 * beautiful — `Deployment Pipeline` is a titled card whose body is a
+	 * vertical run of STEPS: a filled status circle, the step's name at 14px,
+	 * a right-aligned state, and a 1px connector joining one circle to the
+	 * next. Its header carries the rollup `5/5 done`.
+	 *
+	 * This is that object with ENVIRONMENTS as the steps. Same circle (the
+	 * product's `getStatusCircleClass` + `BakeStatusIcon` atom, at the 32px
+	 * every task row on this page already uses), same connector, same
+	 * right-aligned answer, same rollup slot — `3 of 3 up to date`.
+	 *
+	 * ⚠️ THE GREEN CIRCLE ON A SUCCEEDED ENVIRONMENT IS DELIBERATE, and it is
+	 * the one place this object departs from `StageChain`, which draws NO dot
+	 * for a settled node ("mark the deviation, never the norm"). That rule was
+	 * derived for a MARK REPEATED DOWN A LIST — thirteen 5px dots in a 340px
+	 * rail, every one saying "fine". Here the circle is not a health badge, it
+	 * is the FRONTIER: a filled circle means the build reached this station,
+	 * exactly as `Stage 1 · Done` means the deploy cleared that step on the
+	 * reference page, which draws five of them and is the page the human
+	 * points at. An unbroken run of circles down to the last environment is
+	 * what "nothing is wrong" looks like when it is drawn instead of written.
+	 *
+	 * ══ A LINE AND A SET, AND NEVER ONE SHAPE FOR BOTH ══════════════════
+	 *
+	 * `DESIGN-INTENT.md`: *"Stages (dev → staging → canary) are a LINE.
+	 * Production regions are a SET."* The state rail rendered both as the same
+	 * vertical list, which is precisely forcing one shape onto both.
+	 *
+	 *   · STAGES get the line: one station per environment, joined by HOPS.
+	 *     A hop is the promotion edge — SOLID when the edge is in sync,
+	 *     DASHED with a printed count when builds are waiting to cross it.
+	 *     Shape and a number, never a hue: amber is `stuck` and a promoting
+	 *     pipeline is not a stuck one.
+	 *   · REGIONS get the set: a wrapping grid, no rails, under a sub-header
+	 *     that states the verdict in words (`all agree` / `3 versions`). A set
+	 *     has no order, so it may not be drawn as a column with edges. N
+	 *     regions cost rows, not width.
+	 *
+	 * ══ WHAT IT DOES NOT SAY ════════════════════════════════════════════
+	 *
+	 * No `stuck`, `pinned` or `failed` chips. Those belong to the `Needs you`
+	 * card, which is where the DECISION is, and Direction B's one rule is that
+	 * nothing appears twice. What this object owns is the state itself: the
+	 * status circle, the build each environment runs, its distance from the
+	 * newest, and when it last moved.
+	 */
+	import Chip from './Chip.svelte';
+	import BakeStatusIcon from './BakeStatusIcon.svelte';
+	import { getStatusCircleClass } from '$lib/bake-status';
+	import { CodeBranchSolid } from 'flowbite-svelte-icons';
+
+	let {
+		stages,
+		hops = [],
+		fleet = [],
+		fleetHop = null,
+		fleetVerdict = null,
+		emptyLabel = 'No environments bound'
+	}: {
+		stages: Station[];
+		/** `hops[i]` sits between `stages[i]` and `stages[i + 1]`. */
+		hops?: (Hop | null)[];
+		/** Production regions. Non-empty only when the app fans out. */
+		fleet?: Station[];
+		/** The edge from the last stage into the fleet. */
+		fleetHop?: Hop | null;
+		fleetVerdict?: { label: string; agree: boolean } | null;
+		emptyLabel?: string;
+	} = $props();
+</script>
+
+<!-- The build each station runs, in the product's joined `[verdict][sha]` box.
+     Identical words, roles and colours to `StageChain` — one build badge, one
+     spelling, across every page that draws a chain. -->
+{#snippet buildBadge(s: Station)}
+	{#if s.version === null}
+		<Chip role="unranked" label="not deployed" title="{s.title} has never deployed" />
+	{:else if s.diverged}
+		<Chip
+			role="diverged"
+			wide
+			label="unreleased"
+			value={s.version}
+			title="{s.title} runs a version that is on no environment's release list"
+		/>
+	{:else if s.rank === 0}
+		<!-- ON HEAD: THE BUILD ALONE, NO RANK WORD. One half means "on head";
+		     two halves carry a verdict. The product's rule since 2026-08-23. -->
+		<Chip value={s.version} valueTitle="{s.title} runs the newest known build" />
+	{:else if s.rank > 0}
+		<Chip
+			role={s.quiet ? 'count' : 'rank'}
+			label="{s.rank} behind"
+			value={s.version}
+			title="{s.title} can still take {s.rank} newer version{s.rank === 1 ? '' : 's'}"
+			wide
+		/>
+	{:else}
+		<Chip role="unranked" label="unknown" value={s.version} title="This build is not on the ladder" />
+	{/if}
+{/snippet}
+
+{#snippet identity(s: Station)}
+	{#if s.href}
+		<a href={s.href} class="flex min-w-0" title="Open the {s.title} rollout">
+			<Chip role="env" theme={s.theme} label={s.label} title={s.title} wide class="min-w-0" />
+		</a>
+	{:else}
+		<Chip role="env" theme={s.theme} label={s.label} title={s.title} wide class="min-w-0" />
+	{/if}
+{/snippet}
+
+<div class="pp">
+	{#if stages.length === 0 && fleet.length === 0}
+		<p class="t-micro text-gray-500 dark:text-gray-400">{emptyLabel}</p>
+	{:else}
+		<ol class="pp-line">
+			{#each stages as s, i (s.key)}
+				<li class="pp-station">
+					<span
+						class="pp-disc {getStatusCircleClass(s.status)}"
+						title="{s.title} — {s.statusWord}"
+					>
+						<BakeStatusIcon bakeStatus={s.status} size="medium" />
+						<span class="sr-only">{s.statusWord}</span>
+					</span>
+					<!-- WHO, THEN WHAT IT RUNS — one cluster, left. The build badge
+					     sits BESIDE the environment because they are one fact
+					     (`STAGING runs 064b655`); parked on the card's right edge with
+					     600px of nothing between them the row read as two unrelated
+					     columns. What goes hard right is the TIME, which is exactly
+					     what the activity list directly below this card does with its
+					     own timestamps — one page, one idiom. -->
+					<span class="pp-id">
+						{@render identity(s)}
+						{@render buildBadge(s)}
+					</span>
+					{#if s.age}
+						<span
+							class="pp-meta t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
+							title={s.ageTitle ?? undefined}>{s.age} ago</span
+						>
+					{/if}
+				</li>
+
+				{#if hops[i]}
+					{@const h = hops[i] as Hop}
+					<!-- The rail is always drawn; the LABEL only when it is a count.
+					     A solid rail already says "in sync" and saying it twice is
+					     the page marking the norm once per promotion edge. -->
+					<li class="pp-hop">
+						<span class="pp-rail {h.waiting > 0 ? 'pp-rail--gap' : ''}"></span>
+						{#if h.label}
+							<span class="t-code-sm truncate text-gray-500 dark:text-gray-400">{h.label}</span>
+						{/if}
+					</li>
+				{/if}
+			{/each}
+
+			{#if fleet.length > 0 && fleetHop}
+				<li class="pp-hop">
+					<span class="pp-rail {fleetHop.waiting > 0 ? 'pp-rail--gap' : ''}"></span>
+					{#if fleetHop.label}
+						<span class="t-code-sm truncate text-gray-500 dark:text-gray-400">{fleetHop.label}</span>
+					{/if}
+				</li>
+			{/if}
+		</ol>
+
+		{#if fleet.length > 0}
+			<!-- THE SET. A sub-header inside a card still gets an icon — the
+			     reference page carries 115 of them and every titled region has
+			     one — and the verdict is stated in WORDS beside the rows that
+			     draw it, so criterion 3 is answered without counting. -->
+			<div class="pp-fleet">
+				<div class="mb-3 flex items-center gap-2">
+					<CodeBranchSolid class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
+					<h3 class="t-label text-gray-500 dark:text-gray-400">
+						Production · {fleet.length} regions
+					</h3>
+					{#if fleetVerdict}
+						<span class="ms-auto">
+							<!-- ALWAYS `count`, NEVER `rank`. A COUNT of builds is not an
+							     adverse state: regions on different builds mid-promotion is
+							     the normal state of a pipeline. What IS adverse about a
+							     region is on that region's own station. -->
+							<Chip
+								role="count"
+								label={fleetVerdict.label}
+								wide
+								title={fleetVerdict.agree
+									? 'Every production region runs the same version'
+									: 'Production regions are running different versions'}
+							/>
+						</span>
+					{/if}
+				</div>
+				<ul class="pp-set">
+					{#each fleet as s (s.key)}
+						<li class="pp-region">
+							<span
+								class="pp-disc pp-disc--sm {getStatusCircleClass(s.status)}"
+								title="{s.title} — {s.statusWord}"
+							>
+								<BakeStatusIcon bakeStatus={s.status} size="small" />
+								<span class="sr-only">{s.statusWord}</span>
+							</span>
+							<span class="pp-id">
+								{@render identity(s)}
+								{@render buildBadge(s)}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
+	{/if}
+</div>
+
+<style>
+	/* The station's own container, because what it must respond to is the
+	   CARD's width — this page's main column is 1fr beside a 340px rail on
+	   desktop and the full page on a phone, and neither is a viewport
+	   breakpoint. */
+	.pp {
+		container-type: inline-size;
+	}
+
+	.pp-line {
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* ── A STATION ───────────────────────────────────────────────────────
+	   Phone form: the circle, the environment and its build on one line; the
+	   age under them, indented to the identity's own x. Desktop form: one
+	   line, the age hard right. Deliberately in that order — WHO the row is
+	   about and WHAT it runs together, WHEN it got there last. */
+	.pp-station {
+		display: grid;
+		grid-template-columns: 32px minmax(0, 1fr);
+		grid-template-areas:
+			'disc id'
+			'. meta';
+		align-items: center;
+		column-gap: 12px;
+		row-gap: 6px;
+		padding-block: 8px;
+	}
+
+	/* THE DISC IS THE PRODUCT'S STATUS CIRCLE, at the 32px this page's task
+	   rows already use. Not a new atom, not a new colour: the ground comes
+	   from `getStatusCircleClass` and the glyph from `BakeStatusIcon`, which
+	   are the two functions that own the six status hues. */
+	.pp-disc {
+		grid-area: disc;
+		position: relative;
+		display: inline-flex;
+		height: 32px;
+		width: 32px;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: center;
+		border-radius: 9999px;
+	}
+	.pp-disc--sm {
+		height: 24px;
+		width: 24px;
+	}
+
+	.pp-id {
+		grid-area: id;
+		display: flex;
+		min-width: 0;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	.pp-meta {
+		grid-area: meta;
+		align-self: center;
+	}
+
+	@container (min-width: 460px) {
+		.pp-station {
+			grid-template-columns: 32px minmax(0, 1fr) auto;
+			grid-template-areas: 'disc id meta';
+		}
+		.pp-meta {
+			justify-self: end;
+		}
+	}
+
+	/* ── THE HOP ─────────────────────────────────────────────────────────
+	   The promotion edge, drawn through the disc column's centre so the line
+	   runs from one circle to the next. Same encoding as `StageChain`: solid
+	   is in sync, dashed is a gap, and the count is printed in mono. */
+	.pp-hop {
+		display: grid;
+		grid-template-columns: 32px minmax(0, 1fr);
+		align-items: center;
+		column-gap: 12px;
+		height: 22px;
+	}
+	/* THE LINE IS CONTINUOUS, CIRCLE TO CIRCLE. Drawn only inside the hop's
+	   own 22px box it left an 8px break at each end — the station's padding —
+	   so three stations read as three floating ticks rather than as one chain.
+	   It bleeds back through that padding instead. `15.5px` is 32/2 − 0.5:
+	   a 1px border starting there occupies 15.5–16.5, whose centre is the
+	   disc's own. */
+	.pp-rail {
+		display: block;
+		width: 0;
+		height: calc(100% + 16px);
+		margin-block: -8px;
+		margin-left: 15.5px;
+		border-left: 1px solid var(--color-gray-300);
+	}
+	:global(.dark) .pp-rail {
+		border-left-color: var(--color-gray-600);
+	}
+	.pp-rail--gap {
+		border-left-style: dashed;
+		border-left-color: var(--color-gray-400);
+	}
+	:global(.dark) .pp-rail--gap {
+		border-left-color: var(--color-gray-500);
+	}
+
+	/* ── THE SET ─────────────────────────────────────────────────────────
+	   A GRID, and that is the whole point: a set has no order, so it may not
+	   be drawn as a column with edges between its members. Twelve regions
+	   cost rows here, never width, and the wrap is `auto-fill` so three
+	   regions do not stretch to a third of the card each. */
+	.pp-fleet {
+		margin-top: 16px;
+		border-top: 1px solid var(--color-gray-200);
+		padding-top: 16px;
+	}
+	:global(.dark) .pp-fleet {
+		border-top-color: var(--color-gray-700);
+	}
+	.pp-set {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: 4px 24px;
+	}
+	.pp-region {
+		display: grid;
+		grid-template-columns: 24px minmax(0, 1fr);
+		grid-template-areas: 'disc id';
+		align-items: center;
+		column-gap: 10px;
+		padding-block: 6px;
+	}
+</style>

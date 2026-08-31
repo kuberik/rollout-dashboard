@@ -153,7 +153,7 @@
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
-	import StageChain from '$lib/components/StageChain.svelte';
+	import PromotionPipeline, { type Station } from '$lib/components/PromotionPipeline.svelte';
 	import ExposureBar, { hasExposure } from '$lib/components/ExposureBar.svelte';
 	import BlockingStoryLines from '$lib/components/BlockingStoryLines.svelte';
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
@@ -187,8 +187,8 @@
 		CheckCircleSolid,
 		ChartMixedOutline,
 		ArrowUpRightFromSquareOutline,
-		CodeBranchSolid,
-		GridSolid,
+		ChevronDoubleRightOutline,
+		LinkOutline,
 		LockOpenOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization } from '../../../types';
@@ -1183,22 +1183,7 @@
 	// The chain is the LINE of stages; production, when it fans out, is a SET
 	// and gets its own block. When there is exactly one production
 	// environment there is no set, so it is simply the chain's last node.
-	type ChainNode = {
-		key: string;
-		label: string;
-		title: string;
-		theme: AppCell['theme'];
-		version: string | null;
-		rank: number;
-		diverged: boolean;
-		dotClass: string;
-		statusWord: string;
-		settled: boolean;
-		href?: string;
-		quiet?: boolean;
-	};
-
-	function nodeOf(f: EnvFacts): ChainNode {
+	function nodeOf(f: EnvFacts): Station {
 		const d = dotFor(f.status);
 		return {
 			key: f.key,
@@ -1208,18 +1193,27 @@
 			version: f.version,
 			rank: f.rank,
 			diverged: f.diverged,
-			dotClass: d.cls,
+			// THE STATUS ITSELF, not a dot class. The pipeline draws the
+			// product's 32px status circle — the same atom the task rows use —
+			// and `getStatusCircleClass` / `BakeStatusIcon` own the six hues, so
+			// this page stops carrying a second table of them for the chain.
+			status: f.status,
 			statusWord: d.word,
-			// MARK THE DEVIATION, NEVER THE NORM — `StageChain` draws no dot for
-			// a node whose deploy simply succeeded. See that component.
-			settled: f.status === 'Succeeded',
+			// ⭐ WHEN DID THIS ENVIRONMENT LAST MOVE. Criterion 2 is *"which env
+			// runs what, AND HOW FAR BACK"*, and the chain only ever answered the
+			// first half: a build badge says WHICH, never WHEN. It is the
+			// rollout's own `history[0].timestamp`, the same field the activity
+			// list is built from, printed compactly with the full date in the
+			// title.
+			age: f.timestamp ? formatTimeAgoCompact(f.timestamp, $now) : null,
+			ageTitle: f.timestamp ? `Deployed ${formatDate(f.timestamp)}` : null,
 			href: rolloutHref(f.cell)
 		};
 	}
 
 	const stageFacts = $derived(envFacts.filter((f) => !(isFanOut && f.prod)));
 	const fleetFacts = $derived(isFanOut ? envFacts.filter((f) => f.prod) : []);
-	const chainNodes = $derived<ChainNode[]>(stageFacts.map(nodeOf));
+	const chainNodes = $derived<Station[]>(stageFacts.map(nodeOf));
 
 	/**
 	 * THE HOP — the gap on a promotion edge, as a first-class object.
@@ -1300,7 +1294,7 @@
 	 * With twelve regions this is the difference between two red marks that
 	 * say "these are the ones that differ" and twelve that say nothing.
 	 */
-	const fleetNodes = $derived<ChainNode[]>(
+	const fleetNodes = $derived<Station[]>(
 		fleetFacts.map((f) => ({
 			...nodeOf(f),
 			quiet: !!fleetModal && f.version === fleetModal.version && !f.diverged
@@ -1350,6 +1344,41 @@
 		return deployed.length > 0 && deployed.every((f) => f.rank === 0);
 	});
 
+	/**
+	 * ⭐ WHERE THIS APP'S CODE LIVES — the rail's `External Links`.
+	 *
+	 * Every route off this page ran through a task's button (`View on GitHub`,
+	 * `Investigate`), and a healthy app has no tasks. So the page that says an
+	 * app is fine offered no way to reach the code it is fine about. The
+	 * reference page's rail opens with exactly this card.
+	 *
+	 * IT IS THE REPO, NOT A BUILD. `GitHubViewButton` links to one build's tree
+	 * and belongs on the row whose build is the suspect; this is the app's
+	 * source, deduplicated across environments (they normally share one), and
+	 * it renders nothing at all when the rollouts carry no source.
+	 */
+	const sourceRepos = $derived.by<{ url: string; label: string }[]>(() => {
+		const out: { url: string; label: string }[] = [];
+		const seen = new Set<string>();
+		for (const c of cells) {
+			// ⛔ NOT `cell.sourceURL`. That field is `sourceDashboardURL(...)` —
+			// the DASHBOARD this rollout was read from — so it rendered
+			// `kuberik-spoke.192.168.1.102.nip.io` under a heading that says
+			// `Source`, twice, because a hub/spoke app is read from two of them.
+			// `status.source` is the repository the rollout is built from.
+			const raw = c.rollout.status?.source;
+			if (!raw) continue;
+			// `git@github.com:Owner/repo.git` is a transport address, not a link.
+			// Same normalisation `GitHubViewButton` performs, minus the build.
+			let url = raw.replace(/^git@([^:]+):/, 'https://$1/').replace(/\.git$/, '');
+			if (!/^https?:\/\//.test(url)) continue;
+			if (seen.has(url)) continue;
+			seen.add(url);
+			out.push({ url, label: url.replace(/^https?:\/\//, '').replace(/\/$/, '') });
+		}
+		return out;
+	});
+
 	// ── OBJECT 3 · EXPOSURE ──────────────────────────────────────────────
 	type Segment = { version: string; pods: number; percent: number; newest: boolean };
 	const exposure = $derived.by<{
@@ -1387,6 +1416,20 @@
 			unknown
 		};
 	});
+
+	/**
+	 * ⛔ NO RAIL TRACK WHEN THERE IS NOTHING IN THE RAIL. The same rule
+	 * `hasAct` already applies to the act column: left as a template area with
+	 * no element in it, the grid still reserves 340px and a 24px gap, which is
+	 * a visible hole beside the page's lead card. An app with no source
+	 * annotation and no resolvable pod counts simply has no small complete
+	 * answers to consult, and a column with nothing in it is not a column.
+	 */
+	const hasRail = $derived(
+		sourceRepos.length > 0 ||
+			podsQuery.isLoading ||
+			hasExposure(exposure.newestPercent, exposure.segments)
+	);
 
 	/**
 	 * ⛔ THERE IS NO VERDICT LEDE UNDER THE `h1` ANY MORE (2026-08-27).
@@ -1812,7 +1855,7 @@
 		     state column ABOVE the timeline. On desktop the grid areas put
 		     history back under the tasks. -->
 		<div class="ab-wrap">
-			<div class="ab-grid {hasAct ? '' : 'ab-grid--noact'}">
+			<div class="ab-grid {hasAct ? '' : 'ab-grid--noact'} {hasRail ? '' : 'ab-grid--norail'}">
 				<!-- ── ACT ──────────────────────────────────────────────────
 				     THE WRAPPER OWNS THE GRID AREA, not the `Card`. Svelte's
 				     scoped CSS is compiled per component, so `.ab-act` passed
@@ -2516,108 +2559,126 @@
 				</div>
 				{/if}
 
-				<!-- ── STATE ──────────────────────────────────────────────── -->
-				<div class="ab-state">
+				<!-- ── THE PIPELINE — criteria 2 AND 3, IN THE MAIN COLUMN ──
+				     > *"App with no issues looks weird, like something is missing."*
+
+				     ⛔ THIS OBJECT USED TO BE A 340px RAIL CARD CALLED
+				     `Where it’s running`, AND THAT IS THE WHOLE BUG. Two of the three
+				     questions `PAGE-CRITERIA.md` §03 puts to this page — *which env
+				     runs what, and how far back*, *is its prod fleet consistent* — were
+				     answered in a sidebar at 11px, while the main column spent its
+				     entire width on a reverse-chronological log. On an app with
+				     nothing wrong the act column does not render, so what was left was
+				     the log and the sidebar, and half the viewport below them. A log is
+				     what you read when you already know what you are looking for; it is
+				     not a shape, and it cannot lead a page.
+
+				     ⭐ SO THE SUBJECT TAKES THE MAIN COLUMN, IN EVERY STATE. Nothing is
+				     added for the healthy case and nothing is removed for the alarmed
+				     one: the banner still leads when there is a blocking fact, `Needs
+				     you` still sits under it, and the pipeline is the object both of
+				     them are ABOUT. A healthy app is the same page with the alarm
+				     absent — an unbroken run of status circles down to the last
+				     environment and a green `3 of 3 up to date` in the header's rollup.
+				     That is a MEASUREMENT, not a reassurance: a fraction proves what a
+				     sentence could only claim, and the human has rejected the sentence
+				     on this page by name.
+
+				     The rollup, the icon and the 47px header are `Card`'s, i.e. the
+				     reference page's; the body is `PromotionPipeline`, which is the
+				     reference page's `Deployment Pipeline` with environments as the
+				     steps. See that component for why a settled station keeps its
+				     circle here and loses it in `StageChain`. -->
+				<div class="ab-pipe min-w-0">
 					<Card
-						icon={GridSolid}
-						title="Where it’s running"
+						icon={ChevronDoubleRightOutline}
+						title="Promotion pipeline"
 						verdict={stateCount}
 						verdictTone={stateOnNewest ? 'good' : 'neutral'}
 						verdictTitle="Environments running the newest version this app has"
-						padded={false}
 					>
-						<!-- 1 · THE STAGE CHAIN -->
-						<div class="px-4 py-3">
-							<StageChain nodes={chainNodes} hops={chainHops} />
-						</div>
-
-						<!-- 2 · THE PRODUCTION FLEET — a rule, a verdict in words,
-					     then the nodes with no rails. Regions are a SET. -->
-						{#if isFanOut}
-							{#if fleetHop}
-								<div class="ab-fleethop px-4">
-									<span class="ab-rail {fleetHop.waiting > 0 ? 'ab-rail--gap' : ''}"></span>
-									<span class="t-code-sm truncate text-gray-500 dark:text-gray-400"
-										>{fleetHop.label}</span
-									>
-								</div>
-							{/if}
-							<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-								<div class="mb-2 flex items-center gap-2">
-									<!-- A SUB-HEADER INSIDE A CARD STILL GETS AN ICON. The
-								     reference page carries 115 of them and every titled
-								     region has one; the rejected pages carried four in
-								     total. -->
-									<CodeBranchSolid class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
-									<h3 class="t-label text-gray-500 dark:text-gray-400">
-										Production · {fleetNodes.length} regions
-									</h3>
-									{#if fleetVerdict}
-										<span class="ms-auto">
-											<!-- ALWAYS `count`, NEVER `rank` (2026-08-27, colour audit §10).
-										     This read `role={fleetVerdict.agree ? 'count' : 'rank'}`,
-										     so `3 BUILDS` printed in `rank`'s adverse red whenever
-										     the production fleet spanned more than one build.
-										     Two rules said no. DESIGN.md assigns `count` the
-										     NEUTRAL tone and lists red's owners as `Failed`,
-										     `diverged`, `rank (-N)` and `failing` — a COUNT of
-										     builds is none of them. And *"Drift is not a valid
-										     status"* is enforced: regions on different builds
-										     mid-promotion is the normal state, not an adverse
-										     one. What IS adverse about a region is already on
-										     that region's own node. -->
-											<Chip
-												role="count"
-												label={fleetVerdict.label}
-												wide
-												title={fleetVerdict.agree
-													? 'Every production region runs the same version'
-													: 'Production regions are running different versions'}
-											/>
-										</span>
-									{/if}
-								</div>
-								<StageChain nodes={fleetNodes} />
-							</div>
-						{/if}
-
-						<!-- 3 · EXPOSURE — AND IT DOES NOT RENDER WHEN THERE IS
-						     NOTHING TO MEASURE. (2026-08-30)
-
-						     `/api/rollouts` carries no ready-pod counts; they come from a
-						     per-rollout managed-resources call that answers nothing on some
-						     clusters. This section used to print the heading over a bare em
-						     dash in that case — a header and a slot spent to say "no data",
-						     which is exactly the object removed from the `Needs you` card
-						     one card up. The heading and the bar are guarded by the SAME
-						     predicate, `hasExposure`, which lives in the component so the
-						     two cannot disagree; the loading skeleton still shows while the
-						     answer is on its way, because a pending fact is not an absent
-						     one. NO NUMBER IS EVER INVENTED — that rule is untouched. -->
-						{#if podsQuery.isLoading || hasExposure(exposure.newestPercent, exposure.segments)}
-							<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-								<div class="mb-2 flex items-center gap-2">
-									<ChartMixedOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
-									<!-- ⛔ `EXPOSURE` NAMES A CONCEPT FROM PROGRESSIVE-DELIVERY
-									     LITERATURE, not a thing on the screen. Under it sits a
-									     bar of pods by version and a percentage; what a reader
-									     wants to know is how much of what is actually serving is
-									     on the new version. The heading says that now. -->
-									<h3 class="t-label text-gray-500 dark:text-gray-400">
-										How much is on the newest
-									</h3>
-								</div>
-								<ExposureBar
-									segments={exposure.segments}
-									totalPods={exposure.totalPods}
-									newestPercent={exposure.newestPercent}
-									unknownEnvironments={exposure.unknown}
-									loading={podsQuery.isLoading}
-								/>
-							</div>
-						{/if}
+						<PromotionPipeline
+							stages={chainNodes}
+							hops={chainHops}
+							fleet={fleetNodes}
+							{fleetHop}
+							{fleetVerdict}
+						/>
 					</Card>
 				</div>
+
+				<!-- ── STATE — THE RAIL, AS THE GRAMMAR DEFINES ONE ──────────
+				     §7: *"Main column plus a rail of INDEPENDENT cards … each is
+				     self-contained with its own header and rollup. The rail is not a
+				     sidebar of scraps; it is a stack of small complete answers."* The
+				     reference page's rail is four such cards. This one was ONE card
+				     holding the page's whole answer plus two unheaded sub-sections;
+				     with the chain moved out, what remains gets the treatment the
+				     grammar specifies — a titled card each, with its own rollup. -->
+				{#if hasRail}
+				<div class="ab-state flex flex-col gap-4">
+					<!-- ⭐ THE ONE WAY OFF THIS PAGE WHEN NOTHING IS WRONG. Every link
+					     to the source lived on a BUTTON inside a task, and a healthy app
+					     has no tasks — so the page that says an app is fine offered no
+					     route to the code it is fine about. `External Links` is the
+					     reference page's own first rail card and this is that card. It
+					     renders only when the rollouts actually carry a source. -->
+					{#if sourceRepos.length > 0}
+						<Card icon={LinkOutline} title="Source" padded={false}>
+							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+								{#each sourceRepos as r (r.url)}
+									<li>
+										<a
+											href={r.url}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40"
+											title={r.url}
+										>
+											<span class="t-dense min-w-0 truncate text-gray-900 dark:text-white"
+												>{r.label}</span
+											>
+											<ArrowUpRightFromSquareOutline
+												class="ms-auto h-3 w-3 shrink-0 text-gray-500 dark:text-gray-400"
+											/>
+										</a>
+									</li>
+								{/each}
+							</ul>
+						</Card>
+					{/if}
+
+					<!-- EXPOSURE — AND IT DOES NOT RENDER WHEN THERE IS NOTHING TO
+					     MEASURE. `/api/rollouts` carries no ready-pod counts; they come
+					     from a per-rollout managed-resources call that answers nothing on
+					     some clusters. The heading and the bar are guarded by the SAME
+					     predicate, `hasExposure`, which lives in the component so the two
+					     cannot disagree; the loading skeleton still shows while the answer
+					     is on its way, because a pending fact is not an absent one. NO
+					     NUMBER IS EVER INVENTED.
+
+					     ⭐ IT IS A CARD NOW, not a sub-section under a `t-label` caption.
+					     Its rollup is the percentage — the answer its own title asks for,
+					     taken without reading the bar. -->
+					{#if podsQuery.isLoading || hasExposure(exposure.newestPercent, exposure.segments)}
+						<Card
+							icon={ChartMixedOutline}
+							title="How much is on the newest"
+							verdict={exposure.newestPercent !== null ? `${exposure.newestPercent}%` : null}
+							verdictTone={exposure.newestPercent === 100 ? 'good' : 'neutral'}
+							verdictTitle="Share of this app's running pods on the newest build"
+						>
+							<ExposureBar
+								segments={exposure.segments}
+								totalPods={exposure.totalPods}
+								newestPercent={exposure.newestPercent}
+								unknownEnvironments={exposure.unknown}
+								loading={podsQuery.isLoading}
+							/>
+						</Card>
+					{/if}
+				</div>
+				{/if}
 
 				<!-- ── HISTORY — criterion 1. What HAPPENED, in order. ───────
 				     A TITLED CARD like every other region on the page.
@@ -2683,6 +2744,7 @@
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-areas:
 			'act'
+			'pipe'
 			'state'
 			'hist';
 		gap: 24px;
@@ -2692,12 +2754,18 @@
 	.ab-act {
 		grid-area: act;
 	}
+	.ab-pipe {
+		grid-area: pipe;
+	}
 	/* NO ACT COLUMN → NO ACT ROW. Left as a template area with no element in
 	   it the grid still spends a 24px gap on a row of zero height, which is a
 	   visible seam under the page header on exactly the page that is supposed
-	   to look calm. The history card takes the slot instead. */
+	   to look calm. The pipeline takes the slot instead — which is the whole
+	   point of moving it here: on a healthy app the page's LEAD is the app's
+	   own chain, not a log. */
 	.ab-grid--noact {
 		grid-template-areas:
+			'pipe'
 			'state'
 			'hist';
 	}
@@ -2708,46 +2776,40 @@
 		grid-area: hist;
 	}
 
-	/* The study's own breakpoint. Above it the state column is a fixed 340px
-	   and history returns to the left column, under the tasks. */
+	/* The study's own breakpoint. Above it the rail is a fixed 340px and the
+	   main column runs tasks → pipeline → history down the 1fr track.
+
+	   MOBILE ORDER IS DELIBERATE AND DIFFERENT: act → pipe → state → hist, so
+	   a phone gets the decisions, then the chain, then the rail's small
+	   answers, and the ten-row log last. The chain is what a reader came for
+	   and it may not sit below a screenful of timestamps. */
 	@container (min-width: 860px) {
 		.ab-grid {
 			grid-template-columns: minmax(0, 1fr) 340px;
 			grid-template-areas:
 				'act state'
+				'pipe state'
 				'hist state';
 			column-gap: 24px;
 		}
 		.ab-grid--noact {
-			grid-template-areas: 'hist state';
+			grid-template-areas:
+				'pipe state'
+				'hist state';
 		}
-	}
-
-	/* The hop from the last stage into the production fleet. Same geometry as
-	   `StageChain`'s own hops so the two read as one rail. */
-	.ab-fleethop {
-		display: grid;
-		grid-template-columns: 5px minmax(0, 1fr);
-		align-items: center;
-		column-gap: 8px;
-		height: 20px;
-	}
-	.ab-rail {
-		display: block;
-		width: 0;
-		height: 100%;
-		margin-left: 2px;
-		border-left: 1px solid var(--color-gray-200);
-	}
-	:global(.dark) .ab-rail {
-		border-left-color: var(--color-gray-700);
-	}
-	.ab-rail--gap {
-		border-left-style: dashed;
-		border-left-color: var(--color-gray-400);
-	}
-	:global(.dark) .ab-rail--gap {
-		border-left-color: var(--color-gray-500);
+		/* ⛔ AND NO 340px TRACK WHEN THE RAIL IS EMPTY. See `hasRail`. */
+		.ab-grid--norail {
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-areas:
+				'act'
+				'pipe'
+				'hist';
+		}
+		.ab-grid--noact.ab-grid--norail {
+			grid-template-areas:
+				'pipe'
+				'hist';
+		}
 	}
 
 	/* ── THE TASK ROW ────────────────────────────────────────────────────
