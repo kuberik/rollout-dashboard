@@ -3,12 +3,11 @@ import type { RolloutDependency } from '../../types';
 import {
 	buildDependencyGraph,
 	filterByEnv,
-	layoutGraph,
 	neighbourhood,
 	networkVerdict,
 	edgeSentence,
-	orderRanks,
-	rankNodes
+	rankNodes,
+	releaseWaves
 } from './dependency-graph';
 
 /**
@@ -267,21 +266,6 @@ describe('cycles render — they are not assumed away and not hidden', () => {
 		expect(first).toEqual(second);
 		expect(first).toHaveLength(1);
 	});
-
-	it('lays a cycle out without crashing and keeps every node placed', () => {
-		const g = build(
-			[dep({ consumer: 'b', provider: 'a', contract: 'x' }), dep({ consumer: 'a', provider: 'b', contract: 'y' })],
-			['a', 'b']
-		);
-		const l = layoutGraph(g);
-		expect(l.nodes).toHaveLength(2);
-		expect(l.edges).toHaveLength(2);
-		for (const e of l.edges) expect(e.d).toMatch(/^M [\d.]+ [\d.]+ C/);
-		// The arc dips below the boxes, and the canvas grew to hold it.
-		const arc = l.edges.find((e) => e.cyclic)!;
-		expect(l.height).toBeGreaterThan(Math.max(...l.nodes.map((n) => n.y + n.h)));
-		expect(arc.labelY).toBeGreaterThan(0);
-	});
 });
 
 describe('ranking is RELEASE ORDER — longest path, not shortest', () => {
@@ -317,39 +301,95 @@ describe('ranking is RELEASE ORDER — longest path, not shortest', () => {
 	});
 });
 
-describe('ordering — virtual nodes route long edges around what they cross', () => {
-	it('inserts a slot in every rank a long edge crosses', () => {
+describe('release waves — the phone`s ordering, and it is NOT dagre`s', () => {
+	it('puts a service in the earliest wave its providers allow', () => {
+		// a → b → c. Three waves, one service each.
+		const g = build(
+			[
+				dep({ consumer: 'b', provider: 'a', contract: 'ab' }),
+				dep({ consumer: 'c', provider: 'b', contract: 'bc' })
+			],
+			['a', 'b', 'c']
+		);
+		expect(releaseWaves(g)).toEqual([['a'], ['b'], ['c']]);
+	});
+
+	/**
+	 * ⭐ THE REASON THIS FUNCTION SURVIVED THE MOVE TO dagre.
+	 *
+	 * Measured on this exact shape, dagre's `network-simplex` and `tight-tree`
+	 * both return `[[a],[b],[c],[d,x],[e]]` — they push `x` next to `e` because
+	 * that shortens the line, which is the right objective for a DRAWING. `x`
+	 * waits on nothing, so `Ships 1st` is where it belongs on a page that is
+	 * telling somebody what they can deploy this morning.
+	 */
+	it('puts a service that waits on nothing in wave 0, however late it is consumed', () => {
 		const g = build(
 			[
 				dep({ consumer: 'b', provider: 'a', contract: 'ab' }),
 				dep({ consumer: 'c', provider: 'b', contract: 'bc' }),
-				dep({ consumer: 'c', provider: 'a', contract: 'ac' })
+				dep({ consumer: 'd', provider: 'c', contract: 'cd' }),
+				dep({ consumer: 'e', provider: 'd', contract: 'de' }),
+				dep({ consumer: 'e', provider: 'x', contract: 'xe' })
 			],
-			['a', 'b', 'c']
+			['a', 'b', 'c', 'd', 'e', 'x']
 		);
-		const { layers, chains } = orderRanks(g, rankNodes(g), 4);
-		// rank 1 holds `b` plus one virtual slot for the a→c edge.
-		expect(layers[1].filter((s) => s.real).map((s) => s.id)).toEqual(['b']);
-		expect(layers[1].filter((s) => !s.real)).toHaveLength(1);
-		expect(chains.get('a c ac')).toHaveLength(3);
+		expect(releaseWaves(g)).toEqual([['a', 'x'], ['b'], ['c'], ['d'], ['e']]);
 	});
 
-	it('bends the long edge`s path through the virtual slot', () => {
+	it('sorts names inside a wave, so two loads of one fleet read identically', () => {
 		const g = build(
 			[
-				dep({ consumer: 'b', provider: 'a', contract: 'ab' }),
-				dep({ consumer: 'c', provider: 'b', contract: 'bc' }),
-				dep({ consumer: 'c', provider: 'a', contract: 'ac' })
+				dep({ consumer: 'zeta', provider: 'root', contract: 'z' }),
+				dep({ consumer: 'alpha', provider: 'root', contract: 'a' }),
+				dep({ consumer: 'mid', provider: 'root', contract: 'm' })
 			],
-			['a', 'b', 'c']
+			['root', 'zeta', 'alpha', 'mid']
 		);
-		const l = layoutGraph(g);
-		const long = l.edges.find((e) => e.key === 'a c ac')!;
-		// Two cubic segments, i.e. one intermediate point.
-		expect(long.d.match(/C /g)).toHaveLength(2);
+		expect(releaseWaves(g)).toEqual([['root'], ['alpha', 'mid', 'zeta']]);
 	});
 
-	it('is deterministic — the same graph lays out identically twice', () => {
+	it('a cycle still yields waves — every node lands in exactly one', () => {
+		const g = build(
+			[
+				dep({ consumer: 'b', provider: 'a', contract: 'x' }),
+				dep({ consumer: 'a', provider: 'b', contract: 'y' })
+			],
+			['a', 'b']
+		);
+		const waves = releaseWaves(g);
+		expect(waves.flat().sort()).toEqual(['a', 'b']);
+		expect(waves).toHaveLength(2);
+	});
+
+	it('a self-loop does not push its own node out of the first wave', () => {
+		const g = build([dep({ consumer: 'a', provider: 'a', contract: 'x' })], ['a']);
+		expect(releaseWaves(g)).toEqual([['a']]);
+	});
+
+	it('holds 40 nodes with a fan-out — every node in exactly one wave, deepest last', () => {
+		const deps: RolloutDependency[] = [];
+		const name = (i: number) => `svc-${String(i).padStart(2, '0')}`;
+		for (let i = 1; i < 40; i++) {
+			deps.push(
+				dep({ consumer: name(i), provider: name(Math.floor((i - 1) / 3)), contract: `c${i}` })
+			);
+		}
+		const g = build(deps, Array.from({ length: 40 }, (_, i) => name(i)));
+		const waves = releaseWaves(g);
+		expect(waves.flat()).toHaveLength(40);
+		expect(new Set(waves.flat()).size).toBe(40);
+		expect(waves[0]).toEqual([name(0)]);
+		// Every node sits strictly after every provider it waits on.
+		const waveOf = new Map<string, number>();
+		waves.forEach((w, i) => w.forEach((id) => waveOf.set(id, i)));
+		for (const e of g.edges) {
+			if (e.cyclic) continue;
+			expect(waveOf.get(e.to)!).toBeGreaterThan(waveOf.get(e.from)!);
+		}
+	});
+
+	it('is deterministic — the same fleet waves identically twice', () => {
 		const mk = () =>
 			build(
 				[
@@ -360,66 +400,36 @@ describe('ordering — virtual nodes route long edges around what they cross', (
 				],
 				['a', 'b', 'c', 'd']
 			);
-		expect(JSON.stringify(layoutGraph(mk()).nodes)).toBe(JSON.stringify(layoutGraph(mk()).nodes));
+		expect(releaseWaves(mk())).toEqual(releaseWaves(mk()));
 	});
 
-	it('does not fall apart at 40 nodes — every node placed, no overlap in a column', () => {
-		const deps: RolloutDependency[] = [];
-		const name = (i: number) => `svc-${String(i).padStart(2, '0')}`;
-		for (let i = 1; i < 40; i++) {
-			deps.push(
-				dep({ consumer: name(i), provider: name(Math.floor((i - 1) / 3)), contract: `c${i}` })
-			);
-		}
-		const g = build(deps, Array.from({ length: 40 }, (_, i) => name(i)));
-		const l = layoutGraph(g);
-		expect(l.nodes).toHaveLength(40);
-		const byRank = new Map<number, number[]>();
-		for (const n of l.nodes) byRank.set(n.rank, [...(byRank.get(n.rank) ?? []), n.y]);
-		for (const ys of byRank.values()) {
-			const sorted = [...ys].sort((a, b) => a - b);
-			for (let i = 1; i < sorted.length; i++) expect(sorted[i] - sorted[i - 1]).toBeGreaterThanOrEqual(60);
-		}
-		expect(l.width).toBeGreaterThan(0);
-		expect(l.height).toBeGreaterThan(0);
-	});
-});
-
-describe('layout geometry', () => {
-	it('places providers left of consumers', () => {
-		const l = layoutGraph(build([dep()]));
-		expect(l.byId.get('api')!.x).toBeLessThan(l.byId.get('frontend')!.x);
+	it('gives an unresolved provider a wave too — a dangling ref is not dropped', () => {
+		// `ghost` is a providerRef the payload carries no Rollout for. It still
+		// ships first: the consumer genuinely waits on it, and hiding it would
+		// hide a real misconfiguration.
+		const g = build([dep({ consumer: 'frontend', provider: 'ghost', contract: 'api' })], [
+			'frontend'
+		]);
+		expect(releaseWaves(g)).toEqual([['ghost'], ['frontend']]);
 	});
 
-	it('centres a short column against the tallest one', () => {
+	it('re-waves the environment slice, not the whole fleet', () => {
+		// `b→c` exists only in prod. Filtering to dev leaves `a→b`, so `c` is
+		// gone entirely rather than sitting in an empty third wave.
 		const g = build(
 			[
-				dep({ consumer: 'b', provider: 'a', contract: 'ab' }),
-				dep({ consumer: 'c', provider: 'a', contract: 'ac' })
+				dep({ ns: 'hello-dep-dev', consumer: 'b', provider: 'a', contract: 'ab' }),
+				dep({ ns: 'hello-dep-prod', consumer: 'b', provider: 'a', contract: 'ab' }),
+				dep({ ns: 'hello-dep-prod', consumer: 'c', provider: 'b', contract: 'bc' })
 			],
 			['a', 'b', 'c']
 		);
-		const l = layoutGraph(g);
-		const a = l.byId.get('a')!;
-		const b = l.byId.get('b')!;
-		const c = l.byId.get('c')!;
-		expect(a.y + a.h / 2).toBeCloseTo((b.y + c.y + b.h) / 2, 5);
+		expect(releaseWaves(g)).toEqual([['a'], ['b'], ['c']]);
+		expect(releaseWaves(filterByEnv(g, ['dev']))).toEqual([['a'], ['b']]);
 	});
 
-	it('exposes the ranks as waves — the phone`s data', () => {
-		const g = build(
-			[
-				dep({ consumer: 'b', provider: 'a', contract: 'ab' }),
-				dep({ consumer: 'c', provider: 'b', contract: 'bc' })
-			],
-			['a', 'b', 'c']
-		);
-		expect(layoutGraph(g).waves).toEqual([['a'], ['b'], ['c']]);
-	});
-
-	it('returns an empty layout for an empty graph rather than NaN geometry', () => {
-		const l = layoutGraph(build([]));
-		expect(l).toMatchObject({ nodes: [], edges: [], waves: [], width: 0, height: 0 });
+	it('returns no waves for an empty network rather than one empty wave', () => {
+		expect(releaseWaves(build([]))).toEqual([]);
 	});
 });
 

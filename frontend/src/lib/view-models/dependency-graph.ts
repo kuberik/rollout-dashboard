@@ -55,27 +55,35 @@
  * evaluated is `'unknown'`, a third state, drawn as a dashed edge. Reading
  * absence as health is how a dashboard tells an operator to go back to bed.
  *
- * ── ⭐ DECISION 3 · LAYERED LAYOUT, HAND-ROLLED, NO GRAPH LIBRARY ───────
+ * ── ⭐ DECISION 3 · THE LAYOUT IS dagre'S, AND ALWAYS SHOULD HAVE BEEN ──
  *
  * A contract graph is a RELEASE ORDER — the controller's own words are
  * *"providers advance before the consumers that depend on them"*. That is a
- * rank, so the layout that shows it is layered (Sugiyama), left to right,
- * and NOT force-directed: a force layout puts release order nowhere and
- * produces a different picture on every load.
+ * rank, so the drawing is layered (Sugiyama), left to right, and NOT
+ * force-directed: a force layout puts release order nowhere and produces a
+ * different picture on every load.
  *
- * dagre/elk/cytoscape are 40-250KB for a graph whose largest realistic size
- * is a few dozen nodes. The three passes that matter — longest-path ranking,
- * barycentre ordering with virtual nodes, and centred coordinate assignment
- * — are ~150 lines and are below.
+ * The first version of this file hand-rolled that layout and argued in its
+ * own comments that a graph library was 40-250KB of dependency it would not
+ * pay for. **That was wrong, and it was wrong without looking.**
+ * `@xyflow/svelte` and `@dagrejs/dagre` were already in `package.json`, and
+ * `AppPromotionFlow` had already wired them together in this repo, at
+ * this Svelte version, with the LR/TB switching and the measure-then-layout
+ * effect both solved. The human's correction was one sentence: *"We used
+ * some library before to show the graph."*
+ *
+ * So ranking, barycentre ordering, virtual nodes, coordinate assignment and
+ * the hand-drawn cubic paths are DELETED. `DependencyNetwork` builds nodes
+ * and edges and hands them to `GraphCanvas`. This module keeps only what is
+ * DOMAIN — the graph, its states, its filters, and the release waves the
+ * phone prints — none of which has coordinates in it.
  *
  * ⛔ **DO NOT ASSUME ACYCLIC.** Nothing in the CRD forbids `a → b → a`; it
  * would simply deadlock both. A cycle must RENDER, not crash and not vanish,
- * so back edges are detected by DFS, excluded from ranking, and drawn as a
- * distinct arc below the graph carrying a `cycle` mark.
+ * so back edges are detected by DFS here, excluded from the release-wave
+ * ranking, and drawn by the canvas carrying a `cycle` mark.
  *
- * Everything here is PURE and deterministic — same input, same pixels — so
- * the layout can be tested without a DOM. That is the point: the layout is
- * logic, not markup.
+ * Everything here is PURE and deterministic, so it is tested without a DOM.
  */
 
 import type { RolloutDependency } from '../../types';
@@ -506,73 +514,49 @@ export function filterByEnv(graph: DependencyGraph, envs: string[]): DependencyG
 }
 
 // =========================================================================
-// THE LAYOUT — layered, left to right, in release order
+// RELEASE WAVES — the ONLY ordering this module still computes
 // =========================================================================
 
-export type LayoutOptions = {
-	nodeWidth?: number;
-	nodeHeight?: number;
-	colGap?: number;
-	rowGap?: number;
-	padding?: number;
-	/** Ordering sweeps. 4 is plenty at this scale; 0 makes the layout name-sorted. */
-	sweeps?: number;
-};
-
-export type PlacedNode = {
-	id: string;
-	rank: number;
-	order: number;
-	x: number;
-	y: number;
-	w: number;
-	h: number;
-};
-
-export type PlacedEdge = {
-	key: string;
-	from: string;
-	to: string;
-	contract: string;
-	state: EdgeState;
-	cyclic: boolean;
-	/** SVG path data. */
-	d: string;
-	/** Where a label sits, if the caller draws one. */
-	labelX: number;
-	labelY: number;
-	edge: GraphEdge;
-};
-
-export type GraphLayout = {
-	nodes: PlacedNode[];
-	edges: PlacedEdge[];
-	/**
-	 * Node ids per rank, in drawn order — THE MOBILE DESIGN'S DATA.
-	 * Rank 0 ships first. The phone renders these as release waves, which is
-	 * the same fact the columns carry, not a fallback list.
-	 */
-	waves: string[][];
-	width: number;
-	height: number;
-	byId: Map<string, PlacedNode>;
-};
-
-const DEFAULTS = {
-	nodeWidth: 184,
-	nodeHeight: 60,
-	colGap: 88,
-	rowGap: 20,
-	padding: 16,
-	sweeps: 4
-};
+/**
+ * ⭐ THE LAYOUT LIVES IN dagre NOW, AND THIS IS NOT THE LAYOUT.
+ *
+ * Everything that used to be below this line — longest-path ranking feeding a
+ * barycentre ordering pass, virtual nodes to route long edges, coordinate
+ * assignment, hand-drawn cubic paths and arc-routed cycles — has been deleted.
+ * `@xyflow/svelte` and `@dagrejs/dagre` were ALREADY dependencies of this
+ * repo, already wired together in `AppPromotionFlow`, and dagre does all
+ * five passes better than 150 hand-written lines ever will. The claim in the
+ * first version of this file that a graph library was too heavy to add was
+ * simply wrong: nothing had to be added.
+ *
+ * What survives is this one function, and it is NOT geometry — it produces no
+ * pixels, no paths and no coordinates. It answers a DOMAIN question the phone
+ * asks and the canvas does not: *in the earliest wave, which services can ship
+ * at all?*
+ *
+ * -- WHY NOT dagre's RANKS --------------------------------------------------
+ *
+ * Measured, on `a->b->c->d->e` plus `x->e`:
+ *
+ *   dagre `network-simplex` / `tight-tree`  ->  [[a],[b],[c],[d,x],[e]]
+ *   dagre `longest-path`                    ->  as-late-as-possible, worse
+ *   longest path from the SOURCES (below)   ->  [[a,x],[b],[c],[d],[e]]
+ *
+ * dagre is minimising edge length, which is the right objective for a DRAWING
+ * and the wrong one for a CLAIM. `x` waits on nothing, so `x` can ship in the
+ * first wave; putting it in the fourth because that shortens a line is a
+ * statement about ink, not about releases. The phone prints `Ships 1st`,
+ * `Ships 2nd` — a promise about what a person can deploy this morning — so it
+ * takes the earliest-possible ranking and the canvas takes dagre's.
+ */
 
 /**
- * Longest-path ranking on the acyclic remainder.
+ * Longest path from the sources: the earliest wave a service could ship in.
  *
- * Longest path rather than shortest, because rank IS release order: a service
- * that waits on something two hops deep cannot ship in wave 1, and shortest
- * path would put it there. Iterative for the same stack reason as `markCycles`.
+ * Longest rather than shortest, because rank IS release order — a service that
+ * waits on something two hops deep cannot ship in wave 1, and shortest path
+ * would put it there. Back edges and self-loops are excluded; a cycle has no
+ * release order, and `markCycles` has already marked which edge closes it.
  */
 export function rankNodes(graph: DependencyGraph): Map<string, number> {
 	const ids = graph.nodes.map((n) => n.id);
@@ -601,211 +585,18 @@ export function rankNodes(graph: DependencyGraph): Map<string, number> {
 	return rank;
 }
 
-type Slot = { id: string; real: boolean; edgeKey?: string };
-
 /**
- * Barycentre ordering with VIRTUAL NODES.
- *
- * The virtual nodes are what stop a long edge — `a` at rank 0 consumed by `d`
- * at rank 3 — from being drawn straight through whatever sits in ranks 1 and
- * 2. They occupy a slot in every rank they cross, so the ordering pass routes
- * AROUND them and the path bends through their centres.
- *
- * Four alternating sweeps, stable-sorted, so the result is deterministic.
+ * THE PHONE'S DATA: node ids per wave, wave 0 first, names sorted inside a
+ * wave so two loads of the same fleet read identically.
  */
-export function orderRanks(
-	graph: DependencyGraph,
-	rank: Map<string, number>,
-	sweeps: number
-): { layers: Slot[][]; chains: Map<string, string[]> } {
-	const maxRank = Math.max(0, ...[...rank.values()]);
-	const layers: Slot[][] = Array.from({ length: maxRank + 1 }, () => []);
-	for (const n of graph.nodes) layers[rank.get(n.id) ?? 0].push({ id: n.id, real: true });
-	for (const layer of layers) layer.sort((a, b) => a.id.localeCompare(b.id));
-
-	/** For each edge, the slot ids it passes through, source → target. */
-	const chains = new Map<string, string[]>();
-	const adjacency: { a: string; b: string }[] = [];
-
-	for (const e of graph.edges) {
-		const r1 = rank.get(e.from) ?? 0;
-		const r2 = rank.get(e.to) ?? 0;
-		if (e.cyclic || e.from === e.to || r2 <= r1) {
-			// Back edges and self-loops are drawn as arcs and take no slots.
-			chains.set(e.key, [e.from, e.to]);
-			continue;
-		}
-		const chain = [e.from];
-		for (let r = r1 + 1; r < r2; r++) {
-			// `~` cannot appear in a DNS-1123 Rollout name, so a virtual slot id can
-			// never collide with a real node's.
-			const vid = `~v~${e.key}~${r}`;
-			layers[r].push({ id: vid, real: false, edgeKey: e.key });
-			chain.push(vid);
-		}
-		chain.push(e.to);
-		chains.set(e.key, chain);
-		for (let i = 0; i < chain.length - 1; i++) adjacency.push({ a: chain[i], b: chain[i + 1] });
-	}
-
-	const predecessors = new Map<string, string[]>();
-	const successors = new Map<string, string[]>();
-	const push = (m: Map<string, string[]>, k: string, v: string) => {
-		const list = m.get(k);
-		if (list) list.push(v);
-		else m.set(k, [v]);
-	};
-	for (const { a, b } of adjacency) {
-		push(successors, a, b);
-		push(predecessors, b, a);
-	}
-
-	const indexIn = (layer: Slot[]) => new Map(layer.map((s, i) => [s.id, i] as const));
-
-	for (let sweep = 0; sweep < sweeps; sweep++) {
-		const down = sweep % 2 === 0;
-		if (down) {
-			for (let r = 1; r < layers.length; r++) {
-				const above = indexIn(layers[r - 1]);
-				sortByBarycentre(layers[r], (id) => predecessors.get(id) ?? [], above);
-			}
-		} else {
-			for (let r = layers.length - 2; r >= 0; r--) {
-				const below = indexIn(layers[r + 1]);
-				sortByBarycentre(layers[r], (id) => successors.get(id) ?? [], below);
-			}
-		}
-	}
-	return { layers, chains };
-}
-
-function sortByBarycentre(
-	layer: Slot[],
-	neighbours: (id: string) => string[],
-	other: Map<string, number>
-): void {
-	const current = new Map(layer.map((s, i) => [s.id, i] as const));
-	const bary = new Map<string, number>();
-	for (const s of layer) {
-		const ns = neighbours(s.id)
-			.map((n) => other.get(n))
-			.filter((v): v is number => v !== undefined);
-		// A slot with no neighbour on the reference side keeps its position;
-		// moving it would be a guess, and guesses are not stable across sweeps.
-		bary.set(s.id, ns.length === 0 ? current.get(s.id)! : ns.reduce((a, b) => a + b, 0) / ns.length);
-	}
-	layer.sort((a, b) => bary.get(a.id)! - bary.get(b.id)! || current.get(a.id)! - current.get(b.id)!);
-}
-
-/** Cubic path through a list of points, horizontal tangents at every joint. */
-function pathThrough(points: { x: number; y: number }[]): string {
-	if (points.length === 0) return '';
-	let d = `M ${points[0].x} ${points[0].y}`;
-	for (let i = 1; i < points.length; i++) {
-		const p = points[i - 1];
-		const q = points[i];
-		const mid = (p.x + q.x) / 2;
-		d += ` C ${mid} ${p.y} ${mid} ${q.y} ${q.x} ${q.y}`;
-	}
-	return d;
-}
-
-export function layoutGraph(graph: DependencyGraph, options: LayoutOptions = {}): GraphLayout {
-	const o = { ...DEFAULTS, ...options };
-	if (graph.nodes.length === 0) {
-		return { nodes: [], edges: [], waves: [], width: 0, height: 0, byId: new Map() };
-	}
+export function releaseWaves(graph: DependencyGraph): string[][] {
+	if (graph.nodes.length === 0) return [];
 	const rank = rankNodes(graph);
-	const { layers, chains } = orderRanks(graph, rank, o.sweeps);
-
-	const rowStep = o.nodeHeight + o.rowGap;
-	const colStep = o.nodeWidth + o.colGap;
-	const tallest = Math.max(...layers.map((l) => l.length));
-
-	/** Centre of every slot, real or virtual. */
-	const centre = new Map<string, { x: number; y: number }>();
-	const placed: PlacedNode[] = [];
-	layers.forEach((layer, r) => {
-		const offset = ((tallest - layer.length) * rowStep) / 2;
-		layer.forEach((slot, i) => {
-			const x = o.padding + r * colStep;
-			const y = o.padding + offset + i * rowStep;
-			if (slot.real) {
-				placed.push({ id: slot.id, rank: r, order: i, x, y, w: o.nodeWidth, h: o.nodeHeight });
-				centre.set(slot.id, { x: x + o.nodeWidth / 2, y: y + o.nodeHeight / 2 });
-			} else {
-				centre.set(slot.id, { x: x + o.nodeWidth / 2, y: y + o.nodeHeight / 2 });
-			}
-		});
-	});
-	const byId = new Map(placed.map((p) => [p.id, p] as const));
-
-	const contentWidth = o.padding * 2 + layers.length * colStep - o.colGap;
-	let contentHeight = o.padding * 2 + tallest * rowStep - o.rowGap;
-
-	const edges: PlacedEdge[] = [];
-	for (const e of graph.edges) {
-		const a = byId.get(e.from);
-		const b = byId.get(e.to);
-		if (!a || !b) continue;
-		let d: string;
-		let labelX: number;
-		let labelY: number;
-		if (e.cyclic || e.from === e.to || b.rank <= a.rank) {
-			/**
-			 * ⭐ THE CYCLE RENDERS. It dips below the graph and arrives at the
-			 * consumer's BOTTOM edge, so it can never be mistaken for one of the
-			 * left-to-right release-order edges above it. The canvas grows to
-			 * hold the arc rather than clipping it.
-			 */
-			const dip = Math.max(a.y + a.h, b.y + b.h) + 28 + Math.abs(a.rank - b.rank) * 8;
-			const sx = a.x + a.w / 2;
-			const tx = b.x + b.w / 2;
-			d = `M ${sx} ${a.y + a.h} C ${sx} ${dip} ${tx} ${dip} ${tx} ${b.y + b.h}`;
-			labelX = (sx + tx) / 2;
-			labelY = dip - 6;
-			contentHeight = Math.max(contentHeight, dip + o.padding);
-		} else {
-			const chain = chains.get(e.key) ?? [e.from, e.to];
-			const points: { x: number; y: number }[] = [];
-			points.push({ x: a.x + a.w, y: a.y + a.h / 2 });
-			for (let i = 1; i < chain.length - 1; i++) {
-				const c = centre.get(chain[i]);
-				if (c) points.push(c);
-			}
-			points.push({ x: b.x, y: b.y + b.h / 2 });
-			d = pathThrough(points);
-			// MIDWAY ALONG THE MIDDLE SEGMENT — i.e. in the GUTTER between two
-			// columns, never on top of a box. At 0.6 the label sat across the
-			// consumer's left border and its white ground punched a hole in it.
-			const i = Math.max(0, Math.floor((points.length - 1) / 2));
-			const a1 = points[i];
-			const b1 = points[Math.min(points.length - 1, i + 1)];
-			labelX = (a1.x + b1.x) / 2;
-			labelY = (a1.y + b1.y) / 2 - 9;
-		}
-		edges.push({
-			key: e.key,
-			from: e.from,
-			to: e.to,
-			contract: e.contract,
-			state: e.state,
-			cyclic: e.cyclic,
-			d,
-			labelX,
-			labelY,
-			edge: e
-		});
-	}
-
-	return {
-		nodes: placed,
-		edges,
-		waves: layers.map((l) => l.filter((s) => s.real).map((s) => s.id)),
-		width: contentWidth,
-		height: contentHeight,
-		byId
-	};
+	const depth = Math.max(0, ...rank.values());
+	const waves: string[][] = Array.from({ length: depth + 1 }, () => []);
+	for (const n of graph.nodes) waves[rank.get(n.id) ?? 0].push(n.id);
+	for (const w of waves) w.sort((a, b) => a.localeCompare(b));
+	return waves;
 }
 
 // =========================================================================
