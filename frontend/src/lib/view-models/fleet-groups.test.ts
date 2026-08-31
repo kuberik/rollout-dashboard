@@ -141,3 +141,124 @@ describe('one grouping predicate for `/` and `/rollouts`', () => {
 		expect(isNeedsYou(c)).toBe(false);
 	});
 });
+
+/**
+ * ⛔ THE 3AM DEFECT. (live critique, 2026-08-31, BLOCKING finding 1)
+ *
+ * `hello-world-prod/hello-world-app`'s health check set to `Unhealthy` — "p99
+ * latency 4.2s exceeds SLO of 500ms for 5m". The controller reacted correctly
+ * and published `DeploymentBlocked: True, reason: UnhealthyHealthChecks`. At
+ * that same second the product said:
+ *
+ *   `/`             "Trailing 2 — healthy, but behind a newer build"
+ *   `/rollouts`     Attention 0 · … · Trailing 2 · Steady 13
+ *   `/environments` prod 4/4 running
+ *   rollout detail  correct
+ *
+ * *"An operator opens `/` at 3am, reads the word **healthy** on the rollout
+ * whose SLO is blown, and goes back to bed."*
+ *
+ * These are the tests that make that unrepeatable: an unhealthy check reading
+ * as "healthy" is exactly the class of defect a unit test pins forever.
+ */
+function withCheckFailure(r: Rollout, message: string, gatesClosed = false): Rollout {
+	const gates = gatesClosed
+		? [{ name: 'schedule-gate-nwm62', passing: false }]
+		: [{ name: 'open-gate', passing: true }];
+	return {
+		...r,
+		status: {
+			...r.status,
+			gates,
+			conditions: [
+				{
+					type: 'DeploymentBlocked',
+					status: 'True',
+					reason: 'UnhealthyHealthChecks',
+					message,
+					lastTransitionTime: new Date(NOW.getTime() - 5 * 60_000).toISOString()
+				}
+			]
+		}
+	} as unknown as Rollout;
+}
+
+const SLO_MESSAGE =
+	"HealthCheck 'payment-latency' in namespace 'hello-world-prod' is not healthy (status: Unhealthy): p99 latency 4.2s exceeds SLO of 500ms for 5m";
+
+describe('a failing health check promotes a rollout into Attention', () => {
+	it('THE REPORTED DEFECT — the rollout is in `needsYou`, not `trailing`', () => {
+		// staging is the trailing one in the fixture; blow its SLO.
+		const sick = withCheckFailure(ROLLOUTS[1], SLO_MESSAGE);
+		const cs = buildRolloutCards([ROLLOUTS[0], sick, ROLLOUTS[2]], ENVIRONMENTS.slice(0, 3), NOW);
+		const c = cs.find((x) => x.envName === 'staging')!;
+
+		expect(c.statusKey).toBe('succeeded'); // the DEPLOY really did succeed
+		expect(c.stuck).toBeNull(); // and it is not stuck
+		expect(c.checkFailure).not.toBeNull();
+
+		expect(isNeedsYou(c)).toBe(true);
+		// …and it is out of BOTH captions that call it fine.
+		expect(isHealthy(c)).toBe(false);
+		expect(isTrailing(c)).toBe(false);
+		expect(isSteady(c)).toBe(false);
+	});
+
+	it('`Attention` counts it and `Trailing` does not — the two numbers on the page', () => {
+		const sick = withCheckFailure(ROLLOUTS[1], SLO_MESSAGE);
+		const before = fleetGroups(buildRolloutCards(ROLLOUTS, ENVIRONMENTS, NOW));
+		const after = fleetGroups(
+			buildRolloutCards([ROLLOUTS[0], sick, ROLLOUTS[2], ROLLOUTS[3]], ENVIRONMENTS, NOW)
+		);
+		expect(before.needsYou).toHaveLength(0);
+		expect(before.trailing).toHaveLength(1);
+		expect(after.needsYou).toHaveLength(1);
+		expect(after.trailing).toHaveLength(0);
+	});
+
+	it("⭐ THE CRITIC'S OWN CAVEAT — it works with NO gate closed", () => {
+		// *"that rollout also had three gates closed, so gate precedence may
+		// contribute"*, filed under LEFT because the critic could not reach the
+		// state. `DeploymentBlocked` is set from health-check state alone,
+		// before the gate loop, so the two are independent — and this is the
+		// isolated case, one open gate and nothing else holding it.
+		const sick = withCheckFailure(ROLLOUTS[1], SLO_MESSAGE, false);
+		const c = buildRolloutCards([sick], [ENVIRONMENTS[1]], NOW)[0];
+		expect(c.rollout.status?.gates?.every((g) => g.passing)).toBe(true);
+		expect(isNeedsYou(c)).toBe(true);
+		expect(isHealthy(c)).toBe(false);
+	});
+
+	it('…and identically with gates closed, so gate precedence changes nothing', () => {
+		const sick = withCheckFailure(ROLLOUTS[1], SLO_MESSAGE, true);
+		const c = buildRolloutCards([sick], [ENVIRONMENTS[1]], NOW)[0];
+		expect(isNeedsYou(c)).toBe(true);
+		expect(isHealthy(c)).toBe(false);
+	});
+
+	it('a recovered check does NOT hold the rollout in Attention', () => {
+		// `DeploymentBlocked: False, reason: HealthChecksHealthy` is the state
+		// the controller publishes the moment the check passes again. The
+		// witness belongs on rollout detail (finding 2), not in the fleet
+		// alarm — an alarm that never clears is an alarm nobody reads.
+		const healed = {
+			...ROLLOUTS[1],
+			status: {
+				...ROLLOUTS[1].status,
+				conditions: [
+					{
+						type: 'DeploymentBlocked',
+						status: 'False',
+						reason: 'HealthChecksHealthy',
+						message: '',
+						lastTransitionTime: NOW.toISOString()
+					}
+				]
+			}
+		} as unknown as Rollout;
+		const c = buildRolloutCards([healed], [ENVIRONMENTS[1]], NOW)[0];
+		expect(c.checkFailure).toBeNull();
+		expect(isNeedsYou(c)).toBe(false);
+		expect(isTrailing(c)).toBe(true);
+	});
+});

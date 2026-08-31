@@ -14,6 +14,7 @@
 		isSteady,
 		isPending
 	} from '$lib/view-models/fleet-groups';
+	import { checkFailureTitle } from '$lib/view-models/health-witness';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { shortenVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
@@ -26,7 +27,12 @@
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import RolloutStepper from '$lib/components/RolloutStepper.svelte';
 	import Chip from '$lib/components/Chip.svelte';
-	import { ChevronRightOutline, CloseCircleSolid, ClockSolid } from 'flowbite-svelte-icons';
+	import {
+		ChevronRightOutline,
+		CloseCircleSolid,
+		ClockSolid,
+		ExclamationCircleSolid
+	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -150,6 +156,13 @@
 	// matches the specific trouble the card is flagging.
 	function attnActionLabel(c: RolloutCard): string {
 		if (c.statusKey === 'failed') return 'Retry deploy';
+		// ⛔ NOT `Retry deploy`, AND NOT `Reconcile`. The deploy here succeeded;
+		// what is failing is a check the dashboard cannot clear and a redeploy
+		// would not fix. The only honest offer is to go and look at it — and
+		// rollout detail is the one surface that names the check and quotes its
+		// reason. Ranked ahead of the stuck branches: a blown SLO outranks a slow
+		// promotion.
+		if (c.checkFailure) return 'Investigate';
 		if (c.stuck?.kind === 'baking') return 'Promote now';
 		return 'Reconcile';
 	}
@@ -242,16 +255,29 @@
 				</div>
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
 					{#each needsYou as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+						<!--
+							⛔ THE CHECK BRANCH LEADS, AND WITHOUT IT THIS LINE READ
+							`behind ` WITH NOTHING AFTER IT. (2026-08-31) The chain ended
+							in a `c.stuck?.peerEnv` fallback, so the moment a rollout
+							entered this group for a reason that is neither a failed deploy
+							nor a stuck one, the card's only explanatory line rendered a
+							dangling preposition. A card in "Needs you now" that cannot say
+							why is the same defect one screen further in.
+						-->
 						{@const why =
-							c.statusKey === 'failed'
-								? c.failureCategory
-									? `${c.failureCategory} failed`
-									: 'deploy failed'
-								: c.stuck?.kind === 'baking'
-									? `${BAKE_WORD.InProgress} >1h`
-									: c.stuck?.kind === 'deploying'
-										? `${BAKE_WORD.Deploying} >1h`
-										: `behind ${c.stuck?.peerEnv ?? ''}`}
+							c.checkFailure
+								? c.checkFailure.check
+									? `health check ${c.checkFailure.check} failing`
+									: 'health check failing'
+								: c.statusKey === 'failed'
+									? c.failureCategory
+										? `${c.failureCategory} failed`
+										: 'deploy failed'
+									: c.stuck?.kind === 'baking'
+										? `${BAKE_WORD.InProgress} >1h`
+										: c.stuck?.kind === 'deploying'
+											? `${BAKE_WORD.Deploying} >1h`
+											: `behind ${c.stuck?.peerEnv ?? ''}`}
 						<div
 							class="environment-theme-scope flex flex-col gap-3 rounded-xl border border-gray-200 bg-red-50/40 p-4 dark:border-gray-700 dark:bg-red-900/10"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
@@ -270,6 +296,28 @@
 											>{c.name}</span
 										>
 										{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
+										<!-- ⛔ THE MARK IS THE SHARED `alarm` CHIP, the same one
+										     `StuckBadge` resolves to, in the same slot. A failing
+										     check is not a new severity and does not get a new
+										     geometry: measured at 204.2 presence it is already the
+										     loudest mark in the system, and a second, weaker pill
+										     for it is exactly the defect StuckBadge's own note
+										     records. The word is `unhealthy` because that is the
+										     HealthCheck's own status value, verbatim, and the
+										     direct antonym of the word that sent the operator back
+										     to bed. -->
+										<!-- ⚠️ `wide` IS REQUIRED. Measured at 1440 light without it,
+										     `Chip`'s 12ch cap rendered `UNHEALT…` — the word cut one
+										     letter before the syllable that carries the meaning, on
+										     the one mark whose whole job is to contradict the word
+										     `healthy`. Same opt-out the rank chip already takes. -->
+										{#if c.checkFailure}<Chip
+												role="alarm"
+												label="unhealthy"
+												title={checkFailureTitle(c.checkFailure)}
+												wide
+												class="shrink-0"
+											/>{/if}
 									</div>
 									<span
 										class="block truncate text-[11px] text-gray-500 dark:text-gray-400"
@@ -283,6 +331,11 @@
 							<div class="flex items-center gap-1.5 text-xs text-red-700 dark:text-red-400">
 								{#if c.statusKey === 'failed'}
 									<CloseCircleSolid class="h-3.5 w-3.5 shrink-0" />
+								{:else if c.checkFailure}
+									<!-- ⛔ NOT THE CLOCK. The clock is the `stuck` glyph and it
+									     means "this is taking too long"; a blown SLO is not slow,
+									     it is wrong, and nothing about it clears by waiting. -->
+									<ExclamationCircleSolid class="h-3.5 w-3.5 shrink-0" />
 								{:else}
 									<ClockSolid class="h-3.5 w-3.5 shrink-0" />
 								{/if}

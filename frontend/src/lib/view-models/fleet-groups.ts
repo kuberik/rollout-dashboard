@@ -32,9 +32,28 @@ import { rankBehindBy } from './env-rank';
  * `trailing` and `steady` ARE disjoint, and their union is exactly `healthy`.
  */
 
-/** Failed, or stuck. The only bucket that means "wake someone up". */
+/**
+ * Failed, stuck, or a health check failing under it. The only bucket that means
+ * "wake someone up".
+ *
+ * ⛔ THE THIRD CLAUSE IS THE 2026-08-31 FIX AND IT IS NOT OPTIONAL.
+ *
+ * A critic set `hello-world-prod/hello-world-app`'s check to `Unhealthy` — "p99
+ * latency 4.2s exceeds SLO of 500ms for 5m" — and the controller published
+ * `DeploymentBlocked: True, reason: UnhealthyHealthChecks`. This function
+ * returned `false`, so `/` filed it under **"Trailing 2 — healthy, but behind a
+ * newer build"** and `/rollouts` printed **`Attention 0`**. Rollout detail was
+ * the only correct surface in the product.
+ *
+ * *"An operator opens `/` at 3am, reads the word **healthy** on the rollout
+ * whose SLO is blown, and goes back to bed."*
+ *
+ * The cause was not a missing fact. `statusKey` is the DEPLOY's verdict, and
+ * the deploy really did succeed — the check failed afterwards. Both facts were
+ * in the same payload and only one reached the buckets.
+ */
 export function isNeedsYou(c: RolloutCard): boolean {
-	return c.statusKey === 'failed' || c.stuck != null;
+	return c.statusKey === 'failed' || c.stuck != null || c.checkFailure != null;
 }
 
 /** Deploying or checking right now. */
@@ -47,9 +66,19 @@ export function isPending(c: RolloutCard): boolean {
 	return c.statusKey === 'pending';
 }
 
-/** Last deploy succeeded and nothing is wedged. Splits into the two below. */
+/**
+ * Last deploy succeeded and nothing is wedged. Splits into the two below.
+ *
+ * ⛔ IT MUST EXCLUDE A FAILING CHECK, AND FIXING `isNeedsYou` ALONE WOULD NOT
+ * HAVE DONE IT. `needsYou`/`inMotion` are deliberately not a partition, but
+ * `trailing` and `steady` ARE — their union is exactly this — and both of their
+ * captions say the rollout is fine (`/`'s Trailing header is literally
+ * *"healthy, but behind a newer build"*). Promoting a rollout into `Attention`
+ * while still counting it under `Trailing 2` would have left the sentence that
+ * sent the operator back to bed on the page, next to the alarm.
+ */
 export function isHealthy(c: RolloutCard): boolean {
-	return c.statusKey === 'succeeded' && c.stuck == null;
+	return c.statusKey === 'succeeded' && c.stuck == null && c.checkFailure == null;
 }
 
 /**

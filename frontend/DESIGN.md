@@ -5329,3 +5329,71 @@ reads `Pinned version` (the heading again, in italics) when the pin triggered a 
 `*Automatic deployment*` when someone pinned the build already running. **A banner echoing
 its own heading is not emphasis; the fill is already the emphasis.** What replaced it is
 the fact the banner never carried: which build the pin is holding, and the consequence.
+
+## A health check is a fact about the ROLLOUT, not about the deploy — `health-witness.ts`
+
+Two failures from the 2026-08-31 failure-state critique, and they are the same mistake
+twice: **the product read the deploy's verdict and called it the rollout's health.**
+
+### 1. `Attention 0` on the rollout whose SLO was blown
+
+With `hello-world-prod/hello-world-app`'s check `Unhealthy` (*"p99 latency 4.2s exceeds SLO
+of 500ms for 5m"*) and the controller publishing `DeploymentBlocked: True, reason:
+UnhealthyHealthChecks`, `/` said **"Trailing 2 — healthy, but behind a newer build"**,
+`/rollouts` said **`Attention 0`**, `/environments` said `4/4 running`. Rollout detail was
+the only correct surface in the product.
+
+Nothing was missing from the payload. `/api/rollouts` carries `status.conditions` on every
+rollout; `statusKey` is the DEPLOY's verdict and the deploy genuinely succeeded — the check
+failed afterwards, and no list surface read it.
+
+**The rule.** A rollout's health is `deploy state AND check state`. `isNeedsYou` takes a
+third clause and `isHealthy` loses one, in `view-models/fleet-groups.ts`, and both are
+required: `trailing ∪ steady = healthy` is a partition, so promoting the rollout into
+`Attention` without removing it from `healthy` would have left *"healthy, but behind a
+newer build"* on the page next to the alarm.
+
+**The mark is the shared `alarm` Chip, `wide`, labelled `unhealthy`** — the same geometry
+`StuckBadge` resolves to, in the same slot on both list surfaces. A failing check is not a
+new severity and does not get a second, weaker pill. `wide` is mandatory: at the 12ch cap
+it rendered `UNHEALT…`, cutting the one word whose job is to contradict `healthy`.
+
+**And the glyph on `/`'s reason line is an exclamation, not a clock.** The clock means "this
+is taking too long"; a blown SLO is not slow, it is wrong, and waiting does not clear it.
+
+**One blind spot, and it is the controller's.** `setDeploymentBlockedCondition`
+short-circuits to `ManualDeployment` when `spec.wantedVersion` or `force-deploy` is set, so
+a PINNED rollout with a failing check publishes `False`. There is nothing in the list
+payload to recover that from and inventing it would be worse than the silence.
+
+### 2. `LastErrorTime` survives recovery, and the UI deleted it
+
+A check recovered to `Healthy` with `lastErrorTime` left in place — deliberate witness
+semantics that rollout and stepgate read to catch transient failures they would otherwise
+miss. The page rendered **`Health Checks — 4/4 healthy`** and nothing else, because with
+nothing failing and nothing pending the card's body does not render: no list, and **no
+expander to open**. There was no affordance anywhere in the product to learn a check had
+been erroring ninety seconds earlier.
+
+**The window rule: `max(deployedAt, lastRetryAt)`.** Not a number picked for the UI — it is
+`rollout_controller.go`'s own `errorCutoff`, the cutoff the controller uses to decide which
+errors count against the attempt in flight, and the one `visibleHealthChecks` already used
+to decide which failures to *show*. One cutoff, so the panel cannot hide a failure on one
+rule and forget a recovery on another.
+
+It also answers when the mark clears, without a timer: the next deploy moves `history[0]`
+and the window moves with it. **An error from three deploys ago is history, not a witness,
+and marking everything forever is how a signal stops being read.** Verified live: an error
+stamped before the current deploy returns the card to `4/4 healthy`.
+
+**Four check states, and they are disjoint.** `passing` and `recovered` are both
+`status: Healthy` to the API; only a `lastErrorTime` inside the window separates them.
+`recovered` joins the set that makes the card body render, so the row is **visible at rest**
+— the whole of the finding. The rollup counts are disjoint and sum to the total
+(`3 passing · 1 recovered` over four), because `4/4 · 1 recovered` is the same all-clear
+with a footnote. The header glyph stops being the green tick for the same reason: the header
+is the only part a reader takes at a glance, and it was saying all-clear over an incident.
+
+**The row leads with the state: `passing, last errored 3 minutes ago — <message>`.** The
+check really is passing and a reader who takes only the first word must not page anyone; a
+reader who stops at the second clause has still learned what their alert was about.

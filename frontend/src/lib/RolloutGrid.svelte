@@ -18,6 +18,7 @@
 		isSteady,
 		isPending
 	} from '$lib/view-models/fleet-groups';
+	import { checkFailureTitle } from '$lib/view-models/health-witness';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { SearchOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
@@ -184,12 +185,20 @@
 				map.set(groupKey, g);
 			}
 			g.cards.push(c);
-			if (c.statusKey === 'failed' || c.stuck) g.attentionCount++;
+			// ⛔ `isNeedsYou`, NOT A THIRD COPY OF IT. (2026-08-31) This counter and
+			// the sort below each open-coded `failed || stuck`, so when the shared
+			// predicate learned about failing health checks these two did not: the
+			// `Attention` pill above would have said 1 while the group header
+			// directly over the row still said `4 rollouts` with no `need
+			// attention` clause, and the row would have sorted to the bottom of its
+			// own namespace. One page, two answers — the exact shape
+			// `fleet-groups.ts` was extracted to end.
+			if (isNeedsYou(c)) g.attentionCount++;
 		}
 		for (const g of map.values()) {
 			g.cards.sort((a, b) => {
-				const as = a.statusKey === 'failed' || a.stuck ? 0 : 1;
-				const bs = b.statusKey === 'failed' || b.stuck ? 0 : 1;
+				const as = isNeedsYou(a) ? 0 : 1;
+				const bs = isNeedsYou(b) ? 0 : 1;
 				if (as !== bs) return as - bs;
 				return a.name.localeCompare(b.name);
 			});
@@ -584,6 +593,20 @@
 										<div class="flex min-w-0 items-baseline gap-1.5">
 											<span class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">{c.name}</span>
 											{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
+											<!-- ⛔ THE ROW THAT SAID `deploy succeeded` WHILE THE SLO
+											     WAS BLOWN. (2026-08-31) `statusKey` is the DEPLOY's
+											     verdict and the deploy did succeed; the check failed
+											     after it, and nothing on this card read it. Same slot
+											     and same `alarm` Chip as `StuckBadge` — a failing
+											     check is not a new severity and must not get a
+											     second, weaker geometry. -->
+											{#if c.checkFailure}<Chip
+													role="alarm"
+													label="unhealthy"
+													title={checkFailureTitle(c.checkFailure)}
+													wide
+													class="shrink-0"
+												/>{/if}
 										</div>
 										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{c.title}</span>{/if}
 									</div>

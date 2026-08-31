@@ -10,6 +10,8 @@ import { compareEnvironmentNames } from './env-order';
 import { newerReleaseCount } from './view-models/promotion';
 import { rankVerdictsByRollout, rankBehindBy } from './view-models/env-rank';
 import type { RankVerdict } from './view-models/env-rank';
+import { checkFailure } from './view-models/health-witness';
+import type { CheckFailure } from './view-models/health-witness';
 import {
 	sourceDashboardURL,
 	sourceClusterName,
@@ -93,6 +95,14 @@ export type RolloutCard = {
 	/** Non-null when the CURRENT version is older than the one it replaced. */
 	rolledBack: RollbackMark | null;
 	stuck: StuckReason | null;
+	/**
+	 * ⛔ A HEALTH CHECK IS FAILING RIGHT NOW — and this is NOT derivable from
+	 * `statusKey`. The deploy succeeded; the check failed afterwards. Four list
+	 * surfaces printed the word *healthy* on a rollout whose SLO was blown
+	 * because every one of them read the deploy's verdict and stopped. See
+	 * `view-models/health-witness.ts`.
+	 */
+	checkFailure: CheckFailure | null;
 	/**
 	 * ⛔ THE RANK. READ THIS, NEVER `behind`, FOR ANYTHING DISPLAYED.
 	 *
@@ -272,6 +282,7 @@ export function buildRolloutCards(
 			pinnedVersion: r.spec?.wantedVersion || null,
 			rolledBack: detectRollback(r),
 			stuck: detectStuck(r, { now }),
+			checkFailure: checkFailure(r),
 			rank,
 			behind,
 			rollout: r,
