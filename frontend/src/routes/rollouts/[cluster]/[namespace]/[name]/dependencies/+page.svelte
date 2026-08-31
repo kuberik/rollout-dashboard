@@ -182,10 +182,12 @@
 	import { rankVerdicts } from '$lib/view-models/env-rank';
 	import DependencyNetwork from '$lib/components/DependencyNetwork.svelte';
 	import { compareEnvironmentNames } from '$lib/env-order';
+	import { buildGateContext } from '$lib/view-models/blocking-story';
 	import {
-		buildDependencyGraph,
+		buildRolloutGraph,
 		neighbourhood,
-		networkVerdict
+		networkVerdict,
+		nodeId
 	} from '$lib/view-models/dependency-graph';
 
 	const cluster = $derived(page.params.cluster as string);
@@ -825,42 +827,62 @@
 	 * pages are one idea at two scales rather than two designs — the way
 	 * `/versions` and its detail page were built.
 	 *
-	 * It reads `allDeps` — BOTH ends of the edge, the whole payload — not the
-	 * consumer-filtered `deps` below, because a map of one node's neighbourhood
-	 * must include the neighbours that point AT it.
+	 * It reads `allDeps` and every `Environment` — BOTH ends of both edge
+	 * kinds, the whole payload — not the consumer-filtered `deps` below,
+	 * because a map of one node's neighbourhood must include the neighbours
+	 * that point AT it.
 	 *
-	 * The environment mapping is read off the `Environment` objects rather than
-	 * off namespace names: the tier word at the end of `hello-dep-prod` is a
-	 * convention, not a fact.
+	 * ⭐ AND THE NEIGHBOURHOOD IS NOW BOTH RELATIONS. A node is a Rollout, so
+	 * depth 1 from THIS rollout reaches the environment before and after it on
+	 * its own line AND the services it must ship with inside its own
+	 * environment. The tab used to show only the second; the promotion chain
+	 * lived in a separate card in a different geometry, which is exactly the
+	 * "two graphs" split the human rejected three times.
 	 */
-	const networkEnvOf = $derived.by(() => {
-		const m = new Map<string, string>();
-		for (const e of listEnvironments) {
-			const ns = e.metadata?.namespace;
-			const tier = e.spec?.environment;
-			if (ns && tier && !m.has(ns)) m.set(ns, tier);
-		}
-		return (ns: string) => m.get(ns) ?? null;
-	});
-
 	const networkEnvOrder = $derived(
 		[
 			...new Set(listEnvironments.map((e) => e.spec?.environment).filter(Boolean) as string[])
 		].sort(compareEnvironmentNames)
 	);
 
-	const fullNetwork = $derived(
-		buildDependencyGraph({
-			deps: allDeps,
-			envOf: networkEnvOf,
-			envOrder: networkEnvOrder,
-			knownRollouts: new Set(listRollouts.map((r) => r.metadata?.name).filter(Boolean) as string[])
+	const networkGateContext = $derived(
+		buildGateContext({
+			environments: listQuery.data?.environments ?? null,
+			rolloutDependencies: listQuery.data?.rolloutDependencies ?? null
 		})
 	);
 
-	/** This rollout, its providers and its consumers. Depth 1 — no further. */
-	const localNetwork = $derived(neighbourhood(fullNetwork, name, 1));
+	const fullNetwork = $derived(
+		buildRolloutGraph({
+			rollouts: listRollouts,
+			environments: listEnvironments,
+			dependencies: allDeps,
+			envOrder: networkEnvOrder,
+			gates: networkGateContext
+		})
+	);
+
+	/**
+	 * THIS rollout — cluster, namespace and name, not just the name. Three
+	 * rollouts share the name `hello-api-app` and a name-keyed focus would ring
+	 * whichever one sorted first.
+	 */
+	const focusId = $derived(nodeId(cluster, namespace, name));
+	/** Its promotion neighbours and its contract neighbours. Depth 1 — no further. */
+	const localNetwork = $derived(neighbourhood(fullNetwork, focusId, 1));
 	const localVerdict = $derived(networkVerdict(localNetwork));
+
+	/** The env identity theme for a tier, for the graph's chips. */
+	const networkThemeOf = $derived((env: string) => {
+		const e = listEnvironments.find((x) => x.spec?.environment === env);
+		if (!e) return null;
+		const r = listRollouts.find(
+			(x) =>
+				x.metadata?.namespace === e.metadata?.namespace &&
+				x.metadata?.name === e.spec?.rolloutRef?.name
+		);
+		return getRolloutEnvironmentTheme(r ?? null, e);
+	});
 
 </script>
 
@@ -994,7 +1016,12 @@
 								>Whole network ›</a
 							>
 						{/snippet}
-						<DependencyNetwork graph={localNetwork} focus={name} compact />
+						<DependencyNetwork
+							graph={localNetwork}
+							focus={focusId}
+							themeOf={networkThemeOf}
+							compact
+						/>
 					</Card>
 				{/if}
 

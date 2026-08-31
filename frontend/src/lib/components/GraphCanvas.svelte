@@ -17,6 +17,8 @@
 	type Props = {
 		nodes: Node[];
 		edges: Edge[];
+		/** Rank-advancing edges only, when that is not every drawn edge. */
+		layoutEdges?: Edge[] | null;
 		nodeTypes: NodeTypes;
 		rankdir?: 'LR' | 'TB' | 'auto';
 		stackBelow?: number;

@@ -57,6 +57,7 @@
 	let {
 		nodes: sourceNodes,
 		edges: sourceEdges,
+		layoutEdges = null,
 		nodeTypes,
 		rankdir = 'LR',
 		stackBelow = 620,
@@ -77,6 +78,33 @@
 		/** Positions are assigned here — the caller supplies topology only. */
 		nodes: Node[];
 		edges: Edge[];
+		/**
+		 * ⭐ THE EDGES dagre RANKS BY, when that is not every drawn edge.
+		 *
+		 * dagre is a LAYERED layout: every edge it is given advances a rank. A
+		 * graph whose edges are of two kinds — some that must cross ranks and
+		 * some that must stay INSIDE one — cannot be expressed to it. Measured
+		 * on `@dagrejs/dagre@1.1.8` against the live fleet:
+		 *
+		 *   · `{ minlen: 0 }`, the documented same-rank trick, THROWS
+		 *     (`Cannot read properties of undefined`) out of the normaliser;
+		 *   · giving the same-rank edges to dagre as ordinary ones turned three
+		 *     environment columns into FOUR, with `hello-frontend-app` in dev
+		 *     sharing a column with `hello-api-app` in staging. A column a
+		 *     reader believes is an environment and is not is worse than no
+		 *     columns at all.
+		 *
+		 * So the caller may hand dagre the rank-advancing edges ONLY. Svelte
+		 * Flow still draws every edge in `edges`: dagre supplies node
+		 * POSITIONS, and edge ROUTING is the library's. Nothing is
+		 * hand-laid-out — the within-rank ordering the omitted edges would have
+		 * influenced is bought back through node insertion order instead
+		 * (`layoutOrder` in `dependency-graph.ts`).
+		 *
+		 * `null` — the default, and what `AppPromotionFlow` passes — means
+		 * every drawn edge ranks.
+		 */
+		layoutEdges?: Edge[] | null;
 		nodeTypes: NodeTypes;
 		/** `auto` flips to `TB` below `stackBelow` px of container width. */
 		rankdir?: 'LR' | 'TB' | 'auto';
@@ -152,7 +180,34 @@
 	let flowNodes = $state<Node[]>([]);
 	let flowEdges = $state<Edge[]>([]);
 
-	const { fitView, zoomIn, zoomOut } = useSvelteFlow();
+	const { fitView, zoomIn, zoomOut, getViewport, setViewport } = useSvelteFlow();
+
+	/**
+	 * ⭐ THE RESTING VIEW OF AN OVERFLOWING GRAPH IS ITS TOP, NOT ITS MIDDLE.
+	 *
+	 * `fitView` CENTRES what it cannot fit. Measured on a 40-service ×
+	 * 4-environment fixture: the canvas opened on rows 15-24 of 40, and the
+	 * caller had just spent `layoutOrder` putting the HELD rows at row 1.
+	 * Centring threw that away — the reader landed in the middle of a fleet
+	 * with no reason to believe the answer was above them rather than below.
+	 *
+	 * So when the drawing is taller than the frame, the fit is followed by a
+	 * pan to the top edge. Horizontal placement is left exactly as `fitView`
+	 * computed it: the columns ARE the environments and there is no
+	 * "first" one to prefer.
+	 *
+	 * A graph that fits is untouched, so nothing about `AppPromotionFlow`
+	 * changes.
+	 */
+	function restingFit() {
+		fitView(FIT);
+		requestAnimationFrame(() => {
+			if (contentSize.height === 0) return;
+			const vp = getViewport();
+			if (contentSize.height * vp.zoom <= frameHeight + 4) return;
+			setViewport({ x: vp.x, y: 8, zoom: vp.zoom }, { duration: 0 });
+		});
+	}
 
 	$effect(() => {
 		if (rankdir !== 'auto') {
@@ -165,7 +220,7 @@
 	$effect(() => {
 		if (!containerEl) return;
 		containerWidth = containerEl.clientWidth;
-		const refit = () => requestAnimationFrame(() => fitView(FIT));
+		const refit = () => requestAnimationFrame(() => restingFit());
 		const ro = new ResizeObserver((entries) => {
 			for (const entry of entries) containerWidth = entry.contentRect.width;
 			refit();
@@ -229,7 +284,7 @@
 				height: node.measured?.height ?? fallbackNodeHeight
 			});
 		});
-		flowEdges.forEach((edge) => {
+		(layoutEdges ?? flowEdges).forEach((edge) => {
 			// A self-loop would make dagre's ranking meaningless; xyflow draws it
 			// on its own without help from the layout.
 			if (edge.source === edge.target) return;
@@ -275,7 +330,7 @@
 		});
 		if (changed) {
 			flowNodes = next;
-			requestAnimationFrame(() => fitView(FIT));
+			requestAnimationFrame(() => restingFit());
 		}
 	});
 

@@ -2,40 +2,46 @@
 
 <script lang="ts">
 	/**
-	 * `/dependencies` — THE WHOLE NETWORK.
+	 * `/dependencies` — WHAT IS BLOCKING WHAT, as ONE graph.
 	 *
-	 * From the human, verbatim: *"dependencies we used a full graph to show
-	 * whole network of dependencies."* Said twice, after two rounds of
-	 * per-rollout lists. This is the fleet-level answer the lists could not
-	 * give: which services depend on which, in what release order, and where
-	 * the network is blocked right now.
+	 * From the human, three times: the CONTRACT dependencies and the
+	 * ENVIRONMENT dependencies are ONE graph. Not two cards, not a graph beside
+	 * a chain, not two tabs. The model that finally makes that true is in
+	 * `dependency-graph.ts`: **a node is a Rollout — a (service, environment) —
+	 * and an edge is a `RolloutGate` on one rollout keyed to another.** Which
+	 * controller wrote the gate is an attribute of the edge.
+	 *
+	 * So the operator sees the real picture: a build moves RIGHTWARDS through
+	 * environments and SIDEWAYS between services that must ship in order, and
+	 * `hello-frontend-app` in prod is visibly held by two inbound edges at once
+	 * — staging has not deployed, and the api it needs is a version behind.
 	 *
 	 * ── ⭐ THE DATA IS ON THE LIST ENDPOINT ONLY ────────────────────────────
 	 *
 	 * `rolloutDependencies` is served by `GET /api/rollouts` with per-cluster
 	 * attribution, and is **NOT** on `GET /api/rollouts/:ns/:name`. That
-	 * omission caused a real bug the same night this page was designed. This
-	 * page reads the list endpoint, which is also what `/rollouts`, `/apps` and
-	 * `/` read, so it shares their cache.
+	 * omission caused a real bug the night this page was designed. This page
+	 * reads the list endpoint, which is also what `/rollouts`, `/apps` and `/`
+	 * read, so it shares their cache.
 	 *
 	 * ── THE TWO REGIONS ─────────────────────────────────────────────────────
 	 *
-	 * 1. `Dependency network` — the graph. The SHAPE.
-	 * 2. `Blocked links` — one card per held contract, naming the two services,
-	 *    the constraint, the version the provider actually serves, and the
-	 *    environments. The ACTION. It renders only when something is blocked;
-	 *    showing a problem without offering the action is an unfinished design,
-	 *    and drawing an empty "blocked" card would be drawing the norm.
+	 * 1. `Dependency graph` — the SHAPE.
+	 * 2. `Blocked links` — one row per held gate, naming the two rollouts, what
+	 *    the gate is waiting for, and where. The ACTION. It renders only when
+	 *    something is held; drawing an empty "blocked" card would be drawing
+	 *    the norm.
 	 *
-	 * ── ⛔ THE EMPTY STATE IS THE COMMON CASE AND IT MUST NOT LOOK BROKEN ───
+	 * ── ⛔ THE EMPTY STATE IS THE COMMON CASE AND MUST NOT LOOK BROKEN ──────
 	 *
-	 * Most clusters declare NO dependencies at all, and the human's standing
+	 * Most clusters declare no relationship at all, and the human's standing
 	 * complaint about pages with nothing wrong is that they *"look weird, like
-	 * something is missing"*. So the empty state is not a shrug: it PROVES the
-	 * page looked — `15 rollouts across 2 clusters, none declares a contract
-	 * dependency` — and then explains what would put something here, with the
-	 * CRD that does it. A graph of one node is the same case: one box and no
-	 * edges is not a network, so it takes the same treatment.
+	 * something is missing"*. So the empty state PROVES the page looked —
+	 * `15 rollouts across 2 clusters, none is gated on another` — and then says
+	 * what would put something here.
+	 *
+	 * ⛔ THIS PAGE IS NOT IN THE NAV, DELIBERATELY. It was added there once,
+	 * unasked, and reverted. It is reached from the rollout `Dependencies` tab.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
@@ -58,10 +64,14 @@
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import { getEnvironmentThemeStyle, type EnvironmentTheme } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
+	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
+	import { buildGateContext } from '$lib/view-models/blocking-story';
 	import {
-		buildDependencyGraph,
+		buildRolloutGraph,
 		filterByEnv,
-		networkVerdict
+		networkVerdict,
+		nodeLabel,
+		type GraphEdge
 	} from '$lib/view-models/dependency-graph';
 
 	const query = createQuery(() =>
@@ -75,36 +85,30 @@
 	const deps = $derived(query.data?.rolloutDependencies?.items ?? []);
 
 	/**
-	 * Namespace → environment tier, read off the `Environment` objects rather
-	 * than off the namespace's NAME. `hello-dep-prod` happens to end in the
-	 * tier word; nothing guarantees that, and a heuristic on a name would
-	 * silently mislabel a fleet that does not use the convention.
+	 * The gate join table, built ONCE from this payload and handed to the graph
+	 * builder. It is what classifies the gates that are NOT edges — a schedule,
+	 * a check, an approval — so a clock on a node here and the banner on the
+	 * rollout's own page cannot disagree about what it is.
 	 */
-	const envOf = $derived.by(() => {
-		const m = new Map<string, string>();
-		for (const e of environments) {
-			const ns = e.metadata?.namespace;
-			const tier = e.spec?.environment;
-			if (ns && tier && !m.has(ns)) m.set(ns, tier);
-		}
-		return (ns: string) => m.get(ns) ?? null;
-	});
+	const gateContext = $derived(
+		buildGateContext({
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null
+		})
+	);
 
-	/** One theme per tier, for the filter chips. Identity is a function of the name. */
+	/** One theme per tier, for the chips. Identity is a function of the name. */
 	const envThemes = $derived.by(() => {
 		const m = new Map<string, EnvironmentTheme | null>();
 		for (const e of environments) {
 			const tier = e.spec?.environment;
 			if (!tier || m.has(tier)) continue;
-			const rollout = rollouts.find(
-				(r) =>
-					r.metadata?.namespace === e.metadata?.namespace &&
-					r.metadata?.name === e.spec?.rolloutRef?.name
-			);
+			const rollout = rollouts.find((r) => rolloutMatchesEnvironment(r, e));
 			m.set(tier, rollout ? getRolloutEnvironmentTheme(rollout, e) : null);
 		}
 		return m;
 	});
+	const themeOf = $derived((env: string) => envThemes.get(env) ?? null);
 
 	const envOrder = $derived(
 		[...new Set(environments.map((e) => e.spec?.environment).filter(Boolean) as string[])].sort(
@@ -112,12 +116,14 @@
 		)
 	);
 
-	const knownRollouts = $derived(
-		new Set(rollouts.map((r) => r.metadata?.name).filter(Boolean) as string[])
-	);
-
 	const full = $derived(
-		buildDependencyGraph({ deps, envOf: envOf, envOrder, knownRollouts })
+		buildRolloutGraph({
+			rollouts,
+			environments,
+			dependencies: deps,
+			envOrder,
+			gates: gateContext
+		})
 	);
 
 	// Multi-select chips, no `All` pill: an empty selection is every
@@ -132,50 +138,10 @@
 	const graph = $derived(filterByEnv(full, envFilters));
 	const verdict = $derived(networkVerdict(graph));
 	const blocked = $derived(graph.blockedEdges);
+	const nodeById = $derived(new Map(full.nodes.map((n) => [n.id, n] as const)));
 
-	/** Environments the network actually touches, in promotion order. */
-	const networkEnvs = $derived(full.envs);
-
-	/**
-	 * Where a CONSUMER runs in one environment, for a deep link.
-	 *
-	 * ⛔ CONSUMER ONLY, AND THE ASYMMETRY IS REAL. A dependency object lives in
-	 * the consumer's namespace on the consumer's cluster, so `e.envs[].namespace`
-	 * IS the consumer's — but `spec.providerRef.namespace` may point somewhere
-	 * else entirely, and using this for a provider would link to a namespace it
-	 * does not live in. The provider is linked through `/apps/<name>` instead,
-	 * which is namespace-free.
-	 *
-	 * Returns null with no cluster attribution rather than guessing one: a
-	 * `/rollouts/<cluster>/…` path built on a wrong cluster is a 500.
-	 */
-	function consumerHref(consumer: string, env: string): string | null {
-		for (const e of full.edges) {
-			if (e.to !== consumer) continue;
-			for (const x of e.envs) {
-				if (x.env === env && x.cluster) return `/rollouts/${x.cluster}/${x.namespace}/${consumer}`;
-			}
-		}
-		return null;
-	}
-
-	/** The headline for the amber banner — one blocked link reads differently from four. */
-	const bannerTitle = $derived(
-		blocked.length === 1
-			? `${blocked[0].to} is waiting on ${blocked[0].from}`
-			: `${blocked.length} services are held by a contract`
-	);
-	const bannerMessage = $derived.by(() => {
-		if (blocked.length !== 1) {
-			const names = [...new Set(blocked.map((e) => e.to))];
-			return `${names.join(', ')} cannot take their next release until their providers ship.`;
-		}
-		const e = blocked[0];
-		const needs = e.requiredVersion ? ` ${e.requiredVersion}` : '';
-		const has = e.providedVersion ? `, and ${e.from} serves ${e.providedVersion}` : '';
-		const where = e.blockedEnvs.length > 0 ? ` in ${e.blockedEnvs.join(', ')}` : '';
-		return `It needs ${e.contract}${needs}${has}. Its next release is held${where}.`;
-	});
+	/** Environments the graph actually touches, in promotion order. */
+	const graphEnvs = $derived(full.envs);
 
 	/**
 	 * ⛔ `clusters` LISTS ONLY THE DISCOVERED SPOKES — THE HUB IS IMPLICIT.
@@ -183,17 +149,47 @@
 	 * `clusters` has ONE entry. `RolloutGrid` composes its own list the same
 	 * way (`[local, ...spokes]`), and this number is a claim about how much of
 	 * the fleet was looked at, so getting it wrong understates the search.
-	 * An unreachable spoke is named by `PartialDataNotice` above, not here.
 	 */
 	const clusterCount = $derived((query.data?.clusters?.length ?? 0) + 1);
 
-	/** True when there is no network to draw: no dependency, or a lone service. */
+	/** True when there is nothing to draw: no gate anywhere keys to a rollout. */
 	const trivial = $derived(full.edges.length === 0);
 
 	function envLabel(env: string): string {
-		const theme = envThemes.get(env);
-		return theme ? shortEnvLabel(theme) || env : env;
+		const t = envThemes.get(env);
+		return (t ? shortEnvLabel(t) : shortEnvLabel(env)) || env;
 	}
+
+	/** The row's second line — the concrete consequence, per edge kind. */
+	function consequence(e: GraphEdge): string {
+		const from = nodeById.get(e.from);
+		const to = nodeById.get(e.to);
+		if (e.writer === 'promotion') {
+			const verb = e.relType === 'Parallel' ? 'alongside' : 'first';
+			return `${to?.env ?? 'This environment'} takes nothing newer until ${from?.env ?? 'its upstream'} has deployed the next build ${verb}.`;
+		}
+		const needs = e.requiredVersion ? ` ${e.requiredVersion}` : '';
+		const serves = e.providedVersion
+			? `${from?.name ?? 'the provider'} serves ${e.providedVersion} here.`
+			: `${from?.name ?? 'the provider'} has not deployed a version of it here.`;
+		return `Its next release needs ${e.contract}${needs}. ${serves}`;
+	}
+
+	const bannerTitle = $derived.by(() => {
+		if (blocked.length === 1) {
+			const to = nodeById.get(blocked[0].to);
+			return to ? `${to.name} is held in ${to.env}` : 'One rollout is held';
+		}
+		const held = new Set(blocked.map((e) => e.to));
+		return `${held.size} rollout${held.size === 1 ? ' is' : 's are'} held by another deploy`;
+	});
+	const bannerMessage = $derived.by(() => {
+		if (blocked.length === 1) return consequence(blocked[0]);
+		const names = [...new Set(blocked.map((e) => nodeById.get(e.to)).filter(Boolean))].map((n) =>
+			nodeLabel(n!)
+		);
+		return `${names.join(', ')} cannot take their next release until the deploy in front of each of them lands.`;
+	});
 </script>
 
 <svelte:head>
@@ -206,26 +202,26 @@
 		{#if !query.isLoading && !query.isError}
 			<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
 				{#if trivial}
-					No service in this fleet waits on another.
+					No rollout in this fleet is gated on another.
 				{:else}
-					{full.nodes.length} services · {full.edges.length} contract{full.edges.length === 1
+					{full.nodes.length} rollouts · {full.edges.length} gate{full.edges.length === 1
 						? ''
-						: 's'}
+						: 's'} between them
 					{#if blocked.length > 0}
 						· <span class="font-medium text-gray-700 dark:text-gray-200"
-							>{blocked.length} blocked</span
+							>{blocked.length} holding</span
 						>
 					{:else}
 						<!-- ⛔ A PAGE WITH NOTHING WRONG MUST STILL SAY SOMETHING.
-						     The human's complaint about the quiet states is that they
-						     "look weird, like something is missing". Naming the healthy
-						     verdict is what turns silence into an answer. -->
-						· nothing is waiting on another service
+						     Naming the healthy verdict is what turns silence into an
+						     answer rather than "something is missing". -->
+						· nothing is waiting on another deploy
+					{/if}
+					{#if full.unlinkedRollouts > 0}
+						· {full.unlinkedRollouts} not in the graph
 					{/if}
 					{#if full.hasCycle}
-						· <span class="font-medium text-gray-700 dark:text-gray-200"
-							>contains a cycle</span
-						>
+						· <span class="font-medium text-gray-700 dark:text-gray-200">contains a cycle</span>
 					{/if}
 				{/if}
 			</p>
@@ -234,7 +230,7 @@
 
 	<PartialDataNotice
 		errors={query.data?.clusterErrors ?? []}
-		subject="this network"
+		subject="this graph"
 		onRetry={() => query.refetch()}
 		isRetrying={query.isFetching}
 	/>
@@ -244,18 +240,20 @@
 		<div
 			class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 		>
-			<div class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+			<div
+				class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+			>
 				<div class="h-4 w-4 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 				<div class="h-3.5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 				<div class="ml-auto h-3 w-20 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
 			</div>
-			<!-- The skeleton mirrors the COLUMNS, not a generic list — so the
-			     shape a reader is waiting for is the shape they are looking at. -->
+			<!-- The skeleton mirrors the MATRIX — the shape a reader is waiting
+			     for is the shape they are looking at. -->
 			<div class="flex gap-16 p-4">
 				{#each Array(3) as _, col (col)}
-					<div class="flex flex-col gap-5">
-						{#each Array(col === 1 ? 2 : 1) as __, row (row)}
-							<div class="h-14 w-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+					<div class="flex flex-col gap-6">
+						{#each Array(2) as __, row (row)}
+							<div class="h-16 w-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 						{/each}
 					</div>
 				{/each}
@@ -264,7 +262,7 @@
 	{:else if query.isError}
 		<ErrorState
 			error={query.error}
-			subject="the dependency network"
+			subject="the dependency graph"
 			backHref="/"
 			backLabel="Go to Home"
 			onRetry={() => query.refetch()}
@@ -275,9 +273,7 @@
 		<!--
 			⛔ NO EMPTY GRAPH FRAME. An empty card with a titled header and a blank
 			body is exactly the "looks like something is missing" reading. The page
-			states what it FOUND — a real number, scanned across real clusters — so
-			the silence is an answer rather than a gap, and then says what would put
-			something here.
+			states what it FOUND — a real number, scanned across real clusters.
 		-->
 		<div class="mx-auto max-w-2xl py-12">
 			<div class="text-center">
@@ -286,49 +282,40 @@
 				>
 					<ShareNodesSolid class="h-5 w-5 text-gray-400 dark:text-gray-500" />
 				</div>
-				<p class="t-body font-semibold text-gray-900 dark:text-white">
-					{#if full.nodes.length === 0}
-						No dependencies declared
-					{:else}
-						One service, no links
-					{/if}
-				</p>
+				<p class="t-body font-semibold text-gray-900 dark:text-white">Nothing waits on anything</p>
 				<p class="t-dense mx-auto mt-2 max-w-md text-gray-500 dark:text-gray-400">
 					{rollouts.length} rollout{rollouts.length === 1 ? '' : 's'} across
-					{clusterCount} cluster{clusterCount === 1 ? '' : 's'}
-					{full.nodes.length === 0 ? 'declare no contract dependency' : 'form no network'}. This is the
-					normal state — most fleets deploy every service independently.
+					{clusterCount} cluster{clusterCount === 1 ? '' : 's'}, and no gate on any of them is keyed
+					to another rollout. This is the normal state — most fleets deploy every service
+					independently.
 				</p>
 				<p class="t-dense mx-auto mt-4 max-w-md text-gray-500 dark:text-gray-400">
-					A link appears here when a
+					A link appears here when an
+					<code class="t-code-sm rounded bg-gray-100 px-1 dark:bg-gray-800">Environment</code>
+					holds one environment until the one before it has deployed a build, or a
 					<code class="t-code-sm rounded bg-gray-100 px-1 dark:bg-gray-800">RolloutDependency</code>
-					holds one rollout until another has deployed a contract version its release asks for.
+					holds one rollout until another has served a contract version its release asks for.
 				</p>
 			</div>
 		</div>
 	{:else}
 		{#if blocked.length > 0}
-			<!-- THE PAGE'S ONE BLOCKING FACT, at banner scale. Amber, matching the
-			     rollout `dependencies` tab: a contract block neither clears itself
-			     nor clears on approval — somebody has to ship the other service. -->
-			<AlertPanel
-				severity="warning"
-				icon={LockSolid}
-				title={bannerTitle}
-				message={bannerMessage}
-			/>
+			<!-- THE PAGE'S ONE BLOCKING FACT, at banner scale. Amber: neither kind
+			     of block clears itself and neither clears on approval — somebody
+			     has to ship the thing in front. -->
+			<AlertPanel severity="warning" icon={LockSolid} title={bannerTitle} message={bannerMessage} />
 		{/if}
 
-		{#if networkEnvs.length > 1}
-			<!-- ⭐ THE OTHER MODEL, REACHABLE. A node here is a SERVICE and the
-			     environments live on the edge; picking one environment reduces the
-			     network to that environment's slice, which IS the
-			     (service, environment) graph. Multi-select, no `All` pill, no
-			     dropdown — the standing filter convention. -->
+		{#if graphEnvs.length > 1}
+			<!-- ⭐ THE CHIPS FILTER WHICH COLUMNS RENDER. A node IS a
+			     (service, environment), so selecting `prod` leaves the prod column
+			     and the contract edges inside it — the promotion edges into it
+			     come from a column that is no longer on screen and are dropped
+			     with it. Multi-select, no `All` pill, no dropdown. -->
 			<div class="mb-4 flex flex-wrap items-center gap-1.5">
-				{#each networkEnvs as env (env)}
+				{#each graphEnvs as env (env)}
 					{@const sel = envFilters.includes(env)}
-					{@const theme = envThemes.get(env) ?? null}
+					{@const t = envThemes.get(env) ?? null}
 					<button
 						type="button"
 						onclick={() => toggleEnv(env)}
@@ -340,9 +327,9 @@
 							: envFilters.length === 0
 								? ''
 								: 'opacity-40 hover:opacity-100'}"
-						style={theme ? getEnvironmentThemeStyle(theme) : undefined}
+						style={t ? getEnvironmentThemeStyle(t) : undefined}
 					>
-						<Chip role="env" {theme} label={envLabel(env)} wide />
+						<Chip role="env" theme={t} label={envLabel(env)} wide />
 					</button>
 				{/each}
 				{#if envFilters.length > 0}
@@ -358,20 +345,17 @@
 
 		<Card
 			icon={ShareNodesSolid}
-			title="Dependency network"
+			title="Dependency graph"
 			verdict={verdict.text}
 			verdictTone={verdict.tone}
 			class="mb-6"
 		>
 			{#if graph.nodes.length === 0}
-				<!-- A `RolloutDependency` collection is SPARSE: no object in an
-				     environment is not the same as a satisfied link there, so the
-				     filtered view says which, rather than drawing nothing. -->
 				<p class="t-dense py-6 text-center text-gray-500 dark:text-gray-400">
-					No dependency is declared in {envFilters.join(', ')}.
+					No rollout in {envFilters.join(', ')} is gated on another.
 				</p>
 			{:else}
-				<DependencyNetwork {graph} />
+				<DependencyNetwork {graph} {themeOf} />
 			{/if}
 		</Card>
 
@@ -386,63 +370,62 @@
 			>
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 					{#each blocked as e (e.key)}
+						{@const from = nodeById.get(e.from)}
+						{@const to = nodeById.get(e.to)}
 						<li class="px-4 py-3">
-							<!-- The relation, as one line a person can read aloud:
-							     provider → consumer, with the contract between them. -->
+							<!-- The relation, as one line a person can read aloud. A
+							     promotion is one service between two environments; a
+							     contract is two services inside one. The row prints
+							     whichever it is, and never both shapes at once. -->
 							<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 								<ServerSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
-								<a
-									href={`/apps/${e.from}`}
-									class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
-									>{e.from}</a
-								>
-								<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" />
-								<a
-									href={`/apps/${e.to}`}
-									class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
-									>{e.to}</a
-								>
-								<span class="ml-auto flex shrink-0 flex-wrap items-center gap-1">
-									{#each e.blockedEnvs as env (env)}
-										{@const href = consumerHref(e.to, env)}
-										{@const theme = envThemes.get(env) ?? null}
-										{#if href}
-											<a href={href} class="environment-theme-scope inline-flex" style={theme ? getEnvironmentThemeStyle(theme) : undefined}
-												><Chip role="env" {theme} label={envLabel(env)} wide /></a
-											>
-										{:else}
-											<span class="environment-theme-scope inline-flex" style={theme ? getEnvironmentThemeStyle(theme) : undefined}
-												><Chip role="env" {theme} label={envLabel(env)} wide /></span
-											>
-										{/if}
-									{/each}
-								</span>
-							</div>
-							<!-- The consequence, in English, then the numbers. -->
-							<p class="t-dense mt-1 pl-6 text-gray-600 dark:text-gray-300">
-								<span class="font-medium text-gray-900 dark:text-white">{e.to}</span>'s next release
-								needs
-								<span class="font-medium text-gray-900 dark:text-white"
-									>{e.contract}{e.requiredVersion ? ` ${e.requiredVersion}` : ''}</span
-								>.
-								{#if e.providedVaries}
-									<span class="text-gray-500 dark:text-gray-400"
-										>{e.from} is on a different version in each environment.</span
+								{#if e.writer === 'promotion'}
+									<a
+										href={`/apps/${to?.name ?? ''}`}
+										class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+										>{to?.name}</a
 									>
-								{:else if e.providedVersion}
-									<span class="font-medium text-gray-900 dark:text-white">{e.from}</span> serves
-									<span class="font-medium text-gray-900 dark:text-white">{e.providedVersion}</span>.
+									<span
+										class="environment-theme-scope inline-flex"
+										style={from && themeOf(from.env) ? getEnvironmentThemeStyle(themeOf(from.env)!) : undefined}
+										><Chip role="env" theme={from ? themeOf(from.env) : null} label={envLabel(from?.env ?? '')} wide /></span
+									>
+									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" />
+									<span
+										class="environment-theme-scope inline-flex"
+										style={to && themeOf(to.env) ? getEnvironmentThemeStyle(themeOf(to.env)!) : undefined}
+										><Chip role="env" theme={to ? themeOf(to.env) : null} label={envLabel(to?.env ?? '')} wide /></span
+									>
 								{:else}
-									<span class="text-gray-500 dark:text-gray-400"
-										>{e.from} has not deployed a version of it.</span
+									<a
+										href={`/apps/${from?.name ?? ''}`}
+										class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+										>{from?.name}</a
+									>
+									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" />
+									<a
+										href={`/apps/${to?.name ?? ''}`}
+										class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+										>{to?.name}</a
+									>
+									<span
+										class="environment-theme-scope inline-flex"
+										style={to && themeOf(to.env) ? getEnvironmentThemeStyle(themeOf(to.env)!) : undefined}
+										><Chip role="env" theme={to ? themeOf(to.env) : null} label={envLabel(to?.env ?? '')} wide /></span
 									>
 								{/if}
-							</p>
-							{#if e.envs.some((x) => x.cluster)}
+								{#if to}
+									<a
+										href={`/rollouts/${to.cluster}/${to.namespace}/${to.name}`}
+										class="ml-auto shrink-0 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+										>Open ›</a
+									>
+								{/if}
+							</div>
+							<p class="t-dense mt-1 pl-6 text-gray-600 dark:text-gray-300">{consequence(e)}</p>
+							{#if to?.cluster}
 								<p class="t-micro mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-gray-400 dark:text-gray-500">
-									{#each [...new Set(e.envs.filter((x) => x.cluster).map((x) => x.cluster as string))] as cl (cl)}
-										<ClusterMark name={cl} />
-									{/each}
+									<ClusterMark name={to.cluster} />
 								</p>
 							{/if}
 						</li>
