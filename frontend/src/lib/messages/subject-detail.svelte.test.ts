@@ -40,7 +40,7 @@ import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import AppDetail from '../../routes/apps/[name]/+page.svelte';
 import EnvDetail from '../../routes/envs/[name]/+page.svelte';
 import RolloutDetail from '../../routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte';
-import { fleet, respond } from './fleet-fixture';
+import { fleet, respond, type Shape } from './fleet-fixture';
 import { SURFACES, AXES, type Axis } from './registry';
 import { subjectViolations, formatViolation } from './axis';
 
@@ -58,8 +58,8 @@ async function mount(Comp: unknown, params: Record<string, string>, fetcher?: an
 }
 
 /** The single-rollout endpoint answers with one rollout; everything else is the list. */
-function detailFetch() {
-	const payload = fleet();
+function detailFetch(shape?: (app: string, tier: string) => Shape) {
+	const payload = shape ? fleet(shape) : fleet();
 	const one = payload.rollouts.items[0];
 	const env = payload.environments.items[0];
 	const list = respond(payload) as any;
@@ -187,5 +187,60 @@ describe('rollout detail and the app page give the same answer about one rollout
 			'the app page and rollout detail disagree about whether a person is needed'
 		).toBe(escalates(detailText));
 		expect(selfClears(appText)).toBe(selfClears(detailText));
+	});
+});
+
+
+/**
+ * ⛔ A STATE NOBODY RENDERS IS A STATE NOBODY TESTS, AND THIS WAS THE THIRD
+ * TIME THAT COST THE PRODUCT A SHIPPED DEFECT.
+ *
+ * The `dependency` gate was missing from `fleet-fixture` and `/apps` shipped
+ * the `upstream` branch untested. `history-marks` landed the word `Rolled
+ * back` on the history tab. And every rollout in this fixture had exactly ONE
+ * history entry, so `detectRollback` -- which compares `history[0]` against
+ * `history[1]` -- returned `null` on every mount, and rollout detail rendered
+ * a green tick and `deploy succeeded` on a rollout that had gone backwards.
+ * The human found it on a phone.
+ *
+ * These two cases are the ones that would have caught it, and they assert on
+ * the RENDERED page rather than on the view-model, because the view-model was
+ * already right and the page never called it.
+ */
+describe('rollout detail says the rollout went backwards, and whether anything holds it', () => {
+	const rolledBack = (): Shape => ({ at: 0, cameFrom: 2, hold: 'none' });
+
+	test('a rollback that is PINNED reads as one act, not as two badges', async () => {
+		const { container } = await mount(
+			RolloutDetail,
+			{ cluster: 'rollout-a', namespace: 'alpha-dev', name: 'alpha-app' },
+			detailFetch(() => ({ ...rolledBack(), pinned: 'r1aaaaa' }))
+		);
+		const text = (container.textContent ?? '').replace(/\s+/g, ' ');
+		expect(text).toContain('Rolled back');
+		expect(text).toContain('and pinned there');
+		expect(text).toContain('Nothing moves off r1aaaaa until the pin is cleared');
+		// ⛔ ONE PANEL, NOT TWO. The pin is what the rollback DID, so the
+		// standalone `Version pinned` banner must not also render.
+		expect(text).not.toContain('Version pinned');
+	});
+
+	/**
+	 * The state the human was looking at: rolled back, `spec.wantedVersion`
+	 * null, and a gate holding the build it would otherwise return to. The
+	 * page must say it is not held WITHOUT claiming it is about to move --
+	 * today it is not.
+	 */
+	test('a rollback that is NOT pinned says so, and names what is holding it today', async () => {
+		const { container } = await mount(
+			RolloutDetail,
+			{ cluster: 'rollout-a', namespace: 'alpha-dev', name: 'alpha-app' },
+			detailFetch(() => ({ ...rolledBack(), hold: 'schedule' }))
+		);
+		const text = (container.textContent ?? '').replace(/\s+/g, ' ');
+		expect(text).toContain('Rolled back');
+		expect(text).toContain('it is not pinned there');
+		expect(text).toContain('It will not move today');
+		expect(text).toContain('as soon as that clears');
 	});
 });

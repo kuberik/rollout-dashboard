@@ -359,9 +359,11 @@ lib/history-marks.ts	code	Rolled back
 lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
+lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
+lib/rollout-cards.ts	code	Pinned there.
 lib/rollout-cards.ts	code	Pinned to … — automatic deploys are paused until the pin is cleared.
 lib/rollout-cards.ts	code	rolled back
-lib/rollout-cards.ts	code	Rolled back … version…: … → ….
+lib/rollout-cards.ts	code	Rolled back … version…: … → ….…
 lib/RolloutGrid.svelte	text	… need attention
 lib/RolloutGrid.svelte	text	… rollout … … ·
 lib/RolloutGrid.svelte	text	Cards like the one above will appear here once you create a
@@ -390,6 +392,9 @@ lib/view-models/auto-deploy.ts	code	Automatic promotion resumes, but nothing wil
 lib/view-models/auto-deploy.ts	code	health checks are failing
 lib/view-models/auto-deploy.ts	code	it is pinned to one version
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
+lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there. Automatic promotion is running, so the newest allowed build deploys here again.
+lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there. It will not move today — … — but the newest allowed build deploys here again as soon as that clears.
+lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there. Nothing moves off … until the pin is cleared.
 lib/view-models/blocking-story.ts	code	… allows this build
 lib/view-models/blocking-story.ts	code	… and …
 lib/view-models/blocking-story.ts	code	… in … (…)
@@ -906,6 +911,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Recovery mode
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	aria-label	Refresh available versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Refresh available versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rollback to …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	See this app across all environments
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Status: …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Successfully continued rollout …

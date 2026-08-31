@@ -312,6 +312,29 @@ describe('cardVerdict', () => {
 		expect(m!.word).toBe('rolled back');
 	});
 
+	/**
+	 * ⭐ THE PIN HALF IS THE ONLY THING `/` AND `/rollouts` SAY ABOUT THE
+	 * DIFFERENCE, AND IT COSTS NOTHING. A rollback started in this product
+	 * always pins (`ChangeVersionModal.mustPin`), so a rollback WITHOUT one
+	 * means somebody cleared it and the controller will move the rollout
+	 * forward again. That changes what an operator DOES, not whether the row
+	 * is worth opening, so it rides in the disc's title and `sr-only` text
+	 * rather than earning a second glyph the closed row budget cannot afford.
+	 *
+	 * ⚠️ `can`, NEVER `will`. This function sees no gate state. Only
+	 * `rollbackStory` — which reads `autoDeployState` — is allowed to say when.
+	 */
+	it('says the rollback is HELD when a pin is holding it', () => {
+		const m = cardStateMark({ rolledBack: back, pinnedVersion: 'main-abc' });
+		expect(m!.title).toContain('Pinned there.');
+		expect(m!.title).not.toMatch(/will/);
+	});
+
+	it('says the rollback is NOT held when nothing is pinned', () => {
+		const m = cardStateMark({ rolledBack: back, pinnedVersion: null });
+		expect(m!.title).toContain('Not pinned, so it can move forward again.');
+	});
+
 	it('draws NO state glyph on an ordinary rollout', () => {
 		expect(cardStateMark({ rolledBack: null, pinnedVersion: null })).toBeNull();
 	});

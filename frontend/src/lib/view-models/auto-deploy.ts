@@ -172,3 +172,72 @@ export function clearPinOutcome(state: AutoDeployState): string {
 	}
 	return `Automatic promotion resumes, but nothing will move yet — ${autoDeployWhy(rest)}. The rollout stays on the version it is running until that clears.`;
 }
+
+/**
+ * ⛔ A ROLLBACK AND ITS PIN ARE ONE ACT, AND ROLLOUT DETAIL WAS TELLING
+ * NEITHER HALF. (2026-08-31)
+ *
+ * The human, on a phone, on `/rollouts/dev/hello-dep-dev/hello-frontend-app`:
+ * *"The rollout list has the rollback icon but here it's not clear that it was
+ * rolled back. Moreover, usually the version is pinned when we rollback."*
+ * The page rendered a green tick and `deploy succeeded`, which is true and
+ * radically incomplete — the deploy did succeed, at going backwards.
+ *
+ * ── WHY THE PIN IS PART OF THE SENTENCE AND NOT A SECOND BADGE ────────────
+ *
+ * The human's instinct is the product's own rule. `ChangeVersionModal`'s
+ * `mustPin` is `isPinVersionMode || direction === 'rollback' || intent.custom`
+ * and `isPinVersionToggleDisabled` is `mustPin || …`, so **a rollback started
+ * in this product always pins, and the toggle is on and greyed**. Verified on
+ * the live hub: opening `Rollback to 991829b` on
+ * `hello-world-prod/hello-world-app` yields one checkbox reading `Pin Version
+ * / Going back pins the version`, `checked: true`, `disabled: true`.
+ *
+ * So `pinned` is not a coincidence that co-occurs with `rolled back`; it is
+ * what the rollback DID. Two badges would make the reader assemble one act
+ * out of two marks. One sentence states it.
+ *
+ * ── AND THE UNPINNED ROLLBACK, WHICH IS A DIFFERENT FACT ──────────────────
+ *
+ * It is reachable, in two clicks, and it is NOT exotic: `Rollback` pins, and
+ * the `Clear pin` button on the very same card POSTs `/pin` with
+ * `version: null` (`ClearPinModal`), which clears `spec.wantedVersion` and
+ * touches nothing else. History still shows the rollback; nothing holds it.
+ *
+ * What that state MEANS comes from `rollout_controller.go`, not from a guess.
+ * With `spec.wantedVersion == nil`, `hasManualDeployment` is false, so
+ * `selectWantedRelease` falls through to `gatedReleaseCandidates[0]` — and
+ * `getNextReleaseCandidates` REVERSES `availableReleases` and returns
+ * everything strictly NEWER than what is running. After a rollback that set
+ * is never empty: the build you rolled away from is in it, and the controller
+ * takes the NEWEST of it. **An unpinned rollback is a rollback the controller
+ * will undo the moment the gates allow.**
+ *
+ * ⚠️ AND IT MUST NOT BE SAID AS THOUGH IT WERE HAPPENING. On the live rollout
+ * `GatesPassing=False / NoAllowedVersions` — a dependency gate holds `rel-67`
+ * — so `will re-promote` is FALSE today. That is a property of the gate state,
+ * not of the rollback, so the sentence names the condition. The product's
+ * standing rule is that a temporary state may not be phrased as permanent;
+ * this is its inverse and it binds just as hard.
+ */
+export function rollbackStory(
+	back: { from: string; to: string; by: number },
+	state: AutoDeployState
+): string {
+	const plural = back.by === 1 ? '' : 's';
+	if (state.reasons.includes('pin')) {
+		return `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and pinned there. Nothing moves off ${back.to} until the pin is cleared.`;
+	}
+	// Reason about the world WITHOUT the pin, exactly as `clearPinOutcome`
+	// does — the pin is absent here, so anything left is a real hold.
+	const rest = state.reasons.filter((r) => r !== 'pin');
+	if (rest.length === 0) {
+		return `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and it is not pinned there. Automatic promotion is running, so the newest allowed build deploys here again.`;
+	}
+	// Hoisted, not inlined: `scan.ts` collapses an interpolation to one
+	// character only when it can find the closing brace, and a nested object
+	// literal inside `${…}` defeats it. An un-collapsed hole makes the census
+	// entry unmatchable, so the string looks unreachable when it is not.
+	const why = autoDeployWhy({ ...state, reasons: rest });
+	return `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and it is not pinned there. It will not move today — ${why} — but the newest allowed build deploys here again as soon as that clears.`;
+}

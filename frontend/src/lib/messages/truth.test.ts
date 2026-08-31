@@ -53,7 +53,8 @@ import {
 	autoDeployState,
 	autoDeployWhy,
 	manualDeployNote,
-	clearPinOutcome
+	clearPinOutcome,
+	rollbackStory
 } from '$lib/view-models/auto-deploy';
 import {
 	ApiError,
@@ -1397,6 +1398,48 @@ describe('auto-deploy: why promotion is paused, and what clearing a pin does', (
 		says(
 			clearPinOutcome({ paused: true, reasons: ['pin', 'gates'], gateNames: [] }),
 			'Automatic promotion resumes, but nothing will move yet — a rule is holding it. The rollout stays on the version it is running until that clears.'
+		);
+	});
+
+	/**
+	 * ⛔ THE ROLLBACK'S CONSEQUENCE, WHICH IS A DIFFERENT SENTENCE DEPENDING
+	 * ON WHETHER ANYTHING IS HOLDING IT. Ground truth is
+	 * `rollout_controller.go`: with `spec.wantedVersion == nil`,
+	 * `hasManualDeployment` is false, `selectWantedRelease` falls through to
+	 * `gatedReleaseCandidates[0]`, and `getNextReleaseCandidates` returns
+	 * everything strictly NEWER than what is running -- a set a rollback can
+	 * never leave empty. So an unpinned rollback IS undone, and the only
+	 * question is when.
+	 */
+	test('a rollback that is pinned says the pin is what holds it', () => {
+		says(
+			rollbackStory({ from: 'c3', to: 'a1', by: 2 }, { paused: true, reasons: ['pin'], gateNames: [] }),
+			'Went back 2 releases, c3 → a1, and pinned there. Nothing moves off a1 until the pin is cleared.'
+		);
+	});
+
+	test('a rollback with nothing holding it says it will be undone', () => {
+		says(
+			rollbackStory({ from: 'c3', to: 'a1', by: 2 }, { paused: false, reasons: [], gateNames: [] }),
+			'Went back 2 releases, c3 → a1, and it is not pinned there. Automatic promotion is running, so the newest allowed build deploys here again.'
+		);
+	});
+
+	/**
+	 * ⚠️ AND IT MAY NOT SAY `will re-promote` WHILE A GATE HOLDS IT. This is
+	 * the live state of `hello-dep-dev/hello-frontend-app` on the hub right
+	 * now -- `GatesPassing=False / NoAllowedVersions`, a dependency gate on
+	 * `rel-67` -- where "it will move forward again" is FALSE today. The
+	 * sentence names the condition instead. Singular `release`, too: that
+	 * rollout went back exactly one.
+	 */
+	test('a rollback a gate is holding names the condition rather than predicting', () => {
+		says(
+			rollbackStory(
+				{ from: '2.67.0-67', to: '2.66.0-66', by: 1 },
+				{ paused: true, reasons: ['gates'], gateNames: ['dependency-hello-frontend-needs-api'] }
+			),
+			'Went back 1 release, 2.67.0-67 → 2.66.0-66, and it is not pinned there. It will not move today — a rule is holding it (dependency-hello-frontend-needs-api) — but the newest allowed build deploys here again as soon as that clears.'
 		);
 	});
 

@@ -57,9 +57,12 @@ function releaseKey(v: { tag?: string; version?: string } | undefined): string |
 	return v?.tag || v?.version || null;
 }
 
-export function detectRollback(r: Rollout): RollbackMark | null {
-	const history = r.status?.history ?? [];
-	const releases = r.status?.availableReleases ?? [];
+// Nullable, like `history-marks.ts::deployActs`: rollout detail holds a query
+// result that is `null` until it loads, and "no rollout" has the same honest
+// answer as "no ordering" — silence.
+export function detectRollback(r: Rollout | null | undefined): RollbackMark | null {
+	const history = r?.status?.history ?? [];
+	const releases = r?.status?.availableReleases ?? [];
 	if (history.length < 2 || releases.length === 0) return null;
 	const nowKey = releaseKey(history[0]?.version);
 	const prevKey = releaseKey(history[1]?.version);
@@ -396,10 +399,36 @@ export function cardStateMark(
 	if (c.rolledBack) {
 		const { from, to, by } = c.rolledBack;
 		const plural = by === 1 ? '' : 's';
+		// ⭐ THE PIN HALF RIDES HERE, AND THE DISC DELIBERATELY DOES NOT DRAW
+		// IT. (2026-08-31)
+		//
+		// A rollback started in this product ALWAYS pins — `ChangeVersionModal`
+		// forces the toggle on and greys it out whenever `direction ===
+		// 'rollback'` — so a rollback WITHOUT a pin means somebody has since
+		// cleared it, and the controller will move the rollout forward again
+		// as soon as the gates allow (`rollbackStory` in `auto-deploy.ts`
+		// carries the argument from the controller source).
+		//
+		// ⛔ THAT DISTINCTION DOES NOT EARN A SECOND GLYPH ON A ROW. The disc
+		// has ONE slot and the row's budget is closed — see the 2026-08-30
+		// measurement above, where a second mark took the app name to zero
+		// width. A `rolled back, not held` glyph would also be a mark nobody
+		// can decode at 16px. And the two states do not differ in whether the
+		// row is worth OPENING: both are. They differ in what you do once you
+		// are there, and that belongs on the page you land on, where the
+		// banner states it in full.
+		//
+		// So the list spends the channel that is free: the disc's `title` and
+		// its `sr-only` text, which cost no pixels and already carry the
+		// sentence. Note the claim is `can`, never `will` — this function sees
+		// no gate state, and only `rollbackStory` may say when.
+		const held = c.pinnedVersion
+			? ` Pinned there.`
+			: ` Not pinned, so it can move forward again.`;
 		return {
 			kind: 'rolled-back',
 			word: 'rolled back',
-			title: `Rolled back ${by} version${plural}: ${from} → ${to}.`
+			title: `Rolled back ${by} version${plural}: ${from} → ${to}.${held}`
 		};
 	}
 	if (c.pinnedVersion) {

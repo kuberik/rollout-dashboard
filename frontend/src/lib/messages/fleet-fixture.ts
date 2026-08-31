@@ -56,6 +56,23 @@ export type Shape = {
 	pinned?: string | null;
 	/** A `DeploymentBlocked: True` condition naming a failing check. */
 	failingCheck?: string | null;
+	/**
+	 * ⛔ EVERY ROLLOUT IN THIS FIXTURE HAD EXACTLY ONE HISTORY ENTRY, SO NO
+	 * SURFACE COULD EVER BE ROLLED BACK, SO NOTHING TESTED IT. (2026-08-31)
+	 *
+	 * `detectRollback` and `deployActs` both compare `history[0]` against
+	 * `history[1]`, and both return `null` on a one-entry history. The suite
+	 * therefore rendered rollout detail, `/apps/<name>` and `/envs/<name>` in
+	 * a fleet where the rollback branch was structurally unreachable — the
+	 * same shape as the `dependency` gap recorded above, and the reason the
+	 * page shipped a green tick and `deploy succeeded` on a rollout that had
+	 * gone backwards.
+	 *
+	 * The release index this rollout was running BEFORE, which becomes a
+	 * second history entry. Set it ABOVE `at` and the rollout is rolled back;
+	 * below `at` and it moved forward like everything else.
+	 */
+	cameFrom?: number | null;
 };
 
 function rolloutFor(app: string, tier: string, cluster: string, shape: Shape) {
@@ -101,11 +118,28 @@ function rolloutFor(app: string, tier: string, cluster: string, shape: Shape) {
 			history: current
 				? [
 						{
-							id: 1,
+							id: shape.cameFrom != null ? 2 : 1,
 							version: current,
 							timestamp: '2026-08-31T00:00:00Z',
-							bakeStatus: shape.bakeStatus ?? 'Succeeded'
-						}
+							bakeStatus: shape.bakeStatus ?? 'Succeeded',
+							// The actor only exists on the shapes that need it, so every
+							// case that was here before keeps the exact payload it had.
+							...(shape.cameFrom != null
+								? { triggeredBy: { kind: 'User', name: 'sam' } }
+								: {})
+						},
+						// The entry it replaced. Present only when the shape asks for
+						// one, so every existing case keeps the payload it had.
+						...(shape.cameFrom != null && RELEASES[shape.cameFrom]
+							? [
+									{
+										id: 1,
+										version: RELEASES[shape.cameFrom],
+										timestamp: '2026-08-30T00:00:00Z',
+										bakeStatus: 'Succeeded'
+									}
+								]
+							: [])
 					]
 				: []
 		}

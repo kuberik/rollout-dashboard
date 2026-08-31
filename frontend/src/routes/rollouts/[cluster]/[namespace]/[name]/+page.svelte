@@ -38,6 +38,7 @@
 	import {
 		CodePullRequestSolid,
 		ReplyOutline,
+		UndoOutline,
 		EditOutline,
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -89,7 +90,8 @@
 	} from '$lib/utils';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
-	import { autoDeployState } from '$lib/view-models/auto-deploy';
+	import { autoDeployState, rollbackStory } from '$lib/view-models/auto-deploy';
+	import { detectRollback } from '$lib/rollout-cards';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { now } from '$lib/stores/time';
@@ -299,6 +301,28 @@
 	 * split, and everything below reads it from there.
 	 */
 	const autoDeploy = $derived(autoDeployState(rollout, rolloutGates));
+
+	/**
+	 * ⛔ THE PAGE AN OPERATOR LANDS ON FROM EVERY LIST WAS THE ONE THAT DID
+	 * NOT SAY THE ROLLOUT HAD GONE BACKWARDS. (2026-08-31)
+	 *
+	 * `/` and `/rollouts` mark it (`rollout-cards.ts::detectRollback` feeds
+	 * the status disc) and the history tab marks it
+	 * (`history-marks.ts::deployActs`). Rollout detail computed NEITHER and
+	 * rendered a green tick beside `deploy succeeded` — true, and radically
+	 * incomplete: the deploy did succeed, at going backwards. Photographed by
+	 * the human on a phone, on `hello-dep-dev/hello-frontend-app`.
+	 *
+	 * ⛔ THIS IS `detectRollback` AND NOT A THIRD DERIVATION. That function is
+	 * the definition of record for *"is this rollout, right now, running
+	 * something older than what it replaced?"*, keyed to `history[0]` vs
+	 * `history[1]`, which is exactly the question this page's status card
+	 * asks. `history-marks.ts` asks the same question of every adjacent pair
+	 * because a history page has to; `history-marks.test.ts` already asserts
+	 * the two agree on every fixture, so the product cannot grow a third
+	 * story about one deploy.
+	 */
+	const rolledBack = $derived(detectRollback(rollout));
 
 	/**
 	 * ⭐ THE ONE BLOCKING STORY, and it is the SAME function `/apps`,
@@ -1485,7 +1509,75 @@
 					(`991829b`, via the shared `displayVersionForTag` — `wantedVersion`
 					itself is the sixty-character OCI tag), and the consequence.
 				-->
-				{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+				<!-- ══ ROLLED BACK ══ -->
+				<!--
+					⛔ ONE BANNER, NOT TWO BADGES THAT HAPPEN TO CO-OCCUR.
+					(2026-08-31)
+
+					A rollback started in this product ALWAYS pins — verified in
+					the running modal, not inferred: opening `Rollback to
+					991829b` on `hello-world-prod/hello-world-app` gives one
+					checkbox reading `Pin Version / Going back pins the
+					version`, `checked: true`, `disabled: true`, because
+					`ChangeVersionModal`'s `mustPin` is true whenever
+					`direction === 'rollback'`. So the pin is not a second fact
+					sitting next to the rollback; it is WHAT THE ROLLBACK DID.
+					Rendering `Rolled back` and `Version pinned` as two panels
+					would make the reader assemble one act out of two marks.
+
+					THEREFORE THIS REPLACES THE PINNED BANNER rather than
+					stacking above it. `AlertPanel`'s own rule is that a page
+					with three banners has no banner, and this page already
+					spends one on the gate — measured on the live rollout,
+					which renders `DEV is waiting on another deploy` in amber
+					directly above. A second amber field would read as one wall.
+					`pinned` is the palette the product already spends on "this
+					rollout is being steered by hand", which covers both halves.
+
+					⛔ AND THE CONSEQUENCE IS `rollbackStory`'S, NOT THIS
+					FILE'S. Whether the rollback is HELD is a question about
+					automatic promotion, and `auto-deploy.ts` is the one place
+					that knows — the same object the clear-pin dialog and the
+					deploy confirmation read, so the three cannot drift into
+					three answers about one rollout.
+				-->
+				{#if rolledBack}
+					{@const trig = latestEntry?.triggeredBy}
+					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
+					<!--
+						⛔ NOT `warning`, AND NOT `pinned`. MEASURED ON THE PAGE,
+						NOT CHOSEN FROM THE ENUM.
+
+						`pinned` was the first attempt and it rendered ORANGE
+						directly beneath the gate banner's AMBER — two adjacent
+						full-width fields a shade apart, which is the "a page
+						with three banners has no banner" failure arriving as
+						colour instead of as count. `warning` would be worse:
+						amber on amber, and it would claim an alarm this is not.
+
+						The history tab already ruled on the hue for this exact
+						fact and wrote down why — *"neutral-strong rather than a
+						status hue: going backwards is a FACT about the deploy,
+						not an alarm about its health"*. Neutral is unavailable
+						here for a reason the grammar is equally explicit about:
+						a gray band is what the human said *"feels like a bug"*
+						on `/apps` and `/environments`. So `info`, which this
+						page already spends on `Recovery mode`, separates from
+						the amber at a glance and carries no alarm.
+
+						AND THE GLYPH IS THE UNDO ARROW, not `info`'s default
+						circle — the same mark `/`, `/rollouts` and the history
+						tab draw for this state, so one act has one symbol
+						everywhere.
+					-->
+					<AlertPanel
+						severity="info"
+						icon={UndoOutline}
+						title="Rolled back"
+						message={rollbackStory(rolledBack, autoDeploy)}
+						footnote={author ? `Rolled back by ${author}.` : undefined}
+					/>
+				{:else if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 					{@const trig = latestEntry?.triggeredBy}
 					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
 					{@const pinnedBy = author ? `Pinned by ${author}` : 'Pinned'}
@@ -1515,10 +1607,23 @@
 								<!-- Top row: icon + version + status label | meta -->
 								<div class="flex items-start justify-between gap-4">
 									<div class="flex min-w-0 items-center gap-3">
+										<!-- ⭐ THE DISC CARRIES THE STATE HERE TOO, so the status card
+										     answers on its own and matches the two list surfaces the
+										     reader arrived from. `BakeStatusIcon` already takes
+										     `state` (added for `/` and `/rollouts`); the glyph and
+										     the `sr-only` word cost no layout, and the hue stays the
+										     deploy's because the deploy really did succeed.
+
+										     ⚠️ ONLY `rolled-back`, DELIBERATELY. On a list the disc
+										     also carries `pinned`, because a row has nowhere else to
+										     put it. Here the pin has a full banner, and marking one
+										     fact twice on one page is the defect in the mirror. -->
 										<BakeStatusIcon
 											bakeStatus={latestEntry.bakeStatus}
 											size="medium"
 											class="shrink-0"
+											state={rolledBack ? 'rolled-back' : null}
+											stateWord="rolled back"
 										/>
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
