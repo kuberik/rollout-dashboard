@@ -130,7 +130,17 @@ export function checkFailureTitle(f: CheckFailure): string {
 	const subject = f.check ? `Health check ${f.check}` : 'A health check';
 	const detail = f.detail || f.raw;
 	const tail = detail ? ` — ${detail}` : '';
-	return `${subject} is failing${tail}. Nothing new deploys here until it passes.`;
+	// ⛔ `Nothing new deploys here until it passes.` WAS THE `Blocked` DEFECT
+	// AGAIN, ONE OBJECT OVER. (2026-08-31) The controller's health-check
+	// short-circuit is `if !r.hasManualDeployment(&rollout) && len(history) > 0
+	// && !healthChecksHealthy { return }` — the SAME `!hasManualDeployment`
+	// guard the gate loop has. A deploy a person starts still applies, and this
+	// sentence told them it would not. `FailurePanel`'s own footnote already
+	// said `Automated deployments are paused until this is resolved`, so the
+	// product was carrying both scopes for one fact and only one of them was
+	// true. `blocking-story.ts`'s standing rule — never say "deployments are
+	// blocked" — applies here for the same reason.
+	return `${subject} is failing${tail}. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.`;
 }
 
 /**

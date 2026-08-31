@@ -204,7 +204,15 @@ export function errorConsequence(error: unknown): string {
 	if (error instanceof ApiError) {
 		if (error.isAuth) {
 			return error.status === 403
-				? 'Your account can read the cluster but not this namespace. Ask whoever granted your access.'
+				// ⛔ NOT `can read the cluster but not this namespace`. (2026-08-31)
+				// A 403 is the server refusing THIS request; it says nothing about
+				// what else the account can read, and the refusal may be about the
+				// resource kind, an admission policy or the proxy rather than the
+				// namespace. Naming a cause we did not observe sends the reader to
+				// argue about the wrong grant. The server's own sentence prints
+				// verbatim below this line and is where a cause may legitimately
+				// come from.
+				? 'The server refused this request for your account. Ask whoever granted your access.'
 				: 'Sign in again to carry on. Nothing you were looking at was lost.';
 		}
 		if (error.isMissing) {

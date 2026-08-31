@@ -352,7 +352,25 @@ export function confirmNotice(intent: DeployIntent, pins = false): string | null
 			? `This changes ${where}. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.${pinNote}`
 			: `This ships to ${where} a build that no rule currently allows. It applies immediately and ${where} starts serving it; nothing checks it first.${pinNote}`;
 	}
-	return `This overrides the rules holding ${where}, which do not currently allow this build. It applies immediately. Production is not touched.${pinNote}`;
+	// ⛔ THIS SENTENCE USED TO END `Production is not touched.` AND THAT WAS
+	// FALSE — in exactly the case it was printed. (2026-08-31)
+	//
+	// The environment controller writes the DOWNSTREAM environment's promotion
+	// gate allow-list from the UPSTREAM environment's own history:
+	// `githubenvironment_controller.go:updateAllowedVersionsFromRelationships`
+	// collects every entry in the related environment's history whose
+	// `BakeStatus == Succeeded` and sets `RolloutGate.Spec.AllowedVersions` to
+	// exactly those tags. So force-deploying an unvouched build into staging
+	// and letting it bake puts that build on production's allow-list, and if
+	// production's remaining gates pass the controller promotes it there ON ITS
+	// OWN. The reassurance was strongest precisely where the risk was.
+	//
+	// ⚠️ AND IT MAY NOT BE REPLACED BY THE OPPOSITE CLAIM. `DeployIntent` does
+	// not know whether any environment declares `relationship: After` this one,
+	// so "this will reach production" would be the same defect with the sign
+	// flipped. `can become allowed` is modal and true either way: it states the
+	// mechanism that exists without asserting a consequence we cannot see.
+	return `This overrides the rules holding ${where}, which do not currently allow this build. It applies immediately. It does not deploy to production — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after ${where}.${pinNote}`;
 }
 
 /** The label above the type-to-confirm box, when there is one. */

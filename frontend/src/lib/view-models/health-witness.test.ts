@@ -107,8 +107,22 @@ describe('checkFailure — the fact the list surfaces threw away', () => {
 			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
 		)!;
 		expect(checkFailureTitle(f)).toBe(
-			'Health check payment-latency is failing — p99 latency 4.2s exceeds SLO of 500ms for 5m. Nothing new deploys here until it passes.'
+			'Health check payment-latency is failing — p99 latency 4.2s exceeds SLO of 500ms for 5m. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.'
 		);
+	});
+
+	// ⛔ THE `Blocked` CLASS OF DEFECT, PINNED. The controller's health-check
+	// short-circuit sits behind `!r.hasManualDeployment(&rollout)`, so a deploy
+	// a person starts still applies while a check is failing. This title may
+	// never claim otherwise, and it may never drop the escape clause.
+	it('never claims a manual deploy is held', () => {
+		const f = checkFailure(
+			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
+		)!;
+		const title = checkFailureTitle(f);
+		expect(title).not.toMatch(/nothing new deploys/i);
+		expect(title).toMatch(/automatic deploys/i);
+		expect(title).toMatch(/by hand still applies/i);
 	});
 
 	it('parses a message with no trailing detail', () => {

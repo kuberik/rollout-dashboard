@@ -113,7 +113,10 @@
 	import {
 		buildGateContext,
 		withSchedules,
-		blockingStory
+		blockingStory,
+		classifyGate,
+		joinClauses,
+		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
@@ -583,6 +586,87 @@
 				return fullGate || null;
 			})
 			.filter((gate): gate is any => gate !== null);
+	}
+
+	/**
+	 * ⛔ THE BADGE ON A RELEASE-CANDIDATE ROW SAID `Manual only`, AND THAT WAS
+	 * NOT A VAGUER `Blocked` — IT WAS A FALSE ONE. (2026-08-31)
+	 *
+	 * Reported verbatim: *"gates might be unlocked in the future so why do you
+	 * say manual only?"* Exactly right. `Blocked` named a CURRENT STATE that
+	 * clears; `Manual only` named a PERMANENT PROPERTY of the version. A
+	 * schedule gate reopens at 09:00 and that version then promotes itself,
+	 * so the badge was false about every clock-gated candidate on the page —
+	 * which is most of them on the live cluster.
+	 *
+	 * It cost two more things:
+	 *   · `Blocked` carried WHAT was holding it (gates). `Manual only` named
+	 *     nothing, so the badge stopped pointing at the gate cards below it.
+	 *   · The popover title stayed `Blocked by Gates` for one commit and then
+	 *     became `Won't deploy on its own`, i.e. the hover asserted the same
+	 *     permanence the chip did. A badge and its own tooltip must not agree
+	 *     on something untrue any more than they may disagree.
+	 *
+	 * ⭐ THE FIX IS THE MODEL, NOT THE OLD WORD. `view-models/blocking-story`
+	 * already classifies every gate into `clock`/`check`/`upstream`/`person`/
+	 * `unknown` by JOIN — never by name — and knows which of those clear
+	 * themselves. The chip states the fact (`Held by a gate`) and the hover
+	 * states what clears it, from the same classification the page banner and
+	 * `/apps`, `/environments` and `/versions` all read. Two surfaces on this
+	 * row can no longer say different things.
+	 *
+	 * ⛔ WHAT MUST SURVIVE EVERY REWORDING HERE: a gate holds AUTOMATIC
+	 * promotion only (`rollout_controller.go`, the gate early-return is inside
+	 * `if !r.hasManualDeployment(...)`), and the `Deploy` button twelve pixels
+	 * away is enabled and works. A critic force-deployed through three closed
+	 * gates to confirm it. So the chip may never say "cannot deploy", and the
+	 * manual-deploy clause stays in the accessible name and in the popover.
+	 */
+	function classifyBlockingGates(version: string): ClassifiedGate[] {
+		const namespace = rollout?.metadata?.namespace;
+		const holding = new Set(getBlockingGates(version).map((g) => g?.metadata?.name));
+		return (rollout?.status?.gates ?? [])
+			.filter((g) => g?.name && holding.has(g.name))
+			.map((g) => classifyGate(g, namespace, gateContext));
+	}
+
+	/**
+	 * The chip word. A COUNT AND A NOUN — true right now, and it clears.
+	 * It never varies by cause: the causes vary in width from `check` to
+	 * `approval` and this chip sits in a wrapping flex beside a 23-character
+	 * mono build id at 390px. The cause goes in the hover, which has room for
+	 * the whole sentence and for the gate names.
+	 */
+	function heldWord(gates: ClassifiedGate[]): string {
+		return gates.length === 1 ? 'Held by a gate' : `Held by ${gates.length} gates`;
+	}
+
+	/**
+	 * WHAT CLEARS IT, WHERE WE KNOW. Same order of severity `blockingStory`
+	 * uses, and the same refusal to invent: an `unknown` gate says we cannot
+	 * tell rather than naming a remedy, and a `clock` gate carries its real
+	 * time or no time at all.
+	 */
+	function heldClears(gates: ClassifiedGate[]): string {
+		if (gates.length === 0) return '';
+		if (gates.some((g) => g.clears === 'unknown'))
+			return 'This dashboard cannot tell what clears this — it may or may not need a person.';
+		if (gates.some((g) => g.clears === 'person')) return 'This will not clear on its own.';
+		if (gates.some((g) => g.clears === 'upstream'))
+			return 'Nobody has to approve anything — this clears when the deploy in front of it lands.';
+		if (gates.some((g) => g.clears === 'clock' && g.clearsAt)) return 'This clears on its own.';
+		return 'This clears on its own once the check passes.';
+	}
+
+	/** The popover title: the fact the chip states, spelled out. */
+	function heldTitle(gates: ClassifiedGate[]): string {
+		const kinds: string[] = [];
+		if (gates.some((g) => g.clears === 'person')) kinds.push('an approval');
+		if (gates.some((g) => g.clears === 'unknown')) kinds.push('a rule we cannot attribute');
+		if (gates.some((g) => g.clears === 'upstream')) kinds.push('another deploy');
+		if (gates.some((g) => g.clears === 'clock')) kinds.push('a deploy window');
+		if (gates.some((g) => g.clears === 'check')) kinds.push('a check');
+		return kinds.length > 0 ? `Waiting on ${joinClauses(kinds)}` : 'Held by gates';
 	}
 
 	// Computed property to determine if dashboard is managing the wantedVersion field
@@ -1720,22 +1804,29 @@
 														{getDisplayVersion(releaseCandidate)}
 													</span>
 													{#if isBlocked}
+														{@const held = classifyBlockingGates(version)}
 														<!--
-															⛔ THE CHIP USED TO SAY `Blocked` AND IT SAT TWELVE
-															PIXELS FROM AN ENABLED `Deploy` BUTTON THAT IGNORES
-															THE GATE. A live UX critique pressed that button and
-															production changed immediately.
+															⛔ THE WORD HERE HAS BEEN WRONG TWICE. See
+															`classifyBlockingGates` above for the full account.
 
-															A gate filters AUTOMATIC promotion only
-															(`rollout_controller.go`: the gate early-return is
-															inside `if !r.hasManualDeployment(...)`), so `Blocked`
-															was false about the one control next to it. `Manual
-															only` is the same fact stated as a consequence, and it
-															is now the sentence that EXPLAINS the enabled button
-															rather than contradicting it.
+															`Blocked` sat twelve pixels from an enabled `Deploy`
+															button that ignores the gate, so a UX critic read it
+															as "this cannot ship" and pressed the button to prove
+															it wrong. The correction over-shot: `Manual only`
+															asserts a PERMANENT property of the build, and gates
+															get unlocked — a schedule window reopens and that
+															same version promotes itself.
 
-															Same span, same yellow, same 12px — only the word and
-															the popover moved.
+															`Held by a gate` is what the old word got right (a
+															current state, and it names GATES so the chip points
+															at the gate cards below) without what it got wrong
+															(it does not say the `Deploy` button will refuse).
+															What clears it is in the hover, which has room, and
+															comes from the same classification the page banner
+															reads — so the chip and its own tooltip cannot drift
+															apart again.
+
+															Same span, same yellow, same 12px.
 														-->
 														<!-- A `button`, not a `span`: flowbite's `Popover` makes its
 														     trigger focusable, so this was already a tab stop on every
@@ -1744,21 +1835,30 @@
 														     yellow, same pill. -->
 														<button
 															type="button"
-															aria-label={`Manual only — ${getDisplayVersion(releaseCandidate)} will not deploy on its own`}
+															aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
 															class="inline-flex cursor-help items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
 														>
-															Manual only <QuestionCircleOutline class="h-3 w-3" aria-hidden="true" />
+															{heldWord(held)}
+															<QuestionCircleOutline class="h-3 w-3" aria-hidden="true" />
 														</button>
-														<Popover class="max-w-sm text-sm" title="Won't deploy on its own">
+														<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
 															<div class="space-y-2 p-1">
 																<p class="text-xs text-gray-600 dark:text-gray-300">
-																	Nothing will promote this version automatically. Pressing
+																	{heldClears(held)} Nothing promotes this version automatically
+																	while it is held. Pressing
 																	<span class="font-medium text-gray-900 dark:text-white"
 																		>Deploy</span
 																	> applies it immediately — gates only hold back automatic
 																	promotion.
 																</p>
 																{#each blockingGates as gate}
+																	<!-- WHAT CLEARS THIS ONE, from the same join
+																	     `BlockingStoryLines` renders in the banner above.
+																	     `Status: <enum>` further down is the controller's own
+																	     word and is a handle, not an explanation. -->
+																	{@const clears = held.find(
+																		(h) => h.id === gate.metadata?.name
+																	)}
 																	<div class="flex items-start gap-2">
 																		<ExclamationCircleSolid
 																			class="mt-0.5 h-4 w-4 shrink-0 text-yellow-700 dark:text-yellow-400"
@@ -1772,6 +1872,11 @@
 																			{#if getGateDescription(gate)}
 																				<p class="text-xs text-gray-500 dark:text-gray-400">
 																					{getGateDescription(gate)}
+																				</p>
+																			{/if}
+																			{#if clears}
+																				<p class="text-xs text-gray-500 dark:text-gray-400">
+																					{clears.short}
 																				</p>
 																			{/if}
 																			{#if gate.status?.status}
@@ -1900,7 +2005,7 @@
 										4.24:1, so the fill is pinned to `yellow-100` in dark as well and
 										`text-yellow-700` on `bg-yellow-100` is already the product's own
 										spelling for yellow ink on a yellow fill (`HealthChecksCard:111`,
-										`ResourcesCard` x4, the `Manual only` chip). Zero new colour values,
+										`ResourcesCard` x4, the held-by-a-gate chip). Zero new colour values,
 										and the composition of this card is untouched.
 									-->
 									<Alert color="yellow" class="bg-yellow-100 text-yellow-700 dark:bg-yellow-100 dark:text-yellow-700">

@@ -1004,12 +1004,23 @@
 				<!-- ⛔ `BEHIND NEWEST · 19 builds` DID NOT SAY BEHIND WHAT. The
 				     eyebrow names the comparison in full now — the number is a
 				     distance and a distance with no second end is not readable
-				     by anyone who has not been told what the second end is. -->
+				     by anyone who has not been told what the second end is.
+
+				     ⛔ AND `THE NEWEST` WAS THE WRONG SECOND END. (2026-08-31)
+				     `deepest.by` is `rankBehindBy`, which since 8bfa829 counts
+				     the rollout's OWN `availableReleases` — the list `Change
+				     Version` shows and the one `N behind` is spelled from. Two
+				     environments on the identical sha legitimately hold different
+				     numbers, so a claim about "the newest" was false for at least
+				     one of any such pair, and it contradicted `rankTitle`'s
+				     *"can still take N newer versions"* two elements away. The
+				     number counts versions this environment could take; the
+				     eyebrow says exactly that and nothing more. -->
 				<p
 					class="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-gray-400"
 				>
 					<ArrowUpOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-					{c.behindCount > 1 ? 'Furthest behind the newest' : 'Behind the newest'}
+					{c.behindCount > 1 ? 'Most newer versions waiting' : 'Newer versions waiting'}
 				</p>
 				<p class="mt-1 flex items-baseline gap-2">
 					<span class="text-xl font-bold text-gray-900 tabular-nums dark:text-white"

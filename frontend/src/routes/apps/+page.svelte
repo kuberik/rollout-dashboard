@@ -836,10 +836,21 @@
 					null
 				);
 				// `is 3 builds behind` — behind WHAT? The sentence never said, and
-				// on a page whose whole subject is distance from the newest build
-				// that is the one word it could not afford to leave out.
+				// on a page whose whole subject is distance is the one word it
+				// could not afford to leave out.
+				//
+				// ⛔ AND THE SECOND END IS NOT "THE NEWEST". (2026-08-31) `behindBy`
+				// is `rankBehindBy`, which since 8bfa829 counts THIS ROLLOUT'S OWN
+				// `availableReleases` — so two environments running the identical
+				// sha legitimately print different numbers, and `behind the newest`
+				// is false for at least one of any such pair. That commit's whole
+				// argument was *"fix the SUBJECT, not the denominator"*; this
+				// sentence was still carrying the old subject, in the page's most
+				// prominent one-line summary, while `rankTitle` beside it already
+				// said the correct thing. Same words as `rankTitle` now, so the
+				// lede and the chip's own tooltip cannot disagree.
 				lede = worstFree
-					? `${worstFree.envLabel.toUpperCase()} is ${worstFree.behindBy} version${worstFree.behindBy === 1 ? '' : 's'} behind the newest`
+					? `${worstFree.envLabel.toUpperCase()} can still take ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'}`
 					: '';
 			}
 
