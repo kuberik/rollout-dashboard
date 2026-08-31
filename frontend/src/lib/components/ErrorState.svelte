@@ -33,6 +33,8 @@
 		errorHeadline,
 		errorConsequence,
 		errorDetail,
+		isRetryable,
+		RECOVERY_POLL_MS,
 		reauthenticate
 	} from '$lib/api/errors';
 	import {
@@ -49,6 +51,15 @@
 		backHref = '/',
 		backLabel = 'Back to all rollouts',
 		onRetry = null,
+		/**
+		 * ⭐ THE ONE QUESTION THE CRITIC COULD NOT REACH: *"if the API comes back
+		 * while the tab is open, does the page heal itself, or does the operator
+		 * have to know to reload?"* It heals — `pollWhenHealthy` keeps a 30s
+		 * recovery poll running on a retryable failure — but a promise the
+		 * reader cannot see is a promise they will not believe. Pass the query's
+		 * `isFetching` and the banner SHOWS the attempt happening.
+		 */
+		isRetrying = false,
 		class: className = 'px-4 py-8 sm:px-5'
 	}: {
 		error: unknown;
@@ -56,6 +67,7 @@
 		backHref?: string;
 		backLabel?: string;
 		onRetry?: (() => void) | null;
+		isRetrying?: boolean;
 		class?: string;
 	} = $props();
 
@@ -64,6 +76,8 @@
 	// A missing object is not an alarm — nothing is broken, the address is just
 	// wrong. `error` red is reserved for something that IS broken.
 	const severity = $derived<'error' | 'warning'>(apiError?.isMissing ? 'warning' : 'error');
+	/** Only a failure the policy will retry has a self-healing story to tell. */
+	const selfHealing = $derived(!isAuth && !apiError?.isMissing && isRetryable(error));
 </script>
 
 <div class={className}>
@@ -74,6 +88,30 @@
 		footnote={errorDetail(error)}
 		class=""
 	>
+		{#snippet extra()}
+			{#if selfHealing}
+				<!--
+					THE LIVE PROOF OF THE SENTENCE UNDERNEATH. `errorConsequence`
+					promises the page checks every 30s; this chip is that promise
+					observable. `aria-live="polite"` because a screen-reader user
+					otherwise learns nothing between "it failed" and the page
+					silently repainting with data.
+				-->
+				<span
+					aria-live="polite"
+					class="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums
+						{severity === 'error'
+						? 'bg-red-200/70 text-red-900 dark:bg-red-500/20 dark:text-red-200'
+						: 'bg-amber-200/70 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200'}"
+				>
+					<RefreshOutline
+						class="h-3 w-3 shrink-0 {isRetrying ? 'animate-spin' : ''}"
+						aria-hidden="true"
+					/>
+					{isRetrying ? 'Checking now…' : `Rechecking every ${RECOVERY_POLL_MS / 1000}s`}
+				</span>
+			{/if}
+		{/snippet}
 		{#snippet actions()}
 			{#if isAuth && apiError?.status === 401}
 				<button type="button" class="btn btn-primary" onclick={reauthenticate}>
@@ -81,9 +119,17 @@
 					Sign in again
 				</button>
 			{:else if onRetry}
-				<button type="button" class="btn btn-secondary" onclick={() => onRetry?.()}>
-					<RefreshOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
-					Try again
+				<button
+					type="button"
+					class="btn btn-secondary"
+					onclick={() => onRetry?.()}
+					disabled={isRetrying}
+				>
+					<RefreshOutline
+						class="h-4 w-4 shrink-0 {isRetrying ? 'animate-spin' : ''}"
+						aria-hidden="true"
+					/>
+					{isRetrying ? 'Checking…' : 'Try again'}
 				</button>
 			{/if}
 			<a href={backHref} class="btn btn-secondary">

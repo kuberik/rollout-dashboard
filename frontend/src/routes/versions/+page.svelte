@@ -41,6 +41,9 @@
 	import RevisionLead from '$lib/components/RevisionLead.svelte';
 	import type { Rollout, Environment } from '../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
 	/**
 	 * `/versions` — THE REVISION LEDGER.
@@ -367,7 +370,22 @@
 		got.
 	</p>
 
+	<!--
+		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
+		replied and names the ones that did not in `clusterErrors`, so this page
+		can be PARTLY true — and until now only `/` and `/rollouts` said so.
+		A rollout on an unreachable spoke is absent from every count here, and
+		absent is not healthy. Renders nothing when every cluster answered.
+	-->
+	<PartialDataNotice
+		errors={query.data?.clusterErrors ?? []}
+		subject="this list"
+		onRetry={() => query.refetch()}
+		isRetrying={query.isFetching}
+	/>
+
 	{#if query.isLoading}
+		<StillTryingNotice failureCount={query.failureCount} class="mt-6 mb-0" />
 		<div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
 			<div
 				class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
@@ -386,11 +404,23 @@
 			></div>
 		</div>
 	{:else if query.isError}
-		<div
-			class="t-body mt-6 rounded-lg border border-gray-200 p-4 text-red-700 dark:border-gray-700 dark:text-red-400"
-		>
-			Failed to load: {(query.error as Error).message}
-		</div>
+		<!--
+			⛔ WAS `Failed to load: <status code>` IN A ONE-LINE RED BOX. With
+			`/api/rollouts` at 503 that left the page as a title and a whisper —
+			indistinguishable at a glance from this page's own empty state, which
+			is the reading that gets an operator to go back to bed at 3am. A
+			request that FAILED is a different fact from one that succeeded and
+			returned nothing, and `ErrorState` is the object that says so.
+		-->
+		<ErrorState
+			error={query.error}
+			subject="the revision list"
+			backHref="/"
+			backLabel="Go to Home"
+			onRetry={() => query.refetch()}
+			isRetrying={query.isFetching}
+			class="mt-6"
+		/>
 	{:else if ledgers.length === 0}
 		<div class="flex flex-col items-center justify-center py-16 text-center">
 			<TagOutline class="mb-3 h-8 w-8 text-gray-500 dark:text-gray-400" />

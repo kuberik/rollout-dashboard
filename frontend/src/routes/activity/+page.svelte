@@ -64,6 +64,7 @@
 	 * norm, and the banner.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
+	import { pollWhenHealthy } from '$lib/api/errors';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
@@ -86,6 +87,9 @@
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
 	import ChangeList from '$lib/components/ChangeList.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import NextStep from '$lib/components/NextStep.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -94,7 +98,7 @@
 	import type { Environment } from '../../types';
 
 	const rolloutsQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: 15000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
@@ -673,18 +677,43 @@
 		</div>
 	{/if}
 
+	<!--
+		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
+		replied and names the ones that did not in `clusterErrors`, so this page
+		can be PARTLY true — and until now only `/` and `/rollouts` said so.
+		A rollout on an unreachable spoke is absent from every count here, and
+		absent is not healthy. Renders nothing when every cluster answered.
+	-->
+	<PartialDataNotice
+		errors={rolloutsQuery.data?.clusterErrors ?? []}
+		subject="this feed"
+		onRetry={() => rolloutsQuery.refetch()}
+		isRetrying={rolloutsQuery.isFetching}
+	/>
+
 	{#if rolloutsQuery.isLoading}
+		<StillTryingNotice failureCount={rolloutsQuery.failureCount} />
 		<div class="space-y-3">
 			{#each Array(8) as _, i (i)}
 				<div class="h-[3.25rem] w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 			{/each}
 		</div>
 	{:else if rolloutsQuery.isError}
-		<div
-			class="rounded-xl border border-gray-200 p-4 text-sm text-red-700 dark:border-gray-700 dark:text-red-400"
-		>
-			Failed to load activity: {(rolloutsQuery.error as Error).message}
-		</div>
+		<!--
+			⛔ AN EMPTY ACTIVITY FEED IS THE MOST DANGEROUS BLANK IN THE PRODUCT:
+			"nothing has happened" is a perfectly ordinary state here, so a failed
+			request wearing the same blankness reads as calm. It must say, in
+			words, that this is a failure and not a quiet night.
+		-->
+		<ErrorState
+			error={rolloutsQuery.error}
+			subject="the activity feed"
+			backHref="/"
+			backLabel="Go to Home"
+			onRetry={() => rolloutsQuery.refetch()}
+			isRetrying={rolloutsQuery.isFetching}
+			class="py-2"
+		/>
 	{:else if feed.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
 			<ClockSolid class="mb-3 h-10 w-10 text-gray-500 dark:text-gray-400" />

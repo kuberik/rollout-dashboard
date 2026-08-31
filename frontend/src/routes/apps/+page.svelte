@@ -161,6 +161,9 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
@@ -1124,7 +1127,22 @@
 		{/if}
 	</div>
 
+	<!--
+		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
+		replied and names the ones that did not in `clusterErrors`, so this page
+		can be PARTLY true — and until now only `/` and `/rollouts` said so.
+		A rollout on an unreachable spoke is absent from every count here, and
+		absent is not healthy. Renders nothing when every cluster answered.
+	-->
+	<PartialDataNotice
+		errors={query.data?.clusterErrors ?? []}
+		subject="this list"
+		onRetry={() => query.refetch()}
+		isRetrying={query.isFetching}
+	/>
+
 	{#if query.isLoading}
+		<StillTryingNotice failureCount={query.failureCount} />
 		<!-- Skeleton mirrors the row grid, not a generic list. -->
 		<div
 			class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
@@ -1151,11 +1169,23 @@
 			</ul>
 		</div>
 	{:else if query.isError}
-		<div
-			class="rounded-xl border border-gray-200 p-4 text-sm text-red-700 dark:border-gray-700 dark:text-red-400"
-		>
-			Failed to load: {(query.error as Error).message}
-		</div>
+		<!--
+			⛔ WAS `Failed to load: <status code>` IN A ONE-LINE RED BOX. With
+			`/api/rollouts` at 503 that left the page as a title and a whisper —
+			indistinguishable at a glance from this page's own empty state, which
+			is the reading that gets an operator to go back to bed at 3am. A
+			request that FAILED is a different fact from one that succeeded and
+			returned nothing, and `ErrorState` is the object that says so.
+		-->
+		<ErrorState
+			error={query.error}
+			subject="the app list"
+			backHref="/"
+			backLabel="Go to Home"
+			onRetry={() => query.refetch()}
+			isRetrying={query.isFetching}
+			class="py-2"
+		/>
 	{:else if appRows.length === 0}
 		<!-- NO SAMPLE ROW. This used to render a faded FAKE row — dummy app
 		     name, dummy ruler, dummy head chip — to teach the encoding before

@@ -101,6 +101,7 @@
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
@@ -1164,6 +1165,7 @@
 <div class="min-h-full dark:bg-gray-900">
 	{#if loading}
 		<div class="space-y-4 px-4 py-8 sm:px-5">
+			<StillTryingNotice failureCount={rolloutQuery.failureCount} />
 			<div class="h-10 w-48 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-28 w-full animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-64 w-full animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
@@ -1179,6 +1181,7 @@
 			backHref="/rollouts"
 			backLabel="Back to all rollouts"
 			onRetry={() => rolloutQuery.refetch()}
+			isRetrying={rolloutQuery.isFetching}
 		/>
 	{:else if !rollout}
 		<!--

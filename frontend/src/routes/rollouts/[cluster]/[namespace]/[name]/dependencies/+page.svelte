@@ -154,6 +154,8 @@
 	import { groupRolloutsByApp } from '$lib/version-utils';
 	import type { Rollout, Environment, RolloutDependency } from '../../../../../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import {
 		dependencySourceCluster,
 		releaseMetadataUnresolved,
@@ -819,17 +821,28 @@
 
 <div class="p-3 sm:p-4">
 	{#if rolloutQuery.isLoading}
+		<StillTryingNotice failureCount={rolloutQuery.failureCount} />
 		<div class="grid max-w-[64rem] gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 		</div>
-	{:else if rolloutQuery.error}
-		<div
-			class="rounded-xl border border-gray-200 bg-white px-4 py-4 text-sm text-red-700 dark:border-gray-700 dark:bg-gray-800 dark:text-red-400"
-			role="alert"
-		>
-			{rolloutQuery.error.message}
-		</div>
+	{:else if rolloutQuery.isError}
+		<!--
+			⛔ WAS THE RAW `Error.message` AND NOTHING ELSE — on a 503 that is the
+			string `Request failed (503)`, alone, in a box. This tab's whole subject
+			is "what is blocking me / who is blocked on me", so a silent blank here
+			says "nothing depends on you", which is the one answer it must never
+			invent out of a failure.
+		-->
+		<ErrorState
+			error={rolloutQuery.error}
+			subject="the dependencies of this rollout"
+			backHref={`/rollouts/${cluster}/${namespace}/${name}`}
+			backLabel="Back to this rollout"
+			onRetry={() => rolloutQuery.refetch()}
+			isRetrying={rolloutQuery.isFetching}
+			class="py-0"
+		/>
 	{:else}
 		<div class="max-w-[64rem]">
 			<!-- ══ PAGE HEADER — the 24px lead the composition grammar requires,

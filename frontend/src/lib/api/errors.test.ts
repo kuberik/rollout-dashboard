@@ -102,16 +102,87 @@ describe('the words a reader gets', () => {
 		expect(errorConsequence(err(403))).toContain('access');
 	});
 
-	it("keeps the server's own sentence verbatim", () => {
+	it("keeps the server's own sentence verbatim, behind the address queried", () => {
 		const detail = 'failed to get rollout: rollouts.kuberik.com "does-not-exist" not found';
-		expect(errorDetail(err(500, detail))).toBe(detail);
+		expect(errorDetail(err(500, detail))).toBe(`/api/rollouts/x/y — ${detail}`);
 	});
 
-	it('falls back to the status when the server sent no sentence', () => {
-		expect(errorDetail(err(502))).toBe('HTTP 502');
+	/**
+	 * ⛔ IT USED TO SAY `HTTP 502`, WHICH IS INDISTINGUISHABLE FROM A SERVER
+	 * SENTENCE THAT HAPPENS TO READ "HTTP 502". The standing rule on this branch
+	 * is that an absent record is not an observation: when the server sent no
+	 * words, the UI must SAY it sent none rather than dress the status code up
+	 * as an explanation.
+	 */
+	it('says outright that the server sent nothing, instead of dressing up the code', () => {
+		const d = errorDetail(err(502));
+		expect(d).toContain('/api/rollouts/x/y');
+		expect(d).toContain('no explanation');
+		expect(d).toContain('502');
 	});
 
 	it('says the dashboard keeps checking, so a 5xx state is not a dead end', () => {
 		expect(errorConsequence(err(503))).toContain('keeps checking');
+	});
+});
+
+/**
+ * ⭐ FINDING 2, 2026-08-31, PINNED AS TESTS.
+ *
+ * A UX critic scaled `deploy/rollout-dashboard` to 0 so `/api/rollouts`
+ * answered 503, then loaded every page. What came back was a title and, at
+ * best, a 12px line reading `Failed to load: Request failed (503)`. The
+ * critic's sentence is the requirement: *"At 3am a blank Rollouts page reads
+ * as 'the cluster has no rollouts'"* — the product inventing an all-clear out
+ * of a failure.
+ *
+ * These assert the WORDS, because the words are the fix. A failure that
+ * renders as a skeleton, or as a status code, is exactly the class that comes
+ * back the moment nobody is looking.
+ */
+describe('an outage must never be readable as an empty fleet', () => {
+	const outage = err(503);
+
+	it('names the unreachable server, not the page that noticed', () => {
+		expect(errorHeadline(outage, 'the rollout list')).toBe('Cannot reach the dashboard server');
+		expect(errorHeadline(err(0), 'the rollout list')).toBe('Cannot reach the dashboard server');
+		expect(errorHeadline(err(504))).toBe('Cannot reach the dashboard server');
+	});
+
+	it('distinguishes a server that answered badly from one that did not answer', () => {
+		expect(errorHeadline(err(500, 'index out of range'))).toBe(
+			'The dashboard server could not answer'
+		);
+	});
+
+	it('states in words that the emptiness is not a reading of the cluster', () => {
+		const c = errorConsequence(outage);
+		expect(c).toContain('failed request');
+		expect(c).toContain('not an empty result');
+		expect(c).toMatch(/nothing on this page is a reading of your cluster/i);
+	});
+
+	it('never claims a recovery poll for a failure the policy will not retry', () => {
+		// 409 is an answer, not an accident — `pollWhenHealthy` stops entirely,
+		// so the copy must not promise the page will fill itself in.
+		expect(isRetryable(err(409))).toBe(false);
+		expect(errorConsequence(err(409))).not.toContain('keeps checking');
+		expect(errorConsequence(err(409))).toContain('failed request');
+	});
+
+	it('classifies 0/502/503/504 as unreachable and 500 as answered-badly', () => {
+		expect(err(0).isUnreachable).toBe(true);
+		expect(err(502).isUnreachable).toBe(true);
+		expect(err(503).isUnreachable).toBe(true);
+		expect(err(504).isUnreachable).toBe(true);
+		expect(err(500).isUnreachable).toBe(false);
+	});
+
+	it('a 503 is retried and then polled, so the page heals without a reload', () => {
+		expect(isRetryable(outage)).toBe(true);
+		expect(queryRetry(MAX_RETRIES, outage)).toBe(false); // it does STOP retrying…
+		expect(pollWhenHealthy(5000)({ state: { status: 'error', error: outage } })).toBe(
+			RECOVERY_POLL_MS
+		); // …and then keeps checking, which is what "heals itself" means
 	});
 });

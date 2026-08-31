@@ -38,6 +38,10 @@
 	 */
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
+	import { pollWhenHealthy } from '$lib/api/errors';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
@@ -74,7 +78,7 @@
 	const namespace = $derived(page.params.name as string);
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: 10000 } })
+		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
@@ -201,7 +205,22 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+	<!--
+		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
+		replied and names the ones that did not in `clusterErrors`, so this page
+		can be PARTLY true — and until now only `/` and `/rollouts` said so.
+		A rollout on an unreachable spoke is absent from every count here, and
+		absent is not healthy. Renders nothing when every cluster answered.
+	-->
+	<PartialDataNotice
+		errors={query.data?.clusterErrors ?? []}
+		subject="this namespace"
+		onRetry={() => query.refetch()}
+		isRetrying={query.isFetching}
+	/>
+
 	{#if query.isLoading}
+		<StillTryingNotice failureCount={query.failureCount} />
 		<div class="space-y-6">
 			<div class="space-y-2">
 				<div class="h-8 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -213,11 +232,23 @@
 			</div>
 		</div>
 	{:else if query.isError}
-		<div
-			class="rounded-xl border border-gray-200 p-4 text-sm text-red-700 dark:border-gray-700 dark:text-red-400"
-		>
-			Failed to load: {(query.error as Error).message}
-		</div>
+		<!--
+			⛔ WAS `Failed to load: <status code>` IN A ONE-LINE RED BOX. With
+			`/api/rollouts` at 503 that left the page as a title and a whisper —
+			indistinguishable at a glance from this page's own empty state, which
+			is the reading that gets an operator to go back to bed at 3am. A
+			request that FAILED is a different fact from one that succeeded and
+			returned nothing, and `ErrorState` is the object that says so.
+		-->
+		<ErrorState
+			error={query.error}
+			subject="this namespace"
+			backHref="/rollouts"
+			backLabel="Back to all rollouts"
+			onRetry={() => query.refetch()}
+			isRetrying={query.isFetching}
+			class="py-0"
+		/>
 	{:else if apps.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
 			<LayersSolid class="mb-3 h-10 w-10 text-gray-500 dark:text-gray-400" />

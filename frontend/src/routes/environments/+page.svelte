@@ -155,6 +155,9 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
@@ -1180,18 +1183,44 @@
 		{/if}
 	</div>
 
+	<!--
+		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
+		replied and names the ones that did not in `clusterErrors`, so this page
+		can be PARTLY true — and until now only `/` and `/rollouts` said so.
+		A rollout on an unreachable spoke is absent from every count here, and
+		absent is not healthy. Renders nothing when every cluster answered.
+	-->
+	<PartialDataNotice
+		errors={query.data?.clusterErrors ?? []}
+		subject="these environments"
+		onRetry={() => query.refetch()}
+		isRetrying={query.isFetching}
+	/>
+
 	{#if query.isLoading}
+		<StillTryingNotice failureCount={query.failureCount} />
 		<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
 			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 		</div>
 	{:else if query.isError}
-		<AlertPanel
-			severity="error"
-			title="Environments could not be loaded"
-			message={(query.error as Error).message}
-			icon={ExclamationCircleSolid}
+		<!--
+			⛔ WAS A BARE `AlertPanel` WHOSE MESSAGE WAS THE RAW `Error.message`
+			(`Request failed (503)`). Right shape, wrong contents: a status code is
+			not what happened, there was no retry and no way out, and nothing said
+			the page was empty because of a failure rather than because there are
+			no environments. `ErrorState` IS an `AlertPanel` — same object, with
+			all four parts guaranteed.
+		-->
+		<ErrorState
+			error={query.error}
+			subject="the environments"
+			backHref="/"
+			backLabel="Go to Home"
+			onRetry={() => query.refetch()}
+			isRetrying={query.isFetching}
+			class="py-0"
 		/>
 	{:else if envTiers.length === 0}
 		<div class="mx-auto max-w-2xl py-12 text-center">

@@ -27,6 +27,9 @@
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
 	import { pollWhenHealthy } from '$lib/api/errors';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
@@ -232,19 +235,20 @@
 		<h1 class="min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
 	</div>
 
-	<!-- Cluster error banner — soft warning, not in the red attention strip. -->
-	{#if clusterErrors.length > 0}
-		<div class="mb-4 flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 dark:border-amber-800/40 dark:bg-amber-900/10">
-			{#each clusterErrors as ce}
-				<div class="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
-					<svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-						<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
-					</svg>
-					<span><span class="font-semibold">{ce.name}</span> unreachable — {ce.error}</span>
-				</div>
-			{/each}
-		</div>
-	{/if}
+	<!--
+		⛔ THIS WAS A 12px AMBER ASIDE READING `<name> unreachable — <error>`, AND
+		IT WAS THE ONLY THING ON THE PAGE SAYING THE COUNTS ABOVE COVER A SUBSET.
+		The hub fails soft, so `/rollouts` can be partly true; a whisper next to a
+		header that says `Attention 0` is not a correction, it is a footnote to a
+		wrong number. `PartialDataNotice` is the same `AlertPanel` every other
+		blocking fact in the product uses.
+	-->
+	<PartialDataNotice
+		errors={clusterErrors}
+		subject="this list"
+		onRetry={() => query.refetch()}
+		isRetrying={query.isFetching}
+	/>
 
 	<!-- Filter bar: search + compact env filter pills + cluster filter pills (per design). -->
 	{#if cards.length > 0}
@@ -332,6 +336,7 @@
 	{/if}
 
 	{#if query.isLoading}
+		<StillTryingNotice failureCount={query.failureCount} />
 		<div class="space-y-6">
 			{#each Array(2) as _}
 				<div>
@@ -358,9 +363,24 @@
 			{/each}
 		</div>
 	{:else if query.isError}
-		<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/15 dark:text-red-300">
-			Failed to load rollouts: {(query.error as Error).message}
-		</div>
+		<!--
+			⛔ THIS WAS `Failed to load rollouts: Request failed (503)` IN A 14px RED
+			BOX AND THAT IS WHAT THE CRITIC SAW AS "a title and nothing else".
+			A status code is not what happened; there was no retry, no way out, and
+			nothing separating it from the page's own empty state. At 3am a bare
+			`/rollouts` reads as *"the cluster has no rollouts"* — the product
+			inventing an all-clear out of a failure. `ErrorState` is the product's
+			one failed-request object and it guarantees all four parts.
+		-->
+		<ErrorState
+			error={query.error}
+			subject="the rollout list"
+			backHref="/"
+			backLabel="Go to Home"
+			onRetry={() => query.refetch()}
+			isRetrying={query.isFetching}
+			class="py-2"
+		/>
 	{:else if cards.length === 0}
 		<div class="mx-auto max-w-2xl py-12">
 			<!-- Faded sample card preview showing what a rollout looks like -->

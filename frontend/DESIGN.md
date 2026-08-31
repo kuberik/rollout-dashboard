@@ -5122,3 +5122,67 @@ with a second amber `N held` rollup carrying the fact the body is about.
 from the **union** of every app's gates in that tier, so gates belonging to
 *hello-multi* appeared under a heading about *hello-world-app*. A card speaks for ONE
 rollout, ranked needs-a-person first. A join across the wrong grain reads as a fact.
+
+## A failed request is not an empty result (2026-08-31, finding 2)
+
+A UX critic scaled `deploy/rollout-dashboard` to 0 so `/api/rollouts` answered 503, then
+loaded every page. What came back was a title and — at best — a 12px line reading
+`Failed to load: Request failed (503)`. **At 3am a blank Rollouts page reads as "the
+cluster has no rollouts."** The product was inventing an all-clear out of a failure,
+which is the worst thing this dashboard can do.
+
+The machinery already existed: the *not-found* path was praised in the same critique
+(*"This rollout does not exist… Try again / Back to all rollouts"*). Only rollout detail
+used it. The other eleven surfaces each had their own one-line red box.
+
+**The rule, now, for every surface that can render a skeleton:**
+
+1. **Name what happened, not the page that noticed it.** `Cannot reach the dashboard
+   server` for `0/502/503/504`; `The dashboard server could not answer` for other 5xx.
+   A status code is never the headline.
+2. **Say, in words, that the blank is not a reading of the cluster.** *"This is a failed
+   request, not an empty result — nothing on this page is a reading of your cluster."*
+   An absent record is not an observation, and a request that fails is a different fact
+   from one that succeeds and returns nothing. **This sentence is the finding.**
+3. **Carry the server's own words, or say there were none.** The footnote is
+   `<path> — <server sentence>`, or `<path> — the server sent no explanation with its
+   HTTP 503.` Never a cause invented to fill the gap. `errorDetail` used to print
+   `HTTP 502`, which is indistinguishable from a server sentence that reads "HTTP 502".
+4. **A way out, and a visible promise of recovery.** `Try again` plus a sibling page,
+   and a chip reading `Rechecking every 30s` / `Checking now…` — because
+   `pollWhenHealthy` genuinely heals the page and a promise the reader cannot see is a
+   promise they will not believe. Verified on the live hub: scaled to 0, page showed the
+   banner; scaled back to 1, the page filled in with no reload and no click.
+
+`ErrorState.svelte` is the one object that guarantees all four. It is an `AlertPanel`,
+so this adds no idiom. **Do not build a second one, and do not hand-roll a red box.**
+
+### Three states around it, which were the same gap wearing different clothes
+
+- **Still trying.** A request inside the retry budget looked identical to one 200ms old:
+  same grey blocks, same silence. `StillTryingNotice.svelte` — one muted line above the
+  skeleton, driven by the query's own `failureCount`, plus a 4s timer for the merely-slow
+  case. Deliberately below `AlertPanel`'s weight: nothing has failed terminally yet, and
+  a banner there would be crying wolf.
+- **Partly true.** The hub fans out to its spokes and **fails soft** — `200` with the
+  clusters that replied and the rest in `clusterErrors` — so every count on a page can be
+  computed over a subset. Only `/` and `/rollouts` said so, as a 12px amber aside; eight
+  other pages read the same payload and said nothing. `PartialDataNotice.svelte` (an
+  `AlertPanel`, `warning`) now names the cluster and states the consequence: **a rollout
+  on an unreachable spoke is missing from these counts, not healthy in them.**
+  *Deliberate exception to "one banner per page":* in this degraded state a page may
+  carry the incompleteness notice **above** its blocking banner, because the notice
+  qualifies the banner. It is invisible whenever every cluster answered.
+- **Recovery.** `refetchInterval` was still a raw number on `/activity` and
+  `/namespaces/[name]` — two call sites the 408b63d policy pass missed — so those two
+  kept polling a dead URL forever. Both are `pollWhenHealthy` now.
+
+Pinned by `src/lib/outage-states.svelte.test.ts` (per page: the words, and zero
+`.animate-pulse` surviving the failure) and `src/lib/api/errors.test.ts`. A failure that
+renders as a skeleton is exactly the class of defect that comes back the moment nobody is
+looking.
+
+**Harness, so nobody has to break a shared cluster to see it:**
+`MOCK_API=1 MOCK_OUTAGE=1` (503 everywhere; `touch frontend/.mock-up` brings the API back
+live, without the Vite restart that would reload the page and defeat the recovery test),
+`MOCK_SLOW=<ms>`, `MOCK_PARTIAL=1`. All inert by default.

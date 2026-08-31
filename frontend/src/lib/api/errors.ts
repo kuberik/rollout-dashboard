@@ -73,6 +73,28 @@ export class ApiError extends Error {
 		if (this.status === 404) return true;
 		return this.status >= 500 && /\bnot found\b/i.test(this.detail);
 	}
+
+	/**
+	 * NOBODY ANSWERED. `0` is a fetch that never got a response at all
+	 * (offline, TLS, DNS, a dropped tunnel); 502/503/504 are a proxy telling
+	 * you the thing behind it is not there — which is exactly what a dashboard
+	 * deployment scaled to zero produces. Both mean *the request never reached
+	 * anything that can read your cluster*, and that is the sentence the
+	 * operator needs, not the number.
+	 */
+	get isUnreachable(): boolean {
+		return this.status === 0 || this.status === 502 || this.status === 503 || this.status === 504;
+	}
+
+	/** `/api/rollouts` out of the absolute URL, for the "address queried" line. */
+	get path(): string {
+		if (!this.url) return '';
+		try {
+			return new URL(this.url, 'http://localhost').pathname;
+		} catch {
+			return this.url;
+		}
+	}
 }
 
 /**
@@ -153,14 +175,30 @@ export function errorHeadline(error: unknown, subject = 'this page'): string {
 	if (error.isMissing) {
 		return `${subject[0].toUpperCase()}${subject.slice(1)} does not exist`;
 	}
-	if (error.status === 0) {
-		return `Could not reach the dashboard server`;
+	// ⭐ NAME THE THING THAT IS WRONG, NOT THE PAGE THAT NOTICED. A 503 is not
+	// "could not load the rollout list" — the rollout list is fine, the server
+	// in front of the cluster is gone. An operator woken at 3am acts on
+	// "unreachable"; they cannot act on "could not load".
+	if (error.isUnreachable) {
+		return 'Cannot reach the dashboard server';
+	}
+	if (error.status >= 500) {
+		return 'The dashboard server could not answer';
 	}
 	return `Could not load ${subject}`;
 }
 
 /**
  * The one line that says what happens NEXT, so the state is never a dead end.
+ *
+ * ⛔ FOR EVERY FAILURE THAT IS NOT AUTH AND NOT A MISSING OBJECT, THIS LINE
+ * HAS ONE MORE JOB, AND IT IS THE WHOLE FINDING: **it must make the state
+ * impossible to read as an all-clear.** A UX critic scaled the dashboard to
+ * zero and found `/rollouts` showing a title and a 12px red aside; at 3am that
+ * page reads as *"the cluster has no rollouts"*. A request that FAILED and a
+ * request that SUCCEEDED AND RETURNED NOTHING are different facts, and only
+ * one of them is an observation about your fleet. So the sentence says, in
+ * ordinary words, that nothing here is a reading of the cluster.
  */
 export function errorConsequence(error: unknown): string {
 	if (error instanceof ApiError) {
@@ -173,15 +211,30 @@ export function errorConsequence(error: unknown): string {
 			return 'It may have been deleted, or the address may be wrong.';
 		}
 	}
-	return `The dashboard tried ${MAX_RETRIES + 1} times and gave up. It keeps checking every ${
-		RECOVERY_POLL_MS / 1000
-	}s, so this clears itself if the server comes back.`;
+	// A failure the policy will not retry (a 400, a 409) must not promise a
+	// poll that `pollWhenHealthy` has already switched off.
+	const recovers = isRetryable(error);
+	const lead =
+		'This is a failed request, not an empty result — nothing on this page is a reading of your cluster.';
+	return recovers
+		? `${lead} The dashboard tried ${MAX_RETRIES + 1} times, and keeps checking every ${
+				RECOVERY_POLL_MS / 1000
+			}s, so the page fills itself in when the server answers again.`
+		: `${lead} Trying again will not change the answer until something on the server side changes.`;
 }
 
-/** The server's own sentence, or nothing. Never invented. */
+/**
+ * The server's own sentence, or an explicit statement that there was none —
+ * NEVER a cause invented to fill the gap. Prefixed with the address that was
+ * asked for, which is the same handle the not-found state prints ("the server
+ * answered for prod/hello-world and returned no release").
+ */
 export function errorDetail(error: unknown): string | undefined {
 	if (error instanceof ApiError) {
-		return error.detail || (error.status ? `HTTP ${error.status}` : undefined);
+		const where = error.path ? `${error.path} — ` : '';
+		if (error.detail) return `${where}${error.detail}`;
+		if (error.status) return `${where}the server sent no explanation with its HTTP ${error.status}.`;
+		return `${where}the browser could not open a connection.`;
 	}
 	if (error instanceof Error && error.message) return error.message;
 	return undefined;

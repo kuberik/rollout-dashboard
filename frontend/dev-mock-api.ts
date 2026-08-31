@@ -13,6 +13,7 @@
  * Remove the plugin from vite.config.ts when done testing.
  */
 
+import { existsSync } from 'node:fs';
 import type { Plugin } from 'vite';
 
 const NAMESPACE = 'default';
@@ -1568,6 +1569,50 @@ export function mockApiPlugin(): Plugin {
 
 				res.setHeader('Content-Type', 'application/json');
 
+				/**
+				 * ⚠️ THE OUTAGE HARNESS, ENV-GATED AND INERT BY DEFAULT.
+				 *
+				 * A UX critic reproduced finding 2 by scaling `deploy/rollout-dashboard`
+				 * to 0 on the live hub — which works, and takes the dashboard away from
+				 * everyone else sharing the cluster. These three flags reproduce the
+				 * same three states on your own port, so nobody has to break a shared
+				 * environment to look at a failed page:
+				 *
+				 *   MOCK_OUTAGE=1   every /api answers 503 with no body, exactly as
+				 *                   Envoy does when the deployment has no endpoints.
+				 *   MOCK_SLOW=<ms>  every /api answers after <ms>, for the "is it still
+				 *                   trying, or is it stuck?" state.
+				 *   MOCK_PARTIAL=1  the hub FAILS SOFT: 200 with one spoke's rollouts
+				 *                   missing and the spoke named in `clusterErrors`.
+				 *                   The page is then PARTLY true, which is the same lie
+				 *                   in miniature.
+				 *
+				 * Without them this block does nothing at all.
+				 */
+				// `MOCK_OUTAGE=1` plus `rm/touch .mock-up` lets you bring the API back
+				// WITHOUT restarting Vite — which matters, because a Vite restart
+				// reloads the page and a reload is precisely what the recovery
+				// question is asking about ("does it heal, or must I know to reload?").
+				if (process.env.MOCK_OUTAGE && !existsSync('.mock-up')) {
+					res.statusCode = 503;
+					res.setHeader('Content-Type', 'text/plain');
+					return res.end('upstream connect error or disconnect/reset before headers');
+				}
+				const slowMs = Number(process.env.MOCK_SLOW || 0);
+				if (slowMs > 0) {
+					const url = req.url;
+					setTimeout(() => {
+						req.url = url;
+						handle(req, res, next);
+					}, slowMs);
+					return;
+				}
+				return handle(req, res, next);
+			});
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			function handle(req: any, res: any, next: () => void) {
+
 				// GET /api/rollouts
 				if (req.url === '/api/rollouts') {
 					return res.end(
@@ -1582,8 +1627,17 @@ export function mockApiPlugin(): Plugin {
 							rolloutDependencies: { items: mockDependencies },
 							kustomizations: { items: [] },
 							kruiseRollouts: { items: [] },
-							clusters: mockClusters,
-							clusterErrors: []
+							clusters: process.env.MOCK_PARTIAL ? mockClusters.slice(0, 2) : mockClusters,
+							clusterErrors: process.env.MOCK_PARTIAL
+								? [
+										{
+											name: 'prod',
+											url: 'https://kuberik-prod.example.com',
+											error:
+												'Get "https://kuberik-prod.example.com/api/rollouts": dial tcp 10.96.0.31:443: i/o timeout'
+										}
+									]
+								: []
 						})
 					);
 				}
@@ -1789,7 +1843,7 @@ export function mockApiPlugin(): Plugin {
 
 				// Fallback: return empty JSON for any unhandled API routes
 				return res.end(JSON.stringify({}));
-			});
+			}
 		}
 	};
 }

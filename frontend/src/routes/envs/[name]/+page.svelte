@@ -78,6 +78,9 @@
 		detectStuckPromotion
 	} from '$lib/view-models/promotion';
 	import { pollWhenHealthy } from '$lib/api/errors';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import type { PromotionBlock } from '$lib/view-models/promotion';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { StatusKey } from '$lib/rollout-cards';
@@ -779,18 +782,40 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+	<!--
+		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
+		replied and names the ones that did not in `clusterErrors`, so this page
+		can be PARTLY true — and until now only `/` and `/rollouts` said so.
+		A rollout on an unreachable spoke is absent from every count here, and
+		absent is not healthy. Renders nothing when every cluster answered.
+	-->
+	<PartialDataNotice
+		errors={query.data?.clusterErrors ?? []}
+		subject="this environment"
+		onRetry={() => query.refetch()}
+		isRetrying={query.isFetching}
+	/>
+
 	{#if query.isLoading}
+		<StillTryingNotice failureCount={query.failureCount} />
 		<div class="space-y-6">
 			<div class="h-8 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-56 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 		</div>
 	{:else if query.isError}
-		<AlertPanel
-			severity="error"
-			title="This environment could not be loaded"
-			message={(query.error as Error).message}
-			icon={ExclamationCircleSolid}
+		<!-- WAS A BARE `AlertPanel` CARRYING THE RAW `Error.message`. See
+		     `/environments` for the argument; `ErrorState` is the same panel with
+		     a headline in the operator's words, the server's own sentence, a
+		     retry and a way out. -->
+		<ErrorState
+			error={query.error}
+			subject="this environment"
+			backHref="/environments"
+			backLabel="Back to all environments"
+			onRetry={() => query.refetch()}
+			isRetrying={query.isFetching}
+			class="py-0"
 		/>
 	{:else if !envExists}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
