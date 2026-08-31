@@ -387,14 +387,16 @@ lib/version-utils.ts	code	… (no linked repository)
 lib/view-models/auto-deploy.ts	code	a rule is holding it
 lib/view-models/auto-deploy.ts	code	a rule is holding it (…)
 lib/view-models/auto-deploy.ts	code	Automatic promotion is paused right now — …. That does not hold this deploy: it applies immediately.
+lib/view-models/auto-deploy.ts	code	Automatic promotion is running, so the newest allowed build deploys here again.
 lib/view-models/auto-deploy.ts	code	Automatic promotion resumes, and the rollout moves to the newest allowed version.
 lib/view-models/auto-deploy.ts	code	Automatic promotion resumes, but nothing will move yet — …. The rollout stays on the version it is running until that clears.
 lib/view-models/auto-deploy.ts	code	health checks are failing
 lib/view-models/auto-deploy.ts	code	it is pinned to one version
+lib/view-models/auto-deploy.ts	code	It will not move today — … — but the newest allowed build deploys here again as soon as that clears.
+lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is cleared.
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
-lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there. Automatic promotion is running, so the newest allowed build deploys here again.
-lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there. It will not move today — … — but the newest allowed build deploys here again as soon as that clears.
-lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there. Nothing moves off … until the pin is cleared.
+lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
+lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
 lib/view-models/blocking-story.ts	code	… allows this build
 lib/view-models/blocking-story.ts	code	… and …
 lib/view-models/blocking-story.ts	code	… in … (…)

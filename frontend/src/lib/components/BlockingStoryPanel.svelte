@@ -88,6 +88,24 @@
 	// The footnote carries the VERDICT first and the handles second. The verdict
 	// is the line that answers "do I get up?"; the object names are a lookup key
 	// and are never allowed to lead.
+	//
+	// ⭐ IT IS BEHIND `AlertPanel`'s DISCLOSURE NOW, AND THE LABEL SAYS WHAT
+	// KIND OF THING IS THERE. (2026-08-31) Measured at 390 on
+	// `hello-dep-dev/hello-frontend-app`: this footnote alone was 151 of the
+	// banner's 314 characters and four of its lines, and on the live rollout it
+	// mostly RESTATED the consequence above it — `consequence` said *"Nothing
+	// promotes itself until hello-api-app ships a newer api than 1.66.0"* and
+	// the verdict said *"Nobody has to approve anything — this clears when the
+	// deploy in front of it lands."* Two sentences, one fact, one on top of the
+	// other, on every gated rollout in the product.
+	//
+	// The half that is NOT a restatement is the `person` case (*"This will not
+	// clear on its own"*), and the headline there already says
+	// *"… is waiting on an approval"*. So the verdict is the answer you go
+	// looking for, not the one you are handed — which is exactly what a
+	// disclosure is for. `rule:` is a generated object id an operator cannot
+	// act on directly; it is a lookup key and has never belonged in the first
+	// second of reading.
 	const footnote = $derived(rules ? `${story.resolution} · rule: ${rules}` : story.resolution);
 </script>
 
@@ -97,6 +115,7 @@
 		title={story.headline}
 		message={story.consequence}
 		{footnote}
+		footnoteLabel="What clears this"
 		{icon}
 		{actions}
 		class={className}

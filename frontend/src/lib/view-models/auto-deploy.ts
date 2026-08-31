@@ -220,24 +220,61 @@ export function clearPinOutcome(state: AutoDeployState): string {
  * standing rule is that a temporary state may not be phrased as permanent;
  * this is its inverse and it binds just as hard.
  */
-export function rollbackStory(
+export function rollbackWent(
 	back: { from: string; to: string; by: number },
 	state: AutoDeployState
 ): string {
 	const plural = back.by === 1 ? '' : 's';
+	return state.reasons.includes('pin')
+		? `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and pinned there.`
+		: `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and it is not pinned there.`;
+}
+
+/**
+ * ⭐ THE SECOND HALF — WHAT HAPPENS NEXT, WHICH IS A DIFFERENT TIER FROM WHAT
+ * HAPPENED. (2026-08-31)
+ *
+ * Measured at 390 on `hello-dep-dev/hello-frontend-app`, the rollback banner
+ * was **198px and 237 characters** sitting directly under a 226px gate banner
+ * — 456px of an 844px viewport before the status card that says what is
+ * deployed. And on that rollout the two fields SAID THE SAME THING: the amber
+ * one *"Nothing promotes itself until hello-api-app ships a newer api than
+ * 1.66.0"*, the blue one *"It will not move today — a rule is holding it"*.
+ * One fact, twice, in two colours, stacked.
+ *
+ * `rollbackWent` is the fact and its subject — it names BOTH versions, which
+ * is the thing the banner exists to say. This is the mechanism behind it, and
+ * mechanism is the disclosure tier everywhere else in `AlertPanel` now.
+ *
+ * ⛔ SPLIT, NOT SHORTENED. `rollbackStory` still composes and returns the
+ * identical assembled sentence, so `truth.test.ts`'s assertions on it are
+ * untouched and every clause is still produced by a state. Nothing here got
+ * quieter about anything.
+ */
+export function rollbackNext(
+	back: { from: string; to: string; by: number },
+	state: AutoDeployState
+): string {
 	if (state.reasons.includes('pin')) {
-		return `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and pinned there. Nothing moves off ${back.to} until the pin is cleared.`;
+		return `Nothing moves off ${back.to} until the pin is cleared.`;
 	}
 	// Reason about the world WITHOUT the pin, exactly as `clearPinOutcome`
 	// does — the pin is absent here, so anything left is a real hold.
 	const rest = state.reasons.filter((r) => r !== 'pin');
 	if (rest.length === 0) {
-		return `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and it is not pinned there. Automatic promotion is running, so the newest allowed build deploys here again.`;
+		return 'Automatic promotion is running, so the newest allowed build deploys here again.';
 	}
 	// Hoisted, not inlined: `scan.ts` collapses an interpolation to one
 	// character only when it can find the closing brace, and a nested object
 	// literal inside `${…}` defeats it. An un-collapsed hole makes the census
 	// entry unmatchable, so the string looks unreachable when it is not.
 	const why = autoDeployWhy({ ...state, reasons: rest });
-	return `Went back ${back.by} release${plural}, ${back.from} → ${back.to}, and it is not pinned there. It will not move today — ${why} — but the newest allowed build deploys here again as soon as that clears.`;
+	return `It will not move today — ${why} — but the newest allowed build deploys here again as soon as that clears.`;
+}
+
+export function rollbackStory(
+	back: { from: string; to: string; by: number },
+	state: AutoDeployState
+): string {
+	return `${rollbackWent(back, state)} ${rollbackNext(back, state)}`;
 }

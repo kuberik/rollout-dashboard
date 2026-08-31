@@ -6,7 +6,8 @@
 		ExclamationCircleSolid,
 		InfoCircleSolid,
 		PauseSolid,
-		HeartSolid
+		HeartSolid,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 
 	type Severity = 'error' | 'warning' | 'info' | 'pinned';
@@ -30,6 +31,14 @@
 	 *
 	 * USE IT FOR THE PAGE'S ONE BLOCKING FACT, and only that. A page with
 	 * three banners has no banner.
+	 *
+	 * ⭐ AND IT HAS THREE TIERS, NOT THREE PARAGRAPHS. (2026-08-31) The
+	 * headline and one consequence line are PRINTED; the footnote is
+	 * DISCLOSED. See the `footnote` prop for the measurement — two of these
+	 * blocks were eating 456px of an 844px phone viewport before the reader
+	 * reached the card that says what is deployed. Reduce the prose, never the
+	 * presence: the fill, the 40px disc and the bold headline are the whole
+	 * point and are untouched.
 	 *
 	 * ⛔ THERE IS NO `quoted` PROP AND THERE MUST NOT BE ONE AGAIN.
 	 * (2026-08-31) It rendered `message` as a `border-l-2` blockquote — a
@@ -61,7 +70,64 @@
 		 * severity palette — that is what the palette is for.
 		 */
 		messageBody?: Snippet;
+		/**
+		 * ⭐ THE FOOTNOTE IS NO LONGER PRINTED. IT IS DISCLOSED. (2026-08-31)
+		 *
+		 * ── WHAT WAS MEASURED ────────────────────────────────────────────────
+		 *
+		 * At 390 on `/rollouts/dev/hello-dep-dev/hello-frontend-app`, each
+		 * banner was **226px tall, 314 characters, 50 words**, and two of them
+		 * stacked: **456px of an 844px viewport spent before the status card
+		 * that says what is actually deployed.** On a phone the page opened on
+		 * prose. The human, who has said *"attention is pulled by design, text
+		 * just pollutes"* and *"I don't like this descriptive text"*, said it
+		 * again: *"we're rendering too much text by default for these alert
+		 * style blocks."*
+		 *
+		 * ── WHY THE FOOTNOTE AND NOT THE MESSAGE ─────────────────────────────
+		 *
+		 * Every sentence in these blocks was written to fix a real defect — a
+		 * false claim, a missing subject, an unstated consequence — and
+		 * `lib/messages/` pins most of them. So this is a DISCLOSURE problem,
+		 * not a deletion problem. The tier is decided by what a reader needs in
+		 * the first second:
+		 *
+		 *   `title`     the fact and its subject      ALWAYS PRINTED
+		 *   `message`   the concrete consequence      ALWAYS PRINTED
+		 *   `footnote`  the mechanism, the verdict,
+		 *               the rule handle, the actor,
+		 *               the manual-deploy clause     AVAILABLE, NOT PRINTED
+		 *
+		 * Read the eight call sites and the footnote is ONE role everywhere:
+		 * `· rule: dependency-hello-frontend-needs-api`, `Rolled back by
+		 * admin@example.com.`, `The server answered for ns/name and returned no
+		 * release.`, `Automated deployments are paused until this is resolved.`
+		 * Each is the thing you want AFTER you have decided the banner is about
+		 * you — never the thing that makes you decide.
+		 *
+		 * ── AND IT IS A `<details>`, NOT A CONDITIONAL ───────────────────────
+		 *
+		 * The content stays in the DOM, keyboard-reachable and announced, so
+		 * `subject.svelte.test.ts` (which walks `textContent`) still proves the
+		 * axis is named and `truth.test.ts` still proves the sentence is
+		 * produced. A fix that quietly dropped a fact would pass neither, and
+		 * correctly. Nothing here is allowed to become unreachable — if you are
+		 * tempted to delete a footnote instead of disclosing it, that is a
+		 * judgement call for the human, not a licence to trim.
+		 */
 		footnote?: string;
+		/**
+		 * The disclosure's own label, at 12px beside a chevron — the
+		 * `Show 8 ready resources ›` idiom `COMPOSITION-GRAMMAR.md` §8 names,
+		 * which this product already spends on the `Resources` card.
+		 *
+		 * ⛔ IT IS A LABEL, NEVER A CLAIM. It says what KIND of thing is behind
+		 * the control; it may not state a fact of its own, because a fact
+		 * nobody expands is a fact nobody reads. `Details` is the honest
+		 * default; a caller that knows the kind should say the kind
+		 * (`What clears this`), and that is the whole permitted range.
+		 */
+		footnoteLabel?: string;
 		icon?: Component;
 		pulse?: boolean;
 		actions?: Snippet;
@@ -81,6 +147,7 @@
 		message,
 		messageBody,
 		footnote,
+		footnoteLabel = 'Details',
 		icon,
 		pulse = false,
 		actions,
@@ -257,7 +324,47 @@
 							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
 						{/if}
 						{#if footnote}
-							<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
+							<!--
+								⭐ THE DISCLOSURE. See the `footnote` prop's note for the
+								measurement that produced it.
+
+								THE CONTROL IS NOT QUIET GRAY TEXT AND MUST NOT BECOME IT.
+								It is 12px/500 in the severity's OWN ink — the same full
+								`<hue>-700` step the footnote itself uses in light, which is
+								the step the alpha-ladder work landed on after measuring that
+								no alpha clears 4.5:1 over the gradient. A `text-gray-500`
+								summary here would be the flat gray row the human has
+								rejected six times, arriving through the back door.
+
+								`list-none` + the webkit marker rule remove the native
+								triangle so the chevron is the only affordance, and it rotates
+								90° on open — the same motion the `Resources` card's
+								`Show 8 ready resources ›` uses. One idiom, learned once.
+							-->
+							<!--
+								⚠️ `flex flex-col items-start` IS LOAD-BEARING, NOT TIDINESS.
+								A block `<details>` puts its `inline-flex` summary in an
+								anonymous LINE BOX, and that box inherits the banner's 16px
+								strut — so the 16px control measured **24px**, and at 1440,
+								where the footnote had been a single line, the disclosure
+								made the banner 10px TALLER than the prose it replaced
+								(106px → 116px). As a flex column the summary is a flex item
+								with no strut, and `mt-1` is the exact spacing the printed
+								footnote used, so desktop is a strict improvement instead of
+								a wash.
+							-->
+							<details class="group mt-1 flex flex-col items-start">
+								<summary
+									class="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
+								>
+									<ChevronRightOutline
+										class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
+										aria-hidden="true"
+									/>
+									{footnoteLabel}
+								</summary>
+								<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
+							</details>
 						{/if}
 					</div>
 				{/if}

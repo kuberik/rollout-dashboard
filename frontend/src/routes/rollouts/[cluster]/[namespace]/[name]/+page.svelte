@@ -90,7 +90,7 @@
 	} from '$lib/utils';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
-	import { autoDeployState, rollbackStory } from '$lib/view-models/auto-deploy';
+	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
 	import { detectRollback } from '$lib/rollout-cards';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -1460,12 +1460,22 @@
 						so it stops the controller, not a person. The footnote is the
 						same sentence the schedule banner uses, deliberately: one fact,
 						one wording, learned once.
+
+						⭐ AND IT IS DISCLOSED, NOT PRINTED. (2026-08-31) This exact
+						sentence already has a home WHERE THE DECISION IS MADE:
+						`manualDeployNote` puts it inside `ChangeVersionModal`, which is
+						the last screen before production changes. Printed here as well it
+						is the third line of a banner a reader meets BEFORE they have
+						decided the banner is about them, and it is on every gated rollout
+						in the product, forever. Behind the control it is one click away,
+						and it is still handed to them unprompted at the moment they act.
 					-->
 					<AlertPanel
 						severity="warning"
 						title="Automatic deploys are paused"
 						message={deploymentBlockedCondition.message || 'Health checks are unhealthy.'}
 						footnote="A deploy you start by hand still applies immediately."
+						footnoteLabel="Can I still deploy"
 						pulse
 					/>
 				{/if}
@@ -1534,7 +1544,7 @@
 					`pinned` is the palette the product already spends on "this
 					rollout is being steered by hand", which covers both halves.
 
-					⛔ AND THE CONSEQUENCE IS `rollbackStory`'S, NOT THIS
+					⛔ AND THE CONSEQUENCE IS `rollbackWent`/`rollbackNext`'S, NOT THIS
 					FILE'S. Whether the rollback is HELD is a question about
 					automatic promotion, and `auto-deploy.ts` is the one place
 					that knows — the same object the clear-pin dialog and the
@@ -1570,12 +1580,38 @@
 						tab draw for this state, so one act has one symbol
 						everywhere.
 					-->
+					<!--
+						⭐ TWO TIERS, NOT ONE PARAGRAPH. (2026-08-31) Measured at 390 on
+						this very rollout, this banner was 198px and 237 characters
+						under a 226px gate banner — 456px of an 844px viewport before
+						the status card. And the two fields SAID THE SAME THING: amber
+						*"Nothing promotes itself until hello-api-app ships a newer api
+						than 1.66.0"*, blue *"It will not move today — a rule is holding
+						it"*. The duplicated half is the MECHANISM, which is exactly the
+						tier `AlertPanel` now discloses everywhere.
+
+						So `rollbackWent` is printed — it names both versions and whether
+						the rollback pinned, which is the whole fact — and `rollbackNext`
+						plus the actor are behind the control. `rollbackStory` still
+						exists and still returns the assembled sentence; nothing was
+						shortened, it was split.
+
+						⛔ THE ACTOR RIDES WITH IT DELIBERATELY. *"Rolled back by
+						admin@example.com"* answers a question an AUDITOR asks later, not
+						one the operator asks at a glance, and it is the reason the label
+						is `What happens next` rather than `Who did this`: the label must
+						name the thing a reader would go looking for, and nobody opens a
+						banner to find an email address.
+					-->
 					<AlertPanel
 						severity="info"
 						icon={UndoOutline}
 						title="Rolled back"
-						message={rollbackStory(rolledBack, autoDeploy)}
-						footnote={author ? `Rolled back by ${author}.` : undefined}
+						message={rollbackWent(rolledBack, autoDeploy)}
+						footnote={author
+							? `${rollbackNext(rolledBack, autoDeploy)} Rolled back by ${author}.`
+							: rollbackNext(rolledBack, autoDeploy)}
+						footnoteLabel="What happens next"
 					/>
 				{:else if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 					{@const trig = latestEntry?.triggeredBy}
@@ -1589,6 +1625,7 @@
 						title="Version pinned"
 						message="Held on {pinnedTo} — no newer build will deploy here while the pin is set."
 						footnote="{pinnedBy} · Automatic deployments resume as soon as the pin is cleared."
+						footnoteLabel="What clears this"
 					/>
 				{/if}
 
