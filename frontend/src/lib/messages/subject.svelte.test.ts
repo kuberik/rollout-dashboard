@@ -9,8 +9,8 @@ import Apps from '../../routes/apps/+page.svelte';
 import Environments from '../../routes/environments/+page.svelte';
 import Activity from '../../routes/activity/+page.svelte';
 import { fleet, respond, CLUSTERS } from './fleet-fixture';
-import { SURFACES } from './registry';
-import { subjectViolations } from './axis';
+import { SURFACES, AXES, type Axis } from './registry';
+import { subjectViolations, applyPending, formatViolation, type Pending } from './axis';
 
 /**
  * PROPERTY 2 -- THE SENTENCE NAMES ITS SUBJECT FOR THE PAGE IT IS ON.
@@ -64,14 +64,81 @@ import { subjectViolations } from './axis';
 
 afterEach(() => vi.unstubAllGlobals());
 
-type Case = { surface: string; Comp: unknown; hold: 'approval' | 'schedule' | 'none'; check?: boolean };
+type Case = {
+	surface: string;
+	Comp: unknown;
+	hold: 'approval' | 'schedule' | 'dependency' | 'none';
+	check?: boolean;
+	/** Distinguishes two cases over the same surface in the test name. */
+	label?: string;
+};
+
+/**
+ * ── VIOLATIONS THAT ARE REAL AND NOT YET DECIDED ─────────────────────────
+ *
+ * Each of these FIRES. It is listed so the rest of the surface stays under
+ * test, and `applyPending` fails if one stops firing -- an exemption that has
+ * silently become true is an assertion nobody is making.
+ *
+ * There is a matching `test.skip('DECISION NEEDED: …')` at the bottom of this
+ * file for each, in the convention `truth.test.ts` already uses for the
+ * `unknown`-rank-under-Steady question.
+ */
+const PENDING: Record<string, Pending[]> = {
+	'/': [
+		{
+			claim: 'health failure title',
+			axis: 'environment',
+			why:
+				"`checkFailureTitle` renders as a Chip tooltip and reads *Health check payment-latency " +
+				'is failing … Automatic deploys HERE are paused until it passes*. On `/` the word ' +
+				'`here` has no antecedent inside the tooltip and the card names its environment ' +
+				'AFTER the chip, so a reader who hovers -- or a screen-reader user who is handed ' +
+				'the accessible name alone -- is told a check is failing somewhere. On ' +
+				'`/rollouts` the same tooltip is fine: the namespace group header is above it. ' +
+				'The fix is a `subject` argument on `checkFailureTitle`, which changes a sentence ' +
+				'pinned by `truth.test.ts` on the LANDING PAGE -- an owner decision, not a test one.'
+		}
+	]
+};
 
 const LIST_SURFACES: Case[] = [
 	{ surface: '/', Comp: ControlCenter, hold: 'approval', check: true },
 	{ surface: '/rollouts', Comp: RolloutGrid, hold: 'approval', check: true },
 	{ surface: '/apps', Comp: Apps, hold: 'approval' },
 	{ surface: '/environments', Comp: Environments, hold: 'approval' },
-	{ surface: '/activity', Comp: Activity, hold: 'approval', check: true }
+	{ surface: '/activity', Comp: Activity, hold: 'approval', check: true },
+	/**
+	 * ⭐ THE STATE IN THE SCREENSHOT. `upstream` -- a `RolloutDependency`
+	 * whose provider has not shipped the contract yet -- is the branch that
+	 * produces *"... is waiting on another deploy"*, and it is the branch
+	 * whose panel holds TWO app names: the PROVIDER in the body and the
+	 * WAITER on the button. Until `fleet-fixture` grew `hold: 'dependency'`
+	 * no test in this suite rendered it, so the resolver was never handed the
+	 * case it got wrong. That is the third reason this suite passed while the
+	 * defect it was written for shipped.
+	 */
+	{ surface: '/apps', Comp: Apps, hold: 'dependency', label: 'blocked on another deploy' },
+	{
+		surface: '/environments',
+		Comp: Environments,
+		hold: 'dependency',
+		label: 'blocked on another deploy'
+	},
+	{
+		surface: '/',
+		Comp: ControlCenter,
+		hold: 'dependency',
+		check: true,
+		label: 'blocked on another deploy'
+	},
+	{
+		surface: '/rollouts',
+		Comp: RolloutGrid,
+		hold: 'dependency',
+		check: true,
+		label: 'blocked on another deploy'
+	}
 ];
 
 async function renderSurface(Comp: unknown, c: Case) {
@@ -95,11 +162,34 @@ describe('every operator claim names its subject for the surface it renders on',
 		// `version` is not a competing axis on a rollout-oriented list -- a
 		// sentence about a place is about whatever that place is running, and
 		// the row prints it. `cluster` has its own test, below.
-		const axes = spec.mustName.filter((a) => a !== 'version' && a !== 'cluster');
+		const competing = (a: Axis) => a !== 'version' && a !== 'cluster';
+		const axes = spec.mustName.filter(competing);
+		// ⭐ A READ-FIRST SENTENCE TAKES ONLY `pageFixes` ON TRUST. `cardFixes`
+		// is a claim about what is true INSIDE a card, and a page-level banner
+		// is inside no card -- `/apps` declaring `cardFixes: ['app']` is what
+		// deleted `app` from this surface's checked set entirely, banner
+		// included. The read-first resolver PROVES the card instead: a card
+		// header precedes the row it heads, so a row headline still resolves
+		// there, and a banner above every card resolves nowhere.
+		const headlineAxes = AXES.filter((a) => !spec.pageFixes.includes(a)).filter(competing);
 
-		test(`${c.surface} — ${axes.join(' + ')} named on every claim`, async () => {
+		test(`${c.surface}${c.label ? ` (${c.label})` : ''} — ${axes.join(' + ')} named on every claim`, async () => {
 			const { container } = await renderSurface(c.Comp, c);
-			const { violations, checked } = subjectViolations(container, axes);
+			const all = subjectViolations(container, {
+				row: axes,
+				readFirst: headlineAxes,
+				aggregates: spec.aggregates
+			});
+			const checked = all.checked;
+			const { open, stale } = applyPending(all.violations, PENDING[c.surface] ?? []);
+			if (stale.length > 0) {
+				throw new Error(
+					`${c.surface} lists ${stale.length} pending exemption(s) that no longer fire:\n` +
+						stale.map((p) => `  [${p.claim}] ${p.axis}\n      ${p.why}`).join('\n') +
+						`\n\n  Delete them from PENDING and un-skip the matching DECISION NEEDED test.\n`
+				);
+			}
+			const violations = open.map(formatViolation);
 
 			if (violations.length > 0) {
 				throw new Error(
@@ -109,7 +199,11 @@ describe('every operator claim names its subject for the surface it renders on',
 						`  ${spec.why}\n` +
 						`  A sentence here has to supply ${axes.join(' and ')} itself, or sit inside a\n` +
 						`  region that names it exactly once. Moving the sentence is not a fix; the\n` +
-						`  same string is correct on rollout detail and wrong here.\n`
+						`  same string is correct on rollout detail and wrong here.\n` +
+						`  A claim marked (read first) is held to a stricter rule: it must supply\n` +
+						`  ${headlineAxes.join(' and ')} from ITSELF or from a header ABOVE it. Its own body\n` +
+						`  and its own button do not count -- on a 390px phone the body is five\n` +
+						`  wrapped lines below the headline, and the headline is the whole glance.\n`
 				);
 			}
 			expect(checked, `${c.surface} rendered none of the claims under test`).toBeGreaterThan(0);
@@ -148,5 +242,60 @@ describe('the cluster is legible where it is the only discriminator', () => {
 			).toBe(true);
 		}
 		expect(texts[0], 'the two alpha-dev groups render identically').not.toBe(texts[1]);
+	});
+});
+
+/**
+ * FAILING AND NAMED ON PURPOSE -- A PRODUCT DECISION, NOT A BUG TO PAPER
+ * OVER.
+ *
+ * The `unhealthy` chip on `/` carries `checkFailureTitle` as its tooltip and
+ * therefore as its accessible description. The sentence names the CHECK
+ * (`payment-latency`) and then says *"Automatic deploys **here** are paused"*
+ * -- and `here` is a word the sentence never defines. Everything that would
+ * define it (the rollout name, the environment chip) sits AFTER the chip in
+ * the card, so a person hovering, and a screen reader announcing the name on
+ * its own, both get a failure with no place attached. Fifteen rows on that
+ * page can be in this state at once.
+ *
+ * `/rollouts` renders the identical tooltip and is fine, because the
+ * namespace group header is above it. So this is not a bug in the sentence,
+ * it is a missing ARGUMENT: `checkFailureTitle(f, { subject })`, the same
+ * shape `blockingStory` already takes and the same fix `/apps`'s banner just
+ * had. It changes a string pinned by `truth.test.ts`, on the landing page,
+ * and it is the owner's call whether the tooltip should carry
+ * `alpha-app in DEV` or whether `/`'s cards should name the environment
+ * before the chip instead. Named here rather than decided inside a test.
+ */
+describe('DECISION NEEDED — the health-check tooltip on / names no place', () => {
+	test.skip('DECISION NEEDED: the unhealthy chip tooltip on / names its environment', async () => {
+		const { container } = await renderSurface(ControlCenter, {
+			surface: '/',
+			Comp: ControlCenter,
+			hold: 'approval',
+			check: true
+		});
+		const { violations } = subjectViolations(container, {
+			row: ['app', 'environment'],
+			readFirst: ['app', 'environment']
+		});
+		expect(violations.filter((v) => v.claim === 'health failure title')).toEqual([]);
+	});
+
+	test('the status quo, encoded so the decision above is visible and not silent', async () => {
+		const { container } = await renderSurface(ControlCenter, {
+			surface: '/',
+			Comp: ControlCenter,
+			hold: 'approval',
+			check: true
+		});
+		const { violations } = subjectViolations(container, {
+			row: ['app', 'environment'],
+			readFirst: ['app', 'environment']
+		});
+		expect(
+			violations.some((v) => v.claim === 'health failure title' && v.axis === 'environment'),
+			'the tooltip started naming its environment — delete the PENDING entry and un-skip the test above'
+		).toBe(true);
 	});
 });

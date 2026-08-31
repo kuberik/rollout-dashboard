@@ -61,6 +61,17 @@ export type Surface = {
 	 * sentence. Derived, kept explicit so the table reads as a claim.
 	 */
 	mustName: Axis[];
+	/**
+	 * ⭐ WHAT A COUNT ON *THIS* SURFACE COUNTS.
+	 *
+	 * `N of M up to date` is one string and two sentences. In an app card on
+	 * `/apps` the denominator is ENVIRONMENTS; in the `How it's going` card on
+	 * `/envs/<name>` it is APPS. A claim that aggregates an axis may not be
+	 * asked to name it -- that would be demanding a different sentence -- so
+	 * the exception is recorded per surface, by claim id, rather than by
+	 * widening the claim everywhere and quietly making it inert.
+	 */
+	aggregates?: Partial<Record<string, Axis[]>>;
 	why: string;
 };
 
@@ -69,13 +80,15 @@ const surface = (
 	module: string,
 	pageFixes: Axis[],
 	cardFixes: Axis[],
-	why: string
+	why: string,
+	aggregates?: Partial<Record<string, Axis[]>>
 ): Surface => ({
 	route,
 	module,
 	pageFixes,
 	cardFixes,
 	mustName: AXES.filter((a) => !pageFixes.includes(a) && !cardFixes.includes(a)),
+	aggregates,
 	why
 });
 
@@ -134,7 +147,14 @@ export const SURFACES: readonly Surface[] = [
 		'routes/envs/[name]/+page.svelte',
 		['environment'],
 		[],
-		'The page is one environment. Every sentence still has to name its app.'
+		'The page is one environment. Every sentence still has to name its app.',
+		// `How it's going` rolls up `0 of 2 up to date` over the APPS in this
+		// environment (`verdictTitle`: *"Apps here running the newest version
+		// they have"*). The denominator is the app axis, so this rollup spans
+		// it by construction. On `/apps` the SAME string counts environments
+		// and the app is still required -- which is why this is one surface's
+		// exception and not the claim's.
+		{ 'up-to-date headline': ['app', 'environment'] }
 	),
 	surface(
 		'/rollouts/[cluster]/[namespace]/[name]',
@@ -155,7 +175,77 @@ export const SURFACES: readonly Surface[] = [
 		'routes/versions/+page.svelte',
 		[],
 		['version'],
-		'One row per build; the build is fixed by the row. What a row says about deployment has to name the app and the place.'
+		'One row per build; the build is fixed by the row. What a row says about deployment has to name the app and the place.',
+		// ⛔ ONE STRING, TWO MEANINGS, ONE PRODUCT. `Never deployed` is
+		// `upToDateHeadline`'s rollup for a service that has run nothing
+		// (`/apps`, where the app is fixed by the card and the ENVIRONMENTS
+		// are what it counts) AND, here, the title of a Card holding every
+		// BUILD nobody has taken. As a section header over builds it spans
+		// both the app and the environment axes by construction. Recorded
+		// rather than reworded: this encodes the status quo, and the status
+		// quo is that two different sentences are spelled identically.
+		{ 'up-to-date headline': ['app', 'environment'] }
+	),
+	// ── ADDED 2026-08-31, AFTER `/apps`'s BANNER SHIPPED THE DEFECT THIS
+	//    SUITE WAS WRITTEN FOR. The previous report named these surfaces as
+	//    having no render-level test: their strings were in the census, so a
+	//    CHANGE was noticed, but nothing asserted their subject. A census
+	//    notices; only a render test judges.
+	surface(
+		'/dependencies',
+		'routes/dependencies/+page.svelte',
+		[],
+		[],
+		'The fleet-wide gate graph. Every node is a different app in a different place, which is the whole point of the page, so nothing is fixed and every sentence names both.'
+	),
+	surface(
+		'/namespaces/[name]',
+		'routes/namespaces/[name]/+page.svelte',
+		['environment'],
+		[],
+		'The page is one namespace, and the namespace name carries the tier (`alpha-dev`) — so the environment is fixed by the `<h1>`. The APP is not: two rollouts can share a namespace, and `alpha-dev` does not say `alpha-app`.'
+	),
+	surface(
+		'/versions/[...slug]',
+		'routes/versions/[...slug]/+page.svelte',
+		['version'],
+		[],
+		'The page inverts the question: one BUILD, asked about across places. The build is fixed by the route; every sentence still has to say which service and which environment it is talking about.'
+	),
+	// ── NOT ROUTES. A palette and a modal are surfaces an operator reads,
+	//    and the modal is the LAST SCREEN before production changes, so the
+	//    subject property matters there more than on any list.
+	surface(
+		'command palette',
+		'lib/CommandPalette.svelte',
+		[],
+		[],
+		'A flat list of every rollout on every cluster, filtered by typing. Nothing above a row fixes anything — the palette has no headers at all.'
+	),
+	surface(
+		'modal: change version',
+		'lib/components/ChangeVersionModal.svelte',
+		// ⛔ MEASURED, NOT ASSUMED. The header is `Change Version / alpha-app`
+		// -- `rollout.metadata.name` and nothing else. The component is HANDED
+		// `rollout.metadata.namespace` and a `cluster` prop and prints
+		// neither, so `app` is the only axis it actually fixes. Writing
+		// `['app','environment','cluster']` here because the modal is "about
+		// one rollout by construction" is precisely the assumption that let
+		// `/apps`'s banner ship: about-ness is not naming.
+		['app'],
+		[],
+		'Opened FROM one rollout and given that rollout as a prop, so it is about one thing by construction. It is the LAST SCREEN before production changes, the background is inert and on a phone it is the only object on screen, so what it does not print is not on screen at all. It prints the rollout name; it does not print the environment or the cluster.'
+	),
+	surface(
+		'modal: recovery warning',
+		'lib/components/RecoveryModeWarningModal.svelte',
+		// ⛔ IT FIXES NOTHING. It takes `reason` and `versionDisplay` and no
+		// rollout at all, so it CANNOT name the app, the environment or the
+		// cluster. See the DECISION NEEDED test in
+		// `subject-uncovered.svelte.test.ts`.
+		[],
+		[],
+		'The screen that offers to deploy in recovery mode -- where health-check failures stop marking the deployment failed. It names the build and nothing else.'
 	)
 ];
 

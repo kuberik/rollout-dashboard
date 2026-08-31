@@ -39,8 +39,20 @@ export type Shape = {
 	/** Which release index is running. `null` = never deployed. */
 	at?: number | null;
 	bakeStatus?: string;
-	/** A gate holding it, by kind. */
-	hold?: 'approval' | 'schedule' | 'none';
+	/**
+	 * A gate holding it, by kind.
+	 *
+	 * ⛔ `dependency` WAS MISSING, AND ITS ABSENCE IS ONE OF THE THREE REASONS
+	 * THIS SUITE PASSED WHILE `/apps` SHIPPED THE DEFECT IT WAS WRITTEN FOR.
+	 * The headline in the human's screenshot was *"DEV is waiting on another
+	 * deploy"* — `blockingStory`'s `upstream` branch — and `upstream` is
+	 * reachable only through a `RolloutDependency` or an Environment
+	 * relationship. The fixture served `rolloutDependencies: { items: [] }` on
+	 * every surface, so no test in the file ever rendered that branch. The
+	 * suite was exercising the `approval` branch and reasoning about the
+	 * `upstream` one.
+	 */
+	hold?: 'approval' | 'schedule' | 'dependency' | 'none';
 	pinned?: string | null;
 	/** A `DeploymentBlocked: True` condition naming a failing check. */
 	failingCheck?: string | null;
@@ -61,7 +73,9 @@ function rolloutFor(app: string, tier: string, cluster: string, shape: Shape) {
 			? [{ name: `ghd-${suffix}`, passing: true, allowedVersions: [] as string[] }]
 			: shape.hold === 'schedule'
 				? [{ name: `schedule-gate-${suffix}`, passing: false }]
-				: [];
+				: shape.hold === 'dependency'
+					? [{ name: depGate(suffix), passing: true, allowedVersions: [] as string[] }]
+					: [];
 	return {
 		metadata: {
 			name: app,
@@ -98,6 +112,42 @@ function rolloutFor(app: string, tier: string, cluster: string, shape: Shape) {
 	};
 }
 
+/**
+ * The gate a `RolloutDependency` publishes. `generateName`-shaped, like every
+ * other handle in this fixture: naming it `waiting-on-alpha-app` would smuggle
+ * an app name into the DOM and let a subject test pass on an identifier.
+ */
+const depGate = (suffix: string) => `dep-${suffix}`;
+
+/**
+ * ⭐ THE LIVE CLUSTER'S OWN BLOCKED DEPENDENCY, IN THE FIXTURE.
+ *
+ * `hello-frontend-app` needs `api ^1.67.0` and the provider serves `1.66.0`,
+ * so its gate is closed and `blockingStory` reaches the `upstream` branch:
+ * *"<subject> is waiting on another deploy"*, with a body naming the PROVIDER
+ * and a button naming the WAITER. Two different app names in one panel — the
+ * exact shape the human photographed on `/apps`, and the exact shape that made
+ * the old `resolveAxis` walk find a name and stop looking.
+ */
+function dependencyFor(app: string, tier: string, cluster: string) {
+	const ns = `${app.replace('-app', '')}-${tier}`;
+	const suffix = `${app[0]}${tier[0]}${tier.length}`;
+	const provider = APPS.find((a) => a !== app) ?? app;
+	return {
+		metadata: {
+			name: `${app}-needs-api`,
+			namespace: ns,
+			annotations: { [SOURCE_CLUSTER]: cluster }
+		},
+		spec: {
+			rolloutRef: { name: app },
+			providerRef: { name: provider },
+			contract: 'api ^1.67.0'
+		},
+		status: { gateName: depGate(suffix), providedVersion: '1.66.0' }
+	};
+}
+
 function environmentFor(app: string, tier: string, cluster: string, after: string | null) {
 	const ns = `${app.replace('-app', '')}-${tier}`;
 	return {
@@ -125,17 +175,20 @@ export function fleet(
 ): any {
 	const rollouts: any[] = [];
 	const environments: any[] = [];
+	const dependencies: any[] = [];
 	for (const [i, app] of APPS.entries()) {
 		const cluster = CLUSTERS[i % CLUSTERS.length];
 		for (const [t, tier] of TIERS.entries()) {
-			rollouts.push(rolloutFor(app, tier, cluster, override(app, tier)));
+			const shape = override(app, tier);
+			rollouts.push(rolloutFor(app, tier, cluster, shape));
 			environments.push(environmentFor(app, tier, cluster, t === 0 ? null : TIERS[t - 1]));
+			if (shape.hold === 'dependency') dependencies.push(dependencyFor(app, tier, cluster));
 		}
 	}
 	return {
 		rollouts: { items: rollouts },
 		environments: { items: environments },
-		rolloutDependencies: { items: [] },
+		rolloutDependencies: { items: dependencies },
 		clusters: CLUSTERS.map((name) => ({ name, url: `https://${name}` })),
 		clusterErrors: []
 	};

@@ -41,8 +41,8 @@ import AppDetail from '../../routes/apps/[name]/+page.svelte';
 import EnvDetail from '../../routes/envs/[name]/+page.svelte';
 import RolloutDetail from '../../routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte';
 import { fleet, respond } from './fleet-fixture';
-import { SURFACES, type Axis } from './registry';
-import { subjectViolations } from './axis';
+import { SURFACES, AXES, type Axis } from './registry';
+import { subjectViolations, formatViolation } from './axis';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -94,11 +94,22 @@ const CASES: Array<{
 describe('a page that is about one thing fixes that axis, and still names the rest', () => {
 	for (const c of CASES) {
 		const spec = SURFACES.find((s) => s.route === c.route)!;
-		const axes = spec.mustName.filter((a: Axis) => a !== 'version' && a !== 'cluster');
+		const competing = (a: Axis) => a !== 'version' && a !== 'cluster';
+		const axes = spec.mustName.filter(competing);
+		// Same split as the list surfaces: a read-first sentence takes only
+		// what the PAGE fixes on trust. On these three that is most of it,
+		// which is the point -- they are the control.
+		const headlineAxes = AXES.filter((a) => !spec.pageFixes.includes(a)).filter(competing);
 
 		test(`${c.route} — ${axes.length ? axes.join(' + ') + ' named on every claim' : 'every axis fixed by the page'}`, async () => {
 			const { container } = await mount(c.Comp, c.params, c.fetcher);
-			const { violations, checked } = subjectViolations(container, axes);
+			const found = subjectViolations(container, {
+				row: axes,
+				readFirst: headlineAxes,
+				aggregates: spec.aggregates
+			});
+			const checked = found.checked;
+			const violations = found.violations.map(formatViolation);
 			if (violations.length > 0) {
 				throw new Error(
 					`${c.route} renders ${violations.length} claim(s) whose subject the page does not fix.\n\n` +

@@ -247,6 +247,10 @@
 		 * to move: three of the four things that write a `RolloutGate` publish
 		 * an allow-list, so this page captioned an environment-controller gate
 		 * *"waiting on an approval"* and named a human who cannot exist.
+		 *
+		 * ⛔ SUBJECTED `<app> in <TIER>`, not `<TIER>`. Only the page-level
+		 * banner renders it, and that banner is above every card. See
+		 * `classifyCell`.
 		 */
 		story: BlockingStory;
 		timestamp: string | null;
@@ -432,7 +436,24 @@
 			? displayVersionForTag(rollout, wantedVersion) || wantedVersion
 			: null;
 		const block = promotionBlock(rollout);
-		const story = blockingStory(rollout, ctx, { place: tier, now: refNow });
+		// ⛔ SUBJECTED WITH THE APP, BECAUSE THE ONLY THING THAT RENDERS THIS
+		// STORY IS THE PAGE-LEVEL BANNER, AND THE BANNER SITS ABOVE ALL FOUR
+		// APP CARDS. Without `subject` the headline read *"DEV is waiting on
+		// another deploy"* on a page listing four apps across three
+		// environments — a claim about the ENVIRONMENT, which is a different
+		// and false statement. The body named the upstream app and the button
+		// named the waiting one, and a reader takes the headline on its own:
+		// on a phone the body wraps to five lines underneath it.
+		//
+		// `/environments` fixed exactly this in `e61afd7` with the same call
+		// (`pageStory` there, because that page ALSO renders the unsubjected
+		// story inside its per-environment cards). This page renders only the
+		// banner, so there is one story and it carries the app.
+		const story = blockingStory(rollout, ctx, {
+			place: tier,
+			subject: `${group.appName} in ${tier.toUpperCase()}`,
+			now: refNow
+		});
 
 		let stuckReason = detectStuck(rollout, { now: refNow });
 		if (!stuckReason && cell) {
