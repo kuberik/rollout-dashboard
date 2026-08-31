@@ -46,7 +46,8 @@
 		{ key: 'apps', label: 'Apps', href: '/apps' },
 		{ key: 'environments', label: 'Environments', href: '/environments' },
 		{ key: 'activity', label: 'Activity', href: '/activity' },
-		{ key: 'versions', label: 'Revisions', href: '/versions' }
+		{ key: 'versions', label: 'Revisions', href: '/versions' },
+		{ key: 'dependencies', label: 'Dependencies', href: '/dependencies' }
 	];
 	const currentSection = $derived.by<Section>(() => {
 		const p = page.url.pathname;
@@ -54,6 +55,7 @@
 		if (p.startsWith('/environments') || p.startsWith('/envs/')) return SECTIONS[3];
 		if (p.startsWith('/activity')) return SECTIONS[4];
 		if (p.startsWith('/versions')) return SECTIONS[5];
+		if (p.startsWith('/dependencies')) return SECTIONS[6];
 		if (p.startsWith('/rollouts') || p.startsWith('/namespaces/')) return SECTIONS[1];
 		return SECTIONS[0];
 	});

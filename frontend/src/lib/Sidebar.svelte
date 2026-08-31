@@ -10,6 +10,7 @@
 		LayersSolid,
 		ClockOutline,
 		TagOutline,
+		ShareNodesSolid,
 		ChevronDoubleLeftOutline,
 		ChevronDoubleRightOutline
 	} from 'flowbite-svelte-icons';
@@ -20,6 +21,11 @@
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Environments', icon: LayersSolid },
 		{ key: 'versions', href: '/versions', label: 'Revisions', icon: TagOutline },
+		// The fleet's contract graph. It is a SEVENTH section because the network
+		// is a fleet fact with no other home: `/apps` is a list of services and
+		// the rollout tab is one node's neighbourhood. Most clusters declare no
+		// dependencies at all, and the page's empty state is designed for that.
+		{ key: 'dependencies', href: '/dependencies', label: 'Dependencies', icon: ShareNodesSolid },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
 	] as const;
 

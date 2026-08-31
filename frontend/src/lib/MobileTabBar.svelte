@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { HomeOutline, GridOutline, RocketOutline, LayersSolid, ClockOutline, TagOutline } from 'flowbite-svelte-icons';
+	import { HomeOutline, GridOutline, RocketOutline, LayersSolid, ClockOutline, TagOutline, ShareNodesSolid } from 'flowbite-svelte-icons';
 
 	const tabs = [
 		{ key: 'control', href: '/', label: 'Home', icon: HomeOutline },
@@ -10,6 +10,10 @@
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Envs', icon: LayersSolid },
 		{ key: 'versions', href: '/versions', label: 'Revisions', icon: TagOutline },
+		// `Deps`, not `Dependencies` — the same shortening the bar already applies
+		// to `Environments` -> `Envs`. Seven tabs at 390px leave ~48px of label
+		// each and the long word does not fit; the sidebar prints it in full.
+		{ key: 'dependencies', href: '/dependencies', label: 'Deps', icon: ShareNodesSolid },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
 	] as const;
 

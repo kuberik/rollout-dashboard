@@ -180,6 +180,13 @@
 		type Release
 	} from '$lib/view-models/dependencies';
 	import { rankVerdicts } from '$lib/view-models/env-rank';
+	import DependencyNetwork from '$lib/components/DependencyNetwork.svelte';
+	import { compareEnvironmentNames } from '$lib/env-order';
+	import {
+		buildDependencyGraph,
+		neighbourhood,
+		networkVerdict
+	} from '$lib/view-models/dependency-graph';
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
@@ -809,6 +816,52 @@
 				: 'Other services can only run what this app has deployed.'
 			: 'What has to happen before a newer version of this app can go out.'
 	);
+	/**
+	 * ⭐ THE SAME GRAPH LANGUAGE, AT ONE NODE'S SCALE.
+	 *
+	 * From the human: *"dependencies we used a full graph to show whole network
+	 * of dependencies."* `/dependencies` is that graph; this is the SAME
+	 * component focused on this rollout's immediate neighbourhood, so the two
+	 * pages are one idea at two scales rather than two designs — the way
+	 * `/versions` and its detail page were built.
+	 *
+	 * It reads `allDeps` — BOTH ends of the edge, the whole payload — not the
+	 * consumer-filtered `deps` below, because a map of one node's neighbourhood
+	 * must include the neighbours that point AT it.
+	 *
+	 * The environment mapping is read off the `Environment` objects rather than
+	 * off namespace names: the tier word at the end of `hello-dep-prod` is a
+	 * convention, not a fact.
+	 */
+	const networkEnvOf = $derived.by(() => {
+		const m = new Map<string, string>();
+		for (const e of listEnvironments) {
+			const ns = e.metadata?.namespace;
+			const tier = e.spec?.environment;
+			if (ns && tier && !m.has(ns)) m.set(ns, tier);
+		}
+		return (ns: string) => m.get(ns) ?? null;
+	});
+
+	const networkEnvOrder = $derived(
+		[
+			...new Set(listEnvironments.map((e) => e.spec?.environment).filter(Boolean) as string[])
+		].sort(compareEnvironmentNames)
+	);
+
+	const fullNetwork = $derived(
+		buildDependencyGraph({
+			deps: allDeps,
+			envOf: networkEnvOf,
+			envOrder: networkEnvOrder,
+			knownRollouts: new Set(listRollouts.map((r) => r.metadata?.name).filter(Boolean) as string[])
+		})
+	);
+
+	/** This rollout, its providers and its consumers. Depth 1 — no further. */
+	const localNetwork = $derived(neighbourhood(fullNetwork, name, 1));
+	const localVerdict = $derived(networkVerdict(localNetwork));
+
 </script>
 
 <svelte:head>
@@ -912,6 +965,37 @@
 							{/if}
 						{/snippet}
 					</AlertPanel>
+				{/if}
+
+				<!-- ══ THE MAP, BEFORE THE LISTS ═══════════════════════════════
+				     The two cards below answer *"what blocks me"* and *"what do
+				     I block"* — both are lists of this rollout's neighbours. A
+				     list of neighbours is not a map, and the human asked for the
+				     map twice. This is the SAME component `/dependencies`
+				     renders the fleet with, focused on this node, so the reader
+				     learns one geometry once.
+
+				     It renders only when this rollout is actually in the network.
+				     A service with no contracts gets no empty graph frame — the
+				     norm is not drawn. -->
+				{#if localNetwork.edges.length > 0}
+					<Card icon={ShareNodesSolid} title="In the network" class="mb-4">
+						{#snippet rollup()}
+							<!-- HIDDEN BELOW `sm`: at 390 the verdict and the link together
+							     pushed `In the network` to `In the netw…`, and a clipped card
+							     title is a hard defect. The banner above already states the
+							     block, so the phone loses nothing. -->
+							<span class="hidden text-xs font-medium whitespace-nowrap sm:inline {localVerdict.tone === 'adverse'
+									? 'text-red-700 dark:text-red-400'
+									: 'text-gray-500 dark:text-gray-400'}">{localVerdict.text}</span>
+							<a
+								href="/dependencies"
+								class="text-xs font-medium whitespace-nowrap text-blue-600 hover:underline dark:text-blue-400"
+								>Whole network ›</a
+							>
+						{/snippet}
+						<DependencyNetwork graph={localNetwork} focus={name} compact />
+					</Card>
 				{/if}
 
 				<!-- TWO COLUMNS FROM `xl`, NOT `lg`: at 1280 with the 176px sidebar

@@ -5488,3 +5488,60 @@ right now"* about a check that went green ten minutes ago — the same confident
 this pass exists to close. A check that failed and has **recovered** still carries
 `lastErrorTime`, so it gets the erasure warning in its own words (*"erases the record that
 anything failed here"*) and never the "still failing" line.
+
+---
+
+## App detail — the healthy state is a state, not an absence (2026-08-31)
+
+> *"App with no issues looks weird, like something is missing."*
+
+It was. `/apps/[name]` splits into an ACT column and a 340px STATE rail. When nothing needs
+a person the act column does not render — that was a correct fix for a card whose body was
+one sentence saying nothing is wrong — but what it left behind was **a reverse-chronological
+activity log beside a narrow rail, and half the viewport empty under them.** A page whose
+main object had been deleted.
+
+**The allocation was the bug, not the missing card.** `PAGE-CRITERIA.md` §03 puts three
+questions to this page, and two of them — *which environment runs what, and how far back*
+and *is its prod fleet consistent* — were being answered in a sidebar at 11px, while the
+main column spent its entire width on the third. A log is what you read when you already
+know what you are looking for. It is not a shape, and it cannot lead a page.
+
+### What changed
+
+**The promotion chain moved out of the rail and became the main column's lead card, in
+every state.** `PromotionPipeline.svelte` — a titled card, `Promotion pipeline`, whose
+rollup is the counted verdict `3 of 3 up to date` in the product's one state green.
+
+Nothing was added for the healthy case and nothing was removed for the alarmed one. The
+filled `AlertPanel` still leads when there is a blocking fact, `Needs you` still sits under
+it, and the pipeline is the object both of them are ABOUT. **A healthy app is the same page
+with the alarm absent** — an unbroken run of status circles down to the last environment.
+That is a measurement, not a reassurance: a fraction proves what a sentence could only
+claim, and descriptive text on this page has been rejected by name.
+
+### Three rules this records
+
+1. **A settled station keeps its status circle here, and loses it in `StageChain`.**
+   "Mark the deviation, never the norm" was derived for *a mark repeated down a list* —
+   thirteen 5px dots in a 340px rail, every one saying "fine". In the pipeline the circle is
+   not a health badge, it is the **frontier**: a filled circle means the build reached this
+   station, exactly as `Stage 1 · Done` does on rollout detail, which draws five of them and
+   is the page the human calls beautiful. Same atom (`getStatusCircleClass` +
+   `BakeStatusIcon`), same 32px, zero new colour.
+2. **A LINE and a SET may not share a geometry.** The rail drew stages and production
+   regions as the same vertical list. Stages now get the line — stations joined by hops,
+   solid when the edge is in sync, dashed with a printed count when builds are waiting.
+   Regions get a wrapping **grid** with no rails, because a set has no order. N regions cost
+   rows, never width.
+3. **The rail is a stack of small complete answers, or it is not a column.** §7 of the
+   composition grammar, and the reference page's rail is four such cards. This one was one
+   card holding the page's whole answer plus two unheaded sub-sections. It is now `Source`
+   (the reference's `External Links` — and the only route off a healthy app's page, which
+   previously had none, because every link lived on a task button) and
+   `How much is on the newest` (the exposure bar, with the percentage as its rollup). When
+   neither can render, the 340px track is dropped rather than left as a hole — the same rule
+   `hasAct` already applies to the act column.
+
+`cell.sourceURL` is the **dashboard** a rollout was read from, not its repository. The
+source card reads `rollout.status.source`.
