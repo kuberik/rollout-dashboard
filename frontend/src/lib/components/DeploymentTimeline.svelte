@@ -18,6 +18,16 @@
 		 */
 		subject?: string;
 		triggeredBy?: { kind: 'User' | 'System'; name: string };
+		/**
+		 * A DEPLOY THAT WENT BACKWARDS IS A DIFFERENT EVENT FROM ONE THAT WENT
+		 * FORWARDS, and this chart drew them as the same circle. Optional and
+		 * caller-supplied, because the ordering that decides it lives in the
+		 * rollout's own `availableReleases` (`history-marks.ts`) and a lane
+		 * belonging to a DIFFERENT stream has no standing to rank it — see the
+		 * note where the history page builds its lanes. Drawn as a ring in the
+		 * mark's existing ink: zero new colour, and it survives greyscale.
+		 */
+		mark?: 'rollback';
 	};
 
 	type ServiceRow = {
@@ -58,7 +68,8 @@
 			return isNaN(t.getTime()) ? '' : `, ${t.toLocaleString()}`;
 		})();
 		const subject = e.subject ? `${e.subject} in ` : '';
-		return `${version} on ${subject}${svc.name} — ${outcome}${when}`;
+		const act = e.mark === 'rollback' ? ', rolled back' : '';
+		return `${version} on ${subject}${svc.name} — ${outcome}${act}${when}`;
 	}
 
 	const TIME_RANGES: { value: PresetRange; label: string }[] = [
@@ -78,6 +89,7 @@
 		onRangeChange = undefined as ((range: TimeRange) => void) | undefined,
 		labelWidth = 130,
 		labelEmptyLanes = false,
+		fanOverlaps = false,
 		rowHeight = 52
 	}: {
 		services: ServiceRow[];
@@ -104,6 +116,17 @@
 		 * this only for the service being viewed, and that must not change.
 		 */
 		labelEmptyLanes?: boolean;
+		/**
+		 * Fan colliding marks apart vertically inside their lane — see
+		 * `spreadOverlaps`. OPT-IN, and deliberately so: it is right for a lane
+		 * that is ONE service's history, where every mark is a distinct event the
+		 * reader came to count, and it is wrong for `/activity`, whose lanes hold
+		 * a whole environment and where eight builds landing in one minute is a
+		 * normal Tuesday. Fanned, those eight become a vertical bead-chain that
+		 * reads as if height meant something. The page the critic called clean
+		 * stays as it was.
+		 */
+		fanOverlaps?: boolean;
 		/**
 		 * Lane height. 52px is right for one lane and wrong for twenty-two: a
 		 * 22-environment fleet made this chart 1,144px tall, i.e. the whole
@@ -167,7 +190,15 @@
 	const bounds = $derived(computeBounds(timeRange));
 	const startMs = $derived(bounds.startMs);
 	const endMs = $derived(bounds.endMs);
-	const LABEL_W = $derived(labelWidth);
+	/**
+	 * ⚠️ THE GUTTER IS A CEILING, NOT A CONSTANT. At 390 the whole chart is
+	 * ~310px and a 130px lane-name gutter took 42% of it, so the plot — i.e.
+	 * the resolution, i.e. the only reason the chart exists — got what was
+	 * left. Capped at 30% of the container, the name truncates a little
+	 * sooner on a phone and the axis gets a quarter more room. Desktop is
+	 * unchanged: 30% of a 1,000px card is well above any caller's request.
+	 */
+	const LABEL_W = $derived(Math.max(40, Math.min(labelWidth, Math.round(containerWidth * 0.3))));
 	const ROW_H = $derived(rowHeight);
 	/** Characters that fit the gutter. `ui-monospace` at 11px measures ~6.6px
 	    per glyph, and the label is right-anchored 10px in from `LABEL_W`. */
@@ -292,6 +323,51 @@
 	 * through the array index. Caught by keyboard test, not by reading: `Home`
 	 * landed on 11:22 and `End` on 10:29.
 	 */
+	/**
+	 * ⭐ TWO DEPLOYS SIX MINUTES APART DREW AS ONE DOT.
+	 *
+	 * Fitting the window to the data removes the empty days, but it cannot
+	 * separate events that are genuinely close: on the live hub,
+	 * `hello-world-app` deployed at 23:09 and 23:15 inside a 38-hour span, and
+	 * at 1,050px that is **3px apart** — one 5px mark on top of another. A
+	 * chart that silently draws two events as one is worse than a chart that
+	 * omits one, because the reader has no way to know.
+	 *
+	 * Marks that collide are fanned VERTICALLY inside their own lane. `x` is
+	 * untouched, so nothing lies about WHEN — the y-axis inside a swimlane
+	 * carries no meaning to spend, which is exactly why it is the channel that
+	 * can absorb this. The fan is bounded by the lane, so a 26px lane (what
+	 * `/activity` uses for a 22-environment fleet) barely moves and a 52px one
+	 * separates cleanly. It never overflows into the lane above or below.
+	 */
+	const MIN_SEP = 2 * R_NORMAL + 2;
+
+	function spreadOverlaps(xs: number[], order: number[]): number[] {
+		const dys = new Array(xs.length).fill(0);
+		if (order.length < 2) return dys;
+		const maxOffset = Math.max(0, ROW_H / 2 - R_ACTIVE - 3);
+		if (maxOffset <= 1) return dys;
+		let cluster: number[] = [];
+		const flush = () => {
+			const n = cluster.length;
+			if (n > 1) {
+				const step = Math.min(MIN_SEP, (2 * maxOffset) / (n - 1));
+				for (let k = 0; k < n; k++) dys[cluster[k]] = (k - (n - 1) / 2) * step;
+			}
+			cluster = [];
+		};
+		for (const pos of order) {
+			const prev = cluster[cluster.length - 1];
+			if (prev === undefined || Math.abs(xs[pos] - xs[prev]) < MIN_SEP) cluster.push(pos);
+			else {
+				flush();
+				cluster.push(pos);
+			}
+		}
+		flush();
+		return dys;
+	}
+
 	const lanes = $derived(
 		services.map((svc, i) => {
 			const entries = visibleEntries(svc.history);
@@ -302,7 +378,8 @@
 						new Date(entries[a].e.timestamp).getTime() -
 						new Date(entries[b].e.timestamp).getTime()
 				);
-			return { svc, i, entries, order };
+			const xs = entries.map(({ e }) => tsToX(e.timestamp));
+			return { svc, i, entries, order, xs, dys: fanOverlaps ? spreadOverlaps(xs, order) : xs.map(() => 0) };
 		})
 	);
 
@@ -601,7 +678,7 @@
 				{/each}
 
 				<!-- Per-service swimlanes -->
-				{#each lanes as { svc, entries, order }, i}
+				{#each lanes as { svc, entries, order, xs, dys }, i}
 					{@const cy = rowCY(i)}
 					{@const cursor = cursorFor(svc.id, order)}
 
@@ -650,7 +727,10 @@
 					     on one page, and ids would collide). -->
 					<g data-lane={svc.id} role="group" aria-label={laneLabel(svc.name, entries.length)}>
 						{#each entries as { e, i: origIdx }, pos}
-							{@const x = tsToX(e.timestamp)}
+							{@const x = xs[pos]}
+							<!-- `cy + dys[pos]`: the fan that keeps two colliding deploys
+							     from drawing as one mark. `x` is never touched. -->
+							{@const dy = cy + dys[pos]}
 							{@const isHov = hovId === svc.id && hovIdx === origIdx}
 							{@const isSel =
 								selectedEntry?.serviceId === svc.id && selectedEntry?.index === origIdx}
@@ -663,15 +743,33 @@
 							{#if active}
 								<circle
 									cx={x}
-									cy={cy}
+									cy={dy}
 									r={r + 5}
 									class="fill-gray-900/10 dark:fill-gray-100/15"
 								/>
 							{/if}
 
+							<!-- THE ROLLBACK RING. A deploy that went backwards is the one
+							     deviation on a lane of forward deploys, and it was drawn as
+							     the identical circle. A concentric ring in the mark's OWN ink
+							     spends no colour, reads in greyscale, and survives the fan
+							     above because it moves with the dot. `pointer-events-none` so
+							     it never steals the dot's hover or click. -->
+							{#if e.mark === 'rollback'}
+								<circle
+									cx={x}
+									cy={dy}
+									r={r + 3}
+									fill="none"
+									stroke-width={1.5}
+									pointer-events="none"
+									class="stroke-gray-900 dark:stroke-gray-100"
+								/>
+							{/if}
+
 							<circle
 								cx={x}
-								cy={cy}
+								cy={dy}
 								{r}
 								data-dot=""
 								stroke-width={active ? 2 : 1}
@@ -684,7 +782,7 @@
 									hovId = svc.id;
 									hovIdx = origIdx;
 									hovDotX = x;
-									hovDotY = cy;
+									hovDotY = dy;
 								}}
 								onmouseleave={() => {
 									hovId = null;
@@ -695,7 +793,7 @@
 									hovId = svc.id;
 									hovIdx = origIdx;
 									hovDotX = x;
-									hovDotY = cy;
+									hovDotY = dy;
 								}}
 								onblur={() => {
 									if (hovId === svc.id && hovIdx === origIdx) {
@@ -820,6 +918,11 @@
 			<div class="mt-1 text-xs font-medium {statusText(entry.bakeStatus)}">
 				{entry.bakeStatus || 'Unknown'}
 			</div>
+			{#if entry.mark === 'rollback'}
+				<div class="mt-1 text-xs font-semibold text-gray-900 dark:text-white">
+					Rolled back to an older release
+				</div>
+			{/if}
 			{#if entry.triggeredBy}
 				<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
 					{entry.triggeredBy.kind === 'User' ? entry.triggeredBy.name : 'System'}

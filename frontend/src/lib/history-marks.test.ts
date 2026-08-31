@@ -1,0 +1,87 @@
+import { describe, it, expect } from 'vitest';
+import { deployActs, rollbackCount } from './history-marks';
+import { detectRollback } from './rollout-cards';
+
+// The live hub, 2026-08-30, `hello-world-prod/hello-world-app` — the exact
+// state a UX critic drove the branch into. Five deploys, all `Succeeded`, and
+// two of them moved production backwards. The history tab rendered five green
+// ticks and `100% success`.
+const AVAILABLE = Array.from({ length: 21 }, (_, i) => `rel-${i}`);
+AVAILABLE[0] = '51b976a';
+AVAILABLE[5] = '991829b';
+AVAILABLE[7] = 'aa17645';
+AVAILABLE[19] = '0afab6f';
+
+function rollout(history: string[]) {
+	return {
+		metadata: { name: 'hello-world-app', namespace: 'hello-world-prod' },
+		spec: {},
+		status: {
+			history: history.map((v, i) => ({
+				version: { version: v },
+				timestamp: `2026-08-3${i === 0 ? 0 : 0}T2${3 - i}:00:00Z`,
+				bakeStatus: 'Succeeded'
+			})),
+			availableReleases: AVAILABLE.map((v) => ({ version: v }))
+		}
+	} as any;
+}
+
+const LIVE = rollout(['991829b', '0afab6f', '51b976a', 'aa17645', '51b976a']);
+
+describe('deployActs', () => {
+	it('names both rollbacks in the live five-deploy history', () => {
+		const acts = deployActs(LIVE);
+		expect(acts.map((a) => a?.kind ?? 'none')).toEqual([
+			'rollback', // 991829b (5) replaced 0afab6f (19)
+			'forward', // 0afab6f (19) replaced 51b976a (0)
+			'rollback', // 51b976a (0) replaced aa17645 (7)
+			'forward', // aa17645 (7) replaced 51b976a (0)
+			'none' // oldest entry — nothing precedes it
+		]);
+		expect(acts[0]).toMatchObject({ by: 14, from: '0afab6f', to: '991829b' });
+		expect(acts[2]).toMatchObject({ by: 7, from: 'aa17645', to: '51b976a' });
+		expect(rollbackCount(LIVE)).toBe(2);
+	});
+
+	// ⛔ THE ANTI-DRIFT TEST. `/` and `/rollouts` flag the current rollback via
+	// `detectRollback`; the history page flags every one via `deployActs`. If
+	// these two ever disagree at index 0, two surfaces tell an operator two
+	// different stories about the same deploy — which is the defect the whole
+	// module exists to close.
+	it('agrees with rollout-cards::detectRollback about the newest deploy', () => {
+		for (const h of [
+			['991829b', '0afab6f', '51b976a'],
+			['0afab6f', '51b976a'],
+			['51b976a', 'aa17645'],
+			['aa17645', 'aa17645'],
+			['unknown-tag', '0afab6f'],
+			['0afab6f']
+		]) {
+			const r = rollout(h);
+			const mark = detectRollback(r);
+			const act = deployActs(r)[0];
+			if (mark) {
+				expect(act).toMatchObject({ kind: 'rollback', by: mark.by, from: mark.from, to: mark.to });
+			} else {
+				expect(act?.kind).not.toBe('rollback');
+			}
+		}
+	});
+
+	it('stays silent when a version has no position in availableReleases', () => {
+		const acts = deployActs(rollout(['not-a-release', '0afab6f']));
+		expect(acts[0]).toBeNull();
+		expect(rollbackCount(rollout(['not-a-release', '0afab6f']))).toBe(0);
+	});
+
+	it('calls a same-version deploy a redeploy, not a rollback', () => {
+		const acts = deployActs(rollout(['0afab6f', '0afab6f']));
+		expect(acts[0]?.kind).toBe('redeploy');
+	});
+
+	it('returns nothing for an empty or single-entry history', () => {
+		expect(deployActs(null)).toEqual([]);
+		expect(deployActs(rollout(['0afab6f']))).toEqual([null]);
+	});
+});

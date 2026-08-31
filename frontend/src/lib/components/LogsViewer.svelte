@@ -113,7 +113,28 @@
 
 	// Derived state from query
 	const logs = $derived(logsQuery.data || []);
+	/**
+	 * ⛔ `Loading...` STAYED UP WHILE THE LOGS WERE ALREADY SCROLLING PAST.
+	 *
+	 * This is a STREAM, not a request. TanStack holds `isFetching` true for the
+	 * whole life of the stream — that is what "fetching" means for a query that
+	 * never resolves — so `isPending || isFetching` was true forever, and the
+	 * header sat there with a spinner and the word `Loading...` above hundreds
+	 * of delivered lines. A person reading that has to decide whether the log
+	 * they are looking at is complete, and the label tells them it is not.
+	 *
+	 * The two states are genuinely different and now say different things:
+	 *
+	 *   connecting  nothing has arrived yet — a spinner is honest
+	 *   streaming   the pipe is open and lines are landing — say THAT
+	 *
+	 * `isLoading` is kept, spelled correctly, because the full-panel skeleton
+	 * below is the one place where "we are waiting and have nothing" is exactly
+	 * the question being asked.
+	 */
 	const isLoading = $derived(logsQuery.isPending || logsQuery.isFetching);
+	const isConnecting = $derived(isLoading && logs.length === 0);
+	const isStreaming = $derived(isLoading && logs.length > 0);
 	const error = $derived(
 		logsQuery.isError ? (logsQuery.error as Error)?.message || 'Unknown error' : null
 	);
@@ -186,6 +207,27 @@
 		});
 		return Array.from(containerSet).sort();
 	});
+
+	/**
+	 * WHETHER THE READER IS LOOKING THROUGH A FILTER. The empty state used to
+	 * print `No logs available (Total: 0, Filtered: 0)` — two internal counters
+	 * and no answer — which is the same string whether the pods are silent or
+	 * a filter three controls away is hiding everything. The two are different
+	 * problems and only one of them has an action.
+	 */
+	const hasFilters = $derived(
+		selectedPods.size > 0 ||
+			selectedContainers.size > 0 ||
+			selectedLogLevels.size > 0 ||
+			searchQuery.trim().length > 0
+	);
+
+	function clearFilters() {
+		selectedPods = new Set();
+		selectedContainers = new Set();
+		selectedLogLevels = new Set();
+		searchQuery = '';
+	}
 
 	// Filter logs by selected pods, containers, log levels, and search query
 	const filteredLogs = $derived.by(() => {
@@ -417,9 +459,13 @@
 	<div class="mb-3 flex flex-shrink-0 flex-col gap-2 border-b border-gray-200 pb-3 dark:border-gray-700 sm:mb-4 sm:gap-3">
 		<!-- Status indicators -->
 		<div class="flex items-center gap-2">
-			{#if isLoading}
+			<!-- ONE PLACE SAYS THE STREAM IS LIVE, AND IT IS THE FOOTER. This row
+			     now draws only while there is genuinely nothing yet, so the header
+			     no longer contradicts the lines below it, and it does not repeat the
+			     `Streaming ●` mark the footer has always carried. -->
+			{#if isConnecting}
 				<Spinner size="4" color="blue" />
-				<span class="text-xs text-gray-500 dark:text-gray-400">Loading...</span>
+				<span class="text-xs text-gray-500 dark:text-gray-400">Connecting to pods…</span>
 			{/if}
 			{#if error}
 				<Badge color="red" class="text-xs">Error loading logs</Badge>
@@ -693,7 +739,7 @@
 	</div>
 
 	<!-- Logs display -->
-	{#if isLoading && logs.length === 0}
+	{#if isConnecting}
 		<div class="flex flex-1 items-center justify-center">
 			<Spinner size="6" color="blue" />
 		</div>
@@ -706,9 +752,29 @@
 			</div>
 		</div>
 	{:else if allLogLines.length === 0}
-		<div class="flex flex-1 items-center justify-center">
-			<div class="text-center text-gray-500 dark:text-gray-400">
-				<p>No logs available (Total: {logs.length}, Filtered: {filteredLogs.length})</p>
+		<div class="flex flex-1 items-center justify-center p-6">
+			<div class="max-w-sm text-center">
+				{#if hasFilters}
+					<p class="text-sm font-medium text-gray-900 dark:text-white">
+						No lines match the current filters
+					</p>
+					<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+						{logs.length.toLocaleString()} line{logs.length === 1 ? '' : 's'} have arrived; every
+						one of them is hidden by a pod, container, level or search filter.
+					</p>
+					<Button class="mt-4" size="sm" color="light" onclick={clearFilters}>
+						Clear filters
+					</Button>
+				{:else}
+					<p class="text-sm font-medium text-gray-900 dark:text-white">No log lines yet</p>
+					<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+						The stream is open and
+						{discoveredPods.length > 0
+							? `${discoveredPods.length} pod${discoveredPods.length === 1 ? ' has' : 's have'}`
+							: 'the pods have'} written nothing since this view opened. New lines appear here
+						as they are written.
+					</p>
+				{/if}
 			</div>
 		</div>
 	{:else}
@@ -783,10 +849,21 @@
 					<span class="text-blue-600 dark:text-blue-400">"{searchQuery}"</span>
 				{/if}
 			</div>
-			<div class="flex items-center gap-1">
-				<span class="hidden text-green-700 sm:inline dark:text-green-400">Streaming</span>
-				<span class="h-2 w-2 animate-pulse rounded-full bg-green-700 dark:bg-green-400"></span>
-			</div>
+			<!-- ⚠️ THIS SAID `Streaming ●` WHENEVER A LINE HAD EVER ARRIVED — after
+			     the stream closed, and after it errored. A live mark that cannot go
+			     out is decoration, not a status. It is gated on the query now, and
+			     the closed case says so instead of going quiet. -->
+			{#if isStreaming}
+				<div class="flex items-center gap-1">
+					<span class="hidden text-green-700 sm:inline dark:text-green-400">Streaming</span>
+					<span class="h-2 w-2 animate-pulse rounded-full bg-green-700 dark:bg-green-400"></span>
+				</div>
+			{:else if !error}
+				<div class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+					<span class="hidden sm:inline">Stream closed</span>
+					<span class="h-2 w-2 rounded-full bg-gray-500 dark:bg-gray-400"></span>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>

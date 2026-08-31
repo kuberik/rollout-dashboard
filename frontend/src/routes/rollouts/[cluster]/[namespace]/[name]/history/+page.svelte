@@ -13,7 +13,9 @@
 		ChevronUpOutline,
 		LayersSolid,
 		RefreshOutline,
-		ChevronRightOutline
+		ChevronRightOutline,
+		ChartLineUpOutline,
+		ListOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -26,6 +28,7 @@
 		buildDatadogLogsUrl
 	} from '$lib/utils';
 	import { versionPathForRollout } from '$lib/version-utils';
+	import { deployActs } from '$lib/history-marks';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -128,8 +131,35 @@
 	// Timeline state
 	type PresetRange = '1h' | '6h' | '1d' | '7d' | '30d' | 'all';
 	type TimeRange = PresetRange | { start: number; end: number };
-	let timeRange = $state<TimeRange>('7d');
+
+	/**
+	 * ⛔ THE WINDOW OPENED ON SIX EMPTY DAYS.
+	 *
+	 * A hard-coded `7d` on a page whose whole job is this rollout's history:
+	 * measured on the live hub, five deploys spanning 38 hours drew as two
+	 * smudges in the right-hand eighth of a 1,050px plot, under an axis whose
+	 * first six ticks had nothing beneath them. A time axis that puts every
+	 * event in one column is not showing time.
+	 *
+	 * `all` is not "everything ever" here — `DeploymentTimeline.computeBounds`
+	 * reads it as FIT: earliest event to now, plus 5%. It is the only window
+	 * that is right without knowing the data, and the presets are one click
+	 * away when the reader wants a fixed one. No "stop auto-fitting once the
+	 * reader touches it" latch is needed, unlike `/activity`: `all` is not a
+	 * computed value that would fight the reader for the control, it is a
+	 * window the chart re-derives from whatever data it has.
+	 */
+	let timeRange = $state<TimeRange>('all');
 	let selectedEntry = $state<{ serviceId: string; index: number } | null>(null);
+
+	/**
+	 * WHAT EACH DEPLOY DID, not just how it ended. See `history-marks.ts`:
+	 * index-aligned with `status.history`, `null` where the ordering cannot
+	 * answer. This is what makes a rollback readable AT REST on the page whose
+	 * job is history — `/` and `/rollouts` have flagged it at rest for weeks.
+	 */
+	const acts = $derived(deployActs(rollout));
+	const rollbacks = $derived(acts.filter((a) => a?.kind === 'rollback').length);
 
 	// Build service rows for the chart
 	const chartServices = $derived.by(() => {
@@ -137,7 +167,13 @@
 		const current = {
 			id: `${namespace}/${name}`,
 			name: currentEnvName ? `${name} (${currentEnvName})` : name,
-			history: rollout.status?.history ?? [],
+			// The chart carries the same fact the rows do: a mark that went
+			// BACKWARDS is drawn with a ring and says so in its accessible name.
+			// Sibling lanes get no mark — their `availableReleases` is a
+			// different stream and this rollout's ordering cannot rank it.
+			history: (rollout.status?.history ?? []).map((e, i) =>
+				acts[i]?.kind === 'rollback' ? { ...e, mark: 'rollback' as const } : e
+			),
 			isCurrent: true
 		};
 		const rows: typeof current[] = [current];
@@ -203,6 +239,39 @@
 	const failed = $derived(allHistory.filter((e) => e.bakeStatus === 'Failed').length);
 	const successRate = $derived(totalDeploys > 0 ? Math.round((succeeded / totalDeploys) * 100) : 0);
 
+	/**
+	 * The card header's right-aligned rollup — the composition grammar's one
+	 * most transferable move: a reader takes the card's answer without reading
+	 * a row of it. Here the answer is the SPAN, because the span is what the
+	 * old fixed `7d` window was lying about.
+	 */
+	const timelineRollup = $derived.by(() => {
+		const ts = allHistory
+			.map((e) => new Date(e.timestamp).getTime())
+			.filter((n) => Number.isFinite(n))
+			.sort((a, b) => a - b);
+		if (ts.length === 0) return 'no deploys';
+		const n = `${ts.length} deploy${ts.length === 1 ? '' : 's'}`;
+		if (ts.length === 1) return n;
+		return `${n} over ${spanLabel(ts[ts.length - 1] - ts[0])}`;
+	});
+
+	/**
+	 * ⚠️ NOT `formatDurationMs`. Its coarsest bucket is a whole day, so a
+	 * 37-hour span comes back as `1 day` — the SAME rounding this page is
+	 * being fixed for. A rollup that states the span must not round the span
+	 * away, so this keeps one unit of remainder. The shared formatter is
+	 * correct for every one of its other callers and is not touched.
+	 */
+	function spanLabel(ms: number): string {
+		const m = Math.floor(ms / 60_000);
+		if (m < 60) return `${m}m`;
+		const h = Math.floor(m / 60);
+		if (h < 24) return m % 60 === 0 ? `${h}h` : `${h}h ${m % 60}m`;
+		const d = Math.floor(h / 24);
+		return h % 24 === 0 ? `${d}d` : `${d}d ${h % 24}h`;
+	}
+
 	// Expanded entry state
 	let expandedIdx = $state<Set<number>>(new Set());
 	function toggleExpand(i: number) {
@@ -229,6 +298,25 @@
 	let showChangeVersionModal = $state(false);
 	let selectedVersionTag = $state<string | null>(null);
 	let deployExplanation = $state('');
+
+	/**
+	 * The exact clock, at the resolution the rows are actually spaced at.
+	 * `Aug 30, 23:09` / `Aug 30, 23:15` — the two deploys that both read `1d`.
+	 * 24-hour and no seconds: this is a list to scan, not a log to correlate,
+	 * and `formatDate` (full, with seconds) is still on the row's `title` and
+	 * in the expanded panel for when someone needs to correlate.
+	 */
+	function clockTime(ts: string): string {
+		const d = new Date(ts);
+		if (isNaN(d.getTime())) return '—';
+		return d.toLocaleString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false
+		});
+	}
 
 	function formatRevision(revision: string) {
 		let r = revision.includes('@sha1:') ? revision.split('@sha1:')[1] : revision;
@@ -321,7 +409,18 @@
 						All deployments for <span class="font-mono">{name}</span>
 					</p>
 				</div>
-				<!-- Stat pills -->
+				<!--
+					⛔ `100% SUCCESS` WAS TRUE AND IT WAS THE WRONG HEADLINE.
+					A rollback IS a successful deploy — it bakes, it goes green, it
+					counts toward the rate. So a success rate can never contain the
+					fact that production went backwards, and the header stated the
+					rate and nothing else while `hello-world-app` had gone backwards
+					TWICE in the five deploys listed below it.
+					The rate stays; the rollback count stands beside it. The FAILED
+					pill only draws when there is a failure to draw — an always-on
+					red `0` is the norm wearing the alarm's colour, and it was the
+					only red on a page with nothing wrong.
+				-->
 				<div class="flex flex-wrap items-center gap-2">
 					<div
 						class="flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs dark:bg-gray-800"
@@ -331,16 +430,31 @@
 					</div>
 					<div
 						class="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs dark:bg-green-950/30"
+						title="{succeeded} of {totalDeploys} deploys finished healthy"
 					>
 						<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
 						<span class="font-semibold text-green-700 dark:text-green-400">{succeeded}</span>
 					</div>
-					<div
-						class="flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs dark:bg-red-950/30"
-					>
-						<ExclamationCircleSolid class="h-3 w-3 text-red-500 dark:text-red-400" />
-						<span class="font-semibold text-red-700 dark:text-red-400">{failed}</span>
-					</div>
+					{#if failed > 0}
+						<div
+							class="flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs dark:bg-red-950/30"
+							title="{failed} of {totalDeploys} deploys failed"
+						>
+							<ExclamationCircleSolid class="h-3 w-3 text-red-700 dark:text-red-400" />
+							<span class="font-semibold text-red-700 dark:text-red-400">{failed}</span>
+						</div>
+					{/if}
+					{#if rollbacks > 0}
+						<div
+							class="flex items-center gap-1.5 rounded-full bg-gray-900 px-3 py-1 text-xs text-white dark:bg-gray-100 dark:text-gray-900"
+							title="{rollbacks} of these {totalDeploys} deploys moved this rollout to an OLDER release. A rollback still bakes and still counts as a success."
+						>
+							<UndoOutline class="h-3 w-3" />
+							<span class="font-semibold">
+								{rollbacks} rolled back
+							</span>
+						</div>
+					{/if}
 					<div
 						class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs {successRate >= 90
 							? 'bg-green-50 dark:bg-green-950/30'
@@ -359,15 +473,29 @@
 				</div>
 			</div>
 
-			<!-- Timeline chart card -->
+			<!-- Timeline chart card.
+			     A TITLED CARD, not a bordered box: 16px icon + 14px/600 title on
+			     the left, the rolled-up answer hard-right, body below the rule.
+			     Both other regions on this page follow the same header. -->
 			<div
-				class="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/50"
+				class="mb-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800/50"
 			>
-				<div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-					<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+				<div
+					class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+				>
+					<h3
+						class="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white"
+					>
+						<ChartLineUpOutline
+							class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+							aria-hidden="true"
+						/>
 						Deployment Timeline
 					</h3>
-					<div class="flex flex-wrap gap-2">
+					<div class="flex flex-wrap items-center gap-2">
+						<span class="text-xs text-gray-500 tabular-nums dark:text-gray-400">
+							{timelineRollup}
+						</span>
 						{#if hasOtherEnvs}
 							<button
 								class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors {showEnvironments
@@ -399,25 +527,54 @@
 						</button>
 					</div>
 				</div>
-				<DeploymentTimeline
-					services={chartServices}
-					bind:timeRange
-					{selectedEntry}
-					onEntryClick={handleChartEntryClick}
-				/>
+				<div class="p-4">
+					<DeploymentTimeline
+						services={chartServices}
+						bind:timeRange
+						{selectedEntry}
+						fanOverlaps
+						onEntryClick={handleChartEntryClick}
+					/>
+				</div>
 			</div>
 
 			<!-- Deployment list -->
 			<div class="space-y-1">
-				<div class="mb-3 flex items-center justify-between">
-					<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+				<div
+					class="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-gray-200 pb-2 dark:border-gray-700"
+				>
+					<h3
+						class="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white"
+					>
+						<ListOutline
+							class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+							aria-hidden="true"
+						/>
 						Deployments
 						{#if filteredHistory.length !== totalDeploys}
-							<span class="ml-1.5 font-normal text-gray-500 dark:text-gray-400">
+							<span class="font-normal text-gray-500 dark:text-gray-400">
 								({filteredHistory.length} of {totalDeploys})
 							</span>
 						{/if}
 					</h3>
+					<!-- The rollup answers the card without reading a row of it, and
+					     the fact it carries is the one the page used to hide. -->
+					<span class="text-xs text-gray-500 dark:text-gray-400">
+						{#if rollbacks > 0}
+							<span
+								class="inline-flex items-center gap-1 font-semibold text-gray-900 dark:text-white"
+							>
+								<UndoOutline class="h-3.5 w-3.5" aria-hidden="true" />
+								{rollbacks} of {totalDeploys} went backwards
+							</span>
+						{:else if totalDeploys > 0}
+							<!-- Not "all N moved forward": an entry whose release has aged
+							     out of `availableReleases` has no position and therefore no
+							     direction, and this rollup must not turn that silence into
+							     a claim. "No rollbacks" is what the ordering supports. -->
+							no rollbacks in {totalDeploys} deploys
+						{/if}
+					</span>
 				</div>
 
 				{#if filteredHistory.length === 0}
@@ -430,6 +587,7 @@
 					{#each filteredHistory as { e: entry, i } (i)}
 						{@const isCurrent = i === 0}
 						{@const isExpanded = expandedIdx.has(i)}
+						{@const act = acts[i]}
 						{@const isSelected =
 							selectedEntry?.serviceId === `${namespace}/${name}` &&
 							selectedEntry?.index === i}
@@ -446,7 +604,8 @@
 							<div
 								role="button"
 								tabindex="0"
-								class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+								aria-expanded={isExpanded}
+								class="group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
 								onclick={() => toggleExpand(i)}
 								onkeydown={(e) => {
 									if (e.key === 'Enter' || e.key === ' ') {
@@ -456,7 +615,7 @@
 								}}
 							>
 								<!-- Status icon -->
-								<div class="flex-shrink-0">
+								<div class="flex-shrink-0 pt-0.5">
 									<BakeStatusIcon bakeStatus={entry.bakeStatus} size="medium" />
 								</div>
 
@@ -473,42 +632,110 @@
 										{#if isCurrent}
 											<Badge color="blue" class="text-xs">Current</Badge>
 										{/if}
-										<Badge color={statusBadgeColor(entry.bakeStatus)} class="text-xs">
-											{entry.bakeStatus || 'Unknown'}
-										</Badge>
+										<!--
+											THE `Succeeded` BADGE IS THE NORM AND ONLY THE NORM.
+											Five rows, five green ticks, five green `Succeeded` pills:
+											the pill repeated what the tick beside it already said and
+											spent the row's whole colour budget doing it, which is why
+											the one deploy that went BACKWARDS could not get a word in.
+											Anything that is not `Succeeded` still gets its badge.
+										-->
+										{#if entry.bakeStatus !== 'Succeeded'}
+											<Badge color={statusBadgeColor(entry.bakeStatus)} class="text-xs">
+												{entry.bakeStatus || 'Unknown'}
+											</Badge>
+										{/if}
+										{#if act?.kind === 'rollback'}
+											<!-- The word, AT REST. Neutral-strong rather than a status
+											     hue: going backwards is a FACT about the deploy, not an
+											     alarm about its health, and it is the same ink as the
+											     header's rollup so the two read as one fact. -->
+											<span
+												class="inline-flex items-center gap-1 rounded-full bg-gray-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
+												title={act.sentence}
+											>
+												<UndoOutline class="h-3 w-3" aria-hidden="true" />
+												Rolled back
+											</span>
+										{/if}
 										{#if entry.version.revision}
 											<Badge color="gray" class="font-mono text-xs">
 												{formatRevision(entry.version.revision)}
 											</Badge>
 										{/if}
 									</div>
+									{#if act && act.kind !== 'forward'}
+										<p class="mt-1 text-xs text-gray-600 dark:text-gray-300">
+											{act.sentence}
+										</p>
+									{/if}
+									<!--
+										THE TIME COLUMN IS `hidden sm:block`, SO AT 390 THIS ROW SAID
+										NOTHING ABOUT WHEN. Below `sm` the clock rides the main column.
+									-->
+									<div
+										class="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-gray-500 sm:hidden dark:text-gray-400"
+									>
+										<ClockSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
+										<span class="tabular-nums">{clockTime(entry.timestamp)}</span>
+										<span aria-hidden="true">·</span>
+										<span>{formatTimeAgoCompact(entry.timestamp, $now)} ago</span>
+										{#if entry.triggeredBy}
+											<span aria-hidden="true">·</span>
+											<span class="truncate"
+												>{entry.triggeredBy.kind === 'User' ? entry.triggeredBy.name : 'System'}</span
+											>
+										{/if}
+									</div>
 								</div>
 
-								<!-- Time + actor -->
+								<!--
+									Time + actor.
+									⛔ THREE ROWS SIX MINUTES APART ALL READ `1d`. Relative time is the
+									right answer on a LIST OF DIFFERENT THINGS, where "how stale is
+									this" is the question. On a list of one thing ORDERED BY TIME, the
+									question is "when, and how far apart", and a formatter whose
+									coarsest bucket is a day cannot answer it — the resolution was
+									lying about itself. The exact clock leads; `formatTimeAgoCompact`
+									is unchanged and demoted to the second line, because seventeen
+									other callers depend on exactly what it does today.
+								-->
 								<div class="hidden flex-shrink-0 text-right sm:block">
-									<div class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(entry.timestamp)}>
-										{formatTimeAgoCompact(entry.timestamp, $now)}
+									<div
+										class="text-xs font-medium text-gray-700 tabular-nums dark:text-gray-300"
+										title={formatDate(entry.timestamp)}
+									>
+										{clockTime(entry.timestamp)}
 									</div>
-									{#if entry.triggeredBy}
-										<div class="mt-0.5 flex items-center justify-end gap-1 text-xs text-gray-500 dark:text-gray-400">
+									<div
+										class="mt-0.5 flex items-center justify-end gap-1 text-xs text-gray-500 dark:text-gray-400"
+									>
+										<span>{formatTimeAgoCompact(entry.timestamp, $now)} ago</span>
+										{#if entry.triggeredBy}
+											<span aria-hidden="true">·</span>
 											{#if entry.triggeredBy.kind === 'User'}
-												<UserSolid class="h-3 w-3" />
-												{entry.triggeredBy.name}
+												<UserSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
+												<span class="max-w-40 truncate">{entry.triggeredBy.name}</span>
 											{:else}
-												<CogSolid class="h-3 w-3" />
+												<CogSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
 												System
 											{/if}
-										</div>
-									{/if}
+										{/if}
+									</div>
 								</div>
 
-								<!-- Expand chevron -->
-								<div class="flex-shrink-0 text-gray-500 dark:text-gray-400">
+								<!-- Expand affordance. A bare 16px chevron in the row's own gray
+								     did not read as a control at rest; it gets a box that resolves
+								     on hover and focus-within, and a name. -->
+								<div
+									class="flex-shrink-0 rounded-lg border border-transparent p-1 text-gray-500 transition-colors group-hover:border-gray-200 group-hover:bg-white dark:text-gray-400 dark:group-hover:border-gray-600 dark:group-hover:bg-gray-700"
+								>
 									{#if isExpanded}
-										<ChevronUpOutline class="h-4 w-4" />
+										<ChevronUpOutline class="h-4 w-4" aria-hidden="true" />
 									{:else}
-										<ChevronDownOutline class="h-4 w-4" />
+										<ChevronDownOutline class="h-4 w-4" aria-hidden="true" />
 									{/if}
+									<span class="sr-only">{isExpanded ? 'Hide' : 'Show'} deploy details</span>
 								</div>
 							</div>
 
@@ -555,9 +782,22 @@
 												</div>
 											{/if}
 											{#if entry.message}
+												<!--
+													`Reason` CLAIMED MORE THAN THE FIELD HOLDS. This string is
+													whatever the API recorded, and on the live cluster it says
+													`Force deploy` for a deploy no UI ever called forced, and
+													`Pinned version` for a rollback — losing the rollback. It is
+													an audit RECORD, not the page's account of what happened;
+													the account is the act sentence on the row above, which is
+													derived from the release ordering and cannot disagree with
+													`/` or `/rollouts`. Naming it for what it is stops the two
+													from being read as one claim.
+												-->
 												<div class="flex items-baseline gap-1.5 text-xs">
-													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Reason</span>
-													<span class="italic text-gray-600 dark:text-gray-400">{entry.message}</span>
+													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">
+														Recorded note
+													</span>
+													<span class="text-gray-600 dark:text-gray-400">{entry.message}</span>
 												</div>
 											{/if}
 										</div>
