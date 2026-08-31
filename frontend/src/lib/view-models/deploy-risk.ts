@@ -22,8 +22,33 @@
  * | forward   | other  | no                             | `notice` |
  * | forward   | other  | yes                            | `none`   |
  * | rollback  | any    | —                              | `notice` |
+ * | **retry** | prod   | **no**                         | `typed`  |
+ * | **retry** | prod   | yes                            | `notice` |
+ * | **retry** | other  | no                             | `notice` |
+ * | **retry** | other  | yes                            | `none`   |
  * | custom tag (not in `availableReleases`) — any direction | `typed` |
  * | same version                                            | `none`  |
+ *
+ * ── ⛔ WHY `retry` IS A DIRECTION AND NOT A SPECIAL CASE (2026-08-31) ─────
+ *
+ * The `Retry` button in the red failure banner was **one click, unconfirmed,
+ * straight into production**, at the same moment that deploying that identical
+ * build by hand demanded a typed sha. Two routes to one act, and the dangerous
+ * one was the cheap one.
+ *
+ * The fix is NOT a typed confirm bolted onto every retry — friction that fires
+ * on every action stops being read, and re-running a transient failure in dev
+ * should stay one click. It is to let THIS TABLE decide, which it could not do
+ * before: a retry redeploys the version that is already running, so
+ * `deployDirection` returns `same` and `confirmLevel` short-circuits to `none`.
+ * That short-circuit is right for `Change Version` (re-picking the running
+ * build is a no-op) and wrong for `Retry` (it is a fresh deployment attempt).
+ *
+ * So `retry` is its own direction, it skips the `same` short-circuit, and it
+ * then falls through to the SAME two lines `forward` uses. No new rule, no
+ * second opinion about what production means. The four rows above are not
+ * written anywhere in `confirmLevel`; they are what `forward`'s rows already
+ * say. `deployDirection` never returns `retry` — only `retryIntent` sets it.
  *
  * ⛔ **`notice` IS NOT A BARRIER.** It is one sentence naming the
  * consequence, in the footer where the decision is made. Nothing to type,
@@ -61,7 +86,7 @@ import {
 	ENVIRONMENT_THEME_LABEL_ANNOTATION
 } from '$lib/environment-theme';
 
-export type DeployDirection = 'forward' | 'rollback' | 'same';
+export type DeployDirection = 'forward' | 'rollback' | 'same' | 'retry';
 
 /**
  * `none` — ship it. `notice` — one sentence, no input. `typed` — the sha, and
@@ -174,13 +199,123 @@ export function deployIntent(
 	};
 }
 
+/**
+ * THE BUILD A RETRY WOULD SEND. `Retry` never picks a version: it re-runs the
+ * deployment at the head of history, which is the build that just failed.
+ */
+export function retryTag(rollout: Rollout | null | undefined): string | null {
+	return rollout?.status?.history?.[0]?.version?.tag ?? null;
+}
+
+/**
+ * ⭐ A RETRY, EXPRESSED IN THE INPUTS THE RULE ALREADY WEIGHS. Nothing new is
+ * measured here — the direction is `retry`, the target and the vouching test
+ * are `deployIntent`'s own, evaluated against the build at the head of history.
+ *
+ * `vouched` is deliberately `gatesAllow` and nothing else. The health check
+ * that just failed is a CONSEQUENCE the confirmation has to state (see
+ * `retryConsequences`), not a fourth input to the level — folding it in would
+ * make every retry in every environment `notice`, and "one click in dev" is a
+ * requirement, not an oversight.
+ */
+export function retryIntent(
+	rollout: Rollout | null | undefined,
+	environmentName?: string | null
+): DeployIntent {
+	const environment = rolloutEnvironmentName(rollout, environmentName);
+	return {
+		direction: 'retry',
+		production: isProductionTarget(environment),
+		vouched: gatesAllow(rollout, retryTag(rollout)),
+		// A retry cannot be a custom tag: it re-sends what is already deployed.
+		custom: false,
+		environment
+	};
+}
+
 /** The rule. One table, one place, and it has tests. */
 export function confirmLevel(intent: DeployIntent): ConfirmLevel {
+	// ⛔ `retry` DELIBERATELY DOES NOT REACH THIS LINE. A retry sends the
+	// version that is already running, so a `same`-style short-circuit would
+	// wave through the exact act this module exists to slow down.
 	if (intent.direction === 'same') return 'none';
 	if (intent.custom) return 'typed';
 	if (intent.direction === 'rollback') return 'notice';
 	if (intent.production) return intent.vouched ? 'notice' : 'typed';
 	return intent.vouched ? 'none' : 'notice';
+}
+
+/** What a retry destroys and what it does not, as facts the caller measured. */
+export type RetryFacts = {
+	/** Health checks reporting failure right now, by display name. */
+	failingChecks: string[];
+	/**
+	 * True when pressing Retry will reset a health check's status.
+	 *
+	 * ⛔ VERIFIED IN THE CONTROLLER, NOT ASSUMED.
+	 * `healthcheck_controller.go` takes the reset cutoff as *"the later of the
+	 * deployment time and the last retry timestamp"* with the comment **"A retry
+	 * should force a reset even though no new deployment occurred"**, and
+	 * `ResetHealthCheckStatus` then sets `Status = Pending`, `Message = "Health
+	 * check reset due to new deployment"` and **`LastErrorTime = nil`**. The
+	 * message naming what failed is overwritten and the error timestamp is
+	 * deleted. An operator who is about to lose that evidence is owed the
+	 * sentence before the click, not after it.
+	 */
+	clearsFailureDetail: boolean;
+};
+
+/**
+ * THE CONSEQUENCES, ONE PER SENTENCE, IN THE ORDER A READER NEEDS THEM: where
+ * it lands, what the rules think of it, what is still broken, and what pressing
+ * it destroys. Returned as a list because a retry into production has four
+ * facts and `message: string` can only print those as a run-on line.
+ *
+ * Returns `[]` when `confirmLevel` is `none` — a dialog that explains a
+ * one-click retry in dev teaches the reader to stop reading dialogs.
+ */
+export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?: string | null): string[] {
+	if (confirmLevel(intent) === 'none') return [];
+	const where = targetPhrase(intent);
+	const out: string[] = [];
+
+	out.push(
+		tag
+			? `Redeploys ${tag} to ${where} — the same build whose last deploy here failed.`
+			: `Redeploys the current build to ${where} — the same build whose last deploy here failed.`
+	);
+
+	out.push(
+		intent.vouched
+			? `Every rule here allows this build, so this is the attempt the controller would make on its own.`
+			: `No rule here currently allows this build. It applies immediately and ${where} starts serving it.`
+	);
+
+	if (facts.failingChecks.length === 1) {
+		out.push(`${facts.failingChecks[0]} is still failing right now. Nothing has re-checked this build since.`);
+	} else if (facts.failingChecks.length > 1) {
+		out.push(
+			`${facts.failingChecks.length} health checks are still failing right now — ${facts.failingChecks.slice(0, 3).join(', ')}${facts.failingChecks.length > 3 ? ', …' : ''}. Nothing has re-checked this build since.`
+		);
+	}
+
+	if (facts.clearsFailureDetail) {
+		// ⛔ THREE WORDINGS, BECAUSE THE THIRD CASE IS REAL AND IS THE WORST ONE.
+		// A check that FAILED and has since RECOVERED still carries
+		// `lastErrorTime` — the witness this system deliberately keeps — and the
+		// reset deletes it (`ResetHealthCheckStatus` sets it to nil). Losing the
+		// only record that anything ever went wrong is not the same sentence as
+		// losing a message that is still on screen, so it does not get it.
+		out.push(
+			facts.failingChecks.length === 0
+				? 'Retrying resets this rollout’s health checks to “Pending — reset due to new deployment”, which erases the record that anything failed here.'
+				: facts.failingChecks.length > 1
+					? 'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+					: 'Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+		);
+	}
+
+	return out;
 }
 
 /** How the target is named in prose. `production` is a word the modal owed its reader. */
@@ -238,6 +373,9 @@ export function deployActionLabel(intent: DeployIntent): string {
 			? intent.environment
 			: null;
 	if (intent.direction === 'rollback') return where ? `Roll back ${where}` : 'Roll back';
+	// THE RETRY BUTTON SAYS WHERE IT LANDS TOO. `Retry` named the act and hid
+	// the target, which is how a production redeploy read as a page refresh.
+	if (intent.direction === 'retry') return where ? `Redeploy to ${where}` : 'Redeploy';
 	return where ? `Deploy to ${where}` : 'Deploy Now';
 }
 

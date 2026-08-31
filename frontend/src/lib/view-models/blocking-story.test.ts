@@ -474,3 +474,217 @@ describe('joinClauses', () => {
 		expect(joinClauses(['a', 'b', 'c'])).toBe('a, b and c');
 	});
 });
+
+// ── ⚠️ THE FALL-THROUGH ─────────────────────────────────────────────────────
+// The exact live state that falsified `ac8e045`, reproduced from the payload:
+// `dependency-hello-frontend-needs-api` publishes `allowedVersions: ["rel-66"]`
+// and is owned by a `RolloutDependency` controller. Rollout detail built its
+// join table with `rolloutDependencies: null` and rendered it, behind a PERSON
+// icon, as *"DEV is waiting on an approval … this will not clear on its own"*.
+
+/** The gate OBJECT as `/api/rollouts/<ns>/<name>` serves it, owner refs and all. */
+const DEP_GATE_OBJECT = {
+	items: [
+		{
+			metadata: {
+				namespace: 'hello-dep-dev',
+				name: 'dependency-hello-frontend-needs-api',
+				ownerReferences: [
+					{ kind: 'RolloutDependency', name: 'hello-frontend-needs-api', controller: true }
+				]
+			}
+		},
+		{
+			metadata: {
+				namespace: 'hello-dep-dev',
+				name: 'ghd-dptmm',
+				ownerReferences: [{ kind: 'Environment', name: 'hello-frontend-app', controller: true }]
+			}
+		}
+	]
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any;
+
+const DEP_GATE = {
+	name: 'dependency-hello-frontend-needs-api',
+	passing: true,
+	allowedVersions: ['rel-66']
+};
+
+describe('⚠️ an unrecognised gate must never silently become `person`', () => {
+	const NOW = new Date('2026-08-30T23:26:00Z');
+
+	it('the live defect: a dependency gate with no dependency join is NOT an approval', () => {
+		// Exactly what rollout detail used to build: environments present,
+		// `rolloutDependencies: null`, no gate objects.
+		const broken = buildGateContext({ environments: ENVIRONMENTS, rolloutDependencies: null });
+		const g = classifyGate(DEP_GATE, 'hello-dep-dev', broken);
+		expect(g.clears).not.toBe('person');
+		expect(g.clears).toBe('unknown');
+		expect(g.short).toContain('cannot tell what clears it');
+	});
+
+	it('`sources` records that a source was CONSULTED, not that it was non-empty', () => {
+		expect(buildGateContext({ environments: null, rolloutDependencies: null }).sources).toEqual({
+			environments: false,
+			dependencies: false
+		});
+		// An installed CRD with no objects IS a consulted source.
+		expect(
+			buildGateContext({ environments: { items: [] }, rolloutDependencies: { items: [] } }).sources
+		).toEqual({ environments: true, dependencies: true });
+	});
+
+	it('the owner-reference veto holds even when EVERY join is missing', () => {
+		// Belt to the joins' braces: nothing joined, and it is still not a person.
+		const onlyOwners = buildGateContext({
+			environments: null,
+			rolloutDependencies: null,
+			rolloutGates: DEP_GATE_OBJECT
+		});
+		const g = classifyGate(DEP_GATE, 'hello-dep-dev', onlyOwners);
+		expect(g.clears).toBe('upstream');
+		expect(g.kind).toBe('dependency');
+		expect(g.clause).toBe('the service it depends on ships a newer version');
+
+		const promo = classifyGate(
+			{ name: 'ghd-dptmm', passing: true, allowedVersions: ['rel-66'] },
+			'hello-dep-dev',
+			onlyOwners
+		);
+		expect(promo.clears).toBe('upstream');
+	});
+
+	it('a gate owned by a controller we have no story for is `unknown`, never `person`', () => {
+		const ctxOwned = buildGateContext({
+			environments: ENVIRONMENTS,
+			rolloutDependencies: DEPENDENCIES,
+			rolloutGates: {
+				items: [
+					{
+						metadata: {
+							namespace: 'ns',
+							name: 'future-gate',
+							ownerReferences: [{ kind: 'CanaryAnalysis', name: 'weekly', controller: true }]
+						}
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		});
+		const g = classifyGate({ name: 'future-gate', passing: true, allowedVersions: [] }, 'ns', ctxOwned);
+		expect(g.clears).toBe('unknown');
+		expect(g.clause).toBe('CanaryAnalysis weekly allows this build');
+	});
+
+	it('a gate we READ and found unowned is still an approval — evidence, not absence', () => {
+		const ctxOwned = buildGateContext({
+			environments: null,
+			rolloutDependencies: null,
+			rolloutGates: {
+				items: [{ metadata: { namespace: 'ns', name: 'hello-world-manual-approval' } }]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		});
+		const g = classifyGate(
+			{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] },
+			'ns',
+			ctxOwned
+		);
+		expect(g.clears).toBe('person');
+	});
+
+	it('an unknown gate says something TRUE and NON-COMMITTAL, and escalates nothing', () => {
+		const broken = buildGateContext({ environments: ENVIRONMENTS, rolloutDependencies: null });
+		const s = blockingStory(rolloutWith('hello-dep-dev', [DEP_GATE]), broken, {
+			place: 'dev',
+			now: NOW
+		});
+		expect(s.blocked).toBe(true);
+		expect(s.person).toHaveLength(0);
+		expect(s.unknown).toHaveLength(1);
+		expect(s.headline).toBe('Something is holding DEV');
+		expect(s.verdict).toBe(
+			'This dashboard cannot tell what clears this — it may or may not need a person.'
+		);
+		// The two wrong instructions, both refused.
+		expect(s.resolution).not.toContain('someone approves');
+		expect(s.resolution).not.toContain('will not clear on its own');
+		expect(s.resolution).not.toContain('clears on its own.');
+		// Not knowing is not benign: it cannot be filed under "sorts itself out".
+		expect(s.selfClearing).toBe(false);
+		expect(s.severity).toBe('warning');
+	});
+
+	it('⭐ with the dependency join restored, all four surfaces say the same thing', () => {
+		// The join, when the payload carries it, is still what NAMES the provider
+		// and the version. The owner veto is a floor, never a substitute for it.
+		const whole = buildGateContext({
+			environments: ENVIRONMENTS,
+			rolloutDependencies: DEPENDENCIES,
+			rolloutGates: DEP_GATE_OBJECT
+		});
+		const s = blockingStory(rolloutWith('hello-dep-prod', [DEP_GATE]), whole, {
+			place: 'prod',
+			now: NOW
+		});
+		expect(s.headline).toBe('PROD is waiting on another deploy');
+		expect(s.consequence).toContain('hello-api-app ships a newer api than 1.66.0');
+		expect(s.verdict).toBe(
+			'Nobody has to approve anything — this clears when the deploy in front of it lands.'
+		);
+		expect(s.person).toHaveLength(0);
+		expect(s.unknown).toHaveLength(0);
+	});
+
+	it('the owner veto alone is upstream but GENERIC — it degrades, it does not lie', () => {
+		// Same gate, a namespace the dependency fixture does not cover. We can
+		// still prove a machine owns it, so we say the true generic thing rather
+		// than naming a provider we have not read.
+		const whole = buildGateContext({
+			environments: ENVIRONMENTS,
+			rolloutDependencies: DEPENDENCIES,
+			rolloutGates: DEP_GATE_OBJECT
+		});
+		const s = blockingStory(rolloutWith('hello-dep-dev', [DEP_GATE]), whole, {
+			place: 'dev',
+			now: NOW
+		});
+		expect(s.headline).toBe('DEV is waiting on another deploy');
+		expect(s.consequence).toContain('the service it depends on ships a newer version');
+		expect(s.person).toHaveLength(0);
+	});
+
+	it('an unknown gate ranks second, behind a person and ahead of an upstream', () => {
+		// Complete provenance, so `hello-world-manual-approval` is still an
+		// approval — and one gate owned by a controller nothing here has a story
+		// for, which is the shape a FUTURE writer will arrive in.
+		const ctxMixed = buildGateContext({
+			environments: ENVIRONMENTS,
+			rolloutDependencies: DEPENDENCIES,
+			rolloutGates: {
+				items: [
+					{
+						metadata: {
+							namespace: 'hello-world-prod',
+							name: 'mystery-gate',
+							ownerReferences: [{ kind: 'CanaryAnalysis', name: 'weekly', controller: true }]
+						}
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		});
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [
+				{ name: 'ghd-xm669', passing: true, allowedVersions: [] },
+				{ name: 'mystery-gate', passing: true, allowedVersions: [] },
+				{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }
+			]),
+			ctxMixed,
+			{ now: NOW }
+		);
+		expect(s.gates.map((g) => g.clears)).toEqual(['person', 'unknown', 'upstream']);
+		expect(shortStory(s)).toContain('a rule this dashboard cannot attribute');
+	});
+});

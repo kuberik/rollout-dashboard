@@ -5397,3 +5397,94 @@ is the only part a reader takes at a glance, and it was saying all-clear over an
 **The row leads with the state: `passing, last errored 3 minutes ago — <message>`.** The
 check really is passing and a reader who takes only the first word must not page anyone; a
 reader who stops at the second clause has still learned what their alert was about.
+
+---
+
+## `person` is claimed from evidence, never from absence
+
+*2026-08-31. Closes the finding that falsified `ac8e045` ("one blocking story, told the
+same way on every page"), and the same defect shape one run earlier.*
+
+A dependency gate — `dependency-hello-frontend-needs-api`, created and owned by the
+`RolloutDependency` controller, which **no human anywhere can approve** — was rendered on
+the rollout's own Overview behind a **person icon** as *"DEV is waiting on an approval …
+this will not clear on its own."* `/apps`, `/apps/<name>`, `/environments` and that same
+page's Dependencies tab all said, correctly, *"nobody has to approve anything."*
+
+**The cause was one word.** Rollout detail built its gate join table with
+`rolloutDependencies: null` hard-coded, because the single-rollout endpoint does not carry
+them. The dependency join could not match, and `classifyGate`'s terminal branch was
+*"publishes an allow-list and no join claimed it, therefore a person wrote it"*. That
+inference is only sound when **every automated writer was actually consulted**, and here
+one never was.
+
+**The rule now: `person` requires evidence.** Two independent things have to fail before a
+machine gate can be captioned as an approval again.
+
+1. **The owner-reference veto.** A gate created by a controller carries
+   `metadata.ownerReferences[controller=true]`, and the single-rollout endpoint already
+   serves it on `rolloutGates`. A gate with a controller owner is machine-written and can
+   never be `person`, whatever the joins did or did not match. An `Environment` owner reads
+   *"its upstream environment deploys this build"*; a `RolloutDependency` owner reads *"the
+   service it depends on ships a newer version"* — generic where the join is missing, and
+   superseded by the join's own naming where it is present.
+2. **The provenance test.** `GateContext.sources` records which attributing sources the
+   payload actually carried, and `null` is distinguished from `{ items: [] }` — an
+   installed CRD with no objects is a source we consulted, a missing key is not. `person`
+   requires every flag true. **Adding a new automated gate writer means adding a flag**, so
+   a writer nobody represented can only ever produce `unknown`.
+
+**A fifth `clears` value, `unknown`, and what it is allowed to say.** It refuses BOTH wrong
+instructions: it never says *"someone approves it"* and it never says *"this clears on its
+own"*. Headline `Something is holding <ENV>`, verdict **"This dashboard cannot tell what
+clears this — it may or may not need a person."**, glyph a question mark rather than the
+person the old fall-through drew. Something true and non-committal beats a confident wrong
+instruction. It ranks **second, behind a person**, because "we cannot tell" is the only
+other answer that might be yes — and it counts against `selfClearing`, so no surface can
+file it under *sorts itself out*. **Not knowing is not benign.**
+
+## Retry is a deploy, and it is priced by the same rule as one
+
+*2026-08-31.*
+
+`Retry` in the red failure banner was **one click, unconfirmed, straight into production**,
+at the same second that sending that identical build through `Change Version` demanded a
+typed sha. One act, two routes, and the dangerous route was the cheap one.
+
+**The fix is not a typed confirm on every retry.** Friction that fires on every action stops
+being read, and re-running a transient failure in dev has to stay one click. `deploy-risk`
+already weighs the three inputs that matter — direction, whether the target is production,
+and whether the gates allow this build right now — and it simply could not be asked: a retry
+re-sends the version already at the head of history, so `deployDirection` returned `same`
+and `confirmLevel` short-circuited to `none`. Right for `Change Version`, and the whole
+defect for `Retry`.
+
+So `retry` is its own direction. It skips the `same` short-circuit and then falls through to
+**the same two lines `forward` uses**. No new rule. What it returns:
+
+| direction | target | gates allow it? | level |
+|---|---|---|---|
+| retry | production | no | **`typed`** |
+| retry | production | yes | `notice` |
+| retry | other | no | `notice` |
+| retry | other | yes | **`none` — still one click** |
+
+Verified on the live cluster: a failed **production** deploy returns `typed` (typed sha,
+primary disabled until it matches, red); the same failure in **staging** returns `notice`
+(one dialog, amber, no transcription, primary enabled).
+
+**And the dialog states what pressing it destroys.** The controller's reset is not a
+side-effect the operator can be expected to know: `healthcheck_controller.go` takes the
+cutoff as *"the later of the deployment time and the last retry timestamp"* — *"a retry
+should force a reset even though no new deployment occurred"* — and then writes `Pending`,
+overwrites `message`, and sets **`lastErrorTime` to nil**. So the dialog says
+*"Retrying resets that check to 'Pending — reset due to new deployment', which clears the
+failure detail shown above."*
+
+**"Still failing" is read off the check's status now, not off the history entry.**
+`history[0].failedHealthChecks` is a RECORD of what failed during that bake and does not
+expire when the check recovers; sourcing the sentence from it asserts *"is still failing
+right now"* about a check that went green ten minutes ago — the same confident-wrong shape
+this pass exists to close. A check that failed and has **recovered** still carries
+`lastErrorTime`, so it gets the erasure warning in its own words (*"erases the record that
+anything failed here"*) and never the "still failing" line.

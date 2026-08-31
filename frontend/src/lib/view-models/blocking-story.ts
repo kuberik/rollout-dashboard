@@ -78,13 +78,12 @@
  * clause, and none of them ever says "deployments are blocked".
  */
 
-import type { Rollout, Environment, RolloutDependency } from '$lib/../types';
+import type { Rollout, Environment, RolloutDependency, RolloutGate } from '$lib/../types';
 import { promotionBlock, promotionCandidates, type PromotionBlock } from './promotion';
 import { formatTimeUntil } from '$lib/api/schedules';
 
 /**
- * HOW A GATE STOPS BEING A PROBLEM. Four values, and the first three are the
- * only three answers an operator needs at 3am:
+ * HOW A GATE STOPS BEING A PROBLEM.
  *
  *   `clock`    — a deploy window. It reopens at a known time, on its own.
  *   `check`    — not passing, and nothing published a time. Self-clearing but
@@ -92,14 +91,50 @@ import { formatTimeUntil } from '$lib/api/schedules';
  *   `upstream` — another deployment has to happen first. Nobody approves it and
  *                no clock clears it; it clears when the thing in front moves.
  *   `person`   — a human has to act. **The only value that means escalate.**
+ *   `unknown`  — WE DO NOT KNOW, AND WE SAY SO. See the block below.
+ *
+ * ── ⛔ WHY `unknown` EXISTS, AND WHY IT IS NOT `person` (2026-08-31) ──────
+ *
+ * `person` used to be the FALL-THROUGH: any gate publishing an allow-list that
+ * no join claimed was captioned *"Waiting for someone to approve it"* and the
+ * banner told the reader *"This will not clear on its own"* behind a person
+ * glyph. That inference — "no automated writer claimed it, therefore a human
+ * wrote it" — is only sound if **every automated writer was actually
+ * consulted**, and on rollout detail one of them never was: the page built its
+ * join table with `rolloutDependencies: null` hard-coded, because the
+ * single-rollout endpoint does not carry them. So a `RolloutDependency` gate —
+ * a machine-written object **no human anywhere can approve** — was reported on
+ * the rollout's own page as waiting on an approval, while `/apps`,
+ * `/apps/<name>`, `/environments` and the Dependencies tab all said, correctly,
+ * *"nobody has to approve anything"*.
+ *
+ * This is the SECOND time this defect shape shipped, so the fix is to the
+ * shape: **`person` is now claimed from evidence, never from absence.** Two
+ * independent things have to fail before a machine gate can be captioned as an
+ * approval again:
+ *
+ *   1. **The owner-reference veto (positive evidence).** A gate created by a
+ *      controller carries `metadata.ownerReferences[controller=true]`, and the
+ *      single-rollout endpoint already serves it on `rolloutGates`. A gate with
+ *      a controller owner is machine-written and can NEVER be `person`,
+ *      whatever the joins did or did not match.
+ *   2. **The provenance test (no confident inference from absence).** When we
+ *      have no owner information for a gate, `person` requires that every
+ *      attributing source was present in the payload — `GateContext.sources`
+ *      records that, and `buildGateContext` sets each flag only when the key
+ *      was actually served rather than `null`/absent.
+ *
+ * Anything left over is `unknown`, and an `unknown` gate says something TRUE
+ * and NON-COMMITTAL — it names the rule, it does not name a remedy, and it
+ * never tells anyone to go and find a person who does not exist.
  */
-export type GateClears = 'clock' | 'check' | 'upstream' | 'person';
+export type GateClears = 'clock' | 'check' | 'upstream' | 'person' | 'unknown';
 
 export type ClassifiedGate = {
 	/** The Kubernetes object name. A HANDLE — never a headline, never a label. */
 	id: string;
 	/** Which writer put it there, derived by join. `unknown` = no join matched. */
-	kind: 'schedule' | 'check' | 'promotion' | 'dependency' | 'approval';
+	kind: 'schedule' | 'check' | 'promotion' | 'dependency' | 'approval' | 'unknown';
 	clears: GateClears;
 	/**
 	 * The gate in words an operator can act on. `Business Hours Only`,
@@ -144,12 +179,39 @@ export type GateContext = {
 	 * a card that names one gate must name that gate's own schedule.
 	 */
 	schedule: Map<string, { label: string; nextTransition: string | null }>;
+	/**
+	 * ⭐ THE OWNER-REFERENCE VETO. Gate name → its CONTROLLER owner, read off
+	 * `metadata.ownerReferences[controller=true]` of the `RolloutGate` objects
+	 * the single-rollout endpoint already serves.
+	 *
+	 * Three states, and the difference between the last two is the whole point:
+	 *   · absent from the map      — we never saw the object. Infer nothing.
+	 *   · present, `kind: null`    — we saw it and NO controller owns it. That
+	 *                                is positive evidence of a hand-authored
+	 *                                gate, the only kind a person can approve.
+	 *   · present, `kind: 'X'`     — controller `X` wrote it. **Never `person`.**
+	 */
+	owners: Map<string, { kind: string | null; name: string | null }>;
+	/**
+	 * WHICH ATTRIBUTING SOURCES THE PAYLOAD ACTUALLY CARRIED. `false` means the
+	 * key was `null` or absent, not that it was empty: an installed CRD with no
+	 * objects serves `{ items: [] }` and IS a consulted source, while a cluster
+	 * without the CRD serves `null` and is not.
+	 *
+	 * ⛔ ADDING A NEW AUTOMATED GATE WRITER MEANS ADDING A FLAG HERE. The
+	 * `person` branch requires every flag to be true, so a writer that is not
+	 * represented can only ever produce `unknown` — which is the safe answer —
+	 * rather than silently re-opening "needs a person" for its gates.
+	 */
+	sources: { environments: boolean; dependencies: boolean };
 };
 
 export const EMPTY_GATE_CONTEXT: GateContext = {
 	promotion: new Map(),
 	dependency: new Map(),
-	schedule: new Map()
+	schedule: new Map(),
+	owners: new Map(),
+	sources: { environments: false, dependencies: false }
 };
 
 const key = (namespace: string | undefined, gate: string) => `${namespace ?? ''}/${gate}`;
@@ -168,12 +230,38 @@ export function prettyNameOf(meta?: { annotations?: Record<string, string> }): s
 export function buildGateContext(payload: {
 	environments?: { items?: Environment[] } | null;
 	rolloutDependencies?: { items?: RolloutDependency[] } | null;
+	/**
+	 * The `RolloutGate` OBJECTS, when the caller has them. Only the
+	 * single-rollout endpoint serves these, and they are what makes the
+	 * classification evidence-based rather than inference-based on that page —
+	 * see the `owners` field.
+	 */
+	rolloutGates?: { items?: RolloutGate[] } | null;
 }): GateContext {
 	const ctx: GateContext = {
 		promotion: new Map(),
 		dependency: new Map(),
-		schedule: new Map()
+		schedule: new Map(),
+		owners: new Map(),
+		// ⛔ `!= null` AND NOT A TRUTHINESS TEST. `{ items: [] }` is a source we
+		// consulted and found empty; `null` is a source that was never served.
+		// Collapsing the two is exactly how "no join matched" became "a person
+		// must approve it".
+		sources: {
+			environments: payload?.environments != null,
+			dependencies: payload?.rolloutDependencies != null
+		}
 	};
+
+	for (const gate of payload?.rolloutGates?.items ?? []) {
+		const name = gate?.metadata?.name;
+		if (!name) continue;
+		const owner = (gate?.metadata?.ownerReferences ?? []).find((o) => o?.controller === true);
+		ctx.owners.set(key(gate?.metadata?.namespace, name), {
+			kind: owner?.kind ?? null,
+			name: owner?.name ?? null
+		});
+	}
 
 	for (const env of payload?.environments?.items ?? []) {
 		const gate = env?.status?.rolloutGateRef?.name;
@@ -218,7 +306,9 @@ export function withSchedules(
 	const next: GateContext = {
 		promotion: ctx.promotion,
 		dependency: ctx.dependency,
-		schedule: new Map(ctx.schedule)
+		schedule: new Map(ctx.schedule),
+		owners: ctx.owners,
+		sources: ctx.sources
 	};
 	for (const s of schedules ?? []) {
 		// Only a schedule that is currently REFUSING explains a closed gate.
@@ -325,15 +415,79 @@ export function classifyGate(
 		};
 	}
 
-	// An allow-list, written by nobody we can name. That is a hand-authored
-	// RolloutGate, and it is the ONLY kind a person can approve.
+	// ── AN ALLOW-LIST NO JOIN CLAIMED ───────────────────────────────────────
+	// ⛔ THIS IS THE BRANCH THAT SHIPPED THE DEFECT TWICE. It used to return
+	// `person` unconditionally. It now returns `person` only from EVIDENCE.
+
+	const owner = ctx.owners.get(k);
+
+	// (1) POSITIVE MACHINE EVIDENCE — a controller owns the object. Whatever
+	// the joins missed, no human can approve this, so `person` is off the table.
+	if (owner && owner.kind) {
+		const ownerName = owner.name ? `${owner.kind} ${owner.name}` : owner.kind;
+		if (owner.kind === 'Environment') {
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'upstream',
+				label: 'after its upstream environment',
+				clause: 'its upstream environment deploys this build',
+				short: 'Waiting for its upstream environment to deploy this build',
+				clearsAt: null
+			};
+		}
+		if (owner.kind === 'RolloutDependency') {
+			return {
+				id,
+				kind: 'dependency',
+				clears: 'upstream',
+				label: 'depends on another service',
+				clause: 'the service it depends on ships a newer version',
+				short: 'Waiting for the service it depends on to ship a newer version',
+				clearsAt: null
+			};
+		}
+		// A controller we do not have a story for. Say who owns it and stop —
+		// naming the owner is true, and it is the fastest route to the answer.
+		return {
+			id,
+			kind: 'unknown',
+			clears: 'unknown',
+			label: ownerName,
+			clause: `${ownerName} allows this build`,
+			short: `Held by ${ownerName}`,
+			clearsAt: null
+		};
+	}
+
+	// (2) POSITIVE HUMAN EVIDENCE, or a complete set of joins that all missed.
+	// `owner` present with a null kind means we read the object and nothing
+	// owns it; `sources` all true means every automated writer was consulted.
+	// Either is enough to say a person wrote this, and nothing else is.
+	const provenanceComplete = ctx.sources.environments && ctx.sources.dependencies;
+	if ((owner && owner.kind === null) || provenanceComplete) {
+		return {
+			id,
+			kind: 'approval',
+			clears: 'person',
+			label: id,
+			clause: 'someone approves it',
+			short: 'Waiting for someone to approve it',
+			clearsAt: null
+		};
+	}
+
+	// (3) WE DID NOT LOOK EVERYWHERE, SO WE DO NOT GUESS. True, non-committal,
+	// and it names the handle so the reader can go and read the object. The one
+	// thing it must never do is send someone hunting for an approver who may
+	// not exist.
 	return {
 		id,
-		kind: 'approval',
-		clears: 'person',
+		kind: 'unknown',
+		clears: 'unknown',
 		label: id,
-		clause: 'someone approves it',
-		short: 'Waiting for someone to approve it',
+		clause: `the rule ${id} allows this build`,
+		short: `Held by ${id} — this dashboard cannot tell what clears it`,
 		clearsAt: null
 	};
 }
@@ -351,6 +505,12 @@ export type BlockingStory = {
 	clock: ClassifiedGate[];
 	upstream: ClassifiedGate[];
 	checks: ClassifiedGate[];
+	/**
+	 * Gates we could not attribute. Never empty *and* silent: a story with an
+	 * `unknown` gate is not `selfClearing`, so no surface can file it under
+	 * "this sorts itself out", and its verdict says we cannot tell.
+	 */
+	unknown: ClassifiedGate[];
 	/** Earliest moment any clock gate reopens, ISO. */
 	clearsAt: string | null;
 	/** True iff nothing here needs a person or another deploy. */
@@ -386,6 +546,7 @@ export const NOT_BLOCKED: BlockingStory = {
 	clock: [],
 	upstream: [],
 	checks: [],
+	unknown: [],
 	clearsAt: null,
 	selfClearing: true,
 	headline: '',
@@ -464,13 +625,16 @@ export function blockingStory(
 		.filter((g) => g?.name && holding.has(g.name))
 		.map((g) => classifyGate(g, namespace, ctx))
 		.sort((a, b) => {
-			// Worst first: a person, then another deploy, then a clock. The
-			// reader's question is "is this mine", so the answer leads.
-			const rank = { person: 0, upstream: 1, check: 2, clock: 3 } as const;
+			// Worst first: a person, then a rule we cannot attribute, then
+			// another deploy, then a clock. The reader's question is "is this
+			// mine", so the answer leads — and "we cannot tell" ranks second
+			// because it is the only other answer that might be yes.
+			const rank = { person: 0, unknown: 1, upstream: 2, check: 3, clock: 4 } as const;
 			return rank[a.clears] - rank[b.clears] || a.id.localeCompare(b.id);
 		});
 
 	const person = gates.filter((g) => g.clears === 'person');
+	const unknown = gates.filter((g) => g.clears === 'unknown');
 	const upstream = gates.filter((g) => g.clears === 'upstream');
 	const clock = gates.filter((g) => g.clears === 'clock');
 	const checks = gates.filter((g) => g.clears === 'check');
@@ -481,7 +645,10 @@ export function blockingStory(
 		if (!clearsAt || new Date(g.clearsAt) < new Date(clearsAt)) clearsAt = g.clearsAt;
 	}
 
-	const selfClearing = person.length === 0 && upstream.length === 0;
+	// ⛔ `unknown` COUNTS AGAINST `selfClearing`. Every surface uses this flag
+	// to decide whether a rollout can be filed under "sorts itself out", and a
+	// rule we cannot attribute has not earned that. Not knowing is not benign.
+	const selfClearing = person.length === 0 && upstream.length === 0 && unknown.length === 0;
 
 	// ── THE HEADLINE ────────────────────────────────────────────────────────
 	// With more than one gate it COUNTS THEM AND SAYS SO, because the single
@@ -492,6 +659,11 @@ export function blockingStory(
 		headline = `${countWord(gates.length)} things are holding ${subject}`;
 	} else if (person.length === 1) {
 		headline = `${subject} is waiting on an approval`;
+	} else if (unknown.length === 1) {
+		// ⛔ NOT "waiting on an approval". The whole point of `unknown` is that
+		// we do not know what it is waiting on, and the headline is the one line
+		// a reader takes at a glance — so it states the fact and no remedy.
+		headline = `Something is holding ${subject}`;
 	} else if (upstream.length === 1) {
 		headline = `${subject} is waiting on another deploy`;
 	} else {
@@ -504,6 +676,7 @@ export function blockingStory(
 	// `/versions` the one page the critic said got it right.
 	const parts: string[] = [];
 	for (const g of person) parts.push(g.clause);
+	for (const g of unknown) parts.push(g.clause);
 	for (const g of upstream) parts.push(g.clause);
 	for (const g of checks) parts.push(g.clause);
 	for (const g of clock) {
@@ -530,6 +703,12 @@ export function blockingStory(
 	let verdict: string;
 	if (person.length > 0) {
 		verdict = 'This will not clear on its own.';
+	} else if (unknown.length > 0) {
+		// The one sentence this whole branch exists for. It refuses BOTH wrong
+		// instructions — "go and find an approver" and "go back to bed" — and
+		// the reader is left with the handle, which is the honest place to send
+		// them. Something true and non-committal beats a confident wrong one.
+		verdict = 'This dashboard cannot tell what clears this — it may or may not need a person.';
 	} else if (upstream.length > 0) {
 		verdict = 'Nobody has to approve anything — this clears when the deploy in front of it lands.';
 	} else if (clearsAt) {
@@ -548,6 +727,7 @@ export function blockingStory(
 		clock,
 		upstream,
 		checks,
+		unknown,
 		clearsAt,
 		selfClearing,
 		headline,
@@ -583,6 +763,7 @@ export function shortStory(story: BlockingStory): string | null {
 	if (story.gates.length === 1) return story.gates[0].short;
 	const kinds: string[] = [];
 	if (story.person.length > 0) kinds.push('an approval');
+	if (story.unknown.length > 0) kinds.push('a rule this dashboard cannot attribute');
 	if (story.upstream.length > 0) kinds.push('another deploy');
 	if (story.clock.length > 0) kinds.push('a deploy window');
 	if (story.checks.length > 0) kinds.push('a check');

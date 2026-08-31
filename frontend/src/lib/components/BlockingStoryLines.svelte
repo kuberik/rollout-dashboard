@@ -22,7 +22,8 @@
 		UserCircleSolid,
 		CalendarWeekSolid,
 		HourglassSolid,
-		ArrowRightAltSolid
+		ArrowRightAltSolid,
+		QuestionCircleSolid
 	} from 'flowbite-svelte-icons';
 	import { formatTimeUntil } from '$lib/api/schedules';
 	import { now } from '$lib/stores/time';
@@ -35,6 +36,7 @@
 
 	function iconFor(g: ClassifiedGate) {
 		if (g.clears === 'person') return UserCircleSolid;
+		if (g.clears === 'unknown') return QuestionCircleSolid;
 		if (g.clears === 'upstream') return ArrowRightAltSolid;
 		if (g.clears === 'clock') return CalendarWeekSolid;
 		return HourglassSolid;

@@ -8,7 +8,14 @@
 	import AlertPanel from './AlertPanel.svelte';
 	import ChangeVersionModal from './ChangeVersionModal.svelte';
 	import RetryTestsModal from './RetryTestsModal.svelte';
+	import RetryConfirmModal from './RetryConfirmModal.svelte';
 	import { getDisplayVersion } from '$lib/utils';
+	import {
+		confirmLevel,
+		retryIntent,
+		retryConsequences,
+		retryTag
+	} from '$lib/view-models/deploy-risk';
 
 	interface Props {
 		rollout: Rollout;
@@ -20,6 +27,13 @@
 		canModify: boolean;
 		isDashboardManagingWantedVersion: boolean;
 		cluster?: string;
+		/**
+		 * The environment as the CLUSTER spells it (`prod`, `staging`), when the
+		 * caller has the `Environment` object. `deploy-risk` falls back to the
+		 * rollout's own labels and then its namespace, which is deliberately
+		 * loose in one direction only — see `rolloutEnvironmentName`.
+		 */
+		environmentName?: string | null;
 		onRetry: (kruiseRolloutName?: string, testAction?: string) => Promise<void>;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
@@ -35,6 +49,7 @@
 		canModify,
 		isDashboardManagingWantedVersion,
 		cluster,
+		environmentName = null,
 		onRetry,
 		onSuccess = () => {},
 		onError = () => {}
@@ -55,13 +70,92 @@
 		return full?.metadata?.annotations?.['kuberik.com/display-name'] || hc.name || 'A health check';
 	}
 
+	/**
+	 * ⭐ THE RETRY RISK, DECIDED BY THE SAME RULE AS A MANUAL DEPLOY.
+	 *
+	 * `Retry` used to fire on the first click into ANY environment — while
+	 * `Change Version` demanded a typed sha to send that identical build. This
+	 * is the one line that closes that gap, and it deliberately delegates:
+	 * `deploy-risk` weighs direction, whether the target is production, and
+	 * whether the gates allow this build right now, and it returns `none` for a
+	 * retry in a non-production environment whose rules already allow the build.
+	 * That case still fires on one click, which is the point.
+	 */
+	const intent = $derived(retryIntent(rollout, environmentName));
+	const level = $derived(confirmLevel(intent));
+
+	/**
+	 * ⛔ THE RULE READS THE TAG; THE READER READS THE SHA.
+	 *
+	 * `retryTag` returns the object's real tag — `main-1788132205-064b655b…`,
+	 * 55 characters — because that is what `gatesAllow` has to match against.
+	 * Printing it, and worse asking someone to TRANSCRIBE it, is not a speed
+	 * bump, it is a copy-paste exercise that wraps to three lines at 390. Every
+	 * other surface in this product, `ChangeVersionModal`'s own typed confirm
+	 * included, shows `getDisplayVersion`'s seven characters, so this does too.
+	 */
+	const currentTag = $derived(retryTag(rollout));
+	const displayTag = $derived.by(() => {
+		const v = rollout?.status?.history?.[0]?.version;
+		return v ? getDisplayVersion(v) : currentTag;
+	});
+
+	/**
+	 * ⛔ "STILL FAILING" IS READ OFF THE CHECK'S STATUS NOW, NOT OFF THE HISTORY
+	 * ENTRY. `failedHCList` is `history[0].failedHealthChecks` — a RECORD of what
+	 * failed during that bake, which does not expire when the check recovers.
+	 * Sourcing the sentence from it would assert "is still failing right now"
+	 * about a check that went green ten minutes ago, which is the same
+	 * confident-wrong shape as the banner this pass is fixing. Verified on the
+	 * live cluster: the recovered check kept its history entry and read `Healthy`.
+	 */
+	const failingNow = $derived(
+		healthChecks.filter((h) => h?.status?.status === 'Unhealthy')
+	);
+
+	/**
+	 * ⛔ AND THE ERASURE CLAUSE IS CONDITIONAL ON THERE BEING EVIDENCE TO ERASE.
+	 * The controller's reset writes `Pending`, overwrites `message` and sets
+	 * `lastErrorTime` to nil — so a check that is failing NOW and a check that
+	 * merely *errored* during this deploy both lose their account of it.
+	 * `lastErrorTime` is the witness the rest of the product reads "recovered"
+	 * from, so its presence counts as evidence worth warning about.
+	 */
+	const clearsFailureDetail = $derived(
+		healthChecks.some(
+			(h) => h?.status?.status === 'Unhealthy' || !!h?.status?.lastErrorTime
+		) || failedHCList.length > 0
+	);
+
+	const consequences = $derived(
+		retryConsequences(
+			intent,
+			{
+				failingChecks: failingNow.map((h) =>
+					findDisplayName({ name: h?.metadata?.name ?? '', namespace: h?.metadata?.namespace })
+				),
+				clearsFailureDetail
+			},
+			displayTag
+		)
+	);
+
+	let showRetryConfirm = $state(false);
+
 	function handleRetry() {
 		if (failedStepTests.length > 0) {
+			// The failed-tests path already asks, and asks a BETTER question —
+			// retry the tests or skip them. Two dialogs in a row would be the
+			// friction that teaches people to click through dialogs.
 			retryTests = failedStepTests;
 			showRetryModal = true;
-		} else {
-			onRetry(stalledKruiseRollout?.metadata?.name);
+			return;
 		}
+		if (level === 'none') {
+			onRetry(stalledKruiseRollout?.metadata?.name);
+			return;
+		}
+		showRetryConfirm = true;
 	}
 
 	function handleRollback() {
@@ -189,6 +283,14 @@
 		{/if}
 	{/snippet}
 </AlertPanel>
+
+<RetryConfirmModal
+	bind:open={showRetryConfirm}
+	{intent}
+	{consequences}
+	tag={displayTag}
+	onConfirm={() => onRetry(stalledKruiseRollout?.metadata?.name)}
+/>
 
 <RetryTestsModal
 	bind:open={showRetryModal}

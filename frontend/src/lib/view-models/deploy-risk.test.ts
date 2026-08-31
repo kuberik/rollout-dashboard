@@ -9,6 +9,9 @@ import {
 	isProductionTarget,
 	rollbackTarget,
 	rolloutEnvironmentName,
+	retryConsequences,
+	retryIntent,
+	retryTag,
 	targetPhrase,
 	typedPrompt
 } from './deploy-risk';
@@ -300,5 +303,151 @@ describe('rollbackTarget — the button must mean backwards', () => {
 		const r = rollout();
 		const t = rollbackTarget(r)!;
 		expect(deployDirection(r, t.tag)).toBe('rollback');
+	});
+});
+
+// ── ⚠️ THE RETRY ────────────────────────────────────────────────────────────
+// `Retry` in the red failure banner was ONE CLICK, UNCONFIRMED, straight into
+// production — at the same second that sending that identical build through
+// `Change Version` demanded a typed sha. These tests pin what the EXISTING rule
+// returns for a retry; no second rule was written.
+
+/** Dev, and every gate allows the build that is actually running. */
+function devRolloutVouched(): Rollout {
+	const r = devRollout() as unknown as Record<string, any>;
+	r.status = {
+		...r.status,
+		gates: [{ name: 'ghd-cmppc', passing: true, allowedVersions: [NEWEST, MID, RUNNING] }]
+	};
+	return r as unknown as Rollout;
+}
+
+describe('⚠️ retry risk — the rule decides, and it is the SAME rule', () => {
+	it('a retry sends the build at the head of history, not a picked version', () => {
+		expect(retryTag(rollout())).toBe(RUNNING);
+		expect(retryIntent(rollout()).direction).toBe('retry');
+		expect(retryIntent(rollout()).custom).toBe(false);
+	});
+
+	it('⭐ THE LIVE CASE: retrying a failed production deploy is `typed`', () => {
+		// prod + the gates do not allow the running build (the schedule gate is
+		// not passing) → the same row `forward` uses for an unvouched production
+		// deploy. At least as dangerous as the manual deploy that demands typing,
+		// and now priced the same.
+		const intent = retryIntent(rollout());
+		expect(intent.production).toBe(true);
+		expect(intent.vouched).toBe(false);
+		expect(confirmLevel(intent)).toBe('typed');
+		expect(deployActionLabel(intent)).toBe('Redeploy to production');
+		expect(typedPrompt(intent)).toBe('Nothing has vouched for this build in production. Type');
+	});
+
+	it('a retry in production the rules DO allow is a notice, not a transcription', () => {
+		const r = rollout() as unknown as Record<string, any>;
+		r.status = {
+			...r.status,
+			gates: [{ name: 'ghd-cmppc', passing: true, allowedVersions: [RUNNING] }]
+		};
+		const intent = retryIntent(r as unknown as Rollout);
+		expect(confirmLevel(intent)).toBe('notice');
+	});
+
+	it('⭐ retrying a transient failure in dev STAYS ONE CLICK', () => {
+		// `none` means the caller fires immediately and never opens a dialog.
+		// Friction that fires on every action stops being read.
+		const intent = retryIntent(devRolloutVouched());
+		expect(intent.production).toBe(false);
+		expect(intent.vouched).toBe(true);
+		expect(confirmLevel(intent)).toBe('none');
+		expect(retryConsequences(intent, { failingChecks: [], clearsFailureDetail: false })).toEqual([]);
+	});
+
+	it('dev with the rules refusing the build is a notice — a sentence, not a barrier', () => {
+		expect(confirmLevel(retryIntent(devRollout()))).toBe('notice');
+	});
+
+	it('⛔ `retry` never reaches the `same` short-circuit that used to wave it through', () => {
+		// The build a retry sends IS the running build, so `deployDirection`
+		// calls it `same` and `confirmLevel` returns `none`. That is right for
+		// `Change Version` and was the whole defect for `Retry`.
+		expect(deployDirection(rollout(), RUNNING)).toBe('same');
+		expect(confirmLevel(deployIntent(rollout(), RUNNING))).toBe('none');
+		expect(confirmLevel(retryIntent(rollout()))).toBe('typed');
+	});
+
+	it('`deployDirection` never invents a retry — only `retryIntent` sets it', () => {
+		for (const tag of [NEWEST, MID, RUNNING, OLDEST, null, 'not-a-tag']) {
+			expect(deployDirection(rollout(), tag)).not.toBe('retry');
+		}
+	});
+});
+
+describe('⚠️ retry consequences — it says production, and it says what it destroys', () => {
+	const facts = {
+		failingChecks: ['Checkout p99 latency'],
+		clearsFailureDetail: true
+	};
+
+	it('names the build, the destination, the still-failing check, and the erasure', () => {
+		const lines = retryConsequences(retryIntent(rollout()), facts, RUNNING);
+		expect(lines).toHaveLength(4);
+		expect(lines[0]).toContain(RUNNING);
+		expect(lines[0]).toContain('production');
+		expect(lines[0]).toContain('the same build whose last deploy here failed');
+		expect(lines[1]).toContain('No rule here currently allows this build');
+		// The critique's exact charge: no statement that the check which just
+		// failed is still failing.
+		expect(lines[2]).toBe(
+			'Checkout p99 latency is still failing right now. Nothing has re-checked this build since.'
+		);
+		// And the consequence nobody was told about: the controller resets the
+		// check on retry and deletes the message and `lastErrorTime` with it.
+		expect(lines[3]).toContain('Pending — reset due to new deployment');
+		expect(lines[3]).toContain('clears the failure detail');
+	});
+
+	it('every line names production somewhere a reader will hit it', () => {
+		const lines = retryConsequences(retryIntent(rollout()), facts, RUNNING);
+		expect(lines.join(' ')).toContain('production');
+	});
+
+	it('claims no erasure when there is no health check to erase', () => {
+		const lines = retryConsequences(
+			retryIntent(rollout()),
+			{ failingChecks: [], clearsFailureDetail: false },
+			RUNNING
+		);
+		expect(lines.join(' ')).not.toContain('reset due to new deployment');
+		expect(lines.join(' ')).not.toContain('still failing');
+	});
+
+	it('⭐ a RECOVERED check gets the erasure warning but never "still failing"', () => {
+		// Verified live: the check recovered, `history[0].failedHealthChecks`
+		// kept the entry, and `lastErrorTime` survived — the witness the rest of
+		// the product reads "recovered" from. A retry deletes it.
+		const lines = retryConsequences(
+			retryIntent(rollout()),
+			{ failingChecks: [], clearsFailureDetail: true },
+			RUNNING
+		);
+		expect(lines.join(' ')).not.toContain('still failing');
+		expect(lines[lines.length - 1]).toContain(
+			'erases the record that anything failed here'
+		);
+	});
+
+	it('counts and samples when several checks are failing', () => {
+		const lines = retryConsequences(
+			retryIntent(rollout()),
+			{ failingChecks: ['a', 'b', 'c', 'd'], clearsFailureDetail: true },
+			RUNNING
+		);
+		expect(lines[2]).toContain('4 health checks are still failing');
+		expect(lines[2]).toContain('a, b, c, …');
+		expect(lines[3]).toContain('resets those checks');
+	});
+
+	it('says nothing at all when the rule says one click', () => {
+		expect(retryConsequences(retryIntent(devRolloutVouched()), facts, RUNNING)).toEqual([]);
 	});
 });

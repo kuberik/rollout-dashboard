@@ -20,13 +20,18 @@
 		CalendarWeekSolid,
 		HourglassSolid,
 		ArrowRightAltSolid,
-		LockSolid
+		LockSolid,
+		QuestionCircleSolid
 	} from 'flowbite-svelte-icons';
 	import type { BlockingStory as Story } from '$lib/view-models/blocking-story';
 
 	export function iconForStory(story: Story) {
 		if (story.pinnedTo) return LockSolid;
 		if (story.person.length > 0) return UserCircleSolid;
+		// ⛔ A PERSON GLYPH OVER "we cannot tell what clears this" IS THE SAME
+		// PICTURE-SCALE LIE AS THE CALENDAR THIS FUNCTION WAS WRITTEN TO KILL.
+		// An unattributed gate gets a question mark and nothing else does.
+		if (story.unknown.length > 0) return QuestionCircleSolid;
 		if (story.upstream.length > 0) return ArrowRightAltSolid;
 		if (story.clock.length > 0) return CalendarWeekSolid;
 		return HourglassSolid;

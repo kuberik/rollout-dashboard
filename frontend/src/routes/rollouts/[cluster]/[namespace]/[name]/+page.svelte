@@ -129,6 +129,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
+		rolloutsListQueryOptions,
 		type RolloutResponse,
 		rolloutPermissionsQueryOptions
 	} from '$lib/api/rollouts';
@@ -156,6 +157,27 @@
 			name,
 			cluster
 		})
+	);
+
+	/**
+	 * ⭐ THE LIST PAYLOAD, FOR ITS `rolloutDependencies` AND NOTHING ELSE.
+	 *
+	 * ⛔ THIS QUERY IS THE FIX FOR A WRONG INSTRUCTION, NOT AN OPTIMISATION.
+	 * The gate join table below was built with `rolloutDependencies: null`
+	 * hard-coded, because the single-rollout endpoint does not carry them. So
+	 * `dependency-hello-frontend-needs-api` — a gate owned by a controller,
+	 * which **no human anywhere can approve** — matched no join, fell through
+	 * to the allow-list branch and was rendered on this page behind a PERSON
+	 * icon as *"DEV is waiting on an approval … this will not clear on its
+	 * own"*, while `/apps`, `/apps/<name>`, `/environments` and this page's own
+	 * Dependencies tab all said, correctly, *"nobody has to approve anything"*.
+	 *
+	 * The layout already runs this exact query for the Dependencies tab and it
+	 * shares `rolloutsListQueryKey` with `/rollouts`, so on any navigation from
+	 * a list page this is a cache read and costs one render, not one request.
+	 */
+	const listQuery = createQuery(() =>
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000) } })
 	);
 
 	// Query for permissions - checks if user can update/patch rollouts
@@ -287,17 +309,33 @@
 	 * holding the rollout and says, for each, whether it clears on a clock,
 	 * needs another deploy, or needs a person.
 	 *
-	 * The join table is built from what THIS endpoint already returns —
-	 * `environment` (its `status.rolloutGateRef` names the promotion gate and
-	 * `spec.relationship` says which environment has to go first) — plus the
-	 * schedules `ScheduleStatus` is already fetching, handed back rather than
-	 * requested a second time.
+	 * ⛔ THE JOIN TABLE IS BUILT FROM ALL FOUR SOURCES, AND `rolloutDependencies`
+	 * WAS THE ONE THAT WAS HARD-CODED TO `null`. That single word is why this
+	 * page told an operator to go and find an approver for a machine gate. The
+	 * sources now are:
+	 *
+	 *   · `rolloutGates` — THIS endpoint already serves the gate OBJECTS, and
+	 *     their `ownerReferences[controller=true]` is POSITIVE evidence of who
+	 *     wrote each one. It is the belt to the joins' braces: even if a join
+	 *     were missing again, an owned gate can no longer be called an approval.
+	 *   · `environments` — the list's, plus this rollout's own, so a rollout
+	 *     whose Environment has not landed in the list yet still joins.
+	 *   · `rolloutDependencies` — from the list payload (see `listQuery`).
+	 *   · the schedules `ScheduleStatus` is already fetching, handed back rather
+	 *     than requested a second time.
 	 */
 	let scheduleObjects = $state<any[]>([]);
 	const gateContext = $derived.by(() => {
+		const listData = listQuery.data;
+		const envItems = [...(listData?.environments?.items ?? [])];
+		if (environment) envItems.push(environment);
 		const base = buildGateContext({
-			environments: environment ? { items: [environment] } : null,
-			rolloutDependencies: null
+			// `null` when we genuinely have nothing — `buildGateContext` records
+			// that as "source not consulted", which downgrades an unattributable
+			// gate to `unknown` instead of promoting it to an approval.
+			environments: listData?.environments || environment ? { items: envItems } : null,
+			rolloutDependencies: listData?.rolloutDependencies ?? null,
+			rolloutGates: rolloutQuery.data?.rolloutGates ?? null
 		});
 		return withSchedules(base, rollout?.metadata?.namespace, scheduleObjects);
 	});
@@ -1298,6 +1336,7 @@
 						{canModify}
 						{isDashboardManagingWantedVersion}
 						{cluster}
+						environmentName={environment?.spec?.environment ?? null}
 						onRetry={retryDeployment}
 						onSuccess={(m) => { toastType = 'success'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
 						onError={(m) => { toastType = 'error'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
@@ -1935,7 +1974,17 @@
 								</div>
 							</div>
 						{/if}
-						<HealthChecksCard healthChecks={visibleHealthChecks} />
+						<!--
+							⭐ `windowStart` IS `errorCutoff`, THE SAME OBJECT THAT ALREADY
+							DECIDES WHICH FAILURES THIS PANEL SHOWS — and the same
+							`max(deployedAt, lastRetryAt)` the rollout controller calls
+							`errorCutoff` in its own bake loop. A check that PASSES with a
+							`lastErrorTime` inside it now reads *"passing, last errored 2m
+							ago"* instead of vanishing into `4/4 healthy`. One cutoff, so the
+							panel cannot hide a failure on one rule and forget a recovery on
+							another.
+						-->
+						<HealthChecksCard healthChecks={visibleHealthChecks} windowStart={errorCutoff} />
 						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} {cluster} />
 						<EventsCard {events} />
 					</div>
