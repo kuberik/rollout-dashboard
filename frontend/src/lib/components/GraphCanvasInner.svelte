@@ -40,6 +40,30 @@
 	 * the wheel is a scroll trap — the reader tries to leave the card and zooms
 	 * it instead. Zoom is on the buttons and on pinch, both of which are asked
 	 * for on purpose.
+	 *
+	 * ── ⭐ AND THE SAME TRAP, WORSE, ON TOUCH ───────────────────────────────
+	 *
+	 * There is no wheel on a phone: a one-finger DRAG is how the page scrolls.
+	 * A pannable canvas swallows it, so an operator whose thumb happens to land
+	 * on this card cannot get past it — and the card is now the only rendering
+	 * of the dependency graph at every width, so that is not a corner case.
+	 *
+	 * `panOnDrag` cannot express "two fingers only": `createFilter` in
+	 * `@xyflow/system@0.0.73` rejects `touchstart` outright when it is false and
+	 * accepts it whatever the array says when it is true (the array is checked
+	 * against `event.button`, which touch events do not have). So the gate is a
+	 * CAPTURE-PHASE listener on this container that stops a ONE-finger
+	 * `touchstart` before d3-zoom's own listener on the descendant pane sees
+	 * it. Nothing calls `preventDefault`, so the browser scrolls the page.
+	 *
+	 *   · one finger  → the PAGE scrolls, always, everywhere on the card
+	 *   · two fingers → the CANVAS pans and pinch-zooms (d3 reads
+	 *     `event.touches`, so the second finger's event starts the gesture with
+	 *     both of them, and d3's own `nopropagation` stops the page moving too)
+	 *   · a tap on a node still opens it — `click` is synthesised from the
+	 *     touch sequence and never passed through `touchstart`
+	 *
+	 * This is the convention every embedded map uses, for this exact reason.
 	 */
 	import {
 		SvelteFlow,
@@ -73,6 +97,8 @@
 		minimapFrom = 12,
 		dark = false,
 		ariaLabel = 'Graph',
+		anchor = null,
+		onorientation = undefined,
 		class: className = ''
 	}: {
 		/** Positions are assigned here — the caller supplies topology only. */
@@ -127,6 +153,32 @@
 		/** The product's theme, so the library's own chrome matches the page. */
 		dark?: boolean;
 		ariaLabel?: string;
+		/**
+		 * ⭐ THE NODE THE RESTING VIEW MUST LAND ON when the drawing does not fit.
+		 *
+		 * *Which node the reader sees first* is a design decision and it belongs
+		 * to the caller, which is the only thing that knows what an adverse node
+		 * is. `null` falls back to the origin edge of the ordered axis, which is
+		 * what the promotion flow wants and what this did before.
+		 *
+		 * It matters most at phone width, where a 324px card holds about one
+		 * service column: without it the canvas opens on whichever member of the
+		 * held pair sorts first — on the live fleet the PROVIDER, with the red
+		 * consumer clipped off the right edge.
+		 */
+		anchor?: string | null;
+		/**
+		 * ⭐ THE DIRECTION THIS CANVAS SETTLED ON, back to the caller.
+		 *
+		 * With `rankdir="auto"` the flip is decided HERE, from the container's
+		 * own measured width — the caller has no `matchMedia` and no breakpoint
+		 * class, and must not grow one, because a second opinion about the width
+		 * is a second thing that can disagree with the drawing. A caller that
+		 * prints a sentence naming the axes, or that wants a different rank
+		 * gutter when the ranks are rows rather than columns, reads it from
+		 * here.
+		 */
+		onorientation?: ((o: 'LR' | 'TB') => void) | undefined;
 		class?: string;
 	} = $props();
 
@@ -153,7 +205,6 @@
 	 * started*, and the split is why the button still does something on a graph
 	 * that opens clipped.
 	 */
-	const FIT = { padding: 0.14, maxZoom: 1, minZoom: 0.55, duration: 150 };
 	const FIT_ALL = { padding: 0.08, maxZoom: 1, duration: 200 };
 
 	/**
@@ -180,6 +231,35 @@
 	let flowNodes = $state<Node[]>([]);
 	let flowEdges = $state<Edge[]>([]);
 
+	/**
+	 * ⭐ AND THE FLOOR IS HIGHER ON A PHONE, BECAUSE 0.55 IS NOT LEGIBLE THERE.
+	 *
+	 * 0.55 was derived on a 520px frame, where it still lands roughly two thirds
+	 * of a wide graph on screen. On a 326px card it does not: the node's own
+	 * title is 13px, so 0.55 prints it at 7px, and the result is a picture of a
+	 * graph rather than a graph — the exact failure `minZoom` exists to stop,
+	 * one screen size further down. At 0.85 the title is 11px, a ~200px node box
+	 * is 170px, and just under two services fit across the card. That is what
+	 * *read a name and a build id* costs, and it is the whole reason the phone
+	 * gets a HIGHER floor than the desktop rather than a lower one.
+	 *
+	 * The reader then reaches the rest with two fingers, or with
+	 * `Fit the whole graph`, which has no floor by design.
+	 */
+	const NARROW = 520;
+	const narrow = $derived(containerWidth > 0 && containerWidth < NARROW);
+	const FIT = $derived({
+		padding: 0.14,
+		maxZoom: 1,
+		minZoom: narrow ? 0.85 : 0.55,
+		duration: 150
+	});
+
+	/** The anchor's dagre-assigned top-left, in graph units. */
+	const anchorPosition = $derived(
+		anchor ? (flowNodes.find((n) => n.id === anchor)?.position ?? null) : null
+	);
+
 	const { fitView, zoomIn, zoomOut, getViewport, setViewport } = useSvelteFlow();
 
 	/**
@@ -191,45 +271,113 @@
 	 * Centring threw that away — the reader landed in the middle of a fleet
 	 * with no reason to believe the answer was above them rather than below.
 	 *
-	 * So when the drawing is taller than the frame, the fit is followed by a
-	 * pan to the top edge. Horizontal placement is left exactly as `fitView`
-	 * computed it: the columns ARE the environments and there is no
-	 * "first" one to prefer.
+	 * So when the drawing is bigger than the frame, the fit is followed by a pan
+	 * along the WITHIN-RANK axis — the one the caller ordered — onto `anchor`,
+	 * the node it says the reader must land on, falling back to that axis's
+	 * origin edge. The RANK axis is left exactly as `fitView` computed it: the
+	 * ranks are the environments and there is no "first" one to prefer.
+	 *
+	 * ⭐ AND THAT AXIS TRANSPOSES WITH `orientation`, WHICH IS THE POINT.
+	 * Under `LR` the ranks are columns and the ordered axis is VERTICAL, so the
+	 * pan is downward onto the anchor's row. Under `TB` — what a 390px card
+	 * gets — the ranks are rows and the ordered axis is HORIZONTAL, so the pan
+	 * is sideways onto the anchor's COLUMN. Same rule, transposed; not a second
+	 * rule for phones.
+	 *
+	 * ⛔ AND THE FIT ITSELF IS INSTANT, NOT ANIMATED. `fitView(FIT)` with its
+	 * 150ms transition and a pan read one frame later froze the viewport
+	 * mid-flight: measured at 390, the canvas settled at `scale(1)` rather than
+	 * the 0.85 the fit was computing towards. A resting view is a settle, not a
+	 * transition anybody asked for. `FIT_ALL` — the button — keeps its
+	 * animation, because a press IS a request.
+	 *
+	 * ⭐ AND IT LEAVES THE WITHIN-RANK GUTTER IN FRONT OF THE ANCHOR, because
+	 * that gutter is where the edge INTO the anchor draws its label. Landing the
+	 * anchor's own border on the frame edge put `api ^1.67.0` — the whole reason
+	 * the node is red — just off screen at 390, leaving an arrowhead arriving
+	 * from nowhere. `nodesep` is already the size of that gutter, so no second
+	 * number is invented for it.
+	 *
+	 * The pan is clamped to the drawing's own edges, so anchoring on a node
+	 * near the far end scrolls the graph rather than revealing blank canvas
+	 * past it.
 	 *
 	 * A graph that fits is untouched, so nothing about `AppPromotionFlow`
 	 * changes.
 	 */
 	function restingFit() {
-		fitView(FIT);
+		fitView({ ...FIT, duration: 0 });
 		requestAnimationFrame(() => {
-			if (contentSize.height === 0) return;
 			const vp = getViewport();
-			if (contentSize.height * vp.zoom <= frameHeight + 4) return;
-			setViewport({ x: vp.x, y: 8, zoom: vp.zoom }, { duration: 0 });
+			const z = vp.zoom;
+			const a = anchorPosition;
+			const lead = nodesep ?? (orientation === 'TB' ? 30 : 22);
+			if (orientation === 'TB') {
+				if (contentSize.width === 0 || containerWidth === 0) return;
+				if (contentSize.width * z <= containerWidth + 4) return;
+				const want = a ? 8 - (a.x - lead) * z : 8;
+				/**
+				 * ⛔ AND THE DRAWING STOPS SHORT OF THE ZOOM BUTTONS. They are a
+				 * 28px column in the top-right and they are opaque enough to
+				 * hide what is under them: measured on the rollout tab at 390,
+				 * the right-hand clamp pushed the graph flush to the frame edge
+				 * and the buttons printed over the last two characters of
+				 * `hello-frontend-app`. A clipped service name is a hard defect,
+				 * and it is worse here than a strip of empty canvas, which is
+				 * all this trades it for.
+				 */
+				const controlGutter = showControls ? 40 : 0;
+				const x = Math.min(
+					8,
+					Math.max(containerWidth - controlGutter - contentSize.width * z - 8, want)
+				);
+				if (Math.abs(x - vp.x) > 0.5) setViewport({ x, y: vp.y, zoom: z }, { duration: 0 });
+				return;
+			}
+			if (contentSize.height === 0) return;
+			if (contentSize.height * z <= frameHeight + 4) return;
+			const want = a ? 8 - (a.y - lead) * z : 8;
+			const y = Math.min(8, Math.max(frameHeight - contentSize.height * z - 8, want));
+			if (Math.abs(y - vp.y) > 0.5) setViewport({ x: vp.x, y, zoom: z }, { duration: 0 });
 		});
 	}
 
 	$effect(() => {
 		if (rankdir !== 'auto') {
 			orientation = rankdir;
-			return;
+		} else {
+			orientation = containerWidth > 0 && containerWidth < stackBelow ? 'TB' : 'LR';
 		}
-		orientation = containerWidth > 0 && containerWidth < stackBelow ? 'TB' : 'LR';
+		onorientation?.(orientation);
 	});
 
 	$effect(() => {
 		if (!containerEl) return;
-		containerWidth = containerEl.clientWidth;
+		const el = containerEl;
+		containerWidth = el.clientWidth;
 		const refit = () => requestAnimationFrame(() => restingFit());
 		const ro = new ResizeObserver((entries) => {
 			for (const entry of entries) containerWidth = entry.contentRect.width;
 			refit();
 		});
-		ro.observe(containerEl);
+		ro.observe(el);
 		window.addEventListener('resize', refit);
+		/**
+		 * ⭐ ONE FINGER BELONGS TO THE PAGE. See the header comment: this stops
+		 * a single-touch `touchstart` reaching d3-zoom's listener on the pane
+		 * below, so the browser scrolls the page instead of the canvas eating
+		 * the drag. Two or more touches propagate untouched, which is the pan
+		 * and pinch gesture. Nothing is `preventDefault`ed here — that would put
+		 * the trap back.
+		 */
+		const onTouchStart = (e: TouchEvent) => {
+			if (e.touches.length < 2) e.stopPropagation();
+		};
+		el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
 		return () => {
 			ro.disconnect();
 			window.removeEventListener('resize', refit);
+			el.removeEventListener('touchstart', onTouchStart, { capture: true });
 		};
 	});
 

@@ -10,17 +10,35 @@
 	 * apart by WHERE THEY LAND, using the difference that is already in the
 	 * domain:
 	 *
-	 *   · a PROMOTION is *the same thing moving* — it enters on the LEFT and
-	 *     leaves on the RIGHT, along the row, and both ends print the same
-	 *     service name. Whether the build id on the two ends matches is then
-	 *     the whole state of the promotion, readable without any mark at all.
-	 *   · a CONTRACT is *two different things agreeing* — it enters on the TOP
-	 *     and leaves on the BOTTOM, inside one environment column, between two
-	 *     boxes with DIFFERENT names, and it carries the contract's name on it.
-	 *     A promotion has no name to carry, because it is not an agreement.
+	 *   · a PROMOTION is *the same thing moving* — it runs along the
+	 *     ENVIRONMENT axis, between two boxes printing the SAME service name,
+	 *     and it is UNLABELLED. Whether the build id on the two ends matches is
+	 *     then the whole state of the promotion, readable without any mark.
+	 *   · a CONTRACT is *two different things agreeing* — it runs along the
+	 *     SERVICE axis, inside ONE environment, between two boxes with
+	 *     DIFFERENT names, and it carries the contract's name on it. A
+	 *     promotion has no name to carry, because it is not an agreement.
 	 *
-	 * So: horizontal + unlabelled + same name = promotion. Vertical + labelled
-	 * + two names = contract. Nothing has to be looked up.
+	 * So: along-the-environment-axis + unlabelled + same name = promotion.
+	 * Across-it + labelled + two names = contract. Nothing has to be looked up.
+	 *
+	 * ── ⭐ AND THAT PAIR OF AXES TRANSPOSES WITH THE LAYOUT ─────────────────
+	 *
+	 * `GraphCanvasInner` flips dagre from `LR` to `TB` on a narrow container —
+	 * at 390 the environments run DOWN the page and the services ACROSS it,
+	 * which is the transpose of the desktop reading and the only arrangement in
+	 * which the axis that grows with the fleet (services) is the one that does
+	 * not fight the page's own scroll.
+	 *
+	 * ⛔ THE HANDLE IDS DO NOT CHANGE, ONLY THEIR SIDES. `DependencyNetwork`
+	 * names `env-*` on a promotion and `contract-*` on a contract and never has
+	 * to know which way the canvas is pointing; a fixed Left/Right on the
+	 * environment axis under `TB` would route every promotion as a hook out of
+	 * the right of one box and into the left of the box directly below it.
+	 *
+	 * The DISCRIMINATOR survives the flip because it was never "horizontal":
+	 * it is *same name + no label* against *two names + a label*, and neither
+	 * of those is a direction.
 	 *
 	 * ⛔ THE BOX SIZES ITSELF. Svelte Flow measures the rendered node and hands
 	 * dagre the real number, so no width is ever estimated from a character
@@ -48,6 +66,17 @@
 
 	const linked = $derived(Boolean(data.href) && !data.unresolved);
 
+	/**
+	 * The environment axis is the one dagre RANKS along, so it follows the
+	 * layout direction; the contract axis is the other one. Written by
+	 * `GraphCanvasInner`; `LR` is the honest default before it has measured.
+	 */
+	const stacked = $derived(data.orientation === 'TB');
+	const envIn = $derived(stacked ? Position.Top : Position.Left);
+	const envOut = $derived(stacked ? Position.Bottom : Position.Right);
+	const contractIn = $derived(stacked ? Position.Left : Position.Top);
+	const contractOut = $derived(stacked ? Position.Right : Position.Bottom);
+
 	const HOLD_ICON = {
 		clock: ClockOutline,
 		person: UserOutline,
@@ -62,31 +91,22 @@
 	interaction — nothing here is connectable — so they are invisible and inert,
 	and the arrowhead is the only thing that lands on the border.
 
-	LEFT/RIGHT are the environment axis, TOP/BOTTOM the contract axis. The `id`s
-	are what `DependencyNetwork` names on each edge.
+	The `id`s are what `DependencyNetwork` names on each edge and they are
+	STABLE; the SIDES follow the canvas's layout direction, so under `LR` the
+	environment axis is Left/Right and under `TB` it is Top/Bottom.
 -->
-<Handle
-	id="env-in"
-	type="target"
-	position={Position.Left}
-	class="!pointer-events-none !opacity-0"
-/>
-<Handle
-	id="env-out"
-	type="source"
-	position={Position.Right}
-	class="!pointer-events-none !opacity-0"
-/>
+<Handle id="env-in" type="target" position={envIn} class="!pointer-events-none !opacity-0" />
+<Handle id="env-out" type="source" position={envOut} class="!pointer-events-none !opacity-0" />
 <Handle
 	id="contract-in"
 	type="target"
-	position={Position.Top}
+	position={contractIn}
 	class="!pointer-events-none !opacity-0"
 />
 <Handle
 	id="contract-out"
 	type="source"
-	position={Position.Bottom}
+	position={contractOut}
 	class="!pointer-events-none !opacity-0"
 />
 

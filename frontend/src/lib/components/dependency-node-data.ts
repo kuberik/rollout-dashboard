@@ -33,4 +33,12 @@ export type DependencyNodeData = {
 	href: string | null;
 	focused: boolean;
 	title: string;
+	/**
+	 * ⭐ WRITTEN BY `GraphCanvasInner`, NOT BY THE CALLER. The canvas measures
+	 * its own container and flips dagre between `LR` and `TB`; the node has to
+	 * know which, because the two edge kinds are told apart by WHICH SIDE they
+	 * land on and that pair of axes transposes with the layout. See
+	 * `DependencyNode`.
+	 */
+	orientation?: 'LR' | 'TB';
 };

@@ -8,7 +8,6 @@ import {
 	networkVerdict,
 	edgeSentence,
 	layoutOrder,
-	serviceLines,
 	nodeId
 } from './dependency-graph';
 
@@ -502,15 +501,6 @@ describe('layoutOrder — an order, not a position', () => {
 		const order = layoutOrder(build());
 		const names = [...new Set(order.map((id) => id.split('/')[2]))];
 		expect(names).toEqual(['hello-api-app', 'hello-frontend-app']);
-	});
-});
-
-describe('serviceLines — the phone carries BOTH relations', () => {
-	it('gives one line per service, environments in promotion order', () => {
-		const lines = serviceLines(build());
-		expect(lines.map((l) => l.name)).toEqual(['hello-api-app', 'hello-frontend-app']);
-		expect(lines[1].nodes.map((n) => n.env)).toEqual(['dev', 'staging', 'prod']);
-		expect(lines[1].blocked).toBe(true);
 	});
 });
 

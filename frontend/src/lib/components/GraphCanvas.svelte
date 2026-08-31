@@ -34,6 +34,10 @@
 		minimapFrom?: number | null;
 		dark?: boolean;
 		ariaLabel?: string;
+		/** The node the resting view must land on when the drawing overflows. */
+		anchor?: string | null;
+		/** The `LR`/`TB` this canvas settled on, for a caller that names axes. */
+		onorientation?: ((o: 'LR' | 'TB') => void) | undefined;
 		class?: string;
 	};
 

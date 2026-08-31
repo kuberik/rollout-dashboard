@@ -734,51 +734,6 @@ export function layoutOrder(graph: RolloutGraph): string[] {
 }
 
 // =========================================================================
-// SERVICE LINES — the phone's shape
-// =========================================================================
-
-export type ServiceLine = {
-	/** The Rollout name shared by every node on the line. */
-	name: string;
-	/** Its rollouts, in promotion order — the row of the matrix. */
-	nodes: GraphNode[];
-	/** True when anything on the line is held by a non-self-clearing thing. */
-	blocked: boolean;
-};
-
-/**
- * THE MATRIX AS ROWS, for a phone.
- *
- * ⛔ NOT THE GRAPH SHRUNK, and not the old release-wave list either — that
- * list was CONTRACT-ONLY and could not carry a promotion at all. A row of the
- * matrix is one service's journey through the environments, which is the
- * shape a 390px column actually has, and each stop on it can print both the
- * promotion edge that feeds it and the contract edges that hold it.
- *
- * Lines with something held come first, matching `layoutOrder`, so the phone
- * and the canvas open on the same service.
- */
-export function serviceLines(graph: RolloutGraph): ServiceLine[] {
-	const order = layoutOrder(graph);
-	const rank = new Map(order.map((id, i) => [id, i] as const));
-	const byName = new Map<string, GraphNode[]>();
-	for (const n of graph.nodes) {
-		const list = byName.get(n.name);
-		if (list) list.push(n);
-		else byName.set(n.name, [n]);
-	}
-	return [...byName.entries()]
-		.map(([name, nodes]) => ({
-			name,
-			nodes: [...nodes].sort((a, b) => a.envRank - b.envRank || a.env.localeCompare(b.env)),
-			blocked: nodes.some((n) => n.blocked)
-		}))
-		.sort(
-			(a, b) => (rank.get(a.nodes[0].id) ?? 0) - (rank.get(b.nodes[0].id) ?? 0)
-		);
-}
-
-// =========================================================================
 // THE SENTENCES — one place, so the canvas and the list cannot drift
 // =========================================================================
 

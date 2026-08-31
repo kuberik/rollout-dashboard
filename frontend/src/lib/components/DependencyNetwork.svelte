@@ -7,11 +7,15 @@
 	 *
 	 * ── ⭐ THE LAYOUT, AND WHAT WAS REJECTED ────────────────────────────────
 	 *
-	 * The picture is a MATRIX: **environments are columns, services are rows.**
-	 * A build moves rightwards along its row through the environments, and
-	 * sideways within a column between services that must ship in order. That
-	 * is the operator's own model and it is the only arrangement in which the
-	 * two edge kinds are told apart by geometry alone.
+	 * The picture is a MATRIX: **one axis is environments, the other is
+	 * services.** A build moves along its service's line through the
+	 * environments, and sideways within one environment between services that
+	 * must ship in order. That is the operator's own model and it is the only
+	 * arrangement in which the two edge kinds are told apart by geometry alone.
+	 *
+	 * Which axis is which is a function of the CARD'S WIDTH and nothing else —
+	 * environments across at 1440, environments down at 390. See the
+	 * one-component section below.
 	 *
 	 * Three ways to get dagre to produce it were tried, on the live fleet:
 	 *
@@ -42,14 +46,22 @@
 	 * The human has rejected legends. The difference used is the one already in
 	 * the domain:
 	 *
-	 *   · a PROMOTION is *the same thing moving*: HORIZONTAL, left handle to
-	 *     right handle, between two boxes printing the SAME service name, and
-	 *     UNLABELLED — a promotion has no name, because it is not an agreement.
-	 *     Its state is legible from the two build ids on its ends.
-	 *   · a CONTRACT is *two different things agreeing*: VERTICAL, bottom
-	 *     handle to top handle, inside ONE environment column, between two
-	 *     boxes with DIFFERENT names, and LABELLED with the contract and the
-	 *     constraint (`api ^1.67.0`) — the thing being agreed.
+	 *   · a PROMOTION is *the same thing moving*: it runs along the ENVIRONMENT
+	 *     axis, `env-out` to `env-in`, between two boxes printing the SAME
+	 *     service name, and it is UNLABELLED — a promotion has no name, because
+	 *     it is not an agreement. Its state is legible from the two build ids
+	 *     on its ends.
+	 *   · a CONTRACT is *two different things agreeing*: it runs along the
+	 *     SERVICE axis, `contract-out` to `contract-in`, inside ONE
+	 *     environment, between two boxes with DIFFERENT names, and it is
+	 *     LABELLED with the contract and the constraint (`api ^1.67.0`) — the
+	 *     thing being agreed.
+	 *
+	 * ⭐ NEITHER HALF OF THAT IS A DIRECTION, which is why it survives the
+	 * `LR`→`TB` transpose at phone width intact: *same name + no label* against
+	 * *two names + a label* reads the same whichever way the matrix is turned.
+	 * `DependencyNode` moves the handles; this file names the same four ids at
+	 * every width and never learns which way round the canvas is.
 	 *
 	 * ── WHAT SPENDS COLOUR ──────────────────────────────────────────────────
 	 *
@@ -59,39 +71,42 @@
 	 * `stuck` and nothing else. A gate we could not READ is a DASHED gray line,
 	 * never an open one.
 	 *
-	 * ── ⭐ MOBILE IS A DIFFERENT OBJECT, AND THE CANVAS DOES NOT MOUNT ──────
+	 * ── ⭐ ONE COMPONENT AT EVERY WIDTH. THE PHONE GETS THE SAME GRAPH ──────
 	 *
-	 * Below `sm` this renders SERVICE LINES — the matrix as rows, one service's
-	 * journey through the environments, carrying BOTH relations. (The list it
-	 * replaces printed release waves, which were contract-only and could not
-	 * express a promotion at all.)
+	 * Until 2026-08-31 this file rendered TWO things behind a `matchMedia`
+	 * gate: the canvas at `sm` and above, and the same graph flattened into
+	 * SERVICE LINES below it. That is deleted, and it is not coming back.
 	 *
-	 * ⛔ `hidden sm:block` WOULD NOT DO. A `SvelteFlow` inside a `display:none`
-	 * container measures every node at zero, hands dagre a graph of empty boxes
-	 * and fits the viewport to nothing — and then keeps a `ResizeObserver` and
-	 * a wheel listener alive for a thing nobody can see. The breakpoint is a
-	 * `matchMedia` gate on MOUNTING, not a CSS class on visibility.
+	 * ⛔ TWO RENDERINGS OF ONE FACT DRIFT, AND THE PHONE BRANCH IS THE ONE
+	 * NOBODY LOOKS AT. It had already happened once: the mobile list this file
+	 * inherited was CONTRACT-ONLY and silently omitted every promotion edge —
+	 * half the truth, on the screen least likely to be checked. Replacing it
+	 * with a second hand-written list that carried both relations fixed that
+	 * instance and kept the defect class. Rendering the canvas at every width
+	 * removes the class.
+	 *
+	 * The mechanism is the one `GraphCanvasInner` already had for
+	 * `AppPromotionFlow`: `rankdir="auto"` flips dagre to `TB` below
+	 * `STACK_BELOW` px of MEASURED CONTAINER width. At 390 the environments
+	 * then run DOWN the page and the services ACROSS it — the transpose of the
+	 * desktop reading, and the right way round, because the axis that grows
+	 * with the fleet is services and that axis must not be the page's own
+	 * scroll axis. `DependencyNode` transposes its handles to match.
+	 *
+	 * ⛔ AND NO `matchMedia` HERE. The canvas measures its own container and
+	 * reports back through `onorientation`; a breakpoint read a second time in
+	 * this file is a second opinion about the width that can disagree with the
+	 * drawing it is captioning. The card is not the viewport — it is 326px
+	 * inside a 390px page and 526px inside a 768px one.
 	 */
-	import { onMount } from 'svelte';
 	import { MarkerType, type Node, type Edge } from '@xyflow/svelte';
-	import {
-		ArrowRightOutline,
-		RefreshOutline,
-		ServerSolid,
-		ClockOutline,
-		UserOutline,
-		ExclamationCircleOutline,
-		QuestionCircleOutline
-	} from 'flowbite-svelte-icons';
 	import GraphCanvas from '$lib/components/GraphCanvas.svelte';
 	import DependencyNode from '$lib/components/DependencyNode.svelte';
-	import Chip from '$lib/components/Chip.svelte';
 	import { theme } from '$lib/stores/theme';
 	import { getEnvironmentThemeStyle, shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
 	import type { DependencyNodeData } from '$lib/components/dependency-node-data';
 	import {
 		layoutOrder,
-		serviceLines,
 		edgeSentence,
 		nodeLabel,
 		type RolloutGraph,
@@ -121,20 +136,16 @@
 	const nodeTypes = { rollout: DependencyNode };
 
 	/**
-	 * `sm` — read at INIT, not in `onMount`: starting at `false` would build the
-	 * whole service-line list once on a desktop load and throw it away. The
-	 * guard is for the prerender pass, where there is no `window` — the phone
-	 * shape is the honest default there.
+	 * ⭐ THE FLIP IS ON THE CARD'S WIDTH, NOT THE VIEWPORT'S, and 620 is where
+	 * three environment columns at ~210px stop fitting. Measured on the live
+	 * fleet: the canvas is 1182px inside a 1440px page and 326px inside a 390px
+	 * one, and on the rollout tab 990px at 1280 and 526px at 768 — so the same
+	 * number covers a phone and a narrow rollout tab without either knowing the
+	 * other exists.
 	 */
-	const MQ = '(min-width: 640px)';
-	let wide = $state(typeof window !== 'undefined' && window.matchMedia(MQ).matches);
-	onMount(() => {
-		const mq = window.matchMedia(MQ);
-		wide = mq.matches;
-		const onChange = (e: MediaQueryListEvent) => (wide = e.matches);
-		mq.addEventListener('change', onChange);
-		return () => mq.removeEventListener('change', onChange);
-	});
+	const STACK_BELOW = 620;
+	/** Written by the canvas once it has measured itself. See `onorientation`. */
+	let stacked = $state(false);
 
 	const nodeById = $derived(new Map(graph.nodes.map((n) => [n.id, n] as const)));
 	const inbound = $derived.by(() => {
@@ -160,8 +171,8 @@
 	/**
 	 * ⭐ THE ORDER IS THE SEED dagre'S WITHIN-RANK PASS STARTS FROM, so the
 	 * nodes are emitted in `layoutOrder` rather than in the model's own sort.
-	 * It is what puts a contract's two ends in adjacent rows and a held service
-	 * line at the top of a canvas taller than its frame.
+	 * It is what puts a contract's two ends adjacent along the within-rank axis
+	 * — rows under `LR`, columns under `TB` — and the held service first on it.
 	 */
 	const orderedNodes = $derived.by(() => {
 		const rank = new Map(layoutOrder(graph).map((id, i) => [id, i] as const));
@@ -231,8 +242,9 @@
 			id: e.key,
 			source: e.from,
 			target: e.to,
-			// THE HANDLES ARE THE DISCRIMINATOR. Left/right is the environment
-			// axis, top/bottom the contract axis — see `DependencyNode`.
+			// THE HANDLES ARE THE DISCRIMINATOR, and only the AXIS is named here.
+			// Which side each one is on follows the canvas's `LR`/`TB` — see
+			// `DependencyNode`.
 			sourceHandle: promotion ? 'env-out' : 'contract-out',
 			targetHandle: promotion ? 'env-in' : 'contract-in',
 			type: 'smoothstep',
@@ -258,205 +270,85 @@
 		graph.edges.filter((e) => e.writer === 'promotion').map(edgeOf)
 	);
 
-	const lines = $derived(serviceLines(graph));
+	/**
+	 * ⭐ WHICH NODE THE READER LANDS ON when the drawing does not fit — a design
+	 * decision, and the answer is the BLOCKED one.
+	 *
+	 * `layoutOrder` already puts the held component first, but WITHIN it the
+	 * order is topological, so the first node is the PROVIDER: on the live fleet
+	 * `hello-api-app`, which is fine, and the red `hello-frontend-app` is the
+	 * one actually held. On a 1182px canvas that costs nothing because the whole
+	 * graph fits. On a 324px card it is the difference between opening on the
+	 * problem and opening one column to the left of it.
+	 *
+	 * A page that already knows what the reader came for — the rollout tab —
+	 * wins, because "this rollout" beats "some blocked rollout".
+	 */
+	const anchor = $derived(focus ?? orderedNodes.find((n) => n.blocked)?.id ?? null);
 
-	const HOLD_ICON = {
-		clock: ClockOutline,
-		person: UserOutline,
-		check: ExclamationCircleOutline,
-		upstream: ExclamationCircleOutline,
-		unknown: QuestionCircleOutline
-	} as const;
+	/**
+	 * ⭐ THE GUTTER THE CONTRACT LABELS LIVE IN, AND WHY IT TRANSPOSES.
+	 *
+	 * The contract edges are the LABELLED ones and they run along the
+	 * WITHIN-RANK axis, which `nodesep` sizes. Under `LR` that axis is vertical
+	 * and a label is ~18px TALL, so 36px of row gap has always been plenty.
+	 * Under `TB` the same axis is horizontal and the same label is ~70px WIDE:
+	 * measured at 768, `api ^1.67.0` in a 28px gutter printed straight across
+	 * `hello-frontend-app`'s environment chip.
+	 *
+	 * ⛔ AND dagre CANNOT BE ASKED. Contract edges are deliberately kept out of
+	 * `layoutEdges` (they must not advance a rank), so the space dagre reserves
+	 * for a labelled edge is never reserved for these. The gutter is therefore
+	 * sized here, from the widest label actually on this graph, using the same
+	 * `length * 6 + 12` estimate `GraphCanvasInner` gives dagre for the edges it
+	 * does rank — an estimate a few pixels out only moves a gutter.
+	 */
+	const contractGutter = $derived(
+		graph.edges.reduce(
+			(w, e) =>
+				e.writer === 'promotion' ? w : Math.max(w, contractLabel(e).length * 6 + 12),
+			0
+		)
+	);
 </script>
 
 {#if graph.nodes.length > 0}
-	{#if wide}
-		<!--
-			THE READING, IN WORDS — ONCE. Direction is the one thing a graph can
-			get catastrophically wrong, and no arrowhead convention is universal.
-			This also states which axis is which, so the geometry that replaces a
-			legend is itself introduced in one line rather than guessed at.
-		-->
-		<p class="t-micro mb-3 text-gray-500 dark:text-gray-400">
+	<!--
+		THE READING, IN WORDS — ONCE, AND IT FOLLOWS THE DRAWING. Direction is
+		the one thing a graph can get catastrophically wrong, and no arrowhead
+		convention is universal. This states which axis is which, so the geometry
+		that replaces a legend is itself introduced in one line rather than
+		guessed at — and because the axes TRANSPOSE at `TB`, the sentence is read
+		off the canvas's own measurement rather than off a second breakpoint that
+		could disagree with it.
+	-->
+	<p class="t-micro mb-3 text-gray-500 dark:text-gray-400">
+		{#if stacked}
+			Down: a build moving through environments, the first at the top. Across: a service
+			waiting on another in the same environment.
+		{:else}
 			Across: a build moving through environments, left first. Down: a service waiting on
 			another in the same environment.
-		</p>
-		<GraphCanvas
-			nodes={flowNodes}
-			edges={flowEdges}
-			layoutEdges={rankEdges}
-			{nodeTypes}
-			rankdir="LR"
-			ranksep={compact ? 96 : 116}
-			nodesep={36}
-			minHeight={compact ? 148 : 168}
-			maxHeight={compact ? 400 : 680}
-			fallbackNodeWidth={compact ? 190 : 210}
-			fallbackNodeHeight={68}
-			minimapFrom={14}
-			{dark}
-			ariaLabel="Dependency graph"
-			class="rounded-lg border border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/40"
-		/>
-	{:else}
-		<!-- ══ PHONE: SERVICE LINES ═══════════════════════════════════════════
-			The matrix as rows. One section per service, its environments in
-			promotion order, and under each stop the contract edges holding it
-			and the gates that are not edges at all. Both relations, in the shape
-			a 390px column has.
-		-->
-		<p class="t-micro mb-3 text-gray-500 dark:text-gray-400">
-			Each service, through its environments in order.
-		</p>
-		{#each lines as line (line.name)}
-			<div class="mb-4 last:mb-0">
-				<div
-					class="mb-2 flex items-baseline gap-2 border-b border-gray-100 pb-1.5 dark:border-gray-700/60"
-				>
-					<span class="t-label min-w-0 truncate text-gray-700 dark:text-gray-200">{line.name}</span>
-					<span class="t-micro ml-auto shrink-0 text-gray-400 dark:text-gray-500"
-						>{line.nodes.length} environment{line.nodes.length === 1 ? '' : 's'}</span
-					>
-				</div>
-				<ul class="space-y-2">
-					{#each line.nodes as n, i (n.id)}
-						{@const holds = inbound.get(n.id) ?? []}
-						{@const promo = holds.filter((e) => e.writer === 'promotion')}
-						{@const contracts = holds.filter((e) => e.writer === 'contract')}
-						{@const href = n.unresolved ? null : hrefOf(n)}
-						{@const t = themeOf(n.env)}
-						<li>
-							{#if i > 0}
-								<!-- THE PROMOTION EDGE, AS THE GAP BETWEEN TWO ROWS. On the
-								     canvas it is a horizontal line; here it is the step down
-								     the ladder, and it carries its own state. -->
-								<div class="flex items-center gap-1.5 pb-1 pl-3">
-									<ArrowRightOutline
-										class="h-3 w-3 shrink-0 rotate-90 {promo.some((e) => e.state === 'blocked')
-											? 'text-red-500 dark:text-red-400'
-											: 'text-gray-300 dark:text-gray-600'}"
-									/>
-									{#if promo.some((e) => e.state === 'blocked')}
-										<!-- ⛔ NOT "dev has not deployed it". The two boxes may be
-										     running the SAME build — what dev has not deployed is
-										     the build that is WAITING, and a sentence a reader can
-										     falsify by looking at the line above it is worse than
-										     no sentence. This is `classifyGate`'s own wording for
-										     the promotion gate. -->
-										<span class="t-micro text-red-700 dark:text-red-400"
-											>waiting for {line.nodes[i - 1].env} to deploy the next build{promo.some(
-												(e) => e.relType === 'Parallel'
-											)
-												? ' alongside'
-												: ' first'}</span
-										>
-									{:else if promo.length === 0}
-										<span class="t-micro text-gray-400 dark:text-gray-500"
-											>no promotion gate between these</span
-										>
-									{:else if promo.some((e) => e.state === 'unknown')}
-										<span class="t-micro text-gray-500 dark:text-gray-400"
-											>this promotion gate has not been read</span
-										>
-									{:else}
-										<span class="t-micro text-gray-400 dark:text-gray-500"
-											>after {line.nodes[i - 1].env}</span
-										>
-									{/if}
-								</div>
-							{/if}
-							<div
-								class="environment-theme-scope rounded-lg border px-3 py-2
-									{n.blocked
-									? 'border-red-300 bg-red-50/70 dark:border-red-900 dark:bg-red-950/40'
-									: 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'}
-									{n.id === focus ? 'ring-2 ring-gray-900/70 dark:ring-white/70' : ''}"
-								style={t ? getEnvironmentThemeStyle(t) : undefined}
-							>
-								<div class="flex min-w-0 items-center gap-2">
-									<Chip role="env" label={(t ? shortEnvLabel(t) : shortEnvLabel(n.env)) || n.env} />
-									{#if n.unresolved}
-										<QuestionCircleOutline
-											class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
-										/>
-									{:else}
-										<ServerSolid
-											class="h-3.5 w-3.5 shrink-0 {n.blocked
-												? 'text-red-600 dark:text-red-400'
-												: 'text-gray-400 dark:text-gray-500'}"
-										/>
-									{/if}
-									{#if n.unresolved}
-										<span class="t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
-											>not in this dashboard</span
-										>
-									{:else if href}
-										<a
-											{href}
-											class="t-code-sm min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
-											>{n.build ?? 'never deployed'}</a
-										>
-									{:else}
-										<span class="t-code-sm min-w-0 truncate text-gray-700 dark:text-gray-200"
-											>{n.build ?? 'never deployed'}</span
-										>
-									{/if}
-									{#if n.blocked}
-										<span class="ml-auto shrink-0"><Chip role="blocked" label="held" /></span>
-									{/if}
-								</div>
-								{#each contracts as e (e.key)}
-									<div class="mt-1.5 flex min-w-0 items-start gap-1.5">
-										{#if e.cyclic}
-											<RefreshOutline
-												class="mt-0.5 h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500"
-											/>
-										{:else}
-											<ArrowRightOutline
-												class="mt-0.5 h-3 w-3 shrink-0 {e.state === 'blocked'
-													? 'text-red-500 dark:text-red-400'
-													: 'text-gray-400 dark:text-gray-500'}"
-											/>
-										{/if}
-										<span class="t-micro min-w-0 text-gray-600 dark:text-gray-300">
-											needs <span class="font-medium text-gray-900 dark:text-white"
-												>{e.contract}{e.requiredVersion ? ` ${e.requiredVersion}` : ''}</span
-											>
-											from
-											<span class="font-medium text-gray-900 dark:text-white"
-												>{nodeById.get(e.from)?.name ?? e.from}</span
-											>
-											{#if e.state === 'blocked'}
-												<span class="text-red-700 dark:text-red-400">
-													— it serves {e.providedVersion ?? 'an older version'}</span
-												>
-											{:else if e.state === 'unknown'}
-												<span class="text-gray-500 dark:text-gray-400"> — not read</span>
-											{/if}
-										</span>
-									</div>
-								{/each}
-								{#each n.holds as hold (hold.gate + hold.short)}
-									{@const Icon = HOLD_ICON[hold.clears] ?? QuestionCircleOutline}
-									<div class="mt-1.5 flex min-w-0 items-start gap-1.5">
-										<Icon
-											class="mt-0.5 h-3 w-3 shrink-0 {hold.clears === 'person' ||
-											hold.clears === 'unknown'
-												? 'text-red-500 dark:text-red-400'
-												: 'text-gray-400 dark:text-gray-500'}"
-										/>
-										<span
-											class="t-micro min-w-0 {hold.clears === 'person' || hold.clears === 'unknown'
-												? 'text-red-700 dark:text-red-400'
-												: 'text-gray-500 dark:text-gray-400'}">{hold.short}</span
-										>
-									</div>
-								{/each}
-							</div>
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{/each}
-	{/if}
+		{/if}
+	</p>
+	<GraphCanvas
+		nodes={flowNodes}
+		edges={flowEdges}
+		layoutEdges={rankEdges}
+		{nodeTypes}
+		rankdir="auto"
+		stackBelow={STACK_BELOW}
+		ranksep={stacked ? 60 : compact ? 96 : 116}
+		nodesep={stacked ? Math.max(36, contractGutter + 16) : 36}
+		minHeight={compact ? 148 : 168}
+		maxHeight={compact ? 400 : 680}
+		fallbackNodeWidth={compact ? 190 : 210}
+		fallbackNodeHeight={68}
+		minimapFrom={14}
+		{anchor}
+		onorientation={(o) => (stacked = o === 'TB')}
+		{dark}
+		ariaLabel="Dependency graph"
+		class="rounded-lg border border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/40"
+	/>
 {/if}
