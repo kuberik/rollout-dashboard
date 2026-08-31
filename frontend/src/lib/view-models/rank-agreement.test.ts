@@ -1,25 +1,46 @@
 /**
- * ONE ROLLOUT, EVERY SURFACE, ONE NUMBER.
+ * ONE ROLLOUT, EVERY SURFACE, ONE NUMBER — AND THE NUMBER IS THE CONTROLLER'S.
  *
- * This file exists because the product shipped three answers for one rollout,
- * and one page contradicted itself. Measured on the live hub, `hello-world-app`,
- * cluster fully settled, nothing deploying:
+ * ⚠️ THIS FILE WAS REWRITTEN 2026-08-31 AND IT REVERSES ITS OWN EARLIER
+ * RULING. It used to pin "N behind = the build's rank on the app's union
+ * ladder". A live critique then measured the product printing TWO numbers for
+ * one word on ONE card: `/apps/<name>` said `−20 PROD` (ladder) beside
+ * `15 versions ready` (the rollout's own candidates), and rollout detail said
+ * `15 upgrades available`.
  *
- *   /rollouts     dev −15 991829b │ staging  newest 991829b │ prod −19 51b976a
- *   /apps/[name]  19 behind       │ 19 behind              │ 24 behind
- *   API           dev's own list 15 newer │ staging's 14 │ prod's 19
+ * The tie was broken against the API, not against taste. On the live hub,
+ * `hello-world-app` / prod running `205a312`:
  *
- * **dev and staging run the IDENTICAL build `991829b`, on the same page, in
- * adjacent rows — one said `−15`, the other said `newest`.** Both halves of
- * that are expressible as tests and both are here.
+ *   prod `availableReleases`              33 entries, `205a312` at index 8
+ *   ⇒ newer in prod's OWN list          **24**
+ *   prod `status.releaseCandidates`      **24**   ← the controller's own answer
+ *   union ladder across dev+staging+prod   37 entries
+ *   ⇒ ladder rank of `205a312`             28
  *
- * The fixture is the live shape, synthesised: 25 builds on the app's ladder,
- * three environments whose own `availableReleases` lists are 16 / 15 / 20
- * entries long. **THE ASYMMETRY IS THE FIXTURE'S WHOLE POINT** — the three
- * lists are different lengths because each rollout's gates and retention admit
- * a different subset, and a definition of "N behind" that is a property of the
- * BUILD has to survive it. Any derivation that counts against a rollout's own
- * list gives dev 15 and staging 14 for one sha.
+ * The four extra builds the ladder counts (`139acae`, `171c103`, `bddd9e4`,
+ * `e87f059`) are in dev's and staging's lists and in NEITHER prod's
+ * `availableReleases` nor prod's `releaseCandidates`. **`/rollouts/<...>`
+ * renders "N upgrades available" and its whole upgrade list straight from
+ * `releaseCandidates`, and `ChangeVersionModal` renders its picker straight
+ * from `availableReleases`.** A chip saying 28 above a list of 24 rows is the
+ * same contradiction one level down.
+ *
+ * Swept across all 15 live rollouts: every build the union adds to a
+ * rollout's own list is OLDER than that rollout's own newest. The union never
+ * contributes a newer release — it can only inflate.
+ *
+ * ── THE COST, PINNED HERE SO NOBODY REDISCOVERS IT AS A BUG ───────────────
+ *
+ * Two environments running the IDENTICAL sha CAN hold different numbers,
+ * because their candidate lists genuinely differ. Measured live,
+ * `hello-world-app` at `c78a9de4`: prod 30, dev 28, staging 29. That is not a
+ * contradiction — it is three upgrade paths — and `rankTitle` names the
+ * ENVIRONMENT as the subject so the number is never presented as a fact about
+ * the sha.
+ *
+ * What must NEVER happen, and is asserted below, is a page rendering a LAG
+ * BETWEEN two environments that are on the same build. Different counts is a
+ * fact; "staging is 20 behind dev" while both run one sha is a lie.
  */
 import { describe, it, expect } from 'vitest';
 import type { Rollout, Environment } from '$lib/../types';
@@ -34,6 +55,7 @@ import {
 	rankVerdictsByRollout,
 	rankLabel,
 	rankRole,
+	rankTitle,
 	rankBehindBy
 } from './env-rank';
 
@@ -120,14 +142,41 @@ describe('the fixture really is the shape that broke — asymmetric lists, one b
 });
 
 describe('⛔ the dev-vs-staging contradiction', () => {
-	it('gives two environments running the IDENTICAL build the IDENTICAL verdict', () => {
-		// THE DEFECT, STATED AS ONE ASSERTION. Before this, `/rollouts` printed
-		// `dev −15 991829b` beside `staging newest 991829b`.
+	it('gives every environment the number ITS OWN controller published', () => {
+		// THE DEFINITION, STATED AS ONE ASSERTION. The verdict is the
+		// rollout's own candidate count and nothing else — the same number
+		// rollout detail prints as `N upgrades available` and the same number
+		// of rows Change Version offers.
 		const g = group();
-		const d = rankVerdictFor(g, 'dev');
-		const s = rankVerdictFor(g, 'staging');
-		expect(d).toEqual(s);
-		expect(d).toEqual({ kind: 'behind', by: 19 });
+		expect(rankVerdictFor(g, 'dev')).toEqual({ kind: 'behind', by: newerReleaseCount(dev) });
+		expect(rankVerdictFor(g, 'staging')).toEqual({
+			kind: 'behind',
+			by: newerReleaseCount(staging)
+		});
+		expect(rankVerdictFor(g, 'prod')).toEqual({ kind: 'behind', by: newerReleaseCount(prod) });
+		expect(rankVerdictFor(g, 'dev')).toEqual({ kind: 'behind', by: 15 });
+		expect(rankVerdictFor(g, 'staging')).toEqual({ kind: 'behind', by: 14 });
+		expect(rankVerdictFor(g, 'prod')).toEqual({ kind: 'behind', by: 19 });
+	});
+
+	it('NEVER exceeds what the rollout could actually deploy', () => {
+		// ⛔ THE REGRESSION THIS FILE NOW EXISTS FOR. The union ladder ranks
+		// all three at 19/19/24 — above dev's and staging's own candidate
+		// counts — so the chip promised upgrades the picker does not list.
+		// Whatever the derivation, the number may never be bigger than the
+		// list it points at.
+		const g = group();
+		const ladder = buildLadder(g.cells);
+		for (const cell of g.cells) {
+			const own = newerReleaseCount(cell.rollout);
+			const by = rankBehindBy(rankVerdicts(g).get(cell)!);
+			expect(own).not.toBeNull();
+			expect(by).toBeLessThanOrEqual(own!);
+			expect(by).toBe(own);
+		}
+		// And the ladder really would have over-promised — this is the proof
+		// the fixture still has teeth, not a tautology.
+		expect(ladder.rankOf(sha(19))).toBeGreaterThan(newerReleaseCount(staging)!);
 	});
 
 	it('never prints `newest` for an environment that is 19 builds behind', () => {
@@ -143,24 +192,40 @@ describe('⛔ the dev-vs-staging contradiction', () => {
 	it('prints ONE spelling of the rank, and it is `N behind`', () => {
 		const cards = buildRolloutCards(ROLLOUTS, ENVIRONMENTS, NOW);
 		const byNs = (tier: string) => cards.find((c) => c.ns === `${APP}-${tier}`)!;
-		expect(rankLabel(byNs('dev').rank)).toBe('19 behind');
-		expect(rankLabel(byNs('staging').rank)).toBe('19 behind');
-		expect(rankLabel(byNs('prod').rank)).toBe('24 behind');
+		expect(rankLabel(byNs('dev').rank)).toBe('15 behind');
+		expect(rankLabel(byNs('staging').rank)).toBe('14 behind');
+		expect(rankLabel(byNs('prod').rank)).toBe('19 behind');
 		// ⛔ Not `−19`. A signed integer beside a build id reads as a diff and
 		// names no unit; `/` and `/rollouts` were the last two pages spelling
 		// it that way.
 		for (const c of cards) expect(rankLabel(c.rank)).not.toMatch(/^−/);
 	});
 
-	it('does not let a rollout’s own list length move the number', () => {
-		// Shrink staging's retention window to 4 entries — a pure retention
-		// change, nothing deployed, nothing promoted. Its own count would move
-		// 14 → 3. Its RANK must not move at all.
+	it('tracks the rollout’s own list, and ONLY its own', () => {
+		// Shrink staging's window to 4 entries. Its candidate list really does
+		// become 3 — that is what its Change Version picker will offer — so
+		// the chip follows it there. This assertion is the exact inverse of
+		// the one it replaced, and deliberately so: the number is a fact about
+		// what THIS rollout can take, not about the sha it is running.
 		const narrow = rollout('staging', [19, 15, 9, 0], 19);
 		const g2 = groupRolloutsByApp([dev, narrow, prod], ENVIRONMENTS).get(APP)!;
 		expect(newerReleaseCount(narrow)).toBe(3);
-		expect(rankVerdictFor(g2, 'staging')).toEqual({ kind: 'behind', by: 19 });
-		expect(rankVerdictFor(g2, 'dev')).toEqual({ kind: 'behind', by: 19 });
+		expect(rankVerdictFor(g2, 'staging')).toEqual({ kind: 'behind', by: 3 });
+		// …and NOBODY ELSE moves. A neighbour's window is not evidence about
+		// this rollout, in either direction.
+		expect(rankVerdictFor(g2, 'dev')).toEqual({ kind: 'behind', by: 15 });
+		expect(rankVerdictFor(g2, 'prod')).toEqual({ kind: 'behind', by: 19 });
+	});
+
+	it('states the ENVIRONMENT as the subject, never the build', () => {
+		// The cost of this definition is that one sha can carry two numbers on
+		// adjacent rows. That is legible only if the sentence says whose
+		// upgrade path it is — so the title may not claim anything about the
+		// build itself.
+		const t = rankTitle({ kind: 'behind', by: 14 }, 'STAGING');
+		expect(t).toBe('STAGING can still take 14 newer versions');
+		expect(t).not.toMatch(/this app has/);
+		expect(rankTitle({ kind: 'behind', by: 1 }, 'DEV')).toBe('DEV can still take 1 newer version');
 	});
 });
 
@@ -179,7 +244,11 @@ describe('every surface reads the same derivation', () => {
 			const version = cell.version;
 			expect(card.rank).toEqual(cell.rank);
 			expect(card.rank).toEqual(rankVerdictFor(g, tier));
-			expect(rankBehindBy(card.rank)).toBe(ladder.rankOf(version));
+			// The oracle is the CONTROLLER's count, not the ladder position.
+			expect(rankBehindBy(card.rank)).toBe(newerReleaseCount(card.rollout));
+			// The ladder still orders builds, and it is still the thing that
+			// decides which build is newest — it just does not count.
+			expect(ladder.rankOf(version)).toBeGreaterThanOrEqual(rankBehindBy(card.rank));
 			// `behind` is attribution only — its number is copied off the rank
 			// so the two can never disagree.
 			if (card.behind) expect(card.behind.behindBy).toBe(rankBehindBy(card.rank));
@@ -269,23 +338,31 @@ describe('a many-region fleet — the fan-out shape', () => {
 	];
 	const envs = REGIONS.map(environment);
 
-	it('gives every region on one build the same number, whatever its window holds', () => {
+	it('gives every region the number ITS OWN picker will offer', () => {
+		// ⚠️ THIS IS THE HARDEST CASE FOR THE CHOSEN DEFINITION AND IT IS
+		// PINNED RATHER THAN HIDDEN. Four regions run ONE build and print
+		// 6, 2, 4 and 1. That reads as a contradiction and is not one: each
+		// region's gates admit a different set, so each region's Change
+		// Version list really is a different length. The ladder's single `6`
+		// would be wrong for three of the four — `prod-sa-east-1` has exactly
+		// one build it can take, and telling its operator there are six sends
+		// them to a picker with one row.
 		const g = groupRolloutsByApp(many, envs).get(APP)!;
 		const regions = REGIONS.slice(2);
-		const verdicts = regions.map((r) => rankVerdictFor(g, r));
-		// Their own lists say 6, 2, 4 and 1 — four numbers for one build, which
-		// is the defect at fan-out scale.
 		expect(many.slice(2).map(newerReleaseCount)).toEqual([6, 2, 4, 1]);
-		// The ladder says one thing.
-		for (const v of verdicts) expect(v).toEqual(verdicts[0]);
-		expect(verdicts[0]).toEqual({ kind: 'behind', by: 6 });
-		expect(rankLabel(verdicts[0])).toBe('6 behind');
+		expect(regions.map((r) => rankBehindBy(rankVerdictFor(g, r)))).toEqual([6, 2, 4, 1]);
+		expect(rankLabel(rankVerdictFor(g, 'prod-sa-east-1'))).toBe('1 behind');
 	});
 
 	it('still ranks the promotion line above the fan-out', () => {
 		const g = groupRolloutsByApp(many, envs).get(APP)!;
 		expect(rankVerdictFor(g, 'dev')).toEqual({ kind: 'newest' });
-		expect(rankVerdictFor(g, 'staging')).toEqual({ kind: 'behind', by: 1 });
+		// staging's own list is [1..7] and it runs rank 1 — its head IS rank
+		// 1, so it has nothing newer TO TAKE. `newest` is the honest word:
+		// there is no button for it to press. The ladder said `1 behind`,
+		// pointing at a build staging's controller does not offer.
+		expect(rankVerdictFor(g, 'staging')).toEqual({ kind: 'newest' });
+		expect(newerReleaseCount(many[1])).toBe(0);
 	});
 
 	it('agrees across the card and the matrix for all six', () => {

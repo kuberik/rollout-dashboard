@@ -4,9 +4,16 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import type { ClusterError } from '$lib/api/rollouts';
-	import { buildRolloutCards, cardVerdict } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
+	import {
+		isNeedsYou,
+		isInMotion,
+		isTrailing,
+		isSteady,
+		isPending
+	} from '$lib/view-models/fleet-groups';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { shortenVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
@@ -41,38 +48,28 @@
 		return rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name);
 	}
 
+	// ⛔ THE FIVE BUCKETS LIVE IN `view-models/fleet-groups.ts` NOW.
+	// (2026-08-31) They used to live here, and `/rollouts` — the page an
+	// operator opens to scan everything — carried its OWN four, one of which
+	// (`Healthy`) folded Trailing and Steady together. The result was
+	// `Attention 0 · In motion 1 · Pending 0 · Healthy 14` on a fleet that
+	// this page was filing under Trailing at the same second. Same predicates,
+	// one module, both pages import it.
 	const needsYou = $derived.by<RolloutCard[]>(() => {
-		const out = cards.filter((c) => c.statusKey === 'failed' || c.stuck != null);
+		const out = cards.filter(isNeedsYou);
 		return out.sort(
 			(a, b) => (a.statusKey === 'failed' ? 0 : 1) - (b.statusKey === 'failed' ? 0 : 1)
 		);
 	});
 
-	const inMotion = $derived.by<RolloutCard[]>(() => cards.filter((c) => c.isRunning));
+	const inMotion = $derived.by<RolloutCard[]>(() => cards.filter(isInMotion));
 
-	// Healthy = succeeded and not stuck. Split into those on their newest build
-	// (Steady) and those still running an older build than their upstream
-	// (Trailing) — healthy but not caught up, the promotion candidates.
-	const healthy = $derived.by<RolloutCard[]>(() =>
-		cards.filter((c) => c.statusKey === 'succeeded' && !c.stuck)
-	);
-	// ⛔ THE SPLIT READS `rank`, NOT `behind`. (2026-08-30) `c.behind` was
-	// `null` whenever the old per-rollout derivation could not answer, and
-	// `(null ?? 0) === 0` put those rollouts in STEADY — where the card then
-	// printed the word `newest`. On the live hub that filed `hello-world-app`
-	// in staging, nineteen builds behind, under "Steady", on the same page
-	// where its dev twin — running the IDENTICAL build — sat under "Trailing".
-	// `rankBehindBy` is 0 only for `newest`, `diverged` and `unknown`, and the
-	// last two are not steady either, so they are split out below.
-	const trailing = $derived.by<RolloutCard[]>(() =>
-		healthy.filter((c) => rankBehindBy(c.rank) > 0 || c.rank.kind === 'diverged')
-	);
-	const steadyAll = $derived.by<RolloutCard[]>(() =>
-		healthy.filter((c) => c.rank.kind === 'newest' || c.rank.kind === 'unknown')
-	);
-	const pendingCards = $derived.by<RolloutCard[]>(() =>
-		cards.filter((c) => c.statusKey === 'pending')
-	);
+	// Healthy = succeeded and not stuck. Split into those at the head of their
+	// own release list (Steady) and those with newer builds they could still
+	// take (Trailing) — healthy but not caught up, the promotion candidates.
+	const trailing = $derived.by<RolloutCard[]>(() => cards.filter(isTrailing));
+	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady));
+	const pendingCards = $derived.by<RolloutCard[]>(() => cards.filter(isPending));
 	const pendingCount = $derived(pendingCards.length);
 	// Steady section grid also surfaces pending rollouts (no deploy yet) so
 	// they aren't invisible — they're counted separately in the header but
@@ -443,17 +440,35 @@
 							rankLabel(c.rank),
 							rankTitle(c.rank, c.envDisplay || c.name)
 						)}
+						{@const mark = cardStateMark(c)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
+							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE
+							     ROW KEEPS ITS NUMBER. (2026-08-31) `cardVerdict`'s precedence used
+							     to put the state word in the CHIP, which evicted the rank: prod
+							     read `ROLLED BACK 51b976a` with no number while it was the
+							     most-behind rollout in the fleet — under a header that says
+							     "healthy, but behind a newer build". The chip cannot hold both
+							     (measured: a second word takes the app name's width to zero) and a
+							     third mark is banned, so the fact moves to the one element on this
+							     row that was drawing the norm — a green tick on every card in a
+							     section where every card is `Succeeded` by construction. Hue
+							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
 							<span
 								class="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 									c.bakeStatus
 								)}"
+								title={mark ? mark.title : undefined}
 							>
-								<BakeStatusIcon bakeStatus={c.bakeStatus} size="small" />
+								<BakeStatusIcon
+									bakeStatus={c.bakeStatus}
+									size="small"
+									state={mark?.kind ?? null}
+									stateWord={mark?.word ?? ''}
+								/>
 							</span>
 							<span class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
 								>{c.name}</span
@@ -565,17 +580,36 @@
 				class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
 				>
 					{#each steadySectionPreview as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+						<!-- `{@const}` has to be the immediate child of the `{#each}`. -->
+						{@const mark = cardStateMark(c)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
+							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE
+							     ROW KEEPS ITS NUMBER. (2026-08-31) `cardVerdict`'s precedence used
+							     to put the state word in the CHIP, which evicted the rank: prod
+							     read `ROLLED BACK 51b976a` with no number while it was the
+							     most-behind rollout in the fleet — under a header that says
+							     "healthy, but behind a newer build". The chip cannot hold both
+							     (measured: a second word takes the app name's width to zero) and a
+							     third mark is banned, so the fact moves to the one element on this
+							     row that was drawing the norm — a green tick on every card in a
+							     section where every card is `Succeeded` by construction. Hue
+							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
 							<span
 								class="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 									c.bakeStatus
 								)}"
+								title={mark ? mark.title : undefined}
 							>
-								<BakeStatusIcon bakeStatus={c.bakeStatus} size="small" />
+								<BakeStatusIcon
+									bakeStatus={c.bakeStatus}
+									size="small"
+									state={mark?.kind ?? null}
+									stateWord={mark?.word ?? ''}
+								/>
 							</span>
 							<span
 								class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"

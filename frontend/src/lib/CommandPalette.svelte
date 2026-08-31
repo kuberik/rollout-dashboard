@@ -26,8 +26,10 @@
 	 *   group whose header already names the kind: a mark repeated on every row
 	 *   under a heading that states it is a mark that cannot mark anything.
 	 * · the joined `[verdict][build]` chip is `/`'s own row unit, and `verdict`
-	 *   is `cardVerdict`'s — `rolled back` > `pinned` > the rank word. So a pin
-	 *   and a rollback finally have a word here, and the sha stops being a loose
+	 *   is `cardVerdict`'s — the RANK word, always. (2026-08-31: the precedence
+	 *   `rolled back` > `pinned` > rank was deleting the number, so the state
+	 *   moved into the leading disc exactly as it did on `/` and `/rollouts`.
+	 *   One act, one spelling, three surfaces.) The sha stops being a loose
 	 *   mono span floating beside the name with nothing to say about it.
 	 * · `stuck` keeps its alarm chip, which was already the one thing the
 	 *   palette got right.
@@ -56,7 +58,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { getStatusCircleClass, bakeWord, bakeTitle } from '$lib/bake-status';
-	import { buildRolloutCards, cardVerdict } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
 	import {
@@ -140,6 +142,10 @@
 		 * `unknown`). Its `title` carries everything the word displaced.
 		 */
 		verdict?: { label: string; title: string; role: 'newest' | 'rank' | 'diverged' | 'unranked' };
+		/** `rolled back` / `pinned`, drawn in the leading disc — see `/`. */
+		state?: 'rolled-back' | 'pinned' | null;
+		stateWord?: string;
+		stateTitle?: string;
 		/**
 		 * How many things under this result need a person — a rollout that has
 		 * FAILED or is STUCK. 0 on everything settled, and nothing renders for
@@ -189,11 +195,11 @@
 		for (const c of cards) {
 			const r = c.rollout;
 			// THE VERDICT WORD IS `/`'S, NOT A SECOND OPINION. `cardVerdict`
-			// picks the most specific true word and folds everything it
-			// displaces into the title, so a pinned or rolled-back rollout
-			// stops reading as an ordinary trailing one.
+			// keeps the rank in the word and folds the state's sentence into
+			// the title; the state itself rides the leading disc, same as `/`.
 			const sentence = rankTitle(c.rank, c.envDisplay || c.name);
 			const v = cardVerdict(c, rankLabel(c.rank), sentence);
+			const mark = cardStateMark(c);
 			out.push({
 				kind: 'rollout',
 				// Source cluster must be part of the key: the hub merges rollouts
@@ -210,6 +216,9 @@
 				timestamp: c.timestamp ?? undefined,
 				stuck: !!c.stuck,
 				verdict: { label: v.label, title: v.title, role: rankRole(c.rank) },
+				state: mark?.kind ?? null,
+				stateWord: mark?.word ?? '',
+				stateTitle: mark?.title ?? '',
 				needsYou: cardNeedsYou(c) ? 1 : 0,
 				severity: cardSeverity(c),
 				isCurrent: c.name === currentName && c.ns === currentNamespace
@@ -267,7 +276,7 @@
 					: deepest > 0
 						? {
 								label: `${deepest} behind`,
-								title: `The furthest-behind environment of ${name} is ${deepest} version${deepest === 1 ? '' : 's'} older than the newest one it has`,
+								title: `The furthest-behind environment of ${name} can still take ${deepest} newer version${deepest === 1 ? '' : 's'}`,
 								role: 'rank'
 							}
 						: undefined,
@@ -607,11 +616,22 @@
 				class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 					r.bakeStatus
 				)}"
-				title="{bakeWord(r.bakeStatus)} — {bakeTitle(r.bakeStatus)}"
+				title={r.stateTitle
+					? `${bakeWord(r.bakeStatus)} — ${bakeTitle(r.bakeStatus)}. ${r.stateTitle}`
+					: `${bakeWord(r.bakeStatus)} — ${bakeTitle(r.bakeStatus)}`}
 			>
 				<!-- `decorative`: the `sr-only` word is already printed right here. -->
-				<BakeStatusIcon bakeStatus={r.bakeStatus} size="small" decorative />
-				<span class="sr-only">{bakeWord(r.bakeStatus)}</span>
+				<BakeStatusIcon
+					bakeStatus={r.bakeStatus}
+					size="small"
+					state={r.state ?? null}
+					decorative
+				/>
+				<span class="sr-only"
+					>{bakeWord(r.bakeStatus)}{r.stateWord && r.bakeStatus === 'Succeeded'
+						? `, ${r.stateWord}`
+						: ''}</span
+				>
 			</span>
 		{:else}
 			<span

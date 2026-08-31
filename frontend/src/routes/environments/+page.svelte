@@ -731,9 +731,9 @@
 			<Chip
 				role="rank"
 				label={`${a.behindBy} behind`}
-				title="{a.appName} here is {a.behindBy} version{a.behindBy === 1
+				title="{a.appName} here can still take {a.behindBy} newer version{a.behindBy === 1
 					? ''
-					: 's'} older than the newest one it has"
+					: 's'}"
 				value={a.version}
 				valueHref={a.versionHref}
 				wide

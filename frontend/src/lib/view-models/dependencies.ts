@@ -549,20 +549,42 @@ export function currentEntry(info: EnvInfo | undefined): EnvHistoryEntry | null 
 	return [...h].sort((a, b) => (b.id ?? 0) - (a.id ?? 0))[0];
 }
 
-/** The chain, as rows. One per environment, upstream first. */
-export function chain(infos: EnvInfo[], order: Build[]): ChainEnv[] {
+/**
+ * The chain, as rows. One per environment, upstream first.
+ *
+ * ⛔ `ownRank` IS THE PRODUCT'S ONE `behind`, AND `order` IS ONLY THE FALLBACK.
+ * (2026-08-31)
+ *
+ * `rankOfTag(order, tag)` is a position on the UNION ladder across every
+ * environment, and this tab printed it into a chip spelled `N behind` — the
+ * same word `/`, `/rollouts`, `/apps` and rollout detail print. On the live
+ * hub that made it a fifth surface with the union's number: `20 BEHIND` on
+ * three rows whose own controllers each published 16, 15 and 15 candidates.
+ * See `env-rank.ts` for the measurement that settled which number is true.
+ *
+ * `ownRank` is the caller's door onto `rankVerdicts` — `null` from it means
+ * "this environment has no rollout object here", not "zero", and only then
+ * does the ladder answer. The ladder keeps every other job on this page: it
+ * ORDERS builds, which is what `hopBetween` and the blocked-tag sorts need.
+ */
+export function chain(
+	infos: EnvInfo[],
+	order: Build[],
+	ownRank?: (env: string) => number | null
+): ChainEnv[] {
 	const byName = new Map(infos.map((i) => [i.environment, i] as const));
 	return chainOrder(infos).map((env) => {
 		const info = byName.get(env);
 		const cur = currentEntry(info);
 		const tag = cur?.version?.tag ?? null;
+		const own = ownRank ? ownRank(env) : null;
 		return {
 			env,
 			tag,
 			display: cur ? getDisplayVersion(cur.version) : null,
 			bakeStatus: cur?.bakeStatus ?? null,
 			timestamp: cur?.timestamp ?? null,
-			rank: rankOfTag(order, tag),
+			rank: own !== null ? own : rankOfTag(order, tag),
 			after: info?.relationship?.type === 'After' ? (info.relationship.environment ?? null) : null
 		};
 	});
@@ -588,6 +610,12 @@ export type ChainHop = { waiting: number; label: string };
 export function hopBetween(up: ChainEnv | null, down: ChainEnv | null): ChainHop {
 	if (!up || !down) return { waiting: 0, label: '' };
 	if (!up.tag || !down.tag) return { waiting: 0, label: '' };
+	// ⛔ SAME BUILD ⇒ NO HOP, AND THE SUBTRACTION NEVER RUNS. (2026-08-31)
+	// Same rule and same reason as `/apps/[name]`'s `hopBetween`: the two
+	// ranks are each environment's OWN candidate count now, and two
+	// environments on one sha can hold different counts. Subtract those and
+	// this edge claims a lag between two deployments of one build.
+	if (up.tag === down.tag) return { waiting: 0, label: '' };
 	if (up.rank < 0 || down.rank < 0) return { waiting: 0, label: '' };
 	const n = down.rank - up.rank;
 	// THE UNIT IS NAMED. A bare `2 waiting` is a quantity of an unnamed thing

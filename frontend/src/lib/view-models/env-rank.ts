@@ -3,53 +3,102 @@ import type { AppGroup, AppCell } from '$lib/version-utils';
 import { groupRolloutsByApp } from '$lib/version-utils';
 import { getDisplayVersion } from '$lib/utils';
 import { buildLadder, divergedFromLine } from './build-ladder';
+import { newerReleaseCount } from './promotion';
 
 /**
- * ⛔ WHAT "N BEHIND" MEANS, AND WHY IT IS THIS AND NOT THE OTHER TWO.
- * (Decided 2026-08-30, from three surfaces disagreeing about one rollout.)
+ * ⛔ WHAT "N BEHIND" MEANS. ONE DEFINITION, AND IT IS THE ROLLOUT'S OWN LIST.
+ * (Decided 2026-08-31. This REVERSES the 2026-08-30 ruling kept below, which
+ * chose the app-wide build ladder. The reversal is measured, not preferred.)
  *
- * **N behind = the rank of the build an environment is RUNNING on its APP'S
- * BUILD LADDER** — the union, across every environment of that app, of every
- * rollout's `availableReleases` plus every build any of them has actually
- * deployed, ordered newest-first by release creation time (`build-ladder.ts`).
+ * **N behind = how many releases newer than the one it is running THIS
+ * ROLLOUT could still take** — `promotion.ts`'s `newerReleaseCount`, i.e.
+ * `status.releaseCandidates.length`, validated against the rollout's own
+ * OLDEST-FIRST `status.availableReleases`.
  *
- * There were three defensible denominators and the product was silently
- * mixing them. Measured on the live hub, `hello-world-app`, cluster settled:
+ * ── WHAT THE API SAYS, MEASURED ON THE LIVE HUB 2026-08-31 ────────────────
  *
- *   |          | dev 991829b | staging 991829b | prod 51b976a |
- *   |----------|-------------|-----------------|--------------|
- *   | own list |     15      |       14        |      19      |
- *   | LADDER   |   **19**    |     **19**      |    **24**    |
+ * `hello-world-app`, prod running `205a312`:
  *
- * **(1) THE ROLLOUT'S OWN `availableReleases` / `releaseCandidates` LOSES.**
- * It is a real quantity — *"what could this rollout deploy next"* — and the
- * product still prints it, as `N versions waiting to move` (`promotion.ts`).
- * It cannot be the RANK, because it is not a property of the build. dev and
- * staging run the IDENTICAL build `991829b` and their own lists answer 15 and
- * 14, because each rollout's gates and retention admit a different subset. Put
- * that in a chip attached to a sha and the same sha carries two numbers on
- * adjacent rows. A reader cannot act on a number that moves when a DIFFERENT
- * rollout's window rolls.
+ *   | quantity                                     | value |
+ *   |----------------------------------------------|-------|
+ *   | prod's own `availableReleases`               |  33   |
+ *   | prod's index of `205a312` in it              |   8   |
+ *   | ⇒ newer in prod's own list                   | **24**|
+ *   | prod's `status.releaseCandidates.length`     | **24**|
+ *   | app-wide LADDER (union of all three envs)    |  37   |
+ *   | ⇒ ladder rank of `205a312`                   |  28   |
  *
- * **(2) EVERY BUILD THE REPO PRODUCED LOSES.** `/versions` groups by repo, and
- * apps that share a source repo ship independent streams — `hello-world-app`
- * and `hello-multi-app` are both built out of `kuberik-testing`. Ranking one
- * against the other's builds is a comparison that cannot be resolved, and
- * DESIGN.md's rule is that those print `unknown`, not a number.
+ * The ladder says 28. The CONTROLLER says 24. The four extra builds —
+ * `139acae`, `171c103`, `bddd9e4`, `e87f059`, all released 2026-07-29 —
+ * are in dev's and staging's lists and in NEITHER prod's `availableReleases`
+ * NOR prod's `releaseCandidates`. Prod cannot deploy them. A chip reading
+ * `28 behind` above a Change Version list with 24 rows is the same defect
+ * one level down.
  *
- * **(3) THE LADDER WINS, AND IT EXPLAINS THE ASYMMETRY RATHER THAN HIDING IT.**
- * dev publishes 16 releases, staging 15, prod 20. Those are not three ladders;
- * they are three WINDOWS onto one ladder of 25 builds. The union is the app's
- * real history and each rollout's own list is a view of it — which is exactly
- * why the union is the denominator for "how old is this code" and each
- * rollout's own list is the denominator for "what can move next". Two
- * questions, two numbers, and now neither is spelled in the other's words.
+ * Swept across all 15 live rollouts: every build the union adds to a
+ * rollout's own list is OLDER than that rollout's own newest — the union
+ * NEVER contributes a newer release, so it can only ever inflate. It is not
+ * a better denominator; it is the same denominator plus other rollouts'
+ * records. DESIGN.md: *an absent record is not an observation.*
  *
- * It is also the only candidate that is per-APP and shared, which is what
- * `/apps` and `/environments` need: those pages RANK ENVIRONMENTS AGAINST EACH
- * OTHER, and a ranking needs one denominator or it is not a ranking.
+ * ── WHAT THIS COSTS, STATED PLAINLY ───────────────────────────────────────
  *
- * ── THE ORIGINAL 2026-08-23 NOTE, WHICH THIS EXTENDS ──────────────────────
+ * The 2026-08-30 ruling's objection is REAL and is not waved away: two
+ * environments running the IDENTICAL sha can print different numbers,
+ * because their upgrade paths genuinely differ. Measured on the live hub,
+ * `hello-world-app` at `c78a9de4`: prod 30, dev 28, staging 29.
+ *
+ * That is surprising and it is TRUE. The three rollouts have three different
+ * candidate lists, so three different numbers of steps to the head. The
+ * ladder hid that asymmetry behind one pretty number that matched none of
+ * the three controls the operator can actually press.
+ *
+ * The fix for the surprise is the SUBJECT, not the denominator: `behind` is
+ * a fact about an ENVIRONMENT's upgrade path, never about a build. So
+ * `rankTitle` names the environment and says *"can still take"*, and no
+ * surface attaches this number to a bare sha. `/versions` ranks BUILDS and
+ * keeps the ladder — different question, different words (see
+ * `revision-ledger.ts`).
+ *
+ * ── WHY THIS RESOLVES THE REPORTED DEFECT AND THE LADDER COULD NOT ────────
+ *
+ * `/apps/<name>` printed `−20 PROD` (ladder) and `15 versions ready`
+ * (`promotionCandidates`) inside ONE card, and rollout detail said
+ * `15 upgrades available`. Under this definition all three are the same
+ * number by construction:
+ *
+ *     N behind ≡ N versions ready ≡ N upgrades available
+ *              ≡ rows in Change Version ≡ releaseCandidates.length
+ *
+ * Under the ladder they can never agree, because the ladder counts builds
+ * that have no candidate row to point at.
+ *
+ * ── THE ONE FALLBACK, AND ITS FENCE ───────────────────────────────────────
+ *
+ * When a rollout publishes NEITHER `availableReleases` NOR
+ * `releaseCandidates` there is no own-stream evidence at all, and the app
+ * ladder is the only ordering that exists (it is then built from deploy
+ * HISTORY alone). That case takes the ladder rank. It is the same question
+ * answered from the only witness available — not a second definition — and
+ * it does not occur on any live rollout. The fence is exact: the fallback
+ * fires only when both lists are absent, never when a version merely fell
+ * out of a list that exists (that is `unknown`, and it stays `unknown`).
+ *
+ * ── SUPERSEDED, KEPT FOR THE ARGUMENT ─────────────────────────────────────
+ *
+ * **(2026-08-30) THE LADDER WINS.** *"dev and staging run the IDENTICAL build
+ * `991829b` and their own lists answer 15 and 14 … Put that in a chip attached
+ * to a sha and the same sha carries two numbers on adjacent rows."* Correct
+ * about the symptom, wrong about the cure: the number stopped matching the
+ * controller, and the two numbers on one card were the result. Answered above
+ * by naming the environment as the subject.
+ *
+ * **(2026-08-30) EVERY BUILD THE REPO PRODUCED LOSES.** Still true and
+ * untouched: apps that share a source repo ship independent streams, so
+ * ranking one against the other's builds is unresolvable and prints
+ * `unknown`.
+ *
+ * ── THE ORIGINAL 2026-08-23 NOTE ──────────────────────────────────────────
  *
  * ONE DENOMINATOR FOR "HOW FAR BEHIND IS THIS ENVIRONMENT", PRODUCT-WIDE.
  *
@@ -80,9 +129,12 @@ import { buildLadder, divergedFromLine } from './build-ladder';
  * number counts.
  */
 export type RankVerdict =
-	/** Rank 0 on this app's ladder — nothing newer exists. */
+	/** Nothing newer that this rollout could take. It is at the head of its
+	 *  own release list. */
 	| { kind: 'newest' }
-	/** `by` builds newer than this one exist on the app's ladder. */
+	/** `by` releases newer than the running one that THIS rollout could still
+	 *  take — the controller's own `releaseCandidates` count. Identically the
+	 *  number of rows in this rollout's Change Version list. */
 	| { kind: 'behind'; by: number }
 	/**
 	 * Running a build that is on no environment's release line, deployed inside
@@ -124,8 +176,33 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 			out.set(cell, { kind: 'unknown' });
 			continue;
 		}
+		// `diverged` is still a LADDER question and deliberately stays one: it
+		// asks whether this build is on ANY environment's release line, which
+		// no single rollout's list can answer. It is not a distance, so it
+		// never competes with the count below.
 		if (divergedFromLine(ladder, version, cellDeployedMs(cell))) {
 			out.set(cell, { kind: 'diverged' });
+			continue;
+		}
+		const own = newerReleaseCount(cell.rollout);
+		if (own !== null) {
+			out.set(cell, own === 0 ? { kind: 'newest' } : { kind: 'behind', by: own });
+			continue;
+		}
+		// ⛔ THE FENCE. `newerReleaseCount` returns null for TWO reasons and
+		// only ONE of them may fall back. See the header.
+		//   · a list EXISTS and this version is not in it → the lag is
+		//     genuinely unknowable. `unknown`, and no number. Never the
+		//     ladder, which would answer a question the controller has
+		//     declined to answer.
+		//   · NO list exists at all → there is no own-stream witness, and the
+		//     ladder (built from deploy history) is the only ordering there
+		//     is. Does not occur on any live rollout.
+		const st = cell.rollout?.status;
+		const publishesNothing =
+			!Array.isArray(st?.availableReleases) && !Array.isArray(st?.releaseCandidates);
+		if (!publishesNothing) {
+			out.set(cell, { kind: 'unknown' });
 			continue;
 		}
 		const rank = ladder.rankOf(version);
@@ -223,18 +300,25 @@ export function rankRole(v: RankVerdict): 'newest' | 'rank' | 'diverged' | 'unra
 export function rankTitle(v: RankVerdict, subject: string): string {
 	switch (v.kind) {
 		case 'newest':
-			return `${subject} is on the newest version this app has`;
+			return `${subject} is on the newest version available to it`;
 		case 'behind':
-			return `${subject} is ${v.by} version${v.by === 1 ? '' : 's'} older than the newest one this app has`;
+			// ⛔ THE SUBJECT IS THE ENVIRONMENT'S UPGRADE PATH, NOT THE BUILD.
+			// (2026-08-31) It read *"older than the newest one this app has"*,
+			// which is a claim about the SHA — and two environments on one sha
+			// can hold different numbers of candidates, so that sentence was
+			// false for at least one of them. This says whose path it is and
+			// what the number counts, which is also exactly what the Change
+			// Version list will show.
+			return `${subject} can still take ${v.by} newer version${v.by === 1 ? '' : 's'}`;
 		case 'diverged':
 			return `${subject} is running a version that is on no environment’s release list`;
 		default:
-			return `${subject}'s distance from the newest version cannot be resolved`;
+			return `${subject}'s distance from the newest version cannot be resolved — the version it is running is not in its own release list`;
 	}
 }
 
 /**
- * How many builds behind, for sorting and counting only — 0 for every state
+ * How many releases behind, for sorting and counting only — 0 for every state
  * that is not `behind`. Do NOT render this: a `0` from `unknown` and a `0`
  * from `newest` mean different things and neither is a lag.
  */

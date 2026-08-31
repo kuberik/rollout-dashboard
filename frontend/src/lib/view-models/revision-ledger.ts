@@ -9,6 +9,7 @@ import {
 import { getDisplayVersion } from '$lib/utils';
 import { buildLadder, divergedFromLine, type BuildLadder } from './build-ladder';
 import { isDeployable } from './promotion';
+import { rankVerdicts, rankBehindBy, type RankVerdict } from './env-rank';
 import { compareEnvironmentNames } from '$lib/env-order';
 
 /**
@@ -245,6 +246,18 @@ type ServiceCtx = {
 	 * present, and it cannot be closed where it is not.
 	 */
 	byKey: Map<string, { rank: number; onReleaseLine: boolean; version: string }>;
+	/**
+	 * ⛔ THE ENVIRONMENT LAG IS NOT THE BUILD RANK. (2026-08-31)
+	 *
+	 * This module ranks BUILDS, and for that the ladder is right and stays.
+	 * But `RevisionSlot.currentRank` is a different question — *"how far
+	 * behind is this ENVIRONMENT"* — and it renders into a chip spelled
+	 * `N behind`, the product's one word. It has to be the product's one
+	 * number: the rollout's own candidate count (`env-rank.ts`). Reading it
+	 * off the ladder made `/versions/<rev>` a fifth surface with a fourth
+	 * answer for one rollout.
+	 */
+	lagByCell: Map<AppCell, RankVerdict>;
 	/** revision key → the OCI tag this service deploys it under. */
 	tagByKey: Map<string, string>;
 	/** revision key → what this service labels it. */
@@ -301,7 +314,30 @@ function contextFor(group: AppGroup): ServiceCtx {
 		for (const rel of c.rollout.status?.availableReleases ?? []) note(rel);
 		for (const h of c.rollout.status?.history ?? []) note(h.version);
 	}
-	return { group, ladder, byKey, tagByKey, labelByKey, keyByVersion, cells: group.cells };
+	return {
+		group,
+		ladder,
+		byKey,
+		tagByKey,
+		labelByKey,
+		keyByVersion,
+		cells: group.cells,
+		lagByCell: rankVerdicts(group)
+	};
+}
+
+/**
+ * How far behind this environment is, in the product's one denominator —
+ * `env-rank.ts`'s own-candidate count. `null` means print no number: a
+ * `diverged` or `unknown` verdict is not a distance, and a `0` from either
+ * would read as "newest".
+ */
+function currentLagOf(cell: AppCell, ctx: ServiceCtx): number | null {
+	const v: RankVerdict | undefined = ctx.lagByCell.get(cell);
+	if (!v) return null;
+	if (v.kind === 'newest') return 0;
+	if (v.kind === 'behind') return rankBehindBy(v);
+	return null;
 }
 
 /** The revision key of whatever this environment is running right now. */
@@ -338,7 +374,10 @@ function buildRow(
 					envName: envTierOf(cell),
 					cell,
 					onIt,
-					currentRank: curPlaced ? curPlaced.rank : null,
+					// The ENVIRONMENT's lag, from the product's one denominator —
+					// not `curPlaced.rank`, which is the BUILD's position on the
+					// ladder. `diverged` and `unknown` print no number at all.
+					currentRank: currentLagOf(cell, ctx),
 					promoteTag: onIt || !tag || !isDeployable(cell.rollout, tag) ? null : tag,
 					tag
 				};

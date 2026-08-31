@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRolloutCards, detectRollback, cardVerdict } from './rollout-cards';
+import { buildRolloutCards, detectRollback, cardVerdict, cardStateMark } from './rollout-cards';
 import { rankBehindBy, rankLabel } from './view-models/env-rank';
 
 // Fixtures reproduce the live `hello-world-app` shape that exposed the bug:
@@ -86,20 +86,23 @@ function cardFor(ns: string, cards: ReturnType<typeof buildRolloutCards>) {
 describe('computeBehind (via buildRolloutCards)', () => {
 	const cards = buildRolloutCards([dev, staging, prod], ENVIRONMENTS, NOW);
 
-	// ⛔ THE NUMBER MOVED 24 → 26, AND THE MOVE IS THE POINT. (2026-08-30)
-	// 24 was the count against PROD'S OWN `availableReleases` — a per-rollout
-	// number that changes when a different rollout's retention window rolls.
-	// The product's one denominator is the APP'S LADDER (`env-rank.ts`), the
-	// union across every environment, and the union holds two builds prod's
-	// own list does not: dev's head `9f10e49`, and `rel-8`, which prod's list
-	// replaced with the build prod is running. So the honest answer is 26 and
-	// it is the same number `/apps`, `/environments` and `/apps/[name]` print
-	// for this rollout. See `env-rank.ts` for why the union wins.
-	it('reports prod as 26 behind on the app ladder even though its version aged out of every peer history', () => {
+	// ⛔ THE NUMBER MOVED 26 → 24, AND IT IS BACK WHERE THE CONTROLLER PUT IT.
+	// (2026-08-31, reversing 2026-08-30.) 26 was the APP LADDER — the union
+	// across every environment — and the union holds two builds prod's own
+	// list does not: dev's head `9f10e49` and `rel-8`. Prod cannot deploy
+	// either: neither is in its `availableReleases`, so neither appears in
+	// Change Version, and neither is in its `releaseCandidates`, so rollout
+	// detail's `N upgrades available` never counted them. 24 is what this
+	// rollout's own controller published and what every control on the page
+	// will offer. See `env-rank.ts` for the full measurement.
+	it('reports prod as 24 behind — its own candidate count — even though its version aged out of every peer history', () => {
 		const c = cardFor('hello-world-prod', cards);
-		expect(c.rank).toEqual({ kind: 'behind', by: 26 });
+		expect(c.rank).toEqual({ kind: 'behind', by: 24 });
 		expect(c.behind).not.toBeNull();
-		expect(c.behind!.behindBy).toBe(26);
+		expect(c.behind!.behindBy).toBe(24);
+		// The number the chip prints IS the length of the upgrade list rollout
+		// detail renders. That equality is the whole ruling.
+		expect(rankBehindBy(c.rank)).toBe(prod.status.releaseCandidates.length);
 	});
 
 	it('does NOT collapse to a falsy rank — the home page must not classify prod as steady', () => {
@@ -138,8 +141,8 @@ describe('computeBehind (via buildRolloutCards)', () => {
 		const pinned = { ...prod, spec: { wantedVersion: '205a312' } };
 		const pinnedCards = buildRolloutCards([dev, staging, pinned], ENVIRONMENTS, NOW);
 		const c = cardFor('hello-world-prod', pinnedCards);
-		expect(c.rank).toEqual({ kind: 'behind', by: 26 });
-		expect(rankLabel(c.rank)).toBe('26 behind');
+		expect(c.rank).toEqual({ kind: 'behind', by: 24 });
+		expect(rankLabel(c.rank)).toBe('24 behind');
 	});
 
 	// QA correctly flagged the previous version of this test as a TAUTOLOGY: it
@@ -272,26 +275,52 @@ describe('cardVerdict', () => {
 		expect(v.title).toBe(rank[1]);
 	});
 
-	it('promotes the rollback to the visible word', () => {
+	/**
+	 * ⛔ THE STATE NEVER EVICTS THE NUMBER. (2026-08-31)
+	 *
+	 * The live defect: prod printed `ROLLED BACK 51b976a` with NO number on
+	 * `/` and `/rollouts` while it was the most-behind rollout in the fleet,
+	 * filed under a header reading "healthy, but behind a newer build". The
+	 * old precedence (`rolled back` > `pinned` > rank) ranked two facts by
+	 * deleting one. The word moved to the status disc (`cardStateMark`), so
+	 * the chip keeps the rank on every row.
+	 */
+	it('KEEPS THE RANK IN THE CHIP when the rollout was rolled back', () => {
 		const v = cardVerdict({ rolledBack: back, pinnedVersion: null }, ...rank);
-		expect(v.label).toBe('rolled back');
+		expect(v.label).toBe('24 behind');
+		expect(v.title).toContain('Rolled back 7 versions');
+		expect(v.title).toContain(rank[1]);
 	});
 
-	it('promotes the pin when nothing went backwards', () => {
+	it('KEEPS THE RANK IN THE CHIP when the rollout is pinned', () => {
 		const v = cardVerdict({ rolledBack: null, pinnedVersion: 'main-abc' }, ...rank);
-		expect(v.label).toBe('pinned');
+		expect(v.label).toBe('24 behind');
 		expect(v.title).toContain('main-abc');
 		expect(v.title).toContain('automatic deploys are paused');
+		expect(v.title).toContain(rank[1]);
 	});
 
 	/**
 	 * A rollback PINS by construction (`ChangeVersionModal.mustPin`), so both
-	 * are true on every rollback. Two marks for one act is what took the app
-	 * name's width to zero on `/`.
+	 * are true on every rollback. The disc holds ONE glyph, and it is the
+	 * rollback's — going backwards is the news, the pin is its mechanism.
 	 */
-	it('says ROLLED BACK, not PINNED, when both are true', () => {
-		const v = cardVerdict({ rolledBack: back, pinnedVersion: 'main-abc' }, ...rank);
-		expect(v.label).toBe('rolled back');
+	it('marks ROLLED BACK, not PINNED, when both are true', () => {
+		const m = cardStateMark({ rolledBack: back, pinnedVersion: 'main-abc' });
+		expect(m).not.toBeNull();
+		expect(m!.kind).toBe('rolled-back');
+		expect(m!.word).toBe('rolled back');
+	});
+
+	it('draws NO state glyph on an ordinary rollout', () => {
+		expect(cardStateMark({ rolledBack: null, pinnedVersion: null })).toBeNull();
+	});
+
+	it('gives the pin its own glyph and its own word', () => {
+		const m = cardStateMark({ rolledBack: null, pinnedVersion: 'main-abc' });
+		expect(m!.kind).toBe('pinned');
+		expect(m!.word).toBe('pinned');
+		expect(m!.title).toContain('main-abc');
 	});
 
 	it('keeps BOTH facts — the rank sentence survives in every title', () => {
@@ -307,5 +336,29 @@ describe('cardVerdict', () => {
 	it('says "1 version", not "1 versions"', () => {
 		const v = cardVerdict({ rolledBack: { from: 'b', to: 'a', by: 1 }, pinnedVersion: null }, ...rank);
 		expect(v.title).toContain('Rolled back 1 version:');
+	});
+
+	it('a rolled-back rollout on `/` still shows its lag — the whole finding', () => {
+		// End to end on the fixture: prod IS behind, and rolling it back must
+		// not silence that. The row shows `24 behind` in the chip and the
+		// rollback in the disc, both at rest.
+		// `rel-20` sits at index 20 of PROD_AVAILABLE and `205a312` at index 8,
+		// so the current build is EARLIER in the list than the one it replaced
+		// — the controller's own ordering saying "this went backwards".
+		const back3 = ['205a312', 'rel-20', 'rel-19'];
+		const rolled = rollout({
+			ns: 'hello-world-prod',
+			current: '205a312',
+			timestamp: '2026-07-21T20:01:09Z',
+			history: back3,
+			availableReleases: PROD_AVAILABLE,
+			releaseCandidates: Array.from({ length: 24 }, (_, i) => `rc-${24 - i}`)
+		});
+		const cs = buildRolloutCards([dev, staging, rolled], ENVIRONMENTS, NOW);
+		const c = cardFor('hello-world-prod', cs);
+		expect(c.rolledBack).not.toBeNull();
+		const v = cardVerdict(c, rankLabel(c.rank), 'sentence');
+		expect(v.label).toBe('24 behind');
+		expect(cardStateMark(c)!.kind).toBe('rolled-back');
 	});
 });

@@ -8,9 +8,16 @@
 	import { formatTimeAgoCompact, formatDate, shortenVersion } from '$lib/utils';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
-	import { buildRolloutCards, cardVerdict } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
+	import {
+		isNeedsYou,
+		isInMotion,
+		isTrailing,
+		isSteady,
+		isPending
+	} from '$lib/view-models/fleet-groups';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import { now } from '$lib/stores/time';
 	import { SearchOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
@@ -69,12 +76,28 @@
 
 	const cards = $derived<RolloutCard[]>(buildRolloutCards(rollouts, environments, $now));
 
-	// Quick filter tiles: All / Needs attention / In motion / Pending / Healthy.
-	// Single-select — clicking a tile narrows the list to that bucket, clicking
-	// "All" (or the already-selected tile) resets it. "Needs attention" merges
-	// failed + stuck cards, mirroring ControlCenter's `needsYou` grouping so the
-	// same rollout is triaged consistently across both pages.
-	type QuickFilter = 'all' | 'attention' | 'active' | 'pending' | 'healthy';
+	// ⛔ THE BUCKETS ARE `/`'S, AND `Healthy` IS SPLIT. (2026-08-31)
+	//
+	// From a live critique: *"`/rollouts` says the fleet is fine while four
+	// other surfaces say it isn't."* The header read
+	// `Attention 0 · In motion 1 · Pending 0 · Healthy 14` while
+	// `hello-world-app` was behind and gate-blocked in all three environments
+	// — and at the same second `/` filed those three under **Trailing**,
+	// `/apps` drew an amber banner and `/environments` said "furthest behind:
+	// 20 versions". **This is the page an operator opens to scan everything,
+	// and it was the one page that could not show a lag.**
+	//
+	// The cause was one missing distinction, not a different opinion: `/`
+	// splits `succeeded && !stuck` into **Trailing** (newer builds it could
+	// take) and **Steady** (at the head of its own list); this page folded
+	// both into `Healthy`, so the lag had nowhere to be counted. Every
+	// predicate now comes from `view-models/fleet-groups.ts`, which is
+	// `ControlCenter`'s own code, so the two pages cannot drift.
+	//
+	// `healthy` survives as a QuickFilter key for `trailing ∪ steady`; nothing
+	// selects it, and it is kept only so a saved/deep-linked state that used
+	// it still resolves rather than throwing away the filter.
+	type QuickFilter = 'all' | 'attention' | 'active' | 'pending' | 'healthy' | 'trailing' | 'steady';
 	let quickFilter = $state<QuickFilter>('all');
 
 	// Filters
@@ -113,11 +136,12 @@
 	const filtered = $derived.by(() => {
 		const q = searchQuery.trim().toLowerCase();
 		return cards.filter((c) => {
-			if (quickFilter === 'attention' && !(c.statusKey === 'failed' || c.stuck != null))
-				return false;
-			if (quickFilter === 'active' && !c.isRunning) return false;
-			if (quickFilter === 'pending' && c.statusKey !== 'pending') return false;
-			if (quickFilter === 'healthy' && !(c.statusKey === 'succeeded' && !c.stuck)) return false;
+			if (quickFilter === 'attention' && !isNeedsYou(c)) return false;
+			if (quickFilter === 'active' && !isInMotion(c)) return false;
+			if (quickFilter === 'pending' && !isPending(c)) return false;
+			if (quickFilter === 'trailing' && !isTrailing(c)) return false;
+			if (quickFilter === 'steady' && !isSteady(c)) return false;
+			if (quickFilter === 'healthy' && !(isTrailing(c) || isSteady(c))) return false;
 			if (envFilters.length > 0 && !envFilters.includes(c.envKey)) return false;
 			if (clusterFilters.length > 0) {
 				// Match against the source URL; treat empty/local sourceURL as localClusterURL.
@@ -171,19 +195,32 @@
 		);
 	});
 
-	// Quick-filter tile counts, from the full (unfiltered) set of cards —
-	// "Needs attention" mirrors ControlCenter's needsYou grouping.
-	const attentionCards = $derived.by(() => cards.filter((c) => c.statusKey === 'failed' || c.stuck != null));
-	const inMotionCards = $derived.by(() => cards.filter((c) => c.isRunning));
-	const pendingCardsAll = $derived.by(() => cards.filter((c) => c.statusKey === 'pending'));
-	const healthyCards = $derived.by(() => cards.filter((c) => c.statusKey === 'succeeded' && !c.stuck));
+	// Quick-filter tile counts, from the full (unfiltered) set of cards. Every
+	// predicate is `/`'s — see the note on QuickFilter.
+	const attentionCards = $derived.by(() => cards.filter(isNeedsYou));
+	const inMotionCards = $derived.by(() => cards.filter(isInMotion));
+	const pendingCardsAll = $derived.by(() => cards.filter(isPending));
+	const trailingCards = $derived.by(() => cards.filter(isTrailing));
+	const steadyCards = $derived.by(() => cards.filter(isSteady));
 
 	// Compact status filter pills (single-select) shown in the filter bar.
+	//
+	// ⚠️ `Trailing` SITS BETWEEN `Pending` AND `Steady`, IN SEVERITY ORDER, and
+	// takes the same amber the product spends on drift everywhere else — NOT
+	// red, which belongs to `Attention`. Drift is the normal state of a
+	// promotion pipeline; the adverse state is stuck.
+	//
+	// ⚠️ `Healthy` IS RENAMED `Steady`, NOT REDEFINED IN PLACE. Leaving the
+	// word `Healthy` on a count that no longer includes trailing rollouts
+	// would be the same defect with a smaller number: an operator who learned
+	// that `Healthy 14` means "everything is fine" would read `Healthy 11` the
+	// same way. `/` has called this bucket Steady since it was built.
 	const statusPills = $derived([
 		{ key: 'attention' as QuickFilter, label: 'Attention', count: attentionCards.length, dot: 'bg-red-500' },
 		{ key: 'active' as QuickFilter, label: 'In motion', count: inMotionCards.length, dot: 'bg-blue-500' },
 		{ key: 'pending' as QuickFilter, label: 'Pending', count: pendingCardsAll.length, dot: 'bg-gray-400' },
-		{ key: 'healthy' as QuickFilter, label: 'Healthy', count: healthyCards.length, dot: 'bg-green-700 dark:bg-green-400' }
+		{ key: 'trailing' as QuickFilter, label: 'Trailing', count: trailingCards.length, dot: 'bg-amber-500' },
+		{ key: 'steady' as QuickFilter, label: 'Steady', count: steadyCards.length, dot: 'bg-green-700 dark:bg-green-400' }
 	]);
 
 
@@ -439,6 +476,7 @@
 								rankLabel(c.rank),
 								rankTitle(c.rank, c.envDisplay || c.name)
 							)}
+							{@const stateMark = cardStateMark(c)}
 							{@const rel =
 								c.statusKey === 'pending'
 									? { role: 'unranked' as const, txt: 'pending', tip: 'No deploy yet' }
@@ -454,8 +492,21 @@
 							>
 								<!-- Identity: status circle + metadata.name (+ title) + env badge -->
 								<div class="flex items-center gap-2.5">
-									<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}">
-										<BakeStatusIcon bakeStatus={c.bakeStatus} size="medium" />
+									<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned` — see
+									     `rollout-cards.ts`. It used to be the chip's label, which
+									     evicted the rank number from the row entirely. The word may
+									     not live in a badge on one list and inside a chip on the
+									     other, so `/` does exactly this too. -->
+									<span
+										class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}"
+										title={stateMark ? stateMark.title : undefined}
+									>
+										<BakeStatusIcon
+											bakeStatus={c.bakeStatus}
+											size="medium"
+											state={stateMark?.kind ?? null}
+											stateWord={stateMark?.word ?? ''}
+										/>
 									</span>
 									<div class="min-w-0 flex-1">
 										<div class="flex min-w-0 items-baseline gap-1.5">

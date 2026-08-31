@@ -147,6 +147,7 @@
 		type PromotionBlock
 	} from '$lib/view-models/promotion';
 	import { regionLabel } from '$lib/view-models/regions';
+	import { rankVerdicts, rankBehindBy, type RankVerdict } from '$lib/view-models/env-rank';
 	import { getStatusCircleClass, BAKE_WORD } from '$lib/bake-status';
 	import Chip from '$lib/components/Chip.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
@@ -219,8 +220,39 @@
 		[...(group?.cells ?? [])].sort((a, b) => compareEnvironmentNames(a.envName, b.envName))
 	);
 
-	/** The one derivation every rank on this page indexes into. */
+	/**
+	 * The one derivation every BUILD ORDERING on this page indexes into. It
+	 * decides which build is newer than which; it no longer decides how far
+	 * behind anything is.
+	 */
 	const ladder = $derived(buildLadder(cells));
+
+	/**
+	 * ⛔ THE `−N` ON THIS PAGE IS THE PRODUCT'S ONE `behind`. (2026-08-31)
+	 *
+	 * It used to be `ladder.rankOf(...)` — the union across every
+	 * environment — while the card 340px to its right printed
+	 * `N versions ready` from `promotionCandidates`, the rollout's own list.
+	 * A live critique caught the pair: `−20 PROD` beside `15 versions ready`
+	 * inside ONE block, with rollout detail saying `15 upgrades available`.
+	 * Two numbers, one word, one card.
+	 *
+	 * `rankVerdicts` is now the same own-list count both of those already
+	 * used, so `−N`, `N versions ready` and `N upgrades available` are the
+	 * same number by construction. See `env-rank.ts` for the measurement.
+	 *
+	 * `-1` keeps this page's existing sentinel for "no number to print" —
+	 * `unknown` and `diverged` both land there, and every reader below
+	 * already guards on `rank > 0` / `rank < 0`.
+	 */
+	const rankByCell = $derived(group ? rankVerdicts(group) : new Map<AppCell, RankVerdict>());
+	function rankOfCell(cell: AppCell): number {
+		const v = rankByCell.get(cell);
+		if (!v) return -1;
+		if (v.kind === 'newest') return 0;
+		if (v.kind === 'behind') return v.by;
+		return -1;
+	}
 
 	function rolloutHref(cell: AppCell): string {
 		return rolloutPath(
@@ -533,7 +565,7 @@
 				prevVersion: previousVersion(c),
 				status,
 				timestamp: cellTimestamp(c),
-				rank: ladder.rankOf(cellVersion(c)),
+				rank: rankOfCell(c),
 				block,
 				stuck,
 				stuckSpan: stuck && span !== null ? compactMs(span) : null,
@@ -696,6 +728,35 @@
 	}
 
 	/**
+	 * ⛔ `behind <env>` ONLY WHEN THERE IS SOMETHING TO BE BEHIND. (2026-08-31)
+	 *
+	 * From a live critique: this page printed `−20 STAGING behind dev` and
+	 * `−20 PROD behind staging` while the rail beside it showed dev, staging
+	 * and prod ALL RUNNING `991829b`. Three identical deployments, rendered as
+	 * a two-hop lag chain. `upstreamOf` answers "who promotes into me", which
+	 * is a fact about the TOPOLOGY and is true whatever anyone is running; the
+	 * caption spends it as a fact about DRIFT.
+	 *
+	 * Both halves are required and each removes a different lie:
+	 *   · SAME BUILD ⇒ NOTHING. Same sha is the same code. The two rollouts'
+	 *     own candidate counts may still differ (they are different upgrade
+	 *     paths — see `env-rank.ts`), and that difference is not a lag.
+	 *   · UPSTREAM MUST BE NEWER, on the app's build ladder, which is the
+	 *     page's ordering authority. If the ladder cannot place either build
+	 *     the comparison is unresolvable and this says nothing at all —
+	 *     DESIGN.md's standing rule, applied to a caption.
+	 */
+	function upstreamAheadOf(f: EnvFacts): EnvFacts | null {
+		const up = upstreamOf(f);
+		if (!up || !up.version || !f.version) return null;
+		if (up.version === f.version) return null;
+		const upRank = ladder.rankOf(up.version);
+		const myRank = ladder.rankOf(f.version);
+		if (upRank < 0 || myRank < 0) return null;
+		return upRank < myRank ? up : null;
+	}
+
+	/**
 	 * The builds waiting to cross into this environment, newest first.
 	 *
 	 * `promotionCandidates` ONLY — the controller's own answer to "what could
@@ -815,7 +876,7 @@
 				label: f.label,
 				gate: null,
 				pinned: f.cell.rollout.spec?.wantedVersion ?? null,
-				upstream: upstreamOf(f)?.title ?? null,
+				upstream: upstreamAheadOf(f)?.title ?? null,
 				waiting: [],
 				promoteVersion: null,
 				promoteTag: null,
@@ -847,7 +908,7 @@
 				label: f.label,
 				gate: gateMark(f),
 				pinned: null,
-				upstream: upstreamOf(f)?.title ?? null,
+				upstream: upstreamAheadOf(f)?.title ?? null,
 				waiting: queue,
 				// THE DECISION IS A SPECIFIC BUILD, and it is the newest WAITING
 				// one — `newestDeployableCandidate` returns null here by
@@ -887,7 +948,7 @@
 				label: members.length > 1 ? 'prod' : lead.label,
 				gate: null,
 				pinned: null,
-				upstream: upstreamOf(lead)?.title ?? null,
+				upstream: upstreamAheadOf(lead)?.title ?? null,
 				waiting,
 				promoteVersion: candidate
 					? getDisplayVersion(candidate as { version?: string; revision?: string; tag: string })
@@ -1101,6 +1162,14 @@
 	function hopBetween(up: EnvFacts | null, down: EnvFacts | null): Hop {
 		if (!up || !up.version) return { waiting: 0, label: '' };
 		if (!down || !down.version) return { waiting: 0, label: '' };
+		// ⛔ SAME BUILD ⇒ NO HOP, AND THE SUBTRACTION NEVER RUNS. (2026-08-31)
+		// The two counts are each rollout's OWN candidate list now, and two
+		// environments on one sha can hold different counts — measured live,
+		// `hello-world-app` at `c78a9de4`: prod 30, dev 28, staging 29. The
+		// difference is a fact about two upgrade paths, never a gap between
+		// two deployments of one build; rendered as a hop it would read
+		// `1 version waiting to move` across an edge nothing is waiting on.
+		if (up.version === down.version) return { waiting: 0, label: '' };
 		if (up.rank < 0 || down.rank < 0 || down.diverged) return { waiting: 0, label: '' };
 		const n = down.rank - up.rank;
 		if (n > 0)

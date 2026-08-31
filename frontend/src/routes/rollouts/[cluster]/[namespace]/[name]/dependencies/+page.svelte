@@ -177,6 +177,7 @@
 		type ProvidedContract,
 		type Release
 	} from '$lib/view-models/dependencies';
+	import { rankVerdicts } from '$lib/view-models/env-rank';
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
@@ -356,7 +357,36 @@
 		return buildOrder(releases);
 	});
 
-	const chainRows = $derived(chain(chainInfos, order));
+	/**
+	 * ⛔ THE `N behind` CHIPS ON THIS TAB ARE THE PRODUCT'S ONE NUMBER.
+	 * (2026-08-31) They used to be `rankOfTag(order, …)` — the position on
+	 * the UNION ladder above — and on the live hub that printed `20 BEHIND`
+	 * on three rows whose own controllers published 16, 15 and 15 candidates.
+	 * The ladder keeps its real job here (ordering builds for the hop and the
+	 * blocked-tag sorts); the COUNT comes from `env-rank.ts`, the same object
+	 * `/`, `/rollouts`, `/apps` and rollout detail read.
+	 *
+	 * `null` for an environment with no rollout in this group — `chain` then
+	 * falls back to the ladder rather than fabricating a zero.
+	 */
+	const ownRanks = $derived.by<Map<string, number>>(() => {
+		const out = new Map<string, number>();
+		if (!group) return out;
+		const verdicts = rankVerdicts(group);
+		for (const cell of group.cells) {
+			const v = verdicts.get(cell);
+			if (!v || !cell.envName) continue;
+			if (v.kind === 'newest') out.set(cell.envName, 0);
+			else if (v.kind === 'behind') out.set(cell.envName, v.by);
+			// `diverged` / `unknown` are not distances — leave them out so the
+			// row renders the page's own `unknown` branch (`rank < 0`).
+			else out.set(cell.envName, -1);
+		}
+		return out;
+	});
+	const chainRows = $derived(
+		chain(chainInfos, order, (env) => ownRanks.get(env) ?? null)
+	);
 	const envOrder = $derived(chainRows.map((r) => r.env));
 
 	/**

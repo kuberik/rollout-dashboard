@@ -60,6 +60,27 @@ export function cellLag(
 
 	if (!myVersion || !upstreamVersion) return { behindBy: 0, upstreamVersion };
 
+	// ⛔ IDENTICAL BUILD ⇒ ZERO LAG. NO ARITHMETIC RUNS. (2026-08-31)
+	//
+	// From a live critique: `/apps/<name>` printed `−20 STAGING behind dev`
+	// and `−20 PROD behind staging` while the rail beside it showed dev,
+	// staging and prod ALL on `991829b`. The page asserted a lag chain
+	// between three identical deployments.
+	//
+	// It is not enough to let the subtraction come out at 0, because it does
+	// not: under the one denominator (`env-rank.ts`, 2026-08-31) each
+	// rollout's count is its OWN candidate list, and two environments on one
+	// sha genuinely hold different counts — measured live on
+	// `hello-world-app` at `c78a9de4`: prod 30, dev 28, staging 29. Subtract
+	// those and a page invents a 1-version lag between two deployments of the
+	// SAME BUILD, or an "ahead" in the other direction.
+	//
+	// The comparison here is not "whose number is bigger", it is "is the
+	// downstream running older code than the upstream". Same sha, same code,
+	// no lag. This guard runs BEFORE every derivation and is the invariant
+	// the whole finding turns on.
+	if (myVersion === upstreamVersion) return { behindBy: 0, upstreamVersion };
+
 	const myCount = myCell ? newerReleaseCount(myCell.rollout) : null;
 	const upstreamCount = newerReleaseCount(upstream.rollout);
 	if (myCount !== null && upstreamCount !== null) {

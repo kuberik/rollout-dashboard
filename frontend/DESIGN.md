@@ -4804,3 +4804,126 @@ it is the mechanism. Reach it with:
 MOCK_FAIL=1 MOCK_API=1 npx vite dev --port 5242
 https://localhost:5242/rollouts/dev/default/hello-world
 ```
+
+---
+
+## "Behind" has one definition, and it is the rollout's own release list (2026-08-31)
+
+**`N behind` = how many releases newer than the one it is running THIS ROLLOUT could still
+take.** Source: `status.releaseCandidates.length`, validated against the rollout's own
+OLDEST-FIRST `status.availableReleases`. That is `promotion.ts`'s `newerReleaseCount`, and
+`env-rank.ts`'s `rankVerdicts` is now the single funnel every surface reads.
+
+**This reverses the 2026-08-30 ruling**, which made `N behind` the build's rank on the app's
+union ladder. That ruling was made to fix a real symptom and it created a worse one: the
+product printed two numbers for one word on one card. `/apps/<name>` read `−20 PROD` beside
+`15 versions ready` inside a single block, with `PROD 20 BEHIND` in the rail and
+`15 upgrades available` on rollout detail.
+
+### The measurement that decided it
+
+Live hub, `hello-world-app`, prod running `205a312`:
+
+| quantity | value |
+|---|---|
+| prod's own `availableReleases` | 33 entries, `205a312` at index 8 |
+| ⇒ newer in prod's own list | **24** |
+| prod's `status.releaseCandidates.length` | **24** |
+| union ladder (dev + staging + prod) | 37 entries |
+| ⇒ ladder rank of `205a312` | 28 |
+
+The four builds the ladder adds — `139acae`, `171c103`, `bddd9e4`, `e87f059` — are in dev's
+and staging's lists and in **neither** prod's `availableReleases` nor prod's
+`releaseCandidates`. Prod cannot deploy them.
+
+Swept across all 15 live rollouts: **every build the union adds to a rollout's own list is
+OLDER than that rollout's own newest.** The union never contributes a newer release, so it
+can only inflate. It is not a better denominator; it is the same denominator plus other
+rollouts' records — and *an absent record is not an observation*.
+
+The decisive fact is that the controls are already built on the own list:
+`/rollouts/<...>` renders `N upgrades available` and its whole upgrade table from
+`releaseCandidates`, and `ChangeVersionModal` renders its picker from `availableReleases`.
+A chip reading `28 behind` above a list of 24 rows is the same defect one level down. Under
+this definition the identity holds by construction:
+
+```
+N behind ≡ N versions ready ≡ N upgrades available
+         ≡ rows in Change Version ≡ releaseCandidates.length
+```
+
+### The cost, stated rather than hidden
+
+Two environments running the IDENTICAL sha can print different numbers, because their
+candidate lists genuinely differ. Measured live, `hello-world-app` on `991829b`: dev 16,
+staging 15, prod 15.
+
+That is surprising and it is true — three upgrade paths, three lengths. The fix for the
+surprise is the SUBJECT, not the denominator: **`behind` is a fact about an environment's
+upgrade path, never about a build.** `rankTitle` now reads *"STAGING can still take 15 newer
+versions"*, and no surface presents this number as a property of a sha. The old sentence
+*"…older than the newest one this app has"* was a claim about the build and was false for at
+least one of any two environments sharing one.
+
+`/versions` still ranks **builds** on the ladder — a different question, and it keeps
+different words.
+
+### Two rules that fall out of it, and are now unit-tested
+
+1. **Identical build ⇒ zero lag, and no arithmetic runs.** `cellLag` and `/apps/<name>`'s
+   `hopBetween` short-circuit on `up.version === down.version`, and `upstreamAheadOf` refuses
+   to name an upstream that is not genuinely ahead. Letting the subtraction "come out at 0"
+   is not enough: 15 − 16 invents a lag, or an "ahead", between two deploys of one build.
+   This is what produced `−20 STAGING behind dev` beside a rail showing dev, staging and prod
+   all on `991829b`.
+2. **The caption may never complete the wrong headline.** `0 of 3 up to date` above
+   `in all 3 environments` was a fall-through: that fragment belongs to `All up to date`.
+   The branch now asks which headline it is completing. Converged-but-behind reads
+   `all 3 on one older version`. See `view-models/up-to-date.ts`.
+
+## A state may rank above the lag; it may not delete it (2026-08-31)
+
+`cardVerdict`'s precedence was `rolled back` > `pinned` > rank, and on `/` and `/rollouts`
+prod printed `ROLLED BACK 51b976a` **with no number while it was the most-behind rollout in
+the fleet**, under a group header reading *"Trailing · healthy, but behind a newer build"*.
+Precedence should rank two facts, not eat one.
+
+The chip cannot hold both — the 2026-08-30 measurement stands: a second word takes the app
+name's width to zero on a 398px row — and a third chip is banned by `Chip.svelte`'s two-half
+rule. So the fact moved to the one element on that row that was already spending itself on
+nothing: **the status disc**, which draws a green tick on every card in a section where every
+card is `Succeeded` by construction. That is marking the norm.
+
+| row state | disc glyph | chip label |
+|---|---|---|
+| failed / checking / deploying | its own status glyph (unchanged) | the rank |
+| settled + rolled back | ↩ `UndoOutline` | the rank |
+| settled + pinned | 🔒 `LockSolid` | the rank |
+| settled, neither | ✓ tick (unchanged) | the rank |
+
+Zero elements added, zero pixels moved, both facts at rest. The hue does not move — it is
+still the deploy's, and the deploy did succeed. The override is ignored unless
+`bakeStatus === 'Succeeded'`: a failed or in-flight deploy owns the disc, and hiding a red
+`!` behind a lock is the same defect in the mirror. `/`, `/rollouts` and the command palette
+all spell it this way, because a fact spelled two ways on two list surfaces is a fact nobody
+learns.
+
+## `/rollouts` counts what `/` counts (2026-08-31)
+
+`/rollouts` read `Attention 0 · In motion 1 · Pending 0 · Healthy 14` while `hello-world-app`
+was behind and gate-blocked in all three environments — at the same moment `/` filed those
+three under **Trailing**. The page an operator opens to scan everything was the one page that
+could not show a lag.
+
+The cause was one missing distinction, not a second opinion: `/` splits
+`succeeded && !stuck` into **Trailing** and **Steady**; `/rollouts` folded both into
+`Healthy`, so the lag had nowhere to be counted. Every predicate now lives in
+`view-models/fleet-groups.ts` — `ControlCenter`'s own code, imported by both pages.
+
+`Healthy` is **renamed** to `Steady`, not redefined in place: leaving the word on a count
+that no longer includes trailing rollouts would be the same defect with a smaller number.
+`Trailing` sits between `Pending` and `Steady` in severity order and takes amber, not red —
+drift is the normal state of a promotion pipeline; the adverse state is stuck.
+
+The buckets are questions, not a pie. `needsYou` and `inMotion` deliberately overlap; only
+`trailing` and `steady` are disjoint, and their union is exactly `healthy`.

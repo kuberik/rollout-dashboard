@@ -1162,11 +1162,9 @@
 											<Chip
 												role={rankRole(row.rank) ?? 'rank'}
 												label="{rankBehindBy(row.rank)} behind"
-												title="{row.appName} here is {rankBehindBy(row.rank)} version{rankBehindBy(
+												title="{row.appName} here can still take {rankBehindBy(
 													row.rank
-												) === 1
-													? ''
-													: 's'} older than the newest one it has"
+												)} newer version{rankBehindBy(row.rank) === 1 ? '' : 's'}"
 												value={row.version}
 												valueHref={row.versionHref}
 												wide

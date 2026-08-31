@@ -226,9 +226,9 @@
 							role={n.quiet ? 'count' : 'rank'}
 							label="{n.rank} behind"
 							value={n.version}
-							title="{n.title} is {n.rank} version{n.rank === 1
+							title="{n.title} can still take {n.rank} newer version{n.rank === 1
 								? ''
-								: 's'} older than the newest one this app has"
+								: 's'}"
 							wide
 						/>
 					{:else}

@@ -8,7 +8,9 @@
 		ClockSolid,
 		PauseSolid,
 		CircleMinusSolid,
-		RefreshOutline
+		RefreshOutline,
+		UndoOutline,
+		LockSolid
 	} from 'flowbite-svelte-icons';
 	import { getBakeStatusColor, bakeWord } from '$lib/bake-status';
 
@@ -35,14 +37,42 @@
 		 * disc, so the row is not read twice.
 		 */
 		decorative?: boolean;
+		/**
+		 * ⭐ THE DISC CARRIES THE STATE WHEN THE DEPLOY HAS NOTHING TO SAY.
+		 *    (2026-08-31 — see `rollout-cards.ts`'s `cardStateMark`.)
+		 *
+		 * On `/` and `/rollouts` the precedence `rolled back` > `pinned` >
+		 * rank was DELETING the rank: prod printed `ROLLED BACK 51b976a` with
+		 * no number while it was the most-behind rollout in the fleet. The row
+		 * cannot afford a third mark or a longer chip label — measured, a
+		 * second word takes the app name's width to zero — but it is already
+		 * spending this disc on a green tick repeated down a list of rollouts
+		 * that are all `Succeeded` by construction. That is marking the norm.
+		 *
+		 * So a SETTLED deploy hands the disc to the state, and the chip keeps
+		 * the number. The hue does not move: it is still the deploy's, from
+		 * `getStatusCircleClass` at the call site and `TONE` here, because the
+		 * deploy really did succeed.
+		 *
+		 * ⚠️ IGNORED unless `bakeStatus === 'Succeeded'`. A failed or in-flight
+		 * deploy owns this disc; hiding a red `!` behind a lock is the same
+		 * defect in the mirror.
+		 */
+		state?: 'rolled-back' | 'pinned' | null;
+		/** The word for `sr-only`, when `state` is set. */
+		stateWord?: string;
 	}
 
 	let {
 		bakeStatus,
 		size = 'medium',
 		class: className = '',
-		decorative = false
+		decorative = false,
+		state = null,
+		stateWord = ''
 	}: Props = $props();
+
+	const stateApplies = $derived(!!state && bakeStatus === 'Succeeded');
 
 	// All icons (static and spinning) share the same h-_ w-_ footprint
 	// at each size, so running rows on the activity rail don't read
@@ -84,6 +114,8 @@
 
 		switch (status) {
 			case 'Succeeded':
+				if (state === 'rolled-back') return { icon: UndoOutline, color };
+				if (state === 'pinned') return { icon: LockSolid, color };
 				return { icon: CheckCircleSolid, color };
 			case 'Failed':
 				return { icon: ExclamationCircleSolid, color };
@@ -132,7 +164,7 @@
      The radiating waves keep Flowbite's original geometry and rhythm
      (r 18→46, 1.5s, three waves 0.5s apart) so the motion is unchanged. -->
 {#if !decorative}
-	<span class="sr-only">{bakeWord(bakeStatus)}</span>
+	<span class="sr-only">{bakeWord(bakeStatus)}{stateApplies && stateWord ? `, ${stateWord}` : ''}</span>
 {/if}
 {#if bakeStatus === 'InProgress'}
 	<svg

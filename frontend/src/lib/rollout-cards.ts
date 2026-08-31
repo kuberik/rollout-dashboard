@@ -282,8 +282,61 @@ export function buildRolloutCards(
 }
 
 /**
- * ⛔ THE VERDICT HALF OF THE CARD'S CHIP HOLDS EXACTLY ONE WORD. IT IS THE
- * MOST SPECIFIC TRUE ONE.
+ * ⛔ THE VERDICT HALF OF THE CARD'S CHIP HOLDS THE RANK. THE STATE GOES IN
+ * THE DISC. (2026-08-31 — this supersedes the 2026-08-30 precedence table,
+ * which is kept below because its measurements are still binding.)
+ *
+ * ── WHAT WENT WRONG ───────────────────────────────────────────────────────
+ *
+ * The precedence `rolled back` > `pinned` > rank did not RANK two facts, it
+ * DELETED one. From a live critique: on `/` and `/rollouts` prod showed
+ * `ROLLED BACK 51b976a` **with no number, while it was the most-behind
+ * rollout in the fleet** — sitting under a group header that reads
+ * *"Trailing · healthy, but behind a newer build"*. The section counted it
+ * and the row then refused to say how far.
+ *
+ * ── WHY THE FIX IS NOT "PUT BOTH WORDS IN THE CHIP" ───────────────────────
+ *
+ * Because the row cannot afford it, and that was measured, not guessed. `/`'s
+ * Trailing card is 400px at 1440 and 358px at 390. `ROLLED BACK · 24 BEHIND`
+ * at the chip's 11px uppercase tracking is ~80px more than `24 BEHIND`, and
+ * the 2026-08-30 measurement below shows what that does: the app name — the
+ * primary identifier, and the only thing that answers WHICH rollout — goes to
+ * zero width. Adding a third chip is out for the same reason and is banned
+ * outright by `Chip.svelte`'s two-half rule.
+ *
+ * ── THE SHAPE, AND WHY IT COSTS NOTHING ───────────────────────────────────
+ *
+ * The row already carries a fourth element that is spending itself on
+ * nothing: **the status disc**. Every card in `Trailing` is `succeeded` by
+ * construction (`healthy = succeeded && !stuck`), so the disc draws a green
+ * tick on every single row — a mark repeated down a list to state the norm,
+ * which is the one thing `DESIGN.md` bans everywhere else.
+ *
+ * So the DISC carries the state and the CHIP carries the rank:
+ *
+ * | row state | disc glyph | chip label |
+ * |---|---|---|
+ * | deploy failed / checking / deploying | its own status glyph (unchanged) | the rank |
+ * | settled + rolled back | ↩ undo, in the disc's existing green | the rank |
+ * | settled + pinned | 🔒 lock, same | the rank |
+ * | settled, neither | ✓ tick (unchanged) | the rank |
+ *
+ * Zero elements added, zero pixels moved, both facts at rest, and the chip
+ * goes back to being the `[rank][build]` unit every other page draws. The
+ * state word is still readable — it is the disc's `sr-only` text and its
+ * `title`, and the chip's title still carries both sentences.
+ *
+ * ⚠️ THE DISC OVERRIDE ONLY APPLIES TO A SETTLED DEPLOY. A failed or in-
+ * flight deploy owns the disc: replacing a red `!` with a lock would hide the
+ * louder fact behind the quieter one, which is the same defect in the mirror.
+ *
+ * ⚠️ AND `rolled back` STILL OUTRANKS `pinned`. Rolling back PINS by
+ * construction — `ChangeVersionModal`'s `mustPin` is true whenever the picked
+ * version is older than the current one — so the two co-occur on every
+ * rollback and the disc holds one glyph.
+ *
+ * ── THE 2026-08-30 MEASUREMENT, STILL BINDING ─────────────────────────────
  *
  * The first attempt at "say the word rollback on the list surfaces" added a
  * `RollbackBadge` and a `PinBadge` as LOOSE MARKS on `/`'s row. Measured at
@@ -295,51 +348,55 @@ export function buildRolloutCards(
  *     hello…[DEV][PINNED][19 BEHIND][991829b]           name width 85 of 108
  *
  * **The app name is the primary identifier and is never the thing that gets
- * sacrificed** — a card reading `PROD · ROLLED BACK · PINNED · 23 BEHIND` with
- * no name tells an operator nothing about WHAT rolled back. The row is a
- * single ~398px line; it carries a circle, a name, an env chip and ONE
- * `[verdict][build]` chip, and that is the whole budget.
- *
- * So nothing is added to the row. The chip that already states a verdict
- * states the most specific one available, and everything it displaces moves
- * into the same chip's `title`:
- *
- * | state | word | why it outranks the one below |
- * |---|---|---|
- * | rolled back | `rolled back` | somebody moved production BACKWARDS. It is a different KIND of event from a deploy and it is the one an operator must not miss. |
- * | pinned | `pinned` | it is not drifting, it is HELD, and the hold is the reason the rank is what it is. |
- * | neither | the rank | `19 behind` / `newest` / `unknown`, unchanged. |
- *
- * ⚠️ NOTHING IS DELETED, ONLY DEMOTED. The rank sentence — `env-rank.ts`'s
- * own `rankTitle`, including the count the lag pass made true — is appended to
- * every title, so a rolled-back card still answers "behind by how much?" on
- * hover and on its own page. `COMPOSITION-GRAMMAR.md`'s two-half rule is
- * untouched and `/` renders exactly the elements it rendered before.
- *
- * ⚠️ AND `rolled back` OUTRANKS `pinned` RATHER THAN JOINING IT. Rolling back
- * PINS by construction — `ChangeVersionModal`'s `mustPin` is true whenever the
- * picked version is older than the current one, and the rollback dialog says
- * `Required for rollback` — so the two co-occur on every rollback and spending
- * two marks on one act is redundancy the row cannot afford.
+ * sacrificed.** The row is a single ~398px line; it carries a disc, a name, an
+ * env chip and ONE `[verdict][build]` chip, and that is the whole budget.
  */
 export function cardVerdict(
 	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'>,
 	rankWord: string,
 	rankSentence: string
 ): { label: string; title: string } {
+	const mark = cardStateMark(c);
+	// ⛔ THE LABEL IS ALWAYS THE RANK. A state never evicts the number; it
+	// moves to the disc (see above) and joins the title here.
+	if (!mark) return { label: rankWord, title: rankSentence };
+	return { label: rankWord, title: `${mark.title} ${rankSentence}` };
+}
+
+/**
+ * THE DISC'S GLYPH, when the deploy itself is settled and something OTHER
+ * than the deploy is the news.
+ *
+ * `null` means "draw the ordinary status glyph". Returned as data rather than
+ * rendered here so `/` and `/rollouts` cannot spell one act two ways — the
+ * defect that put `PinBadge` on one list and a chip word on the other.
+ */
+export type CardStateMark = {
+	kind: 'rolled-back' | 'pinned';
+	/** The product's word for it, for `sr-only` text and the disc's title. */
+	word: string;
+	/** One sentence, stating the consequence. */
+	title: string;
+};
+
+export function cardStateMark(
+	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'>
+): CardStateMark | null {
 	if (c.rolledBack) {
 		const { from, to, by } = c.rolledBack;
 		const plural = by === 1 ? '' : 's';
 		return {
-			label: 'rolled back',
-			title: `Rolled back ${by} version${plural}: ${from} → ${to}. ${rankSentence}`
+			kind: 'rolled-back',
+			word: 'rolled back',
+			title: `Rolled back ${by} version${plural}: ${from} → ${to}.`
 		};
 	}
 	if (c.pinnedVersion) {
 		return {
-			label: 'pinned',
-			title: `Pinned to ${c.pinnedVersion} — automatic deploys are paused until the pin is cleared. ${rankSentence}`
+			kind: 'pinned',
+			word: 'pinned',
+			title: `Pinned to ${c.pinnedVersion} — automatic deploys are paused until the pin is cleared.`
 		};
 	}
-	return { label: rankWord, title: rankSentence };
+	return null;
 }

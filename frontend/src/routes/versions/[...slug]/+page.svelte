@@ -758,7 +758,7 @@
 															<Chip
 																role="rank"
 																label={`${s.currentRank} behind`}
-																title="{s.envLabel.toUpperCase()} is running a version {s.currentRank} older than the newest one this app has"
+																title="{s.envLabel.toUpperCase()} can still take {s.currentRank} newer version{s.currentRank === 1 ? '' : 's'}"
 															/>
 														</span>
 													{:else}

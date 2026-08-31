@@ -844,6 +844,23 @@
 	const convergedCount = $derived(
 		appRows.filter((a) => a.fleet.deployed > 0 && a.fleet.spread === 1).length
 	);
+	/**
+	 * ⛔ CONVERGED IS NOT UP TO DATE, AND GREEN MAY ONLY MEAN THE SECOND.
+	 * (2026-08-31)
+	 *
+	 * From a live critique: the page printed `4 of 4 the same version
+	 * everywhere` — in GREEN, as the card's rollup — in the same viewport as
+	 * a row reading `0 of 3 up to date`. Both numbers were correct. The colour
+	 * was not: `convergedCount === appRows.length` says every app AGREES WITH
+	 * ITSELF, which is perfectly compatible with every app being twenty builds
+	 * behind, and green is the product's word for "nothing to do here".
+	 *
+	 * `UpToDate` already draws exactly this line per row (`allCurrent`), so
+	 * the page-level rollup uses the same predicate and no new vocabulary.
+	 */
+	const currentCount = $derived(
+		appRows.filter((a) => a.fleet.deployed > 0 && a.fleet.onHead === a.fleet.deployed).length
+	);
 
 	// ── THE PAGE'S ONE BLOCKING FACT, WITH ITS CAUSE AND ITS CONSEQUENCE ─────
 	//
@@ -1072,8 +1089,19 @@
 				     environment on one build. It comes LAST because the two
 				     counts above it are severity and severity leads — the same
 				     order `/` puts its sections in. Neutral ink: this is a
-				     summary of marks that are all already on screen. -->
-				· {convergedCount} of {appRows.length} the same version everywhere
+				     summary of marks that are all already on screen.
+
+				     ⛔ AND IT NAMES THE OTHER HALF WHEN THE TWO DIFFER.
+				     (2026-08-31) `4 of 4 the same version everywhere` read as
+				     an all-clear beside a row saying `0 of 3 up to date`, and
+				     a reader cannot be expected to know that "the same
+				     version" says nothing about WHICH version. Consistency and
+				     currency are two facts; when they disagree, printing only
+				     the flattering one is the page choosing a side. -->
+				· {convergedCount} of {appRows.length} the same version everywhere{convergedCount !==
+				currentCount
+					? `, ${currentCount} on the newest`
+					: ''}
 			</p>
 		{/if}
 	</div>
@@ -1221,8 +1249,10 @@
 					icon={RocketSolid}
 					title={attentionRows.length > 0 ? 'Everything else' : 'All apps'}
 					verdict="{convergedCount} of {appRows.length} the same version everywhere"
-					verdictTone={convergedCount === appRows.length ? 'good' : 'neutral'}
-					verdictTitle="Counts the apps whose environments are all running one and the same version"
+					verdictTone={convergedCount === appRows.length && currentCount === appRows.length
+						? 'good'
+						: 'neutral'}
+					verdictTitle="Counts the apps whose environments are all running one and the same version. {currentCount} of {appRows.length} are also on the newest version available to them."
 					padded={false}
 				>
 					<!-- THE COLUMN HEADER ROW. Same idiom as `/rollouts`, which pins

@@ -46,6 +46,12 @@
 		CodeMergeSolid,
 		PauseSolid
 	} from 'flowbite-svelte-icons';
+	import {
+		isAllCurrent,
+		isNowhere,
+		upToDateHeadline,
+		upToDateCaption
+	} from '$lib/view-models/up-to-date';
 
 	let {
 		onHead,
@@ -79,38 +85,21 @@
 		class?: string;
 	} = $props();
 
-	const allCurrent = $derived(deployed > 0 && onHead === deployed);
-	const nowhere = $derived(deployed === 0);
+	// ⛔ THE TWO SENTENCES LIVE IN `view-models/up-to-date.ts`. (2026-08-31)
+	// A live critique caught `0 of 3 up to date` printed above
+	// `in all 3 environments` — the caption completing a headline it does not
+	// belong to, reached by fall-through. Lifted out so a unit test can pin
+	// it; this component picks the glyph and the ink and nothing else.
+	const facts = $derived({ onHead, deployed, total, spread, pending, diverged, unknown, noun });
+	const allCurrent = $derived(isAllCurrent(facts));
+	const nowhere = $derived(isNowhere(facts));
 
 	const Icon = $derived(
 		nowhere ? PauseSolid : allCurrent ? CheckCircleSolid : spread === 1 ? CodeMergeSolid : CodeBranchSolid
 	);
 
-	const headline = $derived(
-		nowhere
-			? 'Never deployed'
-			: allCurrent
-				? 'All up to date'
-				: `${onHead} of ${deployed} up to date`
-	);
-
-	/**
-	 * THE CAPTION NEVER RESTATES THE HEADLINE. The headline carries
-	 * `onHead/deployed`; this carries only what a distance cannot say — how
-	 * many different versions are live, and the places that have no distance
-	 * at all.
-	 */
-	const derivedCaption = $derived.by(() => {
-		if (total === 0) return `no ${noun}s`;
-		if (nowhere) return `${total} ${noun}${total === 1 ? '' : 's'} waiting`;
-		const parts: string[] = [];
-		if (spread > 1) parts.push(`${spread} versions live`);
-		if (pending > 0) parts.push(`${pending} never deployed`);
-		if (diverged > 0) parts.push(`${diverged} unreleased`);
-		if (unknown > 0) parts.push(`${unknown} unknown`);
-		if (parts.length > 0) return parts.join(' · ');
-		return `in all ${total} ${noun}${total === 1 ? '' : 's'}`;
-	});
+	const headline = $derived(upToDateHeadline(facts));
+	const derivedCaption = $derived(upToDateCaption(facts));
 
 	const shownCaption = $derived(caption === null ? derivedCaption : caption);
 </script>
