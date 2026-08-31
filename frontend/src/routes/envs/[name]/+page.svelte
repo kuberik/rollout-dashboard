@@ -65,12 +65,7 @@
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { groupRolloutsByApp, versionPathForRollout } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
-	import {
-		rankVerdicts,
-		rankRole,
-		rankBehindBy,
-		rankIsAdverse
-	} from '$lib/view-models/env-rank';
+	import { rankVerdicts, rankRole, rankBehindBy, rankIsAdverse } from '$lib/view-models/env-rank';
 	import type { RankVerdict } from '$lib/view-models/env-rank';
 	import {
 		newestDeployableCandidate,
@@ -171,7 +166,9 @@
 	const envName = $derived(page.params.name as string);
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
+		rolloutsListQueryOptions({
+			options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) }
+		})
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
@@ -218,7 +215,8 @@
 	// `/rollouts` use, so "healthy" here means what it means everywhere.
 	const statusByRollout = $derived.by<Map<Rollout, StatusKey>>(() => {
 		const map = new Map<Rollout, StatusKey>();
-		for (const c of buildRolloutCards(rollouts, environments, $now)) map.set(c.rollout, c.statusKey);
+		for (const c of buildRolloutCards(rollouts, environments, $now))
+			map.set(c.rollout, c.statusKey);
 		return map;
 	});
 
@@ -449,6 +447,30 @@
 		icon: typeof ExclamationCircleSolid;
 		title: string;
 		message: string;
+		/**
+		 * ⭐ THE DISCLOSED TIER — `AlertPanel`'s own third tier, and the reason
+		 * it exists here. (2026-08-31)
+		 *
+		 * The blocked banner used to PRINT the gate object names: *"1 newer
+		 * build of hello-frontend-app is waiting on 2 gates:
+		 * dependency-hello-frontend-needs-api, ghd-5b2wn."* `ghd-5b2wn` is a
+		 * generated Kubernetes name. It is a lookup key for `kubectl`, not a
+		 * sentence, and printing it in the most-read line on the page put a
+		 * string no reader can act on inside the fact they read first.
+		 *
+		 * IT WAS ALSO A REPEAT. Measured at 1440 on `/envs/prod`, both handles
+		 * appeared TWICE in one viewport — here, and again on the app row 250px
+		 * below, which is the object that actually owns them. The row keeps
+		 * them printed (it is the grain they belong to and it prints them once);
+		 * the banner discloses them, because its list is a UNION over every
+		 * blocked app and belongs to no single row.
+		 *
+		 * ⛔ NOT DELETED. `AlertPanel` renders the footnote in a native
+		 * `<details>`, so the names stay in the DOM, keyboard-reachable and
+		 * selectable — which a `title` tooltip would not be on a phone.
+		 */
+		footnote?: string;
+		footnoteLabel?: string;
 		href: string;
 		action: string;
 	};
@@ -502,7 +524,14 @@
 				severity: 'warning',
 				icon: CalendarWeekSolid,
 				title: `Promotion into ${envName} is blocked`,
-				message: `${n} newer build${n === 1 ? '' : 's'} of ${blocked[0].appName} ${n === 1 ? 'is' : 'are'} waiting on ${g} gate${g === 1 ? '' : 's'}: ${[...gates].join(', ')}.`,
+				// THE COUNT STAYS PRINTED AND THE NAMES DO NOT. `2 gates` is the
+				// thing a reader needs in the first second — how many things have
+				// to clear — and it is the same shape the product's own headline
+				// uses (`Two things are holding PROD`). The names are the lookup
+				// key and go to the footnote; see `Banner.footnote`.
+				message: `${n} newer build${n === 1 ? '' : 's'} of ${blocked[0].appName} ${n === 1 ? 'is' : 'are'} waiting on ${g} gate${g === 1 ? '' : 's'}.`,
+				footnote: `rule: ${[...gates].join(', ')}`,
+				footnoteLabel: g === 1 ? 'Which rule' : 'Which rules',
 				href: rolloutHref(blocked[0].slot.cell),
 				action: 'Review gates'
 			};
@@ -593,7 +622,9 @@
 	const promotionRate = $derived.by<number | null>(() => {
 		const rankable = rows.filter((r) => r.rank.kind !== 'unknown');
 		if (rankable.length === 0) return null;
-		return Math.round((rankable.filter((r) => r.rank.kind === 'newest').length / rankable.length) * 100);
+		return Math.round(
+			(rankable.filter((r) => r.rank.kind === 'newest').length / rankable.length) * 100
+		);
 	});
 
 	/**
@@ -881,6 +912,8 @@
 				severity={banner.severity}
 				title={banner.title}
 				message={banner.message}
+				footnote={banner.footnote}
+				footnoteLabel={banner.footnoteLabel}
 				icon={banner.icon}
 				pulse={banner.severity === 'error'}
 			>
@@ -938,8 +971,8 @@
 						     ONE thing the rollup cannot say, which is where to go
 						     next. Same padding as a row, left-aligned like a row. -->
 						<p class="px-4 py-3 text-[13px] text-gray-500 dark:text-gray-400">
-							Nothing is deployed to {envName} yet. Apps appear here the first time one
-							promotes into it.
+							Nothing is deployed to {envName} yet. Apps appear here the first time one promotes into
+							it.
 						</p>
 					{:else}
 						<div
@@ -951,8 +984,8 @@
 							     what the reader is looking at: the places a version passes
 							     through before it lands in this one. -->
 							<span class="min-w-0"
-								>Path to here<span class="font-normal tracking-normal normal-case"
-									> · a number is versions waiting to move on</span
+								>Path to here<span class="font-normal tracking-normal normal-case">
+									· a number is versions waiting to move on</span
 								></span
 							>
 							<span>Version</span>
@@ -1104,7 +1137,8 @@
 																class="-ml-0.5 shrink-0 rounded bg-gray-100 px-1 font-mono text-[10px] leading-4 font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
 																title="{link.gap} version{link.gap === 1
 																	? ''
-																	: 's'} have reached {chain[i - 1].tier} and have not yet reached {link.tier}"
+																	: 's'} have reached {chain[i - 1]
+																	.tier} and have not yet reached {link.tier}"
 															>
 																{link.gap}<span class="lg:hidden">&nbsp;waiting</span>
 															</span>
@@ -1328,21 +1362,21 @@
 							     column of distances reads as a measurement. -->
 							<div class="flex items-baseline justify-between gap-3">
 								<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-									<CodeBranchOutline
-										class="h-3.5 w-3.5 shrink-0"
-										aria-hidden="true"
-									/>Furthest behind
+									<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Furthest
+									behind
 								</dt>
 								<dd class="flex min-w-0 items-baseline gap-2">
 									{#if deepest}
-										<span class="min-w-0 truncate font-mono text-[11px] text-gray-500 dark:text-gray-400"
+										<span
+											class="min-w-0 truncate font-mono text-[11px] text-gray-500 dark:text-gray-400"
 											>{deepest.appName}</span
 										>
 										<span class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
 											>{deepest.by}</span
 										>
 									{:else}
-										<span class="text-base font-semibold text-green-700 dark:text-green-400">—</span>
+										<span class="text-base font-semibold text-green-700 dark:text-green-400">—</span
+										>
 									{/if}
 								</dd>
 							</div>
@@ -1363,17 +1397,12 @@
 					     the LAST region on this page that was not a titled card. It
 					     was also the page's only 12px radius, sitting 16px under an
 					     8px one. -->
-					<Card
-						icon={ClockOutline}
-						title="Recent activity"
-						padded={false}
-					>
+					<Card icon={ClockOutline} title="Recent activity" padded={false}>
 						{#snippet rollup()}
 							<a
 								href={`/activity?env=${encodeURIComponent(envName)}`}
 								class="text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-								aria-label={`View all activity in ${envName}`}
-								>view all ›</a
+								aria-label={`View all activity in ${envName}`}>view all ›</a
 							>
 						{/snippet}
 						<ActivityRail

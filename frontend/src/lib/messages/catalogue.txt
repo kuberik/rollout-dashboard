@@ -66,6 +66,7 @@ lib/components/AppPromotionFlow.svelte	code	stroke: …; stroke-width: 2; …
 lib/components/BlockingStoryLines.svelte	code	reopens in … (…)
 lib/components/BlockingStoryLines.svelte	text	rule: …
 lib/components/BlockingStoryLines.svelte	title	The rule holding this: …
+lib/components/BlockingStoryLines.svelte	text	What clears this
 lib/components/BlockingStoryPanel.svelte	code	… · rule: …
 lib/components/BlockReason.svelte	code	a newer …
 lib/components/BlockReason.svelte	code	Held on … on purpose
@@ -79,6 +80,8 @@ lib/components/BlockReason.svelte	code	No newer version is on this rule’s allo
 lib/components/BlockReason.svelte	text	rule: …
 lib/components/BlockReason.svelte	title	The rule blocking this: …
 lib/components/BlockReason.svelte	code	Waiting on a check or a time window
+lib/components/BlockReason.svelte	code	Which rule
+lib/components/BlockReason.svelte	code	Which rules
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	text	Connect GitHub
 lib/components/ChangeList.svelte	code	GitHub did not answer: …
@@ -817,7 +820,7 @@ routes/envs/[name]/+page.svelte	title	… here is running …, which cannot be p
 routes/envs/[name]/+page.svelte	code	… is stuck here
 routes/envs/[name]/+page.svelte	title	… is stuck here
 routes/envs/[name]/+page.svelte	text	… namespaces
-routes/envs/[name]/+page.svelte	code	… newer build… of … … waiting on … gate…: ….
+routes/envs/[name]/+page.svelte	code	… newer build… of … … waiting on … gate….
 routes/envs/[name]/+page.svelte	code	… regions
 routes/envs/[name]/+page.svelte	code	… rollouts are stuck here
 routes/envs/[name]/+page.svelte	title	… version… have reached … and have not yet reached …
@@ -840,12 +843,15 @@ routes/envs/[name]/+page.svelte	code	Promotion into … is blocked
 routes/envs/[name]/+page.svelte	title	Recent activity
 routes/envs/[name]/+page.svelte	text	resources reference
 routes/envs/[name]/+page.svelte	code	Review gates
+routes/envs/[name]/+page.svelte	code	rule: …
 routes/envs/[name]/+page.svelte	title	Running a version that is on no environment’s release list
 routes/envs/[name]/+page.svelte	title	Running now
 routes/envs/[name]/+page.svelte	code	The last deploy did not complete. Nothing newer will promote past it.
 routes/envs/[name]/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	text	Typical deploy
 routes/envs/[name]/+page.svelte	text	view all ›
+routes/envs/[name]/+page.svelte	code	Which rule
+routes/envs/[name]/+page.svelte	code	Which rules
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …
 routes/namespaces/[name]/+page.svelte	text	… deploy …
 routes/namespaces/[name]/+page.svelte	code	… deploying now

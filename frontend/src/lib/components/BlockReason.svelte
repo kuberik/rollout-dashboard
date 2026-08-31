@@ -17,7 +17,12 @@
 	 * one"* — which is the exact defect this component was built to kill, still
 	 * alive in the most-read line on the page. One function, two renderers.
 	 */
-	import { LockSolid, HourglassSolid, ShareNodesSolid } from 'flowbite-svelte-icons';
+	import {
+		LockSolid,
+		HourglassSolid,
+		ShareNodesSolid,
+		ChevronRightOutline
+	} from 'flowbite-svelte-icons';
 
 	export type BlockReason = {
 		/** Which structural branch fired. For callers that pick their own icon. */
@@ -311,6 +316,15 @@
 	} = $props();
 
 	const reason = $derived(given ?? blockReason({ awaiting, notPassing, pinnedTo }));
+
+	/**
+	 * ⭐ THE LABEL SAYS WHAT KIND OF THING IS BEHIND THE CONTROL, AND NOTHING
+	 * ELSE. `AlertPanel`'s `footnoteLabel` note is the rule: it is a LABEL,
+	 * never a claim, because a fact nobody expands is a fact nobody reads.
+	 * `awaiting` / `notPassing` join with `, `; `contractBlockReason` joins the
+	 * gate and the controller's own `reason` with ` · `, which is one rule.
+	 */
+	const rulesLabel = $derived(reason?.names?.includes(', ') ? 'Which rules' : 'Which rule');
 </script>
 
 <!-- ⛔ THE RENDERING IS THE BLOCK'S, NOT THE CALLER'S. (2026-08-30)
@@ -321,49 +335,94 @@
      SAYING ONE FACT TWO WAYS IN ONE PRODUCT, which is the split `−N` versus
      `N behind` already cost a pass to close. `form` comes off the block, so
      a page cannot have an opinion about it. -->
+<!--
+	⭐ THE HANDLE IS DISCLOSED, NOT PRINTED. (2026-08-31)
+
+	Same three tiers `AlertPanel` landed in 05281bc, same native `<details>`,
+	same `Show 8 ready resources ›` idiom. What it cost as printed text,
+	measured on the running product:
+
+	  `/envs/prod`   the app cell is ~205px, so
+	                 `rule: dependency-hello-frontend-needs-api, ghd-5b2wn`
+	                 wrapped to THREE lines and `break-all` split `ghd-5b2wn`
+	                 mid-name across two of them. Three of the row's five
+	                 rendered lines were a generated Kubernetes name broken in
+	                 half — and the banner 250px above printed the same two
+	                 names again, so each appeared TWICE in one viewport.
+	  deps tab       one line, but it carries `ConstraintNotSatisfied` — the
+	                 controller's own open-string enum — in the printed tier.
+
+	⛔ IT IS NOT DELETED AND IT IS NOT A TOOLTIP. The `title` stays, because a
+	pointer user should be able to read the handle without opening anything,
+	but a `title` alone is unreachable on a phone and uncopyable everywhere,
+	and this string exists to be pasted after `kubectl get`. The `<details>`
+	keeps it in the DOM, keyboard-reachable, announced and selectable.
+
+	⛔ AND THE SENTENCE DID NOT MOVE. `short` / `line` are the consequence and
+	stay printed, in both forms, unchanged. The tier boundary is the one
+	`AlertPanel` drew: the fact and its consequence print, the MECHANISM — the
+	generated name, the controller's reason enum — is available.
+-->
 {#if reason && reason.form === 'short'}
 	{@const Icon = reason.icon}
-	<!-- ONE LINE WHERE THERE IS ROOM, AND A WRAP WHERE THERE IS NOT — never a
-	     TRUNCATION. `truncate` was tried and measured on `/envs/prod`, whose
-	     app cell is ~205px: it rendered `rule: hello-world-manu…`, i.e. an
-	     identifier clipped to something no reader can go and look up, which is
-	     worse than the two-line handle the block form already accepts.
-	     `break-all` is the block form's own answer and only fires on a name
-	     genuinely wider than its column. -->
-	<p class="t-micro flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 {className}">
+	<!-- ⛔ NO LONGER `flex-wrap` WITH THE HANDLE BESIDE THE SENTENCE. It is a
+	     COLUMN now: the disclosure's body has to open UNDER the control, and a
+	     wrap row cannot give it a line of its own. -->
+	<div class="t-micro flex min-w-0 flex-col gap-y-0.5 {className}">
 		<span class="inline-flex min-w-0 items-baseline gap-1.5 text-gray-500 dark:text-gray-400">
 			<Icon class="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden="true" />
 			<span class="min-w-0">{reason.short}</span>
 		</span>
 		{#if reason.names}
-			<span
-				class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400"
-				title="The rule blocking this: {reason.names}">rule: {reason.names}</span
-			>
+			{@render handle(reason.names)}
 		{/if}
-	</p>
+	</div>
 {:else if reason}
 	{@const Icon = reason.icon}
-	<p class="flex min-w-0 items-start gap-1.5 {className}">
+	<div class="flex min-w-0 items-start gap-1.5 {className}">
 		<Icon class="mt-px h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-		<span class="min-w-0">
+		<div class="min-w-0">
 			<span class="t-micro block text-gray-500 dark:text-gray-400">{reason.line}</span>
 			{#if reason.names}
-				<!-- THE NAME IS AN IDENTIFIER AND IS DRESSED AS ONE. Mono, muted,
-				     and prefixed with the word that says what it is, so nobody
-				     reads a generated string as a reason again.
-
-				     ON ITS OWN LINE, which is not cosmetic. Inline after the
-				     sentence it inherited the sentence's wrap point, and a 300px
-				     card broke `schedule-gate-fk44d` across two lines as `fk` /
-				     `44d` — an identifier torn in half reads as two identifiers.
-				     A `block` gives it the full width first, and `break-all` then
-				     only fires on a name genuinely wider than the card. -->
-				<span
-					class="t-code-sm block break-all text-gray-500 dark:text-gray-400"
-					title="The rule blocking this: {reason.names}">rule: {reason.names}</span
-				>
+				{@render handle(reason.names)}
 			{/if}
-		</span>
-	</p>
+		</div>
+	</div>
 {/if}
+
+{#snippet handle(names: string)}
+	<!--
+		⚠️ `flex flex-col items-start` IS LOAD-BEARING, NOT TIDINESS. `AlertPanel`
+		records the trap: a block `<details>` puts its `inline-flex` summary in an
+		anonymous LINE BOX that inherits the surround's strut, so the control
+		measures TALLER than the line it replaced. As a flex column the summary is
+		a flex item with no strut.
+	-->
+	<details class="group mt-0.5 flex flex-col items-start">
+		<!-- THE TITLE RIDES THE CONTROL, NOT THE SENTENCE. A pointer user reads
+		     the handle without opening anything; it renders only where `names`
+		     exists, so the pinned branch cannot draw an empty tooltip; and it
+		     stays a STATIC attribute with one interpolation, which is what
+		     `messages/scan.ts` can see — an `{expr ? … : undefined}` form is
+		     invisible to the census, and a string the census cannot see is a
+		     string nobody re-reads. -->
+		<summary
+			class="t-micro inline-flex cursor-pointer list-none items-center gap-1 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+			title="The rule blocking this: {names}"
+		>
+			<ChevronRightOutline
+				class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
+				aria-hidden="true"
+			/>
+			{rulesLabel}
+		</summary>
+		<!-- THE NAME IS AN IDENTIFIER AND IS DRESSED AS ONE. Mono, muted, and
+		     prefixed with the word that says what it is, so nobody reads a
+		     generated string as a reason again. `break-all` only fires on a name
+		     genuinely wider than its column — and inside the disclosure it now has
+		     the column's full width rather than the remainder of a sentence. -->
+		<span class="t-code-sm mt-1 block break-all text-gray-500 dark:text-gray-400"
+			>rule: {names}</span
+		>
+	</details>
+{/snippet}
