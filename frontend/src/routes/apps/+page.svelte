@@ -195,6 +195,14 @@
 	type RowCell = {
 		tier: string;
 		envLabel: string;
+		/**
+		 * THE ENVIRONMENT'S OWN NAME, unshortened. `envLabel` is a display
+		 * string (`PROD`, and a REGION in a fan-out), so it cannot be used to
+		 * address the environment. `Release the hold` needs to name one, and a
+		 * CTA that cannot say which environment it means is the CTA that landed
+		 * on the wrong control.
+		 */
+		envName: string;
 		theme: EnvironmentTheme | null;
 		version: string;
 		/** THE SHARED RANK (`env-rank.ts`). */
@@ -294,6 +302,8 @@
 		 * column of noise, and it would be marking the norm.
 		 */
 		step: Step | null;
+		/** The environment the step acts on, unshortened — for addressing it. */
+		stepEnvName: string;
 		/** Which environment the step is about — the button's `title`. */
 		stepEnv: string;
 	};
@@ -548,19 +558,24 @@
 	 * `Investigate` where a DECISION is what is wanted. `approve` and `promote`
 	 * are decisions and are labelled as such.
 	 */
-	function nextStep(cells: RowCell[]): { step: Step; env: string } | null {
+	function nextStep(cells: RowCell[]): { step: Step; env: string; envName: string } | null {
+		const pick = (step: Step, c: RowCell) => ({
+			step,
+			env: c.envLabel.toUpperCase(),
+			envName: c.envName
+		});
 		const fail = cells.find((c) => c.state === 'fail');
-		if (fail) return { step: 'investigate', env: fail.envLabel.toUpperCase() };
+		if (fail) return pick('investigate', fail);
 		const held = cells.find((c) => c.held);
-		if (held) return { step: 'unpin', env: held.envLabel.toUpperCase() };
+		if (held) return pick('unpin', held);
 		const approve = cells.find((c) => c.block.awaitingApprovalGates.length > 0 && c.behindBy > 0);
-		if (approve) return { step: 'approve', env: approve.envLabel.toUpperCase() };
+		if (approve) return pick('approve', approve);
 		const stuck = cells.find((c) => c.state === 'stuck');
-		if (stuck) return { step: 'investigate', env: stuck.envLabel.toUpperCase() };
+		if (stuck) return pick('investigate', stuck);
 		const ready = cells.find((c) => c.block.deployableCount > 0 && c.behindBy > 0);
-		if (ready) return { step: 'promote', env: ready.envLabel.toUpperCase() };
+		if (ready) return pick('promote', ready);
 		const waiting = cells.find((c) => c.block.notPassingGates.length > 0 && c.behindBy > 0);
-		if (waiting) return { step: 'unblock', env: waiting.envLabel.toUpperCase() };
+		if (waiting) return pick('unblock', waiting);
 		return null;
 	}
 
@@ -664,6 +679,7 @@
 				cells.push({
 					tier,
 					envLabel: shortEnvLabel(vm.envName) || vm.envName,
+					envName: vm.envName,
 					theme,
 					version: vm.version,
 					rank: vm.rank,
@@ -813,6 +829,7 @@
 			rows.push({
 				step: step?.step ?? null,
 				stepEnv: step?.env ?? '',
+				stepEnvName: step?.envName ?? '',
 				appName: mrow.appName,
 				desc: descriptionFor(mrow.appName, mrow.title),
 				cells,
@@ -1609,9 +1626,24 @@
 		     one blue button. -->
 		{#if app.step}
 			<span class="apps-step relative z-[1] flex items-center justify-end">
+				<!-- ⛔ `Release the hold` LANDED ON THE WRONG CONTROL. It was an
+				     `<a href="/apps/<name>">` whose destination opened a version
+				     PICKER with no way to clear a pin; the real control was two
+				     pages further on, at rollout detail. *"A CTA that lands on the
+				     wrong control is worse than no CTA, because the operator now
+				     believes they tried."*
+
+				     The step is still a LINK and that rule is unchanged — an app
+				     can have several environments in one state and a list-level
+				     mutation would have to pick one silently. What changed is that
+				     the link now NAMES the environment, and `/apps/<name>` opens
+				     the real clear-pin dialog for it on arrival. One hop, and it
+				     lands on the control instead of near it. -->
 				<NextStep
 					step={app.step}
-					href="/apps/{app.appName}"
+					href={app.step === 'unpin' && app.stepEnvName
+						? `/apps/${app.appName}?release=${encodeURIComponent(app.stepEnvName)}`
+						: `/apps/${app.appName}`}
 					primary={app.appName === primaryStepApp}
 					subject={app.appName}
 					title="{app.stepEnv} — {STEP_WHY[app.step]}"

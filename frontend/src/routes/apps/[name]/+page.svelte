@@ -170,6 +170,7 @@
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import { Button } from 'flowbite-svelte';
@@ -187,7 +188,8 @@
 		ChartMixedOutline,
 		ArrowUpRightFromSquareOutline,
 		CodeBranchSolid,
-		GridSolid
+		GridSolid,
+		LockOpenOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization } from '../../../types';
 	import type { ManagedResourceStatus } from '../../../types/managed-resource';
@@ -1470,6 +1472,44 @@
 		modalCluster = cellCluster(cell);
 		modalOpen = true;
 	}
+	/**
+	 * ⭐ `Release the hold` NOW RELEASES THE HOLD.
+	 *
+	 * It used to call `openChangeVersion` — a version PICKER with no control
+	 * for clearing a pin. *"A CTA that lands on the wrong control is worse than
+	 * no CTA, because the operator now believes they tried."* The act lives in
+	 * `ClearPinModal`, with the same wording rollout detail uses, so there is
+	 * one dialog and one sentence about what clearing the pin will really do.
+	 */
+	let clearPinOpen = $state(false);
+	let clearPinRollout = $state<Rollout | null>(null);
+	let clearPinCluster = $state<string | undefined>(undefined);
+
+	function openReleaseHold(cell: AppCell) {
+		clearPinRollout = cell.rollout;
+		clearPinCluster = cellCluster(cell);
+		clearPinOpen = true;
+	}
+
+	/**
+	 * THE DEEP LINK FROM `/apps`. That page's step is a LINK by design — an app
+	 * can have several environments in one state and a list-level mutation
+	 * would have to pick one silently — so it names the environment in the
+	 * query and this opens the dialog for exactly that one on arrival. One hop,
+	 * landing ON the control rather than near it.
+	 */
+	let releaseHandled = $state<string | null>(null);
+	$effect(() => {
+		const want = page.url.searchParams.get('release');
+		if (!want) return;
+		const key = `${page.url.pathname}?${want}`;
+		if (releaseHandled === key) return;
+		const target = envFacts.find((f) => f.held && f.cell.envName === want);
+		if (!target) return;
+		releaseHandled = key;
+		openReleaseHold(target.cell);
+	});
+
 	function openRollback(cell: AppCell) {
 		const target = previousVersion(cell);
 		modalRollout = cell.rollout;
@@ -2254,15 +2294,32 @@
 														Investigate
 													</a>
 												{:else if t.kind === 'held'}
-													<!-- A PIN. The step is to undo it or move it, and
-												     `Change Version` named neither. -->
+													<!-- ⛔ THIS OPENED `Change Version`, WHICH CANNOT
+												     CLEAR A PIN. The button named the act and then
+												     did not perform it; the real control was two
+												     pages away on rollout detail. It performs it
+												     now, through the same dialog rollout detail
+												     uses — including the sentence that says whether
+												     anything will actually move once the pin is off.
+
+												     `Pick a different version` stays beside it,
+												     because moving the pin is the other real answer
+												     and it is NOT what "release the hold" means. -->
 													<button
 														type="button"
 														class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+														onclick={() => openReleaseHold(f.cell)}
+													>
+														<LockOpenOutline />
+														Release the hold
+													</button>
+													<button
+														type="button"
+														class="btn btn-secondary"
 														onclick={() => openChangeVersion(f.cell)}
 													>
 														<EditOutline />
-														Release the hold
+														Pick a different version
 													</button>
 												{:else}
 													<!-- THE DECISION FIRST, WHERE THERE IS ONE. A stuck
@@ -2595,6 +2652,13 @@
 			initialSelectedVersion={modalVersion}
 			initialExplanation={modalExplanation}
 			cluster={modalCluster}
+		/>
+
+		<ClearPinModal
+			bind:open={clearPinOpen}
+			rollout={clearPinRollout}
+			cluster={clearPinCluster}
+			onSuccess={() => query.refetch()}
 		/>
 	{/if}
 </div>

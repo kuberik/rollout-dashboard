@@ -237,7 +237,7 @@
 						statusLabel = 'Done';
 					} else if (isCurrentStep && bakingNow) {
 						status = 'paused';
-						statusLabel = 'Baking';
+						statusLabel = 'Checking';
 					} else if (isCurrentStep && waitingForBake) {
 						status = 'paused';
 						statusLabel = 'Waiting';
@@ -298,6 +298,24 @@
 				}
 			}
 
+			/**
+			 * ⛔ THE STEP NAME IS NO LONGER AN EXCEPTION. (Reversed 2026-08-31.)
+			 *
+			 * `bake-status.ts` renamed the STATE to `checking` and explicitly
+			 * spared the pipeline's step names — `Bake`, `Final Bake`, `Baked` —
+			 * as proper nouns for the step. That ruling assumed the step name
+			 * sits alone. On rollout detail it does not: a live critic watched
+			 * one deploy print `Baking` in this chip, `InProgress` on the version
+			 * card and `checking` on `/`, for the same rollout at the same
+			 * second — Bake x7, Baking x3, bake x2, checking x1 on ONE page.
+			 *
+			 * A proper noun that shares its stem with the deprecated state word
+			 * cannot be told apart from the state word by a reader who has never
+			 * seen this product, which is the whole test the rename was made to
+			 * pass. So the step goes with it: `Check` / `Final check` / `Checked`.
+			 * The CRD field names (`spec.bakeTime`, `status.bakeStatus`) are
+			 * untouched — they are the mechanism, and no reader sees them.
+			 */
 			let bakeStatus: NodeStatus;
 			let bakeStatusLabel: string;
 			if (bakeIsSucceeded) {
@@ -308,10 +326,10 @@
 				bakeStatusLabel = 'Failed';
 			} else if (bakeIsInProgress) {
 				bakeStatus = 'paused';
-				bakeStatusLabel = 'Baking';
+				bakeStatusLabel = 'Checking';
 			} else if (bakeIsDeploying) {
 				bakeStatus = 'running';
-				bakeStatusLabel = 'In Progress';
+				bakeStatusLabel = 'Deploying';
 			} else {
 				bakeStatus = 'pending';
 				bakeStatusLabel = 'Pending';
@@ -320,8 +338,8 @@
 			result.push({
 				id: 'bake',
 				kind: 'bake',
-				shortLabel: 'Bake',
-				longLabel: bakeIsSucceeded ? 'Baked' : 'Final Bake',
+				shortLabel: 'Check',
+				longLabel: bakeIsSucceeded ? 'Checked' : 'Final check',
 				status: bakeStatus,
 				statusLabel: bakeStatusLabel,
 				isActive: bakeIsDeploying || bakeIsInProgress,
@@ -486,7 +504,7 @@
 	} {
 		if (sd.bakeFailed) return { status: 'failed', label: 'Failed' };
 		if (sd.bakeDone) return { status: 'done', label: 'Done' };
-		if (sd.bakingNow) return { status: 'paused', label: 'Baking' };
+		if (sd.bakingNow) return { status: 'paused', label: 'Checking' };
 		if (sd.waitingForBake) return { status: 'pending', label: 'Waiting' };
 		return { status: 'pending', label: 'Pending' };
 	}
@@ -987,7 +1005,7 @@
 					<div class="border-t border-gray-200 dark:border-gray-700"></div>
 					{@render subRow('Tests', testsSub.status, testsSub.label, 'tests', sd)}
 					<div class="border-t border-gray-200 dark:border-gray-700"></div>
-					{@render subRow('Bake', bakeSub.status, bakeSub.label, 'bake', sd)}
+					{@render subRow('Check', bakeSub.status, bakeSub.label, 'bake', sd)}
 				{/if}
 				{#if sd.isLastStep && sd.hasTests}
 					<div class="border-t border-gray-200 dark:border-gray-700"></div>
@@ -1053,23 +1071,31 @@
 				<button
 					type="button"
 					id="bake-help-icon"
-					aria-label="What the final bake window means"
+					aria-label="What the final check window means"
 					class="cursor-help"
 				>
 					<QuestionCircleOutline class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
 				</button>
 				<Tooltip triggeredBy="#bake-help-icon" placement="top" class="max-w-xs text-xs">
-					After deployment, the new version bakes in production for a configured period. Health
-					checks are monitored during this time. If all checks pass throughout the bake window,
-					the deployment is marked as successful.
+					After it is deployed, the new version runs live for a configured period while its health
+					checks are watched. If every check holds for the whole window, the deploy is marked
+					successful.
 				</Tooltip>
 				<span>
-					Final bake window. Health checks are monitored before the deployment is marked
-					successful.
+					Final check window. The new version is already live; health checks are watched before the
+					deploy counts as done.
 				</span>
 			</div>
 
-			{#if latestEntry.bakeStatusMessage}
+			<!-- ⚠️ THE CONTROLLER'S OWN SENTENCE, AND ON SUCCESS IT SAYS NOTHING
+			     THIS CARD HAS NOT. `Bake time completed successfully (no errors
+			     within bake time)` was the LAST `bake` left on rollout detail
+			     after the rename, sitting directly under a node reading
+			     `Checked · Done` and the elapsed time — the exact two-vocabulary
+			     split the rename exists to close. It is not rewritten (it is the
+			     cluster's text, not ours); it is shown only when it CARRIES
+			     something — a failure, a cancellation, a stall. -->
+			{#if latestEntry.bakeStatusMessage && !bakeIsSucceeded}
 				<div
 					class="rounded-md bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
 				>
@@ -1088,7 +1114,7 @@
 						<div class="border-t border-gray-200 dark:border-gray-700"></div>
 					{/if}
 					{@render subRow(
-						'Bake timer',
+						'Check timer',
 						finalBakeTimerStatus.status,
 						finalBakeTimerStatus.label,
 						'timer',

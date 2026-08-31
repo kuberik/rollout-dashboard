@@ -61,7 +61,7 @@
 				<li>Health check failures will <strong>not</strong> mark this deployment as failed.</li>
 				<li>The deployment will sit waiting for health checks to recover.</li>
 				{#if reason === 'unhealthy-health-checks'}
-					<li>Once health checks become healthy and bake starts, normal failure detection resumes.</li>
+					<li>Once health checks become healthy and the check window starts, normal failure detection resumes.</li>
 				{:else}
 					<li>If the new deployment also fails to recover, the rollout will not transition to Failed.</li>
 				{/if}

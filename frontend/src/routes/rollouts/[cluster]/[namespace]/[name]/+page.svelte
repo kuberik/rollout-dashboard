@@ -89,7 +89,7 @@
 	} from '$lib/utils';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import { versionPathForRollout } from '$lib/version-utils';
-	import { autoDeployState, clearPinOutcome } from '$lib/view-models/auto-deploy';
+	import { autoDeployState } from '$lib/view-models/auto-deploy';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { now } from '$lib/stores/time';
@@ -116,7 +116,9 @@
 		blockingStory
 	} from '$lib/view-models/blocking-story';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import { getBakeStatusColor } from '$lib/bake-status';
+	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
+	import { getBakeStatusColor, bakeWord, bakeTitle } from '$lib/bake-status';
+	import { rollbackTarget } from '$lib/view-models/deploy-risk';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
@@ -198,22 +200,15 @@
 
 		const subject = rollout?.metadata?.name ?? 'This rollout';
 		const version = entry.version ? getDisplayVersion(entry.version) : 'a new version';
+		// ONE VOCABULARY, INCLUDING IN THE LIVE REGION. These four cases spelled
+		// the state `baking` while `/` and `/activity` said `checking` and the
+		// version card printed the raw enum. `bake-status.ts` is the table.
 		switch (entry.bakeStatus) {
-			case 'Succeeded':
-				announce(`${subject}: ${version} finished baking successfully.`);
-				break;
 			case 'Failed':
-				announce(`${subject}: ${version} failed.`, 'assertive');
-				break;
-			case 'Deploying':
-				announce(`${subject}: deploying ${version}.`);
-				break;
-			case 'InProgress':
-			case 'Baking':
-				announce(`${subject}: ${version} is baking.`);
+				announce(`${subject}: ${version} — ${bakeWord('Failed')}.`, 'assertive');
 				break;
 			default:
-				announce(`${subject}: ${version} is now ${String(entry.bakeStatus ?? 'in an unknown state')}.`);
+				announce(`${subject}: ${version} — ${bakeTitle(entry.bakeStatus)}.`);
 		}
 	});
 	const environment = $derived(rolloutQuery.data?.environment);
@@ -589,6 +584,15 @@
 		return true;
 	});
 
+	/**
+	 * THE ROLLBACK TARGET, PROVED BACKWARDS. See `view-models/deploy-risk.ts`
+	 * for why `history[1]` was the wrong answer and what replaces it.
+	 */
+	const rollbackNow = $derived(rollbackTarget(rollout));
+	const rollbackDisplay = $derived(
+		rollbackNow ? getDisplayVersion({ tag: rollbackNow.tag, version: rollbackNow.version }) : ''
+	);
+
 	// Computed property to determine if current version is custom (not in available releases)
 	const isCurrentVersionCustom = $derived.by(() => {
 		if (!rollout?.status?.history?.[0] || !rollout?.status?.availableReleases) return false;
@@ -834,57 +838,6 @@
 	// Note: Data fetching is handled by rolloutQuery with automatic refetch via layout's refetchInterval
 	// Dependent data (managedResources, healthChecks) is fetched via $effect when parent data changes
 
-	async function clearPin() {
-		if (!rollout) return;
-
-		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({
-						version: null,
-						explanation: ''
-					})
-				}
-			);
-
-			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
-				if (
-					response.status === 500 &&
-					errorData.details &&
-					errorData.details.includes('dashboard is not managing the wantedVersion field')
-				) {
-					throw new Error(
-						"Cannot clear pin: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
-					);
-				}
-				throw new Error('Failed to clear pin');
-			}
-
-			// Refresh the data
-			await rolloutQuery.refetch();
-
-			// Show success toast
-			toastType = 'success';
-			toastMessage = 'Successfully cleared version pin';
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			// Show error toast
-			toastType = 'error';
-			toastMessage = e instanceof Error ? e.message : 'Failed to clear pin';
-			showToast = true;
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		}
-	}
 
 	// Helper function to get revision information from version object or annotations
 	function getRevisionInfo(versionInfo: { revision?: string; tag: string }): string | undefined {
@@ -1427,8 +1380,16 @@
 												>
 													{getDisplayVersion(latestEntry.version)}
 												</a>
-												<span class="text-sm {latestEntry.bakeStatus === 'Succeeded' ? 'text-green-700 dark:text-green-400' : latestEntry.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : latestEntry.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : latestEntry.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}">
-													{latestEntry.bakeStatus}
+												<!-- ⛔ THIS PRINTED THE RAW CRD ENUM. `InProgress` reached
+												     the screen beside a pipeline chip saying `Baking` and a
+												     home page saying `checking`, for the same rollout at the
+												     same second. `bakeWord` is the product's one word and
+												     `bakeTitle` carries the sentence a single word cannot. -->
+												<span
+													class="text-sm {latestEntry.bakeStatus === 'Succeeded' ? 'text-green-700 dark:text-green-400' : latestEntry.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : latestEntry.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : latestEntry.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}"
+													title={bakeTitle(latestEntry.bakeStatus)}
+												>
+													{bakeWord(latestEntry.bakeStatus)}
 												</span>
 												{#if stuckReason}
 													<StuckBadge reason={stuckReason} />
@@ -1545,32 +1506,42 @@
 											<EditOutline class="me-2 h-4 w-4" />
 											Change Version
 										</Button>
-										{#if rollout?.status?.history && rollout.status.history.length > 1}
+										<!-- ⛔ `Rollback` PRE-SELECTED `history[1]`, WHICH IS NOT
+										     NECESSARILY OLDER. A live critic pressed it on a rollout
+										     that had itself been rolled back and got a modal headed
+										     *"Deploy 51b976a → aa17645"* — a roll-FORWARD — under a
+										     caption reading "Required for rollback". The direction
+										     logic downstream was right; the pre-selection was not, so
+										     the button and its own modal disagreed on one screen.
+
+										     `rollbackTarget` proves the target is older (release-list
+										     position, else build creation time) and returns null when
+										     nothing older exists. A `Rollback` with nothing to roll
+										     back to is the label lying again, so the button is not
+										     rendered at all in that case. -->
+										{#if rollbackNow}
 											<Button
 												id="status-rollback-btn"
 												size="sm"
 												color="light"
 												class="w-full justify-center sm:w-auto"
 												disabled={!isDashboardManagingWantedVersion}
+												title={rollbackNow.basis === 'ran-here'
+													? `Go back to ${rollbackDisplay}, the last older version this environment ran`
+													: `Go back to ${rollbackDisplay}, the release directly below the one running (never deployed here)`}
 												onclick={() => {
-													if (
-														isDashboardManagingWantedVersion &&
-														rollout?.status?.history &&
-														rollout.status.history.length > 1
-													) {
-														const previousVersion = rollout.status.history[1];
+													const running = rollout?.status?.history?.[0]?.version;
+													if (isDashboardManagingWantedVersion && rollbackNow && running) {
 														isPinVersionMode = true;
-														selectedVersion = previousVersion.version.tag;
-														const currentVersion = rollout.status.history[0].version;
-														const currentVersionName = getDisplayVersion(currentVersion);
-														const targetVersionName = getDisplayVersion(previousVersion.version);
-														deployExplanation = `Rollback from ${currentVersionName} to ${targetVersionName} due to issues with the current deployment.`;
+														selectedVersion = rollbackNow.tag;
+														const currentVersionName = getDisplayVersion(running);
+														deployExplanation = `Rollback from ${currentVersionName} to ${rollbackDisplay} due to issues with the current deployment.`;
 														requestChangeVersionModal();
 													}
 												}}
 											>
 												<ReplyOutline class="me-2 h-4 w-4" />
-												Rollback
+												Rollback to {rollbackDisplay}
 											</Button>
 										{/if}
 										{#if !isDashboardManagingWantedVersion}
@@ -1770,8 +1741,9 @@
 														{@const valueColor = getBakeStatusColor(depInfo.bakeStatus)}
 														<JoinedBadge
 															label="{depInfo.env} env"
-															value={depInfo.bakeStatus}
+															value={bakeWord(depInfo.bakeStatus)}
 															{valueColor}
+															title={bakeTitle(depInfo.bakeStatus)}
 														>
 															{#snippet icon()}
 																<BakeStatusIcon
@@ -1993,8 +1965,8 @@
 			Are you sure you want to mark the deployment for <b>{rollout?.metadata?.name}</b> as successful?
 		</p>
 		<p class="text-xs text-gray-500 dark:text-gray-400">
-			This will update the deployment history to show the deployment as succeeded and set the bake
-			end time to now.
+			This will update the deployment history to show the deployment as succeeded and end the check
+			window now.
 		</p>
 		<Alert color="blue" class="mt-3">
 			<div class="flex items-center">
@@ -2041,50 +2013,40 @@
 	</div>
 </Modal>
 
-<Modal bind:open={showClearPinModal} title="Clear Version Pin">
-	<div class="space-y-4">
-		<!--
-			⛔ THIS PROMISED SOMETHING IT COULD NOT KEEP. It said "Automated
-			upgrades will resume and the rollout will advance to the latest
-			release candidate" — unconditionally. A live UX critique cleared the
-			pin on a rollout whose schedule gate was closed and it advanced
-			ZERO, because the gate really does block automatic promotion. The
-			one screen therefore claimed manual deploys were blocked (false) and
-			that clearing the pin would advance (false), in opposite directions.
-			`clearPinOutcome` reads the rollout's OTHER holds and says which of
-			the two sentences is true right now.
-		-->
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Remove the version pin for <strong>{rollout?.metadata?.name}</strong>?
-			{clearPinOutcome(autoDeploy)}
-		</p>
-		{#if !isDashboardManagingWantedVersion}
-			<p class="text-xs text-amber-600 dark:text-amber-400">
-				The dashboard is not managing the wantedVersion field. Clearing may conflict with other
-				controllers.
-			</p>
-		{/if}
-		<div class="flex justify-end gap-2 pt-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showClearPinModal = false;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="blue"
-				onclick={() => {
-					showClearPinModal = false;
-					clearPin();
-				}}
-			>
-				Clear Pin
-			</Button>
-		</div>
-	</div>
-</Modal>
+<!--
+	⛔ THIS PROMISED SOMETHING IT COULD NOT KEEP. It said "Automated upgrades
+	will resume and the rollout will advance to the latest release candidate" —
+	unconditionally. A live UX critique cleared the pin on a rollout whose
+	schedule gate was closed and it advanced ZERO. `clearPinOutcome` reads the
+	rollout's OTHER holds and says which sentence is true right now.
+
+	⭐ AND IT NOW LIVES IN A COMPONENT. The critique's next finding was that
+	`Release the hold` on `/apps` and `/apps/<name>` could not reach this
+	dialog at all — it opened a version picker with no way to clear a pin, two
+	pages from the real control. The dialog moved into `ClearPinModal` so the
+	button that names the act can perform it, with ONE copy of the wording the
+	critic called the best in the product.
+-->
+<ClearPinModal
+	bind:open={showClearPinModal}
+	{rollout}
+	{cluster}
+	{autoDeploy}
+	toast={false}
+	onSuccess={(m) => {
+		toastType = 'success';
+		toastMessage = m;
+		showToast = true;
+		setTimeout(() => (showToast = false), 3000);
+		rolloutQuery.refetch();
+	}}
+	onError={(m) => {
+		toastType = 'error';
+		toastMessage = m;
+		showToast = true;
+		setTimeout(() => (showToast = false), 3000);
+	}}
+/>
 
 <ChangeVersionModal
 	bind:open={showChangeVersionModal}
@@ -2094,6 +2056,7 @@
 	initialSelectedVersion={selectedVersion}
 	initialExplanation={deployExplanation}
 	{cluster}
+	environmentName={environment?.spec?.environment ?? null}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;

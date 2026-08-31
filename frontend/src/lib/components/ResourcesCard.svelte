@@ -53,6 +53,31 @@
 	// Toggle to reveal ready/healthy non-deployment resources
 	let showOtherResources = $state(false);
 
+	/**
+	 * ⛔ A RAW camelCase ENUM WAS REACHING THE SCREEN. (2026-08-31)
+	 *
+	 * A live critic watched one deploy and found `InProgress` printed in this
+	 * card's status chip at the same second the version card said `deploying`
+	 * and `/` said `checking`. This chip's `InProgress` is the RESOURCE's
+	 * reconciliation state (kstatus), not the deploy's `bakeStatus` — two
+	 * different enums that happen to spell the same word, which is exactly why
+	 * a reader cannot tell them apart.
+	 *
+	 * Only the states that are not already English are translated. `Current`,
+	 * `Ready`, `Failed`, `Pending`, `Reconciling`, `Terminating` and `Unknown`
+	 * are left exactly as they are — this closes a defect, it does not
+	 * relabel a vocabulary that works.
+	 */
+	const RESOURCE_STATUS_WORD: Record<string, string> = {
+		InProgress: 'Updating',
+		NotFound: 'Not found',
+		WaitingForStep: 'Waiting'
+	};
+	function resourceStatusWord(status: string | undefined | null): string {
+		const raw = status || 'Unknown';
+		return RESOURCE_STATUS_WORD[raw] ?? raw;
+	}
+
 	// Track which deployments are expanded to show children
 	let expandedDeployments = $state<Set<string>>(new Set());
 	// Cache of fetched children per deployment key
@@ -258,7 +283,7 @@
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
 							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
-							{resource.status || 'Unknown'}
+							{resourceStatusWord(resource.status)}
 						</span>
 						<!-- A chevron is not a name. `title` alone made this announce as
 						     "Show pods" with no indication of WHICH deployment, and
@@ -402,7 +427,7 @@
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
 							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
-							{resource.status || 'Unknown'}
+							{resourceStatusWord(resource.status)}
 						</span>
 					</div>
 
@@ -457,7 +482,7 @@
 							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
-							{resource.status || 'Unknown'}
+							{resourceStatusWord(resource.status)}
 						</span>
 					</div>
 				{/each}
@@ -515,7 +540,7 @@
 								: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 								: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
 								: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
-								{resource.status || 'Unknown'}
+								{resourceStatusWord(resource.status)}
 							</span>
 						</div>
 					{/each}

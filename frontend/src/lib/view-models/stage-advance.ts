@@ -137,11 +137,14 @@ export function stageAdvance(input: StageAdvanceInput, now: Date = new Date()): 
 	} else {
 		sentences.push(`Moves ${subject} to stage ${toStage} of ${totalStages}.`);
 	}
-	// ⭐ THE SENTENCE THE OLD BUTTON OWED ITS READER. The bake is not
+	// ⭐ THE SENTENCE THE OLD BUTTON OWED ITS READER. The check window is not
 	// decoration: it is the window in which a bad version is caught.
+	// The WORD is `check`, not `bake` — see `bake-status.ts` and the ruling in
+	// `DeploymentPipelineCard.svelte`. The annotation it is read from is still
+	// `step-N-bake-time`; that is the mechanism and no reader sees it.
 	if (remainingBakeMs !== null && remainingBakeMs > 0) {
 		sentences.push(
-			`${formatShortDuration(remainingBakeMs)} of bake time is left on stage ${fromStage} and will be skipped.`
+			`${formatShortDuration(remainingBakeMs)} of check time is left on stage ${fromStage} and will be skipped.`
 		);
 	}
 

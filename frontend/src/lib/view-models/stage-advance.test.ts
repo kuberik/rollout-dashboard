@@ -58,7 +58,7 @@ describe('stageAdvance — the three facts the old button never said', () => {
 	 * are the stepgate's own annotations, already rendered as a progress bar
 	 * four rows above the button.
 	 */
-	it('says how much bake is left and that pressing this skips it', () => {
+	it('says how much check time is left and that pressing this skips it', () => {
 		const a = stageAdvance(
 			{
 				stepNum: 1,
@@ -72,11 +72,11 @@ describe('stageAdvance — the three facts the old button never said', () => {
 			NOW
 		);
 		expect(a.remainingBakeMs).toBe(13000);
-		expect(a.consequence).toContain('13s of bake time is left');
+		expect(a.consequence).toContain('13s of check time is left');
 		expect(a.consequence).toContain('will be skipped');
 	});
 
-	it('says nothing about bake when the bake has already elapsed', () => {
+	it('says nothing about the check window when it has already elapsed', () => {
 		const a = stageAdvance(
 			{
 				stepNum: 1,
@@ -93,7 +93,7 @@ describe('stageAdvance — the three facts the old button never said', () => {
 		expect(a.consequence).not.toContain('skipped');
 	});
 
-	it('says nothing about bake when the stepgate published nothing', () => {
+	it('says nothing about the check window when the stepgate published nothing', () => {
 		const a = stageAdvance({ stepNum: 1, isLastStep: false, canarySteps: steps }, NOW);
 		expect(a.remainingBakeMs).toBeNull();
 		expect(a.consequence).not.toContain('bake');

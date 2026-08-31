@@ -15,9 +15,17 @@
 	import { hasForceDeployAnnotation, getDisplayVersion, formatTimeAgo } from '$lib/utils';
 	import {
 		manualDeployNote,
+		autoDeployWhy,
 		autoDeployState,
 		type AutoDeployState
 	} from '$lib/view-models/auto-deploy';
+	import {
+		confirmLevel,
+		confirmNotice,
+		deployActionLabel,
+		deployIntent,
+		typedPrompt
+	} from '$lib/view-models/deploy-risk';
 	import {
 		fetchCommits,
 		commitsQueryKey,
@@ -51,6 +59,16 @@
 		initialExplanation?: string;
 		// Multi-cluster: the cluster name when this rollout lives on a spoke.
 		cluster?: string;
+		/**
+		 * ⭐ WHERE THIS LANDS, AND IT IS THE WORD THE MODAL OWED ITS READER.
+		 *
+		 * The critique: a build was force-deployed to PRODUCTION through three
+		 * closed gates and *"the modal never says production"*. Rollout detail
+		 * holds the `Environment` object and passes `spec.environment` here;
+		 * every other call site gets it derived from the rollout by
+		 * `rolloutEnvironmentName`, so no surface can silently lose it.
+		 */
+		environmentName?: string | null;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
 	}
@@ -63,6 +81,7 @@
 		initialSelectedVersion = null,
 		initialExplanation = '',
 		cluster,
+		environmentName = null,
 		onSuccess = () => {},
 		onError = () => {}
 	}: Props = $props();
@@ -206,21 +225,14 @@
 		selectedRelease?.revision || annotations[selectedVersion ?? '']?.['org.opencontainers.image.revision'] || null
 	);
 
-	const currentIdx = $derived(availableReleases.findIndex((r) => r.tag === currentTag));
-	const selectedIdx = $derived(availableReleases.findIndex((r) => r.tag === selectedVersion));
 
-	const isOlderThanCurrent = $derived(
-		currentIdx !== -1 && selectedIdx !== -1 ? selectedIdx < currentIdx : false
-	);
-	const isCustomVersion = $derived(
-		!!selectedVersion && availableReleases.length > 0 && selectedIdx === -1
-	);
-	const isSameAsCurrent = $derived(!!selectedVersion && selectedVersion === currentTag);
-
-	type Direction = 'forward' | 'rollback' | 'same';
-	const direction = $derived<Direction>(
-		isSameAsCurrent ? 'same' : isOlderThanCurrent ? 'rollback' : 'forward'
-	);
+	/**
+	 * DIRECTION, TARGET AND VOUCHING — one object, computed in
+	 * `view-models/deploy-risk.ts` where it has tests. A safety rule that
+	 * lives only in a template is one refactor from being lost.
+	 */
+	const intent = $derived(deployIntent(rollout, selectedVersion, environmentName));
+	const direction = $derived(intent.direction);
 
 	// Commit range is always requested oldest→newest; direction only changes
 	// how it's labeled (added vs. reverted).
@@ -265,30 +277,37 @@
 
 	// --- Deploy footer logic ------------------------------------------------
 	/**
-	 * ⭐ THE FRICTION NOW MATCHES THE CONSEQUENCE.
+	 * ⛔ THE FRICTION WAS ON THE WRONG DIRECTION. (Reversed 2026-08-31.)
 	 *
-	 * A live UX critique found the gradient INVERTED: `Continue to next stage`
-	 * moved production traffic and cut a bake short with **no dialog at all**,
-	 * while deploying one listed version made you **type the sha**. Both ends
-	 * were wrong, and adding a modal everywhere would only have made the
-	 * cheapest action as expensive as the most dangerous one.
+	 * ── WHAT THIS FILE USED TO SAY, AND WHY IT WAS WRONG ────────────────
 	 *
-	 * Typing is kept for the two cases a reader genuinely cannot predict or
-	 * cheaply undo:
+	 * The previous ruling kept typing for *"a ROLLBACK — going backwards
+	 * re-runs older code…"* and dropped it for *"a forward deploy to a listed
+	 * release candidate — the same move the controller makes unattended"*.
+	 * The second half assumed the controller WOULD make that move. It does
+	 * not check. A live critic then force-deployed an unvetted build **into
+	 * production through three closed gates in two clicks with no
+	 * confirmation**, while the rollback out of it demanded a transcribed sha.
+	 * The recovery was the slowest action in the product and the irreversible
+	 * one was the fastest.
 	 *
-	 * - **a ROLLBACK.** Going backwards re-runs older code against data the
-	 *   newer code has already touched; it is a different KIND of event, not a
-	 *   smaller one, and it pins as a side effect.
-	 * - **a CUSTOM version** — a tag that is not in `availableReleases`, so
-	 *   nothing on screen has vouched for it and the changelist above may be
-	 *   empty.
+	 * ── THE RULE NOW ────────────────────────────────────────────────────
 	 *
-	 * It is dropped for a forward deploy to a listed release candidate. That is
-	 * the same move the controller makes unattended; the commit list for it is
-	 * displayed immediately above the button; and `Go back a version` is one
-	 * click away. Making it expensive taught people to type without reading.
+	 * `deploy-risk.ts` weighs three things — direction, whether the target is
+	 * production, and whether the gates ACTUALLY allow this build right now —
+	 * and returns one of three levels. `typed` fires on two shapes only:
+	 * forward into production past rules that refuse the build, and a tag
+	 * that is not in the release list at all. `notice` is one sentence and no
+	 * input. A rollback never reaches `typed`.
+	 *
+	 * ⛔ NOT FRICTION EVERYWHERE. Friction that fires on every action stops
+	 * being read, and the ordinary vouched deploy to a non-production
+	 * environment still asks for nothing at all.
 	 */
-	const needsTypedConfirmation = $derived(direction === 'rollback' || isCustomVersion);
+	const level = $derived(confirmLevel(intent));
+	const needsTypedConfirmation = $derived(level === 'typed');
+	const deployNotice = $derived(selectedVersion ? confirmNotice(intent, pinVersionToggle) : null);
+	const deployButtonLabel = $derived(deployActionLabel(intent));
 	/**
 	 * The caller may hand us the state it already derived (rollout detail does,
 	 * because it holds the full gate objects and so can print their published
@@ -298,7 +317,14 @@
 	 */
 	const gateState = $derived(autoDeploy ?? autoDeployState(rollout));
 	const gateNote = $derived(manualDeployNote(gateState));
-	const mustPin = $derived(isPinVersionMode || isOlderThanCurrent || isCustomVersion);
+	/**
+	 * The gate line WITHOUT its "it applies immediately" tail, for when it
+	 * rides inside the consequence alert — which already says that, and at
+	 * 390px two stacked alerts squeezed the changelist to a sliver. Both facts
+	 * survive; only the duplicated clause goes.
+	 */
+	const gateWhy = $derived(gateState.paused ? autoDeployWhy(gateState) : null);
+	const mustPin = $derived(isPinVersionMode || direction === 'rollback' || intent.custom);
 	const pinVersionToggleComputed = $derived(mustPin || rollout?.spec?.wantedVersion !== undefined);
 	const isPinVersionToggleDisabled = $derived(mustPin || hasForceDeployAnnotation(rollout ?? undefined));
 
@@ -646,12 +672,14 @@
 
 					<!-- Deploy footer -->
 					<div class="shrink-0 space-y-3 border-t border-gray-200 p-4 dark:border-gray-700">
-						{#if gateNote}
+						{#if !deployNotice && gateNote}
 							<!-- Same `Alert color="blue"` at 12px the force-deploy note already
 							     uses: informational, because it does NOT hold this action. Its
 							     whole job is to stop the amber banner on the page behind this
-							     modal from being the reader's only statement about the gate. -->
-							<Alert color="blue" class="text-xs">
+							     modal from being the reader's only statement about the gate.
+							     When there IS a consequence alert it moves INSIDE it rather
+							     than stacking — see below. -->
+							<Alert color="blue" class="text-xs dark:bg-blue-950/60 dark:text-blue-200">
 								<PauseSolid class="h-4 w-4" />
 								{gateNote}
 							</Alert>
@@ -663,12 +691,57 @@
 							</Alert>
 						{/if}
 
+						<!-- ⭐ THE CONSEQUENCE, NAMED, WHERE THE DECISION IS MADE.
+						     The critique's charge was that a build reached PRODUCTION
+						     through three closed gates in two clicks and *"the modal
+						     never says production"*. It says it now, and it says what
+						     the gates currently think of this exact build.
+
+						     The shape is `Clear Version Pin`'s — the copy the critic
+						     named as the best in the product: consequence, then
+						     non-consequence, then the rule in human terms. `notice`
+						     is amber; `typed` is red, because at that level the
+						     primary is genuinely held. Neither fires on an ordinary
+						     vouched deploy — `confirmNotice` returns null there. -->
+						{#if deployNotice}
+							<!-- ⚠️ THE DARK FILL IS OVERRIDDEN ON PURPOSE. Flowbite's
+							     `Alert` ships `dark:bg-red-200` / `dark:bg-yellow-200` — a
+							     LIGHT-MODE fill on a dark page, measured as the brightest
+							     block in the dialog. These are the same tinted-dark grounds
+							     `bake-status.ts` and `AlertPanel` already use. -->
+							<Alert
+								color={level === 'typed' ? 'red' : 'yellow'}
+								class="text-xs {level === 'typed'
+									? 'dark:bg-red-950/60 dark:text-red-200'
+									: 'dark:bg-yellow-950/50 dark:text-yellow-100'}"
+							>
+								<ExclamationCircleSolid class="h-4 w-4" />
+								<span>
+									{deployNotice}
+									{#if gateWhy}
+										<span class="mt-1 block opacity-90"
+											>Automatic promotion is paused right now — {gateWhy}.</span
+										>
+									{/if}
+								</span>
+							</Alert>
+						{/if}
+
 						{#if rollout && !hasForceDeployAnnotation(rollout)}
 							<div class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800">
 								<div>
 									<div class="text-sm font-medium text-gray-900 dark:text-white">Pin Version</div>
+									<!-- ⛔ THIS CAPTION SAID `Required for rollback` ON A MODAL
+									     HEADED `Deploy 51b976a → aa17645` — a roll-FORWARD. It
+									     was reading the CALLER'S intent flag instead of what the
+									     picked version actually is. It reads the direction now,
+									     so it can no longer contradict the header above it. -->
 									<p class="text-xs text-gray-500 dark:text-gray-400">
-										{isPinVersionMode ? 'Required for rollback' : 'Lock to this version'}
+										{direction === 'rollback'
+											? 'Going back pins the version'
+											: intent.custom
+												? 'Required for a version outside the release list'
+												: 'Lock to this version'}
 									</p>
 								</div>
 								<Toggle bind:checked={pinVersionToggle} disabled={isPinVersionToggleDisabled} color="blue" />
@@ -688,10 +761,8 @@
 									for="cvm-confirm-version"
 									class="mb-1 block text-xs text-gray-500 dark:text-gray-400"
 								>
-									{direction === 'rollback'
-										? 'Going backwards. Type'
-										: 'This version is not in the release list. Type'}
-									<span class="font-semibold text-blue-600 dark:text-blue-400"
+									{typedPrompt(intent)}
+									<span class="font-semibold text-red-600 dark:text-red-400"
 										>{getDisplaySelectedVersion()}</span
 									> to confirm
 								</label>
@@ -706,8 +777,12 @@
 
 						<div class="flex gap-2">
 							<Button color="light" class="flex-1" onclick={() => (open = false)}>Cancel</Button>
+							<!-- THE BUTTON SAYS WHERE IT LANDS. `Deploy Now` named the
+							     act and hid the target; `Deploy to production` is the
+							     same click and the reader can predict it. RED only at
+							     `typed`, so the alarm still means something. -->
 							<Button
-								color={direction === 'rollback' ? 'yellow' : 'blue'}
+								color={level === 'typed' ? 'red' : 'blue'}
 								class="flex-1"
 								disabled={(needsTypedConfirmation &&
 									deployConfirmationVersion !== getDisplaySelectedVersion()) ||
@@ -715,11 +790,11 @@
 								onclick={handleDeploy}
 							>
 								{#if direction === 'rollback'}
-									<ReplyOutline class="mr-2 h-4 w-4" />
+									<ReplyOutline class="mr-2 h-4 w-4 shrink-0" />
 								{:else}
-									<ArrowUpOutline class="mr-2 h-4 w-4" />
+									<ArrowUpOutline class="mr-2 h-4 w-4 shrink-0" />
 								{/if}
-								{pinVersionToggle ? 'Pin & Deploy' : 'Deploy Now'}
+								<span class="truncate">{deployButtonLabel}</span>
 							</Button>
 						</div>
 					</div>

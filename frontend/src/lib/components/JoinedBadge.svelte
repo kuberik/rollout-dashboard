@@ -18,6 +18,8 @@
 		labelBorder?: boolean;
 		labelPlainBorder?: boolean;
 		valueClass?: string;
+		/** Hover/AT text for the whole pair — e.g. the sentence behind a one-word state. */
+		title?: string;
 	}
 
 	let {
@@ -32,7 +34,8 @@
 		labelClass = '',
 		labelBorder = false,
 		labelPlainBorder = false,
-		valueClass = ''
+		valueClass = '',
+		title
 	}: Props = $props();
 
 	const hasLink = $derived(!!href);
@@ -41,7 +44,7 @@
 	);
 </script>
 
-<div class="inline-flex items-center {containerClass}" style={containerStyle}>
+<div class="inline-flex items-center {containerClass}" style={containerStyle} {title}>
 	<!-- Left part: Label with optional icon -->
 	<Badge
 		color="gray"

@@ -5186,3 +5186,87 @@ looking.
 `MOCK_API=1 MOCK_OUTAGE=1` (503 everywhere; `touch frontend/.mock-up` brings the API back
 live, without the Vite restart that would reload the page and defeat the recovery test),
 `MOCK_SLOW=<ms>`, `MOCK_PARTIAL=1`. All inert by default.
+
+---
+
+## Friction points at the consequence, not at the direction of travel
+
+*(2026-08-31. Reverses the 2026-08-30 ruling recorded inside
+`ChangeVersionModal.svelte`, which is kept there with its argument.)*
+
+A live UX critic force-deployed an unvetted build **into production, through three
+closed gates, in two clicks with no confirmation**, and the modal never once used the
+word *production*. Going **backwards** demanded `Type 991829b to confirm` with the
+primary disabled until it matched.
+
+The typed gate is the right mechanism pointed at the wrong event. **A rollback is the
+recovery you want fast at 3am.** The rule now weighs three things — *direction*, *is
+the target production*, *do the gates actually allow this build right now* — in
+`view-models/deploy-risk.ts`, where it has tests.
+
+| direction | target | gates allow this build? | level |
+|---|---|---|---|
+| forward | production | **no** | `typed` |
+| forward | production | yes | `notice` |
+| forward | other | no | `notice` |
+| forward | other | yes | `none` |
+| rollback | any | — | `notice` |
+| a tag not in `availableReleases`, any direction | | | `typed` |
+| the version already running | | | `none` |
+
+- **`notice` is not a barrier.** One sentence naming the consequence, in the footer
+  where the decision is made. Nothing to type, nothing to tick. Only `typed` ever
+  disables the primary, and it fires on two shapes: a build no rule vouches for going
+  into production, and a tag nothing on screen has vouched for at all.
+- **Friction that fires on every action stops being read.** The ordinary vouched deploy
+  to a non-production environment still asks for nothing.
+- **The copy is shaped after `Clear Version Pin`** — the dialog the same critic called
+  the best copy in the product: consequence, non-consequence, then the rule in human
+  terms. It is matched, not replaced.
+- **The button names where it lands.** `Deploy Now` named the act and hid the target;
+  `Deploy to production` / `Roll back production` is the same click a reader can
+  predict. `red` is spent only at `typed`, so the alarm still means something.
+- **`Rollback` must mean backwards.** It pre-selected `history[1]`, which is not
+  necessarily older — the critic pressed it and got a modal headed *"Deploy 51b976a →
+  aa17645"*. `rollbackTarget()` proves the target is older (release-list position, else
+  build `created` time), prefers one this environment has already run, and returns
+  **null** when nothing older exists — in which case the button is not rendered. A
+  `Rollback` with nothing to roll back to is the label lying again.
+
+## A CTA that lands near the control is worse than no CTA
+
+`Release the hold` was an `<a href="/apps/<name>">` on `/apps`, and on `/apps/<name>` it
+opened **Change Version** — a version picker with no way to clear a pin. The real
+control was `Clear pin`, two pages away on rollout detail. *"The operator now believes
+they tried."*
+
+`ClearPinModal.svelte` owns the act and the wording; rollout detail uses it too, so
+there is one dialog and one sentence about what clearing the pin will really do
+(`clearPinOutcome`). On `/apps/<name>` the button performs the act. On `/apps` the step
+stays a **link** — an app can have several environments in one state and a list-level
+mutation would have to pick one silently — but it now names the environment
+(`?release=<env>`), and `/apps/<name>` opens the dialog for exactly that one on arrival.
+
+## `bake` is gone from the step names too
+
+`bake-status.ts` renamed the STATE to `checking` and spared the pipeline's step names
+(`Bake`, `Final Bake`, `Baked`) as proper nouns. **That exception is withdrawn.** It
+assumed the step name sits alone; on rollout detail it does not. One deploy printed
+`Baking` in the pipeline chip, `InProgress` on the version card and `checking` on `/`,
+at the same second — `Bake` x7, `Baking` x3, `bake` x2, `checking` x1 on one page.
+
+A proper noun sharing its stem with the deprecated state word cannot be told apart from
+the state word by a reader who has never seen this product, which is the whole test the
+rename exists to pass. The step is `Check` / `Final check` / `Checked`; the sub-rows are
+`Check` and `Check timer`; `stage-advance` says *"8s of check time is left"*. The CRD
+fields (`spec.bakeTime`, `status.history[].bakeStatus`) are untouched — mechanism, never
+rendered.
+
+**A raw enum reaching the screen is a bug, not a vocabulary question.** Two were:
+`latestEntry.bakeStatus` printed straight into the version card, and the resources
+card's chip printing kstatus's own `InProgress` — a *different* enum that spells the
+same word, which is precisely why a reader cannot tell them apart. Both go through a
+table now (`bakeWord`/`bakeTitle`, `resourceStatusWord`). The controller's
+`bakeStatusMessage` is not rewritten — it is the cluster's text — but it is no longer
+printed when the deploy succeeded, where it only restated `Checked · Done` in the old
+vocabulary.
