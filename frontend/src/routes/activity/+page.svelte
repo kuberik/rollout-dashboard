@@ -579,7 +579,18 @@
 	<title>kuberik | Activity</title>
 </svelte:head>
 
-<div class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+<!-- ⭐ ONE CONTAINER FOR THE PRODUCT: `mx-auto max-w-7xl px-4 py-6 sm:px-6`.
+     ⛔ THIS PAGE WAS `max-w-5xl`. Measured at 1440 it made the content column
+     976px wide against every other page's 1216 — a **128px jump on each side**
+     every time an operator entered or left `/activity`, which is what the human
+     meant by *"pages have slightly different content margins so navigating
+     between pages feels jittery"*. The narrow measure was never justified by
+     line length: nothing on this page is prose. The widest object is the
+     `When deploys happened` chart, which is a time axis and wants MORE room,
+     and the event rows are three-column grids (mark · what · when) whose right
+     column was being crushed, not protected. A reading measure is a legitimate
+     exception; this was not one, so it is gone rather than documented. -->
+<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	<!-- ══ HEADER ═══════════════════════════════════════════════════════════
 	     THE 24H SPARKLINE IS CUT. It sat 40px above a chart of the same array
 	     at higher resolution, and on this cluster it drew nothing at all while
@@ -610,7 +621,7 @@
 		{#if !rolloutsQuery.isLoading && !rolloutsQuery.isError}
 			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
 				<span class="t-display text-gray-900 tabular-nums dark:text-white">{feed.length}</span>
-				<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
+				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 					deploy{feed.length === 1 ? '' : 's'} in {rangeLabel}
 					{#if appCount > 0}
 						· {appCount} rollout{appCount === 1 ? '' : 's'}

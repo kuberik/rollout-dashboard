@@ -30,7 +30,7 @@
 	<title>kuberik | {name} ({namespace}) Logs</title>
 </svelte:head>
 
-<div class="flex h-full flex-col overflow-hidden p-3 dark:bg-gray-900 sm:p-4">
+<div class="mx-auto flex h-full max-w-7xl flex-col overflow-hidden px-4 py-6 dark:bg-gray-900 sm:px-6">
 	<div class="mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-2 sm:mb-4">
 		<h1 class="text-lg font-bold text-gray-900 dark:text-white sm:text-xl">Logs</h1>
 		<!-- Tab buttons inline on mobile -->

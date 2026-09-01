@@ -400,23 +400,35 @@
 		directly below, so the page now leads with the OBJECT rather than with
 		the name of the section it is in.
 	-->
-	<h1 class="sr-only">Revisions</h1>
-	{#if scope}
-		<p class="t-headline min-w-0 text-gray-900 dark:text-white">
-			{scope.deployed} of {scope.known} revisions deployed
+	<!-- ══ THE HEAD BAND — ONE ROW, LIKE EVERY OTHER PAGE ═══════════════════
+	     THE `h1` WAS ALREADY `sr-only`; WHAT CHANGED IS THE RHYTHM. The rollup
+	     ran at `t-headline` (17px) with the definition on a SECOND line at
+	     `t-body`, so the head was 50px tall and the first card landed at y=92
+	     while `/apps`, `/environments`, `/dependencies` and `/activity` all
+	     start theirs at y=72. Two rows of chrome is the drift the human felt as
+	     *"pages have slightly different content margins"*.
+
+	     THE COUNT NOW LEADS AT 24px and the definition joins the rollup on its
+	     baseline — same words, one row. Nothing was cut: the sentence that
+	     defines "revision" for a first-time reader is still the first prose on
+	     the page, it is just no longer a second band of chrome. -->
+	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+		<h1 class="sr-only">Revisions</h1>
+		{#if scope}
+			<span class="t-display text-gray-900 tabular-nums dark:text-white">{scope.deployed}</span>
+		{/if}
+		<!--
+			THE SUBTITLE IS THE PAGE'S ONLY DEFINITION, AND IT DEFINES THE NOUN IN
+			THE ROLLUP BESIDE IT. A reader who has never opened kuberik does not
+			know what a "revision" is; they do know what a commit is and what
+			deploying is. One sentence binds the three, and every string below can
+			then be plain.
+		-->
+		<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+			{#if scope}of {scope.known} revisions deployed.{/if}{' '}One commit, one build. Here is every
+			build your services can deploy, and how far each one has got.
 		</p>
-	{/if}
-	<!--
-		THE SUBTITLE IS THE PAGE'S ONLY DEFINITION, AND IT DEFINES THE NOUN IN
-		THE ROLLUP ABOVE IT. A reader who has never opened kuberik does not know
-		what a "revision" is; they do know what a commit is and what deploying
-		is. One sentence binds the three, and every string below can then be
-		plain.
-	-->
-	<p class="t-body mt-1 text-gray-500 dark:text-gray-400">
-		One commit, one build. Here is every build your services can deploy, and how far each one has
-		got.
-	</p>
+	</div>
 
 	<!--
 		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that

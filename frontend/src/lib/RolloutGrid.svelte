@@ -258,13 +258,54 @@
 		{ key: 'steady' as QuickFilter, label: 'Steady', count: steadyCards.length, dot: 'bg-green-700 dark:bg-green-400' }
 	]);
 
+	// The head band's rollup — SCALE AND SPREAD, over the unfiltered set. It is
+	// deliberately NOT the severity partition: `Attention 0 · In motion 0 ·
+	// Pending 0 · Trailing 3 · Steady 12` is already drawn 20px below as the
+	// filter pills, and a second object reading the same array is the thing
+	// this page's own rules cut. The total and the number of namespaces and
+	// clusters it spans appear nowhere else on the page.
+	const nsSpread = $derived(
+		new Set(cards.map((c) => (c.sourceCluster || c.sourceURL || '') + '|' + c.ns)).size
+	);
+	const clusterSpread = $derived(new Set(cards.map((c) => clusterLabelForCard(c))).size);
+
 
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Page header -->
-	<div class="mb-4">
-		<h1 class="min-w-0 truncate text-2xl font-light text-gray-900 dark:text-white">Rollouts</h1>
+	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
+	     ⛔ THE DRAWN `Rollouts` TITLE IS GONE. (2026-09-01, from the human:
+	     *"environments and rollouts still have a heading"*, against the rule
+	     already recorded for `/apps`, `/versions` and rollout detail's History
+	     tab: **a page title that repeats the navbar is a duplicate, not a
+	     heading.**) `Navbar.svelte` prints `Rollouts` at 17px twenty-five pixels
+	     above this line, and the `h1` printed the same word again at 24px — the
+	     largest type on the page spent on the thing the reader just clicked.
+
+	     IT IS STILL AN `h1`, JUST NOT A DRAWN ONE. `sr-only` is a 1px clip, so
+	     the skip link still lands on a level-1 heading and
+	     `a11y.svelte.test.ts`'s heading-structure assertions still pass.
+
+	     WHAT FILLS THE SLOT IS THE ROLLUP, AT THE 24px ROLE THE WORD HELD —
+	     the shape `/activity` uses (`47` beside its sentence). Removing a title
+	     without replacing its type role is what left `/apps` running 16 → 10
+	     where the grammar asks for 24 → 10; this page keeps 24 → 9.
+
+	     ⚠️ THE FILTER/COUNTER ROW BELOW IS UNTOUCHED AND STAYS AT y=72. It is
+	     a control, not a heading: a search input and eleven chips at the top of
+	     the page would not read as one, and it is the one row here that must be
+	     free to wrap. Everything below y=72 on this page is byte-identical. -->
+	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+		<h1 class="sr-only">Rollouts</h1>
+		{#if cards.length > 0}
+			<span class="t-display text-gray-900 tabular-nums dark:text-white">{cards.length}</span>
+			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+				rollout{cards.length === 1 ? '' : 's'} in {nsSpread}
+				namespace{nsSpread === 1 ? '' : 's'}{clusterSpread > 1
+					? ` · ${clusterSpread} clusters`
+					: ''}
+			</p>
+		{/if}
 	</div>
 
 	<!--

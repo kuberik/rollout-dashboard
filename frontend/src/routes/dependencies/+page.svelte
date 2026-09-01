@@ -197,10 +197,29 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<div class="mb-6 min-w-0">
+	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
+	     ⚠️ THE `h1` STAYS DRAWN HERE, AND THAT IS THE RULE BEING FOLLOWED, NOT
+	     AN EXCEPTION TO IT. (2026-09-01) The duplicate-title rule tests for
+	     DUPLICATION: `/rollouts`, `/environments`, `/apps` and `/versions` all
+	     had the navbar printing the same word 25px above the `h1`.
+	     `/dependencies` does not. `Navbar.svelte`'s `currentSection` has no
+	     branch for this path, so it falls through to `SECTIONS[0]` — `control`
+	     — and the breadcrumb is `{#if currentSection.key !== 'control'}`, i.e.
+	     NOT RENDERED. There is no `Dependencies` item in `Sidebar.svelte`
+	     either. Unvoicing this `h1` would leave the page with no visible name
+	     at all: a graph, a banner, and nothing saying what you are looking at.
+	     **Check the navbar before applying the rule; the test is duplication,
+	     not position.**
+
+	     ⭐ WHAT DID CHANGE IS THE RHYTHM. The title was `t-display` on its own
+	     line with the rollup on a SECOND line and `mb-6` below, so the first
+	     card landed at y=98 while `/apps`, `/environments`, `/versions` and
+	     `/activity` all start theirs at y=72. One head row now — title, rollup
+	     on its baseline, `mb-5` — and this page joins them. -->
+	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
 		<h1 class="t-display min-w-0 truncate text-gray-900 dark:text-white">Dependencies</h1>
 		{#if !query.isLoading && !query.isError}
-			<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+			<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
 				{#if trivial}
 					No rollout in this fleet is gated on another.
 				{:else}

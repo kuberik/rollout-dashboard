@@ -32,9 +32,63 @@
 - **A `role="button"` wrapper around a row that contains links is a keyboard bug, not just a semantics one.** On `/history` it swallowed Enter: the keydown bubbled from the version link to the wrapper's handler, which called `preventDefault()` and cancelled the link's own activation. The link had a `stopPropagation` workaround; both are gone.
 - **`newest` has ONE tone, and it is quiet mint.** (2026-09-01) The word was printed mint on `/` and `/rollouts` (`rankRole()` → `newest`) and neutral gray on `/environments`, `/envs/<name>`, `/apps/<name>` and `PromotionPipeline` (`role="head"`). Measured canvas-resolved on the running product, the gray spelling sat **4.1°** of hue from `N behind` in light and **2.8°** in dark — i.e. the two members of the rank vocabulary were the same hue — while mint separates them by **81°**. `TONE.head` now resolves to `MINT_QUIET`; the role name survives only because four call sites are in files that pass did not own. **Do not give `head` a value of its own again.** Migrate those call sites to `role="newest"` and delete the entry.
 - **A page title that repeats the navbar is a duplicate, not a heading.** (2026-09-01, from the human: *"i think i don't like that we have a title on the page when it's already in the navbar."*) `/apps` now renders an `sr-only` `h1` with the page's rollup in the slot the word held. The test is DUPLICATION, not position: `/envs/<name>` keeps its drawn `h1` because the navbar names the section and the page names the environment. Never delete the `h1` element itself — the skip link and the heading-structure tests need it.
+- **`/dependencies` KEEPS its drawn `h1`, and so does every page the navbar does not name.** (2026-09-01) The rule is DUPLICATION, not position, and the navbar is the thing to check — not the assumption that every section is in it. `Navbar.svelte`'s `currentSection` has branches for `/apps`, `/environments|/envs`, `/activity`, `/versions` and `/rollouts|/namespaces` only; everything else falls through to `SECTIONS[0]` (`control`), and the breadcrumb is `{#if currentSection.key !== 'control'}` — not rendered. `/dependencies` is not in `Sidebar.svelte` either, so its `h1` is the page's ONLY visible name. Unvoicing it leaves a graph with nothing saying what it is.
+  - **Applied (`sr-only` + rollup in the slot):** `/`, `/apps`, `/versions`, `/activity`, `/rollouts`, `/environments`, rollout detail's `/history`.
+  - **Drawn, correctly:** `/dependencies` (navbar is silent), `/envs/<name>`, `/apps/<name>`, `/namespaces/<name>`, `/versions/<rev>`, rollout detail — the navbar names the SECTION and the page names the OBJECT.
+- **Unvoicing a title without replacing its TYPE ROLE is a reduction, not a fix.** (2026-09-01) Taking `Apps` out left `/apps` running **16 → 10** where `COMPOSITION-GRAMMAR.md` §6 asks for 24 → 10 — "quieter, flatter, smaller-typed", arrived at by deletion. The replacement is `/activity`'s shape: the rollup's **leading figure at `t-display` (24px)** with the rest of the sentence at `t-dense` on its baseline. Six pages now share it.
+  - `/rollouts`' head is **scale and spread** (`15 rollouts in 9 namespaces · 2 clusters`), deliberately NOT the severity partition: `Attention 0 · In motion 0 · … · Steady 12` is already drawn 20px below as the filter pills, and a second object reading the same array is what this page's own rules cut. Everything below y=72 on `/rollouts` is unchanged.
 - **A tracked uppercase column-header row is what makes a list read as a spreadsheet.** (2026-09-01, from the human, about the app detail page: *"looks too much like spreadsheet. check where else is this the case."*) Nothing on the reference page has one. Before adding a header row, check whether each cell already names itself — on `/apps` all three did, 16px below. Pair the removal with COMPOSITION (`/apps` gained the two-column layout and the right rail `COMPOSITION-GRAMMAR.md` §7 asks for); a header row deleted and nothing built is a reduction, which is what produced the six rejected pages.
 - When you discover a design constraint from user feedback, add it here immediately without waiting to be asked.
 
 ## Rollout list visual treatment
 
 - No thickened or colored card borders. For status severity, use the dot indicator in the group header and the status dot in each row.
+
+## The page container, and the vertical rhythm — one rule, measured
+
+From the human (2026-09-01): *"pages have slightly different content margins so navigating
+between pages feels jittery."* Measured at 1440 it was two separate defects.
+
+**LATERAL — one content container for the whole product:**
+
+```svelte
+<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+```
+
+1280px cap, 24px gutters (16px under `sm`). Content left edge **200px** at 1440 with the
+sidebar open, **16px** at 390, on every route. There is exactly **one** documented
+exception, and it is not a page: rollout detail's **sticky tab strip** is full-bleed
+because it is chrome for the whole pane, the way a browser tab strip is. Its CONTENT is
+inside the container like everything else.
+
+- ⛔ `/activity` was `max-w-5xl` — **976px against everyone else's 1216, a 128px jump on
+  each side** on entry and exit. A narrower measure is legitimate ONLY when justified by
+  LINE LENGTH; nothing on `/activity` is prose (a time-axis chart that wants more room, and
+  three-column event rows whose right column was being crushed), so it was habit, not a
+  reading measure. Removed rather than documented.
+- ⛔ Rollout detail's four tabs had **no wrapper at all** and four different paddings
+  (`sm:px-5`, `p-3 sm:p-4`, `p-3 sm:p-5`, none). Its column ran the full width of `<main>`
+  and its left edge sat at 196 — a 4px sidestep on entry and an unbounded column on a wide
+  monitor.
+- **If you add a page, use the recipe above.** A narrower `max-w-*` needs a line-length
+  argument written next to it.
+
+**VERTICAL — the head band is chrome and is identical everywhere:**
+
+```
+y=0    the container's `py-6`
+y=24   THE HEAD ROW — one row: a 24px lead (`t-display`, `t-display-id`, or a 24px
+       object name with `leading-[1.15]`) and, on its baseline, the page's rollup at
+       `t-dense`.  `flex flex-wrap items-baseline gap-x-2 gap-y-1`, height 28px.
+y=52   `mb-5` — 20px, never `mb-4` or `mb-6`
+y=72   THE FIRST CONTENT ELEMENT, on every page.
+```
+
+Only genuine CONTENT may push a page below y=72 — a banner, a filter bar, a definition
+sentence long enough to wrap. Chrome may not. Before this rule the first content element
+ranged **62 → 98** at 1440 on pages with nothing above it; it is 72 on all of them now.
+`/` is the one page with no head band at all (standing constraint: it does not change
+visually) — its first ink is still at y=24.
+
+At 390 the head row WRAPS, so its height is set by the rollup's own length. That is content,
+not chrome: the 24px above it and the 20px below it are identical at every width.

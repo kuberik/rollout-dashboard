@@ -871,9 +871,21 @@
 		     IDENTIFIER — the string you would type at kubectl — and the chip
 		     beside it carries the short distinguishing segment and the identity
 		     colour. -->
-		<div class="mb-4">
+		<!-- ⚠️ THE `h1` STAYS DRAWN. The navbar names the SECTION
+		     (`Environments`) and this page names the ENVIRONMENT, so the two are
+		     not the same string; the duplicate-title rule is about DUPLICATION,
+		     not position.
+
+		     ⭐ ONE HEAD ROW, `mb-5` — the product's head band. The name row was
+		     `text-2xl` (32px line box) with the meta on a SECOND line, `mb-4`
+		     below, so the first content landed at y=92; every other page starts
+		     its at y=72. `leading-[1.15]` makes the 24px name a 28px row — the
+		     same box `t-display` draws — and the meta joins it on the baseline
+		     instead of forming a second band of chrome. -->
+		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
 			<h1 class="flex min-w-0 flex-wrap items-baseline gap-x-3">
-				<span class="min-w-0 truncate font-mono text-2xl font-bold text-gray-900 dark:text-white"
+				<span
+					class="min-w-0 truncate font-mono text-2xl leading-[1.15] font-bold text-gray-900 dark:text-white"
 					>{envName}</span
 				>
 				<Chip
@@ -891,7 +903,7 @@
 			     the clause that FOLLOWS it, never the one before — a trailing
 			     `·` strands when its clause is deleted. -->
 			<p
-				class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+				class="t-dense flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
 			>
 				{#if namespaces.length === 1}
 					<span class="font-mono text-[11.5px]">{namespaces[0]}</span>

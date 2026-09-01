@@ -311,9 +311,13 @@
 		</div>
 	{:else}
 		<!-- ══ HEADER — the `/apps` idiom: an h1 and ONE sentence ═══════════ -->
-		<div class="mb-5 min-w-0">
+		<!-- ⚠️ THE `h1` STAYS DRAWN: the navbar names the SECTION and this page
+		     names the NAMESPACE. ⭐ ONE HEAD ROW, `mb-5` — the meta line joins
+		     the name on its baseline instead of forming a second band of chrome,
+		     so the first content lands at y=72 like every other page. -->
+		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
 			<h1 class="t-display-id min-w-0 truncate text-gray-900 dark:text-white">{namespace}</h1>
-			<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+			<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
 				Namespace · {apps.length} rollout{apps.length === 1 ? '' : 's'}
 				{#if failedCount > 0}
 					· <span class="font-medium text-gray-700 dark:text-gray-200">{failedCount} failing</span>

@@ -403,7 +403,8 @@
 			</AlertPanel>
 		</div>
 	{:else}
-		<div class="flex-1 overflow-y-auto p-3 sm:p-5">
+		<!-- The product's one content container — see the rollout Overview tab. -->
+		<div class="mx-auto max-w-7xl flex-1 overflow-y-auto px-4 py-6 sm:px-6">
 			<!-- Page header + stats bar -->
 			<div class="mb-5 flex flex-wrap items-start justify-between gap-4">
 				<div>

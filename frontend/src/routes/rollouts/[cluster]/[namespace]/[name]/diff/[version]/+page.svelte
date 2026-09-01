@@ -157,7 +157,7 @@
 	{/if}
 </svelte:head>
 
-<div class="w-full px-4 py-8 dark:bg-gray-900">
+<div class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 dark:bg-gray-900">
 	<div class="mb-6">
 		<Button color="light" href={`/rollouts/${cluster}/${namespace}/${name}`}>
 			<ChevronLeftOutline class="mr-2 h-4 w-4" />

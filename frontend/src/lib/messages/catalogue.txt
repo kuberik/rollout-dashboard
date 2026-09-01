@@ -385,6 +385,7 @@ lib/RolloutGrid.svelte	text	No matches
 lib/RolloutGrid.svelte	text	No rollouts yet
 lib/RolloutGrid.svelte	text	Read the docs
 lib/RolloutGrid.svelte	text	resource in your cluster.
+lib/RolloutGrid.svelte	text	rollout … in … namespace … …
 lib/RolloutGrid.svelte	placeholder	Search rollouts…
 lib/stores/theme.ts	code	(prefers-color-scheme: dark)
 lib/utils.ts	code	… day…
@@ -709,7 +710,6 @@ routes/apps/+page.svelte	code	: ''}… available, and none will deploy until som
 routes/apps/+page.svelte	code	… — … is stuck
 routes/apps/+page.svelte	code	… — …’s last deploy failed
 routes/apps/+page.svelte	text	… … · … deploying now …
-routes/apps/+page.svelte	text	… app … … ·
 routes/apps/+page.svelte	code	… can still take … newer version…
 routes/apps/+page.svelte	text	… deploy … … …
 routes/apps/+page.svelte	code	… different versions live
@@ -732,6 +732,7 @@ routes/apps/+page.svelte	code	${pin ?
 routes/apps/+page.svelte	code	a newer version exists and a person has to pick it
 routes/apps/+page.svelte	code	a newer version is allowed here and nobody has deployed it
 routes/apps/+page.svelte	text	An app appears here once you bind a
+routes/apps/+page.svelte	text	app … … ·
 routes/apps/+page.svelte	code	Automatic updates into this environment are off, not broken.
 routes/apps/+page.svelte	text	Deploys · 7d
 routes/apps/+page.svelte	text	Furthest behind
@@ -1080,7 +1081,7 @@ routes/versions/+page.svelte	code	… cannot deploy it in … yet.
 routes/versions/+page.svelte	code	… gate… need an approval or an external check: ….
 routes/versions/+page.svelte	code	… gate… not passing — ….
 routes/versions/+page.svelte	title	… lists this build on no environment’s release list
-routes/versions/+page.svelte	text	… of … revisions deployed
+routes/versions/+page.svelte	text	… of … revisions deployed. … … One commit, one build. Here is every build your services can deploy, and how far each one has got.
 routes/versions/+page.svelte	title	… places — a place is one service in one environment — are waiting on a gate
 routes/versions/+page.svelte	text	… service …
 routes/versions/+page.svelte	code	… services
@@ -1093,7 +1094,6 @@ routes/versions/+page.svelte	title	Never deployed
 routes/versions/+page.svelte	title	Newest build in use
 routes/versions/+page.svelte	title	No longer running anywhere
 routes/versions/+page.svelte	text	Nothing built yet
-routes/versions/+page.svelte	text	One commit, one build. Here is every build your services can deploy, and how far each one has got.
 routes/versions/+page.svelte	text	Open …
 routes/versions/+page.svelte	text	Running in … of …
 routes/versions/+page.svelte	text	See what’s blocking it

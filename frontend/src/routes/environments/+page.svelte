@@ -1324,19 +1324,31 @@
 {/snippet}
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- ── THE HEADER. 24px/700, which is the reference page's `h1` measured,
-	     not chosen. The rejected build used `t-display` — 24px at weight 300 —
-	     and a page whose largest type is LIGHTER than the reference's body
-	     text is the "quieter, flatter, smaller-typed" failure by definition.
-	     Type range on this page is now 24 → 10. -->
-	<div class="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Environments</h1>
+	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
+	     ⛔ THE DRAWN `Environments` TITLE IS GONE. (2026-09-01, from the human:
+	     *"environments and rollouts still have a heading"*.) `Navbar.svelte`
+	     prints `Environments` twenty-five pixels above; the `h1` printed the
+	     same word again at 24px/700. **A page title that repeats the navbar is
+	     a duplicate, not a heading.**
+
+	     IT IS STILL AN `h1`, JUST NOT A DRAWN ONE — `sr-only` is a 1px clip, so
+	     the skip link and `a11y.svelte.test.ts` are untouched.
+
+	     THE ROLLUP TAKES THE SLOT AND THE TYPE ROLE WITH IT. `3 environments ·
+	     4 apps` was a 14px afterthought on the title's baseline; the count now
+	     leads at 24px — the `/activity` shape — so the page still runs 24 → 10
+	     rather than losing its top role the way `/apps` did.
+
+	     ⚠️ GEOMETRY IS UNCHANGED: the old row was 32px + `mb-4`, the new one is
+	     28px + `mb-5`, so the banner below still starts at y=72. -->
+	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+		<h1 class="sr-only">Environments</h1>
 		{#if envTiers.length > 0}
-			<span class="text-sm text-gray-500 dark:text-gray-400">
-				{envTiers.length}
+			<span class="t-display text-gray-900 tabular-nums dark:text-white">{envTiers.length}</span>
+			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 				{envTiers.length === 1 ? 'environment' : 'environments'} · {appCount}
 				{appCount === 1 ? 'app' : 'apps'}
-			</span>
+			</p>
 		{/if}
 	</div>
 

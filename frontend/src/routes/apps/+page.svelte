@@ -1284,11 +1284,19 @@
 	     ⚠️ NOT EVERY PAGE. `/envs/<name>` keeps its drawn `h1` — the navbar
 	     names the SECTION there and the page names the ENVIRONMENT, so the two
 	     are not the same string. The test is duplication, not position. -->
-	<div class="mb-5 min-w-0">
+	<!-- ⛔ THE ROLLUP HAD THE SLOT BUT NOT THE TYPE ROLE. (2026-09-01) Taking
+	     the title out took the page's 24px role with it and left `/apps`
+	     running **16 → 10** where the composition grammar asks for 24 → 10 —
+	     the "quieter, flatter, smaller-typed" failure, arrived at by deletion.
+	     The count now leads at `t-display`, which is the shape `/activity`
+	     already used (`47` beside its sentence), and the rest of the sentence
+	     sits on its baseline. Same words, same row, same `mb-5`. -->
+	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 		<h1 class="sr-only">Apps</h1>
 		{#if !query.isLoading && !query.isError && appRows.length > 0}
-			<p class="t-dense text-gray-500 dark:text-gray-400">
-				{appRows.length} app{appRows.length === 1 ? '' : 's'}
+			<span class="t-display text-gray-900 tabular-nums dark:text-white">{appRows.length}</span>
+			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+				app{appRows.length === 1 ? '' : 's'}
 				{#if attnCount > 0}
 					· <span class="font-medium text-gray-700 dark:text-gray-200"
 						>{attnCount} need{attnCount === 1 ? 's' : ''} attention</span

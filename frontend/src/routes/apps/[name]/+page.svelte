@@ -1873,8 +1873,11 @@
 			</a>
 		</div>
 	{:else}
-		<!-- ═══ THE VERDICT LINE. No card. ══════════════════════════════════ -->
-		<section class="mb-6">
+		<!-- ═══ THE VERDICT LINE. No card. ══════════════════════════════════
+		     `mb-5`, not `mb-6`: the head band is the same everywhere — the
+		     container's 24px `py-6`, ONE head row, and 20px to the first
+		     content. See `src/lib/CLAUDE.md`. -->
+		<section class="mb-5">
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 				<div class="min-w-0">
 					<h1 class="flex min-w-0 flex-wrap items-baseline gap-2">
