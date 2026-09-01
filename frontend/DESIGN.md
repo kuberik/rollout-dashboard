@@ -930,11 +930,62 @@ not amber and it is not red. The predicate the red violated is this file's own e
 and may not wear the failure hue.
 
 **The ink-hierarchy argument that put red there assumed `newest` is the NORM and `−N` the
-deviation.** On the live cluster the opposite is true: most environments trail and reaching
-head is the rare, informative event, so quiet mint on the rarer state and no colour at all on
-the repeated one is "mark the deviation" applied correctly. Red keeps `diverged`, `failing` and
-`blocked` — states that will not clear on their own. **ZERO colour values change.** This is
-visible on `/` and `/rollouts`.
+deviation.** Red keeps `diverged`, `failing` and `blocked` — states that will not clear on
+their own. **ZERO colour values change.** This is visible on `/` and `/rollouts`.
+
+### ⛔ THE RANK PAIR WAS INVERTED, AND THE PREMISE THAT INVERTED IT IS COUNTABLE
+
+**Corrected 2026-09-01.** The section above went on to claim: *"On the live cluster the
+opposite is true: most environments trail and reaching head is the rare, informative event."*
+**That is false, and it is checkable in one line of JS.** Chips per viewport at 1440 on the
+running product:
+
+| page | `newest` | `N behind` |
+|---|---|---|
+| `/` | 8 | 3 |
+| `/environments` | 9 | 3 |
+| `/rollouts` | 12 | 3 |
+| **total** | **29** | **9** |
+
+**`newest` is the repeated mark, 3.2 : 1.** `COMPOSITION-GRAMMAR.md` scopes *"mark the
+deviation, never the norm"* to *"repeated marks in a list"*, and in every list this product
+has, the repeated mark is `newest`. The rule was being applied to the wrong member — which
+left the norm coloured and the deviation colourless, the exact inversion the human's first
+ruling banned: *"NEWEST doesn't need attention and shouldn't be colored. '-4' does need
+attention and should be colored."* On 2026-09-01, on a screenshot of the two side by side:
+*"not sure i like coloring for newest/behind in these badges."*
+
+Measured on the running page, canvas-resolved and composited against the card ground (never
+regexed out of the `oklch()` source — that produced a badly wrong number earlier on this
+branch):
+
+| chip | light | L | C | contrast | dark | L | C | contrast |
+|---|---|---|---|---|---|---|---|---|
+| `newest` | `#426d64` | 0.5004 | 0.0503 | 5.83:1 | `#83b0a8` | 0.7225 | 0.0495 | 6.11:1 |
+| `N behind` **was** | `#6a7282` | 0.5510 | 0.0267 | 4.84:1 | `#99a1af` | 0.7071 | 0.0224 | 5.64:1 |
+| `N behind` **is** | `#364153` | 0.3731 | 0.0343 | **10.3:1** | `#e5e7eb` | 0.9276 | 0.0058 | **11.85:1** |
+
+`newest` was 1.88× the chroma of `N behind` in light, 2.21× in dark, and darker as well. On
+`characters × chroma` it printed **1.61× / 1.89×** the ink of the thing it is supposed to sit
+under.
+
+**What changed is not a colour.** There is no hue left and there must not be one — red means
+adverse, amber means `stuck` and nothing else, green/blue/yellow are states, mint is "on the
+build in question". So `rank` is marked on the axis this file already settles states on
+(*"`STATUS_DOT_CLASS` now splits the settled states on LIGHTNESS instead of hue"*), using
+**`gray-700` / `gray-200` — `.chip-value`'s own ink, one pixel to its right inside the same
+box.** Presence as `characters × ΔL from the ground`: `N behind` goes 0.96× → **1.46×**
+`newest` in light and 1.13× → **1.71×** in dark. `newest` is untouched — the human asked for
+it *"marked with some color just not to be so prominent"*, and quiet mint is exactly that once
+it is no longer the louder of the two. **ZERO new colour values. ZERO ink-ceiling cost:**
+`area × chroma` scores a neutral at ~0 whatever its lightness, so `alarm`'s fill is still the
+loudest mark on any row.
+
+**Still open, deliberately not changed here:** the quiet mint lands on rows that are already
+green — a `Succeeded` status disc at hue ~150 and, on DEV rows, a green identity chip — so
+`NEWEST` is a third green at 31° of separation on a 10px word. Its value is one budget slot
+shared character for character with `CoverageBar`'s `live` segment and `ExposureBar`'s newest
+segment, so moving it moves those too. That is a decision for the human, not a trim.
 
 ### ⛔ THE NEUTRAL ROW BAND IS DEAD, ON BOTH PAGES.
 
@@ -3051,8 +3102,9 @@ between them:**
 | tone | roles | value |
 |---|---|---|
 | NEUTRAL | `count`, `head`, `unranked` | `gray-200` border / `gray-500` ink (dark `gray-700` / `gray-400`) |
+| NEUTRAL, LOUD | `rank` (`−N` / `N behind`) | `gray-700` / `gray-200` ink — `.chip-value`'s own gray. See "THE RANK PAIR WAS INVERTED" |
 | MINT, QUIET | `newest` | `#426d64` / `#83b0a8` — see "`newest` IS LOUDER" |
-| ADVERSE | `rank` (`−N`), `diverged`, `failing` | `red-700` / `red-400`, TEXT-ONLY |
+| ADVERSE | `diverged`, `failing`, `blocked` | `red-700` / `red-400`, TEXT-ONLY |
 | ALARM | `alarm` (`stuck`) | amber-400 fill + amber-500 border + amber-900 ink · **no glyph** |
 | IDENTITY | `env` | the four theme vars, by NAME only |
 

@@ -157,7 +157,15 @@ describe('BlockingStoryPanel: the verdict and the rule handle are the disclosed 
 		const details = detailsHolding(story.resolution);
 		expect(details.open).toBe(false);
 		expect(details.textContent).toContain('rule: dependency-hello-frontend-needs-api');
-		expect(details.querySelector(SUMMARY)?.textContent).toContain('What clears this');
+		// THE CONTROL IS LABELLED, AND THE LABEL IS A NOUN. (2026-09-01) The
+		// human on the old wording: *"i'm not sure i particularly like that
+		// format 'what clears this'."* `/environments` was printing four
+		// disclosures in one viewport, all four asking the same question. What
+		// this test is for is unchanged and is the half that matters: the
+		// summary must carry TEXT, because a chevron on its own is an
+		// unlabelled control and the footnote behind it becomes unreachable to
+		// anyone who cannot see the arrow.
+		expect(details.querySelector(SUMMARY)?.textContent?.trim()).toBe('Details');
 	});
 
 	test('the manual-deploy clause is never lost, only moved', () => {

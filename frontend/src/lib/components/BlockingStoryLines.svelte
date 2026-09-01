@@ -159,7 +159,12 @@
 					class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
 					aria-hidden="true"
 				/>
-				What clears this
+				<!-- `Details`, NOT `What clears this`. Same ruling as `AlertPanel`'s
+				     `footnoteLabel` — the label is a NOUN, never an interrogative.
+				     `/environments` was rendering four of these in one viewport, all
+				     four asking the same question, three of them opening onto the
+				     same sentence. -->
+				Details
 			</summary>
 			<p class="t-micro mt-1 break-words text-gray-500 dark:text-gray-400">{story.verdict}</p>
 			{#if rules}

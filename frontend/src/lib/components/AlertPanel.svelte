@@ -123,9 +123,33 @@
 		 *
 		 * ⛔ IT IS A LABEL, NEVER A CLAIM. It says what KIND of thing is behind
 		 * the control; it may not state a fact of its own, because a fact
-		 * nobody expands is a fact nobody reads. `Details` is the honest
-		 * default; a caller that knows the kind should say the kind
-		 * (`What clears this`), and that is the whole permitted range.
+		 * nobody expands is a fact nobody reads.
+		 *
+		 * ⛔ AND IT IS A NOUN. NO INTERROGATIVES, NO SENTENCE FRAGMENTS.
+		 * (2026-09-01) From the human: *"i'm not sure i particularly like that
+		 * format 'what clears this'."*
+		 *
+		 * WHAT WAS MEASURED. `/environments` at 1440 rendered **four
+		 * disclosures in one viewport, all four labelled `What clears this`,
+		 * and three of the four opening onto the identical sentence.** Across
+		 * the product the label had grown five different grammars for one
+		 * control — `What clears this`, `What happens next`, `Can I still
+		 * deploy`, `What this stops`, `Which rules` — so a reader met a
+		 * different question shape at every banner and the page read as if it
+		 * were interrogating itself. That is the *"text just pollutes"*
+		 * failure arriving through a control instead of through prose.
+		 *
+		 * A repeated IDENTICAL noun is furniture — the reader stops seeing it
+		 * after the first one, which is what you want from an affordance. Four
+		 * repeated QUESTIONS are chatter. So the permitted range narrows to:
+		 *
+		 *   `Details`      the default, and the right answer nearly always
+		 *   `2 rules`      a COUNT and its kind, where one exists — the
+		 *                  `Show 8 ready resources ›` shape `COMPOSITION-
+		 *                  GRAMMAR.md` §8 names and this product already spends
+		 *
+		 * Nothing else. If you find yourself writing a verb, the thing you want
+		 * to say belongs in `message`, where it is printed.
 		 */
 		footnoteLabel?: string;
 		icon?: Component;
@@ -291,27 +315,91 @@
 				puts it too.
 			-->
 			<div class="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4">
-				<div class="relative col-start-1 row-start-1 w-10">
-					<!-- `top-3` IS THE HEADLINE'S HALF-LEADING, NOT A NUDGE. The title is
-					     always `text-base` — 16px on a 24px line box — so 12px is the
-					     centre of its FIRST LINE, and the disc is translated back by its
-					     own half-height onto exactly that point. Deliberately not
-					     `top-1/2`: this row also holds the `extra` chips, which wrap onto
-					     a second line at 390, and half of a wrapped row is not the
-					     headline either. -->
-					<div class="absolute top-3 left-0 h-10 w-10 -translate-y-1/2">
-						{#if pulse}
-							<div class="absolute inset-0 animate-ping rounded-full {palette.ping}"></div>
-						{/if}
-						<div
-							class="relative flex h-10 w-10 items-center justify-center rounded-full {palette.iconWrap}"
-						>
-							<Icon class="h-6 w-6 {palette.iconColor}" />
-						</div>
-					</div>
-				</div>
 				<div class="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center gap-2">
-					<p class="text-base font-bold tracking-tight {palette.title}">{title}</p>
+					<!--
+						⭐ THE DISC IS A ZERO-HEIGHT FLEX ITEM ON THE HEADLINE'S OWN
+						NON-WRAPPING LINE, REACHING BACK INTO THE GRID'S FIRST COLUMN.
+						It is not laid out in column 1 any more, and that is the second
+						half of the pulse fix.
+
+						WHAT `top-3` GOT WRONG. The previous form put the disc in column 1
+						and pinned it 12px down — the half-leading of ONE 24px line box —
+						so it centred on the FIRST LINE of the headline whatever the
+						headline did. At 1440, where the headline is one line, that is
+						correct and unchanged. At 390 the headline wraps: `DEV is waiting
+						on another deploy` is two lines, 48px, and the disc stayed level
+						with line one, **24px above the headline's own centre and 8px from
+						the panel's top edge**. The human: *"icon feels positioned too
+						high. this is specially the case on mobile."*
+
+						HOW IT WORKS. `h-0` means the disc contributes NO height, so it can
+						never push the headline off its own baseline — the invariant the
+						old absolute form was protecting, kept. `-ml-14 mr-4` makes its net
+						advance exactly zero (−56 + 40 + 16), so the headline still begins
+						on the grid's column-2 edge and the message below it stays aligned,
+						while the box itself spans −56..−16, which IS column 1. Then
+						`items-center` centres a zero-height item on the cross-size of its
+						flex line — the headline's box. One line: centre at 12px,
+						byte-identical to `top-3`. Two lines: 24px, the headline's actual
+						middle.
+
+						⚠️ THE INNER `flex` WRAPPER IS LOAD-BEARING AND THE FIRST ATTEMPT
+						WITHOUT IT WAS WRONG. Putting the disc directly in this
+						`flex-wrap` row made it wrap onto a line of its OWN: flex breaks
+						lines on HYPOTHETICAL main sizes, and the headline's max-content
+						(~300px) exceeds the 262px column at 390 whatever the disc's
+						negative margins net to. Measured: the disc landed at the row's top
+						again (16px) while the headline sat at 24px, and the 8px row-gap
+						`gap-2` also sets made the banner 8px TALLER. The disc and the
+						headline therefore share a nowrap group; `extra` stays a sibling of
+						that group, so the chips still wrap onto a second line at 390
+						exactly as before.
+
+						AND IT STILL IGNORES THE CHIPS. When `extra` wraps, the disc's line
+						holds the headline alone, so the disc keeps measuring itself against
+						the headline and nothing else. That was the whole reason `top-1/2`
+						was rejected, and it is still rejected.
+
+						THIS IS A RECURRENCE OF A DEFECT WITH A NUMBER. The original was
+						`flex items-center` centring the 40px glyph against the whole text
+						COLUMN — measured at 390 on `/versions`, the icon's centre sat
+						**87px below the headline's centre**. That was fixed on the PAGE
+						first (`/apps/[name]`'s `!` glyph) and came back here because the
+						fix had not been made on the SHARED OBJECT. It is fixed in the
+						component now, so every page that renders a banner (`/`, `/apps`,
+						`/apps/[name]`, `/environments`, `/envs/[name]`, `/versions`,
+						`/versions/<rev>`, rollout detail via `ScheduleStatus`) gets it and
+						none can lose it.
+					-->
+					<!-- NO `min-w-0` HERE, DELIBERATELY. The headline used to be a direct
+					     flex item of the wrapping row, so its `min-width: auto` floor was
+					     its own min-content — one unbreakable word. Giving the group
+					     `min-w-0` would move that floor to zero and let a long
+					     `hello-frontend-app` spill out of the panel on a page where it
+					     used to wrap. The disc contributes 0 to the group's min-content
+					     (−56 + 40 + 16), so the floor is byte-identical to the old one. -->
+					<div class="flex items-center">
+						<div class="relative -ml-14 mr-4 h-0 w-10 shrink-0">
+							<div class="absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
+								{#if pulse}
+									<!-- `animate-alert-halo`, NOT `animate-ping`. `ping` scales to
+									     2x — a peak radius of 40 against the 28px of room the disc
+									     has above it at 390 — so the halo was sliced flat by the
+									     panel's own top edge every cycle. The arithmetic is in
+									     `app.css` beside the keyframes. -->
+									<div
+										class="absolute inset-0 animate-alert-halo rounded-full {palette.ping}"
+									></div>
+								{/if}
+								<div
+									class="relative flex h-10 w-10 items-center justify-center rounded-full {palette.iconWrap}"
+								>
+									<Icon class="h-6 w-6 {palette.iconColor}" />
+								</div>
+							</div>
+						</div>
+						<p class="text-base font-bold tracking-tight {palette.title}">{title}</p>
+					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>
 				{#if message || messageBody || footnote}

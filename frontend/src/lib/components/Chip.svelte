@@ -192,13 +192,20 @@
 		}
 	});
 
-	// THE THREE TONES A CHIP CAN TAKE, named once so they cannot drift apart.
-	// Four roles are NEUTRAL and two are ADVERSE; before these constants existed
-	// the same six strings were written out six times, which is how `newest`
-	// spent eight months a different gray from `count`.
+	// THE TONES A CHIP CAN TAKE, named once so they cannot drift apart.
+	// Before these constants existed the same six strings were written out six
+	// times, which is how `newest` spent eight months a different gray from
+	// `count`.
 	//
 	// NEUTRAL — the norm, or a caption. Spends no colour at all.
 	const NEUTRAL = 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400';
+	// NEUTRAL, LOUD — the deviation, marked on LIGHTNESS instead of on hue.
+	// `rank` (`−N` / `N behind`) only. See `TONE.rank`. Character for character
+	// the ink `.chip-value` already prints one pixel to its right, so it is not
+	// a new colour value: it is the value half's own gray, borrowed by the label
+	// half. ZERO chroma, so it cannot threaten `alarm` on the ink ceiling —
+	// `area × chroma` scores a gray at nothing, whatever its lightness.
+	const NEUTRAL_LOUD = 'border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200';
 	// MINT, KEPT UNDER `−N` — `newest` only. See `TONE.newest`.
 	const MINT_QUIET = 'border-gray-200 text-[#426d64] dark:border-gray-700 dark:text-[#83b0a8]';
 	// ADVERSE — the deviation half of the rank vocabulary. ONE hue for both
@@ -352,7 +359,82 @@
 		// clear on their own. Being four builds behind clears itself on the next
 		// promotion. ZERO colour values change — `rank` moves onto the gray
 		// `count`/`head`/`unranked` already spend.
-		rank: NEUTRAL,
+		//
+		// ⛔ AND THE GRAY IS THE LOUD ONE, NOT THE QUIET ONE. (2026-09-01)
+		//
+		// From the human, on a screenshot of `NEWEST 1.66.0-66` beside
+		// `1 BEHIND 2.66.0-66`: *"not sure i like coloring for newest/behind in
+		// these badges."* Measured on the running dark page at 1440, canvas-
+		// resolved and composited against the card ground (never regexed out of
+		// the `oklch()` source, which produced a badly wrong number earlier on
+		// this branch):
+		//
+		//              light #hex   L       C        contrast   dark #hex   L       C        contrast
+		//   newest     #426d64      0.5004  0.0503   5.83:1     #83b0a8     0.7225  0.0495   6.11:1
+		//   N behind   #6a7282      0.5510  0.0267   4.84:1     #99a1af     0.7071  0.0224   5.64:1
+		//
+		// So `newest` was 1.88x the chroma of `N behind` in light and 2.21x in
+		// dark, AND darker (L 0.500 vs 0.551). On `characters × chroma` — both
+		// halves text-only in one face, size and weight, so the glyph constant
+		// cancels — `NEWEST` printed 1.61x the ink of `1 BEHIND` in light and
+		// 1.89x in dark. THE NORM WAS SHOUTING AND THE DEVIATION WAS WHISPERING,
+		// which is the exact inversion the human's first ruling banned:
+		// *"NEWEST doesn't need attention and shouldn't be colored. '-4' does
+		// need attention and should be colored."*
+		//
+		// ── THE PREMISE THAT PUT IT THERE IS FALSE, AND IT IS COUNTABLE ──────
+		//
+		// DESIGN.md defends the pair with: *"On the live cluster ... most
+		// environments trail and reaching head is the rare, informative event."*
+		// Counted on the running product, chips per viewport at 1440:
+		//
+		//     /              newest  8   N behind  3
+		//     /environments  newest  9   N behind  3
+		//     /rollouts      newest 12   N behind  3
+		//     TOTAL          newest 29   N behind  9      — 3.2 : 1
+		//
+		// `newest` IS the repeated mark. `COMPOSITION-GRAMMAR.md` scopes
+		// "mark the deviation, never the norm" to *"repeated marks in a list"*,
+		// and in every list this product has, the repeated mark is `newest`. The
+		// rule was applied to the wrong member.
+		//
+		// Worse, the mint lands on rows that are ALREADY green: a `Succeeded`
+		// status circle at hue ~150, and on DEV rows a green identity chip too.
+		// A third green at 31 degrees' separation on a 10px six-letter word is
+		// the failure this same file rejects `emerald-600` for, arriving at
+		// lower chroma.
+		//
+		// ── WHAT CHANGES, AND WHY IT IS NOT A COLOUR ────────────────────────
+		//
+		// `newest` is UNTOUCHED — the human asked for it *"marked with some
+		// color just not to be so prominent"* and quiet mint is that, once it is
+		// no longer the loudest of the two. Its value is one budget slot shared
+		// character for character with `CoverageBar`'s `live` segment and
+		// `ExposureBar`'s newest segment; moving it would move those.
+		//
+		// `rank` takes the LOUD neutral instead. There is no hue available and
+		// there must not be one: red means adverse (three roles hold it), amber
+		// means `stuck` and nothing else, green/blue/yellow are states, mint is
+		// "on the build in question". So the deviation is marked on the axis
+		// this file already settles states on — *"`STATUS_DOT_CLASS` now splits
+		// the settled states on LIGHTNESS instead of hue"* — using the gray the
+		// value half is already printing:
+		//
+		//   light  #6a7282 → #364153   L 0.551  → 0.373   4.84:1 → 10.3:1
+		//   dark   #99a1af → #e5e7eb   L 0.707  → 0.928   5.64:1 → 11.85:1
+		//
+		// Presence as `characters × ΔL from the ground`, which is what actually
+		// carries a 10px uppercase word when chroma is ~0 on one side:
+		//
+		//   light  newest 3.00  ·  N behind 3.14 → 4.39   (0.96x → 1.46x newest)
+		//   dark   newest 2.66  ·  N behind 3.00 → 4.54   (1.13x → 1.71x newest)
+		//
+		// ZERO NEW COLOUR VALUES: `gray-700` / `gray-200` is `.chip-value`'s own
+		// ink, one pixel to the right inside the same box. ZERO ink-ceiling cost:
+		// `area × chroma` scores a neutral at ~0, so `alarm`'s fill is still the
+		// loudest mark on any row it appears on, and `failing` / `diverged` /
+		// `blocked` still own the only red.
+		rank: NEUTRAL_LOUD,
 		// `failing` IS THE WORD THE RED DOT CANNOT SAY. It exists because
 		// `/apps` was stating an attention row's fact twice — a lede sentence
 		// `STAGING is failing` beside a joined box `[●][STAGING]` — and the two

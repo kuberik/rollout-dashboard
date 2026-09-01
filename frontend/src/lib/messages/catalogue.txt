@@ -66,8 +66,9 @@ lib/components/AppPromotionFlow.svelte	code	stroke: …; stroke-width: 2; …
 lib/components/BlockingStoryLines.svelte	code	reopens in … (…)
 lib/components/BlockingStoryLines.svelte	text	rule: …
 lib/components/BlockingStoryLines.svelte	title	The rule holding this: …
-lib/components/BlockingStoryLines.svelte	text	What clears this
 lib/components/BlockingStoryPanel.svelte	code	… · rule: …
+lib/components/BlockReason.svelte	code	… rules
+lib/components/BlockReason.svelte	code	1 rule
 lib/components/BlockReason.svelte	code	a newer …
 lib/components/BlockReason.svelte	code	Held on … on purpose
 lib/components/BlockReason.svelte	code	Held on … on purpose — automatic updates are off here
@@ -80,8 +81,6 @@ lib/components/BlockReason.svelte	code	No newer version is on this rule’s allo
 lib/components/BlockReason.svelte	text	rule: …
 lib/components/BlockReason.svelte	title	The rule blocking this: …
 lib/components/BlockReason.svelte	code	Waiting on a check or a time window
-lib/components/BlockReason.svelte	code	Which rule
-lib/components/BlockReason.svelte	code	Which rules
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	text	Connect GitHub
 lib/components/ChangeList.svelte	code	GitHub did not answer: …
@@ -257,7 +256,13 @@ lib/components/PipelineGlyph.svelte	title	Check window
 lib/components/PromotionNode.svelte	text	awaiting first deploy
 lib/components/PromotionPipeline.svelte	title	… can still take … newer version…
 lib/components/PromotionPipeline.svelte	title	… has never deployed
+lib/components/PromotionPipeline.svelte	title	… is on …, the newest version available to it
+lib/components/PromotionPipeline.svelte	title	… is on the newest version available to it
+lib/components/PromotionPipeline.svelte	text	… pods
+lib/components/PromotionPipeline.svelte	title	… ready pod… serving …
 lib/components/PromotionPipeline.svelte	title	… runs a version that is on no environment's release list
+lib/components/PromotionPipeline.svelte	text	built … ago
+lib/components/PromotionPipeline.svelte	text	newest build
 lib/components/PromotionPipeline.svelte	code	No environments bound
 lib/components/PromotionPipeline.svelte	title	Open the … rollout
 lib/components/PromotionPipeline.svelte	text	Production · … regions
@@ -640,7 +645,6 @@ routes/activity/+page.svelte	title	When deploys happened
 routes/activity/+page.svelte	text	Widen the window above, or clear the filters.
 routes/apps/[name]/+page.svelte	code	, blocked by …
 routes/apps/[name]/+page.svelte	code	… … waiting for ……
-routes/apps/[name]/+page.svelte	title	… build… behind the newest
 routes/apps/[name]/+page.svelte	text	… deploy …
 routes/apps/[name]/+page.svelte	code	… is pinned
 routes/apps/[name]/+page.svelte	code	… is stuck
@@ -685,9 +689,11 @@ routes/apps/[name]/+page.svelte	code	Promotion is not moving
 routes/apps/[name]/+page.svelte	title	Promotion pipeline
 routes/apps/[name]/+page.svelte	title	Recent activity
 routes/apps/[name]/+page.svelte	text	Release the hold
+routes/apps/[name]/+page.svelte	code	Released …
 routes/apps/[name]/+page.svelte	text	resources reference
 routes/apps/[name]/+page.svelte	code	Rollback from … to … due to issues with the current deployment.
 routes/apps/[name]/+page.svelte	title	Running a version that is on no environment's release list
+routes/apps/[name]/+page.svelte	text	Show … earlier deploys ›
 routes/apps/[name]/+page.svelte	code	The gates on this environment are blocking too, but the pin is the cause.
 routes/apps/[name]/+page.svelte	code	Unchanged for … and nothing is holding it on purpose.
 routes/apps/[name]/+page.svelte	code	Unchanged for ….

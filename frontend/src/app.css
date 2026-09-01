@@ -278,6 +278,72 @@ textarea {
 	animation: gradient-rotate 3s linear infinite;
 }
 
+/* ⭐ THE ALERT BANNER'S HALO — `animate-ping` SIZED TO THE ROOM IT ACTUALLY HAS.
+   Used by `AlertPanel` when `pulse` is set, and by nothing else.
+
+   ── THE DEFECT, MEASURED AT 390 ON THE ROLLOUT-DETAIL GATE BANNER ────────
+   From the human: *"the alert banner pulse effect sometimes goes out of border
+   because icon feels positioned too high. this is specially the case on
+   mobile."* Measured with `getBoundingClientRect` on the running page:
+
+     ring centre       28px below the panel's top edge, 40px in from its left
+     `animate-ping`    scale(1) -> scale(2) on a 40px element = PEAK RADIUS 40
+     overshoot         12px past the top edge, 0px at the left edge
+
+   The panel is `rounded-xl overflow-hidden`, so the halo was not floating
+   outside the card — it was being SLICED FLAT by the card's own top edge and
+   12px corner arc on every one-second cycle. A round pulse with a straight
+   chop across its top-left quadrant is why it reads as broken. At 1440 the
+   padding is `py-5`/`px-6`, so the overshoot is 8px at the top and none at the
+   left, which is why the human saw it *"specially on mobile"*.
+
+   ── WHY NOT JUST LET IT OUT ──────────────────────────────────────────────
+   Dropping the panel's `overflow-hidden` would let the halo bleed over the
+   card above it, which is the thing the human is complaining about, not the
+   fix for it. And hiding overflow harder is not available either: it is
+   ALREADY hidden. The only honest lever is the halo's size.
+
+   ── THE ARITHMETIC THAT SETS 1.35 ────────────────────────────────────────
+   Worst case is 390 with a single-line headline: the disc centres 12px into a
+   24px line box that starts 16px (`py-4`) below the panel edge, so there are
+   28px of room above the centre and 40px to its left. A 40px halo may
+   therefore reach a radius of 28 — scale 1.4 — and no further. 1.35 is that
+   bound with a pixel of margin: PEAK RADIUS 27, inside the panel in all four
+   combinations, and 39.6px clear of the nearest point on the 12px corner arc.
+
+   The visible halo is 7px of ring at peak rather than 40px of splash. On a
+   162px-tall banner the old one covered half the height; a 40px disc does not
+   need a notification-dot animation to be seen — it is already the only
+   filled circle in the banner.
+
+   ── AND IT STOPS FOR PEOPLE WHO ASKED IT TO ──────────────────────────────
+   The product had NO `prefers-reduced-motion` handling anywhere. This is the
+   one animation whose entire job is to pull the eye, so it is the one that
+   must honour the setting. The banner keeps its fill, its disc and its bold
+   headline — the attention is carried by design, not by the motion. */
+@keyframes alert-halo {
+	0% {
+		opacity: 0.9;
+		transform: scale(1);
+	}
+
+	100% {
+		opacity: 0;
+		transform: scale(1.35);
+	}
+}
+
+.animate-alert-halo {
+	animation: alert-halo 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.animate-alert-halo {
+		animation: none;
+		opacity: 0;
+	}
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    DEPLOY BOARD DESIGN SYSTEM — type scale, chip, panel radius.
    Defined once here so the values are enforceable and countable rather

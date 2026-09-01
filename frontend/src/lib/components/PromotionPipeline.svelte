@@ -21,6 +21,21 @@
 		/** `23m` — how long the running build has been here. */
 		age: string | null;
 		ageTitle: string | null;
+		/**
+		 * READY PODS IN THIS ENVIRONMENT, or `null` when they could not be
+		 * attributed to this app.
+		 *
+		 * ⭐ NOT DECORATION — `DESIGN-INTENT.md`: *"A version string alone never
+		 * proves something is serving. Gate on status + ready pods."* A station
+		 * printing an environment and a build says WHAT WAS SET; the pod count
+		 * is the only thing on the row that says it is actually RUNNING. It is
+		 * the reference page's own `2/2 pods` idiom on its `Resources` rows.
+		 *
+		 * `null` prints nothing at all. A kustomization that substitutes more
+		 * than one rollout cannot be attributed and must never borrow its
+		 * neighbour's pods — same fence the exposure bar keeps.
+		 */
+		pods?: number | null;
 		href?: string;
 		/**
 		 * A production region on the build the fleet agreed on: it keeps the
@@ -35,6 +50,35 @@
 		/** Builds waiting to cross this edge. Drives dashed vs solid. */
 		waiting: number;
 		label: string;
+	};
+
+	/**
+	 * THE FRONTIER — the newest build this app has, named ONCE, at the top of
+	 * the card.
+	 *
+	 * ⭐ THIS IS WHAT LICENSES EVERY RELATIVE BADGE BELOW IT. (2026-09-01)
+	 *
+	 * > *"on app page, we're only showing absolute versions, not relative."*
+	 *
+	 * `DESIGN-INTENT.md`: *"Relative version beats absolute. `−2 vs newest`,
+	 * `matches STG` are the signal; the sha is usually noise. Show relative
+	 * prominently, absolute only where identity is needed."* A page that says
+	 * `1 behind` with no visible statement of what it is behind has spent the
+	 * relative form and kept none of its meaning; a page that prints the sha at
+	 * every station has spent the absolute form and gained no signal. The
+	 * frontier is the one place on this card where the build IS the subject, so
+	 * it takes the absolute — at 24px, with the copy control an operator needs
+	 * for `kubectl` — and every station under it is then free to lead with its
+	 * DISTANCE from it.
+	 */
+	export type Frontier = {
+		/** Display sha of the newest build the app has. */
+		version: string;
+		/** The full tag, for the clipboard. Falls back to `version`. */
+		tag: string | null;
+		/** `1d` — how long ago the build was created. */
+		age: string | null;
+		ageTitle: string | null;
 	};
 </script>
 
@@ -111,8 +155,9 @@
 	 */
 	import Chip from './Chip.svelte';
 	import BakeStatusIcon from './BakeStatusIcon.svelte';
+	import CopyButton from './CopyButton.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
-	import { CodeBranchSolid } from 'flowbite-svelte-icons';
+	import { CodeBranchSolid, TagSolid, CubeSolid } from 'flowbite-svelte-icons';
 
 	let {
 		stages,
@@ -120,6 +165,7 @@
 		fleet = [],
 		fleetHop = null,
 		fleetVerdict = null,
+		frontier = null,
 		emptyLabel = 'No environments bound'
 	}: {
 		stages: Station[];
@@ -130,6 +176,13 @@
 		/** The edge from the last stage into the fleet. */
 		fleetHop?: Hop | null;
 		fleetVerdict?: { label: string; agree: boolean } | null;
+		/**
+		 * The newest build, stated once at 24px. `null` when the caller cannot
+		 * prove which build that is — see `Frontier`, and see the caller's own
+		 * guard: it withholds the frontier rather than print a headline that
+		 * some station's `newest` chip would contradict.
+		 */
+		frontier?: Frontier | null;
 		emptyLabel?: string;
 	} = $props();
 </script>
@@ -149,9 +202,50 @@
 			title="{s.title} runs a version that is on no environment's release list"
 		/>
 	{:else if s.rank === 0}
-		<!-- ON HEAD: THE BUILD ALONE, NO RANK WORD. One half means "on head";
-		     two halves carry a verdict. The product's rule since 2026-08-23. -->
-		<Chip value={s.version} valueTitle="{s.title} runs the newest known build" />
+		<!-- ⛔ THE BARE SHA IS GONE. (2026-09-01)
+		     > *"on app page, we're only showing absolute versions, not relative."*
+
+		     It read: *"ON HEAD: THE BUILD ALONE, NO RANK WORD. One half means
+		     'on head'; two halves carry a verdict."* That rule is coherent and it
+		     is the reason the human's sentence is true: on a HEALTHY app every
+		     station is rank 0, so the encoding collapsed and the card printed
+		     `064b655` three times and nothing relative anywhere. A convention
+		     whose entire signal is the ABSENCE of a word cannot lead a page;
+		     it can only be decoded by someone who already knows the rule.
+
+		     THE FIX IS NOT NEW, IT IS THE PRODUCT'S EXISTING MAJORITY SPELLING.
+		     `/environments` and `/envs/[name]` both render this exact fact as
+		     `role="head" label="newest"` joined to the sha. Two pages said the
+		     word and two chain components withheld it; this makes it four. Zero
+		     new roles, zero new colour values, and the sha is still printed in
+		     full for the operator who is going to paste it into `kubectl`. -->
+		{#if frontier && s.version === frontier.version}
+			<!-- ⭐ AND WHEN THE FRONTIER IS PRINTED 40px ABOVE, THE STATION DROPS
+			     THE SHA. Restoring the word without dropping the string gave the
+			     healthy card FOUR copies of `064b655` in one 300px column — the
+			     same defect the human named, one level down. `DESIGN-INTENT.md`
+			     is explicit: *"Show relative prominently, absolute only where
+			     IDENTITY IS NEEDED."* On a station that runs the build the card
+			     has already named, the sha identifies nothing the reader does not
+			     already have; the DEVIATIONS below still print theirs, which is
+			     what makes them scannable. Nothing is lost: the frontier line
+			     carries the full string and the copy control, the station links
+			     to a rollout page that prints it at 24px, and the tooltip names
+			     it. -->
+			<Chip
+				role="head"
+				label="newest"
+				title="{s.title} is on {s.version}, the newest version available to it"
+			/>
+		{:else}
+			<Chip
+				role="head"
+				label="newest"
+				value={s.version}
+				title="{s.title} is on the newest version available to it"
+				valueTitle="{s.title} runs {s.version}"
+			/>
+		{/if}
 	{:else if s.rank > 0}
 		<Chip
 			role={s.quiet ? 'count' : 'rank'}
@@ -179,6 +273,43 @@
 	{#if stages.length === 0 && fleet.length === 0}
 		<p class="t-micro text-gray-500 dark:text-gray-400">{emptyLabel}</p>
 	{:else}
+		{#if frontier}
+			<!-- ── THE FRONTIER ────────────────────────────────────────────
+			     The card's LEAD, and the only 24px type in its body. Three things
+			     the card did not have before and that `COMPOSITION-GRAMMAR.md`
+			     names as the difference between the reference page and the
+			     rejected ones: a real type range (24 → 10 inside one object),
+			     a mark that is not a repeated status dot, and a control that
+			     looks pressable.
+
+			     IT IS ALSO THE PAGE'S ANSWER TO "ABSOLUTE EVERYWHERE, RELATIVE
+			     NOWHERE". The sha belongs HERE, once, because here it is the
+			     subject — this is the build every `N behind` below is counted
+			     against, and it is the string that goes into `kubectl`. Every
+			     station below leads with its DISTANCE from it. -->
+			<div class="pp-front">
+				<span class="pp-front-disc" aria-hidden="true">
+					<TagSolid class="h-4 w-4" />
+				</span>
+				<span class="pp-front-id">
+					<span class="t-display-id text-gray-900 dark:text-white">{frontier.version}</span>
+					<span class="t-label text-gray-500 dark:text-gray-400">newest build</span>
+				</span>
+				<span class="pp-front-meta">
+					{#if frontier.age}
+						<span
+							class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
+							title={frontier.ageTitle ?? undefined}>built {frontier.age} ago</span
+						>
+					{/if}
+					<CopyButton
+						value={frontier.tag ?? frontier.version}
+						label="version {frontier.version}"
+						size="xs"
+					/>
+				</span>
+			</div>
+		{/if}
 		<ol class="pp-line">
 			{#each stages as s, i (s.key)}
 				<li class="pp-station">
@@ -200,11 +331,34 @@
 						{@render identity(s)}
 						{@render buildBadge(s)}
 					</span>
-					{#if s.age}
-						<span
-							class="pp-meta t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
-							title={s.ageTitle ?? undefined}>{s.age} ago</span
-						>
+					<!-- THE ROW'S ROLLUP, HARD RIGHT: is it serving, and since when.
+					     `COMPOSITION-GRAMMAR.md` §1 makes the right-aligned answer
+					     the most transferable thing on the reference page, and the
+					     reference applies it to ROWS too — every `Resources` row
+					     ends in `2/2 pods`. Until now this slot held a timestamp
+					     alone, which is the half of the answer that cannot be acted
+					     on. -->
+					{#if (s.pods !== null && s.pods !== undefined) || s.age}
+						<span class="pp-meta">
+							{#if s.pods !== null && s.pods !== undefined}
+								<span
+									class="pp-pods t-code-sm text-gray-500 dark:text-gray-400"
+									title="{s.pods} ready pod{s.pods === 1 ? '' : 's'} serving {s.title}"
+								>
+									<!-- THE UNIT IS PRINTED. An unlabelled `5` beside `1d ago`
+									     is a puzzle; `5 pods` is the reference page's own
+									     `2/2 pods`, four characters, and it is the difference
+									     between a number and a fact. -->
+									<CubeSolid class="h-3 w-3 shrink-0" aria-hidden="true" />{s.pods} pods
+								</span>
+							{/if}
+							{#if s.age}
+								<span
+									class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
+									title={s.ageTitle ?? undefined}>{s.age} ago</span
+								>
+							{/if}
+						</span>
 					{/if}
 				</li>
 
@@ -296,6 +450,74 @@
 		flex-direction: column;
 	}
 
+	/* ── THE FRONTIER ────────────────────────────────────────────────────
+	   Same 32px + 12px measure as a station, so the 24px build id sits on the
+	   stations' own text axis and the object reads as the head of the column
+	   rather than as a banner dropped on top of it. It is separated by the
+	   card's own 1px rule, not by a fill: `COMPOSITION-GRAMMAR.md` §2,
+	   *"separation comes from the border and the ground, not from a shadow"* —
+	   and a tinted headline would be a status field at header scale, which is
+	   the measurement that deleted this page's last two coloured grounds. */
+	.pp-front {
+		display: grid;
+		grid-template-columns: 32px minmax(0, 1fr);
+		grid-template-areas:
+			'disc id'
+			'.    meta';
+		align-items: center;
+		column-gap: 12px;
+		row-gap: 8px;
+		padding-bottom: 16px;
+		margin-bottom: 12px;
+		border-bottom: 1px solid var(--color-gray-200);
+	}
+	:global(.dark) .pp-front {
+		border-bottom-color: var(--color-gray-700);
+	}
+	/* NEUTRAL, AND DELIBERATELY NOT A STATUS CIRCLE. The six status hues belong
+	   to the stations; the frontier is an IDENTITY, not a state, and a green
+	   disc here would read as "the newest build is healthy", which is a claim
+	   about no environment in particular. */
+	.pp-front-disc {
+		grid-area: disc;
+		display: inline-flex;
+		height: 32px;
+		width: 32px;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: center;
+		border-radius: 9999px;
+		background: var(--color-gray-100);
+		color: var(--color-gray-500);
+	}
+	:global(.dark) .pp-front-disc {
+		background: var(--color-gray-700);
+		color: var(--color-gray-300);
+	}
+	.pp-front-id {
+		grid-area: id;
+		display: flex;
+		min-width: 0;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 4px 10px;
+	}
+	.pp-front-meta {
+		grid-area: meta;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	@container (min-width: 460px) {
+		.pp-front {
+			grid-template-columns: 32px minmax(0, 1fr) auto;
+			grid-template-areas: 'disc id meta';
+		}
+		.pp-front-meta {
+			justify-self: end;
+		}
+	}
+
 	/* ── A STATION ───────────────────────────────────────────────────────
 	   Phone form: the circle, the environment and its build on one line; the
 	   age under them, indented to the identity's own x. Desktop form: one
@@ -344,6 +566,18 @@
 	.pp-meta {
 		grid-area: meta;
 		align-self: center;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	/* The glyph and its number are ONE token — 4px, not the row's 12px, so the
+	   cube reads as the unit on the count rather than as a third item in the
+	   right-hand group. */
+	.pp-pods {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		white-space: nowrap;
 	}
 
 	@container (min-width: 460px) {

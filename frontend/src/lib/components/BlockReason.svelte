@@ -322,9 +322,24 @@
 	 * ELSE. `AlertPanel`'s `footnoteLabel` note is the rule: it is a LABEL,
 	 * never a claim, because a fact nobody expands is a fact nobody reads.
 	 * `awaiting` / `notPassing` join with `, `; `contractBlockReason` joins the
-	 * gate and the controller's own `reason` with ` · `, which is one rule.
+	 * gate and the controller's own `reason` with ` · `, which is one rule —
+	 * so the count is the `, ` count, never the ` · ` count.
+	 *
+	 * ⛔ IT WAS `Which rule` / `Which rules` AND THAT IS AN INTERROGATIVE.
+	 * (2026-09-01) From the human, on the sibling label: *"i'm not sure i
+	 * particularly like that format 'what clears this'."* The whole product's
+	 * disclosure labels were five different question shapes for one control;
+	 * they are nouns now. This one is the case that has a COUNT, so it takes
+	 * the count form `AlertPanel`'s narrowed note permits — the
+	 * `Show 8 ready resources ›` shape `COMPOSITION-GRAMMAR.md` §8 names and
+	 * this product already spends on the `Resources` card. On the dependencies
+	 * tab it sat one viewport away from a `Details`, which was two grammars
+	 * for one affordance in one screen.
 	 */
-	const rulesLabel = $derived(reason?.names?.includes(', ') ? 'Which rules' : 'Which rule');
+	const rulesLabel = $derived.by(() => {
+		const n = reason?.names ? reason.names.split(', ').length : 0;
+		return n === 1 ? '1 rule' : `${n} rules`;
+	});
 </script>
 
 <!-- ⛔ THE RENDERING IS THE BLOCK'S, NOT THE CALLER'S. (2026-08-30)

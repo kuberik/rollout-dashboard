@@ -147,13 +147,21 @@
 		type PromotionBlock
 	} from '$lib/view-models/promotion';
 	import { regionLabel } from '$lib/view-models/regions';
-	import { rankVerdicts, rankBehindBy, type RankVerdict } from '$lib/view-models/env-rank';
+	import {
+		rankVerdicts,
+		rankBehindBy,
+		rankTitle,
+		type RankVerdict
+	} from '$lib/view-models/env-rank';
 	import { getStatusCircleClass, BAKE_WORD } from '$lib/bake-status';
 	import Chip from '$lib/components/Chip.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
-	import PromotionPipeline, { type Station } from '$lib/components/PromotionPipeline.svelte';
+	import PromotionPipeline, {
+		type Station,
+		type Frontier
+	} from '$lib/components/PromotionPipeline.svelte';
 	import ExposureBar, { hasExposure } from '$lib/components/ExposureBar.svelte';
 	import BlockingStoryLines from '$lib/components/BlockingStoryLines.svelte';
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
@@ -1207,9 +1215,53 @@
 			// title.
 			age: f.timestamp ? formatTimeAgoCompact(f.timestamp, $now) : null,
 			ageTitle: f.timestamp ? `Deployed ${formatDate(f.timestamp)}` : null,
+			// ⭐ IS IT ACTUALLY SERVING. The number the page already fetches for
+			// the exposure bar, spent a second time where it answers a different
+			// question: the bar splits the FLEET by build, this says how much of
+			// it is behind THIS station. `null` where it could not be
+			// attributed — see `attributableKustomizations`.
+			pods: f.pods,
 			href: rolloutHref(f.cell)
 		};
 	}
+
+	/**
+	 * ⭐ THE NEWEST BUILD, NAMED ONCE — the fix for *"we're only showing
+	 * absolute versions, not relative"*. (2026-09-01)
+	 *
+	 * The pipeline printed a bare sha at every station, and on a healthy app
+	 * every station is on head, so the card was seven-eighths absolute and had
+	 * nothing to be relative ABOUT. Stating the frontier once, at 24px, does
+	 * both halves at the same time: the sha lands where it is the SUBJECT (and
+	 * where the copy control belongs, because that is the string an operator
+	 * pastes into `kubectl`), and every station below is then free to lead with
+	 * `newest` / `N behind` — its distance from a number the reader can see.
+	 *
+	 * ⛔ THE GUARD, AND WHY IT IS NOT PARANOIA. `ladder.builds[0]` is the head
+	 * of the app-wide UNION, while a station's `newest` is the head of that
+	 * ROLLOUT'S OWN release list (`env-rank.ts`, 2026-08-31). Measured across
+	 * the 15 live rollouts those agree, because the union only ever adds
+	 * OLDER builds — but "measured today" is not "true by construction". If
+	 * they ever disagree this would print `newest build 2.67.0-67` above a
+	 * station chip reading `newest 2.66.0-66`: one card, two builds, both
+	 * called newest. DESIGN.md forbids rendering an unresolvable comparison as
+	 * a definite claim, so the headline is WITHHELD rather than reconciled, and
+	 * the card degrades to exactly what it rendered before this change.
+	 */
+	const frontier = $derived.by<Frontier | null>(() => {
+		const b = ladder.builds[0];
+		if (!b?.version) return null;
+		for (const f of envFacts) {
+			if (f.rank === 0 && f.version && f.version !== b.version) return null;
+		}
+		const iso = b.createdMs ? new Date(b.createdMs).toISOString() : null;
+		return {
+			version: b.version,
+			tag: b.tag,
+			age: iso ? formatTimeAgoCompact(iso, $now) : null,
+			ageTitle: iso ? `Released ${formatDate(iso)}` : null
+		};
+	});
 
 	const stageFacts = $derived(envFacts.filter((f) => !(isFanOut && f.prod)));
 	const fleetFacts = $derived(isFanOut ? envFacts.filter((f) => f.prod) : []);
@@ -1455,6 +1507,32 @@
 	 */
 	/** Below this a 24h chart is a rendering glitch shaped like data. */
 	const SPARK_MIN = 3;
+
+	/**
+	 * ⭐ PROGRESSIVE DISCLOSURE ON THE TAIL. (2026-09-01)
+	 *
+	 * > *"it looks too much like spreadsheet."*
+	 *
+	 * `Recent activity` printed ten rows of `<env> <old> → <new> <time>`, all
+	 * the same shape, all the same weight, on a page whose other card is three
+	 * rows of the same shape. `COMPOSITION-GRAMMAR.md` §8 is the reference
+	 * page's own habit — *"the card states its rollup, lists what matters, and
+	 * hides the tail behind one control"*, which is what
+	 * `Show 8 ready resources ›` is. Six rows still covers the last two days on
+	 * every live app; the rest is one click away and nothing is lost.
+	 */
+	const ACTIVITY_SHOWN = 6;
+	let activityExpanded = $state(false);
+	const activityLimit = $derived(activityExpanded ? 40 : ACTIVITY_SHOWN);
+	/** Deploys this page can show at all — the card's rollup, and the gate on
+	 *  whether the disclosure control has anything to disclose. */
+	const deployEvents = $derived.by<number>(() => {
+		let n = 0;
+		for (const c of cells) {
+			for (const h of c.rollout.status?.history ?? []) if (h.timestamp) n++;
+		}
+		return n;
+	});
 	const deploys24h = $derived.by<number>(() => {
 		const end = $now.getTime();
 		const start = end - 24 * 60 * 60 * 1000;
@@ -2086,11 +2164,34 @@
 												     only adverse state is stuck"*, so a distance
 												     may not wear the failure hue. Red is left to
 												     the `!`, which means something broke. -->
+													<!-- ⛔ IT WAS `−{'{'}N{'}'}`, AND THAT SPELLING IS DEAD.
+												     (2026-09-01) `env-rank.ts`: *"a signed integer
+												     beside a build id reads as a diff and names no
+												     unit"* — every other surface in the product
+												     already says `N behind`, and this was the last
+												     `−N` left. The minus also claimed a DIRECTION
+												     the number does not have: it is a count of
+												     upgrades this environment can still take, not a
+												     negative quantity.
+
+												     THE UNIT IS A SECOND LINE, NOT A LONGER STRING.
+												     A 24px numeral over a 10px `t-label` names the
+												     unit, keeps the mark a MARK, and buys a real
+												     24 → 10 range inside a row that was otherwise
+												     flat. The glyph column's floor moves 29 → 46px
+												     to fit `behind`, uniformly, so the chip column
+												     still starts at the same x on every task —
+												     which is the whole reason that floor exists. -->
 													<span
-														class="tk-glyph t-display-id text-gray-500 dark:text-gray-400"
-														title="{f.rank} build{f.rank === 1 ? '' : 's'} behind the newest"
-														>−{f.rank}</span
+														class="tk-glyph tk-glyph--stat text-gray-500 dark:text-gray-400"
+														title={rankTitle(
+															rankByCell.get(f.cell) ?? { kind: 'unknown' },
+															f.title
+														)}
 													>
+														<span class="tk-glyph-num t-display-id">{f.rank}</span>
+														<span class="tk-glyph-unit t-label">behind</span>
+													</span>
 												{:else}
 													<span class="tk-glyph t-display-id text-gray-500 dark:text-gray-400"
 														>·</span
@@ -2626,6 +2727,7 @@
 							fleet={fleetNodes}
 							{fleetHop}
 							{fleetVerdict}
+							{frontier}
 						/>
 					</Card>
 				</div>
@@ -2714,6 +2816,14 @@
 				<div class="ab-hist min-w-0">
 					<Card icon={ClockSolid} title="Recent activity">
 						{#snippet rollup()}
+							<!-- THE CARD'S ANSWER, HARD RIGHT — `COMPOSITION-GRAMMAR.md` §1.
+							     This card was the only region on the page with a header and
+							     NO rollup, i.e. half the pattern: a reader could not take
+							     its answer without reading a row of it. The answer a
+							     history card owes is HOW MUCH history there is. -->
+							<span class="t-code-sm text-gray-500 dark:text-gray-400"
+								>{deployEvents} deploy{deployEvents === 1 ? '' : 's'}</span
+							>
 							<a
 								href="/activity"
 								class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
@@ -2724,11 +2834,23 @@
 						<ActivityRail
 							rollouts={cells.map((c) => c.rollout)}
 							{environments}
-							limit={10}
+							limit={activityLimit}
 							{localClusterName}
 							showAppName={false}
 							chrome={false}
 						/>
+						<!-- ONE CONTROL FOR THE TAIL, and it disappears once the tail is
+						     open — a button that says `show 0 more` is an object drawing
+						     the norm. Same shape and same voice as the reference page's
+						     `Show 8 ready resources ›`. -->
+						{#if !activityExpanded && deployEvents > ACTIVITY_SHOWN}
+							<button
+								type="button"
+								class="t-micro mt-3 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+								onclick={() => (activityExpanded = true)}
+								>Show {Math.min(deployEvents, 40) - ACTIVITY_SHOWN} earlier deploys ›</button
+							>
+						{/if}
 					</Card>
 				</div>
 			</div>
@@ -2889,7 +3011,21 @@
 		   starts at the same x on every task in the panel, instead of stepping
 		   in and out as the gap slot changes character count down the list. A
 		   three-digit rank still grows the track for its own task. */
-		grid-template-columns: minmax(29px, auto) minmax(0, 1fr);
+		/* ⚠️ 29 → 52px (2026-09-01), AND THE GLYPH RIGHT-ALIGNS IN IT.
+		   `−N` became a numeral over its unit, and `behind` at `t-label`
+		   measures **51.61px** in-browser (10px/600, 0.16em tracking — measured
+		   with `getBoundingClientRect`, not estimated). The floor moves for
+		   EVERY task, not just the ranked ones, because a per-task floor is
+		   what keeps the chip column at one x down the panel — the exact
+		   stepping the note below warns about.
+
+		   RIGHT-ALIGNED, because a 52px track left-aligning a 14.22px `!` put
+		   50px between the mark and the row it marks. Aligning the glyphs to
+		   the track's RIGHT edge puts every mark — `!`, `·`, the stat — a
+		   constant 12px from the chips, which is the relationship that matters;
+		   the left edge of a one-character glyph is not a thing a reader
+		   tracks. */
+		grid-template-columns: minmax(52px, auto) minmax(0, 1fr);
 		grid-template-areas:
 			'glyph chips'
 			'. reason';
@@ -2910,9 +3046,33 @@
 		   and every unlayered rule beats every layered one. */
 		line-height: 20px;
 		white-space: nowrap;
+		justify-self: end;
+		text-align: right;
 	}
 	.tk--circle .tk-glyph {
 		line-height: 32px;
+	}
+	/* THE STAT FORM — a numeral over its unit. The 20px line box above still
+	   governs the NUMERAL, so the digit centres on the chip band exactly as
+	   `−N` did; the unit hangs below it and is the only thing that grew. */
+	.tk-glyph--stat {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+	}
+	/* The 20px line box has to be RESTATED here. It used to be inherited
+	   because `tk-glyph` and `t-display-id` were the same element and a scoped
+	   rule beats an unlayered class; split across two elements the child's own
+	   `.t-display-id { line-height: 1.15 }` wins again and the digit stops
+	   centring on the chip band. */
+	.tk-glyph-num {
+		display: block;
+		line-height: 20px;
+	}
+	.tk-glyph-unit {
+		display: block;
+		margin-top: 2px;
+		line-height: 1.2;
 	}
 	.tk-chips {
 		grid-area: chips;
@@ -2936,7 +3096,7 @@
 	   gives for free in a row whose height is the taller of the two. */
 	@container (min-width: 620px) {
 		.tk-id {
-			grid-template-columns: minmax(29px, auto) auto minmax(0, 1fr);
+			grid-template-columns: minmax(52px, auto) auto minmax(0, 1fr);
 			grid-template-areas: 'glyph chips reason';
 		}
 		.tk-reason {

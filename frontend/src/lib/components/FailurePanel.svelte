@@ -200,7 +200,6 @@
 	severity="error"
 	title="Deployment Failed"
 	footnote="Automated deployments are paused until this is resolved."
-	footnoteLabel="What this stops"
 	pulse
 >
 	{#snippet extra()}

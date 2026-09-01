@@ -1475,7 +1475,6 @@
 						title="Automatic deploys are paused"
 						message={deploymentBlockedCondition.message || 'Health checks are unhealthy.'}
 						footnote="A deploy you start by hand still applies immediately."
-						footnoteLabel="Can I still deploy"
 						pulse
 					/>
 				{/if}
@@ -1611,7 +1610,6 @@
 						footnote={author
 							? `${rollbackNext(rolledBack, autoDeploy)} Rolled back by ${author}.`
 							: rollbackNext(rolledBack, autoDeploy)}
-						footnoteLabel="What happens next"
 					/>
 				{:else if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 					{@const trig = latestEntry?.triggeredBy}
@@ -1625,7 +1623,6 @@
 						title="Version pinned"
 						message="Held on {pinnedTo} — no newer build will deploy here while the pin is set."
 						footnote="{pinnedBy} · Automatic deployments resume as soon as the pin is cleared."
-						footnoteLabel="What clears this"
 					/>
 				{/if}
 

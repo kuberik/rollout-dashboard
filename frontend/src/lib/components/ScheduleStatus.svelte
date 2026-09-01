@@ -398,7 +398,6 @@
 					? `Nothing promotes itself until ${formatTimeUntil(nextChange)} (${formatTime(nextChange)}). A deploy you start by hand still applies immediately.`
 					: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
 			footnote={story?.blocked ? story.resolution : undefined}
-			footnoteLabel="What clears this"
 			icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
 			pulse
 		>

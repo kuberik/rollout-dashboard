@@ -115,7 +115,6 @@
 		title={story.headline}
 		message={story.consequence}
 		{footnote}
-		footnoteLabel="What clears this"
 		{icon}
 		{actions}
 		class={className}
