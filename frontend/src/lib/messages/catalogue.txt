@@ -799,6 +799,7 @@ routes/environments/+page.svelte	code	It has been running longer than a deploy o
 routes/environments/+page.svelte	text	kuberik | Environments
 routes/environments/+page.svelte	text	last deploy … ago
 routes/environments/+page.svelte	code	never deployed
+routes/environments/+page.svelte	text	newer version … waiting
 routes/environments/+page.svelte	code	newer versions are on hold until a check or time window passes
 routes/environments/+page.svelte	text	No app has ever deployed here.
 routes/environments/+page.svelte	text	no deploys yet
@@ -816,7 +817,6 @@ routes/environments/+page.svelte	code	something here has failed or has stopped m
 routes/environments/+page.svelte	code	The last deploy did not complete, and nothing newer can go out until one does.
 routes/environments/+page.svelte	code	the version running here is worse than the one before it
 routes/environments/+page.svelte	title	This app has never deployed here
-routes/environments/+page.svelte	text	version …
 routes/envs/[name]/+page.svelte	title	… — the newest version this app has
 routes/envs/[name]/+page.svelte	title	… — this page
 routes/envs/[name]/+page.svelte	code	… deploys have failed here

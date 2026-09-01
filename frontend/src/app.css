@@ -887,6 +887,116 @@ textarea {
 	}
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   THE TAP ZONE — a card header or a list row where the WHOLE region goes
+   to one destination, without a second tab stop and without nesting.
+   ═══════════════════════════════════════════════════════════════════════
+
+   THE DEFECT IT FIXES, in the human's words: *"it's also not clickable in
+   places where you'd expect it to be. i think some other views have this
+   problem too."* On `/environments` only the footer's `Open ›` navigated —
+   the card header, the environment's own name and every app row LOOKED
+   pressable and were not. A region that reads as a destination and is not
+   one is a broken affordance, and it is worse than no affordance because
+   the reader has already committed the click.
+
+   ⛔ THE OBVIOUS FIX IS INVALID. Wrapping the region in an `<a>` nests the
+   links it already contains (the app's rollout link, the chip's version
+   link, the disclosure `<button>`). Nested interactive content is invalid
+   HTML, browsers resolve it inconsistently, and it doubles the tab stops on
+   every row. The product has an accessibility pass with tests
+   (`lib/a11y.svelte.ts`); this may not undo it.
+
+   ── HOW IT WORKS ────────────────────────────────────────────────────────
+
+   The region is `position: relative`. The ONE anchor that owns its primary
+   destination gets `.tap-link`, and its `::after` — a pseudo-element, not an
+   element — expands to cover the region. So:
+
+   · ONE tab stop per destination. The overlay is not focusable; it is part
+     of the anchor that was already there. Nothing is added to the tab order
+     and nothing is removed from it.
+   · No nesting. The DOM is unchanged; only the anchor's paint box grows.
+   · Every other control in the region stays reachable, by mouse and by
+     keyboard, because it is raised one layer above the overlay.
+
+   ── THE TRADE, STATED SO NOBODY REDISCOVERS IT ─────────────────────────
+
+   Text inside a tap zone is no longer selectable, EXCEPT inside the raised
+   controls. That is why the version sha lives in `.chip-value`, which is a
+   link and therefore raised: the one string on these rows an operator
+   actually copies is still selectable. Do not put a tap zone around a
+   region whose prose is meant to be copied.
+
+   ── HOW TO APPLY IT ────────────────────────────────────────────────────
+
+     <li class="tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/30">
+       <a href={...} class="tap-link ...">{name}</a>
+       <Chip ... />            ← raised automatically, still clickable
+     </li>
+
+   The hover fill is written at the CALL SITE, not here: `DESIGN.md` allows
+   *"plain `hover:bg-*` colour transitions only"* on list/grid cards and each
+   surface already owns its own value. This file owns the geometry.
+   ─────────────────────────────────────────────────────────────────────── */
+@layer components {
+	.tap-zone {
+		position: relative;
+	}
+
+	.tap-zone .tap-link::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		/* A stacking context at level 0, so the raised controls below sit
+		   above it regardless of DOM order. */
+		z-index: 0;
+	}
+
+	/* EVERYTHING ELSE THAT TAKES A CLICK, RAISED ABOVE THE OVERLAY. `:not()`
+	   keeps the tap link itself unpositioned — giving it a `z-index` would
+	   make it a stacking context and drag its own `::after` up with it, at
+	   which point the overlay covers its siblings again. */
+	.tap-zone :is(a, button, input, select, summary, [role='button']):not(.tap-link) {
+		position: relative;
+		z-index: 1;
+	}
+
+	/* ⭐ THE FOCUS RING IS DRAWN ON THE OVERLAY, NOT ON THE LINK, AND THAT IS
+	   NOT cosmetic. The tap link is usually inside a `truncate` box — a card
+	   `<h2>`, a row's name cell — and `truncate` is `overflow: hidden`, which
+	   clips a ring or an outline on the link itself to the text's own box on
+	   all four sides. A keyboard user would get a ring sliced off at the top
+	   and bottom, or none at all.
+
+	   The `::after` is absolutely positioned against the ZONE, so it is not in
+	   the clipping chain of the non-positioned box between them, and an
+	   outline on it draws around the whole region — which is also the honest
+	   picture of what pressing Enter will activate.
+
+	   `currentColor` spends no new colour: it is the link's own ink, which is
+	   `gray-900` in light and white in dark on every call site. */
+	.tap-zone .tap-link:focus-visible {
+		outline: none;
+	}
+
+	.tap-zone .tap-link:focus-visible::after {
+		outline: 2px solid currentColor;
+		outline-offset: -2px;
+		border-radius: 4px;
+	}
+
+	/* A NESTED ZONE WINS INSIDE ITS OWN BOUNDS. A card header tap zone and a
+	   row tap zone can both be on screen; the row is inside the card body,
+	   never inside the header, so they never overlap. This rule exists for
+	   the case where one is added inside the other by accident — the inner
+	   zone's own overlay is raised, so the region still resolves to the
+	   nearer, more specific destination rather than silently to the outer. */
+	.tap-zone .tap-zone {
+		z-index: 1;
+	}
+}
+
 /* ── Row affordances: revealed on row hover, at >=lg ONLY.
 
    This rule set is deliberately scoped to >=lg and does NOT have a

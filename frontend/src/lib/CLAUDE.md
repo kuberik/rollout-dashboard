@@ -21,6 +21,12 @@
 
 - **Colored borders are allowed.** (Updated 2026-07-19 — reverses the earlier blanket ban.) Colored borders on cards/sections/elements are fine.
 - **Side/left accent bars only on square-cornered elements.** A colored left/side accent stripe (`border-l-4`, etc.) is OK **only when the element has no border-radius**. Never put a side accent bar on a rounded (`rounded-*`) element — a colored bar clashing with a rounded corner is the look to avoid. Dots, icons, and background tints remain good status signals but are no longer mandatory substitutes.
+- **A region that reads as a destination must BE one.** (2026-09-01, from the human: *"it's also not clickable in places where you'd expect it to be. i think some other views have this problem too."*) A card header carrying an object's name, or a list row with a hover fill, is an affordance; if only a few characters of it navigate, it is a broken one.
+  - The pattern is `.tap-zone` / `.tap-link` in `app.css`. The region gets `.tap-zone`, the ONE anchor that owns its primary destination gets `.tap-link`, and that anchor's `::after` covers the region. Every other control inside is raised above the overlay automatically and stays clickable.
+  - **Never wrap the region in an `<a>`.** It nests interactive elements inside the row's existing links and buttons, which is invalid and doubles the tab stops.
+  - `Card` takes `titleHref` for the header case.
+  - The trade: text inside a tap zone is not selectable except inside the raised controls. Do not put one around prose meant to be copied.
+- **Still unfixed at the time of writing** (`.tap-zone` applies to all of them in two classes): `/versions` list rows, `/activity` event rows, `/apps` app rows, rollout detail `/history` rows, `/namespaces/<name>` rollout rows. `/`, `/rollouts`, `/apps/<name>`'s commit spine and `/dependencies` are already whole-block anchors and are fine.
 - When you discover a design constraint from user feedback, add it here immediately without waiting to be asked.
 
 ## Rollout list visual treatment

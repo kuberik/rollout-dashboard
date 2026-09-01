@@ -1002,8 +1002,18 @@
 								     auto-flow, because that is how the build badge
 								     previously fell into the glyph gutter and clipped its
 								     own rank word to `NE…`. -->
+								<!-- ⭐ THE WHOLE ROW IS THE DOOR. From the human, about
+								     `/environments` and *"some other views"*: *"it's also
+								     not clickable in places where you'd expect it to be."*
+								     This row already had a hover fill — it LOOKED live —
+								     and only the app's name navigated. `.tap-zone` (see
+								     `app.css`) stretches that same anchor's `::after` over
+								     the row: ONE tab stop, no nested `<a>`, and the chain's
+								     environment links, the build badge's version link and
+								     the row's action button all stay independently
+								     clickable because the zone raises them. -->
 								<li
-									class="grid grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 lg:items-center {ROW_GRID} hover:bg-gray-50 dark:hover:bg-gray-700/30"
+									class="tap-zone grid grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors lg:items-center {ROW_GRID} hover:bg-gray-50 dark:hover:bg-gray-700/30"
 								>
 									<span
 										class="col-start-1 row-start-1 {STATUS_CIRCLE} {getStatusCircleClass(
@@ -1018,7 +1028,7 @@
 										<div class="flex min-w-0 flex-wrap items-center gap-2">
 											<a
 												href={rolloutHref(row.slot.cell)}
-												class="min-w-0 truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
+												class="tap-link min-w-0 truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
 												>{row.appName}</a
 											>
 											{#if row.slot.cell.rollout.spec?.wantedVersion}

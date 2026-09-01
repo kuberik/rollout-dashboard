@@ -77,9 +77,28 @@
 	 */
 	type VerdictTone = 'neutral' | 'good' | 'adverse' | 'active';
 
+	/**
+	 * ⭐ THE HEADER IS A DESTINATION WHEN THE CARD HAS ONE — `titleHref`.
+	 *
+	 * From the human, on `/environments`: *"it's also not clickable in places
+	 * where you'd expect it to be. i think some other views have this problem
+	 * too."* A 47px bar carrying an object's own name, above a body about that
+	 * object, reads as a door. It was not one; the only door was a button in
+	 * the footer.
+	 *
+	 * ⛔ NOT A CARD-WIDE `<a>`. The body holds links and buttons of its own,
+	 * so wrapping the card nests interactive elements — invalid, and it
+	 * doubles the tab stops on every row. The header is a `.tap-zone` and the
+	 * title is the `.tap-link` inside it; see the block in `app.css` for the
+	 * whole argument. One tab stop, no nesting, and the rollup chips beside it
+	 * stay independently clickable because the zone raises them.
+	 *
+	 * DEFAULT `undefined` — every existing call site renders exactly as before.
+	 */
 	let {
 		icon,
 		title,
+		titleHref = undefined,
 		verdict = null,
 		verdictTone = 'neutral',
 		verdictTitle,
@@ -100,6 +119,8 @@
 		 */
 		icon?: Component;
 		title: string;
+		/** Makes the whole header bar go here. See the note above. */
+		titleHref?: string;
 		/** The rolled-up answer, right-aligned. `3/3 healthy`, `2 builds`. */
 		verdict?: string | null;
 		verdictTone?: VerdictTone;
@@ -126,16 +147,39 @@
 	const Icon = $derived(icon);
 </script>
 
+<!--
+	⚠️ `flex flex-col` IS A NO-OP EVERYWHERE EXCEPT A STRETCHED GRID CELL, and
+	that is why it is safe to put on the shared card. A `<section>` whose height
+	is `auto` lays a header and a body out identically as a block or as a flex
+	column — neither child has a margin, so there is no collapsing to lose. What
+	it buys is the ONE case that needed it: `/environments` puts these cards in a
+	real CSS grid with `items-stretch`, and a card that fills its row needs its
+	BODY to take the slack so the footer lands on the row's shared baseline
+	instead of the content floating with a gap under it. `grow` on the body is
+	the other half; with `flex-basis: auto` it never shrinks natural content.
+-->
 <section
-	class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
+	class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
 >
 	<header
-		class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+		class="flex min-h-[47px] shrink-0 items-center gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700 {titleHref
+			? 'tap-zone transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30'
+			: ''}"
 	>
 		{#if Icon}
 			<Icon class="h-4 w-4 shrink-0 {iconClass}" />
 		{/if}
-		<h2 class="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-white">{title}</h2>
+		<h2 class="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-white">
+			{#if titleHref}
+				<a
+					href={titleHref}
+					class="tap-link hover:underline"
+					>{title}</a
+				>
+			{:else}
+				{title}
+			{/if}
+		</h2>
 		<!-- HARD-ALIGNED RIGHT. `ml-auto` rather than `justify-between` so a
 		     long title truncates instead of shoving the rollup off the bar. -->
 		{#if rollup}
@@ -147,7 +191,7 @@
 			>
 		{/if}
 	</header>
-	<div class={padded ? `p-4 ${bodyClass}` : bodyClass}>
+	<div class="grow {padded ? `p-4 ${bodyClass}` : bodyClass}">
 		{@render children()}
 	</div>
 </section>

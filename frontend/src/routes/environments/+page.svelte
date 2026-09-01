@@ -150,8 +150,7 @@
 		ChevronDownOutline,
 		CodeBranchOutline,
 		GlobeSolid,
-		ClockOutline,
-		ArrowUpOutline
+		ClockOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
@@ -832,8 +831,16 @@
      the same three values and the switch was a no-op reading as a live rule.
      Deleted rather than left as a dead lever. If `rank` ever goes back to
      red, the group-scope switch is the fix and this is where to find it. -->
-{#snippet appRow(a: EnvApp, tier: string)}
-	<li class="flex items-center gap-2.5 px-4 py-2.5">
+{#snippet appRow(a: EnvApp, tier: string, withStory = false)}
+	<!-- ⭐ THE WHOLE ROW IS THE DOOR. From the human: *"it's also not clickable
+	     in places where you'd expect it to be."* A status disc, a name and a
+	     build badge on one 41px band is a row, and a row that navigates only
+	     from six characters of its middle is a broken affordance. The `.tap-zone`
+	     pattern (see `app.css`) stretches the app-name anchor's `::after` over
+	     the band: ONE tab stop, no nested `<a>`, and the chip's own version link
+	     stays independently clickable because the zone raises it. -->
+	<li class="tap-zone px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30">
+	<div class="flex items-center gap-2.5">
 		<span
 			class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 				a.bakeStatus
@@ -849,7 +856,7 @@
 		<a
 			href={a.rolloutHref}
 			aria-label={`${a.appName} in ${tier} — ${APP_STATE_WORD[a.state]}`}
-			class="min-w-0 flex-1 truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
+			class="tap-link min-w-0 flex-1 truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
 			>{a.appName}</a
 		>
 		{#if a.state === 'stuck'}
@@ -924,6 +931,28 @@
 				wide
 			/>
 		{/if}
+	</div>
+	<!-- ⭐ THE REASON LIVES ON THE ROW IT EXPLAINS. (2026-09-01)
+
+	     It used to live in a block ABOVE the list, which meant a card with one
+	     app behind printed that app's name at 13px, then its gates, then the
+	     SAME NAME again 30px lower on its own row — one object, two subjects,
+	     and the reader has to notice they are the same. On the live cluster
+	     that was every card on the page.
+
+	     Attached here the row is the subject: disc, name, how far behind, and
+	     underneath it, indented past the disc, why nothing newer is coming.
+	     Same object and same words as `/apps`, `/apps/<name>` and rollout
+	     detail; `/envs/<name>`'s rows already carry their block reason exactly
+	     this way, so the two environment surfaces now agree.
+
+	     ⛔ ONLY WHEN THE CARD SPEAKS FOR ONE APP (`withStory`). With several
+	     behind, the card summarises — the aggregate figure above the list, and
+	     the deepest app's story once — because `BlockingStoryLines`' own note
+	     records the defect of one fact printed N times in one viewport. -->
+	{#if withStory && a.story.blocked}
+		<BlockingStoryLines story={a.story} class="ml-[34px]" />
+	{/if}
 	</li>
 {/snippet}
 
@@ -951,7 +980,10 @@
 				? 'text-amber-600 dark:text-amber-400'
 				: 'text-green-700 dark:text-green-400'}
 		title={c.tier}
+		titleHref={c.href}
 		padded={false}
+		class="h-full"
+		bodyClass="flex flex-col"
 	>
 		{#snippet rollup()}
 			<!-- ⛔ NOT `wide` — AND THAT IS NOT THE 12ch DEFECT COMING BACK.
@@ -1033,20 +1065,35 @@
 		     item is not a summary; it is the item, said twice, in a bigger
 		     font. It draws when it genuinely aggregates — two or more apps
 		     behind — and the reason line draws whenever there is a reason. -->
-		<!-- ⭐ A HELD LAG EARNS THE SUMMARY EVEN WHEN IT IS THE ONLY ONE.
-		     (finding 14) The rule above — *"a summary of one item is the item,
-		     said twice, in a bigger font"* — is right about a SETTLED row, and
-		     it is what left the DEV card with neither the number nor the reason
-		     while STAGING and PROD had both, on the very card this page's own
-		     banner points at. A blocked row is not the same case: the row can
-		     print `20 behind`, and it cannot print WHY nothing newer is coming.
-		     The number and the reason belong to one object, so they are drawn
-		     together, and the eyebrow says which of the two shapes it is. -->
-		{#if c.apps.length === 0 || c.behindCount > 1 || c.behindCount === 0 || (c.blockedApp?.behindBy ?? 0) > 0 || c.awaitingGates.length > 0 || c.notPassingGates.length > 0}
-		<div class="border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
+		<!-- ⛔ AND THE EXEMPTION THAT UNDID IT IS GONE TOO. (2026-09-01) A
+		     held lag used to earn the summary even when it was the only one,
+		     on the argument that the row can print `20 behind` and cannot
+		     print WHY. That premise was right and the remedy was wrong: it
+		     restored the whole block — eyebrow, 20px digit, name — to carry
+		     one gate clause, so the live cluster showed three cards each with
+		     a big `1` over the same sentence, and each of them named an app
+		     the row 30px below named again. The reason now rides on the row
+		     (`appRow`'s `withStory`), which is where its subject already is,
+		     and the rule above holds with no exemption. -->
+		<!-- ⭐ WHAT THE BODY BLOCK IS FOR, AFTER THE REASON MOVED TO THE ROW.
+		     (2026-09-01) Exactly the facts NO ROW CAN CARRY:
+
+		       · nothing has ever deployed here — there are no rows at all;
+		       · a COMPARISON across several behind apps, which is criterion 3
+		         and the reason this page exists rather than 22 env pages;
+		       · everything here is current — the good news, which by
+		         construction has no deviation row to hang on;
+		       · and, in that last case only, a gate holding a build nobody is
+		         behind on yet, whose app is SETTLED and therefore folded.
+
+		     A card whose single behind app is held no longer draws this block
+		     at all: `soloReason` puts the same story on that app's own row,
+		     where the subject is already printed. -->
+		{#if c.apps.length === 0 || c.behindCount > 1 || c.behindCount === 0}
+		<div class="shrink-0 border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
 			{#if c.apps.length === 0}
 				<p class="text-xs text-gray-500 dark:text-gray-400">No app has ever deployed here.</p>
-			{:else if c.deepest && (c.behindCount > 1 || (c.blockedApp?.behindBy ?? 0) > 0)}
+			{:else if c.deepest && c.behindCount > 1}
 				<!-- ⛔ `BEHIND NEWEST · 19 builds` DID NOT SAY BEHIND WHAT. The
 				     eyebrow names the comparison in full now — the number is a
 				     distance and a distance with no second end is not readable
@@ -1062,18 +1109,47 @@
 				     *"can still take N newer versions"* two elements away. The
 				     number counts versions this environment could take; the
 				     eyebrow says exactly that and nothing more. -->
-				<p
-					class="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-gray-400"
-				>
-					<ArrowUpOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-					{c.behindCount > 1 ? 'Most newer versions waiting' : 'Newer versions waiting'}
-				</p>
-				<p class="mt-1 flex items-baseline gap-2">
+				<!-- ⛔ THE EYEBROW IS GONE, AND SO IS THE CASE THAT PRINTED A
+				     BIG `1`. (2026-09-01) From the human: *"i think details of
+				     environment card here can be better visualized"* — looking at
+				     a card whose loudest element was a 20px bold `1` over the
+				     words `NEWER VERSIONS WAITING`, with the app that owned it in
+				     11.5px mono underneath and the gate holding it in 11px gray
+				     under that. Three cards on the page, three identical `1`s.
+
+				     Two defects, one cause: ATTENTION WAS ALLOCATED TO THE
+				     NUMBER AND THE NUMBER WAS THE LEAST INTERESTING THING ON THE
+				     CARD.
+
+				     1. **The figure now draws only when it AGGREGATES** —
+				        `behindCount > 1`, which is the rule this file already
+				        stated (*"a summary of one item is not a summary; it is
+				        the item, said twice, in a bigger font"*) and then
+				        exempted for held rows. The exemption was right that a
+				        blocked row cannot print WHY; it was wrong that the
+				        exemption needed the FIGURE. One app behind now falls to
+				        the `blockedApp` branch below, which prints the subject
+				        and the reason and no digit — so the loudest thing in a
+				        one-app card is the reason, which is the thing that needs
+				        a person.
+				     2. **The eyebrow is deleted.** A 10px uppercase caption over
+				        a bordered region is the shape `DESIGN.md` names on every
+				        rejected page and the reference page has nowhere. Its
+				        content moves INTO the figure's own line, where it reads
+				        as a sentence instead of as a label for one.
+
+				     ⛔ AND THE FIGURE'S UNIT STILL DOES NOT CLAIM A SECOND END.
+				     `rankBehindBy` counts the rollout's OWN `availableReleases`,
+				     so two environments on the identical sha legitimately hold
+				     different numbers. `newer versions waiting` is what the
+				     number counts; `behind the newest` would be false for one of
+				     any such pair. -->
+				<p class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
 					<span class="text-xl font-bold text-gray-900 tabular-nums dark:text-white"
 						>{c.deepest.by}</span
 					>
-					<span class="text-xs text-gray-500 dark:text-gray-400"
-						>version{c.deepest.by === 1 ? '' : 's'}</span
+					<span class="text-[13px] text-gray-500 dark:text-gray-400"
+						>newer version{c.deepest.by === 1 ? '' : 's'} waiting</span
 					>
 					<span class="min-w-0 truncate font-mono text-[11.5px] text-gray-500 dark:text-gray-400"
 						>{c.deepest.appName}</span
@@ -1086,11 +1162,23 @@
 				     take (`promotionBlock().blocked`) — a transient, checkable
 				     condition — never on an environment that is merely trailing.
 
+				     ⚠️ THIS IS THE AGGREGATE BRANCH ONLY, AND THAT IS THE WHOLE
+				     ANTI-REPETITION RULE. (2026-09-01) With SEVERAL apps behind
+				     the card summarises, so the deepest app's story is told once
+				     here rather than N times on N rows —
+				     `BlockingStoryLines`' own note records the defect of one
+				     fact printed five times in one viewport. With ONE app behind
+				     the card speaks for that app, and the story is on its row.
+
 				     IT CARRIES A WORD, NOT A BARE GLYPH. The human has twice
 				     deleted an unexplained graphic from these pages (*"i also
-				     don't understand what these gray bars mean"*); a mark that
-				     needs a legend has no place here, so the mark IS its own
-				     legend. -->
+				     don't understand what these gray bars mean"* — that is the
+				     rejection that killed `EnvHealthStrip`, and it is why this
+				     pass added NO new graphic: every mark that could answer
+				     *"is this environment healthy"* — the tick strip, the
+				     per-environment status dot, a segmented composition bar —
+				     is already on `DESIGN.md`'s do-not-rebuild list. What was
+				     wrong here was the HIERARCHY, not the absence of a chart). -->
 				<!-- ⛔ THIS LINE USED TO BE A UNION, AND THAT IS AN ATTRIBUTION
 				     BUG, NOT A ROUNDING ERROR. (finding 7)
 				
@@ -1123,56 +1211,64 @@
 				{#if c.blockedApp}
 					<!-- Up to date AND held: the gate is holding a build nobody here
 					     is behind on yet. Named, because it is about to matter. -->
-					<p class="t-micro mt-1.5 min-w-0 truncate text-gray-500 dark:text-gray-400">
+					<p
+						class="mt-1.5 min-w-0 truncate font-mono text-[13px] font-medium text-gray-900 dark:text-white"
+					>
 						{c.blockedApp.appName}
 					</p>
 					<BlockingStoryLines story={c.blockedApp.story} />
 				{/if}
-			{:else if c.blockedApp}
-				<!-- Exactly one app behind and it is held: its own row says how
-				     far, so the only thing left worth printing is WHY nothing
-				     newer has come — every gate, and for each, what clears it. -->
-				<p class="t-micro min-w-0 truncate text-gray-500 dark:text-gray-400">
-					{c.blockedApp.appName}
-				</p>
-				<BlockingStoryLines story={c.blockedApp.story} />
 			{/if}
 		</div>
 		{/if}
 
-		<!-- ── THE DEVIATIONS, then the fold ───────────────────────────── -->
-		{#if c.deviations.length > 0}
-			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-				{#each c.deviations as a (a.key)}
-					{@render appRow(a, c.tier)}
-				{/each}
-			</ul>
-		{/if}
+		<!-- ── THE DEVIATIONS, then the fold ─────────────────────────────
 
-		{#if c.settled.length > 0 && c.settled.length < SETTLED_FOLD_MIN}
-			<ul
-				class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/60 dark:border-gray-700/60"
-			>
-				{#each c.settled as a (a.key)}
-					{@render appRow(a, c.tier)}
-				{/each}
-			</ul>
-		{:else if c.settled.length > 0}
-			{#if isOpen}
-				<ul class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/60 dark:border-gray-700/60">
+		     ⭐ `grow` ON THE ROWS, NOT `mt-auto` ON THE FOOTER. In the
+		     equal-height grid the slack has to go SOMEWHERE, and the first
+		     build of this put it between the fold line and the footer — two
+		     horizontal rules with a band of nothing between them, which reads
+		     as a rendering fault rather than as a card with less to say. Given
+		     to the row list instead, the fold line and the footer sit on the
+		     row's shared baselines and the slack falls where a list would grow
+		     anyway.
+
+		     `soloReason`: when the card speaks for exactly one app, that app's
+		     row carries its own blocking story. See `appRow`. -->
+		{@const soloReason = c.deviations.length === 1}
+		{@const folded = c.settled.length > 0 && (c.deviations.length > 0 || c.settled.length >= SETTLED_FOLD_MIN)}
+		<div class="grow">
+			{#if c.deviations.length > 0}
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each c.deviations as a (a.key)}
+						{@render appRow(a, c.tier, soloReason)}
+					{/each}
+				</ul>
+			{/if}
+			{#if c.settled.length > 0 && (!folded || isOpen)}
+				<ul
+					class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/60 dark:border-gray-700/60"
+				>
 					{#each c.settled as a (a.key)}
 						{@render appRow(a, c.tier)}
 					{/each}
 				</ul>
 			{/if}
-			<!-- PROGRESSIVE DISCLOSURE — `Show 8 ready resources ›` is the
-			     reference page's own control and this is the same object. The
-			     card states its rollup, lists what matters, and hides the tail
-			     behind ONE control. It does not print all N rows and it does
-			     not omit them. -->
+		</div>
+
+		<!-- PROGRESSIVE DISCLOSURE — `Show 8 ready resources ›` is the
+		     reference page's own control and this is the same object. The
+		     card states its rollup, lists what matters, and hides the tail
+		     behind ONE control. It does not print all N rows and it does
+		     not omit them.
+
+		     ⛔ IT SITS OUTSIDE THE `grow` BOX, WITH THE FOOTER. Both are the
+		     card's chrome, so in the equal-height grid they land on the row's
+		     shared baselines and only the LIST varies in length. -->
+		{#if folded}
 			<button
 				type="button"
-				class="flex w-full items-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-left text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700/60 dark:text-gray-400 dark:hover:bg-gray-700/30 dark:hover:text-white"
+				class="flex w-full shrink-0 items-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-left text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700/60 dark:text-gray-400 dark:hover:bg-gray-700/30 dark:hover:text-white"
 				onclick={() => toggle(c.tier)}
 				aria-expanded={isOpen}
 			>
@@ -1189,8 +1285,12 @@
 		<!-- ── THE FOOTER. Buttons look pressable: 14px, 8px 16px, radius 8.
 		     `.btn` is the product's own button, the one the reference page
 		     presses. -->
+		<!-- IT NEEDS NO `mt-auto`. The `grow` box around the row list already
+		     takes the equal-height grid's slack, so this lands on the row's
+		     shared bottom baseline and `last deploy … / Open ›` lines up across
+		     every card in the row. -->
 		<div
-			class="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 dark:border-gray-700/60"
+			class="flex shrink-0 items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 dark:border-gray-700/60"
 		>
 			<span
 				class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
@@ -1256,7 +1356,10 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
-		<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+		<!-- THE SKELETON IS THE SAME GRID. It was a separate `md:/xl:` grid, so
+		     the placeholders sat in different columns from the cards that
+		     replaced them and the page jumped on load. -->
+		<div class="env-stack">
 			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
@@ -1332,54 +1435,21 @@
 							>· a version starts on the left and ends on the right</span
 						>
 					</h2>
-					<!-- `items-start` — a grid stretches its items to the tallest in the row
-					     by default, and a card whose body is one green line beside a card
-					     with eight rows becomes 200px of hollow white with a footer pinned
-					     to the bottom. Sized to content, each card ends where its content
-					     does.
+					<!-- ⭐ A REAL GRID, READ LEFT TO RIGHT. The masonry that was
+					     here read TOP-TO-BOTTOM THEN ACROSS, which drew a
+					     promotion LINE down a column under a heading that says
+					     *"a version starts on the left and ends on the right"*.
+					     A grid's reading order is the one that sentence names.
+					     Column count, equal height and the 360px floor are all
+					     argued in the style block at the foot of this file.
 
-					     THREE COLUMNS, NOT FOUR, EVEN WITH FOUR STAGES. Four columns fits a
-					     four-stage pipeline on one line and reads beautifully — until a
-					     card holds a `stuck` alarm beside a joined `−19 d09e6f4`, at which
-					     point ~263px of content truncates `checkout-edge` to `checko…`.
-					     Measured at 1440 on the 22-environment fixture: at three columns
-					     the same card is ~390px and every name renders whole. The cut
-					     would land on the APP NAME, which is the only string on the row a
-					     reader navigates by, and a row of empty grid beside a short card
-					     costs nothing that a reader needs. -->
-					<!-- ⛔ THE STAGE BRACKET IS A MASONRY COLUMN FLOW, NOT A GRID.
-					     (2026-08-30)
-
-					     A CSS grid equalises ROW HEIGHT. With four stages in
-					     three columns, `dev`, `test` and `staging` take row 1 and
-					     `prod` starts row 2 — and row 1 is as tall as `staging`,
-					     which on the 22-environment fixture carries six app rows.
-					     Measured at 1440: ~350px of blank white under `dev` and
-					     `test`, the largest empty area anywhere in the product,
-					     directly under the page's own banner. `items-start`
-					     (already here, and kept) stops the CARDS stretching; it
-					     cannot stop the ROW being tall.
-
-					     `columns` packs by column instead, so a short card is
-					     followed immediately by the next one and the hole cannot
-					     form. READING ORDER SURVIVES because it is still
-					     top-to-bottom then left-to-right within each column, and
-					     because the section is `· a version starts on the left
-					     and ends on the right` — a LINE read left to right, which
-					     is exactly the axis `columns` preserves. `break-inside`
-					     keeps a card whole.
-
-					     THE SET BRACKET BELOW TAKES THE SAME FLOW, and the first
-					     version of this change did not — the note here claimed
-					     worst-first ranking put the tall cards top-left where a
-					     grid would waste nothing. Measured on the 22-environment
-					     fixture that was simply false: four holes of 90–150px
-					     under `prod-ap-south`, `prod-us-east`, `prod-sa-east` and
-					     `prod-eu-west`. A reader scanning eighteen cards for a red
-					     header is hurt by every one of them, and a SET read down
-					     the first column instead of across the first row is still
-					     worst-first. -->
-					<div class="env-stack items-start gap-4">
+					     ⚠️ DO NOT WRITE THE LITERAL STYLE TAG IN A MARKUP COMMENT.
+					     `messages/scan.ts` strips style blocks with a non-greedy
+					     regex BEFORE it strips comments, so a mention of the opening
+					     tag here pairs with the real closing tag at the foot of the
+					     file and deletes every text node between them. The census
+					     silently lost `Production regions` and its gloss that way. -->
+					<div class="env-stack">
 						{#each stageCards as c (c.tier)}
 							<div class="env-stack-item">{@render envCard(c)}</div>
 						{/each}
@@ -1403,11 +1473,11 @@
 							>· {regionCards.length}, the ones furthest behind first</span
 						>
 					</h2>
-					<!-- `items-start` — a grid stretches its items to the tallest in the row by
-					     default, and a card whose body is one green line beside a card with
-					     eight rows becomes 200px of hollow white with a footer pinned to the
-					     bottom. Sized to content, each card ends where its content does. -->
-					<div class="env-stack items-start gap-4">
+					<!-- THE SAME GRID. What differs between the brackets is the
+					     ORDER RULE, never the layout — a SET ranks itself
+					     worst-first, so criterion 3's answer is the first CELL,
+					     which in a row-major grid is the top-left card. -->
+					<div class="env-stack">
 						{#each regionCards as c (c.tier)}
 							<div class="env-stack-item">{@render envCard(c)}</div>
 						{/each}
@@ -1419,30 +1489,95 @@
 </div>
 
 <style>
-	/* MASONRY BY COLUMN FLOW. One column below `md`, two to `xl`, three above
-	   — the same three steps the region grid uses, so the two brackets line up
-	   on one another's column edges. `column-gap` doubles as the horizontal
-	   gutter; `margin-bottom` is the vertical one, because `gap` does not
-	   apply to a multicol container's items. */
+	/* ═══════════════════════════════════════════════════════════════════
+	   A REAL GRID OF EQUAL-HEIGHT CARDS. (2026-09-01)
+	   ═══════════════════════════════════════════════════════════════════
+
+	   ⛔ THIS WAS A MULTICOL MASONRY AND MULTICOL CANNOT BE MADE TO WORK
+	   HERE. From the human, on the live dark page: *"environments list is
+	   not on a grid properly in this view."*
+
+	   The cause is `column-fill: balance`, which is multicol's DEFAULT and
+	   the only value that works without a fixed height. Balancing does not
+	   fill columns in order; it distributes items to EQUALISE COLUMN
+	   HEIGHT. With three environments in two columns and one card taller
+	   than the others, the balancer put `dev` and `staging` in column 1 and
+	   `prod` alone in column 2 — the exact layout the human screenshotted,
+	   with a full card's worth of empty page under `prod`. At three columns
+	   the same algorithm can leave the THIRD column empty, so the page
+	   silently renders as two columns of a three-column grid.
+
+	   None of that is fixable from CSS. `column-fill: auto` needs a height
+	   the content does not have, and the assignment of items to columns is
+	   a heuristic with no author control.
+
+	   ⛔ AND IT WAS WRONG FOR THE STAGE BRACKET ON MEANING, NOT ONLY ON
+	   LOOKS. That section's own subtitle is *"a version starts on the left
+	   and ends on the right"*. Multicol reads TOP-TO-BOTTOM THEN ACROSS, so
+	   a promotion LINE was being drawn down a column. A grid reads
+	   left-to-right, which is the axis the sentence names.
+
+	   ── WHY EQUAL HEIGHT, AND NOT `items-start` ────────────────────────
+
+	   `items-start` sizes each card to its content and is what was here
+	   before (inside the multicol, where it did nothing). It leaves the
+	   BOTTOMS ragged, which is the same complaint one notch quieter — the
+	   human's first-named option was *"equal-height cards on a row"* and
+	   the fault they reported is a VOID, so the answer is the layout with
+	   no voids between cards.
+
+	   Stretch is only safe because the card knows what to do with the
+	   slack: `Card` is a flex column and its body has `grow`, and the
+	   footer here takes `mt-auto`. So a row's cards share one top edge, one
+	   bottom edge, and one footer baseline — `last deploy … / Open ›`
+	   lines up across the row, which is the thing that reads as designed.
+
+	   ── AND THE HEIGHT SPREAD IS BOUNDED, WHICH IS WHAT MAKES IT HOLD ──
+
+	   Equal height is only good when the tallest card is not much taller
+	   than the shortest. Two rules in the markup keep that true at any
+	   count: a card with deviations folds ALL of its settled apps behind
+	   one control, and the aggregate figure draws only when it genuinely
+	   aggregates. A card is therefore header + reason + its deviations +
+	   one fold line + footer, and cards on one row differ by their
+	   deviation count rather than by their app count.
+
+	   ── AT 1, 2, 3, 4 AND 22 ───────────────────────────────────────────
+
+	   `auto-fit` rather than a fixed `repeat(3, …)`: with ONE environment
+	   the card takes the whole row instead of sitting in a third of it
+	   beside two ghost tracks, and with two it takes half. It also cannot
+	   overflow into a FOURTH column, because the page wrapper is
+	   `max-w-7xl` — 1280px, ~1232px of content — and at a 360px floor with
+	   a 16px gutter that is exactly three tracks at the widest the page can
+	   ever be. Three at 1440, two around 1100, one below ~760.
+
+	   THE 360px FLOOR IS THE MEASUREMENT, NOT A ROUND NUMBER. The note the
+	   old markup carried: at ~263px a card holding a `stuck` alarm beside a
+	   joined `[19 behind][d09e6f4]` truncates `checkout-edge` to `checko…`,
+	   and at ~390px every name renders whole. The cut lands on the APP
+	   NAME, the one string on the row a reader navigates by. 360 is the
+	   floor; the tracks that result are 400px at full width.
+
+	   AND IT IS DERIVED FROM THE SPACE, NOT THE VIEWPORT. The old
+	   `md:`/`xl:` steps were viewport media queries on a page that sits
+	   beside a collapsible sidebar, so collapsing the sidebar changed the
+	   card width without changing the column count. `auto-fit` measures the
+	   track. */
 	.env-stack {
-		column-count: 1;
-		column-gap: 16px;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+		gap: 16px;
 	}
 
+	/* The card fills its stretched cell. `min-width: 0` so a long
+	   environment name truncates inside the track instead of widening it. */
 	.env-stack-item {
-		break-inside: avoid;
-		margin-bottom: 16px;
+		display: flex;
+		min-width: 0;
 	}
 
-	@media (min-width: 768px) {
-		.env-stack {
-			column-count: 2;
-		}
-	}
-
-	@media (min-width: 1280px) {
-		.env-stack {
-			column-count: 3;
-		}
+	.env-stack-item > :global(*) {
+		width: 100%;
 	}
 </style>
