@@ -14,10 +14,12 @@
 	import {
 		revisionCoverage,
 		coverageSegments,
-		buildState,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
+	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
+	// words — `unreleased` — and it takes it from here rather than spelling it.
+	import { rankLabel } from '$lib/view-models/env-rank';
 	import { now } from '$lib/stores/time';
 	import {
 		ArchiveSolid,
@@ -141,6 +143,30 @@
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
 
 	const ledgers = $derived(buildRevisionLedger(rollouts, environments));
+
+	/**
+	 * ⭐ THE PAGE'S ROLLUP, PROMOTED OUT OF A CAPTION AND INTO THE LEAD SLOT.
+	 *
+	 * It was only ever readable as two rows of a `<dl>` in the rail
+	 * (`Commits your services can deploy` / `Deployed at least once`), 900px
+	 * down the page. It is the scope statement `REVISION-PAGES.md` names as
+	 * one of the four things to KEEP, and now that the duplicated `Revisions`
+	 * heading is gone it is what the top of the page says. Summed across
+	 * repos, because the heading it replaces was page-wide too.
+	 *
+	 * `null` while there is nothing to state — a `0 of 0` above a skeleton is
+	 * a reading of the cluster that has not happened yet.
+	 */
+	const scope = $derived.by(() => {
+		if (ledgers.length === 0) return null;
+		let deployed = 0;
+		let known = 0;
+		for (const repo of ledgers) {
+			deployed += repo.rows.length;
+			known += repo.knownRevisions;
+		}
+		return known > 0 ? { deployed, known } : null;
+	});
 
 	/**
 	 * A COARSE CLOCK, DELIBERATELY — not `$now`, which ticks every 100ms.
@@ -358,12 +384,34 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<h1 class="t-display min-w-0 truncate text-gray-900 dark:text-white">Revisions</h1>
+	<!--
+		⛔ THE VISIBLE TITLE SAID WHAT THE NAVBAR ALREADY SAYS. (2026-09-01)
+		From the human: *"i think i don't like that we have a title on the page
+		when it's already in the navbar."* `Navbar.svelte`'s section breadcrumb
+		prints `Revisions` on every `/versions*` URL, and this `h1` printed the
+		same word ~40px below it. Two objects, one fact, no second reading.
+
+		THE HEADING IS NOT DELETED, IT IS UNVOICED. The skip link lands on
+		`main` and the outline has to start at level 1, so the `h1` stays and
+		goes `sr-only`. What takes its place is the ROLLUP the page was hiding
+		in a caption — `14 of 36 revisions deployed` — which is the one fact a
+		reader cannot get from the navigation. The 24px slot in the type range
+		is not lost either: `RevisionLead` renders the build id at 24px
+		directly below, so the page now leads with the OBJECT rather than with
+		the name of the section it is in.
+	-->
+	<h1 class="sr-only">Revisions</h1>
+	{#if scope}
+		<p class="t-headline min-w-0 text-gray-900 dark:text-white">
+			{scope.deployed} of {scope.known} revisions deployed
+		</p>
+	{/if}
 	<!--
 		THE SUBTITLE IS THE PAGE'S ONLY DEFINITION, AND IT DEFINES THE NOUN IN
-		THE HEADING. A reader who has never opened kuberik does not know what a
-		"revision" is; they do know what a commit is and what deploying is. One
-		sentence binds the three, and every string below can then be plain.
+		THE ROLLUP ABOVE IT. A reader who has never opened kuberik does not know
+		what a "revision" is; they do know what a commit is and what deploying
+		is. One sentence binds the three, and every string below can then be
+		plain.
 	-->
 	<p class="t-body mt-1 text-gray-500 dark:text-gray-400">
 		One commit, one build. Here is every build your services can deploy, and how far each one has
@@ -515,11 +563,37 @@
 				     surface is a claim that the whole fleet is on head, and this card
 				     draws the newest build whether or not that is true. The state
 				     colour lives on `BuildStateMark` inside, where it is computed. -->
+				<!--
+					⛔ THE HEADER ROLLUP SAID `fully rolled out` AND SO DID THE PANEL
+					110px BELOW IT. (2026-09-01, measured: `fully rolled out` printed
+					THREE times in the first viewport at 1440, twice about the same
+					build.) `buildState()` is one function, so the two objects could
+					never disagree — they could only ever repeat, and a rollup that
+					repeats the body is the furniture the good pages do not draw.
+					The state stays where it is COMPUTED and where the bar explains
+					it: on `BuildStateMark` inside the lead, with its glyph.
+
+					⭐ WHAT THE ROLLUP SAYS INSTEAD IS THE THING THAT MAKES THE STATE
+					HONEST. A live critique filed: *"/versions said `fully rolled out`
+					while a build from that commit was held in three places."* The row
+					is keyed on the COMMIT, and one commit ships as one release PER
+					SERVICE — this repo's own harness publishes the `api` and the
+					`frontend` half of a build from a single commit, each with its own
+					tag, its own release list and its OWN GATES. So `fully rolled out`
+					is never a sentence about a commit; it is a sentence about the N
+					releases the commit became, and it is only readable once N is on
+					screen. The rollup is that N, in the same count-shaped form as
+					every sibling card on the page (`1 build`, `12 builds`,
+					`5 services`), and the lead's note names the consequence in words.
+				-->
 				<Card
 					icon={RocketSolid}
 					title="Newest build in use"
-					verdict={buildState(leadCov).word}
-					verdictTitle={buildState(leadCov).title}
+					verdict="{lead.services.length} service{lead.services.length === 1 ? '' : 's'}"
+					verdictTitle="Everything below is counted across the {lead.services
+						.length} service{lead.services.length === 1
+						? ''
+						: 's'} that have a release for this commit. Each ships it as its own release, with its own gates."
 					class="mt-5"
 				>
 					<RevisionLead
@@ -528,6 +602,9 @@
 						eyebrow="Newest build"
 						coverage={leadCov}
 						unitNote
+						scopeNote={lead.services.length > 1
+							? `${lead.services.length} services ship this commit as ${lead.services.length} separate releases; each has its own gates.`
+							: ''}
 					>
 						{#if rowNamesBuild(lead)}
 							{#snippet meta()}
@@ -591,7 +668,7 @@
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each live as row (row.revision)}
 									{@const cov = coverageByRevision.get(row.revision)}
-									<li class="rev-row hover:bg-gray-50 dark:hover:bg-gray-700/40">
+									<li class="rev-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
 										<!--
 											⭐ ONE GLYPH, ONE SENTENCE, ONE OBJECT — and the row's left
 											edge stops being ragged.
@@ -617,7 +694,7 @@
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
 												<a
-													class="rev-sha t-code text-gray-900 hover:underline dark:text-white"
+													class="rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
 													href={revisionPath(repo.repoKey, row.revision)}
 													title={row.revision}>{row.short}</a
 												>
@@ -703,14 +780,14 @@
 						>
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each expandPast[repo.repoKey] ? past : past.slice(0, FOLD) as row (row.revision)}
-									<li class="rev-row rev-row--quiet hover:bg-gray-50 dark:hover:bg-gray-700/40">
+									<li class="rev-row rev-row--quiet tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
 										<!-- NO GLYPH HERE, AND THAT IS THE RULE WORKING. Every row in
 										     this card has the same answer — the card header says it
 										     once — so a per-row mark would be identical twelve times
 										     over, which is the furniture the good pages never draw. -->
 										<div class="rev-quiet-body">
 											<a
-												class="rev-sha t-code shrink-0 text-gray-700 hover:underline dark:text-gray-200"
+												class="rev-sha tap-link t-code shrink-0 text-gray-700 hover:underline dark:text-gray-200"
 												href={revisionPath(repo.repoKey, row.revision)}
 												title={row.revision}>{row.short}</a
 											>
@@ -759,11 +836,16 @@
 						>
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each expandPending[repo.repoKey] ? repo.pending : repo.pending.slice(0, FOLD) as row (row.revision)}
+									<!-- ⭐ THE SAME TAP ZONE AS EVERY OTHER ROW ON THE PAGE.
+									     These rows had a hover fill, a chevron and 300px of dead
+									     space: the row read as a door and only the seven
+									     characters of the sha opened it. `src/lib/CLAUDE.md`:
+									     *"A region that reads as a destination must BE one."* -->
 									<li
-										class="flex items-baseline gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40"
+										class="tap-zone flex items-baseline gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40"
 									>
 										<a
-											class="t-code min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
+											class="tap-link t-code min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
 											href={revisionPath(repo.repoKey, row.revision)}
 											title={row.revision}>{row.short}</a
 										>
@@ -889,14 +971,23 @@
 						<span class="rev-svc">
 							<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200">{svc.appName}</span>
 							{#if svc.diverged}
-								<!-- A build on no environment's release line. Its rank is not a
-								     distance — promoting N times never arrives at it — so it is
-								     marked here, on the service it is true of. -->
+								<!--
+									⛔ THE WORD COMES FROM `rankLabel`, NOT FROM THIS FILE.
+									(2026-09-01) It said `diverged` — git's word for two branches —
+									while `/apps`, `/environments` and `/envs/*` all said
+									`unreleased`, which is the fact: the build is on no
+									environment's release list. One fact, one spelling, and it is
+									now READ from the product's one formatter so this call site
+									cannot drift a sixth time. Same `diverged` Chip ROLE, same
+									colour value; only the string moves.
+									The title says `release list` for the same reason — `release
+									line` was this page's own third noun for the same object.
+								-->
 								<Chip
 									role="diverged"
-									label="diverged"
+									label={rankLabel({ kind: 'diverged' })}
 									class="shrink-0"
-									title="{svc.appName} lists this build on no environment’s release line"
+									title="{svc.appName} lists this build on no environment’s release list"
 								/>
 							{/if}
 							{#if i < g.services.length - 1}<span
@@ -1019,14 +1110,15 @@
 		min-width: 0;
 	}
 
-	/* THE STRETCHED LINK — one anchor with real text (the sha) whose ::after
-	   covers the row, so the whole row is a click target without wrapping
-	   interactive content in an anchor. */
-	.rev-sha::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-	}
+	/* ⛔ THE LOCAL `.rev-sha::after` STRETCH IS GONE — `app.css`'s
+	   `.tap-zone` / `.tap-link` OWNS IT NOW. (2026-09-01) The geometry was
+	   identical and the three things around it were not: the shared pattern
+	   raises every other control in the row above the overlay, draws the
+	   FOCUS RING on the `::after` so a keyboard user sees the whole region
+	   that Enter will activate, and resolves a nested zone to the nearer
+	   destination. A page-local copy of a shared affordance is how the two
+	   drift. The rule that stays here is `position: relative` on `.rev-row`,
+	   because `.rev-go` is positioned against it as well. */
 
 	/* THE GLYPH INKS MOVED TO `BuildStateMark.svelte`, WITH THE GLYPH. They were
 	   declared here and handed to `Card` as `iconClass`, where a Svelte-scoped

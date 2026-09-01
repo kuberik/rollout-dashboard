@@ -206,7 +206,9 @@
 	// half. ZERO chroma, so it cannot threaten `alarm` on the ink ceiling —
 	// `area × chroma` scores a gray at nothing, whatever its lightness.
 	const NEUTRAL_LOUD = 'border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200';
-	// MINT, KEPT UNDER `−N` — `newest` only. See `TONE.newest`.
+	// MINT, KEPT UNDER `−N` — the word `newest`, WHEREVER IT IS SPELLED.
+	// `newest` and `head` both resolve here and that is deliberate; see the note
+	// on `TONE.head` for the measurement that collapsed them.
 	const MINT_QUIET = 'border-gray-200 text-[#426d64] dark:border-gray-700 dark:text-[#83b0a8]';
 	// ADVERSE — the deviation half of the rank vocabulary. ONE hue for both
 	// members (`−N` and `diverged`); the WORD says which kind. Text-only, so
@@ -495,15 +497,79 @@
 		// evidence — the exact failure "never name a cause you cannot evidence"
 		// is written against. Same gray pair as `count`/`head`: no new value.
 		unranked: NEUTRAL,
-		// `head` NAMES the build in the value half; it is not a verdict about
-		// anything. It exists because `/apps` was using `newest` — a RANK word —
-		// as a label, so the same badge geometry carried a rank on `/`,
-		// `/rollouts` and `/versions` and a caption on `/apps`, and a row whose
-		// production was four builds behind and stuck printed the product's
-		// good-news word as its loudest right-hand token. Deliberately the same
-		// gray as `rank`/`count`: it spends NO new colour value, and a caption
-		// must not out-rank the deviations it is the anchor for.
-		head: NEUTRAL,
+		// ⛔ `head` IS `newest`. ONE FACT, ONE SPELLING. (2026-09-01)
+		//
+		// From the human: *"i don't like that we have"* — the same complaint that
+		// produced the four earlier ink collapses on this branch. This one is the
+		// clearest instance of it in the product: the word `newest`, in the same
+		// 20px box, joined to the same sha, reached from the same `rank === 0`
+		// branch, was printed in TWO DIFFERENT HUES depending on which file drew
+		// it. `/` and `/rollouts` went through `rankRole()` → `newest` (mint);
+		// `/environments`, `/envs/[name]`, `/apps/[name]` and `PromotionPipeline`
+		// hard-coded `role="head"` (gray). All five say `label="newest"`; there
+		// is no call site where `head` means anything else. It was never a second
+		// fact, only a second spelling.
+		//
+		// ── MEASURED, ON THE RUNNING PRODUCT ────────────────────────────────
+		// Canvas-resolved and composited against each chip's own opaque ground
+		// (never regexed out of the `oklch()` source — that produced a badly
+		// wrong number earlier on this branch), 1440, both themes:
+		//
+		//                     light hex   L       C       h       ΔL     ratio
+		//   newest (mint)     #426d64   0.5004  0.0503  179.4°  0.4996  5.83:1
+		//   newest (gray)     #6a7282   0.5510  0.0267  264.3°  0.4490  4.84:1
+		//   N behind (rank)   #364153   0.3731  0.0343  260.2°  0.6269  10.3:1
+		//
+		//                     dark hex    L       C       h       ΔL     ratio
+		//   newest (mint)     #83b0a8   0.7225  0.0495  182.7°  0.4442  6.11:1
+		//   newest (gray)     #99a1af   0.7071  0.0224  261.7°  0.4287  5.64:1
+		//   N behind (rank)   #e5e7eb   0.9276  0.0058  264.5°  0.6492  11.85:1
+		//
+		// THE GRAY SPELLING COLLIDES WITH THE THING IT IS SUPPOSED TO CONTRAST
+		// WITH. `newest`-as-gray sits **4.1° of hue** from `N behind` in light and
+		// **2.8°** in dark. They are the same hue; the only channel separating
+		// the two members of the rank vocabulary was lightness, two steps of gray
+		// on a 10px uppercase word. The mint spelling separates them by **80.8°**
+		// (light) / **81.8°** (dark) AND by lightness. On `/envs/prod` today a
+		// reader has to compare two grays to tell "on the newest build" from
+		// "one build behind"; on `/rollouts`, 250ms away, the same pair is
+		// unmistakable. That is the cost of the second spelling, in degrees.
+		//
+		// AND MINT NO LONGER OUT-SHOUTS THE DEVIATION, which is the only reason
+		// this role was ever gray. `rank` took `.chip-value`'s own loud gray one
+		// commit ago (`efcf8ad`), so on `characters × (ΔL + C)` — both halves
+		// text-only in one face, size and weight, so the glyph constant cancels;
+		// `NEWEST` is 6 characters against `1 BEHIND`'s 7:
+		//
+		//   light   newest 3.30  ·  N behind 4.63   deviation 1.40× dominant
+		//   dark    newest 2.96  ·  N behind 4.59   deviation 1.55× dominant
+		//
+		// Against the gray spelling the deviation led 1.62× / 1.70×, so unifying
+		// on mint spends 14% of that headroom and the deviation still leads on
+		// every channel. `alarm` is untouched and still the only chip with a FILL
+		// (218.6 / 162.3 presence units against mint's ~2.5).
+		//
+		// THE HUMAN'S OWN RULINGS, IN ORDER, ALL POINT HERE. *"NEWEST doesn't
+		// need attention and shouldn't be colored"* → *"changed my mind on newest
+		// chip, mark it with some color just not to be so prominent"* → *"I
+		// generally think we're undercoloring now a bit."* The gray spelling is
+		// the FIRST ruling, still shipping on three surfaces eight days after it
+		// was reversed. Going gray everywhere would re-apply a reversed ruling,
+		// remove colour from three pages while the human asks for more, and leave
+		// mint's one budget slot held only by `CoverageBar`'s `live` segment and
+		// `ExposureBar`'s newest segment with no chip left to anchor what it
+		// means. Going mint everywhere costs ZERO new colour values — `#426d64` /
+		// `#83b0a8` is already on screen 20 times per viewport — and takes the
+		// product from two spellings to one.
+		//
+		// ⚠️ `head` SURVIVES AS A NAME, NOT AS A TONE. Four of the five call
+		// sites are in files this pass does not own, so the role string stays and
+		// resolves to the same constant `newest` does. Do not give it a value of
+		// its own again: the two roles are ONE spelling by decision, and if they
+		// ever differ the product is back where it started. When the remaining
+		// call sites are next opened, migrate them to `role="newest"` and delete
+		// this entry.
+		head: MINT_QUIET,
 		// THE ALARM: A FILL AND A WORD. NO GLYPH. (2026-08-27, from the human:
 		// *"we have stuck which has its own dot which is also useless"*.)
 		//

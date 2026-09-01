@@ -28,6 +28,18 @@
 		buildDatadogLogsUrl
 	} from '$lib/utils';
 	import { versionPathForRollout } from '$lib/version-utils';
+	/**
+	 * ⛔ THE DEPLOY-STATE WORDS AND THEIR COLOUR ARE NOT THIS PAGE'S TO SPELL.
+	 * (2026-09-01) The badge printed `entry.bakeStatus` RAW — `InProgress`,
+	 * `Deploying`, `Cancelled`, and `Unknown` for the absent case — while every
+	 * other surface in the product prints `bakeWord()`'s `checking`,
+	 * `deploying`, `stopped`, `no deploy yet`. That is the fifth instance of
+	 * the class `bake-status.ts` was written to close, and the last one in a
+	 * page: a CRD field name is not English, and a reader cannot tell from
+	 * `InProgress` whether anything is wrong. `statusBadgeColor` went with it —
+	 * it was a byte-identical local copy of `getBakeStatusColor`.
+	 */
+	import { bakeWord, bakeTitle, getBakeStatusColor } from '$lib/bake-status';
 	import { deployActs } from '$lib/history-marks';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
@@ -318,24 +330,19 @@
 		});
 	}
 
+	/**
+	 * ⛔ TWELVE CHARACTERS ON THIS TAB, SEVEN ON EVERY OTHER SURFACE.
+	 * (2026-09-01) The overview tab one click away — the page the human calls
+	 * beautiful — has the same function returning `substring(0, 7)`, and
+	 * `/versions`, `/apps` and the revision pages all print `9f10e49`. One
+	 * fact, two spellings, on two tabs of one page: the reader had to check
+	 * character counts to see that `9f10e49ab12c` and `9f10e49` were the same
+	 * commit. Seven, like everywhere else. The `@sha1:` strip is kept — it is
+	 * the OCI form and the shared `shortRevision` does not handle it.
+	 */
 	function formatRevision(revision: string) {
-		let r = revision.includes('@sha1:') ? revision.split('@sha1:')[1] : revision;
-		return r.length > 12 ? r.substring(0, 12) : r;
-	}
-
-	function statusBadgeColor(bakeStatus?: string) {
-		switch (bakeStatus) {
-			case 'Succeeded':
-				return 'green';
-			case 'Failed':
-				return 'red';
-			case 'Deploying':
-				return 'blue';
-			case 'InProgress':
-				return 'yellow';
-			default:
-				return 'gray';
-		}
+		const r = revision.includes('@sha1:') ? revision.split('@sha1:')[1] : revision;
+		return r.length > 7 ? r.substring(0, 7) : r;
 	}
 
 	function handleChartEntryClick(serviceId: string, index: number) {
@@ -400,12 +407,26 @@
 			<!-- Page header + stats bar -->
 			<div class="mb-5 flex flex-wrap items-start justify-between gap-4">
 				<div>
-					<!-- `h1`, not `h2`: this tab is a page and it had NO `h1` at all —
-					     its outline started at level 2, so "jump to the heading" landed
-					     nowhere. Tailwind's preflight resets every heading to inherited
-					     size and weight, so the level is the only thing that changes. -->
-					<h1 class="text-xl font-bold text-gray-900 dark:text-white">Deployment History</h1>
-					<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+					<!--
+						⛔ THE TITLE SAID WHAT THE TAB BAR 40px ABOVE IT ALREADY SAID.
+						(2026-09-01) From the human, about `/versions`: *"i think i don't
+						like that we have a title on the page when it's already in the
+						navbar."* The same thing is true here — the rollout layout's tab
+						strip renders `History` as the SELECTED tab, and this printed
+						`Deployment History` directly under it. Same fact, two objects, no
+						second reading.
+
+						THE HEADING IS NOT DELETED, IT IS UNVOICED. `h1`, not `h2`: this
+						tab is a page and its outline has to start at level 1, so the
+						heading stays and goes `sr-only` — the reason it was added in the
+						first place ("jump to the heading" landing nowhere) is untouched.
+						What takes the visible slot is the line that was already under it:
+						the page's SCOPE, which names the rollout the deploys belong to
+						and is the one thing the tab strip does not say. It moves up a
+						type role to lead, and the stat chips to its right are unchanged.
+					-->
+					<h1 class="sr-only">Deployment History</h1>
+					<p class="t-headline text-gray-900 dark:text-white">
 						All deployments for <span class="font-mono">{name}</span>
 					</p>
 				</div>
@@ -598,21 +619,39 @@
 								? 'border-blue-400 shadow-md shadow-blue-100 dark:border-blue-600 dark:shadow-blue-950/50'
 								: 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-800/50"
 						>
-							<!-- Collapsed row (always visible). A `<div role="button">` rather than a
-							     `<button>` — the version text below needs to be a real nested `<a>`,
-							     which isn't valid inside a `<button>`. -->
+							<!--
+								⭐ THE ROW IS A `.tap-zone` AND THE CONTROL THAT OWNS IT IS THE
+								EXPAND BUTTON AT THE ROW'S EDGE. (2026-09-01)
+
+								It was a `<div role="button" tabindex="0">` wrapping the whole
+								row, WITH A REAL `<a>` INSIDE IT. Three defects, all measured
+								on this page:
+
+								  1. ⛔ ENTER ON THE VERSION LINK DID NOT NAVIGATE. The keydown
+								     bubbled from the anchor to the wrapper's handler, which
+								     called `preventDefault()` — cancelling the browser's own
+								     default action for Enter on a focused link. A keyboard user
+								     pressing Enter on `991829b` expanded the row instead of
+								     opening the build.
+								  2. A nested interactive element: an anchor inside a
+								     `role="button"` region is two controls occupying one box,
+								     which is what `src/lib/CLAUDE.md` forbids by name.
+								  3. The anchor needed `stopPropagation` on click to survive it —
+								     a workaround for the nesting rather than a fix.
+
+								`.tap-zone` / `.tap-link` from `app.css` is the product's answer
+								and it does not require the primary control to be an anchor: the
+								selector is class-based. So the CHEVRON — which already exists,
+								already has an accessible name, and is the affordance a reader
+								reads as "this opens" — becomes a real `<button class="tap-link">`
+								whose `::after` covers the whole row. The row keeps its exact
+								behaviour (click anywhere = expand), the anchor is raised above
+								the overlay and is independently clickable AND Enter-able, the
+								focus ring is drawn around the whole region the button activates,
+								and the tab-stop count per row is unchanged at two.
+							-->
 							<div
-								role="button"
-								tabindex="0"
-								aria-expanded={isExpanded}
-								class="group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-								onclick={() => toggleExpand(i)}
-								onkeydown={(e) => {
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault();
-										toggleExpand(i);
-									}
-								}}
+								class="tap-zone group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
 							>
 								<!-- Status icon -->
 								<div class="flex-shrink-0 pt-0.5">
@@ -622,10 +661,12 @@
 								<!-- Version -->
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-center gap-2">
+										<!-- No `stopPropagation` any more: the tap zone raises this
+										     anchor above the expand button's overlay, so a click on
+										     it is a click on IT and never on the row. -->
 										<a
 											href={versionPathForRollout(rollout, name, getDisplayVersion(entry.version))}
 											class="font-mono text-sm font-semibold text-gray-900 hover:underline dark:text-white"
-											onclick={(e) => e.stopPropagation()}
 										>
 											{getDisplayVersion(entry.version)}
 										</a>
@@ -641,8 +682,12 @@
 											Anything that is not `Succeeded` still gets its badge.
 										-->
 										{#if entry.bakeStatus !== 'Succeeded'}
-											<Badge color={statusBadgeColor(entry.bakeStatus)} class="text-xs">
-												{entry.bakeStatus || 'Unknown'}
+											<Badge
+												color={getBakeStatusColor(entry.bakeStatus)}
+												class="text-xs"
+												title={bakeTitle(entry.bakeStatus)}
+											>
+												{bakeWord(entry.bakeStatus)}
 											</Badge>
 										{/if}
 										{#if act?.kind === 'rollback'}
@@ -655,18 +700,70 @@
 												title={act.sentence}
 											>
 												<UndoOutline class="h-3 w-3" aria-hidden="true" />
-												Rolled back
+												<!-- ⛔ THE WORD IS `act.word`, NOT A LITERAL. (2026-09-01)
+												     `history-marks.ts` publishes it as *"the product's
+												     word, for a chip at rest"* and this pill spelled its
+												     own copy of it, one identifier away from the sentence
+												     that uses the published one. Identical today; that is
+												     precisely how the other four splits started. -->
+												{act.word}
 											</span>
 										{/if}
-										{#if entry.version.revision}
-											<Badge color="gray" class="font-mono text-xs">
+										<!--
+											⭐ THE REVISION BADGE PRINTS ONLY WHEN IT DIFFERS FROM THE
+											NAME BESIDE IT — `/versions`'s own rule, and the reason the
+											seven-character fix above needed it. At twelve characters
+											`064b655ab12c` and `064b655` looked like two facts; at
+											seven they are visibly ONE, and the row was printing the
+											same sha twice, 40px apart. A service that ships under a
+											semver (`1.66.0-66`) still gets the badge, because there
+											the commit is a second fact the label does not carry.
+										-->
+										{#if entry.version.revision && formatRevision(entry.version.revision) !== getDisplayVersion(entry.version)}
+											<Badge
+												color="gray"
+												class="font-mono text-xs"
+												title="Commit {formatRevision(entry.version.revision)}"
+											>
 												{formatRevision(entry.version.revision)}
 											</Badge>
 										{/if}
 									</div>
-									{#if act && act.kind !== 'forward'}
-										<p class="mt-1 text-xs text-gray-600 dark:text-gray-300">
-											{act.sentence}
+									<!--
+										⭐ THE RELATIVE HALF, WHICH THIS ROW WAS MISSING.
+										(2026-09-01) `DESIGN-INTENT.md`: *"Relative version beats
+										absolute — `−2 vs newest`, `matches STG` are the signal; the
+										sha is usually noise."* This row leads with the absolute
+										build, which is CORRECT here — a deploy log's subject is the
+										build that went out — but the relative fact was rendered
+										only for the two kinds of move that are deviations, so an
+										ordinary deploy said nothing about how far it moved. A
+										one-release step and a fourteen-release jump drew
+										identically.
+
+										It is not furniture: the WORD repeats and the NUMBER does
+										not, which is the test `DESIGN.md` sets for a repeated mark.
+										`deployActs` is the product's one derivation for it and
+										returns `null` rather than guessing when the release
+										ordering cannot place a pair, so a row with no answer still
+										prints nothing.
+
+										The two deviations keep the full sentence and the stronger
+										ink; the norm gets the quiet meta ink and the short form,
+										with the whole sentence on the `title`.
+									-->
+									{#if act}
+										<p
+											class="mt-1 text-xs {act.kind === 'forward'
+												? 'text-gray-500 dark:text-gray-400'
+												: 'text-gray-600 dark:text-gray-300'}"
+											title={act.sentence}
+										>
+											{#if act.kind === 'forward'}
+												{act.by} release{act.by === 1 ? '' : 's'} forward
+											{:else}
+												{act.sentence}
+											{/if}
 										</p>
 									{/if}
 									<!--
@@ -724,11 +821,16 @@
 									</div>
 								</div>
 
-								<!-- Expand affordance. A bare 16px chevron in the row's own gray
-								     did not read as a control at rest; it gets a box that resolves
-								     on hover and focus-within, and a name. -->
-								<div
-									class="flex-shrink-0 rounded-lg border border-transparent p-1 text-gray-500 transition-colors group-hover:border-gray-200 group-hover:bg-white dark:text-gray-400 dark:group-hover:border-gray-600 dark:group-hover:bg-gray-700"
+								<!-- Expand affordance, and now the row's `.tap-link`. A bare 16px
+								     chevron in the row's own gray did not read as a control at
+								     rest; it gets a box that resolves on hover and focus-within,
+								     and a name. Its `::after` is what makes the whole row take
+								     the click. -->
+								<button
+									type="button"
+									aria-expanded={isExpanded}
+									onclick={() => toggleExpand(i)}
+									class="tap-link flex-shrink-0 rounded-lg border border-transparent p-1 text-gray-500 transition-colors group-hover:border-gray-200 group-hover:bg-white dark:text-gray-400 dark:group-hover:border-gray-600 dark:group-hover:bg-gray-700"
 								>
 									{#if isExpanded}
 										<ChevronUpOutline class="h-4 w-4" aria-hidden="true" />
@@ -736,7 +838,7 @@
 										<ChevronDownOutline class="h-4 w-4" aria-hidden="true" />
 									{/if}
 									<span class="sr-only">{isExpanded ? 'Hide' : 'Show'} deploy details</span>
-								</div>
+								</button>
 							</div>
 
 							<!-- Expanded details -->

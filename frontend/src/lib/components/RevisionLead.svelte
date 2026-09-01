@@ -53,6 +53,7 @@
 		coverage,
 		spread = true,
 		unitNote = false,
+		scopeNote = '',
 		meta,
 		children
 	}: {
@@ -81,6 +82,24 @@
 		 * directly above it.
 		 */
 		unitNote?: boolean;
+		/**
+		 * ⭐ WHO THE COUNT ABOVE IS SPEAKING FOR — the clause that makes a
+		 * revision-scoped verdict honest.
+		 *
+		 * A live critique filed: *"`/versions` said `fully rolled out` while a
+		 * build from that commit was held in three places."* The lead is keyed
+		 * on a COMMIT, and one commit becomes one release PER SERVICE — the
+		 * repo's own harness publishes an `api` half and a `frontend` half of a
+		 * single build, each with its own tag, its own release list and its own
+		 * GATES. `N of M places` is arithmetic over all of them, so the state
+		 * word above it is a sentence about several independent releases and is
+		 * only readable once that is said.
+		 *
+		 * It rides on the unit-note line rather than in a fourth object,
+		 * because it is the same kind of sentence: the caption of the number
+		 * directly above it, not a legend.
+		 */
+		scopeNote?: string;
 		/** A second line under the identifier — repo, commit summary, scope. */
 		meta?: Snippet;
 		/** Buttons and any page-specific note, under the spread. */
@@ -146,6 +165,16 @@
 	{#if unitNote}
 		<p class="t-micro mt-3 text-gray-500 dark:text-gray-400">
 			A place is one service in one environment.
+		</p>
+	{/if}
+
+	<!-- THE SCOPE OF THE COUNT, ON ITS OWN LINE. See `scopeNote` above: it is
+	     the sentence that keeps a revision-wide verdict honest when one commit
+	     became several independent releases. Its own `<p>` rather than a second
+	     clause on the unit note, so each sentence stays one message. -->
+	{#if scopeNote}
+		<p class="t-micro {unitNote ? 'mt-1' : 'mt-3'} text-gray-500 dark:text-gray-400">
+			{scopeNote}
 		</p>
 	{/if}
 

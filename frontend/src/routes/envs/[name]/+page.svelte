@@ -1206,9 +1206,23 @@
 										     `/rollouts` render the same strings from the same
 										     function, so the split this note recorded is closed.
 										     These call sites keep their explicit branches only
-										     because each carries a page-specific `title` and,
-										     for `newest`, the `head` role rather than the mint
-										     one — the per-row-repetition argument in DESIGN.md. -->
+										     because each carries a page-specific `title`.
+										
+										     ⛔ AND `head` IS NO LONGER A SECOND TONE.
+										     (2026-09-01) This branch used to be justified by
+										     *"the `head` role rather than the mint one — the
+										     per-row-repetition argument in DESIGN.md"*, and
+										     that argument is what produced the defect:
+										     `NEWEST` here sat 4.1° of hue from `1 BEHIND` one
+										     column to its right, so the two members of the
+										     rank vocabulary were the SAME COLOUR, while
+										     `/rollouts` drew the identical pair 81° apart.
+										     `TONE.head` resolves to the same quiet mint
+										     `newest` does now — see the note on it in
+										     `Chip.svelte` for the measurement. The role STRING
+										     is left alone deliberately: one tone reached one
+										     way cannot drift; two constants kept equal by hand
+										     can, and have, four times on this branch. -->
 										{#if !row.version}
 											<Chip
 												role="unranked"

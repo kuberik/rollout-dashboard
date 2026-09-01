@@ -1,8 +1,16 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { getDisplayVersion, formatTimeAgoCompact, formatTimeAgo, formatDate } from '$lib/utils';
+	import {
+		getDisplayVersion,
+		formatTimeAgoCompact,
+		formatTimeAgo,
+		formatDate,
+		shortenVersion
+	} from '$lib/utils';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
+	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
+	import { CalendarMonthSolid, ClockSolid } from 'flowbite-svelte-icons';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -22,7 +30,8 @@
 		localClusterName = '',
 		showAppName = true,
 		showEnv = true,
-		chrome = true
+		chrome = true,
+		collapseAfter = null
 	}: {
 		rollouts: Rollout[];
 		environments?: Environment[];
@@ -63,6 +72,20 @@
 		// annotation (e.g. a single-cluster dashboard, or a detail fetch that
 		// doesn't stamp cross-cluster provenance).
 		localClusterName?: string;
+		/**
+		 * ⭐ PROGRESSIVE DISCLOSURE FOR THE TAIL — `COMPOSITION-GRAMMAR.md` §8.
+		 * Rows past this index sit behind one control.
+		 *
+		 * DEFAULT `null` (off) AND THAT IS DELIBERATE, not an omission. Of the
+		 * three call sites, `/apps/[name]` ALREADY owns this control — it
+		 * swaps `limit` between `ACTIVITY_SHOWN` and 40 and prints
+		 * `Show N earlier deploys ›` itself — so turning it on by default
+		 * would put two disclosures on one card and let the inner one
+		 * re-collapse a list the reader had just expanded. `/envs/[name]`
+		 * passes `limit={8}`, which is already the fold. `/namespaces/[name]`
+		 * asks for 20 and is the one that needed it.
+		 */
+		collapseAfter?: number | null;
 	} = $props();
 
 	type ActivityEntry = {
@@ -85,12 +108,53 @@
 		href: string;
 		isRunning: boolean;
 		source: string | null;
+		/**
+		 * ⭐ THIS ROW IS THE ROLLOUT'S CURRENT DEPLOY — its newest history
+		 * entry, i.e. what is running in that place RIGHT NOW. It is the only
+		 * row a rank may be attached to. See `ranks` below.
+		 */
+		isLive: boolean;
+		rollout: Rollout;
 	};
+
+	/**
+	 * ⭐ THE RELATIVE VERSION, AND THE FENCE AROUND IT. (2026-09-01)
+	 *
+	 * The rail printed ten rows of `<env> <old> → <new> <time>` with no
+	 * relative signal at all, against `DESIGN-INTENT.md`'s standing rule that
+	 * *relative version beats absolute*. The obvious fix — a rank beside every
+	 * sha — is FORBIDDEN, and the reason is in `env-rank.ts`: a rank is a fact
+	 * about an ENVIRONMENT'S UPGRADE PATH AS IT IS NOW, never a fact about a
+	 * build. A deploy that happened on Tuesday has no distance from today's
+	 * head; asking for one produces a number that changes every time some
+	 * OTHER rollout deploys, attached to a row that has not moved.
+	 *
+	 * ⛔ SO THE `caught up to newest` MARK ON HISTORICAL ROWS IS REFUSED, and
+	 * it is worth saying why rather than just not doing it. It looks safe —
+	 * "this deploy reached the frontier build" is past tense and sounds like a
+	 * fact about the deploy. It is not one. The frontier moves, so the
+	 * predicate is evaluated against TODAY's ladder and then printed on a row
+	 * dated Tuesday; and because a rollout's history contains many builds that
+	 * were frontier-at-the-time, the mark would land on several rows of one
+	 * rollout at once. That is precisely the `same sha, two numbers on
+	 * adjacent rows` defect `env-rank.ts` was written to end, reintroduced one
+	 * level down and in a prettier font.
+	 *
+	 * WHAT IS TRUE, AND IS THEREFORE WHAT THE RAIL PRINTS: exactly one row per
+	 * rollout is the deploy that is STILL LIVE. That row is the present tense,
+	 * so the shared verdict applies to it unchanged — same `rankVerdictsByRollout`,
+	 * same words, same joined `[verdict][sha]` chip `/` and `/rollouts` draw.
+	 * Every row below it keeps the plain `old → new` pair and carries no rank,
+	 * which also means the CHIP ITSELF is the mark that says "this is what is
+	 * running" — no second encoding, no legend.
+	 */
+	const ranks = $derived(rankVerdictsByRollout(rollouts, environments));
 
 	const entries = $derived.by<ActivityEntry[]>(() => {
 		const list: ActivityEntry[] = [];
 		for (const r of rollouts) {
 			const history = r.status?.history ?? [];
+			let seenNewest = false;
 			const env = environments.find(
 				(e) =>
 					e.metadata?.namespace === r.metadata?.namespace &&
@@ -111,6 +175,12 @@
 					}
 				}
 				const bs = h.bakeStatus || 'None';
+				// The FIRST entry with a timestamp is the current deploy. Not
+				// `i === 0`: the loop skips entries the controller wrote with no
+				// timestamp, and one of those at the head would silently move
+				// `live` onto the second-newest row.
+				const isLive = !seenNewest;
+				seenNewest = true;
 				list.push({
 					rolloutName: r.metadata?.name ?? '',
 					rolloutNamespace: r.metadata?.namespace ?? '',
@@ -128,7 +198,9 @@
 						r.metadata?.name ?? ''
 					),
 					isRunning: bs === 'InProgress' || bs === 'Deploying',
-					source: r.status?.source ?? null
+					source: r.status?.source ?? null,
+					isLive,
+					rollout: r
 				});
 			}
 		}
@@ -156,10 +228,23 @@
 		return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 	}
 
+	/**
+	 * ── THE TAIL, BEHIND ONE CONTROL ───────────────────────────────────────
+	 * `COMPOSITION-GRAMMAR.md` §8: *"the card states its rollup, lists what
+	 * matters, and hides the tail behind one control. It does not print all
+	 * ten rows, and it does not omit them."* Twenty identical rows is the
+	 * spreadsheet shape by itself, whatever the rows say.
+	 */
+	let expanded = $state(false);
+	const shown = $derived(
+		collapseAfter === null || expanded ? entries : entries.slice(0, collapseAfter)
+	);
+	const hiddenCount = $derived(entries.length - shown.length);
+
 	const byDay = $derived.by<DayGroup[]>(() => {
 		const refNow = $now;
 		const map = new Map<string, DayGroup>();
-		for (const a of entries) {
+		for (const a of shown) {
 			const key = dayKey(a.timestamp);
 			let g = map.get(key);
 			if (!g) {
@@ -170,6 +255,17 @@
 		}
 		return Array.from(map.values());
 	});
+
+	/**
+	 * THE DAY'S ANSWER, HARD RIGHT — the same rollup shape every card header in
+	 * the product carries, at group-header scale. It used to be a bare count,
+	 * which states the denominator and nothing else. The failure clause prints
+	 * ONLY when there is one: marking the norm on every group is how a rollup
+	 * becomes furniture.
+	 */
+	function dayRollup(list: ActivityEntry[]): { count: number; failed: number } {
+		return { count: list.length, failed: list.filter((a) => a.bakeStatus === 'Failed').length };
+	}
 
 	// Same status ink as `BakeStatusIcon` (-700 light / -400 dark). The rail
 	// used to carry a lighter green, a SECOND green in a product allowed
@@ -218,20 +314,35 @@
 
 <!-- The `prev -> new` pair. Rendered on line 1 when the app name is suppressed
      (a page already scoped to one app), on line 2 when it is not. One snippet so
-     the two layouts cannot drift apart. -->
+     the two layouts cannot drift apart.
+
+     ⭐ ON THE LIVE ROW THE `new` HALF BECOMES THE JOINED `[verdict][sha]` CHIP —
+     the same unit `/` and `/rollouts` draw, from the same `env-rank.ts`. On
+     every other row it stays a plain sha, because a rank on a superseded
+     deploy is a claim nobody can make. See `ranks`. -->
 {#snippet versionSnippet(a: ActivityEntry)}
-	<span class="flex min-w-0 shrink-0 items-baseline gap-1">
+	{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
+	<span class="flex min-w-0 shrink-0 items-center gap-1">
 		{#if a.previousVersion}
 			<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
 				>{a.previousVersion}</span
 			>
 			<span class="t-micro text-gray-500 dark:text-gray-400">→</span>
 		{/if}
-		{#if a.version}
+		{#if a.version && a.isLive}
+			<Chip
+				role={rankRole(rank)}
+				label={rankLabel(rank)}
+				title={rankTitle(rank, a.displayName)}
+				value={shortenVersion(a.version)}
+				valueHref={buildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
+				valueTitle={a.version}
+				class="min-w-0"
+			/>
+		{:else if a.version}
 			<a
 				href={buildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
-				class="t-code-sm pointer-events-auto relative z-10 text-gray-700 hover:underline dark:text-gray-300"
-				>{a.version}</a
+				class="t-code-sm text-gray-700 hover:underline dark:text-gray-300">{a.version}</a
 			>
 		{/if}
 	</span>
@@ -244,8 +355,7 @@
 			<a
 				href={activityHref}
 				class="t-micro text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-				aria-label="View all recent activity"
-				>view all ›</a
+				aria-label="View all recent activity">view all ›</a
 			>
 		</div>
 	{/if}
@@ -269,13 +379,28 @@
 		{:else}
 			<div class="p-4">
 				{#each byDay as group, gi}
+					{@const roll = dayRollup(group.entries)}
 					<div class={gi > 0 ? 'mt-5' : ''}>
+						<!-- THE GROUP HEADER IS A HEADER: an icon, the label, and a
+						     right-aligned rollup. `COMPOSITION-GRAMMAR.md` §1 and §3 — the
+						     page the human calls beautiful carries 115 icons and this rail
+						     carried none. The clock/calendar pair is the one `/activity`
+						     already spends on the same distinction. -->
 						<div class="mb-3 flex items-center gap-2">
+							{#if group.label === 'Today'}
+								<ClockSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" />
+							{:else}
+								<CalendarMonthSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" />
+							{/if}
 							<span class="t-label text-gray-500 dark:text-gray-400">{group.label}</span>
 							<span
 								class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"
 							></span>
-							<span class="t-code-sm text-gray-500 dark:text-gray-400">{group.entries.length}</span>
+							{#if roll.failed > 0}
+								<span class="t-micro text-red-700 dark:text-red-400">{roll.failed} failed</span>
+								<span class="t-micro text-gray-500 dark:text-gray-400">·</span>
+							{/if}
+							<span class="t-code-sm text-gray-500 dark:text-gray-400">{roll.count}</span>
 						</div>
 						<ol class="relative">
 							<span
@@ -304,18 +429,20 @@
 											] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"
 										></span>
 									</span>
+									<!-- ⭐ `.tap-zone`, NOT AN OVERLAY ANCHOR. (2026-09-01) The
+									     row's destination used to be an `<a class="absolute
+									     inset-0">` with an `aria-label` and no text, which
+									     forced every other element in the row to carry a
+									     hand-written `pointer-events-none` or `z-10` and gave a
+									     keyboard user a focus ring around an empty rectangle.
+									     The mechanism in `app.css` puts the `::after` on the
+									     anchor that already owns the destination and raises the
+									     rest by rule. Zero added tab stops, no nested anchors. -->
 									<div
-										class="relative -mx-2 block rounded px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+										class="tap-zone -mx-2 block rounded px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 									>
-										<!-- Whole-row link: absolute overlay so any click on the
-										     row (except the version link below) opens the rollout
-										     detail. -->
-										<a href={a.href} class="absolute inset-0 z-0" aria-label="Open {a.displayName}"
-										></a>
-										<div
-											class="pointer-events-none relative z-[1] flex items-baseline justify-between gap-2"
-										>
-											<div class="flex min-w-0 items-baseline gap-2">
+										<div class="flex items-center justify-between gap-2">
+											<div class="flex min-w-0 items-center gap-2">
 												{#if showEnv && (a.envName || a.theme)}
 													<Chip
 														role="env"
@@ -326,28 +453,48 @@
 													/>
 												{/if}
 												{#if showAppName}
-													<span class="t-dense truncate text-gray-900 dark:text-white"
-														>{a.displayName}</span
+													<!-- THE LIVE ROW LEADS. It is the one row of the ten
+													     that describes the present, so it takes the
+													     weight; the rest are history and read as it. -->
+													<a
+														href={a.href}
+														class="tap-link t-dense min-w-0 truncate text-gray-900 dark:text-white {a.isLive
+															? 'font-semibold'
+															: ''}">{a.displayName}</a
 													>
 												{:else}
 													{@render versionSnippet(a)}
 												{/if}
 											</div>
-											<span
-												class="t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
-												title={formatDate(a.timestamp)}
-											>
-												{hourLabel(a.timestamp)}
-											</span>
+											{#if showAppName}
+												<span
+													class="t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
+													title={formatDate(a.timestamp)}
+												>
+													{hourLabel(a.timestamp)}
+												</span>
+											{:else}
+												<!-- NO NAME TO HANG THE DESTINATION ON. On a page
+												     already scoped to one app the row prints no app
+												     name, so the timestamp is the anchor — it is the
+												     one thing on the row that identifies THIS deploy,
+												     and the accessible name still says what opens. -->
+												<a
+													href={a.href}
+													aria-label="Open {a.displayName}"
+													class="tap-link t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
+													title={formatDate(a.timestamp)}
+												>
+													{hourLabel(a.timestamp)}
+												</a>
+											{/if}
 										</div>
 										<!-- Second line only when it carries something the first
 										     does not. `Succeeded` beside a green dot that already
 										     means succeeded is a word the eye has to read to
 										     discard; it appeared 8 times on one screen. -->
 										{#if showAppName || a.bakeStatus !== 'Succeeded'}
-											<div
-												class="t-micro pointer-events-none relative z-[1] mt-0.5 flex items-baseline justify-between gap-2"
-											>
+											<div class="t-micro mt-0.5 flex items-center justify-between gap-2">
 												{#if a.bakeStatus !== 'Succeeded'}
 													<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}
 														>{STATUS_LABEL[a.bakeStatus]}</span
@@ -366,6 +513,16 @@
 						</ol>
 					</div>
 				{/each}
+				<!-- ONE CONTROL FOR THE TAIL, and it disappears once the tail is open —
+				     a button reading `show 0 more` is an object drawing the norm. Same
+				     shape and voice as the reference page's `Show 8 ready resources ›`. -->
+				{#if hiddenCount > 0}
+					<button
+						type="button"
+						class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+						onclick={() => (expanded = true)}>Show {hiddenCount} earlier deploys ›</button
+					>
+				{/if}
 			</div>
 		{/if}
 	</div>

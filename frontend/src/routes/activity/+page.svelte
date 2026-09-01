@@ -68,7 +68,14 @@
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
-	import { formatTimeAgoCompact, formatTimeAgo, formatDate, getDisplayVersion } from '$lib/utils';
+	import {
+		formatTimeAgoCompact,
+		formatTimeAgo,
+		formatDate,
+		getDisplayVersion,
+		shortenVersion
+	} from '$lib/utils';
+	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
 	import { getStatusCircleClass, BAKE_WORD, bakeTitle } from '$lib/bake-status';
 	import {
 		getRolloutEnvironmentTheme,
@@ -98,7 +105,9 @@
 	import type { Environment } from '../../types';
 
 	const rolloutsQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
+		rolloutsListQueryOptions({
+			options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) }
+		})
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
@@ -143,7 +152,32 @@
 		previousRevision: string | null;
 		source: string | null;
 		cluster: string | undefined;
+		/**
+		 * This row is the rollout's CURRENT deploy — its newest history entry.
+		 * The only row a rank may be attached to; see `ranks`.
+		 */
+		isLive: boolean;
+		rollout: (typeof rollouts)[number];
 	};
+
+	/**
+	 * ⭐ THE FEED LED WITH THE SHA AND CARRIED NO RELATIVE SIGNAL. (2026-09-01)
+	 *
+	 * `DESIGN-INTENT.md`'s standing rule is that the RELATIVE version is the
+	 * signal and the sha is usually noise, and this page printed sixty shas and
+	 * nothing else. The joined `[verdict][sha]` chip `/` and `/rollouts` draw is
+	 * the reference form and `env-rank.ts` is the one derivation.
+	 *
+	 * ⛔ IT GOES ON THE LIVE ROW AND NOWHERE ELSE. A rank is a fact about an
+	 * environment's upgrade path AS IT IS NOW; a deploy from Tuesday has no
+	 * distance from today's head, and printing one would attach a number that
+	 * moves when some OTHER rollout deploys to a row that has not changed. The
+	 * newest history entry of each rollout IS the present tense, so it takes the
+	 * verdict unchanged; every older row keeps the plain `prev → new` pair. The
+	 * chip's presence is therefore also what says "this is still what is
+	 * running" — one mark, two jobs, no legend. Same ruling as `ActivityRail`.
+	 */
+	const ranks = $derived(rankVerdictsByRollout(rollouts, environments));
 
 	// ── EVERY EVENT, UNFILTERED ────────────────────────────────────────────
 	const allEntries = $derived.by<ActivityEntry[]>(() => {
@@ -160,9 +194,16 @@
 			const envKey = envName || theme?.environmentName || theme?.name || '';
 			const envLabel = shortEnvLabel(theme) || envName || '';
 			const limited = history.slice(0, 30);
+			// The FIRST entry that carries a timestamp is the current deploy —
+			// not `i === 0`, because the controller can write an entry with no
+			// timestamp and one of those at the head would move `live` onto the
+			// second-newest row.
+			let seenNewest = false;
 			for (let i = 0; i < limited.length; i++) {
 				const h = limited[i];
 				if (!h.timestamp) continue;
+				const isLive = !seenNewest;
+				seenNewest = true;
 				const currentV = getDisplayVersion(h.version);
 				// Find the previous *different* version in this rollout's history,
 				// capturing its revision for the lazy commit changelist.
@@ -198,7 +239,9 @@
 					revision: h.version?.revision ?? null,
 					previousRevision,
 					source: rollout.status?.source ?? null,
-					cluster: sourceClusterName(rollout) || localClusterName
+					cluster: sourceClusterName(rollout) || localClusterName,
+					isLive,
+					rollout
 				});
 			}
 		}
@@ -444,10 +487,8 @@
 		const flying = entries.filter(isInFlight).length;
 		const n = entries.length;
 		const noun = `${n} deploy${n === 1 ? '' : 's'}`;
-		if (failed > 0)
-			return { text: `${noun} · ${failed} failed`, tone: 'adverse' as const };
-		if (flying > 0)
-			return { text: `${noun} · ${flying} still going`, tone: 'active' as const };
+		if (failed > 0) return { text: `${noun} · ${failed} failed`, tone: 'adverse' as const };
+		if (flying > 0) return { text: `${noun} · ${flying} still going`, tone: 'active' as const };
 		if (entries.every((e) => e.bakeStatus === 'Succeeded'))
 			return { text: `${noun} · all fine`, tone: 'good' as const };
 		return { text: noun, tone: 'neutral' as const };
@@ -455,7 +496,9 @@
 
 	const failedCount = $derived(feed.filter(isFailed).length);
 	const flyingCount = $derived(feed.filter(isInFlight).length);
-	const appCount = $derived(new Set(feed.map((e) => `${e.rolloutNamespace}/${e.rolloutName}`)).size);
+	const appCount = $derived(
+		new Set(feed.map((e) => `${e.rolloutNamespace}/${e.rolloutName}`)).size
+	);
 
 	// ── THE PAGE'S ONE BLOCKING FACT ───────────────────────────────────────
 	// A deploy that failed will not clear itself. Nothing else on this page
@@ -466,15 +509,22 @@
 		if (!worst) return null;
 		const where = worst.envLabel ? ` in ${worst.envLabel}` : '';
 		return {
-			title:
-				failedCount === 1 ? 'A deploy failed' : `${failedCount} deploys failed`,
+			title: failedCount === 1 ? 'A deploy failed' : `${failedCount} deploys failed`,
 			message: `${worst.displayName}${where} failed ${formatTimeAgo(worst.timestamp, $now)}, on ${worst.version}.`,
-			footnote:
-				failedCount > 1
-					? `Press Failed below to see all ${failedCount}.`
-					: undefined,
+			footnote: failedCount > 1 ? `Press Failed below to see all ${failedCount}.` : undefined,
 			href: worst.href,
-			app: worst.displayName
+			app: worst.displayName,
+			/**
+			 * ⭐ THE BANNER CARRIES THE RELATIVE VERSION TOO, and only when it
+			 * can. The message names the sha the deploy failed ON; what it did
+			 * not say is where that leaves the place — `newest` (the failure is
+			 * the head, nothing newer to try) reads completely differently from
+			 * `12 behind` (the environment has been stuck behind this for a
+			 * while). `null` on a superseded row, because the failed deploy is
+			 * then not what is running and a rank on it would be a claim about
+			 * a build. Same fence as the feed.
+			 */
+			entry: worst.isLive ? worst : null
 		};
 	});
 
@@ -537,23 +587,42 @@
 	     contradicted the 39 events below it. This is the `DeployHistoryStrip`
 	     rule: an object that reads the same array as the object beside it is
 	     cut, not shrunk. -->
+	<!-- ⭐ THE `h1` IS `sr-only` AND THE ROLLUP TOOK ITS SLOT. (2026-09-01)
+	     From the human: *"i think i don't like that we have a title on the page
+	     when it's already in the navbar."* The navbar's own `Activity` item and
+	     this page's `h1` were the same word, 40px apart, and the 24px slot — the
+	     top of a type range this page otherwise does not have — was spent
+	     restating it.
+
+	     ⛔ DELETING THE HEADING WAS NOT AN OPTION AND IS NOT WHAT HAPPENED. The
+	     skip link lands on `main` and a11y asserts a level-1 heading exists, so
+	     it is `sr-only` — the mechanism `/` already uses, a 1px clip, zero
+	     pixels — and the WORD is still announced first to a screen reader.
+
+	     WHAT FILLS THE SLOT IS THE ROLLUP, NOT MORE WORDS. Same sentence as
+	     before, character for character; only the count is promoted to the
+	     display role so the page leads with its own answer instead of with its
+	     own name. `/namespaces/<name>` deliberately keeps its visible `h1`: the
+	     navbar there says the SECTION and the page names the NAMESPACE, so
+	     that one is not a duplicate. -->
+	<h1 class="sr-only">Activity</h1>
 	<div class="mb-5 min-w-0">
-		<h1 class="t-display min-w-0 truncate text-gray-900 dark:text-white">Activity</h1>
 		{#if !rolloutsQuery.isLoading && !rolloutsQuery.isError}
-			<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
-				{feed.length} deploy{feed.length === 1 ? '' : 's'} in {rangeLabel}
-				{#if appCount > 0}
-					· {appCount} rollout{appCount === 1 ? '' : 's'}
-				{/if}
-				{#if failedCount > 0}
-					· <span class="font-medium text-gray-700 dark:text-gray-200"
-						>{failedCount} failed</span
-					>
-				{/if}
-				{#if flyingCount > 0}
-					· {flyingCount} still going
-				{/if}
-			</p>
+			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
+				<span class="t-display text-gray-900 tabular-nums dark:text-white">{feed.length}</span>
+				<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
+					deploy{feed.length === 1 ? '' : 's'} in {rangeLabel}
+					{#if appCount > 0}
+						· {appCount} rollout{appCount === 1 ? '' : 's'}
+					{/if}
+					{#if failedCount > 0}
+						· <span class="font-medium text-gray-700 dark:text-gray-200">{failedCount} failed</span>
+					{/if}
+					{#if flyingCount > 0}
+						· {flyingCount} still going
+					{/if}
+				</p>
+			</div>
 		{/if}
 	</div>
 
@@ -566,6 +635,19 @@
 			footnote={blocker.footnote}
 			class="mb-5"
 		>
+			{#snippet extra()}
+				{#if blocker.entry?.version}
+					{@const rank = ranks.get(blocker.entry.rollout) ?? { kind: 'unknown' as const }}
+					<Chip
+						role={rankRole(rank)}
+						label={rankLabel(rank)}
+						title={rankTitle(rank, blocker.entry.displayName)}
+						value={shortenVersion(blocker.entry.version)}
+						valueTitle={blocker.entry.version}
+						class="min-w-0"
+					/>
+				{/if}
+			{/snippet}
 			{#snippet actions()}
 				<NextStep step="open" href={blocker.href} label="Open {blocker.app}" />
 			{/snippet}
@@ -622,9 +704,7 @@
 				<button
 					type="button"
 					aria-pressed={envFilter === e.key}
-					title={envFilter === e.key
-						? `Stop showing only ${e.label}`
-						: `Show only ${e.label}`}
+					title={envFilter === e.key ? `Stop showing only ${e.label}` : `Show only ${e.label}`}
 					onclick={() => setParam('env', envFilter === e.key ? null : e.key)}
 					class="environment-theme-scope inline-flex items-center rounded transition-opacity
 						{envFilter === e.key
@@ -769,24 +849,33 @@
 							     only falls through on null, so every succeeded row printed
 							     `no result yet`. The table is looked up by KEY. -->
 							{@const word =
-								entry.bakeStatus in STATE_WORD
-									? STATE_WORD[entry.bakeStatus]
-									: STATE_WORD.None}
+								entry.bakeStatus in STATE_WORD ? STATE_WORD[entry.bakeStatus] : STATE_WORD.None}
 							<li
-								class="environment-theme-scope relative"
+								class="environment-theme-scope"
 								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
 							>
-								<!-- THE ROW IS A DIV WITH A STRETCHED LINK, not an `<a>`.
-								     It holds a `<button>` (`What changed`) and a
-								     version link, and a button inside an anchor is
-								     invalid HTML that browsers resolve by discarding
-								     the nesting — the control would be unreachable by
-								     keyboard. Same shape `/apps` rows use. -->
+								<!-- ⭐ `.tap-zone` ON THE ROW, NOT ON THE `<li>`. (2026-09-01)
+								     This row already had the RIGHT IDEA — a stretched
+								     `::after` on the name link rather than a wrapping `<a>`,
+								     which would nest a button inside an anchor — but it was
+								     HAND-ROLLED: the overlay was an `after:absolute
+								     after:inset-0` utility pair, so the focus ring drew on the
+								     link itself, inside a `truncate` box, which is
+								     `overflow: hidden` and clips it on all four sides. Every
+								     sibling that had to stay clickable carried its own
+								     `relative` / `z-[1]`. `.tap-zone` / `.tap-link` is the
+								     same geometry with the ring on the `::after` and the
+								     raising done by rule — see the block in `app.css`.
+
+								     ⛔ AND THE ZONE STOPS AT THE ROW. The `What changed`
+								     disclosure below is deliberately OUTSIDE it: a tap zone
+								     makes its own text unselectable, and that panel is a list
+								     of commit subjects an operator copies. -->
 								<div
-									class="grid grid-cols-[28px_2.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-2.5 transition-colors hover:bg-gray-50 sm:grid-cols-[28px_2.75rem_minmax(0,1fr)_auto] dark:hover:bg-gray-700/30"
+									class="tap-zone grid grid-cols-[28px_2.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-2.5 transition-colors hover:bg-gray-50 sm:grid-cols-[28px_2.75rem_minmax(0,1fr)_auto] dark:hover:bg-gray-700/30"
 								>
 									<span
-										class="pointer-events-none relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+										class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 											entry.bakeStatus
 										)}"
 									>
@@ -794,7 +883,7 @@
 									</span>
 
 									<span
-										class="t-code-sm pointer-events-none tabular-nums text-gray-500 dark:text-gray-400"
+										class="t-code-sm text-gray-500 tabular-nums dark:text-gray-400"
 										title={formatDate(entry.timestamp)}
 										>{formatTimeAgoCompact(entry.timestamp, $now)}</span
 									>
@@ -816,7 +905,7 @@
 										{/if}
 										<a
 											href={entry.href}
-											class="t-dense min-w-0 truncate font-semibold text-gray-900 after:absolute after:inset-0 after:content-[''] dark:text-white"
+											class="tap-link t-dense min-w-0 truncate font-semibold text-gray-900 dark:text-white"
 											>{entry.displayName}</a
 										>
 										{#if needsNamespace(entry)}
@@ -833,14 +922,12 @@
 											     `checking` from `deploying` (already serving vs
 											     still going out) is what `bakeTitle` carries. -->
 											<span
-												class="t-micro relative {STATE_INK[entry.bakeStatus] ?? ''}"
+												class="t-micro {STATE_INK[entry.bakeStatus] ?? ''}"
 												title={bakeTitle(entry.bakeStatus)}>{word}</span
 											>
 										{/if}
 										{#if entry.actorKind === 'User'}
-											<span class="t-micro relative text-gray-500 dark:text-gray-400"
-												>by {entry.actor}</span
-											>
+											<span class="t-micro text-gray-500 dark:text-gray-400">by {entry.actor}</span>
 										{/if}
 									</span>
 
@@ -851,7 +938,7 @@
 									     entirely below `sm` — so on a phone two deploys
 									     of the same app differed by nothing at all. -->
 									<span
-										class="relative col-start-3 flex min-w-0 shrink-0 items-baseline gap-1 sm:col-start-4 sm:row-start-1 sm:justify-self-end"
+										class="col-start-3 flex min-w-0 shrink-0 items-center gap-1 sm:col-start-4 sm:row-start-1 sm:justify-self-end"
 									>
 										{#if entry.previousVersion}
 											<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
@@ -859,14 +946,32 @@
 											>
 											<span class="t-micro text-gray-500 dark:text-gray-400">→</span>
 										{/if}
-										{#if entry.version}
+										{#if entry.version && entry.isLive}
+											<!-- ⭐ THE VERDICT FIRST — the joined `[verdict][sha]`
+											     unit `/` and `/rollouts` draw, from `env-rank.ts`.
+											     ONLY on the row that is still live; see `ranks`. -->
+											{@const rank = ranks.get(entry.rollout) ?? { kind: 'unknown' as const }}
+											<Chip
+												role={rankRole(rank)}
+												label={rankLabel(rank)}
+												title={rankTitle(rank, entry.displayName)}
+												value={shortenVersion(entry.version)}
+												valueHref={buildPath(
+													repoKeyFromSource(entry.source, entry.rolloutName),
+													entry.revision,
+													entry.version
+												)}
+												valueTitle={entry.version}
+												class="min-w-0"
+											/>
+										{:else if entry.version}
 											<a
 												href={buildPath(
 													repoKeyFromSource(entry.source, entry.rolloutName),
 													entry.revision,
 													entry.version
 												)}
-												class="t-code-sm relative text-gray-700 hover:underline dark:text-gray-200"
+												class="t-code-sm text-gray-700 hover:underline dark:text-gray-200"
 												>{entry.version}</a
 											>
 										{/if}
@@ -879,7 +984,7 @@
 								     an affordance for a question with no answer is the
 								     defect this whole component exists to close. -->
 								{#if entry.source && entry.revision && entry.previousRevision}
-									<div class="relative z-[1] px-4 pb-2.5 pl-[5.25rem]">
+									<div class="px-4 pb-2.5 pl-[5.25rem]">
 										<ChangeList
 											namespace={entry.rolloutNamespace}
 											name={entry.rolloutName}

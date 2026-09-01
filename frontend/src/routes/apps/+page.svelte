@@ -103,7 +103,7 @@
 	 * `/apps/[name]`'s env cards learned.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { groupRolloutsByApp, displayVersionForTag } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { buildMatrix } from '$lib/view-models/matrix';
@@ -151,10 +151,14 @@
 	// stops the most-read line on the page from spelling the fact a second
 	// way, which is exactly what it was doing.
 	import { blockReason } from '$lib/components/BlockReason.svelte';
+	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import {
 		RocketSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
+		ClockOutline,
+		ChartMixedOutline,
+		CodeBranchOutline,
 		ChevronRightOutline,
 		PauseSolid,
 		ArrowRightOutline
@@ -166,8 +170,13 @@
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
+		rolloutsListQueryOptions({
+			options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) }
+		})
 	);
+
+	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
+	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -472,13 +481,41 @@
 
 		if (vm.statusKey === 'failed')
 			return { state: 'fail', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
-		if (stuckReason) return { state: 'stuck', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
+		if (stuckReason)
+			return { state: 'stuck', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
 		if (bakeStatus === 'Deploying')
-			return { state: 'deploying', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
+			return {
+				state: 'deploying',
+				theme,
+				held,
+				wantedVersion,
+				wantedDisplay,
+				block,
+				story,
+				timestamp
+			};
 		if (bakeStatus === 'InProgress')
-			return { state: 'baking', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
+			return {
+				state: 'baking',
+				theme,
+				held,
+				wantedVersion,
+				wantedDisplay,
+				block,
+				story,
+				timestamp
+			};
 		if (vm.statusKey === 'pending')
-			return { state: 'pending', theme, held: false, wantedVersion, wantedDisplay, block, story, timestamp };
+			return {
+				state: 'pending',
+				theme,
+				held: false,
+				wantedVersion,
+				wantedDisplay,
+				block,
+				story,
+				timestamp
+			};
 		// ⛔ `behindBy === 0` IS NOT `onNewest`. (2026-08-30) `rankBehindBy`
 		// returns 0 for THREE different verdicts — `newest`, `diverged` and
 		// `unknown` — and `matrix.ts`'s own doc comment says so. Testing the
@@ -486,9 +523,27 @@
 		// the page's good-news state. The verdict decides; the number is for
 		// counting only.
 		if (vm.rank.kind === 'newest')
-			return { state: 'onNewest', theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
+			return {
+				state: 'onNewest',
+				theme,
+				held,
+				wantedVersion,
+				wantedDisplay,
+				block,
+				story,
+				timestamp
+			};
 		const behindState: CellState = vm.behindBy >= 2 ? 'behind2' : 'behind1';
-		return { state: behindState, theme, held, wantedVersion, wantedDisplay, block, story, timestamp };
+		return {
+			state: behindState,
+			theme,
+			held,
+			wantedVersion,
+			wantedDisplay,
+			block,
+			story,
+			timestamp
+		};
 	}
 
 	/**
@@ -708,13 +763,8 @@
 			for (const tier of matrix.envTiers) {
 				const vm = mrow.cells[tier];
 				if (!vm) continue;
-				const { state, theme, held, wantedVersion, wantedDisplay, block, story, timestamp } = classifyCell(
-					group,
-					tier,
-					vm,
-					refNow,
-					gateContext
-				);
+				const { state, theme, held, wantedVersion, wantedDisplay, block, story, timestamp } =
+					classifyCell(group, tier, vm, refNow, gateContext);
 				cells.push({
 					tier,
 					envLabel: shortEnvLabel(vm.envName) || vm.envName,
@@ -1004,6 +1054,56 @@
 		appRows.filter((a) => a.fleet.deployed > 0 && a.fleet.onHead === a.fleet.deployed).length
 	);
 
+	/* ══ THE RAIL'S THREE NUMBERS ═══════════════════════════════════════════
+	   Every one of them is a fleet-scope reading of a quantity ALREADY on a
+	   row, restated at the scope the rows cannot reach. Nothing here is a new
+	   measurement and nothing here is derived from data the page did not
+	   already fetch — see the note on the rail markup for why the rail exists
+	   at all. The three are deliberately the same three `/envs/[name]`'s own
+	   `How it's going` card prints, in the same order, so the two sibling
+	   pages teach one object once. */
+
+	/** Deploys across every app in the sparkline's own window. */
+	const fleetDeploys7d = $derived(appRows.reduce((n, a) => n + a.deploys7d, 0));
+	/** Every rollout on the page, for the rail's sparkline. */
+	const allRollouts = $derived(appRows.flatMap((a) => a.rolloutsForSpark));
+
+	/**
+	 * ⚠️ A MEDIAN OF MEDIANS, AND IT SAYS SO. Each app's `lead.medianMs` is
+	 * already a median over that app's own trips; the fleet figure is the
+	 * middle app, not the middle trip, because a 15-deploy app would otherwise
+	 * drown a 3-deploy one and the number would be about churn rather than
+	 * about time to production. Apps with no observed full trip are EXCLUDED
+	 * rather than counted as zero or as infinity — `DESIGN.md` forbids
+	 * rendering an unresolvable comparison as a definite claim — and the
+	 * denominator rides in the tooltip so the reader can see how thin it is.
+	 */
+	const leadSamples = $derived(
+		appRows.map((a) => a.lead?.medianMs).filter((ms): ms is number => typeof ms === 'number')
+	);
+	const fleetLeadMs = $derived.by<number | null>(() => {
+		const xs = [...leadSamples].sort((a, b) => a - b);
+		if (xs.length === 0) return null;
+		const mid = Math.floor(xs.length / 2);
+		return xs.length % 2 ? xs[mid] : Math.round((xs[mid - 1] + xs[mid]) / 2);
+	});
+
+	/**
+	 * THE APP FURTHEST FROM ITS OWN NEWEST BUILD — the one quantity
+	 * `/environments` and `/envs/[name]` both rank on, restated here so the
+	 * three pages agree on the number and on the app that owns it. `—` and not
+	 * `0`: a fleet with nothing behind has no deepest lag, and a zero in a
+	 * column of distances reads as a measurement rather than as an absence.
+	 */
+	const deepest = $derived.by<{ appName: string; by: number } | null>(() => {
+		let best: { appName: string; by: number } | null = null;
+		for (const a of appRows) {
+			if (a.worstLag <= 0) continue;
+			if (!best || a.worstLag > best.by) best = { appName: a.appName, by: a.worstLag };
+		}
+		return best;
+	});
+
 	// ── THE PAGE'S ONE BLOCKING FACT, WITH ITS CAUSE AND ITS CONSEQUENCE ─────
 	//
 	// `COMPOSITION-GRAMMAR.md` §4: the blocking fact gets a FILLED banner — a
@@ -1167,11 +1267,27 @@
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-	<!-- Page header -->
-	<div class="mb-6 min-w-0">
-		<h1 class="t-display min-w-0 truncate text-gray-900 dark:text-white">Apps</h1>
+	<!-- ══ PAGE HEADER — THE ROLLUP, NOT THE SECTION NAME ═══════════════════
+	     ⛔ THE VISIBLE `Apps` TITLE IS GONE. (2026-09-01, from the human:
+	     *"i think i don't like that we have a title on the page when it's
+	     already in the navbar."*) The navbar already prints `Apps` at 17px
+	     eight pixels above, so the `h1` was the same word twice in one
+	     eyeline, and it was the LARGEST type on the page — 24px spent on the
+	     thing a reader already knows.
+
+	     IT IS STILL AN `h1`, JUST NOT A DRAWN ONE. `sr-only` keeps the heading
+	     structure the skip link lands in and the a11y/message suites assert;
+	     what changes is only that the sighted reader gets the page's ROLLUP in
+	     the slot the duplicate word used to hold. That rollup is the one thing
+	     here the chrome cannot say.
+
+	     ⚠️ NOT EVERY PAGE. `/envs/<name>` keeps its drawn `h1` — the navbar
+	     names the SECTION there and the page names the ENVIRONMENT, so the two
+	     are not the same string. The test is duplication, not position. -->
+	<div class="mb-5 min-w-0">
+		<h1 class="sr-only">Apps</h1>
 		{#if !query.isLoading && !query.isError && appRows.length > 0}
-			<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+			<p class="t-dense text-gray-500 dark:text-gray-400">
 				{appRows.length} app{appRows.length === 1 ? '' : 's'}
 				{#if attnCount > 0}
 					· <span class="font-medium text-gray-700 dark:text-gray-200"
@@ -1327,8 +1443,56 @@
 			</AlertPanel>
 		{/if}
 
-		<div class="flex flex-col gap-4">
-			<!-- ══ NEEDS ATTENTION ════════════════════════════════════════════
+		<!-- ══ TWO COLUMNS, AND A REAL RIGHT RAIL ═══════════════════════════════
+		     ⛔ THIS PAGE WAS A SPREADSHEET AND THE LAYOUT IS HALF OF WHY.
+		     (2026-09-01, from the human, about the app detail page: *"looks too
+		     much like spreadsheet. check where else is this the case."* This is
+		     one of the places.)
+
+		     Measured beside `/rollouts/<cluster>/<ns>/<name>` at 1440 in both
+		     themes — the only test that has correlated with the human's
+		     judgement — `/apps` was ONE full-width table on an otherwise empty
+		     page: a tracked uppercase column header over four fixed measurement
+		     tracks, 700px of dead ground below it, and not one identity colour
+		     anywhere. The reference page at the same width is two columns with a
+		     rail of four self-contained cards. So is `/envs/<name>`, this page's
+		     own sibling, which the human has not called a spreadsheet.
+
+		     `COMPOSITION-GRAMMAR.md` §7: *"Main column plus a rail of INDEPENDENT
+		     cards... The rail is not a sidebar of scraps; it is a stack of small
+		     complete answers."* The rail below is the same two cards `/envs/<name>`
+		     already carries, in the same order, built from components that already
+		     exist (`Card`, `DeployVolumeSparkline`, `ActivityRail`) over data this
+		     page already fetched. It introduces no new object for a reader to
+		     learn and no new request.
+
+		     ⛔ 1440px, AND IT IS THE ONE BESPOKE BREAKPOINT IN THE PRODUCT.
+		     `xl` — the sibling's own breakpoint, copied — BREAKS THIS PAGE,
+		     which the sibling's row layout does not care about and this one
+		     does. The list column is the `.apps-panel` CONTAINER, and its first
+		     query is at 720px, below which every row renders in its 390px
+		     STACKED form. At exactly `xl` (1280) a 320px rail leaves the list
+		     1280 − 176 (sidebar) − 48 (`px-6`) − 24 (gap) − 320 = **712px**.
+		     Eight pixels short, on a 1280px desktop. Measured, not predicted.
+
+		     1440 is the first round width that clears it with headroom: **872px**
+		     of list, rising to 888 once the page's `max-w-7xl` caps the whole row
+		     at 1232px from 1456 up. Below 1440 the rail goes UNDER the list at
+		     full width — it loses nothing but its adjacency, exactly as the
+		     sibling's does below `xl`.
+
+		     THE RAIL IS 320px, THE SAME AS THE SIBLING'S, and that is worth
+		     holding: 288 was tried, and at 288 the card header ran out of room
+		     and rendered `How it's …` beside its own rollup. A rail card is a
+		     titled card; a titled card that cannot print its title is not one.
+
+		     ⚠️ IF THE PAGE'S MAX WIDTH OR THE 720px CONTAINER QUERY MOVES, THIS
+		     PAIR IS WRONG. Re-derive it; do not nudge it. -->
+		<div
+			class="min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_320px] min-[1440px]:items-start min-[1440px]:gap-6"
+		>
+			<div class="mb-4 flex min-w-0 flex-col gap-4 min-[1440px]:mb-0">
+				<!-- ══ NEEDS ATTENTION ════════════════════════════════════════════
 			     MEMBERSHIP OF THIS CARD IS THE MARK. The row inside it is
 			     byte-identical to a row in the card below — no band, no second
 			     hover, nothing a reader can mistake for a rendering fault. What
@@ -1339,8 +1503,8 @@
 			     It renders only when non-empty. An empty `0 apps` card would be
 			     the norm being marked, and the page is silent when the fleet is
 			     healthy — the same behaviour `/` has. -->
-			{#if attentionRows.length > 0}
-				<!-- THE CONTAINER-QUERY SCOPE IS A DIV THIS PAGE OWNS, not the
+				{#if attentionRows.length > 0}
+					<!-- THE CONTAINER-QUERY SCOPE IS A DIV THIS PAGE OWNS, not the
 				     `Card`'s own root. Svelte's scoped CSS is compiled per
 				     component: a class passed to a child component's `class`
 				     prop lands on that child's element, which never carries this
@@ -1348,69 +1512,189 @@
 				     silently would not apply and every row would render in its
 				     390px stacked form at 1440. Measured that exact failure
 				     before wrapping. -->
-				<div class="apps-panel">
-					<Card
-						icon={ExclamationCircleSolid}
-						iconClass="text-amber-600 dark:text-amber-400"
-						title="Needs you"
-						verdict="{attentionRows.length} of {appRows.length} app{appRows.length === 1
-							? ''
-							: 's'}"
-						verdictTone="adverse"
-						verdictTitle="Apps with an environment that is failing or has stopped moving"
-						padded={false}
-					>
-						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#each attentionRows as app (app.appName)}
-								<li>{@render appRow(app)}</li>
-							{/each}
-						</ul>
-					</Card>
-				</div>
-			{/if}
+					<div class="apps-panel">
+						<Card
+							icon={ExclamationCircleSolid}
+							iconClass="text-amber-600 dark:text-amber-400"
+							title="Needs you"
+							verdict="{attentionRows.length} of {appRows.length} app{appRows.length === 1
+								? ''
+								: 's'}"
+							verdictTone="adverse"
+							verdictTitle="Apps with an environment that is failing or has stopped moving"
+							padded={false}
+						>
+							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+								{#each attentionRows as app (app.appName)}
+									<li>{@render appRow(app)}</li>
+								{/each}
+							</ul>
+						</Card>
+					</div>
+				{/if}
 
-			<!-- ══ EVERY APP ══════════════════════════════════════════════════
+				<!-- ══ EVERY APP ══════════════════════════════════════════════════
 			     THE ROLLUP IS CRITERION 1, ANSWERED BEFORE A ROW IS READ:
 			     *"which apps' fleets are consistent?"* — `3 of 4 fleets on one
 			     build`. It is the `3/3 healthy` / `10/10 ready` idiom from the
 			     reference page, and it goes GREEN only when the answer is all
 			     of them. -->
-			<div class="apps-panel">
-				<Card
-					icon={RocketSolid}
-					title={attentionRows.length > 0 ? 'Everything else' : 'All apps'}
-					verdict="{convergedCount} of {appRows.length} the same version everywhere"
-					verdictTone={convergedCount === appRows.length && currentCount === appRows.length
-						? 'good'
-						: 'neutral'}
-					verdictTitle="Counts the apps whose environments are all running one and the same version. {currentCount} of {appRows.length} are also on the newest version available to them."
-					padded={false}
-				>
-					<!-- THE COLUMN HEADER ROW. Same idiom as `/rollouts`, which pins
-				     its rows to a fixed grid under a sticky header. Three of the
-				     four columns are measurements, and a measurement with no name
-				     is a decoration. Hidden below the container breakpoint, where
-				     each cell prints its own inline label instead. -->
-					<div
-						class="apps-row apps-row--head border-b border-gray-200 px-4 py-2 dark:border-gray-700"
+				<div class="apps-panel">
+					<Card
+						icon={RocketSolid}
+						title={attentionRows.length > 0 ? 'Everything else' : 'All apps'}
+						verdict="{convergedCount} of {appRows.length} the same version everywhere"
+						verdictTone={convergedCount === appRows.length && currentCount === appRows.length
+							? 'good'
+							: 'neutral'}
+						verdictTitle="Counts the apps whose environments are all running one and the same version. {currentCount} of {appRows.length} are also on the newest version available to them."
+						padded={false}
 					>
-						<span class="apps-id t-label text-gray-500 dark:text-gray-400">App</span>
-						<span class="apps-fleet t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-							>Up to date</span
-						>
-						<span class="apps-act t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-							>Deploys · 7d</span
-						>
-						<span class="apps-lead t-label text-gray-500 dark:text-gray-400">To prod</span>
-						<span class="apps-step"></span>
-						<span class="apps-chev"></span>
-					</div>
+						<!-- ⛔ THE COLUMN HEADER ROW IS GONE. (2026-09-01)
+					     `APP · UP TO DATE · DEPLOYS · 7D · TO PROD` in 10px tracked
+					     uppercase over four fixed tracks is the instrument that made
+					     this page read as a spreadsheet. Nothing on the reference page
+					     has one — its Resources rows, its pipeline stations and its
+					     health checks are all lists whose cells name themselves.
 
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each steadyRows as app (app.appName)}
-							<li>{@render appRow(app)}</li>
-						{/each}
-					</ul>
+					     THE PROMISE IT WAS KEEPING IS KEPT WITHOUT IT: *"a measurement
+					     with no name is a decoration."* Every one of the three
+					     measurements already prints its own name 16px below the mark,
+					     so the header was restating what the cell says:
+
+					       Up to date    the mark IS the sentence — `All up to date` /
+					                     `0 of 3 up to date`, from `UpToDate`
+					       Deploys · 7d  caption `9 deploys · 1d ago`, over a window the
+					                     rail's own `Deploys · 7d` row names once per
+					                     screen — and the row's own inline label names
+					                     below the container breakpoint, where the rail
+					                     is further away
+					       To prod       caption `dev → prod` beside a clock, the same
+					                     `1d · 16 seconds` idiom the reference uses
+
+					     What is lost is the alignment CUE, not the alignment: the
+					     tracks are unchanged and the columns still line up down fifty
+					     rows. What is gained is that the eye reads apps instead of
+					     reading cells. -->
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each steadyRows as app (app.appName)}
+								<li>{@render appRow(app)}</li>
+							{/each}
+						</ul>
+					</Card>
+				</div>
+			</div>
+
+			<!-- ══ THE RAIL — A STACK OF SMALL COMPLETE ANSWERS ═══════════════
+			     Each card is self-contained, carries its own icon and its own
+			     right-aligned rollup, and answers something the list beside it
+			     cannot: the list is per-app, and these are per-FLEET and
+			     per-MOMENT. Neither restates a row.
+
+			     ⚠️ NOT A SIDEBAR OF SCRAPS AND NOT A SET OF VANITY METRICS.
+			     The three figures in the first card are the same three
+			     `/envs/<name>` prints, at this page's scope, and each is a
+			     quantity that already has a column on a row here. `Recent
+			     activity` is the SHARED `ActivityRail` that `/apps/<name>`,
+			     `/namespaces/<name>` and `/envs/<name>` already render — it is
+			     not a new object, and it carries the one dimension a fleet list
+			     structurally cannot: WHEN each app moved and what it moved FROM.
+			     `showEnv` is true here because a row can be any environment,
+			     which is the opposite of the sibling's call. -->
+			<div class="min-w-0 space-y-4">
+				<!-- ⛔ THE ROLLUP SAYS `APPS`, AND THE NOUN IS NOT COSMETIC.
+				     `3 of 4 up to date` is the ROW-level sentence `UpToDate` prints
+				     about ONE app's environments; printed as a card rollup it is the
+				     same string over a different denominator, and `messages/axis.ts`
+				     fails it as an unresolved `up-to-date headline` — a read-first
+				     claim with no app named above it. Naming the set is what makes
+				     it a rollup ABOUT apps rather than a claim about one. -->
+				<Card
+					icon={ChartMixedOutline}
+					title="How it’s going"
+					verdict="{currentCount} of {appRows.length} apps up to date"
+					verdictTone={currentCount === appRows.length ? 'good' : 'neutral'}
+					verdictTitle="Apps whose every deployed environment is on the newest version available to it"
+				>
+					<dl class="space-y-3">
+						<div class="flex items-baseline justify-between gap-3">
+							<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+								<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Deploys · 7d
+							</dt>
+							<dd class="flex items-center gap-2">
+								{#if fleetDeploys7d >= SPARK_MIN}
+									<DeployVolumeSparkline rollouts={allRollouts} days={SPARK_DAYS} />
+								{/if}
+								<span class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
+									>{fleetDeploys7d}</span
+								>
+							</dd>
+						</div>
+						<div class="flex items-baseline justify-between gap-3">
+							<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+								<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical to prod
+							</dt>
+							<dd
+								class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
+								title={fleetLeadMs === null
+									? 'No app has had a version go all the way from its first environment to production inside the deploy history kept for it'
+									: `The middle app's own median trip from its first environment to its first production region, measured across ${leadSamples.length} of ${appRows.length} apps — the rest have not had a version make the whole trip inside the history kept for them`}
+							>
+								{fleetLeadMs === null ? '—' : compactSpan(fleetLeadMs)}
+							</dd>
+						</div>
+						<div class="flex items-baseline justify-between gap-3">
+							<!-- `whitespace-nowrap`, which the sibling does not need and
+							     this does: `Furthest behind` is the longest of the three
+							     labels and it sits beside the longest value (a label AND
+							     a name AND a number), so it is the one row here that can
+							     wrap and break the three shared baselines. The app name
+							     truncates instead — the NUMBER is the reading, the name
+							     is only the pointer, and the full name is one click away
+							     on the link itself. -->
+							<dt
+								class="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+							>
+								<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Furthest behind
+							</dt>
+							<dd class="flex min-w-0 items-baseline gap-2">
+								{#if deepest}
+									<a
+										href="/apps/{deepest.appName}"
+										class="min-w-0 truncate font-mono text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+										>{deepest.appName}</a
+									>
+									<span
+										class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
+										title="{deepest.appName} has an environment {deepest.by} version{deepest.by ===
+										1
+											? ''
+											: 's'} behind the newest available to it">{deepest.by}</span
+									>
+								{:else}
+									<span class="text-base font-semibold text-green-700 dark:text-green-400">—</span>
+								{/if}
+							</dd>
+						</div>
+					</dl>
+				</Card>
+
+				<Card icon={ClockOutline} title="Recent activity" padded={false}>
+					{#snippet rollup()}
+						<a
+							href="/activity"
+							class="text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+							aria-label="View all deploy activity">view all ›</a
+						>
+					{/snippet}
+					<ActivityRail
+						rollouts={allRollouts}
+						{environments}
+						limit={8}
+						showEnv={true}
+						chrome={false}
+						{localClusterName}
+					/>
 				</Card>
 			</div>
 		</div>
@@ -1424,17 +1708,33 @@
      from a steady one, the gray band comes back under another name. The card
      is the mark; the row is a row. -->
 {#snippet appRow(app: AppRow)}
-	<!-- ── THE ROW IS A DIV WITH A STRETCHED LINK, not an `<a>`. ──────────
-	     It had to change shape to hold a button: a `<button>` inside an
-	     `<a>` is invalid HTML and browsers resolve it by discarding the
-	     nesting, so the control would have been unreachable by keyboard.
+	<!-- ── THE ROW IS A `.tap-zone`, not an `<a>` and no longer a hand-rolled
+	     stretched link. ──────────────────────────────────────────────────
+	     From the human: *"it's also not clickable in places where you'd expect
+	     it to be. i think some other views have this problem too."* `/apps`
+	     rows were on `src/lib/CLAUDE.md`'s own list of the surfaces still
+	     unfixed.
 
-	     The whole row is still one click target — the app name's link
-	     carries `after:absolute after:inset-0`, the standard stretched-link
-	     pattern — and the step button sits above it on `z-[1]`. Focus order
-	     is name, then step, which is the order a reader wants them in. -->
+	     It could not become an `<a>`: a `<button>` inside an anchor is invalid
+	     HTML and browsers resolve it by discarding the nesting, so the step
+	     control would be unreachable by keyboard. The row had a LOCAL version
+	     of the fix — `relative` here plus `after:absolute after:inset-0` on
+	     the name — which stretched the target but re-implemented the product's
+	     pattern by hand, and got two things wrong that `.tap-zone` gets right:
+
+	       · EVERY other control had to be raised BY HAND. `.apps-step` carried
+	         its own `z-[1]`; anything added to the row later would have
+	         silently landed UNDER the overlay. `.tap-zone` raises every
+	         `a, button, input, select, summary, [role=button]` inside it.
+	       · THE FOCUS RING WAS ON THE LINK'S OWN TEXT BOX, which is inside a
+	         `truncate` cell. `.tap-zone` draws it on the `::after` instead, so
+	         a keyboard user sees a ring around the region Enter will actually
+	         activate.
+
+	     Still ONE tab stop and still zero nested interactive elements — the
+	     DOM is unchanged, only the anchor's paint box grows. -->
 	<div
-		class="apps-row relative px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+		class="apps-row tap-zone px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
 	>
 		<!-- ── APP ──────────────────────────────────────────────────────────
 		     Status circle, name, and the one sentence that names the
@@ -1458,7 +1758,7 @@
 				<span class="flex min-w-0 items-baseline gap-2">
 					<a
 						href="/apps/{app.appName}"
-						class="t-code min-w-0 truncate font-semibold text-gray-900 after:absolute after:inset-0 after:content-[''] dark:text-white"
+						class="tap-link t-code min-w-0 truncate font-semibold text-gray-900 dark:text-white"
 						>{app.appName}</a
 					>
 					{#if app.desc}
@@ -1615,6 +1915,16 @@
 					>
 				{/if}
 			</span>
+			<!-- ⚠️ THE WINDOW IS NAMED ONCE PER SCREEN, NOT ONCE PER ROW, AND AT
+			     EVERY WIDTH. `7d` used to live only in the deleted column header,
+			     and `9 deploys · 1d ago` alone reads as nine deploys EVER. Adding
+			     `in 7d` to fifty captions is the mistake `/envs/<name>` measured
+			     and rejected on its gap pills — it costs ~40px in a track that
+			     has none and repeats a constant on every row. So the denominator
+			     rides where it is stated once: BELOW 720px of panel the row prints
+			     its own `Deploys · 7d` inline label (`.apps-inline-label`), and
+			     above it the rail's `Deploys · 7d` row is in the same viewport,
+			     over the same window, from the same `SPARK_DAYS`. -->
 			<span class="t-micro truncate text-gray-500 dark:text-gray-400"
 				>{app.deploys7d} deploy{app.deploys7d === 1 ? '' : 's'}{#if app.mostRecentTs}{' · '}<span
 						title={formatDate(app.mostRecentTs)}
@@ -1638,7 +1948,8 @@
 			{#if app.lead}
 				<span
 					class="apps-mark flex items-center gap-1.5"
-					title="Typical time a version takes to get from {app.lead.fromLabel} to {app.lead.toLabel}, measured over {app.lead.samples} version{app.lead.samples === 1
+					title="Typical time a version takes to get from {app.lead.fromLabel} to {app.lead
+						.toLabel}, measured over {app.lead.samples} version{app.lead.samples === 1
 						? ''
 						: 's'} that made the whole trip"
 				>
@@ -1684,7 +1995,10 @@
 		     `.btn-secondary` on a filled ground, so the page still has exactly
 		     one blue button. -->
 		{#if app.step}
-			<span class="apps-step relative z-[1] flex items-center justify-end">
+			<!-- NO HAND-ROLLED `z-[1]` ANY MORE — `.tap-zone` raises every control
+			     inside it, so this cell cannot fall under the overlay and neither
+			     can anything added beside it later. -->
+			<span class="apps-step flex items-center justify-end">
 				<!-- ⛔ `Release the hold` LANDED ON THE WRONG CONTROL. It was an
 				     `<a href="/apps/<name>">` whose destination opened a version
 				     PICKER with no way to clear a pin; the real control was two
@@ -1795,10 +2109,6 @@
 		display: none;
 	}
 
-	.apps-row--head {
-		display: none;
-	}
-
 	.apps-id {
 		grid-area: id;
 	}
@@ -1859,19 +2169,34 @@
 	   product-wide: each row is its own grid, so an intrinsic track sizes per
 	   row and the columns stop lining up down the list. One flexible track,
 	   everything else fixed. */
-	/* ── THE STEP TRACK APPEARS AT 900px OF PANEL, NOT AT 720. ────────────
+	/* ── THE STEP TRACK APPEARS AT 1000px OF PANEL, NOT AT 720. ───────────
 	   Measured, not chosen. The five existing tracks plus a 200px step and
 	   five 16px gaps plus the panel's own `px-4` take 720px, and the app-name
 	   track needs ~180px before the longest name in either fixture starts
-	   ellipsising — the one string on the row a reader navigates by. 900 is
-	   the first width where both fit with the chip row still able to wrap
-	   beside them.
+	   ellipsising — the one string on the row a reader navigates by. That put
+	   the threshold at 900 while this page had no rail; see the re-derivation
+	   below for why the arrival of the rail moved it to 1000.
 
-	   Between 720 and 899 the row keeps its five-track form and the step
-	   goes back to being a full-width band under it, exactly as on a phone:
-	   the control is never hidden, only moved. `grid-template-areas` on the
-	   720 rule below therefore keeps a `step` row. */
-	@container (min-width: 720px) and (max-width: 899px) {
+	   Between 720 and 999 the row keeps its five-track form and the step
+	   goes back to being a band under it, exactly as on a phone: the control
+	   is never hidden, only moved. `grid-template-areas` on the 720 rule below
+	   therefore keeps a `step` row.
+
+	   ⛔ THE THRESHOLD IS 1000px NOW, NOT 900. (2026-09-01, when the rail
+	   arrived.) 900 was derived on a page with NO right rail, where the panel
+	   could reach 1200px. With the 288px rail the panel is 904px at 1440 and
+	   caps at 920px at any width — and 904 − 32 (padding) − 608 (the five
+	   fixed tracks) − 80 (five gaps) leaves the App track **184px**, against
+	   the ~180 the longest name needs BEFORE its description is placed beside
+	   it. Measured at 1440: `hello-frontend-app` rendered at 73px of a 141px
+	   string. That is the primary identifier ellipsised on the page the human
+	   opens most, which is the exact defect the convergence-bar tombstone
+	   above was written about.
+
+	   So the step column now costs 1000px of panel, not 900, and the App track
+	   gets 400px whenever the rail is on. The button is still never hidden —
+	   it is a band, which is a designed state and not a fallback. */
+	@container (min-width: 720px) and (max-width: 999px) {
 		.apps-step :global(.btn) {
 			width: auto;
 		}
@@ -1898,11 +2223,6 @@
 			grid-area: chev;
 		}
 
-		.apps-row--head {
-			display: grid;
-			align-items: center;
-		}
-
 		.apps-act {
 			align-items: flex-start;
 			text-align: left;
@@ -1915,21 +2235,12 @@
 			text-align: right;
 		}
 
-		.apps-row--head .apps-lead {
-			text-align: right;
-		}
-
 		.apps-desc {
 			display: block;
 		}
 
 		.apps-inline-label {
 			display: none;
-		}
-
-		/* The header cells are labels, not stacks. */
-		.apps-row--head > span {
-			display: block;
 		}
 	}
 
@@ -1960,7 +2271,7 @@
 	   is the seatbelt, not the fix: it makes a too-long label WRAP inside its
 	   own track rather than paint over the column beside it, because a button
 	   covering a value is worse than a button that wraps. */
-	@container (min-width: 900px) {
+	@container (min-width: 1000px) {
 		.apps-row {
 			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 200px 20px;
 			grid-template-areas: 'id fleet act lead step chev';

@@ -9,6 +9,9 @@
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { repoBody, revisionPath } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
+	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
+	// words — `unreleased` — and it takes it from here rather than spelling it.
+	import { rankLabel } from '$lib/view-models/env-rank';
 	import {
 		buildRevisionLedger,
 		findRow,
@@ -484,7 +487,14 @@
 	} | null {
 		const r = rankSentence(svc);
 		if (!r) return null;
-		if (svc.diverged) return { role: 'diverged', label: 'diverged' };
+		// ⛔ THE WORD COMES FROM `rankLabel`, NOT FROM THIS FILE. (2026-09-01)
+		// It said `diverged` — git's word for two branches — while `/apps`,
+		// `/environments` and `/envs/*` all said `unreleased`, which is the
+		// fact: this build is on no environment's release list. One fact, one
+		// spelling, and it is now READ from the product's one formatter so
+		// this call site cannot drift again. Same `diverged` Chip ROLE, same
+		// colour value; only the string moves.
+		if (svc.diverged) return { role: 'diverged', label: rankLabel({ kind: 'diverged' }) };
 		return { role: svc.rank === 0 ? 'newest' : 'rank', label: r.rank };
 	}
 </script>
@@ -986,10 +996,13 @@
 									/>
 									<span class="t-micro text-gray-500 dark:text-gray-400">{rank.of}</span>
 								{:else}
-									<!-- No number at all. A `0` here would read as "newest". -->
+									<!-- No number at all. A `0` here would read as "newest".
+									     The WORD is `rankLabel`'s, like the `unreleased` above it:
+									     `unknown` is a legible answer and the product spells it in
+									     exactly one place. -->
 									<Chip
 										role="unranked"
-										label="unknown"
+										label={rankLabel({ kind: 'unknown' })}
 										title="This service does not list this build, so it has no position for it"
 										value={svc.label}
 										class="min-w-0"

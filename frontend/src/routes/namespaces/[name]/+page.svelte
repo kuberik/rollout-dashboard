@@ -35,6 +35,19 @@
 	 * (`ActivityRail` does not print it at all — a green dot already said it),
 	 * and `FAILING 0` at 1.47:1 (gone with the tile). Nothing on this page
 	 * spends a status hue on the norm now.
+	 *
+	 * ── 2026-09-01: THE ROW WAS STILL A SPREADSHEET, AND IT LED WITH A SHA ─
+	 * Three things landed together, and each of them is a rule this page was
+	 * the last or nearly the last surface to be missing:
+	 *
+	 *   1. `.tap-zone` / `.tap-link` instead of a stretched invisible `<a>`.
+	 *   2. The joined `[verdict][sha]` chip from `env-rank.ts` — see `ranks`.
+	 *      This page did not import `env-rank` at all while `/rollouts`, which
+	 *      draws the same row, has always printed the joined chip.
+	 *   3. A disclosure for the tail, and the env chip moved to the LEFT of
+	 *      the name where `/`, `/rollouts`, `/activity` and `ActivityRail` all
+	 *      put it. It used to sit to the right of the version, so this page
+	 *      read its row in a different order from every other list.
 	 */
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -51,8 +64,10 @@
 		formatStatusTime,
 		formatTimeAgo,
 		detectStuck,
-		formatDate
+		formatDate,
+		shortenVersion
 	} from '$lib/utils';
+	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -78,7 +93,9 @@
 	const namespace = $derived(page.params.name as string);
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
+		rolloutsListQueryOptions({
+			options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) }
+		})
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
@@ -181,10 +198,40 @@
 		const n = apps.length;
 		if (failedCount > 0)
 			return { text: `${failedCount} of ${n} failing`, tone: 'adverse' as const };
-		if (activeCount > 0)
-			return { text: `${activeCount} deploying now`, tone: 'active' as const };
+		if (activeCount > 0) return { text: `${activeCount} deploying now`, tone: 'active' as const };
 		return { text: `all ${n} deployed cleanly`, tone: 'good' as const };
 	});
+
+	/**
+	 * ⭐ THE ROW LEADS WITH THE RELATIVE VERSION, NOT THE SHA. (2026-09-01)
+	 *
+	 * This page printed a bare `t-code` sha in the right-hand column and did
+	 * not import `env-rank` at all — while `/rollouts`, which draws the
+	 * STRUCTURALLY IDENTICAL row, prints the joined `[verdict][sha]` chip. So
+	 * one row shape carried two different answers depending on which page you
+	 * reached it from, and this one carried the answer `DESIGN-INTENT.md`
+	 * calls noise: *"relative version beats absolute. `−2 from newest` and
+	 * `matches STG` are the signal; the sha is usually noise."*
+	 *
+	 * ⛔ AND IT IS THE SHARED DERIVATION, NOT A SECOND ONE. `rankVerdictsByRollout`
+	 * is fed the WHOLE fleet (`rollouts`), never the namespace's slice: the
+	 * ladder is per-app and an app's environments routinely live in different
+	 * namespaces, so ranking against `apps` alone would build a ladder from a
+	 * subset of the app's own cells and could answer `unreleased` for a build
+	 * that is on the line. Same function, same numbers as `/` and `/rollouts`.
+	 */
+	const ranks = $derived(rankVerdictsByRollout(rollouts, environments));
+
+	/**
+	 * ── THE TAIL IS DISCLOSED, NOT PRINTED ────────────────────────────────
+	 * `COMPOSITION-GRAMMAR.md` §8. The list is sorted failures-first, so the
+	 * rows past the fold are by construction the ones that are fine. Eight is
+	 * the point at which the card stops being a list and starts being a
+	 * spreadsheet; below it the control would be drawing the norm.
+	 */
+	const ROLLOUTS_SHOWN = 8;
+	let rolloutsExpanded = $state(false);
+	const visibleApps = $derived(rolloutsExpanded ? apps : apps.slice(0, ROLLOUTS_SHOWN));
 
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
@@ -292,7 +339,7 @@
 				class="min-w-0"
 			>
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-					{#each apps as a (a.rollout.metadata?.name)}
+					{#each visibleApps as a (a.rollout.metadata?.name)}
 						{@const latest = a.rollout.status?.history?.[0]}
 						{@const status = latest?.bakeStatus || 'None'}
 						{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}
@@ -300,33 +347,59 @@
 							status === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null}
 						{@const prevV = status === 'Failed' ? previousSucceededVersion(a.rollout, ver) : null}
 						{@const stuck = detectStuck(a.rollout, { now: $now })}
+						{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
+						{@const appName = a.rollout.metadata?.name || ''}
 						<li
 							class="environment-theme-scope"
 							style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
 						>
+							<!-- ⭐ `.tap-zone`, NOT AN INVISIBLE OVERLAY ANCHOR AND NOT A
+							     WRAPPER. This row used to stretch an `<a class="absolute
+							     inset-0">` with an `aria-label` across itself, which meant
+							     the only thing carrying the row's destination was a rectangle
+							     with no text: a keyboard user got a focus ring around nothing
+							     they could read, and every other control in the row needed a
+							     hand-written `z-[1]` to survive. The mechanism is the one in
+							     `app.css` — the NAME is the anchor, its `::after` covers the
+							     row, and `.tap-zone` raises the sha link on its own. Zero
+							     added tab stops, no `<a>` inside an `<a>`. -->
+							<!-- ⚠️ A GRID, NOT A FLEX ROW, AND THE REASON IS 390. The joined
+							     `[verdict][sha]` chip is wider than the bare sha it replaced,
+							     and in a flex row it took `hello-frontend-app` down to
+							     `hello…` on a phone — destroying the one string that
+							     identifies the row, which is the same defect that killed the
+							     `/apps` convergence bar. Below `sm` the verdict drops to its
+							     own line under the name and the name gets the full track;
+							     from `sm` up the row is what it was. -->
 							<div
-								class="relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+								class="tap-zone grid grid-cols-[36px_minmax(0,1fr)_16px] items-center gap-x-3 gap-y-1.5 px-4 py-3 transition-colors hover:bg-gray-50 sm:grid-cols-[36px_minmax(0,1fr)_auto_16px] dark:hover:bg-gray-700/30"
 							>
-								<a
-									href={rolloutPath(
-										a.sourceCluster || localClusterName,
-										a.rollout.metadata?.namespace || '',
-										a.rollout.metadata?.name || ''
-									)}
-									class="absolute inset-0 z-0"
-									aria-label="Open rollout {a.rollout.metadata?.name}"
-								></a>
 								<span
-									class="pointer-events-none relative z-[1] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+									class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 										status
 									)}"
 								>
 									<BakeStatusIcon bakeStatus={status} size="medium" />
 								</span>
-								<div class="pointer-events-none relative z-[1] flex min-w-0 flex-1 flex-col gap-0.5">
-									<div class="flex min-w-0 items-baseline gap-2">
-										<span class="t-code truncate font-semibold text-gray-900 dark:text-white"
-											>{a.rollout.metadata?.name}</span
+								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+									<div class="flex min-w-0 items-center gap-2">
+										{#if a.envName || a.theme}
+											<Chip
+												role="env"
+												theme={a.theme}
+												label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''}
+												wide
+												class="shrink-0"
+											/>
+										{/if}
+										<a
+											href={rolloutPath(
+												a.sourceCluster || localClusterName,
+												a.rollout.metadata?.namespace || '',
+												appName
+											)}
+											class="tap-link t-code min-w-0 truncate font-semibold text-gray-900 dark:text-white"
+											>{appName}</a
 										>
 										{#if stuck}<StuckBadge reason={stuck} />{/if}
 										{#if a.rollout.spec?.wantedVersion}<PinBadge
@@ -335,7 +408,7 @@
 											/>{/if}
 									</div>
 									<div class="flex min-w-0 items-baseline gap-2">
-										{#if a.title !== a.rollout.metadata?.name}<span
+										{#if a.title !== appName}<span
 												class="t-micro truncate text-gray-500 dark:text-gray-400">{a.title}</span
 											>{/if}
 										{#if failureCategory}
@@ -349,19 +422,32 @@
 									</div>
 								</div>
 								<div
-									class="pointer-events-auto relative z-10 flex shrink-0 flex-col items-end gap-0.5"
+									class="col-start-2 flex min-w-0 items-center gap-2 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end sm:gap-1"
 								>
+									<!-- ⭐ THE VERDICT FIRST, THE SHA SECOND, IN ONE BOX — the
+									     `/rollouts` unit, from the ONE derivation
+									     (`env-rank.ts`). `rankLabel` / `rankRole` / `rankTitle`
+									     are total, so there is no branch here and no place for
+									     a fourth spelling of `N behind` to appear. -->
 									{#if ver}
-										<a
-											href={versionPathForRollout(
-												a.rollout,
-												a.rollout.metadata?.name || '',
-												ver
-											)}
-											class="t-code text-gray-700 hover:underline dark:text-gray-200">{ver}</a
-										>
+										<Chip
+											role={rankRole(rank)}
+											label={rankLabel(rank)}
+											title={rankTitle(rank, appName)}
+											value={shortenVersion(ver)}
+											valueHref={versionPathForRollout(a.rollout, appName, ver)}
+											valueTitle={ver}
+											wide
+											class="min-w-0"
+										/>
 									{:else}
-										<span class="t-code text-gray-700 dark:text-gray-200">—</span>
+										<Chip
+											role="unranked"
+											label="never deployed"
+											title="This app has never deployed here"
+											wide
+											class="min-w-0"
+										/>
 									{/if}
 									{#if latest?.timestamp}
 										<span
@@ -374,27 +460,29 @@
 										</span>
 									{/if}
 								</div>
-								{#if a.envName || a.theme}
-									<Chip
-										role="env"
-										theme={a.theme}
-										label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''}
-										wide
-										class="pointer-events-none relative z-[1] shrink-0"
-									/>
-								{/if}
 								<!-- THE ROW OPENS SOMETHING, AND NOTHING SAID SO. The whole
 								     row has been a link since before this pass and carried no
 								     affordance at all; `/apps` and `/versions` rows both end
 								     in this chevron. -->
 								<ChevronRightOutline
-									class="pointer-events-none relative z-[1] h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+									class="col-start-3 row-start-1 h-4 w-4 shrink-0 text-gray-500 sm:col-start-4 dark:text-gray-400"
 									aria-hidden="true"
 								/>
 							</div>
 						</li>
 					{/each}
 				</ul>
+				<!-- ONE CONTROL FOR THE TAIL, and it disappears once the tail is open —
+				     a button that says `show 0 more` is an object drawing the norm. Same
+				     shape and voice as the reference page's `Show 8 ready resources ›`. -->
+				{#if !rolloutsExpanded && apps.length > ROLLOUTS_SHOWN}
+					<button
+						type="button"
+						class="t-micro w-full border-t border-gray-100 px-4 py-2.5 text-left text-gray-500 hover:text-gray-700 hover:underline dark:border-gray-700/60 dark:text-gray-400 dark:hover:text-gray-200"
+						onclick={() => (rolloutsExpanded = true)}
+						>Show {apps.length - ROLLOUTS_SHOWN} more rollouts ›</button
+					>
+				{/if}
 			</Card>
 
 			<!-- ══ WHAT JUST HAPPENED ═══════════════════════════════════════
@@ -405,14 +493,13 @@
 			     it, which is the only place it carries anything. -->
 			<Card icon={ClockSolid} title="Recent activity" padded={false} class="min-w-0">
 				{#snippet rollup()}
-					<span class="t-micro tabular-nums text-gray-500 dark:text-gray-400"
+					<span class="t-micro text-gray-500 tabular-nums dark:text-gray-400"
 						>{activityCount} deploy{activityCount === 1 ? '' : 's'}</span
 					>
 					<a
 						href={`/activity?ns=${encodeURIComponent(namespace)}`}
 						class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-						aria-label={`View all activity for ${namespace}`}
-						>view all ›</a
+						aria-label={`View all activity for ${namespace}`}>view all ›</a
 					>
 				{/snippet}
 				<ActivityRail
@@ -422,6 +509,7 @@
 					{localClusterName}
 					showEnv={showEnvInRail}
 					chrome={false}
+					collapseAfter={8}
 					activityHref={`/activity?ns=${encodeURIComponent(namespace)}`}
 				/>
 			</Card>
