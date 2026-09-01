@@ -315,7 +315,50 @@
 				puts it too.
 			-->
 			<div class="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4">
-				<div class="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center gap-2">
+				<!--
+					⭐ `min-h-12 sm:min-h-10` IS THE ROOM THE FULL-SIZE HALO NEEDS, AND IT
+					IS SPENT ONLY WHEN THERE IS A HALO. From the human, rejecting a
+					smaller pulse: *"I didn't want pulse to be smaller but that you move
+					the icon appropriately."*
+
+					THE REQUIREMENT IS ONE NUMBER: the disc's centre must sit at least
+					**40px** from the panel's top and left edges, because `ping` doubles a
+					40px element to a peak radius of 40. The corner does NOT raise that
+					bar — the arc is always further away than the flat edges — and the
+					proof, sampled off the rendered box, is in `app.css` beside the
+					keyframes.
+
+					WHY A `min-height` ON THE ROW AND NOT PADDING ON THE BANNER. The disc
+					centres on this row, so the row's own height is the lever, and using
+					it costs NOTHING in the case that already fits:
+
+					  390   pad-top 16, row >= 48 puts the centre at 16 + 24 = 40
+					        one-line headline   row 24 -> 48   banner +24px
+					        two-line headline   row 48 -> 48   banner +0px  <-- the
+					        common phone case: the headline already wraps, so the row is
+					        already 48 and the full halo already fits
+					  1440  pad-top 20, row >= 40 puts the centre at 20 + 20 = 40
+					        one-line headline   row 24 -> 40   banner +16px
+					        two-line headline   row 48 -> 48   banner +0px
+
+					Bumping `py` instead would have charged every pulsing banner the
+					worst case — +24px at 390 even where nothing was clipping — and an
+					asymmetric `pt` would have left 28px above the headline against 16px
+					below the disclosure, which reads as a layout bug.
+
+					THE TEXT COLUMN IS NOT NARROWED. `px-5`/`sm:px-6` are untouched, so
+					the headline wraps in exactly the same places; the left inset is
+					already 40 at 390 and 44 at 1440 and needed nothing.
+
+					⚠️ IT IS `min-h`, NOT `h`. A three-line headline or a wrapped row of
+					`extra` chips must still be able to make this row taller; the floor
+					only ever raises the disc, never caps the content.
+				-->
+				<div
+					class="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center gap-2 {pulse
+						? 'min-h-12 sm:min-h-10'
+						: ''}"
+				>
 					<!--
 						⭐ THE DISC IS A ZERO-HEIGHT FLEX ITEM ON THE HEADLINE'S OWN
 						NON-WRAPPING LINE, REACHING BACK INTO THE GRID'S FIRST COLUMN.
@@ -379,16 +422,17 @@
 					     used to wrap. The disc contributes 0 to the group's min-content
 					     (−56 + 40 + 16), so the floor is byte-identical to the old one. -->
 					<div class="flex items-center">
-						<div class="relative -ml-14 mr-4 h-0 w-10 shrink-0">
+						<div class="relative mr-4 -ml-14 h-0 w-10 shrink-0">
 							<div class="absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
 								{#if pulse}
-									<!-- `animate-alert-halo`, NOT `animate-ping`. `ping` scales to
-									     2x — a peak radius of 40 against the 28px of room the disc
-									     has above it at 390 — so the halo was sliced flat by the
-									     panel's own top edge every cycle. The arithmetic is in
-									     `app.css` beside the keyframes. -->
+									<!-- `animate-alert-halo` IS `ping`, VALUE FOR VALUE — scale(1)
+									     -> scale(2), 1s, same easing. It is a named class only so
+									     the `prefers-reduced-motion` guard can be scoped to this
+									     halo. THE SIZE WAS NEVER THE BUG; the placement was, and the
+									     row above now reserves the 40px the halo needs. The full
+									     arithmetic is in `app.css` beside the keyframes. -->
 									<div
-										class="absolute inset-0 animate-alert-halo rounded-full {palette.ping}"
+										class="animate-alert-halo absolute inset-0 rounded-full {palette.ping}"
 									></div>
 								{/if}
 								<div

@@ -278,7 +278,7 @@ textarea {
 	animation: gradient-rotate 3s linear infinite;
 }
 
-/* ⭐ THE ALERT BANNER'S HALO — `animate-ping` SIZED TO THE ROOM IT ACTUALLY HAS.
+/* ⭐ THE ALERT BANNER'S HALO — FULL-SIZE `ping`, AND THE ICON MOVED TO FIT IT.
    Used by `AlertPanel` when `pulse` is set, and by nothing else.
 
    ── THE DEFECT, MEASURED AT 390 ON THE ROLLOUT-DETAIL GATE BANNER ────────
@@ -286,55 +286,78 @@ textarea {
    because icon feels positioned too high. this is specially the case on
    mobile."* Measured with `getBoundingClientRect` on the running page:
 
-     ring centre       28px below the panel's top edge, 40px in from its left
-     `animate-ping`    scale(1) -> scale(2) on a 40px element = PEAK RADIUS 40
+     halo centre       28px below the panel's top edge, 40px in from its left
+     `ping`            scale(1) -> scale(2) on a 40px element = PEAK RADIUS 40
      overshoot         12px past the top edge, 0px at the left edge
 
-   The panel is `rounded-xl overflow-hidden`, so the halo was not floating
-   outside the card — it was being SLICED FLAT by the card's own top edge and
-   12px corner arc on every one-second cycle. A round pulse with a straight
-   chop across its top-left quadrant is why it reads as broken. At 1440 the
-   padding is `py-5`/`px-6`, so the overshoot is 8px at the top and none at the
-   left, which is why the human saw it *"specially on mobile"*.
+   The panel is `rounded-xl overflow-hidden`, so the halo was never floating
+   outside the card — it was being SLICED FLAT by the card's own top edge on
+   every cycle. A round pulse with a straight chop across its top-left quadrant
+   is why it reads as broken. At 1440 the padding is `py-5`/`px-6`, so the
+   overshoot is 8px at the top and none at the left, which is why the human saw
+   it *"specially on mobile"*.
 
-   ── WHY NOT JUST LET IT OUT ──────────────────────────────────────────────
-   Dropping the panel's `overflow-hidden` would let the halo bleed over the
-   card above it, which is the thing the human is complaining about, not the
-   fix for it. And hiding overflow harder is not available either: it is
-   ALREADY hidden. The only honest lever is the halo's size.
+   ⛔ AND THE FIX IS NOT A SMALLER PULSE. A first pass capped the halo at
+   scale 1.35 and the human rejected it in one line: *"I didn't want pulse to be
+   smaller but that you move the icon appropriately."* The size is the design;
+   the PLACEMENT was the bug. `scale(2)` is restored and the room is found in
+   `AlertPanel` instead — see the `min-h` on the headline row there.
 
-   ── THE ARITHMETIC THAT SETS 1.35 ────────────────────────────────────────
-   Worst case is 390 with a single-line headline: the disc centres 12px into a
-   24px line box that starts 16px (`py-4`) below the panel edge, so there are
-   28px of room above the centre and 40px to its left. A 40px halo may
-   therefore reach a radius of 28 — scale 1.4 — and no further. 1.35 is that
-   bound with a pixel of margin: PEAK RADIUS 27, inside the panel in all four
-   combinations, and 39.6px clear of the nearest point on the 12px corner arc.
+   ── THE GEOMETRY, AND THE TRAP IN IT ────────────────────────────────
+   ⚠️ THE 12px CORNER IS NOT THE BINDING CONSTRAINT, AND THE OBVIOUS FORMULA
+   FOR IT IS WRONG. It is tempting to treat `rounded-xl` as a solid 12px disc
+   obstacle at (12,12) and require `distance(centre, (12,12)) - 12 >= R`, which
+   for R=40 demands an inset of ~49px from both edges. That is not the shape.
+   The corner circle's CENTRE IS INSIDE the panel; the material actually
+   removed is only the sliver OUTSIDE the arc, inside the 12x12 corner square.
+   For any centre at x,y >= 12 the nearest point of the arc is one of its
+   endpoints, (12,0) or (0,12), and sqrt((x-12)^2 + y^2) >= y always — so a
+   flat edge is always nearer than the corner.
 
-   The visible halo is 7px of ring at peak rather than 40px of splash. On a
-   162px-tall banner the old one covered half the height; a 40px disc does not
-   need a notification-dot animation to be seen — it is already the only
-   filled circle in the banner.
+   Verified rather than argued: a script samples the halo's perimeter 3600 ways
+   at peak radius and tests each point against the true rounded rect, then
+   binary-searches the largest scale that fits. On the running page:
 
-   ── AND IT STOPS FOR PEOPLE WHO ASKED IT TO ──────────────────────────────
+     390    centre (40, 40)   top 40  left 40  nearest arc point 48.8
+            largest scale that fits = 2.00   — the FULL halo already fits
+     1440   centre (44, 32)   top 32  left 44  nearest arc point 45.3
+            largest scale that fits = 1.60   — scale(2) is 8px over the TOP
+
+   So the requirement is just `min(distToTop, distToLeft) >= 40`, the left edge
+   is already satisfied everywhere, and only the top needed moving.
+
+   THE LEFT EDGE IS EXACTLY TANGENT AT 390 (40 = 40) AND THAT IS FINE, NOT
+   LUCK: `ping` interpolates scale and opacity on the SAME easing, so the halo
+   is at opacity 0 exactly when it reaches radius 40. Composited with the
+   palette's own alpha (`bg-<hue>-500/25..40`) it is already invisible by
+   radius ~36. Widening `px-5` to buy left margin would cost 8px of the text
+   column at 390 to hide nothing.
+
+   ── AND IT STOPS FOR PEOPLE WHO ASKED IT TO ────────────────────────
    The product had NO `prefers-reduced-motion` handling anywhere. This is the
    one animation whose entire job is to pull the eye, so it is the one that
    must honour the setting. The banner keeps its fill, its disc and its bold
-   headline — the attention is carried by design, not by the motion. */
+   headline — the attention is carried by design, not by the motion.
+
+   It is a named class rather than Tailwind's `animate-ping` for exactly that
+   reason: the guard below has to be scoped to this halo and not to any future
+   `animate-ping` somebody adds for a different purpose. The keyframes are
+   otherwise `ping`'s, value for value. */
 @keyframes alert-halo {
 	0% {
-		opacity: 0.9;
+		opacity: 1;
 		transform: scale(1);
 	}
 
+	75%,
 	100% {
 		opacity: 0;
-		transform: scale(1.35);
+		transform: scale(2);
 	}
 }
 
 .animate-alert-halo {
-	animation: alert-halo 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+	animation: alert-halo 1s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
