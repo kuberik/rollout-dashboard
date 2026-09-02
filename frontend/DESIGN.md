@@ -3812,6 +3812,47 @@ at 3 and counts the rest. The names moved into the `+N more` tooltip and the row
 `/apps/<name>`, which lists all of them. Accepted: three unambiguous names beat five ambiguous
 ones, and the cap was already there.
 
+## DESIGN PASS 2 — the rollout-detail cluster joins the product (2026-09-02)
+
+Twelve commits on `polish/design-pass-2`, one finding each, every page at 1440 and 390 in both
+themes. The debt table above was right: the un-rebuilt cluster was where the product spelled its
+own rules differently. What moved, and the rule each one records:
+
+- **The Logs tab drew 0px of logs.** `LogsViewer`'s root was `h-full` inside the flex column the
+  tab-strip commit introduced; a percentage height there resolved to the header alone. `min-h-0
+  flex-1`, the rule the tab's own comment already states. *A percentage height inside a flex
+  column is a bug waiting for a parent change.*
+- **Rollout detail's h1 was inverted.** Bold sans title, identifier absent. It is
+  `.t-display-id` + `.t-display` now, on the Overview AND Dependencies tabs — the pair every other
+  detail page uses. *The identifier leads; the title follows in the light face.*
+- **The navbar was 57px on rollout detail and 53px everywhere else** — the env band was a stacked
+  4px block, so the chrome jumped on the way in and out. It overlays the bar's top padding now.
+- **Selected toggles are gray-900, always.** History's Compare namespace / Show environments were
+  blue-50; the Logs `Pods|Tests` switch was blue-600; Follow/Wrap were the theme's primary orange.
+  Blue is `Deploying`; a toggle deploys nothing.
+- **Only the alarm fills.** Orange-100 `↑1` → `count` chip; yellow-100 `Held by N gates` → its
+  yellow-700 ink, no box; history's blue `Current` Badge → `count` chip; the history tally's four
+  rounded-full pills → one `t-dense` caption, the same line every page header carries.
+- **`/envs/[name]` VERSION track 156 → 168px**: `1 BEHIND 2.66.0-66` had 60px for 62px of text on
+  the one stuck row. Same defect class as the 12ch cap: the identifier that answers "which" was the
+  thing ellipsised.
+- `/dependencies` names itself in the navbar crumb. Whether it earns a sidebar entry is open.
+
+### ⚠️ `.btn-primary` IS BLUE-700, AND THAT SUPERSEDES THE gray-900 BUTTON RULE ABOVE
+`app.css` defines the one filled action as `blue-700` and cites the reference page's `Deploy`
+button; the "Buttons — 3 kinds" section above still says `bg-gray-900`. `app.css` is the later
+decision. Left as-is here so the next pass does not "fix" `Deploy` to gray.
+
+### Deferred — measured, not fixed
+- `/` Trailing cards ellipsise `hello-fronten…` at 1440 (three 400px tracks; the env chip
+  disambiguates, but it is still an ellipsised identifier on the reference page).
+- `Current` is still a green-100 pill in `ResourcesCard` and a green Badge in `ChangeVersionModal`
+  — the same word the history tab now draws as a neutral chip.
+- The history tab's `DeploymentTimeline` tints rows `blue-50` with blue labels; `/activity`'s
+  instance of the same widget is gray. One widget, two skins.
+- Pre-existing: `svelte-check` error at rollout `+page.svelte:1082` (`imageRepoScanTime` is not
+  on `RolloutResponse`) — on the base commit, not introduced here.
+
 ## Open issues — still to address
 
 ### From the 2026-08-27 colour audit — measured, argued, NOT implemented
