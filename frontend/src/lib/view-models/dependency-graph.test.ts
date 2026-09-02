@@ -7,8 +7,10 @@ import {
 	neighbourhood,
 	networkVerdict,
 	edgeSentence,
+	heldSubjects,
 	layoutOrder,
-	nodeId
+	nodeId,
+	type GraphNode
 } from './dependency-graph';
 
 /**
@@ -728,5 +730,69 @@ describe('an open graph says so, and does not look broken', () => {
 		}
 		const g = build(f);
 		expect(networkVerdict(g)).toEqual({ text: '7 of 7 not read', tone: 'neutral' });
+	});
+});
+
+/**
+ * `heldSubjects` — the banner's list of held rollouts, grouped by app.
+ *
+ * The defect it exists for: `/dependencies` printed *"hello-frontend-app in
+ * dev, hello-frontend-app in staging, hello-frontend-app in prod"* for ONE app
+ * held down one chain.
+ */
+describe('heldSubjects', () => {
+	function node(name: string, env: string): GraphNode {
+		return { id: `dev/ns/${name}/${env}`, name, env } as GraphNode;
+	}
+
+	it('names an app once and lists its environments', () => {
+		expect(
+			heldSubjects([
+				node('hello-frontend-app', 'dev'),
+				node('hello-frontend-app', 'staging'),
+				node('hello-frontend-app', 'prod')
+			])
+		).toBe('hello-frontend-app in dev, staging and prod');
+	});
+
+	it('leaves a single held rollout exactly as it reads today', () => {
+		expect(heldSubjects([node('hello-frontend-app', 'dev')])).toBe('hello-frontend-app in dev');
+	});
+
+	it('joins two apps with one environment each in plain English', () => {
+		expect(heldSubjects([node('hello-frontend-app', 'dev'), node('hello-api-app', 'prod')])).toBe(
+			'hello-frontend-app in dev and hello-api-app in prod'
+		);
+	});
+
+	// THE MIXED CASE. With `and` at both levels this reads `… staging and prod
+	// and hello-api-app in dev`, i.e. as if `hello-api-app` were a fourth
+	// environment. A list whose items contain commas is separated by semicolons.
+	it('separates with semicolons when a group already contains a comma', () => {
+		expect(
+			heldSubjects([
+				node('hello-frontend-app', 'dev'),
+				node('hello-frontend-app', 'staging'),
+				node('hello-frontend-app', 'prod'),
+				node('hello-api-app', 'dev'),
+				node('hello-api-app', 'staging')
+			])
+		).toBe('hello-frontend-app in dev, staging and prod; hello-api-app in dev and staging');
+	});
+
+	it('keeps the graph order and never sorts', () => {
+		expect(
+			heldSubjects([
+				node('hello-frontend-app', 'prod'),
+				node('hello-api-app', 'dev'),
+				node('hello-frontend-app', 'dev')
+			])
+		).toBe('hello-frontend-app in prod and dev and hello-api-app in dev');
+	});
+
+	it('folds a repeated (app, environment) pair', () => {
+		expect(
+			heldSubjects([node('hello-frontend-app', 'dev'), node('hello-frontend-app', 'dev')])
+		).toBe('hello-frontend-app in dev');
 	});
 });

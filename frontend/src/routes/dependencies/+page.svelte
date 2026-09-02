@@ -70,8 +70,9 @@
 		buildRolloutGraph,
 		filterByEnv,
 		networkVerdict,
-		nodeLabel,
-		type GraphEdge
+		heldSubjects,
+		type GraphEdge,
+		type GraphNode
 	} from '$lib/view-models/dependency-graph';
 
 	const query = createQuery(() =>
@@ -183,12 +184,19 @@
 		const held = new Set(blocked.map((e) => e.to));
 		return `${held.size} rollout${held.size === 1 ? ' is' : 's are'} held by another deploy`;
 	});
+	/**
+	 * ⭐ THE HELD ROLLOUTS ARE GROUPED BY APP. (2026-09-02.) This mapped every
+	 * held node through `nodeLabel` and joined with commas, so one app held in
+	 * three environments printed its own name three times. The grouping is
+	 * `heldSubjects`' — a property of the sentence builder, not of this banner,
+	 * so nothing else that says the same thing can drift from it.
+	 */
 	const bannerMessage = $derived.by(() => {
 		if (blocked.length === 1) return consequence(blocked[0]);
-		const names = [...new Set(blocked.map((e) => nodeById.get(e.to)).filter(Boolean))].map((n) =>
-			nodeLabel(n!)
-		);
-		return `${names.join(', ')} cannot take their next release until the deploy in front of each of them lands.`;
+		const held = [...new Set(blocked.map((e) => e.to))]
+			.map((id) => nodeById.get(id))
+			.filter((n): n is GraphNode => !!n);
+		return `${heldSubjects(held)} cannot take their next release until the deploy in front of each of them lands.`;
 	});
 </script>
 

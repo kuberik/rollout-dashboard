@@ -621,6 +621,31 @@
 		return b.entries.filter((e) => e.providedVersion);
 	}
 
+	/**
+	 * ⭐ DOES A HELD ROW BELOW ALREADY DRAW `provider [contract|served] →
+	 * [required]`? (2026-09-02.) `BlockReason`'s `contract` branch draws that
+	 * relation whenever it has all three operands, and the card was printing
+	 * the same two facts twice more above it: once as the subject line's
+	 * `[API|1.66.0]` badge and once as the sentence `Now on api 1.66.0`. One
+	 * card, `hello-api-app` three times, `api 1.66.0` three times.
+	 *
+	 * ⛔ THE PREDICATE IS THE DRAWING'S OWN, NOT AN APPROXIMATION OF IT. It
+	 * mirrors `drawsVersions` in `BlockReason.svelte` exactly — contract,
+	 * served version, required range — because the two must never disagree:
+	 * a block whose relation cannot be drawn (no `requiredVersion`, or the
+	 * providers disagree so there is no single served number) still needs the
+	 * badge and the sentence, and losing them would leave the served version
+	 * nowhere on the card.
+	 */
+	function drawsRelation(b: ContractBlock): boolean {
+		return !!(
+			b.contract &&
+			b.providedVersion &&
+			!b.providedVaries &&
+			b.blocked.some((w) => w.requiredVersion)
+		);
+	}
+
 	// ── AXIS 3 · WHAT THIS ROLLOUT IS HOLDING ───────────────────────────
 	//
 	// ⛔ SCOPED TO THIS ROLLOUT INSTANCE, WHICH IS THE OPPOSITE OF AXIS 2 AND
@@ -1139,6 +1164,7 @@
 						>
 							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
 								{#each blocks as b (b.key)}
+									{@const drawn = drawsRelation(b)}
 									<li class="px-4 py-4">
 										<!-- SUBJECT LINE. The provider is what you are waiting
 										     on, so it is the subject and it is the link; the
@@ -1164,7 +1190,15 @@
 													aria-hidden="true"
 												/>
 											</a>
-											{#if b.providedVersion && !b.providedVaries}
+											<!-- ⛔ ONLY WHERE THE HELD ROW BELOW DOES NOT DRAW IT.
+											     See `drawsRelation`: when the relation is drawn,
+											     `[API|1.66.0]` is already the left operand of
+											     `⇄ hello-api-app [API|1.66.0] → [^1.67.0]` 60px
+											     down, and printing it here made the provider and
+											     its served version appear three times in one
+											     card. One fact drawn twice is worse than one fact
+											     narrated once. -->
+											{#if b.providedVersion && !b.providedVaries && !drawn}
 												<Chip
 													role="count"
 													label={b.contract}
@@ -1219,6 +1253,14 @@
 												     the case the old first-non-null fold rendered as
 												     one version for all of them. -->
 												Each environment waits on its own copy of {b.providerName}.
+											{:else if b.providedTag && drawn}
+												<!-- THE ONE FACT THE DRAWING DOES NOT CARRY: which
+												     release line the served version came off. The
+												     version itself is the drawn clause's left
+												     operand, so the sentence is what is LEFT of it,
+												     in the same `From <tag>` form the mirror card
+												     one column over already prints. -->
+												From <span class="t-code-sm">{b.providedTag}</span>
 											{:else if b.providedTag}
 												Now on {b.contract}
 												<span class="t-code-sm">{b.providedVersion}</span>, from

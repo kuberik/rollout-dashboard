@@ -230,6 +230,59 @@
 		);
 	});
 
+	/**
+	 * ⭐ THE GRID MAY NOT OPEN A TRACK NO GROUP ON THE PAGE CAN FILL.
+	 * (2026-09-02.)
+	 *
+	 * ── THE MEASUREMENT ──────────────────────────────────────────────────
+	 * `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3` with every namespace holding
+	 * one or two rollouts left the right-hand track empty in EVERY group. On
+	 * the live fleet — 15 rollouts over 9 namespaces — the empty share of the
+	 * card area measured **44.8% at 1280, 44.7% at 1440, 44.7% at 1800**: nine
+	 * groups, nine identical voids, in the same place, under a group header
+	 * rule that runs the full width and so promises a region that is nearly
+	 * half nothing. `src/lib/CLAUDE.md`'s "ragged right is NOT a margin" is
+	 * right about a LAST ROW; it does not cover a page where every row is the
+	 * last row and every one is ragged identically.
+	 *
+	 * ── THE TWO CANDIDATES, BOTH MEASURED, BOTH WORSE ────────────────────
+	 *  · `auto-fill` with the card's real minimum. The card's `max-content` is
+	 *    **264px** (everything inside truncates), so `minmax(264px, 1fr)` at a
+	 *    1201px container opens FOUR tracks and a two-rollout group goes to
+	 *    **50% empty**. Auto-fill answers "how many fit", and the question
+	 *    here is "how many are there".
+	 *  · Two equal columns. Cards go to **596px** against 264px of content, so
+	 *    the badge row's two facts — `[NEWEST|1.66.0-66]` and `4d ago updated`
+	 *    — separate by **~460px** and stop reading as one card. That is the
+	 *    inflation the `auto-fit` note already refused, arrived at a second
+	 *    way.
+	 *
+	 * ── WHAT SHIPPED ─────────────────────────────────────────────────────
+	 * Track COUNT is capped by the largest group on the page, and track WIDTH
+	 * is capped at **460px** so the cards cannot inflate into list rows. On
+	 * this fleet: 2 tracks of 460, empty share **45% → 23%**, and the residue
+	 * is now trailing margin on the block rather than a hole inside it. On a
+	 * fleet where any namespace holds three or more, `maxGroupCards >= 3` and
+	 * the class string is **byte-identical to what shipped before** — this
+	 * cannot change the page it was designed for.
+	 *
+	 * ⛔ THE CAP IS ON `xl` ONLY, AND THAT IS NOT AN OVERSIGHT. Between 640
+	 * and 1279 the grid is already two tracks and a two-rollout group already
+	 * fills it: capping there would INVENT a void at widths that do not have
+	 * one. The cap belongs exactly where the third track is.
+	 *
+	 * ⛔ AND THE CARD ITSELF IS UNTOUCHED — same markup, same padding, same
+	 * radius, same internals. Only the track it sits in changed.
+	 */
+	const maxGroupCards = $derived(Math.max(1, ...grouped.map((g) => g.cards.length)));
+	const gridColsClass = $derived(
+		maxGroupCards >= 3
+			? 'xl:grid-cols-3'
+			: maxGroupCards === 2
+				? 'xl:grid-cols-[repeat(2,minmax(0,460px))] xl:justify-start'
+				: 'xl:grid-cols-[repeat(1,minmax(0,460px))] xl:justify-start'
+	);
+
 	// Quick-filter tile counts, from the full (unfiltered) set of cards. Every
 	// predicate is `/`'s — see the note on QuickFilter.
 	const attentionCards = $derived.by(() => cards.filter(isNeedsYou));
@@ -583,7 +636,7 @@
 <!-- Responsive grid of compact rollout cards. State column dropped
 					     (redundant with the status circle); cards flow into columns so wide
 					     screens are not one stretched row each. -->
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 {gridColsClass}">
 						{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
 							<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS

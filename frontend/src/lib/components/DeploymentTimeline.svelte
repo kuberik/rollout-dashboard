@@ -368,6 +368,87 @@
 		return dys;
 	}
 
+	/**
+	 * ⭐ AND WHERE THE FAN IS REFUSED, THE CLUSTER IS DRAWN AS ONE MARK THAT
+	 * SAYS HOW MANY. (2026-09-02.)
+	 *
+	 * `spreadOverlaps` is opt-in and `/activity` correctly declines it — see
+	 * `fanOverlaps`. But declining it left the collision: on the live hub the
+	 * `dev` lane drew `●◗` on Aug 29 and again on Aug 31, an amoeba that is
+	 * neither one mark nor two, and at a 7-day scale two deploys minutes apart
+	 * will ALWAYS collide, so this is the resting state of the page and not an
+	 * edge case.
+	 *
+	 * THE THREE CANDIDATES, AND WHY THIS ONE:
+	 *   · a STACK OFFSET is `spreadOverlaps`, already rejected here for a
+	 *     reason that has not changed — a lane is a whole environment, and
+	 *     eight builds landing in a minute become a bead-chain that reads as
+	 *     if height meant something;
+	 *   · spreading along X would lie about WHEN, which is the one axis on
+	 *     this chart that carries meaning;
+	 *   · a bare COUNT BADGE beside the amoeba leaves the amoeba.
+	 * So: ONE disc, at the cluster's centre, carrying the count. It is bigger
+	 * than a lone mark, which is the honest encoding — more happened here.
+	 *
+	 * ⛔ IT REPLACES NOTHING IN THE DOM. Every member keeps its own `<circle>`
+	 * at its own x, its own `aria-label`, its place in the roving tabindex and
+	 * its hover/focus handlers; members are only made INVISIBLE (and kept
+	 * `pointer-events: all`, because a transparent fill is not a painted one).
+	 * So a pointer moving across the bubble resolves it into the individual
+	 * deploy under the cursor, `←`/`→` still walk every mark, and a screen
+	 * reader's count of the lane is unchanged. The bubble itself is
+	 * `aria-hidden` and inert — it is a picture of marks that are still there.
+	 *
+	 * The bubble hides while any of its members is hovered, focused or
+	 * selected, so the reader never sees a count and a mark fighting for the
+	 * same 15px.
+	 */
+	const R_CLUSTER = 7.5;
+
+	/** Failed outranks in-flight outranks settled — a merged mark may never
+	    hide the worst thing inside it. */
+	function worstStatus(list: (string | undefined)[]): string | undefined {
+		const rank = (s?: string) => (s === 'Failed' ? 3 : s === 'InProgress' ? 2 : s === 'Deploying' ? 1 : 0);
+		return list.reduce((worst, s) => (rank(s) > rank(worst) ? s : worst), undefined as string | undefined);
+	}
+
+	type MarkCluster = { cx: number; count: number; status?: string };
+
+	function clusterRuns(
+		xs: number[],
+		order: number[],
+		statusAt: (pos: number) => string | undefined
+	): { of: number[]; list: MarkCluster[] } {
+		const of: number[] = new Array(xs.length).fill(-1);
+		const list: MarkCluster[] = [];
+		if (order.length < 2) return { of, list };
+		let run: number[] = [];
+		const flush = () => {
+			if (run.length > 1) {
+				const idx = list.length;
+				for (const p of run) of[p] = idx;
+				list.push({
+					cx: run.reduce((sum, p) => sum + xs[p], 0) / run.length,
+					count: run.length,
+					status: worstStatus(run.map(statusAt))
+				});
+			}
+			run = [];
+		};
+		// The SAME run detection `spreadOverlaps` uses, so the two treatments
+		// never disagree about what counts as a collision.
+		for (const pos of order) {
+			const prev = run[run.length - 1];
+			if (prev === undefined || Math.abs(xs[pos] - xs[prev]) < MIN_SEP) run.push(pos);
+			else {
+				flush();
+				run.push(pos);
+			}
+		}
+		flush();
+		return { of, list };
+	}
+
 	const lanes = $derived(
 		services.map((svc, i) => {
 			const entries = visibleEntries(svc.history);
@@ -379,7 +460,22 @@
 						new Date(entries[b].e.timestamp).getTime()
 				);
 			const xs = entries.map(({ e }) => tsToX(e.timestamp));
-			return { svc, i, entries, order, xs, dys: fanOverlaps ? spreadOverlaps(xs, order) : xs.map(() => 0) };
+			// ⛔ THE TWO TREATMENTS ARE EXCLUSIVE. A fanned lane has already
+			// separated its collisions on the y-axis, so merging them back into
+			// one disc would undo the caller's own choice.
+			const clusters = fanOverlaps
+				? { of: xs.map(() => -1), list: [] as MarkCluster[] }
+				: clusterRuns(xs, order, (pos) => entries[pos].e.bakeStatus);
+			return {
+				svc,
+				i,
+				entries,
+				order,
+				xs,
+				dys: fanOverlaps ? spreadOverlaps(xs, order) : xs.map(() => 0),
+				clusterOf: clusters.of,
+				clusters: clusters.list
+			};
 		})
 	);
 
@@ -678,7 +774,7 @@
 				{/each}
 
 				<!-- Per-service swimlanes -->
-				{#each lanes as { svc, entries, order, xs, dys }, i}
+				{#each lanes as { svc, entries, order, xs, dys, clusterOf, clusters }, i}
 					{@const cy = rowCY(i)}
 					{@const cursor = cursorFor(svc.id, order)}
 
@@ -736,6 +832,9 @@
 								selectedEntry?.serviceId === svc.id && selectedEntry?.index === origIdx}
 							{@const active = isHov || isSel}
 							{@const r = active ? R_ACTIVE : R_NORMAL}
+							<!-- Merged into the lane's count bubble, and drawn only when
+							     the reader is pointing at it. -->
+							{@const merged = clusterOf[pos] !== -1 && !active}
 							<!-- Halo for the active dot. It was four status-tinted rgba
 							     literals (one of them `green-500`, a banned token); the dot
 							     already grows on hover, so the halo only has to say WHICH
@@ -755,7 +854,7 @@
 							     spends no colour, reads in greyscale, and survives the fan
 							     above because it moves with the dot. `pointer-events-none` so
 							     it never steals the dot's hover or click. -->
-							{#if e.mark === 'rollback'}
+							{#if e.mark === 'rollback' && !merged}
 								<circle
 									cx={x}
 									cy={dy}
@@ -773,7 +872,10 @@
 								{r}
 								data-dot=""
 								stroke-width={active ? 2 : 1}
-								class="cursor-pointer stroke-white dark:stroke-gray-800 {statusFill(e.bakeStatus)}"
+								pointer-events="all"
+								class="cursor-pointer {merged
+									? 'fill-transparent stroke-transparent'
+									: `stroke-white dark:stroke-gray-800 ${statusFill(e.bakeStatus)}`}"
 								role="button"
 								aria-label={dotLabel(svc, e)}
 								tabindex={pos === cursor ? 0 : -1}
@@ -805,6 +907,44 @@
 								onkeydown={(ev) =>
 									onDotKey(ev, svc.id, pos, order, () => onEntryClick?.(svc.id, origIdx))}
 							/>
+						{/each}
+
+						<!-- ⭐ THE COUNT BUBBLE. One per collided run, painted after the
+						     marks it stands for and `aria-hidden` — the marks are still
+						     in the DOM, still named, still in the tab order; this is
+						     their picture. `pointer-events: none` so the member under
+						     the cursor keeps the hover it always had. -->
+						{#each clusters as c, ci (ci)}
+							{@const openHere = entries.some(
+								(en, pos) =>
+									clusterOf[pos] === ci &&
+									((hovId === svc.id && hovIdx === en.i) ||
+										(selectedEntry?.serviceId === svc.id && selectedEntry?.index === en.i))
+							)}
+							{#if !openHere}
+								{@const cr = c.count > 9 ? R_CLUSTER + 1.5 : R_CLUSTER}
+								<circle
+									cx={c.cx}
+									cy={cy}
+									r={cr}
+									stroke-width={1}
+									pointer-events="none"
+									aria-hidden="true"
+									class="stroke-white dark:stroke-gray-800 {statusFill(c.status)}"
+								/>
+								<text
+									x={c.cx}
+									y={cy + 3.2}
+									text-anchor="middle"
+									font-size="9"
+									font-weight="600"
+									pointer-events="none"
+									aria-hidden="true"
+									class="fill-white dark:fill-gray-900"
+								>
+									{c.count}
+								</text>
+							{/if}
 						{/each}
 					</g>
 

@@ -1712,26 +1712,38 @@
 							</dd>
 						</div>
 						<div class="flex items-baseline justify-between gap-3">
-							<!-- `whitespace-nowrap`, which the sibling does not need and
-							     this does: `Furthest behind` is the longest of the three
-							     labels and it sits beside the longest value (a label AND
-							     a name AND a number), so it is the one row here that can
-							     wrap and break the three shared baselines. The app name
-							     truncates instead — the NUMBER is the reading, the name
-							     is only the pointer, and the full name is one click away
-							     on the link itself. -->
+							<!-- ⭐ THE APP NAME IS ON THE LABEL SIDE, AND THE `dd` IS ONE
+							     FIGURE — the shape the two rows above already have.
+							     (2026-09-02.) It used to sit in the VALUE cell, so the row
+							     rendered `hello-frontend-app 1`: a mono identifier flush
+							     against a bare digit, which reads as a name with a stray
+							     number rather than as one fact. Nothing was wrong with the
+							     digit — `32` and `9h` take their meaning from their label
+							     the same way — the intruder was a second object in the
+							     cell that the other two rows do not have.
+							     `Deploys · 7d`'s sparkline is not a counter-example: it is
+							     the SAME figure drawn over time, not a second value.
+							     So the row is `Furthest behind <app>` … `1`, every `dd`
+							     is a 16px tabular figure hard-right, and the three
+							     figures share one column down the card.
+							     `whitespace-nowrap` stays on the WORDS only; the name
+							     truncates, because the number is the reading and the name
+							     is the pointer, one click away in full. -->
 							<dt
-								class="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+								class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
 							>
-								<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Furthest behind
-							</dt>
-							<dd class="flex min-w-0 items-baseline gap-2">
+								<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+								<span class="shrink-0 whitespace-nowrap">Furthest behind</span>
 								{#if deepest}
 									<a
 										href="/apps/{deepest.appName}"
 										class="min-w-0 truncate font-mono text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
 										>{deepest.appName}</a
 									>
+								{/if}
+							</dt>
+							<dd class="shrink-0">
+								{#if deepest}
 									<span
 										class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
 										title="{deepest.appName} has an environment {deepest.by} version{deepest.by ===

@@ -85,6 +85,7 @@ import { SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 import { promotionBlock } from './promotion';
 import {
 	blockingStory,
+	joinClauses,
 	EMPTY_GATE_CONTEXT,
 	type GateClears,
 	type GateContext
@@ -739,6 +740,47 @@ export function layoutOrder(graph: RolloutGraph): string[] {
 
 export function nodeLabel(n: GraphNode): string {
 	return `${n.name} in ${n.env}`;
+}
+
+/**
+ * ⭐ THE SAME APP IN N ENVIRONMENTS IS ONE SUBJECT, NOT N SUBJECTS.
+ * (2026-09-02.) `/dependencies`' banner mapped every held node through
+ * `nodeLabel` and joined the result, so one app held in three environments
+ * printed *"hello-frontend-app in dev, hello-frontend-app in staging,
+ * hello-frontend-app in prod"* — the app named three times in eleven words,
+ * and the ONE thing the reader has to take from it (that it is a single app,
+ * held all the way down its chain) buried under the repetition.
+ *
+ * It is a property of the SENTENCE BUILDER and not of the banner, because two
+ * surfaces must not disagree about how a set of held rollouts is said, and
+ * because the folding rule is the interesting part and belongs somewhere a
+ * test can reach it.
+ *
+ * ⚠️ ORDER IS THE GRAPH'S, NEVER ALPHABETICAL — the caller passes nodes in
+ * promotion order and that order is the story (dev before prod).
+ *
+ * ⚠️ A LIST WHOSE ITEMS CONTAIN COMMAS IS SEPARATED BY SEMICOLONS. With two
+ * apps and `and` at both levels, `…, staging and prod and hello-api-app in
+ * dev` reads as if `hello-api-app` were an environment. The semicolon only
+ * appears in the mixed case; the common single-app case is a plain English
+ * list.
+ */
+export function heldSubjects(nodes: GraphNode[]): string {
+	const order: string[] = [];
+	const envsByName = new Map<string, string[]>();
+	for (const n of nodes) {
+		let envs = envsByName.get(n.name);
+		if (!envs) {
+			envs = [];
+			envsByName.set(n.name, envs);
+			order.push(n.name);
+		}
+		if (!envs.includes(n.env)) envs.push(n.env);
+	}
+	const phrases = order.map((name) => `${name} in ${joinClauses(envsByName.get(name)!)}`);
+	return phrases.length > 1 && phrases.some((p) => p.includes(','))
+		? phrases.join('; ')
+		: joinClauses(phrases);
 }
 
 /**
