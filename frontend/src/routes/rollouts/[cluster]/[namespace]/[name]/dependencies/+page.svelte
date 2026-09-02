@@ -894,7 +894,7 @@
 	>
 </svelte:head>
 
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	{#if rolloutQuery.isLoading}
 		<StillTryingNotice failureCount={rolloutQuery.failureCount} />
 		<div class="grid gap-4 xl:grid-cols-[3fr_minmax(22rem,2fr)] xl:items-start">

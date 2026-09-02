@@ -1269,7 +1269,7 @@
 	</Card>
 {/snippet}
 
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
 	     ⛔ THE DRAWN `Environments` TITLE IS GONE. (2026-09-01, from the human:
 	     *"environments and rollouts still have a heading"*.) `Navbar.svelte`

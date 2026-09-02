@@ -525,8 +525,18 @@
 			</AlertPanel>
 		</div>
 	{:else}
-		<!-- The product's one content container — see the rollout Overview tab. -->
-		<div class="mx-auto max-w-7xl flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+		<!-- The product's one content container — see the rollout Overview tab.
+		     ⛔ IT USED TO CARRY `flex-1 overflow-y-auto` AND THAT MADE IT THE ONE
+		     CONTAINER IN THE PRODUCT THAT COULD EAT ITS OWN RIGHT PADDING. A
+		     scroll container's scrollbar is taken out of its CONTENT box, so on
+		     any platform with classic (non-overlay) scrollbars this page's inset
+		     would have been 24px on the left and 24 + a scrollbar on the right —
+		     asymmetric padding, which reads as a margin exactly the way a wrong
+		     `max-w-*` does. It was also dead: this element is not a flex item,
+		     and the comment on `scrollToEntry` above already records that the
+		     list's real scroll container is four ancestors up. Removed rather
+		     than styled around. -->
+		<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 			<!-- Page header + stats bar -->
 			<div class="mb-5 flex flex-wrap items-start justify-between gap-4">
 				<div>

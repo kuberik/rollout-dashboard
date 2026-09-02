@@ -157,7 +157,10 @@
 	{/if}
 </svelte:head>
 
-<div class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 dark:bg-gray-900">
+<!-- The product's one content container. `py-8` here was 32px against everyone
+     else's 24, i.e. this page's first ink sat 8px lower than the page you
+     arrived from. -->
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 dark:bg-gray-900">
 	<div class="mb-6">
 		<Button color="light" href={`/rollouts/${cluster}/${namespace}/${name}`}>
 			<ChevronLeftOutline class="mr-2 h-4 w-4" />

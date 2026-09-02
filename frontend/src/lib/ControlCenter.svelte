@@ -172,7 +172,7 @@
 	<title>kuberik</title>
 </svelte:head>
 
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!--
 		THE ONLY PAGE IN THE PRODUCT WITH NO h1 (fixed 2026-08-27).
 

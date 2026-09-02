@@ -1265,7 +1265,7 @@
 
 <div class="min-h-full dark:bg-gray-900">
 	{#if loading}
-		<div class="mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6">
+		<div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-6 pb-10 sm:px-6">
 			<StillTryingNotice failureCount={rolloutQuery.failureCount} />
 			<div class="h-10 w-48 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-28 w-full animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
@@ -1304,7 +1304,7 @@
 			different fact from a failed request, so the footnote states the
 			address that was asked for. Never invent a quote from the server.
 		-->
-		<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
 			<AlertPanel
 				severity="warning"
 				class=""
@@ -1333,10 +1333,12 @@
 		     column ran the full 1264px of `<main>` and its left edge sat at 196
 		     against every other page's 200 — a 4px sidestep on entry and an
 		     uncapped column that grows without limit on a wide monitor while every
-		     page you arrive from stops at 1216. The sticky TAB BAR above stays
-		     full-bleed on purpose: it is chrome for the whole pane, the same way a
-		     browser tab strip is, and it is the ONE documented exception. -->
-		<div class="mx-auto max-w-7xl px-4 pt-6 pb-10 sm:px-6">
+		     page you arrive from stops at 1216. THE TAB BAR ABOVE IS IN THIS SAME
+		     CONTAINER NOW — it used to be full-bleed as "the one documented
+		     exception", and that exception was the 180px step at 1800 (560 at
+		     2560) between the strip and this block that the human read as
+		     rollout detail having a larger margin. See the layout file. -->
+		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
 			{#if rollout.status?.history?.[0]}
 				{@const latestEntry = rollout.status.history[0]}
 				{@const currentEnv = environment?.spec?.environment}

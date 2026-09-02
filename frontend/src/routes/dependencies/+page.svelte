@@ -196,7 +196,7 @@
 	<title>kuberik | Dependencies</title>
 </svelte:head>
 
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
 	     ⚠️ THE `h1` STAYS DRAWN HERE, AND THAT IS THE RULE BEING FOLLOWED, NOT
 	     AN EXCEPTION TO IT. (2026-09-01) The duplicate-title rule tests for

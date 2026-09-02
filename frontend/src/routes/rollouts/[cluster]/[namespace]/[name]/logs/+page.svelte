@@ -30,7 +30,13 @@
 	<title>kuberik | {name} ({namespace}) Logs</title>
 </svelte:head>
 
-<div class="mx-auto flex h-full max-w-7xl flex-col overflow-hidden px-4 py-6 dark:bg-gray-900 sm:px-6">
+<!-- ⭐ `min-h-0 flex-1`, NOT `h-full`. The rollout layout's scroller is a flex
+     column now (the tab strip moved inside it so the strip and the page are
+     centred in the SAME content box), and `height: 100%` in there resolves
+     against the scroller's full height — which would make this tab exactly one
+     tab strip taller than its pane and give the only tab that must not scroll a
+     49px scrollbar. As a flex item it takes the remainder instead. -->
+<div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-4 py-6 dark:bg-gray-900 sm:px-6">
 	<div class="mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-2 sm:mb-4">
 		<h1 class="text-lg font-bold text-gray-900 dark:text-white sm:text-xl">Logs</h1>
 		<!-- Tab buttons inline on mobile -->

@@ -251,7 +251,7 @@
 	<title>kuberik | {namespace}</title>
 </svelte:head>
 
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!--
 		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
 		replied and names the ones that did not in `clusterErrors`, so this page

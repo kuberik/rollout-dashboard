@@ -52,7 +52,36 @@
 		<Navbar />
 		<div class="flex min-w-0 flex-grow flex-row overflow-hidden">
 			<Sidebar />
-			<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto focus:outline-none">
+			<!--
+				⭐ `scrollbar-gutter: stable` — THE CONTAINER IS ONLY ONE WIDTH IF THE
+				BOX IT IS CENTRED IN IS ONLY ONE WIDTH.
+
+				`mx-auto max-w-7xl` centres in `main`'s CONTENT box, and a scroll
+				container takes its scrollbar out of that box. So on any platform
+				with classic (non-overlay) scrollbars — which is most of them, and
+				is NOT what a headless Chromium renders — a page whose content
+				fits the viewport is centred in `main`'s full width and a page that
+				scrolls is centred in `main` minus a scrollbar. Every edge on the
+				short page therefore sits HALF A SCROLLBAR further out, on both
+				sides, than the same edge on the long page you just came from.
+
+				Measured on this cluster at 1800×950: `/environments`, `/` and a
+				short rollout detail do not overflow `main`; `/apps`, `/versions`,
+				`/activity`, `/envs/<name>` and `/rollouts` do. That is exactly the
+				partition the human named — and it is invisible to any census run
+				in headless Chromium, whose overlay scrollbars are 0px wide, which
+				is why two passes measured this page and found nothing.
+
+				Reserving the gutter always makes the content box one width whether
+				or not the page scrolls. It is a no-op where scrollbars are already
+				overlays, so nothing changes in CI or in the screenshots.
+			-->
+			<main
+				id="main-content"
+				tabindex="-1"
+				class="min-w-0 flex-1 overflow-y-auto focus:outline-none"
+				style="scrollbar-gutter: stable;"
+			>
 				<div class="relative h-full min-w-0">
 					<slot />
 				</div>

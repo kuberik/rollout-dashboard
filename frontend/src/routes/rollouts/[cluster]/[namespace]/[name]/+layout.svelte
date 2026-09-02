@@ -119,16 +119,74 @@
 	`@xyflow/svelte` runtime on the CRITICAL PATH of the rollout detail page,
 	Overview, History and Logs included, for a graph none of them draw.
 -->
-<div class="flex h-full flex-col overflow-hidden">
-	<!-- Horizontal tabs: replaces the rollout sub-sidebar so the page
-	     no longer has two stacked sidebars. -->
+<!--
+	⛔ THIS PANE NO LONGER OWNS A SCROLL CONTAINER, AND THAT IS THE SAME BUG ONE
+	LEVEL UP.
+
+	It used to be `flex h-full flex-col overflow-hidden` wrapping an inner
+	`overflow-y-auto` pane, i.e. rollout detail was the ONE route in the product
+	that did not scroll `<main>`. `mx-auto max-w-7xl` centres in its scroller's
+	CONTENT box and a scroll container takes its scrollbar out of that box, so
+	two nested scrollers reserve two gutters and this page came out a whole
+	scrollbar narrower than every page you arrive from. Measured with the gutter
+	reserved at 1800: 357→1589 here against 364→1596 everywhere else. Fixing the
+	strip and leaving the extra scroller in place would have moved the defect
+	rather than removed it.
+
+	Now `<main>` scrolls this page like every other page, `sticky top-0` on the
+	strip below pins against `<main>` exactly as it pinned against the inner
+	pane, and `min-h-full` + `flex flex-col` keeps the Logs tab able to claim the
+	viewport's remaining height without a second scrollbar.
+-->
+<div class="flex min-h-full flex-col pb-16 md:pb-0">
+	<!--
+		══ THE TAB STRIP IS NO LONGER FULL-BLEED ═══════════════════════════
+
+		⛔ THE ONE DOCUMENTED EXCEPTION TO THE PAGE CONTAINER WAS THE DEFECT
+		THE HUMAN WAS POINTING AT. (2026-09-02: *"rollout detail and
+		environment list still have larger margin than the rest of the
+		pages."* — "still", one commit after the container was unified and
+		this strip was written down as a deliberate exception.)
+
+		The strip's BACKGROUND and its bottom hairline are chrome for the
+		whole pane and stay full-bleed. Its TABS were full-bleed too, at
+		`px-2 sm:px-4`, so the first tab's box sat 16px from the pane edge
+		while the content below it sat in the product's container. Measured
+		on the running page, first tab box → content left edge:
+
+		    1280 →   8px      1440 →   8px      1680 → 120px
+		    1800 → 180px      2560 → 560px
+
+		Every other route's topmost element IS the container's left edge, so
+		rollout detail is the ONE page in the product that draws a reference
+		line at the pane edge and then insets its content from it by a
+		quarter of the viewport. That step is what reads as "a larger
+		margin", and no census of container edges can see it — the container
+		was correct the whole time. Same shape as the Dependencies tab's
+		`max-w-[64rem]` one commit ago: the outer wrapper is uniform and
+		something inner is not.
+
+		⭐ THE TAB *BOX* ALIGNS WITH THE CONTENT EDGE, NOT THE TAB *LABEL*.
+		The tab carries `px-3`, so its label lands 12px in — exactly the way
+		a `Card`'s border sits at the block edge and its title sits 16px
+		inside. What aligns is the thing that draws a line: the active tab's
+		`border-b-2` is now a segment of the container's own left edge.
+
+		⭐ AND IT HAD TO SHARE THE CONTENT'S SCROLL BOX, NOT JUST ITS WIDTH
+		CLASS. The strip used to be a SIBLING of the scrolling pane, so it
+		was centred in a box one scrollbar wider than the box the page was
+		centred in. Putting the same `max-w-7xl` on both would have left them
+		half a scrollbar apart — the jitter this rule exists to remove,
+		reintroduced by the fix for it. Both are children of `<main>` now, so
+		there is one content box and one centre.
+	-->
 	<nav
 		class="sticky top-0 z-10 shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 		aria-label="Rollout sections"
 	>
 		<!-- Tabs split evenly across the row on mobile (icon-only), expand
 		     to icon+label on sm+. No overflow-x-auto — the tabs always fit. -->
-		<div class="flex items-stretch px-2 sm:justify-start sm:gap-0 sm:px-4">
+		<div class="mx-auto flex w-full max-w-7xl items-stretch px-4 sm:justify-start sm:gap-0 sm:px-6">
 			{#each tabs.filter((t) => t.show) as t (t.href)}
 				{@const active = isActive(t.href)}
 				<a
@@ -147,8 +205,5 @@
 		</div>
 	</nav>
 
-	<!-- Content -->
-	<div class="min-w-0 flex-1 overflow-y-auto pb-16 md:pb-0">
-		{@render children()}
-	</div>
+	{@render children()}
 </div>

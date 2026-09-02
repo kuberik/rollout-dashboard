@@ -383,7 +383,7 @@
 	<title>kuberik | Revisions</title>
 </svelte:head>
 
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!--
 		⛔ THE VISIBLE TITLE SAID WHAT THE NAVBAR ALREADY SAYS. (2026-09-01)
 		From the human: *"i think i don't like that we have a title on the page

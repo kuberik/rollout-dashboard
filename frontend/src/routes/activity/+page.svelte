@@ -590,7 +590,7 @@
      and the event rows are three-column grids (mark · what · when) whose right
      column was being crushed, not protected. A reading measure is a legitimate
      exception; this was not one, so it is gone rather than documented. -->
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!-- ══ HEADER ═══════════════════════════════════════════════════════════
 	     THE 24H SPARKLINE IS CUT. It sat 40px above a chart of the same array
 	     at higher resolution, and on this cluster it drew nothing at all while
