@@ -246,6 +246,39 @@ describe('the cluster is legible where it is the only discriminator', () => {
 });
 
 /**
+ * ⭐ THE HEADLINE AGREES WITH ITS OWN SUBJECT. (2026-09-02, from the
+ * coordinator: *"the grammatical subject is the singular app, so 'are' is
+ * wrong."*) The first cut of the multi-environment fix wove the environment
+ * SET into `subject` and let `pluralSubject` conjugate `is` -> `are`, which
+ * read *"hello-frontend-app in all 3 environments ARE waiting on another
+ * deploy"* -- agreement with the wrong noun. `/apps/[name]`'s OWN sentence,
+ * *"All 3 environments are waiting on another deploy"*, is correctly plural
+ * there because the environment SET genuinely is the subject once the page
+ * has dropped the app. On `/apps` and `/environments` the app never drops
+ * out, so it stays the subject and the environment set is a trailing
+ * locative appended after the fact: *"<app> is waiting on another deploy in
+ * all N environments"*. This locks the exact string so a future pass cannot
+ * reopen the agreement error by a different route.
+ */
+describe('the plural-cause headline still agrees with its singular subject', () => {
+	for (const [surface, Comp] of [
+		['/apps', Apps],
+		['/environments', Environments]
+	] as const) {
+		test(`${surface} — "<app> is …" not "<app> in … environments ARE …" when one cause holds every environment`, async () => {
+			const { container } = await renderSurface(Comp, { surface, Comp, hold: 'dependency' });
+			const headline = container.querySelector('.t-headline')?.textContent?.trim() ?? '';
+			expect(
+				headline,
+				`headline was ${JSON.stringify(headline)} -- expected the singular app to stay the ` +
+					`sentence's subject ("<app> is waiting on another deploy in all 3 environments"), ` +
+					`not the environment set ("<app> in all 3 environments ARE waiting…").`
+			).toMatch(/^alpha-app is waiting on another deploy in all 3 environments$/);
+		});
+	}
+});
+
+/**
  * FAILING AND NAMED ON PURPOSE -- A PRODUCT DECISION, NOT A BUG TO PAPER
  * OVER.
  *

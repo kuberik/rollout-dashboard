@@ -75,8 +75,8 @@
 		promotionBlock,
 		detectStuckPromotion
 	} from '$lib/view-models/promotion';
-	import { buildGateContext } from '$lib/view-models/blocking-story';
-	import type { GateContext } from '$lib/view-models/blocking-story';
+	import { buildGateContext, blockingStory } from '$lib/view-models/blocking-story';
+	import type { GateContext, BlockingStory, ClassifiedGate } from '$lib/view-models/blocking-story';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
@@ -267,6 +267,21 @@
 			: shortEnvLabel(slotTheme ?? envName) || envName
 	);
 	/**
+	 * ⭐ THE CHIP PRINTS ONLY WHEN IT SAYS SOMETHING THE `h1` DOES NOT.
+	 * (2026-09-02, from a live measurement on `/envs/dev`: the `h1` drew `dev`
+	 * at 24px mono/700 and the chip drew `DEV` eight pixels later — the same
+	 * four characters twice, one of them just upper-cased by `.chip`'s own
+	 * CSS.) For a REGION `envShort` genuinely differs (`AF-SOUTH-1` against
+	 * the `h1`'s `prod-af-south-1`) and the chip is the only place that
+	 * segment is drawn, so it stays. For a plain tier the two strings are the
+	 * SAME identifier in two cases, and `Keep one: the display-size name is
+	 * the h1; the chip goes` — the `h1` is the object's own addressable name
+	 * and the chip would be adding no fact, only the identity colour, which
+	 * this page spends nowhere else and is not load-bearing here the way it
+	 * is on a row comparing several environments at once.
+	 */
+	const envChipRedundant = $derived(envShort.toLowerCase() === envName.trim().toLowerCase());
+	/**
 	 * EXACT name match only. `getRolloutEnvironmentTheme` matches presets by
 	 * PATTERN, so every `prod-*` region also resolves to "Production" — and
 	 * `prod-eu-west  Production` puts two different environments on one line.
@@ -289,11 +304,19 @@
 		return PRESET_TITLES[label.toLowerCase()] ? '' : label;
 	});
 
-	function rolloutHref(cell: AppCell): string {
+	/**
+	 * `sub` is the rollout tab to land on — `dependencies`, when the banner's
+	 * `Review gates` control is naming a cross-service contract, so the
+	 * reader lands where the requirement is actually drawn rather than on the
+	 * Overview tab, where they would have to find the Dependencies tab
+	 * themselves. Omitted for every other gate kind, unchanged.
+	 */
+	function rolloutHref(cell: AppCell, sub?: string): string {
 		return rolloutPath(
 			cell.sourceCluster || localClusterName,
 			cell.rollout.metadata?.namespace || '',
-			cell.rollout.metadata?.name || ''
+			cell.rollout.metadata?.name || '',
+			sub
 		);
 	}
 	function cellVersion(cell: AppCell): string | null {
@@ -359,6 +382,15 @@
 		message: string;
 		stuck: StuckReason | null;
 		block: PromotionBlock;
+		/**
+		 * ⭐ THE CLASSIFIED GATES HOLDING THIS ROLLOUT — the shared
+		 * `view-models/blocking-story` derivation, so the banner naming this
+		 * app can say WHO (the dependency's provider) and WHAT (its required
+		 * range), not just how many gates. See the banner's own `blocked`
+		 * branch. `place` is this page's own environment, unused for anything
+		 * printed here — the banner composes its own sentence from `gates`.
+		 */
+		story: BlockingStory;
 		/** Tag a `Promote` here would deploy, or null when none may be offered. */
 		promoteTag: string | null;
 		adverse: boolean;
@@ -412,6 +444,7 @@
 						: '',
 				stuck,
 				block: promotionBlock(slot.cell.rollout),
+				story: blockingStory(slot.cell.rollout, gateContext, { place: envName, now: $now }),
 				promoteTag: candidate ? (candidate.tag ?? candidate.version ?? null) : null,
 				adverse,
 				primary: false,
@@ -568,18 +601,39 @@
 			for (const r of blocked) for (const g of r.block.blockingGates) gates.add(g);
 			const n = blocked[0].block.candidateCount;
 			const g = gates.size;
+			// ⛔ `WAITING ON N GATES` NAMED NEITHER THE PROVIDER NOR THE
+			// REQUIREMENT. (2026-09-02, measured on `/envs/prod`: this banner
+			// read *"1 newer build of hello-frontend-app is waiting on 2
+			// gates"* while `/apps`, `/apps/[name]`, `/environments` and the
+			// Dependencies tab all name `hello-api-app` and `^1.67.0` for the
+			// SAME block.) `blockingStory`'s own classified gates carry both —
+			// `subject` is the provider, `need` is the requirement verbatim —
+			// so this composes the same facts instead of re-deriving a vaguer
+			// sentence from `block.blockingGates`' bare names. Worst-first,
+			// same order the story itself sorts in; a dependency gate is
+			// preferred over a same-rank promotion gate because it is the one
+			// this page cannot draw anywhere else (the per-row `BlockReason`
+			// below prints `awaiting`/`notPassing`, not the classified story).
+			const story = blocked[0].story;
+			const namedGate: ClassifiedGate | undefined =
+				story.gates.find(
+					(gt): boolean => gt.kind === 'dependency' && !!gt.contract && !!gt.have && !!gt.need
+				) ?? story.gates[0];
+			const drawsVersions =
+				namedGate?.kind === 'dependency' && !!namedGate.contract && !!namedGate.have && !!namedGate.need;
+			const clause = drawsVersions
+				? `waiting for ${namedGate!.subject} to ship ${namedGate!.contract} ${namedGate!.need} — it is on ${namedGate!.have}`
+				: `waiting on ${g} gate${g === 1 ? '' : 's'}`;
 			return {
 				severity: 'warning',
 				icon: CalendarWeekSolid,
 				title: `Promotion into ${envName} is blocked`,
-				// THE COUNT STAYS PRINTED AND THE NAMES DO NOT. `2 gates` is the
-				// thing a reader needs in the first second — how many things have
-				// to clear — and it is the same shape the product's own headline
-				// uses (`Two things are holding PROD`). The names are the lookup
-				// key and go to the footnote; see `Banner.footnote`.
-				message: `${n} newer build${n === 1 ? '' : 's'} of ${blocked[0].appName} ${n === 1 ? 'is' : 'are'} waiting on ${g} gate${g === 1 ? '' : 's'}.`,
+				message: `${n} newer build${n === 1 ? '' : 's'} of ${blocked[0].appName} ${n === 1 ? 'is' : 'are'} ${clause}.`,
 				gates: [...gates],
-				href: rolloutHref(blocked[0].slot.cell),
+				// ⭐ THE CONTROL DEEP-LINKS TO WHERE THE FIX IS DRAWN. A contract's
+				// requirement lives on the Dependencies tab, not Overview — every
+				// other gate kind keeps landing on Overview, unchanged.
+				href: rolloutHref(blocked[0].slot.cell, drawsVersions ? 'dependencies' : undefined),
 				action: 'Review gates'
 			};
 		}
@@ -935,14 +989,16 @@
 					class="min-w-0 truncate font-mono text-2xl leading-[1.15] font-bold text-gray-900 dark:text-white"
 					>{envName}</span
 				>
-				<Chip
-					role="env"
-					theme={slotTheme}
-					label={envShort}
-					title={envTitle ? `${envName} — ${envTitle}` : envName}
-					wide
-					class="self-center"
-				/>
+				{#if !envChipRedundant}
+					<Chip
+						role="env"
+						theme={slotTheme}
+						label={envShort}
+						title={envTitle ? `${envName} — ${envTitle}` : envName}
+						wide
+						class="self-center"
+					/>
+				{/if}
 			</h1>
 			<!-- THE META LINE. No sparkline: it was a 16x4px object with one
 			     green tick in twelve gray hairlines, and the same chart is in
@@ -1014,7 +1070,17 @@
 				     A titled card with a 47px header bar and a HARD RIGHT-ALIGNED
 				     ROLLUP, which is the single most transferable thing on the
 				     page the human calls beautiful: it lets a reader take the
-				     card's answer without reading a row of it. -->
+				     card's answer without reading a row of it.
+
+				     ⛔ `HEALTHY` IS BACK TO `RUNNING`, AND THIS IS A REGRESSION FIX,
+				     NOT A NEW WORD. (2026-09-02) The 2026-08-31 pass changed this
+				     exact word on `/environments` for exactly this reason — a held
+				     rollout is RUNNING, not vouched HEALTHY, and this card's own
+				     title (`Running now`) already promises the first word. `prod`
+				     read `Running now — 4/4 healthy` directly above `No newer
+				     version is allowed yet`: a green verdict on the same object the
+				     line under it says is held. `/environments`'s sibling card
+				     already says `4/4 running`; this one had not been carried along. -->
 				<Card
 					icon={failingCount > 0
 						? ExclamationCircleSolid
@@ -1030,10 +1096,10 @@
 					verdict={rows.length === 0
 						? 'nothing deployed'
 						: failingCount > 0
-							? `${failingCount} failing · ${healthyCount}/${rows.length} healthy`
+							? `${failingCount} failing · ${healthyCount}/${rows.length} running`
 							: stuckCount > 0
-								? `${stuckCount} stuck · ${healthyCount}/${rows.length} healthy`
-								: `${healthyCount}/${rows.length} healthy`}
+								? `${stuckCount} stuck · ${healthyCount}/${rows.length} running`
+								: `${healthyCount}/${rows.length} running`}
 					verdictTone={failingCount > 0 ? 'adverse' : stuckCount > 0 ? 'neutral' : 'good'}
 					padded={false}
 				>
@@ -1469,20 +1535,40 @@
 							     this scope so the two pages agree on the number and on
 							     the app that owns it. `—` and not `0`: an environment
 							     with nothing behind has no deepest lag, and a zero in a
-							     column of distances reads as a measurement. -->
+							     column of distances reads as a measurement.
+
+							     ⭐ THE APP NAME IS ON THE LABEL SIDE, AND THE `dd` IS ONE
+							     FIGURE — `/apps`' own fix for this exact shape (2026-09-02).
+							     This row used to print `dt`=`Furthest behind`, `dd`=
+							     `hello-frontend-app 1` — a mono identifier flush against a
+							     bare digit, which reads as a name with a stray number
+							     rather than as one fact. The name moves into the `<dt>`
+							     (`Furthest behind hello-frontend-app`) so all three `dd`s
+							     in this card share one 16px tabular-figure column, same as
+							     `Deploys · 24h` and `Typical deploy` above it.
+							     `whitespace-nowrap` stays on the WORDS only; the name
+							     truncates. -->
 							<div class="flex items-baseline justify-between gap-3">
-								<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-									<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Furthest
-									behind
+								<dt
+									class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+								>
+									<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+									<span class="shrink-0 whitespace-nowrap">Furthest behind</span>
+									{#if deepest}
+										<a
+											href="/apps/{deepest.appName}"
+											class="min-w-0 truncate font-mono text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+											>{deepest.appName}</a
+										>
+									{/if}
 								</dt>
-								<dd class="flex min-w-0 items-baseline gap-2">
+								<dd class="shrink-0">
 									{#if deepest}
 										<span
-											class="min-w-0 truncate font-mono text-[11px] text-gray-500 dark:text-gray-400"
-											>{deepest.appName}</span
-										>
-										<span class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-											>{deepest.by}</span
+											class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
+											title="{deepest.appName} here is {deepest.by} version{deepest.by === 1
+												? ''
+												: 's'} behind the newest available to it">{deepest.by}</span
 										>
 									{:else}
 										<span class="text-base font-semibold text-green-700 dark:text-green-400">—</span

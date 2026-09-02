@@ -115,8 +115,10 @@
 		buildGateContext,
 		withSchedules,
 		blockingStory,
+		joinClauses,
 		type GateContext,
-		type BlockingStory
+		type BlockingStory,
+		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
 	import { sourceClusterName } from '$lib/source-dashboard';
 	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
@@ -695,6 +697,25 @@
 	}
 
 	/**
+	 * ⭐ THE FOLD KEY FOR "SAME CAUSE, DIFFERENT ENVIRONMENT" — mirrors
+	 * `/apps/[name]`'s own `causeKey` byte-for-byte (2026-09-02). `kind|clause
+	 * |clearsAt`, never a gate `id`: a dependency contract writes one
+	 * `RolloutDependency` gate PER NAMESPACE, so DEV, STAGING and PROD each
+	 * carry a different generated name for the identical fact. Promotion
+	 * gates are excluded when a real cause sits beside them — the pipeline
+	 * ordering gate is the same on every stalled environment and would
+	 * silently merge unrelated causes if it were counted.
+	 */
+	function causeKey(story: BlockingStory): string {
+		const own = story.gates.filter((g: ClassifiedGate) => g.kind !== 'promotion');
+		const gates = own.length > 0 ? own : story.gates;
+		return gates
+			.map((g: ClassifiedGate) => `${g.kind}|${g.clause}|${g.clearsAt ?? ''}`)
+			.sort()
+			.join('¦');
+	}
+
+	/**
 	 * THE FLEET CELL'S TOOLTIP, IN THE SAME ENGLISH THE CELL PRINTS.
 	 *
 	 * `fleetCaption` in `view-models/fleet-strip.ts` is the shared string and
@@ -941,8 +962,21 @@
 				// prominent one-line summary, while `rankTitle` beside it already
 				// said the correct thing. Same words as `rankTitle` now, so the
 				// lede and the chip's own tooltip cannot disagree.
+				//
+				// ⛔ `CAN STILL TAKE` IS A CLAIM ABOUT DEV BEING FREE, AND A HELD
+				// ENVIRONMENT IS NOT. (2026-09-02) `worstFree` is free of a BOX
+				// (failing/stuck/diverged), not free of a GATE — a dependency
+				// contract refusing every candidate leaves the cell looking
+				// identical to one nobody has promoted into yet. `story.blocked`
+				// is the same classification the banner above reads, so the two
+				// cannot disagree: a rollout with a newer build waiting behind a
+				// gate is HELD, the same word the `blocked` role chip already
+				// prints on rollout detail's own pin (`Chip role="blocked" label
+				// ="held"`), not free to accept anything.
 				lede = worstFree
-					? `${worstFree.envLabel.toUpperCase()} can still take ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'}`
+					? worstFree.story.blocked
+						? `${worstFree.envLabel.toUpperCase()} has ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'} held`
+						: `${worstFree.envLabel.toUpperCase()} can still take ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'}`
 					: '';
 			}
 
@@ -1287,7 +1321,56 @@
 			});
 			const worst = candidates[0];
 			if (!worst) return null;
-			return { story: worst.c.story, app: worst.app.appName };
+
+			// ⛔ `worst.c.story`'S SUBJECT WAS BUILT PER-CELL IN `classifyCell`
+			// (`${appName} in ${TIER}`), SO A DEPENDENCY HOLDING ALL THREE OF AN
+			// APP'S ENVIRONMENTS IDENTICALLY STILL HEADLINED *"hello-frontend-app
+			// in DEV is waiting on another deploy"* — true of DEV, silent about
+			// STAGING and PROD carrying the exact same gate. (2026-09-02)
+			//
+			// Mirrors `/apps/[name]`'s own `bannerPeers` / `bannerStory`: find
+			// every cell of the SAME APP held by the SAME CAUSE, then reuse the
+			// worst cell's own ROLLOUT (its gates are a fact about that Rollout
+			// object) with a subject that speaks for the whole set. Unlike
+			// `/apps/[name]` the app name stays IN the subject — this page lists
+			// several apps, so the app's own page's argument for dropping it
+			// ("spent for nothing, the h1 already says it") does not apply here.
+			//
+			// ⛔ NOT `pluralSubject` — CORRECTED 2026-09-02, SAME DAY. The first
+			// cut wove the environment set INTO `subject` and let `pluralSubject`
+			// conjugate `is` -> `are`, which reads *"hello-frontend-app in all 3
+			// environments ARE waiting on another deploy"* — agreement with the
+			// wrong noun. The sentence's grammatical SUBJECT is the singular APP;
+			// `pluralSubject` is for a subject that genuinely IS the set
+			// (`/apps/[name]`'s own "All 3 environments are…", where the app is
+			// already fixed by the page and drops out of the sentence entirely).
+			// Here the app never drops out, so it stays the subject, `is` stays
+			// correct, and the environment set is a trailing locative
+			// (`in all 3 environments` / `in DEV and STAGING`) the template has
+			// no slot for — appended to the finished headline, never folded into
+			// `subject`.
+			const peers = worst.app.cells.filter(
+				(c) => c.story.blocked && c.behindBy > 0 && causeKey(c.story) === causeKey(worst.c.story)
+			);
+			if (peers.length < 2) return { story: worst.c.story, app: worst.app.appName };
+
+			const rollout = groups
+				.get(worst.app.appName)
+				?.cells.find((c) => c.environment?.spec?.environment === worst.c.tier)?.rollout;
+			if (!rollout) return { story: worst.c.story, app: worst.app.appName };
+
+			const deployedCells = worst.app.cells.filter((c) => !!c.version).length;
+			const names = peers.map((c) => c.envLabel.toUpperCase());
+			const where =
+				peers.length === deployedCells
+					? `all ${names.length} environments`
+					: names.length <= 3
+						? joinClauses(names)
+						: `${names.length} environments`;
+
+			const base = blockingStory(rollout, gateContext, { subject: worst.app.appName, now: $now });
+			const story = { ...base, headline: `${base.headline} in ${where}` };
+			return { story, app: worst.app.appName };
 		}
 
 		return null;
@@ -1947,8 +2030,15 @@
 		     states that have no distance (`pending`, `diverged`, `unknown`) —
 		     and never restates the mark. -->
 		<span class="apps-fleet flex min-w-0 flex-col gap-1">
+			<!-- ⛔ THE LABEL SAID `UP TO DATE` OVER A VALUE READING `0 OF 3 UP TO
+			     DATE`. (2026-09-02) At 390 the two stack: a label asserting the
+			     claim directly above a sentence denying it reads as the page
+			     contradicting itself in eleven vertical pixels. `Fleet` is this
+			     column's own name everywhere else in this file (criterion 1's own
+			     doc comment, `.apps-fleet`) — a neutral noun the mark under it
+			     answers rather than echoes. -->
 			<span class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-				>Up to date</span
+				>Fleet</span
 			>
 			<!-- ⛔ `N/M ON HEAD` IS GONE, AND ONLY THE WORDS CHANGED. (2026-08-30)
 			     `head` is git's name for a pointer, not a person's name for a
@@ -1961,6 +2051,10 @@
 			     `/environments` and `/apps/[name]` ask the identical question
 			     and were spelling it three different ways. A reader should
 			     learn this object ONCE. -->
+			<!-- ⭐ `deviationOnly`: a LIST marks the row that needs a look, never
+			     the majority that does not. See `UpToDate`'s own doc comment for
+			     the measurement (390 dark: a blocked app at zero chroma beside
+			     three green "All up to date" siblings). -->
 			<UpToDate
 				onHead={app.fleet.onHead}
 				deployed={app.fleet.deployed}
@@ -1970,6 +2064,7 @@
 				diverged={app.fleet.diverged}
 				unknown={app.fleet.unknown}
 				title={app.fleetFull}
+				deviationOnly
 			/>
 		</span>
 

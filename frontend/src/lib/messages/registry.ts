@@ -126,7 +126,22 @@ export const SURFACES: readonly Surface[] = [
 		'routes/apps/+page.svelte',
 		[],
 		['app'],
-		'One card per app, headed with the app name. Inside a card the app is fixed; a row-level sentence naming only an environment is still ambiguous about the CLUSTER.'
+		'One card per app, headed with the app name. Inside a card the app is fixed; a row-level sentence naming only an environment is still ambiguous about the CLUSTER.',
+		// ⭐ THE PAGE BANNER'S SUBJECT MAY LEGITIMATELY SPAN EVERY ENVIRONMENT.
+		// (2026-09-02) `blockingStory`'s own `pluralSubject` — the SAME
+		// function `/apps/[name]`'s banner already ships — reads `hello-
+		// frontend-app in all 3 environments is waiting on…` when one cause
+		// holds every environment the app is deployed to identically. That
+		// sentence deliberately names NO single tier, the same shape
+		// `up-to-date headline`'s `All up to date` already gets this
+		// exemption for below. The SUBSET case (`> 1` but not all) still
+		// names the tiers verbatim (`DEV, STAGING and PROD`) and stays under
+		// full check; only the "every environment" branch is exempted here.
+		{
+			'blocking headline': ['environment'],
+			'blocking consequence': ['environment'],
+			'blocking verdict': ['environment']
+		}
 	),
 	surface(
 		'/apps/[name]',
@@ -140,7 +155,15 @@ export const SURFACES: readonly Surface[] = [
 		'routes/environments/+page.svelte',
 		[],
 		['environment'],
-		'One card per environment. Inside a card the environment is fixed; a sentence naming only an app is fine there and vague anywhere else.'
+		'One card per environment. Inside a card the environment is fixed; a sentence naming only an app is fine there and vague anywhere else.',
+		// See `/apps`'s own note just above — the identical banner-level
+		// exemption, for the identical reason: the SAME app can be held in
+		// every environment by one cause, and the banner speaks for the set.
+		{
+			'blocking headline': ['environment'],
+			'blocking consequence': ['environment'],
+			'blocking verdict': ['environment']
+		}
 	),
 	surface(
 		'/envs/[name]',

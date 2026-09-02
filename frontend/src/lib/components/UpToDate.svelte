@@ -65,7 +65,8 @@
 		noun = 'environment',
 		caption = null,
 		title,
-		class: className = ''
+		class: className = '',
+		deviationOnly = false
 	}: {
 		/** Places running the newest version this thing has. */
 		onHead: number;
@@ -83,6 +84,24 @@
 		caption?: string | null;
 		title?: string;
 		class?: string;
+		/**
+		 * ⭐ DEFAULT OFF, SO NOTHING BUT `/apps` MOVES. (2026-09-02, measured at
+		 * 390 dark: a blocked `hello-frontend-app` printed `0 of 3 up to date`
+		 * at ZERO chroma while its three healthy siblings shouted GREEN — the
+		 * norm marked, the one row that needed a look left colourless, the
+		 * exact inversion `HUE ANSWERS "DOES THIS NEED A PERSON"` forbids.)
+		 *
+		 * `/apps/[name]`'s single rollup is the case this component was built
+		 * green-for: one object, one verdict, and the tick IS the good news.
+		 * `/apps`' list is a different shape — fifty rows mostly identical —
+		 * and painting every settled one green there is marking the majority,
+		 * which is what a live measurement caught. With this on, `allCurrent`
+		 * renders NEUTRAL and anything short of it takes the same warm
+		 * `behind` ink `Chip`'s `rank` role already owns (`orange-950` /
+		 * `orange-300` — no new hue). `nowhere` stays neutral either way: there
+		 * is no deviation to mark on a fleet that has never deployed.
+		 */
+		deviationOnly?: boolean;
 	} = $props();
 
 	// ⛔ THE TWO SENTENCES LIVE IN `view-models/up-to-date.ts`. (2026-08-31)
@@ -102,22 +121,26 @@
 	const derivedCaption = $derived(upToDateCaption(facts));
 
 	const shownCaption = $derived(caption === null ? derivedCaption : caption);
+
+	// ⭐ THE DEVIATION CARRIES COLOUR, NEVER THE NORM — see `deviationOnly`'s
+	// own doc comment. `nowhere` is excluded from BOTH branches on purpose:
+	// there is nothing behind and nothing current, so neither hue applies.
+	const ink = $derived.by(() => {
+		if (nowhere) return { icon: 'text-gray-500 dark:text-gray-400', text: 'text-gray-500 dark:text-gray-400' };
+		if (allCurrent)
+			return deviationOnly
+				? { icon: 'text-gray-500 dark:text-gray-400', text: 'font-medium text-gray-900 tabular-nums dark:text-white' }
+				: { icon: 'text-green-700 dark:text-green-400', text: 'font-medium text-green-700 tabular-nums dark:text-green-400' };
+		return deviationOnly
+			? { icon: 'text-orange-950 dark:text-orange-300', text: 'font-medium text-orange-950 tabular-nums dark:text-orange-300' }
+			: { icon: 'text-gray-500 dark:text-gray-400', text: 'font-medium text-gray-900 tabular-nums dark:text-white' };
+	});
 </script>
 
 <span class="flex min-w-0 flex-col gap-1 {className}" {title}>
 	<span class="utd-mark flex min-w-0 items-center gap-1.5">
-		<Icon
-			class="h-4 w-4 shrink-0 {allCurrent
-				? 'text-green-700 dark:text-green-400'
-				: 'text-gray-500 dark:text-gray-400'}"
-		/>
-		<span
-			class="t-body truncate {allCurrent
-				? 'font-medium text-green-700 tabular-nums dark:text-green-400'
-				: nowhere
-					? 'text-gray-500 dark:text-gray-400'
-					: 'font-medium text-gray-900 tabular-nums dark:text-white'}">{headline}</span
-		>
+		<Icon class="h-4 w-4 shrink-0 {ink.icon}" />
+		<span class="t-body truncate {ink.text}">{headline}</span>
 	</span>
 	{#if shownCaption}
 		<span class="t-micro truncate text-gray-500 dark:text-gray-400">{shownCaption}</span>

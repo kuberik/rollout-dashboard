@@ -112,8 +112,10 @@
 		buildGateContext,
 		withSchedules,
 		blockingStory,
+		joinClauses,
 		type GateContext,
-		type BlockingStory
+		type BlockingStory,
+		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
 	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
@@ -325,6 +327,15 @@
 		story: BlockingStory;
 		/** The same story, subjected for the page-level banner (app + env). */
 		pageStory: BlockingStory;
+		/**
+		 * ⭐ THE RAW ROLLOUT, CARRIED SO THE BANNER CAN RE-SUBJECT ACROSS
+		 * ENVIRONMENTS. (2026-09-02) `pageStory`'s subject is fixed at push
+		 * time to ONE tier (`${appName} in ${TIER}`); when the SAME cause holds
+		 * this app in several environments the banner has to speak for the set,
+		 * which means calling `blockingStory` again with a plural subject. Same
+		 * rollout, same `gateContext` — see the banner's own note.
+		 */
+		rollout: Rollout;
 		timestamp: string | null;
 		/** Sort key inside a card. Failing first, then stuck, then depth. */
 		severity: number;
@@ -363,6 +374,22 @@
 	function cellVersion(cell: AppCell): string | null {
 		const v = cell.rollout.status?.history?.[0]?.version;
 		return v ? getDisplayVersion(v) || null : null;
+	}
+
+	/**
+	 * ⭐ THE FOLD KEY FOR "SAME CAUSE, DIFFERENT ENVIRONMENT" — mirrors
+	 * `/apps/[name]`'s own `causeKey` byte-for-byte (2026-09-02). `kind|clause
+	 * |clearsAt`, never a gate `id`: a dependency contract writes one
+	 * `RolloutDependency` gate PER NAMESPACE, so DEV, STAGING and PROD each
+	 * carry a different generated name for the identical fact.
+	 */
+	function causeKey(story: BlockingStory): string {
+		const own = story.gates.filter((g: ClassifiedGate) => g.kind !== 'promotion');
+		const gates = own.length > 0 ? own : story.gates;
+		return gates
+			.map((g: ClassifiedGate) => `${g.kind}|${g.clause}|${g.clearsAt ?? ''}`)
+			.sort()
+			.join('¦');
 	}
 	function rolloutHref(cell: AppCell): string {
 		return rolloutPath(
@@ -439,6 +466,7 @@
 							subject: `${group.appName} in ${tier.toUpperCase()}`,
 							now: $now
 						}),
+						rollout: cell.rollout,
 						timestamp: latest?.timestamp ?? null,
 						severity:
 							state === 'failing'
@@ -711,6 +739,55 @@
 			if (better) worstBlocked = { c, app: c.blockedApp };
 		}
 		if (worstBlocked) {
+			// ⭐ AND WHEN THE SAME CAUSE HOLDS THE APP IN SEVERAL ENVIRONMENTS,
+			// THE BANNER NAMES THE SET. (2026-09-02) `pageStory`'s subject was
+			// fixed at `${appName} in ${TIER}` for the one card it was built
+			// inside, so a dependency contract holding `hello-frontend-app` in
+			// DEV, STAGING and PROD identically still headlined *"…in DEV is
+			// waiting on another deploy"* — true of DEV, silent about the other
+			// two. Same fix as `/apps`' own banner: find every card whose
+			// `EnvApp` is the SAME APP held by the SAME CAUSE, then re-run
+			// `blockingStory` on the worst one's own rollout with a subject that
+			// speaks for the peers. `pageStory` stays the fallback for the
+			// (overwhelmingly common) singular case — byte-identical there.
+			const appName = worstBlocked.app.appName;
+			const key = causeKey(worstBlocked.app.story);
+			const peers: { c: EnvCard; app: EnvApp }[] = [];
+			let deployedForApp = 0;
+			for (const c of all)
+				for (const a of c.apps) {
+					if (a.appName !== appName) continue;
+					if (a.version) deployedForApp++;
+					if (a.story.blocked && causeKey(a.story) === key) peers.push({ c, app: a });
+				}
+
+			// ⛔ NOT `pluralSubject` — CORRECTED 2026-09-02, SAME DAY. The first
+			// cut wove the environment set into `subject` and let it conjugate
+			// `is` -> `are`, which read *"hello-frontend-app in all 3
+			// environments ARE waiting on another deploy"* — agreement with the
+			// wrong noun. The grammatical subject is the singular APP, which
+			// never drops out of this sentence the way it does on
+			// `/apps/[name]` (where the page itself fixes the app and
+			// `pluralSubject` correctly conjugates "All 3 environments ARE…").
+			// So the app stays `subject`, `is` stays correct, and the
+			// environment set is a trailing locative appended to the finished
+			// headline instead.
+			let story = worstBlocked.app.pageStory;
+			if (peers.length > 1) {
+				const names = peers.map((p) => p.c.tier.toUpperCase());
+				const where =
+					peers.length === deployedForApp
+						? `all ${names.length} environments`
+						: names.length <= 3
+							? joinClauses(names)
+							: `${names.length} environments`;
+				const base = blockingStory(worstBlocked.app.rollout, gateContext, {
+					subject: appName,
+					now: $now
+				});
+				story = { ...base, headline: `${base.headline} in ${where}` };
+			}
+
 			return {
 				// ⛔ `story` NAMES ONLY THE ENVIRONMENT, AND THIS BANNER IS ABOVE
 				// EVERY ENVIRONMENT. (2026-08-31) It read *"DEV is waiting on an
@@ -720,7 +797,7 @@
 				// named both (`alpha-app failed to deploy in dev`) — only the
 				// blocked branch lost the app, because it reused a sentence
 				// written for a surface where the app is already fixed.
-				story: worstBlocked.app.pageStory,
+				story,
 				href: worstBlocked.app.rolloutHref,
 				action: `Open ${worstBlocked.app.appName}`
 			};
