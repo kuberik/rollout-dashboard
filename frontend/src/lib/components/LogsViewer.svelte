@@ -800,12 +800,14 @@
 						{/each}
 					</Dropdown>
 				</div>
-				<!-- Container filter dropdown -->
+				<!-- Container filter dropdown. ⛔ "Cont." ABBREVIATED IN THE SAME ROW
+				     "Columns" WAS JUST UN-ABBREVIATED IN. Same defect, same fix: spelled
+				     out at every width, wraps onto its own line at 390 like the other
+				     filter buttons already do rather than clip a word that has room. -->
 				{#if uniqueContainers.length > 0}
 					<div class="relative">
 						<Button size="xs" color="light" id={containersDropdownId} class="text-xs">
-							<span class="hidden sm:inline">Containers</span>
-							<span class="sm:hidden">Cont.</span>
+							Containers
 							{#if selectedContainers.size > 0}
 								<Badge color="blue" class="ml-1 text-xs">{selectedContainers.size}</Badge>
 							{/if}
