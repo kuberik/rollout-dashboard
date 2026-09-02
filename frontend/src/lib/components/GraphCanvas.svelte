@@ -36,6 +36,8 @@
 		ariaLabel?: string;
 		/** The node the resting view must land on when the drawing overflows. */
 		anchor?: string | null;
+		/** The blocked edge's two ends, when the resting view must contain both. */
+		anchorSpan?: [string, string] | null;
 		/** Derive the horizontal gutter from the frame so the drawing spans it. */
 		fillWidth?: boolean;
 		/** The `LR`/`TB` this canvas settled on, for a caller that names axes. */

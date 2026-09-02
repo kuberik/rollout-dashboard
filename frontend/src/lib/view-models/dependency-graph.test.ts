@@ -8,8 +8,10 @@ import {
 	networkVerdict,
 	edgeSentence,
 	heldSubjects,
+	heldClause,
 	layoutOrder,
 	nodeId,
+	type GraphEdge,
 	type GraphNode
 } from './dependency-graph';
 
@@ -386,6 +388,28 @@ describe('a gate with no far end is a HOLD on the node, never a phantom edge', (
 			{ gate: 'rel-66', clears: 'person', short: 'Pinned to rel-66', clearsAt: null }
 		]);
 	});
+
+	/**
+	 * ⛔ THE RAW OCI TAG NEVER PRINTS. (2026-09-02) `spec.wantedVersion` is a
+	 * 60-character tag like `main-1788002370-0afab6f1234567890abcdef12345678`,
+	 * while every other surface (`/apps`, rollout detail) names the same build
+	 * by its short sha. This node printed the raw tag in full because it read
+	 * `story.pinnedTo` straight into the sentence instead of going through
+	 * `displayVersionForTag`, the one lookup the rest of the product uses.
+	 */
+	it('shortens a pinned OCI tag the same way every other surface does', () => {
+		const f = liveFixture();
+		const fe = f.rollouts.find(
+			(r) => r.metadata?.name === 'hello-frontend-app' && r.metadata?.namespace === 'hello-dep-dev'
+		)!;
+		const tag = 'main-1788002370-0afab6f1234567890abcdef12345678';
+		(fe.spec as { wantedVersion?: string }).wantedVersion = tag;
+		const g = build(f);
+		const n = g.nodes.find((x) => x.id === ID.feDev)!;
+		expect(n.holds).toEqual([
+			{ gate: tag, clears: 'person', short: 'Pinned to main-1788002370-0afab6f', clearsAt: null }
+		]);
+	});
 });
 
 describe('filterByEnv — which COLUMNS render', () => {
@@ -408,35 +432,69 @@ describe('filterByEnv — which COLUMNS render', () => {
 });
 
 describe('neighbourhood — the rollout tab, in the same language', () => {
-	it('reaches BOTH relations at depth 1', () => {
+	/**
+	 * ⭐ THE HEADER/DRAWING DISAGREEMENT THIS BLOCK GUARDS AGAINST.
+	 * (2026-09-02) `neighbourhood(g, feProd, 1)` used to walk both edge kinds
+	 * with one hop count, so it reached `feStaging` (one promotion hop) and
+	 * `apiProd` (one contract hop) but NOT `feDev` — dev is two promotion hops
+	 * from prod on this three-environment line. The rollout tab's header
+	 * ("3 of 4 blocked") then counted a graph that had already dropped a held
+	 * leg the side panels — built from the unfiltered dependency list — still
+	 * named. `focus`'s own promotion line must be walked to BOTH its ends
+	 * regardless of `depth`, which now rations only the CONTRACT axis.
+	 */
+	it("walks focus's own promotion line to both ends, not hop-limited by depth", () => {
 		const local = neighbourhood(build(), ID.feProd, 1);
-		// The hop reaches frontend@staging (promotion) and api@prod (contract);
-		// the rectangle closure then adds api@staging so that api has a column
-		// anchor and does not get drawn in staging's column.
-		expect(local.nodes.map((n) => n.id).sort()).toEqual(
-			[ID.feStaging, ID.feProd, ID.apiStaging, ID.apiProd].sort()
-		);
-		expect(local.envs).toEqual(['staging', 'prod']);
+		// dev is two promotion hops from prod, and it is still here: this is
+		// the exact case that used to go missing.
+		expect(local.nodes.map((n) => n.id).sort()).toEqual(Object.values(ID).sort());
+		expect(local.envs).toEqual(['dev', 'staging', 'prod']);
 		expect(local.edges.map((e) => e.writer).sort()).toEqual([
 			'contract',
 			'contract',
+			'contract',
+			'promotion',
+			'promotion',
 			'promotion',
 			'promotion'
 		]);
+	});
+
+	it('the header and the drawing count the same set (regression: no more "3 of 4" against a graph missing dev)', () => {
+		const local = neighbourhood(build(), ID.feProd, 1);
+		const v = networkVerdict(local);
+		// All 3 contract edges are held, plus both of `hello-frontend-app`'s
+		// own promotion edges (dev→staging and staging→prod both refuse the
+		// `rel-67` it wants); `hello-api-app`'s two promotion edges are clear
+		// — it has nothing new to offer, so its gate refusing everything is
+		// the gate working, not a block. Before the fix this graph did not
+		// even contain a dev→staging edge to count.
+		expect(local.blockedEdges).toHaveLength(5);
+		expect(v.text).toBe('5 of 7 blocked');
 	});
 
 	it('returns an empty graph for a rollout that is in no relation', () => {
 		expect(neighbourhood(build(), nodeId('dev', 'nowhere', 'nothing'), 1).nodes).toEqual([]);
 	});
 
-	it('reaches the provider’s OWN promotion line at depth 2', () => {
-		const local = neighbourhood(build(), ID.feStaging, 2);
-		expect(local.nodes.map((n) => n.id).sort()).toEqual(Object.values(ID).sort());
-	});
-
-	it('narrows the environments to the ones the neighbourhood is actually in', () => {
-		const local = neighbourhood(build(), ID.feProd, 1);
-		expect(local.envs).toEqual(['staging', 'prod']);
+	it('still rations the CONTRACT axis by depth — a chain of services does not all arrive at once', () => {
+		const f = liveFixture();
+		// `hello-api-app` in dev itself depends on a third service, two
+		// contract hops from `hello-frontend-app`'s own line. No Rollout is
+		// added for it — an unresolved node is still a node.
+		f.dependencies.push(
+			dep({
+				ns: 'hello-dep-dev',
+				cluster: 'dev',
+				consumer: 'hello-api-app',
+				provider: 'hello-cache-app',
+				contract: 'cache'
+			})
+		);
+		const g = build(f);
+		const cacheId = nodeId('dev', 'hello-dep-dev', 'hello-cache-app');
+		expect(neighbourhood(g, ID.feDev, 1).nodes.map((n) => n.id)).not.toContain(cacheId);
+		expect(neighbourhood(g, ID.feDev, 2).nodes.map((n) => n.id)).toContain(cacheId);
 	});
 
 	it('does not mutate the graph it was given', () => {
@@ -794,5 +852,135 @@ describe('heldSubjects', () => {
 		expect(
 			heldSubjects([node('hello-frontend-app', 'dev'), node('hello-frontend-app', 'dev')])
 		).toBe('hello-frontend-app in dev');
+	});
+});
+
+/**
+ * `heldClause` — the tail of `/dependencies`' banner sentence, `"… cannot
+ * take their next release until <clause>."`
+ *
+ * ⛔ THE BUG THIS GUARDS: a contract gate does not clear when the deploy in
+ * front lands, it clears when the PROVIDER SHIPS a satisfying version. The
+ * banner used to say "until the deploy in front of each of them lands" for
+ * EVERY held rollout, contract or not — false for `hello-frontend-app`,
+ * which is held by a `RolloutDependency`, not by an unpromoted upstream
+ * environment. This clause must never say "deploy in front" for a contract
+ * hold again.
+ */
+describe('heldClause', () => {
+	function node(name: string, env: string): GraphNode {
+		return { id: `x/ns/${name}/${env}`, name, env } as GraphNode;
+	}
+	const nodes = new Map<string, GraphNode>([
+		['fe-dev', node('hello-frontend-app', 'dev')],
+		['fe-staging', node('hello-frontend-app', 'staging')],
+		['fe-prod', node('hello-frontend-app', 'prod')],
+		['api', node('hello-api-app', 'dev')]
+	]);
+	function contractEdge(to: string, requiredVersion: string | null = '^1.67.0'): GraphEdge {
+		return {
+			key: `contract:${to}`,
+			from: 'api',
+			to,
+			writer: 'contract',
+			gate: 'g',
+			state: 'blocked',
+			contract: 'api',
+			requiredVersion,
+			providedVersion: '1.66.0',
+			relType: null,
+			message: '',
+			cyclic: false
+		};
+	}
+	function promotionEdge(to: string): GraphEdge {
+		return {
+			key: `promotion:${to}`,
+			from: 'fe-dev',
+			to,
+			writer: 'promotion',
+			gate: 'g',
+			state: 'blocked',
+			contract: null,
+			requiredVersion: null,
+			providedVersion: null,
+			relType: 'After',
+			message: '',
+			cyclic: false
+		};
+	}
+
+	it('the live cluster shape: one app held dev/staging/prod by ONE contract, said once', () => {
+		const edges = [contractEdge('fe-dev'), contractEdge('fe-staging'), contractEdge('fe-prod')];
+		expect(heldClause(edges, nodes)).toBe('hello-api-app ships api ^1.67.0');
+		expect(heldClause(edges, nodes)).not.toMatch(/deploy in front/);
+	});
+
+	it('names each distinct (provider, contract, requirement) once, not per edge', () => {
+		const edges = [
+			contractEdge('fe-dev', '^1.67.0'),
+			contractEdge('fe-staging', '^2.0.0')
+		];
+		expect(heldClause(edges, nodes)).toBe(
+			'hello-api-app ships api ^1.67.0 and hello-api-app ships api ^2.0.0'
+		);
+	});
+
+	it('an all-promotion set keeps the old wording — this IS true of an order gate', () => {
+		expect(heldClause([promotionEdge('fe-staging'), promotionEdge('fe-prod')], nodes)).toBe(
+			'the deploy in front of each of them lands'
+		);
+	});
+
+	/**
+	 * ⭐ A PROMOTION HOLD ON A NODE THE CONTRACT ALSO HOLDS IS A SYMPTOM, NOT
+	 * A SECOND CAUSE — DROPPED, NOT RESTATED. (2026-09-02, coordinator
+	 * correction.) `fe-prod`'s promotion edge and `fe-dev`'s contract edge
+	 * target DIFFERENT subjects here, so the promotion hold is genuinely
+	 * independent of this contract and earns its own clause — CONTRACT
+	 * FIRST now, since the contract is what actually has to happen and the
+	 * order gate is secondary.
+	 */
+	it('a genuinely independent promotion hold gets its own clause, contract first', () => {
+		const edges = [promotionEdge('fe-prod'), contractEdge('fe-dev')];
+		expect(heldClause(edges, nodes)).toBe(
+			'hello-api-app ships api ^1.67.0 and the deploy in front of each of them lands'
+		);
+	});
+
+	/**
+	 * ⭐ THE EXACT SHAPE THE LIVE FLEET IS IN, AND THE BUG THE CORRECTION
+	 * FIXES. `fe-staging`'s and `fe-prod`'s promotion holds target the SAME
+	 * subjects their contract holds do — every promotion-blocked target is
+	 * already in the contract-blocked set — so the order clause drops
+	 * entirely. Before this fix the banner said *"the deploy in front of
+	 * each of them lands"* for `dev` too, which has no promotion edge at
+	 * all (it is the first environment) and was simply false.
+	 */
+	it('drops the order clause when every promotion hold is downstream of the same contract', () => {
+		const edges = [
+			contractEdge('fe-dev'),
+			contractEdge('fe-staging'),
+			contractEdge('fe-prod'),
+			promotionEdge('fe-staging'),
+			promotionEdge('fe-prod')
+		];
+		const clause = heldClause(edges, nodes);
+		expect(clause).toBe('hello-api-app ships api ^1.67.0');
+		expect(clause).not.toMatch(/deploy in front/);
+	});
+
+	it('agrees with the live fixture the /dependencies page actually renders', () => {
+		// The full fixture's blocked set is mixed (three contract holds plus
+		// `hello-frontend-app`'s own two promotion holds), but every
+		// promotion-blocked target (staging, prod) is already contract-held —
+		// dev has no promotion edge at all, being the first environment — so
+		// the clause is contract-only. This is the exact defect: the banner
+		// used to say "the deploy in front of each of them lands" including
+		// for dev, which was false.
+		const g = build();
+		const clause = heldClause(g.blockedEdges, new Map(g.nodes.map((n) => [n.id, n])));
+		expect(clause).toBe('hello-api-app ships api ^1.67.0');
+		expect(clause).not.toMatch(/deploy in front/);
 	});
 });

@@ -71,6 +71,7 @@
 		filterByEnv,
 		networkVerdict,
 		heldSubjects,
+		heldClause,
 		type GraphEdge,
 		type GraphNode
 	} from '$lib/view-models/dependency-graph';
@@ -196,7 +197,7 @@
 		const held = [...new Set(blocked.map((e) => e.to))]
 			.map((id) => nodeById.get(id))
 			.filter((n): n is GraphNode => !!n);
-		return `${heldSubjects(held)} cannot take their next release until the deploy in front of each of them lands.`;
+		return `${heldSubjects(held)} cannot take their next release until ${heldClause(blocked, nodeById)}.`;
 	});
 </script>
 
@@ -460,7 +461,7 @@
 							</div>
 							<p class="t-dense mt-1 pl-6 text-gray-600 dark:text-gray-300">{consequence(e)}</p>
 							{#if to?.cluster}
-								<p class="t-micro mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-gray-400 dark:text-gray-500">
+								<p class="t-micro mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-gray-500 dark:text-gray-400">
 									<ClusterMark name={to.cluster} />
 								</p>
 							{/if}

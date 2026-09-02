@@ -82,6 +82,7 @@
 
 import type { Rollout, Environment, RolloutDependency } from '../../types';
 import { SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
+import { displayVersionForTag } from '../version-utils';
 import { promotionBlock } from './promotion';
 import {
 	blockingStory,
@@ -427,11 +428,17 @@ export function buildRolloutGraph(args: {
 		// short-circuits on `spec.wantedVersion` and returns no gates at all, so
 		// without this the node would render red with nothing on it saying why.
 		if (story.pinnedTo) {
+			// ⭐ THE RAW OCI TAG NEVER PRINTS. `displayVersionForTag` is the one
+			// lookup the product uses everywhere else (`/apps`, rollout detail)
+			// to turn a 60-char tag like `main-1788002370-0afab6f…` into the
+			// short sha every other surface names the build by (`0afab6f`). A
+			// bare `story.pinnedTo` here was the one place that shortener was
+			// skipped, so the node printed the tag in full.
 			n.holds = [
 				{
 					gate: story.pinnedTo,
 					clears: 'person',
-					short: `Pinned to ${story.pinnedTo}`,
+					short: `Pinned to ${displayVersionForTag(r, story.pinnedTo)}`,
 					clearsAt: null
 				}
 			];
@@ -551,22 +558,75 @@ export function filterByEnv(graph: RolloutGraph, envs: string[]): RolloutGraph {
 }
 
 /**
- * The subgraph within `depth` hops of `focus`, ignoring direction.
+ * The subgraph around `focus`: its OWN promotion line in full, plus `depth`
+ * hops of contract neighbours from every rollout on that line.
  *
  * This is what the rollout tab renders: THE SAME GRAPH LANGUAGE at one node's
  * scale, so the fleet page and the tab are one idea at two scales rather than
- * two designs. At depth 1 a rollout sees BOTH of its relations — the
- * environment before and after it on its own line, and the services it must
- * ship with in its own environment. Returns an empty graph when `focus` is
- * not in the network at all.
+ * two designs. Returns an empty graph when `focus` is not in the network at
+ * all.
+ *
+ * ⭐ THE TWO AXES DO NOT SHARE ONE HOP COUNT, AND THAT WAS A BUG. (2026-09-02,
+ * from a live disagreement: the rollout tab for `hello-frontend-app` in prod
+ * headlined *"3 of 4 blocked"* while its own side panels — built from the
+ * unfiltered dependency list — named the SAME held chain in dev, staging AND
+ * prod.) The old single hop count walked BOTH edge kinds together, so
+ * `neighbourhood(g, feProd, 1)` reached `feStaging` (one promotion hop) and
+ * `apiProd` (one contract hop) but not `feDev` — dev is TWO promotion hops
+ * from prod on a three-environment line, and the drawing silently dropped a
+ * held leg the header then under-counted against.
+ *
+ * The fix is not a bigger hop count — a fixed depth is always some fleet's
+ * counter-example — it is recognising the two axes have different SHAPES:
+ *
+ *   · the PROMOTION axis is `focus`'s own service, moving through
+ *     environments. It is a single line with two ends, so walking it to
+ *     completion is bounded by the fleet's own (always small) environment
+ *     count — there is no far end to wander off into.
+ *   · the CONTRACT axis is *other services*, and walking it unboundedly
+ *     really can wander into an unrelated corner of the fleet through a
+ *     chain of "A depends on B depends on C". That is what `depth` still
+ *     rations, exactly as it did before.
+ *
+ * Every rollout on the completed promotion line contributes its own contract
+ * hop, so a service reached through ANY environment on the line is on the
+ * graph — `hello-api-app` needs no direct hit in dev to appear there, because
+ * dev is now a touched environment and the rectangle closure below still
+ * draws its whole column once any of its rollouts is `keep`.
  */
 export function neighbourhood(graph: RolloutGraph, focus: string, depth = 1): RolloutGraph {
 	if (!graph.nodes.some((n) => n.id === focus)) return { ...EMPTY_GRAPH, envs: graph.envs };
-	const keep = new Set<string>([focus]);
-	let frontier = new Set([focus]);
+
+	// AXIS 1 — `focus`'s own promotion line, walked to both ends. Not hop-
+	// limited: see the comment above for why that is safe here and was not
+	// safe for the contract axis below.
+	const chain = new Set<string>([focus]);
+	let chainFrontier = new Set([focus]);
+	while (chainFrontier.size > 0) {
+		const next = new Set<string>();
+		for (const e of graph.edges) {
+			if (e.writer !== 'promotion') continue;
+			if (chainFrontier.has(e.from) && !chain.has(e.to)) {
+				chain.add(e.to);
+				next.add(e.to);
+			}
+			if (chainFrontier.has(e.to) && !chain.has(e.from)) {
+				chain.add(e.from);
+				next.add(e.from);
+			}
+		}
+		chainFrontier = next;
+	}
+
+	// AXIS 2 — from every rollout on that line, `depth` hops of CONTRACT
+	// neighbours: the other services it (or its promotion neighbours) ship
+	// alongside.
+	const keep = new Set(chain);
+	let frontier = new Set(chain);
 	for (let d = 0; d < depth; d++) {
 		const next = new Set<string>();
 		for (const e of graph.edges) {
+			if (e.writer !== 'contract') continue;
 			if (frontier.has(e.from) && !keep.has(e.to)) {
 				keep.add(e.to);
 				next.add(e.to);
@@ -781,6 +841,80 @@ export function heldSubjects(nodes: GraphNode[]): string {
 	return phrases.length > 1 && phrases.some((p) => p.includes(','))
 		? phrases.join('; ')
 		: joinClauses(phrases);
+}
+
+/**
+ * ⭐ THE CLAUSE THAT FINISHES "<subjects> cannot take their next release
+ * until …" — and it is a function of `writer`, never one fixed verb.
+ * (2026-09-02, a headline bug: the banner said *"…until the deploy in front
+ * of each of them lands"* for EVERY held rollout, including ones held by a
+ * `RolloutDependency` contract. A contract gate does not clear when a deploy
+ * lands — it clears when the PROVIDER SHIPS a version that satisfies the
+ * range. Only a promotion-order gate (written by `Environment`) clears "when
+ * the deploy in front lands". The `Blocked links` rows already said the right
+ * thing per edge (`consequence` in `/dependencies`); this is what makes the
+ * headline agree with them instead of overriding every row with one verb.
+ *
+ * ⚠️ GROUPED BY (provider, contract, requiredVersion) — the live cluster has
+ * THREE blocked edges (dev/staging/prod) that are all the same clause, so the
+ * sentence must not say `hello-api-app ships api ^1.67.0` three times.
+ *
+ * ⛔ MIXED WRITERS SAY BOTH, joined with `and` — never pick one and drop the
+ * other, and never invent one clause that pretends to cover a promotion gate
+ * and a contract gate at once.
+ */
+export function heldClause(edges: GraphEdge[], nodes: Map<string, GraphNode>): string {
+	const contractEdges = edges.filter((e) => e.writer === 'contract');
+	const promotionEdges = edges.filter((e) => e.writer === 'promotion');
+
+	const PROMOTION_CLAUSE = 'the deploy in front of each of them lands';
+
+	if (contractEdges.length === 0) return PROMOTION_CLAUSE;
+
+	const order: string[] = [];
+	const byKey = new Map<
+		string,
+		{ provider: string; contract: string; requiredVersion: string | null }
+	>();
+	for (const e of contractEdges) {
+		const provider = nodes.get(e.from)?.name ?? e.from;
+		const contract = e.contract ?? 'a contract';
+		const key = `${provider}::${contract}::${e.requiredVersion ?? ''}`;
+		if (!byKey.has(key)) {
+			order.push(key);
+			byKey.set(key, { provider, contract, requiredVersion: e.requiredVersion });
+		}
+	}
+	const contractPhrases = order.map((k) => {
+		const { provider, contract, requiredVersion } = byKey.get(k)!;
+		const needs = requiredVersion ? ` ${requiredVersion}` : '';
+		return `${provider} ships ${contract}${needs}`;
+	});
+	const contractClause = joinClauses(contractPhrases);
+
+	/**
+	 * ⭐ THE CONTRACT LEADS, AND A PROMOTION GATE DOWNSTREAM OF THE SAME
+	 * CONTRACT IS DROPPED, NOT RESTATED. (2026-09-02, a coordinator
+	 * correction to the mixed-writer case: on the live fleet `dev` has no
+	 * promotion edge at all — it is the first environment — so "the deploy
+	 * in front of each of them lands" was false FOR IT, and for `staging`
+	 * and `prod` the promotion gate is refusing `rel-67` for the exact same
+	 * reason the contract is: the frontend cannot even take a build that
+	 * satisfies the contract, so nothing new ever reaches the promotion
+	 * gate to be refused independently. Naming both was one cause said
+	 * twice, in the wrong order.
+	 *
+	 * A promotion hold only earns its own clause when it targets a subject
+	 * the contract set does NOT already hold — a genuinely independent
+	 * order gate, unrelated to this contract. Where every promotion-blocked
+	 * target is also contract-blocked, the order clause is dropped
+	 * entirely: it is downstream of the same cause, and the contract
+	 * clause already says what actually has to happen.
+	 */
+	const contractTargets = new Set(contractEdges.map((e) => e.to));
+	const independentPromotion = promotionEdges.some((e) => !contractTargets.has(e.to));
+
+	return independentPromotion ? `${contractClause} and ${PROMOTION_CLAUSE}` : contractClause;
 }
 
 /**

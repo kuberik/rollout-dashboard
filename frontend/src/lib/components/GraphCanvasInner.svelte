@@ -98,6 +98,7 @@
 		dark = false,
 		ariaLabel = 'Graph',
 		anchor = null,
+		anchorSpan = null,
 		fillWidth = false,
 		onorientation = undefined,
 		class: className = ''
@@ -169,6 +170,31 @@
 		 */
 		anchor?: string | null;
 		/**
+		 * ⭐ THE TWO NODES A BLOCKED EDGE HAS, WHEN THE RESTING VIEW MUST SHOW
+		 * BOTH, NOT JUST `anchor` WITH A LEAD GUTTER IN FRONT OF IT.
+		 *
+		 * (2026-09-02, measured on `/dependencies` at 390: the pane opened on
+		 * `hello-frontend-app`'s three environments with `hello-api-app` — the
+		 * PROVIDER the banner names — entirely off-screen to the left. `anchor`
+		 * alone reserves one gutter's worth of lead in front of the held node;
+		 * that is sized for an edge LABEL, not for the box on the other end of
+		 * the edge, which on the within-rank axis can be a full node-width
+		 * further away.
+		 *
+		 * `[from, to]` — the blocked edge's own two ends — asks the library to
+		 * fit EXACTLY those two nodes (`fitView({ nodes })`, which
+		 * `@xyflow/system` already computes bounds and a zoom for) instead of
+		 * fitting the whole graph and panning within it. This is the "fit the
+		 * blocked subgraph" half of the rule: if the fleet does not fit at a
+		 * legible zoom, the two nodes that ARE the story do, and the rest stays
+		 * reachable by pan or `Fit the whole graph`.
+		 *
+		 * `null` — the default — keeps the single-node `anchor` behaviour
+		 * byte-identical, which is what `AppPromotionFlow` gets since it never
+		 * passes this.
+		 */
+		anchorSpan?: [string, string] | null;
+		/**
 		 * ⭐ LET THE LAYOUT SPAN THE FRAME — see the long note in the layout
 		 * effect. Opt-in, because `AppPromotionFlow`'s stages are a LINE whose
 		 * gutter is already tuned against its own card, and this pass owns the
@@ -208,10 +234,16 @@
 	 *   gets a readable slice and PANS — which is exactly the affordance the
 	 *   library buys us, and why the minimap turns on at the same size.
 	 *
-	 * `FIT_ALL` is the BUTTON, and it has no floor: *show me the whole shape,
-	 * however small*. That is a different request from *put me back where I
-	 * started*, and the split is why the button still does something on a graph
-	 * that opens clipped.
+	 * `FIT_ALL` is the BUTTON. Until 2026-09-02 it had no floor at all — *show
+	 * me the whole shape, however small* — but the critic caught it landing a
+	 * 12-node fleet at 0.25 (4px type) on a 390px card, the exact "picture of
+	 * a graph" `FIT`'s own floor exists to prevent; a press is a request, not
+	 * a licence to go illegible. It now shares `restingFit`'s own rule: whole
+	 * graph if the whole graph reads at `READABLE_FLOOR` or above (see
+	 * `wholeGraphFitZoom`, defined beside `restingFit`), otherwise a press
+	 * centres on the blocked edge at the floor and leaves the rest to pan —
+	 * "show me the whole shape" demoted to "show me the shape that matters"
+	 * exactly when the first is unreadable.
 	 */
 	const FIT_ALL = { padding: 0.08, maxZoom: 1, duration: 200 };
 
@@ -252,7 +284,11 @@
 	 * gets a HIGHER floor than the desktop rather than a lower one.
 	 *
 	 * The reader then reaches the rest with two fingers, or with
-	 * `Fit the whole graph`, which has no floor by design.
+	 * `Fit the whole graph` — which, since 2026-09-02, floors at
+	 * `READABLE_FLOOR` too rather than the unbounded zoom-to-fit it used to
+	 * do (see `fitAll`, beside `restingFit`): the button existed to escape a
+	 * clipped view, and landing it at 4px type was the same failure by
+	 * another door.
 	 */
 	const NARROW = 520;
 	const narrow = $derived(containerWidth > 0 && containerWidth < NARROW);
@@ -268,7 +304,44 @@
 		anchor ? (flowNodes.find((n) => n.id === anchor)?.position ?? null) : null
 	);
 
-	const { fitView, zoomIn, zoomOut, getViewport, setViewport } = useSvelteFlow();
+	/**
+	 * ⭐ `zoomIn`/`zoomOut` FROM `useSvelteFlow()` ARE DEAD ON THIS CANVAS, AND
+	 * IT IS AN UPSTREAM GOTCHA, NOT A TYPO. (2026-09-02, measured: every click
+	 * resolved `false` and the transform never moved, forever, at both 390 and
+	 * 1440 — only `Fit the whole graph` ever worked.)
+	 *
+	 * `@xyflow/svelte@1.4.2`'s `useSvelteFlow()` returns MOST of its methods as
+	 * closures that re-read the store on every call (`fitView: (o) =>
+	 * store.fitView(o)`, `getViewport`, `setViewport`, `setZoom`, `getZoom`) —
+	 * but `zoomIn`/`zoomOut` are the two exceptions, returned as a bare
+	 * property snapshot: `zoomIn: store.zoomIn`. That distinction is invisible
+	 * from the caller and would not matter if `useSvelteFlow()` were called
+	 * from a component NESTED INSIDE `<SvelteFlow>`. It is not, here: this
+	 * component (`GraphCanvasInner`) is the one that RENDERS `<SvelteFlow>`, so
+	 * the call happens before `<SvelteFlow>` has mounted and registered its
+	 * real store with the surrounding `<SvelteFlowProvider>`. At that instant
+	 * `useStore()` resolves to the PROVIDER'S OWN PLACEHOLDER store
+	 * (`createStore({ props: {}, nodes: [], edges: [] })` in
+	 * `SvelteFlowProvider.svelte`) — a store whose `panZoom` is never set,
+	 * because the real `<SvelteFlow>` never mounts INSIDE it. `store.zoomIn`
+	 * captures THAT placeholder's `zoomIn` forever; every later click calls
+	 * `zoomBy` on a store with `panZoom === null`, which resolves `false` and
+	 * touches nothing. `fitView`, being a closure, re-reads `useStore()` on
+	 * every call and always finds the real, swapped-in store — which is why it
+	 * alone appeared to work.
+	 *
+	 * The fix is to never destructure `zoomIn`/`zoomOut` at all and rebuild the
+	 * SAME ×1.2 step (`zoomBy`'s own factor, in `@xyflow/system`) on top of
+	 * `getZoom`/`setZoom`, both confirmed-lazy closures.
+	 */
+	const { fitView, getViewport, setViewport, getZoom, setZoom } = useSvelteFlow();
+	const ZOOM_STEP = 1.2;
+	function zoomIn(options?: { duration?: number }) {
+		return setZoom(getZoom() * ZOOM_STEP, options);
+	}
+	function zoomOut(options?: { duration?: number }) {
+		return setZoom(getZoom() / ZOOM_STEP, options);
+	}
 
 	/**
 	 * ⭐ THE RESTING VIEW OF AN OVERFLOWING GRAPH IS ITS TOP, NOT ITS MIDDLE.
@@ -313,7 +386,73 @@
 	 * A graph that fits is untouched, so nothing about `AppPromotionFlow`
 	 * changes.
 	 */
+	/**
+	 * ⭐ BELOW THIS, THE WHOLE GRAPH IS A PICTURE OF A GRAPH, NOT A GRAPH —
+	 * AND ABOVE IT, THE WHOLE GRAPH IS WHAT RESTS. (2026-09-02, a coordinator
+	 * correction: the first cut of `anchorSpan` took the subset-fit branch
+	 * UNCONDITIONALLY whenever a blocked edge existed, so at 1440 — where
+	 * the whole 12-node fleet already fit at 0.97 — it cropped to two nodes
+	 * that were already fully on screen, cutting PROD off the right edge and
+	 * `hello-world-app` off the bottom to show LESS. The subset fit exists
+	 * for when the whole graph genuinely cannot be read; it is not a
+	 * standing preference over the whole graph.)
+	 *
+	 * `wholeGraphFitZoom` answers *what zoom would the whole graph get*,
+	 * using the exact arithmetic `fitInset`/`frameFor` already give
+	 * `fillWidth` for this same question — uncapped by any floor, only by
+	 * `maxZoom: 1` (a fit may shrink, never magnify). `READABLE_FLOOR` is
+	 * the line: at or above it, resting on the whole graph is the answer,
+	 * same as before `anchorSpan` existed. Below it, the whole graph is a
+	 * confetti of unreadable boxes and the blocked edge is what earns the
+	 * screen.
+	 */
+	const READABLE_FLOOR = 0.6;
+	function wholeGraphFitZoom(): number {
+		if (contentSize.width <= 0 || contentSize.height <= 0 || containerWidth <= 0) return 0;
+		const zw = (containerWidth - fitInset(containerWidth)) / contentSize.width;
+		const zh = (frameHeight - fitInset(frameHeight)) / contentSize.height;
+		return Math.min(1, zw, zh);
+	}
+
 	function restingFit() {
+		/**
+		 * ⭐ `anchorSpan` SKIPS THE WHOLE-GRAPH FIT AND ASKS THE LIBRARY TO
+		 * FIT JUST THOSE TWO NODES — BUT ONLY WHEN THE WHOLE GRAPH CANNOT BE
+		 * READ. See the prop's own comment for the defect this exists to fix,
+		 * and `READABLE_FLOOR` above for why it is now conditional.
+		 * `fitView({ nodes })` is `@xyflow/system`'s own subset-fit — it
+		 * computes the bounds and the zoom for exactly the nodes named, so
+		 * the two ends of a blocked edge are guaranteed to both be on screen
+		 * when this branch is taken. The single-node `anchor` path below is
+		 * untouched for every caller that does not pass `anchorSpan` —
+		 * `AppPromotionFlow` among them — and for every caller that does,
+		 * once the whole graph itself is legible.
+		 *
+		 * ⛔ AND `FIT.minZoom` DOES NOT APPLY TO THE SUBSET FIT, ON PURPOSE.
+		 * That floor (0.85 narrow / 0.55 wide) was measured against the WHOLE
+		 * fleet staying legible; it is exactly what was clamping the pan to a
+		 * window too narrow to hold a provider AND a consumer side by side —
+		 * two adjacent services can span more raw width than the whole-graph
+		 * floor allows a 390px frame to show. `maxZoom: 1` stays (a 2-node
+		 * close-up must not blow past the product's own type scale), but the
+		 * lower bound falls back to the canvas's global floor (`minZoom` on
+		 * `<SvelteFlow>`, 0.25) — resting on the blocked subgraph means AT
+		 * WHATEVER ZOOM THAT TAKES to show both ends, not at whatever zoom
+		 * the fleet-sized floor still allows.
+		 */
+		if (anchorSpan && wholeGraphFitZoom() < READABLE_FLOOR) {
+			const [a, b] = anchorSpan;
+			const ids = new Set(flowNodes.map((n) => n.id));
+			if (ids.has(a) && ids.has(b)) {
+				fitView({
+					nodes: [{ id: a }, { id: b }],
+					padding: FIT.padding,
+					maxZoom: 1,
+					duration: 0
+				} as Parameters<typeof fitView>[0]);
+				return;
+			}
+		}
 		fitView({ ...FIT, duration: 0 });
 		requestAnimationFrame(() => {
 			const vp = getViewport();
@@ -324,21 +463,7 @@
 				if (contentSize.width === 0 || containerWidth === 0) return;
 				if (contentSize.width * z <= containerWidth + 4) return;
 				const want = a ? 8 - (a.x - lead) * z : 8;
-				/**
-				 * ⛔ AND THE DRAWING STOPS SHORT OF THE ZOOM BUTTONS. They are a
-				 * 28px column in the top-right and they are opaque enough to
-				 * hide what is under them: measured on the rollout tab at 390,
-				 * the right-hand clamp pushed the graph flush to the frame edge
-				 * and the buttons printed over the last two characters of
-				 * `hello-frontend-app`. A clipped service name is a hard defect,
-				 * and it is worse here than a strip of empty canvas, which is
-				 * all this trades it for.
-				 */
-				const controlGutter = showControls ? 40 : 0;
-				const x = Math.min(
-					8,
-					Math.max(containerWidth - controlGutter - contentSize.width * z - 8, want)
-				);
+				const x = Math.min(8, Math.max(containerWidth - contentSize.width * z - 8, want));
 				if (Math.abs(x - vp.x) > 0.5) setViewport({ x, y: vp.y, zoom: z }, { duration: 0 });
 				return;
 			}
@@ -348,6 +473,31 @@
 			const y = Math.min(8, Math.max(frameHeight - contentSize.height * z - 8, want));
 			if (Math.abs(y - vp.y) > 0.5) setViewport({ x: vp.x, y, zoom: z }, { duration: 0 });
 		});
+	}
+
+	/**
+	 * ⭐ THE BUTTON'S OWN VERSION OF THE SAME DECISION. See `FIT_ALL`'s comment
+	 * above for the defect (12 nodes at 0.25 = 4px type) and `wholeGraphFitZoom`
+	 * beside `restingFit` for the shared math. A press keeps its animation
+	 * either way — `FIT_ALL.duration` — because a press IS a request, unlike
+	 * the instant resting settle.
+	 */
+	function fitAll() {
+		if (anchorSpan && wholeGraphFitZoom() < READABLE_FLOOR) {
+			const [a, b] = anchorSpan;
+			const ids = new Set(flowNodes.map((n) => n.id));
+			if (ids.has(a) && ids.has(b)) {
+				fitView({
+					nodes: [{ id: a }, { id: b }],
+					padding: FIT_ALL.padding,
+					minZoom: READABLE_FLOOR,
+					maxZoom: 1,
+					duration: FIT_ALL.duration
+				} as Parameters<typeof fitView>[0]);
+				return;
+			}
+		}
+		fitView(FIT_ALL);
 	}
 
 	$effect(() => {
@@ -659,108 +809,143 @@
 	});
 
 	/**
-	 * Does the drawing need more room than the frame gives it? This is the one
-	 * predicate every interactive affordance is gated on.
+	 * ⭐ THE CURRENT ZOOM, READ LIVE — because "does this overflow" has to be
+	 * asked of what is ACTUALLY on screen, not just the resting fit's baseline.
+	 * `getViewport()` is one of `useSvelteFlow()`'s confirmed-lazy closures
+	 * (see the note above `zoomIn`/`zoomOut`), so reading it inside a
+	 * `$derived` tracks the store's own reactive `viewport` field correctly.
+	 *
+	 * Without this, zooming IN via the button (now that it works) could not
+	 * be followed by a pan: `overflows` was computed once at the natural
+	 * (pre-zoom) size, so a graph that fit at rest stayed `panOnDrag={false}`
+	 * even after the reader had zoomed past the frame's edge — a control that
+	 * *worked* and then handed them a corner they could not reach.
+	 */
+	const liveZoom = $derived(getViewport().zoom);
+
+	/**
+	 * Does the drawing need more room than the frame gives it, AT THE CURRENT
+	 * ZOOM? This is what pan and pinch are gated on.
 	 */
 	const overflows = $derived(
 		interaction === 'auto' &&
 			contentSize.width > 0 &&
-			(contentSize.height > frameHeight + 4 ||
-				(containerWidth > 0 && contentSize.width > containerWidth + 4))
+			(contentSize.height * liveZoom > frameHeight + 4 ||
+				(containerWidth > 0 && contentSize.width * liveZoom > containerWidth + 4))
 	);
-	const showControls = $derived(controls && overflows);
-	const showMinimap = $derived(
-		minimapFrom !== null && overflows && flowNodes.length >= minimapFrom
-	);
+	/**
+	 * ⭐ THE ZOOM/FIT BUTTONS ARE NOT GATED ON `overflows` ANY MORE.
+	 * (2026-09-02, from the coordinator's own measurement: no zoom controls
+	 * at all at 1440, where this fleet's graph legitimately fits its frame.)
+	 * The ORIGINAL reason to hide them — "a control that does nothing is not
+	 * shipped" — assumed showing them competed with the drawing for space,
+	 * which was true while they floated OVER the pane. They no longer do:
+	 * see the control strip below, which reserves its OWN row and never
+	 * overlaps a node at any width. Zooming in to read small type is not
+	 * "nothing" even when the graph technically fits at rest, so the only
+	 * gate left is the caller's own `controls` opt-in and having something to
+	 * draw at all. `AppPromotionFlow` is unaffected — it passes
+	 * `controls={false}` outright.
+	 */
+	const showControls = $derived(controls && flowNodes.length > 0);
+	const showMinimap = $derived(minimapFrom !== null && flowNodes.length >= minimapFrom);
 </script>
 
-<div
-	bind:this={containerEl}
-	class="graph-canvas relative overflow-hidden {className}"
-	style="height: {frameHeight}px"
-	role="group"
-	aria-label={ariaLabel}
->
-	<SvelteFlow
-		bind:nodes={flowNodes}
-		bind:edges={flowEdges}
-		{nodeTypes}
-		colorMode={dark ? 'dark' : 'light'}
-		fitView
-		fitViewOptions={FIT}
-		minZoom={0.25}
-		maxZoom={1.6}
-		ariaLabelConfig={ARIA}
-		proOptions={{ hideAttribution: true }}
-		nodesDraggable={false}
-		nodesConnectable={false}
-		elementsSelectable={false}
-		panOnDrag={overflows}
-		panOnScroll={false}
-		zoomOnScroll={false}
-		zoomOnPinch={overflows}
-		zoomOnDoubleClick={false}
-		preventScrolling={false}
-	>
-		<Background bgColor="transparent" patternColor="rgb(148 163 184 / 0.22)" gap={18} size={1} />
-		{#if showMinimap}
-			<MiniMap
-				position="bottom-right"
-				pannable
-				zoomable
-				height={72}
-				width={128}
-				bgColor="transparent"
-				maskColor="rgb(148 163 184 / 0.18)"
-				nodeColor={(n) =>
-					(n.data as { blocked?: boolean })?.blocked
-						? dark
-							? '#f87171'
-							: '#ef4444'
-						: dark
-							? '#4b5563'
-							: '#cbd5e1'}
-				nodeStrokeWidth={0}
-				nodeBorderRadius={2}
-				class="!m-2 !rounded-md !border !border-gray-200 !bg-white/80 dark:!border-gray-700 dark:!bg-gray-900/80"
-			/>
-		{/if}
-	</SvelteFlow>
-
+<div class="graph-canvas relative {className}">
 	{#if showControls}
-		<!-- The product's own buttons, not the library's: the library's controls
-		     are a white stack with no dark mode, and these need to read as the
-		     same chrome as every other icon button in the dashboard. -->
-		<div class="absolute top-2 right-2 z-10 flex flex-col overflow-hidden rounded-md border border-gray-200 bg-white/90 shadow-sm backdrop-blur dark:border-gray-700 dark:bg-gray-900/90">
-			<button
-				type="button"
-				onclick={() => zoomIn({ duration: 150 })}
-				aria-label="Zoom in"
-				title="Zoom in"
-				class="flex h-7 w-7 items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+		<!-- ⭐ A STRIP, NOT AN OVERLAY. (2026-09-02) These used to float
+		     `absolute` on top of the pane, which is how the zoom stack ended up
+		     printed over the DEV node at 390 — there is no width narrow enough
+		     to guarantee a top-right corner is empty. A row ABOVE the drawing
+		     reserves its own space instead of gambling on the layout leaving a
+		     gap, so it can never overlap a node at any width. -->
+		<div class="mb-1.5 flex justify-end">
+			<div
+				class="flex overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900"
 			>
-				<ZoomInOutline class="h-3.5 w-3.5" />
-			</button>
-			<button
-				type="button"
-				onclick={() => zoomOut({ duration: 150 })}
-				aria-label="Zoom out"
-				title="Zoom out"
-				class="flex h-7 w-7 items-center justify-center border-t border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-			>
-				<ZoomOutOutline class="h-3.5 w-3.5" />
-			</button>
-			<button
-				type="button"
-				onclick={() => fitView(FIT_ALL)}
-				aria-label="Fit the whole graph"
-				title="Fit the whole graph"
-				class="flex h-7 w-7 items-center justify-center border-t border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-			>
-				<ExpandOutline class="h-3.5 w-3.5" />
-			</button>
+				<button
+					type="button"
+					onclick={() => zoomIn({ duration: 150 })}
+					aria-label="Zoom in"
+					title="Zoom in"
+					class="flex h-8 w-8 items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+				>
+					<ZoomInOutline class="h-4 w-4" />
+				</button>
+				<button
+					type="button"
+					onclick={() => zoomOut({ duration: 150 })}
+					aria-label="Zoom out"
+					title="Zoom out"
+					class="flex h-8 w-8 items-center justify-center border-l border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+				>
+					<ZoomOutOutline class="h-4 w-4" />
+				</button>
+				<button
+					type="button"
+					onclick={() => fitAll()}
+					aria-label="Fit the whole graph"
+					title="Fit the whole graph"
+					class="flex h-8 w-8 items-center justify-center border-l border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+				>
+					<ExpandOutline class="h-4 w-4" />
+				</button>
+			</div>
 		</div>
 	{/if}
+	<div
+		bind:this={containerEl}
+		class="relative overflow-hidden"
+		style="height: {frameHeight}px"
+		role="group"
+		aria-label={ariaLabel}
+	>
+		<SvelteFlow
+			bind:nodes={flowNodes}
+			bind:edges={flowEdges}
+			{nodeTypes}
+			colorMode={dark ? 'dark' : 'light'}
+			fitView
+			fitViewOptions={FIT}
+			minZoom={0.25}
+			maxZoom={1.6}
+			ariaLabelConfig={ARIA}
+			proOptions={{ hideAttribution: true }}
+			nodesDraggable={false}
+			nodesConnectable={false}
+			elementsSelectable={false}
+			panOnDrag={overflows}
+			panOnScroll={false}
+			zoomOnScroll={false}
+			zoomOnPinch={overflows}
+			zoomOnDoubleClick={false}
+			preventScrolling={false}
+		>
+			<Background bgColor="transparent" patternColor="rgb(148 163 184 / 0.22)" gap={18} size={1} />
+			{#if showMinimap}
+				<MiniMap
+					position="bottom-right"
+					pannable
+					zoomable
+					height={72}
+					width={128}
+					bgColor="transparent"
+					maskColor="rgb(148 163 184 / 0.18)"
+					nodeColor={(n) =>
+						(n.data as { blocked?: boolean })?.blocked
+							? dark
+								? '#f87171'
+								: '#ef4444'
+							: dark
+								? '#4b5563'
+								: '#cbd5e1'}
+					nodeStrokeWidth={0}
+					nodeBorderRadius={2}
+					class="!m-2 !rounded-md !border !border-gray-200 !bg-white/80 dark:!border-gray-700 dark:!bg-gray-900/80"
+				/>
+			{/if}
+		</SvelteFlow>
+	</div>
 </div>
 
 <style>
@@ -779,6 +964,9 @@
 		font-size: 10.5px;
 		line-height: 1.3;
 		padding: 0 3px;
-		border-radius: 3px;
+		/* 4px is the vocabulary's own small radius (`Chip`, `.chip-value`,
+		   every other compact label on the canvas); this was the one
+		   surface still on 3px. */
+		border-radius: 4px;
 	}
 </style>

@@ -100,6 +100,7 @@
 	 * inside a 390px page and 526px inside a 768px one.
 	 */
 	import { MarkerType, type Node, type Edge } from '@xyflow/svelte';
+	import { ChevronDoubleRightOutline, ShareNodesSolid } from 'flowbite-svelte-icons';
 	import GraphCanvas from '$lib/components/GraphCanvas.svelte';
 	import DependencyNode from '$lib/components/DependencyNode.svelte';
 	import { theme } from '$lib/stores/theme';
@@ -287,6 +288,29 @@
 	const anchor = $derived(focus ?? orderedNodes.find((n) => n.blocked)?.id ?? null);
 
 	/**
+	 * ⭐ THE BLOCKED EDGE ITSELF — BOTH ENDS — for the resting view to contain.
+	 * (2026-09-02, measured on `/dependencies` at 390: the pane opened on
+	 * `hello-frontend-app`'s three environments with `hello-api-app`, the
+	 * PROVIDER the banner names, entirely off-screen. `anchor` alone is a
+	 * single point; the edge that HOLDS it has a second end, and that end is
+	 * the rest of the sentence the banner and the `Blocked links` card both
+	 * print.)
+	 *
+	 * The edge chosen is whichever inbound edge on `anchor` is actually
+	 * `blocked` — there can be more than one (a node held by both a
+	 * promotion gate and a contract gate at once), and the first is as good
+	 * as any: the point is showing A blocked relationship, not an exhaustive
+	 * one, and `null` here (nothing inbound is blocked, or there is no
+	 * anchor) falls back to `GraphCanvasInner`'s single-node `anchor` path
+	 * unchanged.
+	 */
+	const anchorSpan = $derived.by<[string, string] | null>(() => {
+		if (!anchor) return null;
+		const holding = (inbound.get(anchor) ?? []).find((e) => e.state === 'blocked');
+		return holding ? [holding.from, anchor] : null;
+	});
+
+	/**
 	 * ⭐ THE GUTTER THE CONTRACT LABELS LIVE IN, AND WHY IT TRANSPOSES.
 	 *
 	 * The contract edges are the LABELLED ones and they run along the
@@ -320,22 +344,29 @@
 
 {#if graph.nodes.length > 0}
 	<!--
-		THE READING, IN WORDS — ONCE, AND IT FOLLOWS THE DRAWING. Direction is
-		the one thing a graph can get catastrophically wrong, and no arrowhead
-		convention is universal. This states which axis is which, so the geometry
-		that replaces a legend is itself introduced in one line rather than
-		guessed at — and because the axes TRANSPOSE at `TB`, the sentence is read
-		off the canvas's own measurement rather than off a second breakpoint that
-		could disagree with it.
+		⭐ A TWO-AXIS LEGEND HAS A SHAPE, SO IT IS DRAWN, NOT WRITTEN.
+		(2026-09-02) Two full sentences of prose ("Across: a build moving
+		through environments, left first. Down: a service waiting on another
+		in the same environment.") said the same thing this glyph pair shows
+		in one line — direction is the one thing a graph can get
+		catastrophically wrong, and no arrowhead convention is universal, but
+		the FIX is geometry, not more words. The two marks are the product's
+		own, already-shipped icons for these two edge kinds
+		(`ChevronDoubleRightOutline` for a promotion, `ShareNodesSolid` for a
+		contract — `GateRecord.svelte`'s `gateMark()`), so the legend and the
+		graph cannot drift about what a mark means. The chevron ROTATES with
+		`stacked`, because that edge is genuinely vertical under `TB` and the
+		glyph should say so; the share icon has no orientation to carry.
 	-->
-	<p class="t-micro mb-3 text-gray-500 dark:text-gray-400">
-		{#if stacked}
-			Down: a build moving through environments, the first at the top. Across: a service
-			waiting on another in the same environment.
-		{:else}
-			Across: a build moving through environments, left first. Down: a service waiting on
-			another in the same environment.
-		{/if}
+	<p class="t-micro mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400">
+		<span class="inline-flex items-center gap-1">
+			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
+			environments
+		</span>
+		<span class="inline-flex items-center gap-1">
+			<ShareNodesSolid class="h-3 w-3 shrink-0 {stacked ? '' : 'rotate-90'}" />
+			services in one environment
+		</span>
 	</p>
 	<GraphCanvas
 		nodes={flowNodes}
@@ -352,6 +383,7 @@
 		fallbackNodeHeight={68}
 		minimapFrom={14}
 		{anchor}
+		{anchorSpan}
 		fillWidth
 		onorientation={(o) => (stacked = o === 'TB')}
 		{dark}
