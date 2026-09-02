@@ -953,11 +953,21 @@ export function networkVerdict(graph: RolloutGraph): {
 	text: string;
 	tone: 'neutral' | 'good' | 'adverse';
 } {
+	/**
+	 * ⭐ EVERY ROLLUP NAMES ITS NOUN, AND THIS ONE HAD STOPPED TO.
+	 * (2026-09-02, coordinator correction: `5 of 7 blocked` sat beside a
+	 * drawing of 6 NODES, so a reader counting boxes found a mismatch — the
+	 * 7 is edges, not nodes, and nothing on the rollup said so. `4/4
+	 * healthy`, `2 services` — every other rollup in the product counts a
+	 * named thing. `links` is not invented here: it is the noun the
+	 * `Blocked links` card beside this one already uses for the same
+	 * objects, so the two cannot disagree about what they are counting.
+	 */
 	const links = graph.edges.length;
 	if (links === 0) return { text: 'no links', tone: 'neutral' };
 	const blocked = graph.blockedEdges.length;
-	if (blocked > 0) return { text: `${blocked} of ${links} blocked`, tone: 'adverse' };
+	if (blocked > 0) return { text: `${blocked} of ${links} links blocked`, tone: 'adverse' };
 	const unknown = graph.edges.filter((e) => e.state === 'unknown').length;
-	if (unknown > 0) return { text: `${unknown} of ${links} not read`, tone: 'neutral' };
+	if (unknown > 0) return { text: `${unknown} of ${links} links not read`, tone: 'neutral' };
 	return { text: `${links} link${links === 1 ? '' : 's'} open`, tone: 'neutral' };
 }
