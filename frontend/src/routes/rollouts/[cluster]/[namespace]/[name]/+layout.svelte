@@ -184,8 +184,22 @@
 		class="sticky top-0 z-10 shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 		aria-label="Rollout sections"
 	>
-		<!-- Tabs split evenly across the row on mobile (icon-only), expand
-		     to icon+label on sm+. No overflow-x-auto — the tabs always fit. -->
+		<!--
+			⛔ FOUR ANONYMOUS 16px GLYPHS IN 97px CELLS, ABOVE A BOTTOM NAV THAT
+			LABELS ALL SIX OF ITS OWN ITEMS. (defect #6, 2026-09-02) `hidden
+			sm:inline` dropped this strip's labels below `sm` while
+			`MobileTabBar.svelte` — the OTHER navigation bar on the same screen
+			at that width — keeps every one of its own, at 10px under its icon.
+			Two navigation bars on one screen, one of them unlabelled, reads as
+			if this strip were decoration rather than navigation.
+
+			The fix borrows that exact idiom instead of inventing a second one:
+			icon on top, a 10px label under it, `truncate` so `Dependencies`
+			(the longest tab name) clips with an ellipsis rather than wrapping
+			the cell taller than its siblings. `sm:` reverts to the original
+			single-row icon+label at `text-sm` — this only ever fires below
+			`sm`, the one width the defect was measured at.
+		-->
 		<div class="mx-auto flex w-full max-w-7xl items-stretch px-4 sm:justify-start sm:gap-0 sm:px-6">
 			{#each tabs.filter((t) => t.show) as t (t.href)}
 				{@const active = isActive(t.href)}
@@ -193,13 +207,13 @@
 					href={t.href}
 					aria-current={active ? 'page' : undefined}
 					title={t.label}
-					class="group inline-flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors sm:flex-initial sm:shrink-0
+					class="group flex flex-1 flex-col items-center justify-center gap-0.5 border-b-2 px-1 py-2 text-[10px] font-medium transition-colors sm:flex-initial sm:shrink-0 sm:flex-row sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm
 						{active
 							? 'border-gray-900 text-gray-900 dark:border-white dark:text-white'
 							: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
 				>
 					<t.icon class="h-4 w-4 shrink-0" />
-					<span class="hidden sm:inline">{t.label}</span>
+					<span class="max-w-full truncate leading-tight">{t.label}</span>
 				</a>
 			{/each}
 		</div>

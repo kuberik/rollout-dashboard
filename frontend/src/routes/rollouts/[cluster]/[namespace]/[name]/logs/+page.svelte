@@ -25,9 +25,13 @@
 		}
 	});
 
-	// The rollup sentence ("2,031 lines • 2 pods • Streaming") LogsViewer
-	// computes from the counts it owns — see the sr-only `h1` below.
-	let summary = $state('');
+	// The rollup sentence ("2,031 lines · 2 pods · Streaming") LogsViewer
+	// computes from the counts it owns, SPLIT at its own joint — `count` is
+	// the leading figure, `rest` is everything after it — so the head row
+	// below can print them at two type roles instead of one. See
+	// `LogsSummary` in LogsViewer.svelte for why: the sr-only `h1` note there
+	// explains what used to live in this slot.
+	let summary = $state<{ count: number; rest: string }>({ count: 0, rest: '' });
 </script>
 
 <svelte:head>
@@ -47,12 +51,24 @@
 		     `/activity` and this rollout's own History tab were fixed for.
 		     `sr-only`, not deleted: the skip link lands on `main` and the page
 		     outline still needs a level-1 heading. What fills the visible slot
-		     is the rollup LogsViewer already prints in its footer, promoted up
-		     — the one thing the tab strip does not say. -->
+		     is the rollup LogsViewer already prints, promoted up — the one
+		     thing the tab strip does not say.
+
+		     ⛔ AND THE VISIBLE SLOT WAS THE WRONG TYPE ROLE. (defect #2) A
+		     bare `t-headline` (17/600) put the whole sentence — count and
+		     qualifiers alike — one size below `/activity`, `/versions`,
+		     `/dependencies`, `/rollouts` and this rollout's own sibling
+		     `/history` tab, every one of which leads this exact slot with a
+		     `t-display` (24px) figure and carries the rest of the sentence at
+		     `t-dense` on its baseline. `LogsViewer` now hands back `summary`
+		     split at that joint instead of one joined string. -->
 		<h1 class="sr-only">Logs</h1>
-		<p class="t-headline min-w-0 truncate text-gray-900 dark:text-white">
-			{summary || 'Logs'}
-		</p>
+		<div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+			<span class="t-display tabular-nums text-gray-900 dark:text-white"
+				>{summary.count.toLocaleString()}</span
+			>
+			<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">{summary.rest || 'Logs'}</p>
+		</div>
 		<!-- Tab buttons inline on mobile -->
 		<div class="flex rounded border border-gray-200 dark:border-gray-700">
 			<button

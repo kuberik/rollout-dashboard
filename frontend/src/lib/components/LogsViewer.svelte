@@ -31,7 +31,7 @@
 		DropdownItem,
 		Checkbox
 	} from 'flowbite-svelte';
-	import { CloseOutline, ChevronDownOutline } from 'flowbite-svelte-icons';
+	import { CloseOutline, ChevronDownOutline, TerminalOutline, FlaskOutline } from 'flowbite-svelte-icons';
 	import { createVirtualizer, notUndefined } from '@tanstack/svelte-virtual';
 	import iwanthue from 'iwanthue';
 	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -39,17 +39,31 @@
 	// re-importing it here collides as a duplicate identifier under svelte-check.
 	import type { LogLine } from '$lib/api/logs';
 	import { logsStreamQueryOptions } from '$lib/api/logs';
+	import { rolloutTestsQueryOptions } from '$lib/api/rollouts';
+	import { formatTimeAgo } from '$lib/utils';
+	import Card from '$lib/components/Card.svelte';
+
+	/**
+	 * The rollup sentence ("2,031 lines · 2 pods · Streaming") SPLIT AT ITS
+	 * OWN JOINT — `count` is the leading figure, `rest` is everything after
+	 * it. Bound out so the page head can print `count` at `t-display` and
+	 * `rest` at `t-dense` on its baseline, the same shape `/activity` and
+	 * `/history` use for their own rollups. A single joined string forced
+	 * the whole sentence into one type role (`t-headline`, 17/600), which is
+	 * the wrong role for either half of it — see `COMPOSITION-GRAMMAR.md`
+	 * §6 and the `/activity` head comment for the pattern this mirrors.
+	 */
+	interface LogsSummary {
+		count: number;
+		rest: string;
+	}
 
 	interface Props {
 		namespace: string;
 		name: string;
 		filterType?: 'pod' | 'test' | '';
 		cluster?: string;
-		/** The rollup sentence ("2,031 lines • 2 pods • Streaming"), bound
-		 *  out so the page head can print it in the slot the `h1` used to
-		 *  hold — the page owns the head row, this component owns the
-		 *  counts that fill it. */
-		summary?: string;
+		summary?: LogsSummary;
 	}
 
 	let {
@@ -57,7 +71,7 @@
 		name,
 		filterType = '',
 		cluster,
-		summary = $bindable('')
+		summary = $bindable({ count: 0, rest: '' })
 	}: Props = $props();
 
 	let selectedPod = $state<string | null>(null);
@@ -152,6 +166,43 @@
 	onMount(() => {
 		// Simply reset the query data to empty array for a clean slate
 		queryClient.setQueryData(logsQueryOptions.queryKey, []);
+	});
+
+	/**
+	 * ⛔ THE TESTS VIEW WAS THE PODS VIEW WITH A DIFFERENT DATA SOURCE. Its
+	 * empty state said *"the pods have written nothing since this view
+	 * opened"* on a rollout whose last test run (`hello-python-test`)
+	 * finished minutes earlier — a true fact the pane had no way to know,
+	 * because nothing here ever asked for it. `RolloutTest` is the CRD a
+	 * test run is; `rolloutTestsQueryOptions` already existed (used
+	 * nowhere) and gives us `status.phase` + `status.conditions[]`, whose
+	 * `lastTransitionTime` is the closest thing to "when this run finished"
+	 * on the wire. `enabled` is gated on `filterType === 'test'` so the
+	 * Pods view never fires this request.
+	 */
+	const rolloutTestsQuery = createQuery(() => ({
+		...rolloutTestsQueryOptions({ namespace, name }),
+		enabled: filterType === 'test'
+	}));
+
+	const lastTestRun = $derived.by((): { name: string; finishedAt: string } | null => {
+		const items = rolloutTestsQuery.data?.rolloutTests?.items ?? [];
+		let best: { name: string; finishedAt: string } | null = null;
+		for (const item of items) {
+			const phase = item.status?.phase;
+			// Only a TERMINAL phase has a "finished" moment to report.
+			if (phase !== 'Succeeded' && phase !== 'Failed' && phase !== 'Cancelled') continue;
+			const conditions = item.status?.conditions ?? [];
+			let finishedAt: string | null = null;
+			for (const c of conditions) {
+				if (!finishedAt || c.lastTransitionTime > finishedAt) finishedAt = c.lastTransitionTime;
+			}
+			if (!finishedAt) continue;
+			if (!best || finishedAt > best.finishedAt) {
+				best = { name: item.status?.jobName || item.metadata?.name || 'test', finishedAt };
+			}
+		}
+		return best;
 	});
 
 	// Derived state from query
@@ -367,10 +418,15 @@
 	 * the same shape the footer already prints, minus the `/` breakdown a
 	 * head-row sentence doesn't need. Bound out via `summary` because the
 	 * counts live here and the head row lives one level up in `+page.svelte`.
+	 *
+	 * SPLIT AT ITS OWN JOINT (see `LogsSummary` above): `count` is the bare
+	 * figure, `rest` is the sentence that follows it, so the page head can
+	 * print them at two different type roles instead of one `t-headline`
+	 * line — the defect measured against `/activity`'s head, which does the
+	 * same split for the same reason.
 	 */
-	const summaryText = $derived.by(() => {
+	const summaryParts = $derived.by((): LogsSummary => {
 		const lineCount = filteredLogs.length;
-		const linesLabel = `${lineCount.toLocaleString()} line${lineCount === 1 ? '' : 's'}`;
 		const podCount = selectedPods.size > 0 ? selectedPods.size : uniquePods.length;
 		const podsLabel = podCount > 0 ? `${podCount} pod${podCount === 1 ? '' : 's'}` : null;
 		// Reads `connectionState` exclusively — see its definition for why this
@@ -383,12 +439,41 @@
 					: connectionState === 'error'
 						? null
 						: 'Stream closed';
-		return [linesLabel, podsLabel, streamLabel].filter(Boolean).join(' • ');
+		const rest = [`line${lineCount === 1 ? '' : 's'}`, podsLabel, streamLabel]
+			.filter(Boolean)
+			.join(' · ');
+		return { count: lineCount, rest };
 	});
 
 	$effect(() => {
-		summary = summaryText;
+		summary = summaryParts;
 	});
+
+	/**
+	 * THE CARD HEADER'S RIGHT-ALIGNED ROLLUP — `4 pods · streaming` /
+	 * `connection lost`, `COMPOSITION-GRAMMAR.md` §1's "single most
+	 * transferable thing", now spent on the log pane instead of a card with
+	 * a header and no answer. Lowercase throughout: it sits beside a 14/600
+	 * title, not as a second headline. `filterType`-aware so the Tests view
+	 * says "runs", not "pods" — the same defect as the empty-state copy
+	 * below, one level up.
+	 */
+	const paneRollup = $derived.by((): string => {
+		if (connectionState === 'error') return 'connection lost';
+		if (connectionState === 'connecting') {
+			return filterType === 'test' ? 'connecting to test runs…' : 'connecting to pods…';
+		}
+		const podCount = selectedPods.size > 0 ? selectedPods.size : uniquePods.length;
+		const noun = filterType === 'test' ? (podCount === 1 ? 'run' : 'runs') : podCount === 1 ? 'pod' : 'pods';
+		const stateLabel = connectionState === 'streaming' ? 'streaming' : 'stream closed';
+		return podCount > 0 ? `${podCount} ${noun} · ${stateLabel}` : stateLabel;
+	});
+
+	// The empty state's icon, keyed off the same view split as the copy
+	// beside it and the Card's own header icon. Capitalised: a lowercase
+	// identifier in a component tag position renders as a literal `<x>`
+	// element, not this reference.
+	const EmptyIcon = $derived(filterType === 'test' ? FlaskOutline : TerminalOutline);
 
 	// Highlight search matches in log lines
 	function highlightSearch(text: string, query: string): string {
@@ -597,8 +682,10 @@
 			     no longer contradicts the lines below it, and it does not repeat the
 			     `Streaming ●` mark the footer has always carried. -->
 			{#if isConnecting}
-				<Spinner size="4" color="blue" />
-				<span class="text-xs text-gray-500 dark:text-gray-400">Connecting to pods…</span>
+				<Spinner size="4" color="gray" />
+				<span class="text-xs text-gray-500 dark:text-gray-400"
+					>{filterType === 'test' ? 'Connecting to test runs…' : 'Connecting to pods…'}</span
+				>
 			{/if}
 			{#if error}
 				<Badge color="red" class="text-xs">Error loading logs</Badge>
@@ -612,14 +699,27 @@
 				     BESIDE them as a plain `span`, so both announced as an unnamed
 				     checkbox. Two of the twenty-seven tab stops on the Logs tab. -->
 				<div class="flex items-center gap-2">
-					<!-- Flowbite's default `color="primary"` renders orange here — this
-					     product's one filled primary is blue (`ChangeVersionModal`'s pin
-					     toggle), so both toggles below say so explicitly rather than
-					     inheriting the library default. -->
+					<!--
+						⛔ THE MOST SATURATED OBJECT IN THE PRODUCT WAS A CHECKBOX THAT
+						TOGGLES AUTO-SCROLL. (2026-09-02) `color="blue"` here was a
+						720px² `blue-600` fill, chroma 1.30× the alarm — on a control
+						that does not deploy anything. Blue is `Deploying`'s ink; a
+						toggle that follows the tail of a log is not an action, it is a
+						view preference. `a27d7f0` moved the History tab's own toggles
+						(the identical selected-state idiom, `Compare`/`Show
+						environments`) to gray-900/gray-100 that same day — "like every
+						other toggle" — and these two are the only ones that had not
+						followed. `color="gray"` only gets the focus ring to neutral
+						(flowbite's `gray` variant is `peer-checked:bg-gray-500`, not
+						`gray-900`); the checked fill is overridden to match the History
+						toggles exactly, `!` because it has to win over the color
+						variant's own `peer-checked:bg-gray-500` in the same slot.
+					-->
 					<Toggle
 						bind:checked={autoScroll}
 						size="small"
-						color="blue"
+						color="gray"
+						classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
 						aria-labelledby="logs-follow-label"
 					/>
 					<span id="logs-follow-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
@@ -630,7 +730,8 @@
 					<Toggle
 						bind:checked={wrapLines}
 						size="small"
-						color="blue"
+						color="gray"
+						classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
 						aria-labelledby="logs-wrap-label"
 					/>
 					<span id="logs-wrap-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
@@ -640,10 +741,16 @@
 			</div>
 			<!-- Filter dropdowns -->
 			<div class="flex flex-wrap items-center gap-2">
-				<!-- Pod filter dropdown -->
+				<!-- Pod/source filter dropdown. ⛔ THIS SAID "Pods" 60px UNDER A
+				     "Pods | Tests" SEGMENTED CONTROL THAT ALSO SAYS "Pods" — one word
+				     naming two different things on screen at once: which STREAM you
+				     are on, and which SOURCE within it you are filtering to. It filters
+				     the log's origin (a pod name on the Pods view, a test run's pod on
+				     the Tests view), so it is named for what it filters, not for the
+				     view it happens to be inside. -->
 				<div class="relative">
 					<Button size="xs" color="light" id={podsDropdownId} class="text-xs">
-						Pods
+						Source
 						{#if selectedPods.size > 0}
 							<Badge color="blue" class="ml-1 text-xs">{selectedPods.size}</Badge>
 						{/if}
@@ -810,11 +917,15 @@
 						{/each}
 					</Dropdown>
 				</div>
-				<!-- Columns visibility dropdown -->
+				<!-- Columns visibility dropdown. ⛔ "Cols" ABBREVIATED A WORD THAT
+				     FIT. Measured on the running row: 132px free next to the other
+				     three filter buttons at the width the abbreviation existed for —
+				     there was nothing to save. Spelled out at every width now; it
+				     wraps onto its own line at 390 like every other filter button
+				     already does, rather than clip a word that had room. -->
 				<div class="relative">
 					<Button size="xs" color="light" id={columnsDropdownId} class="text-xs">
-						<span class="hidden sm:inline">Columns</span>
-						<span class="sm:hidden">Cols</span>
+						Columns
 						{#if hiddenColumnCount > 0}
 							<Badge color="blue" class="ml-1 text-xs">{hiddenColumnCount}</Badge>
 						{/if}
@@ -885,36 +996,92 @@
 		</div>
 	</div>
 
-	<!-- Logs display -->
-	{#if isConnecting}
-		<div class="flex flex-1 items-center justify-center">
-			<Spinner size="6" color="blue" />
-		</div>
-	{:else if error}
-		<div class="flex flex-1 items-center justify-center">
-			<div class="text-center">
-				<p class="text-red-600 dark:text-red-400">Failed to load logs</p>
-				<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{error}</p>
-				<Button class="mt-4" onclick={() => logsQuery.refetch()}>Retry</Button>
+	<!--
+		⛔ THE PANE WAS A BORDERED BOX WITH NO HEADER AND AN EMPTY STATE
+		FLOATING IN A 620px VOID. (defect #3, `COMPOSITION-GRAMMAR.md` §1: "a
+		panel with no header and no rollup is the shape that keeps getting
+		rejected.") It is a titled `Card` now — icon, 14/600 title, and the
+		right-aligned rollup (`paneRollup`) that answers the pane's own
+		question ("4 pods · streaming" / "connection lost") without reading a
+		row of it. `padded={false}` because the terminal-black log stream
+		wants to run to the card's own edges, not sit in a 16px frame; the
+		three OTHER states (connecting/error/empty) supply their own padding
+		instead.
+	-->
+	<Card
+		icon={filterType === 'test' ? FlaskOutline : TerminalOutline}
+		title={filterType === 'test' ? 'Test output' : 'Pod output'}
+		padded={false}
+		bodyClass="flex min-h-0 flex-1 flex-col"
+		class="min-h-0 flex-1"
+	>
+		{#snippet rollup()}
+			<span
+				class="text-xs font-medium whitespace-nowrap {connectionState === 'error'
+					? 'text-red-600 dark:text-red-400'
+					: 'text-gray-500 dark:text-gray-400'}"
+			>
+				{paneRollup}
+			</span>
+		{/snippet}
+		{#if isConnecting}
+			<div class="flex flex-1 items-center justify-center">
+				<Spinner size="6" color="gray" />
 			</div>
-		</div>
-	{:else if allLogLines.length === 0}
-		<div class="flex flex-1 items-center justify-center p-6">
-			<div class="max-w-sm text-center">
+		{:else if error}
+			<div class="flex flex-1 items-center justify-center p-6">
+				<div class="text-center">
+					<p class="text-red-600 dark:text-red-400">Failed to load logs</p>
+					<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{error}</p>
+					<Button class="mt-4" onclick={() => logsQuery.refetch()}>Retry</Button>
+				</div>
+			</div>
+		{:else if allLogLines.length === 0}
+			<!--
+				⛔ CENTRED GRAY PROSE, NO ICON, NO FRAME. (defect #3) An empty
+				pane now leads with an icon and sits at the TOP, the same shape
+				`/activity`'s empty state uses — a void is not the answer to
+				"nothing has arrived yet", a stated fact is.
+
+				⛔ AND THE TESTS VIEW WAS THE PODS VIEW WITH A DIFFERENT DATA
+				SOURCE. (defect #5) "the pods have written nothing" printed on
+				`filterType="test"` even when a real test had run and finished
+				minutes earlier — `lastTestRun` (from `RolloutTest`'s own
+				status, see its definition above) is what lets this branch say
+				so when it is known, and an honest "no test has written
+				anything" — never "pods" — when it is not.
+			-->
+			<div class="flex flex-1 flex-col items-center gap-1 p-6 pt-10 text-center">
+				<EmptyIcon class="mb-2 h-10 w-10 text-gray-400 dark:text-gray-500" />
 				{#if hasFilters}
 					<p class="text-sm font-medium text-gray-900 dark:text-white">
 						No lines match the current filters
 					</p>
-					<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					<p class="max-w-sm text-sm text-gray-500 dark:text-gray-400">
 						{logs.length.toLocaleString()} line{logs.length === 1 ? '' : 's'} have arrived; every
 						one of them is hidden by a pod, container, level or search filter.
 					</p>
-					<Button class="mt-4" size="sm" color="light" onclick={clearFilters}>
+					<Button class="mt-3" size="sm" color="light" onclick={clearFilters}>
 						Clear filters
 					</Button>
+				{:else if filterType === 'test'}
+					<p class="text-sm font-medium text-gray-900 dark:text-white">No test output yet</p>
+					{#if lastTestRun}
+						<p class="max-w-sm text-sm text-gray-500 dark:text-gray-400">
+							The last run, <span class="font-medium text-gray-700 dark:text-gray-300"
+								>{lastTestRun.name}</span
+							>, finished {formatTimeAgo(lastTestRun.finishedAt)}. New lines appear here as the
+							next run writes them.
+						</p>
+					{:else}
+						<p class="max-w-sm text-sm text-gray-500 dark:text-gray-400">
+							The stream is open and no test has written anything since this view opened. New
+							lines appear here as a test run writes them.
+						</p>
+					{/if}
 				{:else}
 					<p class="text-sm font-medium text-gray-900 dark:text-white">No log lines yet</p>
-					<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					<p class="max-w-sm text-sm text-gray-500 dark:text-gray-400">
 						The stream is open and
 						{discoveredPods.length > 0
 							? `${discoveredPods.length} pod${discoveredPods.length === 1 ? ' has' : 's have'}`
@@ -923,59 +1090,57 @@
 					</p>
 				{/if}
 			</div>
-		</div>
-	{:else}
-		<div
-			class="relative min-h-0 flex-1 rounded-lg border bg-gray-900 dark:bg-gray-950"
-		>
-			<div
-				bind:this={virtualListEl}
-				onscroll={handleScroll}
-				onwheel={markUserGesture}
-				ontouchstart={markUserGesture}
-				onpointerdown={markUserGesture}
-				class="absolute inset-0 overflow-auto"
-			>
-				<div class="min-w-full" style={wrapLines ? '' : 'width: max-content;'}>
-					{#if virtualListBefore > 0}
-						<div style="height: {virtualListBefore}px;"></div>
-					{/if}
-
-					{#each virtualItems as row, idx (row.index)}
-						{@const logItem = allLogLines[row.index]}
-						{@const podColor = getPodColor(logItem.pod)}
-						{@const logLevel = getLogLevel(logItem.line)}
-						{@const levelColor = getLogLevelColor(logLevel)}
-						<div
-							class="flex items-baseline border-b border-gray-800 px-2 py-1 font-mono text-xs hover:bg-gray-800/50 sm:px-4 sm:text-sm {wrapLines ? 'flex-wrap' : 'whitespace-nowrap'}"
-							data-index={row.index}
-						>
-						{#if visibleColumns.has('timestamp')}
-							<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
+		{:else}
+			<div class="relative min-h-0 flex-1 bg-gray-900 dark:bg-gray-950">
+				<div
+					bind:this={virtualListEl}
+					onscroll={handleScroll}
+					onwheel={markUserGesture}
+					ontouchstart={markUserGesture}
+					onpointerdown={markUserGesture}
+					class="absolute inset-0 overflow-auto"
+				>
+					<div class="min-w-full" style={wrapLines ? '' : 'width: max-content;'}>
+						{#if virtualListBefore > 0}
+							<div style="height: {virtualListBefore}px;"></div>
 						{/if}
-						{#if visibleColumns.has('pod')}
-							<span class="mx-1 shrink-0 font-semibold sm:mx-2" style="color: {podColor}"
-								>{logItem.pod}</span
+
+						{#each virtualItems as row, idx (row.index)}
+							{@const logItem = allLogLines[row.index]}
+							{@const podColor = getPodColor(logItem.pod)}
+							{@const logLevel = getLogLevel(logItem.line)}
+							{@const levelColor = getLogLevelColor(logLevel)}
+							<div
+								class="flex items-baseline border-b border-gray-800 px-2 py-1 font-mono text-xs hover:bg-gray-800/50 sm:px-4 sm:text-sm {wrapLines ? 'flex-wrap' : 'whitespace-nowrap'}"
+								data-index={row.index}
 							>
-						{/if}
-						{#if visibleColumns.has('container')}
-							<span class="mx-1 shrink-0 text-green-400 sm:mx-2">{logItem.container}</span>
-						{/if}
-						{#if visibleColumns.has('message')}
-							<span class="{levelColor} {wrapLines ? 'min-w-0 break-all whitespace-pre-wrap' : ''}">
-								{@html highlightSearch(logItem.line, searchQuery)}
-							</span>
-						{/if}
-						</div>
-					{/each}
+							{#if visibleColumns.has('timestamp')}
+								<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
+							{/if}
+							{#if visibleColumns.has('pod')}
+								<span class="mx-1 shrink-0 font-semibold sm:mx-2" style="color: {podColor}"
+									>{logItem.pod}</span
+								>
+							{/if}
+							{#if visibleColumns.has('container')}
+								<span class="mx-1 shrink-0 text-green-400 sm:mx-2">{logItem.container}</span>
+							{/if}
+							{#if visibleColumns.has('message')}
+								<span class="{levelColor} {wrapLines ? 'min-w-0 break-all whitespace-pre-wrap' : ''}">
+									{@html highlightSearch(logItem.line, searchQuery)}
+								</span>
+							{/if}
+							</div>
+						{/each}
 
-					{#if virtualListAfter > 0}
-						<div style="height: {virtualListAfter}px;"></div>
-					{/if}
+						{#if virtualListAfter > 0}
+							<div style="height: {virtualListAfter}px;"></div>
+						{/if}
+					</div>
 				</div>
 			</div>
-		</div>
-	{/if}
+		{/if}
+	</Card>
 
 	<!-- Footer with stats -->
 	{#if filteredLogs.length > 0 || logs.length > 0}
