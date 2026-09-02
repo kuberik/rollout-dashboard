@@ -142,8 +142,8 @@
 		 * `unknown`). Its `title` carries everything the word displaced.
 		 */
 		verdict?: { label: string; title: string; role: 'newest' | 'rank' | 'diverged' | 'unranked' };
-		/** `rolled back` / `pinned`, drawn in the leading disc — see `/`. */
-		state?: 'rolled-back' | 'pinned' | null;
+		/** `rolled back` / `pinned` / `held`, drawn in the leading disc — see `/`. */
+		state?: 'rolled-back' | 'pinned' | 'held' | null;
 		stateWord?: string;
 		stateTitle?: string;
 		/**
