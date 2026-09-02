@@ -1,0 +1,79 @@
+# Design pass 3 — two critiques and their disposition, 2026-09-02
+
+Branch `polish/design-pass-2` at `b59d040`. Two read-only critics ran in parallel after the
+day's eight commits: a dark/390 craft review (`ic-design-reviewer`) and a UI-only operator walk
+(`ic-ux-critic`, real rollback + pin-clear through the UI, cluster restored). Both measured;
+everything below that I list as "confirmed" I re-measured myself before dispatch.
+
+Methodological note from the craft critic, worth keeping: the navbar theme toggle starts a
+150ms `transition-colors`; `getComputedStyle` inside that window returns interpolated
+`oklab(...)` values. Toggle, then RELOAD, then measure.
+
+## Confirmed by my own measurement (390 dark / 1440 dark)
+
+| finding | measurement |
+|---|---|
+| `/dependencies` at 390 shows 3 of 12 nodes | pane 34→341; `hello-api-app` ×3 at −145→30 (off left), world/multi ×6 at 401→861 (off right) |
+| Card header truncates its title | `All apps` sw 63 / cw 56 → `All a…`; `/activity` 194/184; `/versions` 226/218 |
+| App-page `Recent activity` text-on-text at 390 | `2.66.0-66` vs `02:03 AM` overlap 42×12px; two more rows 23px and 3px |
+| `/` at 1440×900 half empty and truncating | left column 77→468, rail 77→924, page does not scroll, `+4 more` link present |
+| three "see more" grammars on `/` | `View all rollouts`, `+4 more in the full rollouts list`, `view all ›` |
+
+## Craft review — ranked
+
+INCOHERENT
+1. `/dependencies` 390 resting pan excludes the provider the banner names; zoom controls overlap DEV node by 5px. → **p3-graph**
+2. `Card` title is the first thing to shrink; three pages truncate at 390. → **p3-card**
+3. `ActivityRail` two-anchor row, both sides `shrink-0`. → **p3-activity**
+4. Type scale: 9 declared roles, 35 combinations across 14 sizes; headline band has five spellings 16–20px; AlertPanel headline 16/700 off-role; 9px numerals. → **p3-card** (AlertPanel), **p3-activity** (9px), wave-2 census agent.
+
+UNPOLISHED
+5. Logs `Follow` toggle blue-600, chroma 1.30× the alarm fill; History toggles went gray-900 today. → **p3-logs**
+6. `How it's going` is three different cards (320/320/340 wide; 12/12/12.5 dt; 16/16/17 dd; 3/3/2 rows; sparkline moved into header on app page). → wave 2
+7. `Furthest behind` fix landed on `/apps` not `/envs/<name>`. → **p3-envs**
+8. `/dependencies` `cluster <name>` inks reversed: 2.60:1 light, 3.03:1 dark, the only sub-4.5 text in the audit. → **p3-graph**
+9. `/apps` marks the norm (green `All up to date`), deviation row chroma 0. → **p3-envs**
+10. Logs tab: 17px head where siblings use 24px; zero cards; empty state centred in a 620px void; 390 tab strip unlabeled; `Pods` twice; `Cols`. → **p3-logs**
+11. App-page station rows: 525px gap, 63% of card. → **p3-app**
+12. `/` primary column 391px tall under an 818px rail while hiding 4 rollouts. → **p3-home**
+13. Three "see more" grammars, two to the same URL. → **p3-home**
+14. `/activity` pill rows 1px apart in type; selected pill 2px shorter; rollup restates the window. → **p3-activity**
+15. `What changed` ×8 — interrogative trigger. → **p3-activity**
+
+NITPICK: `9999px` ×4 on app page (→ p3-app); `3px` edge labels (→ p3-graph); `6px` button on rollout detail (→ p3-truth); `dev` + `DEV` chip in envs head (→ p3-envs); prose legend on the graph card (→ p3-graph); activity chart monochrome vs green list (→ p3-activity).
+
+Praise: entry hop on `/apps/<name>`; `/envs/dev` at 390; `/rollouts` at 390 byte-clean; banner family consistent across four pages; container geometry holds on every route.
+
+## Operator walk — ranked
+
+BLOCKING
+1. `/versions/<rev>` calls the one held build "fully rolled out" (`6 of 6`, `NEWEST … of 2`) — rel-66 and rel-67 share revision `9f10e49`, rel-67 held everywhere. → **p3-truth**
+2. "This clears when the deploy in front of it lands" on four surfaces for a CONTRACT gate that never will (`blocking-story.ts:926`, rollout Overview `:685`, `/dependencies:199`). The Dependencies tab says the truth: "someone has to ship hello-api-app first". → **p3-truth** (function), **p3-graph** (`/dependencies` copy), pages adopt in wave 2
+3. `Open hello-api-app` lands on an Overview that says "Up to date — no upgrades available" while holding three rollouts. → **p3-truth**
+4. 390 dependency graph: `Zoom in` and `Fit` do nothing; `Zoom out` goes 0.85→0.25 in one press; no controls at 1440; 28px targets overlapping a node. → **p3-graph**
+
+PAINFUL
+5. `/apps`, `/environments` say "in DEV" for a block hitting all three; row says `DEV can still take 1 newer version`. → **p3-envs**
+6. Four `How it's going` rails, four definitions (`Deploys · 7d` 49 vs 34; `24h` window swapped in silently; fleet vs per-app medians). → wave 2
+7. `Typical to prod —` bare dash on app page, `— no full trip yet` on `/apps`. → **p3-app**
+8. Rank chip `−N` is amber. **Not actioned**: the human chose orange for `behind` on 2026-09-01 ("shouldn't be blue… orange/yellow/amber", "white/black fill is an eye-sore"); amber = `stuck` only is the older rule the docs still carry. Wave 2 updates `DESIGN-INTENT.md`/`HANDOFF.md`.
+9. `/rollouts` has no held signal. → **p3-home**
+10. No elapsed time on Deploying; `checking · 0m of 0m`. → **p3-home**
+11. `next: staging` on a pinned rollback; no pin on the in-motion card. → **p3-home**
+12. Rollback invisible on `/activity` and the app rail. → **p3-activity**
+13. Raw 60-char OCI tag on the pin banner and the graph node. → **p3-truth**, **p3-graph**
+14. Rollout Dependencies tab: `3 of 4 blocked` over a graph that omits dev. → **p3-graph**
+15. Force-deploy modal never names the contract. → **p3-modals**
+16. `/envs/prod` "waiting on 2 gates" names nothing; `4/4 healthy` regressed from `running`. → **p3-envs**
+17. Blocked app page has zero actions; provider hop is a 14px glyph. → **p3-app**
+18. = craft 3. 19. `/apps` 390 `UP TO DATE / 0 of 3 up to date`. → **p3-envs**
+20. Logs Tests view speaks about pods. → **p3-logs**
+21. Clear-pin modal drops the environment. → **p3-modals**
+22. "pauses in 43m" + "paused right now" in one screenshot, not reproduced. → **p3-modals** (predicate check)
+
+COSMETIC: subtitle `release rel-67` while running rel-66 (→ p3-truth); `·064b655` missing space (→ p3-home); picker `35 days ago` vs `4d`, no rank in picker (→ p3-modals); holding-card gradient vs HANDOFF rule (→ p3-home); 390 home dead space (→ p3-home); rollback button skipping a newer sha silently (→ p3-truth).
+
+Praise: rollout Dependencies tab both directions; six surfaces agreed live through a rollback; rollback modal; History `Rolled back` badge; force-deploy ceremony; empty states; `/rollouts` group headers and filters.
+
+## Left by both critics
+Real-device touch on the graph; command palette Enter (browse-daemon contention, not filed); the unblock event (nothing can publish `hello-api 1.67.0` — `build-and-push.sh` commit-count bug from 2026-08-31 still stands); failed/stuck states; Logs Tests view with real output; 1440 light on most routes (my combination).

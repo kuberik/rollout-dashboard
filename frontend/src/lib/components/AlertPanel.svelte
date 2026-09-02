@@ -243,16 +243,17 @@
 
 	/**
 	 * ⛔ THE ALPHA LADDER IS GONE FROM THE MESSAGE AND THE FOOTNOTE IN LIGHT,
-	 * AND IT IS NOT COMING BACK. Measured pixel-wise off a screenshot (the
-	 * container is a GRADIENT, so `getComputedStyle` on an ancestor reports
-	 * `transparent` and every earlier number computed against the page ground
-	 * was wrong), all four severities, 1440:
+	 * AND IT IS NOT COMING BACK. Measured pixel-wise off a screenshot (at the
+	 * time this was measured the container was a GRADIENT, so
+	 * `getComputedStyle` on an ancestor reported `transparent` and every
+	 * earlier number computed against the page ground was wrong), all four
+	 * severities, 1440:
 	 *
 	 *   light   icon 2.57-3.69 | message 3.34-4.20 | footnote 2.35-3.11
 	 *   dark    icon 6.17-6.78 | message 5.68-6.08 | footnote 3.58-3.83
 	 *
-	 * There is NO alpha that works in light: `<hue>-700` at 95% over the
-	 * `<hue>-50/100` gradient is still only 4.46:1, under the 4.5 floor. So
+	 * There was NO alpha that worked in light: `<hue>-700` at 95% over the
+	 * `<hue>-50/100` gradient still measured 4.46:1, under the 4.5 floor. So
 	 * the message and the footnote are the FULL 700 step in light and the
 	 * ladder is carried by SIZE (16px/700 bold title, 14px message, 12px
 	 * footnote), which is the ladder the reference page's own cards use.
@@ -267,13 +268,28 @@
 	 *
 	 * ZERO NEW COLOUR VALUES: every step used here is one the product already
 	 * spends.
+	 *
+	 * ⛔ THE CONTAINER IS FLAT NOW, NOT A GRADIENT. (2026-09-02) `HANDOFF.md`'s
+	 * hard rule is *"no status-driven background gradients"* and this was the
+	 * one shipped object it did not hold on — `bg-gradient-to-r from-<hue>-100
+	 * via-<hue>-50 to-<hue>-100` (dark: solid `<hue>-950`/`900`/`950` stops),
+	 * kept from the panel's first commit as "FailurePanel's visual language"
+	 * and never covered by a human ruling either way. No recorded approval was
+	 * found for the exception, so it is gone: `bg-<hue>-50 dark:bg-<hue>-950/40`,
+	 * a flat wash matching the tone every wash/block chip in the product
+	 * already spends (`Chip`'s `newest` is `green-50` / `green-950/30`). The
+	 * numbers above still describe the ladder correctly — a flat, LIGHTER
+	 * ground than the gradient's own midpoint only helps light-mode contrast,
+	 * never hurts it, so the FULL 700 step stays the floor rather than being
+	 * re-measured down. The shadow and ring are untouched; they were never the
+	 * gradient.
 	 */
 	const palette = $derived.by(() => {
 		switch (severity) {
 			case 'error':
 				return {
 					container:
-						'bg-gradient-to-r from-red-100 via-red-50 to-red-100 shadow-2xl shadow-red-200/60 ring-1 ring-red-300/60 dark:from-red-950 dark:via-red-900 dark:to-red-950 dark:shadow-red-950/50 dark:ring-red-800/60',
+						'bg-red-50 dark:bg-red-950/40 shadow-2xl shadow-red-200/60 ring-1 ring-red-300/60 dark:shadow-red-950/50 dark:ring-red-800/60',
 					glowA: 'bg-red-400/8 dark:bg-red-500/10',
 					glowB: 'bg-red-300/10 dark:bg-red-400/8',
 					ping: 'bg-red-500/30 dark:bg-red-500/40',
@@ -287,7 +303,7 @@
 			case 'warning':
 				return {
 					container:
-						'bg-gradient-to-r from-amber-100 via-amber-50 to-amber-100 shadow-2xl shadow-amber-200/60 ring-1 ring-amber-300/60 dark:from-amber-950 dark:via-amber-900 dark:to-amber-950 dark:shadow-amber-950/50 dark:ring-amber-800/60',
+						'bg-amber-50 dark:bg-amber-950/40 shadow-2xl shadow-amber-200/60 ring-1 ring-amber-300/60 dark:shadow-amber-950/50 dark:ring-amber-800/60',
 					glowA: 'bg-amber-400/8 dark:bg-amber-500/10',
 					glowB: 'bg-amber-300/10 dark:bg-amber-400/8',
 					ping: 'bg-amber-500/25 dark:bg-amber-500/30',
@@ -302,7 +318,7 @@
 			case 'pinned':
 				return {
 					container:
-						'bg-gradient-to-r from-orange-100 via-orange-50 to-orange-100 shadow-2xl shadow-orange-200/60 ring-1 ring-orange-300/60 dark:from-orange-950 dark:via-orange-900 dark:to-orange-950 dark:shadow-orange-950/50 dark:ring-orange-800/60',
+						'bg-orange-50 dark:bg-orange-950/40 shadow-2xl shadow-orange-200/60 ring-1 ring-orange-300/60 dark:shadow-orange-950/50 dark:ring-orange-800/60',
 					glowA: 'bg-orange-400/8 dark:bg-orange-500/10',
 					glowB: 'bg-orange-300/10 dark:bg-orange-400/8',
 					ping: 'bg-orange-500/25 dark:bg-orange-500/30',
@@ -318,7 +334,7 @@
 			default:
 				return {
 					container:
-						'bg-gradient-to-r from-blue-100 via-blue-50 to-blue-100 shadow-2xl shadow-blue-200/60 ring-1 ring-blue-300/60 dark:from-blue-950 dark:via-blue-900 dark:to-blue-950 dark:shadow-blue-950/50 dark:ring-blue-800/60',
+						'bg-blue-50 dark:bg-blue-950/40 shadow-2xl shadow-blue-200/60 ring-1 ring-blue-300/60 dark:shadow-blue-950/50 dark:ring-blue-800/60',
 					glowA: 'bg-blue-400/8 dark:bg-blue-500/10',
 					glowB: 'bg-blue-300/10 dark:bg-blue-400/8',
 					ping: 'bg-blue-500/25 dark:bg-blue-500/30',
