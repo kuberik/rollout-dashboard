@@ -37,6 +37,22 @@
 		 * neighbour's pods — same fence the exposure bar keeps.
 		 */
 		pods?: number | null;
+		/**
+		 * TOTAL REPLICAS THE WORKLOAD WANTS, alongside `pods` (ready). Together
+		 * they are the health fact — `2/2 running` — the reference page's own
+		 * `Resources` row idiom (`ready/total pods`) read down the chain instead
+		 * of down a resource list.
+		 *
+		 * ⭐ BOTH OR NEITHER. (2026-09-02, follow-up: *"the void moved, it did not
+		 * go"* — capping the row's track just relocated the empty space to the
+		 * card's right margin. The real fix is content: give each station a
+		 * fact worth its own column.) `null`/`undefined` prints NOTHING, never a
+		 * bare ready count and never a dash — a half-known ratio (`2/?`) is not
+		 * a fact, it is a rounding of one. Same fence as `pods` itself: a
+		 * kustomization that substitutes more than one rollout cannot be
+		 * attributed to either app, so both halves stay unattributed together.
+		 */
+		podsTotal?: number | null;
 		href?: string;
 		/**
 		 * A production region on the build the fleet agreed on: it keeps the
@@ -201,12 +217,7 @@
 	import CopyButton from './CopyButton.svelte';
 	import BlockingStoryLines from './BlockingStoryLines.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
-	import {
-		CodeBranchSolid,
-		TagSolid,
-		CubeSolid,
-		ChevronRightOutline
-	} from 'flowbite-svelte-icons';
+	import { CodeBranchSolid, TagSolid, CubeSolid } from 'flowbite-svelte-icons';
 
 	let {
 		stages,
@@ -348,25 +359,26 @@
 			     wrapping the row in an `<a>` would nest it around the rule
 			     disclosure and the chips it already contains.
 
-			     ⛔ THE ANCHOR WAS A BARE 14×14 CHEVRON, AND THAT WAS THE WHOLE
-			     AFFORDANCE. (2026-09-02) `hello-api-app` sat beside it as plain
-			     text — the one control on a dependency-blocked row was an
-			     unlabelled glyph at the far edge. `.nav-link` is the product's own
-			     "Open <destination> ›" grammar (`NextStep`'s `step="open"`, `/apps`'
-			     `openApp` snippet); this is that same control, still the zone's
-			     one `.tap-link` so the whole row stays one tab stop. -->
+			     ⛔ THE PROVIDER'S NAME NO LONGER SPELLS `Open hello-api-app ›` A
+			     SECOND TIME. (2026-09-02, follow-up) The banner action carries that
+			     exact CTA now, 40px above this edge — two controls naming one
+			     destination is the redundant-tab-stop rule (`CLAUDE.md`, applied on
+			     `/apps` this week) one level down. `BlockingStoryLines` takes the
+			     href instead: the provider's own name, already drawn at full ink
+			     inside the clause, IS the zone's one `.tap-link` when it matches
+			     `h.hrefLabel`. The edge still navigates; it just stops re-spelling
+			     the CTA to do it. -->
 			<div
 				class="pp-hop-body {h.href
 					? 'tap-zone rounded hover:bg-gray-50 dark:hover:bg-gray-700/30'
 					: ''}"
 			>
-				<BlockingStoryLines story={h.story} class="min-w-0" />
-				{#if h.href}
-					<a href={h.href} class="tap-link nav-link pp-hop-go">
-						Open {h.hrefLabel}
-						<ChevronRightOutline class="h-3.5 w-3.5" />
-					</a>
-				{/if}
+				<BlockingStoryLines
+					story={h.story}
+					class="min-w-0"
+					subjectHref={h.href}
+					subjectLabel={h.hrefLabel}
+				/>
 			</div>
 		{:else if h.label}
 			<span class="t-code-sm truncate text-gray-500 dark:text-gray-400">{h.label}</span>
@@ -449,27 +461,40 @@
 						{@render identity(s)}
 						{@render buildBadge(s)}
 					</span>
-					<!-- THE ROW'S ROLLUP, HARD RIGHT: is it serving, and since when.
-					     `COMPOSITION-GRAMMAR.md` §1 makes the right-aligned answer
-					     the most transferable thing on the reference page, and the
-					     reference applies it to ROWS too — every `Resources` row
-					     ends in `2/2 pods`. Until now this slot held a timestamp
-					     alone, which is the half of the answer that cannot be acted
-					     on. -->
-					{#if (s.pods !== null && s.pods !== undefined) || s.age}
-						<span class="pp-meta">
-							{#if s.pods !== null && s.pods !== undefined}
+					<!-- ⭐ THE MIDDLE IS FACTS NOW, NOT A GAP. (2026-09-02, follow-up:
+					     *"the void moved, it did not go"* — a `max-width` cap just
+					     relocated the empty span from between the chips and the
+					     timestamp to the card's own right margin. `pp-health` and
+					     `pp-meta` are FIXED-width grid tracks — same two columns on
+					     every station — so `2/2 running` and `4d ago` land on one
+					     right edge down the whole chain, whether or not any one row
+					     has a health fact to print. `pp-facts` is the phone-width
+					     wrapper: `display:contents` unwraps it once the container is
+					     wide enough for the two to become their own tracks, so the
+					     narrow layout is untouched. -->
+					<span class="pp-facts">
+						<span class="pp-health">
+							{#if s.pods !== null && s.pods !== undefined && s.podsTotal !== null && s.podsTotal !== undefined && s.podsTotal > 0}
 								<span
 									class="pp-pods t-code-sm text-gray-500 dark:text-gray-400"
-									title="{s.pods} ready pod{s.pods === 1 ? '' : 's'} serving {s.title}"
+									title="{s.pods} of {s.podsTotal} pods ready and serving {s.title}"
 								>
-									<!-- THE UNIT IS PRINTED. An unlabelled `5` beside `1d ago`
-									     is a puzzle; `5 pods` is the reference page's own
-									     `2/2 pods`, four characters, and it is the difference
-									     between a number and a fact. -->
-									<CubeSolid class="h-3 w-3 shrink-0" aria-hidden="true" />{s.pods} pods
+									<!-- THE UNIT IS PRINTED, AND SO IS THE DENOMINATOR. An
+									     unlabelled `5` beside `1d ago` is a puzzle; `2/2 running`
+									     is the reference page's own `ready/total pods` idiom on
+									     its `Resources` rows, read down the chain instead of down
+									     a resource list. Ready with no known total does NOT fall
+									     back to a bare count — see `Station.podsTotal`. -->
+									<CubeSolid class="h-3 w-3 shrink-0" aria-hidden="true" />{s.pods}/{s.podsTotal}
+									running
 								</span>
 							{/if}
+						</span>
+						<!-- THE ROW'S ROLLUP, HARD RIGHT: is it serving, and since when.
+						     `COMPOSITION-GRAMMAR.md` §1 makes the right-aligned answer
+						     the most transferable thing on the reference page, and the
+						     reference applies it to ROWS too. -->
+						<span class="pp-meta">
 							{#if s.age}
 								<span
 									class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
@@ -477,7 +502,7 @@
 								>
 							{/if}
 						</span>
-					{/if}
+					</span>
 				</li>
 
 				{#if hops[i]}
@@ -549,24 +574,17 @@
 		container-type: inline-size;
 	}
 
-	/* ⭐ THE TRACK IS CAPPED, THE CARD IS NOT. (2026-09-02)
-	   > *"each station row was `[DEV] [1 BEHIND 2.66.0-66] …600px… 2d ago`"*
-	   Measured at 1440 dark on `hello-frontend-app`: the card is 837px, a
-	   station's own content (disc + identity chip + build badge) ends at
-	   ~300px, and the right-aligned `pods`/age cluster is ~130px — so the
-	   station has ~430px of real content and was stretched to fill 837,
-	   leaving a 400+px gap that is not proportion, it is emptiness. Same fix
-	   as `RolloutGrid`'s 460px card cap on `/rollouts`: cap the TRACK, not the
-	   card, so the header, the frontier's copy control and the rail's own
-	   width are untouched and the freed width becomes the card's own right
-	   margin — legible breathing room — rather than a void inside one row.
-	   `.pp-front` shares the cap so the frontier's meta and every station's
-	   age line up on one right edge instead of two. */
-	.pp-line,
-	.pp-front {
-		max-width: 480px;
-	}
-
+	/* ⭐ NO CAP. THE ROW SIZES TO ITS OWN FACTS. (2026-09-02, follow-up)
+	   > *"the void moved, it did not go"* — a `max-width: 480px` cap on this
+	      element made the row a fixed BOX rather than fixed CONTENT: it moved
+	   the empty span from between the chips and the timestamp to a 340px
+	   margin on the card's right edge, which is the same emptiness under a
+	   different name. Removed. Every column that used to be `minmax(0, 1fr)`
+	   — `.pp-front-id`/`.pp-id` below — is `max-content` now instead, so a
+	   station sizes to what it actually has to say (disc + chips + health +
+	   age) and stops there. What is left of the card's own width becomes
+	   genuine margin, the same argument `RolloutGrid`'s 460px card cap makes
+	   on `/rollouts`, just reached by content instead of by a number. */
 	.pp-line {
 		display: flex;
 		flex-direction: column;
@@ -641,11 +659,16 @@
 	}
 	@container (min-width: 460px) {
 		.pp-front {
-			grid-template-columns: 32px minmax(0, 1fr) auto;
+			/* `max-content`, not `1fr` — see the note above `.pp-line`. The
+			   frontier's own id (a 24px sha + `newest build`) hugs the disc
+			   instead of stretching the row out to the card's own width, so
+			   its `meta` (age + copy button) lands close beside it rather than
+			   at a far edge nothing below it reaches. */
+			grid-template-columns: 32px minmax(0, max-content) auto;
 			grid-template-areas: 'disc id meta';
 		}
 		.pp-front-meta {
-			justify-self: end;
+			justify-self: start;
 		}
 	}
 
@@ -659,7 +682,7 @@
 		grid-template-columns: 32px minmax(0, 1fr);
 		grid-template-areas:
 			'disc id'
-			'. meta';
+			'. facts';
 		align-items: center;
 		column-gap: 12px;
 		row-gap: 6px;
@@ -694,12 +717,27 @@
 		align-items: center;
 		gap: 8px;
 	}
-	.pp-meta {
-		grid-area: meta;
+
+	/* ⭐ PHONE FORM: ONE WRAPPING ROW, LIKE `.pp-meta` USED TO BE ALONE.
+	   `.pp-health` and `.pp-meta` are its flex children here and carry no grid
+	   area of their own — `display: contents` below hands them straight to
+	   the grid once the container is wide enough to give each its own
+	   track, and this wrapper's only job past that point is to not exist. */
+	.pp-facts {
+		grid-area: facts;
 		align-self: center;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 12px;
+		gap: 4px 12px;
+	}
+	.pp-health {
+		display: inline-flex;
+		align-items: center;
+	}
+	.pp-meta {
+		display: inline-flex;
+		align-items: center;
 	}
 	/* The glyph and its number are ONE token — 4px, not the row's 12px, so the
 	   cube reads as the unit on the count rather than as a third item in the
@@ -713,10 +751,35 @@
 
 	@container (min-width: 460px) {
 		.pp-station {
-			grid-template-columns: 32px minmax(0, 1fr) auto;
-			grid-template-areas: 'disc id meta';
+			/* ⭐ ALL FOUR TRACKS ARE FIXED, AND THAT IS WHAT MAKES THEM ALIGN.
+			   (2026-09-02, follow-up — measured, not assumed) Each `<li>` is its
+			   own independent grid; `id` sized `max-content` first landed
+			   `health`/`meta` at three DIFFERENT x positions (370 / 398 / 377 on
+			   the live fleet) because `max-content` resolves PER ROW against
+			   that row's own chips — `DEV` is not `STAGING`. There is no shared
+			   parent grid here for `subgrid` to key off, so alignment has to
+			   come from every row reserving the SAME width for `id`, not from
+			   each row's own content. `240px` fits the fleet's widest member
+			   measured (`STAGING` + `1 BEHIND 2.66.0-66`, 228px) with headroom; `health` and
+			   `age` are sized for their own vocabulary's widest members —
+			   `10/10 running` and `46m ago`. */
+			grid-template-columns: 32px 240px 108px 64px;
+			grid-template-areas: 'disc id health meta';
+		}
+		/* THE WRAPPER STOPS WRAPPING. Its children become direct grid items —
+		   `display: contents` removes `.pp-facts` from the box tree entirely
+		   while leaving `.pp-health`/`.pp-meta` exactly where they were in the
+		   DOM, which is what lets them take `grid-area` at this width and flow
+		   as ordinary flex children below it. */
+		.pp-facts {
+			display: contents;
+		}
+		.pp-health {
+			grid-area: health;
+			justify-self: start;
 		}
 		.pp-meta {
+			grid-area: meta;
 			justify-self: end;
 		}
 	}
@@ -752,14 +815,6 @@
 		   centres on the rail rather than sitting low in its own box. */
 		margin-block: -2px;
 		padding: 2px 4px;
-	}
-	/* The affordance, and the only anchor in the zone. `.nav-link` supplies its
-	   own ink and hover underline; this only pins it to the rail's baseline and
-	   stops it shrinking beside the clause it sits next to. */
-	.pp-hop-go {
-		flex-shrink: 0;
-		align-self: center;
-		padding-block: 0;
 	}
 	/* THE LINE IS CONTINUOUS, CIRCLE TO CIRCLE. Drawn only inside the hop's
 	   own 22px box it left an 8px break at each end — the station's padding —

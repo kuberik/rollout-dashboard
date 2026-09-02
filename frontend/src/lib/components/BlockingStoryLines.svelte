@@ -115,7 +115,35 @@
 	import GateRecord, { gateMark } from './GateRecord.svelte';
 	import { type BlockingStory, type ClassifiedGate } from '$lib/view-models/blocking-story';
 
-	let { story, class: className = '' }: { story: BlockingStory; class?: string } = $props();
+	let {
+		story,
+		/**
+		 * ⭐ THE PROVIDER NAME BECOMES THE `.tap-link`, WHEN THE CALLER HAS ONE TO
+		 * OFFER. (2026-09-02, follow-up)
+		 *
+		 * `PromotionPipeline`'s hop used to draw this clause and then repeat the
+		 * destination as its own `Open hello-api-app ›` line 8px below it — two
+		 * controls spelling one URL in one edge, which is the redundant-tab-stop
+		 * rule (`CLAUDE.md`, applied on `/apps` this week) one level down. This
+		 * component has always known WHICH object the reader would go and look
+		 * at (`g.subject`, drawn at full ink already); it just never had
+		 * anywhere to send them. `subjectHref` is that anywhere.
+		 *
+		 * Matched by `subjectLabel`, not "the first drawn row" — a hop's story
+		 * can carry more than one gate (a schedule window beside a dependency
+		 * contract), and only the row whose subject IS the destination may
+		 * become its `.tap-link`. No match, no link: the row still prints its
+		 * subject as plain text, byte-identical to every other caller.
+		 */
+		subjectHref = null,
+		subjectLabel = null,
+		class: className = ''
+	}: {
+		story: BlockingStory;
+		subjectHref?: string | null;
+		subjectLabel?: string | null;
+		class?: string;
+	} = $props();
 
 	// The clock's arithmetic is `api/schedules.ts`'s, the same function the
 	// banner and `/versions` call, so two objects on one screen cannot print
@@ -164,7 +192,18 @@
 				>
 					<span class="flex min-w-0 items-center gap-1.5">
 						<Icon class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-						{#if drawn}
+						{#if drawn && subjectHref && g.subject === subjectLabel}
+							<!-- THE OBJECT THAT HAS TO MOVE, AT FULL INK — AND NOW THE
+							     ZONE'S ONE `.tap-link` TOO. Same classes, same ink, the
+							     only addition is the anchor itself; a reader who does
+							     not notice it is a link loses nothing they had before. -->
+							<a
+								href={subjectHref}
+								class="{g.subjectKind === 'schedule'
+									? 't-micro font-medium'
+									: 't-code-sm'} tap-link min-w-0 truncate text-gray-900 dark:text-white">{g.subject}</a
+							>
+						{:else if drawn}
 							<!-- THE OBJECT THAT HAS TO MOVE, AT FULL INK. It was the
 							     fourth word of a gray sentence; it is the thing the
 							     reader is looking for. Mono for a Kubernetes object

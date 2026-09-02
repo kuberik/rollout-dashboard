@@ -614,15 +614,25 @@
 			)
 			.join('|')
 	);
+	type PodCounts = { ready: number; total: number };
 	const podsQuery = createQuery(() => ({
 		queryKey: ['app-ready-pods', appName, podQueryKey],
-		queryFn: async (): Promise<Record<string, number>> => {
-			const out: Record<string, number> = {};
+		queryFn: async (): Promise<Record<string, PodCounts>> => {
+			const out: Record<string, PodCounts> = {};
 			await Promise.all(
 				podTargets
 					.filter((t) => t.refs !== null && t.refs.length > 0)
 					.map(async (t) => {
 						let ready = 0;
+						// ⭐ THE TOTAL RIDES ALONG WITH READY NOW. (2026-09-02, follow-up)
+						// The station row's `N behind` chip has always had a distance to
+						// print; it never had a HEALTH fact, because this query only ever
+						// asked for `readyReplicas`. `ResourcesCard`'s own
+						// `getDeploymentReplicas` reads `status.replicas` off the same
+						// `managed-resources` payload for the identical `ready/total pods`
+						// idiom — same field, same endpoint, read a second time for a
+						// second consumer instead of invented.
+						let total = 0;
 						for (const r of t.refs!) {
 							const sep = '?';
 							const url = `/api/kustomizations/${r.ns}/${r.name}/managed-resources${t.cluster ? `${sep}cluster=${encodeURIComponent(t.cluster)}` : ''}`;
@@ -634,9 +644,11 @@
 								if (!gvk.endsWith('/Deployment') && !gvk.endsWith('/StatefulSet')) continue;
 								const n = m.object?.status?.readyReplicas;
 								if (typeof n === 'number') ready += n;
+								const t2 = m.object?.status?.replicas;
+								if (typeof t2 === 'number') total += t2;
 							}
 						}
-						out[t.key] = ready;
+						out[t.key] = { ready, total };
 					})
 			);
 			return out;
@@ -645,7 +657,7 @@
 		staleTime: 30_000,
 		refetchInterval: pollWhenHealthy(30_000)
 	}));
-	const podsByEnv = $derived<Record<string, number>>(podsQuery.data ?? {});
+	const podsByEnv = $derived<Record<string, PodCounts>>(podsQuery.data ?? {});
 
 	// ── Per-environment facts, computed once ─────────────────────────────
 	type EnvFacts = {
@@ -670,6 +682,8 @@
 		adverse: boolean;
 		prod: boolean;
 		pods: number | null;
+		/** Total (desired) replicas, alongside `pods` — see `podsByEnv`'s `PodCounts`. */
+		podsTotal: number | null;
 		origin: string | null;
 	};
 
@@ -788,7 +802,12 @@
 				// line.
 				adverse: status === 'Failed' || stuck !== null || diverged,
 				prod: hasEnvironmentBinding && isProdTier(c.envName),
-				pods: typeof podsByEnv[key] === 'number' ? podsByEnv[key] : null,
+				pods: podsByEnv[key]?.ready ?? null,
+				// `undefined`/`0` BOTH MEAN "NOT KNOWN". A total of `0` is not a
+				// real Deployment (nothing declares zero desired replicas on
+				// purpose here), so it is treated the same as "never resolved" —
+				// see `Station.podsTotal`'s own "both or neither" rule.
+				podsTotal: podsByEnv[key]?.total || null,
 				origin: originClause(c)
 			};
 		})
@@ -1438,6 +1457,10 @@
 			// it is behind THIS station. `null` where it could not be
 			// attributed — see `attributableKustomizations`.
 			pods: f.pods,
+			// THE OTHER HALF OF THE HEALTH FACT. See `Station.podsTotal`: `null`
+			// unless BOTH halves resolved, so the row never prints a rounded
+			// ratio.
+			podsTotal: f.podsTotal,
 			href: rolloutHref(f.cell),
 			// ⭐ SO THE `N behind` TOOLTIP STOPS CLAIMING AN ABILITY THIS STATION
 			// DOES NOT HAVE. See `Station.blocked`'s own note: a station can be
