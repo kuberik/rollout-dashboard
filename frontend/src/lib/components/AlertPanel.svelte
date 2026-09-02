@@ -54,6 +54,16 @@
 	 */
 	interface Props {
 		severity?: Severity;
+		/**
+		 * ⭐ RENDERED AT `t-headline` (17px/600), NOT A HAND-SPELLED SIZE.
+		 * (2026-09-02) It was `text-base font-bold` — 16px/700 — which is not
+		 * a role in `app.css`'s declared type scale (`t-display` 24,
+		 * `t-headline` 17/600, `t-body` 14, `t-dense` 12.5, `t-label` 10,
+		 * `t-micro` 11, `t-code` 13, `t-code-sm` 11.5, `t-button` 12) despite
+		 * this being the loudest object in the product. `t-headline` is the
+		 * role that exists for exactly this — a bold, page-level lead — so it
+		 * moves onto it rather than earning a tenth role for one component.
+		 */
 		title: string;
 		message?: string;
 		/**
@@ -510,7 +520,7 @@
 								</div>
 							</div>
 						</div>
-						<p class="text-base font-bold tracking-tight {palette.title}">{title}</p>
+						<p class="t-headline {palette.title}">{title}</p>
 					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>

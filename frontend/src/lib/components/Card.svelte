@@ -162,26 +162,51 @@
 	class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
 >
 	<header
-		class="flex min-h-[47px] shrink-0 items-center gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700 {titleHref
+		class="flex min-h-[47px] shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-gray-200 px-4 py-3 sm:flex-nowrap dark:border-gray-700 {titleHref
 			? 'tap-zone transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30'
 			: ''}"
 	>
-		{#if Icon}
-			<Icon class="h-4 w-4 shrink-0 {iconClass}" />
-		{/if}
-		<h2 class="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-white">
-			{#if titleHref}
-				<a
-					href={titleHref}
-					class="tap-link hover:underline"
-					>{title}</a
-				>
-			{:else}
-				{title}
+		<!--
+			⭐ THE TITLE IS THE LAST THING THAT SHRINKS, NOT THE FIRST.
+			(2026-09-02, measured defect: at 390 `min-w-0 truncate` on the `h2`
+			let it lose the fight for width against the right-aligned rollup —
+			`All apps` clipped to `All a…` against a full-width chip row.)
+
+			This inner group (icon + title) carries `basis-full` below `sm`, so
+			on a wrapping header it is FORCED onto its own line at its natural
+			width — nothing is left over on that line for the rollup to share,
+			so the title never truncates to make room for it. The rollup
+			(or `verdict`) becomes the header's own next flex item and, unable
+			to fit beside a full-width sibling, wraps to a second line where
+			its `ml-auto` right-aligns it under the title — the exact shape
+			`COMPOSITION-GRAMMAR.md`'s head-row idiom already uses.
+
+			At `sm` and up the header reverts to one row (`sm:flex-nowrap`,
+			`sm:basis-auto`): the group sizes to content and shrinks under
+			`min-w-0` exactly as before, so the 47px floor and the truncating
+			title are unchanged there — this only ever fires below `sm`, which
+			is the only width the defect was measured at.
+		-->
+		<div class="flex min-w-0 basis-full items-center gap-2.5 sm:basis-auto">
+			{#if Icon}
+				<Icon class="h-4 w-4 shrink-0 {iconClass}" />
 			{/if}
-		</h2>
-		<!-- HARD-ALIGNED RIGHT. `ml-auto` rather than `justify-between` so a
-		     long title truncates instead of shoving the rollup off the bar. -->
+			<h2 class="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-white">
+				{#if titleHref}
+					<a
+						href={titleHref}
+						class="tap-link hover:underline"
+						>{title}</a
+					>
+				{:else}
+					{title}
+				{/if}
+			</h2>
+		</div>
+		<!-- HARD-ALIGNED RIGHT. `ml-auto` rather than `justify-between` so at
+		     `sm`+ a long title truncates instead of shoving the rollup off the
+		     bar; below `sm` the title's group already claimed the whole first
+		     line, so `ml-auto` right-aligns this on the second line instead. -->
 		{#if rollup}
 			<div class="ml-auto flex shrink-0 items-center gap-2">{@render rollup()}</div>
 		{:else if verdict}
