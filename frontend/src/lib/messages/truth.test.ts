@@ -656,7 +656,12 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		expect(s.selfClearing).toBe(false);
 	});
 
-	test('a promotion gate AND a contract gate together -- the verdict says both', () => {
+	test('a promotion gate AND a contract gate together -- the contract LEADS', () => {
+		// ⭐ (2026-09-02, second pass, from the human: "The contract is the
+		// binding cause; the order gate follows on its own once the provider
+		// ships.") The contract names WHO has to act; the promotion gate is
+		// the environment controller's own bookkeeping, which opens once the
+		// provider ships. The contract clause leads.
 		const ctx = buildGateContext({
 			environments: {
 				items: [
@@ -695,7 +700,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		);
 		says(
 			s.verdict,
-			'Nobody has to approve anything — this clears when the deploy in front of it lands and hello-api-app ships api ^1.67.0.'
+			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0 and the deploy in front of it lands.'
 		);
 	});
 

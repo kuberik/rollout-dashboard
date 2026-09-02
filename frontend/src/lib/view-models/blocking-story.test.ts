@@ -16,7 +16,9 @@ import {
 	joinClauses,
 	isPluralSubject,
 	pluralSubject,
-	EMPTY_GATE_CONTEXT
+	upstreamVerdict,
+	EMPTY_GATE_CONTEXT,
+	type ClassifiedGate
 } from './blocking-story';
 
 // ── LIVE FIXTURE ────────────────────────────────────────────────────────────
@@ -593,6 +595,108 @@ describe('isPluralSubject', () => {
 
 	it('no names at all is not plural — nothing to disagree about', () => {
 		expect(isPluralSubject([])).toBe(false);
+	});
+});
+
+/** A minimal `ClassifiedGate`, filling in only what `upstreamVerdict` reads. */
+function upstreamGate(overrides: Partial<ClassifiedGate>): ClassifiedGate {
+	return {
+		id: 'g',
+		kind: 'promotion',
+		clears: 'upstream',
+		label: '',
+		clause: '',
+		short: '',
+		clearsAt: null,
+		subject: null,
+		subjectKind: null,
+		predicate: null,
+		contract: null,
+		have: null,
+		need: null,
+		...overrides
+	};
+}
+
+describe('upstreamVerdict', () => {
+	// ⭐ (2026-09-02, second pass, from the human: "The contract is the
+	// binding cause; the order gate follows on its own once the provider
+	// ships.") The CONTRACT leads a mixed sentence — it names who has to
+	// act; the promotion gate is the environment controller's own
+	// bookkeeping, which opens once the provider ships.
+	it('contract-only names the provider and the required version', () => {
+		const gates = [
+			upstreamGate({
+				kind: 'dependency',
+				subject: 'hello-api-app',
+				contract: 'api',
+				need: '^1.67.0'
+			})
+		];
+		expect(upstreamVerdict(gates)).toBe(
+			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0.'
+		);
+	});
+
+	it('promotion-only says nobody has to approve anything', () => {
+		const gates = [upstreamGate({ kind: 'promotion' })];
+		expect(upstreamVerdict(gates)).toBe(
+			'Nobody has to approve anything — this clears when the deploy in front of it lands.'
+		);
+	});
+
+	it('mixed gates lead with the contract, THEN the promotion order', () => {
+		const gates = [
+			upstreamGate({ kind: 'promotion' }),
+			upstreamGate({
+				kind: 'dependency',
+				subject: 'hello-api-app',
+				contract: 'api',
+				need: '^1.67.0'
+			})
+		];
+		// ⛔ NOT "…the deploy in front of it lands and hello-api-app ships api
+		// ^1.67.0" — that was the order the two `kind`s happened to be
+		// checked in, not a choice. The contract is the binding cause and
+		// leads; the promotion gate is the consequence and trails.
+		expect(upstreamVerdict(gates)).toBe(
+			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0 and the deploy in front of it lands.'
+		);
+	});
+
+	it('mixed gates lead with the contract regardless of INPUT order', () => {
+		// The ordering is a property of the SENTENCE, not of the array the
+		// caller happened to build — `blockingStory`'s own gate list is
+		// worst-first (person, unknown, upstream, check, clock), which does
+		// not itself distinguish promotion from dependency within `upstream`.
+		const gates = [
+			upstreamGate({
+				kind: 'dependency',
+				subject: 'hello-api-app',
+				contract: 'api',
+				need: '^1.67.0'
+			}),
+			upstreamGate({ kind: 'promotion' })
+		];
+		expect(upstreamVerdict(gates)).toBe(
+			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0 and the deploy in front of it lands.'
+		);
+	});
+
+	it('a contract with no agreed requirement falls back to "a newer <contract>"', () => {
+		const gates = [
+			upstreamGate({ kind: 'promotion' }),
+			upstreamGate({ kind: 'dependency', subject: 'hello-api-app', contract: 'api', need: null })
+		];
+		expect(upstreamVerdict(gates)).toBe(
+			'Nobody has to approve anything — this clears when hello-api-app ships a newer api and the deploy in front of it lands.'
+		);
+	});
+
+	it('no upstream gate at all falls back to the general sentence', () => {
+		expect(upstreamVerdict([])).toBe(
+			'Nobody has to approve anything — this clears when the deploy in front of it lands.'
+		);
 	});
 });
 

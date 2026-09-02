@@ -825,14 +825,49 @@ export function pluralSubject(lead: string, object: string = lead): StorySubject
  * `/dependencies` render the same fact from their own gate lists and should
  * adopt this rather than keep their own copies — `/dependencies` had grown
  * one near its line 199 as of this pass.
+ *
+ * ⭐ THE CONTRACT LEADS. (2026-09-02, second pass) The mixed sentence first
+ * shipped as *"…the deploy in front of it lands and hello-api-app ships api
+ * ^1.67.0"* — promotion clause first, contract clause second, because that
+ * is simply the order the two `kind`s happen to be checked in. From the
+ * human: *"The contract is the binding cause; the order gate follows on its
+ * own once the provider ships."* A promotion gate is the environment
+ * controller watching whether the environment IN FRONT has deployed — once
+ * `hello-api-app` ships the version the contract needs, staging is free to
+ * take it and prod's promotion gate opens behind it. The contract is the
+ * one a person can act on (go find the provider's owner); the promotion
+ * gate is bookkeeping that resolves once the contract does. Leading with it
+ * is leading with the sentence's actual point.
+ *
+ * ⛔ NOT A CAUSAL CLAIM, THOUGH — A CONJUNCTION. A stronger form was
+ * considered — *"this clears when hello-api-app ships api ^1.67.0; the
+ * deploy in front of it follows"* — spelling the promotion gate as a
+ * CONSEQUENCE of the contract clearing rather than a second, independent
+ * condition. That is true on the live cluster today (staging is itself
+ * gated on the same contract, so it deploys the moment the provider ships
+ * and prod's promotion gate opens right behind it) but this function
+ * cannot see that: `upstream` only carries THIS rollout's own gates, not
+ * whatever is holding the environment named in the promotion clause. A
+ * promotion gate can just as well be stuck on something the contract never
+ * touches — a failing health check upstream, a pin, a second contract of
+ * its own — and asserting "it follows" would be a claim about a rollout
+ * this function never read. `and` stays a plain conjunction: both
+ * conditions are true and named, in the order that leads with the one a
+ * reader can act on, without promising a chain neither `blockingStory` nor
+ * its caller has verified.
  */
 export function upstreamVerdict(gates: ClassifiedGate[]): string {
 	const upstream = gates.filter((g) => g.clears === 'upstream');
 	const promotion = upstream.some((g) => g.kind === 'promotion');
 	const dependencies = upstream.filter((g) => g.kind === 'dependency');
 
+	// ⭐ CONTRACT CLAUSES FIRST, THE PROMOTION CLAUSE LAST — see the doc
+	// comment above. `joinClauses` renders this as `a and b` / `a, b and c`,
+	// so with one contract and the promotion clause the sentence reads
+	// "…when <provider> ships <contract> <need> and the deploy in front of
+	// it lands" — the binding cause named before the bookkeeping that
+	// follows from it.
 	const whenClauses: string[] = [];
-	if (promotion) whenClauses.push('the deploy in front of it lands');
 	for (const g of dependencies) {
 		const provider = g.subject ?? 'the service it depends on';
 		const contract = g.contract ?? 'a newer version';
@@ -840,6 +875,7 @@ export function upstreamVerdict(gates: ClassifiedGate[]): string {
 			g.need ? `${provider} ships ${contract} ${g.need}` : `${provider} ships a newer ${contract}`
 		);
 	}
+	if (promotion) whenClauses.push('the deploy in front of it lands');
 	// Defensive: called with no `upstream` gate at all. Falls back to the
 	// original, general sentence rather than an empty clause.
 	if (whenClauses.length === 0) {
