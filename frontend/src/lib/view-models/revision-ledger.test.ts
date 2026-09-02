@@ -303,6 +303,44 @@ describe('buildRevisionLedger', () => {
 		// merge — there is no commit identity left to merge them on.
 		expect(repo.rows.length).toBeGreaterThan(0);
 	});
+
+	/**
+	 * ⛔ THE `NEWEST` BADGE ON THE OLDER TAG. `hello-frontend-app` rel-66 and
+	 * rel-67 share one git revision (a rollback re-ships a build already
+	 * released once before under a new tag). `label` used to come from
+	 * `labelByKey` (first-noted, oldest-first `availableReleases` order) and
+	 * `rank` from `byKey` (best/newest-ranked) — two different collapses that
+	 * can name two different releases. The row printed `NEWEST · 2.66.0-66`:
+	 * rel-67's rank (0) glued to rel-66's own label. Both must now name the
+	 * SAME release.
+	 */
+	it('never pairs one release rank with a different release label', () => {
+		const older = rel('eeeeeee', '2.66.0-66', 120); // rel-66, running
+		const newer = rel('eeeeeee', '2.67.0-67', 10); // rel-67, newer, held — never deployed
+		const rollouts = [
+			rollout('hello-frontend-app', 'hfa-prod', [newer, older], [{ r: older, minutesAgo: 5 }])
+		];
+		const environments = [environment('hello-frontend-app', 'hfa-prod', 'prod')];
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		// One row: both releases share the revision.
+		expect(repo.rows).toHaveLength(1);
+		const svc = repo.rows[0].services[0];
+		expect(svc.appName).toBe('hello-frontend-app');
+		// `NEWEST` (rank 0) belongs to rel-67, and now so does the label next
+		// to it — never rel-66's `2.66.0-66` glued to rel-67's rank.
+		expect(svc.rank).toBe(0);
+		expect(svc.label).toBe('2.67.0-67');
+	});
+
+	it('keeps label and rank matched when a revision has only one release', () => {
+		// The ordinary case must stay byte-identical: nothing to disambiguate.
+		const { rollouts, environments, A } = fixture();
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		const head = repo.rows[0];
+		const api = head.services.find((s) => s.appName === 'api')!;
+		expect(api.rank).toBe(0);
+		expect(api.label).toBe(A[0].version);
+	});
 });
 
 describe('resolveRevision', () => {

@@ -122,6 +122,7 @@
 		classifyGate,
 		joinClauses,
 		upstreamVerdict,
+		isPluralSubject,
 		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
 	import {
@@ -427,7 +428,7 @@
 	);
 	const providerFocusId = $derived(nodeId(cluster, namespace, name));
 	const heldByThis = $derived.by(():
-		| { count: number; subjects: string; need: string }
+		| { count: number; subjects: string; need: string; plural: boolean }
 		| null => {
 		const edges = providerNetwork.edges.filter(
 			(e) => e.from === providerFocusId && e.writer === 'contract' && e.state === 'blocked'
@@ -452,7 +453,20 @@
 				)
 			)
 		];
-		return { count: nodes.length, subjects: heldSubjects(nodes), need: joinClauses(needs) };
+		return {
+			count: nodes.length,
+			subjects: heldSubjects(nodes),
+			need: joinClauses(needs),
+			// ⛔ NUMBER AGREEMENT. `heldSubjects()` folds "one app held in three
+			// environments" into ONE phrase on purpose — the app named once,
+			// not per environment — so the SENTENCE's subject stays singular
+			// too: `hello-frontend-app in prod NEEDS api ^1.67.0`, not
+			// `need`. It only turns plural when the set names more than one
+			// DISTINCT app. `isPluralSubject` counts that off the same node
+			// list `heldSubjects` was built from, rather than re-parsing its
+			// prose to recover the count.
+			plural: isPluralSubject(nodes.map((n) => n.name))
+		};
 	});
 	const bakeFailureDisabledCondition = $derived(
 		rollout?.status?.conditions?.find(
@@ -2224,7 +2238,7 @@
 									/>
 									<p class="min-w-0 flex-1 text-xs text-orange-800 dark:text-orange-300">
 										Holding {heldByThis.count} rollout{heldByThis.count === 1 ? '' : 's'} — {heldByThis.subjects}
-										need {heldByThis.need}.
+										{heldByThis.plural ? 'need' : 'needs'} {heldByThis.need}.
 										<a href={rolloutPath(cluster, namespace, name, 'dependencies')} class="nav-link"
 											>See Dependencies</a
 										>

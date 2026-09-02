@@ -723,6 +723,28 @@ export function joinClauses(parts: string[]): string {
 }
 
 /**
+ * ⭐ IS A SET OF NAMED SUBJECTS SINGULAR OR PLURAL, GRAMMATICALLY. (2026-09-02)
+ *
+ * `heldSubjects()` (`dependency-graph.ts`) folds "one app held in three
+ * environments" into ONE subject — *"hello-frontend-app in dev, staging and
+ * prod"* — deliberately, per its own comment: repeating the app name once
+ * per environment was the defect it exists to close. That folding is exactly
+ * why the SENTENCE stays singular too: one app, wherever it runs, is still
+ * one thing that needs — *"hello-frontend-app in prod needs api ^1.67.0"*,
+ * not *"need"*. Only when the set names MORE THAN ONE distinct subject —
+ * two different apps held on the same provider, say — does the verb turn
+ * plural.
+ *
+ * A caller with the list of names behind a `heldSubjects()` sentence (an app
+ * per held node) counts the DISTINCT ones and asks this, rather than
+ * re-parsing the prose `heldSubjects()` already built to recover the count
+ * that went into it.
+ */
+export function isPluralSubject(names: string[]): boolean {
+	return new Set(names).size > 1;
+}
+
+/**
  * ⭐ A SUBJECT THAT STANDS FOR MORE THAN ONE THING. (2026-09-02)
  *
  * Every headline template puts `subject` in one of two grammatical slots —

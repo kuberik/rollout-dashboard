@@ -14,6 +14,7 @@ import {
 	shortStory,
 	ruleHandle,
 	joinClauses,
+	isPluralSubject,
 	pluralSubject,
 	EMPTY_GATE_CONTEXT
 } from './blocking-story';
@@ -572,6 +573,26 @@ describe('joinClauses', () => {
 		expect(joinClauses(['a'])).toBe('a');
 		expect(joinClauses(['a', 'b'])).toBe('a and b');
 		expect(joinClauses(['a', 'b', 'c'])).toBe('a, b and c');
+	});
+});
+
+describe('isPluralSubject', () => {
+	it('one app, however many environments it is held in, is singular — "needs"', () => {
+		// `heldSubjects()` folds this to ONE phrase, "hello-frontend-app in
+		// dev, staging and prod" — one distinct name behind it, so the verb
+		// that follows must be "needs", not "need".
+		expect(isPluralSubject(['hello-frontend-app'])).toBe(false);
+		expect(
+			isPluralSubject(['hello-frontend-app', 'hello-frontend-app', 'hello-frontend-app'])
+		).toBe(false);
+	});
+
+	it('two distinct apps held on the same provider is plural — "need"', () => {
+		expect(isPluralSubject(['hello-frontend-app', 'checkout-app'])).toBe(true);
+	});
+
+	it('no names at all is not plural — nothing to disagree about', () => {
+		expect(isPluralSubject([])).toBe(false);
 	});
 });
 

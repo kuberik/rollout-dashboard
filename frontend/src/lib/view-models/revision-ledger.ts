@@ -359,10 +359,46 @@ function buildRow(
 	const services: RevisionService[] = [];
 
 	for (const ctx of serviceCtxs) {
-		const label = ctx.labelByKey.get(revision);
-		if (label === undefined) continue; // this service has never seen the build
+		// ⭐ THE GUARD IS `labelByKey` STILL — "has this service ever seen the
+		// build at all" is a weaker, cheaper question than "which release does
+		// `byKey` resolve", and `label` itself no longer reads this value —
+		// see below.
+		const label0 = ctx.labelByKey.get(revision);
+		if (label0 === undefined) continue; // this service has never seen the build
 		const placed = ctx.byKey.get(revision);
 		const tag = ctx.tagByKey.get(revision) ?? null;
+		/**
+		 * ⛔ THE LABEL NOW COMES FROM `placed` — THE SAME RELEASE `rank`
+		 * NAMES — NEVER FROM `labelByKey` ALONE. (2026-09-02)
+		 *
+		 * Two releases can share one revision: a rollback re-ships a build
+		 * already released once before under a NEW tag. `labelByKey` keeps
+		 * whichever release it noted FIRST (oldest-first `availableReleases`,
+		 * so typically the OLDER one); `byKey` keeps whichever `ladder.builds`
+		 * ranks BEST (rank ascending, so the NEWEST one). Reading `label`
+		 * from one collapse and `rank` from the other pairs two DIFFERENT
+		 * releases on one row.
+		 *
+		 * Measured on the live cluster: `hello-frontend-app` rel-66 and
+		 * rel-67 share revision `9f10e494d560`. `labelByKey` kept rel-66's
+		 * `2.66.0-66` (noted first, from oldest-first `availableReleases`);
+		 * `byKey` kept rel-67's rank 0. The row printed `NEWEST · 2.66.0-66`
+		 * — rel-67's rank glued to rel-66's own label, a claim about neither
+		 * release. `placed.version` is rel-67's OWN display string
+		 * (`Build.version` is `getDisplayVersion` of the exact release
+		 * `placed.rank` describes), so the two can no longer disagree:
+		 * `NEWEST · 2.67.0-67`.
+		 *
+		 * ⛔ NOT "PREFER THE RUNNING RELEASE". That was the first draft, and
+		 * it changes MORE than the label: `rank` is the SAME field
+		 * `revision-coverage.ts`'s `classify()` reads to decide `live` vs
+		 * `notYet`. Pulling `rank` down to the running (older) release would
+		 * make every environment running rel-66 read `live` again for THIS
+		 * row — resurrecting the `6 of 6 · fully rolled out` claim
+		 * `classify()`'s own fix (2026-09-02, same day) exists to kill. The
+		 * label was the only field that was wrong; only it moves.
+		 */
+		const label = placed ? placed.version : label0;
 
 		const slots: RevisionSlot[] = ctx.cells
 			.map((cell) => {
