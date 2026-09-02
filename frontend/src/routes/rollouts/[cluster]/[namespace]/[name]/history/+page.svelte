@@ -576,8 +576,14 @@
 						type role to lead, and the stat chips to its right are unchanged.
 					-->
 					<h1 class="sr-only">Deployment History</h1>
-					<p class="t-headline text-gray-900 dark:text-white">
-						All deployments for <span class="font-mono">{name}</span>
+					<!-- The same display pair the Overview and Dependencies tabs open
+					     with: one object, three tabs, one head. "All deployments for …"
+					     was the only tab-head written as a sentence. -->
+					<p class="flex min-w-0 flex-wrap items-baseline gap-2">
+						<span class="t-display-id min-w-0 truncate text-gray-900 dark:text-white">{name}</span>
+						{#if rollout?.status?.title && rollout.status.title !== name}
+							<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">{rollout.status.title}</span>
+						{/if}
 					</p>
 				</div>
 				<!--
