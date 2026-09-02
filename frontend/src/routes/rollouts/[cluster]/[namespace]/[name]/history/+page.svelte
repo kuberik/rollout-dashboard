@@ -744,7 +744,7 @@
 							     out of `availableReleases` has no position and therefore no
 							     direction, and this rollup must not turn that silence into
 							     a claim. "No rollbacks" is what the ordering supports. -->
-							no rollbacks in {totalDeploys} deploys
+							no rollbacks in {totalDeploys} deploy{totalDeploys === 1 ? '' : 's'}
 						{/if}
 					</span>
 				</div>
