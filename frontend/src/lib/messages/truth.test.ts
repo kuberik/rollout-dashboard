@@ -60,7 +60,7 @@ import {
 	ApiError,
 	errorHeadline,
 	errorConsequence,
-	errorDetail,
+	errorFacts,
 	isRetryable,
 	queryRetry,
 	MAX_RETRIES
@@ -1775,15 +1775,40 @@ describe('api/errors: one headline per failure class, and never an invented caus
 		says(errorConsequence(new Error('x')), /keeps checking every 30s/);
 	});
 
+	/**
+	 * ⭐ THE DETAIL IS A RECORD NOW, NOT A SENTENCE. (2026-09-02) `errorDetail`
+	 * returned `/api/rollouts — the server sent no explanation with its HTTP
+	 * 503.` — an ADDRESS, a STATUS and WHAT THE SERVER SAID, three machine
+	 * facts joined with an em dash. `errorFacts` returns them as fields;
+	 * `FactList` aligns them inside the same `<details>`. The CLAIM under test
+	 * is unchanged and is the one that matters: the server's own sentence is
+	 * verbatim, and a failure with no explanation SAYS it had none rather than
+	 * being handed an invented cause.
+	 */
 	test('the detail is the server own sentence, or an explicit statement that there was none', () => {
-		says(errorDetail(apiError(500, 'boom')), '/api/rollouts — boom');
-		says(
-			errorDetail(apiError(503)),
-			'/api/rollouts — the server sent no explanation with its HTTP 503.'
-		);
-		says(errorDetail(apiError(0, '', '')), 'the browser could not open a connection.');
-		says(errorDetail(new Error('plain')), 'plain');
-		expect(errorDetail(undefined)).toBeUndefined();
+		/** Records every label and value into `produced`, then flattens for the eye. */
+		const shape = (e: unknown) => {
+			const facts = errorFacts(e);
+			for (const f of facts) saw(f.label, f.value);
+			return facts.map((f) => `${f.label}=${f.value}`);
+		};
+		expect(shape(apiError(500, 'boom'))).toEqual([
+			'Address=/api/rollouts',
+			'Status=HTTP 500',
+			'Server said=boom'
+		]);
+		expect(shape(apiError(503))).toEqual([
+			'Address=/api/rollouts',
+			'Status=HTTP 503',
+			'Server said=nothing'
+		]);
+		// NOBODY ANSWERED. No status, no path, and the record says so in words
+		// rather than leaving the row empty.
+		expect(shape(apiError(0, '', ''))).toEqual([
+			'Server said=nothing — the browser could not open a connection'
+		]);
+		expect(shape(new Error('plain'))).toEqual(['Error=plain']);
+		expect(errorFacts(undefined)).toEqual([]);
 	});
 
 	test('the retry policy: a 4xx is an answer, a 5xx and a timing code are not', () => {

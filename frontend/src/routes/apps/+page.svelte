@@ -141,6 +141,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList, { type Fact } from '$lib/components/FactList.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import UpToDate from '$lib/components/UpToDate.svelte';
 	// `NextStep` the COMPONENT is no longer rendered here — the page has no
@@ -1158,6 +1159,8 @@
 				title: string;
 				message: string;
 				footnote?: string;
+				/** A record, where the disclosed tier is FIELDS rather than prose. */
+				facts?: Fact[];
 				app: string;
 				pulse: boolean;
 		  }
@@ -1181,8 +1184,19 @@
 					envs > 1
 						? `${plural(envs, 'environment')} of this app are failing. No newer version gets past them until a deploy succeeds.`
 						: `No newer version gets past ${cell.envLabel.toUpperCase()} until a deploy there succeeds.`,
-				footnote: cell.timestamp
-					? `Last attempt ${formatTimeAgoCompact(cell.timestamp, $now)} ago · ${formatDate(cell.timestamp)}`
+				// ⭐ A MACHINE FACT WITH A NAME, SO IT GETS A LABEL. (2026-09-02)
+				// It was the sentence-shaped `Last attempt 3h ago · 8/31/2026,
+				// 1:00:00 PM` — two words of field name in front of a value. The
+				// name goes in the `<dt>`; the relative and the absolute time stay
+				// together in the `<dd>`, because they are one fact said twice on
+				// purpose (one to judge by, one to correlate a log against).
+				facts: cell.timestamp
+					? ([
+							{
+								label: 'Last attempt',
+								value: `${formatTimeAgoCompact(cell.timestamp, $now)} ago · ${formatDate(cell.timestamp)}`
+							}
+						] as Fact[])
 					: undefined,
 				app: app.appName,
 				pulse: true
@@ -1470,6 +1484,12 @@
 				<ArrowRightOutline />
 			</a>
 		{/snippet}
+		{#snippet blockerFacts()}
+			<FactList
+				tone="banner"
+				facts={blocker && !('story' in blocker) ? (blocker.facts ?? []) : []}
+			/>
+		{/snippet}
 		{#if blocker && 'story' in blocker}
 			{@const b = blocker}
 			<BlockingStoryPanel story={b.story} class="mb-5">
@@ -1483,6 +1503,7 @@
 				title={b.title}
 				message={b.message}
 				footnote={b.footnote}
+				footnoteBody={b.facts?.length ? blockerFacts : undefined}
 				pulse={b.pulse}
 				class="mb-5"
 			>

@@ -1,7 +1,14 @@
 import { describe, test, expect } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/svelte';
-import BlockingStoryLines, { gateMark, gateKindWord } from './BlockingStoryLines.svelte';
+import BlockingStoryLines from './BlockingStoryLines.svelte';
+// ⚠️ THE MARK AND THE KIND WORD MOVED TO `GateRecord.svelte`. (2026-09-02) The
+// `<dl>` they belong to is drawn at TWO scales now — this component's popover
+// and `BlockingStoryPanel`'s banner disclosure — so it became its own object,
+// and the mark went with the record rather than staying in one of its hosts.
+// The assertions below are unchanged: what is being argued with is the same
+// function, at the same address as the thing it draws.
+import { gateMark, gateKindWord } from './GateRecord.svelte';
 import BlockReason, { contractBlockReason } from './BlockReason.svelte';
 import { blockingStory, buildGateContext, classifyGate } from '$lib/view-models/blocking-story';
 import {

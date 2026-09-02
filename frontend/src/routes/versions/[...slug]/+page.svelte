@@ -46,6 +46,7 @@
 		UserCircleSolid
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList, { type Fact } from '$lib/components/FactList.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
@@ -140,7 +141,9 @@
 	const urlKey = $derived(parsed.key);
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
+		rolloutsListQueryOptions({
+			options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) }
+		})
 	);
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -271,25 +274,32 @@
 		return best;
 	});
 
-	const bannerFootnote = $derived.by(() => {
+	/**
+	 * ⭐ THE DISCLOSED TIER IS A RECORD, AND THE TRIGGER COUNTS. (2026-09-02)
+	 * Same object, same argument, same shape as `/versions`' banner — see the
+	 * note there and `lib/disclosure.ts` for the rule that decides between a
+	 * noun and a count. A SET of gate handles with a clock in front of it is
+	 * not a sentence, and it had been narrated as one.
+	 */
+	const bannerFacts = $derived.by<Fact[]>(() => {
 		const approval = [...new Set(blockedSlots.flatMap((s) => s.awaitingApprovalGates))];
 		const windowGates = [...new Set(blockedSlots.flatMap((s) => s.notPassingGates))];
-		const parts: string[] = [];
-		if (windowGates.length > 0) {
-			const until = opensIn ? formatTimeUntil(opensIn, $now) : null;
-			parts.push(
-				until
-					? `A deployment window is closed — it opens in ${until} (${new Date(opensIn!).toLocaleString()}).`
-					: `${windowGates.length} gate${windowGates.length === 1 ? '' : 's'} not passing: ${windowGates.join(', ')}.`
-			);
+		const facts: Fact[] = [];
+		// ⛔ ONLY WHERE THERE IS A CLOCK. `opens` with nothing after it is a
+		// broken row, not a terse one.
+		if (windowGates.length > 0 && opensIn) {
+			facts.push({
+				label: 'Opens',
+				value: `in ${formatTimeUntil(opensIn, $now)} · ${new Date(opensIn).toLocaleString()}`
+			});
 		}
-		if (approval.length > 0) {
-			parts.push(
-				`${approval.length} gate${approval.length === 1 ? '' : 's'} need an approval or an external check: ${approval.join(', ')}.`
-			);
-		}
-		return parts.length > 0 ? parts.join(' ') : undefined;
+		for (const name of windowGates) facts.push({ label: 'Not passing', value: name, handle: true });
+		for (const name of approval) facts.push({ label: 'Approval', value: name, handle: true });
+		return facts;
 	});
+
+	/** The SET the trigger counts: gate handles, both buckets, never the clock. */
+	const bannerRuleCount = $derived(bannerFacts.filter((f) => f.handle).length);
 
 	const bannerMessage = $derived.by(() => {
 		if (!coverage || blockedSlots.length === 0) return '';
@@ -680,6 +690,12 @@
 			ONE banner: a page with three has none.
 		-->
 		{#if blockedSlots.length > 0}
+			<!-- ⭐ THE RECORD. One aligned `<dl>`, the product's only one, reading
+			     `currentColor` off the banner's own footnote ink. -->
+			{#snippet gateFacts()}
+				<FactList facts={bannerFacts} tone="banner" />
+			{/snippet}
+
 			<AlertPanel
 				severity="warning"
 				icon={blockedSlots.some((s) => s.notPassingGates.length > 0)
@@ -687,7 +703,8 @@
 					: UserCircleSolid}
 				title="{row.short} can’t go any further yet"
 				message={bannerMessage}
-				footnote={bannerFootnote}
+				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
+				footnoteCount={bannerRuleCount > 0 ? bannerRuleCount : undefined}
 				class="mt-5"
 			>
 				{#snippet extra()}
@@ -800,7 +817,10 @@
 															<Chip
 																role="rank"
 																label={`${s.currentRank} behind`}
-																title="{s.envLabel.toUpperCase()} can still take {s.currentRank} newer version{s.currentRank === 1 ? '' : 's'}"
+																title="{s.envLabel.toUpperCase()} can still take {s.currentRank} newer version{s.currentRank ===
+																1
+																	? ''
+																	: 's'}"
 															/>
 														</span>
 													{:else}
@@ -830,10 +850,7 @@
 											{#each g.reasons as r, i (i)}
 												{@const ReasonIcon = r.icon}
 												<div class="flex items-start gap-2">
-													<ReasonIcon
-														class="mt-0.5 h-4 w-4 shrink-0 {r.tone}"
-														aria-hidden="true"
-													/>
+													<ReasonIcon class="mt-0.5 h-4 w-4 shrink-0 {r.tone}" aria-hidden="true" />
 													<div class="min-w-0">
 														<!-- THE SENTENCE FIRST, THE OBJECT NAMES UNDER IT.
 														     Inline, the gate name's `whitespace-nowrap` pushed the
@@ -1028,13 +1045,11 @@
 				<p
 					class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
 				>
-					Every service counts its own builds, so <span class="t-code-sm">newest</span> here means
-				newest for that service. Two services from one repo can be on different builds and both be
-				up to date.
+					Every service counts its own builds, so <span class="t-code-sm">newest</span> here means newest
+					for that service. Two services from one repo can be on different builds and both be up to date.
 				</p>
 			</Card>
 		</div>
-
 	{/if}
 
 	<ChangeVersionModal

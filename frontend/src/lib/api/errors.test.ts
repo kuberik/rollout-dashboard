@@ -6,7 +6,7 @@ import {
 	pollWhenHealthy,
 	errorHeadline,
 	errorConsequence,
-	errorDetail,
+	errorFacts,
 	MAX_RETRIES,
 	RECOVERY_POLL_MS
 } from './errors';
@@ -102,9 +102,17 @@ describe('the words a reader gets', () => {
 		expect(errorConsequence(err(403))).toContain('access');
 	});
 
-	it("keeps the server's own sentence verbatim, behind the address queried", () => {
+	it("keeps the server's own sentence verbatim, in its own field", () => {
 		const detail = 'failed to get rollout: rollouts.kuberik.com "does-not-exist" not found';
-		expect(errorDetail(err(500, detail))).toBe(`/api/rollouts/x/y — ${detail}`);
+		// ⭐ FIELDS, NOT A SENTENCE. (2026-09-02) It was one string,
+		// `/api/rollouts/x/y — <detail>`; the address and the server's words are
+		// two different kinds of thing and the em dash was doing a `<dt>`'s job.
+		// The CLAIM is unchanged: verbatim, and behind the address queried.
+		expect(errorFacts(err(500, detail))).toEqual([
+			{ label: 'Address', value: '/api/rollouts/x/y', handle: true },
+			{ label: 'Status', value: 'HTTP 500', handle: true },
+			{ label: 'Server said', value: detail }
+		]);
 	});
 
 	/**
@@ -115,10 +123,13 @@ describe('the words a reader gets', () => {
 	 * as an explanation.
 	 */
 	it('says outright that the server sent nothing, instead of dressing up the code', () => {
-		const d = errorDetail(err(502));
-		expect(d).toContain('/api/rollouts/x/y');
-		expect(d).toContain('no explanation');
-		expect(d).toContain('502');
+		const facts = errorFacts(err(502));
+		const at = (label: string) => facts.find((f) => f.label === label)?.value;
+		expect(at('Address')).toBe('/api/rollouts/x/y');
+		expect(at('Status')).toBe('HTTP 502');
+		// ⛔ THE ROW IS NOT EMPTY AND IT IS NOT THE STATUS CODE. An absent record
+		// is not an observation: when the server sent no words, the field SAYS so.
+		expect(at('Server said')).toBe('nothing');
 	});
 
 	it('says the dashboard keeps checking, so a 5xx state is not a dead end', () => {

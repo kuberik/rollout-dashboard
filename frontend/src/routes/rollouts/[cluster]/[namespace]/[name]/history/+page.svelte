@@ -1,5 +1,10 @@
 <script lang="ts">
-	import type { Rollout, Kustomization, ManagedResourceStatus, RolloutTest } from '../../../../../../types';
+	import type {
+		Rollout,
+		Kustomization,
+		ManagedResourceStatus,
+		RolloutTest
+	} from '../../../../../../types';
 	import { Badge, Button, Spinner, Alert } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
@@ -53,6 +58,7 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList from '$lib/components/FactList.svelte';
 
 	import { page } from '$app/stores';
 	import { tick } from 'svelte';
@@ -191,7 +197,7 @@
 			),
 			isCurrent: true
 		};
-		const rows: typeof current[] = [current];
+		const rows: (typeof current)[] = [current];
 
 		if (showEnvironments) {
 			const envRows = envInfos
@@ -502,12 +508,24 @@
 			and it said four words with no way out of the page.
 		-->
 		<div class="p-4">
+			<!-- Same object, same fields, as the Overview tab's missing state — see
+			     the note there. Fields, not a sentence: the namespace/name pair is
+			     what an engineer pastes after `kubectl get rollout -n`. -->
+			{#snippet missing()}
+				<FactList
+					tone="banner"
+					facts={[
+						{ label: 'Rollout', value: `${namespace}/${name}`, handle: true },
+						{ label: 'Server answered', value: 'no release' }
+					]}
+				/>
+			{/snippet}
 			<AlertPanel
 				severity="warning"
 				class=""
 				title="This rollout does not exist"
 				message="It may have been deleted, or the address may be wrong."
-				footnote={`The server answered for ${namespace}/${name} and returned no release.`}
+				footnoteBody={missing}
 			>
 				{#snippet actions()}
 					<button type="button" class="btn btn-secondary" onclick={() => rolloutQuery.refetch()}>
@@ -743,8 +761,7 @@
 						{@const isExpanded = expandedIdx.has(i)}
 						{@const act = acts[i]}
 						{@const isSelected =
-							selectedEntry?.serviceId === `${namespace}/${name}` &&
-							selectedEntry?.index === i}
+							selectedEntry?.serviceId === `${namespace}/${name}` && selectedEntry?.index === i}
 
 						<div
 							use:registerEntry={i}
@@ -913,7 +930,9 @@
 										{#if entry.triggeredBy}
 											<span aria-hidden="true">·</span>
 											<span class="truncate"
-												>{entry.triggeredBy.kind === 'User' ? entry.triggeredBy.name : 'System'}</span
+												>{entry.triggeredBy.kind === 'User'
+													? entry.triggeredBy.name
+													: 'System'}</span
 											>
 										{/if}
 									</div>
@@ -976,9 +995,7 @@
 
 							<!-- Expanded details -->
 							{#if isExpanded}
-								<div
-									class="border-t border-gray-100 px-4 py-4 dark:border-gray-700"
-								>
+								<div class="border-t border-gray-100 px-4 py-4 dark:border-gray-700">
 									<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 										<!-- Left: metadata -->
 										<div class="space-y-2.5">
@@ -1018,7 +1035,8 @@
 												     What this deploy changed vs. the previous one; lazy, so
 												     it is only fetched once the entry is expanded. -->
 												<div class="flex items-baseline gap-1.5 text-xs">
-													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Changes</span>
+													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Changes</span
+													>
 													<div class="min-w-0 flex-1">
 														<CommitSummary
 															{namespace}
@@ -1066,7 +1084,10 @@
 												>
 													<ClockSolid class="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
 													<span class="text-xs font-medium text-gray-700 dark:text-gray-300">
-														Checked for {formatDuration(entry.bakeStartTime, new Date(entry.bakeEndTime))}
+														Checked for {formatDuration(
+															entry.bakeStartTime,
+															new Date(entry.bakeEndTime)
+														)}
 													</span>
 												</div>
 											{/if}
@@ -1086,7 +1107,9 @@
 									</div>
 
 									<!-- Action buttons -->
-									<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+									<div
+										class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700"
+									>
 										{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 											<SourceViewer
 												namespace={rollout.metadata?.namespace || ''}

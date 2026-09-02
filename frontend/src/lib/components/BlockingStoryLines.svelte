@@ -1,59 +1,5 @@
 <svelte:options runes={true} />
 
-<script module lang="ts">
-	/**
-	 * ⭐ THE MARK IS EXPORTED, SO IT CAN BE ARGUED WITH IN A TEST.
-	 *
-	 * From the human, on this row: *"still don't like these details when we have
-	 * this nonsense icon."* A mark that is chosen inside a component's markup is
-	 * a mark nobody can assert on, and two of the five here had drifted into
-	 * decoration — see the component note below for the argument on each kind.
-	 *
-	 * ⭐ IT IS A FUNCTION OF `kind` FIRST AND `clears` SECOND, because `clears` is
-	 * the REMEDY and `kind` is the OBJECT — and an icon names an object. Two
-	 * `upstream` gates clear the same way and are not the same thing: one is a
-	 * cross-service contract, one is a promotion order.
-	 */
-	import {
-		UserCircleSolid,
-		CalendarWeekSolid,
-		ShieldCheckSolid,
-		ShareNodesSolid,
-		ChevronDoubleRightOutline,
-		QuestionCircleSolid,
-		ArrowRightOutline
-	} from 'flowbite-svelte-icons';
-	import type { ClassifiedGate } from '$lib/view-models/blocking-story';
-
-	export function gateMark(g: Pick<ClassifiedGate, 'kind' | 'clears'>) {
-		// A CONTRACT WITH ANOTHER SERVICE. `contractBlockReason` and the
-		// `/dependencies` graph already spend this mark on this object.
-		if (g.kind === 'dependency') return ShareNodesSolid;
-		// PROMOTION ORDER. The `Promotion pipeline` card header's own mark.
-		if (g.kind === 'promotion') return ChevronDoubleRightOutline;
-		// A TIME WINDOW. True of the kind, and unchanged.
-		if (g.clears === 'clock') return CalendarWeekSolid;
-		// SOMEONE HAS TO ACT. True of the kind, and unchanged.
-		if (g.clears === 'person') return UserCircleSolid;
-		// WE CANNOT TELL. True of the kind, and unchanged.
-		if (g.clears === 'unknown') return QuestionCircleSolid;
-		// ⛔ NOT AN HOURGLASS. An hourglass means *time will fix this*, which is
-		// `clock`'s meaning — and `check` is precisely the kind that is NOT on a
-		// clock. A guard that has not cleared.
-		return ShieldCheckSolid;
-	}
-
-	/** What kind of object the rule is, for the record. A NOUN, never a remedy. */
-	export function gateKindWord(g: Pick<ClassifiedGate, 'kind'>): string {
-		if (g.kind === 'schedule') return 'deploy window';
-		if (g.kind === 'check') return 'check';
-		if (g.kind === 'promotion') return 'promotion order';
-		if (g.kind === 'dependency') return 'service contract';
-		if (g.kind === 'approval') return 'manual approval';
-		return 'not attributed';
-	}
-</script>
-
 <script lang="ts">
 	/**
 	 * ⭐ EVERY GATE HOLDING ONE ROLLOUT, ONE LINE EACH, INSIDE A CARD.
@@ -161,11 +107,13 @@
 	 * full ink at `t-code-sm`/`t-micro` instead of the fourth word of a gray
 	 * sentence, and the versions are chips. Less text, more hierarchy.
 	 */
+	import { ArrowRightOutline } from 'flowbite-svelte-icons';
 	import { formatTimeUntil } from '$lib/api/schedules';
 	import { now } from '$lib/stores/time';
 	import Chip from './Chip.svelte';
 	import RulePopover from './RulePopover.svelte';
-	import { type BlockingStory } from '$lib/view-models/blocking-story';
+	import GateRecord, { gateMark } from './GateRecord.svelte';
+	import { type BlockingStory, type ClassifiedGate } from '$lib/view-models/blocking-story';
 
 	let { story, class: className = '' }: { story: BlockingStory; class?: string } = $props();
 
@@ -277,69 +225,27 @@
 			reachable rather than facts that merely exist in a source file.
 		-->
 		<RulePopover count={story.gates.length}>
-			<dl class="divide-y divide-gray-100 dark:divide-gray-700/60">
-				{#each story.gates as g (g.id)}
-					{@const Icon = gateMark(g)}
-					{@const until = untilFor(g)}
-					{@const drawn = !!g.subject && (drawsVersions(g) || rowState(g, until) !== null)}
-					<div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
-						<!-- THE RULE'S OWN NAME leads its block, with the SAME mark the
-						     row drew, so a reader with two gates can tell which entry
-						     belongs to which line. -->
-						<p class="col-span-2 flex min-w-0 items-center gap-1.5">
-							<Icon
-								class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
-								aria-hidden="true"
-							/>
-							<span class="t-dense min-w-0 font-medium break-words text-gray-900 dark:text-white"
-								>{g.label}</span
-							>
-						</p>
-						<dt class="t-label text-gray-500 dark:text-gray-400">Kind</dt>
-						<dd class="t-micro min-w-0 text-gray-900 dark:text-white">{gateKindWord(g)}</dd>
-						<!-- ⭐ `short` LIVES HERE, AND THAT IS THE WHOLE REASON THIS IS A
-						     `<details>` AND NOT A COMPONENT THAT UNMOUNTS. It is the
-						     sentence `truth.test.ts` produces from controller state and
-						     the one `subject.svelte.test.ts` checks for its subject; a
-						     panel with no DOM until it opened would have deleted both
-						     assertions without turning anything red.
+			<!-- ⭐ THE RECORD IS `GateRecord`, AND IT IS THE SAME OBJECT THE BANNER
+			     DRAWS. (2026-09-02) It was spelled here, and `BlockingStoryPanel` —
+			     the same story one viewport above this on `/environments` — still
+			     had a PARAGRAPH behind a control labelled `Details`. One affordance,
+			     two shapes, two grammars, on one screen. The `<dl>` is one component
+			     now, so the next fix to it reaches both scales.
 
-						     ⛔ AND ONLY WHERE THE ROW DREW INSTEAD OF SAYING IT. A gate
-						     with no `subject` PRINTS `short` on its own line, and
-						     repeating it here would make the reward for opening the
-						     control a sentence the reader can already see — which is
-						     the exact complaint that produced this pass. THE RECORD
-						     HOLDS WHAT THE ROW DOES NOT. -->
-						{#if drawn}
-							<dt class="t-label text-gray-500 dark:text-gray-400">Clears</dt>
-							<dd class="t-micro min-w-0 break-words text-gray-900 dark:text-white">{g.short}</dd>
-						{/if}
-						{#if g.clearsAt}
-							<dt class="t-label text-gray-500 dark:text-gray-400">When</dt>
-							<dd class="t-micro min-w-0 text-gray-900 dark:text-white">
-								{new Date(g.clearsAt).toLocaleString()}{until ? ` · ${until}` : ''}
-							</dd>
-						{/if}
-						<!-- THE IDENTIFIER IS A HANDLE AND IS DRESSED AS ONE: mono, muted,
-						     on its own line, labelled with the word that says what it is.
-						     `break-all` only fires on a name genuinely wider than the
-						     column, and here it has the panel's full measure rather than
-						     the remainder of a sentence. -->
-						<dt class="t-label text-gray-500 dark:text-gray-400">Rule</dt>
-						<dd class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400">{g.id}</dd>
-					</div>
-				{/each}
-			</dl>
-			<!-- ⛔ `verdict`, NOT `resolution`. The manual-deploy clause is a
+			     `clearsFor` is PER GATE here: a row that DREW its clause has `short`
+			     nowhere on screen and wants it in the record; a row that printed
+			     `short` already shows it, and opening a control to read a sentence
+			     you can already see is the complaint that produced this pass.
+
+			     ⛔ `verdict`, NOT `resolution`. The manual-deploy clause is a
 			     PAGE-level promise and the banner carries it; repeated under every
-			     row it was the same sentence three times in one viewport. Same
-			     string, same order, as `BlockingStoryPanel`'s footnote — one idiom,
-			     learned once. -->
-			<p
-				class="t-micro mt-2 border-t border-gray-100 pt-2 break-words text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
-			>
-				{story.verdict}
-			</p>
+			     row it was the same sentence three times in one viewport. -->
+			<GateRecord
+				gates={story.gates}
+				foot={story.verdict}
+				clearsFor={(g) =>
+					!!g.subject && (drawsVersions(g) || rowState(g, untilFor(g)) !== null) ? g.short : null}
+			/>
 		</RulePopover>
 	</div>
 {/if}

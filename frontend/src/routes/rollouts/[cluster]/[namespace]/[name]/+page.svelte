@@ -102,6 +102,7 @@
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList from '$lib/components/FactList.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
@@ -268,9 +269,7 @@
 	// Derive directly from the query so that when route params change the
 	// lists go back to empty while the new query is in flight, rather than
 	// lingering with the previously-selected rollout's data.
-	const kustomizations = $derived<Kustomization[]>(
-		rolloutQuery.data?.kustomizations?.items ?? []
-	);
+	const kustomizations = $derived<Kustomization[]>(rolloutQuery.data?.kustomizations?.items ?? []);
 	const ociRepositories = $derived<OCIRepository[]>(
 		rolloutQuery.data?.ociRepositories?.items ?? []
 	);
@@ -375,7 +374,9 @@
 		})
 	);
 	const bakeFailureDisabledCondition = $derived(
-		rollout?.status?.conditions?.find((c) => c.type === 'BakeFailureDisabled' && c.status === 'True')
+		rollout?.status?.conditions?.find(
+			(c) => c.type === 'BakeFailureDisabled' && c.status === 'True'
+		)
 	);
 
 	// Get the first stalled kruise rollout for retry functionality
@@ -408,7 +409,9 @@
 					.map(async (k) => {
 						const kName = k.metadata!.name as string;
 						const kNamespace = k.metadata?.namespace || namespace;
-						const res = await fetch(apiUrl(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`));
+						const res = await fetch(
+							apiUrl(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`)
+						);
 						if (res.ok) {
 							const data = await res.json();
 							result[kName] = data.managedResources || [];
@@ -792,9 +795,7 @@
 	}
 
 	// Helper function to get dependency env + status for a version
-	function getDependencyStatus(
-		versionTag: string
-	): { env: string; bakeStatus: string } | null {
+	function getDependencyStatus(versionTag: string): { env: string; bakeStatus: string } | null {
 		const environment = rolloutQuery.data?.environment;
 		if (!environment?.status?.environmentInfos) {
 			return null;
@@ -986,7 +987,6 @@
 	// Note: Data fetching is handled by rolloutQuery with automatic refetch via layout's refetchInterval
 	// Dependent data (managedResources, healthChecks) is fetched via $effect when parent data changes
 
-
 	// Helper function to get revision information from version object or annotations
 	function getRevisionInfo(versionInfo: { revision?: string; tag: string }): string | undefined {
 		return versionInfo.revision;
@@ -996,7 +996,10 @@
 		if (!rollout) return;
 
 		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mark-successful`),
+			const response = await fetch(
+				apiUrl(
+					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mark-successful`
+				),
 				{
 					method: 'POST',
 					headers: {
@@ -1048,7 +1051,8 @@
 		toastType = 'success';
 
 		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`),
+			const response = await fetch(
+				apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`),
 				{
 					method: 'POST',
 					headers: {
@@ -1185,7 +1189,8 @@
 		kuberikRolloutName?: string
 	) {
 		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`),
+			const response = await fetch(
+				apiUrl(`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`),
 				{
 					method: 'POST',
 					headers: {
@@ -1228,13 +1233,11 @@
 
 	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
 		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/retry`),
-				{
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ kruiseRolloutName: kruiseRolloutName || '', testAction })
-				}
-			);
+			const response = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/retry`), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ kruiseRolloutName: kruiseRolloutName || '', testAction })
+			});
 
 			if (!response.ok) {
 				throw new Error('Failed to retry deployment');
@@ -1243,14 +1246,18 @@
 			showToast = true;
 			toastMessage = 'Deployment retry initiated';
 			toastType = 'success';
-			setTimeout(() => { showToast = false; }, 3000);
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
 			await rolloutQuery.refetch();
 		} catch (error) {
 			console.error('Retry deployment error:', error);
 			showToast = true;
 			toastMessage = `Failed to retry: ${error instanceof Error ? error.message : 'Unknown error'}`;
 			toastType = 'error';
-			setTimeout(() => { showToast = false; }, 3000);
+			setTimeout(() => {
+				showToast = false;
+			}, 3000);
 		}
 	}
 </script>
@@ -1305,12 +1312,36 @@
 			address that was asked for. Never invent a quote from the server.
 		-->
 		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
+			<!-- ⭐ THE ADDRESS AND THE ANSWER, AS FIELDS. (2026-09-02) It was
+			     *"The server answered for hello-dep-dev/does-not-exist on dev and
+			     returned no release."* — a namespace/name pair, a cluster and an
+			     outcome, narrated. The pair is the thing an engineer pastes after
+			     `kubectl get rollout -n`, and in the sentence it had a preposition
+			     glued to each end of it.
+
+			     ⚠️ `Server answered: no release` KEEPS THE DISTINCTION THE SENTENCE
+			     EXISTED FOR. The request SUCCEEDED — this is not a failed request
+			     and there is no server sentence to quote. Never invent one; see
+			     `errorFacts`, which is the other half of this state.
+
+			     `Details`, not a count: one request is not a set
+			     (`lib/disclosure.ts`). -->
+			{#snippet missing()}
+				<FactList
+					tone="banner"
+					facts={[
+						{ label: 'Rollout', value: `${namespace}/${name}`, handle: true },
+						...(cluster ? [{ label: 'Cluster', value: cluster, handle: true }] : []),
+						{ label: 'Server answered', value: 'no release' }
+					]}
+				/>
+			{/snippet}
 			<AlertPanel
 				severity="warning"
 				class=""
 				title="This rollout does not exist"
 				message="It may have been deleted, or the address may be wrong."
-				footnote={`The server answered for ${namespace}/${name}${cluster ? ` on ${cluster}` : ''} and returned no release.`}
+				footnoteBody={missing}
 			>
 				{#snippet actions()}
 					<button type="button" class="btn btn-secondary" onclick={() => rolloutQuery.refetch()}>
@@ -1374,7 +1405,12 @@
 					const stepIdx = kr.rolloutData?.currentStepIndex;
 					const krName = kr.kruiseRollout?.metadata?.name || '';
 					return pipelineValidTests
-						.filter((t) => t.spec?.rolloutName === krName && t.spec?.stepIndex === stepIdx && t.status?.phase === 'Failed')
+						.filter(
+							(t) =>
+								t.spec?.rolloutName === krName &&
+								t.spec?.stepIndex === stepIdx &&
+								t.status?.phase === 'Failed'
+						)
 						.map((t) => ({ test: t, kruiseRolloutName: krName }));
 				})}
 				{@const isFailed = hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)}
@@ -1410,7 +1446,14 @@
 								class="environment-theme-scope inline-flex shrink-0 self-center rounded transition-opacity hover:opacity-80"
 								style={rolloutThemeStyle}
 								title="View all apps in {currentEnv}"
-							><Chip role="env" theme={rolloutTheme} label={currentEnv} title="View all apps in {currentEnv}" wide /></a>
+								><Chip
+									role="env"
+									theme={rolloutTheme}
+									label={currentEnv}
+									title="View all apps in {currentEnv}"
+									wide
+								/></a
+							>
 						{/if}
 						<a
 							href={`/apps/${rollout.metadata?.name}`}
@@ -1461,8 +1504,18 @@
 						{cluster}
 						environmentName={environment?.spec?.environment ?? null}
 						onRetry={retryDeployment}
-						onSuccess={(m) => { toastType = 'success'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
-						onError={(m) => { toastType = 'error'; toastMessage = m; showToast = true; setTimeout(() => (showToast = false), 3000); }}
+						onSuccess={(m) => {
+							toastType = 'success';
+							toastMessage = m;
+							showToast = true;
+							setTimeout(() => (showToast = false), 3000);
+						}}
+						onError={(m) => {
+							toastType = 'error';
+							toastMessage = m;
+							showToast = true;
+							setTimeout(() => (showToast = false), 3000);
+						}}
 					/>
 				{/if}
 
@@ -1617,27 +1670,59 @@
 						name the thing a reader would go looking for, and nobody opens a
 						banner to find an email address.
 					-->
+					<!-- ⭐ THE SENTENCE AND THE ACTOR ARE TWO DIFFERENT KINDS OF
+					     THING, AND THE FOOTNOTE HAD WELDED THEM. (2026-09-02)
+					     `rollbackNext` is a verdict — prose, correctly. *"Rolled back
+					     by admin@example.com."* is a FIELD with a value, and an email
+					     address inside a full stop is a value a reader cannot select
+					     cleanly. The verdict keeps the sentence tier, the actor gets a
+					     label, and the note above still holds: the label on the
+					     control stays `Details`, because nobody opens a banner to
+					     find an email address and ONE record is not a set. -->
+					{#snippet rollbackDetail()}
+						<p class="break-words">{rollbackNext(rolledBack, autoDeploy)}</p>
+						{#if author}
+							<FactList
+								class="mt-2"
+								tone="banner"
+								facts={[{ label: 'Rolled back by', value: author, handle: true }]}
+							/>
+						{/if}
+					{/snippet}
 					<AlertPanel
 						severity="info"
 						icon={UndoOutline}
 						title="Rolled back"
 						message={rollbackWent(rolledBack, autoDeploy)}
-						footnote={author
-							? `${rollbackNext(rolledBack, autoDeploy)} Rolled back by ${author}.`
-							: rollbackNext(rolledBack, autoDeploy)}
+						footnoteBody={rollbackDetail}
 					/>
 				{:else if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 					{@const trig = latestEntry?.triggeredBy}
 					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
-					{@const pinnedBy = author ? `Pinned by ${author}` : 'Pinned'}
 					{@const pinnedTo =
-						displayVersionForTag(rollout, rollout.spec.wantedVersion) ||
-						rollout.spec.wantedVersion}
+						displayVersionForTag(rollout, rollout.spec.wantedVersion) || rollout.spec.wantedVersion}
+					<!-- ⭐ SAME SPLIT AS THE ROLLBACK ABOVE. `Pinned by
+					     admin@example.com · Automatic deployments resume as soon as
+					     the pin is cleared.` is an ACTOR and a PROMISE joined by a
+					     middle dot — and with no actor it degraded to the bare word
+					     `Pinned ·`, a field name with nothing after it. The promise
+					     is the sentence; the actor is a field and only exists when
+					     the controller recorded one. -->
+					{#snippet pinDetail()}
+						<p class="break-words">Automatic deployments resume as soon as the pin is cleared.</p>
+						{#if author}
+							<FactList
+								class="mt-2"
+								tone="banner"
+								facts={[{ label: 'Pinned by', value: author, handle: true }]}
+							/>
+						{/if}
+					{/snippet}
 					<AlertPanel
 						severity="pinned"
 						title="Version pinned"
 						message="Held on {pinnedTo} — no newer build will deploy here while the pin is set."
-						footnote="{pinnedBy} · Automatic deployments resume as soon as the pin is cleared."
+						footnoteBody={pinDetail}
 					/>
 				{/if}
 
@@ -1677,7 +1762,11 @@
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
 												<a
-													href={versionPathForRollout(rollout, name, getDisplayVersion(latestEntry.version))}
+													href={versionPathForRollout(
+														rollout,
+														name,
+														getDisplayVersion(latestEntry.version)
+													)}
 													class="text-xl font-bold tracking-tight text-gray-900 hover:underline dark:text-white"
 												>
 													{getDisplayVersion(latestEntry.version)}
@@ -1688,7 +1777,15 @@
 												     same second. `bakeWord` is the product's one word and
 												     `bakeTitle` carries the sentence a single word cannot. -->
 												<span
-													class="text-sm {latestEntry.bakeStatus === 'Succeeded' ? 'text-green-700 dark:text-green-400' : latestEntry.bakeStatus === 'Failed' ? 'text-red-600 dark:text-red-400' : latestEntry.bakeStatus === 'InProgress' ? 'text-yellow-700 dark:text-yellow-400' : latestEntry.bakeStatus === 'Deploying' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}"
+													class="text-sm {latestEntry.bakeStatus === 'Succeeded'
+														? 'text-green-700 dark:text-green-400'
+														: latestEntry.bakeStatus === 'Failed'
+															? 'text-red-600 dark:text-red-400'
+															: latestEntry.bakeStatus === 'InProgress'
+																? 'text-yellow-700 dark:text-yellow-400'
+																: latestEntry.bakeStatus === 'Deploying'
+																	? 'text-blue-600 dark:text-blue-400'
+																	: 'text-gray-500 dark:text-gray-400'}"
 													title={bakeTitle(latestEntry.bakeStatus)}
 												>
 													{bakeWord(latestEntry.bakeStatus)}
@@ -1704,8 +1801,8 @@
 														<span
 															class="flex items-center gap-1 text-orange-700 dark:text-orange-400"
 														>
-															<ArrowUpOutline class="h-3 w-3" />{rollout.status
-																.releaseCandidates.length}
+															<ArrowUpOutline class="h-3 w-3" />{rollout.status.releaseCandidates
+																.length}
 															{rollout.status.releaseCandidates.length === 1
 																? 'upgrade'
 																: 'upgrades'} available
@@ -1791,7 +1888,10 @@
 									</div>
 									<!-- Right: time -->
 									<div class="shrink-0 text-right text-xs text-gray-500 dark:text-gray-400">
-										<div class="flex items-center justify-end gap-1" title={formatDate(latestEntry.timestamp)}>
+										<div
+											class="flex items-center justify-end gap-1"
+											title={formatDate(latestEntry.timestamp)}
+										>
 											<ClockSolid class="h-3 w-3" />
 											<span>{formatTimeAgoCompact(latestEntry.timestamp, $now)}</span>
 										</div>
@@ -1901,9 +2001,9 @@
 												transition={blur}
 												transitionParams={{ duration: 300 }}
 											>
-												Version management disabled: This rollout's wantedVersion field is managed by
-												another controller or external system. The dashboard cannot pin it to prevent
-												conflicts.
+												Version management disabled: This rollout's wantedVersion field is managed
+												by another controller or external system. The dashboard cannot pin it to
+												prevent conflicts.
 											</Tooltip>
 										{/if}
 									{/if}
@@ -1941,8 +2041,7 @@
 									<span
 										class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
 									>
-										<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status.releaseCandidates
-											.length}
+										<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status.releaseCandidates.length}
 									</span>
 								{/if}
 								<button
@@ -2046,21 +2145,18 @@
 														<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
 															<div class="space-y-2 p-1">
 																<p class="text-xs text-gray-600 dark:text-gray-300">
-																	{heldClears(held)} Nothing promotes this version automatically
-																	while it is held. Pressing
+																	{heldClears(held)} Nothing promotes this version automatically while
+																	it is held. Pressing
 																	<span class="font-medium text-gray-900 dark:text-white"
 																		>Deploy</span
-																	> applies it immediately — gates only hold back automatic
-																	promotion.
+																	> applies it immediately — gates only hold back automatic promotion.
 																</p>
 																{#each blockingGates as gate}
 																	<!-- WHAT CLEARS THIS ONE, from the same join
 																	     `BlockingStoryLines` renders in the banner above.
 																	     `Status: <enum>` further down is the controller's own
 																	     word and is a handle, not an explanation. -->
-																	{@const clears = held.find(
-																		(h) => h.id === gate.metadata?.name
-																	)}
+																	{@const clears = held.find((h) => h.id === gate.metadata?.name)}
 																	<div class="flex items-start gap-2">
 																		<ExclamationCircleSolid
 																			class="mt-0.5 h-4 w-4 shrink-0 text-yellow-700 dark:text-yellow-400"
@@ -2103,7 +2199,10 @@
 													class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
 												>
 													{#if releaseCandidate.created}
-														<span class="flex items-center gap-1" title={formatDate(releaseCandidate.created)}>
+														<span
+															class="flex items-center gap-1"
+															title={formatDate(releaseCandidate.created)}
+														>
 															<ClockSolid class="h-3 w-3" />
 															{formatTimeAgoCompact(releaseCandidate.created, $now)}
 														</span>
@@ -2117,10 +2216,7 @@
 															title={bakeTitle(depInfo.bakeStatus)}
 														>
 															{#snippet icon()}
-																<BakeStatusIcon
-																	bakeStatus={depInfo.bakeStatus}
-																	size="small"
-																/>
+																<BakeStatusIcon bakeStatus={depInfo.bakeStatus} size="small" />
 															{/snippet}
 														</JoinedBadge>
 													{/if}
@@ -2210,15 +2306,18 @@
 										`ResourcesCard` x4, the held-by-a-gate chip). Zero new colour values,
 										and the composition of this card is untouched.
 									-->
-									<Alert color="yellow" class="bg-yellow-100 text-yellow-700 dark:bg-yellow-100 dark:text-yellow-700">
+									<Alert
+										color="yellow"
+										class="bg-yellow-100 text-yellow-700 dark:bg-yellow-100 dark:text-yellow-700"
+									>
 										<div class="flex items-center gap-3">
 											<InfoCircleSolid class="h-5 w-5" />
 											<span class="text-lg font-medium">Current version is custom</span>
 										</div>
 										<p class="mt-2 mb-4 text-sm">
-											The currently deployed version is not in the available releases list. This means
-											it's a custom version that was manually deployed. To change to a different
-											version, you need to manually deploy another version.
+											The currently deployed version is not in the available releases list. This
+											means it's a custom version that was manually deployed. To change to a
+											different version, you need to manually deploy another version.
 										</p>
 										<div class="flex gap-2">
 											<Button
@@ -2256,7 +2355,9 @@
 									class="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 								>
 									<ArrowUpRightFromSquareOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-									<h2 class="text-sm font-semibold text-gray-900 dark:text-white">External Links</h2>
+									<h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+										External Links
+									</h2>
 								</div>
 								<div class="divide-y divide-gray-100 dark:divide-gray-700">
 									{#if datadogServiceInfo}
@@ -2275,7 +2376,9 @@
 													>APM service</span
 												>
 											</div>
-											<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+											<ArrowUpRightFromSquareOutline
+												class="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400"
+											/>
 										</a>
 									{/if}
 								</div>
@@ -2292,32 +2395,54 @@
 							another.
 						-->
 						<HealthChecksCard healthChecks={visibleHealthChecks} windowStart={errorCutoff} />
-						<ResourcesCard {kustomizations} {ociRepositories} {filteredManagedResources} {cluster} />
+						<ResourcesCard
+							{kustomizations}
+							{ociRepositories}
+							{filteredManagedResources}
+							{cluster}
+						/>
 						<EventsCard {events} />
 					</div>
 				</div>
 			{:else}
 				<!-- No deploy yet — minimal but informative empty state -->
 				<div class="mx-auto max-w-2xl py-6">
-					<div class="flex flex-col items-center rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
-						<div class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
+					<div
+						class="flex flex-col items-center rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800"
+					>
+						<div
+							class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700"
+						>
 							<ClockSolid class="h-5 w-5 text-gray-500 dark:text-gray-400" />
 						</div>
 						<h2 class="text-base font-semibold text-gray-900 dark:text-white">No deploys yet</h2>
 						<p class="mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
-							{rollout.status?.title ?? rollout.metadata?.name} hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.
+							{rollout.status?.title ?? rollout.metadata?.name} hasn't received its first deploy. Once
+							a version is selected and the controller deploys it, this page will fill in with the deployment
+							pipeline, health checks, and history.
 						</p>
 						{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}
 							<div class="mt-5 w-full">
-								<div class="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-									{rollout.status?.releaseCandidates?.length} release candidate{rollout.status?.releaseCandidates?.length === 1 ? '' : 's'} available
+								<div
+									class="text-left text-[11px] font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400"
+								>
+									{rollout.status?.releaseCandidates?.length} release candidate{rollout.status
+										?.releaseCandidates?.length === 1
+										? ''
+										: 's'} available
 								</div>
-								<ul class="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700/60 dark:border-gray-700">
+								<ul
+									class="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700/60 dark:border-gray-700"
+								>
 									{#each rollout.status?.releaseCandidates?.slice(0, 5) ?? [] as rc}
 										<li class="flex items-center justify-between px-3 py-2 text-left">
-											<span class="font-mono text-sm text-gray-800 dark:text-gray-200">{getDisplayVersion(rc)}</span>
+											<span class="font-mono text-sm text-gray-800 dark:text-gray-200"
+												>{getDisplayVersion(rc)}</span
+											>
 											{#if rc.created}
-												<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">{formatTimeAgoCompact(rc.created, $now)}</span>
+												<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400"
+													>{formatTimeAgoCompact(rc.created, $now)}</span
+												>
 											{/if}
 										</li>
 									{/each}

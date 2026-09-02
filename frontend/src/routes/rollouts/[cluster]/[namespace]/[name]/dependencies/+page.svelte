@@ -140,6 +140,7 @@
 		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList, { type Fact } from '$lib/components/FactList.svelte';
 	import BlockReason, { contractBlockReason } from '$lib/components/BlockReason.svelte';
 	import { BAKE_WORD } from '$lib/bake-status';
 	import Card from '$lib/components/Card.svelte';
@@ -195,7 +196,12 @@
 	const name = $derived(page.params.name as string);
 
 	const rolloutQuery = createQuery(() =>
-		rolloutQueryOptions({ namespace, name, cluster, options: { refetchInterval: pollWhenHealthy(5000) } })
+		rolloutQueryOptions({
+			namespace,
+			name,
+			cluster,
+			options: { refetchInterval: pollWhenHealthy(5000) }
+		})
 	);
 
 	/**
@@ -334,8 +340,11 @@
 			const info = byInfo.get(env);
 			const rolloutHistory = (s?.rollout.status?.history ?? []) as unknown as EnvHistoryEntry[];
 			const rel =
-				(s?.environment?.spec as { relationship?: { environment: string; type: string } } | undefined)
-					?.relationship ?? info?.relationship;
+				(
+					s?.environment?.spec as
+						| { relationship?: { environment: string; type: string } }
+						| undefined
+				)?.relationship ?? info?.relationship;
 			return {
 				environment: env,
 				relationship: rel,
@@ -395,9 +404,7 @@
 		}
 		return out;
 	});
-	const chainRows = $derived(
-		chain(chainInfos, order, (env) => ownRanks.get(env) ?? null)
-	);
+	const chainRows = $derived(chain(chainInfos, order, (env) => ownRanks.get(env) ?? null));
 	const envOrder = $derived(chainRows.map((r) => r.env));
 
 	/**
@@ -440,7 +447,8 @@
 			let best = 0;
 			for (const [tag, n] of counts) {
 				const better =
-					n > best || (n === best && modal !== null && rankOfTag(order, tag) < rankOfTag(order, modal));
+					n > best ||
+					(n === best && modal !== null && rankOfTag(order, tag) < rankOfTag(order, modal));
 				if (better) {
 					modal = tag;
 					best = n;
@@ -760,7 +768,25 @@
 			message: one
 				? `${heldProviders[0]} has to move first. Nothing newer goes out here until it does.`
 				: `${heldProviders.length} other services have to move first. Nothing newer goes out here until they do.`,
-			footnote: `Waiting on ${adverse.map((b) => b.contract).join(', ')}`,
+			/**
+			 * ⭐ A SET, SO IT IS A RECORD AND THE TRIGGER COUNTS. (2026-09-02)
+			 * It was `Waiting on api, web` — a comma list with a verb in front
+			 * of it, behind a control labelled `Details`, while the SAME page's
+			 * gate rows one card below said `1 rule`. A contract is an
+			 * identifier you go and look up, so it is a handle and is dressed as
+			 * one; the PROVIDER only earns a row when the printed message did
+			 * not already name it (`one` is exactly that test).
+			 */
+			facts: [
+				...(one ? [] : heldProviders.map((n) => ({ label: 'Provider', value: n, handle: true }))),
+				...[...new Set(adverse.map((b) => b.contract))].map((c) => ({
+					label: 'Contract',
+					value: c,
+					handle: true
+				}))
+			] as Fact[],
+			count: new Set(adverse.map((b) => b.contract)).size,
+			noun: 'contract',
 			href: one ? providerHref(adverse[0]) : null,
 			label: one ? `Open ${heldProviders[0]}` : null
 		};
@@ -798,7 +824,14 @@
 			message: one
 				? `${versions} version${plural} of ${names[0]} need${plural ? '' : 's'} a newer ${contracts.join(', ')} than this rollout is serving.`
 				: `Between them, ${versions} version${plural} need a newer ${contracts.join(', ')} than this rollout is serving.`,
-			footnote: `Waiting on this: ${names.join(', ')}`,
+			/**
+			 * THE SET IS THE SERVICES, and the same argument applies: `Waiting on
+			 * this: alpha, beta` is a list wearing a colon. Each name is a
+			 * rollout you can go and open, so it is a handle.
+			 */
+			facts: names.map((n) => ({ label: 'Service', value: n, handle: true })) as Fact[],
+			count: names.length,
+			noun: 'service',
 			href: one ? consumerHref(heldConsumers[0].d) : null,
 			label: one ? `Open ${names[0]}` : null
 		};
@@ -840,9 +873,9 @@
 	 * "two graphs" split the human rejected three times.
 	 */
 	const networkEnvOrder = $derived(
-		[
-			...new Set(listEnvironments.map((e) => e.spec?.environment).filter(Boolean) as string[])
-		].sort(compareEnvironmentNames)
+		[...new Set(listEnvironments.map((e) => e.spec?.environment).filter(Boolean) as string[])].sort(
+			compareEnvironmentNames
+		)
 	);
 
 	const networkGateContext = $derived(
@@ -883,7 +916,6 @@
 		);
 		return getRolloutEnvironmentTheme(r ?? null, e);
 	});
-
 </script>
 
 <svelte:head>
@@ -960,8 +992,8 @@
 				<div
 					class="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
 				>
-					Nothing else has to happen first. This rollout waits on no other service, nothing
-					waits on it, and it is not part of a promotion chain.
+					Nothing else has to happen first. This rollout waits on no other service, nothing waits on
+					it, and it is not part of a promotion chain.
 				</div>
 			{:else}
 				{#if banner}
@@ -969,12 +1001,18 @@
 					     because a contract block does not clear itself and does not
 					     clear on approval either — somebody has to ship the other
 					     service. `AlertPanel` is the product's only banner. -->
+					<!-- ⭐ THE RECORD, in the banner's own ink. -->
+					{#snippet bannerFacts()}
+						<FactList facts={banner?.facts ?? []} tone="banner" />
+					{/snippet}
 					<AlertPanel
 						severity="warning"
 						icon={ShareNodesSolid}
 						title={banner.title}
 						message={banner.message}
-						footnote={banner.footnote}
+						footnoteBody={banner.facts.length > 0 ? bannerFacts : undefined}
+						footnoteCount={banner.facts.length > 0 ? banner.count : undefined}
+						footnoteNoun={banner.noun}
 					>
 						{#snippet actions()}
 							{#if banner.href && banner.label}
@@ -1007,9 +1045,12 @@
 							     pushed `In the network` to `In the netw…`, and a clipped card
 							     title is a hard defect. The banner above already states the
 							     block, so the phone loses nothing. -->
-							<span class="hidden text-xs font-medium whitespace-nowrap sm:inline {localVerdict.tone === 'adverse'
+							<span
+								class="hidden text-xs font-medium whitespace-nowrap sm:inline {localVerdict.tone ===
+								'adverse'
 									? 'text-red-700 dark:text-red-400'
-									: 'text-gray-500 dark:text-gray-400'}">{localVerdict.text}</span>
+									: 'text-gray-500 dark:text-gray-400'}">{localVerdict.text}</span
+							>
 							<a
 								href="/dependencies"
 								class="text-xs font-medium whitespace-nowrap text-blue-600 hover:underline dark:text-blue-400"
@@ -1202,8 +1243,7 @@
 												     cry wolf on every load; dropping them without a
 												     number would hide a controller fact. -->
 												· also holds {b.pastTags.length} older
-												{b.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying
-												to deploy
+												{b.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying to deploy
 											{/if}
 										</p>
 
@@ -1234,9 +1274,7 @@
 										     an identity chip, so a quiet card means nothing is
 										     held. -->
 										{#each b.blocked as w (w.key)}
-											<div
-												class="mt-3 border-l-2 border-red-700/40 pl-3 dark:border-red-400/40"
-											>
+											<div class="mt-3 border-l-2 border-red-700/40 pl-3 dark:border-red-400/40">
 												<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
 													<Chip
 														role="blocked"
@@ -1360,9 +1398,7 @@
 													class="shrink-0"
 												/>
 											{:else}
-												<span class="t-code-sm text-gray-500 dark:text-gray-400"
-													>{c.contract}</span
-												>
+												<span class="t-code-sm text-gray-500 dark:text-gray-400">{c.contract}</span>
 											{/if}
 										</div>
 
@@ -1441,16 +1477,16 @@
 															</span>
 														{:else}
 															{#each d.places as p (p.namespace)}
-															{@const th = placeTheme(p.namespace, d.name)}
-															{#if th}
-																<Chip
-																	role="env"
-																	theme={th}
-																	label={shortEnvLabel(th) || p.namespace}
-																	title="{d.name} in {p.namespace}"
-																	wide
-																/>
-															{:else}
+																{@const th = placeTheme(p.namespace, d.name)}
+																{#if th}
+																	<Chip
+																		role="env"
+																		theme={th}
+																		label={shortEnvLabel(th) || p.namespace}
+																		title="{d.name} in {p.namespace}"
+																		wide
+																	/>
+																{:else}
 																	<span
 																		class="t-code-sm text-gray-500 dark:text-gray-400"
 																		title="{d.name} in {p.namespace}">{p.namespace}</span
@@ -1478,9 +1514,9 @@
 														{:else if d.running}
 															Running <span class="t-code-sm">{d.running}</span
 															>{#if d.requires && !d.requiresVaries}, which needs {c.contract}
-																<span class="t-code-sm">{d.requires}</span>{:else if d.requiresVaries}, and
-																its places ask different things of {c.contract}{:else if unresolved}, and
-																what it needs of {c.contract} could not be read{/if}
+																<span class="t-code-sm">{d.requires}</span
+																>{:else if d.requiresVaries}, and its places ask different things of {c.contract}{:else if unresolved},
+																and what it needs of {c.contract} could not be read{/if}
 														{:else if nowhere}
 															Has deployed nothing here yet
 														{/if}
@@ -1489,8 +1525,8 @@
 															     builds the consumer is already PAST — the gate
 															     working on candidates nobody will deploy. -->
 															· also holds {d.pastTags.length} older
-															{d.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying
-															to deploy
+															{d.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying to
+															deploy
 														{/if}
 													</p>
 

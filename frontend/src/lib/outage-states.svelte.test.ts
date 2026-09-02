@@ -67,7 +67,22 @@ describe('a 503 from the API is a terminal, legible failure on every page', () =
 			// 3. THE SERVER'S OWN WORDS WHERE THERE ARE ANY — and where there are
 			//    none (Envoy's 503 carries no JSON body), it says so instead of
 			//    inventing a cause, and names the address it asked for.
-			expect(screen.getByText(/\/api\/rollouts.*no explanation.*503/i)).toBeInTheDocument();
+			//
+			//    ⭐ IT IS A RECORD NOW, NOT A SENTENCE. (2026-09-02) `errorDetail`
+			//    joined three machine facts with an em dash; `errorFacts` gives
+			//    each a label and `FactList` aligns them. BOTH DIRECTIONS ARE
+			//    PINNED HERE, which is the property `AlertPanel.svelte.test.ts`
+			//    exists for: the facts are DISCLOSED (a closed `<details>`, so a
+			//    future edit cannot quietly print them back into the first
+			//    second of reading) AND they are REACHABLE (in the DOM, so a
+			//    future edit cannot quietly drop one while the suite stays green).
+			const address = screen.getAllByText('/api/rollouts')[0];
+			expect(address).toBeInTheDocument();
+			const record = address.closest('details');
+			expect(record).not.toBeNull();
+			expect((record as HTMLDetailsElement).open).toBe(false);
+			expect(record?.textContent).toContain('HTTP 503');
+			expect(record?.textContent).toContain('nothing');
 
 			// 4. A WAY OUT.
 			expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
@@ -174,7 +189,9 @@ describe('a partial answer is declared, on every page that renders one', () => {
 				).toBeInTheDocument()
 			);
 			// Absent is not healthy — said in words, not left to inference.
-			expect(screen.getByText(/missing from these counts, not healthy in them/i)).toBeInTheDocument();
+			expect(
+				screen.getByText(/missing from these counts, not healthy in them/i)
+			).toBeInTheDocument();
 			// The hub's own sentence, verbatim.
 			expect(screen.getByText(/dial tcp: i\/o timeout/)).toBeInTheDocument();
 		});

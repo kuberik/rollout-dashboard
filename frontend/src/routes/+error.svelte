@@ -26,6 +26,7 @@
 	 */
 	import { page } from '$app/state';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList from '$lib/components/FactList.svelte';
 	import {
 		HomeOutline,
 		GridOutline,
@@ -83,12 +84,30 @@
 		{isNotFound ? 'Not found' : 'Error'}
 	</h1>
 
+	<!-- ⭐ TWO MACHINE FACTS, AS FIELDS. (2026-09-02) It was the sentence *"The
+	     address requested was /environments/foo."* — six words of grammar around
+	     one value, and the value is the one thing a reader would copy. The
+	     status code was in the `<h1>` and nowhere near it. Both are fields with
+	     names now, aligned, and the address is dressed as the handle it is.
+
+	     `Details`, not a count: `lib/disclosure.ts` gives the count form to a
+	     SET, and one request is not a set. -->
+	{#snippet requested()}
+		<FactList
+			tone="banner"
+			facts={[
+				{ label: 'Address', value: pathname, handle: true },
+				{ label: 'Status', value: `HTTP ${status}`, handle: true }
+			]}
+		/>
+	{/snippet}
+
 	<AlertPanel
 		severity={isNotFound ? 'warning' : 'error'}
 		class="mb-0 max-w-3xl"
 		{title}
 		{message}
-		footnote={`The address requested was ${pathname}.`}
+		footnoteBody={requested}
 	>
 		{#snippet actions()}
 			<!-- ⚠️ `AlertPanel` LAYS ACTIONS OUT IN A NON-WRAPPING ROW (`flex

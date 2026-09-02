@@ -16,9 +16,18 @@
 	 * 1. **A headline a novice understands** — `Your session has expired`,
 	 *    `This rollout does not exist`. Never a status code as the title.
 	 * 2. **What happens next**, so the state is not a dead end.
-	 * 3. **The server's own sentence**, verbatim, demoted to evidence in the
-	 *    `footnote` slot — the same shape `BlockReason` uses for a generated
+	 * 3. **The server's own sentence**, verbatim, demoted to evidence behind
+	 *    the disclosure — the same shape `BlockReason` uses for a generated
 	 *    gate name: the consequence leads, the handle follows.
+	 *
+	 *    ⭐ AND IT IS A RECORD NOW, NOT A SENTENCE. (2026-09-02) `errorDetail`
+	 *    returned `/api/rollouts — the server sent no explanation with its HTTP
+	 *    503.`, which is an ADDRESS, a STATUS CODE and WHAT THE SERVER SAID
+	 *    joined with an em dash — three machine facts wearing one sentence's
+	 *    grammar, with the address (the part an engineer pastes into a
+	 *    terminal) carrying punctuation that is not part of it. `errorFacts`
+	 *    returns them as fields and `FactList` aligns them. Nothing was cut:
+	 *    a failure with no explanation still states that it had none.
 	 * 4. **A way back**, always. `Try again` for something transient, `Sign in
 	 *    again` (a FULL page navigation — see `reauthenticate`) for an expired
 	 *    session, and a link out of the dead page for everything else.
@@ -28,11 +37,12 @@
 	 * values, `.btn` at 14px for the verbs.
 	 */
 	import AlertPanel from './AlertPanel.svelte';
+	import FactList from './FactList.svelte';
 	import {
 		ApiError,
 		errorHeadline,
 		errorConsequence,
-		errorDetail,
+		errorFacts,
 		isRetryable,
 		RECOVERY_POLL_MS,
 		reauthenticate
@@ -78,14 +88,23 @@
 	const severity = $derived<'error' | 'warning'>(apiError?.isMissing ? 'warning' : 'error');
 	/** Only a failure the policy will retry has a self-healing story to tell. */
 	const selfHealing = $derived(!isAuth && !apiError?.isMissing && isRetryable(error));
+	const facts = $derived(errorFacts(error));
 </script>
+
+<!-- ⭐ THE EVIDENCE, AS FIELDS. `Details` — not a count: there is exactly one
+     request here and `1 request` would be a count of a thing there can only
+     ever be one of, which teaches a reader nothing. `lib/disclosure.ts` states
+     the rule; this is the ONE-RECORD case. -->
+{#snippet detail()}
+	<FactList {facts} tone="banner" />
+{/snippet}
 
 <div class={className}>
 	<AlertPanel
 		{severity}
 		title={errorHeadline(error, subject)}
 		message={errorConsequence(error)}
-		footnote={errorDetail(error)}
+		footnoteBody={facts.length > 0 ? detail : undefined}
 		class=""
 	>
 		{#snippet extra()}

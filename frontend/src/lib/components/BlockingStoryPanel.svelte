@@ -74,7 +74,8 @@
 	 * re-opens the defect.
 	 */
 	import AlertPanel from './AlertPanel.svelte';
-	import { ruleHandle, type BlockingStory } from '$lib/view-models/blocking-story';
+	import GateRecord from './GateRecord.svelte';
+	import { type BlockingStory } from '$lib/view-models/blocking-story';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -82,10 +83,10 @@
 		/** Extra controls in the banner's right-hand slot (e.g. a details popover). */
 		actions,
 		/**
-		 * Print the gate object names as a `rule:` footnote. On by default: the
+		 * Put the gates' own record behind the disclosure. On by default: the
 		 * consequence names each gate in HUMAN terms and a reader who then has
-		 * to go and find the object needs the handle. Off where the surround
-		 * already prints them.
+		 * to go and find the object needs its kind, its clock and its handle.
+		 * Off where the surround already draws them.
 		 */
 		showRules = true,
 		class: className = 'mb-4'
@@ -98,38 +99,70 @@
 
 	const icon = $derived(iconForStory(story));
 
-	const rules = $derived(showRules ? ruleHandle(story) : null);
+	const gates = $derived(showRules ? story.gates : []);
 
-	// The footnote carries the VERDICT first and the handles second. The verdict
-	// is the line that answers "do I get up?"; the object names are a lookup key
-	// and are never allowed to lead.
-	//
-	// ⭐ IT IS BEHIND `AlertPanel`'s DISCLOSURE NOW, AND THE LABEL SAYS WHAT
-	// KIND OF THING IS THERE. (2026-08-31) Measured at 390 on
-	// `hello-dep-dev/hello-frontend-app`: this footnote alone was 151 of the
-	// banner's 314 characters and four of its lines, and on the live rollout it
-	// mostly RESTATED the consequence above it — `consequence` said *"Nothing
-	// promotes itself until hello-api-app ships a newer api than 1.66.0"* and
-	// the verdict said *"Nobody has to approve anything — this clears when the
-	// deploy in front of it lands."* Two sentences, one fact, one on top of the
-	// other, on every gated rollout in the product.
-	//
-	// The half that is NOT a restatement is the `person` case (*"This will not
-	// clear on its own"*), and the headline there already says
-	// *"… is waiting on an approval"*. So the verdict is the answer you go
-	// looking for, not the one you are handed — which is exactly what a
-	// disclosure is for. `rule:` is a generated object id an operator cannot
-	// act on directly; it is a lookup key and has never belonged in the first
-	// second of reading.
-	const footnote = $derived(rules ? `${story.resolution} · rule: ${rules}` : story.resolution);
+	/**
+	 * ⭐ THE DISCLOSED TIER IS A RECORD NOW, NOT A PARAGRAPH, AND THE TRIGGER
+	 * COUNTS. (2026-09-02)
+	 *
+	 * ── WHAT IT WAS ──────────────────────────────────────────────────────────
+	 *
+	 * One string: `${story.resolution} · rule: ${ids.join(', ')}` — a verdict
+	 * sentence with a comma-joined list of generated Kubernetes names welded to
+	 * the end of it, behind a control labelled `Details`.
+	 *
+	 * ── WHY IT CHANGED ───────────────────────────────────────────────────────
+	 *
+	 * On 2026-09-02 the CARD scale of this exact content — `BlockingStoryLines`
+	 * → `RulePopover`, the same gates off the same story — became an aligned
+	 * record behind a control reading `1 rule` / `N rules`. This object was
+	 * left alone on the argument that *"its body is a SENTENCE, not a set with
+	 * a count"*. Half of that is true (the verdict is a sentence) and half of
+	 * it is not: the rest of the body was a SET, and it is the set the count
+	 * belongs to. On `/environments` at 1440 the two render **90px apart** —
+	 * the banner saying `Details` over `· rule: a, b`, the card below it saying
+	 * `2 rules` over an aligned block per gate. One affordance, two shapes, two
+	 * grammars, one viewport.
+	 *
+	 * ── THE TIER BOUNDARY DID NOT MOVE ───────────────────────────────────────
+	 *
+	 * `headline` and `consequence` still print; the mechanism is still one
+	 * click away; `resolution` — the verdict PLUS the manual-deploy clause,
+	 * which is the promise that stops a reader treating a gate as an outage —
+	 * is still the last thing in the disclosure, in the same words and the same
+	 * order. Only its SHAPE changed.
+	 *
+	 * ⛔ AND NO GATE GETS A `Clears` ROW HERE. `consequence` is printed and it
+	 * already carries every gate's clause — that is what it is for. The record
+	 * holds what the banner does not: which object, of what kind, on what
+	 * clock, under what name. `GateRecord`'s `clearsFor` defaults to null for
+	 * exactly this reason.
+	 */
 </script>
 
+{#snippet gateBody()}
+	<!-- THE SAME OBJECT THE CARD SCALE DRAWS, in the banner's own ink.
+	     `tone="banner"` is the only difference and it is a COLOUR argument, not
+	     a content one: `FactList` reads `currentColor` off `AlertPanel`'s
+	     footnote class, so the record speaks in the severity's voice exactly
+	     like the summary above it and the `.nav-link` beside it. -->
+	<GateRecord {gates} foot={story.resolution} tone="banner" />
+{/snippet}
+
 {#if story.pinnedTo || story.blocked}
+	<!-- ⚠️ THE SNIPPET IS PASSED CONDITIONALLY, NOT GUARDED INSIDE ITSELF. A
+	     snippet reference is always truthy, so handing one over unconditionally
+	     would give `AlertPanel` a body it must render — and with no gates that
+	     is a labelled control opening onto nothing, which is the empty
+	     disclosure its own test file forbids. With no gates the story still has
+	     a `resolution`, so it falls back to the sentence form and `Details`. -->
 	<AlertPanel
 		severity={story.pinnedTo ? 'pinned' : story.severity}
 		title={story.headline}
 		message={story.consequence}
-		{footnote}
+		footnote={gates.length === 0 ? story.resolution : undefined}
+		footnoteBody={gates.length === 0 ? undefined : gateBody}
+		footnoteCount={gates.length === 0 ? undefined : gates.length}
 		{icon}
 		{actions}
 		class={className}

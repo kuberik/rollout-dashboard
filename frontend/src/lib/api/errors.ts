@@ -213,15 +213,15 @@ export function errorConsequence(error: unknown): string {
 	if (error instanceof ApiError) {
 		if (error.isAuth) {
 			return error.status === 403
-				// ⛔ NOT `can read the cluster but not this namespace`. (2026-08-31)
-				// A 403 is the server refusing THIS request; it says nothing about
-				// what else the account can read, and the refusal may be about the
-				// resource kind, an admission policy or the proxy rather than the
-				// namespace. Naming a cause we did not observe sends the reader to
-				// argue about the wrong grant. The server's own sentence prints
-				// verbatim below this line and is where a cause may legitimately
-				// come from.
-				? 'The server refused this request for your account. Ask whoever granted your access.'
+				? // ⛔ NOT `can read the cluster but not this namespace`. (2026-08-31)
+					// A 403 is the server refusing THIS request; it says nothing about
+					// what else the account can read, and the refusal may be about the
+					// resource kind, an admission policy or the proxy rather than the
+					// namespace. Naming a cause we did not observe sends the reader to
+					// argue about the wrong grant. The server's own sentence prints
+					// verbatim below this line and is where a cause may legitimately
+					// come from.
+					'The server refused this request for your account. Ask whoever granted your access.'
 				: 'Sign in again to carry on. Nothing you were looking at was lost.';
 		}
 		if (error.isMissing) {
@@ -240,21 +240,51 @@ export function errorConsequence(error: unknown): string {
 		: `${lead} Trying again will not change the answer until something on the server side changes.`;
 }
 
+/** One row of the failure record: a field's name and its value. */
+export type ErrorFact = { label: string; value: string; handle?: boolean };
+
 /**
- * The server's own sentence, or an explicit statement that there was none —
- * NEVER a cause invented to fill the gap. Prefixed with the address that was
- * asked for, which is the same handle the not-found state prints ("the server
- * answered for prod/hello-world and returned no release").
+ * ⭐ THE FAILURE AS FIELDS, NOT AS A SENTENCE. (2026-09-02)
+ *
+ * It was `errorDetail`, one string: `/api/rollouts — the server sent no
+ * explanation with its HTTP 503.` Read it and it is not a sentence at all — it
+ * is THREE machine facts (an address, a status code, and what the server said)
+ * welded together with an em dash, and the middle one is smuggled into the
+ * grammar of the third. A reader cannot scan it, and the address — the one
+ * part they would paste into a terminal — is the part with punctuation stuck
+ * to it.
+ *
+ * Fields want labels. `ErrorState` and `+error.svelte` render this through
+ * `FactList`, the product's one aligned `<dl>`, inside the same `<details>`
+ * the sentence used to live in.
+ *
+ * ⛔ THE CONTENT DID NOT CHANGE, ONLY ITS SHAPE. The server's own sentence is
+ * still verbatim and is still the last row; a failure with no explanation
+ * still SAYS that it had none, because inventing a cause to fill the gap is
+ * the defect this function was written against. The address is still the same
+ * handle the not-found state prints.
+ *
+ * ⚠️ THE ADDRESS AND THE STATUS ARE HANDLES. They are mono, `break-all` and
+ * muted-by-role in `FactList` — strings you paste after `curl`, not strings
+ * you read.
  */
-export function errorDetail(error: unknown): string | undefined {
+export function errorFacts(error: unknown): ErrorFact[] {
 	if (error instanceof ApiError) {
-		const where = error.path ? `${error.path} — ` : '';
-		if (error.detail) return `${where}${error.detail}`;
-		if (error.status) return `${where}the server sent no explanation with its HTTP ${error.status}.`;
-		return `${where}the browser could not open a connection.`;
+		const facts: ErrorFact[] = [];
+		if (error.path) facts.push({ label: 'Address', value: error.path, handle: true });
+		if (error.status) facts.push({ label: 'Status', value: `HTTP ${error.status}`, handle: true });
+		facts.push({
+			label: 'Server said',
+			value: error.detail
+				? error.detail
+				: error.status
+					? 'nothing'
+					: 'nothing — the browser could not open a connection'
+		});
+		return facts;
 	}
-	if (error instanceof Error && error.message) return error.message;
-	return undefined;
+	if (error instanceof Error && error.message) return [{ label: 'Error', value: error.message }];
+	return [];
 }
 
 /**

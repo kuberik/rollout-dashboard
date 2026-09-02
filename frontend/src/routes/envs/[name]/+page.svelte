@@ -95,6 +95,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList from '$lib/components/FactList.svelte';
 	import { now } from '$lib/stores/time';
 	import {
 		ArrowLeftOutline,
@@ -465,12 +466,22 @@
 		 * the banner discloses them, because its list is a UNION over every
 		 * blocked app and belongs to no single row.
 		 *
-		 * ⛔ NOT DELETED. `AlertPanel` renders the footnote in a native
+		 * ⛔ NOT DELETED. `AlertPanel` renders the disclosure in a native
 		 * `<details>`, so the names stay in the DOM, keyboard-reachable and
 		 * selectable — which a `title` tooltip would not be on a phone.
+		 *
+		 * ⭐ IT IS A SET, SO IT IS A RECORD AND THE TRIGGER COUNTS. (2026-09-02)
+		 * It was the string `rule: a, b` behind a control labelled `Which rule`
+		 * / `Which rules` — an INTERROGATIVE, which `AlertPanel`'s own
+		 * `footnoteLabel` note had already banned in as many words a day
+		 * earlier (*"i'm not sure i particularly like that format 'what clears
+		 * this'"*). This is the call site that pass did not own, so the ban
+		 * never reached it. The names are a SET of one kind, which is exactly
+		 * the shape `lib/disclosure.ts` gives the count form to, and `FactList`
+		 * dresses each one as the handle it is instead of comma-joining them
+		 * into a sentence that is not a sentence.
 		 */
-		footnote?: string;
-		footnoteLabel?: string;
+		gates?: string[];
 		href: string;
 		action: string;
 	};
@@ -530,8 +541,7 @@
 				// uses (`Two things are holding PROD`). The names are the lookup
 				// key and go to the footnote; see `Banner.footnote`.
 				message: `${n} newer build${n === 1 ? '' : 's'} of ${blocked[0].appName} ${n === 1 ? 'is' : 'are'} waiting on ${g} gate${g === 1 ? '' : 's'}.`,
-				footnote: `rule: ${[...gates].join(', ')}`,
-				footnoteLabel: g === 1 ? 'Which rule' : 'Which rules',
+				gates: [...gates],
 				href: rolloutHref(blocked[0].slot.cell),
 				action: 'Review gates'
 			};
@@ -919,13 +929,26 @@
 			</p>
 		</div>
 
+		<!-- ⭐ THE HANDLES AS A RECORD, ONE ROW EACH. `rule: a, b` was a comma
+		     list wearing a colon — the shape of a sentence with none of a
+		     sentence's grammar. Each name is a `kubectl` handle and `FactList`
+		     dresses it as one: mono, `break-all`, under the word that says what
+		     it is. The UNION is this banner's own; the app row 250px below owns
+		     the per-rollout list and still prints it. -->
+		{#snippet gateHandles()}
+			<FactList
+				tone="banner"
+				facts={(banner?.gates ?? []).map((id) => ({ label: 'Rule', value: id, handle: true }))}
+			/>
+		{/snippet}
+
 		{#if banner}
 			<AlertPanel
 				severity={banner.severity}
 				title={banner.title}
 				message={banner.message}
-				footnote={banner.footnote}
-				footnoteLabel={banner.footnoteLabel}
+				footnoteBody={banner.gates?.length ? gateHandles : undefined}
+				footnoteCount={banner.gates?.length ? banner.gates.length : undefined}
 				icon={banner.icon}
 				pulse={banner.severity === 'error'}
 			>

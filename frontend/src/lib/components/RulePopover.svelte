@@ -67,6 +67,7 @@
 	 */
 	import { ChevronRightOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
+	import { countLabel } from '$lib/disclosure';
 
 	let {
 		/**
@@ -78,16 +79,23 @@
 		 * one thing a reader wants before deciding to open it — the
 		 * `Show 8 ready resources ›` shape `COMPOSITION-GRAMMAR.md` §8 names.
 		 *
-		 * `AlertPanel`'s own `Details` is deliberately untouched: its body is a
-		 * SENTENCE, not a record, and it is not a set with a count.
+		 * ⭐ AND `AlertPanel` SPEAKS IT TOO NOW. (2026-09-02) The earlier note
+		 * here said the banner's `Details` was *"deliberately untouched: its body
+		 * is a SENTENCE, not a set with a count"*. That was true of SOME of its
+		 * ten call sites and false of others — `BlockingStoryPanel` is the same
+		 * gates as this control, one viewport above it on `/environments`, and it
+		 * said `Details` while this said `2 rules`. The grammar is stated once in
+		 * `lib/disclosure.ts` now and both objects derive from it.
 		 */
 		count,
+		/** What is being counted. Singular; `lib/disclosure.ts` adds the `-s`. */
+		noun = 'rule',
 		/** The record. Rendered inside the panel; in the DOM when closed. */
 		children,
 		class: className = ''
-	}: { count: number; children: Snippet; class?: string } = $props();
+	}: { count: number; noun?: string; children: Snippet; class?: string } = $props();
 
-	const label = $derived(count === 1 ? '1 rule' : `${count} rules`);
+	const label = $derived(countLabel(count, noun));
 
 	let detailsEl: HTMLDetailsElement | undefined = $state();
 	let summaryEl: HTMLElement | undefined = $state();

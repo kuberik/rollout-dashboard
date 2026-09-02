@@ -36,6 +36,7 @@
 		UserCircleSolid
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import FactList, { type Fact } from '$lib/components/FactList.svelte';
 	import BuildStateMark from '$lib/components/BuildStateMark.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -136,7 +137,9 @@
 	 */
 
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
+		rolloutsListQueryOptions({
+			options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) }
+		})
 	);
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
@@ -344,25 +347,46 @@
 		return `${who} cannot deploy it in ${where} yet.`;
 	});
 
-	const bannerFootnote = $derived.by(() => {
+	/**
+	 * ⭐ THE DISCLOSED TIER IS A RECORD, AND THE TRIGGER COUNTS. (2026-09-02)
+	 *
+	 * It was one run-on string — *"A deployment window is closed — it opens in
+	 * 1d 4h (8/31/2026, 1:00:00 PM). 2 gates need an approval or an external
+	 * check: ghd-xm669, hello-world-manual-approval."* — behind a control
+	 * labelled `Details`. That is a SET of gate handles with a count already in
+	 * the prose, plus a clock, narrated at 12px inside an amber field. Every
+	 * fact in it survives; each one now has its own row and its own label, and
+	 * the count moves out of the sentence and into the control, which is where
+	 * a reader uses it (`lib/disclosure.ts`).
+	 *
+	 * ⛔ THE TWO BUCKETS STAY APART. `window` (a gate reporting `passing:
+	 * false`) and `approval` (a gate that published an allow-list) clear
+	 * differently and the old sentence said so; collapsing them into one `Rule`
+	 * label would drop that. They are the `<dt>`s.
+	 */
+	const bannerFacts = $derived.by<Fact[]>(() => {
 		const b = blockage;
-		if (!b) return undefined;
-		const parts: string[] = [];
-		if (b.window.length > 0) {
-			const until = opensIn ? formatTimeUntil(opensIn, $now) : null;
-			parts.push(
-				until
-					? `A deployment window is closed — it opens in ${until} (${new Date(opensIn!).toLocaleString()}).`
-					: `${b.window.length} gate${b.window.length === 1 ? '' : 's'} not passing — ${b.window.join(', ')}.`
-			);
+		if (!b) return [];
+		const facts: Fact[] = [];
+		// THE CLOCK LEADS, because it is the only row that answers "when".
+		// ⛔ AND ONLY WHERE THERE IS ONE. A window with no `nextTransition` has
+		// no reopening to state, and `opens` with nothing after it is a broken
+		// row — the same fence `BlockingStoryLines` puts on `clearsAt`.
+		if (b.window.length > 0 && opensIn) {
+			facts.push({
+				label: 'Opens',
+				value: `in ${formatTimeUntil(opensIn, $now)} · ${new Date(opensIn).toLocaleString()}`
+			});
 		}
-		if (b.approval.length > 0) {
-			parts.push(
-				`${b.approval.length} gate${b.approval.length === 1 ? '' : 's'} need an approval or an external check: ${b.approval.join(', ')}.`
-			);
-		}
-		return parts.length > 0 ? parts.join(' ') : undefined;
+		for (const name of b.window) facts.push({ label: 'Not passing', value: name, handle: true });
+		for (const name of b.approval) facts.push({ label: 'Approval', value: name, handle: true });
+		return facts;
 	});
+
+	/** The SET the trigger counts: gate handles, both buckets, never the clock. */
+	const bannerRuleCount = $derived(
+		(blockage?.window.length ?? 0) + (blockage?.approval.length ?? 0)
+	);
 
 	/* PROGRESSIVE DISCLOSURE — `Show 8 ready resources ›`, the reference's own
 	   control. The card states its rollup, prints what matters, and hides the
@@ -498,13 +522,21 @@
 			design, not text"* looks like, against the neutral gray row-band the
 			human said *"feels like a bug"*. ONE banner: a page with three has none.
 		-->
+		<!-- ⭐ THE RECORD. `FactList` is the product's one aligned `<dl>`;
+		     `tone="banner"` makes it read `currentColor` off `AlertPanel`'s
+		     footnote ink, so it speaks in the severity's voice. -->
+		{#snippet gateFacts()}
+			<FactList facts={bannerFacts} tone="banner" />
+		{/snippet}
+
 		{#if blockage}
 			<AlertPanel
 				severity="warning"
 				icon={blockage.window.length > 0 ? CalendarMonthSolid : UserCircleSolid}
 				title="{blockage.head.short} can’t go any further yet"
 				message={bannerMessage}
-				footnote={bannerFootnote}
+				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
+				footnoteCount={bannerRuleCount > 0 ? bannerRuleCount : undefined}
 				class="mt-5"
 			>
 				{#snippet extra()}
@@ -512,7 +544,8 @@
 						role="alarm"
 						label="{blockage.slots.length} blocked"
 						wide
-						title="{blockage.slots.length} places — a place is one service in one environment — are waiting on a gate"
+						title="{blockage.slots
+							.length} places — a place is one service in one environment — are waiting on a gate"
 					/>
 				{/snippet}
 				{#snippet actions()}
@@ -602,8 +635,8 @@
 					icon={RocketSolid}
 					title="Newest build in use"
 					verdict="{lead.services.length} service{lead.services.length === 1 ? '' : 's'}"
-					verdictTitle="Everything below is counted across the {lead.services
-						.length} service{lead.services.length === 1
+					verdictTitle="Everything below is counted across the {lead.services.length} service{lead
+						.services.length === 1
 						? ''
 						: 's'} that have a release for this commit. Each ships it as its own release, with its own gates."
 					class="mt-5"
@@ -792,7 +825,9 @@
 						>
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each expandPast[repo.repoKey] ? past : past.slice(0, FOLD) as row (row.revision)}
-									<li class="rev-row rev-row--quiet tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
+									<li
+										class="rev-row rev-row--quiet tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40"
+									>
 										<!-- NO GLYPH HERE, AND THAT IS THE RULE WORKING. Every row in
 										     this card has the same answer — the card header says it
 										     once — so a per-row mark would be identical twelve times
@@ -997,7 +1032,8 @@
 				<span class="rev-name-svcs">
 					{#each g.services as svc, i (svc.appName)}
 						<span class="rev-svc">
-							<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200">{svc.appName}</span>
+							<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200">{svc.appName}</span
+							>
 							{#if svc.diverged}
 								<!--
 									⛔ THE WORD COMES FROM `rankLabel`, NOT FROM THIS FILE.

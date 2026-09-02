@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import type { Snippet, Component } from 'svelte';
+	import { countLabel } from '$lib/disclosure';
 	import {
 		ExclamationCircleSolid,
 		InfoCircleSolid,
@@ -150,8 +151,56 @@
 		 *
 		 * Nothing else. If you find yourself writing a verb, the thing you want
 		 * to say belongs in `message`, where it is printed.
+		 *
+		 * ⭐ AND CHOOSING BETWEEN THE TWO IS NOT A JUDGEMENT CALL ANY MORE.
+		 * (2026-09-02) `lib/disclosure.ts` states the rule: a SET you can count
+		 * takes `footnoteCount`; ONE RECORD and a GENUINE SENTENCE both keep
+		 * `Details`. Do not hand-spell a count here — `footnoteCount` exists so
+		 * that six call sites cannot grow six pluralisation rules, which is how
+		 * `Which rule` / `Which rules` survived on `/envs/<name>` through the very
+		 * pass that was banning interrogatives.
 		 */
 		footnoteLabel?: string;
+		/**
+		 * ⭐ THE SET FORM OF THE LABEL. Pass the number of things behind the
+		 * control and the label becomes `1 rule` / `3 rules` — `lib/disclosure.ts`
+		 * owns the grammar, and `RulePopover` (the CARD-scale control over the
+		 * identical content) derives its label from the same function, which is
+		 * what makes the banner and the card one affordance rather than two.
+		 *
+		 * ⛔ ONLY FOR A SET. A count of one over a thing there can only ever be
+		 * one of — a request, an address — reads as pedantry and teaches nothing.
+		 */
+		footnoteCount?: number;
+		/** The kind of thing `footnoteCount` counts. Singular; the plural is `-s`. */
+		footnoteNoun?: string;
+		/**
+		 * ⭐ THE FOOTNOTE AS A RECORD RATHER THAN AS A PARAGRAPH. (2026-09-02)
+		 *
+		 * > *"i think i also don't like 'details' expansion. it's formatted just
+		 * > as text when in some cases it could be more richly formatted."*
+		 *
+		 * Read the ten call sites and the footnote was never ONE kind of thing:
+		 *
+		 *   A SET OF RECORDS   every gate holding a rollout, every contract a
+		 *                      build is waiting on. `GateRecord` / `FactList`.
+		 *   A MACHINE FACT     an address, an HTTP status, the server's own
+		 *   WITH FIELDS        sentence, the actor who pinned it. `FactList`.
+		 *   A SENTENCE         and only here is `footnote` still the right slot.
+		 *
+		 * The first two want an aligned `<dl>`, which is what this slot is for. It
+		 * renders inside the SAME `<details>`, at the same 12px, in the severity's
+		 * own ink — so a snippet cannot smuggle in a second ink ladder any more
+		 * than `messageBody` can. Pass one or the other, never both.
+		 *
+		 * ⛔ IT IS STILL A NATIVE `<details>` AND THE SUBTREE IS STILL IN THE DOM
+		 * WHEN CLOSED. `lib/messages/` walks `textContent`; a record that unmounted
+		 * would make every fact in it unreachable to the census WHILE THE SUITE
+		 * STAYED GREEN. That is the failure this component's own test file exists
+		 * to catch, and it governs the record exactly as it governed the
+		 * paragraph.
+		 */
+		footnoteBody?: Snippet;
 		icon?: Component;
 		pulse?: boolean;
 		actions?: Snippet;
@@ -171,7 +220,10 @@
 		message,
 		messageBody,
 		footnote,
+		footnoteBody,
 		footnoteLabel = 'Details',
+		footnoteCount,
+		footnoteNoun = 'rule',
 		icon,
 		pulse = false,
 		actions,
@@ -271,6 +323,14 @@
 	});
 
 	const Icon = $derived(icon ?? palette.defaultIcon);
+
+	/**
+	 * THE SET FORM WINS WHERE A CALLER SUPPLIED A COUNT, so a caller cannot
+	 * pass a count AND a hand-written noun and have the two disagree on screen.
+	 */
+	const disclosureLabel = $derived(
+		footnoteCount === undefined ? footnoteLabel : countLabel(footnoteCount, footnoteNoun)
+	);
 </script>
 
 <div class={className}>
@@ -446,7 +506,7 @@
 					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>
-				{#if message || messageBody || footnote}
+				{#if message || messageBody || footnote || footnoteBody}
 					<div class="col-start-2 row-start-2 min-w-0">
 						{#if messageBody}
 							<div class="mt-0.5 text-sm break-words {palette.message}">
@@ -455,7 +515,7 @@
 						{:else if message}
 							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
 						{/if}
-						{#if footnote}
+						{#if footnote || footnoteBody}
 							<!--
 								⭐ THE DISCLOSURE. See the `footnote` prop's note for the
 								measurement that produced it.
@@ -493,9 +553,21 @@
 										class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
 										aria-hidden="true"
 									/>
-									{footnoteLabel}
+									{disclosureLabel}
 								</summary>
-								<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
+								<!-- ⭐ THE RECORD AND THE PARAGRAPH SHARE ONE WRAPPER, so the
+								     severity's ink and the 12px are stated once and a caller
+								     cannot spell either itself. `FactList tone="banner"` reads
+								     its inks off `currentColor`, which is this class and nothing
+								     else — the same mechanism `--nav-link-ink` uses for a link in
+								     the actions row. -->
+								{#if footnoteBody}
+									<div class="mt-1 min-w-0 text-xs {palette.footnote}">
+										{@render footnoteBody()}
+									</div>
+								{:else if footnote}
+									<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
+								{/if}
 							</details>
 						{/if}
 					</div>
