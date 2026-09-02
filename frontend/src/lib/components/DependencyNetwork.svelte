@@ -252,9 +252,12 @@
 			label,
 			// An edge label is an HTML div in this library, so it takes `color`
 			// and `background` — not the SVG `fill` a <text> node would.
-			labelStyle: `font-weight:${e.state === 'blocked' ? 600 : 400};color:${
-				e.state === 'blocked' ? stroke : ink('label')
-			};background:${ink('ground')};`,
+			// Size moves WITH the weight so each state lands on a declared
+			// type-role combo (`t-micro` 11/400 unblocked, `t-button` 12/600
+			// blocked) instead of the shared 10.5px neither state owns.
+			labelStyle: `font-size:${e.state === 'blocked' ? 12 : 11}px;font-weight:${
+				e.state === 'blocked' ? 600 : 400
+			};color:${e.state === 'blocked' ? stroke : ink('label')};background:${ink('ground')};`,
 			style: `stroke:${stroke};stroke-width:${e.state === 'blocked' ? 2 : 1.5};${
 				e.cyclic ? 'stroke-dasharray:2 4;' : e.state === 'unknown' ? 'stroke-dasharray:4 3;' : ''
 			}`,

@@ -1922,7 +1922,7 @@
 														name,
 														getDisplayVersion(latestEntry.version)
 													)}
-													class="text-xl font-bold tracking-tight text-gray-900 hover:underline dark:text-white"
+													class="t-display-id text-gray-900 hover:underline dark:text-white"
 												>
 													{getDisplayVersion(latestEntry.version)}
 												</a>
@@ -2612,7 +2612,7 @@
 						{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}
 							<div class="mt-5 w-full">
 								<div
-									class="text-left text-[11px] font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400"
+									class="t-label text-left text-gray-500 dark:text-gray-400"
 								>
 									{rollout.status?.releaseCandidates?.length} release candidate{rollout.status
 										?.releaseCandidates?.length === 1

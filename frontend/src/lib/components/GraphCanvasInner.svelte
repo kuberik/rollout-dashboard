@@ -959,9 +959,13 @@
 		cursor: default;
 	}
 	/* An edge label is an HTML div, not SVG <text>, so its ground is a
-	   background and it has to follow the theme like every other surface. */
+	   background and it has to follow the theme like every other surface.
+	   font-size is a fallback only — every real caller (`DependencyNetwork`,
+	   `AppPromotionFlow`) sets it per-edge via `labelStyle` now, landing on
+	   a declared role (`t-micro` 11/400 or `t-button` 12/600) instead of
+	   this component's own off-scale 10.5px. */
 	.graph-canvas :global(.svelte-flow__edge-label) {
-		font-size: 10.5px;
+		font-size: 11px;
 		line-height: 1.3;
 		padding: 0 3px;
 		/* 4px is the vocabulary's own small radius (`Chip`, `.chip-value`,

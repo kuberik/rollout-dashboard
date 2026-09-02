@@ -1464,13 +1464,13 @@
 			{#if stageCards.length > 0}
 				<section>
 					<h2
-						class="mb-3 flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-gray-400"
+						class="t-label mb-3 flex items-center gap-2 text-gray-500 dark:text-gray-400"
 					>
 						<CodeBranchOutline class="h-3.5 w-3.5" aria-hidden="true" />
 						{regionCards.length > 0 ? 'Pipeline stages' : 'Environments'}
 						<!-- `4 in promotion order` assumed the reader knew what a
 						     promotion order is. This says which way it runs. -->
-						<span class="font-normal tracking-normal normal-case"
+						<span class="t-micro"
 							>· a version starts on the left and ends on the right</span
 						>
 					</h2>
@@ -1504,11 +1504,11 @@
 			{#if regionCards.length > 0}
 				<section>
 					<h2
-						class="mb-3 flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-gray-400"
+						class="t-label mb-3 flex items-center gap-2 text-gray-500 dark:text-gray-400"
 					>
 						<GlobeSolid class="h-3.5 w-3.5" aria-hidden="true" />
 						Production regions
-						<span class="font-normal tracking-normal normal-case"
+						<span class="t-micro"
 							>· {regionCards.length}, the ones furthest behind first</span
 						>
 					</h2>

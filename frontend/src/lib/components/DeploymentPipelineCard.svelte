@@ -680,7 +680,7 @@
 					{/if}
 				</div>
 				<span
-					class="inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset {pillClasses(
+					class="t-label inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 ring-1 ring-inset {pillClasses(
 						node.status
 					)}"
 				>
@@ -903,7 +903,7 @@
 		{#if !hideHeader}
 			<!-- Detail header: title + status + meta -->
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-				<h3 class="text-base font-bold tracking-tight text-gray-900 sm:text-lg dark:text-white">
+				<h3 class="t-headline text-gray-900 dark:text-white">
 					{node.longLabel}
 				</h3>
 				{#if hasMultipleKRs && node.krName}
@@ -915,7 +915,7 @@
 					</span>
 				{/if}
 				<span
-					class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {pillClasses(
+					class="t-label inline-flex items-center rounded-full px-2.5 py-0.5 ring-1 ring-inset {pillClasses(
 						node.status
 					)}"
 				>
@@ -1135,7 +1135,7 @@
 			<span class="truncate">{info.name}</span>
 			<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
 			<span
-				class="flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+				class="t-micro flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-gray-500 dark:bg-gray-700 dark:text-gray-400"
 				title="Parallel rollouts progress independently"
 			>
 				track {info.index} / {info.total}
@@ -1308,7 +1308,7 @@
 								{/if}
 							</div>
 							<span
-								class="inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset {pillClasses(
+								class="t-label inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 ring-1 ring-inset {pillClasses(
 									node.status
 								)}"
 							>

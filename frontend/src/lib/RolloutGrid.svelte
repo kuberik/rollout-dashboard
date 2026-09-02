@@ -420,7 +420,7 @@
 						type="button"
 						onclick={() => (quickFilter = quickFilter === sp.key ? 'all' : sp.key)}
 						aria-pressed={quickFilter === sp.key}
-						class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors
+						class="t-label inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 transition-colors
 							{quickFilter === sp.key
 								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
 								: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
@@ -781,10 +781,10 @@
 									</span>
 									<span class="flex shrink-0 flex-col items-end leading-tight">
 										{#if c.timestamp}
-											<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400" title={formatDate(c.timestamp)}>{formatTimeAgoCompact(c.timestamp, $now)} ago</span>
-											<span class="text-[9px] text-gray-500 dark:text-gray-400">{c.isRunning ? 'started' : 'updated'}</span>
+											<span class="t-micro font-mono text-gray-500 dark:text-gray-400" title={formatDate(c.timestamp)}>{formatTimeAgoCompact(c.timestamp, $now)} ago</span>
+											<span class="t-micro text-gray-500 dark:text-gray-400">{c.isRunning ? 'started' : 'updated'}</span>
 										{:else}
-											<span class="text-[10px] text-gray-500 dark:text-gray-400">no deploy</span>
+											<span class="t-micro text-gray-500 dark:text-gray-400">no deploy</span>
 										{/if}
 									</span>
 								</div>

@@ -1011,7 +1011,7 @@
 						x={tick.x}
 						y={PAD_T + services.length * ROW_H + 18}
 						text-anchor="middle"
-						font-size="10"
+						font-size="11"
 						font-family="ui-sans-serif, system-ui, sans-serif"
 						class="fill-gray-500 dark:fill-gray-400"
 					>
@@ -1036,7 +1036,7 @@
 					x={containerWidth - PAD_R - 4}
 					y={PAD_T + 10}
 					text-anchor="end"
-					font-size="10"
+					font-size="11"
 					class="fill-gray-500 dark:fill-gray-400"
 				>
 					now

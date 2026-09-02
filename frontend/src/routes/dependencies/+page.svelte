@@ -244,7 +244,7 @@
 							? ''
 							: 's'} between them
 						{#if blocked.length > 0}
-							· <span class="font-medium text-gray-700 dark:text-gray-200"
+							· <span class="text-gray-700 dark:text-gray-200"
 								>{blocked.length} holding</span
 							>
 						{:else}
@@ -454,7 +454,7 @@
 								{#if to}
 									<a
 										href={`/rollouts/${to.cluster}/${to.namespace}/${to.name}`}
-										class="ml-auto shrink-0 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+										class="nav-link ml-auto shrink-0 !py-0 text-blue-600 dark:text-blue-400"
 										>Open ›</a
 									>
 								{/if}

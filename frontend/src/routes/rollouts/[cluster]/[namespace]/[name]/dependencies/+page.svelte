@@ -1085,7 +1085,7 @@
 							>
 							<a
 								href="/dependencies"
-								class="text-xs font-medium whitespace-nowrap text-blue-600 hover:underline dark:text-blue-400"
+								class="nav-link !py-0 whitespace-nowrap text-blue-600 dark:text-blue-400"
 								>Whole network ›</a
 							>
 						{/snippet}

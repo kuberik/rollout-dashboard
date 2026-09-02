@@ -63,7 +63,7 @@
 	title={`Cluster ${named} — the Kubernetes cluster these rollouts run on, not the environment they serve`}
 >
 	<ServerOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-	<span class="shrink-0 text-[10px] leading-none">cluster</span>
-	<span class="truncate font-mono text-[11px] font-semibold leading-none">{named}</span>
+	<span class="t-micro shrink-0 leading-none">cluster</span>
+	<span class="t-code-sm truncate leading-none">{named}</span>
 </span>
 {/if}

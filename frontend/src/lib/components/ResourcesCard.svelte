@@ -267,18 +267,18 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
 								<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">Deployment</span>
+								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">Deployment</span>
 							</div>
 							{#if resource.message && !isReady}
-								<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
+								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 							{/if}
 						</div>
 						{#if replicas}
 							<span class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
-								{replicas.ready}/{replicas.total} <span class="font-normal text-[10px] text-gray-500 dark:text-gray-400">pods</span>
+								{replicas.ready}/{replicas.total} <span class="font-normal t-micro text-gray-500 dark:text-gray-400">pods</span>
 							</span>
 						{/if}
-						<span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium
+						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
 							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
@@ -328,14 +328,14 @@
 										<div class="min-w-0 flex-1">
 											<div class="flex items-center gap-1">
 												<span class="truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{rs.name}</span>
-												<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">ReplicaSet</span>
+												<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">ReplicaSet</span>
 												{#if rs.isCurrentRS}
-													<span class="shrink-0 rounded bg-blue-100 px-1 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">current</span>
+													<span class="shrink-0 rounded bg-blue-100 px-1 py-0.5 t-micro text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">current</span>
 												{/if}
 											</div>
 										</div>
 										<span class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'}">
-											{rs.readyReplicas}/{rs.desiredReplicas} <span class="text-[10px] text-gray-500 dark:text-gray-400">pods</span>
+											{rs.readyReplicas}/{rs.desiredReplicas} <span class="t-micro text-gray-500 dark:text-gray-400">pods</span>
 										</span>
 									</div>
 
@@ -358,28 +358,28 @@
 											<div class="min-w-0 flex-1">
 												<div class="flex items-center gap-1">
 													<span class="truncate text-[11px] text-gray-600 dark:text-gray-400">{pod.name}</span>
-													<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">Pod</span>
+													<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">Pod</span>
 												</div>
 												{#if pod.message}
-													<span class="block break-words text-[10px] text-gray-500 dark:text-gray-400">{pod.message}</span>
+													<span class="block break-words t-micro text-gray-500 dark:text-gray-400">{pod.message}</span>
 												{/if}
 											</div>
 											{#if pod.restarts > 0}
-												<span class="shrink-0 rounded bg-orange-100 px-1 py-0.5 text-[10px] text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+												<span class="shrink-0 rounded bg-orange-100 px-1 py-0.5 t-micro text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
 													{pod.restarts}r
 												</span>
 											{/if}
 											{#if pod.age}
-												<span class="shrink-0 text-[10px] text-gray-500 dark:text-gray-400">{pod.age}</span>
+												<span class="shrink-0 t-micro text-gray-500 dark:text-gray-400">{pod.age}</span>
 											{/if}
-											<span class="shrink-0 text-[10px] font-medium {getPodStatusColor(pod.phase, pod.ready, pod.terminating)}">
+											<span class="t-label shrink-0 {getPodStatusColor(pod.phase, pod.ready, pod.terminating)}">
 												{getPodStatusLabel(pod.phase, pod.ready, pod.terminating)}
 											</span>
 										</div>
 									{/each}
 
 									{#if (rs.pods?.length ?? 0) === 0}
-										<p class="pb-1 pl-14 pr-4 text-[10px] text-gray-500 dark:text-gray-400">No pods</p>
+										<p class="pb-1 pl-14 pr-4 t-micro text-gray-500 dark:text-gray-400">No pods</p>
 									{/if}
 								{/each}
 
@@ -416,13 +416,13 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
 								<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">HTTPRoute</span>
+								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">HTTPRoute</span>
 							</div>
 							{#if resource.message && !isReady}
-								<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
+								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 							{/if}
 						</div>
-						<span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium
+						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
 							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
@@ -472,13 +472,13 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
 								<span class="truncate text-xs text-gray-700 dark:text-gray-300">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
+								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
 							</div>
 							{#if resource.message}
-								<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
+								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 							{/if}
 						</div>
-						<span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium
+						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
 							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
@@ -529,13 +529,13 @@
 							<div class="min-w-0 flex-1">
 								<div class="flex items-center gap-1.5">
 									<span class="truncate text-xs text-gray-700 dark:text-gray-300">{resource.name}</span>
-									<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
+									<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
 								</div>
 								{#if resource.message && !isReady}
-									<p class="mt-0.5 break-words text-[10px] text-gray-500 dark:text-gray-400">{resource.message}</p>
+									<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 								{/if}
 							</div>
-							<span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium
+							<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
 								{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 								: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 								: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'

@@ -222,7 +222,7 @@
 					{/each}
 					{#if contributors.length > 4}
 						<span
-							class="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-[9px] font-medium text-gray-500 ring-2 ring-white dark:bg-gray-700 dark:text-gray-300 dark:ring-gray-800"
+							class="t-micro flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 ring-2 ring-white dark:bg-gray-700 dark:text-gray-300 dark:ring-gray-800"
 						>
 							+{contributors.length - 4}
 						</span>

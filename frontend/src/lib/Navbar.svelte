@@ -169,7 +169,7 @@
 				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
 				<a
 					href={currentSection.href}
-					class="truncate rounded-md px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg"
+					class="truncate rounded px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg"
 				>{currentSection.label}</a>
 
 				{#if detailContext?.kind === 'rollout' && rollout}
@@ -177,7 +177,7 @@
 					<button
 						type="button"
 						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
-						class="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
+						class="group flex min-w-0 items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
 						aria-haspopup="dialog"
 						aria-expanded={switcherOpen}
 						aria-label="Switch rollout (⌘K)"
@@ -210,7 +210,7 @@
 								</span>
 							{/if}
 						</span>
-						<kbd class="hidden shrink-0 font-mono text-[10px] font-normal text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200 md:inline-block">
+						<kbd class="t-micro hidden shrink-0 font-mono text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200 md:inline-block">
 							{isMac ? '⌘K' : 'Ctrl K'}
 						</kbd>
 						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
@@ -222,7 +222,7 @@
 						type="button"
 						onclick={() => { if (itemScope) { paletteScope = itemScope; switcherOpen = true; } }}
 						disabled={!itemScope}
-						class="group flex min-w-0 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-gray-700/60 dark:disabled:hover:bg-transparent"
+						class="group flex min-w-0 items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-gray-100 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-gray-700/60 dark:disabled:hover:bg-transparent"
 						aria-haspopup={itemScope ? 'dialog' : undefined}
 						aria-expanded={itemScope ? switcherOpen : undefined}
 						aria-label={`Switch ${currentSection.label.toLowerCase()}`}

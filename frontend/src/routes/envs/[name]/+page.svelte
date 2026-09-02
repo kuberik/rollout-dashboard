@@ -969,7 +969,7 @@
 		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
 			<h1 class="flex min-w-0 flex-wrap items-baseline gap-x-3">
 				<span
-					class="min-w-0 truncate font-mono text-2xl leading-[1.15] font-bold text-gray-900 dark:text-white"
+					class="t-display-id min-w-0 truncate text-gray-900 dark:text-white"
 					>{envName}</span
 				>
 				{#if !envChipRedundant}
