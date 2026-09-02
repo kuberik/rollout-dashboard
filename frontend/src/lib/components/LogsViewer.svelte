@@ -1,5 +1,25 @@
 <svelte:options runes={true} />
 
+<script module lang="ts">
+	import type { PodInfo } from '$lib/api/logs';
+
+	/**
+	 * ⛔ THE POD PAYLOAD CAN BE `null`, AND THAT IS NOT A BACKEND BUG. Go's
+	 * `json.Marshal` on a nil slice (`var pods []PodInfo`, never appended to)
+	 * writes the JSON literal `null`, not `[]` — the wire form of "zero pods
+	 * matched this filter". `broadcastPodsLoop` (pkg/logs/streamer.go) sends
+	 * that snapshot every 2s for as long as it stays true, which is exactly
+	 * why `filterType="test"` on a rollout with no test pods crashed on a
+	 * ~2s cadence: `null.forEach` is not a contract violation to survive,
+	 * it is an honest empty set to render as one. Exported so the null case
+	 * is a unit test against this pure function, not a live-cluster fishing
+	 * trip against the component.
+	 */
+	export function normalizePodsPayload(pods: PodInfo[] | null | undefined): PodInfo[] {
+		return pods ?? [];
+	}
+</script>
+
 <script lang="ts">
 	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import {
@@ -15,7 +35,9 @@
 	import { createVirtualizer, notUndefined } from '@tanstack/svelte-virtual';
 	import iwanthue from 'iwanthue';
 	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-	import type { LogLine, PodInfo } from '$lib/api/logs';
+	// `PodInfo` comes from the module script above — shared module context,
+	// re-importing it here collides as a duplicate identifier under svelte-check.
+	import type { LogLine } from '$lib/api/logs';
 	import { logsStreamQueryOptions } from '$lib/api/logs';
 
 	interface Props {
@@ -83,9 +105,19 @@
 		}
 	}
 
-	// Handle pods updates from the stream
-	function handlePodsUpdate(newPods: PodInfo[]) {
-		newPods.forEach(addDiscoveredPod);
+	/**
+	 * WHETHER THE DISCOVERY MECHANISM HAS EVER REPORTED IN. A `pods` event
+	 * carrying zero pods is still a report — it is what tells `connectionState`
+	 * below that the stream is open and listening rather than still connecting,
+	 * for a filter (e.g. `test`) that may never see a `log` event at all.
+	 */
+	let podsEventReceived = $state(false);
+
+	// Handle pods updates from the stream. The payload is `PodInfo[] | null` on
+	// the wire — see `normalizePodsPayload` above for why `null` is honest.
+	function handlePodsUpdate(newPods: PodInfo[] | null | undefined) {
+		podsEventReceived = true;
+		normalizePodsPayload(newPods).forEach(addDiscoveredPod);
 	}
 
 	// Dynamic discovery from logs
@@ -144,11 +176,45 @@
 	 * the question being asked.
 	 */
 	const isLoading = $derived(logsQuery.isPending || logsQuery.isFetching);
-	const isConnecting = $derived(isLoading && logs.length === 0);
-	const isStreaming = $derived(isLoading && logs.length > 0);
 	const error = $derived(
 		logsQuery.isError ? (logsQuery.error as Error)?.message || 'Unknown error' : null
 	);
+
+	/**
+	 * ⛔ "0 lines · Stream closed", "Connecting to pods…" AND A SPINNER, ALL AT
+	 * ONCE. The header's `isConnecting`, the summary line's `isStreaming` check,
+	 * and the footer's `!error` fallback were three SEPARATE derivations of
+	 * "what is the connection doing right now" — agreeing in the common case,
+	 * but not a real partition. The summary line never had a "connecting"
+	 * branch at all: anything that wasn't `isStreaming` and wasn't `error` fell
+	 * straight through to "Stream closed", including the moment the pane was
+	 * still genuinely connecting. Switching to `filterType="test"` on a rollout
+	 * with no test pods made the gap permanent — no `log` event ever arrives,
+	 * so `logs.length` stays 0 forever and the header's spinner+"Connecting…"
+	 * never resolved, while the summary line sat on "Stream closed" the entire
+	 * time. Two contradictory captions for one connection, both true forever.
+	 *
+	 * `connectionState` is the ONE fact now. Every render — header, main panel,
+	 * summary line, footer — reads this and nothing else, so they cannot
+	 * disagree with each other again.
+	 *
+	 * `podsEventReceived` is what keeps "connecting" from being permanent for a
+	 * filter with zero matching pods: a `pods` snapshot, even an honestly empty
+	 * one (see `normalizePodsPayload`), is proof the stream is open and
+	 * reporting — that reclassifies as "streaming, quietly" rather than
+	 * "still connecting", which is what lets the empty-state copy below
+	 * ("No log lines yet…") actually get a turn instead of spinning forever.
+	 */
+	type ConnectionState = 'connecting' | 'streaming' | 'closed' | 'error';
+	const connectionState = $derived.by((): ConnectionState => {
+		if (error) return 'error';
+		if (isLoading) {
+			return logs.length > 0 || podsEventReceived ? 'streaming' : 'connecting';
+		}
+		return 'closed';
+	});
+	const isConnecting = $derived(connectionState === 'connecting');
+	const isStreaming = $derived(connectionState === 'streaming');
 
 	// Detect log level from log line
 	function getLogLevel(line: string): 'error' | 'warn' | 'info' | 'debug' | null {
@@ -307,7 +373,16 @@
 		const linesLabel = `${lineCount.toLocaleString()} line${lineCount === 1 ? '' : 's'}`;
 		const podCount = selectedPods.size > 0 ? selectedPods.size : uniquePods.length;
 		const podsLabel = podCount > 0 ? `${podCount} pod${podCount === 1 ? '' : 's'}` : null;
-		const streamLabel = isStreaming ? 'Streaming' : error ? null : 'Stream closed';
+		// Reads `connectionState` exclusively — see its definition for why this
+		// used to fall through to "Stream closed" while still connecting.
+		const streamLabel =
+			connectionState === 'streaming'
+				? 'Streaming'
+				: connectionState === 'connecting'
+					? 'Connecting…'
+					: connectionState === 'error'
+						? null
+						: 'Stream closed';
 		return [linesLabel, podsLabel, streamLabel].filter(Boolean).join(' • ');
 	});
 
@@ -927,13 +1002,21 @@
 			<!-- ⚠️ THIS SAID `Streaming ●` WHENEVER A LINE HAD EVER ARRIVED — after
 			     the stream closed, and after it errored. A live mark that cannot go
 			     out is decoration, not a status. It is gated on the query now, and
-			     the closed case says so instead of going quiet. -->
-			{#if isStreaming}
+			     the closed case says so instead of going quiet.
+			     ⛔ `{:else if !error}` used to mean "not streaming and not
+			     errored" — which is ALSO true while still connecting, so this row
+			     could print "Stream closed" during the same instant the header
+			     printed "Connecting to pods…". Reads `connectionState`
+			     exclusively now; `connecting` has no branch here because the
+			     outer `{#if filteredLogs.length > 0 || logs.length > 0}` guard
+			     already keeps this footer hidden until there is something to
+			     report, by which point the connection is never still "connecting". -->
+			{#if connectionState === 'streaming'}
 				<div class="flex items-center gap-1">
 					<span class="hidden text-green-700 sm:inline dark:text-green-400">Streaming</span>
 					<span class="h-2 w-2 animate-pulse rounded-full bg-green-700 dark:bg-green-400"></span>
 				</div>
-			{:else if !error}
+			{:else if connectionState === 'closed'}
 				<div class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
 					<span class="hidden sm:inline">Stream closed</span>
 					<span class="h-2 w-2 rounded-full bg-gray-500 dark:bg-gray-400"></span>
