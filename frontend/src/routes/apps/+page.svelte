@@ -2116,24 +2116,39 @@
 		grid-template-areas:
 			'id    id'
 			'fleet fleet'
-			'lead  act'
-			'step  step';
+			'lead  act';
 		align-items: start;
 		column-gap: 12px;
 		row-gap: 12px;
 	}
 
-	/* ── THE STEP IS FULL WIDTH ON A PHONE, AND IT IS THE LAST THING IN THE
-	   CARD. A 44px-tall control stretched across the card is the one element
-	   here that a thumb is actually meant to hit, and putting it under the
-	   measurements rather than beside the name is the order the reader wants:
-	   what is this, how is it doing, what do I do. `:empty` collapses the
-	   row entirely on the rows that have no step, so a settled card is not
-	   12px taller than it needs to be. */
+	/* ── THE STEP IS A FULL-WIDTH BAND AT EVERY WIDTH, AND IT IS THE LAST
+	   THING IN THE ROW. Putting it under the measurements rather than beside
+	   the name is the order the reader wants: what is this, how is it doing,
+	   what do I do. Right-aligned inside the band, so it lands under the
+	   chevron's own x — measured at 1440, the link's right edge and the
+	   chevron's are both 1055.
+
+	   ⛔ AND IT IS NO LONGER A DECLARED ROW OF `grid-template-areas`, AND
+	   THAT DELETION IS WORTH 12px ON EVERY ROW IN THE PRODUCT. (2026-09-02)
+	   An area row named in the template is an EXPLICIT track: it is created
+	   whether or not anything lands in it, and `row-gap` is drawn beside it
+	   regardless. The step renders for one row shape in six (`unpin`), so
+	   measured at 390 every card carried a 0px fourth track plus a 12px
+	   gutter under its last line — 210px of card for 198px of content — and
+	   the same 12px sat under every row between 720 and 999. The comment
+	   that used to be here claimed `:empty` collapsed it; `:empty` never ran,
+	   because the cell is inside an `{#if}` and is not in the DOM at all.
+
+	   Placed on an IMPLICIT row instead (`grid-row` one past the explicit
+	   grid), the track and its gutter come into existence WITH the step and
+	   vanish with it. The row number is per breakpoint because the number of
+	   explicit rows is. */
 	.apps-step {
-		grid-area: step;
+		grid-column: 1 / -1;
+		grid-row: 4;
 		/* A GRID ITEM'S FLOOR IS `min-content` UNLESS YOU SAY OTHERWISE, and
-		   the button inside is `white-space: nowrap`, so min-content is the
+		   the link inside is `white-space: nowrap`, so min-content is the
 		   whole label. Without this the CELL silently grows past its track
 		   instead of the track being wrong in a way anyone can see. */
 		min-width: 0;
@@ -2164,6 +2179,37 @@
 	   and both can be read whole. */
 	.apps-desc {
 		display: none;
+	}
+
+	/* ⭐ AND IT DOES NOT RETURN AT 720 — IT RETURNS AT 800 OF PANEL.
+	   (2026-09-02, found by the re-measure the deleted step track forced.)
+	   The App track is `panel − 32 (px-4) − 408 (the four fixed tracks) − 64
+	   (four gaps)`, so at the 720 breakpoint it is **214px** — and the
+	   description was being placed beside the name inside it. Measured at
+	   viewport 944 (panel exactly 720): `hello-frontend-app` is a 141px
+	   string and rendered as `hello-fron…`, with `Hello Dep…` beside it. That
+	   is the primary identifier ellipsised to make room for four characters
+	   of free text, which is the same trade the phone form already refused
+	   and the same defect the 900 → 1000 re-derivation was written about.
+
+	   THE THRESHOLD IS 840, AND 800 WAS MEASURED AND REJECTED. The App track
+	   is `panel − 504`, but the name does not get all of it: the 36px status
+	   circle and its 12px gap come out first, so the name and its description
+	   share `panel − 552`. At 800 that is 248px against `141 (the longest
+	   name) + 8 (gap) + 105 (`Hello Dep frontend`) = 254` — six pixels short,
+	   and the flex row pays for them out of the NAME, which rendered at 137
+	   of 141. At 840 the pair get 288px: 149 for name-plus-gap and 139 left
+	   for the description, about 22 characters at 11px. Verified with no
+	   truncation on any row from 840 up, including the 872px panel the
+	   `min-[1440px]` rail leaves at 1440 — 32px of headroom, so the rail can
+	   move a little without taking the description with it.
+
+	   Between 720 and 839 the row keeps all five tracks and simply drops the
+	   description, exactly as at 390. */
+	@container (min-width: 840px) {
+		.apps-desc {
+			display: block;
+		}
 	}
 
 	.apps-id {
@@ -2226,47 +2272,63 @@
 	   product-wide: each row is its own grid, so an intrinsic track sizes per
 	   row and the columns stop lining up down the list. One flexible track,
 	   everything else fixed. */
-	/* ── THE STEP TRACK APPEARS AT 1000px OF PANEL, NOT AT 720. ───────────
-	   Measured, not chosen. The five existing tracks plus a 200px step and
-	   five 16px gaps plus the panel's own `px-4` take 720px, and the app-name
-	   track needs ~180px before the longest name in either fixture starts
-	   ellipsising — the one string on the row a reader navigates by. That put
-	   the threshold at 900 while this page had no rail; see the re-derivation
-	   below for why the arrival of the rail moved it to 1000.
+	/* ⛔ THE STEP HAS NO COLUMN AT ANY WIDTH ANY MORE. ────────────────────
+	   (2026-09-02, from the human, looking at the live page at 1280:
+	   *"there's a gap now here where button used to be"*.)
 
-	   Between 720 and 999 the row keeps its five-track form and the step
-	   goes back to being a band under it, exactly as on a phone: the control
-	   is never hidden, only moved. `grid-template-areas` on the 720 rule below
-	   therefore keeps a `step` row.
+	   It had one at 1000px of panel, sized 140px to hold `Release the hold`.
+	   Then five of the six steps were deleted — every one whose `href` was
+	   the row's own destination — and `unpin` is the only shape left that
+	   renders anything into it. Measured at 1280 with the live cluster: FOUR
+	   rows out of four drew nothing there, so the row ran `no full trip yet`
+	   to x=1047 and its chevron at x=1219, with **156px of nothing between
+	   them** (140px track + one 16px gutter). A fixed empty track before the
+	   last column does not read as breathing room; it reads as a control that
+	   failed to render, which is exactly what it was.
 
-	   ⛔ THE THRESHOLD IS 1000px NOW, NOT 900. (2026-09-01, when the rail
-	   arrived.) 900 was derived on a page with NO right rail, where the panel
-	   could reach 1200px. With the 288px rail the panel is 904px at 1440 and
-	   caps at 920px at any width — and 904 − 32 (padding) − 608 (the five
-	   fixed tracks) − 80 (five gaps) leaves the App track **184px**, against
-	   the ~180 the longest name needs BEFORE its description is placed beside
-	   it. Measured at 1440: `hello-frontend-app` rendered at 73px of a 141px
-	   string. That is the primary identifier ellipsised on the page the human
-	   opens most, which is the exact defect the convergence-bar tombstone
-	   above was written about.
+	   The window it was visible in is narrow and extremely common: the six
+	   track form needed 1000px of PANEL, which needs a viewport of 1224+, and
+	   at 1440 the `min-[1440px]` rail takes 312px back and drops the panel to
+	   872. So it showed between 1224 and 1439 — i.e. on a 1280 laptop and
+	   nowhere else.
 
-	   So the step column now costs 1000px of panel, not 900, and the App track
-	   gets 400px whenever the rail is on. The button is still never hidden —
-	   it is a band, which is a designed state and not a fallback. */
+	   WHAT REPLACES IT is the form 720–999 already used and which this file
+	   already called *"a designed state and not a fallback"*: the step is a
+	   BAND under the row, on an implicit grid row that only exists when the
+	   step does. Five tracks now describe every width above 720, so there is
+	   one desktop geometry instead of two, and the 156px goes back to `App` —
+	   the flexible track this file has twice recorded as the one that runs
+	   out. Re-measured at 1280 after the change: `App` 550px against a
+	   longest id content of 391px (`hello-frontend-app` + its description +
+	   its lede), so the name has headroom rather than a hole beside it.
+
+	   THE THREE MEASUREMENT TRACKS WERE RE-MEASURED AND ALL THREE HOLD.
+	   Natural content widths on the live cluster, unclamped:
+	     · Fleet 164px — `all 3 on one older version` is 140px and the
+	       verdict line 139px (16px glyph + 6px gap + 117px). The 164 is held
+	       for the fixture's `2 of 9 up to date · 1 diverged` at ~160.
+	     · Deploys · 7d 128px — `15 deploys · 2d ago` is 109px.
+	     · To prod 96px — `no full trip yet` is 78px, `dev → prod` 62px.
+	   None of them is the column with the hole in it, so none of them moves;
+	   a track resized to fit today's data is a track that ellipsises on
+	   tomorrow's. */
 	@container (min-width: 720px) {
 		.apps-row {
-			/* Five fixed tracks now: the 20px chevron is the fifth. Every
+			/* Five fixed tracks: the 20px chevron is the fifth. Every
 			   non-flexible track is a FIXED width — `auto` was tried and
 			   reverted product-wide, because each row is its own grid and an
 			   intrinsic track sizes per row, so the columns stop lining up
 			   down the list. One flexible track, everything else fixed. */
 			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 20px;
-			grid-template-areas:
-				'id fleet act lead chev'
-				'step step step step step';
+			grid-template-areas: 'id fleet act lead chev';
 			align-items: center;
 			column-gap: 16px;
 			row-gap: 12px;
+		}
+
+		/* One explicit row up here, so the band is row 2 rather than row 4. */
+		.apps-step {
+			grid-row: 2;
 		}
 
 		.apps-chev {
@@ -2286,56 +2348,30 @@
 			text-align: right;
 		}
 
-		.apps-desc {
-			display: block;
-		}
+		/* `.apps-desc` is NOT revealed here — see its own rule above; at this
+		   width the App track is 214px and the description takes it from the
+		   name. It comes back at 800. */
 
 		.apps-inline-label {
 			display: none;
 		}
 	}
 
-	/* ── SIX TRACKS. The step gets its own column and stops being a band.
-	   ⛔ THE TRACK IS 200px BECAUSE THE WIDEST BUTTON IS 197.3px. Do not
-	   shrink it back.
+	/* ⛔ THE SIX-TRACK RULE THAT USED TO SIT HERE IS DELETED, AND SO IS THE
+	   1000px CONTAINER QUERY THAT TURNED IT ON. Two tombstones' worth of
+	   measurement went with it and both are preserved above, on the 720 rule
+	   that is now the only desktop geometry:
 
-	   THE DEFECT IT FIXES, measured on the live cluster at 1440 in light:
-	   the track was 158px, `Choose a version` rendered at 178.5px, and the
-	   cell is `justify-end` — so the button hung 20px PAST ITS OWN TRACK to
-	   the LEFT and painted itself over the `To prod` cell, whose content ran
-	   to x=1189 while the button started at x=1185. On the one row that has
-	   a control. It reads as a rendering fault, which is the exact class of
-	   defect the gray row-band was rejected for twice.
+	     · the track was 200px, then 158px (where the button painted itself
+	       over the `To prod` column), then 140px once the step became a
+	       14px text link with one surviving label;
+	     · the query threshold moved 900 → 1000 when the `min-[1440px]` rail
+	       arrived and cut the panel to 872px.
 
-	   A fixed track cannot be sized by its content (`auto` was tried and
-	   reverted product-wide: each row is its own grid, so an intrinsic track
-	   sizes per row and the columns stop lining up down the list). So the
-	   track is sized to the LONGEST LABEL it can hold instead.
-
-	   ⭐ RE-MEASURED 2026-09-02, AND IT GOT 60px SMALLER. There is exactly ONE
-	   label left — the step is now rendered only for `unpin`, the one whose
-	   destination differs from the row's own; see the markup for why the other
-	   five went. And it is a 14px TEXT LINK, not a 14px/500 button, so the
-	   16px of padding on each side goes too:
-
-	     `Release the hold` + 16px chevron + 2px gap = 135.4px at 14px/400
-
-	   140px, with the 60px it gave back going to the App name track, which the
-	   tombstone below this one records as the column that keeps running out.
-
-	   ⚠️ IF THE LABEL CHANGES, RE-MEASURE. The `max-width` below is the
-	   seatbelt, not the fix: it makes a too-long label WRAP inside its own
-	   track rather than paint over the column beside it. */
-	@container (min-width: 1000px) {
-		.apps-row {
-			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 140px 20px;
-			grid-template-areas: 'id fleet act lead step chev';
-			row-gap: 0;
-		}
-
-		.apps-step a {
-			max-width: 100%;
-			white-space: normal;
-		}
-	}
+	   None of that arithmetic has a subject any more: five of the six steps
+	   were deleted for pointing at the row's own destination, and a fixed
+	   track that four rows in four leave empty is the void the human
+	   reported. The step is a band at every width now. If a second step shape
+	   is ever added back, it belongs in the band beside `unpin`, not in a
+	   column that most rows cannot fill. */
 </style>

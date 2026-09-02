@@ -5,13 +5,12 @@
 	import {
 		CodeBranchSolid,
 		ChevronDownOutline,
-		ChevronUpOutline
+		ChevronUpOutline,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import {
-		fetchCommits,
-		commitsQueryKey,
+		commitsQueryOptions,
 		formatCommitMessage,
-		FetchCommitsError,
 		type CommitInfo
 	} from '$lib/api/github';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
@@ -34,8 +33,12 @@
 		showAvatars?: boolean;
 		// Show the +additions / −deletions stat.
 		showStats?: boolean;
-		// Optional link target; when set the summary line becomes a link.
+		// Optional link target; when set the WHOLE summary line becomes one tap
+		// target pointing at it (see the note above the markup).
 		href?: string;
+		// What the link goes to, for a reader who cannot see that the count,
+		// the stat and the faces are one row. Ignored without `href`.
+		hrefLabel?: string;
 		// Muted "nothing to show" states can be hidden entirely (e.g. inline in a
 		// dense list where an empty row would be noise).
 		hideWhenEmpty?: boolean;
@@ -62,6 +65,7 @@
 		showAvatars = false,
 		showStats = true,
 		href,
+		hrefLabel,
 		hideWhenEmpty = false,
 		showMessages = false,
 		expandable = false,
@@ -73,28 +77,17 @@
 
 	const enabled = $derived(!!namespace && !!name && !!base && !!head && base !== head);
 
-	// CORRECTNESS, not polish. This query inherits the app-wide defaults
-	// (`refetchInterval: 5000`, `retry: 3`). On a page with one of these per
-	// row, an unauthenticated user produced roughly 140 failed /commits
-	// requests a minute — over GitHub's entire authenticated budget — and
-	// every one of those rows rendered "Loading changes…" forever, because
-	// the unauthenticated state was being drawn as a loading state.
+	// CORRECTNESS, not polish. Left to the app-wide defaults
+	// (`refetchInterval: 5000`, `retry: 3`), a page with one of these per row
+	// produced roughly 140 failed /commits requests a minute for an
+	// unauthenticated user — over GitHub's entire authenticated budget — and
+	// every one of those rows rendered "Loading changes…" forever, because the
+	// unauthenticated state was being drawn as a loading state.
 	//
-	// An auth failure is not transient: it cannot be retried into success
-	// and it cannot be polled into success. So it is neither retried nor
-	// polled, and the commit range itself is immutable, so there is nothing
-	// to poll for even on success.
-	const query = createQuery(() => ({
-		queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
-		queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
-		enabled,
-		staleTime: 5 * 60_000,
-		refetchInterval: false as const,
-		retry: (failureCount: number, error: unknown) => {
-			if (error instanceof FetchCommitsError) return false;
-			return failureCount < 1;
-		}
-	}));
+	// The policy now lives in `commitsQueryOptions` so all four callers share
+	// it: never polled, never retried on an auth failure, and a sha-to-sha
+	// range — which cannot change — is never refetched at all.
+	const query = createQuery(() => commitsQueryOptions({ namespace, name, base, head, cluster }));
 
 	// Available-release revisions for this rollout, fetched here so every commit
 	// display filters to release commits automatically (DRY) — callers don't
@@ -177,7 +170,14 @@
 		{/if}
 	{:else}
 		{@const inner = `${count} commit${count !== 1 ? 's' : ''} ${verbText}`}
-		<span class="inline-flex flex-wrap items-center gap-2 {className}">
+		<!-- ⭐ WITH `href`, THE WHOLE ROW IS THE TAP TARGET, NOT THE FIRST FOUR
+		     WORDS. `.tap-zone` / `.tap-link` is the product's pattern for
+		     exactly this (`app.css`): the anchor's `::after` covers the span, so
+		     the count, the diffstat and the faces are one destination instead
+		     of a link with two unclickable neighbours — which the design rules
+		     call a broken affordance. Nothing changes for a caller that passes
+		     no `href`; the span stays a span. -->
+		<span class="inline-flex flex-wrap items-center gap-2 {href && !expandable ? 'tap-zone' : ''} {className}">
 			{#if expandable}
 				<button
 					type="button"
@@ -198,8 +198,9 @@
 				<svelte:element
 					this={href ? 'a' : 'span'}
 					{href}
+					aria-label={href ? hrefLabel : undefined}
 					class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 {href
-						? 'hover:text-blue-600 dark:hover:text-blue-400'
+						? 'tap-link hover:text-blue-600 dark:hover:text-blue-400'
 						: ''}"
 				>
 					<span class="h-1.5 w-1.5 shrink-0 rounded-full {dotClass}"></span>
@@ -237,6 +238,17 @@
 						</span>
 					{/if}
 				</span>
+			{/if}
+
+			{#if href && !expandable}
+				<!-- The product's "there is more, through here" mark — the same
+				     chevron `Show N ready resources ›` uses one card over. It sits
+				     inside the tap zone, so it takes the click without becoming a
+				     second tab stop. -->
+				<ChevronRightOutline
+					class="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500"
+					aria-hidden="true"
+				/>
 			{/if}
 		</span>
 		{#if (showMessages || (expandable && open)) && commits.length > 0}

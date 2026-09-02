@@ -131,6 +131,7 @@
 	import { fly, blur } from 'svelte/transition';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
+	import { rolloutPath } from '$lib/source-dashboard';
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
@@ -1719,8 +1720,29 @@
 													{/if}
 												</div>
 											{/if}
-											<!-- What shipped in this deploy: commits since the previous
-											     deploy, on behalf of the viewing user (click to expand the messages). -->
+											<!-- ⭐ A ROLLUP, NOT A LOG. (2026-09-02, from the human:
+											     *"on the rollout detail page, i would simplify the
+											     'Commits deployed' — it can show how many changes
+											     deployed, and the list of users maybe, but history really
+											     needs to be on history page."*)
+
+											     It used to be `expandable`: pressing it unfolded a list of
+											     shas, subjects and author names INSIDE the status card — a
+											     second history page, drawn twenty pixels under the tab
+											     called History whose entire job that is, and which already
+											     renders this same component with `showMessages` for every
+											     deploy in the list.
+
+											     What survives is what a rollup owes: HOW MANY changed
+											     (`3 commits deployed`, `+42 −17 · 5 files`) and WHO made
+											     them (the faces). The tail is given away, which is this
+											     product's idiom for a tail everywhere else — `Show 8 ready
+											     resources ›` is in the card to the right of this one.
+
+											     No sentence was added to explain the move. Descriptive prose
+											     on a detail page has been rejected here repeatedly; the
+											     chevron and the fact that the whole row is one tap target
+											     say it without words. -->
 											{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
 												<div class="mt-1.5">
 													<CommitSummary
@@ -1729,9 +1751,11 @@
 														{cluster}
 														base={rollout.status.history[1]?.version?.revision}
 														head={latestEntry.version?.revision}
+														href={rolloutPath(cluster, namespace, name, 'history')}
+														hrefLabel="See these commits in the deploy history"
 														showAvatars
 														hideWhenEmpty
-														expandable
+														class="-mx-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 													/>
 												</div>
 											{/if}

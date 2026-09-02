@@ -233,6 +233,24 @@
 		}
 	});
 
+	// ── THE CLOSED-VOCABULARY CAP, ASSERTED. See `capClass`.
+	// A non-`env` chip's label comes from a closed set whose longest member is
+	// `NEVER DEPLOYED`, and the cap is sized to exactly that. If a call site ever
+	// passes something longer, the chip would truncate SILENTLY — which is the
+	// failure mode that produced `6 BEH…`, `15 BEHI…` and three separate `wide`
+	// patches. Name it at the first render instead. `env` is exempt: its labels
+	// ARE unbounded and truncating them is the cap's whole job.
+	$effect(() => {
+		if (!import.meta.env.DEV) return;
+		if (role === 'env' || wide || label.length <= 14) return;
+		console.error(
+			`Chip role="${role}" was given a ${label.length}-character label ("${label}"). ` +
+				'Non-`env` labels come from a CLOSED vocabulary and the width cap is sized to its ' +
+				'longest member (`NEVER DEPLOYED`, 14). This one will truncate. Either shorten the ' +
+				'word or pass `wide` — see the note above `capClass`.'
+		);
+	});
+
 	// ── THE GROUND IS A CHANNEL NOW. (2026-09-02) ────────────────────────────
 	//
 	// From the human, a third time on this pair: *"newest / behind badges
@@ -271,21 +289,60 @@
 	// re-invert the pair for the third time. The strength of the ground is
 	// therefore the DEVIATION CHANNEL:
 	//
-	//   · WASH  — the ink's own hue at 5% (light) / 10% (dark). Enough to make
-	//             the seam an edge and the half an object; ΔL ≈ 0.025 from the
-	//             card. `newest`/`head` and the three ADVERSE roles take this.
-	//   · BLOCK — the half is filled TO ITS OWN BORDER COLOUR, so it reads as a
-	//             solid neutral slab with the hairline surviving only around the
-	//             value half. `rank` alone takes this. ΔL 0.072 light / 0.093
-	//             dark, i.e. 2.9× / 3.1× the wash.
+	//   · WASH  — a `-50` (light) / `-950` at alpha (dark) tint of the role's own
+	//             hue. `newest`/`head` take this.
+	//   · BLOCK — one ramp step deeper. `rank` and the three ADVERSE roles take
+	//             this.
 	//   · FILL  — saturated, `alarm` alone, untouched by this pass.
 	//
-	// ZERO NEW COLOUR VALUES. Every wash is the role's OWN ink at alpha — the
-	// same derivation `.chip-env` uses (`color-mix(... surface 72%, transparent)`)
-	// — and the block is `gray-200`/`gray-700`, which is already the border on
-	// every non-`env` chip and `.chip-value`'s own border. The two deliberate
-	// mint spellings `#426d64` / `#83b0a8` are UNCHANGED and are not joined by a
-	// third: the wash is those two values, at 5% and 10%.
+	// ⛔ THE GROUND IS NO LONGER THE ONLY DEVIATION CHANNEL, BECAUSE A NEUTRAL
+	// GROUND IS NOT A COLOUR. (2026-09-02, second ruling of the day, from the
+	// human: *"i thought about newest / behind badges to use more prominent
+	// colors, not these faint / no colors."* That is the FOURTH time in one
+	// direction — *"we probably want to mark it with some color just not to be so
+	// prominent"*, *"I generally think we're undercoloring now a bit"*, *"I think
+	// green on newest badge is too faint"*, and now this.)
+	//
+	// THE COMPLAINT IS MEASURABLE AND THE NUMBER IS DAMNING. On `DESIGN.md`'s own
+	// presence formula — `area × fillC + area × 0.28 × inkC + perimeter ×
+	// borderC` — the pair the wash/block pass shipped scored, canvas-resolved
+	// against the composited card on `/rollouts` at 1440:
+	//
+	//              newest   N behind   ratio
+	//     light      24.8      26.3    1.06×
+	//     dark       66.8      65.6    0.98×
+	//
+	// **The deviation was not louder than the norm on the product's own colour
+	// instrument at all.** It led only on LIGHTNESS — which is the channel a
+	// browser spends on `:disabled`, on a skeleton and on a dimmed row, and which
+	// this same file already rejected once for the neutral row band (*"a gray
+	// band on a white list reads as THIS ONE IS BROKEN, not as LOOK HERE"*). For
+	// scale: the quietest identity chip on the same row, `DEV`, scores 54.9 —
+	// more than double either half of the badge. The most repeated object in the
+	// product was its least coloured one.
+	//
+	// SO THE DEVIATION CHANNEL IS HUE, AND BOTH HALVES GET A REAL ONE. The
+	// ordering survives on hue + ink chroma instead of on gray-versus-not:
+	// `newest` is a 0.090-chroma teal in a `-50` wash, `N behind` is a
+	// 0.198-chroma blue in a `-100` block — 2.2× the ink chroma on a word that is
+	// two characters longer.
+	//
+	// ZERO NEW HUES. The budget is six status + four identity and it is still
+	// exactly that. What moves is WHICH SURFACE a hue may appear on, which the
+	// file already treats as separable — *"two of the identity hues are also
+	// status hues, deliberately, and are separated by SHAPE rather than by hue"*:
+	//
+	//   · mint keeps `newest`. It is only spelled from the ramp now (`teal-700` /
+	//     `teal-500`) instead of from the two hand-picked hexes, because the ONE
+	//     argument for hand-picking was that mint has no ramp — and `teal` is
+	//     that ramp, 7° away at the exact hue the pass before last solved for.
+	//     See `MINT`.
+	//   · blue takes `N behind`. Blue is `Deploying`'s hue on the status GLYPH;
+	//     on a chip it is the same separation-by-shape the identity hues already
+	//     use, and it is the semantically right one — a build that is behind is a
+	//     build with a promotion still to come. It is NOT adverse, which is the
+	//     whole reason it may not be red, and NOT `stuck`, which is why it may
+	//     not be amber. See `TRAILING`.
 	//
 	// ⛔ `count` AND `unranked` STAY UNGROUNDED, AND THAT IS THE POINT. A ground
 	// says "this half is a mark". `count` is a caption and `unranked` is the
@@ -300,37 +357,98 @@
 	//
 	// NEUTRAL — the norm, or a caption. Spends no colour at all, and no ground.
 	const NEUTRAL = 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400';
-	// NEUTRAL, LOUD — the deviation, marked on LIGHTNESS instead of on hue.
-	// `rank` (`−N` / `N behind`) only. See `TONE.rank`. Character for character
-	// the ink `.chip-value` already prints one pixel to its right, so it is not
-	// a new colour value: it is the value half's own gray, borrowed by the label
-	// half. ZERO chroma, so it cannot threaten `alarm` on the ink ceiling —
-	// `area × chroma` scores a gray at nothing, whatever its lightness.
+	// ⛔ THE BORDER STAYS NEUTRAL ON EVERY ROLE BELOW, AND THAT IS THE ONE THING
+	// THAT KEEPS A RANK CHIP FROM BEING AN IDENTITY CHIP. `.chip-env` is the only
+	// family with a COLOURED EDGE; the rank family is a COLOURED FIELD inside the
+	// same `gray-200` / `gray-700` hairline `.chip-value` draws one pixel to its
+	// right. Rendered with matching teal/blue borders instead (candidate B), the
+	// joined badge reads as two glued boxes — the coloured edge stops at the seam
+	// and the value half's gray one carries on — and `[NEWEST 1.66.0-66]` becomes
+	// indistinguishable in KIND from `[DEV]` at a glance. Screenshotted both;
+	// this is the difference.
 	//
-	// AND IT IS THE ONE ROLE THAT TAKES THE GROUND AS A BLOCK. The fill is the
-	// SAME `gray-200` / `gray-700` the border already draws, so the half loses
-	// its own edge and reads as a solid slab against the white value half beside
-	// it. That is the deviation channel, and it costs nothing on the ink ceiling
-	// for the same reason the ink did: `area × chroma` scores a neutral at ~0, so
-	// `alarm`'s saturated fill is still the loudest mark on any row.
-	const NEUTRAL_LOUD =
-		'border-gray-200 bg-gray-200 text-gray-700 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-200';
-	// MINT, KEPT UNDER `−N` — the word `newest`, WHEREVER IT IS SPELLED.
-	// `newest` and `head` both resolve here and that is deliberate; see the note
-	// on `TONE.head` for the measurement that collapsed them.
+	// MINT — the word `newest`, WHEREVER IT IS SPELLED. `newest` and `head` both
+	// resolve here and that is deliberate; see the note on `TONE.head` for the
+	// measurement that collapsed them.
 	//
-	// The ground is a WASH of the ink itself, not a fifth mint: `#426d64` at 5%
-	// over the card and `#83b0a8` at 10% over `gray-800`. It exists so the norm's
-	// half is an OBJECT rather than the first six characters of a string; it is
-	// deliberately a third of `rank`'s step, because `newest` outnumbers
-	// `N behind` 3.2 : 1 and area is the channel a repeated mark must not spend.
-	const MINT_QUIET =
-		'border-gray-200 bg-[#426d64]/5 text-[#426d64] dark:border-gray-700 dark:bg-[#83b0a8]/10 dark:text-[#83b0a8]';
-	// ADVERSE — the deviation half of the rank vocabulary. ONE hue for both
-	// members (`−N` and `diverged`); the WORD says which kind. Grounded at wash
-	// strength like `newest`, so an adverse half is an object like every other
-	// grounded half, while `alarm` keeps the only SATURATED fill and stays the
+	// ⛔ IT IS SPELLED FROM THE `teal` RAMP NOW, NOT FROM `#426d64` / `#83b0a8`.
+	// The whole case for the hand-picked hexes was that *"mint has NO ramp to
+	// choose from, which is the one condition under which deriving is the right
+	// answer"* (see `ADVERSE`). That was wrong: `teal` is the ramp, its 700 step
+	// sits at OKLCH hue 186.4° against the hand-picked 179.4° — 7° — and taking
+	// it buys the three things the hex could not:
+	//
+	//   1. CHROMA. 0.0503 → 0.0905 light, 0.0495 → 0.128 dark. The human has now
+	//      called this word faint twice; against `N behind`'s new 0.198 it is
+	//      still the quieter half, which is the constraint.
+	//   2. A WIDER GAP FROM THE GREEN IT SITS BESIDE. The one open risk this file
+	//      records is that mint lands on rows already carrying a `Succeeded` disc
+	//      at hue ~150 and, on DEV rows, a green identity chip. 30° → **37°** in
+	//      light; in dark it separates on LIGHTNESS too (`teal-500` L 0.710
+	//      against `DEV`'s ink at L 0.926, dE00 20.4 — wider than the hex's 19.5,
+	//      where the obvious `teal-200` would have collapsed it to **9.1**).
+	//   3. DESIGNED CONTRAST RELATIONSHIPS. `ADVERSE`'s own note is the argument:
+	//      *"a ramp ships designed contrast relationships and a derived point on
+	//      a line does not."* Every role in this table is now a chosen step.
+	//
+	// ⚠️ ONE CALL SITE OUTSIDE THIS FILE STILL SPELLS THE MINT AS THE OLD HEX:
+	// `ExposureBar.svelte:115` (`bg-[#426d64] dark:bg-[#83b0a8]`, the newest
+	// segment, drawn only on `/apps/<name>`). It is the last holder of the old
+	// pair and MUST move to `bg-teal-700 dark:bg-teal-500` when that file is next
+	// opened, or the mint budget slot ships two spellings — the exact defect the
+	// `head` → `newest` collapse was written to end.
+	//
+	// The ground is a WASH: `teal-50`, ΔL 0.016 from the card. It exists so the
+	// norm's half is an OBJECT rather than the first six characters of a string;
+	// it is deliberately a quarter of `TRAILING`'s step, because `newest`
+	// outnumbers `N behind` 3.2 : 1 and area is the channel a repeated mark must
+	// not spend. Dark takes `teal-950` at 30% for the same reason `ADVERSE` takes
+	// an alpha there — a full step measured 2.2× the presence of the light one.
+	const MINT =
+		'border-gray-200 bg-teal-50 text-teal-700 dark:border-gray-700 dark:bg-teal-950/30 dark:text-teal-500';
+	// TRAILING — `−N` / `N behind`. THE DEVIATION, AND IT IS BLUE.
+	//
+	// Blue is `Deploying`'s hue on the status GLYPH and it has never been worn by
+	// a chip. Putting it on one adds NO hue to a closed budget and is the same
+	// separation-by-shape the identity hues already run on (`DESIGN.md`: *"two of
+	// the identity hues are also status hues, deliberately, and are separated by
+	// SHAPE rather than by hue"*). It is also the only hue the budget can spare:
+	// red is adverse and a rollout that is merely behind is not adverse (the
+	// whole `blocked`/`stuck` distinction turns on that), amber is `stuck` and
+	// nothing else, green/yellow are states, violet and cyan are STAGING and TEST
+	// identity, and the only unclaimed arc left — magenta through rose — is a new
+	// hue and reads adverse anyway.
+	//
+	// AND IT IS THE HUE THE GRAY IT REPLACES WAS ALREADY AT. `gray-700` measures
+	// OKLCH **h 260.2°**, C 0.034; `blue-800` is **h 265.6°**, C 0.198. The
+	// deviation's hue does not move by six degrees. Only its chroma moves, by
+	// 5.8×. That is the smallest edit that answers *"not these faint / no
+	// colors"*, and it is why this is not a fifth re-solve of the pair — the
+	// previous four all moved the hue.
+	//
+	// THE GROUND IS A BLOCK, one ramp step deeper than `MINT`'s wash
+	// (`blue-100`, ΔL 0.068 from the card, 4.3× the wash) so the wash/block
+	// structure the last pass established survives intact; what changed is that
+	// both grounds are now chromatic, so the block is no longer "the gray one".
+	const TRAILING =
+		'border-gray-200 bg-blue-100 text-blue-800 dark:border-gray-700 dark:bg-blue-950/50 dark:text-blue-200';
+	// ADVERSE — `failing`, `diverged`, `blocked`. ONE hue for all three; the WORD
+	// says which kind. `alarm` keeps the only SATURATED fill and stays the
 	// loudest mark on a row.
+	//
+	// ⛔ ITS LIGHT GROUND STEPPED `red-50` → `red-100` IN THIS PASS, AND IT HAD
+	// TO. Once `N behind` became a chromatic block, adverse-at-wash-strength
+	// scored 117.6 against its 143.3 on `area × chroma` — a merely-trailing chip
+	// louder than a diverged one. At `red-100` the order is restored and every
+	// margin is real, measured light on `/rollouts` at 1440:
+	//
+	//     alarm 218.6  >  adverse 148.7  >  behind 143.3  >  newest 54.7
+	//
+	// `red-700` on `red-100` is **5.27:1**, still past the 4.5 floor for 10px.
+	// `red-100` is already spent in `src`. DARK IS UNTOUCHED at `red-950/50`,
+	// because the measurement below is a DARK measurement and it still holds: a
+	// dark ground under a light ink buys contrast and a deeper one buys more, so
+	// dark never had this problem (adverse 108.9 against behind's 80.5, 1.35×).
 	//
 	// ⛔ AND ITS GROUND IS A CHOSEN STEP, NOT AN ALPHA WASH OF ITS OWN INK.
 	// This is the one place the wash derivation fails, and it fails on the floor:
@@ -345,18 +463,15 @@
 	//       · ground red-950/50    #321921     5.61:1   ✅ ABOVE the ungrounded
 	//
 	// A DARK ground under a light ink adds contrast; a wash of the ink itself
-	// only ever removes it. So adverse takes `red-50` / `red-950/50` — both
-	// already spent in `src` (`DependencyNode`, `/history`, `ControlCenter` all
-	// draw `bg-red-50` / `dark:bg-red-950/…`), zero new values — and this is the
-	// same argument `environment-theme.ts` makes for COMPUTED → CHOSEN: a ramp
-	// ships designed contrast relationships and a derived point on a line does
-	// not. `newest` keeps the alpha wash because mint has NO ramp to choose from,
-	// which is the one condition under which deriving is the right answer.
-	//
-	// Light: `red-700` on `red-50` is **5.87:1** (6.42 ungrounded), ΔL 0.0295 and
-	// C 0.0129 from the card — the same wash strength as `newest`'s mint.
+	// only ever removes it. So adverse takes a CHOSEN step in both themes —
+	// `red-100` / `red-950/50`, both already spent in `src` (`DependencyNode`,
+	// `/history`, `ControlCenter` all draw `bg-red-50`/`bg-red-100` /
+	// `dark:bg-red-950/…`), zero new values — and this is the same argument
+	// `environment-theme.ts` makes for COMPUTED → CHOSEN: a ramp ships designed
+	// contrast relationships and a derived point on a line does not. `MINT` now
+	// makes that argument too; the "mint has no ramp" exemption is retired.
 	const ADVERSE =
-		'border-gray-200 bg-red-50 text-red-700 dark:border-gray-700 dark:bg-red-950/50 dark:text-red-400';
+		'border-gray-200 bg-red-100 text-red-700 dark:border-gray-700 dark:bg-red-950/50 dark:text-red-400';
 
 	// Only `alarm` carries a FILL — that is the whole reason it reads as the
 	// loudest object on the page without needing a bigger box, a heavier
@@ -440,7 +555,21 @@
 		//     against `notYet` 0.1728 (3.4x) and `failing` 0.2086 (4.1x) light;
 		//     0.0495 against 0.1712 (3.5x) and 0.2373 (4.8x) dark. The loudest
 		//     PIXEL of a nine-tenths-live bar is still in the adverse segment.
-		newest: MINT_QUIET,
+		//
+		// ⛔ SUPERSEDED 2026-09-02 (second ruling of the day). Everything above is
+		// the record of solving this word's ink INSIDE a white box, and it ended
+		// with the human calling the result faint for the fourth time. The value
+		// is `teal-700` / `teal-500` on a `teal-50` / `teal-950-at-30%` ground
+		// now; see `MINT`. The two arguments above that still hold and were
+		// carried forward are (1) FULL-CHROMA MINT INVERTS THE PAIR — which is
+		// why `newest` is 0.090 against `N behind`'s 0.198 rather than the other
+		// way round — and (2) IT MUST NOT BECOME A THIRD GREEN, which is why the
+		// step was chosen for hue distance from DEV (30° → 37°) and not for
+		// chroma alone. The one thing that is NO LONGER TRUE is the closing
+		// sentence of §1 above: mint is not spelled from a hand-picked hex any
+		// more, and the `CoverageBar` co-tenancy it cites ended when that bar's
+		// `live` segment moved to the health green.
+		newest: MINT,
 		// `−N` IS the deviation, so it is the half that carries the hue.
 		//
 		// IT IS RED, AND IT USED TO BE AMBER. The move was forced by the env
@@ -579,7 +708,24 @@
 		// `area × chroma` scores a neutral at ~0, so `alarm`'s fill is still the
 		// loudest mark on any row it appears on, and `failing` / `diverged` /
 		// `blocked` still own the only red.
-		rank: NEUTRAL_LOUD,
+		//
+		// ⛔ AND THAT LAST SENTENCE IS THE BUG, READ AS A FEATURE. (2026-09-02,
+		// second ruling.) *"`area × chroma` scores a neutral at ~0"* was offered
+		// as proof that the loud gray was FREE. It is equally proof that it was
+		// INVISIBLE as colour: on the product's own instrument the pair scored
+		// 24.8 / 26.3 light and 66.8 / 65.6 dark — **1.06× and 0.98×** — i.e. the
+		// deviation was not louder than the norm at all, it was only DARKER. The
+		// human's answer to seeing it: *"i thought about newest / behind badges to
+		// use more prominent colors, not these faint / no colors."*
+		//
+		// `rank` IS BLUE NOW — see `TRAILING`. The hue barely moves (`gray-700`
+		// is already OKLCH h 260.2°, `blue-800` is h 265.6°); the chroma moves
+		// 5.8×. Everything else this comment argues survives: it is still NOT
+		// red (drift is the pipeline's normal state), still NOT amber (`stuck`
+		// owns amber), and `alarm` is still the loudest mark on any row —
+		// measured light, alarm 218.6 > adverse 148.7 > `N behind` 143.3 >
+		// `newest` 54.7; dark, card-floor corrected, 130.0 > 108.9 > 80.5 > 54.8.
+		rank: TRAILING,
 		// `failing` IS THE WORD THE RED DOT CANNOT SAY. It exists because
 		// `/apps` was stating an attention row's fact twice — a lede sentence
 		// `STAGING is failing` beside a joined box `[●][STAGING]` — and the two
@@ -712,7 +858,7 @@
 		// ever differ the product is back where it started. When the remaining
 		// call sites are next opened, migrate them to `role="newest"` and delete
 		// this entry.
-		head: MINT_QUIET,
+		head: MINT,
 		// THE ALARM: A FILL AND A WORD. NO GLYPH. (2026-08-27, from the human:
 		// *"we have stuck which has its own dot which is also useless"*.)
 		//
@@ -819,7 +965,72 @@
 	// `wide` is off, so the two opt-outs can never both apply. It lands on the
 	// `.chip` ELEMENT in both forms — the same place `chip-wide` lands, for the
 	// same reason (see the `wide` prop).
-	const capClass = $derived(wide ? 'chip-wide' : hasGlyph ? 'max-w-[calc(12ch+14px)]' : '');
+	//
+	// ── ⛔ AND `12ch` WAS NEVER TWELVE CHARACTERS. (2026-09-02, third report on
+	// this cap in one day: `/versions/<rev>`'s bucket cards render
+	// `STAGING 15 BEHI…` under a multi-bucket fixture.) MEASURED, on the running
+	// product at 10px / 0.08em:
+	//
+	//     `max-width: 12ch` resolves to  72.25px
+	//     padding + border               13.8px   (6px + 6px + 1px + 1px)
+	//     one character                   6.85px  (1ch 6.02 + 0.8 letter-spacing)
+	//     → the word's real budget is (72.25 − 13.8) / 6.85 = **8.5 characters**
+	//
+	// So `12ch` is an EIGHT-AND-A-HALF-character cap, because `ch` measures a
+	// glyph and the box also has to hold the tracking and the padding. Every
+	// nine-character label in the product has therefore always clipped —
+	// `15 BEHIND` needs 75.4px bare and 89.4px with the tag, against 72.25 and
+	// 86.25 — and the fix has been applied THREE TIMES as a per-call-site `wide`,
+	// which is a contract every future caller can and does forget.
+	//
+	// ── THE CAP IS PER KIND OF LABEL NOW, NOT PER CALL SITE ─────────────────
+	//
+	// There are exactly two kinds of label in this component and they need two
+	// different caps:
+	//
+	//   · `env` — an ENVIRONMENT, SERVICE or REGION NAME. Unbounded, and the
+	//     reason the cap exists at all: `prod-ap-northeast-1` must not eat a row.
+	//     UNCHANGED at 12ch, so every deliberate "NOT `wide`" decision in
+	//     `Navbar`, `CommandPalette` and `/environments` still renders exactly
+	//     what it was measured to render. Zero pixels move.
+	//   · everything else — a CLOSED VOCABULARY. `newest`, `N behind`,
+	//     `diverged`, `unknown`, `held`, `pending`, `pinned`, `unreleased`,
+	//     `never deployed`, `rolled back`, `stuck`, `failing`, `blocked`. A
+	//     closed set has a longest member, so the cap is that member's WIDTH
+	//     rather than a character count that cannot express it.
+	//
+	// Measured natural widths (`chip-wide`, i.e. uncapped) of the whole
+	// vocabulary, bare → with the tag:
+	//
+	//     HELD            41.3 →  55.3      UNRELEASED      82.2 →  96.2
+	//     STUCK           48.1 →  62.1      199 BEHIND      82.2 →  96.2
+	//     NEWEST          54.9 →  68.9      ROLLED BACK     89.0 → 103.0
+	//     UNKNOWN         61.8 →  75.8      NEVER DEPLOYED 109.5 → 123.5
+	//     1 BEHIND        68.6 →  82.6
+	//     15 BEHIND       75.4 →  89.4   ⛔ the report
+	//
+	// `calc(14ch + 26px)` = **110.3px** covers the longest of them (109.5) and
+	// `calc(14ch + 40px)` = 124.3px covers it with the tag. Three digits of
+	// `N behind` fit with 14px to spare, so the cap does not become the next
+	// thing to forget.
+	//
+	// ⚠️ IT IS STRICTLY TIGHTER THAN `wide`, WHICH IS WHAT MAKES IT SAFE TO SHIP
+	// ACROSS PAGES THIS PASS DOES NOT OWN. `wide` removes the cap entirely; this
+	// caps at the vocabulary's own maximum. So no call site can render WIDER than
+	// an already-shipped `wide` chip on the same row, and every call site that
+	// passes `wide` today is byte-identical. The three `wide`s added for this bug
+	// (`/versions/<rev>`'s two service chips and the bucket cards) are now
+	// redundant rather than wrong — leave them or delete them when those files
+	// are next opened; the result is the same either way.
+	const capClass = $derived(
+		wide
+			? 'chip-wide'
+			: role === 'env'
+				? ''
+				: hasGlyph
+					? 'max-w-[calc(14ch+40px)]'
+					: 'max-w-[calc(14ch+26px)]'
+	);
 </script>
 
 {#snippet body()}

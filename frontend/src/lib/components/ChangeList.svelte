@@ -61,8 +61,7 @@
 		ChevronUpOutline
 	} from 'flowbite-svelte-icons';
 	import {
-		fetchCommits,
-		commitsQueryKey,
+		commitsQueryOptions,
 		fetchGithubStatus,
 		githubStatusQueryKey,
 		connectGithub,
@@ -103,17 +102,9 @@
 		refetchInterval: false as const
 	}));
 
-	const query = createQuery(() => ({
-		queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
-		queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
-		enabled: open && rangeOk,
-		staleTime: 5 * 60_000,
-		refetchInterval: false as const,
-		retry: (failureCount: number, error: unknown) => {
-			if (error instanceof FetchCommitsError) return false;
-			return failureCount < 1;
-		}
-	}));
+	const query = createQuery(() =>
+		commitsQueryOptions({ namespace, name, base, head, cluster, enabled: open })
+	);
 
 	const commits = $derived<CommitInfo[]>(query.data?.commits ?? []);
 

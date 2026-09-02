@@ -2370,17 +2370,23 @@ anyone's decision. It is what a page looks like after enough correct changes.
 | System | Owner | Where it may appear |
 |---|---|---|
 | green | `Succeeded` / healthy — **for STATE** | status glyph, status dot, verdict ring |
-| blue | `Deploying` | status glyph |
+| blue | `Deploying` — **and `rank` (`N behind`)** | status glyph; the `rank` chip |
 | yellow | `InProgress` / baking — **baking only** | status glyph |
-| red | `Failed`, **`diverged` AND `rank` (`−N`)** | status glyph; the `rank` and `diverged` chips |
+| red | `Failed`, **`diverged`, `failing`, `blocked`** — ⛔ **NOT `rank`** | status glyph; the `diverged` / `failing` / `blocked` chips |
 | amber | `stuck` — **and nothing else, for STATE** | the `alarm` chip |
-| gray | everything passive — **and `head`, `count`, `unranked`** | text, borders, surfaces, every non-adverse chip |
-| quiet mint | **"on the build in question"** — `#426d64` / `#83b0a8` | the `newest` chip's text; the `live` segment of `CoverageBar`; the newest segment of `ExposureBar`. Nowhere else. |
+| gray | everything passive — **and `count`, `unranked`** | text, borders, surfaces, and the BORDER of every non-`env` chip |
+| mint | **"on the build in question"** — `teal-700` / `teal-500` (was `#426d64` / `#83b0a8`, retired 2026-09-02) | the `newest` / `head` chip; the newest segment of `ExposureBar` (⚠️ still on the old hex — migrate). Nowhere else. |
 | green / violet / amber / cyan | env IDENTITY | `<Chip role="env">` only, via the `--rollout-theme-*` vars |
 
 **Two of the identity hues are also status hues, deliberately, and are separated by SHAPE
-rather than by hue** — see "THE ENV PALETTE IS CLOSED" at the top of this file. `rank` is
-red, not amber (top of file).
+rather than by hue** — see "THE ENV PALETTE IS CLOSED" at the top of this file. **Blue is a
+third instance of the same device as of 2026-09-02:** it is `Deploying` on the status GLYPH
+and `N behind` on a CHIP. `rank` is blue — not amber (`stuck` owns amber) and not red (a
+rollout that is merely behind is not adverse; the whole `blocked` / `stuck` distinction turns
+on that). Ordering, canvas-resolved on `/rollouts` at 1440 with the `area × chroma` formula:
+light **alarm 218.6 > adverse 148.7 > `N behind` 143.3 > `newest` 54.7**; dark, corrected for
+the chromatic card ground, **130.0 > 108.9 > 80.5 > 54.8**. `alarm` keeps the only saturated
+FILL.
 
 **There is exactly ONE green FOR STATE:** `green-700` light / `green-400` dark. Not
 `green-500`, not `green-600`, no `emerald-*`. `BakeStatusIcon`, the status dot and the

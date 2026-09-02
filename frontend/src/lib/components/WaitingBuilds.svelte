@@ -88,12 +88,7 @@
 	 * cause beats a confident wrong one.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
-	import {
-		fetchCommits,
-		commitsQueryKey,
-		formatCommitMessage,
-		FetchCommitsError
-	} from '$lib/api/github';
+	import { commitsQueryOptions, formatCommitMessage } from '$lib/api/github';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { ChevronRightOutline } from 'flowbite-svelte-icons';
@@ -168,19 +163,10 @@
 		open && commitsAvailable && !!namespace && !!name && !!base && !!head && base !== head
 	);
 
-	// Same discipline as `CommitSummary`: a commit range is immutable and an
-	// auth failure is not transient, so this is neither polled nor retried.
-	const query = createQuery(() => ({
-		queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
-		queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
-		enabled,
-		staleTime: 5 * 60_000,
-		refetchInterval: false as const,
-		retry: (failureCount: number, error: unknown) => {
-			if (error instanceof FetchCommitsError) return false;
-			return failureCount < 1;
-		}
-	}));
+	// Same discipline as every other commits reader, and now literally the
+	// same options: a commit range is immutable and an auth failure is not
+	// transient, so this is neither polled nor retried.
+	const query = createQuery(() => commitsQueryOptions({ namespace, name, base, head, cluster, enabled }));
 
 	function messageFor(b: WaitingBuild): string | null {
 		const commits = query.data?.commits ?? [];

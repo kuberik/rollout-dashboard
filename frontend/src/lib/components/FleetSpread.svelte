@@ -82,15 +82,18 @@
 					class="cov-swatch {coverageSwatch(bucket.key, coverage.reachable)}"
 					aria-hidden="true"
 				></span>
-				<!-- ⛔ THE COUNT USED TO BE HERE AND IT IS NOW ON THE BAR.
-				     (2026-09-02, from the human: the quantity was stated three times
-				     in words — `6 of 6` in the rollup, `6` here, `6 places` on the
-				     bucket card — beside a graphic carrying none of it.) `CoverageBar`
-				     prints each bucket's count inside that bucket's own segment, 30px
-				     above this line and bound to it by the swatch, so a second numeral
-				     here is the same fact twice at one glance. The group still names
-				     the bucket and lists its real places; what it no longer does is
-				     restate a number the object above it draws. -->
+				<!-- ⛔ THE COUNT USED TO BE HERE AND IT IS NOT COMING BACK.
+				     (2026-09-02. The quantity was being stated three times in words —
+				     `6 of 6` in the rollup, `6` here, `6 places` on the bucket card —
+				     beside a graphic that carried none of it. The first fix moved the
+				     numeral ONTO the fill; the human's next look asked *"why is this
+				     number on the bar?"* and it came off again — see the tombstone in
+				     `CoverageBar.svelte`.) What actually closed the defect is that
+				     `CoverageBar` now draws ONE CELL PER PLACE, so the bar 30px above
+				     this line carries the count structurally and this group carries
+				     the NAMES: a swatch that binds it to its segment, the bucket's
+				     title, and every real place as a chip. Identity, not arithmetic.
+				     A numeral here would be the same fact a third time. -->
 				<span class="fs-title">{bucket.title}</span>
 			</div>
 			<ul class="fs-runs">

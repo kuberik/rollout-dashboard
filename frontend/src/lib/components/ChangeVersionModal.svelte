@@ -27,8 +27,7 @@
 		typedPrompt
 	} from '$lib/view-models/deploy-risk';
 	import {
-		fetchCommits,
-		commitsQueryKey,
+		commitsQueryOptions,
 		formatCommitMessage,
 		connectGithub,
 		FetchCommitsError,
@@ -247,24 +246,24 @@
 			direction !== 'same'
 	);
 
-	const commitsQuery = createQuery(() => ({
-		queryKey: commitsQueryKey(
-			rollout?.metadata?.namespace ?? '',
-			rollout?.metadata?.name ?? '',
-			compareBase ?? '',
-			compareHead ?? '',
-			cluster
-		),
-		queryFn: () =>
-			fetchCommits(
-				rollout!.metadata!.namespace!,
-				rollout!.metadata!.name!,
-				compareBase!,
-				compareHead!,
-				cluster
-			),
-		enabled: canFetchCommits
-	}));
+	/**
+	 * ⛔ THIS ONE INHERITED THE 5-SECOND POLL, AND IT IS THE WORST SCREEN TO
+	 * INHERIT IT ON. The three other commits readers each set their own
+	 * `refetchInterval: false`; this one set nothing, so while an operator sat
+	 * reading "what am I about to deploy" the dashboard re-asked GitHub for
+	 * the same fixed sha range every five seconds. `commitsQueryOptions` is
+	 * that policy in one place — see the note on it in `$lib/api/github`.
+	 */
+	const commitsQuery = createQuery(() =>
+		commitsQueryOptions({
+			namespace: rollout?.metadata?.namespace ?? '',
+			name: rollout?.metadata?.name ?? '',
+			base: compareBase,
+			head: compareHead,
+			cluster,
+			enabled: canFetchCommits
+		})
+	);
 
 	// Distinguish "connect GitHub" / "no access" from a generic failure.
 	const commitsError = $derived<CommitsError | null>(

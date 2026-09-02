@@ -123,9 +123,13 @@ lib/components/ChangeVersionModal.svelte	text	Unable to load commit history. You
 lib/components/ChangeVersionModal.svelte	text	View file diff
 lib/components/ChangeVersionModal.svelte	placeholder	Why are you deploying this version? (optional)
 lib/components/ChangeVersionModal.svelte	text	You don't have access to this repository on GitHub. You can still proceed.
+lib/components/Chip.svelte	code	— see the note above
+lib/components/Chip.svelte	code	, 14). This one will truncate. Either shorten the ' + 'word or pass
 lib/components/Chip.svelte	code	, not on the chip half, so it ' + 'silently does nothing. Use the
 lib/components/Chip.svelte	code	+ 'In the joined form
+lib/components/Chip.svelte	code	+ 'Non-
 lib/components/Chip.svelte	code	box inside the same `.chip-mark` group instead.
+lib/components/Chip.svelte	code	labels come from a CLOSED vocabulary and the width cap is sized to its ' + 'longest member (
 lib/components/Chip.svelte	code	lands on
 lib/components/Chip.svelte	code	more — see DESIGN.md, "TWO HALVES, NEVER THREE". Put the extra mark beside the
 lib/components/ClearPinModal.svelte	code	Cannot clear pin: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system.

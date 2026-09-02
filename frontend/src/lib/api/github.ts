@@ -56,6 +56,35 @@ export type GithubStatus = {
     avatarUrl?: string;
 };
 
+/**
+ * ⭐ IS THIS RANGE FIXED FOR ALL TIME? THE WHOLE CACHING POLICY TURNS ON IT.
+ *
+ * A commit sha names an object that cannot change, so the set of commits
+ * between two shas — and the diffstat over them — is the same answer today,
+ * tomorrow and next year. A branch or tag name is not: `main...release` means
+ * something different every time somebody pushes.
+ *
+ * So the two are cached differently and the distinction is made HERE, once,
+ * rather than guessed at four call sites. Strict on purpose: hex only, 7 to 40
+ * characters, which is what `pkg/githubcache.IsCommitSHA` accepts on the
+ * server. The `@sha1:` form is the OCI spelling of the same fact
+ * (`formatRevision` strips it too).
+ */
+const COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
+
+export function isCommitSha(ref: string | null | undefined): boolean {
+    if (!ref) return false;
+    const r = ref.includes('@sha1:') ? ref.split('@sha1:')[1] : ref;
+    return COMMIT_SHA.test(r);
+}
+
+export function isImmutableRange(
+    base: string | null | undefined,
+    head: string | null | undefined
+): boolean {
+    return isCommitSha(base) && isCommitSha(head);
+}
+
 export const commitsQueryKey = (
     namespace: string,
     name: string,
@@ -136,4 +165,56 @@ export async function disconnectGithub(): Promise<void> {
 export function formatCommitMessage(message: string): string {
     const firstLine = message.split('\n')[0];
     return firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine;
+}
+
+/**
+ * ⛔ FOUR COPIES OF THIS OPTIONS BLOCK, AND ONE OF THEM WAS WRONG.
+ *
+ * `CommitSummary`, `ChangeList` and `WaitingBuilds` each carried the same
+ * hand-written `staleTime` / `refetchInterval: false` / `retry` triple, and
+ * `ChangeVersionModal` — the one screen a person sits in front of while
+ * deciding whether to change production — carried NONE of it. It therefore
+ * inherited the app defaults (`staleTime: 1000`, `refetchInterval: 5000`) and
+ * re-asked GitHub for the SAME IMMUTABLE COMMIT RANGE every five seconds for
+ * as long as the modal stayed open. Polling every 5s is right for rollout
+ * state, which is what those defaults are for; it is pure waste for a diff
+ * between two shas that cannot change.
+ *
+ * One factory, so the policy cannot drift again:
+ *
+ *   immutable range (sha…sha)  never stale, kept for an hour
+ *   mutable range   (a branch) stale after 5 minutes
+ *   either way                 never polled, never refetched on focus, and an
+ *                              auth failure is never retried — it cannot be
+ *                              retried into success (see `FetchCommitsError`).
+ *
+ * The server caches the same call conditionally (`pkg/githubcache`), so even a
+ * genuine refetch usually costs GitHub a `304` and no rate-limit budget.
+ */
+export function commitsQueryOptions(args: {
+    namespace: string;
+    name: string;
+    base: string | null | undefined;
+    head: string | null | undefined;
+    cluster?: string;
+    /** Extra condition from the caller, e.g. "the panel is open". */
+    enabled?: boolean;
+}) {
+    const { namespace, name, base, head, cluster, enabled = true } = args;
+    const immutable = isImmutableRange(base, head);
+    const rangeOk = !!namespace && !!name && !!base && !!head && base !== head;
+    return {
+        queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
+        queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
+        enabled: enabled && rangeOk,
+        staleTime: immutable ? Infinity : 5 * 60_000,
+        gcTime: immutable ? 60 * 60_000 : 5 * 60_000,
+        refetchInterval: false as const,
+        refetchOnWindowFocus: false as const,
+        refetchOnReconnect: false as const,
+        retry: (failureCount: number, error: unknown) => {
+            if (error instanceof FetchCommitsError) return false;
+            return failureCount < 1;
+        }
+    };
 }

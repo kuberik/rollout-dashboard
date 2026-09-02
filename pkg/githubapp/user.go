@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/google/go-github/v88/github"
+
+	"github.com/kuberik/rollout-dashboard/pkg/githubcache"
 )
 
 const (
@@ -90,8 +92,30 @@ func ExchangeCode(ctx context.Context, code, redirectURI string) (string, error)
 }
 
 // UserClient returns a github client that acts as the user who owns token.
+//
+// ⭐ EVERY GET THIS CLIENT MAKES IS CONDITIONAL. `githubcache.Shared()` is the
+// client's transport, so a repeat question carries the stored `ETag` and comes
+// back `304 Not Modified` — which GitHub does not charge to the rate limit —
+// instead of re-downloading a comparison the dashboard already has.
+//
+// ⚠️ THE ORDER OF THESE TWO OPTIONS IS THE SECURITY PROPERTY, not a style
+// choice. go-github's `newClient` installs `WithTransport` first and then wraps
+// it with the token setter, so the cache sees each request WITH its final
+// `Authorization` header and partitions on it. A cache placed above the auth
+// layer would file every user's private answers under one key. See the package
+// comment on `pkg/githubcache`.
 func UserClient(token string) (*github.Client, error) {
-	return github.NewClient(github.WithAuthToken(token))
+	return github.NewClient(userClientOptions(token)...)
+}
+
+// userClientOptions is the option list UserClient is built from, split out so a
+// test can append `WithURLs` and exercise the REAL chain against a stub server
+// rather than a hand-rebuilt copy of it.
+func userClientOptions(token string) []github.ClientOptionsFunc {
+	return []github.ClientOptionsFunc{
+		github.WithTransport(githubcache.Shared()),
+		github.WithAuthToken(token),
+	}
 }
 
 // AuthenticatedUser looks up the login + avatar for a token, used to render the

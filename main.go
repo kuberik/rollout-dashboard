@@ -29,6 +29,7 @@ import (
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
 	"github.com/kuberik/rollout-dashboard/pkg/githubapp"
+	"github.com/kuberik/rollout-dashboard/pkg/githubcache"
 	"github.com/kuberik/rollout-dashboard/pkg/logs"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
 	"golang.org/x/sync/errgroup"
@@ -1034,6 +1035,16 @@ func main() {
 		// Returns the commit range between two revisions in the rollout's source
 		// repo, via the GitHub App installation (see pkg/githubapp). Requires the
 		// rollout's status.source to be a github.com repo URL.
+		//
+		// ⭐ CACHING, AND THE ONE DISTINCTION IT TURNS ON. Every GitHub call
+		// underneath is already conditional (`pkg/githubcache`), so a repeat
+		// costs a `304` and no rate-limit budget. This handler adds the second
+		// half: when BOTH refs are commit shas the answer is fixed for all time
+		// — a range between two immutable objects — so the browser is told it
+		// may reuse it. Anything else (a branch name, a tag) is `no-store`,
+		// because a cache that serves a stale answer for mutable data is worse
+		// than no cache. `private` throughout: this response is scoped to the
+		// viewing user's GitHub access and must never land in a shared cache.
 		api.GET("/rollouts/:namespace/:name/commits", func(c *gin.Context) {
 			k8sClient, ok := getK8sClient(c)
 			if !ok {
@@ -1070,7 +1081,18 @@ func main() {
 				return
 			}
 
+			// Both refs fixed objects => this body can never change.
+			immutableRange := githubcache.IsCommitSHA(base) && githubcache.IsCommitSHA(head)
+			setCommitsCacheHeaders := func() {
+				if immutableRange {
+					c.Header("Cache-Control", "private, max-age=600")
+				} else {
+					c.Header("Cache-Control", "no-store")
+				}
+			}
+
 			if base == head {
+				setCommitsCacheHeaders()
 				c.JSON(http.StatusOK, gin.H{"ahead": 0, "behind": 0, "commits": []gin.H{}, "additions": 0, "deletions": 0, "changedFiles": 0})
 				return
 			}
@@ -1172,6 +1194,7 @@ func main() {
 				deletions += f.GetDeletions()
 			}
 
+			setCommitsCacheHeaders()
 			c.JSON(http.StatusOK, gin.H{
 				"direction":    direction,
 				"ahead":        comparison.GetAheadBy(),

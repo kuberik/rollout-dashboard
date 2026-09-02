@@ -41,15 +41,36 @@
 	 *     deliberate measure instead of a slab.
 	 *   · ONE GROUP PER BUCKET, 8px apart and separately rounded. That is the
 	 *     split: distinct bars, not one bar with joins.
-	 *   · THE COUNT PRINTED IN THE GROUP at full size, 12px/600, so the exact
-	 *     figure is ON the bar and not only beside it. The duplicate that used
-	 *     to carry it — `FleetSpread`'s group rollup — is gone with it.
+	 *
+	 * ⛔ AND THE NUMERAL THAT WAS PRINTED ON THE FILL IS GONE. (2026-09-02,
+	 * from the human, looking at the live page: *"why is this number on the
+	 * bar?"*) It was added in the same commit as the cells, and once the cells
+	 * exist it is the THIRD statement of one quantity inside 60px: the lead's
+	 * `6 of 6 · PLACES RUNNING IT` at 24px, thirty pixels above; the six
+	 * countable tiles it labelled; and the six named chips in `FleetSpread`
+	 * below. Worse, at one bucket the group IS the whole bar, so a
+	 * left-flush `6` reads as the label of the FIRST TILE rather than of the
+	 * group — a numeral annotating a mark that already says it. That is the
+	 * repetition defect this branch has cut everywhere else, and the ask it was
+	 * serving (*"see on the bar also exactly how many are in either state"*)
+	 * is answered by the cells, structurally, with no ink spent on digits.
+	 *
+	 * WHAT CARRIES THE COUNT NOW, at every scale and in the fallback below:
+	 * the count sits DIRECTLY ABOVE THE BAR in every composition this object
+	 * ships in (`RevisionLead`'s `N of M`; the list row's `Running in N of M
+	 * places`), `BuildStateMark` says the salient bucket in words on the line
+	 * between them (`3 places still to go`), and every place is NAMED under it
+	 * — `FleetSpread`'s groups on the list, the bucket cards on the detail
+	 * page. None of those is conditional, so nothing here needs a digit.
 	 *
 	 * IT STILL SCALES. Above `CELL_MAX` places the cells would be sub-legible
-	 * hairlines, so the group falls back to one solid segment and the printed
-	 * numeral becomes the exact reading — the same requirement served the only
-	 * way left at that size. Each group's `min-width` is computed from the cells
-	 * it holds, so proportionality is exact everywhere below the fallback.
+	 * hairlines, so the group falls back to one solid segment and the bar is
+	 * PROPORTIONAL ONLY — which is what this object was before the cells and
+	 * what its own scale note defends: *"one revision over 4 regions or 40
+	 * reads as the same four buckets."* The exact figures at that size are the
+	 * three carriers above, all of which are unaffected by the fallback. Each
+	 * group's `min-width` is computed from the cells it holds, so
+	 * proportionality is exact everywhere below it.
 	 *
 	 * WHY IT IS ALLOWED TO LOOK LIKE A PROGRESS BAR. `DESIGN.md` deletes "long
 	 * composition bars" on sight, and the stated reason is *"they look like
@@ -62,15 +83,10 @@
 	 * COLOUR LIVES IN `revision-coverage.ts`, not here — see the `COVERAGE_FILL`
 	 * block for the whole argument, including why `live` is now the product's
 	 * health green rather than the `newest` chip's mint, and why `notYet` is
-	 * drawn HOLLOW rather than amber. The one thing this file owns is the ink of
-	 * the numeral that sits ON each fill, which is a property of this bar and of
-	 * nothing else.
+	 * drawn HOLLOW rather than amber. This file owns no colour at all now that
+	 * the numeral is gone; it is geometry.
 	 */
-	import {
-		coverageFill,
-		type CoverageKey,
-		type CoverageSegment
-	} from '$lib/view-models/revision-coverage';
+	import { coverageFill, type CoverageSegment } from '$lib/view-models/revision-coverage';
 
 	let {
 		segments,
@@ -94,8 +110,9 @@
 	 * `/versions` row, and 326px for the lead panel at 390. At 32 places the
 	 * miniature draws 32 × 3px + 31 × 1px = 127px of a 200px track and the full
 	 * bar 32 × 5px + 31 × 2px = 222px of 326 — both still proportional. Past it
-	 * the group becomes one solid segment and the printed numeral carries the
-	 * count alone.
+	 * the group becomes one solid segment and the bar is proportional only; the
+	 * exact figures live where they always do — in the count directly above the
+	 * bar, in `BuildStateMark`'s phrase, and in the named groups below it.
 	 */
 	const CELL_MAX = 32;
 	const cellular = $derived(total > 0 && total <= CELL_MAX);
@@ -112,21 +129,6 @@
 		if (!cellular) return compact ? 4 : 6;
 		return count * CELL_MIN + (count - 1) * CELL_GAP;
 	}
-
-	/**
-	 * THE NUMERAL'S INK, DERIVED FROM THE FILL IT SITS ON AND FROM NOTHING ELSE.
-	 * Two of the five fills are dark in light mode and light in dark mode, so
-	 * the ink has to flip with them or the digit is 1.9:1 on `green-400`.
-	 * `notYet` is hollow, so its digit sits on the page ground and takes the
-	 * ordinary muted ink.
-	 */
-	const NUM_INK: Record<CoverageKey, string> = {
-		live: 'text-white dark:text-green-950',
-		failing: 'text-white dark:text-red-950',
-		ahead: 'text-gray-700 dark:text-white',
-		notYet: 'text-gray-600 dark:text-gray-300',
-		unplaceable: 'text-gray-600 dark:text-gray-300'
-	};
 </script>
 
 <!--
@@ -164,14 +166,6 @@
 					{:else}
 						<span class="cov-cell {coverageFill(seg.key)}"></span>
 					{/if}
-
-					{#if !compact}
-						<!-- THE EXACT FIGURE, ON THE BAR. Hidden by a container query
-						     rather than by a guess: a segment narrower than 30px cannot
-						     hold two digits and a gutter, and the container query is the
-						     only test that knows the segment's real width. -->
-						<span class="cov-num {NUM_INK[seg.key]}" aria-hidden="true">{seg.count}</span>
-					{/if}
 				</span>
 			{/if}
 		{/each}
@@ -207,19 +201,18 @@
 	 * own — `REVISION-PAGES.md` specifies 8px — and clips its cells, so the two
 	 * outer corners round and the inner divisions stay square.
 	 *
-	 * `container-type: inline-size` is what lets the numeral know whether it
-	 * fits. It also makes the group's width independent of its contents, which
-	 * is required here: a `max-content`-sized flex item would stop being
-	 * proportional the moment a digit was wider than the segment's share.
+	 * ⛔ `container-type: inline-size` IS GONE WITH THE NUMERAL. It existed to
+	 * let the digit ask whether it fitted; with no digit the group has no
+	 * content that could size it, and `flex-grow` plus `min-width` is the whole
+	 * geometry. `overflow: hidden` stays — it is what rounds the two outer
+	 * corners of a group while its inner divisions stay square.
 	 */
 	.cov-seg {
-		position: relative;
 		display: flex;
 		gap: 2px;
 		height: 100%;
 		border-radius: 8px;
 		overflow: hidden;
-		container-type: inline-size;
 	}
 
 	.cov--compact .cov-seg {
@@ -231,31 +224,5 @@
 		flex: 1 1 0;
 		min-width: 0;
 		height: 100%;
-	}
-
-	/*
-	 * THE COUNT, ON THE BAR. Left-aligned rather than centred: on a 900px
-	 * segment a centred digit floats in the middle of nothing, while flush left
-	 * it reads as the label OF that segment, the way a stacked bar's data label
-	 * does. `tabular-nums` so a column of bars on `/versions` keeps its digits
-	 * on one x.
-	 */
-	.cov-num {
-		position: absolute;
-		left: 6px;
-		top: 50%;
-		transform: translateY(-50%);
-		font-size: 12px;
-		line-height: 16px;
-		font-weight: 600;
-		font-variant-numeric: tabular-nums;
-		pointer-events: none;
-		display: none;
-	}
-
-	@container (min-width: 30px) {
-		.cov-num {
-			display: block;
-		}
 	}
 </style>
