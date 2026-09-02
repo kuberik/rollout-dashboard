@@ -365,6 +365,12 @@
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<a href={href(c)} class="flex items-center gap-3 hover:opacity-80">
+								<!-- 40px is deliberate, not a stray size — "Needs you now" is an
+								     ACTION CARD, not a list row, and keeps its own larger token.
+								     See `BakeStatusIcon.svelte`'s diameter-token note. These rows
+								     are never `state`-marked (held/pinned/rolled-back only apply
+								     to a settled deploy, and this section is failing/stuck ones),
+								     so it never collides with the list-row disc's vocabulary. -->
 								<span
 									class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 										c.bakeStatus
@@ -503,8 +509,11 @@
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<div class="flex items-center gap-3">
+								<!-- DISC DIAMETER: `h-7 w-7`, the list-row token — see
+								     `BakeStatusIcon.svelte`. This section was 32px; "In motion"
+								     is a list row like every other one, not an action card. -->
 								<span
-									class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+									class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 										c.bakeStatus
 									)}"
 								>
@@ -626,7 +635,7 @@
 						{@const mark = cardStateMark(c)}
 						<a
 							href={href(c)}
-							class="environment-theme-scope grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE
@@ -641,7 +650,7 @@
 							     section where every card is `Succeeded` by construction. Hue
 							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
 							<span
-								class="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+								class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 									c.bakeStatus
 								)}"
 								title={mark ? mark.title : undefined}
@@ -816,7 +825,7 @@
 						{@const mark = cardStateMark(c)}
 						<a
 							href={href(c)}
-							class="environment-theme-scope grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE
@@ -831,7 +840,7 @@
 							     section where every card is `Succeeded` by construction. Hue
 							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
 							<span
-								class="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+								class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 									c.bakeStatus
 								)}"
 								title={mark ? mark.title : undefined}

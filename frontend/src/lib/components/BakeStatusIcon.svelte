@@ -14,6 +14,35 @@
 	} from 'flowbite-svelte-icons';
 	import { getBakeStatusColor, bakeWord } from '$lib/bake-status';
 
+	/**
+	 * ⭐ THE DISC DIAMETER TOKEN. (2026-09-02) This component sizes the GLYPH
+	 * only (`size` below) — the disc's own diameter is set by the wrapper
+	 * `<span class="… rounded-full …">` at each call site, because the
+	 * tinted fill (`getStatusCircleClass`) and the glyph are drawn by two
+	 * different pieces of markup that have to agree on a box. That split
+	 * had drifted to FOUR diameters for one state (`held`) across `/`
+	 * (20px), `/rollouts` (32px), `/apps` (36px) and `/envs/<name>` (24px) —
+	 * measured on the same three `hello-frontend-app` rollouts, same fill,
+	 * same glyph, four different-sized coins.
+	 *
+	 * **The LIST ROW token is `h-7 w-7` (28px).** Every page that draws one
+	 * rollout (or one app's rollup) per row in a scannable list uses it:
+	 * `/rollouts` cards, `/apps` rows, `/envs/<name>` rows, `/environments`
+	 * rows, and `CommandPalette` (which had it right already — this is its
+	 * size, copied everywhere else). `size="small"` or `"medium"` on the
+	 * icon itself, the wrapper decides the coin.
+	 *
+	 * ⛔ **`/`'s three severity sections are NOT all the list-row token, and
+	 * that is a deliberate second context, not a leftover.** "Needs you now"
+	 * (`h-10 w-10`, 40px) is a full action card — name, chip, an explanatory
+	 * line, a button — one of at most a few on the page, and the disc is the
+	 * card's lead glyph the way an `AlertPanel`'s 40px icon is. "In motion"
+	 * and "Trailing"/"Steady" both carry `bakeStatus: 'Succeeded'` rows that
+	 * CAN show a `state` mark, so those two are on the list-row token now
+	 * (28px) like everything else. Do not shrink "Needs you now" to match —
+	 * it was never part of this defect and doing so would quiet the one
+	 * section that is supposed to be the loudest on the page.
+	 */
 	interface Props {
 		bakeStatus?: string;
 		size?: 'small' | 'medium' | 'large';

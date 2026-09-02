@@ -121,8 +121,8 @@
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
 	import { regionLabel } from '$lib/view-models/regions';
 	import { getEnvironmentRank, sortEnvironmentNames } from '$lib/env-order';
-	import { buildRolloutCards } from '$lib/rollout-cards';
-	import type { StatusKey } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardStateMark, detectRollback } from '$lib/rollout-cards';
+	import type { StatusKey, CardStateMark } from '$lib/rollout-cards';
 	import {
 		formatTimeAgoCompact,
 		formatDate,
@@ -336,6 +336,15 @@
 		 * rollout, same `gateContext` — see the banner's own note.
 		 */
 		rollout: Rollout;
+		/**
+		 * `rolled back` / `pinned` / `held`, for the disc — `cardStateMark`,
+		 * the SAME precedence `/`, `/rollouts`, `/apps` and `/envs/<name>`
+		 * read. This row's disc used to draw only the plain bake glyph
+		 * (green check for every settled app, held or not) — see the disc
+		 * consistency pass note beside `getStatusCircleClass` on the row
+		 * below.
+		 */
+		mark: CardStateMark | null;
 		timestamp: string | null;
 		/** Sort key inside a card. Failing first, then stuck, then depth. */
 		severity: number;
@@ -467,6 +476,11 @@
 							now: $now
 						}),
 						rollout: cell.rollout,
+						mark: cardStateMark({
+							rolledBack: detectRollback(cell.rollout),
+							pinnedVersion: cell.rollout.spec?.wantedVersion ?? null,
+							held: block.blocked
+						}),
 						timestamp: latest?.timestamp ?? null,
 						severity:
 							state === 'failing'
@@ -821,6 +835,18 @@
 	 * whole matrix on one screen — 4 apps x 3 environments IS the comparison,
 	 * and hiding three quarters of it behind three clicks would be reduction
 	 * wearing a disclosure control.
+	 *
+	 * ⛔ THE CODE DID NOT MATCH THAT PARAGRAPH, AND FIXING IT IS WHAT CLOSED
+	 * THE 42%-EMPTY DEFECT. (2026-09-02, design re-check) `folded` OR'd in
+	 * `deviations.length > 0` — so a card with exactly ONE deviation folded
+	 * its settled tail no matter how short, three apps included. On the live
+	 * fleet that hid the ONE thing that would have made `dev`/`staging`/`prod`
+	 * stop reading as the same card three times: their app lists, which are
+	 * where the environments actually differ (*"dev deploys it first"*).
+	 * Three cards at ~85% identical ink and 42% empty at 1440×900 is what a
+	 * fold that always fires produces. The threshold is `SETTLED_FOLD_MIN`
+	 * alone now, exactly as documented above — a tail folds because it is
+	 * LONG, never because the card also happens to have a deviation.
 	 */
 	const SETTLED_FOLD_MIN = 4;
 
@@ -860,13 +886,24 @@
 	     stays independently clickable because the zone raises it. -->
 	<li class="tap-zone px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30">
 	<div class="flex items-center gap-2.5">
+		<!-- DISC DIAMETER: `h-7 w-7`, the list-row token — see
+		     `BakeStatusIcon.svelte`. `state`/`stateWord` are `a.mark`
+		     (`cardStateMark`, the SAME precedence every list surface reads),
+		     so a held/pinned/rolled-back app draws the same disc here as on
+		     `/`, `/rollouts`, `/apps` and `/envs/<name>` — this row used to
+		     draw only the plain bake glyph regardless of any of the three. -->
 		<span
-			class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+			class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
 				a.bakeStatus
 			)}"
-			title={bakeTitle(a.bakeStatus)}
+			title={a.mark ? a.mark.title : bakeTitle(a.bakeStatus)}
 		>
-			<BakeStatusIcon bakeStatus={a.bakeStatus} size="small" />
+			<BakeStatusIcon
+				bakeStatus={a.bakeStatus}
+				size="small"
+				state={a.mark?.kind ?? null}
+				stateWord={a.mark?.word ?? ''}
+			/>
 		</span>
 		<!-- The visible text is the app name and nothing else, which is right:
 		     the card's own `h2` says the environment. A links list has no cards
@@ -1255,7 +1292,7 @@
 		     `soloReason`: when the card speaks for exactly one app, that app's
 		     row carries its own blocking story. See `appRow`. -->
 		{@const soloReason = c.deviations.length === 1}
-		{@const folded = c.settled.length > 0 && (c.deviations.length > 0 || c.settled.length >= SETTLED_FOLD_MIN)}
+		{@const folded = c.settled.length >= SETTLED_FOLD_MIN}
 		<div class="grow">
 			{#if c.deviations.length > 0}
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">

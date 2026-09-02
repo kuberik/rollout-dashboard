@@ -250,6 +250,24 @@ empty share of `/rollouts`' card area was **44.8% at 1280, 44.7% at 1440, 44.7% 
 that runs the full width. That is not a ragged last row; that is a promised region that
 is half nothing. The rule now has a floor: **the grid may not open a track no group on
 the page can fill.**
+- ⛔ **SUPERSEDED THE SAME DAY.** The 460px-capped fix below was measured
+  again a few hours later and found to have traded the hole for a margin:
+  `460px 460px` in a 1201px container is **76.6%** used and a one-rollout
+  namespace's single `460px` track is **38.3%** — better than 45% empty but
+  still short of "fills its container." The auto-fill/auto-fit rejections
+  below were also re-examined: `auto-fill` genuinely reopens the 44.8% hole
+  (it keeps empty trailing tracks at their floor), but `auto-fit` does NOT —
+  it collapses a track with nothing in it to 0 and lets the occupied
+  tracks' `1fr` absorb the freed space, which is exactly `.env-stack`'s own
+  mechanism one line up. The card-inflation argument against equal columns
+  (~596px, badge halves separating by ~460px) is real but is a SECOND-ORDER
+  cosmetic complaint against a FIRST-ORDER "the row is 62–77% empty" one,
+  and loses. **Current: `xl:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]`,
+  per group (no JS cap needed — each namespace's own grid decides its own
+  track count from its own card count), verified ≥95% used-width at 1440 on
+  every group on the live fleet.** See `RolloutGrid.svelte`'s own note for
+  the full account; the bullets below are kept as the historical record of
+  what was tried and why, not as the current rule.
 - `RolloutGrid`'s track COUNT is `min(3, largest group)` and its track WIDTH is capped at
   **460px** so cards cannot inflate. On this fleet 45% → **26 / 36 / 37%**; on any fleet
   where a namespace holds three or more the class string is **byte-identical** to before.

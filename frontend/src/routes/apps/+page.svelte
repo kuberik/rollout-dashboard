@@ -140,6 +140,8 @@
 	import type { EnvironmentTheme } from '$lib/environment-theme';
 	import { getStatusCircleClass, BAKE_WORD } from '$lib/bake-status';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import { cardStateMark } from '$lib/rollout-cards';
+	import type { CardStateMark } from '$lib/rollout-cards';
 	import Chip from '$lib/components/Chip.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -307,6 +309,23 @@
 		converged: boolean;
 		/** The pinned environment furthest behind, if any. The banner's cause. */
 		heldCell: RowCell | null;
+		/**
+		 * ⭐ A GATE, NOT A PIN, IS REFUSING EVERY CANDIDATE SOMEWHERE IN THE
+		 * FLEET. (2026-09-02, disc consistency pass) NOT the same fact as
+		 * `heldCell` above — that is `pinned && behind`, a PERSON's choice.
+		 * This is `story.blocked` (`view-models/blocking-story`, the same
+		 * classification the row's own `lede` already reads for its
+		 * `"… has N newer versions held"` sentence), true when a
+		 * `RolloutDependency` or similar contract, not a person, is the
+		 * reason nothing newer has arrived. It is what the row's DISC needs:
+		 * `circleBakeStatus` used to fall back to gray `PauseSolid` for BOTH
+		 * "merely behind" and "held by a gate", which is the same visual as
+		 * `bakeStatus: 'None'` (never deployed) for a fact that is neither.
+		 * `cardStateMark` — the ONE precedence `/` and `/rollouts` already
+		 * use — gives it the shared green-disc pause glyph instead, so the
+		 * SAME `hello-frontend-app` reads the same mark everywhere.
+		 */
+		gateHeld: boolean;
 		/**
 		 * ── THE ROW'S NEXT STEP, AND WHY A LIST ROW HAS ONE AT ALL ───────
 		 *
@@ -605,21 +624,47 @@
 	 * `held` (someone pinned it) resolves to the same gray pause on purpose —
 	 * a pin is the most literal reading of "paused" there is. Which of the two
 	 * it is gets named by the banner and by the row's `sr-only` text.
+	 *
+	 * ⛔ SUPERSEDED IN PART, 2026-09-02. That gray pause was ALSO what a
+	 * GATE-HELD fleet painted — `hello-frontend-app`, blocked in all three
+	 * environments by a `RolloutDependency` contract, drew the exact same
+	 * disc as an app nobody has bothered to promote in three weeks. Those are
+	 * different facts (one clears when a person or an upstream release moves;
+	 * the other clears whenever anyone runs `Promote`) and `/` and
+	 * `/rollouts` already had a mark for the first one — `cardStateMark`'s
+	 * `held`, a PAUSE glyph on the deploy's own GREEN disc, not a gray one.
+	 * `gateHeld` (the row's own `story.blocked` union, computed once where
+	 * the cells are built) routes here now, ahead of the plain "not fully on
+	 * head" fallback, and returns the SAME `CardStateMark` object every other
+	 * list surface reads — reusing the function via a synthetic single-field
+	 * input, since this row is an aggregate over N rollouts and has no ONE
+	 * `RolloutCard` to hand it. "Merely behind, nothing holding it" is
+	 * untouched: still gray, still `PauseSolid`, still `None`.
 	 */
-	function circleBakeStatus(state: CellState, fullyOnHead: boolean): string | undefined {
+	function circleBakeStatus(
+		state: CellState,
+		fullyOnHead: boolean,
+		gateHeld: boolean
+	): { bakeStatus: string | undefined; mark: CardStateMark | null } {
 		switch (state) {
 			case 'fail':
-				return 'Failed';
+				return { bakeStatus: 'Failed', mark: null };
 			case 'deploying':
-				return 'Deploying';
+				return { bakeStatus: 'Deploying', mark: null };
 			case 'baking':
-				return 'InProgress';
+				return { bakeStatus: 'InProgress', mark: null };
 			case 'pending':
-				return 'None';
+				return { bakeStatus: 'None', mark: null };
 			default:
 				// onNewest / behind1 / behind2 — the deploy itself succeeded, so
 				// the question is no longer "did it work" but "did it arrive".
-				return fullyOnHead ? 'Succeeded' : 'None';
+				if (gateHeld) {
+					return {
+						bakeStatus: 'Succeeded',
+						mark: cardStateMark({ rolledBack: null, pinnedVersion: null, held: true })
+					};
+				}
+				return { bakeStatus: fullyOnHead ? 'Succeeded' : 'None', mark: null };
 		}
 	}
 
@@ -1009,7 +1054,8 @@
 					.reduce<RowCell | null>(
 						(best, c) => (best === null || c.behindBy > best.behindBy ? c : best),
 						null
-					)
+					),
+				gateHeld: cells.some((c) => c.story.blocked)
 			});
 		}
 		// WORST FIRST, and "worst" now has three tiers rather than two.
@@ -1459,7 +1505,7 @@
 			<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 				{#each Array(6) as _, i (i)}
 					<li class="flex items-center gap-4 px-4 py-3">
-						<div class="h-9 w-9 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+						<div class="h-7 w-7 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
 						<div class="flex flex-1 flex-col gap-1">
 							<div class="h-3.5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 							<div
@@ -1812,6 +1858,7 @@
      from a steady one, the gray band comes back under another name. The card
      is the mark; the row is a row. -->
 {#snippet appRow(app: AppRow)}
+	{@const circle = circleBakeStatus(app.circle, app.fullyOnHead, app.gateHeld)}
 	<!-- ── THE ROW IS A `.tap-zone`, not an `<a>` and no longer a hand-rolled
 	     stretched link. ──────────────────────────────────────────────────
 	     From the human: *"it's also not clickable in places where you'd expect
@@ -1848,14 +1895,30 @@
 			     word, on the column the pass had just renamed `Up to date`. It
 			     is what a screen reader heard while the eye read
 			     `0 of 3 up to date`. -->
+			<!-- DISC DIAMETER: `h-7 w-7`, the list-row token — see
+			     `BakeStatusIcon.svelte`. `state`/`stateWord` reuse `cardStateMark`
+			     (via `circleBakeStatus`'s `gateHeld` branch) so a fleet held by a
+			     gate draws the SAME green-disc pause glyph `/` and `/rollouts`
+			     draw for the same rollouts, instead of the gray "not fully on
+			     head" disc every other kind of drift still uses. -->
 			<span
-				class="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-					circleBakeStatus(app.circle, app.fullyOnHead)
+				class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+					circle.bakeStatus
 				)}"
+				title={circle.mark ? circle.mark.title : undefined}
 			>
-				<BakeStatusIcon bakeStatus={circleBakeStatus(app.circle, app.fullyOnHead)} size="medium" />
+				<BakeStatusIcon
+					bakeStatus={circle.bakeStatus}
+					size="medium"
+					state={circle.mark?.kind ?? null}
+					stateWord={circle.mark?.word ?? ''}
+				/>
 				<span class="sr-only"
-					>{STATUS_WORD[app.worst]}{app.fullyOnHead ? '' : ' · not up to date everywhere'}</span
+					>{STATUS_WORD[app.worst]}{circle.mark
+						? `, ${circle.mark.word}`
+						: app.fullyOnHead
+							? ''
+							: ' · not up to date everywhere'}</span
 				>
 			</span>
 			<span class="flex min-w-0 flex-col gap-1">
@@ -2274,7 +2337,16 @@
 	   move a little without taking the description with it.
 
 	   Between 720 and 839 the row keeps all five tracks and simply drops the
-	   description, exactly as at 390. */
+	   description, exactly as at 390.
+
+	   ⚠️ THE DISC SHRANK TO 28px 2026-09-02 (the list-row diameter token —
+	   see `BakeStatusIcon.svelte`), FREEING 8px THIS MATH DOES NOT SPEND.
+	   840 is still safe — the pair's share is now `panel − 544`, strictly
+	   more room than the `− 552` this measurement assumed — it is just 8px
+	   more conservative than it needs to be. Left alone rather than
+	   re-derived to the pixel: the threshold only needed to be SAFE, and
+	   moving it down risks re-opening a boundary that took two rejected
+	   values to find. */
 	@container (min-width: 840px) {
 		.apps-desc {
 			display: block;

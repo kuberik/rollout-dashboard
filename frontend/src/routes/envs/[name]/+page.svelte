@@ -82,8 +82,8 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import type { PromotionBlock } from '$lib/view-models/promotion';
-	import { buildRolloutCards } from '$lib/rollout-cards';
-	import type { StatusKey } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardStateMark } from '$lib/rollout-cards';
+	import type { StatusKey, CardStateMark } from '$lib/rollout-cards';
 	import { getEnvironmentRank } from '$lib/env-order';
 	import {
 		formatTimeAgoCompact,
@@ -130,10 +130,13 @@
 	 * and Deploying are different states and may never share a hue, which is
 	 * why this page draws the atom instead of reimplementing it.
 	 */
-	const STATUS_CIRCLE = 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full';
+	// DISC DIAMETER: `h-7 w-7` (28px), the list-row token — see
+	// `BakeStatusIcon.svelte`. Was `h-6 w-6` (24px); both grid tracks below
+	// that reserve a column for this disc moved with it.
+	const STATUS_CIRCLE = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full';
 
 	/**
-	 * THE ROW: `24px │ 1fr app │ 1fr chain │ 132px build │ 56px age │ 112px action`.
+	 * THE ROW: `28px │ 1fr app │ 1fr chain │ 132px build │ 56px age │ 112px action`.
 	 *
 	 * Every fixed width is measured content, not a round number. 132px holds
 	 * `head 9a1f4c2` whole at every width the grid applies at — flexible, it
@@ -167,7 +170,7 @@
 	// 168px, not 156: the widest joined badge the column draws is `1 BEHIND 2.66.0-66`,
 	// and at 156 its version half measured 60px against 62px of text — the identifier
 	// that answers "which build" ellipsised on the one row that is stuck.
-	const ROW_GRID = 'lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,1.4fr)_168px_56px_152px]';
+	const ROW_GRID = 'lg:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.4fr)_168px_56px_152px]';
 
 	const envName = $derived(page.params.name as string);
 
@@ -238,6 +241,23 @@
 		const map = new Map<Rollout, StatusKey>();
 		for (const c of buildRolloutCards(rollouts, environments, $now))
 			map.set(c.rollout, c.statusKey);
+		return map;
+	});
+
+	/**
+	 * ⭐ THE DISC'S `rolled back` / `pinned` / `held` MARK — `cardStateMark`,
+	 * the SAME precedence `/`, `/rollouts` and `CommandPalette` read, off the
+	 * SAME `RolloutCard` shape `statusByRollout` above already builds. This
+	 * page's disc used to draw only the plain bake glyph (green check for
+	 * every settled row, held or not) — the fourth spelling of the same
+	 * fact `/apps`' aggregate disc also had wrong, measured on the live
+	 * `hello-frontend-app` contract hold. Built once per rollout list, not
+	 * per row, so the map lookup below stays O(1).
+	 */
+	const markByRollout = $derived.by<Map<Rollout, CardStateMark | null>>(() => {
+		const map = new Map<Rollout, CardStateMark | null>();
+		for (const c of buildRolloutCards(rollouts, environments, $now))
+			map.set(c.rollout, cardStateMark(c));
 		return map;
 	});
 
@@ -388,6 +408,8 @@
 		 * printed here — the banner composes its own sentence from `gates`.
 		 */
 		story: BlockingStory;
+		/** `rolled back` / `pinned` / `held`, for the disc — see `markByRollout`. */
+		mark: CardStateMark | null;
 		/** Tag a `Promote` here would deploy, or null when none may be offered. */
 		promoteTag: string | null;
 		adverse: boolean;
@@ -442,6 +464,7 @@
 				stuck,
 				block: promotionBlock(slot.cell.rollout),
 				story: blockingStory(slot.cell.rollout, gateContext, { place: envName, now: $now }),
+				mark: markByRollout.get(slot.cell.rollout) ?? null,
 				promoteTag: candidate ? (candidate.tag ?? candidate.version ?? null) : null,
 				adverse,
 				primary: false,
@@ -1124,7 +1147,7 @@
 							{#each rows as row (row.key)}
 								{@const chain = chainFor(row.slot)}
 								<!-- MOBILE IS A LAYOUT, NOT A FALLBACK. Below `lg` the row
-								     is `24px │ 1fr │ auto` and every cell is placed
+								     is `28px │ 1fr │ auto` and every cell is placed
 								     EXPLICITLY: line 1 app + age, line 2 the chain, line 3
 								     the build badge, line 4 the action. Nothing is left to
 								     auto-flow, because that is how the build badge
@@ -1141,15 +1164,20 @@
 								     the row's action button all stay independently
 								     clickable because the zone raises them. -->
 								<li
-									class="tap-zone grid grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors lg:items-center {ROW_GRID} hover:bg-gray-50 dark:hover:bg-gray-700/30"
+									class="tap-zone grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors lg:items-center {ROW_GRID} hover:bg-gray-50 dark:hover:bg-gray-700/30"
 								>
 									<span
 										class="col-start-1 row-start-1 {STATUS_CIRCLE} {getStatusCircleClass(
 											row.status
 										)}"
-										title={stateLabel(row.status)}
+										title={row.mark ? row.mark.title : stateLabel(row.status)}
 									>
-										<BakeStatusIcon bakeStatus={row.status} size="small" />
+										<BakeStatusIcon
+											bakeStatus={row.status}
+											size="small"
+											state={row.mark?.kind ?? null}
+											stateWord={row.mark?.word ?? ''}
+										/>
 									</span>
 
 									<div class="col-start-2 row-start-1 flex min-w-0 flex-col gap-1">

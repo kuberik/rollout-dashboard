@@ -231,57 +231,54 @@
 	});
 
 	/**
-	 * ⭐ THE GRID MAY NOT OPEN A TRACK NO GROUP ON THE PAGE CAN FILL.
-	 * (2026-09-02.)
+	 * ⭐ THE GRID MUST FILL ITS ROW — SUPERSEDES THE 2026-09-02 460px CAP
+	 * BELOW, THE SAME DAY. (design re-check, 1440 light + 390 dark)
 	 *
-	 * ── THE MEASUREMENT ──────────────────────────────────────────────────
-	 * `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3` with every namespace holding
-	 * one or two rollouts left the right-hand track empty in EVERY group. On
-	 * the live fleet — 15 rollouts over 9 namespaces — the empty share of the
-	 * card area measured **44.8% at 1280, 44.7% at 1440, 44.7% at 1800**: nine
-	 * groups, nine identical voids, in the same place, under a group header
-	 * rule that runs the full width and so promises a region that is nearly
-	 * half nothing. `src/lib/CLAUDE.md`'s "ragged right is NOT a margin" is
-	 * right about a LAST ROW; it does not cover a page where every row is the
-	 * last row and every one is ragged identically.
+	 * ── WHAT THE 460px CAP ACTUALLY SHIPPED ──────────────────────────────
+	 * The note this replaces fixed a real defect (44.8% empty, per-group
+	 * grids all sharing one page-wide `maxGroupCards`) by CAPPING track
+	 * width at 460px instead of letting it fill. That traded a hole INSIDE
+	 * the row for a margin AFTER it: `460px 460px` in a 1201px container is
+	 * **76.6%** used, and a one-rollout namespace's single `460px` track is
+	 * **38.3%**. `/`'s comparable two-up section fills 100% at the same
+	 * width. A container using three-quarters of itself, or barely a third,
+	 * is not a fix, it is the same defect with better PR.
 	 *
-	 * ── THE TWO CANDIDATES, BOTH MEASURED, BOTH WORSE ────────────────────
-	 *  · `auto-fill` with the card's real minimum. The card's `max-content` is
-	 *    **264px** (everything inside truncates), so `minmax(264px, 1fr)` at a
-	 *    1201px container opens FOUR tracks and a two-rollout group goes to
-	 *    **50% empty**. Auto-fill answers "how many fit", and the question
-	 *    here is "how many are there".
-	 *  · Two equal columns. Cards go to **596px** against 264px of content, so
-	 *    the badge row's two facts — `[NEWEST|1.66.0-66]` and `4d ago updated`
-	 *    — separate by **~460px** and stop reading as one card. That is the
-	 *    inflation the `auto-fit` note already refused, arrived at a second
-	 *    way.
+	 * ── THE CARD-INFLATION ARGUMENT THE CAP WAS PROTECTING, AND WHY IT DOES
+	 *    NOT WIN HERE ─────────────────────────────────────────────────────
+	 * Equal columns push a two-card group's cards to ~596px, ~330px past the
+	 * card's 264px max-content, so the badge row's `[NEWEST|1.66.0-66]` and
+	 * `4d ago updated` separate by ~460px. That is real, and it is also a
+	 * SECOND-ORDER cosmetic complaint against a FIRST-ORDER usability one —
+	 * a page reading as 62–77% empty. Between the two, the container filling
+	 * itself wins; nothing about the card's own layout is touched by this
+	 * change; if the gap between the two badge halves reads as loose at
+	 * 460–600px CARD width, the card's internal layout is the next lever,
+	 * not this one.
 	 *
-	 * ── WHAT SHIPPED ─────────────────────────────────────────────────────
-	 * Track COUNT is capped by the largest group on the page, and track WIDTH
-	 * is capped at **460px** so the cards cannot inflate into list rows. On
-	 * this fleet: 2 tracks of 460, empty share **45% → 23%**, and the residue
-	 * is now trailing margin on the block rather than a hole inside it. On a
-	 * fleet where any namespace holds three or more, `maxGroupCards >= 3` and
-	 * the class string is **byte-identical to what shipped before** — this
-	 * cannot change the page it was designed for.
+	 * ── THE FIX: PER-GROUP `auto-fit`, NOT A PAGE-WIDE JS CAP ────────────
+	 * Each namespace already draws its own `<div class="grid …">` — the bug
+	 * was computing `maxGroupCards` ACROSS every group and applying ONE
+	 * column count to ALL of them, so a lone-rollout namespace inherited the
+	 * two-column template a busier namespace elsewhere on the page needed.
+	 * `repeat(auto-fit, minmax(360px, 1fr))` needs no JS at all: it is
+	 * evaluated PER GRID, so a group's own card count decides its own track
+	 * count. `auto-fit` (not `auto-fill`) is deliberate — `auto-fill` keeps
+	 * empty trailing tracks at their `minmax` floor even with nothing in
+	 * them, which is the 44.8%-hole defect the ORIGINAL grid-cols-3 shipped
+	 * with; `auto-fit` COLLAPSES a track with no item in it to 0 and lets the
+	 * occupied tracks' `1fr` absorb the freed space, which is what "fills
+	 * its container" requires. `/environments`'s `.env-stack` already uses
+	 * `auto-fit` for exactly this reason — see `CLAUDE.md`'s "ragged right"
+	 * note.
 	 *
-	 * ⛔ THE CAP IS ON `xl` ONLY, AND THAT IS NOT AN OVERSIGHT. Between 640
-	 * and 1279 the grid is already two tracks and a two-rollout group already
-	 * fills it: capping there would INVENT a void at widths that do not have
-	 * one. The cap belongs exactly where the third track is.
-	 *
-	 * ⛔ AND THE CARD ITSELF IS UNTOUCHED — same markup, same padding, same
-	 * radius, same internals. Only the track it sits in changed.
+	 * 360px is comfortably above the card's 264px max-content, so a track
+	 * never pinches the card; the product's global container cap
+	 * (`max-w-7xl`, 1280px) keeps `auto-fit` from ever offering a fourth
+	 * track at any viewport this product ships, so the "xl track count is
+	 * capped at 3" intent survives with no JS to maintain it. Below `xl` the
+	 * grid stays `grid-cols-1 sm:grid-cols-2` — unmeasured, untouched.
 	 */
-	const maxGroupCards = $derived(Math.max(1, ...grouped.map((g) => g.cards.length)));
-	const gridColsClass = $derived(
-		maxGroupCards >= 3
-			? 'xl:grid-cols-3'
-			: maxGroupCards === 2
-				? 'xl:grid-cols-[repeat(2,minmax(0,460px))] xl:justify-start'
-				: 'xl:grid-cols-[repeat(1,minmax(0,460px))] xl:justify-start'
-	);
 
 	// Quick-filter tile counts, from the full (unfiltered) set of cards. Every
 	// predicate is `/`'s — see the note on QuickFilter.
@@ -414,13 +411,25 @@
 			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
 			<div class="flex flex-wrap items-center gap-1.5">
 				<!-- Status filter pills (compact, single-select) — replaces the old
-				     tile banner while keeping the filtering it provided. -->
+				     tile banner while keeping the filtering it provided.
+
+				     ⛔ A ZERO-COUNT PILL PUSHED THE FIRST TILE TO y≈328 AT 390.
+				     (2026-09-02, design re-check) `Attention 0 · In motion 0 ·
+				     Pending 0` still drew all five pills at their FULL width —
+				     the count made them cheap ink to keep on a 1440 screen,
+				     but at 390 the row is the whole card width and a mark of
+				     the norm (three empty buckets) cost a full 44px band before
+				     a single rollout appeared. Hidden below `sm` — a filter
+				     that can select nothing is not a control, it is a caption
+				     — unless it is the ACTIVE one, so clearing a filter that
+				     just emptied out is still reachable without a resize. -->
 				{#each statusPills as sp (sp.key)}
 					<button
 						type="button"
 						onclick={() => (quickFilter = quickFilter === sp.key ? 'all' : sp.key)}
 						aria-pressed={quickFilter === sp.key}
-						class="t-label inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 transition-colors
+						class="t-label items-center gap-1.5 rounded-full border px-2.5 py-0.5 transition-colors
+							{sp.count === 0 && quickFilter !== sp.key ? 'hidden sm:inline-flex' : 'inline-flex'}
 							{quickFilter === sp.key
 								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
 								: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
@@ -497,7 +506,7 @@
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each Array(3) as _}
 								<li class="flex items-center gap-4 px-5 py-4">
-									<div class="h-9 w-9 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+									<div class="h-7 w-7 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
 									<div class="flex flex-1 flex-col gap-1.5">
 										<div class="h-3.5 w-44 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 										<div class="h-2.5 w-24 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
@@ -537,7 +546,7 @@
 				<div class="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
 					<div class="flex items-start justify-between gap-3">
 						<div class="flex items-center gap-3">
-							<span class="inline-flex h-9 w-9 items-center justify-center rounded-full {getStatusCircleClass('Succeeded')}">
+							<span class="inline-flex h-7 w-7 items-center justify-center rounded-full {getStatusCircleClass('Succeeded')}">
 								<BakeStatusIcon bakeStatus="Succeeded" size="medium" />
 							</span>
 							<div class="flex flex-col">
@@ -636,7 +645,9 @@
 <!-- Responsive grid of compact rollout cards. State column dropped
 					     (redundant with the status circle); cards flow into columns so wide
 					     screens are not one stretched row each. -->
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 {gridColsClass}">
+					<div
+					class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]"
+				>
 						{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
 							<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS
@@ -699,7 +710,7 @@
 									     not live in a badge on one list and inside a chip on the
 									     other, so `/` does exactly this too. -->
 									<span
-										class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}"
+										class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}"
 										title={stateMark ? stateMark.title : undefined}
 									>
 										<BakeStatusIcon
@@ -727,19 +738,22 @@
 													wide
 													class="shrink-0"
 												/>{/if}
-											<!-- ⛔ "1 BEHIND" AND "1 BEHIND, HELD BY A CONTRACT NOBODY
-											     HERE CAN SATISFY" READ IDENTICAL WITHOUT THIS.
-											     (2026-09-02) The joined rank/build chip below only says a
-											     newer build exists, never whether any gate lets it
-											     through. Same mark, same role, as rollout detail's own
-											     `held` chip on the version it names — see
-											     `rollout-cards.ts`. -->
-											{#if c.held}<Chip
-													role="blocked"
-													label="held"
-													title="A newer build exists, but no gate lets it through yet"
-													class="shrink-0"
-												/>{/if}
+											<!-- ⛔ THE STANDALONE `HELD` CHIP IS GONE. (2026-09-02, defect
+											     1 of the disc consistency pass) It was added here so "1
+											     BEHIND" and "1 BEHIND, HELD" would not read identical — a
+											     real problem when the disc drew a plain green tick for
+											     every settled row. It no longer does: the disc now carries
+											     `state="held"` (pause glyph) on every held row, on every
+											     list surface, from `cardStateMark` — see `rollout-cards.ts`
+											     and `BakeStatusIcon.svelte`'s diameter-token note. A chip
+											     restating a fact the disc 24px to its left already draws is
+											     the SAME defect the `rolled back`/`pinned` marks were
+											     folded into the disc to avoid. The rank chip's own `title`
+											     still carries the full sentence
+											     (`cardVerdict`/`stateMark.title`), so hovering either mark
+											     explains it. If a future page cannot afford the disc (too
+											     tight to show `state`), THAT page earns the chip back — not
+											     this one, which has room for both and was showing both. -->
 										</div>
 										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{c.title}</span>{/if}
 									</div>
@@ -779,12 +793,29 @@
 											class="min-w-0"
 										/>
 									</span>
+									<!-- ⛔ THE AGE AND ITS NOUN WRAPPED ON EVERY 390 TILE, ORPHANING
+									     THE NOUN. (2026-09-02, design re-check) Neither span was
+									     `whitespace-nowrap`, so at the card's narrowest widths `4d
+									     ago` itself could break between the two words, and the
+									     `updated`/`started` line below it read as a stray third
+									     line. `nowrap` stops `4d ago` splitting; the noun (a
+									     secondary fact — the row's disc and chip already carry the
+									     primary ones) drops below `sm` rather than fight it for the
+									     same line, with the full phrase moved to the `title` so it
+									     is not lost, only quieted at the width that cannot afford
+									     it. -->
 									<span class="flex shrink-0 flex-col items-end leading-tight">
 										{#if c.timestamp}
-											<span class="t-micro font-mono text-gray-500 dark:text-gray-400" title={formatDate(c.timestamp)}>{formatTimeAgoCompact(c.timestamp, $now)} ago</span>
-											<span class="t-micro text-gray-500 dark:text-gray-400">{c.isRunning ? 'started' : 'updated'}</span>
+											<span
+												class="t-micro font-mono whitespace-nowrap text-gray-500 dark:text-gray-400"
+												title="{formatDate(c.timestamp)} — {c.isRunning ? 'started' : 'updated'}"
+												>{formatTimeAgoCompact(c.timestamp, $now)} ago</span
+											>
+											<span class="t-micro hidden whitespace-nowrap text-gray-500 sm:block dark:text-gray-400"
+												>{c.isRunning ? 'started' : 'updated'}</span
+											>
 										{:else}
-											<span class="t-micro text-gray-500 dark:text-gray-400">no deploy</span>
+											<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400">no deploy</span>
 										{/if}
 									</span>
 								</div>
