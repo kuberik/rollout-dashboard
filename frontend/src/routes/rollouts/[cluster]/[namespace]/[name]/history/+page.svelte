@@ -622,6 +622,12 @@
 							rolled back
 						</span>
 					{/if}
+					<!-- A rate needs a sample. "100% success" over one deploy is the
+					     same number restated in bold green, and it reads as a track
+					     record the page does not have. Same rule as `newerReleaseCount`
+					     returning null instead of 0: say nothing rather than a confident
+					     nothing. -->
+					{#if totalDeploys > 1}
 					<span aria-hidden="true">·</span>
 					<span
 						class="font-semibold tabular-nums {successRate >= 90
@@ -630,6 +636,7 @@
 								? 'text-yellow-700 dark:text-yellow-400'
 								: 'text-red-700 dark:text-red-400'}">{successRate}% success</span
 					>
+					{/if}
 				</p>
 			</div>
 
