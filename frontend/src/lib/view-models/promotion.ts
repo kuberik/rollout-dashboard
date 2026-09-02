@@ -1,5 +1,15 @@
 import type { Rollout } from '$lib/../types';
 import { getDisplayVersion } from '$lib/utils';
+// ⛔ THIS IMPORT IS CIRCULAR, AND THAT IS DELIBERATE — SEE THE NOTE ON
+// `detectStuckPromotion` BELOW. `blocking-story.ts` imports `promotionBlock`/
+// `promotionCandidates` FROM this file; this file imports only the pure
+// per-gate CLASSIFIER back. Both sides are function declarations (hoisted at
+// module instantiation, before either module's body runs), so the cycle
+// resolves cleanly under ESM — verified by `npx vitest run`, which would
+// throw at import time if it did not. `classifyGate` never runs at either
+// module's top level, only inside a call, by which point both modules have
+// finished initialising.
+import { classifyGate, EMPTY_GATE_CONTEXT, type GateContext } from './blocking-story';
 
 export type ReleaseRef = { version?: string; revision?: string; created?: string; tag?: string };
 
@@ -305,20 +315,65 @@ export type PromotionStuckReason = {
 /**
  * Promotion-level stuck: releases are waiting and have been waiting a long
  * time. Shaped to feed the existing <StuckBadge>.
+ *
+ * ── THE TRUTH BUG THIS GUARD EXISTS TO KILL (2026-09-02, commit b3cfb15) ──
+ *
+ * The old guard read `block.awaitingApprovalGates.length === 0` — and
+ * `awaitingApprovalGates` means only *"this gate published an allow-list"*.
+ * THREE of the four gate writers publish one (`RolloutSchedule` is the only
+ * one that does not): the environment controller's promotion gate and
+ * `RolloutDependency`'s contract gate both do, and neither is a person.
+ * `hello-frontend-app` in prod is the live proof — every gate reports
+ * `passing: true`, the rollout is on the newest build its contract admits
+ * (`rel-67` needs `api ^1.67.0`, `hello-api-app` serves `1.66.0`), and this
+ * guard alone called it `stuck` in amber while `/apps/<name>` and rollout
+ * detail both correctly said "waiting on another deploy".
+ *
+ * A GATE THAT PUBLISHED AN ALLOW-LIST IS NOT EVIDENCE OF A PERSON. Whether
+ * one is needed is a JOIN on who wrote the gate — `blocking-story.ts`'s
+ * `classifyGate` — and amber is earned only by `clears === 'person'` (a
+ * human wrote it) or `clears === 'unknown'` (we could not tell, and not
+ * knowing is not benign). `upstream` (environment/dependency) and `clock`/
+ * `check` gates are excluded, matching `blockingStory`'s own `person`/
+ * `unknown` buckets — the ones a caller with a real `GateContext` gets.
+ *
+ * ⚠️ WITH NO `gateContext` SUPPLIED (the default), every gate holding an
+ * allow-list classifies `unknown` against `EMPTY_GATE_CONTEXT` — nothing is
+ * joined, so nothing can be attributed to `upstream` — which is exactly the
+ * old, more conservative behaviour. A caller that cannot build a
+ * `GateContext` (no `environments`/`rolloutDependencies` in scope) gets the
+ * SAME answer as before; only a caller that supplies the join gets the fix.
+ * Every surface that renders `stuck` from this function should supply one.
  */
 export function detectStuckPromotion(
 	rollout: Rollout | null | undefined,
-	options?: { now?: Date; thresholdMs?: number }
+	options?: { now?: Date; thresholdMs?: number; gateContext?: GateContext }
 ): PromotionStuckReason | null {
 	if (rollout?.spec?.wantedVersion) return null; // pinned — by user choice, mirrors detectStuckBehind
 
 	const block = promotionBlock(rollout);
 	if (block.candidateCount === 0) return null;
 	// Amber is reserved for `stuck` = wedged, i.e. it will not clear on its
-	// own. A block made up purely of not-passing gates (schedule window,
-	// health check) is WAITING, not stuck — it has a clock and resolves
-	// without anyone. Only an allow-list that admits nothing needs a person.
-	if (block.blocked && block.awaitingApprovalGates.length === 0) return null;
+	// own WITHOUT A PERSON. See the note above this function for why the
+	// structural `awaitingApprovalGates` test alone cannot decide that — a
+	// gate is excused only when EVERY gate holding the block classifies as
+	// `upstream`/`clock`/`check`, never `person` or `unknown`.
+	//
+	// ⚠️ ONLY WHEN `block.blocked` IS TRUE. A gateless-but-stagnant rollout
+	// (`block.blocked === false` — nothing is refusing it, it simply has not
+	// moved) is a DIFFERENT wedge this predicate has always caught and must
+	// keep catching: there are no blocking gates to classify, so `holding` is
+	// empty and `needsPerson` would be vacuously false, wrongly clearing it.
+	if (block.blocked) {
+		const namespace = rollout?.metadata?.namespace;
+		const ctx = options?.gateContext ?? EMPTY_GATE_CONTEXT;
+		const holding = new Set(block.blockingGates);
+		const needsPerson = (rollout?.status?.gates ?? [])
+			.filter((g) => g?.name && holding.has(g.name))
+			.map((g) => classifyGate(g, namespace, ctx))
+			.some((g) => g.clears === 'person' || g.clears === 'unknown');
+		if (!needsPerson) return null;
+	}
 
 	const now = options?.now ?? new Date();
 	// Same 24h constant detectStuckBehind already uses. This demo pipeline

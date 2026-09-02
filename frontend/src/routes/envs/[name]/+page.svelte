@@ -72,6 +72,8 @@
 		promotionBlock,
 		detectStuckPromotion
 	} from '$lib/view-models/promotion';
+	import { buildGateContext } from '$lib/view-models/blocking-story';
+	import type { GateContext } from '$lib/view-models/blocking-story';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
@@ -180,6 +182,21 @@
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
 
+	/**
+	 * ⭐ THE GATE JOIN TABLE, so `detectStuckPromotion` can tell "needs a
+	 * person" apart from "waiting on another deploy". Built from the SAME
+	 * `/api/rollouts` payload this page already has — `Environment` and
+	 * `RolloutDependency` are both top-level keys on it, same as
+	 * `/apps/<name>`'s `gateContext`. See the note on `stuckFor` below for
+	 * the defect this exists to close.
+	 */
+	const gateContext = $derived.by<GateContext>(() =>
+		buildGateContext({
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null
+		})
+	);
+
 	// Distinct from `slots.length === 0`, which also means "tier exists but
 	// nothing has deployed here yet".
 	const envExists = $derived(environments.some((e) => e.spec?.environment === envName));
@@ -284,10 +301,24 @@
 		return s === 'InProgress' || s === 'Deploying';
 	}
 
+	/**
+	 * ⭐ THE FIX IS AT THE SOURCE — `detectStuckPromotion` now takes the
+	 * `gateContext` join and excludes a block held entirely by `upstream`
+	 * (environment/dependency) gates from `stuck`, matching
+	 * `/apps/<name>`'s `refusedNotStalled`. (2026-09-02) Without it, a
+	 * correctly-gated rollout — every gate `passing: true`, on the newest
+	 * build its own contract admits — read `STUCK` in amber here while
+	 * `/apps/<name>` and rollout detail both said "waiting on another
+	 * deploy". Live proof: `hello-frontend-app` in `hello-dep-prod`, held
+	 * by `ghd-5b2wn` (the environment controller's promotion gate) and
+	 * `dependency-hello-frontend-needs-api` (the contract gate; `rel-67`
+	 * needs `api ^1.67.0`, `hello-api-app` serves `1.66.0`). See
+	 * `promotion.ts`'s own note on `detectStuckPromotion` for the mechanism.
+	 */
 	function stuckFor(slot: EnvSlot) {
 		const own = detectStuck(slot.cell.rollout, { now: $now });
 		if (own) return own;
-		const promo = detectStuckPromotion(slot.cell.rollout, { now: $now });
+		const promo = detectStuckPromotion(slot.cell.rollout, { now: $now, gateContext });
 		if (promo) return promo;
 		for (const peer of slot.group.cells) {
 			if (peer === slot.cell) continue;
@@ -1017,23 +1048,26 @@
 							it.
 						</p>
 					{:else}
-						<div
-							class="hidden gap-x-3 border-b border-gray-100 px-4 py-2.5 text-[10px] font-semibold tracking-[0.16em] text-gray-500 uppercase lg:grid {ROW_GRID} dark:border-gray-700/60 dark:text-gray-400"
-						>
-							<span></span>
-							<span>App</span>
-							<!-- `Promotion chain` names a mechanism. `Path to here` names
-							     what the reader is looking at: the places a version passes
-							     through before it lands in this one. -->
-							<span class="min-w-0"
-								>Path to here<span class="font-normal tracking-normal normal-case">
-									· a number is versions waiting to move on</span
-								></span
-							>
-							<span>Version</span>
-							<span>Deployed</span>
-							<span></span>
-						</div>
+						<!-- ⛔ THE TRACKED UPPERCASE HEADER ROW IS GONE (2026-09-02). It was
+						     the spreadsheet shape the human rejected on the app page — every
+						     rejected page in the product shares it, and the reference page has
+						     it nowhere — and `/apps` already deleted its own equivalent. It
+						     survived here only to give the path pill's `N` a unit
+						     (`· a number is versions waiting to move on`), and that caption
+						     had gone stale: NO gap pill currently renders a number on the live
+						     cluster, so the header explained a thing that was not on screen.
+
+						     Every other column already names itself 16px below where the
+						     header used to be: the app's own name, the joined rank/build badge
+						     (`newest 1.66.0-66`, `1 behind 2.66.0-66`), and the clock glyph
+						     beside `4d`. Only the gap pill needed a unit, and it already has
+						     one that exists exactly when the number does — the pill's own
+						     `title`, `"N versions have reached X and have not yet reached Y"` —
+						     which is the resolution this file's own task note named: *"the
+						     unit gets a home that exists when the number does"*. Deleting the
+						     header and building nothing new is a reduction; this pairs with
+						     the fix — the caption's only fact now lives on the object it was
+						     describing. -->
 						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 							{#each rows as row (row.key)}
 								{@const chain = chainFor(row.slot)}

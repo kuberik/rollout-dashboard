@@ -9,7 +9,8 @@ import {
 	newestDeployableCandidate,
 	isDeployable
 } from './promotion';
-import type { Rollout } from '$lib/../types';
+import { buildGateContext } from './blocking-story';
+import type { Rollout, Environment, RolloutDependency } from '$lib/../types';
 
 // Fixtures below are built from the VERIFIED GROUND TRUTH for
 // app `hello-world-app` (see task spec): three envs sharing one app,
@@ -391,6 +392,128 @@ describe('detectStuckPromotion', () => {
 		const reason = detectStuckPromotion(gateless, { now: NOW });
 		expect(reason).not.toBeNull();
 		expect(reason?.blockingGates).toEqual([]);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⭐ THE TRUTH BUG — ROUTED THROUGH THE CLASSIFIED STORY (2026-09-02).
+//
+// `awaitingApprovalGates` means only "this gate published an allow-list",
+// and the environment controller's promotion gate and `RolloutDependency`'s
+// contract gate both do. On the LIVE cluster, `hello-frontend-app` in prod
+// is refused by exactly that pair — `ghd-5b2wn` (environment) and
+// `dependency-hello-frontend-needs-api` (contract) — with every gate
+// `passing: true` and the rollout on the newest build its own contract
+// admits (`rel-67` needs `api ^1.67.0`; `hello-api-app` serves `1.66.0`).
+// `/envs/prod` rendered it `STUCK` in amber; `/apps/hello-frontend-app` and
+// rollout detail both correctly said "waiting on another deploy". These
+// fixtures are that payload, verbatim.
+// ─────────────────────────────────────────────────────────────────────────
+describe('detectStuckPromotion — routed through blocking-story.ts classification', () => {
+	const NOW = new Date('2026-08-22T00:00:00Z');
+
+	// `ghd-5b2wn`: the environment controller's promotion gate. Joined via
+	// `Environment.status.rolloutGateRef`, exactly like the live payload.
+	const envGate: Environment = {
+		metadata: { namespace: 'x' },
+		status: { rolloutGateRef: { name: 'ghd-5b2wn' } },
+		spec: { relationship: { environment: 'staging', type: 'After' } }
+	} as unknown as Environment;
+
+	// `dependency-hello-frontend-needs-api`: the RolloutDependency contract
+	// gate. Joined via `RolloutDependency.status.gateName`.
+	const depGate: RolloutDependency = {
+		metadata: { namespace: 'x' },
+		status: {
+			gateName: 'dependency-hello-frontend-needs-api',
+			providedVersion: '1.66.0',
+			blockedReleases: [{ requiredVersion: '^1.67.0' }]
+		},
+		spec: { providerRef: { name: 'hello-api-app' }, contract: 'api' }
+	} as unknown as RolloutDependency;
+
+	function upstreamBlockedRollout() {
+		return rollout({
+			currentVersion: '2.66.0-66',
+			historyTimestamp: '2026-07-01T00:00:00Z',
+			releaseCandidates: [{ version: '2.67.0-67', tag: 'rel-67', created: '2026-07-01T00:00:00Z' }],
+			gates: [
+				// The environment controller's own shape: passing, and an empty
+				// allow-list — "nothing has reached me yet", not "I refuse it".
+				{ name: 'ghd-5b2wn', passing: true, allowedVersions: [] },
+				// The dependency controller's own shape: passing, allow-list is
+				// the provider's CURRENT version, which does not satisfy the
+				// held candidate's `requires.api` range.
+				{ name: 'dependency-hello-frontend-needs-api', passing: true, allowedVersions: ['rel-66'] }
+			]
+		});
+	}
+
+	it('REGRESSION: with no join, the block is misread as needing a person (the shipped defect)', () => {
+		// Pinned deliberately so a future change to the SAFE DEFAULT (no
+		// `gateContext` supplied) cannot silently make this pass by widening
+		// what counts as self-clearing — the point of this test is that the
+		// join, not a smarter default, is what fixes the live page.
+		expect(detectStuckPromotion(upstreamBlockedRollout(), { now: NOW })).not.toBeNull();
+	});
+
+	it('with the join, a block held ENTIRELY by upstream gates is NOT stuck — the hello-frontend-app/prod fix', () => {
+		const ctx = buildGateContext({
+			environments: { items: [envGate] },
+			rolloutDependencies: { items: [depGate] }
+		});
+		expect(detectStuckPromotion(upstreamBlockedRollout(), { now: NOW, gateContext: ctx })).toBeNull();
+	});
+
+	it('one upstream gate plus one genuinely unattributable gate is STILL stuck — one bad apple is enough', () => {
+		const r = rollout({
+			currentVersion: '2.66.0-66',
+			historyTimestamp: '2026-07-01T00:00:00Z',
+			releaseCandidates: [{ version: '2.67.0-67', tag: 'rel-67', created: '2026-07-01T00:00:00Z' }],
+			gates: [
+				{ name: 'ghd-5b2wn', passing: true, allowedVersions: [] },
+				{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }
+			]
+		});
+		// Full provenance (both sources consulted, empty is a real answer, not
+		// an absent one) but no owner and no join for the second gate — it is
+		// a hand-authored approval and classifies `person`.
+		const ctx = buildGateContext({
+			environments: { items: [envGate] },
+			rolloutDependencies: { items: [] }
+		});
+		const reason = detectStuckPromotion(r, { now: NOW, gateContext: ctx });
+		expect(reason).not.toBeNull();
+		expect(reason?.blockingGates).toEqual(['ghd-5b2wn', 'hello-world-manual-approval']);
+	});
+
+	it('a hand-authored approval gate, fully joined, is genuinely stuck (person)', () => {
+		const r = rollout({
+			currentVersion: 'v1',
+			historyTimestamp: '2026-07-01T00:00:00Z',
+			releaseCandidates: [{ version: 'v2', tag: 'v2-tag', created: '2026-07-01T00:00:00Z' }],
+			gates: [{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }]
+		});
+		// `{ items: [] }`, not `null` — both sources were CONSULTED and came
+		// back empty, which is what makes the `person` branch reachable (see
+		// `blocking-story.ts`'s `provenanceComplete`).
+		const ctx = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: { items: [] }
+		});
+		const reason = detectStuckPromotion(r, { now: NOW, gateContext: ctx });
+		expect(reason).not.toBeNull();
+		expect(reason?.blockingGates).toEqual(['hello-world-manual-approval']);
+	});
+
+	it('a purely upstream block is not stuck even long past the threshold (staleness alone is not enough)', () => {
+		const ctx = buildGateContext({
+			environments: { items: [envGate] },
+			rolloutDependencies: { items: [depGate] }
+		});
+		// candidate `created` is 2026-07-01; NOW is 2026-08-22 — 52 days past
+		// the 24h threshold. Still not stuck: nobody has to approve anything.
+		expect(detectStuckPromotion(upstreamBlockedRollout(), { now: NOW, gateContext: ctx })).toBeNull();
 	});
 });
 
