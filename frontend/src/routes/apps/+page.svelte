@@ -1898,12 +1898,13 @@
 			<!-- DISC DIAMETER: `h-7 w-7`, the list-row token — see
 			     `BakeStatusIcon.svelte`. `state`/`stateWord` reuse `cardStateMark`
 			     (via `circleBakeStatus`'s `gateHeld` branch) so a fleet held by a
-			     gate draws the SAME green-disc pause glyph `/` and `/rollouts`
+			     gate draws the SAME orange-disc pause glyph `/` and `/rollouts`
 			     draw for the same rollouts, instead of the gray "not fully on
 			     head" disc every other kind of drift still uses. -->
 			<span
 				class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-					circle.bakeStatus
+					circle.bakeStatus,
+					circle.mark?.kind ?? null
 				)}"
 				title={circle.mark ? circle.mark.title : undefined}
 			>

@@ -1168,7 +1168,8 @@
 								>
 									<span
 										class="col-start-1 row-start-1 {STATUS_CIRCLE} {getStatusCircleClass(
-											row.status
+											row.status,
+											row.mark?.kind ?? null
 										)}"
 										title={row.mark ? row.mark.title : stateLabel(row.status)}
 									>

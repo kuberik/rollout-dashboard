@@ -142,7 +142,14 @@
 		red: 'text-red-700 dark:text-red-400',
 		yellow: 'text-yellow-700 dark:text-yellow-400',
 		blue: 'text-blue-700 dark:text-blue-400',
-		gray: 'text-gray-500 dark:text-gray-400'
+		gray: 'text-gray-500 dark:text-gray-400',
+		// ⭐ THE GLYPH'S INK MOVES WITH THE FILL NOW. (2026-09-02, disc
+		// histogram pass) `held` sits on `getStatusCircleClass`'s new
+		// `orange-100`/`orange-950/70` field, so a green-700 pause glyph
+		// would sit on an orange ground — the SAME ink `Chip`'s `rank` role
+		// (`N behind`) already prints on its own `orange-100` block, reused
+		// verbatim rather than picked again.
+		orange: 'text-orange-950 dark:text-orange-300'
 	};
 
 	function getStatusConfig(status?: string) {
@@ -151,9 +158,22 @@
 
 		switch (status) {
 			case 'Succeeded':
-				if (state === 'rolled-back') return { icon: UndoOutline, color };
+				// ⛔ `rolled back` AND `held` NO LONGER INHERIT THE SUCCEEDED
+				// GREEN INK. (2026-09-02) `color` above is `TONE.green` for every
+				// `Succeeded` deploy, held or not — that was fine while every
+				// settled disc shared one fill, and became a mismatch the moment
+				// `getStatusCircleClass` gave `held` an orange field and
+				// `rolled-back` a gray one: a green glyph on either ground reads
+				// as a colour clash, not a state. Each state's ink now matches
+				// its OWN fill's ground, from the same two call sites
+				// (`bake-status.ts` and here) this component's own header
+				// comment already names as the two places that spend these
+				// hues — `pinned` is deliberately UNCHANGED (still green; see
+				// `getStatusCircleClass`'s note on why it does not get a fourth
+				// tint here).
+				if (state === 'rolled-back') return { icon: UndoOutline, color: TONE.gray };
 				if (state === 'pinned') return { icon: LockSolid, color };
-				if (state === 'held') return { icon: PauseSolid, color };
+				if (state === 'held') return { icon: PauseSolid, color: TONE.orange };
 				return { icon: CheckCircleSolid, color };
 			case 'Failed':
 				return { icon: ExclamationCircleSolid, color };

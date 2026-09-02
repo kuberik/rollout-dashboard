@@ -894,7 +894,8 @@
 		     draw only the plain bake glyph regardless of any of the three. -->
 		<span
 			class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-				a.bakeStatus
+				a.bakeStatus,
+				a.mark?.kind ?? null
 			)}"
 			title={a.mark ? a.mark.title : bakeTitle(a.bakeStatus)}
 		>

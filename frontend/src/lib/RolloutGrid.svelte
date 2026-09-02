@@ -710,7 +710,7 @@
 									     not live in a badge on one list and inside a chip on the
 									     other, so `/` does exactly this too. -->
 									<span
-										class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus)}"
+										class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus, stateMark?.kind ?? null)}"
 										title={stateMark ? stateMark.title : undefined}
 									>
 										<BakeStatusIcon

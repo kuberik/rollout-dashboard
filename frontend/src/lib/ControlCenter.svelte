@@ -651,7 +651,8 @@
 							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
 							<span
 								class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-									c.bakeStatus
+									c.bakeStatus,
+									mark?.kind ?? null
 								)}"
 								title={mark ? mark.title : undefined}
 							>
@@ -841,7 +842,8 @@
 							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
 							<span
 								class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-									c.bakeStatus
+									c.bakeStatus,
+									mark?.kind ?? null
 								)}"
 								title={mark ? mark.title : undefined}
 							>

@@ -89,7 +89,32 @@ export function getBakeStatusColor(
 // in both light and dark mode. Centralised so the circle background
 // always matches the spinner/icon colour (e.g. blue circle behind
 // the blue Deploying spinner, not yellow).
-export function getStatusCircleClass(bakeStatus?: string): string {
+//
+// ⭐ `state` GIVES THE DISC ITS OWN FILL, NOT JUST ITS OWN GLYPH. (2026-09-02,
+// from the coordinator: *"all 15 discs on / and /rollouts measure 28px |
+// green-100 — held, rolled-back and succeeded share one fill, so the most
+// repeated mark still carries no signal except its glyph."*) The disc
+// consistency pass unified DIAMETER and made `state` route through one
+// precedence (`cardStateMark`), but every settled disc — held, rolled back,
+// or plain succeeded — still painted the SAME green-100/900 fill, so the
+// histogram of a `/rollouts` screenful was fifteen identical green coins
+// with three different glyphs sitting inside them. A glyph alone is a much
+// weaker channel than a glyph PLUS a fill; this is the second one.
+//
+// ⛔ NO NEW HUE. `held` reuses the exact `orange-100`/`orange-950/70` field
+// `Chip`'s `rank` role (`N behind`) already spends — the SAME closed-by-
+// elimination orange, chosen there for the identical reason: it needs to be
+// nameable, distinct from `alarm` (amber) and from `newest` (green), and not
+// borrow blue. `rolled back` reuses the plain gray this file already uses
+// for `None`/pending — no new value, just applied to a settled deploy
+// instead of an absent one. `pinned` is UNCHANGED (green): the coordinator's
+// brief names three states plus in-flight and says "the rest green" — a
+// pin is not one of the three, and inventing a fourth tint here is scope
+// this note was not asked to open.
+export function getStatusCircleClass(
+    bakeStatus?: string,
+    state?: 'rolled-back' | 'pinned' | 'held' | null
+): string {
     // PER-STATUS TINT, RESTORED 2026-08-26 on the human's instruction:
     // *"I generally think we're undercoloring now a bit"*.
     //
@@ -111,6 +136,14 @@ export function getStatusCircleClass(bakeStatus?: string): string {
     // `green-100` is ~35 units of ink (804px^2 x 0.0434 OKLCH chroma) against
     // the `stuck` alarm chip's ~159, so the disc is still 4.5x quieter than the
     // alarm and the invariant that nothing out-shouts the alarm holds.
+    //
+    // ⚠️ `state` ONLY OVERRIDES A `Succeeded` DISC. A failed or in-flight
+    // deploy still owns its own fill unconditionally — same guard as
+    // `BakeStatusIcon`'s `stateApplies`, so the two can never disagree.
+    if (bakeStatus === 'Succeeded') {
+        if (state === 'held') return 'bg-orange-100 dark:bg-orange-950/70';
+        if (state === 'rolled-back') return 'bg-gray-100 dark:bg-gray-700/60';
+    }
     const c = getBakeStatusColor(bakeStatus);
     switch (c) {
         case 'green':

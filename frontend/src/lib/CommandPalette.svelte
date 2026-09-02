@@ -614,7 +614,8 @@
 		{#if r.kind === 'rollout'}
 			<span
 				class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-					r.bakeStatus
+					r.bakeStatus,
+					r.state ?? null
 				)}"
 				title={r.stateTitle
 					? `${bakeWord(r.bakeStatus)} — ${bakeTitle(r.bakeStatus)}. ${r.stateTitle}`
