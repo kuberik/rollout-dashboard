@@ -2149,10 +2149,14 @@
 														<button
 															type="button"
 															aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
-															class="inline-flex cursor-help items-center gap-1 rounded text-xs font-medium text-yellow-700 dark:text-yellow-400"
+															class="inline-flex cursor-help items-center gap-1 rounded text-xs"
 														>
-															{heldWord(held)}
-															<QuestionCircleOutline class="h-3 w-3" aria-hidden="true" />
+															<!-- The SAME mark the Dependencies tab draws for the same fact
+															     about the same version: the `held` chip. It was amber ink
+															     here and a red chip one tab over — two hues, two shapes. -->
+															<Chip role="blocked" label="held" />
+															<span class="text-gray-500 dark:text-gray-400">{heldWord(held).replace(/^Held /, '')}</span>
+															<QuestionCircleOutline class="h-3 w-3 text-gray-500 dark:text-gray-400" aria-hidden="true" />
 														</button>
 														<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
 															<div class="space-y-2 p-1">
