@@ -130,12 +130,16 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <nav
-	class="environment-theme-scope sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	class="environment-theme-scope relative sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 	style={rolloutThemeStyle}
 	aria-label="Global"
 >
+	<!-- The env band OVERLAYS the bar's top padding; it does not stack above
+	     it. As a 4px block it made the navbar 57px on rollout detail and 53px
+	     everywhere else, so every sidebar item and the page under it dropped
+	     4px the moment you opened a rollout and rose again when you left. -->
 	{#if rolloutTheme}
-		<div class="h-1 w-full environment-theme-accent" aria-hidden="true"></div>
+		<div class="absolute inset-x-0 top-0 h-1 environment-theme-accent" aria-hidden="true"></div>
 	{/if}
 	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
 		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
