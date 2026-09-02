@@ -88,8 +88,13 @@
 		ClockSolid,
 		CalendarMonthSolid,
 		ChartLineUpOutline,
-		ExclamationCircleSolid
+		ExclamationCircleSolid,
+		UndoOutline
 	} from 'flowbite-svelte-icons';
+	import { deployActs, type DeployAct } from '$lib/history-marks';
+
+	/** The one member of `DeployAct` this page ever attaches to a row. */
+	type RollbackAct = Extract<DeployAct, { kind: 'rollback' }>;
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
 	import ChangeList from '$lib/components/ChangeList.svelte';
@@ -158,6 +163,16 @@
 		 */
 		isLive: boolean;
 		rollout: (typeof rollouts)[number];
+		/**
+		 * ⭐ WHETHER *THIS* HISTORY ENTRY WENT BACKWARDS — `history-marks.ts`'s
+		 * per-index verdict, index-aligned with `history`, not
+		 * `rollout-cards.ts`'s `detectRollback` (current deploy only). A
+		 * rollback that has since been auto-corrected forward again is
+		 * invisible to `detectRollback` the moment the correction lands, on
+		 * the very row where it happened — an audit feed cannot afford that.
+		 * See the same note in `ActivityRail.svelte`.
+		 */
+		rollbackAct: RollbackAct | null;
 	};
 
 	/**
@@ -194,6 +209,9 @@
 			const envKey = envName || theme?.environmentName || theme?.name || '';
 			const envLabel = shortEnvLabel(theme) || envName || '';
 			const limited = history.slice(0, 30);
+			// Index-aligned with `history` (and therefore with `limited`, which
+			// is a prefix of it) — see `RollbackAct` above.
+			const acts = deployActs(rollout);
 			// The FIRST entry that carries a timestamp is the current deploy —
 			// not `i === 0`, because the controller can write an entry with no
 			// timestamp and one of those at the head would move `live` onto the
@@ -204,6 +222,8 @@
 				if (!h.timestamp) continue;
 				const isLive = !seenNewest;
 				seenNewest = true;
+				const act = acts[i];
+				const rollbackAct = act?.kind === 'rollback' ? act : null;
 				const currentV = getDisplayVersion(h.version);
 				// Find the previous *different* version in this rollout's history,
 				// capturing its revision for the lazy commit changelist.
@@ -241,7 +261,8 @@
 					source: rollout.status?.source ?? null,
 					cluster: sourceClusterName(rollout) || localClusterName,
 					isLive,
-					rollout
+					rollout,
+					rollbackAct
 				});
 			}
 		}
@@ -347,7 +368,11 @@
 					}[timelineRange] ?? '')
 	);
 
-	const feed = $derived(scoped.filter((e) => inRange(e.timestamp)).slice(0, 60));
+	// UNCAPPED — the chart card's own rollup (below) has to answer for the
+	// whole window, not just the sixty rows the list renders. `feed` stays
+	// the list's own cap, unchanged.
+	const windowed = $derived(scoped.filter((e) => inRange(e.timestamp)));
+	const feed = $derived(windowed.slice(0, 60));
 
 	// ── ONE LANE PER ENVIRONMENT ───────────────────────────────────────────
 	// The chart used to be a single lane labelled `All deploys`, which is a
@@ -367,6 +392,7 @@
 					version: { tag: string; version?: string; revision?: string };
 					subject?: string;
 					triggeredBy?: { kind: 'User' | 'System'; name: string };
+					mark?: 'rollback';
 				}[];
 				isCurrent: boolean;
 			}
@@ -383,7 +409,15 @@
 				bakeStatus: e.bakeStatus,
 				version: e.versionInfo,
 				subject: e.displayName,
-				triggeredBy: { kind: e.actorKind, name: e.actor }
+				triggeredBy: { kind: e.actorKind, name: e.actor },
+				// ⭐ WIRES UP `DeploymentTimeline`'s OWN ROLLBACK RING — it has
+				// drawn one (a neutral-ink circle round the dot) since
+				// 2026-09-02, but nothing on this page ever passed `mark`, so
+				// it never fired here. One fact, one ink, in the chart AND the
+				// list now — see the colour note on `statusFill` for why the
+				// list's green disc stays (a dated, quoted human ruling), and
+				// `BakeStatusIcon`'s own rollback glyph swap below.
+				mark: e.rollbackAct ? ('rollback' as const) : undefined
 			});
 		}
 		return [...lanes.values()].sort((a, b) => compareEnvironmentNames(a.name, b.name));
@@ -476,19 +510,38 @@
 	function isInFlight(e: ActivityEntry) {
 		return e.bakeStatus === 'InProgress' || e.bakeStatus === 'Deploying';
 	}
+	function isRolledBack(e: ActivityEntry) {
+		return !!e.rollbackAct;
+	}
 
 	/**
-	 * THE CARD'S ANSWER, TAKEN WITHOUT READING A ROW. `12 deploys · all fine`,
-	 * `9 deploys · 1 failed`. Green ONLY when every deploy in the group
+	 * THE ANSWER, TAKEN WITHOUT READING A ROW. `12 deploys · all fine`,
+	 * `9 deploys · 1 failed`. Green ONLY when every deploy in the set
 	 * finished cleanly — the same rule `/apps` applies to its tick.
+	 *
+	 * ⛔ A ROLLBACK USED TO BE INVISIBLE HERE, THE SAME WAY IT WAS INVISIBLE
+	 * ON THE ROW. (2026-09-02) `hello-world-dev/hello-world-app` rolled back
+	 * by hand and the group carrying that entry still read `all fine` — a
+	 * rollback IS a successful deploy, so it passed every existing test, and
+	 * `all fine` is exactly the sentence a reader would act on by NOT
+	 * looking closer. It ranks below `failed`/`still going` (both need a
+	 * person right now; a rollback that already happened does not) and above
+	 * `all fine` (the norm this whole function exists to stop overstating).
+	 *
+	 * ONE FUNCTION, TWO CALLERS: a day card's rollup and the chart card's
+	 * verdict (`windowRollup` below) are the same sentence over two
+	 * different sets, so they can never disagree about what "fine" means.
 	 */
 	function groupRollup(entries: ActivityEntry[]) {
 		const failed = entries.filter(isFailed).length;
 		const flying = entries.filter(isInFlight).length;
+		const rolledBack = entries.filter(isRolledBack).length;
 		const n = entries.length;
 		const noun = `${n} deploy${n === 1 ? '' : 's'}`;
 		if (failed > 0) return { text: `${noun} · ${failed} failed`, tone: 'adverse' as const };
 		if (flying > 0) return { text: `${noun} · ${flying} still going`, tone: 'active' as const };
+		if (rolledBack > 0)
+			return { text: `${noun} · ${rolledBack} rolled back`, tone: 'neutral' as const };
 		if (entries.every((e) => e.bakeStatus === 'Succeeded'))
 			return { text: `${noun} · all fine`, tone: 'good' as const };
 		return { text: noun, tone: 'neutral' as const };
@@ -499,6 +552,18 @@
 	const appCount = $derived(
 		new Set(feed.map((e) => `${e.rolloutNamespace}/${e.rolloutName}`)).size
 	);
+
+	/**
+	 * ⭐ THE CHART CARD'S VERDICT — the answer, not the window. (2026-09-02)
+	 * It used to print `rangeLabel` (`the last 7 days`), which is the SAME
+	 * fact the `7D` pill 50px below already states, and it is the one card
+	 * rollup on this page that is not a verdict — every other card on the
+	 * product answers "how did it go", not "what am I looking at". Over
+	 * `windowed`, UNCAPPED, because the chart's own window can hold more than
+	 * the sixty rows the list renders. `rangeLabel` still rides in the
+	 * title — it is a real fact, just not the headline one.
+	 */
+	const windowRollup = $derived(groupRollup(windowed));
 
 	// ── THE PAGE'S ONE BLOCKING FACT ───────────────────────────────────────
 	// A deploy that failed will not clear itself. Nothing else on this page
@@ -666,16 +731,19 @@
 	{/if}
 
 	<!-- ══ WHEN THEY HAPPENED ═══════════════════════════════════════════════
-	     A TITLED CARD, not a bordered box. The rollup states the window the
-	     whole page is scoped to, because the buttons inside this card also
-	     govern the feed below it — a control with reach past its own container
-	     has to say so somewhere the reader will look. -->
+	     A TITLED CARD, not a bordered box. The rollup is the ANSWER now
+	     (`49 deploys · 1 rolled back`, `all fine`) — never the window, which
+	     the `7D` pill 50px below already states and which used to be this
+	     card's whole rollup. The window still rides in the title: it is a
+	     real fact, and the buttons inside this card govern the feed below
+	     it too, so a reader hovering the verdict still finds it. -->
 	{#if chartServices.length > 0}
 		<Card
 			icon={ChartLineUpOutline}
 			title="When deploys happened"
-			verdict={rangeLabel}
-			verdictTitle="The window these buttons set. It also scopes the feed below."
+			verdict={windowRollup.text}
+			verdictTone={windowRollup.tone}
+			verdictTitle="{windowRollup.text}, in {rangeLabel} — the window these buttons set. It also scopes the feed below."
 			class="mb-5"
 		>
 			<DeploymentTimeline
@@ -696,16 +764,32 @@
 	     divider, in the same pressed/unpressed language as the state filters,
 	     and each one says what it does. -->
 	<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-2">
+		<!-- ⛔ THIS ROW AND THE CHART'S `1H 6H 1D 7D 30D ALL` ROW WERE TWO
+		     ALMOST-IDENTICAL PILLS ONE TYPE SIZE APART. (2026-09-02) This one
+		     is `t-label` (10px/600); `DeploymentTimeline`'s presets are an ad
+		     hoc `text-[11px] font-semibold uppercase tracking-wider` — a
+		     THIRD uppercase size, against app.css's own note above `t-label`
+		     that the product's old 9/10/11px sprawl was deliberately closed
+		     to exactly `t-label` (10px) and `t-micro` (11px, not uppercase).
+		     Moving THIS row up to 11px would reopen that budget; `Deployment
+		     Timeline` moves down to `t-label` instead — see the matching
+		     comment there.
+		     ⛔ AND THE SELECTED PILL WAS 2PX SHORTER. Its unselected sibling
+		     carries a 1px border; the selected state had none, so on a
+		     border-box element a border-less button IS 2px smaller in both
+		     axes at identical padding. `border-gray-900`/`border-gray-100`
+		     match the fill exactly, so the border is invisible and the box is
+		     the same size as its neighbours either way. -->
 		{#each KIND_FILTERS as f (f.key)}
 			<button
 				type="button"
 				aria-pressed={kindFilter === f.key}
 				title={f.title}
 				onclick={() => (kindFilter = f.key)}
-				class="t-label rounded px-3 py-1 transition-colors
+				class="t-label rounded border px-3 py-1 transition-colors
 					{kindFilter === f.key
-					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-					: 'border border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
+					: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
 				>{f.label}</button
 			>
 		{/each}
@@ -890,7 +974,21 @@
 											entry.bakeStatus
 										)}"
 									>
-										<BakeStatusIcon bakeStatus={entry.bakeStatus} size="small" />
+										<!-- ⭐ THE DISC CARRIES THE ROLLBACK, SAME AS `/`'s.
+										     (2026-09-02) `rollout-cards.ts`'s `cardStateMark`
+										     swaps this glyph for `UndoOutline` on `/` and
+										     `/rollouts`; this row used to always draw the plain
+										     tick, even on the entry where production went
+										     backwards — a green disc reading `deploy succeeded`
+										     on a rollback nobody could see. Same component, same
+										     `state`/`stateWord` contract, same hue: the deploy
+										     DID succeed, only the shape changes. -->
+										<BakeStatusIcon
+											bakeStatus={entry.bakeStatus}
+											size="small"
+											state={entry.rollbackAct ? 'rolled-back' : null}
+											stateWord="rolled back"
+										/>
 									</span>
 
 									<span
@@ -936,6 +1034,26 @@
 												class="t-micro {STATE_INK[entry.bakeStatus] ?? ''}"
 												title={bakeTitle(entry.bakeStatus)}>{word}</span
 											>
+										{/if}
+										{#if entry.rollbackAct}
+											<!-- THE WORD, AT REST — the same pill the History tab
+											     draws, from the SAME `history-marks.ts` object
+											     (`entry.rollbackAct.word` / `.sentence`), so a
+											     rollback cannot be spelled two ways between the two
+											     surfaces that both read `deployActs`. This is the
+											     row `defect #2` names: it used to read `064b655 →
+											     1 BEHIND 0afab6f` with a green dot and no mark at
+											     all, above a day rollup that called the whole day
+											     `all fine`. Neutral-strong ink, not a status hue —
+											     going backwards is a fact about the deploy, not an
+											     alarm about it. -->
+											<span
+												class="inline-flex items-center gap-1 rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
+												title={entry.rollbackAct.sentence}
+											>
+												<UndoOutline class="h-2.5 w-2.5" aria-hidden="true" />{entry.rollbackAct
+													.word}
+											</span>
 										{/if}
 										{#if entry.actorKind === 'User'}
 											<span class="t-micro text-gray-500 dark:text-gray-400">by {entry.actor}</span>

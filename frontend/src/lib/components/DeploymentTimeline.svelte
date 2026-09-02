@@ -403,7 +403,10 @@
 	 * selected, so the reader never sees a count and a mark fighting for the
 	 * same 15px.
 	 */
-	const R_CLUSTER = 7.5;
+	// 8, not 7.5: the numeral inside it is 10px now (was 9, below the
+	// product's 10px floor — see the draw site). The bubble may grow to fit
+	// its own label; it may not shrink the label to fit the bubble.
+	const R_CLUSTER = 8;
 
 	/** Failed outranks in-flight outranks settled — a merged mark may never
 	    hide the worst thing inside it. */
@@ -677,14 +680,30 @@
 		     that is not one of the nine roles. All four are fixed here by
 		     adopting the near-neutral selected state the `ALL / DEPLOYS /
 		     IN PROGRESS / FAILURES` row 30px below already uses, so the two
-		     filter rows are one control language instead of two. -->
+		     filter rows are one control language instead of two.
+
+		     ⛔ AND A FIFTH ONE SURVIVED THAT PASS: `text-[11px] font-semibold
+		     uppercase tracking-wider` is a THIRD ad hoc uppercase size next to
+		     `/activity`'s own `KIND_FILTERS` row 30px below (`t-label`,
+		     10px/600) — one pixel apart, at the SAME radius, weight and
+		     padding, which reads as an accident rather than a decision.
+		     `app.css`'s own note above `.t-label` already closed this budget
+		     ("the old 9/10/11px sprawl collapses to exactly `t-label` and
+		     `t-micro`"); this row moves onto the documented role instead of
+		     widening it. (2026-09-02)
+		     ⛔ AND THE SELECTED PILL WAS 2PX SHORTER THAN ITS NEIGHBOURS. The
+		     unselected state carries a 1px border and the selected one had
+		     none, so on a border-box button the border-less one is 2px
+		     smaller in both axes at identical padding.
+		     `border-gray-900`/`border-gray-100` match the fill exactly, so
+		     the border is invisible and the box is the same size either
+		     way. -->
 		{#each TIME_RANGES as { value, label }}
 			<button
-				class="rounded px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors {isPreset(
-					timeRange
-				) && timeRange === value
-					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-					: 'border border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+				class="t-label rounded border px-3 py-1 transition-colors {isPreset(timeRange) &&
+				timeRange === value
+					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
+					: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
 				onclick={() => pickRange(value)}
 			>
 				{label}
@@ -922,7 +941,13 @@
 										(selectedEntry?.serviceId === svc.id && selectedEntry?.index === en.i))
 							)}
 							{#if !openHere}
-								{@const cr = c.count > 9 ? R_CLUSTER + 1.5 : R_CLUSTER}
+								<!-- ⛔ THE NUMERAL WAS 9PX, BELOW THE PRODUCT'S 10PX FLOOR.
+								     (2026-09-02) It is the smallest text in the whole
+								     chart and the one number a merged mark exists to make
+								     legible — shrinking it below the floor to fit the
+								     bubble was solving the wrong side of the equation.
+								     `R_CLUSTER` grew by 0.5 instead. -->
+								{@const cr = c.count > 9 ? R_CLUSTER + 2 : R_CLUSTER}
 								<circle
 									cx={c.cx}
 									cy={cy}
@@ -934,9 +959,9 @@
 								/>
 								<text
 									x={c.cx}
-									y={cy + 3.2}
+									y={cy + 3.5}
 									text-anchor="middle"
-									font-size="9"
+									font-size="10"
 									font-weight="600"
 									pointer-events="none"
 									aria-hidden="true"
@@ -1004,11 +1029,14 @@
 					stroke-dasharray="4 2"
 					class="stroke-gray-500 dark:stroke-gray-400"
 				/>
+				<!-- Was 9px — under the product's 10px floor, and the only other
+				     offender in this chart besides the cluster-bubble numeral
+				     above. (2026-09-02) -->
 				<text
 					x={containerWidth - PAD_R - 4}
 					y={PAD_T + 10}
 					text-anchor="end"
-					font-size="9"
+					font-size="10"
 					class="fill-gray-500 dark:fill-gray-400"
 				>
 					now

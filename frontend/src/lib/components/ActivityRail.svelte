@@ -10,7 +10,7 @@
 	} from '$lib/utils';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
 	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
-	import { CalendarMonthSolid, ClockSolid } from 'flowbite-svelte-icons';
+	import { CalendarMonthSolid, ClockSolid, UndoOutline } from 'flowbite-svelte-icons';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -21,6 +21,10 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import type { Rollout, Environment } from '../../types';
 	import { BAKE_WORD } from '$lib/bake-status';
+	import { deployActs, type DeployAct } from '$lib/history-marks';
+
+	/** The one member of `DeployAct` this rail ever attaches to a row. */
+	type RollbackAct = Extract<DeployAct, { kind: 'rollback' }>;
 
 	let {
 		rollouts,
@@ -115,6 +119,18 @@
 		 */
 		isLive: boolean;
 		rollout: Rollout;
+		/**
+		 * ⭐ WHETHER *THIS* HISTORY ENTRY WENT BACKWARDS — `history-marks.ts`'s
+		 * per-index verdict, not `rollout-cards.ts`'s `detectRollback`.
+		 * `detectRollback` only ever answers for the CURRENT deploy
+		 * (`history[0]` vs `[1]`), so a rollback that has since been
+		 * auto-corrected forward again (the live cluster's own
+		 * `hello-world-dev/hello-world-app`) goes invisible the moment the
+		 * correction lands — on the ROW where it actually happened. A rail
+		 * that prints history has to answer this per row, the same way the
+		 * History tab already does.
+		 */
+		rollbackAct: RollbackAct | null;
 	};
 
 	/**
@@ -162,9 +178,13 @@
 			);
 			const envName = env?.spec?.environment ?? '';
 			const theme = env ? getRolloutEnvironmentTheme(r, env) : getRolloutEnvironmentTheme(r);
+			// Index-aligned with `history` — see `RollbackAct` above.
+			const acts = deployActs(r);
 			for (let i = 0; i < history.length; i++) {
 				const h = history[i];
 				if (!h.timestamp) continue;
+				const act = acts[i];
+				const rollbackAct = act?.kind === 'rollback' ? act : null;
 				const ver = getDisplayVersion(h.version);
 				let prev: string | null = null;
 				for (let j = i + 1; j < history.length; j++) {
@@ -200,7 +220,8 @@
 					isRunning: bs === 'InProgress' || bs === 'Deploying',
 					source: r.status?.source ?? null,
 					isLive,
-					rollout: r
+					rollout: r,
+					rollbackAct
 				});
 			}
 		}
@@ -322,7 +343,11 @@
      deploy is a claim nobody can make. See `ranks`. -->
 {#snippet versionSnippet(a: ActivityEntry)}
 	{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
-	<span class="flex min-w-0 shrink-0 items-center gap-1">
+	<!-- `ml-auto`, NOT `justify-between` ON THE PARENT — this snippet is now
+	     the ONLY thing that ever sits on the right of its row (line 2, both
+	     `showAppName` variants), and an auto margin holds it flush right
+	     whether or not the row has wrapped. See the row markup below. -->
+	<span class="ml-auto flex min-w-0 shrink-0 items-center gap-1">
 		{#if a.previousVersion}
 			<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
 				>{a.previousVersion}</span
@@ -462,9 +487,18 @@
 															? 'font-semibold'
 															: ''}">{a.displayName}</a
 													>
-												{:else}
-													{@render versionSnippet(a)}
 												{/if}
+												<!-- ⛔ THE VERSION PAIR USED TO LIVE HERE WHEN
+												     `showAppName` WAS FALSE, ALONGSIDE THE TIMESTAMP
+												     BELOW — TWO `shrink-0` ANCHORS ON ONE LINE, NEITHER
+												     ABLE TO YIELD. Measured at 390 on
+												     `/apps/hello-frontend-app`: the version chip and the
+												     timestamp overlapped by up to 42px, because
+												     `justify-between` with negative free space just
+												     distributes a NEGATIVE gap instead of wrapping. It
+												     now lives on line 2 below, unconditionally, which is
+												     the one place a `showAppName` row already puts it —
+												     see `versionSnippet`'s own `ml-auto`. -->
 											</div>
 											{#if showAppName}
 												<span
@@ -489,24 +523,40 @@
 												</a>
 											{/if}
 										</div>
-										<!-- Second line only when it carries something the first
-										     does not. `Succeeded` beside a green dot that already
-										     means succeeded is a word the eye has to read to
-										     discard; it appeared 8 times on one screen. -->
-										{#if showAppName || a.bakeStatus !== 'Succeeded'}
-											<div class="t-micro mt-0.5 flex items-center justify-between gap-2">
-												{#if a.bakeStatus !== 'Succeeded'}
-													<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}
-														>{STATUS_LABEL[a.bakeStatus]}</span
-													>
-												{:else}
-													<span></span>
-												{/if}
-												{#if showAppName}
-													{@render versionSnippet(a)}
-												{/if}
-											</div>
-										{/if}
+										<!-- ⭐ LINE 2 IS UNCONDITIONAL NOW. It used to render only
+										     when `showAppName` was true (the version pair's ONLY
+										     home) or the bake status was not `Succeeded` — which is
+										     exactly the branch that dropped a settled rollback on
+										     the floor when `showAppName` was false: line 1 had the
+										     version pair, line 2 never rendered, nowhere for the
+										     rollback mark to go. It is the version pair's one home
+										     now, on every call site, and `flex-wrap` (not
+										     `justify-between`) is the fallback if a long state word
+										     and a long version pair still cannot both fit — the row
+										     stacks instead of overlapping again. -->
+										<div class="t-micro mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+											{#if a.bakeStatus !== 'Succeeded'}
+												<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}
+													>{STATUS_LABEL[a.bakeStatus]}</span
+												>
+											{:else if a.rollbackAct}
+												<!-- THE WORD, AT REST — same pill the History tab
+												     draws (`history-marks.ts`'s own `word` and
+												     `sentence`, never a private copy of them), so a
+												     rollback cannot be spelled two ways between the two
+												     surfaces that both read `deployActs`. Neutral-strong
+												     ink, not a status hue: going backwards is a fact
+												     about the deploy, not an alarm — the deploy did
+												     succeed. -->
+												<span
+													class="inline-flex items-center gap-1 rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
+													title={a.rollbackAct.sentence}
+												>
+													<UndoOutline class="h-2.5 w-2.5" aria-hidden="true" />{a.rollbackAct.word}
+												</span>
+											{/if}
+											{@render versionSnippet(a)}
+										</div>
 									</div>
 								</li>
 							{/each}
