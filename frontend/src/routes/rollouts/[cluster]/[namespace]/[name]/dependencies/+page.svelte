@@ -958,7 +958,14 @@
 			     a 10px `t-label` eyebrow. ══ -->
 			<div class="mb-4">
 				<div class="flex flex-wrap items-baseline gap-3">
-					<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{appTitle}</h1>
+					<!-- Same display pair as the Overview tab and /apps/[name]: mono
+					     identifier first, human title second in the light face. -->
+					<h1 class="flex min-w-0 flex-wrap items-baseline gap-2">
+						<span class="t-display-id min-w-0 truncate text-gray-900 dark:text-white">{name}</span>
+						{#if appTitle !== name}
+							<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">{appTitle}</span>
+						{/if}
+					</h1>
 					{#if currentEnv}
 						<Chip
 							role="env"

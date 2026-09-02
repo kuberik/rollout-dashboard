@@ -1437,8 +1437,21 @@
 				<!-- ══ PAGE HEADER ══ -->
 				<div class="mb-4">
 					<div class="flex flex-wrap items-baseline gap-3">
-						<h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-							{rollout.status?.title || rollout.metadata?.name}
+						<!-- The identifier leads, in the product's one display pair: the
+						     mono name the breadcrumb, the sidebar, the URL and every list row
+						     already print, then the human title in the light face — exactly
+						     what /apps/[name] and /envs/[name] do. This page was the only one
+						     leading with the title in bold sans, and the name it shares with
+						     every other surface appeared nowhere in its own header. -->
+						<h1 class="flex min-w-0 flex-wrap items-baseline gap-2">
+							<span class="t-display-id min-w-0 truncate text-gray-900 dark:text-white">
+								{rollout.metadata?.name}
+							</span>
+							{#if rollout.status?.title && rollout.status.title !== rollout.metadata?.name}
+								<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">
+									{rollout.status.title}
+								</span>
+							{/if}
 						</h1>
 						{#if currentEnv}
 							<a
