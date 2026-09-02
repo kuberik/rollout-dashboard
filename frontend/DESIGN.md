@@ -2370,12 +2370,12 @@ anyone's decision. It is what a page looks like after enough correct changes.
 | System | Owner | Where it may appear |
 |---|---|---|
 | green | `Succeeded` / healthy — **for STATE** | status glyph, status dot, verdict ring |
-| blue | `Deploying` — **and `rank` (`N behind`)** | status glyph; the `rank` chip |
+| blue | `Deploying` | status glyph. ⛔ **NOT `rank`** — blue was tried twice (`blue-800`, then `sky-800`) and rejected: *"i think it shouldn't be blue."* |
 | yellow | `InProgress` / baking — **baking only** | status glyph |
 | red | `Failed`, **`diverged`, `failing`, `blocked`** — ⛔ **NOT `rank`** | status glyph; the `diverged` / `failing` / `blocked` chips |
 | amber | `stuck` — **and nothing else, for STATE** | the `alarm` chip |
 | gray | everything passive — **and `count`, `unranked`** | text, borders, surfaces, and the BORDER of every non-`env` chip |
-| mint | **"on the build in question"** — `teal-700` / `teal-500` (was `#426d64` / `#83b0a8`, retired 2026-09-02) | the `newest` / `head` chip; the newest segment of `ExposureBar` (⚠️ still on the old hex — migrate). Nowhere else. |
+| mint | **"on the build in question"** — **plain green, `green-800` / `green-300`** (was `#426d64` / `#83b0a8`, and `teal-700` for one hour; both retired 2026-09-02) | the `newest` / `head` chip; the newest segment of `ExposureBar` (⚠️ still on the old hex — migrate). Nowhere else. ⛔ NOT `green-700` — that value **is** DEV's identity ink and the `Succeeded` glyph, dE00 0.0. |
 | green / violet / amber / cyan | env IDENTITY | `<Chip role="env">` only, via the `--rollout-theme-*` vars |
 
 **Two of the identity hues are also status hues, deliberately, and are separated by SHAPE
@@ -2384,9 +2384,23 @@ third instance of the same device as of 2026-09-02:** it is `Deploying` on the s
 and `N behind` on a CHIP. `rank` is blue — not amber (`stuck` owns amber) and not red (a
 rollout that is merely behind is not adverse; the whole `blocked` / `stuck` distinction turns
 on that). Ordering, canvas-resolved on `/rollouts` at 1440 with the `area × chroma` formula:
-light **alarm 218.6 > adverse 148.7 > `N behind` 143.3 > `newest` 54.7**; dark, corrected for
-the chromatic card ground, **130.0 > 108.9 > 80.5 > 54.8**. `alarm` keeps the only saturated
-FILL.
+light **alarm 218.6 > adverse 117.6 > `N behind` 99.7 > `newest` 70.7**; dark, corrected for
+the chromatic card ground, **130.0 > 108.9 > 91.9 > 54.2**. `alarm` keeps the only saturated
+FILL and leads 2.19× / 1.41×.
+
+**⭐ HUE ANSWERS "DOES THIS NEED A PERSON". WEIGHT ANSWERS "HOW LOUD".** `rank` is a
+**deep, desaturated ORANGE** (`orange-950` on `orange-100` / `orange-300` on `orange-950/70`)
+— not amber (`stuck` owns amber; dE00 23.6 light / 70.3 dark from the `#ffb900` alarm fill,
+at one fifth its chroma), not red (drift is the pipeline's normal state), and not blue, which
+the human rejected twice. Being behind is a MEASUREMENT, not a verdict.
+
+**⛔ AND BOTH HUES MUST BE NAMEABLE.** The first version of this pass shipped `teal-700` and
+`blue-800` for an hour and the human rejected both on sight — *"why is behind purple? and why
+is newest this weird tint and not plain green?"* `teal-700` is h 186.4° against plain green's
+150.1°; `blue-800` is h 265.6° at C 0.199, 27° from the STAGING violet. **A green-on-green or
+blue-on-blue adjacency is solved by TREATMENT and LIGHTNESS, never by walking the hue** — a
+rank chip has a neutral border and an identity chip a coloured one, and `green-800` sits 0.083
+of lightness below DEV's ink at dE00 9.9.
 
 **There is exactly ONE green FOR STATE:** `green-700` light / `green-400` dark. Not
 `green-500`, not `green-600`, no `emerald-*`. `BakeStatusIcon`, the status dot and the

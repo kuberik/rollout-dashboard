@@ -71,7 +71,7 @@
 	 * COLOUR. The study ramps segment colour by rank. That ramp is the
 	 * Ember/Gantt encoding `DESIGN.md` records as measured-failed and
 	 * deleted, so it is not ported. The newest segment takes the quiet mint
-	 * `newest` already owns (`teal-700` / `teal-500`); everything older is
+	 * `newest` already owns (`green-800` / `green-300`); everything older is
 	 * gray, alternating between the two passive steps the product already
 	 * uses so adjacent segments stay separable. Rank is carried by ORDER
 	 * (newest first) and by the printed sha in the key, never by hue. Zero
@@ -116,7 +116,7 @@
 		//    holder of the hand-picked `#426d64` / `#83b0a8` pair; two spellings
 		//    of one budget slot is the defect the `head` -> `newest` collapse
 		//    was written to end.
-		return s.newest ? 'bg-teal-700 dark:bg-teal-500' : OLD[i % 2];
+		return s.newest ? 'bg-green-800 dark:bg-green-300' : OLD[i % 2];
 	}
 </script>
 

@@ -321,22 +321,43 @@
 	// more than double either half of the badge. The most repeated object in the
 	// product was its least coloured one.
 	//
-	// SO THE DEVIATION CHANNEL IS HUE, AND BOTH HALVES GET A REAL ONE. The
-	// ordering survives on hue + ink chroma instead of on gray-versus-not:
-	// `newest` is a 0.090-chroma teal in a `-50` wash, `N behind` is a
-	// 0.198-chroma blue in a `-100` block — 2.2× the ink chroma on a word that is
-	// two characters longer.
+	// ── SO THE FIX IS A GROUND, AND THE TWO HALVES SPEND DIFFERENT CHANNELS.
+	// `newest` is PLAIN GREEN (`green-800`, C 0.119) in a `green-50` wash.
+	// `N behind` is a DEEP, DESATURATED ORANGE (`orange-950` ink, C 0.079) in an
+	// `orange-100` block, five times less chromatic than the `alarm` fill it must
+	// not be mistaken for. The rule that decides both is one line:
+	//
+	//        HUE answers "DOES THIS NEED A PERSON". WEIGHT answers "HOW LOUD".
+	//
+	// Read `TRAILING` before touching either — it records the FOUR spellings the
+	// human rejected in one day and closes the hue space by elimination.
+	//
+	// ⛔ EACH REJECTION IS A RULE, NOT A PREFERENCE:
+	//   1. teal + `blue-800` — *"why is behind purple? and why is newest this
+	//      weird tint and not plain green?"* `teal-700` is h 186.4° against plain
+	//      green's 150.1°, 36° toward cyan; Tailwind's `blue` is violet-leaning
+	//      at h 265.6°. **A hue nobody can name cannot carry a meaning**, and
+	//      both had been reached by dodging an adjacency instead of designing
+	//      one. → solve adjacency by TREATMENT and LIGHTNESS, never by walking
+	//      the hue.
+	//   2. green + `sky-800` — *"i think it shouldn't be blue. behind is not
+	//      necessarily a problem, but could be if it's also marked as stuck."*
+	//      → a MEASUREMENT may not wear a VERDICT's channel at all.
+	//   3. the pale gray block that started this — faint because it was
+	//      unfilled text on the card ground, NOT because it lacked hue.
+	//      → the cure for faint is a FILL, and only sometimes a hue.
+	//   4. a filled slate SLAB — *"white/black fill for behind is an eye-sore."*
+	//      It measured better than everything else (3.84× the norm on weight) and
+	//      was still wrong. → **measuring well is not being right; look at it.**
 	//
 	// ZERO NEW HUES. The budget is six status + four identity and it is still
 	// exactly that. What moves is WHICH SURFACE a hue may appear on, which the
 	// file already treats as separable — *"two of the identity hues are also
 	// status hues, deliberately, and are separated by SHAPE rather than by hue"*:
 	//
-	//   · mint keeps `newest`. It is only spelled from the ramp now (`teal-700` /
-	//     `teal-500`) instead of from the two hand-picked hexes, because the ONE
-	//     argument for hand-picking was that mint has no ramp — and `teal` is
-	//     that ramp, 7° away at the exact hue the pass before last solved for.
-	//     See `MINT`.
+	//   · mint keeps `newest` and is plain green now (`green-800` / `green-300`).
+	//     Its adjacency to the `Succeeded` disc and the `DEV` identity chip is
+	//     solved by TREATMENT and LIGHTNESS, not by hue. See `MINT`.
 	//   · blue takes `N behind`. Blue is `Deploying`'s hue on the status GLYPH;
 	//     on a chip it is the same separation-by-shape the identity hues already
 	//     use, and it is the semantically right one — a build that is behind is a
@@ -371,84 +392,179 @@
 	// resolve here and that is deliberate; see the note on `TONE.head` for the
 	// measurement that collapsed them.
 	//
-	// ⛔ IT IS SPELLED FROM THE `teal` RAMP NOW, NOT FROM `#426d64` / `#83b0a8`.
-	// The whole case for the hand-picked hexes was that *"mint has NO ramp to
-	// choose from, which is the one condition under which deriving is the right
-	// answer"* (see `ADVERSE`). That was wrong: `teal` is the ramp, its 700 step
-	// sits at OKLCH hue 186.4° against the hand-picked 179.4° — 7° — and taking
-	// it buys the three things the hex could not:
+	// ⛔ IT IS PLAIN GREEN, AND THE TEAL THAT SHIPPED FOR ONE HOUR IS THE LESSON.
+	// (2026-09-02, from the human on the teal/blue pair: *"why is behind purple?
+	// and why is newest this weird tint and not plain green?"*)
 	//
-	//   1. CHROMA. 0.0503 → 0.0905 light, 0.0495 → 0.128 dark. The human has now
-	//      called this word faint twice; against `N behind`'s new 0.198 it is
-	//      still the quieter half, which is the constraint.
-	//   2. A WIDER GAP FROM THE GREEN IT SITS BESIDE. The one open risk this file
-	//      records is that mint lands on rows already carrying a `Succeeded` disc
-	//      at hue ~150 and, on DEV rows, a green identity chip. 30° → **37°** in
-	//      light; in dark it separates on LIGHTNESS too (`teal-500` L 0.710
-	//      against `DEV`'s ink at L 0.926, dE00 20.4 — wider than the hex's 19.5,
-	//      where the obvious `teal-200` would have collapsed it to **9.1**).
-	//   3. DESIGNED CONTRAST RELATIONSHIPS. `ADVERSE`'s own note is the argument:
-	//      *"a ramp ships designed contrast relationships and a derived point on
-	//      a line does not."* Every role in this table is now a chosen step.
+	// BOTH HALVES OF THAT COMPLAINT ARE A HUE MEASUREMENT AND BOTH ARE CORRECT.
+	// `teal-700` is OKLCH **h 186.4°** and plain `green-700` is **h 150.1°** — the
+	// word was sitting **36° toward cyan**, which is far enough that a reader who
+	// did not choose it reads neither green nor blue, only *a tint*. Tailwind's
+	// `blue` ramp is violet-leaning (`blue-800` h **265.6°** at C 0.199), and at
+	// that chroma it reads purple; `sky-800` is h **242.8°** and reads as plain
+	// blue. Naming a colour is a design requirement, not a nicety: a hue nobody can
+	// name cannot carry a meaning.
 	//
-	// ⚠️ ONE CALL SITE OUTSIDE THIS FILE STILL SPELLS THE MINT AS THE OLD HEX:
+	// ── WHY IT WAS TEAL, AND WHY THAT REASONING WAS WRONG ───────────────────
+	//
+	// The one open risk on record is that `newest` lands on rows that already
+	// carry green: a `Succeeded` status disc at hue ~150 and, on DEV rows, a green
+	// identity chip. The teal pass answered that by MOVING THE HUE AWAY, and
+	// congratulated itself for widening the gap 30° → 37°. **That is solving an
+	// adjacency by abandoning the meaning.** The two objects already differ in
+	// KIND — one is an identity, one is a rank; one is a `.chip-env` with a
+	// COLOURED EDGE, one is a rank chip with a NEUTRAL edge — and a reader
+	// separates them on that, on lightness, and on the words, not on 36° of hue.
+	//
+	// ── SO IT IS GREEN, SEPARATED ON LIGHTNESS. MEASURED, canvas-resolved on the
+	// composited card at 1440, against the `DEV` chip's ink and the `Succeeded`
+	// disc (the two greens it can sit beside):
+	//
+	//                    L      C       h        CR     dE00 vs DEV / Succeeded
+	//   green-700     0.530  0.149  149.0°    4.72:1     **0.0 / 0.0**  ⛔
+	//   green-800     0.447  0.119  151.4°    6.81:1       9.9 / 9.9    ✅
+	//   green-900     0.393  0.096  152.3°    8.65:1      15.9 / 15.9
+	//   emerald-700   0.513  0.110  163.6°    5.09:1       9.0 / 9.0
+	//
+	// **`green-700` IS DEV'S INK.** `PRESET_RAMPS.dev.textColor` is `#008236` and
+	// `green-700` resolves to `#008236` — dE00 **0.0**, the same value, and the
+	// same value again as the `Succeeded` glyph. Using it would print one colour
+	// for an identity, a state and a rank. **`green-800` is the step that is
+	// plainly green and not that value**: 1.4° of hue from DEV, but 0.083 of
+	// LIGHTNESS below it, which is the axis this file already settles states on
+	// (*"`STATUS_DOT_CLASS` splits the settled states on LIGHTNESS instead of
+	// hue"*). dE00 9.9 is ~4× the 2.3 JND. It also carries 1.33× the chroma of the
+	// teal it replaces and 2.4× the hand-picked hex before that, and its contrast
+	// goes 5.14 → **6.81:1**.
+	//
+	// `emerald-700` was measured as the fallback the brief asked for and is worse
+	// on every axis that matters — same dE00 to DEV (9.0 vs 9.9), 2.4pp less
+	// contrast, lower chroma, and it is 13.6° off green, i.e. the same "not quite
+	// green" the human just rejected. Plain green wins on the numbers.
+	//
+	// ⚠️ HONEST RESIDUE: `newest`'s FILL (`green-50`) is dE00 **1.5** from the
+	// `DEV` chip's surface. They share a ground. What separates the two chips is
+	// the BORDER (`gray-200` hairline vs `green-300` ring), the ink's lightness,
+	// and the word. That is thinner than teal's separation was, and it is the
+	// price of a nameable colour — paid deliberately, not overlooked. Do not
+	// "fix" it by deepening this fill: `green-100` measures presence 106 against
+	// `N behind`'s 154, which collapses the deviation ratio to 1.37×.
+	//
+	// ⚠️ ONE CALL SITE OUTSIDE THIS FILE STILL SPELLS THE OLD MINT AS A HEX:
 	// `ExposureBar.svelte:115` (`bg-[#426d64] dark:bg-[#83b0a8]`, the newest
-	// segment, drawn only on `/apps/<name>`). It is the last holder of the old
-	// pair and MUST move to `bg-teal-700 dark:bg-teal-500` when that file is next
-	// opened, or the mint budget slot ships two spellings — the exact defect the
-	// `head` → `newest` collapse was written to end.
+	// segment, drawn only on `/apps/<name>`). MUST move to
+	// `bg-green-800 dark:bg-green-300` when that file is next opened, or the slot
+	// ships two spellings — the defect the `head` → `newest` collapse ended.
 	//
-	// The ground is a WASH: `teal-50`, ΔL 0.016 from the card. It exists so the
-	// norm's half is an OBJECT rather than the first six characters of a string;
-	// it is deliberately a quarter of `TRAILING`'s step, because `newest`
-	// outnumbers `N behind` 3.2 : 1 and area is the channel a repeated mark must
-	// not spend. Dark takes `teal-950` at 30% for the same reason `ADVERSE` takes
-	// an alpha there — a full step measured 2.2× the presence of the light one.
+	// The ground is a WASH — `green-50`, ΔL 0.018 from the card — so the norm's
+	// half is an OBJECT rather than the first six characters of a string, at a
+	// third of `TRAILING`'s step, because `newest` outnumbers `N behind` 3.2 : 1
+	// and area is the channel a repeated mark must not spend. Dark takes
+	// `green-950` at 30% for the same reason `ADVERSE` takes an alpha there.
 	const MINT =
-		'border-gray-200 bg-teal-50 text-teal-700 dark:border-gray-700 dark:bg-teal-950/30 dark:text-teal-500';
-	// TRAILING — `−N` / `N behind`. THE DEVIATION, AND IT IS BLUE.
+		'border-gray-200 bg-green-50 text-green-800 dark:border-gray-700 dark:bg-green-950/30 dark:text-green-300';
+	// TRAILING — `−N` / `N behind`. THE DEVIATION. IT IS A **DEEP, DESATURATED
+	// ORANGE GROUND WITH A DARK INK**, and it is the fifth spelling of this pair.
 	//
-	// Blue is `Deploying`'s hue on the status GLYPH and it has never been worn by
-	// a chip. Putting it on one adds NO hue to a closed budget and is the same
-	// separation-by-shape the identity hues already run on (`DESIGN.md`: *"two of
-	// the identity hues are also status hues, deliberately, and are separated by
-	// SHAPE rather than by hue"*). It is also the only hue the budget can spare:
-	// red is adverse and a rollout that is merely behind is not adverse (the
-	// whole `blocked`/`stuck` distinction turns on that), amber is `stuck` and
-	// nothing else, green/yellow are states, violet and cyan are STAGING and TEST
-	// identity, and the only unclaimed arc left — magenta through rose — is a new
-	// hue and reads adverse anyway.
+	// ⭐ THE RULE THAT SURVIVED ALL FIVE, AND THE ONE TO READ FIRST:
 	//
-	// AND IT IS THE HUE THE GRAY IT REPLACES WAS ALREADY AT. `gray-700` measures
-	// OKLCH **h 260.2°**, C 0.034; `blue-800` is **h 265.6°**, C 0.198. The
-	// deviation's hue does not move by six degrees. Only its chroma moves, by
-	// 5.8×. That is the smallest edit that answers *"not these faint / no
-	// colors"*, and it is why this is not a fifth re-solve of the pair — the
-	// previous four all moved the hue.
+	//        HUE answers "DOES THIS NEED A PERSON". WEIGHT answers "HOW LOUD".
 	//
-	// THE GROUND IS A BLOCK, one ramp step deeper than `MINT`'s wash
-	// (`blue-100`, ΔL 0.068 from the card, 4.3× the wash) so the wash/block
-	// structure the last pass established survives intact; what changed is that
-	// both grounds are now chromatic, so the block is no longer "the gray one".
+	// Being behind is a MEASUREMENT, not a verdict. This file's own standing rule
+	// is that *drift is the normal state of a promotion pipeline*, so most
+	// rollouts are behind most of the time; what makes it matter is WHY — stuck,
+	// blocked, or merely waiting. So `behind` may be PRESENT but must never look
+	// like it is ASKING for something, and it must never be mistaken for `stuck`.
+	//
+	// ── ⛔ THE OPTION SPACE IS CLOSED BY ELIMINATION. DO NOT REOPEN IT. ──────
+	// Four spellings were rejected by the human in one day, each for a different
+	// and recorded reason:
+	//   1. LOUD NEUTRAL GRAY TEXT — *"faint / no colors."* It was unfilled text on
+	//      the card ground; on `area × chroma` the pair scored 1.06× light and
+	//      0.98× dark, i.e. the deviation was not louder than the norm at all.
+	//   2. `blue-800` — *"why is behind purple?"* Tailwind's `blue` is
+	//      violet-leaning, h 265.6° at C 0.199. **A hue nobody can name cannot
+	//      carry a meaning.**
+	//   3. `sky-800` — *"i think it shouldn't be blue. behind is not necessarily a
+	//      problem, but could be if it's also marked as stuck."* Blue out entirely.
+	//   4. A FILLED SLATE SLAB (`gray-700` under `gray-50`) — *"white/black fill
+	//      for behind is an eye-sore."* It measured beautifully (3.84× the norm on
+	//      weight, 3.43× alarm lead on chroma) and was still wrong. **Measuring
+	//      well is not the same as being right; look at it.**
+	//
+	// What remains: green belongs to `newest` and is settled; red is adverse and
+	// behind is not adverse; amber IS `stuck`; violet is STAGING and cyan is TEST
+	// identity; a neutral fill is an eye-sore. **Orange at h ~70° is the only
+	// thing left**, and it is what the human proposed unprompted.
+	//
+	// ── THE TWO WARM NEIGHBOURS, AND HOW THIS IS HELD APART FROM THEM ───────
+	// Both can sit on the same row as `behind`: the `alarm` fill is `#ffb900`
+	// (amber-400, h 84.4°, C 0.189) and the `PROD` identity seed is `#d97706`
+	// (amber-600, h 58.3°). This is separated on **treatment and saturation**, the
+	// way `green-800` was separated from the DEV green — never by walking the hue,
+	// which is what produced the teal nobody could name. Measured canvas-resolved
+	// on `/rollouts` at 1440, dE00 from this chip's GROUND:
+	//
+	//                          → `#ffb900`   → `#d97706`   → PROD chip fill   ink → PROD ink
+	//     light `orange-100`      **23.6**      **32.5**         7.7             **15.6**
+	//     dark  `orange-950/70`   **70.3**      **44.9**        12.9             **19.5**
+	//
+	// Nothing lands under 5; the tightest figure anywhere is 7.7 (this chip's pale
+	// ground against `PROD`'s paler one in light), and the two chips differ in
+	// TREATMENT there anyway — `PROD` is outlined in `amber-200` with an
+	// `amber-900` ink, this is a neutral hairline with a near-black orange ink.
+	//
+	// ⛔ TWO WARM CANDIDATES WERE REJECTED ON EXACTLY THIS AXIS, and they are why
+	// the shipped value is a `-100` and not a `-200`:
+	//   · `orange-900` ink is dE00 **4.5** from `PROD`'s `amber-900` ink. On
+	//     `/apps` those two render as ADJACENT HALVES OF ONE BOX — the collision
+	//     that moved `rank` off amber in the first place. `orange-950` is 15.6.
+	//   · `orange-300` as a light GROUND is dE00 **10.7** from `#ffb900` and
+	//     scores 242.2 on `area × chroma`, i.e. **louder than `alarm` itself**
+	//     (218.6). `orange-200` (16.7 / 180.2) reads as amber-that-is-not-stuck
+	//     when screenshotted beside a real `STUCK` chip. `orange-100` does not.
+	//
+	// ── THE ORDERING, WHICH IS THE HARD PART, AND IT HOLDS ──────────────────
+	// `area × chroma`, DESIGN.md's formula, the instrument on which "loudest"
+	// means "most alarming". Light raw; dark corrected for the chromatic card
+	// ground (every chip on `gray-800` scores its own area × 0.0335 for free, and
+	// these boxes differ in area by 1.7×, so the raw dark figure is size-biased):
+	//
+	//     light   alarm 218.6  >  adverse 117.6  >  **behind 99.7**  >  newest 70.7
+	//     dark    alarm 130.0  >  adverse 108.9  >  **behind  91.9**  >  newest 54.2
+	//
+	// `alarm` leads by **2.19× / 1.41×** and keeps the only SATURATED fill
+	// (C 0.189 against this ground's 0.038 — five times less chromatic).
+	//
+	// ⚠️ AND THE PRESENCE RATIO IS CAPPED BY THAT ORDERING — THIS IS ARITHMETIC,
+	// NOT A TUNING FAILURE. `newest` is 70.7 and `adverse` is 117.6, so a `behind`
+	// that stays under `adverse` can be at most **1.66×** the norm on chroma. The
+	// 2.05× the blue pair reached was only available because that pair OUT-INKED
+	// `diverged`, which is worse. Shipped: **1.41× light / 1.70× dark** on chroma
+	// and **1.65× / 1.28×** on `area × (chroma + |ΔL|)`. If a future pass wants a
+	// bigger ratio it must move `newest` down or `adverse` up — not this chip.
+	//
+	// Contrast is where the headroom went instead: **13.65:1 light, 9.28:1 dark**,
+	// the highest of any rank tone. (`sky-700` on `sky-200` failed the 4.5 floor
+	// by 0.10 two spellings ago; measure before falling in love with a candidate.)
+	//
+	// THE GROUND IS A BLOCK — `orange-100`, ΔL 0.046 from the card, ~2.6× `MINT`'s
+	// `green-50` wash — so the wash/block structure holds, and the BORDER stays
+	// the neutral hairline like every other non-`env` role.
 	const TRAILING =
-		'border-gray-200 bg-blue-100 text-blue-800 dark:border-gray-700 dark:bg-blue-950/50 dark:text-blue-200';
+		'border-gray-200 bg-orange-100 text-orange-950 dark:border-gray-700 dark:bg-orange-950/70 dark:text-orange-300';
 	// ADVERSE — `failing`, `diverged`, `blocked`. ONE hue for all three; the WORD
 	// says which kind. `alarm` keeps the only SATURATED fill and stays the
 	// loudest mark on a row.
 	//
-	// ⛔ ITS LIGHT GROUND STEPPED `red-50` → `red-100` IN THIS PASS, AND IT HAD
-	// TO. Once `N behind` became a chromatic block, adverse-at-wash-strength
-	// scored 117.6 against its 143.3 on `area × chroma` — a merely-trailing chip
-	// louder than a diverged one. At `red-100` the order is restored and every
-	// margin is real, measured light on `/rollouts` at 1440:
-	//
-	//     alarm 218.6  >  adverse 148.7  >  behind 143.3  >  newest 54.7
-	//
-	// `red-700` on `red-100` is **5.27:1**, still past the 4.5 floor for 10px.
-	// `red-100` is already spent in `src`. DARK IS UNTOUCHED at `red-950/50`,
-	// because the measurement below is a DARK measurement and it still holds: a
-	// dark ground under a light ink buys contrast and a deeper one buys more, so
-	// dark never had this problem (adverse 108.9 against behind's 80.5, 1.35×).
+	// ⛔ IT STEPPED `red-50` → `red-100` FOR ONE HOUR AND IS BACK AT `red-50`.
+	// The step was contingent: while `N behind` was a chromatic block it scored
+	// 143.3 on `area × chroma` against adverse's 117.6, i.e. a merely-trailing
+	// chip out-inking a diverged one, and `red-100` was the cheapest way to
+	// restore the order. **`behind` carries no hue now** (see `TRAILING`), so it
+	// scores 63.8 and the cause is gone — light ordering on chroma is
+	// `alarm 218.6 > adverse 117.6 > newest 70.7 > behind 63.8` with the settled
+	// value. A change whose reason has expired is reverted, not kept.
 	//
 	// ⛔ AND ITS GROUND IS A CHOSEN STEP, NOT AN ALPHA WASH OF ITS OWN INK.
 	// This is the one place the wash derivation fails, and it fails on the floor:
@@ -471,7 +587,7 @@
 	// contrast relationships and a derived point on a line does not. `MINT` now
 	// makes that argument too; the "mint has no ramp" exemption is retired.
 	const ADVERSE =
-		'border-gray-200 bg-red-100 text-red-700 dark:border-gray-700 dark:bg-red-950/50 dark:text-red-400';
+		'border-gray-200 bg-red-50 text-red-700 dark:border-gray-700 dark:bg-red-950/50 dark:text-red-400';
 
 	// Only `alarm` carries a FILL — that is the whole reason it reads as the
 	// loudest object on the page without needing a bigger box, a heavier
@@ -559,16 +675,21 @@
 		// ⛔ SUPERSEDED 2026-09-02 (second ruling of the day). Everything above is
 		// the record of solving this word's ink INSIDE a white box, and it ended
 		// with the human calling the result faint for the fourth time. The value
-		// is `teal-700` / `teal-500` on a `teal-50` / `teal-950-at-30%` ground
-		// now; see `MINT`. The two arguments above that still hold and were
-		// carried forward are (1) FULL-CHROMA MINT INVERTS THE PAIR — which is
-		// why `newest` is 0.090 against `N behind`'s 0.198 rather than the other
-		// way round — and (2) IT MUST NOT BECOME A THIRD GREEN, which is why the
-		// step was chosen for hue distance from DEV (30° → 37°) and not for
-		// chroma alone. The one thing that is NO LONGER TRUE is the closing
-		// sentence of §1 above: mint is not spelled from a hand-picked hex any
-		// more, and the `CoverageBar` co-tenancy it cites ended when that bar's
-		// `live` segment moved to the health green.
+		// is `green-800` / `green-300` on a `green-50` / `green-950-at-30%` ground
+		// now; see `MINT`, including the hour it spent as TEAL, which the human
+		// named on sight (*"why is newest this weird tint and not plain green?"*).
+		// The argument above that still holds and was carried forward is §1,
+		// FULL-CHROMA MINT INVERTS THE PAIR — which is why this is `green-800`
+		// and not `green-700`, and why the deviation leads on the GROUND.
+		// ⛔ §2 IS THE ONE THAT WENT WRONG: *"it must not become a third green"*
+		// was read as *"it must not BE green"*, and dodging the hue is what
+		// produced the teal. The real constraint is that it must not be the SAME
+		// GREEN — and `green-700` literally is (dE00 **0.0** against both DEV's
+		// ink and the `Succeeded` glyph). `green-800` is 9.9 from both, ~4× the
+		// JND, separated on lightness. The other thing NO LONGER TRUE is the
+		// closing sentence of §1: mint is not a hand-picked hex any more, and the
+		// `CoverageBar` co-tenancy it cites ended when that bar's `live` segment
+		// moved to the health green.
 		newest: MINT,
 		// `−N` IS the deviation, so it is the half that carries the hue.
 		//
@@ -718,13 +839,19 @@
 		// human's answer to seeing it: *"i thought about newest / behind badges to
 		// use more prominent colors, not these faint / no colors."*
 		//
-		// `rank` IS BLUE NOW — see `TRAILING`. The hue barely moves (`gray-700`
-		// is already OKLCH h 260.2°, `blue-800` is h 265.6°); the chroma moves
-		// 5.8×. Everything else this comment argues survives: it is still NOT
-		// red (drift is the pipeline's normal state), still NOT amber (`stuck`
-		// owns amber), and `alarm` is still the loudest mark on any row —
-		// measured light, alarm 218.6 > adverse 148.7 > `N behind` 143.3 >
-		// `newest` 54.7; dark, card-floor corrected, 130.0 > 108.9 > 80.5 > 54.8.
+		// `rank` IS A DEEP DESATURATED ORANGE NOW — see `TRAILING`, which records
+		// the four spellings the human rejected in one day (loud gray, `blue-800`,
+		// `sky-800`, and a filled slate slab) and closes the hue space by
+		// elimination. Everything this comment argues survives: it is NOT red
+		// (drift is the pipeline's normal state) and — the part that took the
+		// longest to get right — it is NOT the `alarm`'s amber either, at dE00
+		// 23.6 light / 70.3 dark from `#ffb900` and one fifth of its chroma.
+		// `alarm` is still the loudest mark on any row on the instrument where
+		// "loudest" means "most alarming" — `area × chroma`, light: alarm 218.6 >
+		// adverse 117.6 > `N behind` 99.7 > `newest` 70.7; dark, card-floor
+		// corrected: 130.0 > 108.9 > 91.9 > 54.2. **The ordering this file has
+		// been chasing for five spellings holds in both themes for the first
+		// time.**
 		rank: TRAILING,
 		// `failing` IS THE WORD THE RED DOT CANNOT SAY. It exists because
 		// `/apps` was stating an attention row's fact twice — a lede sentence
