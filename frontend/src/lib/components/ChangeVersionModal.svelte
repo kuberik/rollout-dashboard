@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import type { Rollout } from '../../types';
+	import type { Rollout, Environment, RolloutDependency } from '../../types';
 	import { Modal, Alert, Badge, Button, Toggle, Toast } from 'flowbite-svelte';
 	import {
 		ExclamationCircleSolid,
@@ -24,8 +24,10 @@
 		confirmNotice,
 		deployActionLabel,
 		deployIntent,
+		releaseIndex,
 		typedPrompt
 	} from '$lib/view-models/deploy-risk';
+	import { promotionBlock, gateAllows } from '$lib/view-models/promotion';
 	import {
 		commitsQueryOptions,
 		formatCommitMessage,
@@ -35,6 +37,7 @@
 	} from '$lib/api/github';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import { announce } from '$lib/stores/announce.svelte';
+	import FactList, { type Fact } from './FactList.svelte';
 
 	interface Props {
 		open: boolean;
@@ -112,6 +115,35 @@
 	let loadingAnnotations = $state<Record<string, boolean>>({});
 	const itemsPerPage = 10;
 
+	// --- Override context: WHO this force-deploy overrides ----------------
+	// ⭐ THE PROD FORCE-DEPLOY DIALOG NAMED NO RULE. The banner behind it says
+	// `2 rules` and the Dependencies tab names the contract, provider and
+	// version; this dialog said only "a rule is holding it". Naming the gates
+	// needs the `Environment`/`RolloutDependency` objects the gate names join
+	// against, and neither rides on the `Rollout` this modal already has —
+	// every call site passes the bare rollout. Rather than plumb a new prop
+	// through five route files this modal does not own, it fetches its own
+	// namespace-scoped copy of the same list `/environments`, `/apps` and the
+	// Dependencies tab already read (`/api/rollouts?namespace=…`), lazily,
+	// only once the dialog is actually about to show the override notice.
+	let overrideEnvironments = $state<Environment[]>([]);
+	let overrideDependencies = $state<RolloutDependency[]>([]);
+	let overrideContextLoadedFor = $state<string | null>(null);
+
+	async function loadOverrideContext(namespace: string) {
+		try {
+			const response = await fetch(apiUrl(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`));
+			if (!response.ok) return;
+			const data = await response.json();
+			overrideEnvironments = data?.environments?.items ?? [];
+			overrideDependencies = data?.rolloutDependencies?.items ?? [];
+		} catch {
+			// Best-effort: the notice sentence above the list already states the
+			// consequence on its own, so a failed join just leaves the list empty
+			// rather than blocking the dialog.
+		}
+	}
+
 	// --- Deploy footer state ---------------------------------------------
 	let pinVersionToggle = $state(false);
 	let deployExplanation = $state('');
@@ -143,6 +175,43 @@
 			: (currentTag ?? '')
 	);
 	const currentRevision = $derived(rollout?.status?.history?.[0]?.version?.revision ?? null);
+	// WHEN THIS ROLLOUT ACTUALLY DEPLOYED the running build — distinct from
+	// `created` (the image's build time) below.
+	const currentDeployedAt = $derived(rollout?.status?.history?.[0]?.timestamp ?? null);
+
+	/**
+	 * `N back` / `N newer`, relative to the version RUNNING NOW — this
+	 * rollout's own oldest-first `availableReleases`, the same list the
+	 * delta summary and `env-rank.ts`'s `N behind` both count from. `null`
+	 * for the current row itself (already the green `Current` badge) and for
+	 * anything not in this rollout's own list (a "show all repo tags" extra,
+	 * or a version this rollout has aged out of tracking) — a rank next to a
+	 * build this list cannot place would be inventing a distance.
+	 */
+	function pickerRankLabel(versionTag: string): string | null {
+		if (!rollout || !currentTag || versionTag === currentTag) return null;
+		const curIdx = releaseIndex(rollout, currentTag);
+		const idx = releaseIndex(rollout, versionTag);
+		if (curIdx === -1 || idx === -1) return null;
+		const diff = idx - curIdx;
+		return diff > 0 ? `${diff} newer` : `${-diff} back`;
+	}
+
+	/** One composed line — build date, deploy date (current row only) and
+	 * rank — so the template never has to reason about which separators to
+	 * print. `null` when there is nothing to say. */
+	function pickerRowLine(
+		created: string | undefined,
+		isCurrent: boolean,
+		versionTag: string
+	): string | null {
+		const parts: string[] = [];
+		if (created) parts.push(`Built ${formatTimeAgo(created)}`);
+		if (isCurrent && currentDeployedAt) parts.push(`Deployed ${formatTimeAgo(currentDeployedAt)}`);
+		const rank = pickerRankLabel(versionTag);
+		if (rank) parts.push(rank);
+		return parts.length > 0 ? parts.join(' · ') : null;
+	}
 
 	async function getAnnotations(version: string) {
 		if (!rollout) return;
@@ -314,7 +383,36 @@
 	 * `/envs/<name>`, `/apps/<name>`, `FailurePanel` — gets the same truth
 	 * derived from the rollout alone rather than getting silence.
 	 */
-	const gateState = $derived(autoDeploy ?? autoDeployState(rollout));
+	const rawGateState = $derived(autoDeploy ?? autoDeployState(rollout));
+	/**
+	 * ⛔ `autoDeployState`'s `gates` reason is a blunt read of the
+	 * `GatesPassing` CONDITION, and that condition goes False for TWO
+	 * different reasons this dialog must not conflate: a gate genuinely
+	 * refusing an EXISTING candidate, and simply having no newer candidate to
+	 * check at all — `NoAllowedVersions` fires trivially in the second case
+	 * too. Reproduced live on `hello-world-dev/hello-world-app`: with the
+	 * deployed build already the newest release, `GatesPassing` was `False`
+	 * while every individual gate in `status.gates` was itself `passing:
+	 * true`. The page's own banner (`ScheduleStatus`) read the schedule
+	 * directly and correctly said nothing was blocked *right now* (only that
+	 * the window closes SOON); this dialog, reading the same rollout through
+	 * `autoDeployState`, said *"paused right now — a rule is holding it"*.
+	 *
+	 * `promotionBlock` is the product's own ground truth for "gates refuse
+	 * every candidate that exists" — `blocking-story.ts`'s `stuckFor` already
+	 * leans on the identical distinction ("a gate correctly refusing a
+	 * candidate is not a stoppage"). So the `gates` reason is dropped here
+	 * unless `promotionBlock` agrees something is actually held back today.
+	 * The other three reasons (`health`, `pin`, `failed`) are untouched: each
+	 * is a fact about right now on its own terms, not a read of this same
+	 * blunt condition.
+	 */
+	const gateState = $derived.by((): AutoDeployState => {
+		const state = rawGateState;
+		if (!state.reasons.includes('gates') || promotionBlock(rollout).blocked) return state;
+		const reasons = state.reasons.filter((r) => r !== 'gates');
+		return { ...state, paused: reasons.length > 0, reasons };
+	});
 	const gateNote = $derived(manualDeployNote(gateState));
 	/**
 	 * The gate line WITHOUT its "it applies immediately" tail, for when it
@@ -323,6 +421,71 @@
 	 * survive; only the duplicated clause goes.
 	 */
 	const gateWhy = $derived(gateState.paused ? autoDeployWhy(gateState) : null);
+
+	// --- The rules a `typed` force-deploy overrides, named -----------------
+	// Every gate in `rollout.status.gates` that does not currently allow the
+	// SELECTED tag — the exact set the primary button is about to override.
+	const overriddenGates = $derived.by(() => {
+		if (!rollout || !selectedVersion) return [];
+		return (rollout.status?.gates ?? []).filter((g) => !gateAllows(g, selectedVersion as string));
+	});
+
+	// Fetch the join data once we are actually about to show the override
+	// list — a plain vouched deploy or a rollback never needs it.
+	$effect(() => {
+		if (!open || !rollout || level !== 'typed' || intent.custom) return;
+		const namespace = rollout.metadata?.namespace;
+		if (!namespace || overrideContextLoadedFor === namespace) return;
+		overrideContextLoadedFor = namespace;
+		void loadOverrideContext(namespace);
+	});
+
+	function overrideFact(gateName: string | undefined, tag: string, namespace: string | undefined): Fact {
+		if (!gateName) return { label: 'a rule', value: 'currently does not allow this build' };
+		const dep = overrideDependencies.find(
+			(d) => d.metadata?.namespace === namespace && d.status?.gateName === gateName
+		);
+		if (dep) {
+			const blocked = dep.status?.blockedReleases?.find((b) => b.tag === tag);
+			const need = blocked?.requiredVersion;
+			const contract = dep.spec?.contract ?? 'a contract';
+			const provider = dep.spec?.providerRef?.name ?? 'another service';
+			const have = dep.status?.providedVersion;
+			const needClause = need ? `needs ${contract} ${need}` : `needs a newer ${contract}`;
+			return {
+				label: dep.metadata?.name ?? gateName,
+				value: have ? `${needClause}, ${provider} serves ${have}` : `${needClause} — ${provider} has not shipped it`
+			};
+		}
+		const env = overrideEnvironments.find(
+			(e) => e.metadata?.namespace === namespace && e.status?.rolloutGateRef?.name === gateName
+		);
+		if (env) {
+			const upstream = env.spec?.relationship?.environment;
+			return {
+				label: upstream ? `after ${upstream}` : 'after its upstream environment',
+				value: upstream
+					? `${upstream} has not taken this build`
+					: 'its upstream environment has not taken this build'
+			};
+		}
+		return { label: gateName, value: 'currently does not allow this build' };
+	}
+
+	/**
+	 * ⭐ THE RULES, NAMED — RENDERED AS A `FactList`, NOT A SECOND SENTENCE.
+	 * `deployNotice` above already states the CONSEQUENCE ("nothing checks it
+	 * first"); this states WHICH rules that consequence overrides, the way
+	 * the Dependencies tab and `/environments` already name theirs, so the
+	 * dialog making the change can be read against the banner behind it
+	 * rather than trusting a bare "a rule".
+	 */
+	const overrideFacts = $derived.by<Fact[]>(() => {
+		if (level !== 'typed' || intent.custom || !selectedVersion || !rollout) return [];
+		const namespace = rollout.metadata?.namespace;
+		return overriddenGates.map((g) => overrideFact(g.name, selectedVersion as string, namespace));
+	});
+
 	const mustPin = $derived(isPinVersionMode || direction === 'rollback' || intent.custom);
 	const pinVersionToggleComputed = $derived(mustPin || rollout?.spec?.wantedVersion !== undefined);
 	const isPinVersionToggleDisabled = $derived(mustPin || hasForceDeployAnnotation(rollout ?? undefined));
@@ -483,6 +646,7 @@
 							{@const isCurrent = currentTag === versionTag}
 							{@const isPinned = rollout?.spec?.wantedVersion === versionTag}
 							{@const isSelected = selectedVersion === versionTag}
+							{@const pickerLine = pickerRowLine(created, isCurrent, versionTag)}
 							{#await loadAnnotationsOnDemand(versionTag)}{/await}
 							<button
 								type="button"
@@ -504,9 +668,23 @@
 											<Badge color="blue" class="text-[10px]">Pinned</Badge>
 										{/if}
 									</div>
-									{#if created}
+									{#if pickerLine}
+										<!-- ⛔ `created` IS THE IMAGE'S BUILD TIME, NOT WHEN THIS
+										     ROLLOUT RAN IT. Said explicitly ("Built") because the
+										     status card behind this dialog shows DEPLOY age for the
+										     same current build, and the two clocks can disagree by
+										     weeks — a build sitting untouched for a month before its
+										     first deploy is not exotic. The current row also carries
+										     the deploy age, the one other surfaces already show.
+										     ⭐ AND THE RANK, NOT JUST THE DATE. Ten rows of `<sha> /
+										     N days ago` give no sense of how far back a pick goes —
+										     the exact case "relative beats absolute" was written
+										     for. `current` is already the green badge above; every
+										     other row says its distance from it in release-list
+										     steps, `env-rank.ts`'s own vocabulary (`N behind` /
+										     `newest`) narrowed to a per-row `N back` / `N newer`. -->
 										<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-											{formatTimeAgo(created)}
+											{pickerLine}
 										</div>
 									{/if}
 								</div>
@@ -715,14 +893,28 @@
 									: 'dark:bg-yellow-950/50 dark:text-yellow-100'}"
 							>
 								<ExclamationCircleSolid class="h-4 w-4" />
-								<span>
+								<div>
 									{deployNotice}
 									{#if gateWhy}
 										<span class="mt-1 block opacity-90"
 											>Automatic promotion is paused right now — {gateWhy}.</span
 										>
 									{/if}
-								</span>
+									<!-- ⭐ THE RULES IT OVERRIDES, NAMED — the prod force-deploy
+									     dialog used to say only "a rule is holding it" while the
+									     banner behind it named the count and the Dependencies tab
+									     named the contract. Structured, not a second sentence: a
+									     `FactList` under the consequence, one row per gate, in the
+									     alert's own ink (`tone="banner"`, same idiom `AlertPanel`
+									     uses for its own disclosure). -->
+									{#if overrideFacts.length > 0}
+										<FactList
+											facts={overrideFacts}
+											tone="banner"
+											class="mt-2 border-t border-current/15 pt-2"
+										/>
+									{/if}
+								</div>
 							</Alert>
 						{/if}
 

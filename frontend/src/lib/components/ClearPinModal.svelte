@@ -29,6 +29,7 @@
 	import { LockOpenOutline, ExclamationCircleSolid } from 'flowbite-svelte-icons';
 	import type { Rollout } from '../../types';
 	import { autoDeployState, clearPinOutcome, type AutoDeployState } from '$lib/view-models/auto-deploy';
+	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
 	import { isFieldManagedByManager, isFieldManagedByOtherManager } from '$lib/utils';
 	import { announce } from '$lib/stores/announce.svelte';
 
@@ -43,6 +44,20 @@
 		 * the same truth is derived from the rollout alone rather than silence.
 		 */
 		autoDeploy?: AutoDeployState | null;
+		/**
+		 * ⭐ WHICH ENVIRONMENT THIS ACTUALLY UNPINS, NAMED.
+		 *
+		 * From a live operator walk on `/apps/hello-world-app` — a page listing
+		 * THREE environments, with the banner saying DEV is pinned — the dialog
+		 * this opens asked *"Remove the version pin for hello-world-app?"* with
+		 * no environment anywhere in it, while it unpins only the one rollout it
+		 * was actually opened for. Optional and rarely needed: every call site
+		 * hands over one rollout, whose own `metadata.labels.environment` (or
+		 * the environment-theme annotations, or the namespace) already resolves
+		 * it — see `rolloutEnvironmentName`. A caller only needs this when it
+		 * knows a truer name than the rollout can derive on its own.
+		 */
+		environmentName?: string | null;
 		onSuccess?: ((message: string) => void) | null;
 		onError?: ((message: string) => void) | null;
 		/**
@@ -58,10 +73,24 @@
 		rollout,
 		cluster,
 		autoDeploy = null,
+		environmentName = null,
 		onSuccess = null,
 		onError = null,
 		toast = true
 	}: Props = $props();
+
+	// `DEV`, `STAGING`, `PROD` — the product's own case for an environment
+	// tier, matched to the `[DEV]` chips this rollout appears under elsewhere.
+	const envLabel = $derived(rolloutEnvironmentName(rollout, environmentName).toUpperCase());
+	// A cluster name is only worth saying when it disambiguates something —
+	// the environment word alone is enough on a single-cluster dashboard, and
+	// repeating "dev" right after "DEV" would read as a stutter, not a fact.
+	const clusterSuffix = $derived(cluster ? ` on the ${cluster} cluster` : '');
+	const clearPinTitle = $derived(
+		rollout?.metadata?.name && envLabel
+			? `Remove the pin on ${rollout.metadata.name} in ${envLabel}?`
+			: 'Clear Version Pin'
+	);
 
 	let showLocalToast = $state(false);
 	let localToastMessage = $state('');
@@ -142,10 +171,14 @@
 	}
 </script>
 
-<Modal bind:open title="Clear Version Pin">
+<Modal bind:open title={clearPinTitle}>
 	<div class="space-y-4">
 		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Remove the version pin for <strong>{rollout?.metadata?.name}</strong>?
+			<!-- ⛔ THIS USED TO NAME NO ENVIRONMENT, ON A PAGE LISTING THREE OF
+			     THEM. The dialog acts on exactly ONE rollout — the one it was
+			     opened for — so it says which one before the press, the same way
+			     the title above it does. -->
+			This clears the pin currently held in <strong>{envLabel}</strong>{clusterSuffix}.
 			{clearPinOutcome(gateState)}
 		</p>
 		{#if !isDashboardManaging}

@@ -148,15 +148,35 @@
 	);
 
 	const panelId = `changelist-${Math.random().toString(36).slice(2, 9)}`;
+
+	/**
+	 * ⭐ THE TRIGGER GRAMMAR IS `lib/disclosure.ts`'s, NOT AN INTERROGATIVE.
+	 * (2026-09-02) `What changed` is a question; `src/lib/CLAUDE.md`'s rule is
+	 * "a SET you can count, of one kind → `N <noun>`" and this control opens
+	 * onto exactly that — a list of commits. Before the count is known
+	 * (unopened, still loading, or the fetch failed) there is nothing to
+	 * count yet, and the grammar's own fallback for that case is `Details` —
+	 * not a guess, not a re-print of the question.
+	 *
+	 * ⚠️ `query.data` is the guard, not `commits.length` — an honestly EMPTY
+	 * range (`0 commit${''}`) is still a known count and must say `0 commits`,
+	 * not fall back to `Details` because `[].length` is falsy.
+	 */
+	const commitCount = $derived<number | null>(query.data ? query.data.commits.length : null);
+	const triggerLabel = $derived(
+		commitCount !== null ? `${commitCount} commit${commitCount === 1 ? '' : 's'}` : 'Details'
+	);
 </script>
 
 {#if rangeOk}
 	<div class={className}>
 		<!-- `/activity` renders this control ~20 times on one screen. Before the
 		     `aria-label`, the links-and-buttons list a screen reader gives read
-		     `What changed` twenty times over with nothing to tell them apart.
-		     The visible words do not change — the row above them says which
-		     deploy this is, and a sighted reader has that row. -->
+		     the SAME visible words twenty times over with nothing to tell them
+		     apart — true whether those words are the old interrogative or the
+		     count-noun trigger below. The `aria-label` does not track
+		     `triggerLabel`: the row above already says which deploy this is,
+		     and a sighted reader has that row. -->
 		<button
 			type="button"
 			onclick={() => (open = !open)}
@@ -166,7 +186,7 @@
 			class="t-micro inline-flex items-center gap-1 rounded text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 		>
 			<CodeBranchSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
-			What changed
+			{triggerLabel}
 			{#if open}
 				<ChevronUpOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
 			{:else}
