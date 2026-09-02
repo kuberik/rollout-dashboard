@@ -1885,11 +1885,23 @@
 					class="flex flex-col gap-4 lg:grid lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start"
 				>
 					<div class="flex flex-col gap-4">
+						<!--
+							⭐ THE HERO STAYS A HERO, AND THAT MEANS NO BORDER. (2026-09-02,
+							design re-check) `border border-gray-200` on a `rounded-xl` box
+							with no header bar is exactly the shape `Card.svelte`'s own doc
+							comment calls "a bordered box with no header" — the rejected
+							pattern. This object is deliberately not a `Card`: it carries the
+							page's own display id (`t-display-id`, the 22px mono build) and
+							the deploy's state disc, which is the page's lead object, not one
+							card among a stack. `COMPOSITION-GRAMMAR.md` names the border as
+							the thing that makes a rounded box read as "a card without a
+							header"; dropping it (keeping `shadow-sm` for separation from the
+							page ground) removes that misread without forcing a 47px header
+							bar onto the one object that should not look like the others.
+						-->
 						<!-- ══ STATUS CARD ══ -->
 						<div
-							class="environment-theme-scope overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800
-								
-								"
+							class="environment-theme-scope overflow-hidden rounded-xl bg-white shadow-sm dark:bg-gray-800"
 							style={rolloutThemeStyle}
 						>
 							<div class="min-w-0 px-5 py-5">
@@ -2196,28 +2208,48 @@
 								<span class="text-sm font-semibold text-gray-900 dark:text-white"
 									>Available Version Upgrades</span
 								>
-								{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-									<!-- A count is a `count` chip, the same one every list header uses.
-									     It was an orange-100 pill with an arrow — the only fill on the
-									     card, and orange is not a role the budget owns. -->
-									<Chip role="count" label={String(rollout.status.releaseCandidates.length)} />
-								{/if}
-								<button
-									id="refresh-versions-btn"
-									onclick={reconcileFluxResources}
-									disabled={isReconciling}
-									aria-label="Refresh available versions"
-									class="ml-auto rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-								>
-									{#if isReconciling}
-										<StatusSpinner size="4" color="gray" />
+								<!--
+									⭐ THE ROLLUP IS NOT CONDITIONAL ON HAVING SOMETHING TO SAY.
+									(2026-09-02, `COMPOSITION-GRAMMAR.md` §1) It used to render the
+									`Chip` only when candidates existed, so the common case — a rollout
+									that IS current — reached a header with no right-aligned answer at
+									all: title, icon, then straight to the refresh button. That is the
+									headerless-box defect one level down, not fixed by having a title.
+									`up to date` is the rollup's other value, in the same state-green
+									the rest of the product answers this question with (`3/3 up to
+									date`, `All up to date`).
+								-->
+								<div class="ml-auto flex items-center gap-2">
+									{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+										<!-- A count is a `count` chip, the same one every list header uses.
+										     It was an orange-100 pill with an arrow — the only fill on the
+										     card, and orange is not a role the budget owns. -->
+										<Chip
+											role="count"
+											label="{rollout.status.releaseCandidates.length} newer"
+										/>
 									{:else}
-										<RefreshOutline class="h-4 w-4" />
+										<span class="text-xs font-medium text-green-700 dark:text-green-400"
+											>up to date</span
+										>
 									{/if}
-								</button>
-								<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
-									Refresh available versions
-								</Tooltip>
+									<button
+										id="refresh-versions-btn"
+										onclick={reconcileFluxResources}
+										disabled={isReconciling}
+										aria-label="Refresh available versions"
+										class="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+									>
+										{#if isReconciling}
+											<StatusSpinner size="4" color="gray" />
+										{:else}
+											<RefreshOutline class="h-4 w-4" />
+										{/if}
+									</button>
+									<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
+										Refresh available versions
+									</Tooltip>
+								</div>
 							</div>
 
 							<!--

@@ -281,15 +281,24 @@
 	 * numbers above still describe the ladder correctly — a flat, LIGHTER
 	 * ground than the gradient's own midpoint only helps light-mode contrast,
 	 * never hurts it, so the FULL 700 step stays the floor rather than being
-	 * re-measured down. The shadow and ring are untouched; they were never the
-	 * gradient.
+	 * re-measured down. The ring is untouched; it was never the gradient.
+	 *
+	 * ⛔ THE SHADOW WAS THE LAST DECORATIVE THING, AND IT IS GONE. (2026-09-02,
+	 * design re-check) `shadow-2xl shadow-<hue>-200/60` was a 50px-blur, 60%
+	 * amber `shadow-2xl` — measured on `/environments` painting 45px past the
+	 * banner's OWN bottom edge, into the next row (banner bottom 247, next row
+	 * 265). `COMPOSITION-GRAMMAR.md` §2: "shadow is near-zero; separation
+	 * comes from the border and the ground" — every `Card` on the reference
+	 * page measures `box-shadow: none` and this was the one shipped object
+	 * still spending a glow. The 1px `ring` is the whole separation now, same
+	 * as every other panel in the product.
 	 */
 	const palette = $derived.by(() => {
 		switch (severity) {
 			case 'error':
 				return {
 					container:
-						'bg-red-50 dark:bg-red-950/40 shadow-2xl shadow-red-200/60 ring-1 ring-red-300/60 dark:shadow-red-950/50 dark:ring-red-800/60',
+						'bg-red-50 dark:bg-red-950/40 ring-1 ring-red-300/60 dark:ring-red-800/60',
 					glowA: 'bg-red-400/8 dark:bg-red-500/10',
 					glowB: 'bg-red-300/10 dark:bg-red-400/8',
 					ping: 'bg-red-500/30 dark:bg-red-500/40',
@@ -303,7 +312,7 @@
 			case 'warning':
 				return {
 					container:
-						'bg-amber-50 dark:bg-amber-950/40 shadow-2xl shadow-amber-200/60 ring-1 ring-amber-300/60 dark:shadow-amber-950/50 dark:ring-amber-800/60',
+						'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300/60 dark:ring-amber-800/60',
 					glowA: 'bg-amber-400/8 dark:bg-amber-500/10',
 					glowB: 'bg-amber-300/10 dark:bg-amber-400/8',
 					ping: 'bg-amber-500/25 dark:bg-amber-500/30',
@@ -318,7 +327,7 @@
 			case 'pinned':
 				return {
 					container:
-						'bg-orange-50 dark:bg-orange-950/40 shadow-2xl shadow-orange-200/60 ring-1 ring-orange-300/60 dark:shadow-orange-950/50 dark:ring-orange-800/60',
+						'bg-orange-50 dark:bg-orange-950/40 ring-1 ring-orange-300/60 dark:ring-orange-800/60',
 					glowA: 'bg-orange-400/8 dark:bg-orange-500/10',
 					glowB: 'bg-orange-300/10 dark:bg-orange-400/8',
 					ping: 'bg-orange-500/25 dark:bg-orange-500/30',
@@ -334,7 +343,7 @@
 			default:
 				return {
 					container:
-						'bg-blue-50 dark:bg-blue-950/40 shadow-2xl shadow-blue-200/60 ring-1 ring-blue-300/60 dark:shadow-blue-950/50 dark:ring-blue-800/60',
+						'bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-300/60 dark:ring-blue-800/60',
 					glowA: 'bg-blue-400/8 dark:bg-blue-500/10',
 					glowB: 'bg-blue-300/10 dark:bg-blue-400/8',
 					ping: 'bg-blue-500/25 dark:bg-blue-500/30',
@@ -547,7 +556,24 @@
 								{@render messageBody()}
 							</div>
 						{:else if message}
-							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
+							<!--
+								⭐ ONE CONSEQUENCE LINE BELOW `sm`, NOT THREE. (defect #2,
+								design re-check) `/apps` measured **234.8px, 28% of an 844px
+								phone** — this three-line message alone was 60 of that
+								(`1 newer build is waiting. Nothing promotes itself until
+								hello-api-app ships a newer api than 1.66.0.`). The fact is
+								not lost: it is still the full string in the DOM (still
+								walked by `lib/messages/`, still read whole by a screen
+								reader — `line-clamp` hides visually, it does not remove),
+								and `title` gives a sighted mobile reader the same text on a
+								long-press/hover without adding a second control. At `sm`+,
+								where the reference banner already fits comfortably, nothing
+								changes.
+							-->
+							<p
+								class="mt-0.5 line-clamp-1 text-sm break-words sm:line-clamp-none {palette.message}"
+								title={message}>{message}</p
+							>
 						{/if}
 						{#if footnote || footnoteBody}
 							<!--

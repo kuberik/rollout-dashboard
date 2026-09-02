@@ -1805,6 +1805,29 @@
 		return out;
 	});
 
+	/**
+	 * ⭐ THE ROLLUP `Source` DID NOT HAVE. (defect #5, design re-check)
+	 * `COMPOSITION-GRAMMAR.md` §1: "a card with a header and no rollup is
+	 * half the pattern" — and `Source` was the one titled card on this page
+	 * with no right-aligned answer at all, unlike every sibling in the rail.
+	 * There is no branch to report (`sourceRepos` only ever carries a repo
+	 * URL, never a ref), so the honest fact is the shape of the LIST itself:
+	 * the one repo's host when there is exactly one — `github.com`, the
+	 * thing a reader would otherwise have to open the card to learn — or a
+	 * count when an app is built from more than one.
+	 */
+	const sourceRollup = $derived.by((): string | null => {
+		if (sourceRepos.length === 0) return null;
+		if (sourceRepos.length === 1) {
+			try {
+				return new URL(sourceRepos[0].url).host;
+			} catch {
+				return sourceRepos[0].label.split('/')[0] || null;
+			}
+		}
+		return `${sourceRepos.length} repos`;
+	});
+
 	// ── OBJECT 3 · EXPOSURE ──────────────────────────────────────────────
 	type Segment = { version: string; pods: number; percent: number; newest: boolean };
 	const exposure = $derived.by<{
@@ -3485,7 +3508,7 @@
 					     reference page's own first rail card and this is that card. It
 					     renders only when the rollouts actually carry a source. -->
 					{#if sourceRepos.length > 0}
-						<Card icon={LinkOutline} title="Source" padded={false}>
+						<Card icon={LinkOutline} title="Source" verdict={sourceRollup} padded={false}>
 							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
 								{#each sourceRepos as r (r.url)}
 									<li>

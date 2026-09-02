@@ -1094,6 +1094,29 @@
 			</div>
 		{:else}
 			<div class="relative min-h-0 flex-1 bg-gray-900 dark:bg-gray-950">
+				<!--
+					⭐ THE FADE, NOT PADDING. (defect #6, design re-check) Measured on
+					this pane while `Follow` is on (the common case: the stream lands
+					scrolled to the newest line): the topmost VISIBLE row straddles the
+					scroll container's own top edge — `firstVisibleRowTop` sat 14-20px
+					ABOVE `scrollTop`, i.e. above the container's own clip boundary, so
+					the row's top half is cut and reads as sliced by the header's rule
+					directly above it. That is ordinary scrolled-list behaviour (the
+					container height is rarely an exact multiple of a row's height) and
+					is true AT EVERY WIDTH — it is not a 390-vs-1440 defect, and giving
+					the scroll container its own `padding-top` would only move the same
+					straddle down by that amount while also perturbing the virtualizer's
+					own scrollHeight math (it measures the CONTENT box, not the padded
+					one). A `pointer-events-none` gradient matching the pane's own
+					ground, drawn ABOVE the scroll container and not inside it, softens
+					the cut into a fade instead — same 24px at 1440 and 390, both themes,
+					and it costs the virtualizer nothing because it never enters its
+					scrollable content.
+				-->
+				<div
+					aria-hidden="true"
+					class="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-gray-900 to-transparent dark:from-gray-950"
+				></div>
 				<div
 					bind:this={virtualListEl}
 					onscroll={handleScroll}
@@ -1145,6 +1168,18 @@
 	</Card>
 
 	<!-- Footer with stats -->
+	<!--
+		⭐ THE FOOTER KEEPS ONLY WHAT THE ROLLUP DOES NOT SAY. (defect #6,
+		design re-check) Measured on `/rollouts/…/logs`: `4 pods` printed
+		THREE times in one viewport (page head, `Card`'s own `paneRollup`,
+		this footer) and `Streaming` printed three times (same three), because
+		this footer independently re-derived the pod count and the connection
+		state `paneRollup` (immediately above it, in the card header) already
+		states. The line count is the one fact the rollup does not carry —
+		`paneRollup` answers "who, and is it live"; this footer answers "how
+		many, of how many, matching what" — so pod count and stream state are
+		gone from here and the search query (which nothing else prints) stays.
+	-->
 	{#if filteredLogs.length > 0 || logs.length > 0}
 		<div
 			class="mt-2 flex flex-shrink-0 items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs"
@@ -1152,43 +1187,15 @@
 			<div class="flex flex-wrap items-center gap-x-1 gap-y-0.5">
 				<span>
 					{#if searchQuery || selectedPods.size > 0 || selectedContainers.size > 0 || selectedLogLevels.size > 0}
-						{filteredLogs.length}/{logs.length}
+						{filteredLogs.length}/{logs.length} lines
 					{:else}
 						{filteredLogs.length} lines
 					{/if}
 				</span>
-				{#if selectedPods.size > 0}
-					<span class="hidden sm:inline">• {selectedPods.size} {selectedPods.size === 1 ? 'pod' : 'pods'}</span>
-				{:else if uniquePods.length > 0}
-					<span class="hidden sm:inline">• {uniquePods.length} {uniquePods.length === 1 ? 'pod' : 'pods'}</span>
-				{/if}
 				{#if searchQuery}
 					<span class="text-blue-600 dark:text-blue-400">"{searchQuery}"</span>
 				{/if}
 			</div>
-			<!-- ⚠️ THIS SAID `Streaming ●` WHENEVER A LINE HAD EVER ARRIVED — after
-			     the stream closed, and after it errored. A live mark that cannot go
-			     out is decoration, not a status. It is gated on the query now, and
-			     the closed case says so instead of going quiet.
-			     ⛔ `{:else if !error}` used to mean "not streaming and not
-			     errored" — which is ALSO true while still connecting, so this row
-			     could print "Stream closed" during the same instant the header
-			     printed "Connecting to pods…". Reads `connectionState`
-			     exclusively now; `connecting` has no branch here because the
-			     outer `{#if filteredLogs.length > 0 || logs.length > 0}` guard
-			     already keeps this footer hidden until there is something to
-			     report, by which point the connection is never still "connecting". -->
-			{#if connectionState === 'streaming'}
-				<div class="flex items-center gap-1">
-					<span class="hidden text-green-700 sm:inline dark:text-green-400">Streaming</span>
-					<span class="h-2 w-2 animate-pulse rounded-full bg-green-700 dark:bg-green-400"></span>
-				</div>
-			{:else if connectionState === 'closed'}
-				<div class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
-					<span class="hidden sm:inline">Stream closed</span>
-					<span class="h-2 w-2 rounded-full bg-gray-500 dark:bg-gray-400"></span>
-				</div>
-			{/if}
 		</div>
 	{/if}
 </div>

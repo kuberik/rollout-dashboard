@@ -3,6 +3,7 @@
 <script lang="ts">
 	import type { HealthCheck } from '../../types';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import Card from './Card.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -74,29 +75,42 @@
 	function errorAgo(hc: HealthCheck): string {
 		return hc.status?.lastErrorTime ? formatTimeAgo(hc.status.lastErrorTime, $now) : 'earlier';
 	}
+
+	/**
+	 * ⭐ THIS CARD NOW USES `Card`, NOT A HAND-ROLLED HEADER. (defect #4,
+	 * design re-check) `COMPOSITION-GRAMMAR.md`'s own numbers: every header
+	 * on the reference page measures 47px because `Card` floors it there;
+	 * this component's own `px-4 py-3` bar with no `min-h` measured 45px —
+	 * two numbers for what is meant to be one idiom. `Card`'s `icon` prop
+	 * takes the same conditional glyph this header always chose; the rollup
+	 * is a snippet because the four states here (failing/pending/recovered/
+	 * healthy) need four different inks that `Card`'s four `VerdictTone`
+	 * values don't all cover (no `warning` tone exists — amber is reserved
+	 * for `stuck`, see `Card.svelte`'s own note on why) — this rollup is the
+	 * one legitimate case for `warning` yellow at header scale, unchanged
+	 * from before the migration.
+	 */
+	const HeaderIcon = $derived(
+		failedChecks.length > 0
+			? ExclamationCircleSolid
+			: pendingChecks.length > 0
+				? ClockSolid
+				: recovered.length > 0
+					? ClockArrowOutline
+					: CheckCircleSolid
+	);
+	const headerIconClass = $derived(
+		failedChecks.length > 0
+			? 'text-red-500 dark:text-red-400'
+			: pendingChecks.length > 0 || recovered.length > 0
+				? 'text-yellow-700 dark:text-yellow-400'
+				: 'text-green-700 dark:text-green-400'
+	);
 </script>
 
 {#if healthChecks.length > 0}
-	<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-		<div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-			<div class="flex items-center gap-2">
-				{#if failedChecks.length > 0}
-					<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
-				{:else if pendingChecks.length > 0}
-					<ClockSolid class="h-4 w-4 text-yellow-700 dark:text-yellow-400" />
-				{:else if recovered.length > 0}
-					<!-- ⛔ NOT THE GREEN TICK. Everything passes, so the tick was
-					     defensible — and it was the single mark that made this card
-					     unreadable, because the header is the only part a reader takes
-					     at a glance and it said all-clear over an incident. A clock with
-					     an arrow is the shape for "this already happened"; the rollup
-					     beside it changes with it. -->
-					<ClockArrowOutline class="h-4 w-4 text-yellow-700 dark:text-yellow-400" />
-				{:else}
-					<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
-				{/if}
-				<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Health Checks</h2>
-			</div>
+	<Card icon={HeaderIcon} iconClass={headerIconClass} title="Health Checks" padded={false}>
+		{#snippet rollup()}
 			{#if failedChecks.length > 0}
 				<span class="text-xs font-semibold text-red-600 dark:text-red-400">{failedChecks.length} failing{pendingChecks.length > 0 ? ` · ${pendingChecks.length} pending` : ''}{recovered.length > 0 ? ` · ${recovered.length} recovered` : ''} · {healthyChecks.length} passing</span>
 			{:else if pendingChecks.length > 0}
@@ -112,7 +126,7 @@
 			{:else}
 				<span class="text-xs text-green-700 dark:text-green-400">{healthChecks.length}/{healthChecks.length} healthy</span>
 			{/if}
-		</div>
+		{/snippet}
 		{#if problemChecks.length > 0}
 			{#each failedChecks as hc (hc.metadata?.name + '/' + hc.metadata?.namespace)}
 				<div class="border-b border-gray-100 bg-red-50 px-4 py-3 last:border-b-0 dark:border-gray-700/60 dark:bg-red-950/15">
@@ -219,5 +233,5 @@
 				</div>
 			{/if}
 		{/if}
-	</div>
+	</Card>
 {/if}

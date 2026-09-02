@@ -1149,9 +1149,20 @@
 <div
 	class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 >
-	<!-- Header -->
+	<!--
+		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
+		design re-check) This header hand-rolls its own bar rather than using
+		`Card` — its body is a master-detail split (a left nav column plus a
+		right detail pane, desktop and mobile laid out differently) that does
+		not fit `Card`'s single `children` slot without restructuring the
+		component, so the migration is deferred. The NUMBER does not have to
+		wait: `Card`'s header measures 47px because of this exact class
+		(`min-h-47px`, `px-4 py-3`); this bar had no floor and measured 45px —
+		one pixel value short of the reference page's own `Deployment
+		Pipeline`. Byte-identical now.
+	-->
 	<div
-		class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+		class="flex min-h-[47px] items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 	>
 		<div class="flex items-center gap-2">
 			{#if summary.failed > 0}
