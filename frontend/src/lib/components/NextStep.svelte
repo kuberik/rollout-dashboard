@@ -63,6 +63,35 @@
 	 * already ships exactly this rule (`row.primary ? 'btn-primary' :
 	 * 'btn-secondary'`). A row of buttons where every one is filled has no
 	 * primary at all.
+	 *
+	 * ── ⭐ `href` AND `onclick` ARE NOT TWO WAYS TO WRITE THE SAME CONTROL ──
+	 *
+	 * (2026-09-02, from the human: *"i also don't like this investigate button
+	 * / choose version that act as if they're doing something smart but are
+	 * just navigating to a page. i think there's more like that."*)
+	 *
+	 * This component used to render both branches with the identical `.btn`
+	 * class, so `Deploy newest` — which changes what is running — and `Choose
+	 * a version` — which opens `/apps/<name>` — were the same mark, and the
+	 * second one was the one wearing `.btn-primary`. A filled blue control
+	 * promises consequence and delivered a page.
+	 *
+	 * The branch IS the classification, and nothing else needs to be passed:
+	 *
+	 * · `href` → NAVIGATION → `.nav-link`. A text link with the step's mark
+	 *   and a chevron. `primary` is IGNORED here, deliberately: a destination
+	 *   cannot be the page's primary action because it is not an action.
+	 * · `onclick` → ACTION → `.btn`, and `primary` picks the fill.
+	 *
+	 * ⛔ DO NOT ADD A PROP TO OPT AN `href` BACK INTO BUTTON CHROME. If a
+	 * destination feels like it needs a button to be found, the row or card
+	 * around it is not reading as a destination — fix that with `.tap-zone`.
+	 *
+	 * ⛔ AND CHECK REDUNDANCY BEFORE REACHING FOR THIS AT ALL. Two call sites
+	 * passed an `href` equal to the `.tap-link` of the row or card header they
+	 * sat inside (`/environments` footers, `/envs/[name]` app rows) — a second
+	 * tab stop to a destination the reader could already reach by pressing the
+	 * row. Both were deleted rather than restyled.
 	 */
 	import {
 		SearchOutline,
@@ -120,21 +149,28 @@
 	const spec = $derived(STEP[step]);
 	const text = $derived(label ?? spec.label);
 	const ariaLabel = $derived(subject ? `${text} — ${subject}` : undefined);
-	const cls = $derived(`btn ${primary ? 'btn-primary' : 'btn-secondary'} ${className}`);
+	const actionCls = $derived(`btn ${primary ? 'btn-primary' : 'btn-secondary'} ${className}`);
 </script>
 
 {#if href}
-	<a {href} class={cls} {title} aria-label={ariaLabel}>
-		{#if step === 'open'}
-			{text}
-			<spec.icon class="h-4 w-4 shrink-0" aria-hidden="true" />
-		{:else}
-			<spec.icon class="h-4 w-4 shrink-0" aria-hidden="true" />
-			{text}
+	<!-- NAVIGATION. No fill, no border, no `primary` — see the block above. The
+	     chevron trails the words because that is which way the reader is going;
+	     the step's own mark leads, so the verb still carries its icon. -->
+	<a {href} class="nav-link {className}" {title} aria-label={ariaLabel}>
+		{#if step !== 'open'}
+			<spec.icon class="shrink-0" aria-hidden="true" />
 		{/if}
+		{text}
+		<ChevronRightOutline class="shrink-0" aria-hidden="true" />
 	</a>
 {:else}
-	<button type="button" class={cls} {title} aria-label={ariaLabel} onclick={() => onclick?.()}>
+	<button
+		type="button"
+		class={actionCls}
+		{title}
+		aria-label={ariaLabel}
+		onclick={() => onclick?.()}
+	>
 		<spec.icon class="h-4 w-4 shrink-0" aria-hidden="true" />
 		{text}
 	</button>

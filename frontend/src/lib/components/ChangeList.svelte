@@ -193,14 +193,16 @@
 				{:else if query.isError}
 					<!-- THE BRANCH THAT USED TO RENDER NOTHING. -->
 					<p class="t-dense text-gray-700 dark:text-gray-200">{reason}</p>
-					<div class="mt-2 flex flex-wrap items-center gap-2">
+					<!-- ⭐ ONE DESTINATION, ONE TREATMENT. (2026-09-02) `See the diff
+					     on GitHub` was a `.btn` in THIS branch and a plain text link
+					     in the success branch ninety lines below — the same URL
+					     drawn two ways inside one component. It is navigation in
+					     both, so it is a link in both, and that leaves `Connect
+					     GitHub` beside it as the only boxed control: which is
+					     correct, because it is the only one that changes anything. -->
+					<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
 						{#if compareUrl}
-							<a
-								href={compareUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="btn btn-secondary"
-							>
+							<a href={compareUrl} target="_blank" rel="noopener noreferrer" class="nav-link">
 								<GithubSolid aria-hidden="true" />
 								See the diff on GitHub
 							</a>

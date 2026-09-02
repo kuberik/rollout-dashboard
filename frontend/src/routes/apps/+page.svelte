@@ -143,7 +143,11 @@
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import UpToDate from '$lib/components/UpToDate.svelte';
-	import NextStep from '$lib/components/NextStep.svelte';
+	// `NextStep` the COMPONENT is no longer rendered here — the page has no
+	// action to spend a button on — but its `Step` union is still the
+	// vocabulary `nextStep()` classifies into, and `/environments`,
+	// `/envs/[name]` and `/activity` still render it. The type stays; the
+	// import of the component does not.
 	import type { Step } from '$lib/components/NextStep.svelte';
 	// THE BANNER BORROWS `BlockReason`'S SENTENCE, NOT ITS MARKUP. The
 	// component paints `gray-500` prose for a white card; the banner is a
@@ -662,7 +666,23 @@
 		if (fail) return pick('investigate', fail);
 		const held = cells.find((c) => c.held);
 		if (held) return pick('unpin', held);
-		const approve = cells.find((c) => c.block.awaitingApprovalGates.length > 0 && c.behindBy > 0);
+		// ⛔ `awaitingApprovalGates` IS NOT "NEEDS A PERSON", AND THIS PAGE
+		// CONTRADICTED ITS OWN BANNER OVER IT. (2026-09-02) It means only that
+		// the gate published an allow-list, and the environment controller AND
+		// the dependency controller both publish one — three of the four gate
+		// writers land in this bucket. Measured on the live cluster,
+		// `hello-frontend-app` is held by `dependency-hello-frontend-needs-api`
+		// (its next build wants `api ^1.67.0`; `hello-api-app` ships `1.66.0`),
+		// so this page drew a FILLED BLUE `Choose a version` 40px under its own
+		// banner reading *"Nobody has to approve anything — this clears when
+		// the deploy in front of it lands."* There is no version to choose:
+		// picking one by hand would override a semver contract.
+		//
+		// `story.person` is the classified bucket — a join on the published
+		// owner reference, never a name pattern — and `blockingStory` is
+		// already computed for every cell on this page. Same fix, same
+		// argument, as `/apps/<name>`'s own `stuckFor`.
+		const approve = cells.find((c) => c.story.person.length > 0 && c.behindBy > 0);
 		if (approve) return pick('approve', approve);
 		const stuck = cells.find((c) => c.state === 'stuck');
 		if (stuck) return pick('investigate', stuck);
@@ -989,16 +1009,14 @@
 		open: 'open this app'
 	};
 
-	/**
-	 * THE ONE FILLED BUTTON ON THE PAGE. It goes on the highest-ranked row
-	 * where a person can actually ADVANCE something — never on `investigate`,
-	 * which moves nothing, and never on `unblock`, which needs nobody. `null`
-	 * when there is no such row, and then the page has no primary at all,
-	 * which is the correct state for a fleet with nothing to decide.
+	/*
+	 * ⛔ `primaryStepApp` IS GONE, AND SO IS THE PAGE'S LAST BUTTON.
+	 * (2026-09-02) It chose which row got the FILLED control, and every
+	 * candidate it could choose between was an `<a href="/apps/<name>">`. A
+	 * filled primary is reserved for the action that changes what is running,
+	 * and this page performs no actions — see the step's own block in the
+	 * markup. `/apps` now renders ZERO `<button>`s and zero `.btn`s.
 	 */
-	const primaryStepApp = $derived(
-		appRows.find((a) => a.step === 'approve' || a.step === 'promote')?.appName ?? null
-	);
 
 	const attnCount = $derived(appRows.filter((a) => a.rank === 0).length);
 	const motionCount = $derived(appRows.filter((a) => a.rank === 1).length);
@@ -1425,8 +1443,29 @@
 		     ONE, NEVER ONE PER APP. The SET of apps needing a person is the
 		     `Needs attention` card below; the banner's job is the single worst
 		     fact, its CAUSE and the way out. -->
+		<!-- ⛔ THE BANNER'S CONTROL IS A LINK NOW, NOT A BUTTON. (2026-09-02)
+		     > *"i also don't like this investigate button / choose version that
+		     > act as if they're doing something smart but are just navigating
+		     > to a page. i think there's more like that."*
+
+		     The rule, applied across the product: a control that only changes
+		     WHAT YOU ARE LOOKING AT is navigation and must look like navigation;
+		     a control that changes CLUSTER STATE is an action and earns a
+		     button; a FILLED button is reserved for the action that changes what
+		     is running. `/apps` has no cluster-mutating control anywhere on it
+		     — `nextStep`'s own tombstone says so in as many words — so the page
+		     now has ZERO buttons, which is the honest census for a list view.
+
+		     IT KEEPS THE 14px AND THE ARROW. `.nav-link` in `app.css` is the
+		     shared treatment — 14px/500 with `.btn`'s own vertical padding, so
+		     the banner's action row does not change height when its control
+		     changes class — and `AlertPanel` sets `--nav-link-ink: currentColor`
+		     on that row, so the link speaks in the SEVERITY's ink. That matters
+		     here: this banner renders at four severities (`error`, `warning`,
+		     `pinned`, `info`) and a hard-coded hue would be wrong on three of
+		     them. -->
 		{#snippet openApp(app: string)}
-			<a href="/apps/{app}" class="btn btn-secondary">
+			<a href="/apps/{app}" class="nav-link">
 				Open {app}
 				<ArrowRightOutline />
 			</a>
@@ -1985,50 +2024,54 @@
 		     drills through carries this chevron (`Show 8 ready resources ›`,
 		     the resource rows); `/apps` was the one list in the product whose
 		     rows were navigable with nothing on them to say it. -->
-		<!-- ── THE NEXT STEP ────────────────────────────────────────────────
-		     `DESIGN-INTENT.md`: *"showing a problem without offering the action
-		     is an unfinished design."* Every row that states a problem now
-		     names the step, and every row that does not renders NOTHING — an
-		     action on every row is a column of noise and would be marking the
-		     norm.
+		<!-- ── THE NEXT STEP, NARROWED TO THE ONE THAT GOES SOMEWHERE ELSE ──
+		     ⛔ `Choose a version` WAS A FILLED BLUE BUTTON FOR A PAGE LOAD, AND
+		     IT WAS THE LOUDEST CONTROL IN THE PRODUCT. (2026-09-02)
 
-		     THIS IS ALSO THE PAGE'S ENTRY POINT. Before it, four rows were
-		     near-identical and the eye had nowhere to land but the banner; the
-		     one filled button is now the obvious place to start and everything
-		     else recedes, which is the whole of the "draw the reader in" ask.
+		     > *"i also don't like this investigate button / choose version that
+		     > act as if they're doing something smart but are just navigating to
+		     > a page. i think there's more like that."*
 
-		     ONE FILLED PRIMARY, on the row where a person can actually advance
-		     something (`approve` / `promote`). `investigate` and `unblock` stay
-		     secondary: neither moves anything. The banner's own control is
-		     `.btn-secondary` on a filled ground, so the page still has exactly
-		     one blue button. -->
-		{#if app.step}
+		     Every step this page can emit is an `<a>` — `nextStep`'s own
+		     tombstone says so and gives the reason (a list-level mutation would
+		     have to pick an environment silently). So `/apps` never had an
+		     action to spend a button on, and it was spending the FILLED one.
+
+		     ⭐ AND FIVE OF THE SIX WERE AIMED AT THE ROW'S OWN TARGET. Every
+		     step but `unpin` resolved to `/apps/<name>` — character for
+		     character the destination of the `.tap-zone` the whole row already
+		     is, with a `›` chevron 40px to its right saying so. It is the same
+		     defect `/apps/<name>` recorded when it deleted its namespace link:
+		     *"a second control aimed at the first one's target."* And the row's
+		     LEDE already names the state in words (`DEV can still take 1 newer
+		     version`), so the verb was restating the sentence beside it as well
+		     as duplicating the link under it.
+
+		     ⭐ `unpin` SURVIVES BECAUSE IT IS THE ONE THAT GOES SOMEWHERE ELSE.
+		     `?release=<env>` lands ON the clear-pin dialog rather than near it,
+		     which was itself the fix for a reported defect — *"a CTA that lands
+		     on the wrong control is worse than no CTA, because the operator now
+		     believes they tried."* Deleting it would undo that. It is a LINK,
+		     not a button, because the click still only changes what you are
+		     looking at; the act is behind the dialog it opens.
+
+		     WHAT REPLACES THE ENTRY POINT the filled button was carrying: the
+		     banner, which is a page-level FILL — `COMPOSITION-GRAMMAR.md` §4's
+		     *"attention pulled by design, not text"* — and is a louder, truer
+		     mark for "start here" than a blue rectangle on the fourth column of
+		     a row. -->
+		{#if app.step === 'unpin' && app.stepEnvName}
 			<!-- NO HAND-ROLLED `z-[1]` ANY MORE — `.tap-zone` raises every control
 			     inside it, so this cell cannot fall under the overlay and neither
 			     can anything added beside it later. -->
 			<span class="apps-step flex items-center justify-end">
-				<!-- ⛔ `Release the hold` LANDED ON THE WRONG CONTROL. It was an
-				     `<a href="/apps/<name>">` whose destination opened a version
-				     PICKER with no way to clear a pin; the real control was two
-				     pages further on, at rollout detail. *"A CTA that lands on the
-				     wrong control is worse than no CTA, because the operator now
-				     believes they tried."*
-
-				     The step is still a LINK and that rule is unchanged — an app
-				     can have several environments in one state and a list-level
-				     mutation would have to pick one silently. What changed is that
-				     the link now NAMES the environment, and `/apps/<name>` opens
-				     the real clear-pin dialog for it on arrival. One hop, and it
-				     lands on the control instead of near it. -->
-				<NextStep
-					step={app.step}
-					href={app.step === 'unpin' && app.stepEnvName
-						? `/apps/${app.appName}?release=${encodeURIComponent(app.stepEnvName)}`
-						: `/apps/${app.appName}`}
-					primary={app.appName === primaryStepApp}
-					subject={app.appName}
-					title="{app.stepEnv} — {STEP_WHY[app.step]}"
-				/>
+				<a
+					href="/apps/{app.appName}?release={encodeURIComponent(app.stepEnvName)}"
+					class="nav-link"
+					title="{app.stepEnv} — {STEP_WHY.unpin}"
+					aria-label="Release the hold on {app.appName} in {app.stepEnv}"
+					>Release the hold<ChevronRightOutline /></a
+				>
 			</span>
 		{/if}
 
@@ -2095,8 +2138,14 @@
 		   instead of the track being wrong in a way anyone can see. */
 		min-width: 0;
 	}
-	.apps-step :global(.btn) {
-		width: 100%;
+	/* ⛔ THE `:global(.btn)` RULES ARE GONE WITH THE BUTTON. (2026-09-02) The
+	   step is a 14px TEXT LINK now — see the markup — so there is nothing to
+	   stretch to the card's width. On a phone it sits at the end of the card
+	   in its own band exactly as before; a link does not need a 44px target
+	   because the whole card is already the tap target at that width, which
+	   is the same argument the chevron below is hidden on. */
+	.apps-step a {
+		text-align: right;
 	}
 
 	/* THE CHEVRON IS DESKTOP-ONLY. At 390 the whole card is the tap target and
@@ -2204,12 +2253,6 @@
 	   So the step column now costs 1000px of panel, not 900, and the App track
 	   gets 400px whenever the rail is on. The button is still never hidden —
 	   it is a band, which is a designed state and not a fallback. */
-	@container (min-width: 720px) and (max-width: 999px) {
-		.apps-step :global(.btn) {
-			width: auto;
-		}
-	}
-
 	@container (min-width: 720px) {
 		.apps-row {
 			/* Five fixed tracks now: the 20px chevron is the fifth. Every
@@ -2257,37 +2300,40 @@
 	   shrink it back.
 
 	   THE DEFECT IT FIXES, measured on the live cluster at 1440 in light:
-	   the track was 158px, `Choose a version` renders at 178.5px, and the
+	   the track was 158px, `Choose a version` rendered at 178.5px, and the
 	   cell is `justify-end` — so the button hung 20px PAST ITS OWN TRACK to
 	   the LEFT and painted itself over the `To prod` cell, whose content ran
 	   to x=1189 while the button started at x=1185. On the one row that has
-	   a button. It reads as a rendering fault, which is the exact class of
+	   a control. It reads as a rendering fault, which is the exact class of
 	   defect the gray row-band was rejected for twice.
 
 	   A fixed track cannot be sized by its content (`auto` was tried and
 	   reverted product-wide: each row is its own grid, so an intrinsic track
 	   sizes per row and the columns stop lining up down the list). So the
-	   track is sized to `NextStep`'s LONGEST LABEL instead, measured in the
-	   browser at 14px/500 with the 16px icon, the 8px gap and 16px of padding
-	   on each side:
+	   track is sized to the LONGEST LABEL it can hold instead.
 
-	     See what's blocking  197.3   Go back a version  183.9
-	     Choose a version     178.5   Release the hold   174.8
-	     Deploy newest        161.8   Investigate        136.2   Open  95.4
+	   ⭐ RE-MEASURED 2026-09-02, AND IT GOT 60px SMALLER. There is exactly ONE
+	   label left — the step is now rendered only for `unpin`, the one whose
+	   destination differs from the row's own; see the markup for why the other
+	   five went. And it is a 14px TEXT LINK, not a 14px/500 button, so the
+	   16px of padding on each side goes too:
 
-	   ⚠️ IF A LABEL IS ADDED TO `NextStep`, RE-MEASURE. The `max-width` below
-	   is the seatbelt, not the fix: it makes a too-long label WRAP inside its
-	   own track rather than paint over the column beside it, because a button
-	   covering a value is worse than a button that wraps. */
+	     `Release the hold` + 16px chevron + 2px gap = 135.4px at 14px/400
+
+	   140px, with the 60px it gave back going to the App name track, which the
+	   tombstone below this one records as the column that keeps running out.
+
+	   ⚠️ IF THE LABEL CHANGES, RE-MEASURE. The `max-width` below is the
+	   seatbelt, not the fix: it makes a too-long label WRAP inside its own
+	   track rather than paint over the column beside it. */
 	@container (min-width: 1000px) {
 		.apps-row {
-			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 200px 20px;
+			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 140px 20px;
 			grid-template-areas: 'id fleet act lead step chev';
 			row-gap: 0;
 		}
 
-		.apps-step :global(.btn) {
-			width: auto;
+		.apps-step a {
 			max-width: 100%;
 			white-space: normal;
 		}

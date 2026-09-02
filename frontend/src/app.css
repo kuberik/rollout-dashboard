@@ -472,21 +472,33 @@ textarea {
    present in both themes and only one theme could show it.
 
    They are GLOBAL now, so they cannot be lost by a component boundary
-   again. Values: the mint is the `newest` chip's / `ExposureBar`'s own
-   `#426d64` / `#83b0a8`; `tone-bad` is the product red; `tone-mute` is the
-   product's muted ink pair (`gray-500` light / `gray-400` dark) — the same
-   pair `Chip`'s NEUTRAL role and `.chip-value--dim` already spend. Zero new
+   again. Values: `tone-live` is the product's HEALTH GREEN (`green-700` /
+   `green-400`) — the pair `DeploymentPipelineCard` fills a DONE stage with
+   and `ResourcesCard`, `HealthChecksCard` and `/environments` ink a healthy
+   thing with; `tone-bad` is the product red; `tone-mute` is the product's
+   muted ink pair (`gray-500` light / `gray-400` dark) — the same pair
+   `Chip`'s NEUTRAL role and `.chip-value--dim` already spend. Zero new
    colour values.
+
+   ⛔ `tone-live` WAS `#426d64` / `#83b0a8`, THE `newest` CHIP'S MINT, AND
+   THAT WAS A BORROWED MEANING. (2026-09-02, from the human about the
+   revision pages: *"i also don't know why we're using this color."*) The two
+   call sites are `BuildStateMark`'s `done` tick and the `Running it now`
+   bucket card — both mean "deployed and healthy", which is a STATUS verdict,
+   while `newest` is a RANK verdict. Painting one value for both is what made
+   the colour unreadable. It now matches `CoverageBar`'s `live` segment, which
+   is the object these two glyphs explain. The mint is untouched where it
+   belongs: `Chip role="newest"` and `ExposureBar`'s newest segment.
 
    `@layer components`, not unlayered: a call site that legitimately needs a
    different ink passes a Tailwind utility and it must win. ──────────── */
 @layer components {
 	.tone-live {
-		color: #426d64;
+		color: var(--color-green-700);
 	}
 
 	.dark .tone-live {
-		color: #83b0a8;
+		color: var(--color-green-400);
 	}
 
 	.tone-bad {
@@ -906,6 +918,113 @@ textarea {
 	.btn > :global(svg) {
 		width: 16px;
 		height: 16px;
+		flex: none;
+	}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE NAVIGATION LINK — the counterpart to `.btn`, and the reason `.btn`
+   now means something.
+   ═══════════════════════════════════════════════════════════════════════
+
+   From the human, 2026-09-02: *"i also don't like this investigate button /
+   choose version that act as if they're doing something smart but are just
+   navigating to a page. i think there's more like that."*
+
+   ── THE RULE, IN THREE CLASSES ──────────────────────────────────────────
+
+   Every control in this product is exactly one of three things, and the
+   three get three different treatments:
+
+   1. **It changes cluster state** — `Deploy`, `Rollback`, `Retry`, `Change
+      Version`, `Release the hold`. This is an ACTION and it earns a `.btn`.
+      A FILLED `.btn-primary` is reserved for the action that changes WHAT IS
+      RUNNING, and there is at most one per page.
+   2. **It changes local view state** — a disclosure, a filter pill, a tab, a
+      sort, a modal opener, a refetch. This is a CONTROL. It is not
+      navigation and it legitimately keeps button chrome, sized to its list.
+   3. **It only changes WHAT YOU ARE LOOKING AT** — it goes to a URL. This is
+      NAVIGATION and it must look like navigation: a text link, a row that is
+      already a tap target, a chevron. `.nav-link` is that treatment.
+
+   ⛔ NEVER DRESS A LINK AS A PRIMARY ACTION. A filled blue control promises
+   consequence and delivers a page. `Choose a version` was the loudest mark
+   in the product and all it did was open `/apps/<name>`.
+
+   ⛔ AND BEFORE RESTYLING, CHECK WHETHER IT SHOULD EXIST AT ALL. Most rows
+   and card headers in this product are already `.tap-zone`s. A second
+   control inside one, pointing at the SAME destination, is a redundant tab
+   stop — delete it rather than restyle it. Three were deleted the day this
+   rule landed (`/environments` card footers, `/envs/<name>` app rows).
+
+   ── THE SHAPE ───────────────────────────────────────────────────────────
+
+   14px/500, matching `.btn` so a banner's action row does not change height
+   when its control changes class, and matching `COMPOSITION-GRAMMAR.md` §5's
+   *"a control the reader is meant to press is 14px"*. No fill, no border, no
+   horizontal box — the 8px vertical padding is `.btn`'s, so the touch target
+   stays 38px tall at 390.
+
+   ⚠️ IT DOES NOT SAY `color: inherit`, AND THAT WAS THE FIRST DRAFT'S BUG.
+   Measured on the running product: a `.nav-link` with `color: inherit` in an
+   `AlertPanel` computed **`rgb(0, 0, 0)`** in light on all five surfaces it
+   ships on. Nothing in this stylesheet sets a base ink in LIGHT — only
+   `html.dark` does (see the note at the top of `@layer base`) — so `inherit`
+   walked all the way up and landed on the initial value. Pure black is not a
+   step in this product's ink ladder and it is not the banner's voice.
+
+   So the ink is a CUSTOM PROPERTY with the body ink as its fallback:
+   `gray-900` in light, `gray-100` in dark, the same pair `html.dark` already
+   names. A container that wants the link in its own voice sets
+   `--nav-link-ink`; `AlertPanel` sets it to `currentColor` on the `actions`
+   row so the link speaks in the SEVERITY's ink, which is how the `Details`
+   disclosure two lines above it is already drawn — one idiom, learned once.
+
+   ⚠️ `currentColor`, NOT `inherit`. A custom property ACCEPTS the CSS-wide
+   keywords for itself: `--nav-link-ink: inherit` means *"inherit the value of
+   `--nav-link-ink`"*, which is unset on the ancestor, so the property
+   resolved to the empty string and the fallback won. Measured: the link came
+   out `gray-900` inside an amber banner. `currentColor` substitutes into
+   `color:` and resolves to the inherited ink, which is what was wanted.
+
+   The underline is transparent at rest and `currentColor` on hover, which is
+   the same at-rest/hover contract as `view all ›`, `Whole network ›` and
+   `Open ›`, the three navigation links the product already had right.
+   ─────────────────────────────────────────────────────────────────────── */
+@layer components {
+	.nav-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 8px 0;
+		border: 0;
+		border-radius: 4px;
+		background: none;
+		font-size: 14px;
+		font-weight: 500;
+		line-height: 1.4;
+		white-space: nowrap;
+		color: var(--nav-link-ink, var(--color-gray-900));
+		cursor: pointer;
+		text-decoration-line: underline;
+		text-decoration-color: transparent;
+		text-underline-offset: 3px;
+		transition: text-decoration-color 120ms ease;
+	}
+
+	.dark .nav-link {
+		color: var(--nav-link-ink, var(--color-gray-100));
+	}
+
+	.nav-link:hover {
+		text-decoration-color: currentColor;
+	}
+
+	/* Smaller than a button's 16px: this is text with a mark beside it, not a
+	   pressable box with an icon in it. */
+	.nav-link > :global(svg) {
+		width: 14px;
+		height: 14px;
 		flex: none;
 	}
 }

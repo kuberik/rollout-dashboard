@@ -504,11 +504,15 @@
 			<div class="mt-8 text-center">
 				<p class="text-base font-semibold text-gray-900 dark:text-white">No rollouts yet</p>
 				<p class="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400 mx-auto">Cards like the one above will appear here once you create a <code class="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">Rollout</code> resource in your cluster.</p>
+				<!-- ⛔ NOT A FILLED BUTTON. (2026-09-02) This was the darkest,
+				     highest-contrast mark on the empty state and all it did was
+				     open a README. A fill is reserved for a control that changes
+				     what is running; nothing on a page with no rollouts does. -->
 				<a
 					href="https://github.com/kuberik/rollout-controller"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="mt-4 inline-flex items-center gap-1.5 rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+					class="nav-link mt-2"
 				>
 					Read the docs
 					<span aria-hidden="true">↗</span>

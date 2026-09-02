@@ -44,6 +44,8 @@
 	 *      than two, including one hand-rolled at a call site.
 	 */
 	import { getEnvironmentThemeStyle, type EnvironmentTheme } from '$lib/environment-theme';
+	import { TagOutline } from 'flowbite-svelte-icons';
+	import type { Snippet } from 'svelte';
 
 	type ChipRole =
 		| 'env'
@@ -67,6 +69,8 @@
 		theme = null,
 		title,
 		wide = false,
+		icon,
+		valueIsBuild = true,
 		class: className = ''
 	}: {
 		role?: ChipRole;
@@ -139,6 +143,43 @@
 		 */
 		wide?: boolean;
 		/**
+		 * A GLYPH FOR THE LABEL HALF, when the ROLE cannot supply one.
+		 *
+		 * The rank vocabulary supplies its own — see `GLYPH` below — so nothing
+		 * in the rank family passes this. It exists for `JoinedBadge`, the last
+		 * surviving second badge implementation, whose label half carries a
+		 * `BakeStatusIcon`. That was the ONE capability `Chip` did not have and
+		 * the only reason two components were drawing one idea; adding it here
+		 * is what lets `JoinedBadge` become a shim over this file instead of a
+		 * parallel geometry. See that file's header.
+		 *
+		 * ⛔ It is NOT a general decoration slot. A glyph that repeats the word
+		 * beside it is a second encoding, which is why `alarm`'s dot was deleted
+		 * on 2026-08-27 and why the `[●][ENV]` status half went with it. Pass one
+		 * only when it says something the label does not.
+		 */
+		icon?: Snippet;
+		/**
+		 * SET IT FALSE WHEN THE VALUE HALF IS NOT A BUILD ID. Suppresses the tag.
+		 *
+		 * The rank vocabulary states a POSITION ON THE RELEASE LINE, and at every
+		 * call site but one the thing it is positioning is the build printed
+		 * beside it — so the tag is true by default. THE EXCEPTION IS
+		 * `/versions/<rev>`, whose service list inverts the pair: the ROLE is the
+		 * rank (`newest`, `N behind`) but the VALUE is the SERVICE NAME
+		 * (`hello-world-app`), because the build is the page. A tag on a service
+		 * name claims that name is a version, which is exactly the kind of false
+		 * claim `DESIGN.md` forbids ("never render an unresolvable comparison as
+		 * a definite claim"), so that call site — and only that one — passes
+		 * `valueIsBuild={false}`.
+		 *
+		 * It is a NEGATIVE opt-out and not a positive `valueKind="build"` because
+		 * the default must be the true case: 30-odd call sites hold a build and
+		 * one does not, and a prop that every correct caller has to remember is a
+		 * prop that will be forgotten on the next page.
+		 */
+		valueIsBuild?: boolean;
+		/**
 		 * LAYOUT ONLY — visibility, shrink, self-alignment, margin. Passing a
 		 * colour, a size, a font or a radius here defeats the entire point of
 		 * this component and will be caught by the design census.
@@ -192,12 +233,72 @@
 		}
 	});
 
+	// ── THE GROUND IS A CHANNEL NOW. (2026-09-02) ────────────────────────────
+	//
+	// From the human, a third time on this pair: *"newest / behind badges
+	// coloring / styling i still don't like. what do you think about using fully
+	// colored left part of the badge and then use the proper colors for newest /
+	// behind."*
+	//
+	// THE COMPLAINT IS ABOUT STRUCTURE, NOT ABOUT HUE, AND THE SCREENSHOT SHOWS
+	// IT. Measured on `/rollouts` at 1440, `[NEWEST][1.66.0-66]` and
+	// `[1 BEHIND][2.66.0-66]` are two WHITE boxes on a WHITE card, 130.2px and
+	// 143.9px wide, whose only internal edge is a 1px `gray-200` hairline and
+	// whose only difference is 10px of ink. Two rulings had already been spent
+	// re-solving that ink — mint, then loud gray — and neither could work,
+	// because the thing that is wrong is that **the mark and the identifier are
+	// drawn on the same ground**, so there is no mark, only a longer string.
+	//
+	// THE MECHANISM ALREADY SHIPS IN THIS FILE, ON THE ROLE NEXT TO IT.
+	// `.chip-env` is a tinted fill + a matching border + full-chroma ink — every
+	// `DEV` / `STAGING` / `PROD` chip in the product is already a "fully coloured
+	// left part", and `environment-theme.ts` states the reason in its own words:
+	// *"what separates an identity chip from the alarm is the FILL"*. The rank
+	// vocabulary is the ONE chip family that never got a ground. So this is not a
+	// new device; it is the device this component already owns, extended to the
+	// family the human is looking at.
+	//
+	// ── THE RULE FOR WHO GETS HOW MUCH ──────────────────────────────────────
+	//
+	// A fill is AREA, and area is the most expensive channel a repeated mark can
+	// spend. Counted on the running product, chips per viewport at 1440:
+	//
+	//     /              newest  8   N behind  3
+	//     /rollouts      newest 12   N behind  3
+	//
+	// `newest` IS the repeated mark, 3.2 : 1 across the product, so filling both
+	// halves to the same strength would hand the norm three times the new ink and
+	// re-invert the pair for the third time. The strength of the ground is
+	// therefore the DEVIATION CHANNEL:
+	//
+	//   · WASH  — the ink's own hue at 5% (light) / 10% (dark). Enough to make
+	//             the seam an edge and the half an object; ΔL ≈ 0.025 from the
+	//             card. `newest`/`head` and the three ADVERSE roles take this.
+	//   · BLOCK — the half is filled TO ITS OWN BORDER COLOUR, so it reads as a
+	//             solid neutral slab with the hairline surviving only around the
+	//             value half. `rank` alone takes this. ΔL 0.072 light / 0.093
+	//             dark, i.e. 2.9× / 3.1× the wash.
+	//   · FILL  — saturated, `alarm` alone, untouched by this pass.
+	//
+	// ZERO NEW COLOUR VALUES. Every wash is the role's OWN ink at alpha — the
+	// same derivation `.chip-env` uses (`color-mix(... surface 72%, transparent)`)
+	// — and the block is `gray-200`/`gray-700`, which is already the border on
+	// every non-`env` chip and `.chip-value`'s own border. The two deliberate
+	// mint spellings `#426d64` / `#83b0a8` are UNCHANGED and are not joined by a
+	// third: the wash is those two values, at 5% and 10%.
+	//
+	// ⛔ `count` AND `unranked` STAY UNGROUNDED, AND THAT IS THE POINT. A ground
+	// says "this half is a mark". `count` is a caption and `unranked` is the
+	// ABSENCE of a rank (`held`, `pending`, `unknown`); grounding either would
+	// raise an alarm on an absence of evidence, which is the failure
+	// "never name a cause you cannot evidence" is written against.
+	//
 	// THE TONES A CHIP CAN TAKE, named once so they cannot drift apart.
 	// Before these constants existed the same six strings were written out six
 	// times, which is how `newest` spent eight months a different gray from
 	// `count`.
 	//
-	// NEUTRAL — the norm, or a caption. Spends no colour at all.
+	// NEUTRAL — the norm, or a caption. Spends no colour at all, and no ground.
 	const NEUTRAL = 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400';
 	// NEUTRAL, LOUD — the deviation, marked on LIGHTNESS instead of on hue.
 	// `rank` (`−N` / `N behind`) only. See `TONE.rank`. Character for character
@@ -205,15 +306,57 @@
 	// a new colour value: it is the value half's own gray, borrowed by the label
 	// half. ZERO chroma, so it cannot threaten `alarm` on the ink ceiling —
 	// `area × chroma` scores a gray at nothing, whatever its lightness.
-	const NEUTRAL_LOUD = 'border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200';
+	//
+	// AND IT IS THE ONE ROLE THAT TAKES THE GROUND AS A BLOCK. The fill is the
+	// SAME `gray-200` / `gray-700` the border already draws, so the half loses
+	// its own edge and reads as a solid slab against the white value half beside
+	// it. That is the deviation channel, and it costs nothing on the ink ceiling
+	// for the same reason the ink did: `area × chroma` scores a neutral at ~0, so
+	// `alarm`'s saturated fill is still the loudest mark on any row.
+	const NEUTRAL_LOUD =
+		'border-gray-200 bg-gray-200 text-gray-700 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-200';
 	// MINT, KEPT UNDER `−N` — the word `newest`, WHEREVER IT IS SPELLED.
 	// `newest` and `head` both resolve here and that is deliberate; see the note
 	// on `TONE.head` for the measurement that collapsed them.
-	const MINT_QUIET = 'border-gray-200 text-[#426d64] dark:border-gray-700 dark:text-[#83b0a8]';
+	//
+	// The ground is a WASH of the ink itself, not a fifth mint: `#426d64` at 5%
+	// over the card and `#83b0a8` at 10% over `gray-800`. It exists so the norm's
+	// half is an OBJECT rather than the first six characters of a string; it is
+	// deliberately a third of `rank`'s step, because `newest` outnumbers
+	// `N behind` 3.2 : 1 and area is the channel a repeated mark must not spend.
+	const MINT_QUIET =
+		'border-gray-200 bg-[#426d64]/5 text-[#426d64] dark:border-gray-700 dark:bg-[#83b0a8]/10 dark:text-[#83b0a8]';
 	// ADVERSE — the deviation half of the rank vocabulary. ONE hue for both
-	// members (`−N` and `diverged`); the WORD says which kind. Text-only, so
-	// `alarm` still outranks it.
-	const ADVERSE = 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400';
+	// members (`−N` and `diverged`); the WORD says which kind. Grounded at wash
+	// strength like `newest`, so an adverse half is an object like every other
+	// grounded half, while `alarm` keeps the only SATURATED fill and stays the
+	// loudest mark on a row.
+	//
+	// ⛔ AND ITS GROUND IS A CHOSEN STEP, NOT AN ALPHA WASH OF ITS OWN INK.
+	// This is the one place the wash derivation fails, and it fails on the floor:
+	// `red-400` measures only **5.08:1** on `gray-800` to begin with — the
+	// thinnest headroom of any ink in this file — and washing the ground with the
+	// ink SPENDS that headroom instead of buying any. Measured, canvas-resolved
+	// against the composited card:
+	//
+	//     dark, red-400 ink        ungrounded  5.08:1
+	//       · ground red-400/5     #292c3b     4.79:1
+	//       · ground red-400/10    #352f3e     4.47:1   ⛔ UNDER THE 4.5 FLOOR
+	//       · ground red-950/50    #321921     5.61:1   ✅ ABOVE the ungrounded
+	//
+	// A DARK ground under a light ink adds contrast; a wash of the ink itself
+	// only ever removes it. So adverse takes `red-50` / `red-950/50` — both
+	// already spent in `src` (`DependencyNode`, `/history`, `ControlCenter` all
+	// draw `bg-red-50` / `dark:bg-red-950/…`), zero new values — and this is the
+	// same argument `environment-theme.ts` makes for COMPUTED → CHOSEN: a ramp
+	// ships designed contrast relationships and a derived point on a line does
+	// not. `newest` keeps the alpha wash because mint has NO ramp to choose from,
+	// which is the one condition under which deriving is the right answer.
+	//
+	// Light: `red-700` on `red-50` is **5.87:1** (6.42 ungrounded), ΔL 0.0295 and
+	// C 0.0129 from the card — the same wash strength as `newest`'s mint.
+	const ADVERSE =
+		'border-gray-200 bg-red-50 text-red-700 dark:border-gray-700 dark:bg-red-950/50 dark:text-red-400';
 
 	// Only `alarm` carries a FILL — that is the whole reason it reads as the
 	// loudest object on the page without needing a bigger box, a heavier
@@ -629,15 +772,92 @@
 		alarm:
 			'border-amber-500 bg-amber-400 text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-200'
 	};
+
+	// THE ROLES THAT STATE A POSITION ON THE RELEASE LINE — i.e. the roles whose
+	// joined box is ABOUT A BUILD. They and only they draw the tag; see the note
+	// in `body()`. `env` is an identity and `alarm`/`failing`/`blocked` are
+	// states whose value half is not a build (`[STUCK][3d 4h]` holds a duration),
+	// so a tag on any of them would be a false claim about the string beside it.
+	const GLYPH = new Set<ChipRole>(['newest', 'head', 'rank', 'diverged', 'unranked']);
+
+	/** Does this render draw the tag? Both the glyph and the cap depend on it. */
+	const hasGlyph = $derived(!icon && joined && valueIsBuild && GLYPH.has(role));
+
+	// ── THE 12ch CAP IS A BUDGET FOR THE WORD, NOT FOR THE BOX. ──────────────
+	// (2026-09-02, caught within the hour by the pass on `/versions/<rev>`: that
+	// page's rank chip does NOT take `wide`, and `6 BEHIND` — which fit at 12ch
+	// with 4.6px to spare — rendered `6 BEH…` the moment the glyph appeared.)
+	//
+	// `app.css` caps `.chip` at `12ch` so ONE LONG ENVIRONMENT NAME CANNOT EAT A
+	// ROW. That is a contract about the LABEL: twelve characters of word. The tag
+	// is not word — it is 11px of glyph plus a 3px gap, a fixed 14px that carries
+	// no characters — so charging it to the word's budget silently shortens every
+	// label in the product by two characters, and two characters is the whole
+	// difference between `6 BEHIND` and `6 BEH…`.
+	//
+	// So the box grows by EXACTLY the glyph's own box and the word keeps all
+	// twelve of its characters. Measured, `newest` 53.9 → 67.9px: +14.0, the
+	// glyph and nothing else.
+	//
+	// THE CONTRACT IS UNCHANGED, WHICH IS THE TEST. Every spelling that fit
+	// before still fits and every spelling that needed `wide` before still needs
+	// it — measured at 10px/0.08em on the running product:
+	//
+	//     NEWEST        6 ch   53.9 → 67.9   fits at 12ch either way
+	//     6 BEHIND      8 ch   67.6 → 81.6   fit before; fits now ONLY via this
+	//     UNKNOWN       7 ch   60.6 → 74.6   fit before; fits now ONLY via this
+	//     19 BEHIND     9 ch   74.6 → 88.6   needed `wide` before, still does
+	//     UNRELEASED   10 ch   81.5 → 95.5   needed `wide` before, still does
+	//     ROLLED BACK  11 ch   88.5 → …      not a chip label since 2026-08-31 —
+	//                                        the word moved to the status disc and
+	//                                        the chip kept the rank (`cardVerdict`)
+	//
+	// IT IS A UTILITY AND NOT AN INLINE STYLE ON PURPOSE. `.chip.chip-wide` lives
+	// in `@layer components`; an inline `max-width` would outrank it and silently
+	// re-cap every `wide` chip in the product. A `@layer utilities` class beats
+	// `.chip` and loses to nothing it needs to beat, and it is only emitted when
+	// `wide` is off, so the two opt-outs can never both apply. It lands on the
+	// `.chip` ELEMENT in both forms — the same place `chip-wide` lands, for the
+	// same reason (see the `wide` prop).
+	const capClass = $derived(wide ? 'chip-wide' : hasGlyph ? 'max-w-[calc(12ch+14px)]' : '');
 </script>
 
 {#snippet body()}
-	<!-- NO GLYPH, ON ANY ROLE. `alarm` carried an amber dot next to the word
-	     `STUCK` until 2026-08-27, when the human called it *"useless"* — and it
-	     was: the dot said `stuck` and the word 4px to its right said `stuck`,
-	     one fact in two encodings inside one 57px box. The fill and the word
-	     keep the alarm the loudest mark on any row it is on; see `TONE.alarm`
-	     for the re-measurement. -->
+	<!-- ── THE ONE GLYPH, AND WHY IT IS NOT THE DOT COMING BACK ──────────────
+	     (2026-09-02, from the human: *"and then also add an icon for version"*.)
+
+	     `alarm` carried an amber dot next to the word `STUCK` until 2026-08-27,
+	     when the human called it *"useless"* — and it was: the dot said `stuck`
+	     and the word 4px to its right said `stuck`, one fact in two encodings
+	     inside one 57px box. THAT RULE IS INTACT AND THIS DOES NOT BREAK IT.
+	     A tag beside `NEWEST` does not say `newest`; it says what KIND of fact
+	     the badge is, which is the job `COMPOSITION-GRAMMAR.md` §3 gives every
+	     icon on the reference page (*"if a card has a title, it has an icon"*)
+	     and which the rank badge — the most repeated object in the product — was
+	     the only one doing without.
+
+	     IT IS A TAG AND NOT A COMMIT, AND THE DIFFERENCE IS REAL HERE. `/versions`
+	     is keyed on COMMITS (`revisionPath` → `<repo>/commit/<sha>`); the string
+	     in the value half is a BUILD — `getDisplayVersion`'s `version`
+	     annotation, `1.66.0-66` — and a build is a RELEASE OF a commit, not the
+	     commit. So a git-commit glyph would be false. `TagSolid` is already the
+	     card-header icon for a revision's services on `/versions/<rev>` and
+	     `TagOutline` is already the nav mark for that section, so the tag family
+	     already means "a released build" in this product and this spends no new
+	     vocabulary. It does NOT collide with `CodeBranchOutline` /
+	     `CodeMergeSolid`, which carry DISTANCE (`Furthest behind`) and
+	     CONVERGENCE (`/apps`' fleet column) — neither of which is identity.
+
+	     ⛔ ONLY IN THE JOINED FORM. The glyph types the badge as being ABOUT a
+	     build, so it may only appear when a build is actually named beside it. A
+	     lone `[NEVER DEPLOYED]` chip names none, and a tag on it would claim one.
+
+	     ⛔ AND IT IS NOT CHARGED AGAINST THE WORD'S BUDGET. See `capClass`. -->
+	{#if icon}
+		{@render icon()}
+	{:else if hasGlyph}
+		<TagOutline class="mr-[3px] h-[11px] w-[11px] shrink-0" aria-hidden="true" />
+	{/if}
 	<span class="min-w-0 truncate">{label}</span>
 {/snippet}
 
@@ -682,7 +902,7 @@
 	     and not as a chip that happens to sit next to a sha. -->
 	<span class="chip-joined {className}" bind:this={el}>
 		<span
-			class="chip {TONE[role]} {wide ? 'chip-wide' : ''}"
+			class="chip {TONE[role]} {capClass}"
 			style={role === 'env' && theme ? getEnvironmentThemeStyle(theme) : undefined}
 			title={title ?? label}
 		>
@@ -692,7 +912,7 @@
 	</span>
 {:else}
 	<span
-		class="chip {TONE[role]} {wide ? 'chip-wide' : ''} {className}"
+		class="chip {TONE[role]} {capClass} {className}"
 		style={role === 'env' && theme ? getEnvironmentThemeStyle(theme) : undefined}
 		title={title ?? label}
 		bind:this={el}

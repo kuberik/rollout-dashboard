@@ -113,8 +113,14 @@
 			{/if}
 		{/snippet}
 		{#snippet actions()}
+			<!-- ⛔ `Sign in again` IS NOT `.btn-primary`. (2026-09-02) It calls
+			     `window.location.reload()` — it changes what you are LOOKING at,
+			     not what is RUNNING, and the filled blue mark is reserved for the
+			     latter. It is still a `.btn` because it is not navigation either:
+			     it is the same class of control as `Try again` beside it, and the
+			     two now read as siblings, which they are. -->
 			{#if isAuth && apiError?.status === 401}
-				<button type="button" class="btn btn-primary" onclick={reauthenticate}>
+				<button type="button" class="btn btn-secondary" onclick={reauthenticate}>
 					<ArrowRightToBracketOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
 					Sign in again
 				</button>
@@ -132,9 +138,15 @@
 					{isRetrying ? 'Checking…' : 'Try again'}
 				</button>
 			{/if}
-			<a href={backHref} class="btn btn-secondary">
+			<!-- ⭐ THE WAY OUT IS A LINK, AND THAT IS THE HIERARCHY, NOT A
+			     DEMOTION. (2026-09-02) `Try again` re-issues the request; this
+			     one only goes somewhere. When both are on screen the reader can
+			     now tell them apart without reading either — the thing that DOES
+			     something is boxed, the thing that goes somewhere is not.
+			     `.nav-link` inherits the severity's ink from `AlertPanel`. -->
+			<a href={backHref} class="nav-link">
 				{backLabel}
-				<ChevronRightOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+				<ChevronRightOutline aria-hidden="true" />
 			</a>
 		{/snippet}
 	</AlertPanel>

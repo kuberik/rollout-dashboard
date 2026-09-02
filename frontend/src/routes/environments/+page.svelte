@@ -136,8 +136,6 @@
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import BlockingStoryLines from '$lib/components/BlockingStoryLines.svelte';
-	import NextStep from '$lib/components/NextStep.svelte';
-	import type { Step } from '$lib/components/NextStep.svelte';
 	import { now } from '$lib/stores/time';
 	import {
 		CheckCircleSolid,
@@ -358,8 +356,6 @@
 		blockedApp: EnvApp | null;
 		/** How many apps here are held by a gate. The header's second rollup. */
 		heldCount: number;
-		/** The one thing to do here, worst-first. `open` when nothing is wrong. */
-		step: Step;
 		lastDeployTs: string | null;
 		severity: number;
 	};
@@ -558,39 +554,6 @@
 				 * glance.
 				 */
 				heldCount: apps.filter((a) => a.story.blocked).length,
-				/**
-				 * THE CARD'S STEP, worst-first, from the same facts its marks
-				 * are drawn from — a deploy that failed and a place waiting on
-				 * a person are not the same errand and may not offer the same
-				 * verb. `open` is the FLOOR, not a default: it means there is
-				 * nothing to do here, which is a true and useful thing for a
-				 * card to say.
-				 */
-				// ⛔ `promote` IS DELIBERATELY NOT ONE OF THESE, AND IT WAS TRIED.
-				// Offering `Deploy newest` on every trailing environment put
-				// FOURTEEN identical buttons on the 22-environment fixture and
-				// destroyed the page's entry point — the one blue button it was
-				// supposed to lead the eye to was drowned by thirteen gray twins
-				// of itself. It was also wrong on the merits: being behind is
-				// *"the normal state of a promotion pipeline"* and promoting is
-				// the controller's job, so a button on all of them is asking a
-				// person to hand-crank the norm. A verb is offered here only
-				// when something will NOT resolve without one.
-				// ⛔ AND `unblock` IS NOT ONE EITHER. `See what's blocking` sat in
-				// the footer of a card that had just printed, 200px above it, the
-				// exact sentence that button promised to go and fetch. A control
-				// offering to reveal something already on screen is furniture.
-				// A rule that clears itself gets `Open`, which is the truth.
-				// ⛔ `approve` USED TO FIRE ON ANY ALLOW-LIST GATE, which put an
-				// `Approve` verb on cards held only by the environment controller
-				// — a gate nobody can approve. It now fires on the classified
-				// `person` bucket and nothing else.
-				step:
-					failing > 0 || stuck > 0
-						? 'investigate'
-						: apps.some((a) => a.story.person.length > 0)
-							? 'approve'
-							: 'open',
 				lastDeployTs,
 				severity: failing > 0 ? 4 : stuck > 0 ? 3 : (deepest?.by ?? 0) > 0 ? 1 : 0
 			});
@@ -626,33 +589,12 @@
 		return envTiers.filter((t) => !inFleet.has(t)).map((t) => cardsByTier.get(t)!);
 	});
 
-	/**
-	 * WHY EACH VERB IS OFFERED — the footer control's `title`, and the sentence
-	 * a reader gets before committing to a click.
-	 */
-	const STEP_WHY: Record<Step, string> = {
-		investigate: 'something here has failed or has stopped moving',
-		approve: 'a newer version exists and a person has to pick it',
-		promote: 'a newer version is allowed here and nobody has deployed it',
-		unblock: 'newer versions are on hold until a check or time window passes',
-		unpin: 'someone pinned a version here, so nothing newer can deploy',
-		rollback: 'the version running here is worse than the one before it',
-		open: 'nothing needs you here — open it to see what is running'
-	};
-
-	/**
-	 * THE ONE FILLED BUTTON ON A PAGE OF UP TO 22 CARDS. It goes on the worst
-	 * place where a person can actually ADVANCE something. `investigate` never
-	 * gets it (it moves nothing) and `open` never gets it (there is nothing to
-	 * move). With no such card the page has no primary, which is correct for a
-	 * fleet with nothing to decide.
-	 */
-	const primaryStepTier = $derived(
-		[...stageCards, ...regionCards]
-			.slice()
-			.sort((a, b) => b.severity - a.severity || (b.deepest?.by ?? 0) - (a.deepest?.by ?? 0))
-			.find((c) => c.step === 'approve' || c.step === 'promote')?.tier ?? null
-	);
+	/* ⛔ `STEP_WHY` AND `primaryStepTier` WENT WITH THE FOOTER BUTTON.
+	   (2026-09-02) They existed to choose a verb and to elect ONE card to wear
+	   `.btn-primary`. Both were answering "which navigation should shout
+	   loudest", and the answer under the navigation rule is none of them: this
+	   page changes no cluster state, so it has no primary action to elect.
+	   See the footer's own note, and `app.css`'s `.nav-link` block. */
 
 	/**
 	 * DISTINCT APPS THAT ARE ACTUALLY BOUND TO AN ENVIRONMENT — not
@@ -1282,15 +1224,16 @@
 			</button>
 		{/if}
 
-		<!-- ── THE FOOTER. Buttons look pressable: 14px, 8px 16px, radius 8.
-		     `.btn` is the product's own button, the one the reference page
-		     presses. -->
+		<!-- ── THE FOOTER — one FACT, not a control bar. Since the button below
+		     was deleted this band carries only `last deploy …`, which is the
+		     card's one time-fact and the only thing on it the header's rollup
+		     does not already say. -->
 		<!-- IT NEEDS NO `mt-auto`. The `grow` box around the row list already
 		     takes the equal-height grid's slack, so this lands on the row's
-		     shared bottom baseline and `last deploy … / Open ›` lines up across
-		     every card in the row. -->
+		     shared bottom baseline and the timestamp lines up across every card
+		     in the row. -->
 		<div
-			class="flex shrink-0 items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 dark:border-gray-700/60"
+			class="flex shrink-0 items-center gap-3 border-t border-gray-100 px-4 py-3 dark:border-gray-700/60"
 		>
 			<span
 				class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
@@ -1303,22 +1246,25 @@
 					<span class="truncate">no deploys yet</span>
 				{/if}
 			</span>
-			<!-- ⛔ `Open` IS NOT AN ACTION, IT IS A DOOR. On a card that has just
-			     said something is failing, stuck or waiting on a person, the one
-			     control offering only `Open` is the defect the human named on
-			     `/apps/[name]`: *"every card gives only `Investigate` and `View
-			     on GitHub` — neither is a decision."* The verb now comes from
-			     the card's own worst fact, through the same `NextStep` table the
-			     other three pages use, and it falls back to `Open` only when
-			     there is genuinely nothing to do here. -->
-			<NextStep
-				step={c.step}
-				href={c.href}
-				primary={c.tier === primaryStepTier}
-				subject={c.tier}
-				title={STEP_WHY[c.step]}
-				class="shrink-0"
-			/>
+			<!-- ⛔ THE FOOTER BUTTON IS GONE, AND IT WAS REDUNDANT BEFORE IT WAS
+			     MIS-STYLED. (2026-09-02, from the human: *"i also don't like this
+			     investigate button / choose version that act as if they're doing
+			     something smart but are just navigating to a page."*)
+
+			     It was a `NextStep` with `href={c.href}` — and `c.href` is the
+			     card header's own `titleHref`, i.e. THE SAME DESTINATION the
+			     `.tap-zone` header already carries. So every card shipped two
+			     tab stops to one URL, and on the worst card the second one wore
+			     `.btn-primary`: the loudest mark in the product, spent on
+			     `/envs/<tier>`.
+
+			     `app.css`'s `.nav-link` block states the rule. The header is the
+			     door; it hover-fills, it is keyboard-reachable, and it names the
+			     environment. A second door beside it is furniture.
+
+			     THE VERB WAS NOT INFORMATION THIS CARD WAS MISSING. `Investigate`
+			     restated the red header icon; `Choose a version` restated the
+			     `HELD` rows above it. What went was chrome. -->
 		</div>
 	</Card>
 {/snippet}
@@ -1405,8 +1351,12 @@
 			</p>
 		</div>
 	{:else}
+		<!-- THE BANNER'S WAY OUT IS A DOOR, NOT A DEED. It goes to the rollout
+		     the banner is about; it deploys nothing. `.nav-link` inherits the
+		     severity's own ink from `AlertPanel`, which is how the `Details`
+		     disclosure one line above it is already drawn. -->
 		{#snippet bannerAction(href: string, action: string)}
-			<a {href} class="btn btn-secondary">
+			<a {href} class="nav-link">
 				{action}
 				<ChevronRightOutline aria-hidden="true" />
 			</a>

@@ -304,8 +304,9 @@
 				No rollouts in namespace
 				<code class="t-code-sm rounded bg-gray-100 px-1 dark:bg-gray-800">{namespace}</code>.
 			</p>
-			<a href="/rollouts" class="btn btn-secondary mt-4">
-				<ArrowLeftOutline />
+			<!-- Navigation, so it is a link. See `app.css`'s `.nav-link` block. -->
+			<a href="/rollouts" class="nav-link mt-2">
+				<ArrowLeftOutline aria-hidden="true" />
 				Back to rollouts
 			</a>
 		</div>

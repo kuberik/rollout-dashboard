@@ -212,68 +212,85 @@ const DESCRIPTION: Record<CoverageKey, string> = {
 };
 
 /**
- * THE FILL — CHROMATIC MEANS "ABOUT THIS BUILD"; ACHROMATIC MEANS "NOT ABOUT
- * THIS BUILD". Lightness carries presence; chroma carries adversity.
+ * ⭐ THE FILL — AND WHY EACH BUCKET HAS THE COLOUR IT HAS.
  *
- * THIS PALETTE WAS GRAY ONCE AND THAT WAS A MISREAD, TWICE OVER. The first
- * build painted all five buckets in their status hue at the `-100` FIELD step,
- * measured `green-100` against `gray-200` at 8px, found them indistinguishable,
- * and concluded — correctly for that family — that no legible green fits the
- * `area × chroma` ceiling, since a ~25,000px² bar under 10x the `alarm` chip's
- * ~159 ink units caps the fill at OKLCH chroma 0.078, below `green-200`. It
- * then shipped `live` as `gray-500`. Both steps were wrong:
+ * From the human, about the bar on the revision pages: *"i also don't know why
+ * we're using this color."* That is the correct reading of what was here. Every
+ * value below used to be borrowed from whatever object happened to be nearby,
+ * and the borrowing was made twice on the SAME bucket:
  *
- *   1. THE SEARCH ONLY LOOKED AT LIGHT TINTS. At 8px against `gray-300`, the
- *      channel that separates two fills is LIGHTNESS, not chroma — which is the
- *      same argument that module already makes for its two grays. A DARK,
- *      LOW-CHROMA green is legible at 8px at a chroma the ceiling never
- *      threatens. The quiet mint this product already owns measures
- *      **L 0.539 / C 0.0384 / H 179.8** against `gray-500`'s
- *      **L 0.551 / C 0.0267 / H 264.3**: ΔL is 0.012, so it is a DROP-IN for
- *      the gray in the lightness hierarchy that made the bar readable, and it
- *      moves 84° of hue and 1.4x of chroma. Nothing about the presence system
- *      changes; only the hue channel stops saying "gray".
- *   2. THE CEILING IT INVOKED IS SATISFIED ANYWAY. Measured on the shipped
- *      detail bar at 1440: 976 x 26 = 25,376px², `live` at 14/15 is ~23,600px²,
- *      and 23,600 x 0.0384 = **906 ink units — 5.7x the alarm, inside the same
- *      10x bound the gray decision was justified by.** The arithmetic never
- *      ruled out a chromatic `live`; it ruled out a chromatic `-100` TINT.
+ *   1. `live` was `gray-500` — lifted from `/apps`'s `STATUS_DOT_CLASS`, where
+ *      it means `onNewest`, a RANK verdict.
+ *   2. Then `live` was `#426d64` — the `newest` CHIP's quiet mint. Also a rank
+ *      value. The second fix repeated the first fix's category error one step
+ *      over: `Running it now` is not a position on a ladder, it is `Succeeded`,
+ *      and its own sibling bucket `Failing` is `Failed`. A teal that the reader
+ *      meets elsewhere on the word `newest` cannot also be the product's word
+ *      for "deployed and healthy" — that is two meanings on one value, which is
+ *      exactly what makes a colour unreadable.
  *
- * AND THE SUBSTITUTION WAS ON THE WRONG AXIS. `gray-500` came from `/apps`'s
- * `STATUS_DOT_CLASS`, where it means `onNewest` — a RANK verdict. `Live here`
- * is not a rank verdict; it is `Succeeded`, and its own sibling bucket
- * `Failing on it` is `Failed`. Painting `Failed` red and `Succeeded` gray in
- * one object is half an encoding. `/environments` already refuses to do that:
- * `EnvHealthStrip` draws a healthy app as a `green-700` dash at SIX pixels
- * tall, shipped, on the page next door.
+ * THE RULE THE FIVE VALUES NOW OBEY, and every value is one this product
+ * already spends somewhere it means the same thing:
  *
- * THE RULE THE FIVE VALUES NOW OBEY, and it is readable straight off the bar:
+ *   · `live` — **the product's health green, `green-700` / `green-400`.** It is
+ *     the fill `DeploymentPipelineCard` paints a DONE stage with on the rollout
+ *     detail page — the page the human calls beautiful — and the ink
+ *     `ResourcesCard`, `HealthChecksCard` and `/environments` use for a healthy
+ *     thing. The bucket means "this build is deployed here and it is not
+ *     failing", which is the same sentence at fleet scale. Nothing is invented
+ *     and nothing is borrowed across axes.
+ *   · `failing` — red, unchanged. Red is the adverse hue and this is the one
+ *     adverse bucket.
+ *   · `ahead` — neutral gray. A place that has moved to a newer build is not
+ *     adverse and is not about this build. Drift is the normal state of a
+ *     promotion pipeline (`DESIGN-INTENT.md`), so it takes no hue.
+ *   · `notYet` — ⛔ **NO LONGER AMBER, AND IT IS DRAWN HOLLOW.** Amber is
+ *     `stuck` and nothing else. "This build has not been deployed here yet" is
+ *     the ordinary state of a pipeline, not an alarm, and the product already
+ *     said so in the object 20px away: `BuildStateMark` gives `notYet`
+ *     `tone-mute` and its comment reads *"notYet and ahead take NO colour …
+ *     amber belongs to stuck."* The bar and the glyph beside it were disagreeing
+ *     about whether the same fact was adverse. There is no honest hue for
+ *     "absent", so it takes none — it takes ABSENCE OF FILL, a 1px outlined
+ *     cell on the page ground. That is the one distinction the bar actually
+ *     needs and it costs zero colour: `live`/`failing`/`ahead` are places
+ *     something FILLS, `notYet` is the part of the fleet nothing has filled.
+ *   · `unplaceable` — the faintest neutral. It is an admission that no
+ *     comparison exists; an admission has no hue.
  *
- *   · CHROMATIC = this build is here. `live` mint, `failing` red.
- *   · ACHROMATIC = this build is not here. `ahead` and `unplaceable` gray.
- *   · `notYet` is the one crossing: the build is absent AND someone may need to
- *     act, so adversity wins and it keeps amber.
+ * WHAT THIS DELETES. The `reachable` downgrade below existed only to stop a
+ * large amber segment appearing on every rolled-past revision — the colour
+ * audit measured 29 such rows on `/versions`, each drawing a mark louder than
+ * the product's own `stuck` alarm. With amber gone from this table the defect
+ * is gone by construction, so the downgrade is a no-op kept only so the two
+ * call sites keep one signature.
  *
- * WITHIN THE OBJECT, ADVERSITY IS ALWAYS THE HIGHER CHROMA — the invariant that
- * replaces a total-ink cap on a field (see DESIGN.md, "THE FIELD CEILING").
- * Measured: `live` 0.0503 against `notYet` 0.1728 (**3.4x**) and `failing`
- * 0.2086 (**4.1x**); dark, 0.0495 against 0.1712 (3.5x) and 0.2373 (4.8x). A
- * bar that is nine-tenths live still has its loudest PIXEL in the segment that
- * wants a person.
- *
- * ZERO NEW COLOUR VALUES. The mint is `#426d64` / `#83b0a8`, the pair the
- * `newest` chip owns, and `ExposureBar` already paints its newest-build segment
- * with it — which is the same sentence this bucket says ("the part of the whole
- * that is on the build in question"), so the two proportional bars in this
- * product now agree on their one shared segment instead of disagreeing.
- * `failing`, `notYet` and the two grays are unchanged.
+ * ADVERSITY IS STILL THE HIGHEST CHROMA IN THE OBJECT (DESIGN.md, "THE FIELD
+ * CEILING"): red is the only chromatic-adverse value, `live`'s green sits below
+ * it, and everything else is achromatic. The bar's loudest pixel is still the
+ * segment that wants a person.
  */
 export const COVERAGE_FILL: Record<CoverageKey, string> = {
-	live: 'bg-[#426d64] dark:bg-[#83b0a8]',
+	// ⚠️ THE DARK STEP IS `green-600`, NOT THE `green-400` THE GLYPHS USE, AND
+	// THAT IS A FIELD-vs-INK DECISION. `green-400` is the right INK on a dark
+	// card — a 16px tick needs the lightness to carry. Measured as a FILL at
+	// 1216 × 26 on the dark theme it is a neon slab that out-shouts everything
+	// on the page including the brand mark. `green-600` is the same hue two
+	// steps down, still unmistakably the health green, and it is the only
+	// value in this table that differs between ink and fill.
+	live: 'bg-green-700 dark:bg-green-600',
 	failing: 'bg-red-700 dark:bg-red-500',
 	ahead: 'bg-gray-300 dark:bg-gray-600',
-	notYet: 'bg-amber-500 dark:bg-amber-400',
-	unplaceable: 'bg-gray-100 dark:bg-gray-800'
+	// THE TRACK. Faintest fill in the object, because this is the part of the
+	// fleet the build has NOT reached — the bar visibly stopping short is the
+	// strongest statement of that, and it is the reading a proportional bar
+	// already carries without being taught.
+	notYet: 'bg-gray-100 dark:bg-gray-800',
+	// HOLLOW. An outlined cell with no fill is the one shape that says "there
+	// is a place here and no answer for it" — which is exactly what this
+	// bucket admits. It is also the rarest bucket, so the busiest treatment
+	// costs the least.
+	unplaceable: 'bg-transparent border border-gray-400 dark:border-gray-500'
 };
 
 /**
@@ -301,13 +318,11 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
  *
  * ZERO NEW COLOUR VALUES: it is `ahead`'s existing pair.
  */
-export function coverageFill(key: CoverageKey, reachable = true): string {
-	if (key === 'notYet' && !reachable) return COVERAGE_FILL.ahead;
+export function coverageFill(key: CoverageKey, _reachable = true): string {
 	return COVERAGE_FILL[key];
 }
 
-export function coverageSwatch(key: CoverageKey, reachable = true): string {
-	if (key === 'notYet' && !reachable) return COVERAGE_SWATCH.ahead;
+export function coverageSwatch(key: CoverageKey, _reachable = true): string {
 	return COVERAGE_SWATCH[key];
 }
 
@@ -319,11 +334,16 @@ export function coverageSwatch(key: CoverageKey, reachable = true): string {
  * borrows a 1px `gray-300` perimeter, which is ink on ~48px rather than area.
  */
 export const COVERAGE_SWATCH: Record<CoverageKey, string> = {
-	live: 'bg-[#426d64] dark:bg-[#83b0a8] border-transparent',
+	live: 'bg-green-700 dark:bg-green-600 border-transparent',
 	failing: 'bg-red-700 dark:bg-red-500 border-transparent',
 	ahead: 'bg-gray-300 dark:bg-gray-600 border-transparent',
-	notYet: 'bg-amber-500 dark:bg-amber-400 border-transparent',
-	unplaceable: 'bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600'
+	// The swatch is the bar's own treatment at 12px, so the two neutral
+	// buckets keep the bar's own distinction: `notYet` is the faint TRACK (it
+	// borrows a border only because gray-100 at 12px on a white card has no
+	// edge at all), `unplaceable` is HOLLOW. A swatch drawn in a value the
+	// segment does not use is a second encoding to keep in sync.
+	notYet: 'bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600',
+	unplaceable: 'bg-transparent border-gray-400 dark:border-gray-500'
 };
 
 const DOT: Record<string, string> = {

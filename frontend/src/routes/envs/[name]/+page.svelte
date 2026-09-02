@@ -861,7 +861,7 @@
 					>{envName}</code
 				>.
 			</p>
-			<a href="/environments" class="btn btn-secondary mt-4">
+			<a href="/environments" class="nav-link mt-2">
 				<ArrowLeftOutline aria-hidden="true" /> Back to environments
 			</a>
 		</div>
@@ -929,8 +929,12 @@
 				icon={banner.icon}
 				pulse={banner.severity === 'error'}
 			>
+				<!-- A DOOR, NOT A DEED. This goes to the rollout the banner names;
+				     it deploys nothing, so it is a link. `.nav-link` inherits the
+				     severity's ink from `AlertPanel`, the same way the `Details`
+				     disclosure above it does. -->
 				{#snippet actions()}
-					<a href={banner.href} class="btn btn-secondary">
+					<a href={banner.href} class="nav-link">
 						{banner.action}
 						<ChevronRightOutline aria-hidden="true" />
 					</a>
@@ -1294,15 +1298,35 @@
 										{/if}
 									</div>
 
-									<!-- ACTION — ONE button, adverse rows only, at every width.
-									     No hover-reveal anywhere on this page: a control
-									     designed to appear on hover is permanently on wherever
-									     hover does not exist.
+									<!-- ACTION — ONE button, and now ONLY when there is an
+									     action. Adverse rows only, at every width. No
+									     hover-reveal anywhere on this page: a control designed
+									     to appear on hover is permanently on wherever hover
+									     does not exist.
 
 									     `promoteTag` is `newestDeployableCandidate`: the newest
-									     build EVERY gate has already allowed. A blocked row
-									     gets the gates link instead. -->
-									{#if row.adverse}
+									     build EVERY gate has already allowed. Deploying it
+									     changes what is running, so it is the one thing on this
+									     page that earns a filled `.btn-primary`.
+
+									     ⛔ THE `{:else}` BRANCH IS GONE, AND IT WAS THE WORST
+									     CASE OF THE DEFECT IN THE PRODUCT. (2026-09-02, from the
+									     human: *"i also don't like this investigate button /
+									     choose version that act as if they're doing something
+									     smart but are just navigating to a page."*) A blocked
+									     row got `NextStep step="open"` pointed at
+									     `rolloutHref(row.slot.cell)` — WHICH IS THIS ROW'S OWN
+									     `.tap-link`, thirty pixels to the left. So the row that
+									     matters most on the page carried two tab stops to one
+									     URL, and because `row.primary` was true on it, the
+									     second one was drawn as FILLED BLUE: the mark this
+									     product reserves for `Deploy`, spent on scrolling.
+
+									     The `<li>` is a `.tap-zone` (see `lib/CLAUDE.md`), so
+									     the whole row still opens the rollout on click and the
+									     app name is still the keyboard path. Nothing was lost
+									     but a duplicate. -->
+									{#if row.adverse && row.promoteTag}
 										<div
 											class="col-start-2 col-end-4 row-start-4 flex-wrap items-center gap-2 lg:col-start-6 lg:col-end-7 lg:row-start-1 lg:flex lg:justify-end {row.primary
 												? 'flex'
@@ -1315,26 +1339,13 @@
 											     kind. `NextStep` owns the verbs now, so the same
 											     state offers the same words here, on `/apps`,
 											     on `/apps/[name]` and on `/environments`. -->
-											{#if row.promoteTag}
-												<NextStep
-													step="promote"
-													primary={row.primary}
-													subject={row.slot.cell.rollout.metadata?.name}
-													onclick={() => openPromote(row.slot.cell, row.promoteTag!)}
-													title="Deploys {row.promoteTag}, the newest version every rule already allows"
-												/>
-											{:else}
-												<!-- ⛔ NOT `unblock`. The row prints WHY it is blocked,
-												     in words, two lines above this button; a control
-												     offering to go and reveal a sentence already on
-												     screen is furniture. `Open` is what the link does. -->
-												<NextStep
-													step="open"
-													href={rolloutHref(row.slot.cell)}
-													primary={row.primary}
-													subject={row.slot.cell.rollout.metadata?.name}
-												/>
-											{/if}
+											<NextStep
+												step="promote"
+												primary={row.primary}
+												subject={row.slot.cell.rollout.metadata?.name}
+												onclick={() => openPromote(row.slot.cell, row.promoteTag!)}
+												title="Deploys {row.promoteTag}, the newest version every rule already allows"
+											/>
 										</div>
 									{:else}
 										<div class="hidden lg:col-start-6 lg:row-start-1 lg:block"></div>

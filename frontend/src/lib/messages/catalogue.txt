@@ -685,6 +685,8 @@ routes/apps/[name]/+page.svelte	code	no progress
 routes/apps/[name]/+page.svelte	code	no progress for …
 routes/apps/[name]/+page.svelte	code	nothing deployed
 routes/apps/[name]/+page.svelte	code	Nothing promotes past … until a deploy succeeds.
+routes/apps/[name]/+page.svelte	title	Open …, the app this is waiting on
+routes/apps/[name]/+page.svelte	text	Open the … rollout
 routes/apps/[name]/+page.svelte	title	Open the … rollout
 routes/apps/[name]/+page.svelte	text	Pick a different version
 routes/apps/[name]/+page.svelte	code	Promote … to ….
@@ -754,6 +756,8 @@ routes/apps/+page.svelte	title	No version has gone all the way from the first en
 routes/apps/+page.svelte	text	Open …
 routes/apps/+page.svelte	code	open this app
 routes/apps/+page.svelte	title	Recent activity
+routes/apps/+page.svelte	text	Release the hold
+routes/apps/+page.svelte	aria-label	Release the hold on … in …
 routes/apps/+page.svelte	text	resource. Apps consolidate the same rollout across all environments.
 routes/apps/+page.svelte	title	Running a version that is on no environment’s release list
 routes/apps/+page.svelte	code	someone pinned a version here, so nothing newer can deploy
@@ -801,8 +805,6 @@ routes/environments/+page.svelte	title	… of … apps here have newer versions 
 routes/environments/+page.svelte	code	… rollouts are stuck
 routes/environments/+page.svelte	text	· … , the ones furthest behind first
 routes/environments/+page.svelte	text	· a version starts on the left and ends on the right
-routes/environments/+page.svelte	code	a newer version exists and a person has to pick it
-routes/environments/+page.svelte	code	a newer version is allowed here and nobody has deployed it
 routes/environments/+page.svelte	text	All … app … here are up to date
 routes/environments/+page.svelte	text	Hide … up-to-date app … …
 routes/environments/+page.svelte	code	It has been running longer than a deploy of this app normally takes.
@@ -810,22 +812,17 @@ routes/environments/+page.svelte	text	kuberik | Environments
 routes/environments/+page.svelte	text	last deploy … ago
 routes/environments/+page.svelte	code	never deployed
 routes/environments/+page.svelte	text	newer version … waiting
-routes/environments/+page.svelte	code	newer versions are on hold until a check or time window passes
 routes/environments/+page.svelte	text	No app has ever deployed here.
 routes/environments/+page.svelte	text	no deploys yet
 routes/environments/+page.svelte	text	No environments configured
 routes/environments/+page.svelte	code	not moving
-routes/environments/+page.svelte	code	nothing needs you here — open it to see what is running
 routes/environments/+page.svelte	code	Open …
 routes/environments/+page.svelte	code	Open rollout
 routes/environments/+page.svelte	text	Production regions
 routes/environments/+page.svelte	text	resources to see what is running in each one.
 routes/environments/+page.svelte	title	Running a version that is on no environment’s release list
 routes/environments/+page.svelte	text	Show … up-to-date app … …
-routes/environments/+page.svelte	code	someone pinned a version here, so nothing newer can deploy
-routes/environments/+page.svelte	code	something here has failed or has stopped moving
 routes/environments/+page.svelte	code	The last deploy did not complete, and nothing newer can go out until one does.
-routes/environments/+page.svelte	code	the version running here is worse than the one before it
 routes/environments/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	title	… — the newest version this app has
 routes/envs/[name]/+page.svelte	title	… — this page
@@ -1049,7 +1046,7 @@ routes/versions/[...slug]/+page.svelte	title	… is stuck
 routes/versions/[...slug]/+page.svelte	text	… Nothing in
 routes/versions/[...slug]/+page.svelte	text	… place …
 routes/versions/[...slug]/+page.svelte	title	… places — a place is one service in one environment — are waiting on a gate
-routes/versions/[...slug]/+page.svelte	text	… service … · … place … (one service in one environment) … · last deployed … … · never deployed …
+routes/versions/[...slug]/+page.svelte	text	… service … … · last deployed … … · never deployed …
 routes/versions/[...slug]/+page.svelte	code	… services
 routes/versions/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
 routes/versions/[...slug]/+page.svelte	code	A deployment window is closed — it opens in … (…).
@@ -1064,7 +1061,6 @@ routes/versions/[...slug]/+page.svelte	text	here means newest for that service. 
 routes/versions/[...slug]/+page.svelte	text	knows the revision
 routes/versions/[...slug]/+page.svelte	text	kuberik | …
 routes/versions/[...slug]/+page.svelte	code	Needs an approval or an external check
-routes/versions/[...slug]/+page.svelte	text	No service has ever run this build. Everything here is a place it has not reached.
 routes/versions/[...slug]/+page.svelte	text	now on
 routes/versions/[...slug]/+page.svelte	aria-label	Open the … rollout for …
 routes/versions/[...slug]/+page.svelte	title	Open the … rollout for …
@@ -1087,7 +1083,6 @@ routes/versions/+page.svelte	text	… service …
 routes/versions/+page.svelte	code	… services
 routes/versions/+page.svelte	text	A commit shows up here as soon as one of your services can deploy it.
 routes/versions/+page.svelte	code	A deployment window is closed — it opens in … (…).
-routes/versions/+page.svelte	text	A place is one service in one environment — … service … across their environments.
 routes/versions/+page.svelte	text	Hide … …
 routes/versions/+page.svelte	text	kuberik | Revisions
 routes/versions/+page.svelte	title	Never deployed

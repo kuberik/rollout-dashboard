@@ -171,7 +171,8 @@
 		blockingStory,
 		shortStory,
 		type GateContext,
-		type BlockingStory
+		type BlockingStory,
+		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
 	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
 	import WaitingBuilds from '$lib/components/WaitingBuilds.svelte';
@@ -188,7 +189,6 @@
 		EditOutline,
 		ReplyOutline,
 		ArrowRightOutline,
-		SearchOutline,
 		ExclamationCircleSolid,
 		ClockSolid,
 		PauseSolid,
@@ -196,6 +196,7 @@
 		ChartMixedOutline,
 		ArrowUpRightFromSquareOutline,
 		ChevronDoubleRightOutline,
+		ChevronRightOutline,
 		LinkOutline,
 		LockOpenOutline
 	} from 'flowbite-svelte-icons';
@@ -380,9 +381,105 @@
 		return DOT[status] ?? DOT.None;
 	}
 
-	function stuckFor(cell: AppCell) {
+	/**
+	 * ⭐ A GATE CORRECTLY REFUSING A CANDIDATE IS NOT A STOPPAGE. (2026-09-02)
+	 *
+	 * > *"i still don't like the design here on app detail page."* — three rows,
+	 * > three `!` glyphs, three amber `STUCK 2d` chips, three `Investigate`
+	 * > buttons, for one app blocked on one provider.
+	 *
+	 * The FIRST half of that defect is not composition, it is TRUTH. Measured
+	 * against the live cluster, `hello-frontend-app`'s three environments each
+	 * report:
+	 *
+	 *     gates:      dependency-hello-frontend-needs-api  passing=true
+	 *                 ghd-…                                passing=true
+	 *     conditions: DeploymentBlocked=False:HealthChecksHealthy
+	 *                 Ready=True:BakeTimePassed
+	 *
+	 * Every gate is PASSING. Nothing is broken, nothing is wedged, and all three
+	 * run the newest build the contract admits (`rel-66`). The only thing that
+	 * has not happened is a promotion of `rel-67`, which requires `api ^1.67.0`
+	 * while `hello-api-app` ships `1.66.0`. That is the dependency gate doing
+	 * exactly its job.
+	 *
+	 * `detectStuckPromotion` wants to exclude this — its own comment says *"a
+	 * block made up purely of not-passing gates is WAITING, not stuck"* — but it
+	 * tests `awaitingApprovalGates.length === 0`, and `awaitingApprovalGates` is
+	 * the CRUDE bucket this page already has a tombstone about: the environment
+	 * controller AND the dependency controller both publish allow-lists, so
+	 * three of the four gate writers land in it. `blockingStory` is the
+	 * classifier that joins on the published owner reference, and this page
+	 * already computes it for every environment. So the two are made to agree
+	 * here rather than the detector being taught a fourth spelling of the same
+	 * question — `promotion.ts` has its own tests and four other callers.
+	 *
+	 * ⭐ AND THE PRODUCT ALREADY AGREED WITH THIS EVERYWHERE ELSE. For the same
+	 * rollout at the same second, rollout detail — the reference page — says
+	 * **"DEV is waiting on another deploy"**, and `/apps` says
+	 * **"hello-frontend-app in DEV is waiting on another deploy"**. This page
+	 * was the ONE surface in the product saying `DEV is stuck`, and it said it
+	 * in the colour the product reserves for a stall. Three surfaces, one fact,
+	 * and the loudest one had it wrong.
+	 *
+	 * ⛔ THE CARVE-OUT IS EXACT. `detectStuck` — baking or deploying past its
+	 * detector — is a genuine wedge whatever the gates say, and it is untouched
+	 * above this predicate. So is `Failed`, and so is `diverged`. What is
+	 * narrowed is only the two detectors that fire on A PROMOTION NOT HAVING
+	 * HAPPENED (`detectStuckPromotion`, `detectStuckBehind`), and only when the
+	 * story says no person and no unattributable rule is holding it — i.e. a
+	 * clock, a check, or another deploy, every one of which the product's own
+	 * verdict already reads as *"nobody has to approve anything."*
+	 */
+	function refusedNotStalled(story: BlockingStory): boolean {
+		return story.blocked && story.person.length === 0 && story.unknown.length === 0;
+	}
+
+	/**
+	 * ⭐ THE PIPELINE IS NOT A CAUSE.
+	 *
+	 * A `promotion`-kind gate is written by the **environment controller** and
+	 * its allow-list is the set of builds the environment IN FRONT has already
+	 * deployed — joined from `Environment.status.rolloutGateRef`, never from the
+	 * `ghd-` name prefix. So *"waiting for dev to deploy it first"* is not a
+	 * fact about STAGING; it is the definition of a promotion pipeline, and it
+	 * is already drawn as a LINE, in order, by `PromotionPipeline` 200px below.
+	 *
+	 * Strip those and what is left is the environment's OWN reason for standing
+	 * still. Two environments with the same remainder are held by the same
+	 * fact and are one row, not two.
+	 */
+	function ownCause(story: BlockingStory): ClassifiedGate[] {
+		return story.gates.filter((g) => g.kind !== 'promotion');
+	}
+
+	function pipelineOnlyGates(story: BlockingStory): number {
+		return story.gates.length - ownCause(story).length;
+	}
+
+	/**
+	 * The fold key. `kind|clause|clearsAt` and never the gate's `id`: three
+	 * environments each carry their OWN `RolloutDependency` gate object, one per
+	 * namespace, and they are the same fact — while two schedule gates that
+	 * reopen at different times are not, which `clearsAt` keeps apart.
+	 *
+	 * When the remainder is empty the environment's only holder IS the
+	 * pipeline, and it falls back to the full set so it can never silently
+	 * merge with something it has nothing in common with.
+	 */
+	function causeKey(story: BlockingStory): string {
+		const own = ownCause(story);
+		const gates = own.length > 0 ? own : story.gates;
+		return gates
+			.map((g) => `${g.kind}|${g.clause}|${g.clearsAt ?? ''}`)
+			.sort()
+			.join('¦');
+	}
+
+	function stuckFor(cell: AppCell, story: BlockingStory) {
 		const own = detectStuck(cell.rollout, { now: $now });
 		if (own) return own;
+		if (refusedNotStalled(story)) return null;
 		const promo = detectStuckPromotion(cell.rollout, { now: $now });
 		if (promo) return promo;
 		for (const peer of cells) {
@@ -625,7 +722,7 @@
 				place: fullEnvLabel(c),
 				now: $now
 			});
-			const stuck = stuckFor(c);
+			const stuck = stuckFor(c, story);
 			const diverged = divergedFor(c);
 			const span = stuckForMs(stuck);
 			const key = `${c.envName}/${c.rollout.metadata?.namespace ?? ''}`;
@@ -1148,8 +1245,110 @@
 	const decisions = $derived(tasks.filter((t) => t.kind !== 'waiting'));
 	const waitingItems = $derived(tasks.filter((t) => t.kind === 'waiting'));
 
+	/**
+	 * ⭐ ONE ROW PER CAUSE, NOT ONE PER ENVIRONMENT. (2026-09-02)
+	 *
+	 * The rejected card printed three rows that differed by one word. Measured
+	 * on `hello-frontend-app`, each was ~110px of `[ENV] 1 newer version ready`
+	 * + the SAME sentence about `hello-api-app` + the same `Details`
+	 * disclosure + its own namespace link: one fact, drawn three times, with
+	 * every mark on it drawn three times too. That is the repetition defect
+	 * this branch already cut off `/environments` (a handle printed five times)
+	 * and out of the alert banners (one fact in two colours, stacked).
+	 *
+	 * ⛔ AND FOLDING IS LEGAL HERE FOR THE SAME REASON IT IS ILLEGAL ABOVE.
+	 * `tasks` refuses to fold stages, and the reason is written there: *"a
+	 * single control over a merged stage row is a destructive action with an
+	 * ambiguous target."* A `waiting` group carries NO control that changes
+	 * cluster state — that is the definition of the kind — so there is no
+	 * target to be ambiguous about. `decisions` are left one-per-environment,
+	 * untouched, because every one of them ends in a button.
+	 *
+	 * The environments do not disappear: they are the row's SET of chips, in
+	 * promotion order, each one the link to its own rollout. N environments
+	 * cost one line instead of N rows, which is `PAGE-CRITERIA.md`'s own
+	 * *"N envs cost zero width"* read down the other axis.
+	 */
+	type WaitGroup = {
+		id: string;
+		members: Task[];
+		/** This group's own reason. The pipeline's own gates are not in it. */
+		gates: ClassifiedGate[];
+		story: BlockingStory;
+		/** The app to go and look at, when a dependency contract is the cause. */
+		provider: string | null;
+		providerHref: string | null;
+		candidates: number;
+	};
+
+	/**
+	 * The provider named by whichever of this group's gates is a dependency
+	 * contract — read back out of the same `GateContext` that classified it,
+	 * so the link and the sentence can never name two different services.
+	 */
+	function providerOf(namespace: string, gates: ClassifiedGate[]): string | null {
+		for (const g of gates) {
+			if (g.kind !== 'dependency') continue;
+			const dep = gateContext.dependency.get(`${namespace}/${g.id}`);
+			if (dep?.provider) return dep.provider;
+		}
+		return null;
+	}
+
+	const waitGroups = $derived.by<WaitGroup[]>(() => {
+		const buckets = new Map<string, Task[]>();
+		for (const t of waitingItems) {
+			const k = causeKey(t.lead.story);
+			const list = buckets.get(k);
+			if (list) list.push(t);
+			else buckets.set(k, [t]);
+		}
+		return [...buckets].map(([id, members]) => {
+			const lead = members[0].lead;
+			const own = ownCause(lead.story);
+			// A SINGLE-MEMBER GROUP KEEPS ITS WHOLE STORY. "Waiting for dev to
+			// deploy it first" is not the pipeline's definition when there is
+			// only one environment on the row — it is the only thing holding it.
+			const gates = members.length > 1 && own.length > 0 ? own : lead.story.gates;
+			const provider = providerOf(lead.namespace, gates);
+			return {
+				id,
+				members,
+				gates,
+				story: { ...lead.story, gates },
+				provider,
+				providerHref: provider && groups.has(provider) ? `/apps/${provider}` : null,
+				candidates: members.reduce((n, m) => Math.max(n, m.waiting.length), 0)
+			};
+		});
+	});
+
 	/** Header count for the act column. */
 	const taskCount = $derived(decisions.length);
+
+	/**
+	 * ⭐ THE FILLED PRIMARY GOES TO THE ACTION, NOT TO ROW ZERO. (2026-09-02)
+	 *
+	 * *"A FILLED button is reserved for the action that changes what is
+	 * running."* Every control in this card used to test `i === 0` — the
+	 * topmost task — which was sound only while `Investigate` was a `.btn` and
+	 * every row therefore had something fillable. It is a link now, and the
+	 * first casualty was visible immediately: a page whose first task is a
+	 * FAILED deploy (no candidate to promote, so no `Deploy` control) and whose
+	 * second is an approval gate holding a real build drew the approval's
+	 * `Deploy 064b655` SECONDARY and left the page with no primary at all. The
+	 * one control on the page that changes what is running was the quietest
+	 * thing in its own row.
+	 *
+	 * So the assertion moves from POSITION to CAPABILITY: the topmost task that
+	 * can actually deploy something. `held` is the fallback — clearing a pin is
+	 * the only other control here that changes what the controller may run —
+	 * and when neither exists the page has NO filled button, which is the
+	 * correct state for a card that can only be read.
+	 */
+	const primaryTaskId = $derived(
+		(decisions.find((t) => t.promoteTag) ?? decisions.find((t) => t.kind === 'held'))?.id ?? null
+	);
 
 	/**
 	 * ⭐ IS THERE AN ACT COLUMN AT ALL? (2026-08-30)
@@ -1773,6 +1972,23 @@
 	// least consequential place in the pipeline on the page's one banner.
 	// `getEnvironmentRank` is the promotion order, and a block that needs a
 	// PERSON outranks every position.
+	// ⭐ AND THE FRONTIER OUTRANKS THE DEPTH WHEN THE DEPTH IS ONLY THE
+	// PIPELINE. (2026-09-02) `hello-frontend-app` is held in all three
+	// environments by one dependency gate. DEV is held by that gate ALONE;
+	// STAGING and PROD are held by it AND by an environment-controller gate
+	// that says *"waiting for dev to deploy it first"* — i.e. they are behind
+	// because DEV is, which is a promotion pipeline working. Ranking by depth
+	// put the page's one banner on PROD and headlined it *"Two things are
+	// holding PROD"*, naming a symptom, while rollout detail and `/apps` both
+	// said *"DEV is waiting on another deploy"*. Three surfaces, one fact, and
+	// this one named a different environment.
+	//
+	// `ClassifiedGate.kind === 'promotion'` is the environment controller's own
+	// gate, joined from `Environment.status.rolloutGateRef` — never a name
+	// pattern. Fewest of those first = the front of the wave. Where two
+	// environments are blocked INDEPENDENTLY they both carry zero and the
+	// original depth rule decides, unchanged, so a block in PROD still wins
+	// over an unrelated one in DEV.
 	const blockedEnv = $derived(
 		envFacts
 			.filter((f) => f.story.blocked)
@@ -1780,8 +1996,19 @@
 				(a, b) =>
 					(b.story.person.length > 0 ? 1 : 0) - (a.story.person.length > 0 ? 1 : 0) ||
 					(a.story.selfClearing ? 1 : 0) - (b.story.selfClearing ? 1 : 0) ||
+					pipelineOnlyGates(a.story) - pipelineOnlyGates(b.story) ||
 					getEnvironmentRank(b.cell.envName) - getEnvironmentRank(a.cell.envName)
 			)[0] ?? null
+	);
+
+	/**
+	 * The cause the page BANNER is already speaking for, or `null` when the
+	 * banner is a pin / a failure / a stall rather than a gate story, or when
+	 * there is no banner at all. The waiting card tests its groups against this
+	 * so that one fact is never drawn twice in one viewport — see the row.
+	 */
+	const bannerCauseKey = $derived(
+		!pageBlocker && blockedEnv ? causeKey(blockedEnv.story) : null
 	);
 </script>
 
@@ -1805,6 +2032,47 @@
 		{/if}
 		<span class="t-code-sm ms-auto text-gray-500 dark:text-gray-400">{count}</span>
 	</header>
+{/snippet}
+
+<!--
+	⛔ `Investigate` WAS A LINK WEARING A BUTTON, AND ONCE PER PAGE A FILLED
+	BLUE ONE. (2026-09-02)
+
+	> *"i also don't like this investigate button / choose version that act as
+	> if they're doing something smart but are just navigating to a page."*
+
+	The rule, applied here and on `/apps`:
+
+	> A control that only changes WHAT YOU ARE LOOKING AT is navigation and must
+	> look like navigation — a text link, a row that is a tap target, a chevron.
+	> A control that changes CLUSTER STATE is an action and earns a button. A
+	> FILLED button is reserved for the action that changes what is running.
+
+	`Investigate` is `<a href={rolloutHref(...)}>`. It mutates nothing, it opens
+	a page, and on the topmost broken task with no deployable candidate it was
+	rendered `.btn-primary` — the loudest control in the product, promising a
+	consequence and delivering a page. Beside it in the same row sit `Deploy`,
+	`Release the hold`, `Pick a different version` and `Go back a version`, every
+	one of which opens a modal that writes to the cluster. One row, two
+	categories, one geometry.
+
+	⭐ IT KEEPS THE 14px, WHICH IS THE HALF THAT USUALLY GETS LOST. Demoting a
+	control to `.t-micro` is the reduction that produced the rejected pages;
+	`COMPOSITION-GRAMMAR.md` §5 measures the reference page's controls at 14px
+	and notes that is *"larger than the 10–12px the redesigned pages use for
+	nearly everything."* `.nav-link` in `app.css` is that treatment — 14px/500
+	with `.btn`'s own vertical padding, so the action row does not change
+	height when a control changes class — and it is the SHARED class the same
+	rule is being applied with on every other route. This page does not get a
+	private spelling of it.
+
+	AND IT NAMES ITS DESTINATION. `Investigate` is a verb with no object; this
+	says which page it opens, which is the only honest label for navigation.
+-->
+{#snippet openRollout(f: EnvFacts)}
+	<a href={rolloutHref(f.cell)} class="nav-link" title="Open the {f.title} rollout">
+		Open the {f.label} rollout<ChevronRightOutline />
+	</a>
 {/snippet}
 
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
@@ -1984,7 +2252,7 @@
 						     one sentence saying nothing is wrong was the page's most
 						     prominent object spent on absence. -->
 							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
-								{#each decisions as t, i (t.id)}
+								{#each decisions as t (t.id)}
 									{@const f = t.lead}
 									{@const broken = t.kind === 'adverse'}
 									{@const foot = footNote(t)}
@@ -2392,7 +2660,7 @@
 													     redesigned pages use for nearly everything"*. -->
 														<button
 															type="button"
-															class="btn {i === 0 && mi === 0 ? 'btn-primary' : 'btn-secondary'}"
+															class="btn {t.id === primaryTaskId && mi === 0 ? 'btn-primary' : 'btn-secondary'}"
 															onclick={() => openPromote(m.cell, t.promoteTag, t.promoteVersion)}
 														>
 															<ArrowRightOutline />
@@ -2445,7 +2713,7 @@
 													{#if t.promoteTag}
 														<button
 															type="button"
-															class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+															class="btn {t.id === primaryTaskId ? 'btn-primary' : 'btn-secondary'}"
 															onclick={() => openPromote(f.cell, t.promoteTag, t.promoteVersion)}
 														>
 															<ArrowRightOutline />
@@ -2464,10 +2732,8 @@
 														<EditOutline />
 														Pick a different version
 													</button>
-													<a href={rolloutHref(f.cell)} class="btn btn-secondary">
-														<SearchOutline />
-														Investigate
-													</a>
+													<!-- NAVIGATION, NOT AN ACTION. See `openRollout`. -->
+													{@render openRollout(f)}
 												{:else if t.kind === 'held'}
 													<!-- ⛔ THIS OPENED `Change Version`, WHICH CANNOT
 												     CLEAR A PIN. The button named the act and then
@@ -2482,7 +2748,7 @@
 												     and it is NOT what "release the hold" means. -->
 													<button
 														type="button"
-														class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+														class="btn {t.id === primaryTaskId ? 'btn-primary' : 'btn-secondary'}"
 														onclick={() => openReleaseHold(f.cell)}
 													>
 														<LockOpenOutline />
@@ -2501,27 +2767,25 @@
 												     environment whose every queued build is refused by
 												     an approval gate is broken AND waiting on a person;
 												     the way out is the person, so the filled control is
-												     the act, and `Investigate` drops to secondary
-												     behind it. -->
+												     the act.
+												     ⛔ AND WHERE THERE IS NO DECISION THE ROW HAS NO
+												     PRIMARY. It used to promote `Investigate` to
+												     `.btn-primary` on exactly that row — a filled blue
+												     button for a page load, on the one row where
+												     nothing can be done. Absence of an action is the
+												     honest thing for a row to say; inventing a loud
+												     control to fill the slot is what the human
+												     rejected. -->
 													{#if t.promoteTag}
 														<button
 															type="button"
-															class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}"
+															class="btn {t.id === primaryTaskId ? 'btn-primary' : 'btn-secondary'}"
 															onclick={() => openPromote(f.cell, t.promoteTag, t.promoteVersion)}
 														>
 															<ArrowRightOutline />
 															Deploy {t.promoteVersion ?? ''}
 														</button>
 													{/if}
-													<a
-														href={rolloutHref(f.cell)}
-														class="btn {i === 0 && !t.promoteTag
-															? 'btn-primary'
-															: 'btn-secondary'}"
-													>
-														<SearchOutline />
-														Investigate
-													</a>
 													<!-- ROLLBACK IS OFFERED ONLY WHERE THE BUILD ITSELF
 												     IS THE SUSPECT — a failed deploy, or one wedged
 												     mid-bake or mid-deploy. An environment held by
@@ -2566,6 +2830,12 @@
 															color="light"
 														/>
 													{/if}
+													<!-- NAVIGATION, LAST, AND NOT A BUTTON. See
+												     `openRollout`. The order in this row is now a
+												     CLASSIFICATION and not a ranking: everything that
+												     writes to the cluster, then the ways out that only
+												     change what you are looking at. -->
+													{@render openRollout(f)}
 												{/if}
 											</div>
 
@@ -2651,22 +2921,57 @@
 							padded={false}
 						>
 							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
-								{#each waitingItems as t (t.id)}
-									{@const f = t.lead}
+								{#each waitGroups as g (g.id)}
 									<li class="px-4 py-3">
 										<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-										<Chip role="env" theme={f.cell.theme} label={f.label} wide />
-										<span class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
-											{t.waiting.length} newer version{t.waiting.length === 1 ? '' : 's'} ready
-										</span>
-										<!-- Same glyph the decision card's foot link carries: a
-										     link that leaves the page says so. -->
-										<a
-											href={rolloutHref(f.cell)}
-											class="t-micro ms-auto inline-flex shrink-0 items-center gap-1 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-											title="Open the {f.title} rollout"
-											>{f.namespace}<ArrowUpRightFromSquareOutline class="h-3 w-3 shrink-0" /></a
-										>
+											<!-- ⭐ THE SET, NOT N ROWS. Promotion order, and every chip
+											     is the link to its own rollout — the affordance the
+											     namespace link used to carry at 11px, moved onto the
+											     object that names the subject. `PromotionPipeline`
+											     already wraps this exact chip in this exact anchor
+											     200px below, so it is the page's own idiom and not a
+											     new one. -->
+											<span class="flex min-w-0 flex-wrap items-center gap-1.5">
+												{#each g.members as m (m.id)}
+													<a
+														href={rolloutHref(m.lead.cell)}
+														class="wg-env flex min-w-0"
+														title="Open the {m.lead.title} rollout"
+													>
+														<Chip
+															role="env"
+															theme={m.lead.cell.theme}
+															label={m.lead.label}
+															wide
+														/>
+													</a>
+												{/each}
+											</span>
+											<span class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
+												{g.candidates} newer version{g.candidates === 1 ? '' : 's'} ready
+											</span>
+											<!-- ⭐ THE ONE NAVIGATION THAT IS WORTH A CONTROL, AND IT
+											     GOES WHERE THE PROBLEM IS. (2026-09-02) The row used
+											     to end in a link to this app's own namespace — which
+											     is not where anything is wrong. When a dependency
+											     contract is the cause, the thing to go and look at is
+											     the PROVIDER, and until now the product named it in a
+											     sentence and offered no way to reach it.
+
+											     IT IS A LINK AND LOOKS LIKE ONE. *"A control that only
+											     changes what you are looking at is navigation and must
+											     look like navigation."* Same 11px chevron idiom as the
+											     reference page's `Show 8 ready resources ›`. -->
+											{#if g.providerHref}
+												<a
+													href={g.providerHref}
+													class="t-micro ms-auto inline-flex shrink-0 items-center gap-0.5 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+													title="Open {g.provider}, the app this is waiting on"
+													>{g.provider}<ChevronRightOutline
+														class="h-3 w-3 shrink-0"
+													/></a
+												>
+											{/if}
 										</div>
 										<!-- The whole point of this card is that NOTHING has to be
 										     done here, so the line that says WHY is the only thing
@@ -2677,7 +2982,39 @@
 										     drawing the norm, once per row. It names the check or
 										     the window now, which is the half the long line had
 										     and the surround does not. -->
-										<BlockingStoryLines story={f.story} />
+										<!-- ⚠️ `g.story`, NOT the lead's. On a folded row the
+										     environment-controller's *"waiting for dev to deploy it
+										     first"* clause is stripped: it is the PIPELINE, it is
+										     true of every member below the first, and it is already
+										     drawn as an ordered LINE by `PromotionPipeline`. What
+										     survives is the cause the whole set shares. -->
+										<!-- ⛔ AND NOT AT ALL WHEN THE BANNER IS ALREADY SAYING IT.
+										     (2026-09-02) On `hello-frontend-app` the banner read
+										     *"Nothing promotes itself until hello-api-app ships a
+										     newer api than 1.66.0. › Details"* and this row, 40px
+										     below, read *"Waiting for hello-api-app to ship a newer
+										     api — it is on 1.66.0 › Details"*. One fact, two
+										     objects, two disclosures onto the same gate handles —
+										     the repetition defect that was cut out of the alert
+										     banners two commits ago, reappearing between a banner
+										     and a card.
+
+										     THE DIVISION THIS PAGE ALREADY DOCUMENTS: *"the banner
+										     states the single worst fact and its CAUSE; the SET of
+										     things is the card below."* So the card keeps the SET —
+										     the environment chips, the count, the way to the
+										     provider — and stops restating the sentence. That is
+										     also what the reference page does: rollout detail
+										     prints the gate sentence ONCE in its banner, and its
+										     `Available Version Upgrades` card carries the CANDIDATE
+										     and a compact `Held by a gate` mark instead.
+
+										     It comes straight back when the banner is speaking for
+										     a different cause, or for a pin or a failure rather
+										     than a gate. -->
+										{#if g.id !== bannerCauseKey}
+											<BlockingStoryLines story={g.story} />
+										{/if}
 									</li>
 								{/each}
 							</ul>
@@ -2958,6 +3295,23 @@
 				'pipe'
 				'hist';
 		}
+	}
+
+	/* ── A CHIP THAT IS A DESTINATION SAYS SO ON HOVER ───────────────────
+	   The waiting row's environment chips ARE the links to their rollouts, so
+	   they need the affordance the 11px namespace link used to carry. Opacity
+	   only: the chip's own identity hue is the one thing that may not move,
+	   and this adds no colour value to a page with a closed budget. */
+	.wg-env {
+		border-radius: 4px;
+		transition: opacity 120ms ease;
+	}
+	.wg-env:hover {
+		opacity: 0.75;
+	}
+	.wg-env:focus-visible {
+		outline: 2px solid var(--color-blue-600);
+		outline-offset: 2px;
 	}
 
 	/* ── THE TASK ROW ────────────────────────────────────────────────────

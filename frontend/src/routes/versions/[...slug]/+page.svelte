@@ -584,7 +584,7 @@
 			carrying the gates and the actions. Drawing both would print the same
 			environments twice on one screen.
 		-->
-		<RevisionLead short={row.short} eyebrow="Tracking build" {coverage} spread={false}>
+		<RevisionLead short={row.short} eyebrow="Tracking build" {coverage} spread={false} unitNote>
 			{#snippet meta()}
 				<span class="t-code-sm min-w-0 truncate text-gray-500 dark:text-gray-400"
 					>{ledger.repoLabel}</span
@@ -618,16 +618,18 @@
 			</p>
 		{/if}
 
-		<!-- THE UNIT IS DEFINED WHERE ITS NUMBER IS, ON THE SCOPE LINE, in seven
-		     words. `places live` was on the human's list of strings that assume the
-		     domain, and the word cannot simply be dropped: `/api/rollouts` carries
-		     no pod counts, so a (service, environment) slot is the honest unit and a
-		     pod ratio would be invented. So the page says what it means, once. -->
+		<!-- ⛔ THIS LINE USED TO REPRINT THE DENOMINATOR AND THE UNIT.
+		     (2026-09-02) It read `2 services · 6 places (one service in one
+		     environment) · last deployed 2 days ago`, twelve pixels under a hero
+		     that says `6 of 6 · PLACES RUNNING IT` and eight above a bar that now
+		     prints `6` inside its own segment — the same 6 three times, and the
+		     definition of `place` stated a second time in a parenthesis rather
+		     than under the number it defines. The unit note is `RevisionLead`'s
+		     (`unitNote`), directly beneath the count, where the list already puts
+		     it. What is left here is what nothing else on the page says: how many
+		     SERVICES the commit became, and when it last moved. -->
 		<p class="t-micro mt-1 text-gray-500 dark:text-gray-400">
-			{row.services.length} service{row.services.length === 1 ? '' : 's'} · {coverage.totalCount} place{coverage.totalCount ===
-			1
-				? ''
-				: 's'} (one service in one environment)
+			{row.services.length} service{row.services.length === 1 ? '' : 's'}
 			{#if row.lastDeployMs}
 				· last deployed {formatTimeAgo(new Date(row.lastDeployMs).toISOString(), $now)}
 			{:else}
@@ -643,18 +645,18 @@
 			SECONDARY, not primary: `View commit` is READ-ONLY, and the one filled
 			action on a deploy surface must never be the read-only one.
 		-->
-		{#if neverDeployed}
-			<!--
-				THE PAGE WORKS FOR A BUILD NOBODY HAS RUN — that is the whole point of
-				`RepoLedger.pending`, and this is the ONE sentence that changes. It sits
-				with the scope line rather than under the cards, because it IS the
-				scope: it tells the reader what the `0` in the hero means before they
-				read a card that says where the build is not.
-			-->
-			<p class="t-dense mt-2 text-gray-600 dark:text-gray-300">
-				No service has ever run this build. Everything here is a place it has not reached.
-			</p>
-		{/if}
+		<!--
+			⛔ A THIRD SPELLING OF `never deployed` LIVED HERE. (2026-09-02) The
+			page already says it twice: `not running anywhere` beside the sha with
+			its own glyph, and `· never deployed` on the scope line directly above
+			— and those two are NOT the same fact ("nothing runs it now" vs "nothing
+			ever did"), so both earn their place. The paragraph that stood here said
+			*"No service has ever run this build. Everything here is a place it has
+			not reached."* — a restatement of the second, and its own second clause
+			was contradicted by the card 40px below it, which on this cluster's data
+			reads `Already moved on — these have already deployed a newer build`.
+			A place that rolled straight past a build is not a place waiting for it.
+		-->
 
 		{#if commitUrl}
 			<div class="mt-4 flex flex-wrap gap-2">
@@ -992,6 +994,7 @@
 												: `${chip.label} the newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
 										value={svc.label}
 										valueTitle={svc.label}
+										wide
 										class="min-w-0"
 									/>
 									<span class="t-micro text-gray-500 dark:text-gray-400">{rank.of}</span>
@@ -1005,6 +1008,7 @@
 										label={rankLabel({ kind: 'unknown' })}
 										title="This service does not list this build, so it has no position for it"
 										value={svc.label}
+										wide
 										class="min-w-0"
 									/>
 								{/if}

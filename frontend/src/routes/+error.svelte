@@ -96,21 +96,32 @@
 			     built it and overflows at 390 with three. The snippet supplies its
 			     own wrapping box so the panel does not have to change for a caller
 			     that needs one more way out. -->
-			<div class="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+			<!-- ⛔ THREE BUTTONS, AND NOT ONE OF THEM DID ANYTHING. (2026-09-02)
+			     Every way out of a 404 is a destination — two URLs and the
+			     session's own back entry — so all three are `.nav-link`s now.
+			     A `.btn` here promised three consequences and delivered three
+			     pages, and having three of them side by side meant none of them
+			     led. As links the section's name reads first, which is the order
+			     a reader wants them in.
+
+			     `Go back` STAYS A `<button>`: `history.back()` is not a URL and
+			     an `<a href="#">` that calls it is a lie to a screen reader.
+			     `.nav-link` is written to work on both elements. -->
+			<div class="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
 				{#if section}
 					{@const Icon = section.icon}
-					<a href={section.href} class="btn btn-secondary">
-						<Icon class="h-4 w-4 shrink-0" aria-hidden="true" />
+					<a href={section.href} class="nav-link">
+						<Icon aria-hidden="true" />
 						Go to {section.label}
-						<ChevronRightOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<ChevronRightOutline aria-hidden="true" />
 					</a>
 				{/if}
-				<a href="/" class="btn btn-secondary">
-					<HomeOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+				<a href="/" class="nav-link">
+					<HomeOutline aria-hidden="true" />
 					Back to Home
 				</a>
-				<button type="button" class="btn btn-secondary" onclick={() => history.back()}>
-					<ArrowLeftOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+				<button type="button" class="nav-link" onclick={() => history.back()}>
+					<ArrowLeftOutline aria-hidden="true" />
 					Go back
 				</button>
 			</div>

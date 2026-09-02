@@ -615,7 +615,7 @@
 						coverage={leadCov}
 						unitNote
 						scopeNote={lead.services.length > 1
-							? `${lead.services.length} services ship this commit as ${lead.services.length} separate releases; each has its own gates.`
+							? 'Each service ships this commit as its own release, with its own gates.'
 							: ''}
 					>
 						{#if rowNamesBuild(lead)}
@@ -911,21 +911,37 @@
 						verdict="{repo.serviceCount} service{repo.serviceCount === 1 ? '' : 's'}"
 						padded={false}
 					>
+						<!--
+							⛔ THIS CARD USED TO RESTATE THE WHOLE PAGE IN FOUR ROWS.
+							(2026-09-02, from the human, about quantities said twice.)
+							Measured at 1440 with this cluster's single repo, every one of
+							its four facts was already on screen:
+
+							  · `Commits your services can deploy 36` — the head band says
+							    `14 of 36 revisions deployed`, 24px from the top.
+							  · `Deployed at least once 14` — the same head band, the same
+							    sentence, the leading numeral of it.
+							  · `Still running somewhere 2` — the two cards in the column
+							    beside it ARE that partition: the lead panel is one build
+							    and `Also still running` carries `1 build` as its rollup.
+							  · `A place is one service in one environment — 5 services…` —
+							    `RevisionLead`'s unit note prints that sentence verbatim
+							    500px above, under the number it defines.
+
+							WHAT SURVIVES IS THE ONE NUMBER NOTHING ELSE ON THE PAGE
+							STATES: the denominator every coverage bar is drawn against.
+							The two ledger totals come back when there is MORE THAN ONE
+							REPO, because the head band aggregates across repos and is then
+							no longer this repo's own scope — the rule is duplication, not
+							position.
+						-->
 						<dl class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{@render fact('Commits your services can deploy', String(repo.knownRevisions))}
-							{@render fact('Deployed at least once', String(repo.rows.length))}
-							{@render fact('Still running somewhere', String(repo.rows.length - past.length))}
+							{#if ledgers.length > 1}
+								{@render fact('Commits your services can deploy', String(repo.knownRevisions))}
+								{@render fact('Deployed at least once', String(repo.rows.length))}
+							{/if}
 							{@render fact('Places to deploy to', String(repo.slotCount))}
 						</dl>
-						<!-- THE UNIT, DEFINED WHERE ITS NUMBER IS. `15 service × environment`
-						     was notation; this is the sentence, and the lead panel says the
-						     same thing in the same words at the top of the page. -->
-						<p class="t-micro px-4 py-2.5 text-gray-500 dark:text-gray-400">
-							A place is one service in one environment — {repo.serviceCount} service{repo.serviceCount ===
-							1
-								? ''
-								: 's'} across their environments.
-						</p>
 						{#if url}
 							<div class="px-4 py-3">
 								<a class="btn btn-secondary" href={url} target="_blank" rel="noopener noreferrer">

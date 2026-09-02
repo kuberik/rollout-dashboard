@@ -502,8 +502,20 @@
 				{/if}
 			</div>
 
+			<!-- ⭐ THE ACTIONS ROW CARRIES THE SEVERITY'S INK, FOR THE LINKS IN IT.
+			     (2026-09-02) `.btn` states its own colours, so this row never
+			     needed one — but a `.nav-link` (`app.css`) takes its ink from
+			     `--nav-link-ink`, and without this it fell back to the neutral
+			     body ink and spoke in a different voice from the `Details`
+			     disclosure directly above it. `palette.title` is the panel's
+			     strongest step and the one already measured for this ground;
+			     `--nav-link-ink: inherit` hands it down without touching any
+			     button. -->
 			{#if actions}
-				<div class="flex items-center gap-3 sm:shrink-0">
+				<div
+					class="flex items-center gap-3 sm:shrink-0 {palette.title}"
+					style="--nav-link-ink: currentColor"
+				>
 					{@render actions()}
 				</div>
 			{/if}

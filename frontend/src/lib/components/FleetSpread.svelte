@@ -82,8 +82,16 @@
 					class="cov-swatch {coverageSwatch(bucket.key, coverage.reachable)}"
 					aria-hidden="true"
 				></span>
+				<!-- ⛔ THE COUNT USED TO BE HERE AND IT IS NOW ON THE BAR.
+				     (2026-09-02, from the human: the quantity was stated three times
+				     in words — `6 of 6` in the rollup, `6` here, `6 places` on the
+				     bucket card — beside a graphic carrying none of it.) `CoverageBar`
+				     prints each bucket's count inside that bucket's own segment, 30px
+				     above this line and bound to it by the swatch, so a second numeral
+				     here is the same fact twice at one glance. The group still names
+				     the bucket and lists its real places; what it no longer does is
+				     restate a number the object above it draws. -->
 				<span class="fs-title">{bucket.title}</span>
-				<span class="fs-count">{bucket.slots.length}</span>
 			</div>
 			<ul class="fs-runs">
 				{#each runs(bucket) as run (run.appName)}
@@ -169,20 +177,6 @@
 
 	:global(.dark) .fs-title {
 		color: #fff;
-	}
-
-	/* HARD-ALIGNED RIGHT — the card-header rollup habit, at group scale. */
-	.fs-count {
-		margin-left: auto;
-		flex-shrink: 0;
-		font-size: 12px;
-		font-weight: 500;
-		font-variant-numeric: tabular-nums;
-		color: var(--color-gray-500);
-	}
-
-	:global(.dark) .fs-count {
-		color: var(--color-gray-400);
 	}
 
 	.fs-runs {

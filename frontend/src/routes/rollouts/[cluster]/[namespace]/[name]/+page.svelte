@@ -1315,9 +1315,12 @@
 						<RefreshOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Try again
 					</button>
-					<a href="/rollouts" class="btn btn-secondary">
+					<!-- A LINK, NOT A BUTTON. (2026-09-02) `Try again` re-issues the
+					     request; this only goes somewhere. Same contract as
+					     `ErrorState`, which is the other half of this state. -->
+					<a href="/rollouts" class="nav-link">
 						Back to all rollouts
-						<ChevronRightOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<ChevronRightOutline aria-hidden="true" />
 					</a>
 				{/snippet}
 			</AlertPanel>
