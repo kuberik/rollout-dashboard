@@ -454,7 +454,11 @@
 	});
 </script>
 
-<div class="flex h-full min-h-0 flex-col overflow-hidden">
+<!-- `min-h-0 flex-1`, NOT `h-full`. The Logs tab hands this component a flex
+     column whose height comes from `flex-1`, and a percentage height inside
+     that resolved to the header's own 150px — the virtual list beneath it
+     measured 0px tall and the tab printed "378 lines" over an empty pane. -->
+<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	<!-- Header with controls -->
 	<div class="mb-3 flex flex-shrink-0 flex-col gap-2 border-b border-gray-200 pb-3 dark:border-gray-700 sm:mb-4 sm:gap-3">
 		<!-- Status indicators -->
