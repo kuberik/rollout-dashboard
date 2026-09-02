@@ -77,3 +77,34 @@ Praise: rollout Dependencies tab both directions; six surfaces agreed live throu
 
 ## Left by both critics
 Real-device touch on the graph; command palette Enter (browse-daemon contention, not filed); the unblock event (nothing can publish `hello-api 1.67.0` — `build-and-push.sh` commit-count bug from 2026-08-31 still stands); failed/stuck states; Logs Tests view with real output; 1440 light on most routes (my combination).
+
+## Re-check at `7da2170` (fresh `ic-design-reviewer`, 1440 light + 390 dark)
+
+13 of 19 claimed fixes measured exactly as described; 5 partial (6 sub-claims refuted: the
+held app page has no attributable pods so no `n/n running`; the log pane's top row clips at
+1440 (`padding-top: 0`); `/` left column still 368px short of the rail; `Rolled back` pill
+19px vs 20px neighbours; `3 of 6` was a misread of the brief); 1 unreachable (pin banner,
+nothing pinned).
+
+Ranked residue and wave-3 disposition:
+
+1. INCOHERENT — the held-rollout disc is drawn four ways (20/24/32/36px; green-100 vs
+   gray-100; pause vs rollback vs check; a red `HELD` chip on `/rollouts` only; all 15
+   discs green on `/` and `/rollouts`). → **p4-disc**
+2. INCOHERENT — one gray-900 fill means "selected window", "selected filter" and
+   "rolled back" on `/activity`. → **p4-activity** (status loses the fill; selection keeps it)
+3. `/rollouts` fixed 460px columns: 77% / 38% width used. → **p4-disc**
+4. `/environments` 42% empty, three near-identical cards; version page 39% empty with 86px
+   rag. → **p4-disc** (environments), **p4-versions**
+5. Two-column pages never balance (Δ 368–583px). → **p4-activity** (rail cap)
+6. `/activity` rows half empty at 1440 (median 49% gap). → **p4-activity**
+7. Banner keeps a 50px amber `shadow-2xl`. → **p4-chrome**
+8. Log pane clips its top row at 1440; three facts printed three times. → **p4-chrome**
+9. 390: banner is 28% of the phone; card header 47→65/85px when the rollup wraps. → **p4-chrome**
+10. Header 45 vs 47 on the reference page; headerless boxes there; `Source` has no rollup. → **p4-chrome**
+11. 390 `/rollouts` zero-count filter chips; `updated` orphan; `/activity` separator wrap. → **p4-disc**, **p4-activity**
+12. Version page: eight-line hero on the ground, 41,000px² bar restating `3 of 6` four times. → **p4-versions**
+
+Verdict quoted: "a designer would put their name on `/`, rollout detail, `/dependencies` and
+`/activity` at 1440. They would not yet sign `/environments`, `/versions/<sha>`, or any page
+at 390."

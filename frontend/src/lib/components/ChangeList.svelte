@@ -169,7 +169,23 @@
 </script>
 
 {#if rangeOk}
-	<div class={className}>
+	<!-- ⭐ `display: contents`, NOT A BOX. (DESIGN PASS 2, defect #2) `/activity`
+	     used to render this whole component in its own indented block BELOW
+	     the row — always a second line, on every entry, whether or not the
+	     row's first line had room to spare. Measured: rows that had 49% of
+	     their first line unpainted still forced an 83px-tall second line for
+	     this control alone.
+
+	     The caller now places `<ChangeList>` INLINE among the row's other
+	     first-line facts (state word, rollback mark, actor) instead of below
+	     them. `contents` makes that possible without a second wrapper fighting
+	     the parent's own `flex flex-wrap` — the trigger `<button>` and the
+	     (conditional) panel become direct flex items of THAT row, so the
+	     trigger sits on line 1 when there is room and the panel still forces
+	     its own full-width line via `basis-full` when opened. `class` is kept
+	     for API compatibility but is inert under `contents` — no caller passes
+	     one today. -->
+	<div class="contents {className}">
 		<!-- `/activity` renders this control ~20 times on one screen. Before the
 		     `aria-label`, the links-and-buttons list a screen reader gives read
 		     the SAME visible words twenty times over with nothing to tell them
@@ -183,7 +199,7 @@
 			aria-expanded={open}
 			aria-controls={panelId}
 			aria-label={`What changed in ${name}${head ? ` at ${head.slice(0, 7)}` : ''}`}
-			class="t-micro inline-flex items-center gap-1 rounded text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+			class="t-micro inline-flex shrink-0 items-center gap-1 rounded text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 		>
 			<CodeBranchSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
 			{triggerLabel}
@@ -195,7 +211,27 @@
 		</button>
 
 		{#if open}
-			<div id={panelId} class="mt-2 rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+			<!-- `basis-full`: forces this panel onto its OWN line inside the
+			     parent's `flex flex-wrap` row, whatever room the trigger left
+			     behind on line 1 — a wide bordered box has no business sharing a
+			     line with `[ENV] name · state · N commits`.
+
+			     ⚠️ `relative z-[1]`: THE CALLER'S ROW IS A `.tap-zone` NOW.
+			     `/activity` moved this component inside the row's own
+			     `.tap-zone` so the trigger could sit on line 1 (`.tap-zone`
+			     only auto-raises `a`/`button`/etc., which covers the trigger
+			     and every link inside this panel, but NOT the plain commit-
+			     subject text) — and `.tap-zone`'s tap-link draws its overlay at
+			     `z-index: 0` over the whole zone, which is exactly the
+			     mechanism the ORIGINAL comment here warned about: "a tap zone
+			     makes its own text unselectable, and that panel is a list of
+			     commit subjects an operator copies." Raising the whole panel
+			     one stacking level, the same way `.tap-zone`'s own rule raises
+			     a button, keeps every commit subject selectable again. -->
+			<div
+				id={panelId}
+				class="relative z-[1] mt-2 w-full basis-full rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40"
+			>
 				{#if query.isLoading}
 					<span
 						class="inline-block h-3 w-40 max-w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"

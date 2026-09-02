@@ -644,6 +644,16 @@
 	<title>kuberik | Activity</title>
 </svelte:head>
 
+<!-- ⭐ THE ROLLBACK MARK'S ICON, SHARED BY EVERY ROW. (DESIGN PASS 2)
+     `Chip`'s `icon` prop takes a snippet, not a component reference, so one
+     definition here replaces the private `<UndoOutline>` literal that used to
+     sit inside the now-deleted filled pill below. Same glyph, same product's
+     word for "went backwards" — nothing about the icon changed, only the box
+     around it. -->
+{#snippet rollbackIcon()}
+	<UndoOutline class="mr-[3px] h-[11px] w-[11px] shrink-0" aria-hidden="true" />
+{/snippet}
+
 <!-- ⭐ ONE CONTAINER FOR THE PRODUCT: `mx-auto max-w-7xl px-4 py-6 sm:px-6`.
      ⛔ THIS PAGE WAS `max-w-5xl`. Measured at 1440 it made the content column
      976px wide against every other page's 1216 — a **128px jump on each side**
@@ -780,37 +790,61 @@
 		     axes at identical padding. `border-gray-900`/`border-gray-100`
 		     match the fill exactly, so the border is invisible and the box is
 		     the same size as its neighbours either way. -->
-		{#each KIND_FILTERS as f (f.key)}
-			<button
-				type="button"
-				aria-pressed={kindFilter === f.key}
-				title={f.title}
-				onclick={() => (kindFilter = f.key)}
-				class="t-label rounded border px-3 py-1 transition-colors
-					{kindFilter === f.key
-					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-					: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-				>{f.label}</button
-			>
-		{/each}
-		{#if knownEnvs.length > 0}
-			<span class="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
-			{#each knownEnvs as e (e.key)}
+		<!-- ⭐ TWO GROUPS, EACH `nowrap`, NOT ONE FLAT ROW OF BUTTONS. (DESIGN
+		     PASS 2, defect #4) At 390 the bare divider between the status
+		     filters and the env filters used to wrap to the END of row 1 —
+		     the flex-wrap parent breaks between individual BUTTONS, with no
+		     concept that the four status pills are one group and the env
+		     chips are another. Measured: `DEV` landed on row 1 (right after
+		     the divider) while `STAGING PROD` wrapped to row 2, splitting one
+		     group of chips across two lines.
+
+		     Each group is its own `flex flex-nowrap` unit now, so the OUTER
+		     `flex-wrap` can only break BETWEEN groups, never inside one — the
+		     env chips move together or not at all. The divider is `hidden
+		     sm:inline-block`: below `sm` the two groups routinely do not fit
+		     one line together (this row's own reason for existing), so a
+		     divider that sometimes strands itself between the last status pill
+		     and a WRAPPED env group is worse than no divider; above `sm` the
+		     measured case, both groups fit and it draws as before. -->
+		<div class="flex flex-nowrap items-center gap-x-2">
+			{#each KIND_FILTERS as f (f.key)}
 				<button
 					type="button"
-					aria-pressed={envFilter === e.key}
-					title={envFilter === e.key ? `Stop showing only ${e.label}` : `Show only ${e.label}`}
-					onclick={() => setParam('env', envFilter === e.key ? null : e.key)}
-					class="environment-theme-scope inline-flex items-center rounded transition-opacity
-						{envFilter === e.key
-						? 'ring-2 ring-gray-900/40 dark:ring-gray-100/40'
-						: envFilter === null
-							? ''
-							: 'opacity-45 hover:opacity-100'}"
-					style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-					><Chip role="env" theme={e.theme} label={e.label} wide /></button
+					aria-pressed={kindFilter === f.key}
+					title={f.title}
+					onclick={() => (kindFilter = f.key)}
+					class="t-label rounded border px-3 py-1 transition-colors
+						{kindFilter === f.key
+						? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
+						: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+					>{f.label}</button
 				>
 			{/each}
+		</div>
+		{#if knownEnvs.length > 0}
+			<span
+				class="mx-1 hidden h-4 w-px bg-gray-200 sm:inline-block dark:bg-gray-700"
+				aria-hidden="true"
+			></span>
+			<div class="flex flex-nowrap items-center gap-x-2">
+				{#each knownEnvs as e (e.key)}
+					<button
+						type="button"
+						aria-pressed={envFilter === e.key}
+						title={envFilter === e.key ? `Stop showing only ${e.label}` : `Show only ${e.label}`}
+						onclick={() => setParam('env', envFilter === e.key ? null : e.key)}
+						class="environment-theme-scope inline-flex items-center rounded transition-opacity
+							{envFilter === e.key
+							? 'ring-2 ring-gray-900/40 dark:ring-gray-100/40'
+							: envFilter === null
+								? ''
+								: 'opacity-45 hover:opacity-100'}"
+						style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
+						><Chip role="env" theme={e.theme} label={e.label} wide /></button
+					>
+				{/each}
+			</div>
 		{/if}
 	</div>
 
@@ -1036,27 +1070,64 @@
 											>
 										{/if}
 										{#if entry.rollbackAct}
-											<!-- THE WORD, AT REST — the same pill the History tab
-											     draws, from the SAME `history-marks.ts` object
-											     (`entry.rollbackAct.word` / `.sentence`), so a
-											     rollback cannot be spelled two ways between the two
-											     surfaces that both read `deployActs`. This is the
-											     row `defect #2` names: it used to read `064b655 →
-											     1 BEHIND 0afab6f` with a green dot and no mark at
-											     all, above a day rollup that called the whole day
-											     `all fine`. Neutral-strong ink, not a status hue —
-											     going backwards is a fact about the deploy, not an
-											     alarm about it. -->
-											<span
-												class="inline-flex items-center gap-1 rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
+											<!-- THE WORD, AT REST — the same `Chip` every other domain
+										     status on this row already uses, from the SAME
+										     `history-marks.ts` object (`entry.rollbackAct.word` /
+										     `.sentence`), so a rollback cannot be spelled two ways
+										     between the two surfaces that both read `deployActs`.
+										     This is the row `defect #2` names: it used to read
+										     `064b655 → 1 BEHIND 0afab6f` with a green dot and no
+										     mark at all, above a day rollup that called the whole
+										     day `all fine`.
+
+										     ⛔ SUPERSEDED (DESIGN PASS 2). This used to be a
+										     hand-rolled `bg-gray-900` filled pill — the SAME fill
+										     as the `7d` window pill and the `All` status filter
+										     30 and 90px above it, so the loudest object on the
+										     page meant "you clicked this" twice and "this deploy
+										     went backwards" once. A domain STATUS may not share a
+										     fill with a SELECTION state. `role="count"` is the
+										     neutral, text-only tone `HELD`/`PINNED`/`1 BEHIND`
+										     already use product-wide — going backwards is still a
+										     fact about the deploy, not an alarm about it; only the
+										     geometry moved onto the shared `.chip` (20px, 4px
+										     radius — the SAME height every other chip on this row
+										     draws, closing the 19px-vs-20px mismatch) instead of a
+										     private `rounded-full` box. -->
+											<Chip
+												role="count"
+												label={entry.rollbackAct.word}
+												icon={rollbackIcon}
 												title={entry.rollbackAct.sentence}
-											>
-												<UndoOutline class="h-2.5 w-2.5" aria-hidden="true" />{entry.rollbackAct
-													.word}
-											</span>
+											/>
 										{/if}
 										{#if entry.actorKind === 'User'}
 											<span class="t-micro text-gray-500 dark:text-gray-400">by {entry.actor}</span>
+										{/if}
+										<!-- ── THE QUESTION THE OPERATOR ACTUALLY ASKS ─────────
+										     ⛔ SUPERSEDED (DESIGN PASS 2, defect #2). This used to
+										     be its own block BELOW the whole row, indented
+										     `pl-[5.25rem]` — a second line on every entry that had
+										     one, whatever room line 1 had to spare. Measured: the
+										     largest gap between a row's first and last ink ran up
+										     to 49% of a 1199px row, and the second line alone made
+										     these rows 83px tall. It renders INLINE now, the row's
+										     last first-line fact — `ChangeList`'s own `contents`
+										     wrapper lets its trigger sit here while its panel (once
+										     opened) still forces a full-width line via
+										     `basis-full`. Renders nothing at all when there is no
+										     prior revision to compare — an affordance for a
+										     question with no answer is the defect this control
+										     exists to close. -->
+										{#if entry.source && entry.revision && entry.previousRevision}
+											<ChangeList
+												namespace={entry.rolloutNamespace}
+												name={entry.rolloutName}
+												cluster={entry.cluster}
+												base={entry.previousRevision}
+												head={entry.revision}
+												source={entry.source}
+											/>
 										{/if}
 									</span>
 
@@ -1106,24 +1177,6 @@
 										{/if}
 									</span>
 								</div>
-
-								<!-- ── THE QUESTION THE OPERATOR ACTUALLY ASKS ─────────
-								     Indented under the subject column. Renders nothing
-								     at all when there is no prior revision to compare —
-								     an affordance for a question with no answer is the
-								     defect this whole component exists to close. -->
-								{#if entry.source && entry.revision && entry.previousRevision}
-									<div class="px-4 pb-2.5 pl-[5.25rem]">
-										<ChangeList
-											namespace={entry.rolloutNamespace}
-											name={entry.rolloutName}
-											cluster={entry.cluster}
-											base={entry.previousRevision}
-											head={entry.revision}
-											source={entry.source}
-										/>
-									</div>
-								{/if}
 							</li>
 						{/each}
 					</ul>

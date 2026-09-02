@@ -262,8 +262,60 @@
 	 * spreadsheet shape by itself, whatever the rows say.
 	 */
 	let expanded = $state(false);
+
+	/**
+	 * ⭐ THE RAIL IS A PREVIEW, NOT THE PAGE. (DESIGN PASS 2, defect #3)
+	 *
+	 * Measured column-bottom deltas at 1440×900: `/apps` 576 vs the rail's
+	 * 1105 (Δ529), `/envs/prod` 628 vs 1097 (Δ469), `/` 545 vs 913 (Δ368).
+	 * The subject the rail sits beside finishes and the rail runs on for
+	 * another half-viewport, because `limit={8}` still lets a busy day (the
+	 * live cluster's own rollback storm) fill the whole card with one day
+	 * group. `View all activity ›` already sits in every caller's header —
+	 * `HomeRail`'s own `rollup` snippet above, and the equivalent on `/apps`,
+	 * `/envs/[name]` — so the rail does not need its own escape hatch; it
+	 * needs a HARD ceiling.
+	 *
+	 * ⛔ NOT APPLIED WHEN THE CALLER ALREADY MANAGES ITS OWN FOLD
+	 * (`collapseAfter` is set — `/namespaces/[name]`'s `collapseAfter={8}`,
+	 * unmeasured by this defect and left exactly as it renders today) OR
+	 * WHEN THIS IS THE APP-DETAIL PAGE'S MAIN COLUMN
+	 * (`showAppName === false` — the one call site, `/apps/[name]`, that is
+	 * not a narrow side rail at all: it IS the page's primary content, reads
+	 * `activityLimit` and draws its own `Show N more deploys ›` control
+	 * below this component. A second, tighter cap sitting inside it would be
+	 * a SECOND disclosure over the same list — the exact defect
+	 * `collapseAfter`'s own default-null note above already refuses.
+	 * `showAppName={false}` is unique to that one call site: every rail that
+	 * spans more than one app needs the app name on each row, so it is a
+	 * reliable proxy for "this is a page, not a rail" without editing the
+	 * route files this pass does not own.
+	 *
+	 * BOUNDED ON TWO AXES AT ONCE, whichever is hit first: at most
+	 * `AUTO_CAP_ENTRIES` rows, and at most `AUTO_CAP_DAYS` day-groups — a
+	 * single busy day must not alone fill the whole card past one viewport.
+	 */
+	const AUTO_CAP_ENTRIES = 6;
+	const AUTO_CAP_DAYS = 2;
+	const autoCapApplies = $derived(collapseAfter === null && showAppName !== false);
+	const autoCapped = $derived.by<ActivityEntry[]>(() => {
+		if (!autoCapApplies) return entries;
+		const out: ActivityEntry[] = [];
+		const daysSeen = new Set<string>();
+		for (const a of entries) {
+			if (out.length >= AUTO_CAP_ENTRIES) break;
+			const key = dayKey(a.timestamp);
+			if (!daysSeen.has(key)) {
+				if (daysSeen.size >= AUTO_CAP_DAYS) break;
+				daysSeen.add(key);
+			}
+			out.push(a);
+		}
+		return out;
+	});
+
 	const shown = $derived(
-		collapseAfter === null || expanded ? entries : entries.slice(0, collapseAfter)
+		collapseAfter === null ? autoCapped : expanded ? entries : entries.slice(0, collapseAfter)
 	);
 	const hiddenCount = $derived(entries.length - shown.length);
 
@@ -376,6 +428,14 @@
 			>
 		{/if}
 	</span>
+{/snippet}
+
+<!-- ⭐ THE ROLLBACK MARK'S ICON. (DESIGN PASS 2) `Chip`'s `icon` prop takes a
+     snippet, not a component reference — this replaces the private
+     `<UndoOutline>` literal that used to sit inside the filled pill below.
+     Same glyph; only the box around it changed. -->
+{#snippet rollbackIcon()}
+	<UndoOutline class="mr-[3px] h-[11px] w-[11px] shrink-0" aria-hidden="true" />
 {/snippet}
 
 <section>
@@ -551,20 +611,31 @@
 													>{STATUS_LABEL[a.bakeStatus]}</span
 												>
 											{:else if a.rollbackAct}
-												<!-- THE WORD, AT REST — same pill the History tab
-												     draws (`history-marks.ts`'s own `word` and
-												     `sentence`, never a private copy of them), so a
-												     rollback cannot be spelled two ways between the two
-												     surfaces that both read `deployActs`. Neutral-strong
-												     ink, not a status hue: going backwards is a fact
-												     about the deploy, not an alarm — the deploy did
-												     succeed. -->
-												<span
-													class="inline-flex items-center gap-1 rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
+												<!-- THE WORD, AT REST — same `Chip` the History tab
+												     and `/activity` use (`history-marks.ts`'s own
+												     `word` and `sentence`, never a private copy of
+												     them), so a rollback cannot be spelled two ways
+												     between the surfaces that all read `deployActs`.
+
+												     ⛔ SUPERSEDED (DESIGN PASS 2). This used to be a
+												     hand-rolled `bg-gray-900` filled pill — the SAME
+												     fill the `7d` window and `All` status selectors
+												     use on `/activity`, so one page's loudest object
+												     meant both "you clicked this" and "this deploy
+												     went backwards". A domain STATUS may not share a
+												     fill with a SELECTION state. `role="count"` is
+												     the neutral, text-only tone `HELD`/`PINNED`/
+												     `1 BEHIND` already use product-wide — going
+												     backwards is still a fact about the deploy, not
+												     an alarm about it; only the geometry moved onto
+												     the shared `.chip` (20px, 4px radius) instead of
+												     a private `rounded-full` box. -->
+												<Chip
+													role="count"
+													label={a.rollbackAct.word}
+													icon={rollbackIcon}
 													title={a.rollbackAct.sentence}
-												>
-													<UndoOutline class="h-2.5 w-2.5" aria-hidden="true" />{a.rollbackAct.word}
-												</span>
+												/>
 											{/if}
 											{@render versionSnippet(a)}
 										</div>
@@ -576,8 +647,13 @@
 				{/each}
 				<!-- ONE CONTROL FOR THE TAIL, and it disappears once the tail is open —
 				     a button reading `show 0 more` is an object drawing the norm. Same
-				     shape and voice as the reference page's `Show 8 ready resources ›`. -->
-				{#if hiddenCount > 0}
+				     shape and voice as the reference page's `Show 8 ready resources ›`.
+
+				     ⛔ ONLY FOR AN EXPLICIT `collapseAfter`. The AUTO cap above has no
+				     button of its own — its escape hatch is the caller's own
+				     `View all activity ›`, and a second in-place expander here would
+				     let a reader re-inflate the exact card `defect #3` shrank. -->
+				{#if collapseAfter !== null && hiddenCount > 0}
 					<button
 						type="button"
 						class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
