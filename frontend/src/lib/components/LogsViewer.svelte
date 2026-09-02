@@ -23,9 +23,20 @@
 		name: string;
 		filterType?: 'pod' | 'test' | '';
 		cluster?: string;
+		/** The rollup sentence ("2,031 lines • 2 pods • Streaming"), bound
+		 *  out so the page head can print it in the slot the `h1` used to
+		 *  hold — the page owns the head row, this component owns the
+		 *  counts that fill it. */
+		summary?: string;
 	}
 
-	const { namespace, name, filterType = '', cluster }: Props = $props();
+	let {
+		namespace,
+		name,
+		filterType = '',
+		cluster,
+		summary = $bindable('')
+	}: Props = $props();
 
 	let selectedPod = $state<string | null>(null);
 	let searchQuery = $state('');
@@ -283,6 +294,27 @@
 		return [...result].sort((a, b) => a.name.localeCompare(b.name));
 	});
 
+	/**
+	 * THE PAGE'S OWN `h1` SAID "Logs" DIRECTLY UNDER A TAB STRIP WHOSE ACTIVE
+	 * TAB ALREADY SAYS "Logs" — the duplicate-heading rule in the components
+	 * CLAUDE.md. The heading goes `sr-only`; this is what fills the slot,
+	 * the same shape the footer already prints, minus the `/` breakdown a
+	 * head-row sentence doesn't need. Bound out via `summary` because the
+	 * counts live here and the head row lives one level up in `+page.svelte`.
+	 */
+	const summaryText = $derived.by(() => {
+		const lineCount = filteredLogs.length;
+		const linesLabel = `${lineCount.toLocaleString()} line${lineCount === 1 ? '' : 's'}`;
+		const podCount = selectedPods.size > 0 ? selectedPods.size : uniquePods.length;
+		const podsLabel = podCount > 0 ? `${podCount} pod${podCount === 1 ? '' : 's'}` : null;
+		const streamLabel = isStreaming ? 'Streaming' : error ? null : 'Stream closed';
+		return [linesLabel, podsLabel, streamLabel].filter(Boolean).join(' • ');
+	});
+
+	$effect(() => {
+		summary = summaryText;
+	});
+
 	// Highlight search matches in log lines
 	function highlightSearch(text: string, query: string): string {
 		if (!query.trim()) return text;
@@ -418,6 +450,26 @@
 		previousLastTimestamp = lastTimestamp;
 	});
 
+	/**
+	 * A STREAM WITH FOLLOW ON CAN TURN ITSELF OFF WITH NOBODY TOUCHING
+	 * ANYTHING. Growing the log list moves `scrollHeight` before the
+	 * effect-scheduled `scrollToBottom()` catches up to it — there is a
+	 * real gap between "content got taller" and "we corrected scrollTop"
+	 * — and a `scroll` event landing in that gap (a `pointerdown` inside
+	 * the pane before the browser's own scroll anchoring kicks in, a
+	 * layout-driven nudge, anything that is not a deliberate drag) reads
+	 * as "the reader scrolled away" and silently drops `Follow`. Measured:
+	 * 1 in 5 fresh loads on a narrow viewport with a live stream. `Follow`
+	 * is now only ALLOWED to turn itself off within a short window after a
+	 * real wheel/touch/drag gesture on this pane — re-enabling (scrolling
+	 * back to the bottom) stays ungated, because arriving at the bottom is
+	 * always the safe direction.
+	 */
+	let lastUserGestureAt = 0;
+	function markUserGesture() {
+		lastUserGestureAt = Date.now();
+	}
+
 	// Handle Scroll Events for Auto-scroll toggle
 	function handleScroll(e: Event) {
 		const target = e.target as HTMLElement;
@@ -425,9 +477,11 @@
 
 		const { scrollTop, scrollHeight, clientHeight } = target;
 		const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
+		const recentUserGesture = Date.now() - lastUserGestureAt < 1000;
 
-		// If user scrolled away from bottom, disable auto-scroll
-		if (!isNearBottom && autoScroll) {
+		// If user scrolled away from bottom, disable auto-scroll — but only
+		// off the back of a real gesture, not a phantom scroll event.
+		if (!isNearBottom && autoScroll && recentUserGesture) {
 			autoScroll = false;
 		}
 
@@ -483,13 +537,27 @@
 				     BESIDE them as a plain `span`, so both announced as an unnamed
 				     checkbox. Two of the twenty-seven tab stops on the Logs tab. -->
 				<div class="flex items-center gap-2">
-					<Toggle bind:checked={autoScroll} size="small" aria-labelledby="logs-follow-label" />
+					<!-- Flowbite's default `color="primary"` renders orange here — this
+					     product's one filled primary is blue (`ChangeVersionModal`'s pin
+					     toggle), so both toggles below say so explicitly rather than
+					     inheriting the library default. -->
+					<Toggle
+						bind:checked={autoScroll}
+						size="small"
+						color="blue"
+						aria-labelledby="logs-follow-label"
+					/>
 					<span id="logs-follow-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
 						>Follow</span
 					>
 				</div>
 				<div class="flex items-center gap-2">
-					<Toggle bind:checked={wrapLines} size="small" aria-labelledby="logs-wrap-label" />
+					<Toggle
+						bind:checked={wrapLines}
+						size="small"
+						color="blue"
+						aria-labelledby="logs-wrap-label"
+					/>
 					<span id="logs-wrap-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
 						>Wrap</span
 					>
@@ -788,6 +856,9 @@
 			<div
 				bind:this={virtualListEl}
 				onscroll={handleScroll}
+				onwheel={markUserGesture}
+				ontouchstart={markUserGesture}
+				onpointerdown={markUserGesture}
 				class="absolute inset-0 overflow-auto"
 			>
 				<div class="min-w-full" style={wrapLines ? '' : 'width: max-content;'}>

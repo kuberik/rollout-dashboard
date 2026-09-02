@@ -24,6 +24,10 @@
 			activeTab = tabFromUrl;
 		}
 	});
+
+	// The rollup sentence ("2,031 lines • 2 pods • Streaming") LogsViewer
+	// computes from the counts it owns — see the sr-only `h1` below.
+	let summary = $state('');
 </script>
 
 <svelte:head>
@@ -38,21 +42,31 @@
      49px scrollbar. As a flex item it takes the remainder instead. -->
 <div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-4 py-6 dark:bg-gray-900 sm:px-6">
 	<div class="mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-2 sm:mb-4">
-		<h1 class="text-lg font-bold text-gray-900 dark:text-white sm:text-xl">Logs</h1>
+		<!-- ⛔ THIS `h1` SAID "Logs" DIRECTLY UNDER A TAB STRIP WHOSE ACTIVE TAB
+		     ALREADY SAYS "Logs" — the same duplicate-heading defect `/apps`,
+		     `/activity` and this rollout's own History tab were fixed for.
+		     `sr-only`, not deleted: the skip link lands on `main` and the page
+		     outline still needs a level-1 heading. What fills the visible slot
+		     is the rollup LogsViewer already prints in its footer, promoted up
+		     — the one thing the tab strip does not say. -->
+		<h1 class="sr-only">Logs</h1>
+		<p class="t-headline min-w-0 truncate text-gray-900 dark:text-white">
+			{summary || 'Logs'}
+		</p>
 		<!-- Tab buttons inline on mobile -->
-		<div class="flex rounded-lg border border-gray-200 dark:border-gray-700">
+		<div class="flex rounded border border-gray-200 dark:border-gray-700">
 			<button
 				class="px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:py-2 sm:text-sm {activeTab === 'pods'
-					? 'bg-blue-600 text-white'
-					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-l-lg"
+					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-l"
 				onclick={() => (activeTab = 'pods')}
 			>
 				Pods
 			</button>
 			<button
 				class="px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:py-2 sm:text-sm {activeTab === 'tests'
-					? 'bg-blue-600 text-white'
-					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-r-lg"
+					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-r"
 				onclick={() => (activeTab = 'tests')}
 			>
 				Tests
@@ -65,9 +79,9 @@
 		<!-- Tab content -->
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 			{#if activeTab === 'pods'}
-				<LogsViewer {namespace} {name} {cluster} filterType="pod" />
+				<LogsViewer {namespace} {name} {cluster} filterType="pod" bind:summary />
 			{:else}
-				<LogsViewer {namespace} {name} {cluster} filterType="test" />
+				<LogsViewer {namespace} {name} {cluster} filterType="test" bind:summary />
 			{/if}
 		</div>
 	</div>
