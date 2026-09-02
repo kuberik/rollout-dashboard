@@ -17,6 +17,8 @@
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
+	// THE RAIL CARD'S TITLE IS THE REPO, NOT THE URL. See `repo-title.ts`.
+	import { repoTitle } from './repo-title';
 	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
 	// words — `unreleased` — and it takes it from here rather than spelling it.
 	import { rankLabel } from '$lib/view-models/env-rank';
@@ -26,11 +28,19 @@
 		ArrowRightOutline,
 		ArrowUpRightFromSquareOutline,
 		CalendarMonthSolid,
+		// ⛔ `PlaySolid` WAS THIS CARD'S ICON AND IT WAS A LIE. (2026-09-02, from
+		// the human: *"`Also still running` uses a ▶ play triangle as its card
+		// icon. Play means START; this card means STILL LIVE."*) `src/lib/CLAUDE.md`:
+		// *"a mark that is not true of its kind is worse than no mark"* — an icon
+		// names an OBJECT, and nothing on this page starts anything.
+		// The true mark already exists: `live` is `CheckCircleSolid` in
+		// `BuildStateMark`'s GLYPH map and in the detail page's `BUCKET_ICON`,
+		// and every row in this card carries that same glyph. One vocabulary.
+		CheckCircleSolid,
 		ChevronDownOutline,
 		ChevronRightOutline,
 		CodeBranchOutline,
 		HourglassOutline,
-		PlaySolid,
 		RocketSolid,
 		TagOutline,
 		UserCircleSolid
@@ -396,6 +406,30 @@
 	let expandPast = $state<Record<string, boolean>>({});
 	let expandPending = $state<Record<string, boolean>>({});
 
+	/**
+	 * ⭐ THE TWO RECORDS THE PRINTED CAPTIONS BECAME, AS SCRIPT LITERALS.
+	 *
+	 * (2026-09-02.) Both sentences used to be drawn under their cards and are
+	 * now the `verdictTitle` behind the rollup that counts the thing they
+	 * define — which is what the human asked for: *"definitions belong in a
+	 * `title` on the term they define, or behind the existing `2 services`
+	 * trigger as a record — not printed."*
+	 *
+	 * ⛔ AND THEY LIVE HERE, NOT INLINE ON THE `<Card>`, BECAUSE OF THE CENSUS.
+	 * `scan.ts` reads `title` / `aria-label` / `alt` / `placeholder` — it does
+	 * NOT read a component prop called `verdictTitle`, so a sentence written
+	 * inline there leaves `catalogue.txt` silently and `drift.test.ts` stays
+	 * green while an operator-visible claim goes untracked. A string literal in
+	 * a `<script>` block IS scanned (kind `code`), so hoisting them keeps both
+	 * facts pinned. Unprinting a sentence must never unpin it.
+	 */
+	function scopeRecord(n: number): string {
+		const services = `${n} service${n === 1 ? '' : 's'}`;
+		return `Everything below is counted across the ${services} that have a release for this commit. Each service ships this commit as its own release, with its own gates.`;
+	}
+
+	const PENDING_RECORD = 'Your services can deploy these commits. None of them has yet.';
+
 	function repoUrl(repoKey: string): string | null {
 		if (!repoKey.startsWith('repo:')) return null;
 		const body = repoKey.slice('repo:'.length);
@@ -448,9 +482,26 @@
 			deploying is. One sentence binds the three, and every string below can
 			then be plain.
 		-->
-		<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-			{#if scope}of {scope.known} revisions deployed.{/if}{' '}One commit, one build. Here is every
-			build your services can deploy, and how far each one has got.
+		<!--
+			⛔ THE DEFINITION CAME OFF THE PRINTED TIER. (2026-09-02, from the
+			human: *"descriptive text pollutes and attention is pulled by
+			design"*; this was one of four definitions this page printed.)
+			`One commit, one build. Here is every build your services can deploy,
+			and how far each one has got.` is what a `revision` IS — a definition
+			of the noun in the rollup beside it, not a fact about this cluster.
+			It is the `title` on the rollup now: a reader who does not know the
+			word can ask for it on the exact sentence that uses it, and a reader
+			who does is not made to read it on every visit.
+
+			⛔ NOTHING WAS DELETED. `scan.ts` reads `title` as an
+			operator-visible literal, so the sentence stays in `catalogue.txt`
+			and `drift.test.ts` still pins it.
+		-->
+		<p
+			class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400"
+			title="One commit, one build. Here is every build your services can deploy, and how far each one has got."
+		>
+			{#if scope}of {scope.known} revisions deployed{/if}
 		</p>
 	</div>
 
@@ -551,14 +602,24 @@
 				{#snippet actions()}
 					<!-- THE ACTION NAMES WHAT IT DOES, NOT WHAT IT OPENS. `Open 0afab6f`
 					     asked the reader to already know that the build's page is where a
-					     gate is explained and cleared. This says so. -->
+					     gate is explained and cleared. This says so.
+
+					     ⛔ AND IT IS `.nav-link`, NOT `.btn`. (2026-09-02.) It opens a
+					     page; it clears no gate and changes no cluster state. Every other
+					     banner action in the product was moved off `.btn` in the
+					     2026-09-02 sweep — `/environments`, `/envs/<name>`, `NextStep`,
+					     which carries `/activity` and the dependencies tab — and this
+					     route was owned elsewhere that day, so it was the one left.
+					     `AlertPanel` sets `--nav-link-ink: currentColor` on this row, so
+					     the link speaks in the severity's ink like the `1 rule`
+					     disclosure above it. -->
 					<a
-						class="btn btn-secondary"
+						class="nav-link"
 						href={revisionPath(blockage.repo.repoKey, blockage.head.revision)}
 						aria-label={`See what’s blocking build ${blockage.head.short ?? blockage.head.revision}`}
 					>
-						<ArrowRightOutline class="h-4 w-4" aria-hidden="true" />
 						See what’s blocking it
+						<ArrowRightOutline class="h-4 w-4" aria-hidden="true" />
 					</a>
 				{/snippet}
 			</AlertPanel>
@@ -629,16 +690,17 @@
 					releases the commit became, and it is only readable once N is on
 					screen. The rollup is that N, in the same count-shaped form as
 					every sibling card on the page (`1 build`, `12 builds`,
-					`5 services`), and the lead's note names the consequence in words.
+					`5 services`), and its `verdictTitle` names the consequence in
+					words — which is where the printed caption `Each service ships this
+					commit as its own release, with its own gates.` went (2026-09-02):
+					it was drawn AND held in this record, and a definition belongs in
+					the record, not on the card.
 				-->
 				<Card
 					icon={RocketSolid}
 					title="Newest build in use"
 					verdict="{lead.services.length} service{lead.services.length === 1 ? '' : 's'}"
-					verdictTitle="Everything below is counted across the {lead.services.length} service{lead
-						.services.length === 1
-						? ''
-						: 's'} that have a release for this commit. Each ships it as its own release, with its own gates."
+					verdictTitle={scopeRecord(lead.services.length)}
 					class="mt-5"
 				>
 					<RevisionLead
@@ -646,10 +708,6 @@
 						href={revisionPath(repo.repoKey, lead.revision)}
 						eyebrow="Newest build"
 						coverage={leadCov}
-						unitNote
-						scopeNote={lead.services.length > 1
-							? 'Each service ships this commit as its own release, with its own gates.'
-							: ''}
 					>
 						{#if rowNamesBuild(lead)}
 							{#snippet meta()}
@@ -663,24 +721,43 @@
 								{@render names(lead, true)}
 							{/snippet}
 						{/if}
-						<!-- BUTTONS LOOK LIKE BUTTONS — `.btn`, 14px, 8px 16px, with an
-						     icon, the geometry measured off `View on GitHub` on the
-						     reference page. Both are READ-ONLY: every mutating control on
-						     a revision lives on its own page. -->
-						<a class="btn btn-secondary" href={revisionPath(repo.repoKey, lead.revision)}>
-							<ArrowRightOutline class="h-4 w-4" />
-							Open {lead.short}
-						</a>
+						<!--
+							⛔ `Open <sha>` IS GONE, NOT RESTYLED. (2026-09-02, from the
+							human: *"two navigation controls wearing button chrome … `Open
+							9f10e49` may be redundant with the lead card being a tap zone —
+							check, and delete rather than restyle if so."*) Checked: its
+							`href` was `revisionPath(repo.repoKey, lead.revision)`,
+							byte-identical to the 24px sha `RevisionLead` already renders as
+							an `<a>` 260px above it. `src/lib/CLAUDE.md`: *"a second control
+							inside one, pointing at the SAME destination, is a redundant tab
+							stop — delete it rather than restyle it."* The card is TWO tab
+							stops now, one per destination: the build, and the commit.
+
+							⛔ AND `titleHref` ON THIS CARD WAS TRIED AND TAKEN BACK OUT IN
+							THE SAME PASS. It made the 47px header a `.tap-zone` to the same
+							build — which does not REMOVE the duplicate tab stop, it MOVES
+							it off `Open <sha>` and onto the header. The rule that makes a
+							header a door is *"a card header carrying an OBJECT'S NAME"*,
+							and this one carries `Newest build in use`, which is the name of
+							a SECTION. The object's name is `9f10e49`, it is 24px, it is
+							already the link, and one door is the whole point.
+
+							⭐ `View commit` IS NAVIGATION AND NOW LOOKS LIKE IT. It only
+							changes what you are looking at (someone else's page, at that),
+							so it is `.nav-link` with the external glyph — the rule's stated
+							answer for an outbound link. It changes no cluster state, so it
+							never earned `.btn`.
+						-->
 						{#if commitUrlFor(repo.repoKey, lead.revision)}
 							<a
-								class="btn btn-secondary"
+								class="nav-link"
 								href={commitUrlFor(repo.repoKey, lead.revision)}
 								target="_blank"
 								rel="noopener noreferrer"
 								aria-label={`View the commit for ${lead.short} on GitHub — opens in a new tab`}
 							>
-								<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 								View commit
+								<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 							</a>
 						{/if}
 					</RevisionLead>
@@ -697,7 +774,7 @@
 						therefore none.
 					-->
 					<Card
-						icon={PlaySolid}
+						icon={CheckCircleSolid}
 						title={lead ? 'Also still running' : 'Still running'}
 						verdict="{live.length} build{live.length === 1 ? '' : 's'}"
 						verdictTitle="Older builds that some service is still running"
@@ -878,7 +955,7 @@
 							icon={HourglassOutline}
 							title="Never deployed"
 							verdict="{repo.pending.length} build{repo.pending.length === 1 ? '' : 's'}"
-							verdictTitle="Your services could deploy these; none of them has"
+							verdictTitle={PENDING_RECORD}
 							padded={false}
 						>
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -921,15 +998,13 @@
 									`${repo.pending.length - FOLD} more build${repo.pending.length - FOLD === 1 ? '' : 's'}`
 								)}
 							{/if}
-							<!-- THE CARD SAYS WHAT ITS ROWS ARE, in the reference's own
-							     footer form. `Built, never deployed` was a title a reader had
-							     to already understand; this is the sentence that makes it
-							     mean something the first time. -->
-							<p
-								class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
-							>
-								Your services can deploy these commits. None of them has yet.
-							</p>
+						<!-- ⛔ A FOOTER `<p>` PRINTED THE CARD'S OWN `verdictTitle`.
+						     (2026-09-02, from the human: this was the third of three
+						     definitions this page drew.) It read `Your services can
+						     deploy these commits. None of them has yet.` — the same
+						     fact as the `N builds` rollup's record 200px above it,
+						     twice on one card. The record keeps it; the page stops
+						     printing it. -->
 						</Card>
 					{/if}
 
@@ -942,7 +1017,7 @@
 					-->
 					<Card
 						icon={CodeBranchOutline}
-						title={repo.repoLabel}
+						title={repoTitle(repo.repoLabel)}
 						verdict="{repo.serviceCount} service{repo.serviceCount === 1 ? '' : 's'}"
 						padded={false}
 					>
@@ -977,11 +1052,30 @@
 							{/if}
 							{@render fact('Places to deploy to', String(repo.slotCount))}
 						</dl>
+						<!--
+							⛔ THE THIRD NAVIGATION CONTROL WEARING BUTTON CHROME ON THIS
+							ROUTE. (2026-09-02, same sweep as the lead card's two.) It
+							changes no cluster state — it opens someone else's website —
+							so it is `.nav-link` with the external glyph, the rule's stated
+							answer for an outbound link.
+
+							⭐ IT ALSO CARRIES THE HOST THE CARD TITLE STOPPED PRINTING.
+							The title is `littlechimera/kuberik-testing` now (see
+							`repo-title.ts`); `title={repo.repoLabel}` on this link is where
+							`github.com/…` remains readable, on the one control that resolves
+							to it.
+						-->
 						{#if url}
-							<div class="px-4 py-3">
-								<a class="btn btn-secondary" href={url} target="_blank" rel="noopener noreferrer">
-									<ArrowUpRightFromSquareOutline class="h-4 w-4" />
+							<div class="px-4 py-1.5">
+								<a
+									class="nav-link"
+									href={url}
+									target="_blank"
+									rel="noopener noreferrer"
+									title={repo.repoLabel}
+								>
 									View repository
+									<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 								</a>
 							</div>
 						{/if}

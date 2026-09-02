@@ -144,9 +144,17 @@
 >
 	{#if total === 0}
 		<!-- No slots at all. An empty TRACK, not a missing element: the row still
-		     has to occupy the column so the ones beside it stay comparable. -->
+		     has to occupy the column so the ones beside it stay comparable.
+
+		     ⛔ IT TAKES `coverageFill('notYet')`, IT DOES NOT SPELL THE TRACK.
+		     (2026-09-02.) Written out here as `bg-gray-100 dark:bg-gray-800` it
+		     was a second copy of the track's value — and it inherited that
+		     value's dark bug silently: `dark:bg-gray-800` IS `Card`'s own
+		     ground, dE00 **0.0**, so an empty bar had nothing in it at all in
+		     dark. Reading the table means the fix that gave the track its dark
+		     edge lands here too, and cannot be missed again. -->
 		<span class="cov-seg" style="flex-grow:1">
-			<span class="cov-cell bg-gray-100 dark:bg-gray-800"></span>
+			<span class="cov-cell {coverageFill('notYet')}"></span>
 		</span>
 	{:else}
 		{#each segments as seg (seg.key)}

@@ -55,6 +55,8 @@
 	import type { Rollout, Environment } from '../../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	// THE REPO, NOT THE URL IT IS FETCHED FROM — one spelling with `/versions`.
+	import { repoTitle, repoTitleFull } from '../repo-title';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
@@ -594,10 +596,13 @@
 			carrying the gates and the actions. Drawing both would print the same
 			environments twice on one screen.
 		-->
-		<RevisionLead short={row.short} eyebrow="Tracking build" {coverage} spread={false} unitNote>
+		<RevisionLead short={row.short} eyebrow="Tracking build" {coverage} spread={false}>
 			{#snippet meta()}
-				<span class="t-code-sm min-w-0 truncate text-gray-500 dark:text-gray-400"
-					>{ledger.repoLabel}</span
+				<!-- THE REPO, NOT THE HOST — one spelling with the list's rail card.
+				     See `../repo-title.ts`; the origin rides as the `title`. -->
+				<span
+					class="t-code-sm min-w-0 truncate text-gray-500 dark:text-gray-400"
+					title={repoTitleFull(ledger.repoLabel) ?? undefined}>{repoTitle(ledger.repoLabel)}</span
 				>
 			{/snippet}
 		</RevisionLead>
@@ -648,12 +653,13 @@
 		</p>
 
 		<!--
-			BUTTONS LOOK LIKE BUTTONS — `.btn`, 14px, 8px 16px, 8px radius, with an
-			icon, exactly the geometry measured off `View on GitHub` on the reference
-			page. It was a 12px black fill before, which is a size the rejected pages
-			use and a weight the loudest control on a deploy surface should not have.
-			SECONDARY, not primary: `View commit` is READ-ONLY, and the one filled
-			action on a deploy surface must never be the read-only one.
+			⛔ `View commit` WAS A `.btn` AND IT IS NAVIGATION. (2026-09-02, from
+			the human: *"two navigation controls wearing button chrome"*, filed
+			against the list and true here for the same control.) It changes no
+			cluster state — it opens someone else's website — so it is `.nav-link`
+			with the external glyph, which is the rule's stated answer for an
+			outbound link. The `.btn` weight is reserved for the controls that
+			change WHAT IS RUNNING, and every one of those lives on the rollout.
 		-->
 		<!--
 			⛔ A THIRD SPELLING OF `never deployed` LIVED HERE. (2026-09-02) The
@@ -669,16 +675,16 @@
 		-->
 
 		{#if commitUrl}
-			<div class="mt-4 flex flex-wrap gap-2">
+			<div class="mt-1 flex flex-wrap gap-4">
 				<a
-					class="btn btn-secondary"
+					class="nav-link"
 					href={commitUrl}
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label={`View the commit for ${row.short} on GitHub — opens in a new tab`}
 				>
-					<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 					View commit
+					<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 				</a>
 			</div>
 		{/if}
@@ -957,11 +963,13 @@
 							</ul>
 						{/if}
 
-						<p
-							class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
-						>
-							{bucket.description}
-						</p>
+						<!-- ⛔ A FOOTER `<p>` PRINTED `bucket.description`, WHICH IS THE
+						     CARD'S OWN `verdictTitle` AND, WORSE, ITS OWN TITLE RESTATED.
+						     (2026-09-02, from the human: definitions belong in a record,
+						     not in the printed tier.) `Running it now` sat 130px above
+						     `These are running this build right now.` — one card, one
+						     fact, twice, and the second copy in prose. The record on the
+						     `N places` rollup keeps every word of it. -->
 					</Card>
 				{/each}
 			</div>
@@ -1014,7 +1022,19 @@
 										wide
 										class="min-w-0"
 									/>
-									<span class="t-micro text-gray-500 dark:text-gray-400">{rank.of}</span>
+									<!-- ⭐ THE DENOMINATOR CARRIES ITS OWN DEFINITION.
+									     `newest` means different things in different corners of
+									     this product; here it is rank 0 on THIS service's ladder,
+									     and `newest of 1` beside `newest of 37` is only readable
+									     once that is said. It was said in a 3-line footer under
+									     the card (2026-09-02, cut with the page's other
+									     definitions); it is said here, on the `of N` the sentence
+									     is about. `scan.ts` reads `title`, so it stays pinned. -->
+									<span
+										class="t-micro text-gray-500 dark:text-gray-400"
+										title="Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be up to date."
+										>{rank.of}</span
+									>
 								{:else}
 									<!-- No number at all. A `0` here would read as "newest".
 									     The WORD is `rankLabel`'s, like the `unreleased` above it:
@@ -1033,21 +1053,10 @@
 						</li>
 					{/each}
 				</ul>
-				<!--
-					THE ONE PIECE OF PROSE THIS CARD NEEDS, AND IT IS NOT A LEGEND.
-					`newest` means DIFFERENT THINGS in different corners of this product
-					— on a rollout it means "this rollout is on its newest build"; here
-					it means "rank 0 on THIS service's own ladder". Two services sharing
-					a source repo ship independent streams, and `newest of 4` beside
-					`newest of 37` is only readable once that is said. It states the
-					denominator's meaning, not a colour key.
-				-->
-				<p
-					class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
-				>
-					Every service counts its own builds, so <span class="t-code-sm">newest</span> here means newest
-					for that service. Two services from one repo can be on different builds and both be up to date.
-				</p>
+				<!-- ⛔ THE FOOTER THAT SAID THIS IS GONE, THE SENTENCE IS NOT.
+				     (2026-09-02.) It is the `title` on `of N` in every row above —
+				     on the term it defines, which is where a definition belongs and
+				     is the only place it is legible without counting rows. -->
 			</Card>
 		</div>
 	{/if}

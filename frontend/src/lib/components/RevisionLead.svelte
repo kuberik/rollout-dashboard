@@ -52,8 +52,6 @@
 		eyebrow,
 		coverage,
 		spread = true,
-		unitNote = false,
-		scopeNote = '',
 		meta,
 		children
 	}: {
@@ -70,36 +68,6 @@
 		    full size and carrying the actions. Drawing both would print the same
 		    environments twice on one screen. */
 		spread?: boolean;
-		/**
-		 * ⭐ THE ONE SENTENCE THAT MAKES `places` SELF-TEACHING.
-		 *
-		 * `6 of 9 places live` was on the human's list of strings that assume the
-		 * domain, and the word cannot simply be deleted: `/api/rollouts` carries
-		 * no pod counts (confirmed three times), so a (service, environment) slot
-		 * is the honest unit and inventing a pod ratio would be worse than a
-		 * plain word. So the page defines it, ONCE, where it is first used, in
-		 * seven words. That is not a legend — it is the caption of the number
-		 * directly above it.
-		 */
-		unitNote?: boolean;
-		/**
-		 * ⭐ WHO THE COUNT ABOVE IS SPEAKING FOR — the clause that makes a
-		 * revision-scoped verdict honest.
-		 *
-		 * A live critique filed: *"`/versions` said `fully rolled out` while a
-		 * build from that commit was held in three places."* The lead is keyed
-		 * on a COMMIT, and one commit becomes one release PER SERVICE — the
-		 * repo's own harness publishes an `api` half and a `frontend` half of a
-		 * single build, each with its own tag, its own release list and its own
-		 * GATES. `N of M places` is arithmetic over all of them, so the state
-		 * word above it is a sentence about several independent releases and is
-		 * only readable once that is said.
-		 *
-		 * It rides on the unit-note line rather than in a fourth object,
-		 * because it is the same kind of sentence: the caption of the number
-		 * directly above it, not a legend.
-		 */
-		scopeNote?: string;
 		/** A second line under the identifier — repo, commit summary, scope. */
 		meta?: Snippet;
 		/** Buttons and any page-specific note, under the spread. */
@@ -137,7 +105,28 @@
 		<div class="lead-count" title={state.title}>
 			<span class="t-display text-gray-900 dark:text-white">{coverage.liveCount}</span>
 			<span class="t-body text-gray-500 dark:text-gray-400">of {coverage.totalCount}</span>
-			<div class="t-label text-gray-500 dark:text-gray-400">places running it</div>
+			<!--
+				⭐ THE DEFINITION IS ON THE TERM, NOT UNDER IT. (2026-09-02, from the
+				human: three lines of caption prose on this card, of which this was
+				one — *"A place is one service in one environment."* printed at
+				`t-micro` 120px below the number it defines.) The word `places` still
+				cannot be deleted: `/api/rollouts` carries no pod counts (confirmed
+				three times), so a (service, environment) slot is the honest unit and
+				inventing a pod ratio would be worse. So the sentence stays, ON the
+				noun, where a reader who does not know the word can ask and a reader
+				who does is not made to read it on every visit.
+
+				⛔ IT IS A `title`, WHICH THE MESSAGE CENSUS READS. `scan.ts` scans
+				`title` / `aria-label` / `alt` / `placeholder` as operator-visible
+				literals, so the fact stays pinned by `drift.test.ts` — moving prose
+				into an attribute hides it from the page, never from the suite.
+			-->
+			<div
+				class="t-label text-gray-500 dark:text-gray-400"
+				title="A place is one service in one environment."
+			>
+				places running it
+			</div>
 		</div>
 	</div>
 
@@ -162,21 +151,18 @@
 		<FleetSpread {coverage} class="mt-4" />
 	{/if}
 
-	{#if unitNote}
-		<p class="t-micro mt-3 text-gray-500 dark:text-gray-400">
-			A place is one service in one environment.
-		</p>
-	{/if}
-
-	<!-- THE SCOPE OF THE COUNT, ON ITS OWN LINE. See `scopeNote` above: it is
-	     the sentence that keeps a revision-wide verdict honest when one commit
-	     became several independent releases. Its own `<p>` rather than a second
-	     clause on the unit note, so each sentence stays one message. -->
-	{#if scopeNote}
-		<p class="t-micro {unitNote ? 'mt-1' : 'mt-3'} text-gray-500 dark:text-gray-400">
-			{scopeNote}
-		</p>
-	{/if}
+	<!-- ⛔ TWO `<p>` CAPTIONS STOOD HERE AND BOTH WERE DEFINITIONS.
+	     (2026-09-02, from the human: *"three lines of caption prose"* on one
+	     card; *"descriptive text pollutes and attention is pulled by design"*.)
+	     Neither fact was deleted, only unprinted:
+	       · `A place is one service in one environment.` → the `title` on the
+	         term `places running it`, twelve pixels from the number it
+	         qualifies. See the block above it.
+	       · `Each service ships this commit as its own release, with its own
+	         gates.` → already the second sentence of the host `Card`'s
+	         `verdictTitle`, on the `N services` rollup that counts them. It was
+	         printed AND in the record; only the printing goes.
+	     Both remain in `catalogue.txt`, because `scan.ts` reads `title`. -->
 
 	{#if children}
 		<div class="lead-actions">{@render children()}</div>
@@ -239,10 +225,13 @@
 		width: 100%;
 	}
 
+	/* 8px, NOT 16 — the row holds `.nav-link`s now, and `.nav-link` carries
+	   `.btn`'s own 8px of vertical padding inside its box. Against a `.btn`
+	   the ink sat 16px below the object; against a link at 16px it sat 24. */
 	.lead-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 16px;
+		gap: 16px;
+		margin-top: 8px;
 	}
 </style>

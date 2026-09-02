@@ -285,7 +285,19 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
 	// fleet the build has NOT reached — the bar visibly stopping short is the
 	// strongest statement of that, and it is the reading a proportional bar
 	// already carries without being taught.
-	notYet: 'bg-gray-100 dark:bg-gray-800',
+	//
+	// ⛔ AND IN DARK IT NEEDS THE EDGE, BECAUSE THE FILL IS THE CARD.
+	// (2026-09-02, measured on the running page: the cell resolved to
+	// `oklch(0.278 0.033 256.848)` and `Card`'s own `dark:bg-gray-800` ground
+	// resolved to `oklch(0.278 0.033 256.848)` — dE00 **0.0**. A `5 of 6` lead
+	// drew FIVE countable cells in dark and six in light, so the denominator
+	// the cells exist to carry was missing in exactly one theme.) This is the
+	// same defect `COVERAGE_SWATCH` already names one table down — *"it borrows
+	// a border only because gray-100 at 12px on a white card has no edge at
+	// all"* — one theme over and at 26px, and it takes the SAME VALUE, so the
+	// swatch and the segment stay one encoding. Light is untouched: gray-100 on
+	// white is faint by design and has always been visible.
+	notYet: 'bg-gray-100 dark:border dark:border-gray-600 dark:bg-gray-800',
 	// HOLLOW. An outlined cell with no fill is the one shape that says "there
 	// is a place here and no answer for it" — which is exactly what this
 	// bucket admits. It is also the rarest bucket, so the busiest treatment
