@@ -4,6 +4,7 @@
 	import { ExclamationCircleSolid, InfoCircleSolid, CalendarWeekSolid } from 'flowbite-svelte-icons';
 	import { formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import Card from './Card.svelte';
 
 	let { events }: { events: any[] } = $props();
 
@@ -11,16 +12,20 @@
 	const visibleEvents = $derived(showAllEvents ? events : events.slice(0, 5));
 </script>
 
-<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-	<div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-		<h2 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-			<CalendarWeekSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-			Recent Events
-		</h2>
+<!--
+	⭐ NOW USES `Card`. (defect #4, design re-check, coordinator follow-up)
+	`COMPOSITION-GRAMMAR.md`'s own numbers name `Recent Events` as one of the
+	four reference cards that must measure 47px, same as `Deployment
+	Pipeline`, `Health Checks` and `Resources` — this hand-rolled header had
+	no `min-h` and measured 45px. Small, single-slot body: the cleanest of
+	the four to migrate outright rather than patch a floor onto.
+-->
+<Card icon={CalendarWeekSolid} title="Recent Events" padded={false}>
+	{#snippet rollup()}
 		{#if events.length > 0}
 			<span class="text-xs text-gray-500 dark:text-gray-400">{events.length} event{events.length !== 1 ? 's' : ''}</span>
 		{/if}
-	</div>
+	{/snippet}
 	{#if events.length === 0}
 		<p class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No recent events</p>
 	{:else}
@@ -52,4 +57,4 @@
 			</button>
 		{/if}
 	{/if}
-</div>
+</Card>

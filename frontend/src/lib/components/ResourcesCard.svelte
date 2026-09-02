@@ -3,9 +3,11 @@
 <script lang="ts">
 	import type { Kustomization, OCIRepository, ManagedResourceStatus } from '../../types';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import Card from './Card.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
+		ClockSolid,
 		ChevronDownOutline,
 		ChevronRightOutline,
 		ArrowUpRightFromSquareOutline
@@ -192,6 +194,35 @@
 		return () => clearInterval(interval);
 	});
 
+	/**
+	 * ⭐ NOW USES `Card`. (defect #4, design re-check, coordinator follow-up)
+	 * The hand-rolled header measured 45px against the other three reference
+	 * cards' 47px. `Card`'s `icon` prop renders a static glyph with a class,
+	 * not an arbitrary component — it cannot take `StatusSpinner`'s own prop
+	 * signature (`size`/`color`, not `class`), so the header's "not ready,
+	 * not failing" state (previously an animated spinner) is `ClockSolid`
+	 * here, the same static glyph `HealthChecksCard`'s own header already
+	 * uses for "pending". The live spinners inside every row are untouched —
+	 * this only changes the ONE icon in the 47px bar.
+	 */
+	const failedInHeader = $derived(
+		notReadyResources.filter((r) => ['Unhealthy', 'Failed', 'Error'].includes(r.status || ''))
+	);
+	const HeaderIcon = $derived(
+		failedInHeader.length > 0
+			? ExclamationCircleSolid
+			: notReadyResources.length > 0
+				? ClockSolid
+				: CheckCircleSolid
+	);
+	const headerIconClass = $derived(
+		failedInHeader.length > 0
+			? 'text-red-500 dark:text-red-400'
+			: notReadyResources.length > 0
+				? 'text-yellow-700 dark:text-yellow-400'
+				: 'text-green-700 dark:text-green-400'
+	);
+
 	function getPodStatusColor(phase: string, ready: boolean, terminating: boolean): string {
 		if (terminating) return 'text-orange-500 dark:text-orange-400';
 		if (phase === 'Running' && ready) return 'text-green-700 dark:text-green-400';
@@ -211,32 +242,19 @@
 </script>
 
 {#if show}
-	<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-		<!-- Header -->
-		<div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-			<div class="flex items-center gap-2">
-				{#if notReadyResources.filter(r => ['Unhealthy','Failed','Error'].includes(r.status || '')).length > 0}
-					<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
-				{:else if notReadyResources.length > 0}
-					<StatusSpinner size="4" color="yellow" />
-				{:else}
-					<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
-				{/if}
-				<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Resources</h2>
-			</div>
-			{#if notReadyResources.filter(r => ['Unhealthy','Failed','Error'].includes(r.status || '')).length > 0}
-				{@const failedCount = notReadyResources.filter(r => ['Unhealthy','Failed','Error'].includes(r.status || '')).length}
-				{@const reconcilingCount = notReadyResources.filter(r => r.status === 'Reconciling').length}
+	<Card icon={HeaderIcon} iconClass={headerIconClass} title="Resources" padded={false}>
+		{#snippet rollup()}
+			{#if failedInHeader.length > 0}
+				{@const reconcilingCount = notReadyResources.filter((r) => r.status === 'Reconciling').length}
 				<span class="text-xs font-semibold text-red-600 dark:text-red-400">
-					{failedCount} failed{reconcilingCount > 0 ? ` · ${reconcilingCount} reconciling` : ''}
+					{failedInHeader.length} failed{reconcilingCount > 0 ? ` · ${reconcilingCount} reconciling` : ''}
 				</span>
 			{:else if notReadyResources.length > 0}
 				<span class="text-xs text-yellow-700 dark:text-yellow-400">{notReadyResources.length} not ready</span>
 			{:else}
 				<span class="text-xs text-green-700 dark:text-green-400">{allManagedResources.length}/{allManagedResources.length} ready</span>
 			{/if}
-		</div>
-
+		{/snippet}
 		<div class="divide-y divide-gray-100 dark:divide-gray-700/50">
 			<!-- Deployment resources -->
 			{#each deploymentResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
@@ -547,5 +565,5 @@
 				</div>
 			{/if}
 		{/if}
-	</div>
+	</Card>
 {/if}

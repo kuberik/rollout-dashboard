@@ -219,7 +219,7 @@ lib/components/ErrorState.svelte	text	Sign in again
 lib/components/ErrorState.svelte	code	this page
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	No recent events
-lib/components/EventsCard.svelte	text	Recent Events
+lib/components/EventsCard.svelte	title	Recent Events
 lib/components/ExposureBar.svelte	title	… — … ready pod… (…%)
 lib/components/ExposureBar.svelte	text	… environment … not counted
 lib/components/ExposureBar.svelte	aria-label	…% of ready pods on the newest build
