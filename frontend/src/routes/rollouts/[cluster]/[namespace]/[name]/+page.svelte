@@ -132,6 +132,7 @@
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
 
 	import { rolloutPath } from '$lib/source-dashboard';
+	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
@@ -1742,8 +1743,31 @@
 											     No sentence was added to explain the move. Descriptive prose
 											     on a detail page has been rejected here repeatedly; the
 											     chevron and the fact that the whole row is one tap target
-											     say it without words. -->
+											     say it without words.
+
+											     ⛔ AND IT MUST NAME THE DEPLOY, NOT THE PAGE. (2026-09-02,
+											     from the human: *"this link on rollout page doesn't expand
+											     the latest history entry. it should also navigate to it.
+											     it's not obvious now when we click the button what changes
+											     are for the latest deployment."*)
+
+											     `…/history` alone landed the reader on a list with
+											     everything collapsed — the changes they had just read the
+											     summary of were now somewhere below, shut. The href carries
+											     `?deploy=<revision>` now and the History tab opens exactly
+											     that entry, rings it and puts focus on it. The key is
+											     `deployKey`, shared with the resolver so there is one
+											     spelling; see `history-deeplink.ts` for why it is a query
+											     param and why it is the revision rather than the index.
+
+											     THE RANGE IS THE SAME OBJECT ON BOTH SIDES. This summary is
+											     `history[1] → history[0]`; the row it opens is index 0,
+											     whose own `CommitSummary` is `history[0 + 1] → history[0]`.
+											     Same component, same props, so the rollup and the row cannot
+											     disagree about the count or the diffstat. -->
 											{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
+												{@const historyHref = rolloutPath(cluster, namespace, name, 'history')}
+												{@const latestKey = deployKey(latestEntry)}
 												<div class="mt-1.5">
 													<CommitSummary
 														{namespace}
@@ -1751,8 +1775,10 @@
 														{cluster}
 														base={rollout.status.history[1]?.version?.revision}
 														head={latestEntry.version?.revision}
-														href={rolloutPath(cluster, namespace, name, 'history')}
-														hrefLabel="See these commits in the deploy history"
+														href={latestKey
+															? `${historyHref}?${DEPLOY_PARAM}=${encodeURIComponent(latestKey)}`
+															: historyHref}
+														hrefLabel="Open this deploy in the history"
 														showAvatars
 														hideWhenEmpty
 														class="-mx-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"

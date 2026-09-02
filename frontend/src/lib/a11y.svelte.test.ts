@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { focusables, inertSiblings, trapFocus } from './a11y.svelte';
 import { announce, liveMessages, resetAnnouncements } from './stores/announce.svelte';
+import { deployAnnouncement } from './history-deeplink';
 
 /**
  * These cover the three mechanisms the 2026-08-30 keyboard audit added, and
@@ -165,5 +166,62 @@ describe('announce', () => {
 		announce('something');
 		announce('');
 		expect(liveMessages.polite).toBe('something');
+	});
+});
+
+/**
+ * ⭐ THE ONE THING A DEEP LINK CHANGES THAT A SCREEN READER CANNOT SEE.
+ *
+ * (2026-09-02) Rollout detail's commits rollup now points at
+ * `…/history?deploy=<revision>`, and arriving there expands a row, rings it and
+ * scrolls it into view. For a sighted reader that is the whole answer. For a
+ * screen-reader user, without a live region it is: a page loaded, and nothing
+ * was said. The chart click above the list had the same silence and now shares
+ * this sentence.
+ *
+ * The property under test is the SUBJECT one the message suite holds
+ * everywhere else: this string renders into `LiveRegion`, which has no page
+ * context at all, so it must carry the axis the History tab does not fix —
+ * WHICH BUILD. The tab strip fixes app, environment and cluster; the rows
+ * differ only by version.
+ */
+describe('the deploy-reveal announcement', () => {
+	beforeEach(() => resetAnnouncements());
+
+	test('names the build, because the live region has no page context to fix it', () => {
+		const s = deployAnnouncement({
+			version: '064b655',
+			when: 'Aug 31, 01:42',
+			index: 0,
+			total: 5,
+			wasOpen: false
+		});
+		expect(s).toContain('064b655');
+		expect(s).toContain('Aug 31, 01:42');
+	});
+
+	test('the newest entry is named as the current deploy, not as “1 of 5”', () => {
+		expect(
+			deployAnnouncement({ version: 'v', when: 't', index: 0, total: 5, wasOpen: false })
+		).toBe('Expanded v, t — the current deploy.');
+	});
+
+	test('an older entry states its place in the list', () => {
+		expect(
+			deployAnnouncement({ version: 'v', when: 't', index: 3, total: 5, wasOpen: false })
+		).toBe('Expanded v, t — deploy 4 of 5.');
+	});
+
+	// ⛔ A ROW THAT WAS ALREADY OPEN DID NOT EXPAND, AND MAY NOT SAY IT DID.
+	test('a row that was already open is shown, not expanded', () => {
+		expect(
+			deployAnnouncement({ version: 'v', when: 't', index: 0, total: 5, wasOpen: true })
+		).toBe('Showing v, t — the current deploy.');
+	});
+
+	test('it goes to the polite channel — an arrival is not an alarm', () => {
+		announce(deployAnnouncement({ version: '064b655', when: 'Aug 31, 01:42', index: 0, total: 5, wasOpen: false }));
+		expect(liveMessages.polite).toContain('064b655');
+		expect(liveMessages.assertive).toBe('');
 	});
 });

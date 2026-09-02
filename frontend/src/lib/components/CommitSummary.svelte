@@ -2,12 +2,7 @@
 
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
-	import {
-		CodeBranchSolid,
-		ChevronDownOutline,
-		ChevronUpOutline,
-		ChevronRightOutline
-	} from 'flowbite-svelte-icons';
+	import { CodeBranchSolid, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import {
 		commitsQueryOptions,
 		formatCommitMessage,
@@ -36,17 +31,33 @@
 		// Optional link target; when set the WHOLE summary line becomes one tap
 		// target pointing at it (see the note above the markup).
 		href?: string;
-		// What the link goes to, for a reader who cannot see that the count,
-		// the stat and the faces are one row. Ignored without `href`.
+		/* What the link goes to, APPENDED TO THE COUNT rather than replacing it.
+		   An `aria-label` overrides an element's own text, so the label alone
+		   spent the whole accessible name on the destination and a screen-reader
+		   user tabbing here heard *"See these commits in the deploy history"* —
+		   the one thing the sighted reader gets, `3 commits deployed`, was the
+		   thing that got dropped. Ignored without `href`. */
 		hrefLabel?: string;
 		// Muted "nothing to show" states can be hidden entirely (e.g. inline in a
 		// dense list where an empty row would be noise).
 		hideWhenEmpty?: boolean;
 		// Render each commit's message as a list below the summary line.
 		showMessages?: boolean;
-		// Make the summary line a toggle that expands the message list inline
-		// (instead of linking away). Overrides `href`.
-		expandable?: boolean;
+		/* ⛔ THERE WAS AN `expandable` PROP HERE AND IT IS DELETED, NOT DEPRECATED.
+		   (2026-09-02) It made the summary line a disclosure that unfolded the
+		   commit list in place, and it lost its last caller when rollout detail's
+		   status card gave up its disclosure to become a rollup pointing at the
+		   History tab. Three call sites remained — rollout detail, the History
+		   tab, `/versions/<rev>` — and none of them passed it, so every branch it
+		   guarded was unreachable code that still had to be read, kept true and
+		   styled in both themes.
+
+		   It is deleted rather than kept "in case", which is the habit that
+		   produced two joined-badge implementations in this repo. `showMessages`
+		   already renders the list, and the product's answer for a tail is to
+		   give it away to the page that owns it — `href` plus the chevron below,
+		   which is `Show 8 ready resources ›` one card over. If an inline
+		   disclosure is ever wanted again, it needs a call site first. */
 		// When provided, only include commits whose sha matches one of these
 		// available-release revisions — filtering out intermediate commits that
 		// never became a release.
@@ -68,12 +79,9 @@
 		hrefLabel,
 		hideWhenEmpty = false,
 		showMessages = false,
-		expandable = false,
 		releaseShas,
 		class: className = ''
 	}: Props = $props();
-
-	let open = $state(false);
 
 	const enabled = $derived(!!namespace && !!name && !!base && !!head && base !== head);
 
@@ -177,37 +185,19 @@
 		     of a link with two unclickable neighbours — which the design rules
 		     call a broken affordance. Nothing changes for a caller that passes
 		     no `href`; the span stays a span. -->
-		<span class="inline-flex flex-wrap items-center gap-2 {href && !expandable ? 'tap-zone' : ''} {className}">
-			{#if expandable}
-				<button
-					type="button"
-					onclick={() => (open = !open)}
-					aria-expanded={open}
-					class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400"
-				>
-					<span class="h-1.5 w-1.5 shrink-0 rounded-full {dotClass}"></span>
-					<CodeBranchSolid class="h-3 w-3 shrink-0 text-gray-500 dark:text-gray-400" />
-					{inner}
-					{#if open}
-						<ChevronUpOutline class="h-3 w-3 shrink-0" />
-					{:else}
-						<ChevronDownOutline class="h-3 w-3 shrink-0" />
-					{/if}
-				</button>
-			{:else}
-				<svelte:element
-					this={href ? 'a' : 'span'}
-					{href}
-					aria-label={href ? hrefLabel : undefined}
-					class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 {href
-						? 'tap-link hover:text-blue-600 dark:hover:text-blue-400'
-						: ''}"
-				>
-					<span class="h-1.5 w-1.5 shrink-0 rounded-full {dotClass}"></span>
-					<CodeBranchSolid class="h-3 w-3 shrink-0 text-gray-500 dark:text-gray-400" />
-					{inner}
-				</svelte:element>
-			{/if}
+		<span class="inline-flex flex-wrap items-center gap-2 {href ? 'tap-zone' : ''} {className}">
+			<svelte:element
+				this={href ? 'a' : 'span'}
+				{href}
+				aria-label={href ? (hrefLabel ? `${inner}. ${hrefLabel}` : undefined) : undefined}
+				class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 {href
+					? 'tap-link hover:text-blue-600 dark:hover:text-blue-400'
+					: ''}"
+			>
+				<span class="h-1.5 w-1.5 shrink-0 rounded-full {dotClass}"></span>
+				<CodeBranchSolid class="h-3 w-3 shrink-0 text-gray-500 dark:text-gray-400" />
+				{inner}
+			</svelte:element>
 
 			{#if showStats && data}
 				<span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">
@@ -240,7 +230,7 @@
 				</span>
 			{/if}
 
-			{#if href && !expandable}
+			{#if href}
 				<!-- The product's "there is more, through here" mark — the same
 				     chevron `Show N ready resources ›` uses one card over. It sits
 				     inside the tap zone, so it takes the click without becoming a
@@ -251,7 +241,7 @@
 				/>
 			{/if}
 		</span>
-		{#if (showMessages || (expandable && open)) && commits.length > 0}
+		{#if showMessages && commits.length > 0}
 			<ul class="mt-1.5 space-y-1">
 				{#each commits as c (c.sha)}
 					<li class="flex items-baseline gap-2 text-xs">

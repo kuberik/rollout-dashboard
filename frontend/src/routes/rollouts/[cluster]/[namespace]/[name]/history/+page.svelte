@@ -41,6 +41,8 @@
 	 */
 	import { bakeWord, bakeTitle, getBakeStatusColor } from '$lib/bake-status';
 	import { deployActs } from '$lib/history-marks';
+	import { DEPLOY_PARAM, deployAnnouncement, findDeployIndex } from '$lib/history-deeplink';
+	import { announce } from '$lib/stores/announce.svelte';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -53,6 +55,7 @@
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 
 	import { page } from '$app/stores';
+	import { tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsInNamespaceQueryOptions } from '$lib/api/rollouts';
@@ -345,16 +348,132 @@
 		return r.length > 7 ? r.substring(0, 7) : r;
 	}
 
+	/**
+	 * ⭐ ONE WAY TO REVEAL AN ENTRY, AND TWO THINGS THAT CALL IT.
+	 *
+	 * The chart has scrolled-and-expanded a row since this page was built. The
+	 * deep link from rollout detail's commits rollup needs exactly the same
+	 * three effects, so it uses the same function rather than a second copy
+	 * that drifts — `registerEntry`'s map is the one element registry and
+	 * `selectedEntry` is the one "you are looking at this" state.
+	 *
+	 * `focus` is the only difference between the two callers, and it is
+	 * deliberate:
+	 *
+	 *  · ARRIVING FROM A LINK, the reader asked for this row and nothing else
+	 *    on the page has their attention, so focus moves ONTO it. It lands on
+	 *    the row's `.tap-link` — the disclosure button — which is the control
+	 *    that undoes what just happened, and whose `:focus-visible::after`
+	 *    draws `app.css`'s ring around the WHOLE row. No new highlight idiom:
+	 *    the blue border is the chart's existing selected treatment and the
+	 *    ring is the product's existing focus treatment.
+	 *  · CLICKING A CHART MARK, focus is already on the chart and the reader is
+	 *    still working in it. Yanking it into the list would break arrow-key
+	 *    traversal of the very control they are using. It scrolls and expands,
+	 *    as it always has.
+	 *
+	 * Both announce, because in both cases the thing that changed is 500px
+	 * below and a screen-reader user is otherwise told nothing at all.
+	 */
+	function revealEntry(index: number, opts: { focus?: boolean } = {}) {
+		const history = rollout?.status?.history ?? [];
+		const entry = history[index];
+		if (!entry) return;
+		selectedEntry = { serviceId: `${namespace}/${name}`, index };
+		const wasOpen = expandedIdx.has(index);
+		expandedIdx = new Set([...expandedIdx, index]);
+		// Polite, not assertive — this is the reader's own action landing, not an
+		// alarm. The sentence itself lives in `history-deeplink.ts` so the words
+		// have a test rather than only a render.
+		announce(
+			deployAnnouncement({
+				version: getDisplayVersion(entry.version),
+				when: clockTime(entry.timestamp),
+				index,
+				total: history.length,
+				wasOpen
+			})
+		);
+		// The row may not exist yet on a direct load: the list renders from the
+		// same query this is reacting to. `tick()` flushes the render, and the
+		// frame after it is when the expanded panel has its height, so the
+		// scroll lands where the row will actually be.
+		tick().then(() => {
+			const el = listEntryEls.get(index);
+			if (!el) return;
+			requestAnimationFrame(() => {
+				// ⛔ `nearest` IS WRONG FOR AN ARRIVAL AND RIGHT FOR A CLICK.
+				// Measured at 390: the deep-linked row was already just inside the
+				// viewport, so `nearest` moved nothing and the fold sliced the
+				// expanded panel — the reader landed on the row's header and none
+				// of the changes they had followed the link to read. `start` puts
+				// the row's top edge under the sticky chrome (`scroll-mt-28` on the
+				// row) with the body below it, and does nothing at all on a page
+				// that already fits. The chart keeps `nearest`: there the row is a
+				// destination the reader can see the whole page around, and hauling
+				// the list under a mark they just clicked is disorienting.
+				//
+				// ⛔ AND THE ARRIVAL IS NOT ANIMATED. `behavior: 'smooth'` measured
+				// as NO SCROLL AT ALL here: the list's scroll container is four
+				// ancestors up (`min-w-0 flex-1 overflow-y-auto pb-16`), and a
+				// smooth scroll queued on it during hydration loses to the
+				// framework's own scroll handling — `scrollTop` stayed 0 through
+				// eight frames while the same call with `auto` landed it at 389.
+				// It is also the right behaviour on its own terms: the reader never
+				// saw the position we would be animating away from, so an animation
+				// is a delay with nothing to show. The chart keeps `smooth`, where
+				// the reader IS watching and the travel is the point.
+				el.scrollIntoView({
+					behavior: opts.focus ? 'auto' : 'smooth',
+					block: opts.focus ? 'start' : 'nearest'
+				});
+				if (opts.focus) {
+					el.querySelector<HTMLElement>('.tap-link')?.focus();
+				}
+			});
+		});
+	}
+
 	function handleChartEntryClick(serviceId: string, index: number) {
 		const currentSvcId = `${namespace}/${name}`;
 		if (serviceId !== currentSvcId) return;
-		selectedEntry = { serviceId, index };
-		expandedIdx = new Set([...expandedIdx, index]);
-		const el = listEntryEls.get(index);
-		if (el) {
-			el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-		}
+		revealEntry(index);
 	}
+
+	/**
+	 * ⭐ THE DEEP LINK, AND IT HAS TO SURVIVE A DIRECT LOAD.
+	 *
+	 * Same shape as `/apps/<name>`'s `?release=<env>`: read the param, resolve
+	 * it against data that arrives asynchronously, act once. The `handled` latch
+	 * is keyed on the URL rather than on a boolean so that following a second
+	 * link — or the same one with a different deploy — fires again, while the
+	 * five-second rollout poll re-running this effect does not re-steal focus
+	 * from a reader who has since clicked elsewhere.
+	 *
+	 * On a DIRECT load (pasted URL, opened in a new tab) `rollout` is null on
+	 * the first run and the effect simply does nothing; it re-runs when the
+	 * query resolves, by which point `filteredHistory` — `all` by default, so
+	 * no row is filtered out — has rendered the rows and `registerEntry` has
+	 * put them in the map.
+	 */
+	let deepLinkHandled = $state<string | null>(null);
+	$effect(() => {
+		const url = $page.url;
+		const want = url.searchParams.get(DEPLOY_PARAM);
+		if (!want) return;
+		const history = rollout?.status?.history;
+		if (!history || history.length === 0) return;
+		const key = `${url.pathname}?${want}`;
+		if (deepLinkHandled === key) return;
+		const idx = findDeployIndex(history, want);
+		// ⛔ NOT `deepLinkHandled = key` BEFORE THIS. A key that names no entry
+		// in the history we have RIGHT NOW may name one in the next poll —
+		// latching here would silently swallow a link to a deploy that had not
+		// been written to `status.history` yet.
+		if (idx < 0) return;
+		deepLinkHandled = key;
+		revealEntry(idx, { focus: true });
+	});
 </script>
 
 <svelte:head>
@@ -619,7 +738,7 @@
 
 						<div
 							use:registerEntry={i}
-							class="overflow-hidden rounded-xl border transition-all duration-200 {isSelected
+							class="scroll-mt-28 overflow-hidden rounded-xl border transition-all duration-200 {isSelected
 								? 'border-blue-400 shadow-md shadow-blue-100 dark:border-blue-600 dark:shadow-blue-950/50'
 								: 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-800/50"
 						>
@@ -871,20 +990,36 @@
 													{/if}
 												</div>
 											{/if}
-											<!-- What this deploy changed vs. the previous one (lazy: only
-											     fetched once the entry is expanded). -->
 											{#if rollout?.status?.source && rollout.status.history && i + 1 < rollout.status.history.length}
+												<!-- ⛔ `min-w-0` OR THE COMMIT MESSAGE IS NOT TRUNCATED, IT IS
+												     CLIPPED. (2026-09-02, measured at 390 with the commits
+												     endpoint populated.) `CommitSummary` with `showMessages`
+												     renders TWO siblings — the summary line and the `<ul>` of
+												     messages — so both became flex items of this row, and a
+												     flex item's `min-width` is `auto`. The `truncate` inside
+												     the list could not shrink, the subject ran past the card
+												     and `overflow-hidden` on the row cut it mid-word with no
+												     ellipsis to say so. Wrapping them in one shrinkable
+												     column is the fix; `Changes` keeps `flex-shrink-0` so the
+												     label is never the thing that gives way.
+
+												     Only visible with GitHub connected, which this cluster is
+												     not — found by mocking the endpoint at the network layer.
+												     What this deploy changed vs. the previous one; lazy, so
+												     it is only fetched once the entry is expanded. -->
 												<div class="flex items-baseline gap-1.5 text-xs">
 													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Changes</span>
-													<CommitSummary
-														{namespace}
-														{name}
-														{cluster}
-														base={rollout.status.history[i + 1]?.version?.revision}
-														head={entry.version?.revision}
-														showAvatars
-														showMessages
-													/>
+													<div class="min-w-0 flex-1">
+														<CommitSummary
+															{namespace}
+															{name}
+															{cluster}
+															base={rollout.status.history[i + 1]?.version?.revision}
+															head={entry.version?.revision}
+															showAvatars
+															showMessages
+														/>
+													</div>
 												</div>
 											{/if}
 											{#if entry.message}
