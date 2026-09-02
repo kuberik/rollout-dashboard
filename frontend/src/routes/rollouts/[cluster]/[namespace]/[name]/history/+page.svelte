@@ -670,8 +670,8 @@
 						</span>
 						{#if hasOtherEnvs}
 							<button
-								class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors {showEnvironments
-									? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
+								class="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors {showEnvironments
+									? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 									: 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}"
 								onclick={() => {
 									showEnvironments = !showEnvironments;
@@ -683,8 +683,8 @@
 							</button>
 						{/if}
 						<button
-							class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors {showComparison
-								? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
+							class="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors {showComparison
+								? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 								: 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}"
 							onclick={() => {
 								showComparison = !showComparison;
