@@ -8,8 +8,6 @@
 	import { Badge, Button, Spinner, Alert } from 'flowbite-svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import {
-		CheckCircleSolid,
-		ExclamationCircleSolid,
 		ClockSolid,
 		CodePullRequestSolid,
 		UndoOutline,
@@ -594,56 +592,45 @@
 					red `0` is the norm wearing the alarm's colour, and it was the
 					only red on a page with nothing wrong.
 				-->
-				<div class="flex flex-wrap items-center gap-2">
-					<div
-						class="flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs dark:bg-gray-800"
-					>
-						<span class="text-gray-700 dark:text-gray-400">Total</span>
-						<span class="font-semibold text-gray-900 dark:text-white">{totalDeploys}</span>
-					</div>
-					<div
-						class="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs dark:bg-green-950/30"
-						title="{succeeded} of {totalDeploys} deploys finished healthy"
-					>
-						<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
-						<span class="font-semibold text-green-700 dark:text-green-400">{succeeded}</span>
-					</div>
+				<!-- The tally is a CAPTION, the same t-dense line every page header carries
+				     ("15 rollouts in 9 namespaces · 2 clusters"), not four filled pills.
+				     Ink keeps its meaning — green for healthy, red for failed, the rate in
+				     its own band — and nothing is boxed. -->
+				<p class="t-dense flex flex-wrap items-center gap-x-2 text-gray-500 dark:text-gray-400">
+					<span>
+						<span class="font-semibold tabular-nums text-gray-900 dark:text-white">{totalDeploys}</span>
+						{totalDeploys === 1 ? 'deploy' : 'deploys'}
+					</span>
+					<span aria-hidden="true">·</span>
+					<span title="{succeeded} of {totalDeploys} deploys finished healthy">
+						<span class="font-semibold tabular-nums text-green-700 dark:text-green-400">{succeeded}</span>
+						healthy
+					</span>
 					{#if failed > 0}
-						<div
-							class="flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs dark:bg-red-950/30"
-							title="{failed} of {totalDeploys} deploys failed"
-						>
-							<ExclamationCircleSolid class="h-3 w-3 text-red-700 dark:text-red-400" />
-							<span class="font-semibold text-red-700 dark:text-red-400">{failed}</span>
-						</div>
+						<span aria-hidden="true">·</span>
+						<span title="{failed} of {totalDeploys} deploys failed">
+							<span class="font-semibold tabular-nums text-red-700 dark:text-red-400">{failed}</span>
+							failed
+						</span>
 					{/if}
 					{#if rollbacks > 0}
-						<div
-							class="flex items-center gap-1.5 rounded-full bg-gray-900 px-3 py-1 text-xs text-white dark:bg-gray-100 dark:text-gray-900"
+						<span aria-hidden="true">·</span>
+						<span
 							title="{rollbacks} of these {totalDeploys} deploys moved this rollout to an OLDER release. A rollback still bakes and still counts as a success."
 						>
-							<UndoOutline class="h-3 w-3" />
-							<span class="font-semibold">
-								{rollbacks} rolled back
-							</span>
-						</div>
+							<span class="font-semibold tabular-nums text-gray-900 dark:text-white">{rollbacks}</span>
+							rolled back
+						</span>
 					{/if}
-					<div
-						class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs {successRate >= 90
-							? 'bg-green-50 dark:bg-green-950/30'
+					<span aria-hidden="true">·</span>
+					<span
+						class="font-semibold tabular-nums {successRate >= 90
+							? 'text-green-700 dark:text-green-400'
 							: successRate >= 70
-								? 'bg-yellow-50 dark:bg-yellow-950/30'
-								: 'bg-red-50 dark:bg-red-950/30'}"
+								? 'text-yellow-700 dark:text-yellow-400'
+								: 'text-red-700 dark:text-red-400'}">{successRate}% success</span
 					>
-						<span
-							class="font-semibold {successRate >= 90
-								? 'text-green-700 dark:text-green-400'
-								: successRate >= 70
-									? 'text-yellow-700 dark:text-yellow-400'
-									: 'text-red-700 dark:text-red-400'}">{successRate}% success</span
-						>
-					</div>
-				</div>
+				</p>
 			</div>
 
 			<!-- Timeline chart card.
