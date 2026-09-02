@@ -58,8 +58,8 @@
 	 */
 	import Card from '$lib/components/Card.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
-	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
-	import { leadTime, compactSpan } from '$lib/view-models/lead-time';
+	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
+	import { leadTime, median } from '$lib/view-models/lead-time';
 	import type { LeadEnv } from '$lib/view-models/lead-time';
 	import { getEnvironmentRank } from '$lib/env-order';
 	import { shortEnvLabel } from '$lib/environment-theme';
@@ -67,13 +67,7 @@
 	import { now } from '$lib/stores/time';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import type { Rollout, Environment } from '../../types';
-	import {
-		ChartMixedOutline,
-		RocketSolid,
-		ClockOutline,
-		CloseCircleSolid,
-		ChevronRightOutline
-	} from 'flowbite-svelte-icons';
+	import { ClockOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 
 	let {
 		cards,
@@ -87,9 +81,8 @@
 		localClusterName?: string;
 	} = $props();
 
-	/** The same window and the same minimum the two sibling cards use. */
+	/** The same window the two sibling cards use. */
 	const SPARK_DAYS = 7;
-	const SPARK_MIN = 3;
 	const ACTIVITY_SHOWN = 8;
 
 	/**
@@ -170,12 +163,7 @@
 		return out;
 	});
 
-	const fleetLeadMs = $derived.by<number | null>(() => {
-		const xs = [...leadPerApp].sort((a, b) => a - b);
-		if (xs.length === 0) return null;
-		const mid = Math.floor(xs.length / 2);
-		return xs.length % 2 ? xs[mid] : Math.round((xs[mid - 1] + xs[mid]) / 2);
-	});
+	const fleetLeadMs = $derived(median(leadPerApp));
 
 	const appCount = $derived(new Set(cards.map((c) => c.name)).size);
 </script>
@@ -205,68 +193,34 @@
 		so the rollup speaks the page's own vocabulary rather than a synonym of
 		it. The full sentence, with its denominator, is in `verdictTitle`.
 	-->
-	<Card
-		icon={ChartMixedOutline}
-		title="How it’s going"
+	<HowItsGoing
+		scope="fleet"
 		verdict="{onNewest} of {rankable.length} newest"
 		verdictTone={rankable.length > 0 && onNewest === rankable.length ? 'good' : 'neutral'}
 		verdictTitle="Rollouts running the newest build their own release list offers them, across {appCount} app{appCount ===
 		1
 			? ''
 			: 's'}"
-	>
-		<dl class="space-y-3">
-			<div class="flex items-baseline justify-between gap-3">
-				<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-					<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Deploys · 7d
-				</dt>
-				<dd class="flex items-center gap-2">
-					<!-- Below three points a sparkline is two bars and a gap — it draws
-					     a trend nobody can read. The count stands alone, exactly as it
-					     does on the two sibling cards. -->
-					{#if volume.deploys >= SPARK_MIN}
-						<DeployVolumeSparkline {rollouts} days={SPARK_DAYS} />
-					{/if}
-					<span class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-						>{volume.deploys}</span
-					>
-				</dd>
-			</div>
-			<div class="flex items-baseline justify-between gap-3">
-				<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-					<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical to prod
-				</dt>
-				<dd
-					class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-					title={fleetLeadMs === null
-						? 'No app has had a version go all the way from its first environment to production inside the deploy history kept for it'
-						: `The middle app's own median trip from its first environment to its first production region, measured across ${leadPerApp.length} of ${appCount} apps — the rest have not had a version make the whole trip inside the history kept for them`}
-				>
-					{fleetLeadMs === null ? '—' : compactSpan(fleetLeadMs)}
-				</dd>
-			</div>
-			<div class="flex items-baseline justify-between gap-3">
-				<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-					<CloseCircleSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Failed · 7d
-				</dt>
-				<!-- ⛔ THE INK MARKS THE DEVIATION AND NOTHING ELSE. A zero here is
-				     the norm and takes the same near-black every other figure on this
-				     card takes; a non-zero is the one number on the card that wants a
-				     person, and it takes the product's `Failed` red — the same value
-				     `ActivityRail` and `BakeStatusIcon` already spend on that word.
-				     No new hue, and no green for the zero: green would be a second
-				     mark for "everything is fine", which the whole page already is. -->
-				<dd
-					class="text-base font-semibold tabular-nums {volume.failed > 0
-						? 'text-red-700 dark:text-red-400'
-						: 'text-gray-900 dark:text-white'}"
-					title="Deploys that ended in a failure in the last 7 days, across every rollout"
-				>
-					{volume.failed}
-				</dd>
-			</div>
-		</dl>
-	</Card>
+		windowLabel="{SPARK_DAYS}d"
+		population="{rollouts.length} rollout{rollouts.length === 1 ? '' : 's'}"
+		deploys={volume.deploys}
+		deploysTitle="{volume.deploys} deploy{volume.deploys === 1
+			? ''
+			: 's'} across every rollout in the last {SPARK_DAYS} days"
+		sparklineRollouts={rollouts}
+		sparklineDays={SPARK_DAYS}
+		typicalToProd={{
+			ms: fleetLeadMs,
+			title:
+				fleetLeadMs === null
+					? 'No app has had a version go all the way from its first environment to production inside the deploy history kept for it'
+					: `The middle app's own median trip from its first environment to its first production region, measured across ${leadPerApp.length} of ${appCount} apps — the rest have not had a version make the whole trip inside the history kept for them`
+		}}
+		failed={{
+			count: volume.failed,
+			title: `Deploys that ended in a failure in the last ${SPARK_DAYS} days, across every rollout`
+		}}
+	/>
 
 	<!--
 		THE SHARED RAIL, NOT A NEW OBJECT. `/apps`, `/apps/<name>`,

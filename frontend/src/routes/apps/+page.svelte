@@ -125,7 +125,7 @@
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
 	import type { PromotionBlock } from '$lib/view-models/promotion';
 	import type { FleetEnv, FleetStripVM, FleetTone } from '$lib/view-models/fleet-strip';
-	import { leadTime, compactSpan } from '$lib/view-models/lead-time';
+	import { leadTime, compactSpan, median } from '$lib/view-models/lead-time';
 	import type { LeadEnv, LeadTimeVM } from '$lib/view-models/lead-time';
 	import { getEnvironmentRank } from '$lib/env-order';
 	import {
@@ -159,13 +159,12 @@
 	// way, which is exactly what it was doing.
 	import { blockReason } from '$lib/components/BlockReason.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
+	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
 	import {
 		RocketSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
 		ClockOutline,
-		ChartMixedOutline,
-		CodeBranchOutline,
 		ChevronRightOutline,
 		PauseSolid,
 		ArrowRightOutline
@@ -1134,12 +1133,7 @@
 	const leadSamples = $derived(
 		appRows.map((a) => a.lead?.medianMs).filter((ms): ms is number => typeof ms === 'number')
 	);
-	const fleetLeadMs = $derived.by<number | null>(() => {
-		const xs = [...leadSamples].sort((a, b) => a - b);
-		if (xs.length === 0) return null;
-		const mid = Math.floor(xs.length / 2);
-		return xs.length % 2 ? xs[mid] : Math.round((xs[mid - 1] + xs[mid]) / 2);
-	});
+	const fleetLeadMs = $derived(median(leadSamples));
 
 	/**
 	 * THE APP FURTHEST FROM ITS OWN NEWEST BUILD — the one quantity
@@ -1760,95 +1754,42 @@
 				     fails it as an unresolved `up-to-date headline` — a read-first
 				     claim with no app named above it. Naming the set is what makes
 				     it a rollup ABOUT apps rather than a claim about one. -->
-				<Card
-					icon={ChartMixedOutline}
-					title="How it’s going"
+				<HowItsGoing
+					scope="apps"
 					verdict="{currentCount} of {appRows.length} apps up to date"
 					verdictTone={currentCount === appRows.length ? 'good' : 'neutral'}
 					verdictTitle="Apps whose every deployed environment is on the newest version available to it"
-				>
-					<dl class="space-y-3">
-						<div class="flex items-baseline justify-between gap-3">
-							<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-								<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Deploys · 7d
-							</dt>
-							<dd class="flex items-center gap-2">
-								{#if fleetDeploys7d >= SPARK_MIN}
-									<DeployVolumeSparkline rollouts={allRollouts} days={SPARK_DAYS} />
-								{/if}
-								<span class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-									>{fleetDeploys7d}</span
-								>
-							</dd>
-						</div>
-						<div class="flex items-baseline justify-between gap-3">
-							<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-								<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical to prod
-							</dt>
-							<dd
-								class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-								title={fleetLeadMs === null
-									? 'No app has had a version go all the way from its first environment to production inside the deploy history kept for it'
-									: `The middle app's own median trip from its first environment to its first production region, measured across ${leadSamples.length} of ${appRows.length} apps — the rest have not had a version make the whole trip inside the history kept for them`}
-							>
-								{fleetLeadMs === null ? '—' : compactSpan(fleetLeadMs)}
-							</dd>
-						</div>
-						<div class="flex items-baseline justify-between gap-3">
-							<!-- ⭐ THE APP NAME IS ON THE LABEL SIDE, AND THE `dd` IS ONE
-							     FIGURE — the shape the two rows above already have.
-							     (2026-09-02.) It used to sit in the VALUE cell, so the row
-							     rendered `hello-frontend-app 1`: a mono identifier flush
-							     against a bare digit, which reads as a name with a stray
-							     number rather than as one fact. Nothing was wrong with the
-							     digit — `32` and `9h` take their meaning from their label
-							     the same way — the intruder was a second object in the
-							     cell that the other two rows do not have.
-							     `Deploys · 7d`'s sparkline is not a counter-example: it is
-							     the SAME figure drawn over time, not a second value.
-							     So the row is `Furthest behind <app>` … `1`, every `dd`
-							     is a 16px tabular figure hard-right, and the three
-							     figures share one column down the card.
-							     `whitespace-nowrap` stays on the WORDS only; the name
-							     truncates, because the number is the reading and the name
-							     is the pointer, one click away in full. -->
-							<dt
-								class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-							>
-								<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-								<span class="shrink-0 whitespace-nowrap">Furthest behind</span>
-								{#if deepest}
-									<a
-										href="/apps/{deepest.appName}"
-										class="min-w-0 truncate font-mono text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-										>{deepest.appName}</a
-									>
-								{/if}
-							</dt>
-							<dd class="shrink-0">
-								{#if deepest}
-									<span
-										class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-										title="{deepest.appName} has an environment {deepest.by} version{deepest.by ===
-										1
-											? ''
-											: 's'} behind the newest available to it">{deepest.by}</span
-									>
-								{:else}
-									<span class="text-base font-semibold text-green-700 dark:text-green-400">—</span>
-								{/if}
-							</dd>
-						</div>
-					</dl>
-				</Card>
+					windowLabel="{SPARK_DAYS}d"
+					population="{appRows.length} app{appRows.length === 1 ? '' : 's'}"
+					deploys={fleetDeploys7d}
+					deploysTitle="{fleetDeploys7d} deploy{fleetDeploys7d === 1
+						? ''
+						: 's'} across every app on this page in the last {SPARK_DAYS} days"
+					sparklineRollouts={allRollouts}
+					sparklineDays={SPARK_DAYS}
+					typicalToProd={{
+						ms: fleetLeadMs,
+						title:
+							fleetLeadMs === null
+								? 'No app has had a version go all the way from its first environment to production inside the deploy history kept for it'
+								: `The middle app's own median trip from its first environment to its first production region, measured across ${leadSamples.length} of ${appRows.length} apps — the rest have not had a version make the whole trip inside the history kept for them`
+					}}
+					furthestBehind={{
+						entry: deepest,
+						title: deepest
+							? `${deepest.appName} has an environment ${deepest.by} version${deepest.by === 1 ? '' : 's'} behind the newest available to it`
+							: 'No app has an environment behind the newest version available to it'
+					}}
+				/>
 
 				<Card icon={ClockOutline} title="Recent activity" padded={false}>
 					{#snippet rollup()}
-						<a
-							href="/activity"
-							class="text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-							aria-label="View all deploy activity">view all ›</a
-						>
+						<!-- `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
+						     `ActivityRail`'s OWN DEFAULT HEADER, NOT A THIRD PRIVATE
+						     ONE. (2026-09-02) -->
+						<a href="/activity" class="nav-link" aria-label="View all deploy activity">
+							View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+						</a>
 					{/snippet}
 					<ActivityRail
 						rollouts={allRollouts}

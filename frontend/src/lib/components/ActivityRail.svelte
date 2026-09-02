@@ -10,7 +10,12 @@
 	} from '$lib/utils';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
 	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
-	import { CalendarMonthSolid, ClockSolid, UndoOutline } from 'flowbite-svelte-icons';
+	import {
+		CalendarMonthSolid,
+		ClockSolid,
+		UndoOutline,
+		ChevronRightOutline
+	} from 'flowbite-svelte-icons';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -377,11 +382,17 @@
 	{#if chrome}
 		<div class="mb-3 flex items-baseline justify-between">
 			<h2 class="t-label text-gray-500 dark:text-gray-400">Recent activity</h2>
-			<a
-				href={activityHref}
-				class="t-micro text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-				aria-label="View all recent activity">view all ›</a
-			>
+			<!-- `.nav-link`, NOT a private `t-micro` spelling. (2026-09-02) This
+			     was `view all ›` at 12px/400 with the `›` glyph — a control that
+			     only changes what you are looking at, wearing a treatment none of
+			     its siblings (`/`'s rail, and every route-level `rollup` snippet
+			     wrapping this component with `chrome={false}`) use any more. Same
+			     wording and glyph `HomeRail` settled on: "View all activity ›",
+			     the SVG chevron rather than the character, `.nav-link`'s own
+			     14px/500. -->
+			<a href={activityHref} class="nav-link" aria-label="View all recent activity">
+				View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+			</a>
 		</div>
 	{/if}
 	<div

@@ -59,9 +59,9 @@
 	 *   neutral gray. One coloured chip per chain, the colour is the
 	 *   environment's own, zero new colour values.
 	 */
-	// `compactSpan` (`15s`), not `formatDurationMs` (`15 seconds`): this row's
-	// sibling card on /apps/<name> speaks compact, and one card, one span format.
-	import { compactSpan } from '$lib/view-models/lead-time';
+	// `medianBakeSpan` is the one home for this maths now (`lead-time.ts`) —
+	// `/apps/<name>` carried a byte-identical copy of the same loop.
+	import { medianBakeSpan } from '$lib/view-models/lead-time';
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
@@ -110,15 +110,12 @@
 		ExclamationCircleSolid,
 		ClockSolid,
 		ClockOutline,
-		CalendarWeekSolid,
-		RocketSolid,
-		ChartMixedOutline,
-		CodeBranchOutline
+		CalendarWeekSolid
 	} from 'flowbite-svelte-icons';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { getStatusCircleClass, bakeWord } from '$lib/bake-status';
-	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
+	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 	import NextStep from '$lib/components/NextStep.svelte';
 	import BlockReason from '$lib/components/BlockReason.svelte';
@@ -697,21 +694,7 @@
 	 * duration yet. With nothing to measure the tile prints an em dash; it
 	 * never prints `0`.
 	 */
-	const medianBakeMs = $derived.by<number | null>(() => {
-		const spans: number[] = [];
-		for (const slot of slots)
-			for (const h of slot.cell.rollout.status?.history ?? []) {
-				if (!h.bakeStartTime || !h.bakeEndTime) continue;
-				const a = new Date(h.bakeStartTime).getTime();
-				const b = new Date(h.bakeEndTime).getTime();
-				if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
-				spans.push(b - a);
-			}
-		if (spans.length === 0) return null;
-		spans.sort((x, y) => x - y);
-		const mid = spans.length >> 1;
-		return spans.length % 2 ? spans[mid] : Math.round((spans[mid - 1] + spans[mid]) / 2);
-	});
+	const medianBakeMs = $derived(medianBakeSpan(slots.map((s) => s.cell.rollout)));
 
 	/**
 	 * PROMOTION RATE — the share of apps here running their app's NEWEST
@@ -1493,91 +1476,28 @@
 			     reads as one product. -->
 			<div class="min-w-0 space-y-4">
 				{#if rows.length > 0}
-					<Card
-						icon={ChartMixedOutline}
-						title="How it’s going"
+					<HowItsGoing
+						scope="env"
 						verdict={promotionRate === null
 							? '—'
 							: `${onNewestCount} of ${rankableCount} up to date`}
 						verdictTone={promotionRate === 100 ? 'good' : 'neutral'}
 						verdictTitle="Apps here running the newest version they have"
-					>
-						<dl class="space-y-3">
-							<div class="flex items-baseline justify-between gap-3">
-								<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-									<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Deploys · 24h
-								</dt>
-								<dd class="flex items-center gap-2">
-									{#if showSpark}
-										<DeployVolumeSparkline
-											rollouts={slots.map((s) => s.cell.rollout)}
-											hours={SPARK_HOURS}
-											buckets={SPARK_BUCKETS}
-										/>
-									{/if}
-									<span class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-										>{deploys24h}</span
-									>
-								</dd>
-							</div>
-							<div class="flex items-baseline justify-between gap-3">
-								<dt class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-									<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical deploy
-								</dt>
-								<dd
-									class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-									title="How long a deploy here usually takes to finish and be watched, measured across this environment's history"
-								>
-									{medianBakeMs === null ? '—' : compactSpan(medianBakeMs)}
-								</dd>
-							</div>
-							<!-- THE ONE QUANTITY `/environments` RANKS ON, restated at
-							     this scope so the two pages agree on the number and on
-							     the app that owns it. `—` and not `0`: an environment
-							     with nothing behind has no deepest lag, and a zero in a
-							     column of distances reads as a measurement.
-
-							     ⭐ THE APP NAME IS ON THE LABEL SIDE, AND THE `dd` IS ONE
-							     FIGURE — `/apps`' own fix for this exact shape (2026-09-02).
-							     This row used to print `dt`=`Furthest behind`, `dd`=
-							     `hello-frontend-app 1` — a mono identifier flush against a
-							     bare digit, which reads as a name with a stray number
-							     rather than as one fact. The name moves into the `<dt>`
-							     (`Furthest behind hello-frontend-app`) so all three `dd`s
-							     in this card share one 16px tabular-figure column, same as
-							     `Deploys · 24h` and `Typical deploy` above it.
-							     `whitespace-nowrap` stays on the WORDS only; the name
-							     truncates. -->
-							<div class="flex items-baseline justify-between gap-3">
-								<dt
-									class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-								>
-									<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-									<span class="shrink-0 whitespace-nowrap">Furthest behind</span>
-									{#if deepest}
-										<a
-											href="/apps/{deepest.appName}"
-											class="min-w-0 truncate font-mono text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-											>{deepest.appName}</a
-										>
-									{/if}
-								</dt>
-								<dd class="shrink-0">
-									{#if deepest}
-										<span
-											class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
-											title="{deepest.appName} here is {deepest.by} version{deepest.by === 1
-												? ''
-												: 's'} behind the newest available to it">{deepest.by}</span
-										>
-									{:else}
-										<span class="text-base font-semibold text-green-700 dark:text-green-400">—</span
-										>
-									{/if}
-								</dd>
-							</div>
-						</dl>
-					</Card>
+						windowLabel="{SPARK_HOURS}h"
+						deploys={deploys24h}
+						sparklineRollouts={slots.map((s) => s.cell.rollout)}
+						sparklineHours={SPARK_HOURS}
+						sparklineBuckets={SPARK_BUCKETS}
+						showSparkline={showSpark}
+						typicalDeployMs={medianBakeMs}
+						typicalDeployTitle="How long a deploy here usually takes to finish and be watched, measured across this environment's history"
+						furthestBehind={{
+							entry: deepest,
+							title: deepest
+								? `${deepest.appName} here is ${deepest.by} version${deepest.by === 1 ? '' : 's'} behind the newest available to it`
+								: 'No app here is behind the newest version available to it'
+						}}
+					/>
 
 					<!-- The same `ActivityRail` `/apps/[name]` and `/namespaces/[name]`
 					     use, so it is not a new object — and it carries the one
@@ -1595,11 +1515,16 @@
 					     8px one. -->
 					<Card icon={ClockOutline} title="Recent activity" padded={false}>
 						{#snippet rollup()}
+							<!-- `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
+							     `ActivityRail`'s OWN DEFAULT HEADER, NOT A THIRD PRIVATE
+							     ONE. (2026-09-02) -->
 							<a
 								href={`/activity?env=${encodeURIComponent(envName)}`}
-								class="text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-								aria-label={`View all activity in ${envName}`}>view all ›</a
+								class="nav-link"
+								aria-label={`View all activity in ${envName}`}
 							>
+								View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+							</a>
 						{/snippet}
 						<ActivityRail
 							rollouts={slots.map((s) => s.cell.rollout)}

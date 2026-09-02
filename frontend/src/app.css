@@ -403,6 +403,24 @@ textarea {
 	letter-spacing: 0;
 }
 
+/* THE `dd` FIGURE — one role, everywhere a rail card prints a bare number.
+   (2026-09-02) `How it's going` had FOUR spellings of its own headline
+   figure across `/`, `/apps`, `/envs/<name>` (`text-base font-semibold` —
+   16px/600, off the scale) and `/apps/[name]` (`t-headline` — 17px/600, the
+   nearest declared role, reached for because there was nowhere else to
+   land). Neither is a role a second page can cite. No existing role is
+   16px, so this is the tenth, not a rename of `t-headline` — `t-headline`
+   stays a PROSE role (17px on Montserrat, used for sentence-shaped
+   headlines) and this is a FIGURE role (16px on the system stack, for a
+   number standing alone in a `dd`). Consuming components still add
+   `tabular-nums` and their own ink. */
+.t-figure {
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1.3;
+	letter-spacing: 0;
+}
+
 .t-body {
 	font-size: 14px;
 	font-weight: 400;

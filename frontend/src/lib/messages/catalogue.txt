@@ -61,7 +61,7 @@ lib/components/ActivityRail.svelte	text	No activity yet
 lib/components/ActivityRail.svelte	aria-label	Open …
 lib/components/ActivityRail.svelte	text	Recent activity
 lib/components/ActivityRail.svelte	text	Show … earlier deploys ›
-lib/components/ActivityRail.svelte	text	view all ›
+lib/components/ActivityRail.svelte	text	View all activity
 lib/components/ActivityRail.svelte	aria-label	View all recent activity
 lib/components/AppPromotionFlow.svelte	code	font-size: 10px; font-weight: 600; fill: …;
 lib/components/AppPromotionFlow.svelte	code	in sync
@@ -261,14 +261,16 @@ lib/components/HealthChecksCard.svelte	text	… failing … … · … passing
 lib/components/HealthChecksCard.svelte	text	… passing · … recovered
 lib/components/HealthChecksCard.svelte	text	… pending … · … passing
 lib/components/HealthChecksCard.svelte	text	Health Checks
-lib/components/HomeRail.svelte	text	Deploys · 7d
-lib/components/HomeRail.svelte	title	Deploys that ended in a failure in the last 7 days, across every rollout
-lib/components/HomeRail.svelte	text	Failed · 7d
-lib/components/HomeRail.svelte	title	How it’s going
 lib/components/HomeRail.svelte	title	Recent activity
-lib/components/HomeRail.svelte	text	Typical to prod
 lib/components/HomeRail.svelte	text	View all activity
 lib/components/HomeRail.svelte	aria-label	View all deploy activity
+lib/components/HowItsGoing.svelte	text	Deploys · … …
+lib/components/HowItsGoing.svelte	text	Failed · …
+lib/components/HowItsGoing.svelte	text	Furthest behind
+lib/components/HowItsGoing.svelte	title	How it’s going
+lib/components/HowItsGoing.svelte	text	no full trip yet
+lib/components/HowItsGoing.svelte	text	Typical deploy
+lib/components/HowItsGoing.svelte	text	Typical to prod
 lib/components/LogsViewer.svelte	code	… pod…
 lib/components/LogsViewer.svelte	code	(${query.replace(/[.*+?^…()|[\]\\]/g, '\\$&')})
 lib/components/LogsViewer.svelte	text	Columns …
@@ -705,9 +707,7 @@ routes/activity/+page.svelte	text	Widen the window above, or clear the filters.
 routes/apps/[name]/+page.svelte	code	, blocked by …
 routes/apps/[name]/+page.svelte	code	… … waiting for ……
 routes/apps/[name]/+page.svelte	text	… deploy …
-routes/apps/[name]/+page.svelte	title	… deploy… of this app across every environment in the last 7 days
 routes/apps/[name]/+page.svelte	code	… environments
-routes/apps/[name]/+page.svelte	text	… in 7d
 routes/apps/[name]/+page.svelte	code	… is pinned
 routes/apps/[name]/+page.svelte	code	… is stuck
 routes/apps/[name]/+page.svelte	text	… newer version … ready
@@ -734,7 +734,6 @@ routes/apps/[name]/+page.svelte	code	Deployed …
 routes/apps/[name]/+page.svelte	code	Deploying for …
 routes/apps/[name]/+page.svelte	text	Go back a version
 routes/apps/[name]/+page.svelte	code	Held at …. … available, and none will deploy until the pin is cleared.
-routes/apps/[name]/+page.svelte	title	How it’s going
 routes/apps/[name]/+page.svelte	title	How much is on the newest
 routes/apps/[name]/+page.svelte	text	kuberik | …
 routes/apps/[name]/+page.svelte	text	Last 24h
@@ -743,7 +742,6 @@ routes/apps/[name]/+page.svelte	code	needs approval
 routes/apps/[name]/+page.svelte	title	Needs you
 routes/apps/[name]/+page.svelte	code	never deployed
 routes/apps/[name]/+page.svelte	text	never deployed
-routes/apps/[name]/+page.svelte	text	no full trip yet
 routes/apps/[name]/+page.svelte	code	no progress
 routes/apps/[name]/+page.svelte	code	no progress for …
 routes/apps/[name]/+page.svelte	code	nothing deployed
@@ -764,13 +762,11 @@ routes/apps/[name]/+page.svelte	code	Rollback from … to … due to issues with
 routes/apps/[name]/+page.svelte	title	Running a version that is on no environment's release list
 routes/apps/[name]/+page.svelte	text	Show … earlier deploys ›
 routes/apps/[name]/+page.svelte	code	The gates on this environment are blocking too, but the pin is the cause.
-routes/apps/[name]/+page.svelte	text	Typical deploy
-routes/apps/[name]/+page.svelte	text	Typical to prod
 routes/apps/[name]/+page.svelte	code	Unchanged for … and nothing is holding it on purpose.
 routes/apps/[name]/+page.svelte	code	Unchanged for ….
 routes/apps/[name]/+page.svelte	code	Unchanged long enough that it will not clear on its own.
-routes/apps/[name]/+page.svelte	text	view all ›
 routes/apps/[name]/+page.svelte	aria-label	View all activity
+routes/apps/[name]/+page.svelte	text	View all activity
 routes/apps/[name]/+page.svelte	code	waiting on
 routes/apps/[name]/+page.svelte	title	Waiting, nothing to do
 routes/apps/[name]/+page.svelte	code	window closed
@@ -784,7 +780,6 @@ routes/apps/+page.svelte	text	… deploy … … …
 routes/apps/+page.svelte	code	… different versions live
 routes/apps/+page.svelte	code	… environments
 routes/apps/+page.svelte	code	… has … newer version… held
-routes/apps/+page.svelte	title	… has an environment … version… behind the newest available to it
 routes/apps/+page.svelte	code	… in …
 routes/apps/+page.svelte	code	… is pinned on …
 routes/apps/+page.svelte	title	… is stuck
@@ -807,8 +802,6 @@ routes/apps/+page.svelte	text	An app appears here once you bind a
 routes/apps/+page.svelte	text	app … … ·
 routes/apps/+page.svelte	code	Automatic updates into this environment are off, not broken.
 routes/apps/+page.svelte	text	Deploys · 7d
-routes/apps/+page.svelte	text	Furthest behind
-routes/apps/+page.svelte	title	How it’s going
 routes/apps/+page.svelte	code	its last deploy failed or it has stopped moving
 routes/apps/+page.svelte	text	kuberik | Apps
 routes/apps/+page.svelte	code	Last attempt
@@ -834,8 +827,7 @@ routes/apps/+page.svelte	code	someone pinned a version here, so nothing newer ca
 routes/apps/+page.svelte	code	the version running here is worse than the one before it
 routes/apps/+page.svelte	text	To prod
 routes/apps/+page.svelte	title	Typical time a version takes to get from … to …, measured over … version… that made the whole trip
-routes/apps/+page.svelte	text	Typical to prod
-routes/apps/+page.svelte	text	view all ›
+routes/apps/+page.svelte	text	View all activity
 routes/apps/+page.svelte	aria-label	View all deploy activity
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
@@ -900,7 +892,6 @@ routes/envs/[name]/+page.svelte	title	… — this page
 routes/envs/[name]/+page.svelte	code	… deploys have failed here
 routes/envs/[name]/+page.svelte	code	… failed to deploy here
 routes/envs/[name]/+page.svelte	title	… here can still take … newer version…
-routes/envs/[name]/+page.svelte	title	… here is … version… behind the newest available to it
 routes/envs/[name]/+page.svelte	title	… here is running …, which cannot be placed on this app’s build ladder
 routes/envs/[name]/+page.svelte	code	… is stuck here
 routes/envs/[name]/+page.svelte	title	… is stuck here
@@ -912,11 +903,7 @@ routes/envs/[name]/+page.svelte	title	… version… have reached … and have n
 routes/envs/[name]/+page.svelte	code	+… regions
 routes/envs/[name]/+page.svelte	text	Back to environments
 routes/envs/[name]/+page.svelte	title	Deploys …, the newest version every rule already allows
-routes/envs/[name]/+page.svelte	text	Deploys · 24h
 routes/envs/[name]/+page.svelte	text	Environment not found
-routes/envs/[name]/+page.svelte	text	Furthest behind
-routes/envs/[name]/+page.svelte	title	How it’s going
-routes/envs/[name]/+page.svelte	title	How long a deploy here usually takes to finish and be watched, measured across this environment's history
 routes/envs/[name]/+page.svelte	code	It has not advanced for longer than this app takes to deploy.
 routes/envs/[name]/+page.svelte	text	kuberik | …
 routes/envs/[name]/+page.svelte	text	last deploy … ago
@@ -930,8 +917,7 @@ routes/envs/[name]/+page.svelte	title	Running a version that is on no environmen
 routes/envs/[name]/+page.svelte	title	Running now
 routes/envs/[name]/+page.svelte	code	The last deploy did not complete. Nothing newer will promote past it.
 routes/envs/[name]/+page.svelte	title	This app has never deployed here
-routes/envs/[name]/+page.svelte	text	Typical deploy
-routes/envs/[name]/+page.svelte	text	view all ›
+routes/envs/[name]/+page.svelte	text	View all activity
 routes/envs/[name]/+page.svelte	code	waiting for … to ship … … — it is on …
 routes/envs/[name]/+page.svelte	code	waiting on … gate…
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …

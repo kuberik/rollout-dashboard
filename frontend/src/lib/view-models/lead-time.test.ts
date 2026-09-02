@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leadTime, compactSpan, type LeadEnv } from './lead-time';
+import { leadTime, compactSpan, median, medianBakeSpan, type LeadEnv } from './lead-time';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -135,5 +135,63 @@ describe('compactSpan', () => {
 		expect(compactSpan(5 * HOUR)).toBe('5h');
 		expect(compactSpan(5 * 24 * HOUR)).toBe('5d');
 		expect(compactSpan(120 * 24 * HOUR)).toBe('4mo');
+	});
+});
+
+describe('median', () => {
+	it('returns null for an empty sample, never 0', () => {
+		expect(median([])).toBeNull();
+	});
+	it('is the middle value for an odd-length sample', () => {
+		expect(median([5, 1, 3])).toBe(3);
+	});
+	it('averages the two middle values for an even-length sample', () => {
+		expect(median([1, 2, 3, 4])).toBe(3); // (2 + 3) / 2 = 2.5 -> rounds to 3
+	});
+});
+
+describe('medianBakeSpan', () => {
+	it('returns null when no rollout has both a start and an end', () => {
+		expect(
+			medianBakeSpan([
+				{ status: { history: [{ bakeStartTime: '2026-01-01T00:00:00Z' }] } }
+			])
+		).toBeNull();
+	});
+	it('excludes a still-baking window (no bakeEndTime) rather than clamping to now', () => {
+		const ms = medianBakeSpan([
+			{
+				status: {
+					history: [
+						{
+							bakeStartTime: '2026-01-01T00:00:00Z',
+							bakeEndTime: '2026-01-01T00:05:00Z'
+						},
+						{ bakeStartTime: '2026-01-02T00:00:00Z' }
+					]
+				}
+			}
+		]);
+		expect(ms).toBe(5 * MIN);
+	});
+	it('is the median span across every rollout passed in, not per-rollout', () => {
+		const ms = medianBakeSpan([
+			{
+				status: {
+					history: [
+						{ bakeStartTime: '2026-01-01T00:00:00Z', bakeEndTime: '2026-01-01T00:01:00Z' }
+					]
+				}
+			},
+			{
+				status: {
+					history: [
+						{ bakeStartTime: '2026-01-01T00:00:00Z', bakeEndTime: '2026-01-01T00:03:00Z' },
+						{ bakeStartTime: '2026-01-01T00:00:00Z', bakeEndTime: '2026-01-01T00:05:00Z' }
+					]
+				}
+			}
+		]);
+		expect(ms).toBe(3 * MIN);
 	});
 });

@@ -49,6 +49,56 @@ export type LeadTimeVM = {
 	toLabel: string;
 };
 
+/**
+ * THE SORTED-MIDDLE MEDIAN, AND THE ONE PLACE IT IS WRITTEN. (2026-09-02)
+ *
+ * `/` and `/apps` each carried a byte-identical `[...xs].sort(...); const mid
+ * = ...` block to fold their per-app `leadTime` medians into one fleet
+ * figure — a "median of medians" with no shared name, so the two pages could
+ * drift the instant one of them adjusted a tie-break. This file already
+ * carries the ONE median inside `leadTime` itself; a second unnamed copy of
+ * the same eight lines two call sites away is the duplication `HowItsGoing`
+ * was built to end. `null` for an empty sample, never `0` — a fleet with no
+ * observed trip has no figure, not a zero-length one.
+ */
+export function median(xs: readonly number[]): number | null {
+	if (xs.length === 0) return null;
+	const sorted = [...xs].sort((a, b) => a - b);
+	const mid = sorted.length >> 1;
+	return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+/**
+ * MEDIAN BAKE SPAN — `bakeStartTime` → `bakeEndTime`, across whatever set of
+ * rollouts the caller scopes to (one app's cells, one environment's slots).
+ * `/apps/[name]` and `/envs/[name]` each carried their own copy of this loop,
+ * identical down to the guard clauses. A bake still running has no
+ * `bakeEndTime` and is excluded rather than clamped to "now" — an in-flight
+ * window is not a duration yet.
+ */
+export function medianBakeSpan(
+	rollouts: readonly {
+		status?: {
+			history?: readonly {
+				bakeStartTime?: string | null;
+				bakeEndTime?: string | null;
+			}[];
+		};
+	}[]
+): number | null {
+	const spans: number[] = [];
+	for (const r of rollouts) {
+		for (const h of r.status?.history ?? []) {
+			if (!h.bakeStartTime || !h.bakeEndTime) continue;
+			const a = new Date(h.bakeStartTime).getTime();
+			const b = new Date(h.bakeEndTime).getTime();
+			if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
+			spans.push(b - a);
+		}
+	}
+	return median(spans);
+}
+
 /** Earliest deploy of each build in one environment. A redeploy of the same
  *  build is not a second arrival. */
 function firstSeen(env: LeadEnv): Map<string, number> {

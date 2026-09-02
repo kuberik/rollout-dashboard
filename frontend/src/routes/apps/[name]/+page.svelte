@@ -128,7 +128,7 @@
 	import { groupRolloutsByApp, displayVersionForTag } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { getEnvironmentRank, compareEnvironmentNames } from '$lib/env-order';
-	import { leadTime, compactSpan, type LeadEnv } from '$lib/view-models/lead-time';
+	import { leadTime, medianBakeSpan, type LeadEnv } from '$lib/view-models/lead-time';
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import {
 		getDisplayVersion,
@@ -185,6 +185,7 @@
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import Card from '$lib/components/Card.svelte';
+	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import { Button } from 'flowbite-svelte';
 	import {
@@ -198,8 +199,6 @@
 		PauseSolid,
 		CheckCircleSolid,
 		ChartMixedOutline,
-		RocketSolid,
-		ClockOutline,
 		ArrowUpRightFromSquareOutline,
 		ChevronDoubleRightOutline,
 		ChevronRightOutline,
@@ -1887,22 +1886,10 @@
 		return n;
 	});
 
-	/** Median bake span across this app's whole history. `/envs/<name>`'s own. */
-	const medianBakeMs = $derived.by<number | null>(() => {
-		const spans: number[] = [];
-		for (const c of cells)
-			for (const h of c.rollout.status?.history ?? []) {
-				if (!h.bakeStartTime || !h.bakeEndTime) continue;
-				const a = new Date(h.bakeStartTime).getTime();
-				const b = new Date(h.bakeEndTime).getTime();
-				if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
-				spans.push(b - a);
-			}
-		if (spans.length === 0) return null;
-		spans.sort((x, y) => x - y);
-		const mid = spans.length >> 1;
-		return spans.length % 2 ? spans[mid] : Math.round((spans[mid - 1] + spans[mid]) / 2);
-	});
+	/** Median bake span across this app's whole history. `/envs/<name>`'s own
+	 *  copy of this loop is gone too — `medianBakeSpan` is the one home for
+	 *  the maths now (`lead-time.ts`). */
+	const medianBakeMs = $derived(medianBakeSpan(cells.map((c) => c.rollout)));
 
 	/**
 	 * The app's median trip from its first environment to its first production
@@ -3527,104 +3514,36 @@
 					     derivation for why `Furthest behind` — the row both sibling
 					     pages carry — is deliberately not here.
 
-					     THE ROLLUP IS THE LEAD TIME, not a third row: §1 makes the
-					     right-aligned verdict the thing a reader takes WITHOUT reading
-					     the card, and *"how long does a change take to reach
-					     production"* is the answer this card owes at a glance. -->
+					     ⛔ THE ROLLUP IS NO LONGER THE CADENCE. (2026-09-02) It used to
+					     be `5 in 7d` plus the sparkline, drawn in the HEADER so the
+					     `dl` below could stay two rows — which put the sparkline
+					     nowhere near its own count on this page while every sibling
+					     card drew it beside a `Deploys` ROW. `HowItsGoing` puts
+					     `Deploys` back as this card's first row, same as `/`, `/apps`
+					     and `/envs/[name]`; the header carries no verdict here, the
+					     same as this rail's `Source` card above it. -->
 					{#if hasCadence}
-						<Card icon={ChartMixedOutline} title="How it’s going">
-							<!-- ⭐ THE ROLLUP IS THE CADENCE, AND IT IS A MARK PLUS A
-							     NUMBER. §1 makes the right-aligned verdict the thing a
-							     reader takes WITHOUT reading the card; the reference page's
-							     own header rollups are exactly this shape (`↑ 19`, `3/3
-							     healthy`). The sparkline is the mark — the seven-day shape
-							     of this app's deploys — and it may not be a ROW as well,
-							     because then the number would print twice.
-
-							     ⛔ AND NOT THE LEAD TIME. That was the first spelling and
-							     it put an em dash in the header on every app whose retained
-							     history has not yet carried one build the whole way — which
-							     is most of them. A card whose one-glance answer is `—` has
-							     no answer; the em dash belongs in a ROW, where the label
-							     beside it says what could not be measured. -->
-							{#snippet rollup()}
-								{#if deploys7d >= SPARK_MIN}
-									<DeployVolumeSparkline
-										rollouts={cells.map((c) => c.rollout)}
-										days={SPARK_DAYS}
-									/>
-								{/if}
-								<span
-									class="t-code-sm whitespace-nowrap text-gray-500 dark:text-gray-400"
-									title="{deploys7d} deploy{deploys7d === 1
-										? ''
-										: 's'} of this app across every environment in the last 7 days"
-									>{deploys7d} in 7d</span
-								>
-							{/snippet}
-							<!-- ⭐ BOTH ROWS SPEAK `compactSpan` (`19s`, `6m`), NOT
-							     `formatDurationMs` (`19 seconds`). (2026-09-02) They used
-							     to disagree 20px apart — `Typical deploy` was
-							     `formatDurationMs` because `stuckTitle` 3000 lines up
-							     spends that spelling on the same field, and `Typical to
-							     prod` was already `compactSpan` because `/apps`' rail and
-							     the activity timestamps spend THAT one. Picked `compactSpan`:
-							     it is what this card's own two closest siblings
-							     (`/apps`'s rail, `/activity`'s timestamps) already print,
-							     `formatDurationMs`'s only other user on this page is a
-							     tooltip sentence (`Checking for 19 seconds`) where the
-							     prose reads worse compact, and a `dl` pairing two spans is
-							     exactly the place two spellings of one unit are 20px apart
-							     and READ as two units. -->
-							<dl class="space-y-3">
-								<div class="flex items-baseline justify-between gap-3">
-									<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-										<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical deploy
-									</dt>
-									<dd
-										class="t-headline text-gray-900 tabular-nums dark:text-white"
-										title={medianBakeMs === null
-											? 'No deploy of this app has a recorded start and end inside the history kept for it'
-											: 'How long a deploy of this app usually takes to finish and be watched, measured across its whole history'}
-									>
-										{medianBakeMs === null ? '—' : compactSpan(medianBakeMs)}
-									</dd>
-								</div>
-								<!-- `PAGE-CRITERIA.md`'s `/apps` criterion 3 — *"which ship
-								     slowly? — lead time dev→prod"* — asked at app scope, and
-								     the one measurement on this page that is about SPEED
-								     rather than position. `—` where no build has been
-								     observed at both ends inside the retained history:
-								     never an estimate. -->
-								<div class="flex items-baseline justify-between gap-3">
-									<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-										<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical to prod
-									</dt>
-									<dd
-										class="flex items-baseline justify-end gap-1.5 text-gray-900 tabular-nums dark:text-white"
-										title={appLead === null
-											? 'No version of this app has been seen in its first environment and then in production inside the deploy history kept for it'
-											: `Median trip from ${appLead.fromLabel.toUpperCase()} to ${appLead.toLabel.toUpperCase()}, measured across ${appLead.samples} version${appLead.samples === 1 ? '' : 's'} observed at both ends`}
-									>
-										{#if appLead === null}
-											<!-- ⭐ `—` ALONE READS AS A RENDERING BUG, NOT AN
-											     ANSWER. (2026-09-02) `/apps`' own rail hits this
-											     exact same case — no version has yet made the whole
-											     first-environment-to-prod trip inside retained
-											     history — and names it: `— no full trip yet`. This
-											     card printed the dash with no caption, the one place
-											     on the page an em dash was left to speak for itself. -->
-											<span class="t-headline text-gray-500 dark:text-gray-400">—</span>
-											<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
-												>no full trip yet</span
-											>
-										{:else}
-											<span class="t-headline">{compactSpan(appLead.medianMs)}</span>
-										{/if}
-									</dd>
-								</div>
-							</dl>
-						</Card>
+						<HowItsGoing
+							scope="app"
+							windowLabel="{SPARK_DAYS}d"
+							deploys={deploys7d}
+							deploysTitle="{deploys7d} deploy{deploys7d === 1
+								? ''
+								: 's'} of this app across every environment in the last {SPARK_DAYS} days"
+							sparklineRollouts={cells.map((c) => c.rollout)}
+							sparklineDays={SPARK_DAYS}
+							typicalDeployMs={medianBakeMs}
+							typicalDeployTitle={medianBakeMs === null
+								? 'No deploy of this app has a recorded start and end inside the history kept for it'
+								: 'How long a deploy of this app usually takes to finish and be watched, measured across its whole history'}
+							typicalToProd={{
+								ms: appLead?.medianMs ?? null,
+								title:
+									appLead === null
+										? 'No version of this app has been seen in its first environment and then in production inside the deploy history kept for it'
+										: `Median trip from ${appLead.fromLabel.toUpperCase()} to ${appLead.toLabel.toUpperCase()}, measured across ${appLead.samples} version${appLead.samples === 1 ? '' : 's'} observed at both ends`
+							}}
+						/>
 					{/if}
 
 					<!-- EXPOSURE — AND IT DOES NOT RENDER WHEN THERE IS NOTHING TO
@@ -3678,12 +3597,12 @@
 							<span class="t-code-sm text-gray-500 dark:text-gray-400"
 								>{deployEvents} deploy{deployEvents === 1 ? '' : 's'}</span
 							>
-							<a
-								href="/activity"
-								class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-								aria-label="View all activity"
-								>view all ›</a
-							>
+							<!-- `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
+							     `ActivityRail`'s OWN DEFAULT HEADER, NOT A THIRD PRIVATE
+							     ONE. (2026-09-02) -->
+							<a href="/activity" class="nav-link" aria-label="View all activity">
+								View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+							</a>
 						{/snippet}
 						<ActivityRail
 							rollouts={cells.map((c) => c.rollout)}
