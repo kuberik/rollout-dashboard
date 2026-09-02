@@ -706,6 +706,54 @@ export function joinClauses(parts: string[]): string {
 }
 
 /**
+ * ⭐ A SUBJECT THAT STANDS FOR MORE THAN ONE THING. (2026-09-02)
+ *
+ * Every headline template puts `subject` in one of two grammatical slots —
+ * SUBJECT of the sentence (`${subject} is waiting on …`) or OBJECT of one
+ * (`Something is holding ${subject}`) — and until now `subject` was always a
+ * single string reused verbatim in both, which is exactly right for a
+ * singular subject: `STAGING` and `hello-frontend-app` read correctly
+ * whether they open the sentence or sit inside it.
+ *
+ * A subject naming a SET does not: `/apps/<name>`'s banner needed
+ * *"All 3 environments are waiting on another deploy"* (SUBJECT position,
+ * capitalised, plural verb) and, had it fallen into the `unknown`/`gates.length
+ * > 1` branches, *"holding all 3 environments"* (OBJECT position — "Something
+ * is holding **All** 3 environments" breaks mid-sentence case). One string
+ * cannot spell both. `plural()` builds the pair; `lead` is what a template
+ * opens with, `object` is what it embeds, and they are IDENTICAL except where
+ * the caller's own casing differs at the sentence boundary.
+ *
+ * ⛔ NEVER GUESSED. `blockingStory` does not lower-case a string's first
+ * letter to derive `object` — a place label (`STAGING`) or a joined list of
+ * them (`DEV, STAGING and PROD`) does not change case between the two slots,
+ * and blind-lowering would corrupt those. Only a caller building a phrase
+ * that genuinely differs (`All 3 environments` / `all 3 environments`) reaches
+ * for `plural()`; every existing caller keeps passing a bare string and gets
+ * byte-identical output, because a bare string always has `lead === object`
+ * and `plural: false`.
+ */
+export type StorySubject =
+	| string
+	| {
+			/** How the subject reads opening the sentence, e.g. `"All 3 environments"`. */
+			lead: string;
+			/**
+			 * How the subject reads embedded mid-sentence, e.g.
+			 * `"all 3 environments"`. Defaults to `lead` when the caller's phrase
+			 * does not change case between the two slots.
+			 */
+			object?: string;
+			/** Conjugates the headline's verb: singular `is` → plural `are`. */
+			plural: true;
+	  };
+
+/** Builds a {@link StorySubject} that conjugates its headline as plural. */
+export function pluralSubject(lead: string, object: string = lead): StorySubject {
+	return { lead, object, plural: true };
+}
+
+/**
  * ⭐ THE ONE STORY. Every surface calls this and renders the same three
  * strings, so two pages cannot answer the 3am question differently again.
  *
@@ -716,7 +764,7 @@ export function joinClauses(parts: string[]): string {
 export function blockingStory(
 	rollout: Rollout | null | undefined,
 	ctx: GateContext = EMPTY_GATE_CONTEXT,
-	options: { place?: string | null; subject?: string | null; now?: Date } = {}
+	options: { place?: string | null; subject?: StorySubject | null; now?: Date } = {}
 ): BlockingStory {
 	const namespace = rollout?.metadata?.namespace;
 	const block: PromotionBlock = promotionBlock(rollout);
@@ -738,8 +786,17 @@ export function blockingStory(
 	 * So a caller that has both axes passes both, verbatim — and verbatim
 	 * matters: `place` is upper-cased because an environment label is a chip
 	 * elsewhere in the product, and upper-casing an APP name would rename it.
+	 *
+	 * ⭐ AND IT MAY NOW BE A SET — see `StorySubject` above. `subjectLead` /
+	 * `subjectObject` / `isVerb` are the three values every headline template
+	 * below is built from; a plain string collapses all three to the old
+	 * behaviour exactly (`lead === object`, `is`).
 	 */
-	const subject = options.subject || place || 'this service';
+	const subjectOpt = options.subject;
+	const isSet = typeof subjectOpt === 'object' && subjectOpt !== null;
+	const subjectLead = isSet ? subjectOpt.lead : subjectOpt || place || 'this service';
+	const subjectObject = isSet ? (subjectOpt.object ?? subjectOpt.lead) : subjectLead;
+	const isVerb = isSet ? 'are' : 'is';
 	const now = options.now ?? new Date();
 
 	// A PIN OUTRANKS EVERY GATE and short-circuits. A gate holds the NEXT
@@ -755,7 +812,7 @@ export function blockingStory(
 			pinnedTo,
 			selfClearing: false,
 			severity: 'info',
-			headline: `${subject} is pinned to ${pinnedTo}`,
+			headline: `${subjectLead} ${isVerb} pinned to ${pinnedTo}`,
 			consequence:
 				candidateCount > 0
 					? `${candidateCount} newer build${candidateCount === 1 ? '' : 's'} ${candidateCount === 1 ? 'is' : 'are'} available and none of them will deploy while the pin is set.`
@@ -808,16 +865,20 @@ export function blockingStory(
 	// were the whole story. With exactly one it names that one's kind.
 	let headline: string;
 	if (gates.length > 1) {
-		headline = `${countWord(gates.length)} things are holding ${subject}`;
+		headline = `${countWord(gates.length)} things are holding ${subjectObject}`;
 	} else if (person.length === 1) {
-		headline = `${subject} is waiting on an approval`;
+		headline = `${subjectLead} ${isVerb} waiting on an approval`;
 	} else if (unknown.length === 1) {
 		// ⛔ NOT "waiting on an approval". The whole point of `unknown` is that
 		// we do not know what it is waiting on, and the headline is the one line
 		// a reader takes at a glance — so it states the fact and no remedy.
-		headline = `Something is holding ${subject}`;
+		//
+		// ⚠️ `Something is …` — the SENTENCE's subject is `Something`, not the
+		// caller's `subject`, which sits in OBJECT position here and so takes
+		// `subjectObject` (never `isVerb`: "is" agrees with "Something").
+		headline = `Something is holding ${subjectObject}`;
 	} else if (upstream.length === 1) {
-		headline = `${subject} is waiting on another deploy`;
+		headline = `${subjectLead} ${isVerb} waiting on another deploy`;
 	} else {
 		headline = 'Automatic deploys are paused';
 	}

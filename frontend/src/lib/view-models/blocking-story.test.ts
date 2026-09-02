@@ -14,6 +14,7 @@ import {
 	shortStory,
 	ruleHandle,
 	joinClauses,
+	pluralSubject,
 	EMPTY_GATE_CONTEXT
 } from './blocking-story';
 
@@ -768,5 +769,87 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 		);
 		expect(s.gates.map((g) => g.clears)).toEqual(['person', 'unknown', 'upstream']);
 		expect(shortStory(s)).toContain('a rule this dashboard cannot attribute');
+	});
+});
+
+// ── `pluralSubject`: A SET AS THE HEADLINE'S SUBJECT ───────────────────────
+//
+// `/apps/<name>`'s banner used to be forced to name the app AGAIN
+// (`hello-frontend-app in all 3 environments is waiting on another deploy`)
+// because every headline template needed a grammatically singular head. These
+// pin the conjugated forms and, separately, that a bare string subject is
+// completely unaffected — the byte-identical guarantee every other caller of
+// `blockingStory` (`/apps`, `/environments`, `/envs/<name>`, rollout detail,
+// `/versions`) relies on.
+describe('pluralSubject — a headline whose subject is a set', () => {
+	const NOW = new Date('2026-08-30T23:26:00Z');
+
+	it('conjugates "is" to "are" — the upstream-only headline', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
+			ctx,
+			{ subject: pluralSubject('All 3 environments', 'all 3 environments'), now: NOW }
+		);
+		expect(s.headline).toBe('All 3 environments are waiting on another deploy');
+	});
+
+	it('conjugates "is" to "are" — the person-gate headline', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [
+				{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }
+			]),
+			ctx,
+			{ subject: pluralSubject('All 3 environments', 'all 3 environments'), now: NOW }
+		);
+		expect(s.headline).toBe('All 3 environments are waiting on an approval');
+	});
+
+	it('conjugates "is" to "are" — the pinned headline', () => {
+		const s = blockingStory(
+			rolloutWith(
+				'hello-world-prod',
+				[{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }],
+				{ wantedVersion: '991829b' }
+			),
+			ctx,
+			{ subject: pluralSubject('All 3 environments', 'all 3 environments'), now: NOW }
+		);
+		expect(s.headline).toBe('All 3 environments are pinned to 991829b');
+	});
+
+	it('the multi-gate and unknown headlines put the subject in OBJECT position, uncapitalised', () => {
+		// "Something is holding All 3 environments" breaks case mid-sentence —
+		// the whole reason `lead`/`object` are separate strings. The sentence's
+		// own verb ("is"/"are" on "things"/"Something") does not come from
+		// `isVerb`, which is why these two headlines are untouched by
+		// conjugation and only the embedded phrase changes.
+		const c = withSchedules(ctx, 'hello-world-staging', SCHEDULES_STAGING);
+		const s = blockingStory(
+			rolloutWith('hello-world-staging', [
+				{ name: 'schedule-gate-nwm62', passing: false, allowedVersions: null },
+				{ name: 'ghd-p2fld', passing: true, allowedVersions: [] }
+			]),
+			c,
+			{ subject: pluralSubject('All 3 environments', 'all 3 environments'), now: NOW }
+		);
+		expect(s.headline).toBe('Two things are holding all 3 environments');
+	});
+
+	it('a `lead`-only subject (no distinct `object`) reuses `lead` verbatim in object position', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
+			ctx,
+			{ subject: pluralSubject('DEV, STAGING and PROD'), now: NOW }
+		);
+		expect(s.headline).toBe('DEV, STAGING and PROD are waiting on another deploy');
+	});
+
+	it('a bare string subject is byte-identical to before `pluralSubject` existed', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
+			ctx,
+			{ place: 'prod', now: NOW }
+		);
+		expect(s.headline).toBe('PROD is waiting on another deploy');
 	});
 });

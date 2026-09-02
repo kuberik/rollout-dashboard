@@ -430,12 +430,12 @@ lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is clear
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
+lib/view-models/blocking-story.ts	code	… … pinned to …
+lib/view-models/blocking-story.ts	code	… … waiting on an approval
+lib/view-models/blocking-story.ts	code	… … waiting on another deploy
 lib/view-models/blocking-story.ts	code	… allows this build
 lib/view-models/blocking-story.ts	code	… and …
 lib/view-models/blocking-story.ts	code	… in … (…)
-lib/view-models/blocking-story.ts	code	… is pinned to …
-lib/view-models/blocking-story.ts	code	… is waiting on an approval
-lib/view-models/blocking-story.ts	code	… is waiting on another deploy
 lib/view-models/blocking-story.ts	code	… newer build… … available and none of them will deploy while the pin is set.
 lib/view-models/blocking-story.ts	code	… newer build… … waiting.
 lib/view-models/blocking-story.ts	code	… ships a newer …
@@ -677,7 +677,6 @@ routes/apps/[name]/+page.svelte	code	… … waiting for ……
 routes/apps/[name]/+page.svelte	text	… deploy …
 routes/apps/[name]/+page.svelte	title	… deploy… of this app across every environment in the last 7 days
 routes/apps/[name]/+page.svelte	code	… environments
-routes/apps/[name]/+page.svelte	code	… in …
 routes/apps/[name]/+page.svelte	text	… in 7d
 routes/apps/[name]/+page.svelte	code	… is pinned
 routes/apps/[name]/+page.svelte	code	… is stuck
@@ -691,6 +690,7 @@ routes/apps/[name]/+page.svelte	title	…'s last deploy failed
 routes/apps/[name]/+page.svelte	code	…’s last deploy failed
 routes/apps/[name]/+page.svelte	text	+ … more
 routes/apps/[name]/+page.svelte	code	all … environments
+routes/apps/[name]/+page.svelte	code	All … environments
 routes/apps/[name]/+page.svelte	code	all agree
 routes/apps/[name]/+page.svelte	text	App not found
 routes/apps/[name]/+page.svelte	text	Back to apps
@@ -807,7 +807,7 @@ routes/dependencies/+page.svelte	code	… cannot take their next release until t
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
 routes/dependencies/+page.svelte	text	… holding
 routes/dependencies/+page.svelte	code	… is held in …
-routes/dependencies/+page.svelte	text	… No rollout in this fleet is gated on another. … … rollouts · … gate … between them … ·
+routes/dependencies/+page.svelte	text	… rollout … , none is gated on another. … rollout … · … gate … between them … ·
 routes/dependencies/+page.svelte	text	… rollout … across … cluster … , and no gate on any of them is keyed to another rollout. This is the normal state — most fleets deploy every service independently.
 routes/dependencies/+page.svelte	code	… rollout… held by another deploy
 routes/dependencies/+page.svelte	code	… serves … here.
@@ -1043,7 +1043,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… of �
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	… of these … deploys moved this rollout to an OLDER release. A rollback still bakes and still counts as a success.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	… over …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	( … of … )
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	All deployments for
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Back to all rollouts
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Checked for …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Commit …

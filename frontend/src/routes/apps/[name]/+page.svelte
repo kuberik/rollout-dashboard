@@ -173,6 +173,7 @@
 		blockingStory,
 		joinClauses,
 		shortStory,
+		pluralSubject,
 		type GateContext,
 		type BlockingStory,
 		type ClassifiedGate
@@ -2262,15 +2263,19 @@
 	 * the page"*, and this is that decision made at page level: the environments
 	 * sharing the block's cause, named.
 	 *
-	 * ⛔ THE SUBJECT STAYS AN ENVIRONMENT PHRASE. The page fixes the app, so a
-	 * headline that named only the provider would be a sentence about somebody
-	 * else's service; what a reader needs at a glance is HOW MUCH OF THIS APP is
-	 * stopped. The app's own name leads the phrase because `${subject} is …`
-	 * needs a grammatically SINGULAR head — `DEV, STAGING and PROD is waiting`
-	 * is not English, and `blocking-story.ts` owns that verb. It is also the
-	 * exact subject `/apps` already prints for this rollout
-	 * (*"hello-frontend-app in DEV is waiting on another deploy"*), so this is
-	 * that spelling generalised from one environment to the set, not a new one.
+	 * ⛔ THE SUBJECT STAYS AN ENVIRONMENT PHRASE, AND NO LONGER CARRIES THE APP
+	 * NAME. (2026-09-02, superseding the entry below — flagged by this page's
+	 * own author as a spelling it was FORCED into.) `${subject} is …` used to
+	 * need a grammatically singular head, so the only sentence available was
+	 * *"hello-frontend-app in all 3 environments is waiting on another
+	 * deploy"* — the app's name spent AGAIN, 60px under an `h1` already reading
+	 * `hello-frontend-app`. `blocking-story.ts`'s `StorySubject` is
+	 * plural-aware now (`pluralSubject`, see there): the subject invariant is
+	 * satisfied by the `h1` on THIS page, so the banner drops the app name and
+	 * conjugates instead — *"All 3 environments are waiting on another
+	 * deploy"*. Every other caller of `blockingStory` still passes a bare
+	 * string and is untouched (see `blocking-story.ts`'s own byte-identical
+	 * guarantee for singular subjects).
 	 *
 	 * ⛔ AND IT IS NEVER SAID OF ONE. A single held environment keeps `place`,
 	 * unchanged and byte-identical, because `hello-frontend-app in DEV` on a
@@ -2307,14 +2312,20 @@
 		if (bannerPeers.length < 2) return blockedEnv.story;
 		const deployed = envFacts.filter((f) => f.version).length;
 		const names = bannerPeers.map((f) => f.title.toUpperCase());
-		const where =
+		// ⭐ `lead`/`object` only DIFFER for the "all N" phrase — "All 3
+		// environments are …" opening the sentence, "holding all 3
+		// environments" embedded in one. The joined-list and bare-count forms
+		// are already correctly cased in both slots (env labels are uppercase
+		// chips; a leading digit has no case), so `pluralSubject` defaults
+		// `object` to `lead` for those.
+		const subject =
 			bannerPeers.length === deployed
-				? `all ${names.length} environments`
+				? pluralSubject(`All ${names.length} environments`, `all ${names.length} environments`)
 				: names.length <= 3
-					? joinClauses(names)
-					: `${names.length} environments`;
+					? pluralSubject(joinClauses(names))
+					: pluralSubject(`${names.length} environments`);
 		return blockingStory(blockedEnv.cell.rollout, gateContext, {
-			subject: `${appName} in ${where}`,
+			subject,
 			now: $now
 		});
 	});
@@ -3468,6 +3479,20 @@
 									>{deploys7d} in 7d</span
 								>
 							{/snippet}
+							<!-- ⭐ BOTH ROWS SPEAK `compactSpan` (`19s`, `6m`), NOT
+							     `formatDurationMs` (`19 seconds`). (2026-09-02) They used
+							     to disagree 20px apart — `Typical deploy` was
+							     `formatDurationMs` because `stuckTitle` 3000 lines up
+							     spends that spelling on the same field, and `Typical to
+							     prod` was already `compactSpan` because `/apps`' rail and
+							     the activity timestamps spend THAT one. Picked `compactSpan`:
+							     it is what this card's own two closest siblings
+							     (`/apps`'s rail, `/activity`'s timestamps) already print,
+							     `formatDurationMs`'s only other user on this page is a
+							     tooltip sentence (`Checking for 19 seconds`) where the
+							     prose reads worse compact, and a `dl` pairing two spans is
+							     exactly the place two spellings of one unit are 20px apart
+							     and READ as two units. -->
 							<dl class="space-y-3">
 								<div class="flex items-baseline justify-between gap-3">
 									<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
@@ -3479,7 +3504,7 @@
 											? 'No deploy of this app has a recorded start and end inside the history kept for it'
 											: 'How long a deploy of this app usually takes to finish and be watched, measured across its whole history'}
 									>
-										{medianBakeMs === null ? '—' : formatDurationMs(medianBakeMs)}
+										{medianBakeMs === null ? '—' : compactSpan(medianBakeMs)}
 									</dd>
 								</div>
 								<!-- `PAGE-CRITERIA.md`'s `/apps` criterion 3 — *"which ship

@@ -206,52 +206,61 @@
 
 <div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
-	     ⚠️ THE `h1` STAYS DRAWN HERE, AND THAT IS THE RULE BEING FOLLOWED, NOT
-	     AN EXCEPTION TO IT. (2026-09-01) The duplicate-title rule tests for
-	     DUPLICATION: `/rollouts`, `/environments`, `/apps` and `/versions` all
-	     had the navbar printing the same word 25px above the `h1`.
-	     `/dependencies` does not. `Navbar.svelte`'s `currentSection` has no
-	     branch for this path, so it falls through to `SECTIONS[0]` — `control`
-	     — and the breadcrumb is `{#if currentSection.key !== 'control'}`, i.e.
-	     NOT RENDERED. There is no `Dependencies` item in `Sidebar.svelte`
-	     either. Unvoicing this `h1` would leave the page with no visible name
-	     at all: a graph, a banner, and nothing saying what you are looking at.
-	     **Check the navbar before applying the rule; the test is duplication,
-	     not position.**
+	     ⛔ THE `h1` IS `sr-only` NOW — THE PREMISE THAT KEPT IT DRAWN CHANGED
+	     UNDER US. (2026-09-02) This page used to be the one documented
+	     exception to the duplication rule: `Navbar.svelte`'s `currentSection`
+	     had no branch for `/dependencies`, so the breadcrumb rendered nothing
+	     and this `h1` was the page's ONLY visible name. `21e72da` gave the
+	     navbar a `/dependencies` branch (`kuberik | Dependencies`), so the
+	     breadcrumb now prints the same word this `h1` did, 25px above it — the
+	     exact duplication `/apps`, `/environments`, `/versions` and `/activity`
+	     were unvoiced for. The rule was always DUPLICATION, not position (see
+	     `lib/CLAUDE.md`); the page just moved from one side of it to the
+	     other.
 
-	     ⭐ WHAT DID CHANGE IS THE RHYTHM. The title was `t-display` on its own
-	     line with the rollup on a SECOND line and `mb-6` below, so the first
-	     card landed at y=98 while `/apps`, `/environments`, `/versions` and
-	     `/activity` all start theirs at y=72. One head row now — title, rollup
-	     on its baseline, `mb-5` — and this page joins them. -->
-	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-		<h1 class="t-display min-w-0 truncate text-gray-900 dark:text-white">Dependencies</h1>
+	     ⛔ NOT DELETED. The skip link lands on `main` and a11y asserts a
+	     level-1 heading exists, so `sr-only` — the mechanism every other
+	     unvoiced `h1` on this product uses — keeps the word announced first to
+	     a screen reader while costing zero pixels.
+
+	     WHAT FILLS THE SLOT IS THE ROLLUP, PROMOTED — same sentence as before,
+	     character for character; only the rollout count leads at `t-display`
+	     (24px) with the rest on its baseline at `t-dense`, the shape `/apps`,
+	     `/versions`, `/environments` and `/activity` already share. -->
+	<h1 class="sr-only">Dependencies</h1>
+	<div class="mb-5 min-w-0">
 		{#if !query.isLoading && !query.isError}
-			<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">
-				{#if trivial}
-					No rollout in this fleet is gated on another.
-				{:else}
-					{full.nodes.length} rollouts · {full.edges.length} gate{full.edges.length === 1
-						? ''
-						: 's'} between them
-					{#if blocked.length > 0}
-						· <span class="font-medium text-gray-700 dark:text-gray-200"
-							>{blocked.length} holding</span
-						>
+			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
+				<span class="t-display text-gray-900 tabular-nums dark:text-white"
+					>{full.nodes.length}</span
+				>
+				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+					{#if trivial}
+						rollout{full.nodes.length === 1 ? '' : 's'}, none is gated on another.
 					{:else}
-						<!-- ⛔ A PAGE WITH NOTHING WRONG MUST STILL SAY SOMETHING.
-						     Naming the healthy verdict is what turns silence into an
-						     answer rather than "something is missing". -->
-						· nothing is waiting on another deploy
+						rollout{full.nodes.length === 1 ? '' : 's'} · {full.edges.length} gate{full.edges
+							.length === 1
+							? ''
+							: 's'} between them
+						{#if blocked.length > 0}
+							· <span class="font-medium text-gray-700 dark:text-gray-200"
+								>{blocked.length} holding</span
+							>
+						{:else}
+							<!-- ⛔ A PAGE WITH NOTHING WRONG MUST STILL SAY SOMETHING.
+							     Naming the healthy verdict is what turns silence into an
+							     answer rather than "something is missing". -->
+							· nothing is waiting on another deploy
+						{/if}
+						{#if full.unlinkedRollouts > 0}
+							· {full.unlinkedRollouts} not in the graph
+						{/if}
+						{#if full.hasCycle}
+							· <span class="font-medium text-gray-700 dark:text-gray-200">contains a cycle</span>
+						{/if}
 					{/if}
-					{#if full.unlinkedRollouts > 0}
-						· {full.unlinkedRollouts} not in the graph
-					{/if}
-					{#if full.hasCycle}
-						· <span class="font-medium text-gray-700 dark:text-gray-200">contains a cycle</span>
-					{/if}
-				{/if}
-			</p>
+				</p>
+			</div>
 		{/if}
 	</div>
 

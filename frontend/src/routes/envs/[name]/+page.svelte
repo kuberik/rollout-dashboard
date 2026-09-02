@@ -59,6 +59,9 @@
 	 *   neutral gray. One coloured chip per chain, the colour is the
 	 *   environment's own, zero new colour values.
 	 */
+	// `compactSpan` (`15s`), not `formatDurationMs` (`15 seconds`): this row's
+	// sibling card on /apps/<name> speaks compact, and one card, one span format.
+	import { compactSpan } from '$lib/view-models/lead-time';
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
@@ -1459,7 +1462,7 @@
 									class="text-base font-semibold text-gray-900 tabular-nums dark:text-white"
 									title="How long a deploy here usually takes to finish and be watched, measured across this environment's history"
 								>
-									{medianBakeMs === null ? '—' : formatDurationMs(medianBakeMs)}
+									{medianBakeMs === null ? '—' : compactSpan(medianBakeMs)}
 								</dd>
 							</div>
 							<!-- THE ONE QUANTITY `/environments` RANKS ON, restated at
