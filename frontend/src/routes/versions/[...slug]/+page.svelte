@@ -25,6 +25,8 @@
 	import {
 		revisionCoverage,
 		coverageSwatch,
+		coverageSegments,
+		buildState,
 		type CoverageKey,
 		type CoverageSlotVM
 	} from '$lib/view-models/revision-coverage';
@@ -38,9 +40,14 @@
 		CalendarMonthSolid,
 		ChevronRightOutline,
 		CheckCircleSolid,
+		ClockOutline,
+		CodeBranchOutline,
 		ExclamationCircleSolid,
+		FolderOutline,
 		HourglassOutline,
+		LayersOutline,
 		QuestionCircleOutline,
+		RocketOutline,
 		TagOutline,
 		TagSolid,
 		UserCircleSolid
@@ -51,7 +58,8 @@
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 	import Chip from '$lib/components/Chip.svelte';
-	import RevisionLead from '$lib/components/RevisionLead.svelte';
+	import CoverageBar from '$lib/components/CoverageBar.svelte';
+	import BuildStateMark from '$lib/components/BuildStateMark.svelte';
 	import type { Rollout, Environment } from '../../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -405,6 +413,20 @@
 			// "not yet" over both is how the old page came to say *"blocked from
 			// going further"* about a build nine steps back that no gate has an
 			// opinion on.
+			//
+			// ⭐ AND A THIRD CASE, FOUND ON THE LIVE CLUSTER: THE ENVIRONMENT IS
+			// ALREADY ON THIS REVISION. (2026-09-02, design re-check.) `s.slot.onIt`
+			// is a git-sha match — true whenever the running release shares the
+			// row's own commit, whatever RANK that release sits at. Two releases
+			// of one revision are how a rollback re-deploys a build already
+			// shipped once, under a new tag (`revision-coverage.ts`'s
+			// two-denominator note): rel-66 and rel-67 can be the SAME commit,
+			// with rel-67 simply the newer, still-held release of it. "Newer
+			// builds are ahead of this one" is a lie there — nothing newer has
+			// arrived, this place is already running the row's revision, just
+			// under an older label than the row's own newest release of it.
+			const heldNewerRelease =
+				s.slot.onIt && s.runs && s.label && s.runs !== s.label ? s.label : null;
 			out.push({
 				icon: HourglassOutline,
 				tone: 'tone-mute',
@@ -415,9 +437,11 @@
 					? s.runs
 						? `Ready to deploy — still on ${s.runs}`
 						: 'Ready to deploy here'
-					: s.runs
-						? `Already on ${s.runs}, and newer builds are ahead of this one`
-						: 'Skipped — newer builds are ahead of this one',
+					: heldNewerRelease
+						? `Running ${s.runs} of this revision; ${heldNewerRelease} is held`
+						: s.runs
+							? `Already on ${s.runs}, and newer builds are ahead of this one`
+							: 'Skipped — newer builds are ahead of this one',
 				gates: []
 			});
 		}
@@ -577,117 +601,37 @@
 		</div>
 	{:else}
 		<!--
-			THE HERO — identity on the left, the measurement on the right, baselines
-			aligned. Concept 07's anatomy. The eyebrow supplies the noun so the
-			heading is only the sha, and the count is the page's one number.
-			A PLACE IS A (SERVICE, ENVIRONMENT) SLOT AND THE LABEL SAYS SO.
-			`/api/rollouts` carries no pod counts, so a pod ratio here would be
-			invented; `places` is the honest unit and the caption names it.
-		-->
-		<!--
-			⭐ THE HERO IS `RevisionLead`, THE SAME OBJECT `/versions` LEADS WITH.
-			Identifier at 24px, state word beside it, measurement at 24px on the same
-			baseline, the 26px bar directly under the count that names it. The list
-			and the detail page are now ONE OBJECT AT TWO SCALES rather than two
-			heroes that rhyme — which is what `REVISION-PAGES.md` asks of the bar,
-			applied to the thing the bar sits inside.
+			⭐ THE HERO IS THE HEAD BAND NOW, THE SAME ROW `/versions`, `/activity`
+			AND `/dependencies` LEAD WITH. (2026-09-02, design re-check: *"the
+			hero is eight ungrouped lines on the page ground … the page's rollup
+			floating 1180px away top-right; it is the one region with no card."*)
 
-			`spread={false}`: here the bucket CARDS are the spread, at full size and
-			carrying the gates and the actions. Drawing both would print the same
-			environments twice on one screen.
+			`RevisionLead`'s two-column hero (eyebrow / sha / count / bar) is gone
+			from THIS page — it stays exactly as it was on `/versions`, where it
+			leads a card and is the page's only object. Here the object is named
+			ONCE, at display scale, in one row: an `sr-only` `h1` (the object's
+			full name, for the outline and for a screen reader), the sha at
+			`t-display-id`, the coverage count at `t-display` on its baseline, and
+			`BuildStateMark` carrying the same state word the bar used to spend
+			41,000px² restating. Everything else this build has to say — the
+			commit, the repo, the services, when it last moved, the outbound link —
+			moved into ONE titled card below (`This build`), which is also the
+			card that gives the page's previously 39%-empty viewport something to
+			hold. See the `rev-buckets` block for it.
 		-->
-		<RevisionLead short={row.short} eyebrow="Tracking build" {coverage} spread={false}>
-			{#snippet meta()}
-				<!-- THE REPO, NOT THE HOST — one spelling with the list's rail card.
-				     See `../repo-title.ts`; the origin rides as the `title`. -->
-				<span
-					class="t-code-sm min-w-0 truncate text-gray-500 dark:text-gray-400"
-					title={repoTitleFull(ledger.repoLabel) ?? undefined}>{repoTitle(ledger.repoLabel)}</span
-				>
-			{/snippet}
-		</RevisionLead>
-
-		<!--
-			SECOND LINE OF THE HERO, AND IT DEGRADES HONESTLY. Concept 07 puts the
-			commit message and author here. GitHub is not connected on this cluster —
-			that is the SHIPPED STATE, not an edge case — so the line says which fact
-			is missing and why, in one muted sentence, and takes no data row and no
-			second button.
-		-->
-		{#if githubConnected && rep && prev}
-			<div class="mt-2">
-				<CommitSummary
-					namespace={rep.ns}
-					name={rep.name}
-					cluster={rep.cluster}
-					base={prev.revision}
-					head={row.revision}
-					verb={`in this build · since ${prev.short}`}
-					showMessages
-					showAvatars
-				/>
-			</div>
-		{:else}
-			<p class="t-micro mt-2 text-gray-500 dark:text-gray-400">
-				Commit message and author need GitHub, which is not connected.
-			</p>
-		{/if}
-
-		<!-- ⛔ THIS LINE USED TO REPRINT THE DENOMINATOR AND THE UNIT.
-		     (2026-09-02) It read `2 services · 6 places (one service in one
-		     environment) · last deployed 2 days ago`, twelve pixels under a hero
-		     that says `6 of 6 · PLACES RUNNING IT` and eight above a bar that now
-		     prints `6` inside its own segment — the same 6 three times, and the
-		     definition of `place` stated a second time in a parenthesis rather
-		     than under the number it defines. The unit note is `RevisionLead`'s
-		     (`unitNote`), directly beneath the count, where the list already puts
-		     it. What is left here is what nothing else on the page says: how many
-		     SERVICES the commit became, and when it last moved. -->
-		<p class="t-micro mt-1 text-gray-500 dark:text-gray-400">
-			{row.services.length} service{row.services.length === 1 ? '' : 's'}
-			{#if row.lastDeployMs}
-				· last deployed {formatTimeAgo(new Date(row.lastDeployMs).toISOString(), $now)}
-			{:else}
-				· never deployed
-			{/if}
-		</p>
-
-		<!--
-			⛔ `View commit` WAS A `.btn` AND IT IS NAVIGATION. (2026-09-02, from
-			the human: *"two navigation controls wearing button chrome"*, filed
-			against the list and true here for the same control.) It changes no
-			cluster state — it opens someone else's website — so it is `.nav-link`
-			with the external glyph, which is the rule's stated answer for an
-			outbound link. The `.btn` weight is reserved for the controls that
-			change WHAT IS RUNNING, and every one of those lives on the rollout.
-		-->
-		<!--
-			⛔ A THIRD SPELLING OF `never deployed` LIVED HERE. (2026-09-02) The
-			page already says it twice: `not running anywhere` beside the sha with
-			its own glyph, and `· never deployed` on the scope line directly above
-			— and those two are NOT the same fact ("nothing runs it now" vs "nothing
-			ever did"), so both earn their place. The paragraph that stood here said
-			*"No service has ever run this build. Everything here is a place it has
-			not reached."* — a restatement of the second, and its own second clause
-			was contradicted by the card 40px below it, which on this cluster's data
-			reads `Already moved on — these have already deployed a newer build`.
-			A place that rolled straight past a build is not a place waiting for it.
-		-->
-
-		{#if commitUrl}
-			<div class="mt-1 flex flex-wrap gap-4">
-				<a
-					class="nav-link"
-					href={commitUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					aria-label={`View the commit for ${row.short} on GitHub — opens in a new tab`}
-				>
-					View commit
-					<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-				</a>
-			</div>
-		{/if}
+		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+			<h1 class="sr-only">Tracking build {row.short} in {repoTitle(ledger.repoLabel)}</h1>
+			<span class="t-display-id text-gray-900 dark:text-white">{row.short}</span>
+			<span class="t-display text-gray-900 tabular-nums dark:text-white"
+				>{coverage.liveCount}</span
+			>
+			<span
+				class="t-body text-gray-500 dark:text-gray-400"
+				title="A place is one service in one environment."
+				>of {coverage.totalCount} places running it</span
+			>
+			<BuildStateMark {coverage} size="lead" />
+		</div>
 
 		<!--
 			THE ONE BLOCKING FACT, AS A FILLED FIELD. `AlertPanel` IS the object
@@ -725,18 +669,136 @@
 		{/if}
 
 		<!--
-			THE COVERAGE BAR. Full width, proportional, one segment per non-empty
-			bucket. Same component the list rows carry at 8px, so the two pages are
-			one idea at two scales.
-
-			HOW IT READS WITH NO LEGEND: the hero states `N / M places live` directly
-			above it, and every segment has a titled CARD below it whose header
-			carries that segment's own fill at 12px, its name in 14px semibold and
-			its count as the rollup. The explanation is the object, not a key built
-			from a dummy graphic — which the human has rejected twice.
+			⭐ ONE FLAT AUTO-FIT GRID NOW, NOT A RAIL. (2026-09-02, design re-check:
+			*"the three cards in the side-by-side row end at 460 / 538 / 546 — 86px
+			of rag."*) `This build`, the bucket cards and `What each service calls
+			it` used to split across two grid levels — a `rev-buckets` sub-grid
+			plus a fixed-340px rail — each with its OWN `align-items: start`, so a
+			rail taller than the buckets (or the reverse) just left a gap. Cards
+			are `flex flex-col` with a `grow` body for exactly this case (see the
+			comment on `Card.svelte`'s `<section>`); the fix is `align-items:
+			stretch` PLUS one grid instead of two, so every card sharing a row
+			shares that row's height, on every width, with no fixed rail to defeat
+			it. `class="self-start"` came off the former rail card — it was
+			opting that one card OUT of the stretch this fix depends on.
 		-->
+		<div class="rev-buckets mt-4">
+			<!--
+				⭐ `This build` — THE CARD THE HERO'S FACTS MOVED INTO. (2026-09-02)
+				Commit, repo, services, last deployed and the outbound link were
+				eight ungrouped lines on the page ground with no card of their own —
+				the one region on this page without one. The coverage bar shrinks to
+				a ROW-SCALE mark in the header (`compact`, same object the list rows
+				carry at 8px) rather than repeating the head band's `N of M` in
+				digits a fourth time; its accessible name carries the full sentence
+				for anyone who cannot see the segments.
+			-->
+			<Card icon={RocketOutline} title="This build">
+				{#snippet rollup()}
+					<CoverageBar
+						segments={coverageSegments(coverage)}
+						compact
+						class="w-20"
+						label="{coverage.liveCount} of {coverage.totalCount} places running {row.short} · {coverage.buckets
+							.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
+							.join(' · ')}"
+					/>
+				{/snippet}
+				<ul class="space-y-3">
+					<!--
+						THE COMMIT — DEGRADES HONESTLY. Concept 07 puts the commit message
+						and author here. GitHub is not connected on this cluster — that is
+						the SHIPPED STATE, not an edge case — so the row says which fact is
+						missing and why, and takes no data row and no second button.
+						`CommitSummary` draws its own branch glyph, so the row's icon track
+						is not doubled with a second one in the connected case.
+					-->
+					{#if githubConnected && rep && prev}
+						<li class="flex items-start gap-2.5">
+							<CommitSummary
+								namespace={rep.ns}
+								name={rep.name}
+								cluster={rep.cluster}
+								base={prev.revision}
+								head={row.revision}
+								verb={`in this build · since ${prev.short}`}
+								showMessages
+								showAvatars
+							/>
+						</li>
+					{:else}
+						<li class="flex items-start gap-2.5">
+							<CodeBranchOutline
+								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+								aria-hidden="true"
+							/>
+							<span class="t-body text-gray-500 dark:text-gray-400">
+								Commit message and author need GitHub, which is not connected.
+							</span>
+						</li>
+					{/if}
+					<li class="flex items-start gap-2.5">
+						<FolderOutline
+							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+							aria-hidden="true"
+						/>
+						<span
+							class="t-body min-w-0 truncate text-gray-700 dark:text-gray-200"
+							title={repoTitleFull(ledger.repoLabel) ?? undefined}
+							>{repoTitle(ledger.repoLabel)}</span
+						>
+					</li>
+					<li class="flex items-start gap-2.5">
+						<LayersOutline
+							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+							aria-hidden="true"
+						/>
+						<span class="t-body text-gray-700 dark:text-gray-200"
+							>{row.services.length} service{row.services.length === 1 ? '' : 's'}</span
+						>
+					</li>
+					<li class="flex items-start gap-2.5">
+						<ClockOutline
+							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+							aria-hidden="true"
+						/>
+						<span class="t-body text-gray-700 dark:text-gray-200">
+							{#if row.lastDeployMs}
+								last deployed {formatTimeAgo(new Date(row.lastDeployMs).toISOString(), $now)}
+							{:else}
+								never deployed
+							{/if}
+						</span>
+					</li>
+					<!--
+						⛔ `View commit` WAS A `.btn` AND IT IS NAVIGATION. (2026-09-02,
+						from the human: *"two navigation controls wearing button chrome"*,
+						filed against the list and true here for the same control.) It
+						changes no cluster state — it opens someone else's website — so it
+						is `.nav-link` with the external glyph, which is the rule's stated
+						answer for an outbound link.
+					-->
+					{#if commitUrl}
+						<li class="flex items-start gap-2.5">
+							<TagOutline
+								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+								aria-hidden="true"
+							/>
+							<a
+								class="nav-link"
+								href={commitUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								aria-label={`View the commit for ${row.short} on GitHub — opens in a new tab`}
+							>
+								View commit
+								<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
+							</a>
+						</li>
+					{/if}
+				</ul>
+			</Card>
 
-		<div class="rev-cols mt-4">
 			<!--
 				THE BUCKETS, AS TITLED CARDS. One per NON-EMPTY bucket, so a fully
 				converged revision renders one card and a mid-promotion head renders
@@ -745,8 +807,7 @@
 				are LISTS, so N environments cost wrapped chips inside one card rather
 				than columns across the page.
 			-->
-			<div class="rev-buckets">
-				{#each coverage.buckets as bucket (bucket.key)}
+			{#each coverage.buckets as bucket (bucket.key)}
 					<Card
 						icon={BUCKET_ICON[bucket.key]}
 						iconClass={bucket.key === 'live'
@@ -972,25 +1033,24 @@
 						     `N places` rollup keeps every word of it. -->
 					</Card>
 				{/each}
-			</div>
 
-			<!--
-				CRITERION 2, IN THE RAIL. One rank per service, against that service's
-				OWN denominator, with the denominator named. `newest of 4` beside
-				`newest of 37` is the page's whole point — those two services share a
-				source repo and nothing else, and collapsing them onto one ladder is
-				the defect revision keying was built to close, one level down.
-				It does NOT restate the buckets: the buckets say WHERE, this says WHAT
-				EACH SERVICE CALLS IT and how far down its own ladder it now sits.
-			-->
-			<Card
-				icon={TagSolid}
-				title="What each service calls it"
-				verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
-				verdictTitle="One commit, one row per service — each service names and ranks it on its own"
-				padded={false}
-				class="self-start"
-			>
+				<!--
+					CRITERION 2, NOW A PEER TILE IN THE SAME FLAT GRID, NOT A FIXED-WIDTH
+					RAIL. One rank per service, against that service's OWN denominator,
+					with the denominator named. `newest of 4` beside `newest of 37` is
+					the page's whole point — those two services share a source repo and
+					nothing else, and collapsing them onto one ladder is the defect
+					revision keying was built to close, one level down. It does NOT
+					restate the buckets: the buckets say WHERE, this says WHAT EACH
+					SERVICE CALLS IT and how far down its own ladder it now sits.
+				-->
+				<Card
+					icon={TagSolid}
+					title="What each service calls it"
+					verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
+					verdictTitle="One commit, one row per service — each service names and ranks it on its own"
+					padded={false}
+				>
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 					{#each row.services as svc (svc.appName)}
 						{@const rank = rankSentence(svc)}
@@ -1077,36 +1137,38 @@
 	 * markup.
 	 */
 
-	/* THE HERO'S GEOMETRY MOVED INTO `RevisionLead.svelte` WITH THE HERO. It was
-	   `.rev-hero` / `.rev-count` here and a near-identical pair was about to be
-	   written on `/versions`; one object owns it now, so the two pages cannot
-	   drift apart by a gap value. */
+	/* THE HERO'S GEOMETRY MOVED OUT OF THIS COMPONENT ENTIRELY. `RevisionLead`
+	   still owns it for `/versions`, where it leads a card and is the page's
+	   only object; here the object is named once, in the head band, in plain
+	   markup (see the comment there). */
 
-	/* TWO COLUMNS WITH A REAL RIGHT RAIL — `COMPOSITION-GRAMMAR.md` §7. The
-	   rail holds one self-contained card that answers "under what names", which
-	   is a whole criterion on its own and never belonged underneath the
-	   buckets where it read as a footnote to them. */
-	.rev-cols {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		gap: 16px;
-		align-items: start;
-	}
-
-	@media (min-width: 1024px) {
-		.rev-cols {
-			grid-template-columns: minmax(0, 1fr) 340px;
-		}
-	}
-
-	/* Concept 07's card grid. `auto-fit` is what makes the design hold at any
-	   bucket count: one bucket fills the row, three sit in a row of three at
-	   1440 and stack at 390 with no breakpoint of their own. */
+	/*
+	 * ⛔ THE FIXED-WIDTH RAIL IS GONE, AND SO IS THE SECOND GRID LEVEL.
+	 * (2026-09-02, design re-check: *"the three cards in the side-by-side row
+	 * end at 460 / 538 / 546 — 86px of rag in one row."*) `.rev-cols` held
+	 * `.rev-buckets` in one column and `What each service calls it` fixed at
+	 * 340px in the other, each with its OWN `align-items: start` — so a
+	 * card's height never had anything to answer to but its own content, in
+	 * either grid. ONE flat `auto-fit` grid now holds every card on the page
+	 * (`This build`, the bucket cards, the service-rank card) as equal
+	 * siblings, and `align-items: stretch` — CSS Grid's own default, which
+	 * `start` had been overriding — makes every card sharing a ROW share that
+	 * row's height. `Card.svelte`'s `flex flex-col` root and `grow` body exist
+	 * for exactly this (see the comment on its `<section>`); this is the
+	 * first place on this page that asks for it.
+	 */
 	.rev-buckets {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		/* 300px, NOT 280. At 280 a 1440 row fits FOUR cards and the header of
+		   `What each service calls it` — icon, 27-character title, `N services`
+		   — no longer has 256px of clear space inside a 288px card and its own
+		   title truncates (`Card.svelte`'s `min-w-0 truncate`, which floors the
+		   title's WIDTH, not its readability). 300px drops that row to three at
+		   1440, so the fourth card wraps alone onto its own row — no rag there,
+		   nothing to rag against — with headroom to spare. */
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 		gap: 16px;
-		align-items: start;
+		align-items: stretch;
 	}
 
 	/* THE THREE GLYPH INKS. Every value is one the product already owns: the
@@ -1154,10 +1216,13 @@
 	/*
 	 * PHONE WIDTH IS A DESIGN, NOT A FALLBACK.
 	 *
-	 * THE HERO KEEPS ITS TWO COLUMNS AT 390, and that is a fold decision rather
-	 * than a taste one. Stacked, the count and the degraded GitHub line cost
-	 * ~90px above the cards, which at 390x844 pushed the banner — the one object
-	 * on the page that can want a person — below the fold.
+	 * THE HEAD BAND WRAPS AT 390 rather than keeping a fixed two-column split —
+	 * it is one `flex-wrap` row now (sha, count, state word), so it costs
+	 * whatever it costs at the width it is read at, same as `/versions` and
+	 * `/activity`'s own head bands. The auto-fit grid below it collapses to one
+	 * column under 296px of content width, so `This build`, every bucket card
+	 * and the service-rank card stack in reading order with no breakpoint of
+	 * their own.
 	 *
 	 * The service rows become a two-line stack, because a name track plus a
 	 * joined badge plus a denominator cannot share 358px without the badge

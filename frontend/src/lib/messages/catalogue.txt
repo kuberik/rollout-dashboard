@@ -260,7 +260,7 @@ lib/components/HealthChecksCard.svelte	text	… / … healthy
 lib/components/HealthChecksCard.svelte	text	… failing … … · … passing
 lib/components/HealthChecksCard.svelte	text	… passing · … recovered
 lib/components/HealthChecksCard.svelte	text	… pending … · … passing
-lib/components/HealthChecksCard.svelte	text	Health Checks
+lib/components/HealthChecksCard.svelte	title	Health Checks
 lib/components/HomeRail.svelte	title	Recent activity
 lib/components/HomeRail.svelte	text	View all activity
 lib/components/HomeRail.svelte	aria-label	View all deploy activity
@@ -420,7 +420,6 @@ lib/rollout-cards.ts	code	rolled back
 lib/rollout-cards.ts	code	Rolled back … version…: … → ….…
 lib/RolloutGrid.svelte	text	… need attention
 lib/RolloutGrid.svelte	text	… rollout … … ·
-lib/RolloutGrid.svelte	title	A newer build exists, but no gate lets it through yet
 lib/RolloutGrid.svelte	text	Cards like the one above will appear here once you create a
 lib/RolloutGrid.svelte	text	Clear filters
 lib/RolloutGrid.svelte	code	In motion
@@ -713,6 +712,7 @@ routes/apps/[name]/+page.svelte	code	… is stuck
 routes/apps/[name]/+page.svelte	text	… newer version … ready
 routes/apps/[name]/+page.svelte	code	… of … up to date
 routes/apps/[name]/+page.svelte	text	… Promote … … … …
+routes/apps/[name]/+page.svelte	code	… repos
 routes/apps/[name]/+page.svelte	code	… version… ahead
 routes/apps/[name]/+page.svelte	code	… version… waiting to move
 routes/apps/[name]/+page.svelte	code	… versions
@@ -1004,6 +1004,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	This will mark th
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This will not clear on its own.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	This will update the deployment history to show the deployment as succeeded and end the check window now.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Try again
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	up to date
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Up to date — no upgrades available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Version management disabled: This rollout's wantedVersion field is managed by another controller or external system. The dashboard cannot pin it to prevent conflicts.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Version pinned
@@ -1096,12 +1097,14 @@ routes/versions/[...slug]/+page.svelte	title	… can still take … newer versio
 routes/versions/[...slug]/+page.svelte	title	… can’t go any further yet
 routes/versions/[...slug]/+page.svelte	code	… cannot deploy it in … yet.
 routes/versions/[...slug]/+page.svelte	title	… is stuck
+routes/versions/[...slug]/+page.svelte	text	… last deployed … … never deployed …
 routes/versions/[...slug]/+page.svelte	text	… Nothing in
 routes/versions/[...slug]/+page.svelte	text	… place …
 routes/versions/[...slug]/+page.svelte	title	… places — a place is one service in one environment — are waiting on a gate
-routes/versions/[...slug]/+page.svelte	text	… service … … · last deployed … … · never deployed …
+routes/versions/[...slug]/+page.svelte	text	… service …
 routes/versions/[...slug]/+page.svelte	code	… services
 routes/versions/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
+routes/versions/[...slug]/+page.svelte	title	A place is one service in one environment.
 routes/versions/[...slug]/+page.svelte	text	All revisions
 routes/versions/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
 routes/versions/[...slug]/+page.svelte	text	Commit message and author need GitHub, which is not connected.
@@ -1115,14 +1118,18 @@ routes/versions/[...slug]/+page.svelte	text	kuberik | …
 routes/versions/[...slug]/+page.svelte	code	Needs an approval or an external check
 routes/versions/[...slug]/+page.svelte	code	Not passing
 routes/versions/[...slug]/+page.svelte	text	now on
+routes/versions/[...slug]/+page.svelte	text	of … places running it
 routes/versions/[...slug]/+page.svelte	aria-label	Open the … rollout for …
 routes/versions/[...slug]/+page.svelte	title	Open the … rollout for …
 routes/versions/[...slug]/+page.svelte	text	Promote to …
 routes/versions/[...slug]/+page.svelte	code	Ready to deploy — still on …
 routes/versions/[...slug]/+page.svelte	code	Ready to deploy here
 routes/versions/[...slug]/+page.svelte	text	Revision not found
+routes/versions/[...slug]/+page.svelte	code	Running … of this revision; … is held
 routes/versions/[...slug]/+page.svelte	code	Skipped — newer builds are ahead of this one
+routes/versions/[...slug]/+page.svelte	title	This build
 routes/versions/[...slug]/+page.svelte	title	This service does not list this build, so it has no position for it
+routes/versions/[...slug]/+page.svelte	text	Tracking build … in …
 routes/versions/[...slug]/+page.svelte	text	View commit
 routes/versions/[...slug]/+page.svelte	title	What each service calls it
 routes/versions/+page.svelte	title	… can’t go any further yet
