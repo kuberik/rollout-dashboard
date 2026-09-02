@@ -128,6 +128,7 @@
 	import { groupRolloutsByApp, displayVersionForTag } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { getEnvironmentRank, compareEnvironmentNames } from '$lib/env-order';
+	import { leadTime, compactSpan, type LeadEnv } from '$lib/view-models/lead-time';
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import {
 		getDisplayVersion,
@@ -160,7 +161,8 @@
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import PromotionPipeline, {
 		type Station,
-		type Frontier
+		type Frontier,
+		type Hop
 	} from '$lib/components/PromotionPipeline.svelte';
 	import ExposureBar, { hasExposure } from '$lib/components/ExposureBar.svelte';
 	import BlockingStoryLines from '$lib/components/BlockingStoryLines.svelte';
@@ -169,6 +171,7 @@
 		buildGateContext,
 		withSchedules,
 		blockingStory,
+		joinClauses,
 		shortStory,
 		type GateContext,
 		type BlockingStory,
@@ -194,6 +197,8 @@
 		PauseSolid,
 		CheckCircleSolid,
 		ChartMixedOutline,
+		RocketSolid,
+		ClockOutline,
 		ArrowUpRightFromSquareOutline,
 		ChevronDoubleRightOutline,
 		ChevronRightOutline,
@@ -479,9 +484,21 @@
 	function stuckFor(cell: AppCell, story: BlockingStory) {
 		const own = detectStuck(cell.rollout, { now: $now });
 		if (own) return own;
-		if (refusedNotStalled(story)) return null;
-		const promo = detectStuckPromotion(cell.rollout, { now: $now });
+		// ⭐ THE JOIN GOES INTO THE DETECTOR NOW, NOT AROUND IT. (2026-09-02)
+		// `detectStuckPromotion` classifies every blocking gate itself when it
+		// is handed a `GateContext`, and only `person`/`unknown` may spell
+		// `stuck` over a gated rollout — the same rule `refusedNotStalled` was
+		// wrapping it in. This page has always had the context; passing it makes
+		// ONE derivation of the question instead of two that can drift.
+		const promo = detectStuckPromotion(cell.rollout, { now: $now, gateContext });
 		if (promo) return promo;
+		// ⚠️ `refusedNotStalled` SURVIVES FOR THE PEER DETECTOR ONLY.
+		// `detectStuckBehind` lives in `utils.ts`, takes no gate context and
+		// therefore still cannot tell a wedge from a gate correctly refusing a
+		// candidate. Until it can, the guard belongs in front of it — narrowed
+		// to the one call that needs it rather than deleted, which would put the
+		// amber back on `hello-frontend-app` by the other route.
+		if (refusedNotStalled(story)) return null;
 		for (const peer of cells) {
 			if (peer === cell) continue;
 			const r = detectStuckBehind(cell.rollout, peer.rollout, peer.envName, { now: $now });
@@ -1383,7 +1400,7 @@
 	 * promotion is not a decision, but it IS something happening, and its card
 	 * says so in its own title. Only a page with neither drops the column.
 	 */
-	const hasAct = $derived(decisions.length > 0 || waitingItems.length > 0);
+	/** Declared with `loneWaitGroups`, which it reads — see below. */
 
 	// ── OBJECT 2 · THE STATE COLUMN ──────────────────────────────────────
 	//
@@ -1474,7 +1491,6 @@
 	 * a second derivation and never a fabricated number: when either side is
 	 * not on the ladder the hop says so instead of printing a zero.
 	 */
-	type Hop = { waiting: number; label: string };
 	/**
 	 * ⛔ A HOP LABELS ITSELF ONLY WHEN IT HAS A COUNT (2026-08-27).
 	 *
@@ -1567,6 +1583,136 @@
 			? { label: 'all agree', agree: true }
 			: { label: `${builds.size} versions`, agree: false };
 	});
+
+	/**
+	 * ⭐ THE GATE GOES ON THE EDGE IT HOLDS. (2026-09-02)
+	 *
+	 * > *"the hop between stations, which is where the gate actually lives,
+	 * > carries nothing."*
+	 *
+	 * A station says WHAT IS RUNNING HERE. The hop is the PROMOTION, and the
+	 * thing refusing a promotion is a gate — so the gate belongs on the hop and
+	 * on nothing else. It was being printed instead in a card in the act column,
+	 * one column and 200px away from the edge it is about, while every rail on
+	 * `hello-frontend-app` was a plain 1px line with 600px of nothing beside it.
+	 *
+	 * ⛔ ONCE, NOT ONCE PER EDGE. One dependency gate holds all three
+	 * environments here; drawn per station it would be the same clause three
+	 * times, which is the repetition rule this page has already applied twice
+	 * (three `Needs you` rows folded to one, five copies of a handle cut from
+	 * `/environments`). A cause is attached to the MOST UPSTREAM edge it bites
+	 * and skipped on the contiguous run below it — the drawing then lands where
+	 * the wave actually stopped, and everything under it is visibly behind. WHO
+	 * it holds is the BANNER's job; see `bannerSubject`.
+	 *
+	 * ⛔ AND ONLY CAUSES NOBODY ELSE IS DRAWING. `waitGroups` is exactly the set
+	 * of blocks that carry NO control — the ones the act column deliberately has
+	 * no button for. A gate that needs a person is a `decision`, it has a row
+	 * with a `Deploy` on it, and drawing its clause here too would put one fact
+	 * in two objects. Such an edge still goes DASHED: the shape says "held", the
+	 * drawing says "by what", and only the drawing can be a duplicate.
+	 */
+	const waitGroupByEnv = $derived.by<Map<string, WaitGroup>>(() => {
+		const m = new Map<string, WaitGroup>();
+		for (const g of waitGroups)
+			for (const t of g.members) for (const f of t.members) m.set(f.key, g);
+		return m;
+	});
+
+	/** `heldEntering[i]` — the cause DRAWN on the edge into `stageFacts[i]`. */
+	const heldEntering = $derived.by<(WaitGroup | null)[]>(() => {
+		const out: (WaitGroup | null)[] = [];
+		let drawn: string | null = null;
+		for (const f of stageFacts) {
+			const g = waitGroupByEnv.get(f.key) ?? null;
+			if (!g) {
+				drawn = null;
+				out.push(null);
+			} else if (g.id === drawn) {
+				out.push(null);
+			} else {
+				drawn = g.id;
+				out.push(g);
+			}
+		}
+		return out;
+	});
+
+	/** Every environment this edge's cause is also holding downstream. */
+	function hopFrom(g: WaitGroup | null, base: Hop): Hop {
+		if (!g) return base;
+		return {
+			...base,
+			story: g.story,
+			href: g.providerHref,
+			hrefLabel: g.provider
+		};
+	}
+
+	/**
+	 * ⭐ THE EDGE INTO THE FIRST STAGE — the hop this chain never had.
+	 *
+	 * With every environment on one build, every edge BETWEEN stations is in
+	 * sync and the only thing actually held is the newest build's entry into
+	 * DEV. That edge had no object at all, which is why a page whose whole
+	 * subject is "a promotion is stuck" drew three solid rails.
+	 *
+	 * It renders ONLY when it is held. An open entry hop is the norm, and this
+	 * file cuts objects that mostly draw the norm.
+	 */
+	const entryHop = $derived.by<Hop | null>(() => {
+		const g = heldEntering[0];
+		if (!g) return null;
+		const first = stageFacts[0];
+		const n = first && first.rank > 0 ? first.rank : 0;
+		return hopFrom(g, { waiting: n, label: '' });
+	});
+
+	const pipeHops = $derived.by<(Hop | null)[]>(() =>
+		chainHops.map((h, i) => (h ? hopFrom(heldEntering[i + 1] ?? null, h) : h))
+	);
+
+	/**
+	 * The fleet is a SET with one edge into it, so it takes a cause only when
+	 * EVERY blocked region shares one — a set cannot be spoken for by one of its
+	 * members, and a region held by something of its own keeps its row in the
+	 * waiting card.
+	 */
+	const fleetCause = $derived.by<WaitGroup | null>(() => {
+		if (fleetFacts.length === 0) return null;
+		const gs = fleetFacts.map((f) => waitGroupByEnv.get(f.key) ?? null);
+		const first = gs[0];
+		if (!first || gs.some((g) => g?.id !== first.id)) return null;
+		// Already drawn on the last stage's own edge — do not repeat it here.
+		const lastDrawn = [...heldEntering].reverse().find((g) => g) ?? null;
+		if (lastDrawn?.id === first.id) return null;
+		return first;
+	});
+	const pipeFleetHop = $derived.by<Hop | null>(() =>
+		fleetHop ? hopFrom(fleetCause, fleetHop) : fleetHop
+	);
+
+	/** The causes the pipeline is drawing, so the waiting card stops repeating them. */
+	const hopCauseKeys = $derived.by<Set<string>>(() => {
+		const s = new Set<string>();
+		for (const g of heldEntering) if (g) s.add(g.id);
+		if (fleetCause) s.add(fleetCause.id);
+		return s;
+	});
+
+	/** What is left for the waiting card: causes no edge could carry. */
+	const loneWaitGroups = $derived(waitGroups.filter((g) => !hopCauseKeys.has(g.id)));
+
+	/**
+	 * ⛔ AND `waitingItems` ONLY KEEPS IT ALIVE WHERE THE PIPELINE CANNOT SPEAK
+	 * FOR THEM. (2026-09-02) Every cause the promotion chain now DRAWS on its
+	 * own edge is struck from this card — see `hopCauseKeys`. On
+	 * `hello-frontend-app` that is all of them, so the act column goes and the
+	 * page opens with the banner and the chain, which is where the fact now
+	 * lives. What survives here is a cause no edge could carry: a production
+	 * region held by something the rest of the fleet is not.
+	 */
+	const hasAct = $derived(decisions.length > 0 || loneWaitGroups.length > 0);
 
 	/**
 	 * The rollup on the state card.
@@ -1669,16 +1815,105 @@
 	});
 
 	/**
+	 * ── OBJECT 4 · HOW IT'S GOING — the rail's second complete answer.
+	 *
+	 * ⭐ THE RAIL WAS EMPTIEST EXACTLY WHERE THE APP WAS WORST. (2026-09-02)
+	 *
+	 * `COMPOSITION-GRAMMAR.md` §7 wants *"a stack of small complete answers"*,
+	 * four of them on the reference page. This rail held `Source` — one row —
+	 * and an exposure card that renders only when the managed-resources call
+	 * resolves pod counts. On `hello-frontend-app` neither the second card nor
+	 * anything else appeared, so the column beside the page's lead object was
+	 * 340px of nothing on the one app in the fixture that is actually stuck.
+	 *
+	 * WHAT BELONGS HERE IS WHAT THE MAIN COLUMN STRUCTURALLY CANNOT SAY. The
+	 * chain answers *where is it* and *how far behind*; the activity list
+	 * answers *what happened*. Neither can answer HOW FAST THIS APP SHIPS,
+	 * which is `PAGE-CRITERIA.md`'s own `/apps` criterion 3 (*"which ship
+	 * slowly? — lead time dev→prod"*) asked at app scope. It is the same card
+	 * `/apps` and `/envs/<name>` already carry in the same slot, with the same
+	 * icon, the same `<dl>` and the same `—` for a fact that cannot be
+	 * evidenced — the third page in a family of three, not a new object.
+	 *
+	 * ⛔ AND NOT ONE ROW OF IT IS ON THE PAGE ALREADY. `Furthest behind` — the
+	 * row both siblings carry third — is DELIBERATELY ABSENT: every station in
+	 * the chain 300px to the left prints its own `N behind` chip, and a card
+	 * restating the maximum of three chips is the repetition this pass is
+	 * removing everywhere else. The head band's `Last 24h` is a different
+	 * window from `Deploys · 7d` and says so in its own label.
+	 */
+	const SPARK_DAYS = 7;
+	const deploys7d = $derived.by<number>(() => {
+		const end = $now.getTime();
+		const start = end - SPARK_DAYS * 24 * 60 * 60 * 1000;
+		let n = 0;
+		for (const c of cells) {
+			for (const h of c.rollout.status?.history ?? []) {
+				if (!h.timestamp) continue;
+				const t = new Date(h.timestamp).getTime();
+				if (t >= start && t <= end) n++;
+			}
+		}
+		return n;
+	});
+
+	/** Median bake span across this app's whole history. `/envs/<name>`'s own. */
+	const medianBakeMs = $derived.by<number | null>(() => {
+		const spans: number[] = [];
+		for (const c of cells)
+			for (const h of c.rollout.status?.history ?? []) {
+				if (!h.bakeStartTime || !h.bakeEndTime) continue;
+				const a = new Date(h.bakeStartTime).getTime();
+				const b = new Date(h.bakeEndTime).getTime();
+				if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
+				spans.push(b - a);
+			}
+		if (spans.length === 0) return null;
+		spans.sort((x, y) => x - y);
+		const mid = spans.length >> 1;
+		return spans.length % 2 ? spans[mid] : Math.round((spans[mid - 1] + spans[mid]) / 2);
+	});
+
+	/**
+	 * The app's median trip from its first environment to its first production
+	 * region — `leadTime`'s own measurement, the one `/apps` prints in its
+	 * `Lead` column, computed here from the same `status.history` this page
+	 * already reads. `null` (an em dash) whenever no build has been observed at
+	 * both ends inside the retained history: never an estimate.
+	 */
+	const appLead = $derived.by(() => {
+		const envs: LeadEnv[] = cells.map((c) => ({
+			label: shortEnvLabel(c.envName) || c.envName,
+			order: getEnvironmentRank(c.envName),
+			prod: hasEnvironmentBinding && isProdTier(c.envName),
+			deploys: (c.rollout.status?.history ?? []).flatMap((h) => {
+				const v = getDisplayVersion(h.version);
+				if (!v || !h.timestamp) return [];
+				const ms = new Date(h.timestamp).getTime();
+				return Number.isFinite(ms) ? [{ version: v, ms }] : [];
+			})
+		}));
+		return leadTime(envs);
+	});
+
+	/**
 	 * ⛔ NO RAIL TRACK WHEN THERE IS NOTHING IN THE RAIL. The same rule
 	 * `hasAct` already applies to the act column: left as a template area with
 	 * no element in it, the grid still reserves 340px and a 24px gap, which is
 	 * a visible hole beside the page's lead card. An app with no source
 	 * annotation and no resolvable pod counts simply has no small complete
 	 * answers to consult, and a column with nothing in it is not a column.
+	 *
+	 * ⚠️ `How it's going` DOES NOT KEEP IT ALIVE ON ITS OWN. Its two rows can
+	 * both be `—` on an app whose history carries no bake window and no
+	 * observed trip to production, and a 340px track holding one card of em
+	 * dashes is the object-drawing-the-norm defect, not a rail.
 	 */
+	const hasCadence = $derived(deploys7d > 0 || medianBakeMs !== null || appLead !== null);
 	const hasRail = $derived(
 		sourceRepos.length > 0 ||
 			podsQuery.isLoading ||
+			hasCadence ||
 			hasExposure(exposure.newestPercent, exposure.segments)
 	);
 
@@ -2010,6 +2245,79 @@
 	const bannerCauseKey = $derived(
 		!pageBlocker && blockedEnv ? causeKey(blockedEnv.story) : null
 	);
+
+	/**
+	 * ⭐ ONE CAUSE, N ENVIRONMENTS — AND THE HEADLINE SAYS SO. (2026-09-02)
+	 *
+	 * `blockedEnv` picks the environment to SPEAK FOR, on a tiebreak that puts
+	 * the front of the wave first, and the banner then headlined it *"DEV is
+	 * waiting on another deploy"*. On `hello-frontend-app` that is a third of
+	 * the truth: one dependency gate holds DEV, STAGING **and** PROD — the
+	 * waiting card said *3 environments* and all three stations read `1 BEHIND`
+	 * — so the loudest object on the page named the smallest part of its own
+	 * subject.
+	 *
+	 * The classifier is untouched. `blockingStory` already takes the SUBJECT
+	 * from its caller precisely because *"what identifies a rollout depends on
+	 * the page"*, and this is that decision made at page level: the environments
+	 * sharing the block's cause, named.
+	 *
+	 * ⛔ THE SUBJECT STAYS AN ENVIRONMENT PHRASE. The page fixes the app, so a
+	 * headline that named only the provider would be a sentence about somebody
+	 * else's service; what a reader needs at a glance is HOW MUCH OF THIS APP is
+	 * stopped. The app's own name leads the phrase because `${subject} is …`
+	 * needs a grammatically SINGULAR head — `DEV, STAGING and PROD is waiting`
+	 * is not English, and `blocking-story.ts` owns that verb. It is also the
+	 * exact subject `/apps` already prints for this rollout
+	 * (*"hello-frontend-app in DEV is waiting on another deploy"*), so this is
+	 * that spelling generalised from one environment to the set, not a new one.
+	 *
+	 * ⛔ AND IT IS NEVER SAID OF ONE. A single held environment keeps `place`,
+	 * unchanged and byte-identical, because `hello-frontend-app in DEV` on a
+	 * page titled `hello-frontend-app` is the app's name spent for nothing.
+	 */
+	const bannerPeers = $derived.by<EnvFacts[]>(() => {
+		if (!blockedEnv) return [];
+		const key = causeKey(blockedEnv.story);
+		return envFacts.filter((f) => f.story.blocked && causeKey(f.story) === key);
+	});
+	/**
+	 * ⛔ AND THE BANNER STOPS CARRYING THE RULE RECORD WHEN THE CHAIN DRAWS IT.
+	 * (2026-09-02) With the gate on its own edge, `› 1 rule` appeared TWICE on
+	 * one screen — once under the banner and once under the clause 120px below
+	 * — two labelled disclosures onto the same gate handle. That is the exact
+	 * defect this page already cut between the banner and the waiting card.
+	 * `showRules` exists for it: *"off where the surround already draws them."*
+	 * The banner keeps its verdict sentence; the RECORD belongs with the
+	 * DRAWING, which is the edge.
+	 *
+	 * ⚠️ ONLY WHEN THE TWO RECORDS WOULD BE THE SAME SET. A banner speaking for
+	 * an environment whose block also includes a `promotion` gate holds a gate
+	 * the narrowed hop story does not, and hiding it would lose a handle.
+	 */
+	const bannerRulesDrawn = $derived.by<boolean>(() => {
+		if (!blockedEnv) return false;
+		const story = blockedEnv.story;
+		return (
+			hopCauseKeys.has(causeKey(story)) && ownCause(story).length === story.gates.length
+		);
+	});
+	const bannerStory = $derived.by<BlockingStory | null>(() => {
+		if (!blockedEnv) return null;
+		if (bannerPeers.length < 2) return blockedEnv.story;
+		const deployed = envFacts.filter((f) => f.version).length;
+		const names = bannerPeers.map((f) => f.title.toUpperCase());
+		const where =
+			bannerPeers.length === deployed
+				? `all ${names.length} environments`
+				: names.length <= 3
+					? joinClauses(names)
+					: `${names.length} environments`;
+		return blockingStory(blockedEnv.cell.rollout, gateContext, {
+			subject: `${appName} in ${where}`,
+			now: $now
+		});
+	});
 </script>
 
 <svelte:head>
@@ -2210,10 +2518,12 @@
 				pulse={pageBlocker.pulse}
 				class="mb-6"
 			/>
-		{:else if blockedEnv}
+		{:else if bannerStory}
 			<!-- ⭐ THE SAME OBJECT, THE SAME WORDS, AS ROLLOUT DETAIL. Whatever
-			     `Investigate` takes you to now agrees with what you clicked. -->
-			<BlockingStoryPanel story={blockedEnv.story} class="mb-6" />
+			     `Investigate` takes you to now agrees with what you clicked.
+			     The SCOPE is this page's own — see `bannerStory`: one cause
+			     holding three environments is headlined as three. -->
+			<BlockingStoryPanel story={bannerStory} showRules={!bannerRulesDrawn} class="mb-6" />
 		{/if}
 
 		<!-- ═══ ACT | STATE ═════════════════════════════════════════════════
@@ -2912,16 +3222,20 @@
 					     Its own card, its own rollup, and DELIBERATELY NO
 					     ACTION BUTTON. Offering a control for something that
 					     needs no action is the defect, not the cure. -->
-					{#if waitingItems.length > 0}
+					{#if loneWaitGroups.length > 0}
+						{@const waitEnvs = loneWaitGroups.reduce(
+							(n, g) => n + g.members.reduce((m, t) => m + t.members.length, 0),
+							0
+						)}
 						<Card
 							icon={ClockSolid}
 							title="Waiting, nothing to do"
-							verdict="{waitingItems.length} environment{waitingItems.length === 1 ? '' : 's'}"
+							verdict="{waitEnvs} environment{waitEnvs === 1 ? '' : 's'}"
 							verdictTitle="On hold behind a check or a deploy window. These clear on their own."
 							padded={false}
 						>
 							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
-								{#each waitGroups as g (g.id)}
+								{#each loneWaitGroups as g (g.id)}
 									<li class="px-4 py-3">
 										<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 											<!-- ⭐ THE SET, NOT N ROWS. Promotion order, and every chip
@@ -3063,9 +3377,10 @@
 					>
 						<PromotionPipeline
 							stages={chainNodes}
-							hops={chainHops}
+							hops={pipeHops}
+							{entryHop}
 							fleet={fleetNodes}
-							{fleetHop}
+							fleetHop={pipeFleetHop}
 							{fleetVerdict}
 							{frontier}
 						/>
@@ -3110,6 +3425,83 @@
 									</li>
 								{/each}
 							</ul>
+						</Card>
+					{/if}
+
+					<!-- ⭐ HOW IT'S GOING — the rail's second complete answer, and the
+					     one the main column structurally cannot give. See the
+					     derivation for why `Furthest behind` — the row both sibling
+					     pages carry — is deliberately not here.
+
+					     THE ROLLUP IS THE LEAD TIME, not a third row: §1 makes the
+					     right-aligned verdict the thing a reader takes WITHOUT reading
+					     the card, and *"how long does a change take to reach
+					     production"* is the answer this card owes at a glance. -->
+					{#if hasCadence}
+						<Card icon={ChartMixedOutline} title="How it’s going">
+							<!-- ⭐ THE ROLLUP IS THE CADENCE, AND IT IS A MARK PLUS A
+							     NUMBER. §1 makes the right-aligned verdict the thing a
+							     reader takes WITHOUT reading the card; the reference page's
+							     own header rollups are exactly this shape (`↑ 19`, `3/3
+							     healthy`). The sparkline is the mark — the seven-day shape
+							     of this app's deploys — and it may not be a ROW as well,
+							     because then the number would print twice.
+
+							     ⛔ AND NOT THE LEAD TIME. That was the first spelling and
+							     it put an em dash in the header on every app whose retained
+							     history has not yet carried one build the whole way — which
+							     is most of them. A card whose one-glance answer is `—` has
+							     no answer; the em dash belongs in a ROW, where the label
+							     beside it says what could not be measured. -->
+							{#snippet rollup()}
+								{#if deploys7d >= SPARK_MIN}
+									<DeployVolumeSparkline
+										rollouts={cells.map((c) => c.rollout)}
+										days={SPARK_DAYS}
+									/>
+								{/if}
+								<span
+									class="t-code-sm whitespace-nowrap text-gray-500 dark:text-gray-400"
+									title="{deploys7d} deploy{deploys7d === 1
+										? ''
+										: 's'} of this app across every environment in the last 7 days"
+									>{deploys7d} in 7d</span
+								>
+							{/snippet}
+							<dl class="space-y-3">
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+										<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical deploy
+									</dt>
+									<dd
+										class="t-headline text-gray-900 tabular-nums dark:text-white"
+										title={medianBakeMs === null
+											? 'No deploy of this app has a recorded start and end inside the history kept for it'
+											: 'How long a deploy of this app usually takes to finish and be watched, measured across its whole history'}
+									>
+										{medianBakeMs === null ? '—' : formatDurationMs(medianBakeMs)}
+									</dd>
+								</div>
+								<!-- `PAGE-CRITERIA.md`'s `/apps` criterion 3 — *"which ship
+								     slowly? — lead time dev→prod"* — asked at app scope, and
+								     the one measurement on this page that is about SPEED
+								     rather than position. `—` where no build has been
+								     observed at both ends inside the retained history:
+								     never an estimate. -->
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+										<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical to prod
+									</dt>
+									<dd
+										class="t-headline text-gray-900 tabular-nums dark:text-white"
+										title={appLead === null
+											? 'No version of this app has been seen in its first environment and then in production inside the deploy history kept for it'
+											: `Median trip from ${appLead.fromLabel.toUpperCase()} to ${appLead.toLabel.toUpperCase()}, measured across ${appLead.samples} version${appLead.samples === 1 ? '' : 's'} observed at both ends`}
+									>
+										{appLead === null ? '—' : compactSpan(appLead.medianMs)}
+									</dd>
+								</div>
+							</dl>
 						</Card>
 					{/if}
 

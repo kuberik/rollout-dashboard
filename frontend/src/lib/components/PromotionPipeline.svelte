@@ -2,6 +2,7 @@
 
 <script module lang="ts">
 	import type { EnvironmentTheme } from '$lib/environment-theme';
+	import type { BlockingStory } from '$lib/view-models/blocking-story';
 
 	export type Station = {
 		key: string;
@@ -50,6 +51,35 @@
 		/** Builds waiting to cross this edge. Drives dashed vs solid. */
 		waiting: number;
 		label: string;
+		/**
+		 * ⭐ WHAT HOLDS THIS EDGE, DRAWN ON THE EDGE. (2026-09-02)
+		 *
+		 * > *"the hop between stations, which is where the gate actually lives,
+		 * > carries nothing."*
+		 *
+		 * A station answers *what is running here*; the HOP is the promotion
+		 * itself, so the gate refusing that promotion belongs on it and nowhere
+		 * else. Until now it was a 1px rail with an occasional mono caption, and
+		 * the reason a build could not cross it was printed in a card in the
+		 * other half of the page.
+		 *
+		 * The gates are ALREADY NARROWED by the caller to the edge's own cause —
+		 * `promotion`-kind gates are stripped, because *"waiting for dev to
+		 * deploy it first"* IS this object and drawing it here would be the
+		 * chain restating itself. `null` on an open edge: a plain rail is the
+		 * mark for "nothing is holding this", and a caption saying so is the
+		 * page marking the norm once per promotion edge.
+		 */
+		story?: BlockingStory | null;
+		/**
+		 * Where a reader goes to unblock it — the PROVIDER app when a
+		 * dependency contract is the cause. The row is a `.tap-zone` when this
+		 * is set, so the region that names the blocking service is the region
+		 * that opens it.
+		 */
+		href?: string | null;
+		/** The destination's name, for the anchor's label. */
+		hrefLabel?: string | null;
 	};
 
 	/**
@@ -156,12 +186,19 @@
 	import Chip from './Chip.svelte';
 	import BakeStatusIcon from './BakeStatusIcon.svelte';
 	import CopyButton from './CopyButton.svelte';
+	import BlockingStoryLines from './BlockingStoryLines.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
-	import { CodeBranchSolid, TagSolid, CubeSolid } from 'flowbite-svelte-icons';
+	import {
+		CodeBranchSolid,
+		TagSolid,
+		CubeSolid,
+		ChevronRightOutline
+	} from 'flowbite-svelte-icons';
 
 	let {
 		stages,
 		hops = [],
+		entryHop = null,
 		fleet = [],
 		fleetHop = null,
 		fleetVerdict = null,
@@ -171,6 +208,18 @@
 		stages: Station[];
 		/** `hops[i]` sits between `stages[i]` and `stages[i + 1]`. */
 		hops?: (Hop | null)[];
+		/**
+		 * ⭐ THE EDGE FROM THE FRONTIER INTO THE FIRST STAGE — the one hop this
+		 * object never had, and the one the app's own gate usually sits on.
+		 *
+		 * `hello-frontend-app` runs the same build in all three environments, so
+		 * every edge BETWEEN stations is in sync and every rail was solid; what
+		 * is actually held is the newest build's entry into DEV, an edge that
+		 * had no object at all. It renders only when it is HELD — an open entry
+		 * hop is the norm and drawing it on every healthy app is exactly the
+		 * repetition this file cuts everywhere else.
+		 */
+		entryHop?: Hop | null;
 		/** Production regions. Non-empty only when the app fans out. */
 		fleet?: Station[];
 		/** The edge from the last stage into the fleet. */
@@ -259,6 +308,52 @@
 	{/if}
 {/snippet}
 
+{#snippet hopRow(h: Hop)}
+	<!-- ⭐ THE EDGE, AND WHAT IS ON IT.
+	     · OPEN — a plain rail. Nothing else: `in sync` was cut from this object
+	       once already for marking the norm once per promotion edge.
+	     · HELD — the rail goes dashed and the edge DRAWS its cause, in
+	       `BlockingStoryLines`' vocabulary (`⇄ hello-api-app [API|1.66.0] →
+	       [^1.67.0]`, a per-kind mark, and the rule record behind one control).
+	       That component is IMPORTED, not restated: the same object renders this
+	       clause on `/environments`, on `/envs/<name>` and in this page's own
+	       waiting card, so a gate cannot be drawn two ways one scroll apart.
+
+	     ⛔ ONCE, NOT ONCE PER STATION. One dependency gate holds DEV, STAGING and
+	     PROD on `hello-frontend-app`; the caller attaches it to the most upstream
+	     edge it bites and to no other, so the drawing appears where the wave
+	     actually stopped. WHO it holds is the page BANNER's job — that headline
+	     names every environment — and repeating the set here would be the same
+	     fact in two objects, which is the defect this pass exists to remove. -->
+	<li class="pp-hop {h.story ? 'pp-hop--held' : ''}">
+		<span class="pp-rail {h.waiting > 0 || h.story ? 'pp-rail--gap' : ''}"></span>
+		{#if h.story}
+			<!-- A REGION THAT NAMES THE BLOCKING SERVICE IS THE REGION THAT OPENS
+			     IT. `.tap-zone` / `.tap-link` is the product's pattern for that;
+			     wrapping the row in an `<a>` would nest it around the rule
+			     disclosure and the chips it already contains. The chevron is the
+			     one anchor, and every control inside stays reachable. -->
+			<div
+				class="pp-hop-body {h.href
+					? 'tap-zone rounded hover:bg-gray-50 dark:hover:bg-gray-700/30'
+					: ''}"
+			>
+				<BlockingStoryLines story={h.story} class="min-w-0" />
+				{#if h.href}
+					<a
+						href={h.href}
+						class="tap-link pp-hop-go"
+						aria-label="Open {h.hrefLabel}, the service this promotion is waiting on"
+						><ChevronRightOutline class="h-3.5 w-3.5" /></a
+					>
+				{/if}
+			</div>
+		{:else if h.label}
+			<span class="t-code-sm truncate text-gray-500 dark:text-gray-400">{h.label}</span>
+		{/if}
+	</li>
+{/snippet}
+
 {#snippet identity(s: Station)}
 	{#if s.href}
 		<a href={s.href} class="flex min-w-0" title="Open the {s.title} rollout">
@@ -269,7 +364,7 @@
 	{/if}
 {/snippet}
 
-<div class="pp">
+<div class="pp {entryHop ? 'pp--entry' : ''}">
 	{#if stages.length === 0 && fleet.length === 0}
 		<p class="t-micro text-gray-500 dark:text-gray-400">{emptyLabel}</p>
 	{:else}
@@ -311,6 +406,9 @@
 			</div>
 		{/if}
 		<ol class="pp-line">
+			{#if entryHop}
+				{@render hopRow(entryHop)}
+			{/if}
 			{#each stages as s, i (s.key)}
 				<li class="pp-station">
 					<span
@@ -363,26 +461,12 @@
 				</li>
 
 				{#if hops[i]}
-					{@const h = hops[i] as Hop}
-					<!-- The rail is always drawn; the LABEL only when it is a count.
-					     A solid rail already says "in sync" and saying it twice is
-					     the page marking the norm once per promotion edge. -->
-					<li class="pp-hop">
-						<span class="pp-rail {h.waiting > 0 ? 'pp-rail--gap' : ''}"></span>
-						{#if h.label}
-							<span class="t-code-sm truncate text-gray-500 dark:text-gray-400">{h.label}</span>
-						{/if}
-					</li>
+					{@render hopRow(hops[i] as Hop)}
 				{/if}
 			{/each}
 
 			{#if fleet.length > 0 && fleetHop}
-				<li class="pp-hop">
-					<span class="pp-rail {fleetHop.waiting > 0 ? 'pp-rail--gap' : ''}"></span>
-					{#if fleetHop.label}
-						<span class="t-code-sm truncate text-gray-500 dark:text-gray-400">{fleetHop.label}</span>
-					{/if}
-				</li>
+				{@render hopRow(fleetHop)}
 			{/if}
 		</ol>
 
@@ -473,6 +557,15 @@
 	}
 	:global(.dark) .pp-front {
 		border-bottom-color: var(--color-gray-700);
+	}
+	/* WHEN THE FIRST EDGE IS DRAWN, THE RULE COMES OFF AND THE RAIL TAKES OVER.
+	   A hairline and a rail 4px apart are two separators for one join, and the
+	   rail is the one that carries meaning: it says the newest build is trying
+	   to get INTO the chain, which is exactly what the entry hop is about. */
+	.pp--entry .pp-front {
+		border-bottom: none;
+		padding-bottom: 4px;
+		margin-bottom: 0;
 	}
 	/* NEUTRAL, AND DELIBERATELY NOT A STATUS CIRCLE. The six status hues belong
 	   to the stations; the frontier is an IDENTITY, not a state, and a green
@@ -600,6 +693,46 @@
 		align-items: center;
 		column-gap: 12px;
 		height: 22px;
+	}
+	/* A HELD HOP IS AS TALL AS WHAT IS ON IT. The 22px above is the height of
+	   a bare rail; an edge carrying a drawn clause (and a rule control under
+	   it) sets its own. `height` → `min-height` only here, so an open hop is
+	   byte-identical to what shipped. */
+	.pp-hop--held {
+		height: auto;
+		min-height: 22px;
+		padding-block: 2px;
+	}
+	.pp-hop-body {
+		display: flex;
+		min-width: 0;
+		align-items: flex-start;
+		gap: 8px;
+		/* `BlockingStoryLines` carries its own 6px top margin — it is written to
+		   hang under a row on `/environments`. Pulled back here so the clause
+		   centres on the rail rather than sitting low in its own box. */
+		margin-block: -2px;
+		padding: 2px 4px;
+	}
+	/* The affordance, and the only anchor in the zone. It is a chevron and not
+	   the provider's NAME because the clause 8px to its left already prints
+	   that name at full ink — the region navigates, so a second copy of the
+	   word would be one fact drawn twice inside 200px. */
+	.pp-hop-go {
+		display: inline-flex;
+		flex-shrink: 0;
+		align-items: center;
+		align-self: center;
+		color: var(--color-gray-500);
+	}
+	:global(.dark) .pp-hop-go {
+		color: var(--color-gray-400);
+	}
+	.pp-hop-body:hover .pp-hop-go {
+		color: var(--color-gray-900);
+	}
+	:global(.dark) .pp-hop-body:hover .pp-hop-go {
+		color: var(--color-gray-100);
 	}
 	/* THE LINE IS CONTINUOUS, CIRCLE TO CIRCLE. Drawn only inside the hop's
 	   own 22px box it left an 8px break at each end — the station's padding —
