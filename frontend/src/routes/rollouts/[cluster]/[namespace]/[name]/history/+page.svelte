@@ -6,6 +6,7 @@
 		RolloutTest
 	} from '../../../../../../types';
 	import { Badge, Button, Spinner, Alert } from 'flowbite-svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -821,7 +822,7 @@
 											{getDisplayVersion(entry.version)}
 										</a>
 										{#if isCurrent}
-											<Badge color="blue" class="text-xs">Current</Badge>
+											<Chip role="count" label="current" />
 										{/if}
 										<!--
 											THE `Succeeded` BADGE IS THE NORM AND ONLY THE NORM.

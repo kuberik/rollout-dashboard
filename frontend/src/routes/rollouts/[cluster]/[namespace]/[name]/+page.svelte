@@ -2051,11 +2051,10 @@
 									>Available Version Upgrades</span
 								>
 								{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-									<span
-										class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-									>
-										<ArrowUpOutline class="h-2.5 w-2.5" />{rollout.status.releaseCandidates.length}
-									</span>
+									<!-- A count is a `count` chip, the same one every list header uses.
+									     It was an orange-100 pill with an arrow — the only fill on the
+									     card, and orange is not a role the budget owns. -->
+									<Chip role="count" label={String(rollout.status.releaseCandidates.length)} />
 								{/if}
 								<button
 									id="refresh-versions-btn"
@@ -2150,7 +2149,7 @@
 														<button
 															type="button"
 															aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
-															class="inline-flex cursor-help items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+															class="inline-flex cursor-help items-center gap-1 rounded text-xs font-medium text-yellow-700 dark:text-yellow-400"
 														>
 															{heldWord(held)}
 															<QuestionCircleOutline class="h-3 w-3" aria-hidden="true" />
