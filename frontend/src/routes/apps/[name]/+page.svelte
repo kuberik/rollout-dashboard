@@ -81,7 +81,7 @@
 	 *     tasks**: staging, the four converged regions as one, the straggler,
 	 *     and the diverged region.
 	 * The chain and the fleet are one row per environment by design — that is
-	 * their job — but they are 24px rows in a 340px column, not 170px cards.
+	 * their job — but they are 24px rows in a 320px column, not 170px cards.
 	 *
 	 * ══ THE EXPOSURE BLOCKER, DECIDED ═══════════════════════════════════
 	 *
@@ -260,7 +260,7 @@
 	 * ⛔ THE `−N` ON THIS PAGE IS THE PRODUCT'S ONE `behind`. (2026-08-31)
 	 *
 	 * It used to be `ladder.rankOf(...)` — the union across every
-	 * environment — while the card 340px to its right printed
+	 * environment — while the card 320px to its right printed
 	 * `N versions ready` from `promotionCandidates`, the rollout's own list.
 	 * A live critique caught the pair: `−20 PROD` beside `15 versions ready`
 	 * inside ONE block, with rollout detail saying `15 upgrades available`.
@@ -1221,7 +1221,7 @@
 	 *
 	 * · `on <sha>` — DELETED. Direction B's own thesis is *"nothing appears
 	 *   twice"*, and the running build is the state column's job: every
-	 *   environment's node prints its sha in a joined badge 340px to the right.
+	 *   environment's node prints its sha in a joined badge 320px to the right.
 	 * · `N pods` — DELETED. Pod counts come from the same per-environment
 	 *   managed-resources call that feeds `ExposureBar`, so whenever this
 	 *   clause can be printed the exposure bar is drawn from the same numbers
@@ -1853,7 +1853,7 @@
 	 * and an exposure card that renders only when the managed-resources call
 	 * resolves pod counts. On `hello-frontend-app` neither the second card nor
 	 * anything else appeared, so the column beside the page's lead object was
-	 * 340px of nothing on the one app in the fixture that is actually stuck.
+	 * 320px of nothing on the one app in the fixture that is actually stuck.
 	 *
 	 * WHAT BELONGS HERE IS WHAT THE MAIN COLUMN STRUCTURALLY CANNOT SAY. The
 	 * chain answers *where is it* and *how far behind*; the activity list
@@ -1916,14 +1916,14 @@
 	/**
 	 * ⛔ NO RAIL TRACK WHEN THERE IS NOTHING IN THE RAIL. The same rule
 	 * `hasAct` already applies to the act column: left as a template area with
-	 * no element in it, the grid still reserves 340px and a 24px gap, which is
+	 * no element in it, the grid still reserves 320px and a 24px gap, which is
 	 * a visible hole beside the page's lead card. An app with no source
 	 * annotation and no resolvable pod counts simply has no small complete
 	 * answers to consult, and a column with nothing in it is not a column.
 	 *
 	 * ⚠️ `How it's going` DOES NOT KEEP IT ALIVE ON ITS OWN. Its two rows can
 	 * both be `—` on an app whose history carries no bake window and no
-	 * observed trip to production, and a 340px track holding one card of em
+	 * observed trip to production, and a 320px track holding one card of em
 	 * dashes is the object-drawing-the-norm defect, not a rail.
 	 */
 	const hasCadence = $derived(deploys7d > 0 || medianBakeMs !== null || appLead !== null);
@@ -2467,7 +2467,7 @@
 				<div class="h-6 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 				<div class="h-4 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 			</div>
-			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
 				<div class="space-y-6">
 					<div class="h-40 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
 					<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
@@ -2608,7 +2608,7 @@
 		{/if}
 
 		<!-- ═══ ACT | STATE ═════════════════════════════════════════════════
-		     The study's `minmax(0,1fr) 340px`, collapsing to one column below
+		     The study's `minmax(0,1fr) 320px`, collapsing to one column below
 		     860px. The breakpoint is a CONTAINER query, not a viewport one:
 		     the sidebar is 176px at `sm`+ and absent below it, so the content
 		     box is not monotonic in viewport width and a media query flips
@@ -3514,17 +3514,31 @@
 					     derivation for why `Furthest behind` — the row both sibling
 					     pages carry — is deliberately not here.
 
-					     ⛔ THE ROLLUP IS NO LONGER THE CADENCE. (2026-09-02) It used to
-					     be `5 in 7d` plus the sparkline, drawn in the HEADER so the
-					     `dl` below could stay two rows — which put the sparkline
+					     ⛔ THE SPARKLINE IS NO LONGER IN THE HEADER. (2026-09-02) It
+					     used to be `5 in 7d` plus the sparkline, drawn in the HEADER so
+					     the `dl` below could stay two rows — which put the sparkline
 					     nowhere near its own count on this page while every sibling
 					     card drew it beside a `Deploys` ROW. `HowItsGoing` puts
 					     `Deploys` back as this card's first row, same as `/`, `/apps`
-					     and `/envs/[name]`; the header carries no verdict here, the
-					     same as this rail's `Source` card above it. -->
+					     and `/envs/[name]`.
+
+					     ⚠️ AND THE HEADER KEEPS `5 in 7d` AS THE VERDICT ANYWAY.
+					     (2026-09-02, coordinator note) `Card.svelte`'s own rule: a
+					     header with no rollup is half the pattern, and this scope has
+					     no fleet-shaped `N of M` fact to put there instead — that
+					     needs a promotion pipeline or a Source list, and both are
+					     already drawn elsewhere on this page (the pipeline above, the
+					     `Source` card right above this one). The count restates the
+					     Deploys row below it, which is an accepted exception here: the
+					     alternative is an empty header, and `Card.svelte` is explicit
+					     that is the worse defect. -->
 					{#if hasCadence}
 						<HowItsGoing
 							scope="app"
+							verdict="{deploys7d} in {SPARK_DAYS}d"
+							verdictTitle="{deploys7d} deploy{deploys7d === 1
+								? ''
+								: 's'} of this app across every environment in the last {SPARK_DAYS} days"
 							windowLabel="{SPARK_DAYS}d"
 							deploys={deploys7d}
 							deploysTitle="{deploys7d} deploy{deploys7d === 1
@@ -3694,7 +3708,7 @@
 		grid-area: hist;
 	}
 
-	/* The study's own breakpoint. Above it the rail is a fixed 340px and the
+	/* The study's own breakpoint. Above it the rail is a fixed 320px and the
 	   main column runs tasks → pipeline → history down the 1fr track.
 
 	   MOBILE ORDER IS DELIBERATE AND DIFFERENT: act → pipe → state → hist, so
@@ -3703,7 +3717,7 @@
 	   and it may not sit below a screenful of timestamps. */
 	@container (min-width: 860px) {
 		.ab-grid {
-			grid-template-columns: minmax(0, 1fr) 340px;
+			grid-template-columns: minmax(0, 1fr) 320px;
 			grid-template-areas:
 				'act state'
 				'pipe state'
@@ -3715,7 +3729,7 @@
 				'pipe state'
 				'hist state';
 		}
-		/* ⛔ AND NO 340px TRACK WHEN THE RAIL IS EMPTY. See `hasRail`. */
+		/* ⛔ AND NO 320px TRACK WHEN THE RAIL IS EMPTY. See `hasRail`. */
 		.ab-grid--norail {
 			grid-template-columns: minmax(0, 1fr);
 			grid-template-areas:

@@ -921,7 +921,6 @@ routes/envs/[name]/+page.svelte	text	View all activity
 routes/envs/[name]/+page.svelte	code	waiting for … to ship … … — it is on …
 routes/envs/[name]/+page.svelte	code	waiting on … gate…
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …
-routes/namespaces/[name]/+page.svelte	text	… deploy …
 routes/namespaces/[name]/+page.svelte	code	… deploying now
 routes/namespaces/[name]/+page.svelte	text	… failing
 routes/namespaces/[name]/+page.svelte	code	… of … failing
@@ -935,7 +934,7 @@ routes/namespaces/[name]/+page.svelte	text	No rollouts in namespace
 routes/namespaces/[name]/+page.svelte	title	Recent activity
 routes/namespaces/[name]/+page.svelte	text	Show … more rollouts ›
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
-routes/namespaces/[name]/+page.svelte	text	view all ›
+routes/namespaces/[name]/+page.svelte	text	View all activity
 routes/rollouts/[cluster]/[namespace]/[name]/+layout.svelte	aria-label	Rollout sections
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.

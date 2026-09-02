@@ -180,11 +180,6 @@
 	const showEnvInRail = $derived(
 		new Set(apps.map((a) => shortEnvLabel(a.theme) || a.envName)).size > 1
 	);
-	const activityCount = $derived.by(() => {
-		let n = 0;
-		for (const a of apps) n += (a.rollout.status?.history ?? []).length;
-		return Math.min(n, 20);
-	});
 
 	/**
 	 * THE CARD'S ANSWER, TAKEN WITHOUT READING A ROW. It states what it
@@ -498,14 +493,27 @@
 			     it, which is the only place it carries anything. -->
 			<Card icon={ClockSolid} title="Recent activity" padded={false} class="min-w-0">
 				{#snippet rollup()}
-					<span class="t-micro text-gray-500 tabular-nums dark:text-gray-400"
-						>{activityCount} deploy{activityCount === 1 ? '' : 's'}</span
-					>
+					<!-- `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
+					     `ActivityRail`'s OWN DEFAULT HEADER, NOT A THIRD PRIVATE ONE.
+					     (2026-09-02) `{activityCount} deploys` sat in front of this
+					     link at `t-micro` — the pairing survives on `/apps/[name]`'s
+					     wide, main-column History card, but this one is the 320px
+					     rail width `/apps` and `/envs/[name]`'s own `Recent activity`
+					     cards already carry, and neither of THOSE prints a count
+					     beside the link. Measured: at 1440 the header is 318px and
+					     `View all activity ›` at 14px/500 needs the room the count
+					     was spending — with both, `Recent activity` truncated to
+					     `Rece…`, the exact "a titled card which cannot print its
+					     title is not one" defect. The count is not lost: each day
+					     group below already prints its own, and the card's own
+					     `ActivityRail` is one click away. -->
 					<a
 						href={`/activity?ns=${encodeURIComponent(namespace)}`}
-						class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-						aria-label={`View all activity for ${namespace}`}>view all ›</a
+						class="nav-link"
+						aria-label={`View all activity for ${namespace}`}
 					>
+						View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+					</a>
 				{/snippet}
 				<ActivityRail
 					rollouts={apps.map((a) => a.rollout)}
