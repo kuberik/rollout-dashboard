@@ -162,7 +162,10 @@
 	 * + its `stuck` alarm at ~156px, chain 229px. The four-link `payments-core`
 	 * chain still wraps, as it did before.
 	 */
-	const ROW_GRID = 'lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,1.4fr)_156px_56px_152px]';
+	// 168px, not 156: the widest joined badge the column draws is `1 BEHIND 2.66.0-66`,
+	// and at 156 its version half measured 60px against 62px of text — the identifier
+	// that answers "which build" ellipsised on the one row that is stuck.
+	const ROW_GRID = 'lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,1.4fr)_168px_56px_152px]';
 
 	const envName = $derived(page.params.name as string);
 
