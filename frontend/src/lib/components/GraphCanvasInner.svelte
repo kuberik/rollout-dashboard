@@ -98,6 +98,7 @@
 		dark = false,
 		ariaLabel = 'Graph',
 		anchor = null,
+		fillWidth = false,
 		onorientation = undefined,
 		class: className = ''
 	}: {
@@ -167,6 +168,13 @@
 		 * consumer clipped off the right edge.
 		 */
 		anchor?: string | null;
+		/**
+		 * ⭐ LET THE LAYOUT SPAN THE FRAME — see the long note in the layout
+		 * effect. Opt-in, because `AppPromotionFlow`'s stages are a LINE whose
+		 * gutter is already tuned against its own card, and this pass owns the
+		 * dependency network only. Off, the layout is byte-identical to before.
+		 */
+		fillWidth?: boolean;
 		/**
 		 * ⭐ THE DIRECTION THIS CANVAS SETTLED ON, back to the caller.
 		 *
@@ -410,54 +418,216 @@
 		});
 	});
 
-	/** Re-layout whenever the measurements or the orientation move. */
+	/** dagre's own frame around the drawing, both axes. */
+	const MARGIN = 12;
+
+	/**
+	 * The px `fitView` reserves for its own padding at a given frame size, for
+	 * a NUMERIC padding — the exact arithmetic of `parsePadding` in
+	 * `@xyflow/system@0.0.73`, doubled because it applies to both edges.
+	 *
+	 * It is duplicated here rather than guessed at because `fillWidth` has to
+	 * predict the zoom the fit will choose: a layout stretched to the raw frame
+	 * width is 14% too wide for it and comes back at 0.88, which is the type
+	 * regression `maxZoom: 1` exists to prevent, arrived at from the other side.
+	 */
+	function fitInset(size: number): number {
+		return 2 * Math.floor((size - size / (1 + FIT.padding)) * 0.5);
+	}
+
+	/** The frame this content height would get. Mirrors `frameHeight`, which
+	 *  cannot be read here — it derives from the `contentSize` this effect
+	 *  writes. */
+	function frameFor(contentHeight: number): number {
+		if (height !== null) return height;
+		if (contentHeight === 0) return minHeight;
+		return Math.round(Math.min(maxHeight, Math.max(minHeight, contentHeight + 16)));
+	}
+
+	/** Re-layout whenever the measurements, the orientation or the width move. */
 	$effect(() => {
 		if (flowNodes.length === 0) {
 			contentSize = { width: 0, height: 0 };
 			return;
 		}
 		const dir = orientation;
-		const g = new dagre.graphlib.Graph();
-		g.setDefaultEdgeLabel(() => ({}));
-		g.setGraph({
-			rankdir: dir,
-			nodesep: nodesep ?? (dir === 'TB' ? 30 : 22),
-			ranksep: ranksep ?? (dir === 'TB' ? 50 : 96),
-			marginx: 12,
-			marginy: 12
-		});
-		flowNodes.forEach((node) => {
-			g.setNode(node.id, {
-				width: node.measured?.width ?? fallbackNodeWidth,
-				height: node.measured?.height ?? fallbackNodeHeight
-			});
-		});
-		(layoutEdges ?? flowEdges).forEach((edge) => {
-			// A self-loop would make dagre's ranking meaningless; xyflow draws it
-			// on its own without help from the layout.
-			if (edge.source === edge.target) return;
-			/**
-			 * ⭐ THE LABEL IS PART OF THE EDGE, SO dagre IS TOLD ITS SIZE.
-			 *
-			 * dagre reserves rank space for a labelled edge. Without this,
-			 * `api ^1.67.0 +2` was drawn into a gutter sized for a bare arrow and
-			 * its ground ran under the arrowhead and up to the consumer's border.
-			 *
-			 * The width is ESTIMATED from the character count, and that is fine
-			 * HERE in a way it was not for the node boxes: an estimate that is a
-			 * few pixels out moves a gutter, where the same error on a node
-			 * truncated the service name the box exists to print. Nothing is
-			 * clipped if this is wrong.
-			 */
-			const label = typeof edge.label === 'string' ? edge.label : '';
-			g.setEdge(
-				edge.source,
-				edge.target,
-				label ? { width: label.length * 6 + 12, height: 18, labelpos: 'c' } : {}
-			);
-		});
+		const baseNodesep = nodesep ?? (dir === 'TB' ? 30 : 22);
+		const baseRanksep = ranksep ?? (dir === 'TB' ? 50 : 96);
+		// Read so a resize re-lays-out rather than only re-fitting.
+		const frameWidth = containerWidth;
 
-		dagre.layout(g);
+		const build = (ns: number, rs: number) => {
+			const g = new dagre.graphlib.Graph();
+			g.setDefaultEdgeLabel(() => ({}));
+			g.setGraph({
+				rankdir: dir,
+				nodesep: ns,
+				ranksep: rs,
+				marginx: MARGIN,
+				marginy: MARGIN
+			});
+			flowNodes.forEach((node) => {
+				g.setNode(node.id, {
+					width: node.measured?.width ?? fallbackNodeWidth,
+					height: node.measured?.height ?? fallbackNodeHeight
+				});
+			});
+			(layoutEdges ?? flowEdges).forEach((edge) => {
+				// A self-loop would make dagre's ranking meaningless; xyflow draws it
+				// on its own without help from the layout.
+				if (edge.source === edge.target) return;
+				/**
+				 * ⭐ THE LABEL IS PART OF THE EDGE, SO dagre IS TOLD ITS SIZE.
+				 *
+				 * dagre reserves rank space for a labelled edge. Without this,
+				 * `api ^1.67.0 +2` was drawn into a gutter sized for a bare arrow and
+				 * its ground ran under the arrowhead and up to the consumer's border.
+				 *
+				 * The width is ESTIMATED from the character count, and that is fine
+				 * HERE in a way it was not for the node boxes: an estimate that is a
+				 * few pixels out moves a gutter, where the same error on a node
+				 * truncated the service name the box exists to print. Nothing is
+				 * clipped if this is wrong.
+				 */
+				const label = typeof edge.label === 'string' ? edge.label : '';
+				g.setEdge(
+					edge.source,
+					edge.target,
+					label ? { width: label.length * 6 + 12, height: 18, labelpos: 'c' } : {}
+				);
+			});
+			dagre.layout(g);
+			return g;
+		};
+
+		let g = build(baseNodesep, baseRanksep);
+
+		/**
+		 * ══ ⭐ THE LAYOUT FILLS THE FRAME. THE ZOOM NEVER DOES. ═══════════════
+		 *
+		 * From the human, on the rollout `Dependencies` tab: *"dependencies page
+		 * doesn't use full width like the other pages."* Measured at 1800: a
+		 * **571px drawing centred in a 988px canvas at scale 1.0**, 209px of
+		 * empty ground on each side. Every other card on the page is full-bleed.
+		 *
+		 * ⛔ AND THE FIX IS NOT A HIGHER ZOOM CAP. `maxZoom: 1` is on record
+		 * above: without it the same two-service graph came back at **1.6×**,
+		 * printing a 13px node title at 21px. Raising the cap trades this defect
+		 * for the one that rule was written to prevent, and the type would be
+		 * wrong. The graph is not too small — it is drawn too NARROW, because
+		 * dagre is handed a FIXED `ranksep` and a small graph is therefore
+		 * INTRINSICALLY narrow at every frame width. No fit can rescue that.
+		 *
+		 * So the SEPARATION is derived from the measured frame: lay out once at
+		 * the caller's values to learn the drawing's natural extent, and if it
+		 * comes up short, re-lay-out with the horizontal gutter widened by the
+		 * shortfall divided over the gaps that carry it.
+		 *
+		 * ── WHICH GUTTER, IN BOTH ORIENTATIONS ─────────────────────────────
+		 *
+		 * ⭐ ONE RULE: **only the separation running along the frame's
+		 * CONSTRAINED axis stretches.** The card is bounded in WIDTH and its
+		 * height is derived from its content, so the constrained axis is the
+		 * horizontal one at every width — and which separation that is
+		 * TRANSPOSES with `rankdir`, exactly like the resting pan above:
+		 *
+		 *   · `LR` — ranks are COLUMNS, so the horizontal gutter is `ranksep`.
+		 *   · `TB` — ranks are ROWS and the within-rank axis is horizontal, so
+		 *     the horizontal gutter is `nodesep` (which at `TB` is already the
+		 *     one sized for the contract labels; widening it only helps).
+		 *
+		 * ⭐ AND NOTHING STRETCHES VERTICALLY, WHICH IS THE ANSWER TO *"does the
+		 * card get taller"*: `frameHeight` is `contentHeight + 16`, so there is
+		 * no vertical slack to fill — measured on the same card, 20px of ground
+		 * above and below against 209px on each side. Spreading rows would
+		 * INVENT height rather than use it, and it would spend the axis that
+		 * grows with the fleet (services under `LR`) to fix a defect on the axis
+		 * that does not (environments: two of them, forever, on this tab). The
+		 * card's height is byte-identical before and after this change.
+		 *
+		 * ── ⭐ THE CAP: A GRAPH MAY NOT BE MORE GAP THAN GRAPH ─────────────
+		 *
+		 * An unbounded stretch would have put **582px** of nothing between the
+		 * two columns on that tab. An arrow that long is not a relationship any
+		 * more, it is a gap with an arrowhead on it, and past some width extra
+		 * room is better left as MARGIN — outside the drawing, where the reader
+		 * reads it as the card breathing rather than as distance between two
+		 * services.
+		 *
+		 * The line is drawn where the drawing would become mostly empty:
+		 *
+		 *     **the gutters may never total more than the ranks they separate**
+		 *
+		 * i.e. at least half of the drawing's extent along the stretched axis is
+		 * INK. The budget is the drawing's own — `natural.width` minus the base
+		 * gutters IS the summed width of the ranks — so it needs no absolute px
+		 * and no magic multiplier, it self-scales with the node boxes, and it
+		 * tightens automatically as ranks are added (three environments split
+		 * the same allowance two ways) which is exactly when the drawing needs
+		 * less help anyway.
+		 *
+		 * Measured on the live fleet at 1800: the tab's two ranks are 468px of
+		 * ink, so its one gutter caps at 468 and the drawing lands at 936 of a
+		 * 1198px canvas — 131px of margin a side, against 209 before, and
+		 * against the 138 that twelve-node `/dependencies` has always had
+		 * WITHOUT anyone complaining about it. `/dependencies` itself never
+		 * reaches its cap (347): it wants 178 and gets it.
+		 *
+		 * ── WHAT DOES NOT CHANGE ───────────────────────────────────────────
+		 *
+		 * A drawing that is ALREADY bigger than its frame — the 40-service
+		 * fixture, and `/dependencies` at 390 — takes the `natural >= target`
+		 * branch, runs exactly ONE dagre pass as before, and keeps its overflow,
+		 * its pan, its controls and its resting pan-to-the-anchor untouched.
+		 * The stretch is also clamped so the stretched drawing can never itself
+		 * be reported as overflowing: a graph that fits must not grow zoom
+		 * buttons and a pannable pane it had no reason to have.
+		 */
+		if (fillWidth && frameWidth > 0) {
+			const natural = {
+				width: (g.graph().width ?? 0) - 2 * MARGIN,
+				height: (g.graph().height ?? 0) - 2 * MARGIN
+			};
+			const frameH = frameFor(g.graph().height ?? 0);
+			/**
+			 * ⛔ AND A DRAWING THAT ALREADY OVERFLOWS IS LEFT ENTIRELY ALONE.
+			 * On the 40-service fixture the frame is `maxHeight` and the fit
+			 * lands on `minZoom`, so the frame is not what bounds the drawing
+			 * and there is no slack to fill — but the arithmetic below would
+			 * still have found 14px of width to share out, spent a second dagre
+			 * pass on 160 nodes to move four columns by 5px, and rendered the
+			 * difference at 0.55 scale. Fitting on the FREE axis is the
+			 * predicate: past it the reader is panning, and the pan, the
+			 * controls, the minimap and the resting pan-to-the-anchor are
+			 * settled behaviour that this must not touch.
+			 */
+			const fitsFreeAxis = natural.height + 2 * MARGIN <= frameH;
+			if (fitsFreeAxis && natural.width > 0 && natural.height > 0 && frameH > 0) {
+				// The zoom the fit will land on is set by the axis that is NOT
+				// being stretched, so it is known before the stretch is chosen.
+				const zoom = Math.min(1, (frameH - fitInset(frameH)) / natural.height);
+				const target = Math.min(
+					(frameWidth - fitInset(frameWidth)) / zoom,
+					// …but never so wide that `overflows` flips on a graph that fits.
+					frameWidth - 2 * MARGIN - 8
+				);
+				const gaps =
+					new Set(flowNodes.map((n) => Math.round(g.node(n.id)?.x ?? 0))).size - 1;
+				if (gaps >= 1 && natural.width < target - 4) {
+					const base = dir === 'LR' ? baseRanksep : baseNodesep;
+					// Everything the drawing is not already spending on gutters —
+					// the ranks themselves. Half of the stretched extent, at most.
+					const ink = natural.width - gaps * base;
+					const next = Math.min(
+						base + (target - natural.width) / gaps,
+						Math.max(base, ink / gaps)
+					);
+					if (next > base + 2) {
+						g = dir === 'LR' ? build(baseNodesep, next) : build(next, baseRanksep);
+					}
+				}
+			}
+		}
 
 		const gg = g.graph();
 		const nextSize = { width: gg.width ?? 0, height: gg.height ?? 0 };

@@ -302,6 +302,12 @@
 	 * sized here, from the widest label actually on this graph, using the same
 	 * `length * 6 + 12` estimate `GraphCanvasInner` gives dagre for the edges it
 	 * does rank — an estimate a few pixels out only moves a gutter.
+	 *
+	 * ⭐ AND BOTH SEPARATIONS ARE A FLOOR, NOT A FIGURE, SINCE `fillWidth`.
+	 * The canvas may widen whichever of them runs along the frame's constrained
+	 * axis — `ranksep` under `LR`, THIS one under `TB` — so that a small graph
+	 * spans its card instead of floating in the middle of it at scale 1. These
+	 * numbers are still the minimum every graph gets; nothing here shrinks.
 	 */
 	const contractGutter = $derived(
 		graph.edges.reduce(
@@ -346,6 +352,7 @@
 		fallbackNodeHeight={68}
 		minimapFrom={14}
 		{anchor}
+		fillWidth
 		onorientation={(o) => (stacked = o === 'TB')}
 		{dark}
 		ariaLabel="Dependency graph"

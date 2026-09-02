@@ -897,7 +897,7 @@
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 	{#if rolloutQuery.isLoading}
 		<StillTryingNotice failureCount={rolloutQuery.failureCount} />
-		<div class="grid max-w-[64rem] gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+		<div class="grid gap-4 xl:grid-cols-[3fr_minmax(22rem,2fr)] xl:items-start">
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 		</div>
@@ -919,7 +919,7 @@
 			class="py-0"
 		/>
 	{:else}
-		<div class="max-w-[64rem]">
+		<div>
 			<!-- ══ PAGE HEADER — the 24px lead the composition grammar requires,
 			     and the same structure the Overview tab uses (title, env chip,
 			     one gray line under it). Before this the page's largest type was
@@ -1043,14 +1043,30 @@
 				     records as a hard defect. 360 leaves the 14px/600 title its
 				     full width in both themes at 1440 and 1280.
 
-				     `max-w-[64rem]` on the whole block: this page has a natural
-				     maximum useful width and nothing on it benefits from 1264px.
-				     A max-width is a TRACK, not a spacing value, so the
-				     4/8/12/16/24 scale does not govern it; `/` already sets a
-				     24rem grid track on the same reasoning. -->
+				     ⛔ AND THE BLOCK NO LONGER CAPS ITSELF AT `max-w-[64rem]`.
+				     From the human: *"dependencies page doesn't use full width
+				     like the other pages."* Measured at 1800, that cap was
+				     literally true and it was THIS: the container is the
+				     product's own `max-w-7xl` on every tab, but inside it this
+				     block drew **1024px against the Overview and History tabs'
+				     1232** — a 208px step on the right edge every time the
+				     reader crossed the tab strip, on the same object, with the
+				     navbar and the tabs not moving. The reason written here was
+				     *"this page has a natural maximum useful width"*, which is
+				     the exact argument `/activity`'s `max-w-5xl` was removed
+				     for: a narrower measure is legitimate ONLY from LINE
+				     LENGTH, and the widest thing on this page is a GRAPH, which
+				     wants every pixel.
+
+				     The tracks are `3fr / minmax(22rem, 2fr)` — the Overview
+				     tab's own split, so the two tabs put their rail in the same
+				     place. At 1800 that is a 730px column of sentences beside a
+				     486px rail, not the 856px the bare removal would have
+				     given; a contract sentence is prose and 856px is past its
+				     measure even though the block is not. -->
 				<div
 					class="grid gap-4 {twoColumns
-						? 'xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start'
+						? 'xl:grid-cols-[3fr_minmax(22rem,2fr)] xl:items-start'
 						: ''}"
 				>
 					{#if hasContracts}
