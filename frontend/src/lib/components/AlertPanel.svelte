@@ -409,7 +409,7 @@
 				into the 16-20px of banner padding, which is where the reference page
 				puts it too.
 			-->
-			<div class="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4">
+			<div class="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-x-4">
 				<!--
 					⭐ `min-h-12 sm:min-h-10` IS THE ROOM THE FULL-SIZE HALO NEEDS, AND IT
 					IS SPENT ON EVERY SEVERITY, NOT ONLY THE PULSING ONE.
@@ -460,7 +460,7 @@
 					only ever raises the disc, never caps the content.
 				-->
 				<div
-					class="col-start-2 row-start-1 flex min-h-12 min-w-0 flex-wrap items-center gap-2 sm:min-h-10"
+					class="col-start-2 col-end-4 row-start-1 flex min-h-12 min-w-0 flex-wrap items-center gap-2 sm:col-end-3 sm:min-h-10"
 				>
 					<!--
 						⭐ THE DISC IS A ZERO-HEIGHT FLEX ITEM ON THE HEADLINE'S OWN
@@ -549,108 +549,205 @@
 					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>
-				{#if message || messageBody || footnote || footnoteBody}
-					<div class="col-start-2 row-start-2 min-w-0">
+				{#if message || messageBody}
+					<!--
+						⭐ ROW 2, ITS OWN GRID ITEM NOW. (defect #2, third pass) It used
+						to be the shared wrapper that ALSO held the disclosure and the
+						CTA nested inside it (two different flow decisions living in one
+						box). Splitting it into three siblings of this same grid — this
+						row, the disclosure row, and `actions` — is what lets `actions`
+						be placed independently per breakpoint below, with no DOM change
+						between them.
+
+						`col-start-2 col-end-4 sm:col-end-3`: at `sm`+, `actions` spans column 3
+						across every row (see its own note), so this row must NOT reach
+						into that column there or the two would overlap. Below `sm`,
+						`actions` only occupies column 3 on the disclosure row, so this
+						row is free to span into it and keep the full width it always
+						had — the span costs nothing on the flexible track (`minmax(0,
+						1fr)` still absorbs whatever column 3 doesn't need on THIS row).
+
+						⛔ `col-end-4`, NOT `col-span-2`. First attempt used `col-start-2
+						col-span-2 sm:col-span-1` and it rendered the headline in COLUMN
+						1 at 40px wide, wrapping "hello-frontend-app" one word per line.
+						Tailwind's `col-span-*` compiles to the SHORTHAND `grid-column:
+						span N / span N`, which — because it is a shorthand — resets
+						BOTH `grid-column-start` and `grid-column-end` wherever its rule
+						wins the cascade, discarding the LONGHAND `grid-column-start: 2`
+						that `col-start-2` had set on the same element. The element then
+						had no explicit start at all, and grid auto-placement slotted it
+						into the first open cell — column 1, the icon gutter. `col-end-*`
+						is the longhand `grid-column-end` and never touches
+						`grid-column-start`, so it composes safely with `col-start-2`.
+					-->
+					<div class="col-start-2 col-end-4 row-start-2 min-w-0 sm:col-end-3">
 						{#if messageBody}
 							<div class="mt-0.5 text-sm break-words {palette.message}">
 								{@render messageBody()}
 							</div>
 						{:else if message}
 							<!--
-								⭐ ONE CONSEQUENCE LINE BELOW `sm`, NOT THREE. (defect #2,
-								design re-check) `/apps` measured **234.8px, 28% of an 844px
-								phone** — this three-line message alone was 60 of that
-								(`1 newer build is waiting. Nothing promotes itself until
-								hello-api-app ships a newer api than 1.66.0.`). The fact is
-								not lost: it is still the full string in the DOM (still
-								walked by `lib/messages/`, still read whole by a screen
-								reader — `line-clamp` hides visually, it does not remove),
-								and `title` gives a sighted mobile reader the same text on a
-								long-press/hover without adding a second control. At `sm`+,
-								where the reference banner already fits comfortably, nothing
-								changes.
+								⭐ THE FULL SENTENCE, NEVER CLAMPED. (defect #2, redone) A
+								`line-clamp-1` with the rest parked behind a `title`
+								attribute was a truncation wearing a design — a phone
+								cannot hover, so that text was simply gone for a touch
+								reader. The height budget is reached honestly now: the
+								headline steps down a size below `sm` (the scoped
+								`<style>` block at the end of this file) so it wraps to
+								two lines instead of three — that was where the 390
+								measurement actually overspent, not this sentence, which
+								stays printed in full at every width, as `message`'s own
+								doc comment has always promised ("ALWAYS PRINTED").
 							-->
-							<p
-								class="mt-0.5 line-clamp-1 text-sm break-words sm:line-clamp-none {palette.message}"
-								title={message}>{message}</p
+							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
+						{/if}
+					</div>
+				{/if}
+				{#if footnote || footnoteBody}
+					<!--
+						⭐ THE DISCLOSURE. See the `footnote` prop's note for the
+						measurement that produced it. Its own grid cell now
+						(`col-start-2 row-start-3`, NEVER spanning into column 3) —
+						that column belongs to `actions` on this row at every width,
+						mobile included, which is what "flows into the disclosure row"
+						means below.
+
+						THE CONTROL IS NOT QUIET GRAY TEXT AND MUST NOT BECOME IT.
+						It is 12px/500 in the severity's OWN ink — the same full
+						`<hue>-700` step the footnote itself uses in light, which is
+						the step the alpha-ladder work landed on after measuring that
+						no alpha clears 4.5:1 over the gradient. A `text-gray-500`
+						summary here would be the flat gray row the human has
+						rejected six times, arriving through the back door.
+
+						`list-none` + the webkit marker rule remove the native
+						triangle so the chevron is the only affordance, and it rotates
+						90° on open — the same motion the `Resources` card's
+						`Show 8 ready resources ›` uses. One idiom, learned once.
+					-->
+					<!--
+						⚠️ `flex flex-col items-start` IS LOAD-BEARING, NOT TIDINESS.
+						A block `<details>` puts its `inline-flex` summary in an
+						anonymous LINE BOX, and that box inherits the banner's 16px
+						strut — so the 16px control measured **24px**. As a flex
+						column the summary is a flex item with no strut.
+					-->
+					<div class="col-start-2 row-start-3 mt-1 min-w-0 self-start">
+						<details class="group flex flex-col items-start">
+							<summary
+								class="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
 							>
-						{/if}
-						{#if footnote || footnoteBody}
-							<!--
-								⭐ THE DISCLOSURE. See the `footnote` prop's note for the
-								measurement that produced it.
+								<ChevronRightOutline
+									class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
+									aria-hidden="true"
+								/>
+								{disclosureLabel}
+							</summary>
+							<!-- ⭐ THE RECORD AND THE PARAGRAPH SHARE ONE WRAPPER, so the
+							     severity's ink and the 12px are stated once and a caller
+							     cannot spell either itself. `FactList tone="banner"` reads
+							     its inks off `currentColor`, which is this class and nothing
+							     else — the same mechanism `--nav-link-ink` uses for a link in
+							     the actions cell. -->
+							{#if footnoteBody}
+								<div class="mt-1 min-w-0 text-xs {palette.footnote}">
+									{@render footnoteBody()}
+								</div>
+							{:else if footnote}
+								<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
+							{/if}
+						</details>
+					</div>
+				{/if}
+				{#if actions}
+					<!--
+						⭐ ONE DOM NODE, PLACED BY BREAKPOINT, NOT DUPLICATED. (defect #2,
+						third pass, from the coordinator: *"the CTA now sits on the
+						disclosure row under the message instead of at the banner's
+						right edge — that is the family's recorded shape."*)
 
-								THE CONTROL IS NOT QUIET GRAY TEXT AND MUST NOT BECOME IT.
-								It is 12px/500 in the severity's OWN ink — the same full
-								`<hue>-700` step the footnote itself uses in light, which is
-								the step the alpha-ladder work landed on after measuring that
-								no alpha clears 4.5:1 over the gradient. A `text-gray-500`
-								summary here would be the flat gray row the human has
-								rejected six times, arriving through the back door.
+						Two things were tried and rejected before this:
+						  1. Rendering `actions` twice (`sm:hidden` / `hidden sm:flex`)
+						     kept the exact desktop position but duplicated an
+						     accessible control — jsdom doesn't load `app.css`, so
+						     `getByRole('button', { name: /try again/ })` found the
+						     SAME "Try again" twice and `outage-states.svelte.test.ts`
+						     correctly failed. A real duplicate node, not a test
+						     artifact.
+						  2. A single node inside the disclosure's own flex row
+						     (`sm:ml-auto`) fixed the duplication but moved the CTA's
+						     DESKTOP position from "vertically centred at the banner's
+						     right edge" to "beside the disclosure, at the bottom" —
+						     1440's `/apps` banner grew 122px → 142px because the CTA
+						     no longer freed up the row it used to occupy.
 
-								`list-none` + the webkit marker rule remove the native
-								triangle so the chevron is the only affordance, and it rotates
-								90° on open — the same motion the `Resources` card's
-								`Show 8 ready resources ›` uses. One idiom, learned once.
-							-->
-							<!--
-								⚠️ `flex flex-col items-start` IS LOAD-BEARING, NOT TIDINESS.
-								A block `<details>` puts its `inline-flex` summary in an
-								anonymous LINE BOX, and that box inherits the banner's 16px
-								strut — so the 16px control measured **24px**, and at 1440,
-								where the footnote had been a single line, the disclosure
-								made the banner 10px TALLER than the prose it replaced
-								(106px → 116px). As a flex column the summary is a flex item
-								with no strut, and `mt-1` is the exact spacing the printed
-								footnote used, so desktop is a strict improvement instead of
-								a wash.
-							-->
-							<details class="group mt-1 flex flex-col items-start">
-								<summary
-									class="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
-								>
-									<ChevronRightOutline
-										class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
-										aria-hidden="true"
-									/>
-									{disclosureLabel}
-								</summary>
-								<!-- ⭐ THE RECORD AND THE PARAGRAPH SHARE ONE WRAPPER, so the
-								     severity's ink and the 12px are stated once and a caller
-								     cannot spell either itself. `FactList tone="banner"` reads
-								     its inks off `currentColor`, which is this class and nothing
-								     else — the same mechanism `--nav-link-ink` uses for a link in
-								     the actions row. -->
-								{#if footnoteBody}
-									<div class="mt-1 min-w-0 text-xs {palette.footnote}">
-										{@render footnoteBody()}
-									</div>
-								{:else if footnote}
-									<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
-								{/if}
-							</details>
-						{/if}
+						THIS IS THE THIRD SHAPE: `actions` is its own grid item, a
+						sibling of the headline/message/disclosure cells above, in
+						column 3 (`grid-cols-[2.5rem_minmax(0,1fr)_auto]` on the
+						shared grid) — the SAME single DOM node at every width.
+
+						  below `sm`  `row-start-3`, same row as the disclosure
+						              (column 2), different column — "flows into
+						              the disclosure row" without being IN its flex
+						              flow, so there is nothing to duplicate.
+						  `sm`+       `row-start-1` / `row-end-4` spans all three
+						              explicit rows (headline, message, disclosure
+						              — `-4` is the line after row 3, not a magic
+						              number: this grid's items always claim rows
+						              1–3 by their own `row-start-N`, empty ones
+						              collapse to 0 height, so the span target is
+						              fixed regardless of which optional rows
+						              actually render) with `self-center`, i.e.
+						              vertically centred against the WHOLE banner —
+						              `sm:items-center` on the old outer flex row,
+						              reproduced without a second sibling to centre
+						              against.
+
+						The right edge itself needed no new rule: this cell is the
+						grid's own last column, and the grid still sits inside the
+						same `px-5 sm:px-6` padded row every other cell does, so its
+						edge is the banner's padding edge exactly as it was when
+						`actions` was a flex sibling this morning.
+					-->
+					<div
+						class="col-start-3 row-start-3 mt-1 flex shrink-0 items-center gap-3 self-start sm:row-start-1 sm:row-end-4 sm:mt-0 sm:self-center {palette.title}"
+						style="--nav-link-ink: currentColor"
+					>
+						{@render actions()}
 					</div>
 				{/if}
 			</div>
 
-			<!-- ⭐ THE ACTIONS ROW CARRIES THE SEVERITY'S INK, FOR THE LINKS IN IT.
-			     (2026-09-02) `.btn` states its own colours, so this row never
-			     needed one — but a `.nav-link` (`app.css`) takes its ink from
-			     `--nav-link-ink`, and without this it fell back to the neutral
-			     body ink and spoke in a different voice from the `Details`
-			     disclosure directly above it. `palette.title` is the panel's
-			     strongest step and the one already measured for this ground;
-			     `--nav-link-ink: inherit` hands it down without touching any
-			     button. -->
-			{#if actions}
-				<div
-					class="flex items-center gap-3 sm:shrink-0 {palette.title}"
-					style="--nav-link-ink: currentColor"
-				>
-					{@render actions()}
-				</div>
-			{/if}
 		</div>
 	</div>
 </div>
+
+<style>
+	/*
+	 * ⭐ `t-headline` STEPS DOWN, SCOPED TO THIS COMPONENT ONLY. (defect #2,
+	 * redone) `.t-headline` (17px/600) is UNLAYERED in `app.css` — deliberate,
+	 * per its own note, so it outranks every Tailwind utility including
+	 * `text-sm`. Overriding it with a plain utility class on the element
+	 * would lose that cascade fight silently. This scoped rule is Svelte's
+	 * own mechanism: the compiler appends this component's scope attribute
+	 * to both the selector here and the `.t-headline` element in the markup
+	 * above, so it wins on SPECIFICITY rather than fighting the layer, and
+	 * it touches only THIS component's headline — `.t-headline` is shared by
+	 * other pages (`/apps/[name]`'s own headline, per `app.css`'s note) and
+	 * they are not asked to shrink.
+	 *
+	 * WHY: at 390, a long generated headline ("hello-frontend-app is waiting
+	 * on another deploy in all 3 environments") wrapped to three lines at
+	 * 17px, the single largest contributor to the banner's height (68.8px of
+	 * a 234.8px banner on `/apps`). Two lines at 14px reaches the height
+	 * budget honestly — by giving the loudest object on the page one less
+	 * point size on the narrowest viewport, not by hiding the sentence
+	 * below it behind a clamp. Weight (600) is untouched; only size steps
+	 * down, and only below `sm`, where the reference banner already fits.
+	 */
+	@media (max-width: 639px) {
+		.t-headline {
+			font-size: 14px;
+		}
+	}
+</style>
