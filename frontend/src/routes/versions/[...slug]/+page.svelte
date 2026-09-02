@@ -26,7 +26,6 @@
 		revisionCoverage,
 		coverageSwatch,
 		coverageSegments,
-		buildState,
 		type CoverageKey,
 		type CoverageSlotVM
 	} from '$lib/view-models/revision-coverage';
@@ -59,7 +58,6 @@
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import CoverageBar from '$lib/components/CoverageBar.svelte';
-	import BuildStateMark from '$lib/components/BuildStateMark.svelte';
 	import type { Rollout, Environment } from '../../../types';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -611,13 +609,23 @@
 			leads a card and is the page's only object. Here the object is named
 			ONCE, at display scale, in one row: an `sr-only` `h1` (the object's
 			full name, for the outline and for a screen reader), the sha at
-			`t-display-id`, the coverage count at `t-display` on its baseline, and
-			`BuildStateMark` carrying the same state word the bar used to spend
-			41,000px² restating. Everything else this build has to say — the
-			commit, the repo, the services, when it last moved, the outbound link —
-			moved into ONE titled card below (`This build`), which is also the
-			card that gives the page's previously 39%-empty viewport something to
-			hold. See the `rev-buckets` block for it.
+			`t-display-id`, and the coverage count at `t-display` on its baseline.
+			Everything else this build has to say — the commit, the repo, the
+			services, when it last moved, the outbound link — moved into ONE
+			titled card below (`This build`), which is also the card that gives
+			the page's previously 39%-empty viewport something to hold. See the
+			`rev-buckets` block for it.
+
+			⛔ `BuildStateMark` USED TO SIT HERE TOO, AND IT WAS A SECOND
+			STATEMENT OF THE SAME NUMBER. (2026-09-02, residue.) `3 of 6 places
+			running it` and, 40px later, `⧗ 3 places still to go` say one fact
+			twice — the second is `buildState()`'s word for whichever bucket
+			dominates, and on THIS page that bucket already has its own titled
+			card with its own count (`Not here yet · 3 places`). The count stays
+			here ONCE; the state word lives on the card that owns it. `/versions`'
+			list row had the identical duplication (the word beside the sha,
+			`Running in N of M places` in the roll column) and is fixed the same
+			way — see the comment there.
 		-->
 		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 			<h1 class="sr-only">Tracking build {row.short} in {repoTitle(ledger.repoLabel)}</h1>
@@ -630,7 +638,6 @@
 				title="A place is one service in one environment."
 				>of {coverage.totalCount} places running it</span
 			>
-			<BuildStateMark {coverage} size="lead" />
 		</div>
 
 		<!--
@@ -669,18 +676,27 @@
 		{/if}
 
 		<!--
-			⭐ ONE FLAT AUTO-FIT GRID NOW, NOT A RAIL. (2026-09-02, design re-check:
-			*"the three cards in the side-by-side row end at 460 / 538 / 546 — 86px
-			of rag."*) `This build`, the bucket cards and `What each service calls
-			it` used to split across two grid levels — a `rev-buckets` sub-grid
-			plus a fixed-340px rail — each with its OWN `align-items: start`, so a
-			rail taller than the buckets (or the reverse) just left a gap. Cards
-			are `flex flex-col` with a `grow` body for exactly this case (see the
-			comment on `Card.svelte`'s `<section>`); the fix is `align-items:
-			stretch` PLUS one grid instead of two, so every card sharing a row
-			shares that row's height, on every width, with no fixed rail to defeat
-			it. `class="self-start"` came off the former rail card — it was
+			⭐ ONE FLAT 2-COLUMN GRID NOW, NOT A RAIL. (2026-09-02, design
+			re-check, two rounds: first *"the three cards in the side-by-side row
+			end at 460 / 538 / 546 — 86px of rag"*, then *"`This build | Running
+			it now | Not here yet` on row 1 and `What each service calls it`
+			alone on row 2 with two empty tracks beside it."*) `This build`, the
+			bucket cards and `What each service calls it` used to split across
+			two grid levels — a `rev-buckets` sub-grid plus a fixed-340px rail —
+			each with its OWN `align-items: start`, so a rail taller than the
+			buckets (or the reverse) just left a gap. Cards are `flex flex-col`
+			with a `grow` body for exactly this case (see the comment on
+			`Card.svelte`'s `<section>`); `align-items: stretch` plus one grid
+			instead of two makes every card sharing a row share that row's
+			height. `class="self-start"` came off the former rail card — it was
 			opting that one card OUT of the stretch this fix depends on.
+
+			AND `auto-fit` GAVE WAY TO A FIXED 2 COLUMNS, because a THIRD track
+			at 1440 is exactly what stranded the fourth card alone. `What each
+			service calls it` moved up to sit right beside `This build` — both
+			are about the BUILD — so the bucket cards, both about PLACES, fill
+			row 2 on. See the CSS for the rest (the 2-column breakpoint and the
+			odd-card-spans-both-tracks rule).
 		-->
 		<div class="rev-buckets mt-4">
 			<!--
@@ -797,6 +813,91 @@
 						</li>
 					{/if}
 				</ul>
+			</Card>
+
+				<!--
+					CRITERION 2, NOW A PEER TILE IN THE SAME FLAT GRID, NOT A FIXED-WIDTH
+					RAIL. One rank per service, against that service's OWN denominator,
+					with the denominator named. `newest of 4` beside `newest of 37` is
+					the page's whole point — those two services share a source repo and
+					nothing else, and collapsing them onto one ladder is the defect
+					revision keying was built to close, one level down. It does NOT
+					restate the buckets: the buckets say WHERE, this says WHAT EACH
+					SERVICE CALLS IT and how far down its own ladder it now sits.
+				-->
+				<Card
+					icon={TagSolid}
+					title="What each service calls it"
+					verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
+					verdictTitle="One commit, one row per service — each service names and ranks it on its own"
+					padded={false}
+				>
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each row.services as svc (svc.appName)}
+						{@const rank = rankSentence(svc)}
+						{@const chip = rankChipFor(svc)}
+						<!--
+							ONE INK FOR A SERVICE NAME, ON BOTH REVISION PAGES. A service is
+							never the subject of either page — the revision is — so it takes
+							the secondary ink everywhere, and the three places that print it
+							stop disagreeing about how important it is.
+						-->
+						<li class="rev-svc-row">
+							<a
+								href="/apps/{encodeURIComponent(svc.appName)}"
+								class="t-body min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
+								>{svc.appName}</a
+							>
+							<span class="rev-svc-build">
+								{#if chip && rank}
+									<Chip
+										role={chip.role}
+										label={chip.label}
+										title={svc.diverged
+											? 'On no environment’s release list — promotion does not arrive at it'
+											: chip.role === 'newest'
+												? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`
+												: `${chip.label} the newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
+										value={svc.label}
+										valueTitle={svc.label}
+										wide
+										class="min-w-0"
+									/>
+									<!-- ⭐ THE DENOMINATOR CARRIES ITS OWN DEFINITION.
+									     `newest` means different things in different corners of
+									     this product; here it is rank 0 on THIS service's ladder,
+									     and `newest of 1` beside `newest of 37` is only readable
+									     once that is said. It was said in a 3-line footer under
+									     the card (2026-09-02, cut with the page's other
+									     definitions); it is said here, on the `of N` the sentence
+									     is about. `scan.ts` reads `title`, so it stays pinned. -->
+									<span
+										class="t-micro text-gray-500 dark:text-gray-400"
+										title="Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be up to date."
+										>{rank.of}</span
+									>
+								{:else}
+									<!-- No number at all. A `0` here would read as "newest".
+									     The WORD is `rankLabel`'s, like the `unreleased` above it:
+									     `unknown` is a legible answer and the product spells it in
+									     exactly one place. -->
+									<Chip
+										role="unranked"
+										label={rankLabel({ kind: 'unknown' })}
+										title="This service does not list this build, so it has no position for it"
+										value={svc.label}
+										wide
+										class="min-w-0"
+									/>
+								{/if}
+							</span>
+						</li>
+					{/each}
+				</ul>
+				<!-- ⛔ THE FOOTER THAT SAID THIS IS GONE, THE SENTENCE IS NOT.
+				     (2026-09-02.) It is the `title` on `of N` in every row above —
+				     on the term it defines, which is where a definition belongs and
+				     is the only place it is legible without counting rows. -->
 			</Card>
 
 			<!--
@@ -1034,90 +1135,6 @@
 					</Card>
 				{/each}
 
-				<!--
-					CRITERION 2, NOW A PEER TILE IN THE SAME FLAT GRID, NOT A FIXED-WIDTH
-					RAIL. One rank per service, against that service's OWN denominator,
-					with the denominator named. `newest of 4` beside `newest of 37` is
-					the page's whole point — those two services share a source repo and
-					nothing else, and collapsing them onto one ladder is the defect
-					revision keying was built to close, one level down. It does NOT
-					restate the buckets: the buckets say WHERE, this says WHAT EACH
-					SERVICE CALLS IT and how far down its own ladder it now sits.
-				-->
-				<Card
-					icon={TagSolid}
-					title="What each service calls it"
-					verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
-					verdictTitle="One commit, one row per service — each service names and ranks it on its own"
-					padded={false}
-				>
-				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-					{#each row.services as svc (svc.appName)}
-						{@const rank = rankSentence(svc)}
-						{@const chip = rankChipFor(svc)}
-						<!--
-							ONE INK FOR A SERVICE NAME, ON BOTH REVISION PAGES. A service is
-							never the subject of either page — the revision is — so it takes
-							the secondary ink everywhere, and the three places that print it
-							stop disagreeing about how important it is.
-						-->
-						<li class="rev-svc-row">
-							<a
-								href="/apps/{encodeURIComponent(svc.appName)}"
-								class="t-body min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
-								>{svc.appName}</a
-							>
-							<span class="rev-svc-build">
-								{#if chip && rank}
-									<Chip
-										role={chip.role}
-										label={chip.label}
-										title={svc.diverged
-											? 'On no environment’s release list — promotion does not arrive at it'
-											: chip.role === 'newest'
-												? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`
-												: `${chip.label} the newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
-										value={svc.label}
-										valueTitle={svc.label}
-										wide
-										class="min-w-0"
-									/>
-									<!-- ⭐ THE DENOMINATOR CARRIES ITS OWN DEFINITION.
-									     `newest` means different things in different corners of
-									     this product; here it is rank 0 on THIS service's ladder,
-									     and `newest of 1` beside `newest of 37` is only readable
-									     once that is said. It was said in a 3-line footer under
-									     the card (2026-09-02, cut with the page's other
-									     definitions); it is said here, on the `of N` the sentence
-									     is about. `scan.ts` reads `title`, so it stays pinned. -->
-									<span
-										class="t-micro text-gray-500 dark:text-gray-400"
-										title="Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be up to date."
-										>{rank.of}</span
-									>
-								{:else}
-									<!-- No number at all. A `0` here would read as "newest".
-									     The WORD is `rankLabel`'s, like the `unreleased` above it:
-									     `unknown` is a legible answer and the product spells it in
-									     exactly one place. -->
-									<Chip
-										role="unranked"
-										label={rankLabel({ kind: 'unknown' })}
-										title="This service does not list this build, so it has no position for it"
-										value={svc.label}
-										wide
-										class="min-w-0"
-									/>
-								{/if}
-							</span>
-						</li>
-					{/each}
-				</ul>
-				<!-- ⛔ THE FOOTER THAT SAID THIS IS GONE, THE SENTENCE IS NOT.
-				     (2026-09-02.) It is the `title` on `of N` in every row above —
-				     on the term it defines, which is where a definition belongs and
-				     is the only place it is legible without counting rows. -->
-			</Card>
 		</div>
 	{/if}
 
@@ -1149,26 +1166,58 @@
 	 * `.rev-buckets` in one column and `What each service calls it` fixed at
 	 * 340px in the other, each with its OWN `align-items: start` — so a
 	 * card's height never had anything to answer to but its own content, in
-	 * either grid. ONE flat `auto-fit` grid now holds every card on the page
-	 * (`This build`, the bucket cards, the service-rank card) as equal
-	 * siblings, and `align-items: stretch` — CSS Grid's own default, which
-	 * `start` had been overriding — makes every card sharing a ROW share that
-	 * row's height. `Card.svelte`'s `flex flex-col` root and `grow` body exist
-	 * for exactly this (see the comment on its `<section>`); this is the
-	 * first place on this page that asks for it.
+	 * either grid. ONE flat grid now holds every card on the page (`This
+	 * build`, the service-rank card, the bucket cards) as equal siblings, and
+	 * `align-items: stretch` — CSS Grid's own default, which `start` had been
+	 * overriding — makes every card sharing a ROW share that row's height.
+	 * `Card.svelte`'s `flex flex-col` root and `grow` body exist for exactly
+	 * this (see the comment on its `<section>`); this is the first place on
+	 * this page that asks for it.
+	 *
+	 * ⛔ AND `auto-fit` IS GONE TOO — A RESIDUE OF THE FIRST FIX. (2026-09-02,
+	 * design re-check: *"`This build | Running it now | Not here yet` on row
+	 * 1 and `What each service calls it` alone on row 2 with two empty tracks
+	 * beside it."*) `auto-fit` packs as many 300px tracks as the width allows,
+	 * so a 1440 row fit THREE cards and left a fourth stranded with two empty
+	 * columns beside it — the rag this file's own previous fix was written to
+	 * remove, one level up. TWO FIXED TRACKS, always, from `sm` up: no width
+	 * ever earns a third, so no card count can strand a lone survivor beside
+	 * more than one empty track.
+	 *
+	 * THE ORDER PAIRS BY SUBJECT, NOT BY ARRIVAL. `This build` and `What each
+	 * service calls it` are both about the BUILD (identity, then what each
+	 * service calls it) and sit in row 1; the bucket cards are all about
+	 * PLACES (where it is, where it isn't) and fill row 2 on. Markup order is
+	 * the row order in a 2-column grid, so the Card for `What each service
+	 * calls it` moved up to sit right after `This build` in the template —
+	 * see the comment there.
 	 */
 	.rev-buckets {
 		display: grid;
-		/* 300px, NOT 280. At 280 a 1440 row fits FOUR cards and the header of
-		   `What each service calls it` — icon, 27-character title, `N services`
-		   — no longer has 256px of clear space inside a 288px card and its own
-		   title truncates (`Card.svelte`'s `min-w-0 truncate`, which floors the
-		   title's WIDTH, not its readability). 300px drops that row to three at
-		   1440, so the fourth card wraps alone onto its own row — no rag there,
-		   nothing to rag against — with headroom to spare. */
-		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		grid-template-columns: minmax(0, 1fr);
 		gap: 16px;
 		align-items: stretch;
+	}
+
+	@media (min-width: 640px) {
+		.rev-buckets {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	/*
+	 * ⭐ AN ODD CARD OUT SPANS BOTH TRACKS RATHER THAN SITTING ALONE BESIDE AN
+	 * EMPTY ONE. The bucket count varies (1–3 non-empty buckets), so `This
+	 * build` + the rank card + N buckets is not always a multiple of 2 — a
+	 * THIRD or FIFTH card would otherwise strand itself in the last row with
+	 * one empty track beside it, the exact defect this fix exists to remove,
+	 * just smaller. `:last-child:nth-child(odd)` is true only when the total
+	 * count is odd AND this is the final one, so it fires on exactly the card
+	 * that would otherwise be alone, at any bucket count, with no JS needed
+	 * to count cards.
+	 */
+	.rev-buckets > :global(:last-child:nth-child(odd)) {
+		grid-column: 1 / -1;
 	}
 
 	/* THE THREE GLYPH INKS. Every value is one the product already owns: the
@@ -1217,12 +1266,11 @@
 	 * PHONE WIDTH IS A DESIGN, NOT A FALLBACK.
 	 *
 	 * THE HEAD BAND WRAPS AT 390 rather than keeping a fixed two-column split —
-	 * it is one `flex-wrap` row now (sha, count, state word), so it costs
+	 * it is one `flex-wrap` row now (sha, then the count), so it costs
 	 * whatever it costs at the width it is read at, same as `/versions` and
-	 * `/activity`'s own head bands. The auto-fit grid below it collapses to one
-	 * column under 296px of content width, so `This build`, every bucket card
-	 * and the service-rank card stack in reading order with no breakpoint of
-	 * their own.
+	 * `/activity`'s own head bands. The card grid below it drops to one column
+	 * under the `sm` breakpoint, so `This build`, the service-rank card and
+	 * every bucket card stack in reading order with no breakpoint of their own.
 	 *
 	 * The service rows become a two-line stack, because a name track plus a
 	 * joined badge plus a denominator cannot share 358px without the badge

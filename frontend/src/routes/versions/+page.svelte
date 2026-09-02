@@ -792,8 +792,8 @@
 									{@const cov = coverageByRevision.get(row.revision)}
 									<li class="rev-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
 										<!--
-											⭐ ONE GLYPH, ONE SENTENCE, ONE OBJECT — and the row's left
-											edge stops being ragged.
+											⭐ ONE GLYPH, NOT ONE GLYPH PLUS A SENTENCE — and the row's
+											left edge stops being ragged.
 
 											It was a 20px box in its own column whose ICON landed at
 											x=41 while the sha started at 64 and the service list at 64
@@ -802,10 +802,17 @@
 											the icon, so the card has TWO x's: the glyph, and
 											everything else.
 
-											`BuildStateMark` also carries the word, so the glyph and
-											the phrase can never disagree, and the phrase itself is
-											`buildState()`'s — `3 places still to go`, not `has places
-											left to reach`.
+											⛔ `BuildStateMark`'S WORD USED TO SIT BESIDE THE SHA TOO,
+											AND IT RESTATED THE SAME COUNT `Running in N of M places`
+											PRINTS 90px BELOW IT. (2026-09-02, residue — the detail
+											page's head band had the identical duplication, `3 of 6
+											places running it` beside `⧗ 3 places still to go`, and
+											both are fixed the same way.) The GLYPH stays — it is a
+											CATEGORY mark (still arriving / moved past / failing / done),
+											not a restated number, and `buildState()`'s `title` on the
+											span still carries the full sentence for anyone who hovers
+											or reads it with a screen reader. The count is stated once,
+											in `.rev-roll`, where the bar that draws it already sits.
 										-->
 										<span class="rev-mark">
 											{#if cov}
@@ -820,9 +827,6 @@
 													href={revisionPath(repo.repoKey, row.revision)}
 													title={row.revision}>{row.short}</a
 												>
-												{#if cov}
-													<BuildStateMark coverage={cov} showGlyph={false} />
-												{/if}
 											</div>
 
 											<!--
