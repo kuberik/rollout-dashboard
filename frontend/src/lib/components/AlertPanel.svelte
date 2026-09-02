@@ -377,7 +377,17 @@
 			<div class="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4">
 				<!--
 					⭐ `min-h-12 sm:min-h-10` IS THE ROOM THE FULL-SIZE HALO NEEDS, AND IT
-					IS SPENT ONLY WHEN THERE IS A HALO. From the human, rejecting a
+					IS SPENT ON EVERY SEVERITY, NOT ONLY THE PULSING ONE.
+
+					⛔ IT WAS CONDITIONAL ON `pulse` FOR ONE COMMIT, AND THAT WAS WRONG.
+					From the human, looking at rollout detail where the amber gate banner
+					and the blue rolled-back panel stack: *"Icon is not positioned the
+					same on both of these. We moved the icon on the first one to fit the
+					pulse effect. Second one needs to be the same."* With a one-line
+					headline the pulsing row is 40/48 and the plain row is 24, so the two
+					discs sat 8px apart in a vertical stack — the panels differ in
+					severity, and a reader reads that difference as meaning. The halo is
+					the REASON for the number; it is not a reason to spend it selectively. From the human, rejecting a
 					smaller pulse: *"I didn't want pulse to be smaller but that you move
 					the icon appropriately."*
 
@@ -415,9 +425,7 @@
 					only ever raises the disc, never caps the content.
 				-->
 				<div
-					class="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center gap-2 {pulse
-						? 'min-h-12 sm:min-h-10'
-						: ''}"
+					class="col-start-2 row-start-1 flex min-h-12 min-w-0 flex-wrap items-center gap-2 sm:min-h-10"
 				>
 					<!--
 						⭐ THE DISC IS A ZERO-HEIGHT FLEX ITEM ON THE HEADLINE'S OWN
