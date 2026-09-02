@@ -1,5 +1,59 @@
 <svelte:options runes={true} />
 
+<script module lang="ts">
+	/**
+	 * ⭐ THE MARK IS EXPORTED, SO IT CAN BE ARGUED WITH IN A TEST.
+	 *
+	 * From the human, on this row: *"still don't like these details when we have
+	 * this nonsense icon."* A mark that is chosen inside a component's markup is
+	 * a mark nobody can assert on, and two of the five here had drifted into
+	 * decoration — see the component note below for the argument on each kind.
+	 *
+	 * ⭐ IT IS A FUNCTION OF `kind` FIRST AND `clears` SECOND, because `clears` is
+	 * the REMEDY and `kind` is the OBJECT — and an icon names an object. Two
+	 * `upstream` gates clear the same way and are not the same thing: one is a
+	 * cross-service contract, one is a promotion order.
+	 */
+	import {
+		UserCircleSolid,
+		CalendarWeekSolid,
+		ShieldCheckSolid,
+		ShareNodesSolid,
+		ChevronDoubleRightOutline,
+		QuestionCircleSolid,
+		ArrowRightOutline
+	} from 'flowbite-svelte-icons';
+	import type { ClassifiedGate } from '$lib/view-models/blocking-story';
+
+	export function gateMark(g: Pick<ClassifiedGate, 'kind' | 'clears'>) {
+		// A CONTRACT WITH ANOTHER SERVICE. `contractBlockReason` and the
+		// `/dependencies` graph already spend this mark on this object.
+		if (g.kind === 'dependency') return ShareNodesSolid;
+		// PROMOTION ORDER. The `Promotion pipeline` card header's own mark.
+		if (g.kind === 'promotion') return ChevronDoubleRightOutline;
+		// A TIME WINDOW. True of the kind, and unchanged.
+		if (g.clears === 'clock') return CalendarWeekSolid;
+		// SOMEONE HAS TO ACT. True of the kind, and unchanged.
+		if (g.clears === 'person') return UserCircleSolid;
+		// WE CANNOT TELL. True of the kind, and unchanged.
+		if (g.clears === 'unknown') return QuestionCircleSolid;
+		// ⛔ NOT AN HOURGLASS. An hourglass means *time will fix this*, which is
+		// `clock`'s meaning — and `check` is precisely the kind that is NOT on a
+		// clock. A guard that has not cleared.
+		return ShieldCheckSolid;
+	}
+
+	/** What kind of object the rule is, for the record. A NOUN, never a remedy. */
+	export function gateKindWord(g: Pick<ClassifiedGate, 'kind'>): string {
+		if (g.kind === 'schedule') return 'deploy window';
+		if (g.kind === 'check') return 'check';
+		if (g.kind === 'promotion') return 'promotion order';
+		if (g.kind === 'dependency') return 'service contract';
+		if (g.kind === 'approval') return 'manual approval';
+		return 'not attributed';
+	}
+</script>
+
 <script lang="ts">
 	/**
 	 * ⭐ EVERY GATE HOLDING ONE ROLLOUT, ONE LINE EACH, INSIDE A CARD.
@@ -16,165 +70,276 @@
 	 * that with three different first-matches, which is how one product came to
 	 * name three different culprits for one rollout.
 	 *
-	 * ⛔ NO STRINGS HERE EITHER. `short` and the clock come off the story.
+	 * ⛔ NO STRINGS HERE EITHER. Every word on the row comes off the story.
 	 *
-	 * ── ⭐ AND IT HAS THE BANNER'S THREE TIERS NOW. (2026-08-31) ────────────
+	 * ── ⭐ THE LINE IS COMPOSED NOW, NOT NARRATED. (2026-09-02) ──────────────
 	 *
-	 * `AlertPanel` split into printed fact / printed consequence / DISCLOSED
-	 * mechanism in 05281bc, and the human's next sentence was *"also too much
-	 * raw text in some other places."* This is the worst of the other places,
-	 * and the reason is REPETITION rather than length:
+	 * From the human, looking at this row on `/environments`:
 	 *
-	 * Measured at 1440 on the live cluster, in ONE viewport, printed:
+	 * > *"still don't like these details when we have this nonsense icon. i feel
+	 * > like you could better visualize this rather than just putting ascii
+	 * > icons in there"*
 	 *
-	 *   `/environments`             `rule: dependency-hello-frontend-needs-api`
-	 *                               3×, plus `rule: ghd-9qcnj` and
-	 *                               `rule: ghd-5b2wn`  → FIVE handle lines
-	 *                               *"Nobody has to approve anything — this
-	 *                               clears when the deploy in front of it
-	 *                               lands."*  3×
-	 *   `/apps/<name>`              the same five handles and the same verdict
-	 *                               3×, inside ONE card
+	 * Both halves were right, and they are one defect.
 	 *
-	 * One fact printed N times in one viewport is worse than one long sentence,
-	 * and neither of those two is a fact a reader takes in the first second:
+	 * ── (1) THE MARK SAID NOTHING, SO IT SAID SOMETHING FALSE ────────────────
 	 *
-	 *   · the `rule:` handle is a GENERATED KUBERNETES NAME. It is a lookup key
-	 *     for correlating with `kubectl`, which is the definition of the
-	 *     disclosure tier — `AlertPanel`'s `footnote` prop says exactly this
-	 *     about the same string.
-	 *   · the VERDICT restates the clause above it for four of five gate kinds.
-	 *     `clock`/`upstream`/`check` clauses already name what clears them
-	 *     (*"Waiting for dev to deploy it first"*), and on `/apps/<name>` the
-	 *     card this renders in is TITLED *"Waiting, nothing to do"* — so
-	 *     *"Nobody has to approve anything"* was the card's own title, restated
-	 *     once per row, which is an object drawing the norm.
+	 * `COMPOSITION-GRAMMAR.md` §3 is that icons on this product are STRUCTURAL —
+	 * *"if a card has a title, it has an icon"*, 115 of them on the page the
+	 * human calls beautiful, every one naming its object. Measured against that,
+	 * two of the five marks here were decoration and one of those was a lie:
 	 *
-	 * ⛔ NEITHER IS DELETED, AND THAT IS NOT A DETAIL. Both are still produced
-	 * by `blocking-story.ts`, still pinned by `truth.test.ts`, and both are in
-	 * this component's DOM inside a native `<details>` — keyboard-reachable,
-	 * announced, selectable, and still walked by `subject.svelte.test.ts`'s
-	 * `textContent`. A tooltip would have made `ghd-5b2wn` unreachable on a
-	 * phone, which is a deletion with better manners.
+	 *   · `upstream` drew `ArrowRightAltSolid` — a bare direction, no object,
+	 *     and at 14px a solid smudge. Worse, ONE mark stood for TWO mechanisms:
+	 *     a cross-service contract and a promotion order. It is split, and each
+	 *     half takes a mark this product already spends on that exact object —
+	 *     `ShareNodesSolid` is `contractBlockReason`'s and the `/dependencies`
+	 *     graph's, `ChevronDoubleRightOutline` is the `Promotion pipeline` card
+	 *     header's on `/apps/<name>`.
+	 *   · `check` drew `HourglassSolid`, and an hourglass means *time will fix
+	 *     this* — which is the meaning of `clock`, THE VERY KIND `check` EXISTS
+	 *     TO BE DISTINGUISHED FROM (`check` is "not passing and nothing
+	 *     published a window", i.e. self-clearing but unschedulable). Two kinds
+	 *     may not share one meaning. It is `ShieldCheckSolid`: a guard that has
+	 *     not cleared.
+	 *
+	 * The other three were already true of their kind and are UNCHANGED — a
+	 * calendar genuinely means a time window, a person genuinely means someone
+	 * must act, a question mark genuinely means we cannot tell.
+	 *
+	 * ── (2) THREE FACTS WERE FLATTENED INTO ONE SENTENCE ─────────────────────
+	 *
+	 * *"Waiting for hello-api-app to ship a newer api — it is on 1.66.0"* is a
+	 * PROVIDER, a CONTRACT with a required range, and the VERSION IT SERVES,
+	 * narrated at 11px gray and wrapping to two lines in a 300px card. The
+	 * product has the vocabulary to show that: `Chip`'s joined form pairs a
+	 * caption with an identifier, and `/dependencies` draws provider → consumer.
+	 * So the row draws it:
+	 *
+	 *     ⇄  hello-api-app   [API|1.66.0] → [^1.67.0]
+	 *
+	 * The required range comes from `RolloutDependency.status.blockedReleases[]
+	 * .requiredVersion`, which has been in the `/api/rollouts` payload all along
+	 * and which no surface has ever drawn.
+	 *
+	 * ⛔ AND THE SENTENCE IS GONE, NOT DOUBLED. The failure to avoid here is one
+	 * fact drawn twice — a handle printed five times on `/environments`, a
+	 * rollback panel restating the banner above it. Where the drawing carries
+	 * the fact, `short` is not printed beside it; it moves into the record
+	 * behind the control, where it stays in the DOM, reachable and testable.
+	 *
+	 * ⛔ AND ONLY WHERE THERE IS A SHAPE. `check`, `approval` and `unknown` name
+	 * no second party — their only concrete object is the gate's generated id,
+	 * which this product deliberately took OUT of the printed tier. Those rows
+	 * print `short`, unchanged. Prose is what you use when you have no shape.
+	 * `blocking-story.ts` decides which is which by setting `subject`.
+	 *
+	 * ── ⭐ THE CONTROL IS A POPOVER, AND WHAT IS BEHIND IT IS A RECORD ────────
+	 *
+	 * > *"i think i also don't like 'details' expansion. it's formatted just as
+	 * > text when in some cases it could be more richly formatted. i think maybe
+	 * > a popover would be better?"*
+	 *
+	 * See `RulePopover.svelte` for the mechanism and for why it is a `<details>`
+	 * rather than flowbite's `<Popover>` (which renders `{#if isOpen}` and would
+	 * have made every one of these facts unreachable to `lib/messages/` while
+	 * the suite stayed green). What it holds is no longer a paragraph: it is one
+	 * aligned block PER GATE — the rule's own name, what kind of gate it is,
+	 * what clears it, when it clears where that is knowable, and the raw object
+	 * name to paste after `kubectl` — then the story's verdict once at the foot.
 	 *
 	 * ⛔ ONE CONTROL PER INSTANCE, NOT ONE PER LINE. Porting the banner's
 	 * disclosure per GATE would have put four controls in one `/environments`
-	 * viewport, which is its own kind of noise. The verdict and every handle
-	 * share the one control, and the per-gate association survives as a `title`
-	 * on each clause — the handle for THAT line, where the line is.
+	 * viewport, which is its own kind of noise. Every gate's record is behind
+	 * the one control, and the per-gate association survives as a `title` on
+	 * each clause — the handle for THAT line, where the line is.
 	 *
-	 * ⛔ AND NOTHING BECAME GRAY. This component was already `gray-500` prose
-	 * on a white card by design (`BlockReason`: *"no colour on the prose, and
-	 * no fill"* — the page's one fill belongs to the banner). What changed is
-	 * that there is LESS of it. If a region gets shorter it must get sharper,
-	 * never quieter, and the sharpening here is that the clause — the only line
-	 * that says what is actually holding this rollout — is no longer the third
-	 * gray line of five.
+	 * ⛔ AND NOTHING BECAME GRAY. This component was already `gray-500` prose on
+	 * a white card by design (`BlockReason`: *"no colour on the prose, and no
+	 * fill"* — the page's one fill belongs to the banner). What changed is that
+	 * the BLOCKING OBJECT — the provider, the environment, the window — is now
+	 * full ink at `t-code-sm`/`t-micro` instead of the fourth word of a gray
+	 * sentence, and the versions are chips. Less text, more hierarchy.
 	 */
-	import {
-		UserCircleSolid,
-		CalendarWeekSolid,
-		HourglassSolid,
-		ArrowRightAltSolid,
-		QuestionCircleSolid,
-		ChevronRightOutline
-	} from 'flowbite-svelte-icons';
 	import { formatTimeUntil } from '$lib/api/schedules';
 	import { now } from '$lib/stores/time';
-	import {
-		ruleHandle,
-		type BlockingStory,
-		type ClassifiedGate
-	} from '$lib/view-models/blocking-story';
+	import Chip from './Chip.svelte';
+	import RulePopover from './RulePopover.svelte';
+	import { type BlockingStory } from '$lib/view-models/blocking-story';
 
 	let { story, class: className = '' }: { story: BlockingStory; class?: string } = $props();
-
-	function iconFor(g: ClassifiedGate) {
-		if (g.clears === 'person') return UserCircleSolid;
-		if (g.clears === 'unknown') return QuestionCircleSolid;
-		if (g.clears === 'upstream') return ArrowRightAltSolid;
-		if (g.clears === 'clock') return CalendarWeekSolid;
-		return HourglassSolid;
-	}
 
 	// The clock's arithmetic is `api/schedules.ts`'s, the same function the
 	// banner and `/versions` call, so two objects on one screen cannot print
 	// two different times for one window.
-	function whenFor(g: ClassifiedGate): string | null {
-		if (!g.clearsAt) return null;
-		const until = formatTimeUntil(g.clearsAt, $now);
-		return until ? `reopens in ${until} (${new Date(g.clearsAt).toLocaleString()})` : null;
+	function untilFor(g: ClassifiedGate): string | null {
+		return g.clearsAt ? formatTimeUntil(g.clearsAt, $now) : null;
 	}
 
-	// ⛔ `verdict`, NOT `resolution`. The manual-deploy clause is a PAGE-level
-	// promise and the banner carries it; repeated under every row it was the
-	// same sentence three times in one viewport. Same string, same order, as
-	// `BlockingStoryPanel`'s footnote — one idiom, learned once.
-	const rules = $derived(ruleHandle(story));
+	/** The version relation is drawable only when BOTH ends are known. */
+	function drawsVersions(g: ClassifiedGate): boolean {
+		return !!(g.contract && g.have && g.need);
+	}
+
+	/**
+	 * ⭐ THE STATE OF `subject`, IN THE ROW'S RIGHT-HAND SLOT — the card-header
+	 * grammar (`COMPOSITION-GRAMMAR.md` §1: icon + title left, rolled-up verdict
+	 * right) brought down to row scale.
+	 *
+	 * ⛔ A CLOCK GATE WITH NO USABLE COUNTDOWN RETURNS NULL, and that is what
+	 * makes the row fall back to the whole sentence: `Business Hours Only` on its
+	 * own is a NAME, not a state, and `reopens in` with nothing after it is a
+	 * broken one. `short` is complete by itself and is the honest fallback.
+	 */
+	function rowState(g: ClassifiedGate, until: string | null): string | null {
+		if (g.clearsAt) return until && g.predicate ? `${g.predicate} ${until}` : null;
+		return g.predicate;
+	}
 </script>
 
 {#if story.blocked && story.gates.length > 0}
 	<div class="mt-1.5 flex min-w-0 flex-col gap-1 {className}">
 		<ul class="flex min-w-0 flex-col gap-1">
 			{#each story.gates as g (g.id)}
-				{@const Icon = iconFor(g)}
-				{@const when = whenFor(g)}
-				<!-- THE HANDLE FOR THIS LINE, ON THIS LINE. The joined list in the
-				     disclosure below cannot say WHICH gate produced WHICH clause;
-				     this can, and it costs no pixels. It is an ADDITION to the
-				     disclosure, never a substitute for it — a `title` is not
-				     reachable on a phone. -->
+				{@const Icon = gateMark(g)}
+				{@const until = untilFor(g)}
+				{@const state = rowState(g, until)}
+				{@const drawn = !!g.subject && (drawsVersions(g) || state !== null)}
+				<!-- THE HANDLE FOR THIS LINE, ON THIS LINE. The record in the popover
+				     below names every gate, but the ROW is where the reader is
+				     looking; this says which object produced this line and costs no
+				     pixels. It is an ADDITION to the popover, never a substitute for
+				     it — a `title` is not reachable on a phone. -->
 				<li
-					class="t-micro flex min-w-0 items-start gap-1.5 text-gray-500 dark:text-gray-400"
+					class="t-micro flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
 					title="The rule holding this: {g.id}"
 				>
-					<Icon class="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-					<!-- ONE EXPRESSION, NOT AN `{#if}`. The block form ate the
-					     leading space and rendered `deploy window— reopens in 12h`. -->
-					<span class="min-w-0">{when ? `${g.short} — ${when}` : g.short}</span>
+					<span class="flex min-w-0 items-center gap-1.5">
+						<Icon class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+						{#if drawn}
+							<!-- THE OBJECT THAT HAS TO MOVE, AT FULL INK. It was the
+							     fourth word of a gray sentence; it is the thing the
+							     reader is looking for. Mono for a Kubernetes object
+							     name (a service, an environment), sans for a
+							     human-authored window label. -->
+							<span
+								class="{g.subjectKind === 'schedule'
+									? 't-micro font-medium'
+									: 't-code-sm'} min-w-0 truncate text-gray-900 dark:text-white">{g.subject}</span
+							>
+						{:else}
+							<!-- NO SHAPE, SO THE SENTENCE STAYS. See the header. -->
+							<span class="min-w-0">{g.short}</span>
+						{/if}
+					</span>
+					{#if drawn && drawsVersions(g)}
+						<!-- ⭐ THE CONTRACT, DRAWN. `[API|1.66.0]` is `Chip`'s joined
+						     form — a caption and the identifier it captions, the
+						     product's one badge geometry — and `[^1.67.0]` is its
+						     identifier-only form. The arrow is between two operands,
+						     which is the difference between a structural mark and the
+						     decorative one this row used to lead with.
+						     `valueIsBuild={false}`: a CONTRACT version is not a build,
+						     and the tag glyph claims it is. -->
+						<span class="flex min-w-0 items-center gap-1">
+							<Chip
+								role="count"
+								label={g.contract ?? ''}
+								value={g.have}
+								valueIsBuild={false}
+								wide={(g.contract ?? '').length > 14}
+								title="{g.subject} serves {g.contract} {g.have}"
+							/>
+							<ArrowRightOutline
+								class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
+								aria-hidden="true"
+							/>
+							<Chip
+								role="count"
+								label=""
+								value={g.need}
+								valueIsBuild={false}
+								valueTitle="The held build needs {g.contract} {g.need}"
+							/>
+						</span>
+					{:else if drawn && state}
+						<span class="min-w-0">{state}</span>
+					{/if}
 				</li>
 			{/each}
 		</ul>
 		<!--
-			⭐ THE DISCLOSURE — `AlertPanel`'s, at card scale. See the component
-			note above for the five-handles-in-one-viewport measurement.
-
-			⚠️ `flex flex-col items-start` IS LOAD-BEARING, NOT TIDINESS, and it
-			is the same trap `AlertPanel` records: a block `<details>` puts its
-			`inline-flex` summary in an anonymous LINE BOX which inherits the
-			surround's strut, and the control then measures TALLER than the line
-			of prose it replaced. As a flex column the summary is a flex item
-			with no strut.
-
-			THE CONTROL IS THE `Show 8 ready resources ›` IDIOM — 11px, the
-			card's own gray, a chevron that rotates 90° on open. `list-none`
-			plus the webkit marker rule remove the native triangle so the
-			chevron is the only affordance.
+			⭐ THE POPOVER, AND ITS CONTENT IS A RECORD. See the component note
+			above, and `RulePopover.svelte` for why the mechanism is still a native
+			`<details>`: the whole record is in the DOM when the panel is closed,
+			which is what keeps `truth.test.ts` and `subject.svelte.test.ts` — both
+			of which walk `textContent` — reading facts that are genuinely
+			reachable rather than facts that merely exist in a source file.
 		-->
-		<details class="group flex flex-col items-start">
-			<summary
-				class="t-micro inline-flex cursor-pointer list-none items-center gap-1 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+		<RulePopover count={story.gates.length}>
+			<dl class="divide-y divide-gray-100 dark:divide-gray-700/60">
+				{#each story.gates as g (g.id)}
+					{@const Icon = gateMark(g)}
+					{@const until = untilFor(g)}
+					{@const drawn = !!g.subject && (drawsVersions(g) || rowState(g, until) !== null)}
+					<div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
+						<!-- THE RULE'S OWN NAME leads its block, with the SAME mark the
+						     row drew, so a reader with two gates can tell which entry
+						     belongs to which line. -->
+						<p class="col-span-2 flex min-w-0 items-center gap-1.5">
+							<Icon
+								class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
+								aria-hidden="true"
+							/>
+							<span class="t-dense min-w-0 font-medium break-words text-gray-900 dark:text-white"
+								>{g.label}</span
+							>
+						</p>
+						<dt class="t-label text-gray-500 dark:text-gray-400">Kind</dt>
+						<dd class="t-micro min-w-0 text-gray-900 dark:text-white">{gateKindWord(g)}</dd>
+						<!-- ⭐ `short` LIVES HERE, AND THAT IS THE WHOLE REASON THIS IS A
+						     `<details>` AND NOT A COMPONENT THAT UNMOUNTS. It is the
+						     sentence `truth.test.ts` produces from controller state and
+						     the one `subject.svelte.test.ts` checks for its subject; a
+						     panel with no DOM until it opened would have deleted both
+						     assertions without turning anything red.
+
+						     ⛔ AND ONLY WHERE THE ROW DREW INSTEAD OF SAYING IT. A gate
+						     with no `subject` PRINTS `short` on its own line, and
+						     repeating it here would make the reward for opening the
+						     control a sentence the reader can already see — which is
+						     the exact complaint that produced this pass. THE RECORD
+						     HOLDS WHAT THE ROW DOES NOT. -->
+						{#if drawn}
+							<dt class="t-label text-gray-500 dark:text-gray-400">Clears</dt>
+							<dd class="t-micro min-w-0 break-words text-gray-900 dark:text-white">{g.short}</dd>
+						{/if}
+						{#if g.clearsAt}
+							<dt class="t-label text-gray-500 dark:text-gray-400">When</dt>
+							<dd class="t-micro min-w-0 text-gray-900 dark:text-white">
+								{new Date(g.clearsAt).toLocaleString()}{until ? ` · ${until}` : ''}
+							</dd>
+						{/if}
+						<!-- THE IDENTIFIER IS A HANDLE AND IS DRESSED AS ONE: mono, muted,
+						     on its own line, labelled with the word that says what it is.
+						     `break-all` only fires on a name genuinely wider than the
+						     column, and here it has the panel's full measure rather than
+						     the remainder of a sentence. -->
+						<dt class="t-label text-gray-500 dark:text-gray-400">Rule</dt>
+						<dd class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400">{g.id}</dd>
+					</div>
+				{/each}
+			</dl>
+			<!-- ⛔ `verdict`, NOT `resolution`. The manual-deploy clause is a
+			     PAGE-level promise and the banner carries it; repeated under every
+			     row it was the same sentence three times in one viewport. Same
+			     string, same order, as `BlockingStoryPanel`'s footnote — one idiom,
+			     learned once. -->
+			<p
+				class="t-micro mt-2 border-t border-gray-100 pt-2 break-words text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
 			>
-				<ChevronRightOutline
-					class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
-					aria-hidden="true"
-				/>
-				<!-- `Details`, NOT `What clears this`. Same ruling as `AlertPanel`'s
-				     `footnoteLabel` — the label is a NOUN, never an interrogative.
-				     `/environments` was rendering four of these in one viewport, all
-				     four asking the same question, three of them opening onto the
-				     same sentence. -->
-				Details
-			</summary>
-			<p class="t-micro mt-1 break-words text-gray-500 dark:text-gray-400">{story.verdict}</p>
-			{#if rules}
-				<!-- THE IDENTIFIER IS A HANDLE AND IS DRESSED AS ONE: mono, muted,
-				     on its own line, labelled with the word that says what it is.
-				     Inline it inherited the sentence's wrap point and a 300px card
-				     split `schedule-gate-fk44d` into `fk` / `44d`, which reads as
-				     two identifiers. -->
-				<p class="t-code-sm mt-0.5 break-all text-gray-500 dark:text-gray-400">rule: {rules}</p>
-			{/if}
-		</details>
+				{story.verdict}
+			</p>
+		</RulePopover>
 	</div>
 {/if}

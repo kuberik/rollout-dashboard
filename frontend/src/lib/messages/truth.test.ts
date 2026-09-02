@@ -142,7 +142,12 @@ function rollout(opts: {
 	candidates?: string[] | null;
 	pinned?: string | null;
 	bakeStatus?: string;
-	conditions?: Array<{ type: string; status: string; message?: string; lastTransitionTime?: string }>;
+	conditions?: Array<{
+		type: string;
+		status: string;
+		message?: string;
+		lastTransitionTime?: string;
+	}>;
 	history?: any[];
 }): any {
 	const releases = (opts.releases ?? ['a1', 'b2', 'c3']).map((t) => rel(t));
@@ -152,7 +157,10 @@ function rollout(opts: {
 		opts.candidates === undefined
 			? at === null
 				? []
-				: releases.slice(at + 1).reverse().map((r) => r.tag)
+				: releases
+						.slice(at + 1)
+						.reverse()
+						.map((r) => r.tag)
 			: opts.candidates;
 	return {
 		metadata: { name: opts.name ?? 'alpha-app', namespace: opts.ns ?? 'alpha-dev' },
@@ -262,7 +270,11 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 					annotations: { 'gate.kuberik.com/pretty-name': 'Business Hours Only' }
 				},
 				spec: { action: 'Allow' },
-				status: { active: false, nextTransition: '2026-09-01T09:00:00Z', managedGates: ['gate-sched'] }
+				status: {
+					active: false,
+					nextTransition: '2026-09-01T09:00:00Z',
+					managedGates: ['gate-sched']
+				}
 			} as any
 		]);
 		const g = classifyGate({ name: 'gate-sched', passing: false }, 'ns', ctx);
@@ -271,6 +283,32 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 		says(g.clause, 'the deploy window reopens');
 		says(g.short, 'Outside the Business Hours Only deploy window');
 		expect(g.clearsAt).toBe('2026-09-01T09:00:00Z');
+		// ⭐ THE DRAWN FORM: the window's own name, and a verb that needs the
+		// clock after it. A card renders `Business Hours Only reopens in 12h 59m`
+		// where it used to render the whole sentence plus the absolute instant,
+		// three wrapped lines in a 300px card.
+		says(g.predicate, 'reopens in');
+		expect(g.subject).toBe('Business Hours Only');
+		expect(g.subjectKind).toBe('schedule');
+	});
+
+	test('a window with NO published transition draws nothing -- `reopens in` needs a clock', () => {
+		// ⛔ A NAME IS NOT A STATE, and `reopens in` with nothing after it is a
+		// broken sentence. With no `nextTransition` the drawing is off and every
+		// surface falls back to `short`, which is complete on its own.
+		const ctx = withSchedules(full, 'ns', [
+			{
+				metadata: { name: 'freeze' },
+				spec: { action: 'Deny' },
+				status: { active: true, managedGates: ['gate-nt'] }
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		]);
+		const g = classifyGate({ name: 'gate-nt', passing: false }, 'ns', ctx);
+		expect(g.clears).toBe('clock');
+		expect(g.subject).toBeNull();
+		expect(g.predicate).toBeNull();
+		says(g.short, 'Outside the freeze deploy window');
 	});
 
 	test('a Deny schedule blocks while ACTIVE -- the same predicate the API uses', () => {
@@ -281,7 +319,10 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 				status: { active: true, nextTransition: null, managedGates: ['gate-freeze'] }
 			} as any
 		]);
-		says(classifyGate({ name: 'gate-freeze', passing: false }, 'ns', ctx).short, 'Outside the freeze deploy window');
+		says(
+			classifyGate({ name: 'gate-freeze', passing: false }, 'ns', ctx).short,
+			'Outside the freeze deploy window'
+		);
 	});
 
 	test('an Allow schedule that IS active explains nothing and is not attributed to it', () => {
@@ -373,7 +414,9 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 
 	test('an owner reference we read with NO controller owner -- positive human evidence', () => {
 		const ctx = buildGateContext({
-			rolloutGates: { items: [{ metadata: { name: 'manual', namespace: 'ns', ownerReferences: [] } }] }
+			rolloutGates: {
+				items: [{ metadata: { name: 'manual', namespace: 'ns', ownerReferences: [] } }]
+			}
 		} as any);
 		const g = classifyGate({ name: 'manual', allowedVersions: [] }, 'ns', ctx);
 		expect(g.clears).toBe('person');
@@ -394,7 +437,10 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 	 * `unknown`, and `unknown` refuses BOTH wrong instructions.
 	 */
 	test('a source that was never served -- unknown, and it names no remedy', () => {
-		const partial = buildGateContext({ environments: { items: [] }, rolloutDependencies: null } as any);
+		const partial = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: null
+		} as any);
 		const g = classifyGate({ name: 'mystery-gate', allowedVersions: [] }, 'ns', partial);
 		expect(g.clears).toBe('unknown');
 		says(g.label, 'mystery-gate');
@@ -403,11 +449,17 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 	});
 
 	test('an empty source IS a consulted source; a null one is not', () => {
-		expect(buildGateContext({ environments: { items: [] }, rolloutDependencies: { items: [] } } as any).sources).toEqual({
+		expect(
+			buildGateContext({ environments: { items: [] }, rolloutDependencies: { items: [] } } as any)
+				.sources
+		).toEqual({
 			environments: true,
 			dependencies: true
 		});
-		expect(buildGateContext({} as any).sources).toEqual({ environments: false, dependencies: false });
+		expect(buildGateContext({} as any).sources).toEqual({
+			environments: false,
+			dependencies: false
+		});
 	});
 
 	test('a gate with no name at all still gets a handle, never an empty sentence', () => {
@@ -415,16 +467,19 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 	});
 
 	test('prettyNameOf reads the annotation, and nothing else', () => {
-		expect(prettyNameOf({ annotations: { 'gate.kuberik.com/pretty-name': 'Business Hours Only' } })).toBe(
-			'Business Hours Only'
-		);
+		expect(
+			prettyNameOf({ annotations: { 'gate.kuberik.com/pretty-name': 'Business Hours Only' } })
+		).toBe('Business Hours Only');
 		expect(prettyNameOf({})).toBeNull();
 		expect(prettyNameOf(undefined)).toBeNull();
 	});
 });
 
 describe('blocking-story: the story a page prints, one state at a time', () => {
-	const ctxFull = buildGateContext({ environments: { items: [] }, rolloutDependencies: { items: [] } } as any);
+	const ctxFull = buildGateContext({
+		environments: { items: [] },
+		rolloutDependencies: { items: [] }
+	} as any);
 
 	test('nothing newer -- no story at all, and no sentence to misread', () => {
 		const s = blockingStory(rollout({ at: 2 }), ctxFull);
@@ -446,7 +501,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		});
 		const s = blockingStory(r, ctxFull, { place: 'staging' });
 		says(s.headline, 'STAGING is pinned to a1');
-		says(s.consequence, '2 newer builds are available and none of them will deploy while the pin is set.');
+		says(
+			s.consequence,
+			'2 newer builds are available and none of them will deploy while the pin is set.'
+		);
 		says(s.verdict, 'Clearing the pin is the only thing that restarts automatic deploys.');
 		says(shortStory(s), 'Pinned to a1');
 		expect(s.gates).toEqual([]);
@@ -460,14 +518,20 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 
 	test('pinned with exactly one newer build -- the singular branch', () => {
 		const s = blockingStory(rollout({ at: 1, pinned: 'b2' }), ctxFull);
-		says(s.consequence, '1 newer build is available and none of them will deploy while the pin is set.');
+		says(
+			s.consequence,
+			'1 newer build is available and none of them will deploy while the pin is set.'
+		);
 	});
 
 	test('one approval gate -- the only state whose verdict is escalate', () => {
 		const r = rollout({ at: 0, gates: [{ name: 'manual', allowedVersions: [] }] });
 		const s = blockingStory(r, ctxFull, { place: 'staging' });
 		says(s.headline, 'STAGING is waiting on an approval');
-		says(s.consequence, '2 newer builds are waiting. Nothing promotes itself until someone approves it.');
+		says(
+			s.consequence,
+			'2 newer builds are waiting. Nothing promotes itself until someone approves it.'
+		);
 		says(s.verdict, 'This will not clear on its own.');
 		says(
 			s.resolution,
@@ -498,12 +562,22 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 	});
 
 	test('one unknown gate -- states the fact, names no remedy, is not self-clearing', () => {
-		const partial = buildGateContext({ environments: { items: [] }, rolloutDependencies: null } as any);
-		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'ghd-p2fld', allowedVersions: [] }] }), partial, {
-			place: 'dev'
-		});
+		const partial = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: null
+		} as any);
+		const s = blockingStory(
+			rollout({ at: 0, gates: [{ name: 'ghd-p2fld', allowedVersions: [] }] }),
+			partial,
+			{
+				place: 'dev'
+			}
+		);
 		says(s.headline, 'Something is holding DEV');
-		says(s.verdict, 'This dashboard cannot tell what clears this — it may or may not need a person.');
+		says(
+			s.verdict,
+			'This dashboard cannot tell what clears this — it may or may not need a person.'
+		);
 		expect(s.selfClearing).toBe(false);
 		says(shortStory(s), 'Held by ghd-p2fld — this dashboard cannot tell what clears it');
 	});
@@ -521,18 +595,28 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			},
 			rolloutDependencies: { items: [] }
 		} as any);
-		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'ghd-1', allowedVersions: [] }] }), ctx, {
-			place: 'staging'
-		});
+		const s = blockingStory(
+			rollout({ at: 0, gates: [{ name: 'ghd-1', allowedVersions: [] }] }),
+			ctx,
+			{
+				place: 'staging'
+			}
+		);
 		says(s.headline, 'STAGING is waiting on another deploy');
-		says(s.verdict, 'Nobody has to approve anything — this clears when the deploy in front of it lands.');
+		says(
+			s.verdict,
+			'Nobody has to approve anything — this clears when the deploy in front of it lands.'
+		);
 		expect(s.selfClearing).toBe(false);
 	});
 
 	test('one clock gate -- the time is printed, and the verdict is go back to bed', () => {
 		const ctx = withSchedules(ctxFull, 'alpha-dev', [
 			{
-				metadata: { name: 'bh', annotations: { 'gate.kuberik.com/pretty-name': 'Business Hours Only' } },
+				metadata: {
+					name: 'bh',
+					annotations: { 'gate.kuberik.com/pretty-name': 'Business Hours Only' }
+				},
 				spec: { action: 'Allow' },
 				status: { active: false, nextTransition: '2026-08-31T13:00:00Z', managedGates: ['sg-1'] }
 			} as any
@@ -557,7 +641,9 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			} as any
 		]);
 		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'sg-1', passing: false }] }), ctx);
-		expect(s.consequence).toBe('2 newer builds are waiting. Nothing promotes itself until the deploy window reopens.');
+		expect(s.consequence).toBe(
+			'2 newer builds are waiting. Nothing promotes itself until the deploy window reopens.'
+		);
 		says(s.verdict, 'This clears on its own once the check passes.');
 	});
 
@@ -597,7 +683,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 	});
 
 	test('shortStory kinds cover every clears value, so a row cannot be silent', () => {
-		const partial = buildGateContext({ environments: { items: [] }, rolloutDependencies: null } as any);
+		const partial = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: null
+		} as any);
 		const s = blockingStory(
 			rollout({
 				at: 0,
@@ -638,7 +727,13 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			]
 		);
 		const s = blockingStory(
-			rollout({ at: 0, gates: [{ name: 'ghd-1', allowedVersions: [] }, { name: 'sg-1', passing: false }] }),
+			rollout({
+				at: 0,
+				gates: [
+					{ name: 'ghd-1', allowedVersions: [] },
+					{ name: 'sg-1', passing: false }
+				]
+			}),
 			ctx
 		);
 		says(shortStory(s), 'Held by 2 rules — waiting on another deploy and a deploy window');
@@ -682,7 +777,10 @@ describe('verdict: one sentence, in strict precedence, never a fabricated cause'
 
 	test('1 -- a failure outranks everything', () => {
 		says(
-			verdictSentence([env({ label: 'prod', status: 'Failed' }), env({ label: 'dev', behind: 99, stuck: true })]),
+			verdictSentence([
+				env({ label: 'prod', status: 'Failed' }),
+				env({ label: 'dev', behind: 99, stuck: true })
+			]),
 			"prod's last deploy failed."
 		);
 	});
@@ -713,7 +811,9 @@ describe('verdict: one sentence, in strict precedence, never a fabricated cause'
 
 	test('3 -- wedged on an approval gate: a person', () => {
 		says(
-			verdictSentence([env({ label: 'prod', behind: 19, blocked: true, awaitingApprovalGates: ['m'] })]),
+			verdictSentence([
+				env({ label: 'prod', behind: 19, blocked: true, awaitingApprovalGates: ['m'] })
+			]),
 			'prod is 19 builds behind, waiting on a manual approval.'
 		);
 	});
@@ -735,7 +835,13 @@ describe('verdict: one sentence, in strict precedence, never a fabricated cause'
 		expect(verdictBlockReason({ awaitingApprovalGates: [], notPassingGates: [] })).toBeNull();
 		says(
 			verdictSentence([
-				env({ label: 'prod', behind: 19, stuck: true, stuckKind: 'baking', stuckForMs: 76 * 3600_000 })
+				env({
+					label: 'prod',
+					behind: 19,
+					stuck: true,
+					stuckKind: 'baking',
+					stuckForMs: 76 * 3600_000
+				})
 			]),
 			/^prod is 19 builds behind, checking for /
 		);
@@ -746,11 +852,15 @@ describe('verdict: one sentence, in strict precedence, never a fabricated cause'
 			/^prod is 3 builds behind, deploying for /
 		);
 		says(
-			verdictSentence([env({ label: 'prod', behind: 3, stuck: true, stuckKind: 'behind', stuckForMs: 7200_000 })]),
+			verdictSentence([
+				env({ label: 'prod', behind: 3, stuck: true, stuckKind: 'behind', stuckForMs: 7200_000 })
+			]),
 			/^prod is 3 builds behind, and has not moved in /
 		);
 		says(
-			verdictSentence([env({ label: 'prod', behind: 3, stuck: true, stuckKind: null, stuckForMs: null })]),
+			verdictSentence([
+				env({ label: 'prod', behind: 3, stuck: true, stuckKind: null, stuckForMs: null })
+			]),
 			'prod is 3 builds behind, and is not moving.'
 		);
 	});
@@ -764,26 +874,40 @@ describe('verdict: one sentence, in strict precedence, never a fabricated cause'
 
 	test('3 -- wedged at zero lag uses the solo form, not a dangling participle', () => {
 		says(
-			verdictSentence([env({ label: 'prod', behind: 0, stuck: true, stuckKind: 'baking', stuckForMs: null })]),
+			verdictSentence([
+				env({ label: 'prod', behind: 0, stuck: true, stuckKind: 'baking', stuckForMs: null })
+			]),
 			'prod has been checking.'
 		);
 		says(
-			verdictSentence([env({ label: 'prod', behind: 0, stuck: true, stuckKind: 'deploying', stuckForMs: null })]),
+			verdictSentence([
+				env({ label: 'prod', behind: 0, stuck: true, stuckKind: 'deploying', stuckForMs: null })
+			]),
 			'prod has been deploying.'
 		);
 		says(
-			verdictSentence([env({ label: 'prod', behind: 0, blocked: true, awaitingApprovalGates: ['m'] })]),
+			verdictSentence([
+				env({ label: 'prod', behind: 0, blocked: true, awaitingApprovalGates: ['m'] })
+			]),
 			'prod is waiting on a manual approval.'
 		);
 		says(
-			verdictSentence([env({ label: 'prod', behind: 0, stuck: true, stuckKind: 'behind', stuckForMs: 60_000 })]),
+			verdictSentence([
+				env({ label: 'prod', behind: 0, stuck: true, stuckKind: 'behind', stuckForMs: 60_000 })
+			]),
 			/^prod has not moved in /
 		);
 	});
 
 	test('4 -- deploying outranks checking; both name the environment', () => {
-		says(verdictSentence([env({ label: 'dev', status: 'Deploying', behind: 1 })]), 'dev is deploying.');
-		says(verdictSentence([env({ label: 'dev', status: 'InProgress', behind: 1 })]), 'dev is checking.');
+		says(
+			verdictSentence([env({ label: 'dev', status: 'Deploying', behind: 1 })]),
+			'dev is deploying.'
+		);
+		says(
+			verdictSentence([env({ label: 'dev', status: 'InProgress', behind: 1 })]),
+			'dev is checking.'
+		);
 	});
 
 	test('5 -- converged, one environment, with and without a shared sha', () => {
@@ -793,11 +917,17 @@ describe('verdict: one sentence, in strict precedence, never a fabricated cause'
 
 	test('5 -- converged, several environments', () => {
 		says(
-			verdictSentence([env({ label: 'dev', version: 'a1' }), env({ label: 'prod', version: 'a1' })]),
+			verdictSentence([
+				env({ label: 'dev', version: 'a1' }),
+				env({ label: 'prod', version: 'a1' })
+			]),
 			'All 2 environments are on a1.'
 		);
 		says(
-			verdictSentence([env({ label: 'dev', version: 'a1' }), env({ label: 'prod', version: 'b2' })]),
+			verdictSentence([
+				env({ label: 'dev', version: 'a1' }),
+				env({ label: 'prod', version: 'b2' })
+			]),
 			'All 2 environments are on the newest build.'
 		);
 	});
@@ -824,21 +954,39 @@ describe('deploy-risk: the confirmation table, every row', () => {
 	});
 
 	test('the ten rows of the documented table', () => {
-		expect(confirmLevel(base({ direction: 'forward', production: true, vouched: false }))).toBe('typed');
-		expect(confirmLevel(base({ direction: 'forward', production: true, vouched: true }))).toBe('notice');
-		expect(confirmLevel(base({ direction: 'forward', production: false, vouched: false }))).toBe('notice');
-		expect(confirmLevel(base({ direction: 'forward', production: false, vouched: true }))).toBe('none');
+		expect(confirmLevel(base({ direction: 'forward', production: true, vouched: false }))).toBe(
+			'typed'
+		);
+		expect(confirmLevel(base({ direction: 'forward', production: true, vouched: true }))).toBe(
+			'notice'
+		);
+		expect(confirmLevel(base({ direction: 'forward', production: false, vouched: false }))).toBe(
+			'notice'
+		);
+		expect(confirmLevel(base({ direction: 'forward', production: false, vouched: true }))).toBe(
+			'none'
+		);
 		expect(confirmLevel(base({ direction: 'rollback', production: true }))).toBe('notice');
-		expect(confirmLevel(base({ direction: 'retry', production: true, vouched: false }))).toBe('typed');
-		expect(confirmLevel(base({ direction: 'retry', production: true, vouched: true }))).toBe('notice');
-		expect(confirmLevel(base({ direction: 'retry', production: false, vouched: false }))).toBe('notice');
-		expect(confirmLevel(base({ direction: 'retry', production: false, vouched: true }))).toBe('none');
+		expect(confirmLevel(base({ direction: 'retry', production: true, vouched: false }))).toBe(
+			'typed'
+		);
+		expect(confirmLevel(base({ direction: 'retry', production: true, vouched: true }))).toBe(
+			'notice'
+		);
+		expect(confirmLevel(base({ direction: 'retry', production: false, vouched: false }))).toBe(
+			'notice'
+		);
+		expect(confirmLevel(base({ direction: 'retry', production: false, vouched: true }))).toBe(
+			'none'
+		);
 		expect(confirmLevel(base({ custom: true }))).toBe('typed');
 		expect(confirmLevel(base({ direction: 'same' }))).toBe('none');
 	});
 
 	test('a rollback NEVER reaches typed, not even in production', () => {
-		expect(confirmLevel(base({ direction: 'rollback', production: true, vouched: false }))).toBe('notice');
+		expect(confirmLevel(base({ direction: 'rollback', production: true, vouched: false }))).toBe(
+			'notice'
+		);
 	});
 
 	test('direction is measured against the rollout own release list', () => {
@@ -853,8 +1001,12 @@ describe('deploy-risk: the confirmation table, every row', () => {
 	test('gatesAllow: an empty allow-list refuses everything, and no gates allows everything', () => {
 		expect(gatesAllow(rollout({ gates: [] }), 'a1')).toBe(true);
 		expect(gatesAllow(rollout({ gates: [{ name: 'g', allowedVersions: [] }] }), 'a1')).toBe(false);
-		expect(gatesAllow(rollout({ gates: [{ name: 'g', passing: false, allowedVersions: ['a1'] }] }), 'a1')).toBe(false);
-		expect(gatesAllow(rollout({ gates: [{ name: 'g', allowedVersions: ['a1'] }] }), 'a1')).toBe(true);
+		expect(
+			gatesAllow(rollout({ gates: [{ name: 'g', passing: false, allowedVersions: ['a1'] }] }), 'a1')
+		).toBe(false);
+		expect(gatesAllow(rollout({ gates: [{ name: 'g', allowedVersions: ['a1'] }] }), 'a1')).toBe(
+			true
+		);
 		expect(gatesAllow(rollout({}), null)).toBe(false);
 	});
 
@@ -880,7 +1032,12 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 
 	test('none -- no sentence at all, so a dialog is never taught to be ignored', () => {
 		expect(confirmNotice(intent())).toBeNull();
-		expect(retryConsequences(intent({ direction: 'retry' }), { failingChecks: [], clearsFailureDetail: true })).toEqual([]);
+		expect(
+			retryConsequences(intent({ direction: 'retry' }), {
+				failingChecks: [],
+				clearsFailureDetail: true
+			})
+		).toEqual([]);
 	});
 
 	test('a custom tag -- says no rule vouched and the commit list may be incomplete', () => {
@@ -952,10 +1109,16 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 	});
 
 	test('the button says where it lands, in every direction', () => {
-		says(deployActionLabel(intent({ direction: 'rollback', production: true })), 'Roll back production');
+		says(
+			deployActionLabel(intent({ direction: 'rollback', production: true })),
+			'Roll back production'
+		);
 		says(deployActionLabel(intent({ direction: 'rollback', environment: 'dev' })), 'Roll back dev');
 		says(deployActionLabel(intent({ direction: 'rollback', environment: '' })), 'Roll back');
-		says(deployActionLabel(intent({ direction: 'retry', production: true })), 'Redeploy to production');
+		says(
+			deployActionLabel(intent({ direction: 'retry', production: true })),
+			'Redeploy to production'
+		);
 		says(deployActionLabel(intent({ direction: 'retry', environment: '' })), 'Redeploy');
 		says(deployActionLabel(intent({ environment: 'staging' })), 'Deploy to staging');
 		says(deployActionLabel(intent({ environment: '' })), 'Deploy Now');
@@ -973,8 +1136,15 @@ describe('deploy-risk: a retry states what it destroys', () => {
 	});
 
 	test('unvouched retry into production -- four facts, in the order a reader needs them', () => {
-		const lines = retryConsequences(prod(), { failingChecks: ['latency'], clearsFailureDetail: true }, '064b655');
-		says(lines[0], 'Redeploys 064b655 to production — the same build whose last deploy here failed.');
+		const lines = retryConsequences(
+			prod(),
+			{ failingChecks: ['latency'], clearsFailureDetail: true },
+			'064b655'
+		);
+		says(
+			lines[0],
+			'Redeploys 064b655 to production — the same build whose last deploy here failed.'
+		);
 		says(
 			lines[1],
 			'No rule here currently allows this build. It applies immediately and production starts serving it.'
@@ -995,7 +1165,10 @@ describe('deploy-risk: a retry states what it destroys', () => {
 
 	test('a vouched retry says the controller would have made this attempt', () => {
 		says(
-			retryConsequences(prod({ vouched: true }), { failingChecks: [], clearsFailureDetail: false })[1],
+			retryConsequences(prod({ vouched: true }), {
+				failingChecks: [],
+				clearsFailureDetail: false
+			})[1],
 			'Every rule here allows this build, so this is the attempt the controller would make on its own.'
 		);
 	});
@@ -1005,7 +1178,10 @@ describe('deploy-risk: a retry states what it destroys', () => {
 			failingChecks: ['a', 'b', 'c', 'd'],
 			clearsFailureDetail: true
 		});
-		says(many[2], '4 health checks are still failing right now — a, b, c, …. Nothing has re-checked this build since.');
+		says(
+			many[2],
+			'4 health checks are still failing right now — a, b, c, …. Nothing has re-checked this build since.'
+		);
 		says(
 			many[3],
 			'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
@@ -1095,7 +1271,11 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 			)
 		).toMatchObject({ check: 'payment-latency' });
 		expect(
-			checkFailure(rollout({ conditions: [{ type: 'DeploymentBlocked', status: 'False', message: CONDITION }] }))
+			checkFailure(
+				rollout({
+					conditions: [{ type: 'DeploymentBlocked', status: 'False', message: CONDITION }]
+				})
+			)
 		).toBeNull();
 		expect(checkFailure(rollout({}))).toBeNull();
 		expect(checkFailure(null)).toBeNull();
@@ -1109,7 +1289,12 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 	 */
 	test('the title scopes the hold to AUTOMATIC deploys, in all four shapes', () => {
 		says(
-			checkFailureTitle({ check: 'payment-latency', detail: 'p99 4.2s', raw: CONDITION, since: null }),
+			checkFailureTitle({
+				check: 'payment-latency',
+				detail: 'p99 4.2s',
+				raw: CONDITION,
+				since: null
+			}),
 			'Health check payment-latency is failing — p99 4.2s. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.'
 		);
 		says(
@@ -1120,9 +1305,9 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 			checkFailureTitle({ check: 'c', detail: null, raw: '', since: null }),
 			'Health check c is failing. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.'
 		);
-		expect(
-			checkFailureTitle({ check: 'c', detail: 'd', raw: '', since: null })
-		).not.toMatch(/nothing new deploys/i);
+		expect(checkFailureTitle({ check: 'c', detail: 'd', raw: '', since: null })).not.toMatch(
+			/nothing new deploys/i
+		);
 	});
 
 	/**
@@ -1159,13 +1344,22 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 		expect(classifyCheck({ status: { status: 'Pending' } } as any, w)).toBe('pending');
 		expect(classifyCheck({ status: { status: 'Healthy' } } as any, w)).toBe('passing');
 		expect(
-			classifyCheck({ status: { status: 'Healthy', lastErrorTime: '2026-08-31T00:00:00Z' } } as any, w)
+			classifyCheck(
+				{ status: { status: 'Healthy', lastErrorTime: '2026-08-31T00:00:00Z' } } as any,
+				w
+			)
 		).toBe('passing');
 		expect(
-			classifyCheck({ status: { status: 'Healthy', lastErrorTime: '2026-08-31T01:30:00Z' } } as any, w)
+			classifyCheck(
+				{ status: { status: 'Healthy', lastErrorTime: '2026-08-31T01:30:00Z' } } as any,
+				w
+			)
 		).toBe('recovered');
 		expect(
-			classifyCheck({ status: { status: 'Healthy', lastErrorTime: '2026-08-31T01:30:00Z' } } as any, null)
+			classifyCheck(
+				{ status: { status: 'Healthy', lastErrorTime: '2026-08-31T01:30:00Z' } } as any,
+				null
+			)
 		).toBe('passing');
 		expect(
 			classifyCheck({ status: { status: 'Healthy', lastErrorTime: 'not a date' } } as any, w)
@@ -1176,7 +1370,10 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 		const w = new Date('2026-08-31T01:00:00Z');
 		const list = [
 			{ metadata: { name: 'ok' }, status: { status: 'Healthy' } },
-			{ metadata: { name: 'witness' }, status: { status: 'Healthy', lastErrorTime: '2026-08-31T01:30:00Z' } }
+			{
+				metadata: { name: 'witness' },
+				status: { status: 'Healthy', lastErrorTime: '2026-08-31T01:30:00Z' }
+			}
 		] as any;
 		expect(recoveredChecks(list, w).map((h: any) => h.metadata.name)).toEqual(['witness']);
 		expect(recoveredChecks([], w)).toEqual([]);
@@ -1188,10 +1385,7 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 			recoveredTitle({ metadata: { name: 'payment-latency' } } as any, '2m ago'),
 			'payment-latency is passing now, but it errored 2m ago — inside the window of the deploy that is running. The controller keeps that error as evidence; this mark clears on the next deploy or retry.'
 		);
-		says(
-			recoveredTitle({} as any, '2m ago'),
-			/^This check is passing now, but it errored 2m ago/
-		);
+		says(recoveredTitle({} as any, '2m ago'), /^This check is passing now, but it errored 2m ago/);
 	});
 });
 
@@ -1223,7 +1417,10 @@ describe('up-to-date: the caption never completes the wrong headline', () => {
 	 */
 	test('converged and behind -- the state that produced the spliced caption', () => {
 		says(upToDateHeadline({ onHead: 0, deployed: 3, total: 3, spread: 1 }), '0 of 3 up to date');
-		says(upToDateCaption({ onHead: 0, deployed: 3, total: 3, spread: 1 }), 'all 3 on one older version');
+		says(
+			upToDateCaption({ onHead: 0, deployed: 3, total: 3, spread: 1 }),
+			'all 3 on one older version'
+		);
 	});
 
 	test('split across versions -- the caption counts them', () => {
@@ -1235,7 +1432,15 @@ describe('up-to-date: the caption never completes the wrong headline', () => {
 		says(upToDateCaption({ onHead: 1, deployed: 2, total: 2, diverged: 1 }), '1 unreleased');
 		says(upToDateCaption({ onHead: 1, deployed: 2, total: 2, unknown: 1 }), '1 unknown');
 		says(
-			upToDateCaption({ onHead: 1, deployed: 4, total: 6, spread: 2, pending: 2, diverged: 1, unknown: 1 }),
+			upToDateCaption({
+				onHead: 1,
+				deployed: 4,
+				total: 6,
+				spread: 2,
+				pending: 2,
+				diverged: 1,
+				unknown: 1
+			}),
 			'2 versions live · 2 never deployed · 1 unreleased · 1 unknown'
 		);
 	});
@@ -1319,13 +1524,21 @@ describe('env-rank: one spelling, and unknown is a legible answer', () => {
 				spec: { environment: 'prod', rolloutRef: { name: 'a' } }
 			}
 		] as any;
-		const dev = rollout({ name: 'a', ns: 'a-dev', releases: ['a1', 'b2', 'zz'], at: 2, candidates: [] });
+		const dev = rollout({
+			name: 'a',
+			ns: 'a-dev',
+			releases: ['a1', 'b2', 'zz'],
+			at: 2,
+			candidates: []
+		});
 		const prod = {
 			metadata: { name: 'a', namespace: 'a-prod' },
 			spec: {},
 			status: {
 				availableReleases: [rel('a1'), rel('b2')],
-				history: [{ version: rel('zz'), timestamp: '2026-08-31T00:00:00Z', bakeStatus: 'Succeeded' }]
+				history: [
+					{ version: rel('zz'), timestamp: '2026-08-31T00:00:00Z', bakeStatus: 'Succeeded' }
+				]
 			}
 		} as any;
 		const ranks = rankVerdictsByRollout([dev, prod], environments);
@@ -1365,14 +1578,26 @@ describe('auto-deploy: why promotion is paused, and what clearing a pin does', (
 	});
 
 	test('each reason has its own clause', () => {
-		says(autoDeployWhy({ paused: true, reasons: ['gates'], gateNames: [] }), 'a rule is holding it');
+		says(
+			autoDeployWhy({ paused: true, reasons: ['gates'], gateNames: [] }),
+			'a rule is holding it'
+		);
 		says(
 			autoDeployWhy({ paused: true, reasons: ['gates'], gateNames: ['Business Hours Only'] }),
 			'a rule is holding it (Business Hours Only)'
 		);
-		says(autoDeployWhy({ paused: true, reasons: ['health'], gateNames: [] }), 'health checks are failing');
-		says(autoDeployWhy({ paused: true, reasons: ['pin'], gateNames: [] }), 'it is pinned to one version');
-		says(autoDeployWhy({ paused: true, reasons: ['failed'], gateNames: [] }), 'the last deploy failed its checks');
+		says(
+			autoDeployWhy({ paused: true, reasons: ['health'], gateNames: [] }),
+			'health checks are failing'
+		);
+		says(
+			autoDeployWhy({ paused: true, reasons: ['pin'], gateNames: [] }),
+			'it is pinned to one version'
+		);
+		says(
+			autoDeployWhy({ paused: true, reasons: ['failed'], gateNames: [] }),
+			'the last deploy failed its checks'
+		);
 		says(
 			autoDeployWhy({ paused: true, reasons: ['gates', 'pin'], gateNames: [] }),
 			'a rule is holding it, and it is pinned to one version'
@@ -1413,7 +1638,10 @@ describe('auto-deploy: why promotion is paused, and what clearing a pin does', (
 	 */
 	test('a rollback that is pinned says the pin is what holds it', () => {
 		says(
-			rollbackStory({ from: 'c3', to: 'a1', by: 2 }, { paused: true, reasons: ['pin'], gateNames: [] }),
+			rollbackStory(
+				{ from: 'c3', to: 'a1', by: 2 },
+				{ paused: true, reasons: ['pin'], gateNames: [] }
+			),
 			'Went back 2 releases, c3 → a1, and pinned there. Nothing moves off a1 until the pin is cleared.'
 		);
 	});
@@ -1444,12 +1672,15 @@ describe('auto-deploy: why promotion is paused, and what clearing a pin does', (
 	});
 
 	test('the states that reach each reason, from a rollout payload', () => {
-		expect(autoDeployState(rollout({ gates: [{ name: 'g', passing: false }] })).reasons).toContain('gates');
+		expect(autoDeployState(rollout({ gates: [{ name: 'g', passing: false }] })).reasons).toContain(
+			'gates'
+		);
 		expect(
 			autoDeployState(rollout({ conditions: [{ type: 'GatesPassing', status: 'False' }] })).reasons
 		).toContain('gates');
 		expect(
-			autoDeployState(rollout({ conditions: [{ type: 'DeploymentBlocked', status: 'True' }] })).reasons
+			autoDeployState(rollout({ conditions: [{ type: 'DeploymentBlocked', status: 'True' }] }))
+				.reasons
 		).toContain('health');
 		expect(autoDeployState(rollout({ pinned: 'a1' })).reasons).toContain('pin');
 		expect(autoDeployState(rollout({ bakeStatus: 'Failed' })).reasons).toContain('failed');
@@ -1480,7 +1711,10 @@ describe('api/errors: one headline per failure class, and never an invented caus
 	test('404, and the backend 500 that is really a 404', () => {
 		says(errorHeadline(apiError(404)), 'This page does not exist');
 		says(
-			errorHeadline(apiError(500, 'failed to get rollout: rollouts.kuberik.com "x" not found'), 'this rollout'),
+			errorHeadline(
+				apiError(500, 'failed to get rollout: rollouts.kuberik.com "x" not found'),
+				'this rollout'
+			),
 			'This rollout does not exist'
 		);
 	});
@@ -1497,7 +1731,8 @@ describe('api/errors: one headline per failure class, and never an invented caus
 	});
 
 	test('unreachable -- names the thing that is wrong, not the page that noticed', () => {
-		for (const s of [0, 502, 503, 504]) says(errorHeadline(apiError(s)), 'Cannot reach the dashboard server');
+		for (const s of [0, 502, 503, 504])
+			says(errorHeadline(apiError(s)), 'Cannot reach the dashboard server');
 		says(errorHeadline(apiError(500)), 'The dashboard server could not answer');
 		says(errorHeadline(apiError(400)), 'Could not load this page');
 	});
@@ -1515,7 +1750,10 @@ describe('api/errors: one headline per failure class, and never an invented caus
 	});
 
 	test('401 says nothing was lost; a missing object says what may have happened', () => {
-		says(errorConsequence(apiError(401)), 'Sign in again to carry on. Nothing you were looking at was lost.');
+		says(
+			errorConsequence(apiError(401)),
+			'Sign in again to carry on. Nothing you were looking at was lost.'
+		);
 		says(errorConsequence(apiError(404)), 'It may have been deleted, or the address may be wrong.');
 	});
 
@@ -1539,7 +1777,10 @@ describe('api/errors: one headline per failure class, and never an invented caus
 
 	test('the detail is the server own sentence, or an explicit statement that there was none', () => {
 		says(errorDetail(apiError(500, 'boom')), '/api/rollouts — boom');
-		says(errorDetail(apiError(503)), '/api/rollouts — the server sent no explanation with its HTTP 503.');
+		says(
+			errorDetail(apiError(503)),
+			'/api/rollouts — the server sent no explanation with its HTTP 503.'
+		);
 		says(errorDetail(apiError(0, '', '')), 'the browser could not open a connection.');
 		says(errorDetail(new Error('plain')), 'plain');
 		expect(errorDetail(undefined)).toBeUndefined();
@@ -1566,7 +1807,10 @@ describe('api/errors: one headline per failure class, and never an invented caus
 		expect(apiError(500).isMissing).toBe(false);
 		expect(apiError(500, '', 'http://h/api/x/y').path).toBe('/api/x/y');
 		expect(apiError(500, '', '').path).toBe('');
-		says(new ApiError(0, 'No response from the server', '', 'u').message, 'No response from the server');
+		says(
+			new ApiError(0, 'No response from the server', '', 'u').message,
+			'No response from the server'
+		);
 		says(apiError(503).message, 'Request failed (503)');
 	});
 });
@@ -1600,7 +1844,8 @@ describe('bake-status: one word per state, and one sentence per word', () => {
 		says(bakeTitle('None'), 'Nothing has been deployed here yet');
 		says(bakeTitle(undefined), 'Nothing has been deployed here yet');
 		expect(Object.keys(BAKE_TITLE).sort()).toEqual(Object.keys(BAKE_WORD).sort());
-		for (const t of Object.values(BAKE_TITLE)) expect(t.toLowerCase()).not.toMatch(/\bbak(e|ing)\b/);
+		for (const t of Object.values(BAKE_TITLE))
+			expect(t.toLowerCase()).not.toMatch(/\bbak(e|ing)\b/);
 	});
 });
 
@@ -1610,11 +1855,22 @@ describe('bake-status: one word per state, and one sentence per word', () => {
 
 describe('fleet-groups: what "healthy" is allowed to cover', () => {
 	const card = (o: any = {}) =>
-		({ statusKey: 'succeeded', stuck: null, checkFailure: null, isRunning: false, rank: { kind: 'newest' }, ...o }) as any;
+		({
+			statusKey: 'succeeded',
+			stuck: null,
+			checkFailure: null,
+			isRunning: false,
+			rank: { kind: 'newest' },
+			...o
+		}) as any;
 
 	test('a failing health check promotes into attention -- the 3am finding', () => {
-		expect(isNeedsYou(card({ checkFailure: { check: 'c', detail: null, raw: '', since: null } }))).toBe(true);
-		expect(isHealthy(card({ checkFailure: { check: 'c', detail: null, raw: '', since: null } }))).toBe(false);
+		expect(
+			isNeedsYou(card({ checkFailure: { check: 'c', detail: null, raw: '', since: null } }))
+		).toBe(true);
+		expect(
+			isHealthy(card({ checkFailure: { check: 'c', detail: null, raw: '', since: null } }))
+		).toBe(false);
 	});
 
 	test('failed and stuck are attention; a clean success is not', () => {
@@ -1729,8 +1985,7 @@ const UNREACHED: Record<string, string> = {
 		'Asserted assembled onto the shared lead sentence.',
 	'lib/api/errors.ts|… Trying again will not change the answer until something on the server side changes.':
 		'Asserted assembled onto the shared lead sentence.',
-	'lib/api/errors.ts|Request failed (…)':
-		'Asserted as the filled message of a 503 ApiError.',
+	'lib/api/errors.ts|Request failed (…)': 'Asserted as the filled message of a 503 ApiError.',
 	'lib/api/errors.ts|this page':
 		'The default `subject` argument; asserted through the headline it produces.',
 	'lib/view-models/blocking-story.ts|… in … (…)':
@@ -1741,10 +1996,8 @@ const UNREACHED: Record<string, string> = {
 		'The lead clause; asserted inside the assembled consequence, singular and plural.',
 	'lib/view-models/blocking-story.ts|… newer build… … available and none of them will deploy while the pin is set.':
 		'Asserted filled, singular and plural.',
-	'lib/view-models/blocking-story.ts|… and …':
-		'`joinClauses` two-item form; asserted directly.',
-	'lib/view-models/blocking-story.ts|a rule':
-		'The nameless-gate handle; asserted directly.',
+	'lib/view-models/blocking-story.ts|… and …': '`joinClauses` two-item form; asserted directly.',
+	'lib/view-models/blocking-story.ts|a rule': 'The nameless-gate handle; asserted directly.',
 	'lib/view-models/deploy-risk.ts|… version… ahead':
 		'Not a deploy-risk string — the scanner attributes a shared template; covered by dependencies.ts.',
 	'lib/bake-status.ts|no deploy yet':

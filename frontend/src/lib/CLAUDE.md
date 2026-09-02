@@ -87,6 +87,22 @@
   - ⛔ **A drawing that already overflows is left entirely alone** — the predicate is *fits on the FREE axis*. On a 40-service × 4-environment fixture the frame is `maxHeight` and the fit lands on `minZoom`, so the frame is not what bounds the drawing; without that guard the arithmetic still found 14px to share out and spent a second dagre pass on 160 nodes to move four columns by 5px, rendered at 0.55. Verified identical with the stretch on and off: `1117×4104` content, zoom 0.55, 4 ranks, controls + minimap + pan on, same resting pan.
   - ⚠️ **Residue:** a drawing with ONE rank (the `/dependencies` env filter down to a single environment) has no gutter to widen and still centres in the card. That is honest — you cannot stretch a single column — but it is the one shape this rule cannot help.
 
+- **An icon on this product is STRUCTURAL, and a mark that is not true of its kind is worse than no mark.** (2026-09-02, from the human on the gate row: *"still don't like these details when we have this nonsense icon. i feel like you could better visualize this rather than just putting ascii icons in there."*) Two of `BlockingStoryLines`' five marks were decoration, and one of them was a lie.
+  - `HourglassSolid` over a `check` gate meant *time will fix this* — which is `clock`'s meaning, and `check` is defined as the kind that is NOT on a clock ("not passing, and nothing published a window"). **Two kinds may not share one meaning.** → `ShieldCheckSolid`.
+  - `ArrowRightAltSolid` over `upstream` was a bare DIRECTION naming no object, and it stood for TWO mechanisms at once. Split by `kind`: a cross-service contract takes `ShareNodesSolid` (the mark `contractBlockReason` and `/dependencies` already spend on it), a promotion order takes `ChevronDoubleRightOutline` (the `Promotion pipeline` card header's). The calendar, the person and the question mark were already true and did not move.
+  - **The mark is a function of `kind` first and `clears` second** — `clears` is the REMEDY, `kind` is the OBJECT, and an icon names an object. `gateMark()` is exported from `BlockingStoryLines.svelte`'s module script so the choice is arguable in a test rather than buried in markup.
+- **A sentence that carries three facts with an obvious shape must be DRAWN, and then the sentence GOES.** *"Waiting for hello-api-app to ship a newer api — it is on 1.66.0"* is a provider, a contract with a required range, and the version it serves. It is now `⇄ hello-api-app [API|1.66.0] → [^1.67.0]` — `Chip`'s joined form for the caption+identifier pair, its identifier-only form for the requirement, and an arrow BETWEEN TWO OPERANDS (which is what separates a structural mark from a decorative one). The required range is `RolloutDependency.status.blockedReleases[].requiredVersion`; it has always been in the payload and nothing drew it.
+  - ⛔ **Do not add a second graphic beside the sentence.** One fact drawn twice is the defect this branch has paid for repeatedly. Where the drawing carries the fact, `short` moves into the record behind the control.
+  - ⛔ **And only where there IS a shape.** `check`, `approval` and `unknown` name no second party; their only concrete object is the gate's generated id, which was deliberately taken out of the printed tier. `blocking-story.ts` sets `subject: null` for those and the row prints `short`, unchanged. **Prose is what you use when you have no shape; it is not a failure to use it where there is none.**
+  - ⛔ **Never draw half a relation.** No `providedVersion`, or two held candidates asking for different ranges (semver constraints are not orderable across spellings) → `need` is null and the sentence prints. A window with no `nextTransition` draws nothing either: a NAME is not a state, and `reopens in` with no clock after it is a broken sentence.
+  - `subject` + `predicate` are `clause` SPLIT AT ITS OWN JOINT and `clause` is rebuilt from them, so the drawn row and the banner sentence cannot drift.
+- **A disclosure whose payoff is a paragraph is the weakest one there is; a RECORD gets a popover.** (2026-09-02, from the human: *"i think i also don't like 'details' expansion. it's formatted just as text when in some cases it could be more richly formatted. i think maybe a popover would be better?"*) `RulePopover.svelte` holds one aligned `<dl>` block per gate — the rule's own name, `Kind`, `Clears`, `When`, `Rule` (and `Status` for the controller enum).
+  - ⛔ **IT IS STILL A NATIVE `<details>`, AND THAT IS NOT AN IMPLEMENTATION DETAIL.** flowbite's `<Popover>` renders `{#if isOpen}` — **a closed one has no DOM.** `lib/messages/` pins these sentences by walking `textContent`, so swapping it in would have made every fact unreachable to the census WHILE THE SUITE STAYED GREEN — the exact failure `AlertPanel.svelte.test.ts` exists to catch. Its default `trigger="hover"` is the second reason: unreachable on a phone.
+  - The `<details>` gives keyboard (a `<summary>` is focusable, Enter/Space activate), touch (a tap is a click) and `details.open` as a testable boolean for free. Escape, click-away and focus return are twenty lines on top. Verified at 1440 and 390.
+  - ⚠️ **`position: fixed`, never `absolute`.** `Card.svelte` is `overflow-hidden`, so an absolutely positioned panel is clipped at the card's edge on `/environments`, `/apps/<name>` and `/envs/<name>`. Coordinates are measured off the summary, flipped above when the viewport is short, clamped to 8px gutters.
+  - **THE RECORD HOLDS WHAT THE ROW DOES NOT.** A row that printed `short` does not get a `Clears` row too — opening a control to read a sentence already on screen is the complaint that produced this pass.
+  - The control reads **`1 rule` / `N rules`** in BOTH card-scale components now. `BlockingStoryLines` said `Details` and `BlockReason` said the count form, one viewport apart on `/environments` — one affordance, two grammars. `AlertPanel`'s own `Details` is untouched: its body is a SENTENCE, not a set with a count.
+
 - When you discover a design constraint from user feedback, add it here immediately without waiting to be asked.
 
 ## Rollout list visual treatment
@@ -101,26 +117,96 @@ between pages feels jittery."* Measured at 1440 it was two separate defects.
 **LATERAL — one content container for the whole product:**
 
 ```svelte
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 ```
 
 1280px cap, 24px gutters (16px under `sm`). Content left edge **200px** at 1440 with the
-sidebar open, **16px** at 390, on every route. There is exactly **one** documented
-exception, and it is not a page: rollout detail's **sticky tab strip** is full-bleed
-because it is chrome for the whole pane, the way a browser tab strip is. Its CONTENT is
-inside the container like everything else.
+sidebar open, **16px** at 390, on every route. **There are now NO exceptions.**
 
+- **`w-full` is part of the recipe, not decoration.** `mx-auto` + `max-width` on a block
+  parent and on a *flex* parent are not the same box: a flex item with `auto` cross-axis
+  margins does not stretch, so it shrinks to its content. Dropped into the rollout layout
+  (a flex column), the bare recipe rendered the Dependencies tab at **953px inside a
+  1280px container** while its siblings measured 1280 — a page-width defect with no
+  `max-w-*` anywhere near it. `w-full` makes the container's width independent of what its
+  parent's `display` happens to be. It is a no-op under a block parent.
 - ⛔ `/activity` was `max-w-5xl` — **976px against everyone else's 1216, a 128px jump on
   each side** on entry and exit. A narrower measure is legitimate ONLY when justified by
-  LINE LENGTH; nothing on `/activity` is prose (a time-axis chart that wants more room, and
-  three-column event rows whose right column was being crushed), so it was habit, not a
-  reading measure. Removed rather than documented.
-- ⛔ Rollout detail's four tabs had **no wrapper at all** and four different paddings
-  (`sm:px-5`, `p-3 sm:p-4`, `p-3 sm:p-5`, none). Its column ran the full width of `<main>`
-  and its left edge sat at 196 — a 4px sidestep on entry and an unbounded column on a wide
-  monitor.
+  LINE LENGTH; nothing on `/activity` is prose, so it was habit, not a reading measure.
+- ⛔ Rollout detail's four tabs had **no wrapper at all** and four different paddings.
+- ⛔ The Dependencies tab capped its own block at `max-w-[64rem]` one level *inside* a
+  container that measured correctly.
 - **If you add a page, use the recipe above.** A narrower `max-w-*` needs a line-length
   argument written next to it.
+
+**⭐ THE TWO DEFECTS THAT SURVIVED THE FIRST PASS, AND WHY A CENSUS OF CONTAINER EDGES
+CANNOT SEE EITHER.** (2026-09-02, from the human: *"rollout detail and environment list
+still have larger margin than the rest of the pages. is it also the case somewhere
+else?"* — *"still"*, one commit after the container was unified.) Measured first: at 1280,
+1440, 1680, 1800 and 2560 in both themes, **`/environments` was byte-identical to every
+other route** — container 372→1604 at 1800, first content block 372→1604, first card
+372→…, trailing gap 0, and a column-ink-density profile denser than `/apps`'. The
+container was never the thing. Two other mechanisms were:
+
+1. **A full-bleed block INSIDE `<main>`.** Rollout detail's sticky tab strip was written
+   down above as "the one documented exception". Its tabs sat at `px-2 sm:px-4`, i.e.
+   16px from the pane edge, while the page under them sat in the container:
+
+   | width | first tab box | content left | step |
+   |---|---|---|---|
+   | 1280 | 192 | 200 | **8** |
+   | 1440 | 192 | 200 | **8** |
+   | 1680 | 192 | 312 | **120** |
+   | 1800 | 192 | 372 | **180** |
+   | 2560 | 192 | 752 | **560** |
+
+   It is the only page in the product that draws a reference line at the pane edge and
+   then insets its content from it by a quarter of the viewport. **That step IS the
+   "larger margin"** — the container was correct the whole time. The strip's background
+   and bottom hairline stay full-bleed (they are chrome for the pane); its tab row is in
+   the container now. **The tab BOX aligns with the content edge, not the tab LABEL** —
+   the tab keeps `px-3`, exactly as a `Card`'s border sits at the block edge and its title
+   16px inside. What aligns is the thing that draws a line: the active tab's `border-b-2`
+   is a segment of the container's own left edge.
+
+2. **A SECOND SCROLL CONTAINER, and the scrollbar it takes out of the content box.**
+   ⭐ `mx-auto` centres in the **content** box, and a scroll container subtracts its
+   scrollbar from that box. So on any platform with classic (non-overlay) scrollbars:
+   - a page that **fits** the viewport is centred in `main`'s full width;
+   - a page that **scrolls** is centred in `main` minus a scrollbar;
+   - every edge on the short page therefore sits **half a scrollbar further out, on both
+     sides**, than the same edge on the long page you just came from.
+
+   Measured at 1800×950 on this cluster, `/environments`, `/` and a short rollout detail
+   do not overflow `main`; `/apps`, `/versions`, `/activity`, `/envs/<name>` and
+   `/rollouts` do. That is exactly the partition the human named. **`main` now carries
+   `scrollbar-gutter: stable`**, so the content box is one width whether or not the page
+   scrolls. It is a no-op where scrollbars are already overlays.
+
+   ⛔ **AND A NESTED SCROLLER RESERVES A SECOND GUTTER.** Rollout detail owned its own
+   `overflow-y-auto` pane, so with the gutter on it came out **357→1589 against everyone
+   else's 364→1596** — the same defect, one level down, introduced by the fix for it. The
+   pane is gone; rollout detail scrolls `<main>` like every other route and `sticky top-0`
+   pins against `<main>`. Its Logs tab is `min-h-0 flex-1` instead of `h-full`, because
+   `height: 100%` in a flex column that also holds a 49px tab strip is one tab strip too
+   tall. **`/history` had the same shape at page level** — its container was itself
+   `flex-1 overflow-y-auto`, i.e. the one container in the product that could eat its own
+   right padding (24 left, 24 + a scrollbar right). It was also dead; its own
+   `scrollToEntry` comment already records that the real scroller is four ancestors up.
+
+   ⚠️ **THIS IS WHY TWO PASSES MEASURED THESE PAGES AND FOUND NOTHING.** Headless
+   Chromium renders **overlay** scrollbars — `main.offsetWidth - main.clientWidth` was
+   `0` on every route, so both mechanisms were literally zero-width in the instrument.
+   If you are auditing lateral geometry, assert `scrollbar-gutter` is set rather than
+   trusting a measured `0`.
+
+**Ragged right is NOT a margin, and two pages have one on purpose.** `/rollouts` is
+`grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, so a namespace group holding **2** rollouts
+leaves one 405px track empty (trailing gap 355 at 1280, 413 at ≥1680). `/`'s last row
+does the same with 8 cards in 3 columns. Both are a fixed grid's last row, not a
+container defect — `auto-fit` would "fix" it by inflating a two-rollout group's cards to
+616px, which is the inconsistency, not the cure. `/environments`' `.env-stack` is
+`auto-fit` and fills exactly because its floor is derived from the card, not the row.
 
 **VERTICAL — the head band is chrome and is identical everywhere:**
 
@@ -141,3 +227,11 @@ visually) — its first ink is still at y=24.
 
 At 390 the head row WRAPS, so its height is set by the rollup's own length. That is content,
 not chrome: the 24px above it and the 20px below it are identical at every width.
+
+⛔ **AND THE RHYTHM BELONGS TO EVERY BRANCH OF THE PAGE, NOT JUST THE LOADED ONE.**
+(2026-09-02) Rollout detail's loading skeleton and its 404 both carried `py-8` while its
+loaded state carried `pt-6 pb-10`, so the head row **moved down 8px the moment the data
+arrived** — a rhythm defect that only exists for one frame and is therefore never
+screenshotted. `/rollouts/…/diff/<version>` was `py-8` outright, 32px against everyone
+else's 24. All four are `pt-6` now. When you touch a container, grep the file for its
+`{#if loading}` and `{:else if error}` siblings.

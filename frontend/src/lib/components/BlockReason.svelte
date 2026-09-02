@@ -17,12 +17,7 @@
 	 * one"* — which is the exact defect this component was built to kill, still
 	 * alive in the most-read line on the page. One function, two renderers.
 	 */
-	import {
-		LockSolid,
-		HourglassSolid,
-		ShareNodesSolid,
-		ChevronRightOutline
-	} from 'flowbite-svelte-icons';
+	import { LockSolid, HourglassSolid, ShareNodesSolid } from 'flowbite-svelte-icons';
 
 	export type BlockReason = {
 		/** Which structural branch fired. For callers that pick their own icon. */
@@ -70,6 +65,31 @@
 		 * form would delete them, not relocate them.
 		 */
 		form: 'short' | 'long';
+		/**
+		 * ⭐ THE CONTRACT, DRAWN RATHER THAN NARRATED. (2026-09-02)
+		 *
+		 * From the human, on the same fact at card scale: *"i feel like you could
+		 * better visualize this rather than just putting ascii icons in there."*
+		 * `contract` / `have` / `need` are the three facts `line` narrates — the
+		 * contract, the version the provider serves, and the range the held build
+		 * asks for. With all three known the component DRAWS the relation and
+		 * `line` moves into the record behind the control; with any of them
+		 * missing `line` prints, because a half-drawn relation is a claim the
+		 * payload does not support.
+		 *
+		 * ⛔ IT IS NOT A SECOND GRAPHIC BESIDE THE SENTENCE — THE SENTENCE GOES.
+		 * One fact drawn twice is the defect this branch has already paid for.
+		 */
+		subject?: string | null;
+		contract?: string | null;
+		have?: string | null;
+		need?: string | null;
+		/**
+		 * The controller's own enum (`ConstraintNotSatisfied`). A HANDLE for
+		 * somebody about to run `kubectl`, so it belongs in the record — and never
+		 * in `names`, where a ` · ` join made it read as part of the object's name.
+		 */
+		reasonEnum?: string | null;
 	};
 
 	/**
@@ -208,7 +228,10 @@
 		const line = providedVersion
 			? `Needs ${need} from ${provider}, which is on ${providedVersion} — someone has to ship ${provider} first`
 			: `Needs ${need} from ${provider}, and no version of it has been read yet`;
-		const names = [gateName, reason].filter(Boolean).join(' · ') || null;
+		// ⛔ THE GATE NAME ALONE. The controller's `reason` enum used to be joined
+		// on with a ` · `, which made `dependency-… · ConstraintNotSatisfied` read as
+		// one object name; it is `reasonEnum` now and gets its own row in the record.
+		const names = gateName || null;
 		// The short form keeps the one clause a mark cannot carry: WHICH OTHER
 		// SERVICE has to move. The version arithmetic stays in `line`.
 		return {
@@ -217,6 +240,11 @@
 			line,
 			short: `Needs ${provider} to ship first`,
 			names,
+			subject: provider,
+			contract,
+			have: providedVersion ?? null,
+			need: requiredVersion ?? null,
+			reasonEnum: reason ?? null,
 			// ⛔ LONG, ALWAYS. See `form` on the type: the constraint and the
 			// provider's current version are in `line` and nowhere else on the
 			// page, so the short form is a DELETION here rather than a fold.
@@ -228,6 +256,10 @@
 </script>
 
 <script lang="ts">
+	import { ArrowRightOutline } from 'flowbite-svelte-icons';
+	import Chip from './Chip.svelte';
+	import RulePopover from './RulePopover.svelte';
+
 	/**
 	 * WHY NOTHING NEWER HAS ARRIVED — said as a CONSEQUENCE, never as a name.
 	 *
@@ -321,9 +353,10 @@
 	 * ⭐ THE LABEL SAYS WHAT KIND OF THING IS BEHIND THE CONTROL, AND NOTHING
 	 * ELSE. `AlertPanel`'s `footnoteLabel` note is the rule: it is a LABEL,
 	 * never a claim, because a fact nobody expands is a fact nobody reads.
-	 * `awaiting` / `notPassing` join with `, `; `contractBlockReason` joins the
-	 * gate and the controller's own `reason` with ` · `, which is one rule —
-	 * so the count is the `, ` count, never the ` · ` count.
+	 * `awaiting` / `notPassing` join with `, `; `contractBlockReason` carries a
+	 * single gate name — so the count is the `, ` count. (The controller's own
+	 * `reason` enum used to be glued on with a ` · `; it is `reasonEnum` now and
+	 * has its own row in the record, so it can never be counted as a rule.)
 	 *
 	 * ⛔ IT WAS `Which rule` / `Which rules` AND THAT IS AN INTERROGATIVE.
 	 * (2026-09-01) From the human, on the sibling label: *"i'm not sure i
@@ -336,10 +369,18 @@
 	 * tab it sat one viewport away from a `Details`, which was two grammars
 	 * for one affordance in one screen.
 	 */
-	const rulesLabel = $derived.by(() => {
-		const n = reason?.names ? reason.names.split(', ').length : 0;
-		return n === 1 ? '1 rule' : `${n} rules`;
-	});
+	const ruleNames = $derived(reason?.names ? reason.names.split(', ') : []);
+
+	/** What kind of object the rule is, for the record. A NOUN, never a remedy. */
+	function kindWord(kind: BlockReason['kind']): string {
+		if (kind === 'pinned') return 'version pin';
+		if (kind === 'awaiting') return 'allow-list';
+		if (kind === 'notPassing') return 'check or deploy window';
+		return 'service contract';
+	}
+
+	/** The version relation is drawable only when BOTH ends are known. */
+	const drawsVersions = $derived(!!(reason?.contract && reason?.have && reason?.need));
 </script>
 
 <!-- ⛔ THE RENDERING IS THE BLOCK'S, NOT THE CALLER'S. (2026-08-30)
@@ -351,93 +392,136 @@
      `N behind` already cost a pass to close. `form` comes off the block, so
      a page cannot have an opinion about it. -->
 <!--
-	⭐ THE HANDLE IS DISCLOSED, NOT PRINTED. (2026-08-31)
+	⭐ THE HANDLE IS DISCLOSED, AND THE DISCLOSURE IS A POPOVER HOLDING A
+	RECORD. (2026-09-02, superseding the 2026-08-31 `<details>`-in-flow form.)
 
-	Same three tiers `AlertPanel` landed in 05281bc, same native `<details>`,
-	same `Show 8 ready resources ›` idiom. What it cost as printed text,
-	measured on the running product:
+	> *"i think i also don't like 'details' expansion. it's formatted just as
+	> text when in some cases it could be more richly formatted. i think maybe
+	> a popover would be better?"*
 
-	  `/envs/prod`   the app cell is ~205px, so
-	                 `rule: dependency-hello-frontend-needs-api, ghd-5b2wn`
-	                 wrapped to THREE lines and `break-all` split `ghd-5b2wn`
-	                 mid-name across two of them. Three of the row's five
-	                 rendered lines were a generated Kubernetes name broken in
-	                 half — and the banner 250px above printed the same two
-	                 names again, so each appeared TWICE in one viewport.
-	  deps tab       one line, but it carries `ConstraintNotSatisfied` — the
-	                 controller's own open-string enum — in the printed tier.
+	The tier boundary `AlertPanel` drew is UNCHANGED — the fact and its
+	consequence print, the MECHANISM (the generated name, the controller's
+	reason enum) is one control away. What changed is the SHAPE of what is
+	behind the control: it was a paragraph in an 11px gray column, and it is
+	now an aligned `<dl>` in a floating panel with room to be wide. See
+	`RulePopover.svelte`, including why it is still a native `<details>` and
+	not flowbite's `<Popover>` (which renders `{#if isOpen}` and would make
+	every string here unreachable to `lib/messages/` while the suite stayed
+	green), and why it is not a hover tooltip (unreachable on a phone, and this
+	string exists to be pasted after `kubectl get`).
 
-	⛔ IT IS NOT DELETED AND IT IS NOT A TOOLTIP. The `title` stays, because a
-	pointer user should be able to read the handle without opening anything,
-	but a `title` alone is unreachable on a phone and uncopyable everywhere,
-	and this string exists to be pasted after `kubectl get`. The `<details>`
-	keeps it in the DOM, keyboard-reachable, announced and selectable.
-
-	⛔ AND THE SENTENCE DID NOT MOVE. `short` / `line` are the consequence and
-	stay printed, in both forms, unchanged. The tier boundary is the one
-	`AlertPanel` drew: the fact and its consequence print, the MECHANISM — the
-	generated name, the controller's reason enum — is available.
+	⛔ AND THE CONSEQUENCE DID NOT MOVE — except where it is DRAWN. `short` /
+	`line` still print. The one exception is the `contract` branch: its three
+	facts (the contract, the version the provider serves, the range the held
+	build asks for) are now a relation the reader can see, so its sentence goes
+	into the record rather than being printed BESIDE its own picture. One fact
+	drawn twice is worse than one fact narrated once.
 -->
 {#if reason && reason.form === 'short'}
 	{@const Icon = reason.icon}
 	<!-- ⛔ NO LONGER `flex-wrap` WITH THE HANDLE BESIDE THE SENTENCE. It is a
-	     COLUMN now: the disclosure's body has to open UNDER the control, and a
-	     wrap row cannot give it a line of its own. -->
+	     COLUMN now: the control has to sit UNDER the sentence, and a wrap row
+	     cannot give it a line of its own. -->
 	<div class="t-micro flex min-w-0 flex-col gap-y-0.5 {className}">
 		<span class="inline-flex min-w-0 items-baseline gap-1.5 text-gray-500 dark:text-gray-400">
 			<Icon class="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden="true" />
 			<span class="min-w-0">{reason.short}</span>
 		</span>
-		{#if reason.names}
-			{@render handle(reason.names)}
+		{#if ruleNames.length > 0}
+			{@render record(reason)}
 		{/if}
 	</div>
 {:else if reason}
 	{@const Icon = reason.icon}
-	<div class="flex min-w-0 items-start gap-1.5 {className}">
-		<Icon class="mt-px h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-		<div class="min-w-0">
-			<span class="t-micro block text-gray-500 dark:text-gray-400">{reason.line}</span>
-			{#if reason.names}
-				{@render handle(reason.names)}
+	<div class="flex min-w-0 flex-col gap-y-0.5 {className}">
+		<span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+			<span class="flex min-w-0 items-center gap-1.5">
+				<Icon class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+				{#if drawsVersions && reason.subject}
+					<!-- THE PROVIDER, AT FULL INK. It was the fifth word of a gray
+					     sentence; it is the object somebody has to go and ship. -->
+					<span class="t-code-sm min-w-0 truncate text-gray-900 dark:text-white"
+						>{reason.subject}</span
+					>
+				{:else}
+					<span class="t-micro min-w-0 text-gray-500 dark:text-gray-400">{reason.line}</span>
+				{/if}
+			</span>
+			{#if drawsVersions}
+				<!-- ⭐ THE CONTRACT, DRAWN. `[API|1.66.0]` is `Chip`'s joined form —
+				     a caption and the identifier it captions, the product's one badge
+				     geometry — and `[^1.67.0]` is its identifier-only form. The arrow
+				     sits BETWEEN two operands, which is what separates a structural
+				     mark from the decorative one this row used to lead with.
+				     `valueIsBuild={false}`: a CONTRACT version is not a build, and the
+				     tag glyph would claim it is. -->
+				<span class="flex min-w-0 items-center gap-1">
+					<Chip
+						role="count"
+						label={reason.contract ?? ''}
+						value={reason.have}
+						valueIsBuild={false}
+						wide={(reason.contract ?? '').length > 14}
+						title="{reason.subject} serves {reason.contract} {reason.have}"
+					/>
+					<ArrowRightOutline
+						class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
+						aria-hidden="true"
+					/>
+					<Chip
+						role="count"
+						label=""
+						value={reason.need}
+						valueIsBuild={false}
+						valueTitle="The held build needs {reason.contract} {reason.need}"
+					/>
+				</span>
 			{/if}
-		</div>
+		</span>
+		{#if ruleNames.length > 0}
+			{@render record(reason)}
+		{/if}
 	</div>
 {/if}
 
-{#snippet handle(names: string)}
-	<!--
-		⚠️ `flex flex-col items-start` IS LOAD-BEARING, NOT TIDINESS. `AlertPanel`
-		records the trap: a block `<details>` puts its `inline-flex` summary in an
-		anonymous LINE BOX that inherits the surround's strut, so the control
-		measures TALLER than the line it replaced. As a flex column the summary is
-		a flex item with no strut.
-	-->
-	<details class="group mt-0.5 flex flex-col items-start">
-		<!-- THE TITLE RIDES THE CONTROL, NOT THE SENTENCE. A pointer user reads
-		     the handle without opening anything; it renders only where `names`
-		     exists, so the pinned branch cannot draw an empty tooltip; and it
-		     stays a STATIC attribute with one interpolation, which is what
-		     `messages/scan.ts` can see — an `{expr ? … : undefined}` form is
-		     invisible to the census, and a string the census cannot see is a
-		     string nobody re-reads. -->
-		<summary
-			class="t-micro inline-flex cursor-pointer list-none items-center gap-1 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
-			title="The rule blocking this: {names}"
-		>
-			<ChevronRightOutline
-				class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
-				aria-hidden="true"
-			/>
-			{rulesLabel}
-		</summary>
-		<!-- THE NAME IS AN IDENTIFIER AND IS DRESSED AS ONE. Mono, muted, and
-		     prefixed with the word that says what it is, so nobody reads a
-		     generated string as a reason again. `break-all` only fires on a name
-		     genuinely wider than its column — and inside the disclosure it now has
-		     the column's full width rather than the remainder of a sentence. -->
-		<span class="t-code-sm mt-1 block break-all text-gray-500 dark:text-gray-400"
-			>rule: {names}</span
-		>
-	</details>
+{#snippet record(r: BlockReason)}
+	<RulePopover count={ruleNames.length} class="mt-0.5">
+		<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+			<dt class="t-label text-gray-500 dark:text-gray-400">Kind</dt>
+			<dd class="t-micro min-w-0 text-gray-900 dark:text-white">{kindWord(r.kind)}</dd>
+			<!-- ⭐ THE CONSEQUENCE IN FULL. For the three gate branches this is the
+			     LONG form — a different, fuller sentence than the `short` printed
+			     above, and the only place it is rendered at all. For `contract` it
+			     is the sentence the drawing replaced. Either way it is IN THE DOM
+			     with the panel closed, which is what keeps `lib/messages/`'s
+			     `textContent` walk honest.
+
+			     ⛔ AND NOT WHERE THE ROW ALREADY PRINTED IT. A `long` block whose
+			     relation could not be drawn prints `line` itself; repeating it here
+			     would make the reward for opening the control a sentence already on
+			     screen. THE RECORD HOLDS WHAT THE ROW DOES NOT. -->
+			{#if r.form === 'short' || drawsVersions}
+				<dt class="t-label text-gray-500 dark:text-gray-400">Clears</dt>
+				<dd class="t-micro min-w-0 break-words text-gray-900 dark:text-white">{r.line}</dd>
+			{/if}
+			{#each ruleNames as name (name)}
+				<dt class="t-label text-gray-500 dark:text-gray-400">Rule</dt>
+				<!-- THE NAME IS AN IDENTIFIER AND IS DRESSED AS ONE. Mono, muted, one
+				     per row. `break-all` fires only on a name genuinely wider than the
+				     column, and inside the panel it has the panel's full measure
+				     rather than the remainder of a sentence. -->
+				<dd class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400">{name}</dd>
+			{/each}
+			{#if r.reasonEnum}
+				<!-- THE CONTROLLER'S OWN WORD, VERBATIM AND UNSWITCHED. The same
+				     dependency reports `ConstraintNotSatisfied` on the spoke and
+				     `ProviderVersionTooOld` on the hub, so a friendly label per case
+				     would ship its fallback. It is a handle, and it is dressed as one. -->
+				<dt class="t-label text-gray-500 dark:text-gray-400">Status</dt>
+				<dd class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400">
+					{r.reasonEnum}
+				</dd>
+			{/if}
+		</dl>
+	</RulePopover>
 {/snippet}

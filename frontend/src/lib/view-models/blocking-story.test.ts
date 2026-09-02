@@ -60,7 +60,14 @@ const DEPENDENCIES = {
 			status: {
 				gateName: 'dependency-hello-frontend-needs-api',
 				providedVersion: '1.66.0',
-				admittedVersions: ['rel-66']
+				admittedVersions: ['rel-66'],
+				// THE LIVE SHAPE, VERBATIM. `blockedReleases[].requiredVersion` is
+				// the constraint the held candidate places on the contract, and it
+				// is the half of the relation the row draws on the right of the
+				// arrow. It has been in the payload all along.
+				blockedReleases: [
+					{ tag: 'rel-67', requiredVersion: '^1.67.0', reason: 'ConstraintNotSatisfied' }
+				]
 			}
 		}
 	]
@@ -118,21 +125,98 @@ describe('buildGateContext — the classification is a JOIN, never a name match'
 		});
 	});
 
-	it('joins a dependency gate to its provider and contract', () => {
+	it('joins a dependency gate to its provider, contract and BOTH versions', () => {
 		expect(ctx.dependency.get('hello-dep-prod/dependency-hello-frontend-needs-api')).toEqual({
 			provider: 'hello-api-app',
 			contract: 'api',
-			providedVersion: '1.66.0'
+			providedVersion: '1.66.0',
+			requiredVersion: '^1.67.0'
 		});
+	});
+
+	it('the required range is null when the held candidates disagree', () => {
+		// ⛔ Masterminds semver constraints are not orderable across spellings, so
+		// two candidates asking for two different ranges have no single "the"
+		// requirement. Printing one of them would be a claim the payload does not
+		// support, and the row falls back to the sentence.
+		const mixed = buildGateContext({
+			rolloutDependencies: {
+				items: [
+					{
+						metadata: { namespace: 'ns', name: 'd' },
+						spec: { contract: 'api', providerRef: { name: 'p' } },
+						status: {
+							gateName: 'g',
+							providedVersion: '1.0.0',
+							blockedReleases: [
+								{ tag: 'a', requiredVersion: '^1.1.0' },
+								{ tag: 'b', requiredVersion: '^2.0.0' }
+							]
+						}
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		});
+		expect(mixed.dependency.get('ns/g')?.requiredVersion).toBeNull();
+		// Two candidates asking for the SAME range is one requirement, not two.
+		const agreed = buildGateContext({
+			rolloutDependencies: {
+				items: [
+					{
+						metadata: { namespace: 'ns', name: 'd' },
+						spec: { contract: 'api', providerRef: { name: 'p' } },
+						status: {
+							gateName: 'g',
+							blockedReleases: [
+								{ tag: 'a', requiredVersion: '^1.1.0' },
+								{ tag: 'b', requiredVersion: '^1.1.0' }
+							]
+						}
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		});
+		expect(agreed.dependency.get('ns/g')?.requiredVersion).toBe('^1.1.0');
+	});
+
+	it('the drawing fields are the clause split at its own joint, never a second wording', () => {
+		// ⭐ THE ROW AND THE BANNER CANNOT DRIFT, and this is the mechanism: the
+		// sentence is BUILT from `subject` + `predicate`, so a surface that draws
+		// the two halves separately is drawing the sentence's own words.
+		const promo = classifyGate({ name: 'ghd-xm669', allowedVersions: [] }, 'hello-world-prod', ctx);
+		expect(promo.subject).toBe('staging');
+		expect(promo.subjectKind).toBe('environment');
+		expect(`${promo.subject} ${promo.predicate}`).toBe(promo.clause);
+
+		const dep = classifyGate(
+			{ name: 'dependency-hello-frontend-needs-api', allowedVersions: [] },
+			'hello-dep-prod',
+			ctx
+		);
+		expect(dep.subject).toBe('hello-api-app');
+		expect(dep.subjectKind).toBe('service');
+		expect([dep.contract, dep.have, dep.need]).toEqual(['api', '1.66.0', '^1.67.0']);
+	});
+
+	it('a gate with no second party draws NOTHING, and that is the argued half', () => {
+		// ⛔ `check`, `approval` and `unknown` name no object a reader can go and
+		// look at; their only concrete handle is the gate's generated id, which
+		// this product deliberately took OUT of the printed tier. `subject: null`
+		// is how a surface knows to print `short` instead of inventing a picture.
+		const check = classifyGate({ name: 'anything', passing: false }, 'ns', EMPTY_GATE_CONTEXT);
+		expect(check.clears).toBe('check');
+		expect(check.subject).toBeNull();
+		expect(check.subjectKind).toBeNull();
+		expect(check.need).toBeNull();
 	});
 
 	it('keys on NAMESPACE + name — one dependency gate name exists in three namespaces', () => {
 		// The live cluster has `dependency-hello-frontend-needs-api` in
 		// hello-dep-{dev,staging,prod}. A name-only key would attribute all three
 		// to whichever landed last.
-		expect(ctx.dependency.has('hello-dep-staging/dependency-hello-frontend-needs-api')).toBe(
-			false
-		);
+		expect(ctx.dependency.has('hello-dep-staging/dependency-hello-frontend-needs-api')).toBe(false);
 		expect(ctx.dependency.has('hello-dep-prod/dependency-hello-frontend-needs-api')).toBe(true);
 	});
 
@@ -366,9 +450,7 @@ describe('blockingStory — the defect the critic filed', () => {
 
 	it('an upstream-only block is a WARNING but does not send anyone looking for a human', () => {
 		const s = blockingStory(
-			rolloutWith('hello-world-prod', [
-				{ name: 'ghd-xm669', passing: true, allowedVersions: [] }
-			]),
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
 			ctx,
 			{ place: 'prod', now: NOW }
 		);
@@ -433,9 +515,7 @@ describe('shortStory / ruleHandle — a row cannot disagree with the banner abov
 
 	it('one gate gives its own clause', () => {
 		const s = blockingStory(
-			rolloutWith('hello-world-prod', [
-				{ name: 'ghd-xm669', passing: true, allowedVersions: [] }
-			]),
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
 			ctx,
 			{ now: NOW }
 		);
@@ -455,9 +535,7 @@ describe('shortStory / ruleHandle — a row cannot disagree with the banner abov
 		expect(shortStory(s)).toBe(
 			'Held by 3 rules — waiting on an approval, another deploy and a check'
 		);
-		expect(ruleHandle(s)).toBe(
-			'hello-world-manual-approval, ghd-xm669, schedule-gate-zvsqr'
-		);
+		expect(ruleHandle(s)).toBe('hello-world-manual-approval, ghd-xm669, schedule-gate-zvsqr');
 	});
 
 	it('is null when nothing is holding it', () => {
@@ -572,7 +650,11 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			} as any
 		});
-		const g = classifyGate({ name: 'future-gate', passing: true, allowedVersions: [] }, 'ns', ctxOwned);
+		const g = classifyGate(
+			{ name: 'future-gate', passing: true, allowedVersions: [] },
+			'ns',
+			ctxOwned
+		);
 		expect(g.clears).toBe('unknown');
 		expect(g.clause).toBe('CanaryAnalysis weekly allows this build');
 	});

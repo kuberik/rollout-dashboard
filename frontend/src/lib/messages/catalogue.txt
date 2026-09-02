@@ -65,13 +65,17 @@ lib/components/ActivityRail.svelte	aria-label	View all recent activity
 lib/components/AppPromotionFlow.svelte	code	font-size: 10px; font-weight: 600; fill: …;
 lib/components/AppPromotionFlow.svelte	code	in sync
 lib/components/AppPromotionFlow.svelte	code	stroke: …; stroke-width: 2; …
-lib/components/BlockingStoryLines.svelte	code	reopens in … (…)
-lib/components/BlockingStoryLines.svelte	text	rule: …
+lib/components/BlockingStoryLines.svelte	title	… serves … …
+lib/components/BlockingStoryLines.svelte	code	deploy window
+lib/components/BlockingStoryLines.svelte	code	manual approval
+lib/components/BlockingStoryLines.svelte	code	not attributed
+lib/components/BlockingStoryLines.svelte	code	promotion order
+lib/components/BlockingStoryLines.svelte	code	service contract
 lib/components/BlockingStoryLines.svelte	title	The rule holding this: …
 lib/components/BlockingStoryPanel.svelte	code	… · rule: …
-lib/components/BlockReason.svelte	code	… rules
-lib/components/BlockReason.svelte	code	1 rule
+lib/components/BlockReason.svelte	title	… serves … …
 lib/components/BlockReason.svelte	code	a newer …
+lib/components/BlockReason.svelte	code	check or deploy window
 lib/components/BlockReason.svelte	code	Held on … on purpose
 lib/components/BlockReason.svelte	code	Held on … on purpose — automatic updates are off here
 lib/components/BlockReason.svelte	code	Needs … from …, and no version of it has been read yet
@@ -80,8 +84,8 @@ lib/components/BlockReason.svelte	code	Needs … to ship first
 lib/components/BlockReason.svelte	code	Newer versions are on hold until a check or time window passes — this clears on its own
 lib/components/BlockReason.svelte	code	No newer version is allowed yet
 lib/components/BlockReason.svelte	code	No newer version is on this rule’s allow-list, and it will not clear until whatever maintains that list changes it
-lib/components/BlockReason.svelte	text	rule: …
-lib/components/BlockReason.svelte	title	The rule blocking this: …
+lib/components/BlockReason.svelte	code	service contract
+lib/components/BlockReason.svelte	code	version pin
 lib/components/BlockReason.svelte	code	Waiting on a check or a time window
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	text	Connect GitHub
@@ -315,6 +319,8 @@ lib/components/RolloutStepper.svelte	code	… failing
 lib/components/RolloutStepper.svelte	code	… rolling out
 lib/components/RolloutStepper.svelte	code	…/… done
 lib/components/RolloutStepper.svelte	aria-label	Deploy pipeline
+lib/components/RulePopover.svelte	code	… rules
+lib/components/RulePopover.svelte	code	1 rule
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	text	… schedule …
 lib/components/ScheduleStatus.svelte	text	· … … Automatic deploys paused by … schedule … …
@@ -447,13 +453,17 @@ lib/view-models/blocking-story.ts	code	deploy it alongside
 lib/view-models/blocking-story.ts	code	deploy it first
 lib/view-models/blocking-story.ts	code	deploys it alongside
 lib/view-models/blocking-story.ts	code	deploys it first
+lib/view-models/blocking-story.ts	code	deploys this build
 lib/view-models/blocking-story.ts	code	Held by …
 lib/view-models/blocking-story.ts	code	Held by … — this dashboard cannot tell what clears it
 lib/view-models/blocking-story.ts	code	Held by … rules — waiting on …
+lib/view-models/blocking-story.ts	code	its upstream environment
 lib/view-models/blocking-story.ts	code	its upstream environment deploys this build
 lib/view-models/blocking-story.ts	code	Nobody has to approve anything — this clears when the deploy in front of it lands.
 lib/view-models/blocking-story.ts	code	Outside the … deploy window
 lib/view-models/blocking-story.ts	code	Pinned to …
+lib/view-models/blocking-story.ts	code	reopens in
+lib/view-models/blocking-story.ts	code	ships a newer …
 lib/view-models/blocking-story.ts	code	someone approves it
 lib/view-models/blocking-story.ts	code	Something is holding …
 lib/view-models/blocking-story.ts	code	the deploy window reopens

@@ -18,8 +18,9 @@
 	import {
 		UserCircleSolid,
 		CalendarWeekSolid,
-		HourglassSolid,
-		ArrowRightAltSolid,
+		ShieldCheckSolid,
+		ShareNodesSolid,
+		ChevronDoubleRightOutline,
 		LockSolid,
 		QuestionCircleSolid
 	} from 'flowbite-svelte-icons';
@@ -32,9 +33,23 @@
 		// PICTURE-SCALE LIE AS THE CALENDAR THIS FUNCTION WAS WRITTEN TO KILL.
 		// An unattributed gate gets a question mark and nothing else does.
 		if (story.unknown.length > 0) return QuestionCircleSolid;
-		if (story.upstream.length > 0) return ArrowRightAltSolid;
+		// ⭐ `upstream` IS TWO MECHANISMS AND WAS ONE GLYPH. (2026-09-02, from the
+		// human: *"still don't like these details when we have this nonsense
+		// icon."*) `ArrowRightAltSolid` is a bare DIRECTION — it names no object,
+		// and at the banner's 40px it renders as a solid smudge. A cross-service
+		// contract and a promotion order are different things and this product
+		// already has a mark for each: `ShareNodesSolid` is `contractBlockReason`'s
+		// and the `/dependencies` graph's, `ChevronDoubleRightOutline` is the
+		// `Promotion pipeline` card header's on `/apps/<name>`. Worst-first still,
+		// so the glyph names whichever upstream gate leads the sentence.
+		if (story.upstream.length > 0)
+			return story.upstream[0].kind === 'dependency' ? ShareNodesSolid : ChevronDoubleRightOutline;
 		if (story.clock.length > 0) return CalendarWeekSolid;
-		return HourglassSolid;
+		// ⛔ NOT AN HOURGLASS. An hourglass means *time will fix this*, which is
+		// `clock`'s meaning — and a `check` gate is precisely the kind that is NOT
+		// on a clock (not passing, and nothing published a window). Two kinds may
+		// not share one meaning. A shield-check is a guard that has not cleared.
+		return ShieldCheckSolid;
 	}
 </script>
 

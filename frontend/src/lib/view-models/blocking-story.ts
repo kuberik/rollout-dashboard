@@ -161,7 +161,67 @@ export type ClassifiedGate = {
 	short: string;
 	/** ISO instant this clears, when `clears === 'clock'`. */
 	clearsAt: string | null;
+	/**
+	 * ⭐ THE OBJECT THAT HAS TO MOVE, AS A NAME — never a sentence, never a
+	 * generated id. (2026-09-02)
+	 *
+	 * From the human, on the card-scale row: *"i feel like you could better
+	 * visualize this rather than just putting ascii icons in there."* The row
+	 * printed *"Waiting for hello-api-app to ship a newer api — it is on
+	 * 1.66.0"*, which is THREE facts — a provider, a contract with a required
+	 * range, and the version it serves — flattened into one 11px gray
+	 * sentence with a decorative arrow in front of it. The product already has
+	 * the vocabulary to draw that: chips carry versions, the dependency graph
+	 * draws provider → consumer.
+	 *
+	 * So the row is now composed rather than narrated, and `subject` /
+	 * `predicate` are `clause` SPLIT AT ITS OWN JOINT — the noun and the verb
+	 * phrase, exactly the two halves `clause` already concatenates. That is
+	 * why they cannot disagree with the sentence: the sentence is built FROM
+	 * them.
+	 *
+	 * ⛔ `subject` IS NULL WHERE THERE IS NO OBJECT TO DRAW, and that is the
+	 * argued half of the answer. A `check`, an `approval` and an `unknown`
+	 * gate name no second party — the only concrete thing they carry is the
+	 * gate's generated id, which this product deliberately moved OUT of the
+	 * printed tier ("FIVE handle lines in one viewport"). A surface that finds
+	 * `subject === null` prints `short`, unchanged. Prose is what you use when
+	 * there is no shape; it is not a failure to use it where there is none.
+	 */
+	subject: string | null;
+	/** How to draw `subject`. Null exactly when `subject` is null. */
+	subjectKind: 'service' | 'environment' | 'schedule' | null;
+	/**
+	 * The verb phrase about `subject`, lowercase — `deploys it first`. Null
+	 * where the state is DRAWN instead (a clock's countdown, a version pair).
+	 */
+	predicate: string | null;
+	/** The contract this gate is about (`api`), for a `dependency` gate. */
+	contract: string | null;
+	/** The contract version the provider serves today (`1.66.0`). */
+	have: string | null;
+	/**
+	 * The constraint the held build asks for (`^1.67.0`), verbatim from the
+	 * candidate's own requires annotation.
+	 *
+	 * ⛔ NULL WHERE THE BLOCKED CANDIDATES DISAGREE. Masterminds semver is not
+	 * orderable across constraint spellings, so two candidates asking for
+	 * different ranges have no single "the requirement" — and rendering one of
+	 * them as if it were the requirement is a claim the payload does not
+	 * support. The row falls back to the sentence there.
+	 */
+	need: string | null;
 };
+
+/** The five drawing fields, off. Spread by every branch that draws no object. */
+const NOTHING_TO_DRAW = {
+	subject: null,
+	subjectKind: null,
+	predicate: null,
+	contract: null,
+	have: null,
+	need: null
+} as const;
 
 /**
  * The join table, built ONCE per `/api/rollouts` response and passed down.
@@ -171,7 +231,16 @@ export type ClassifiedGate = {
  */
 export type GateContext = {
 	promotion: Map<string, { after: string | null; relType: 'After' | 'Parallel' | null }>;
-	dependency: Map<string, { provider: string; contract: string; providedVersion: string | null }>;
+	dependency: Map<
+		string,
+		{
+			provider: string;
+			contract: string;
+			providedVersion: string | null;
+			/** See `ClassifiedGate.need` for why disagreement resolves to null. */
+			requiredVersion: string | null;
+		}
+	>;
 	/**
 	 * Gate name → the schedule that owns it. Filled from
 	 * `RolloutSchedule.status.managedGates`, which is an EXACT reference — the
@@ -276,10 +345,24 @@ export function buildGateContext(payload: {
 	for (const dep of payload?.rolloutDependencies?.items ?? []) {
 		const gate = dep?.status?.gateName;
 		if (!gate) continue;
+		// ⭐ THE REQUIRED RANGE, WHICH THE PAYLOAD HAS ALWAYS CARRIED AND NO
+		// SURFACE HAS EVER DRAWN. `status.blockedReleases[].requiredVersion` is
+		// the constraint each held candidate places on the contract, verbatim
+		// from its `com.kuberik.rollout.requires.<contract>` annotation.
+		//
+		// ⛔ ONLY WHEN THEY ALL AGREE. Two candidates can ask for two different
+		// ranges and semver constraints are not orderable, so there is no "the"
+		// requirement to print — see `ClassifiedGate.need`.
+		const required = [
+			...new Set(
+				(dep?.status?.blockedReleases ?? []).map((b) => b?.requiredVersion).filter(Boolean)
+			)
+		];
 		ctx.dependency.set(key(dep?.metadata?.namespace, gate), {
 			provider: dep?.spec?.providerRef?.name ?? 'another service',
 			contract: dep?.spec?.contract ?? 'dependency',
-			providedVersion: dep?.status?.providedVersion ?? null
+			providedVersion: dep?.status?.providedVersion ?? null,
+			requiredVersion: required.length === 1 ? (required[0] as string) : null
 		});
 	}
 
@@ -354,18 +437,26 @@ export function classifyGate(
 		// (`prettyName = "Relationship not ready yet"`) and is said as one.
 		const verb = promo.relType === 'Parallel' ? 'deploys it alongside' : 'deploys it first';
 		const noun = promo.relType === 'Parallel' ? 'deploy it alongside' : 'deploy it first';
+		// ⭐ `clause` IS BUILT FROM `subject` + `predicate` IN BOTH BRANCHES, so
+		// the drawn row and the banner sentence are the same two words in the
+		// same order and cannot drift. The un-related branch used to be one
+		// literal; splitting it changes no output.
+		const subject = promo.after ?? 'its upstream environment';
+		const predicate = promo.after ? verb : 'deploys this build';
 		return {
 			id,
 			kind: 'promotion',
 			clears: 'upstream',
 			label: promo.after ? `after ${promo.after}` : 'after its upstream environment',
-			clause: promo.after
-				? `${promo.after} ${verb}`
-				: 'its upstream environment deploys this build',
+			clause: `${subject} ${predicate}`,
 			short: promo.after
 				? `Waiting for ${promo.after} to ${noun}`
 				: 'Waiting for its upstream environment to deploy this build',
-			clearsAt: null
+			clearsAt: null,
+			...NOTHING_TO_DRAW,
+			subject,
+			subjectKind: 'environment',
+			predicate
 		};
 	}
 
@@ -382,7 +473,18 @@ export function classifyGate(
 			short: dep.providedVersion
 				? `Waiting for ${dep.provider} to ship a newer ${dep.contract} — it is on ${dep.providedVersion}`
 				: `Waiting for ${dep.provider} to ship a newer ${dep.contract}`,
-			clearsAt: null
+			clearsAt: null,
+			...NOTHING_TO_DRAW,
+			// THE ONE GATE KIND WITH AN OBVIOUS SHAPE: a provider, a contract, the
+			// version it serves, and the range the held build asks for. Drawn as a
+			// relation; the `predicate` is the fallback for a surface that has no
+			// room, and for a dependency whose two versions are not both known.
+			subject: dep.provider,
+			subjectKind: 'service',
+			predicate: `ships a newer ${dep.contract}`,
+			contract: dep.contract,
+			have: dep.providedVersion,
+			need: dep.requiredVersion
 		};
 	}
 
@@ -400,7 +502,24 @@ export function classifyGate(
 				label: sched.label,
 				clause: 'the deploy window reopens',
 				short: `Outside the ${sched.label} deploy window`,
-				clearsAt: sched.nextTransition
+				clearsAt: sched.nextTransition,
+				...NOTHING_TO_DRAW,
+				// The window has a NAME and a REOPENING TIME, and both are already
+				// carried on this object (`label`, `clearsAt`). Drawn, the row is
+				// those two facts and nothing else: `Business Hours Only reopens in
+				// 12h 59m` against the old `Outside the Business Hours Only deploy
+				// window — reopens in 12h 59m (9/3/2026, 12:13:22 AM)`, which was
+				// three wrapped lines in a 300px card for the same two facts. The
+				// absolute instant moves into the record, where a `<dl>` row can
+				// hold it without wrapping.
+				//
+				// ⛔ ONLY WHEN A TRANSITION IS PUBLISHED. `reopens in` with no clock
+				// after it is a broken sentence, and the window's NAME on its own is
+				// not a state — so with no `nextTransition` the drawing is off and
+				// the surface falls back to `short`, which is complete on its own.
+				subject: sched.nextTransition ? sched.label : null,
+				subjectKind: sched.nextTransition ? 'schedule' : null,
+				predicate: sched.nextTransition ? 'reopens in' : null
 			};
 		}
 		// Not passing, nothing published a window. TRUE and unschedulable.
@@ -411,7 +530,12 @@ export function classifyGate(
 			label: id,
 			clause: 'a check starts passing',
 			short: 'A check is not passing',
-			clearsAt: null
+			clearsAt: null,
+			// NOTHING TO DRAW, AND THAT IS THE HONEST ANSWER. A check names no
+			// second party; the only concrete thing it carries is the gate's
+			// generated id, which belongs in the disclosed tier. The row prints
+			// `short`.
+			...NOTHING_TO_DRAW
 		};
 	}
 
@@ -433,7 +557,11 @@ export function classifyGate(
 				label: 'after its upstream environment',
 				clause: 'its upstream environment deploys this build',
 				short: 'Waiting for its upstream environment to deploy this build',
-				clearsAt: null
+				clearsAt: null,
+				...NOTHING_TO_DRAW,
+				subject: 'its upstream environment',
+				subjectKind: 'environment',
+				predicate: 'deploys this build'
 			};
 		}
 		if (owner.kind === 'RolloutDependency') {
@@ -444,7 +572,12 @@ export function classifyGate(
 				label: 'depends on another service',
 				clause: 'the service it depends on ships a newer version',
 				short: 'Waiting for the service it depends on to ship a newer version',
-				clearsAt: null
+				clearsAt: null,
+				// ⛔ NOTHING TO DRAW. The owner reference proves a `RolloutDependency`
+				// wrote this gate and proves nothing about WHICH provider or WHICH
+				// contract — that join is exactly what this branch is the fallback
+				// for. Drawing a nameless box would be inventing the object.
+				...NOTHING_TO_DRAW
 			};
 		}
 		// A controller we do not have a story for. Say who owns it and stop —
@@ -456,7 +589,8 @@ export function classifyGate(
 			label: ownerName,
 			clause: `${ownerName} allows this build`,
 			short: `Held by ${ownerName}`,
-			clearsAt: null
+			clearsAt: null,
+			...NOTHING_TO_DRAW
 		};
 	}
 
@@ -473,7 +607,8 @@ export function classifyGate(
 			label: id,
 			clause: 'someone approves it',
 			short: 'Waiting for someone to approve it',
-			clearsAt: null
+			clearsAt: null,
+			...NOTHING_TO_DRAW
 		};
 	}
 
@@ -488,7 +623,8 @@ export function classifyGate(
 		label: id,
 		clause: `the rule ${id} allows this build`,
 		short: `Held by ${id} — this dashboard cannot tell what clears it`,
-		clearsAt: null
+		clearsAt: null,
+		...NOTHING_TO_DRAW
 	};
 }
 
