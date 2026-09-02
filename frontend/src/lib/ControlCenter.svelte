@@ -27,6 +27,7 @@
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import RolloutStepper from '$lib/components/RolloutStepper.svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import HomeRail from '$lib/components/HomeRail.svelte';
 	import {
 		ChevronRightOutline,
 		CloseCircleSolid,
@@ -244,6 +245,41 @@
 			</p>
 		</div>
 	{:else}
+		<!--
+			══ TWO COLUMNS, AND A REAL RIGHT RAIL ══════════════════════════════
+			`COMPOSITION-GRAMMAR.md` §7. This page was a flat grid of fifteen
+			small cards followed by 60% empty viewport at 1440 — it answered its
+			own three criteria ("is anything on fire · what needs me, in what
+			order · what can I resolve right now") correctly with *nothing*, and
+			then stopped composing. The reference page the human calls beautiful
+			is a main column plus a stack of small complete answers; `/apps` and
+			`/envs/<name>` already ship that exact rail, with these exact two
+			cards. `/` is the third.
+
+			⛔ THE GROUPS LEAD AND THE RAIL FOLLOWS THEM IN DOCUMENT ORDER, so at
+			every width below 1440 — the phone included — an operator still meets
+			"what needs me" first and the rail is what they scroll to. A rail
+			that pushes the severity groups below the fold on a phone would be
+			the page's whole purpose spent on furniture.
+
+			⚠️ 1440 AND 320px ARE MEASURED, NOT CHOSEN, and they are `/apps`'s
+			own pair for the reason its note gives: 320 is the narrowest width at
+			which `How it's going` still prints its own title beside its rollup.
+			At 1440 the content container is 1201, so the main column is
+			1201 − 320 − 24 = 857 and the card grid's `auto-fill` floor of 24rem
+			yields TWO columns of 424 instead of three of 395 — which is what
+			un-truncates `hello-frontend-app` in the Trailing group, the one
+			place on this page where the DEVIATION was the thing being clipped.
+			At 1280 the same arithmetic leaves 697px, i.e. ONE column, which is
+			worse than the two-of-516 that width has today — so below 1440 the
+			rail goes under the groups at full width, exactly as both siblings'
+			do. Re-derive this pair if the container or the 24rem floor moves; do
+			not nudge it.
+		-->
+		<div
+			class="min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_320px] min-[1440px]:items-start min-[1440px]:gap-6"
+		>
+		<div class="min-w-0">
 
 		<!-- Needs you now -->
 		{#if needsYou.length > 0}
@@ -253,7 +289,23 @@
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Needs you now</h2>
 					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{needsYou.length}</span>
 				</div>
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+				<!-- ⛔ THE ROW PICKS ITS OWN COLUMN COUNT, LIKE THE TWO GROUPS BELOW IT.
+				     (2026-09-02) This was `sm:grid-cols-2 lg:grid-cols-3`, and `lg` is a
+				     VIEWPORT breakpoint — the control the Trailing and Steady grids were
+				     already moved off, for the reason written above them: what decides
+				     whether a card fits is the ROW's width, and the sidebar, the page
+				     gutters and now the rail all mean one viewport yields several row
+				     widths. With the rail beside it the main column is 857px at 1440, so
+				     three fixed tracks came out at 277px each: measured, `hello-world-app`
+				     rendered `hello-wo…` in 82px of a needed 126 and the stepper's
+				     `Retry deploy` button overhung the card next door. These are the
+				     LOUDEST cards on the page and they were the ones being clipped.
+				     Same `auto-fill` floor as the other two grids, so all four groups on
+				     this page now answer one question one way: 1440 → 2 cols at 424px
+				     (was 3 at 277), 1280 → 2 at 516, 390 → 1 col, none truncated. -->
+				<div
+					class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+				>
 					{#each needsYou as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!--
 							⛔ THE CHECK BRANCH LEADS, AND WITHOUT IT THIS LINE READ
@@ -378,7 +430,23 @@
 						>deploying &amp; checking right now</span
 					>
 				</div>
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+				<!-- ⛔ THE ROW PICKS ITS OWN COLUMN COUNT, LIKE THE TWO GROUPS BELOW IT.
+				     (2026-09-02) This was `sm:grid-cols-2 lg:grid-cols-3`, and `lg` is a
+				     VIEWPORT breakpoint — the control the Trailing and Steady grids were
+				     already moved off, for the reason written above them: what decides
+				     whether a card fits is the ROW's width, and the sidebar, the page
+				     gutters and now the rail all mean one viewport yields several row
+				     widths. With the rail beside it the main column is 857px at 1440, so
+				     three fixed tracks came out at 277px each: measured, `hello-world-app`
+				     rendered `hello-wo…` in 82px of a needed 126 and the stepper's
+				     `Retry deploy` button overhung the card next door. These are the
+				     LOUDEST cards on the page and they were the ones being clipped.
+				     Same `auto-fill` floor as the other two grids, so all four groups on
+				     this page now answer one question one way: 1440 → 2 cols at 424px
+				     (was 3 at 277), 1280 → 2 at 516, 390 → 1 col, none truncated. -->
+				<div
+					class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+				>
 					{#each inMotion as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						{@const next = nextEnvLabel(c)}
 						<a
@@ -593,7 +661,28 @@
 			<div class="mb-3 flex items-center gap-2">
 				<span class="h-[5px] w-[5px] shrink-0 rounded bg-green-700 dark:bg-green-400"></span>
 				<h2 class="text-base font-semibold text-gray-900 dark:text-white">Steady</h2>
-				<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{steadyAll.length}</span>
+				<!--
+					⛔ THE NUMERAL IS THE SECTION'S OWN SIZE, AND IT WAS THE ONE
+					COUNT ON THIS PAGE THAT COULD NOT BE ADDED UP. (2026-09-02)
+					It printed `steadyAll.length`, but the grid under it is drawn
+					from `steadySectionAll` — steady PLUS pending, because a
+					rollout that has never deployed must not be invisible — and
+					the `+N more` control counts against that same longer list.
+					With three pending rollouts the header read `Steady 12`, the
+					grid drew 11 cards and the control offered `+4 more`: 11 + 4
+					= 15, and nothing on the page said 15. Every other group
+					header here means "this many cards below"; this one silently
+					meant something else.
+
+					`steadySectionAll.length` restores the arithmetic — drawn plus
+					more equals the numeral — and the `· N pending` qualifier
+					still names the subset, in the same slot and the same ink it
+					always had. Where nothing is pending the two counts are
+					identical and this header is byte-for-byte what it was.
+				-->
+				<span class="font-mono text-xs text-gray-500 dark:text-gray-400"
+					>{steadySectionAll.length}</span
+				>
 				{#if pendingCount > 0}
 					<span class="text-xs text-gray-500 dark:text-gray-400">· {pendingCount} pending</span>
 				{/if}
@@ -765,5 +854,16 @@
 				{/if}
 			{/if}
 		</section>
+		</div>
+
+			<!-- ══ THE RAIL ═══════════════════════════════════════════════════
+			     `mt-8` matches the `mb-8` every section above it carries, so
+			     stacked under the groups below 1440 the rail sits on the page's
+			     own rhythm rather than on a gap of its own invention. At 1440 and
+			     up the grid's `gap-6` owns the space and the margin goes. -->
+			<div class="mt-8 min-w-0 min-[1440px]:mt-0">
+				<HomeRail {cards} {rollouts} {environments} {localClusterName} />
+			</div>
+		</div>
 	{/if}
 </div>
