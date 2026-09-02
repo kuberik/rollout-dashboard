@@ -45,6 +45,19 @@
 		 * rule, unchanged.
 		 */
 		quiet?: boolean;
+		/**
+		 * ⭐ A GATE IS REFUSING EVERY CANDIDATE HERE — the station's OWN
+		 * `promotionBlock(...).blocked`, not the hop's. (2026-09-02)
+		 *
+		 * > *"a gate correctly refusing a candidate is not a stoppage"* —
+		 * `COMPOSITION-GRAMMAR.md`'s own ruling, applied one level down. Without
+		 * it the `N behind` chip's tooltip said *"hello-frontend-app in DEV can
+		 * still take 1 newer version"* on the exact station a dependency contract
+		 * was refusing that build to — a claim of ABILITY on a row that has none.
+		 * `false`/`undefined` is silent: most `N behind` stations are simply
+		 * mid-promotion and the plain sentence is still true there.
+		 */
+		blocked?: boolean;
 	};
 
 	export type Hop = {
@@ -300,7 +313,9 @@
 			role={s.quiet ? 'count' : 'rank'}
 			label="{s.rank} behind"
 			value={s.version}
-			title="{s.title} can still take {s.rank} newer version{s.rank === 1 ? '' : 's'}"
+			title={s.blocked
+				? `${s.title} is ${s.rank} newer version${s.rank === 1 ? '' : 's'} behind, held by a gate`
+				: `${s.title} can still take ${s.rank} newer version${s.rank === 1 ? '' : 's'}`}
 			wide
 		/>
 	{:else}
@@ -331,8 +346,15 @@
 			<!-- A REGION THAT NAMES THE BLOCKING SERVICE IS THE REGION THAT OPENS
 			     IT. `.tap-zone` / `.tap-link` is the product's pattern for that;
 			     wrapping the row in an `<a>` would nest it around the rule
-			     disclosure and the chips it already contains. The chevron is the
-			     one anchor, and every control inside stays reachable. -->
+			     disclosure and the chips it already contains.
+
+			     ⛔ THE ANCHOR WAS A BARE 14×14 CHEVRON, AND THAT WAS THE WHOLE
+			     AFFORDANCE. (2026-09-02) `hello-api-app` sat beside it as plain
+			     text — the one control on a dependency-blocked row was an
+			     unlabelled glyph at the far edge. `.nav-link` is the product's own
+			     "Open <destination> ›" grammar (`NextStep`'s `step="open"`, `/apps`'
+			     `openApp` snippet); this is that same control, still the zone's
+			     one `.tap-link` so the whole row stays one tab stop. -->
 			<div
 				class="pp-hop-body {h.href
 					? 'tap-zone rounded hover:bg-gray-50 dark:hover:bg-gray-700/30'
@@ -340,12 +362,10 @@
 			>
 				<BlockingStoryLines story={h.story} class="min-w-0" />
 				{#if h.href}
-					<a
-						href={h.href}
-						class="tap-link pp-hop-go"
-						aria-label="Open {h.hrefLabel}, the service this promotion is waiting on"
-						><ChevronRightOutline class="h-3.5 w-3.5" /></a
-					>
+					<a href={h.href} class="tap-link nav-link pp-hop-go">
+						Open {h.hrefLabel}
+						<ChevronRightOutline class="h-3.5 w-3.5" />
+					</a>
 				{/if}
 			</div>
 		{:else if h.label}
@@ -529,6 +549,24 @@
 		container-type: inline-size;
 	}
 
+	/* ⭐ THE TRACK IS CAPPED, THE CARD IS NOT. (2026-09-02)
+	   > *"each station row was `[DEV] [1 BEHIND 2.66.0-66] …600px… 2d ago`"*
+	   Measured at 1440 dark on `hello-frontend-app`: the card is 837px, a
+	   station's own content (disc + identity chip + build badge) ends at
+	   ~300px, and the right-aligned `pods`/age cluster is ~130px — so the
+	   station has ~430px of real content and was stretched to fill 837,
+	   leaving a 400+px gap that is not proportion, it is emptiness. Same fix
+	   as `RolloutGrid`'s 460px card cap on `/rollouts`: cap the TRACK, not the
+	   card, so the header, the frontier's copy control and the rail's own
+	   width are untouched and the freed width becomes the card's own right
+	   margin — legible breathing room — rather than a void inside one row.
+	   `.pp-front` shares the cap so the frontier's meta and every station's
+	   age line up on one right edge instead of two. */
+	.pp-line,
+	.pp-front {
+		max-width: 480px;
+	}
+
 	.pp-line {
 		display: flex;
 		flex-direction: column;
@@ -579,7 +617,7 @@
 		flex-shrink: 0;
 		align-items: center;
 		justify-content: center;
-		border-radius: 9999px;
+		border-radius: calc(infinity * 1px);
 		background: var(--color-gray-100);
 		color: var(--color-gray-500);
 	}
@@ -641,7 +679,7 @@
 		flex-shrink: 0;
 		align-items: center;
 		justify-content: center;
-		border-radius: 9999px;
+		border-radius: calc(infinity * 1px);
 	}
 	.pp-disc--sm {
 		height: 24px;
@@ -706,33 +744,22 @@
 	.pp-hop-body {
 		display: flex;
 		min-width: 0;
+		flex-wrap: wrap;
 		align-items: flex-start;
-		gap: 8px;
+		gap: 4px 8px;
 		/* `BlockingStoryLines` carries its own 6px top margin — it is written to
 		   hang under a row on `/environments`. Pulled back here so the clause
 		   centres on the rail rather than sitting low in its own box. */
 		margin-block: -2px;
 		padding: 2px 4px;
 	}
-	/* The affordance, and the only anchor in the zone. It is a chevron and not
-	   the provider's NAME because the clause 8px to its left already prints
-	   that name at full ink — the region navigates, so a second copy of the
-	   word would be one fact drawn twice inside 200px. */
+	/* The affordance, and the only anchor in the zone. `.nav-link` supplies its
+	   own ink and hover underline; this only pins it to the rail's baseline and
+	   stops it shrinking beside the clause it sits next to. */
 	.pp-hop-go {
-		display: inline-flex;
 		flex-shrink: 0;
-		align-items: center;
 		align-self: center;
-		color: var(--color-gray-500);
-	}
-	:global(.dark) .pp-hop-go {
-		color: var(--color-gray-400);
-	}
-	.pp-hop-body:hover .pp-hop-go {
-		color: var(--color-gray-900);
-	}
-	:global(.dark) .pp-hop-body:hover .pp-hop-go {
-		color: var(--color-gray-100);
+		padding-block: 0;
 	}
 	/* THE LINE IS CONTINUOUS, CIRCLE TO CIRCLE. Drawn only inside the hop's
 	   own 22px box it left an 8px break at each end — the station's padding —

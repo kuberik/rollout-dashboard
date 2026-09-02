@@ -1438,7 +1438,13 @@
 			// it is behind THIS station. `null` where it could not be
 			// attributed — see `attributableKustomizations`.
 			pods: f.pods,
-			href: rolloutHref(f.cell)
+			href: rolloutHref(f.cell),
+			// ⭐ SO THE `N behind` TOOLTIP STOPS CLAIMING AN ABILITY THIS STATION
+			// DOES NOT HAVE. See `Station.blocked`'s own note: a station can be
+			// behind AND gate-refused at once (`hello-frontend-app`'s DEV, held
+			// by the `hello-api-app` contract), and `f.block.blocked` is the same
+			// flag `tasks` already reads to tell a decision from a wait.
+			blocked: f.block.blocked
 		};
 	}
 
@@ -2329,6 +2335,29 @@
 			now: $now
 		});
 	});
+
+	/**
+	 * ⭐ THE BANNER'S OWN NAVIGATION, WHEN THE CAUSE IS A DEPENDENCY CONTRACT.
+	 * (2026-09-02)
+	 *
+	 * A gate-blocked app with a dependency cause had ZERO controls: the whole
+	 * `Needs you` column is empty (every one of its causes is drawn on the
+	 * pipeline's own edge, see `hopCauseKeys`), and this banner — the loudest
+	 * object on the page — offered nothing but its own `Details` disclosure.
+	 * `providerOf` is the same lookup `waitGroups` already uses to send a
+	 * folded row's reader to the PROVIDER; this is that decision made for the
+	 * banner's own cause, so the link and the sentence can never name two
+	 * different services.
+	 */
+	const bannerProvider = $derived.by<string | null>(() => {
+		if (!blockedEnv) return null;
+		const own = ownCause(blockedEnv.story);
+		const gates = own.length > 0 ? own : blockedEnv.story.gates;
+		return providerOf(blockedEnv.namespace, gates);
+	});
+	const bannerProviderHref = $derived(
+		bannerProvider && groups.has(bannerProvider) ? `/apps/${bannerProvider}` : null
+	);
 </script>
 
 <svelte:head>
@@ -2351,6 +2380,17 @@
 		{/if}
 		<span class="t-code-sm ms-auto text-gray-500 dark:text-gray-400">{count}</span>
 	</header>
+{/snippet}
+
+<!-- The gate-blocked banner's own action: navigation to the provider that has
+     to ship first. `bannerProviderHref` guards whether this is ever handed to
+     `BlockingStoryPanel` at all — see the note at its call site for why an
+     unconditional snippet reference would be wrong. -->
+{#snippet providerAction()}
+	<a href={bannerProviderHref} class="nav-link">
+		Open {bannerProvider}
+		<ArrowRightOutline />
+	</a>
 {/snippet}
 
 <!--
@@ -2533,8 +2573,28 @@
 			<!-- ⭐ THE SAME OBJECT, THE SAME WORDS, AS ROLLOUT DETAIL. Whatever
 			     `Investigate` takes you to now agrees with what you clicked.
 			     The SCOPE is this page's own — see `bannerStory`: one cause
-			     holding three environments is headlined as three. -->
-			<BlockingStoryPanel story={bannerStory} showRules={!bannerRulesDrawn} class="mb-6" />
+			     holding three environments is headlined as three.
+
+			     ⭐ AND WHEN THE CAUSE IS A PROVIDER, THE BANNER SAYS WHERE TO GO.
+			     `/apps/hello-world-app`'s pinned case offers `Release the hold` /
+			     `Pick a different version` in this same slot; a dependency block
+			     has no cluster-mutating control at all (its gate clears on the
+			     provider's own next release), so its action is NAVIGATION —
+			     `.nav-link`, never a `.btn` — to the app that has to move.
+
+			     ⚠️ `actions` IS `undefined`, NOT AN EMPTY SNIPPET, WHEN THERE IS NO
+			     PROVIDER TO OPEN. `AlertPanel` tests `{#if actions}` to decide
+			     whether to render the actions row's `flex gap-3` box at all; a
+			     snippet reference is truthy even when its body renders nothing, so
+			     handing one over unconditionally would leave a blank flex child
+			     eating the row's own gap on every OTHER banner this same branch
+			     renders (a stuck detector, a closed window with no known provider). -->
+			<BlockingStoryPanel
+				story={bannerStory}
+				showRules={!bannerRulesDrawn}
+				class="mb-6"
+				actions={bannerProviderHref ? providerAction : undefined}
+			/>
 		{/if}
 
 		<!-- ═══ ACT | STATE ═════════════════════════════════════════════════
@@ -3518,12 +3578,26 @@
 										<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical to prod
 									</dt>
 									<dd
-										class="t-headline text-gray-900 tabular-nums dark:text-white"
+										class="flex items-baseline justify-end gap-1.5 text-gray-900 tabular-nums dark:text-white"
 										title={appLead === null
 											? 'No version of this app has been seen in its first environment and then in production inside the deploy history kept for it'
 											: `Median trip from ${appLead.fromLabel.toUpperCase()} to ${appLead.toLabel.toUpperCase()}, measured across ${appLead.samples} version${appLead.samples === 1 ? '' : 's'} observed at both ends`}
 									>
-										{appLead === null ? '—' : compactSpan(appLead.medianMs)}
+										{#if appLead === null}
+											<!-- ⭐ `—` ALONE READS AS A RENDERING BUG, NOT AN
+											     ANSWER. (2026-09-02) `/apps`' own rail hits this
+											     exact same case — no version has yet made the whole
+											     first-environment-to-prod trip inside retained
+											     history — and names it: `— no full trip yet`. This
+											     card printed the dash with no caption, the one place
+											     on the page an em dash was left to speak for itself. -->
+											<span class="t-headline text-gray-500 dark:text-gray-400">—</span>
+											<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
+												>no full trip yet</span
+											>
+										{:else}
+											<span class="t-headline">{compactSpan(appLead.medianMs)}</span>
+										{/if}
 									</dd>
 								</div>
 							</dl>
