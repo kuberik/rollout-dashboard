@@ -476,6 +476,27 @@ describe('blockingStory — the defect the critic filed', () => {
 		expect(s.consequence).not.toContain('manual-approval');
 	});
 
+	/**
+	 * ⛔ THE RAW OCI TAG NEVER PRINTS. (2026-09-02) `spec.wantedVersion` is the
+	 * ~60-char OCI reference (`main-1788002370-0afab6f…`), not the short form
+	 * every surface names a build by. `pinnedTo` matches an `availableReleases`
+	 * entry here (`tag-a` → `aaaaaaa`), so `displayVersionForTag` resolves it —
+	 * exactly the lookup `/apps`, rollout detail's own "Version pinned" banner
+	 * and `dependency-graph.ts`'s node hold already use.
+	 */
+	it('the pin headline and shortStory print the SHORT form, never the raw tag', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [], { wantedVersion: 'tag-a' }),
+			ctx,
+			{ place: 'dev', now: NOW }
+		);
+		expect(s.pinnedTo).toBe('tag-a');
+		expect(s.pinnedToDisplay).toBe('aaaaaaa');
+		expect(s.headline).toBe('DEV is pinned to aaaaaaa');
+		expect(s.headline).not.toContain('tag-a');
+		expect(shortStory(s)).toBe('Pinned to aaaaaaa');
+	});
+
 	it('nothing newer to take is not a block', () => {
 		const r = rolloutWith('hello-world-dev', [
 			{ name: 'schedule-gate-fk44d', passing: false, allowedVersions: null }
@@ -713,9 +734,10 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 		});
 		expect(s.headline).toBe('PROD is waiting on another deploy');
 		expect(s.consequence).toContain('hello-api-app ships a newer api than 1.66.0');
-		expect(s.verdict).toBe(
-			'Nobody has to approve anything — this clears when the deploy in front of it lands.'
-		);
+		// ⛔ NOT "the deploy in front of it lands" — this gate is a CONTRACT
+		// (RolloutDependency), not a promotion order, and nothing is "in front
+		// of it". The verdict names who has to ship what. See `upstreamVerdict`.
+		expect(s.verdict).toBe('Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0.');
 		expect(s.person).toHaveLength(0);
 		expect(s.unknown).toHaveLength(0);
 	});

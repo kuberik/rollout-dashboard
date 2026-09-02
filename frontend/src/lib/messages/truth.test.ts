@@ -610,6 +610,95 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		expect(s.selfClearing).toBe(false);
 	});
 
+	/**
+	 * ⛔ THE DEFECT: a `RolloutDependency` contract gate is `clears: 'upstream'`
+	 * too, and the verdict used to be ONE HARD-CODED SENTENCE for the whole
+	 * bucket — true of a promotion order, false of a contract, which has no
+	 * "deploy in front of it" at all. A contract clears when the PROVIDER
+	 * ships a version that satisfies it, and the verdict now says so by name.
+	 * `hello-dep-prod`'s live shape: `hello-api-app`, contract `api`,
+	 * `blockedReleases: [{ tag: 'rel-67', requiredVersion: '^1.67.0' }]`.
+	 */
+	test('one CONTRACT gate -- names the provider and the required version, never "deploy in front"', () => {
+		const ctx = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: {
+				items: [
+					{
+						metadata: { namespace: 'hello-dep-prod', name: 'd' },
+						spec: { contract: 'api', providerRef: { name: 'hello-api-app' } },
+						status: {
+							gateName: 'dependency-hello-frontend-needs-api',
+							providedVersion: '1.66.0',
+							blockedReleases: [
+								{ tag: 'rel-67', requiredVersion: '^1.67.0', reason: 'ConstraintNotSatisfied' }
+							]
+						}
+					}
+				]
+			}
+		} as any);
+		const s = blockingStory(
+			rollout({
+				ns: 'hello-dep-prod',
+				at: 0,
+				gates: [{ name: 'dependency-hello-frontend-needs-api', allowedVersions: [] }]
+			}),
+			ctx,
+			{ place: 'prod' }
+		);
+		says(s.headline, 'PROD is waiting on another deploy');
+		says(
+			s.verdict,
+			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0.'
+		);
+		expect(s.verdict).not.toContain('deploy in front');
+		expect(s.selfClearing).toBe(false);
+	});
+
+	test('a promotion gate AND a contract gate together -- the verdict says both', () => {
+		const ctx = buildGateContext({
+			environments: {
+				items: [
+					{
+						metadata: { namespace: 'ns', name: 'e' },
+						spec: { environment: 'staging', relationship: { environment: 'dev', type: 'After' } },
+						status: { rolloutGateRef: { name: 'ghd-1' } }
+					}
+				]
+			},
+			rolloutDependencies: {
+				items: [
+					{
+						metadata: { namespace: 'ns', name: 'd' },
+						spec: { contract: 'api', providerRef: { name: 'hello-api-app' } },
+						status: {
+							gateName: 'dep-1',
+							providedVersion: '1.66.0',
+							blockedReleases: [{ tag: 'x', requiredVersion: '^1.67.0' }]
+						}
+					}
+				]
+			}
+		} as any);
+		const s = blockingStory(
+			rollout({
+				ns: 'ns',
+				at: 0,
+				gates: [
+					{ name: 'ghd-1', allowedVersions: [] },
+					{ name: 'dep-1', allowedVersions: [] }
+				]
+			}),
+			ctx,
+			{ place: 'staging' }
+		);
+		says(
+			s.verdict,
+			'Nobody has to approve anything — this clears when the deploy in front of it lands and hello-api-app ships api ^1.67.0.'
+		);
+	});
+
 	test('one clock gate -- the time is printed, and the verdict is go back to bed', () => {
 		const ctx = withSchedules(ctxFull, 'alpha-dev', [
 			{

@@ -81,6 +81,7 @@
 import type { Rollout, Environment, RolloutDependency, RolloutGate } from '$lib/../types';
 import { promotionBlock, promotionCandidates, type PromotionBlock } from './promotion';
 import { formatTimeUntil } from '$lib/api/schedules';
+import { displayVersionForTag } from '$lib/version-utils';
 
 /**
  * HOW A GATE STOPS BEING A PROBLEM.
@@ -635,6 +636,21 @@ export type BlockingStory = {
 	candidateCount: number;
 	/** `spec.wantedVersion`. A pin refuses ALL builds, so it outranks every gate. */
 	pinnedTo: string | null;
+	/**
+	 * `pinnedTo`, SHORTENED FOR PROSE. `displayVersionForTag` — the same
+	 * lookup every other surface uses (`/apps`, rollout detail's own "Version
+	 * pinned" banner, `dependency-graph.ts`'s node hold) — resolves the raw
+	 * ~60-char OCI tag (`main-1788002370-0afab6f…`) to the short form
+	 * (`0afab6f`) it deploys under. `null` exactly when `pinnedTo` is null.
+	 *
+	 * ⛔ THE DEFECT THIS CLOSES: `headline` used to interpolate `pinnedTo`
+	 * RAW — *"DEV is pinned to main-1788002370-0afab6f35627254181e41053c…"* —
+	 * while `/apps`, `/apps/<name>` and this page's OWN "Version pinned"
+	 * banner all printed `0afab6f`. `pinnedTo` itself stays the raw tag: a
+	 * caller needing the actual OCI reference (a `title`, an API call) still
+	 * has it.
+	 */
+	pinnedToDisplay: string | null;
 	/** EVERY gate currently holding it. Never a subset, never one. */
 	gates: ClassifiedGate[];
 	person: ClassifiedGate[];
@@ -677,6 +693,7 @@ export const NOT_BLOCKED: BlockingStory = {
 	blocked: false,
 	candidateCount: 0,
 	pinnedTo: null,
+	pinnedToDisplay: null,
 	gates: [],
 	person: [],
 	clock: [],
@@ -754,6 +771,62 @@ export function pluralSubject(lead: string, object: string = lead): StorySubject
 }
 
 /**
+ * ⭐ THE `upstream` VERDICT, SPLIT BY WHO ACTUALLY HAS TO MOVE. (2026-09-02)
+ *
+ * `clears: 'upstream'` covers TWO writers (see the table at the top of this
+ * file) and they clear on DIFFERENT events: a `promotion` gate (Environment-
+ * written) clears when the deploy IN FRONT of it lands; a `dependency`
+ * (RolloutDependency) contract clears only when the PROVIDER ships a version
+ * that satisfies it — "someone has to ship it first", exactly as the
+ * Dependencies tab already says. One hard-coded sentence — *"this clears
+ * when the deploy in front of it lands"* — is true of the first and false of
+ * the second, and it had shipped as the verdict for BOTH: the rollout
+ * Overview banner's rule block correctly said `Clears: Waiting for
+ * hello-api-app to ship a newer api`, and four lines later the SAME banner's
+ * footer said the deploy in front would land — a contract with no deploy in
+ * front of it.
+ *
+ * ONE SENTENCE PER GATE CLASS, NEVER ONE PER CARD. A contract's own class
+ * names WHO has to publish WHAT, read straight off `subject` / `contract` /
+ * `need` — *"Nobody has to approve anything — this clears when
+ * hello-api-app ships api ^1.67.0."* A gate whose held candidates disagree
+ * on the required range (`need === null`) falls back to "ships a newer
+ * `<contract>`", same wording `classifyGate`'s own clause uses. Mixed gates
+ * — a promotion order AND a contract both holding the same rollout — say
+ * both, joined as one list of `when` clauses so the sentence reads as
+ * English rather than two verdicts glued together.
+ *
+ * Every surface that renders the `upstream` verdict calls this ONE function:
+ * `blockingStory` itself, and rollout detail's `heldClears()` (the
+ * release-candidate row popover, which used to carry a byte-identical copy
+ * of the old literal). `/apps`, `/apps/[name]`, `/envs/[name]` and
+ * `/dependencies` render the same fact from their own gate lists and should
+ * adopt this rather than keep their own copies — `/dependencies` had grown
+ * one near its line 199 as of this pass.
+ */
+export function upstreamVerdict(gates: ClassifiedGate[]): string {
+	const upstream = gates.filter((g) => g.clears === 'upstream');
+	const promotion = upstream.some((g) => g.kind === 'promotion');
+	const dependencies = upstream.filter((g) => g.kind === 'dependency');
+
+	const whenClauses: string[] = [];
+	if (promotion) whenClauses.push('the deploy in front of it lands');
+	for (const g of dependencies) {
+		const provider = g.subject ?? 'the service it depends on';
+		const contract = g.contract ?? 'a newer version';
+		whenClauses.push(
+			g.need ? `${provider} ships ${contract} ${g.need}` : `${provider} ships a newer ${contract}`
+		);
+	}
+	// Defensive: called with no `upstream` gate at all. Falls back to the
+	// original, general sentence rather than an empty clause.
+	if (whenClauses.length === 0) {
+		return 'Nobody has to approve anything — this clears when the deploy in front of it lands.';
+	}
+	return `Nobody has to approve anything — this clears when ${joinClauses(whenClauses)}.`;
+}
+
+/**
  * ⭐ THE ONE STORY. Every surface calls this and renders the same three
  * strings, so two pages cannot answer the 3am question differently again.
  *
@@ -805,14 +878,19 @@ export function blockingStory(
 	// reported as *"that panel blamed HELD BY hello-world-manual-approval; the
 	// actual cause was the pin, which the page never mentioned."*
 	if (pinnedTo) {
+		// ⛔ THE RAW OCI TAG NEVER PRINTS. `~60 characters
+		// (main-1788002370-0afab6f35627254181e41053c51660f26a8ccee2)` against
+		// `0afab6f` everywhere else this product names a build.
+		const pinnedToDisplay = displayVersionForTag(rollout, pinnedTo) || pinnedTo;
 		return {
 			...NOT_BLOCKED,
 			blocked: candidateCount > 0,
 			candidateCount,
 			pinnedTo,
+			pinnedToDisplay,
 			selfClearing: false,
 			severity: 'info',
-			headline: `${subjectLead} ${isVerb} pinned to ${pinnedTo}`,
+			headline: `${subjectLead} ${isVerb} pinned to ${pinnedToDisplay}`,
 			consequence:
 				candidateCount > 0
 					? `${candidateCount} newer build${candidateCount === 1 ? '' : 's'} ${candidateCount === 1 ? 'is' : 'are'} available and none of them will deploy while the pin is set.`
@@ -923,7 +1001,7 @@ export function blockingStory(
 		// them. Something true and non-committal beats a confident wrong one.
 		verdict = 'This dashboard cannot tell what clears this — it may or may not need a person.';
 	} else if (upstream.length > 0) {
-		verdict = 'Nobody has to approve anything — this clears when the deploy in front of it lands.';
+		verdict = upstreamVerdict(upstream);
 	} else if (clearsAt) {
 		verdict = 'This clears on its own.';
 	} else {
@@ -935,6 +1013,7 @@ export function blockingStory(
 		blocked: true,
 		candidateCount,
 		pinnedTo: null,
+		pinnedToDisplay: null,
 		gates,
 		person,
 		clock,
@@ -971,7 +1050,7 @@ export function ruleHandle(story: BlockingStory): string | null {
  * saying "1 schedule", and `/apps/<name>` naming two others.
  */
 export function shortStory(story: BlockingStory): string | null {
-	if (story.pinnedTo) return `Pinned to ${story.pinnedTo}`;
+	if (story.pinnedTo) return `Pinned to ${story.pinnedToDisplay ?? story.pinnedTo}`;
 	if (!story.blocked || story.gates.length === 0) return null;
 	if (story.gates.length === 1) return story.gates[0].short;
 	const kinds: string[] = [];

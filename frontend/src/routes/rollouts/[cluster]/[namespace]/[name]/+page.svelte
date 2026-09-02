@@ -11,6 +11,7 @@
 		HealthCheck,
 		KruiseRollout,
 		Environment,
+		RolloutDependency,
 		RolloutTest
 	} from '../../../../../types';
 	import type {
@@ -62,7 +63,8 @@
 		ArrowUpRightFromSquareOutline,
 		ArrowUpOutline,
 		GithubSolid,
-		ChevronRightOutline
+		ChevronRightOutline,
+		ShareNodesSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -119,8 +121,16 @@
 		blockingStory,
 		classifyGate,
 		joinClauses,
+		upstreamVerdict,
 		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
+	import {
+		buildRolloutGraph,
+		nodeId,
+		heldSubjects,
+		type GraphNode
+	} from '$lib/view-models/dependency-graph';
+	import { compareEnvironmentNames } from '$lib/env-order';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { getBakeStatusColor, bakeWord, bakeTitle } from '$lib/bake-status';
@@ -373,6 +383,77 @@
 			now: $now
 		})
 	);
+
+	/**
+	 * ⭐ THE PROVIDER FACT, ON THE PROVIDER'S OWN OVERVIEW. (2026-09-02)
+	 *
+	 * From the critic: `/rollouts/prod/hello-dep-prod/hello-api-app` Overview
+	 * showed `Up to date — no upgrades available` and said NOTHING about the
+	 * three rollouts of `hello-frontend-app` held on it, while its own
+	 * Dependencies tab correctly said `Services waiting on this · 1 of 1
+	 * held`. `Up to date` is true and answers a different question — "does
+	 * THIS rollout have somewhere to go" — and a reader can leave believing
+	 * nothing is wrong anywhere near it.
+	 *
+	 * The same graph the Dependencies tab builds (`buildRolloutGraph`), scoped
+	 * to the edges that start AT this rollout (`edge.from === this node` — see
+	 * `GraphEdge.from`, "the rollout that must move first") and are `blocked`.
+	 * `heldSubjects` is `dependency-graph.ts`'s own sentence builder for a set
+	 * of held (service, environment) nodes, so the same app held in three
+	 * environments reads as ONE subject rather than three repeated names —
+	 * reused rather than re-derived, per that function's own comment.
+	 *
+	 * ⛔ NOT A SECOND GRAPH COMPUTATION. `gateContext` is the SAME join table
+	 * `blockStory` above reads, so a rollout this graph calls held and a
+	 * rollout `blockStory` calls held cannot disagree.
+	 */
+	const providerEnvOrder = $derived(
+		[
+			...new Set(
+				(listQuery.data?.environments?.items ?? [])
+					.map((e: Environment) => e.spec?.environment)
+					.filter(Boolean) as string[]
+			)
+		].sort(compareEnvironmentNames)
+	);
+	const providerNetwork = $derived(
+		buildRolloutGraph({
+			rollouts: (listQuery.data?.rollouts?.items ?? []) as Rollout[],
+			environments: (listQuery.data?.environments?.items ?? []) as Environment[],
+			dependencies: (listQuery.data?.rolloutDependencies?.items ?? []) as RolloutDependency[],
+			envOrder: providerEnvOrder,
+			gates: gateContext
+		})
+	);
+	const providerFocusId = $derived(nodeId(cluster, namespace, name));
+	const heldByThis = $derived.by(():
+		| { count: number; subjects: string; need: string }
+		| null => {
+		const edges = providerNetwork.edges.filter(
+			(e) => e.from === providerFocusId && e.writer === 'contract' && e.state === 'blocked'
+		);
+		if (edges.length === 0) return null;
+		const byId = new Map(providerNetwork.nodes.map((n) => [n.id, n] as const));
+		const held = new Map<string, GraphNode>();
+		for (const e of edges) {
+			const n = byId.get(e.to);
+			if (n) held.set(n.id, n);
+		}
+		if (held.size === 0) return null;
+		const nodes = [...held.values()];
+		// The CONTRACT this rollout provides and what the held candidates ask
+		// of it — the tail of the sentence `heldSubjects` does not carry.
+		// Grouped: a live fleet can hold three environments on the same
+		// (contract, requiredVersion) pair, and the sentence must not repeat it.
+		const needs = [
+			...new Set(
+				edges.map(
+					(e) => `${e.contract ?? 'a newer version'}${e.requiredVersion ? ` ${e.requiredVersion}` : ''}`
+				)
+			)
+		];
+		return { count: nodes.length, subjects: heldSubjects(nodes), need: joinClauses(needs) };
+	});
 	const bakeFailureDisabledCondition = $derived(
 		rollout?.status?.conditions?.find(
 			(c) => c.type === 'BakeFailureDisabled' && c.status === 'True'
@@ -681,8 +762,10 @@
 		if (gates.some((g) => g.clears === 'unknown'))
 			return 'This dashboard cannot tell what clears this — it may or may not need a person.';
 		if (gates.some((g) => g.clears === 'person')) return 'This will not clear on its own.';
-		if (gates.some((g) => g.clears === 'upstream'))
-			return 'Nobody has to approve anything — this clears when the deploy in front of it lands.';
+		// ⛔ WAS A HARD-CODED LITERAL, TRUE ONLY OF A `promotion` GATE. Routed
+		// through `upstreamVerdict` so a contract gate names its provider and
+		// required version instead — see that function's own comment.
+		if (gates.some((g) => g.clears === 'upstream')) return upstreamVerdict(gates);
 		if (gates.some((g) => g.clears === 'clock' && g.clearsAt)) return 'This clears on its own.';
 		return 'This clears on its own once the check passes.';
 	}
@@ -743,6 +826,51 @@
 	const rollbackDisplay = $derived(
 		rollbackNow ? getDisplayVersion({ tag: rollbackNow.tag, version: rollbackNow.version }) : ''
 	);
+
+	/**
+	 * ⭐ WHY THE BUTTON SKIPPED THE ENTRY RIGHT BELOW THE CURRENT ONE.
+	 * (2026-09-02, cosmetic finding: `Rollback to 991829b` silently walked
+	 * past `064b655` — CORRECTLY, `rollbackTarget` proves it is newer than
+	 * what is running now (this environment itself rolled back through it)
+	 * — but said nothing, so the title read as if `064b655` did not exist.
+	 *
+	 * ⛔ NOT A SECOND "IS THIS OLDER" DERIVATION. `rollbackTarget` (owned by
+	 * `deploy-risk.ts`) already walked `history` and PICKED the first entry
+	 * that passed its own check; this retraces the SAME walk — same `seen`
+	 * dedup, starting from the same current tag, stopping at the same picked
+	 * tag — and names only the entries it passed on the way. It does not
+	 * re-decide age; whatever `rollbackTarget` walked past and did not
+	 * return must have failed its check, which is the only fact asserted
+	 * here.
+	 *
+	 * ⛔ THE FIRST DRAFT SKIPPED THIS RETRACE AND JUST SLICED THE ARRAY —
+	 * `history.slice(1, idx)` — which is NOT the same set: `history` can
+	 * repeat a tag (a rollback re-visits a build already seen), and a bare
+	 * slice named the CURRENT tag itself as "newer than what is running now"
+	 * when it recurred further back in the log. Verified on the live
+	 * `hello-world-app/dev`: a bare slice named `064b655, 0afab6f and
+	 * 064b655` — `0afab6f` IS the current build, printed as if it were a
+	 * newer one skipped past it, and `064b655` twice for one gate. The
+	 * retrace, matching `rollbackTarget`'s own `seen` set, names it once:
+	 * `064b655`.
+	 */
+	const rollbackSkipped = $derived.by(() => {
+		if (!rollbackNow || rollbackNow.basis !== 'ran-here') return [];
+		const history = rollout?.status?.history ?? [];
+		const currentTag = history[0]?.version?.tag;
+		if (!currentTag) return [];
+		const seen = new Set<string>([currentTag]);
+		const skipped: string[] = [];
+		for (let i = 1; i < history.length; i++) {
+			const v = history[i]?.version;
+			if (!v?.tag || seen.has(v.tag)) continue;
+			seen.add(v.tag);
+			if (v.tag === rollbackNow.tag) break; // reached the picked target itself
+			const display = getDisplayVersion(v);
+			if (display) skipped.push(display);
+		}
+		return skipped;
+	});
 
 	// Computed property to determine if current version is custom (not in available releases)
 	const isCurrentVersionCustom = $derived.by(() => {
@@ -1990,7 +2118,11 @@
 												class="w-full justify-center sm:w-auto"
 												disabled={!isDashboardManagingWantedVersion}
 												title={rollbackNow.basis === 'ran-here'
-													? `Go back to ${rollbackDisplay}, the last older version this environment ran`
+													? `Go back to ${rollbackDisplay}, the last older version this environment ran${
+															rollbackSkipped.length > 0
+																? ` (skipping ${joinClauses(rollbackSkipped)} — newer than what is running now)`
+																: ''
+														}`
 													: `Go back to ${rollbackDisplay}, the release directly below the one running (never deployed here)`}
 												onclick={() => {
 													const running = rollout?.status?.history?.[0]?.version;
@@ -2061,7 +2193,7 @@
 									onclick={reconcileFluxResources}
 									disabled={isReconciling}
 									aria-label="Refresh available versions"
-									class="ml-auto rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+									class="ml-auto rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
 								>
 									{#if isReconciling}
 										<StatusSpinner size="4" color="gray" />
@@ -2073,6 +2205,32 @@
 									Refresh available versions
 								</Tooltip>
 							</div>
+
+							<!--
+								⭐ THE PROVIDER FACT. This rollout's own upgrade state ("up to
+								date", "N candidates") answers a different question than
+								"is anyone waiting on ME" — a reader could see a green tick
+								here and never learn that three other rollouts are held on
+								this one's contract. Renders only when something IS held;
+								silent otherwise, so a rollout that provides nothing to
+								anyone gains no new furniture.
+							-->
+							{#if heldByThis}
+								<div
+									class="flex items-start gap-3 border-b border-orange-100 bg-orange-50 px-5 py-2.5 dark:border-orange-900/30 dark:bg-orange-900/10"
+								>
+									<ShareNodesSolid
+										class="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400"
+									/>
+									<p class="min-w-0 flex-1 text-xs text-orange-800 dark:text-orange-300">
+										Holding {heldByThis.count} rollout{heldByThis.count === 1 ? '' : 's'} — {heldByThis.subjects}
+										need {heldByThis.need}.
+										<a href={rolloutPath(cluster, namespace, name, 'dependencies')} class="nav-link"
+											>See Dependencies</a
+										>
+									</p>
+								</div>
+							{/if}
 
 							<!-- Pin warning (compact banner) -->
 							{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}

@@ -148,4 +148,60 @@ describe('revisionCoverage', () => {
 		// the observable rather than inventing one.
 		expect(notYet.slots[0].blockingGates).toEqual([]);
 	});
+
+	/**
+	 * ⛔ THE TWO-DENOMINATOR REGRESSION — `hello-frontend-app` rel-66/rel-67.
+	 * Two releases can share ONE git revision (a rollback re-ships a build
+	 * already released once before under a new tag). `onIt` matches on the
+	 * revision alone, so every environment running the OLDER release used to
+	 * classify as `live` for the row that represents the NEWER one — a held
+	 * release read as `fully rolled out`. See `classify()`'s own comment.
+	 */
+	function heldRevisionFixture() {
+		const sha = 'eeeeeee0000000000000000000000000000000';
+		const older = { tag: 'main-66', version: '1.66.0-66', revision: sha, created: minsAgo(120) };
+		const newer = { tag: 'main-67', version: '1.67.0-67', revision: sha, created: minsAgo(10) };
+		const rollouts = [
+			rollout('hello-frontend-app', 'hfa-dev', [newer, older], [{ r: older, minutesAgo: 5 }]),
+			rollout(
+				'hello-frontend-app',
+				'hfa-staging',
+				[newer, older],
+				[{ r: older, minutesAgo: 5 }]
+			),
+			rollout('hello-frontend-app', 'hfa-prod', [newer, older], [{ r: older, minutesAgo: 3 }])
+		];
+		const environments = [
+			environment('hello-frontend-app', 'hfa-dev', 'dev'),
+			environment('hello-frontend-app', 'hfa-staging', 'staging'),
+			environment('hello-frontend-app', 'hfa-prod', 'prod')
+		];
+		return buildRevisionLedger(rollouts, environments)[0];
+	}
+
+	function minsAgo(m: number): string {
+		return new Date(Date.now() - m * 60_000).toISOString();
+	}
+
+	it('does not call a held release "live" because an older release shares its revision', () => {
+		const repo = heldRevisionFixture();
+		// One row: both releases share the revision, so the ledger groups them.
+		expect(repo.rows).toHaveLength(1);
+		const row = repo.rows[0];
+		const cov = revisionCoverage(row, new Date());
+		// Every place is running rel-66, not rel-67 — the row's own (newest)
+		// release has landed NOWHERE, so nothing may read as `live`.
+		expect(cov.liveCount).toBe(0);
+		const notYet = cov.buckets.find((b) => b.key === 'notYet');
+		expect(notYet?.slots.length).toBe(3);
+		expect(cov.buckets.some((b) => b.key === 'live')).toBe(false);
+	});
+
+	it('keeps a release "live" when the environment is genuinely on this row\'s own build', () => {
+		const repo = fixture();
+		const head = repo.rows[0];
+		// The ordinary case — no second release sharing the revision — must be
+		// byte-identical to before: three places are live, not reclassified.
+		expect(counts(head)).toEqual({ live: 3, notYet: 1 });
+	});
 });

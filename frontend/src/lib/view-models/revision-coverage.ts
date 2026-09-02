@@ -421,16 +421,47 @@ export function runningLabel(slot: RevisionSlot): string | null {
 	return getDisplayVersion(v as { version?: string; revision?: string; tag: string }) || null;
 }
 
+/**
+ * ⛔ THE TWO-DENOMINATOR BUG, AND WHY `onIt` ALONE CANNOT DECIDE `live`.
+ * (2026-09-02) `onIt` is REVISION-scoped (`currentKeyOf(cell, ctx) ===
+ * revision`, a git-sha match), but a row's `service.rank` is the rank of the
+ * NEWEST release under that revision — `buildRow`'s `byKey` keeps the
+ * highest-ranked ladder entry when two releases share one commit (a rollback
+ * re-deploying a build already shipped once before under a new tag). Two
+ * releases, two tags, two `Build` entries on `build-ladder.ts`'s own ladder
+ * (keyed by display version, never by revision) — one row here.
+ *
+ * Measured: `hello-frontend-app` rel-66 and rel-67 share revision
+ * `9f10e494d560`. Every environment running rel-66 (rel-67 is held
+ * everywhere) satisfied `onIt` — same commit — and the old branch returned
+ * `live` unconditionally, so the row for `9f10e494d560` read `6 of 6 places
+ * running it` / `fully rolled out`, gold tick and all, while rel-67 — the
+ * release the row's own `NEWEST` rank names — had landed nowhere.
+ *
+ * `slot.currentRank` is the environment's lag from the ladder's absolute
+ * newest build, which is the SAME numbering `service.rank` is drawn from, so
+ * the two are directly comparable. When they disagree while `onIt` is true,
+ * the environment is provably on an OLDER release of this revision than the
+ * one `service.rank` describes — this row's own release has not arrived
+ * there, whatever the git sha says. `ahead` is defensive (a release cannot
+ * legitimately outrank the newest release sharing its revision) but keeps
+ * the comparison symmetric with the non-`onIt` branch below rather than
+ * asserting a direction the data has not earned.
+ */
 function classify(service: RevisionService, slot: RevisionSlot, state: SlotState): CoverageKey {
-	if (slot.onIt) return state === 'fail' ? 'failing' : 'live';
 	// A rank is a position on the service's OWN ladder, so both ends of the
 	// comparison have to be placed on it before a direction can be claimed.
-	if (service.rank === null || slot.currentRank === null) return 'unplaceable';
+	if (service.rank === null || slot.currentRank === null) {
+		return slot.onIt ? (state === 'fail' ? 'failing' : 'live') : 'unplaceable';
+	}
+	if (slot.currentRank === service.rank) {
+		// Equal rank AND on it: genuinely running this row's own release.
+		// Equal rank but not on it: two ladder entries collapsed to one rank —
+		// the comparison resolves to nothing, so it is not rendered as one.
+		return slot.onIt ? (state === 'fail' ? 'failing' : 'live') : 'unplaceable';
+	}
 	if (slot.currentRank < service.rank) return 'ahead';
-	if (slot.currentRank > service.rank) return 'notYet';
-	// Equal rank but not on it: two ladder entries collapsed to one rank. The
-	// comparison resolves to nothing, so it is not rendered as one.
-	return 'unplaceable';
+	return 'notYet';
 }
 
 export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): RevisionCoverage {
