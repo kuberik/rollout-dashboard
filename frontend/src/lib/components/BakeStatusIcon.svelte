@@ -57,8 +57,16 @@
 		 * ⚠️ IGNORED unless `bakeStatus === 'Succeeded'`. A failed or in-flight
 		 * deploy owns this disc; hiding a red `!` behind a lock is the same
 		 * defect in the mirror.
+		 *
+		 * ⛔ `'held'` ADDED 2026-09-02 — a THIRD, LOWER-PRECEDENCE STATE, same
+		 * reasoning as the two above. `rollout-cards.ts`'s `cardStateMark` only
+		 * returns it when neither `rolled-back` nor `pinned` already claimed
+		 * the slot: a newer build exists and no gate lets it through. Reuses
+		 * `PauseSolid` (already imported for `bakeStatus === 'None'`, a
+		 * disjoint branch of this same switch) rather than a new icon import —
+		 * "promotion paused" is the honest read and it costs nothing new.
 		 */
-		state?: 'rolled-back' | 'pinned' | null;
+		state?: 'rolled-back' | 'pinned' | 'held' | null;
 		/** The word for `sr-only`, when `state` is set. */
 		stateWord?: string;
 	}
@@ -116,6 +124,7 @@
 			case 'Succeeded':
 				if (state === 'rolled-back') return { icon: UndoOutline, color };
 				if (state === 'pinned') return { icon: LockSolid, color };
+				if (state === 'held') return { icon: PauseSolid, color };
 				return { icon: CheckCircleSolid, color };
 			case 'Failed':
 				return { icon: ExclamationCircleSolid, color };

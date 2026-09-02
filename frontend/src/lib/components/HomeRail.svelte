@@ -71,7 +71,8 @@
 		ChartMixedOutline,
 		RocketSolid,
 		ClockOutline,
-		CloseCircleSolid
+		CloseCircleSolid,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 
 	let {
@@ -281,11 +282,24 @@
 	-->
 	<Card icon={ClockOutline} title="Recent activity" padded={false}>
 		{#snippet rollup()}
-			<a
-				href="/activity"
-				class="text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-				aria-label="View all deploy activity">view all ›</a
-			>
+			<!--
+				⛔ ONE OF THREE "SEE MORE" GRAMMARS ON THIS PAGE, AND THE ONLY ONE
+				WITH A GLYPH INSTEAD OF AN SVG CHEVRON. (2026-09-02) This was
+				`view all ›` at `text-xs` (12px/400, lowercase) — `ActivityRail`'s
+				own default header treatment, hand-copied here because
+				`chrome={false}` hands its frame to `Card`. The Steady section 20px
+				below carries a DIFFERENT "go look at more of this" control at
+				14px/500 with `ChevronRightOutline`. Same page, same JOB (leave this
+				card for its full list), two spellings. `.nav-link` — this page's
+				existing grammar for "a control that only changes what you are
+				looking at" — is the fix on THIS card; `ActivityRail`'s own default
+				header (used verbatim by `/apps`, `/apps/<name>`, `/envs/<name>`,
+				`/namespaces/<name>`) is a different component this pass does not
+				own and is untouched.
+			-->
+			<a href="/activity" class="nav-link" aria-label="View all deploy activity">
+				View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+			</a>
 		{/snippet}
 		<ActivityRail
 			{rollouts}

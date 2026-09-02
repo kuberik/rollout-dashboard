@@ -7,7 +7,7 @@ import { getRolloutEnvironmentTheme, shortEnvLabel } from './environment-theme';
 import { getDisplayVersion, categorizeFailure, compareRollouts, detectStuck } from './utils';
 import type { StuckReason } from './utils';
 import { compareEnvironmentNames } from './env-order';
-import { newerReleaseCount } from './view-models/promotion';
+import { newerReleaseCount, promotionBlock } from './view-models/promotion';
 import { rankVerdictsByRollout, rankBehindBy } from './view-models/env-rank';
 import type { RankVerdict } from './view-models/env-rank';
 import { checkFailure } from './view-models/health-witness';
@@ -122,6 +122,26 @@ export type RolloutCard = {
 	 * a perfectly ordinary rollout — see the note on `computeBehind`.
 	 */
 	behind: { fromEnv: string; version: string; behindBy: number | null } | null;
+	/**
+	 * ⛔ "1 BEHIND" AND "1 BEHIND, AND STUCK THERE" LOOK IDENTICAL WITHOUT
+	 * THIS. `rank`/`behind` only say a newer build exists; they say nothing
+	 * about whether ANY gate lets it through. `hello-frontend-app` is held in
+	 * all three environments by a `RolloutDependency` contract right now —
+	 * every list card reads `1 BEHIND 2.66.0-66` exactly like a rollout that
+	 * promotes on its own in the next poll.
+	 *
+	 * `promotionBlock(r).blocked` is the cheap, correct signal: true when
+	 * candidates newer than the current version exist and NOT ONE of them
+	 * passes every gate. It needs nothing but the rollout object itself — no
+	 * environment/dependency join — so it is safe to compute for every card
+	 * on every list surface. Deliberately NOT folded into `stuck`: per
+	 * `src/lib/CLAUDE.md`'s "a gate correctly refusing a candidate is not a
+	 * stoppage" rule, a held promotion is not automatically a person's
+	 * problem (three of four gate writers are automated), so it must not
+	 * route the card into `needsYou`. It is a fact about the NEXT release,
+	 * drawn as its own mark beside the rank.
+	 */
+	held: boolean;
 	rollout: Rollout;
 	sourceURL: string; // dashboard URL this rollout belongs to (empty = local)
 	sourceCluster: string; // cluster NAME this rollout belongs to (for name-based routing)
@@ -288,6 +308,7 @@ export function buildRolloutCards(
 			checkFailure: checkFailure(r),
 			rank,
 			behind,
+			held: promotionBlock(r).blocked,
 			rollout: r,
 			sourceURL: sourceDashboardURL(r),
 			sourceCluster: sourceClusterName(r)
@@ -386,7 +407,7 @@ export function cardVerdict(
  * defect that put `PinBadge` on one list and a chip word on the other.
  */
 export type CardStateMark = {
-	kind: 'rolled-back' | 'pinned';
+	kind: 'rolled-back' | 'pinned' | 'held';
 	/** The product's word for it, for `sr-only` text and the disc's title. */
 	word: string;
 	/** One sentence, stating the consequence. */
@@ -394,7 +415,7 @@ export type CardStateMark = {
 };
 
 export function cardStateMark(
-	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'>
+	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held'>>
 ): CardStateMark | null {
 	if (c.rolledBack) {
 		const { from, to, by } = c.rolledBack;
@@ -436,6 +457,29 @@ export function cardStateMark(
 			kind: 'pinned',
 			word: 'pinned',
 			title: `Pinned to ${c.pinnedVersion} — automatic deploys are paused until the pin is cleared.`
+		};
+	}
+	// ⛔ "1 BEHIND" AND "1 BEHIND, HELD BY A CONTRACT NOBODY HERE CAN SATISFY"
+	// READ IDENTICAL WITHOUT A THIRD TIER HERE. (2026-09-02) The obvious fix —
+	// a standalone `Chip role="blocked" label="held"` beside the rank chip on
+	// `/`'s Trailing/Steady rows — was measured and rejected: those rows are
+	// the SAME closed budget the 2026-08-30 measurement above already spent to
+	// the pixel (400px at 1440, 358px at 390), and the extra chip took
+	// `hello-frontend-app` — the one rollout actually held right now — from
+	// 130px of needed width to 86-113px of available, i.e. it clipped the name
+	// on the exact row the mark exists to explain. Same shape as `rolled
+	// back`/`pinned` above: the disc has ONE free slot and the row's budget is
+	// closed, so a THIRD fact takes the THIRD tier of the same slot rather
+	// than a pixel of its own. `/rollouts`' card has the room and keeps a real
+	// `Chip role="blocked" label="held"` beside the name — see
+	// `RolloutGrid.svelte` — so the SAME fact is marked on both list surfaces;
+	// only the tight `/` rows fall back to the disc, exactly as they already
+	// do for the other two state words.
+	if (c.held) {
+		return {
+			kind: 'held',
+			word: 'held',
+			title: `Held: a newer build exists, but no gate lets it through yet.`
 		};
 	}
 	return null;

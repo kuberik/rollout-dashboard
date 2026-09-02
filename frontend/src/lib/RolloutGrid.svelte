@@ -727,6 +727,19 @@
 													wide
 													class="shrink-0"
 												/>{/if}
+											<!-- ⛔ "1 BEHIND" AND "1 BEHIND, HELD BY A CONTRACT NOBODY
+											     HERE CAN SATISFY" READ IDENTICAL WITHOUT THIS.
+											     (2026-09-02) The joined rank/build chip below only says a
+											     newer build exists, never whether any gate lets it
+											     through. Same mark, same role, as rollout detail's own
+											     `held` chip on the version it names — see
+											     `rollout-cards.ts`. -->
+											{#if c.held}<Chip
+													role="blocked"
+													label="held"
+													title="A newer build exists, but no gate lets it through yet"
+													class="shrink-0"
+												/>{/if}
 										</div>
 										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{c.title}</span>{/if}
 									</div>

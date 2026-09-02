@@ -22,9 +22,11 @@
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { computeBakeProgress } from '$lib/view-models/bake-progress';
+	import { compactSpan } from '$lib/view-models/lead-time';
 	import { Button } from 'flowbite-svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import PinBadge from '$lib/components/PinBadge.svelte';
 	import RolloutStepper from '$lib/components/RolloutStepper.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import HomeRail from '$lib/components/HomeRail.svelte';
@@ -85,8 +87,18 @@
 	// they aren't invisible — they're counted separately in the header but
 	// still need a chip so the user knows which app is waiting.
 	const steadySectionAll = $derived<RolloutCard[]>([...steadyAll, ...pendingCards]);
-	const STEADY_PREVIEW = 8;
-	const steadySectionPreview = $derived(steadySectionAll.slice(0, STEADY_PREVIEW));
+	// ⛔ THE CAP USED TO FIRE AT 8 REGARDLESS OF WHETHER THE PAGE HAD ROOM.
+	// (2026-09-02) At 1440×900 with the rail beside it, the left column ended
+	// at y=468 while the rail ran to y=924 — 450×857px of empty page under a
+	// header that read `+4 more in the full rollouts list`, hiding cards to
+	// save space the page was not using. `STEADY_CAP` is a ceiling for a
+	// fleet large enough that an unbounded grid would genuinely be a wall of
+	// cards, not a budget for THIS fleet's height. Below it, every steady
+	// card renders and there is no "+N more" to draw at all.
+	const STEADY_CAP = 24;
+	const steadySectionPreview = $derived(
+		steadySectionAll.length <= STEADY_CAP ? steadySectionAll : steadySectionAll.slice(0, STEADY_CAP)
+	);
 
 
 
@@ -124,9 +136,14 @@
 		if (c.bakeStatus === 'InProgress') {
 			const start = c.rollout.status?.history?.[0]?.bakeStartTime;
 			const p = computeBakeProgress(start, c.rollout.spec?.bakeTime, $now);
-			const detail = p
-				? `· ${Math.round(p.elapsedMs / 60000)}m of ${Math.round(p.totalMs / 60000)}m`
-				: '';
+			// ⛔ NOT `Math.round(ms / 60000)`. (2026-09-02) A 15s bake rounds to
+			// `0m of 0m` on both sides of the fraction — a card that has been
+			// baking for two minutes and one that started ten seconds ago printed
+			// the identical string. `compactSpan` (the same formatter
+			// `HomeRail`'s "Typical to prod" row already uses) picks the unit the
+			// duration actually needs, so 15s prints `15s of 15s` and only
+			// crosses into minutes once the bake is long enough to round sanely.
+			const detail = p ? `· ${compactSpan(p.elapsedMs)} of ${compactSpan(p.totalMs)}` : '';
 			return [
 				{
 					track: null,
@@ -140,14 +157,27 @@
 
 		const active = summary.tracks.filter((t) => t.stages.includes('active'));
 		const tracks = active.length > 0 ? active : summary.tracks.slice(0, 1);
+		// ⛔ THE DEPLOYING PHASE HAD NO ELAPSED TIME ANYWHERE ON `/`. (2026-09-02)
+		// A deploy running two minutes and one that started ten seconds ago
+		// rendered the identical `deploying · step 1/3`. `history[0].timestamp`
+		// is the deployment's own start time — the same field `c.timestamp`
+		// already carries — so elapsed is `$now` minus that, formatted with the
+		// same `compactSpan` the bake branch above uses.
+		const deployStartMs = c.timestamp ? new Date(c.timestamp).getTime() : NaN;
+		const elapsed = Number.isFinite(deployStartMs)
+			? compactSpan(Math.max(0, $now.getTime() - deployStartMs))
+			: null;
 		return tracks.map((t) => {
 			const idx = t.stages.indexOf('active');
+			const parts: string[] = [];
+			if (elapsed) parts.push(elapsed);
+			if (idx >= 0) parts.push(`step ${idx + 1}/${t.stages.length}`);
 			return {
 				track: multi && t.name && t.name !== 'deploy' ? t.name : null,
 				verb: BAKE_WORD.Deploying,
 				verbTone: 'text-blue-600 dark:text-blue-400',
 				title: bakeTitle('Deploying'),
-				detail: idx >= 0 ? `· step ${idx + 1}/${t.stages.length}` : ''
+				detail: parts.length ? `· ${parts.join(' · ')}` : ''
 			};
 		});
 	}
@@ -371,9 +401,19 @@
 												class="shrink-0"
 											/>{/if}
 									</div>
+									<!-- ⛔ SVELTE TRIMS TRAILING WHITESPACE AT A `{#if}` BLOCK'S
+									     OWN END, SO `{c.title} · {/if}` LOST ITS TRAILING SPACE.
+									     (2026-09-02) The template read as `<title> · ` with the
+									     space plainly on the line, and the compiler still collapsed
+									     it — the same class of bug `motionMessages`' own template
+									     already worked around with an explicit `{' '}` expression a
+									     few lines below. Measured live: `hello-world-app` rendered
+									     `Hello World app ·hello-world-dev` with the sha/ns jammed
+									     against the dot. `{' '}` is a JS expression, not literal
+									     template whitespace, so it survives. -->
 									<span
 										class="block truncate text-[11px] text-gray-500 dark:text-gray-400"
-										>{#if c.title && c.title !== c.name}{c.title} · {/if}<span class="font-mono">{c.ns}</span></span
+										>{#if c.title && c.title !== c.name}{c.title} ·{' '}{/if}<span class="font-mono">{c.ns}</span></span
 									>
 								</div>
 								{#if c.envDisplay}
@@ -448,7 +488,15 @@
 					class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
 				>
 					{#each inMotion as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
-						{@const next = nextEnvLabel(c)}
+						<!-- ⛔ A PINNED ROLLOUT PROMOTES NOWHERE, AND A ROLLBACK IS NOT
+						     "NEXT". (2026-09-02) A rollback to an older build with the
+						     pin ON was mid-deploy and this card read `deploying · step
+						     1/3 · next: staging` — a promotion the pin makes impossible.
+						     `next` is null outright when pinned, and the pin itself moves
+						     onto the card as a mark (`PinBadge`, beside the name), not a
+						     sentence — the same shape `/namespaces/[name]` already uses
+						     for a pinned app row. -->
+						{@const next = c.pinnedVersion ? null : nextEnvLabel(c)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
@@ -467,6 +515,7 @@
 										<span class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white"
 											>{c.name}</span
 										>
+										{#if c.pinnedVersion}<PinBadge version={c.pinnedVersion} size="xs" />{/if}
 										<span class="relative flex h-1.5 w-1.5 shrink-0" title="live">
 											<span
 												class="absolute inset-0 animate-ping rounded-full {c.bakeStatus ===
@@ -481,9 +530,13 @@
 											></span>
 										</span>
 									</div>
+									<!-- ⛔ SAME TRAILING-WHITESPACE TRIM AS THE "NEEDS YOU" ROW
+									     ABOVE — `{' '}` after the dot, not a literal space before
+									     `{/if}`. Measured live: `Hello World app ·0afab6f` with no
+									     gap before the sha, on the "In motion" card. -->
 									<span
 										class="block truncate text-[11px] text-gray-500 dark:text-gray-400"
-										>{#if c.title && c.title !== c.name}{c.title} · {/if}<span class="font-mono">{c.version ? shortenVersion(c.version) : '—'}</span></span
+										>{#if c.title && c.title !== c.name}{c.title} ·{' '}{/if}<span class="font-mono">{c.version ? shortenVersion(c.version) : '—'}</span></span
 									>
 								</div>
 								{#if c.envDisplay}
@@ -649,6 +702,14 @@
 									valueTitle={c.version ?? undefined}
 									class="min-w-0 shrink-0"
 								/>
+								<!-- ⛔ NO STANDALONE `held` CHIP HERE — MEASURED AND REJECTED.
+								     (2026-09-02) A first attempt added `Chip role="blocked"
+								     label="held"` beside the rank chip; it clipped
+								     `hello-frontend-app` (130px needed, 86-113px available) on
+								     the exact row it exists to explain. `held` rides the disc
+								     instead — the same fallback tier `rolled back`/`pinned` use
+								     for the identical reason — via `cardStateMark` above; see
+								     `rollout-cards.ts`. Zero pixels added, same slot. -->
 							</div>
 						</a>
 					{/each}
@@ -686,11 +747,20 @@
 				{#if pendingCount > 0}
 					<span class="text-xs text-gray-500 dark:text-gray-400">· {pendingCount} pending</span>
 				{/if}
-				<a
-					href="/rollouts"
-					class="ml-auto inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-				>
-					View all rollouts <ChevronRightOutline class="h-3 w-3" />
+				<!--
+					⛔ THIS WAS ONE OF THREE "SEE MORE" AFFORDANCES ON THIS PAGE, TWO OF
+					WHICH POINTED AT `/rollouts` 216px APART. (2026-09-02) The section
+					header carried `View all rollouts` and, when the cap trimmed the
+					grid, a second link below it read `+N more in the full rollouts
+					list` — same destination, different spelling, different weight, no
+					chevron. `.nav-link` is the product's one grammar for "a control that
+					only changes what you are looking at": 14px/500, the transparent
+					underline at rest, the SVG chevron. This is now the ONLY control on
+					the page that opens `/rollouts` — see below, where the second one is
+					deleted rather than restyled.
+				-->
+				<a href="/rollouts" class="nav-link ml-auto">
+					View all rollouts <ChevronRightOutline class="h-3.5 w-3.5" />
 				</a>
 			</div>
 			{#if steadySectionAll.length === 0}
@@ -840,18 +910,25 @@
 										class="min-w-0 shrink-0"
 									/>
 								{/if}
+								<!-- `held` rides the disc, not a chip, here too — see the
+								     Trailing section's note. In practice this branch is
+								     `newest` by construction (Steady = at the head of its own
+								     release list), so a candidate rarely exists to be held;
+								     `cardStateMark` covers it anyway so the fact cannot
+								     silently disagree with `/rollouts`' card for the identical
+								     rollout. -->
 							</div>
 						</a>
 					{/each}
 				</div>
-				{#if steadySectionAll.length > steadySectionPreview.length}
-					<a
-						href="/rollouts"
-						class="mt-2 inline-block text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-					>
-						+{steadySectionAll.length - steadySectionPreview.length} more in the full rollouts list
-					</a>
-				{/if}
+				<!-- ⛔ THE SECOND `/rollouts` LINK IS DELETED, NOT RESTYLED. (2026-09-02)
+				     The section header 216px above already opens the same URL — a
+				     second control pointing at the SAME destination is a redundant
+				     tab stop, the exact reason `.nav-link`'s own note gives for deleting
+				     a duplicate rather than restyling it. With `STEADY_CAP` raised to 24
+				     this almost never fires on a real fleet; where it still does (a
+				     fleet with more than 24 steady rollouts), the header link is the
+				     one control and it is already on screen. -->
 			{/if}
 		</section>
 		</div>
