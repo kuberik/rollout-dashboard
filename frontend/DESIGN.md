@@ -3853,6 +3853,41 @@ decision. Left as-is here so the next pass does not "fix" `Deploy` to gray.
 - Pre-existing: `svelte-check` error at rollout `+page.svelte:1082` (`imageRepoScanTime` is not
   on `RolloutResponse`) — on the base commit, not introduced here.
 
+## DESIGN PASS 3 — the four-combination sweep (2026-09-03)
+
+Every route × light/dark × 1440/390, by two agents whose definitions require exactly that
+(`ic-design-reviewer`, `ic-ux-critic`), then fixed one commit each. What this pass records:
+
+- **The Change Version dialog wears the product's grammar.** 47px header band with an icon and
+  a 14/600 title; the crumb wraps in its own box while Cancel/Back sit right and never wrap
+  (`hit-32`); `size="sm"` footer buttons at 38px; a card-title over the commit list, not a
+  tracked eyebrow over prose; the picker rows carry the `held` chip (`isDeployable`); step one
+  is `max-w-lg` so the band fits on one line; the picker is never height-capped (the human:
+  *"expanded to cover the full height"*); step one has Cancel, step two Back, 20px off the edge.
+- **Log rows put the weight on the message.** Pod name keeps its hue at normal weight, container
+  gray-400, message gray-100, timestamp gray-400 (was 3.67:1). The pod-name span carries `title`
+  — the narrowing tests read identity from it.
+- **The history tab is two titled cards.** 47px bands, 8px radius, rollup as text; the timeline's
+  toggles live with the chart, not in the header slot; deployment rows are divided rows and the
+  selected one is a tinted ground (`bg-blue-50/50`), the pipeline card's own mark.
+- **`/apps` splits by container, like `/envs/<name>`.** `.apps-split` at ≥1056px of content
+  (720 list + 16 + 320 rail) — the bespoke `min-[1440px]` viewport breakpoint is gone. Fleet
+  track 164 → 184px so `2 of 3 on the newest` prints whole on desktop.
+- **Navbar at 390:** the section word yields to the item name (`hidden sm:inline`); search and
+  theme buttons are 36px at every width. Rollout Overview's upgrades card is `px-4` like its
+  column-mates. Alert halo: icon column 3rem, disc `-ml-16 mr-6`, 24px to the text.
+- **GitHub App:** the unconfigured chip is a click-to-open popover naming the two variables and
+  the secret; `scripts/setup-dev-environment.sh` sources `.env`; docs in `docs/github-app.md`.
+
+### Raised to the human, not decided here
+- `Envs` (bottom tab bar) vs `Environments` (sidebar, navbar) — one word per concept.
+- The 11–13px band: 11 / 11.5 / 12 / 12.5 / 13 carry ~73% of the product's words.
+- The graph's contract edge label scales with zoom (14px vs 16 on the rollout tab) — needs a
+  custom edge label to counter-scale.
+- The hold banner promises "clears when the deploy in front lands" for a build (`api ^1.67.0`)
+  that has never been published; the blocking rollout's Overview says "Up to date" and never
+  names its dependents. Product story, not paint.
+
 ## Open issues — still to address
 
 ### From the 2026-08-27 colour audit — measured, argued, NOT implemented
