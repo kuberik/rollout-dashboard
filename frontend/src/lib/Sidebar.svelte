@@ -50,9 +50,23 @@
 
 <!-- `div`, not `aside`: a section rail is not complementary content, and the
      `aside` was publishing a second landmark named "Sections" wrapping a nav of
-     the same name. The `nav` below is the landmark; this is just its box. -->
+     the same name. The `nav` below is the landmark; this is just its box.
+
+     ⭐ `sticky top-16` + ITS OWN `max-height` + ITS OWN `overflow-y-auto`.
+     (2026-09-03, scroll model rewrite) This used to lean on the OLD model's
+     `h-screen` shell for its height — the content row was exactly the
+     viewport tall, so `overflow-y-auto` here had a real bound to scroll
+     within. Now that `<main>` is a plain block and the DOCUMENT scrolls
+     (see `app.css`), that bound is gone unless this element makes its own:
+     `top-16` (64px, the navbar's own height, same constant `Navbar.svelte`
+     is built to) is where it sticks as the document scrolls past it, and
+     `max-h-[calc(100dvh-4rem)]` is the same 64px subtracted from the
+     viewport, so a sidebar with more sections than fit scrolls internally
+     instead of pushing the page taller than the screen. `self-start` stops
+     the flex row from stretching this to `<main>`'s (now unbounded) height
+     before the cap even applies. -->
 <div
-	class="hidden shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-white py-3 transition-[width] duration-150 dark:border-gray-700 dark:bg-gray-800 sm:flex {collapsed ? 'w-12' : 'w-44'}"
+	class="hidden shrink-0 flex-col self-start overflow-y-auto border-r border-gray-200 bg-white py-3 transition-[width] duration-150 sticky top-16 max-h-[calc(100dvh-4rem)] dark:border-gray-700 dark:bg-gray-800 sm:flex {collapsed ? 'w-12' : 'w-44'}"
 >
 	<nav id="sidebar-sections" class="flex flex-1 flex-col gap-0.5 px-2" aria-label="Sections">
 		{#each NAV as n (n.key)}

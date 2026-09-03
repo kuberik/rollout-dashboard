@@ -238,6 +238,85 @@ container was never the thing. Two other mechanisms were:
    If you are auditing lateral geometry, assert `scrollbar-gutter` is set rather than
    trusting a measured `0`.
 
+⛔ **SUPERSEDED, 2026-09-03 (scroll model rewrite) — `<main>` IS NO LONGER THE SCROLL
+CONTAINER. THE DOCUMENT IS.** Everything above this note about `main.overflow-y-auto`
+being "the ONE scroll container" described a real mechanism that is now gone; kept as
+the historical record of why `scrollbar-gutter` matters at all, not as the current
+wiring.
+
+From the human: *"There's some weirdness when scrolling especially on mobile. I think we
+did some hacks long time ago to get the scrolling behaviour I wanted. I think I just want
+to make it standard how other apps do it."* The old shell was `div.h-screen.flex.flex-col`
+→ sticky navbar → a content row → `<main class="flex-1 overflow-y-auto">` as the ONLY
+thing that ever scrolled. On a phone that is not what a browser does on its own: `h-screen`
+(100vh) is not the actual visual viewport once the address bar collapses, and every native
+scroll behaviour a phone ships — rubber-banding, pull-to-refresh, tap-status-bar-to-top,
+Back restoring scroll position, an anchor's `scrollIntoView`, in-page find — acts on the
+DOCUMENT, which never moved under that model, so all of them felt dead or wrong.
+
+**The rule now: the DOCUMENT scrolls.** `html`/`body` are normal flow with `min-height:
+100dvh` and no fixed height anywhere in the shell (`+layout.svelte`'s outer `div` lost
+`h-screen`, `<main>` lost `overflow-y-auto`). `scrollbar-gutter: stable` — the fix this
+whole section is about — moved from `<main>`'s own inline style to `html` (`app.css`,
+unlayered, right before `@layer base`), for the identical reason described above: a scroll
+container takes its scrollbar out of its own content box, so the content box must reserve
+that gutter regardless of whether ANY given page happens to overflow, or short and long
+pages centre at different widths. **This is a no-op where scrollbars are already overlays
+(headless Chromium, most phones) — assert `scrollbar-gutter` is set, don't trust a measured
+`0` — exactly as the superseded note already warned, just on `html` instead of `main` now.**
+
+**Fixed chrome, not sticky-inside-a-bounded-flex-column:**
+- Navbar stays `sticky top-0` — it turns out to have been INERT under the old model (nothing
+  scrolled above `<main>`, so it never needed to stick) and is now genuinely functional,
+  with no code change of its own needed.
+- The bottom tab bar (`MobileTabBar.svelte`) is `position: fixed; bottom: 0` now, not
+  `sticky` — `sticky` only pins against ITS nearest scrolling ancestor, which is now the
+  document, and a fixed bar is what "stays at the bottom of the viewport" actually means.
+  It measures its own rendered height live via `ResizeObserver` and publishes it as
+  `--tabbar-h` on `document.documentElement`; `body`'s `padding-bottom: var(--tabbar-h,
+  0px)` (`app.css`) is what keeps the document's last row from drawing underneath it — no
+  hand-picked pixel constant, no separate `sm:` media query (the var is 0 once the bar is
+  `sm:hidden`, since a `display:none` element's `getBoundingClientRect()` is zero-size).
+- The sidebar (`Sidebar.svelte`) is `sticky top-16` (64px, the navbar's own height) with
+  `self-start` and `max-h-[calc(100dvh-4rem)]` — it used to lean on the old `h-screen`
+  chain for its own bound; now it makes its own, and scrolls internally only if it ever
+  grows past that cap.
+
+**Dialogs lock the document, they don't out-z-index it.** `ChangeVersionModal.svelte` and
+`CommandPalette.svelte` both toggle `html.scroll-locked` (`app.css`: `overflow: hidden`,
+unlayered) for as long as they're open, with a `window.__scrollLockCount` counter so two
+overlapping lockers can't unlock a page the other still needs locked. The mobile tab bar's
+existing dialog-detection (`hasOpenDialog()`, `[role="dialog"][aria-modal="true"]`) was
+LEFT AS IS on purpose — decided, not overlooked: the 390 sheet covers it visually, but a
+non-fullscreen `Modal` elsewhere would not, and the check costs nothing to keep.
+
+**A pane that legitimately needs its own scroller bounds ITSELF in `dvh`, and does not
+trust a bounded ancestor to hand it a height.** `LogsViewer.svelte`'s root no longer relies
+on `<main>`/the rollout layout's flex-fill chain (that chain is broken now — `<main>` is
+unbounded on purpose). It measures its own document-absolute top position once on mount
+(`getBoundingClientRect().top + window.scrollY` — deliberately NOT re-measured on `scroll`,
+which would be circular, since the pane's own height changes the document's scrollable
+extent) and sets its own `height`/`max-height` from `window.innerHeight` minus that offset
+minus `--tabbar-h`. ⚠️ **`max-height` alone measured as a 173px sliver, not the 712px it was
+set to** — a bare `max-height` only caps something that is already trying to grow, and
+`flex-1` (`flex: 1 1 0%`) makes `flex-basis: 0%`, not the `height` property, win for a flex
+item's own sizing; with an unbounded ancestor there is nothing to grow into, so the element
+settled to its content's natural (header-only) height and the cap never engaged. The fix
+sets `flex: none` alongside `height` the moment the JS measurement is known, so the
+explicit pixel height wins regardless of what the (now-unbounded) ancestor's flex context
+does with it. Verified live streaming `hello-multi-dev/hello-multi-app` (5 pods, real SSE
+volume): the pane renders ~700px of scrollable log lines at 1440 and fills the phone screen
+down to the fixed tab bar at 390, in both themes.
+
+None of this needed `overscroll-behavior: contain` on the Logs pane, the version picker
+list, or the palette results — the ground-truth check (*"wheeling past its end scrolls the
+document, not trapped"*) is exactly what the DEFAULT `overscroll-behavior: auto` already
+does (verified: scroll chains from the inner pane to the document once the inner reaches
+its own end, with no `preventDefault` anywhere in the way). `contain` would have done the
+opposite — it explicitly SUPPRESSES that chaining — so it is reserved for the one place the
+product wants the opposite: `html.scroll-locked` while a dialog is open, achieved instead
+by locking `overflow: hidden` outright.
+
 **Ragged right is NOT a margin, and two pages have one on purpose.** `/rollouts` is
 `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, so a namespace group holding **2** rollouts
 leaves one 405px track empty (trailing gap 355 at 1280, 413 at ≥1680). `/`'s last row

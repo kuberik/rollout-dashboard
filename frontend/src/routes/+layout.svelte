@@ -54,7 +54,18 @@
 			const active = document.activeElement;
 			const claimed = active && active !== document.body && active.isConnected;
 			if (claimed) return;
-			document.getElementById('main-content')?.focus();
+			/**
+			 * ⭐ `preventScroll: true`. (2026-09-03, scroll model rewrite) The
+			 * DOCUMENT is the scroller now (see `app.css`'s "THE DOCUMENT
+			 * SCROLLS"), which means `Element.focus()` on a target outside the
+			 * viewport is now free to do what a bare `.focus()` call does by
+			 * default — scroll it into view. That is exactly wrong here: a
+			 * real navigation already lands SvelteKit's own scroll reset at
+			 * the top of the new page (or restores a Back offset — see the
+			 * same note), and this focus move must not fight that a frame
+			 * later.
+			 */
+			document.getElementById('main-content')?.focus({ preventScroll: true });
 		});
 	});
 
@@ -86,7 +97,7 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-	<div class="flex h-screen flex-col bg-white dark:bg-gray-900">
+	<div class="flex flex-col bg-white dark:bg-gray-900">
 		<!-- ⭐ SKIP LINK. Measured before it existed: EVERY page cost a keyboard
 		     user 10 identical tab stops (logo, breadcrumb, theme, six sidebar
 		     links, collapse) before the first thing on the page. On `/activity`
@@ -101,39 +112,23 @@
 			Skip to main content
 		</a>
 		<Navbar />
-		<div class="flex min-w-0 flex-grow flex-row overflow-hidden">
+		<div class="flex min-w-0 flex-row">
 			<Sidebar />
 			<!--
-				⭐ `scrollbar-gutter: stable` — THE CONTAINER IS ONLY ONE WIDTH IF THE
-				BOX IT IS CENTRED IN IS ONLY ONE WIDTH.
-
-				`mx-auto max-w-7xl` centres in `main`'s CONTENT box, and a scroll
-				container takes its scrollbar out of that box. So on any platform
-				with classic (non-overlay) scrollbars — which is most of them, and
-				is NOT what a headless Chromium renders — a page whose content
-				fits the viewport is centred in `main`'s full width and a page that
-				scrolls is centred in `main` minus a scrollbar. Every edge on the
-				short page therefore sits HALF A SCROLLBAR further out, on both
-				sides, than the same edge on the long page you just came from.
-
-				Measured on this cluster at 1800×950: `/environments`, `/` and a
-				short rollout detail do not overflow `main`; `/apps`, `/versions`,
-				`/activity`, `/envs/<name>` and `/rollouts` do. That is exactly the
-				partition the human named — and it is invisible to any census run
-				in headless Chromium, whose overlay scrollbars are 0px wide, which
-				is why two passes measured this page and found nothing.
-
-				Reserving the gutter always makes the content box one width whether
-				or not the page scrolls. It is a no-op where scrollbars are already
-				overlays, so nothing changes in CI or in the screenshots.
+				⭐ `<main>` IS A PLAIN BLOCK NOW — THE DOCUMENT IS THE SCROLLER.
+				(2026-09-03, scroll model rewrite — see `app.css`'s "THE DOCUMENT
+				SCROLLS" for the full account and why.) This used to be `flex-1
+				overflow-y-auto` with its own `scrollbar-gutter: stable`, the ONE
+				thing in the whole product that ever scrolled, inside a shell
+				pinned to exactly `h-screen`. That made every native phone scroll
+				behaviour (rubber-banding, pull-to-refresh, Back's own scroll
+				restore, an anchor's `scrollIntoView`) act on a document that
+				never moved. `scrollbar-gutter: stable` is on `html` now, so the
+				content box is still one width whether or not the page scrolls —
+				same fix, same reasoning, moved to where the scrolling happens.
 			-->
-			<main
-				id="main-content"
-				tabindex="-1"
-				class="min-w-0 flex-1 overflow-y-auto focus:outline-none"
-				style="scrollbar-gutter: stable;"
-			>
-				<div class="relative h-full min-w-0">
+			<main id="main-content" tabindex="-1" class="min-w-0 flex-1 focus:outline-none">
+				<div class="relative min-w-0">
 					<slot />
 				</div>
 			</main>

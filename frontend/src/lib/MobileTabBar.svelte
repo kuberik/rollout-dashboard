@@ -66,10 +66,51 @@
 		});
 		return () => observer.disconnect();
 	});
+
+	/**
+	 * ⭐ THE BAR'S OWN RENDERED HEIGHT, PUBLISHED AS A CSS VARIABLE.
+	 * (2026-09-03, scroll model rewrite) Now that `position: fixed` (below)
+	 * takes this bar out of the document's normal flow entirely, nothing
+	 * reserves the space it occupies at the bottom of the viewport — the
+	 * document's own last row would render straight underneath it. `app.css`
+	 * reads `--tabbar-h` as `body`'s `padding-bottom`, so the clearance is
+	 * always exactly this bar's real height (its own `env(safe-area-inset-
+	 * bottom)` padding included, since that is measured, not guessed) rather
+	 * than a hand-picked constant that drifts the next time this bar's
+	 * content changes. It is 0 at `sm:hidden` widths — `getBoundingClientRect`
+	 * on a `display: none` element is a zero-size rect — so the padding
+	 * disappears above `sm` with no media query of its own needed.
+	 */
+	let navEl: HTMLElement | undefined = $state();
+
+	$effect(() => {
+		if (typeof document === 'undefined' || !navEl) return;
+		const el = navEl;
+		function measure() {
+			document.documentElement.style.setProperty('--tabbar-h', `${el.getBoundingClientRect().height}px`);
+		}
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		window.addEventListener('resize', measure);
+		return () => {
+			ro.disconnect();
+			window.removeEventListener('resize', measure);
+		};
+	});
 </script>
 
+<!-- ⭐ `fixed`, NOT `sticky`. (2026-09-03, scroll model rewrite) `sticky
+     bottom-0` stuck against `<main>`, the old model's ONE scroll container.
+     Now that the DOCUMENT scrolls (see `app.css`), the nearest scrolling
+     ancestor for a `sticky` element here would be the document itself —
+     which means `sticky bottom-0` would only ever reach the bottom of the
+     PAGE, not stay pinned to the bottom of the VIEWPORT while a short page
+     scrolls under it. `fixed` pins it to the viewport unconditionally,
+     which is what a bottom tab bar means everywhere else. -->
 <nav
-	class="safe-area-bottom sticky bottom-0 z-40 flex w-full shrink-0 items-stretch border-t border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95 sm:hidden {dialogOpen
+	bind:this={navEl}
+	class="safe-area-bottom fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95 sm:hidden {dialogOpen
 		? 'invisible'
 		: ''}"
 	aria-label="Main navigation"

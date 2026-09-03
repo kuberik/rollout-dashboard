@@ -122,6 +122,33 @@
 	 */
 	modalFocusReturn(() => open);
 
+	/**
+	 * ⭐ LOCK THE DOCUMENT SCROLL WHILE THIS DIALOG IS OPEN. (2026-09-03,
+	 * scroll model rewrite) The DOCUMENT is the scroller now (see
+	 * `app.css`'s "THE DOCUMENT SCROLLS"). A native `<dialog>` opened with
+	 * `showModal()` (flowbite's `Modal`) already makes the page behind it
+	 * inert to keyboard and pointer interaction, but it does not stop a
+	 * wheel/touch gesture from moving the DOCUMENT'S own scroll position
+	 * underneath it — measured on the running page before this fix: wheeling
+	 * over the dimmed backdrop at 390 scrolled the rollout page behind the
+	 * open dialog. `html.scroll-locked` (`app.css`, unlayered) sets
+	 * `overflow: hidden` on `html`; `scrollbar-gutter: stable` on the same
+	 * element is what keeps the page from shifting sideways the instant this
+	 * engages. The counter on `window` is shared with `CommandPalette`'s
+	 * identical lock — defensive against both somehow being open at once,
+	 * so neither's close can unlock a page the other still needs locked.
+	 */
+	$effect(() => {
+		if (typeof document === 'undefined' || !open) return;
+		const w = window as unknown as { __scrollLockCount?: number };
+		w.__scrollLockCount = (w.__scrollLockCount ?? 0) + 1;
+		document.documentElement.classList.add('scroll-locked');
+		return () => {
+			w.__scrollLockCount = Math.max(0, (w.__scrollLockCount ?? 1) - 1);
+			if (w.__scrollLockCount === 0) document.documentElement.classList.remove('scroll-locked');
+		};
+	});
+
 	function apiUrl(path: string): string {
 		if (!cluster) return path;
 		const sep = path.includes('?') ? '&' : '?';
@@ -1004,7 +1031,7 @@
 		: 'max-w-lg'} max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none"
 	aria-labelledby="cvm-title"
 >
-	<div class="flex max-h-[85vh] flex-col max-sm:h-full max-sm:max-h-none">
+	<div class="flex max-h-[85dvh] flex-col max-sm:h-full max-sm:max-h-none">
 		<!-- Header.
 
 		     ⛔ ONE CLOSE AFFORDANCE, NOT TWO. (cosmetic, coordinator operator

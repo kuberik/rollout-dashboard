@@ -149,6 +149,30 @@
 
 	modalFocusReturn(() => open);
 
+	/**
+	 * ⭐ LOCK THE DOCUMENT SCROLL WHILE THE PALETTE IS OPEN. (2026-09-03,
+	 * scroll model rewrite) The DOCUMENT is the scroller now (see
+	 * `app.css`'s "THE DOCUMENT SCROLLS") — this overlay is `fixed inset-0`
+	 * and reads its own list, so wheeling over it must not also move the
+	 * page underneath. `html.scroll-locked` (`app.css`, unlayered) sets
+	 * `overflow: hidden` on `html`; `scrollbar-gutter: stable` on the same
+	 * element is what keeps the page from shifting sideways the instant this
+	 * engages. The counter on `window` is defensive against two lockers
+	 * (this palette and `ChangeVersionModal`) somehow being open at once —
+	 * not a real product state today, but cheap insurance against one
+	 * closing early and unlocking a page the other still needs locked.
+	 */
+	$effect(() => {
+		if (typeof document === 'undefined' || !open) return;
+		const w = window as unknown as { __scrollLockCount?: number };
+		w.__scrollLockCount = (w.__scrollLockCount ?? 0) + 1;
+		document.documentElement.classList.add('scroll-locked');
+		return () => {
+			w.__scrollLockCount = Math.max(0, (w.__scrollLockCount ?? 1) - 1);
+			if (w.__scrollLockCount === 0) document.documentElement.classList.remove('scroll-locked');
+		};
+	});
+
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let listEl = $state<HTMLDivElement | null>(null);
 	let query = $state('');
@@ -943,7 +967,7 @@
 				id="command-palette-results"
 				role="listbox"
 				aria-label="Results"
-				class="flex-1 overflow-y-auto p-2 sm:max-h-[60vh] sm:flex-none"
+				class="flex-1 overflow-y-auto p-2 sm:max-h-[60dvh] sm:flex-none"
 			>
 				{#if loading && allResults.length === 0}
 					<div class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</div>

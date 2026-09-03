@@ -55,6 +55,59 @@ html.dark {
 	--focus-ring-color: var(--color-blue-400);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   THE DOCUMENT SCROLLS. (2026-09-03, scroll model rewrite)
+   ═══════════════════════════════════════════════════════════════════════
+
+   Superseding `lib/CLAUDE.md`'s old "`main` is the ONE scroll container"
+   rule. The product used to be `div.h-screen` → sticky navbar → a content
+   row → `<main class="overflow-y-auto">` as the ONLY thing that ever
+   scrolled. On a phone that is not what the browser itself does: `h-screen`
+   (100vh) is not the actual visual viewport once the address bar collapses
+   (a gap or a cut at the bottom), and every native scroll behaviour a phone
+   ships — rubber-banding, pull-to-refresh, tap-status-bar-to-top, Back
+   restoring scroll position, an anchor's own `scrollIntoView`, in-page
+   find — acts on the DOCUMENT, which never moved, so all of them felt dead
+   or wrong.
+
+   The document is the scroller now. `html`/`body` are normal flow with no
+   fixed height; `<main>` is a plain block. `scrollbar-gutter: stable`
+   moves here from `<main>`'s own inline style for the same reason it was
+   there before (see the old note, still in `lib/CLAUDE.md`): a scroll
+   container takes its scrollbar out of its OWN content box, so a page that
+   fits centres one half-scrollbar wider than a page that scrolls, on a
+   platform with classic (non-overlay) scrollbars. Reserving the gutter on
+   `html` makes every page's content box one width regardless of whether
+   THAT page's content happens to overflow — it is the same fix, moved to
+   where the scrolling now actually happens. */
+html {
+	scrollbar-gutter: stable;
+}
+
+html,
+body {
+	min-height: 100dvh;
+}
+
+/* Bottom clearance for the fixed mobile tab bar (`MobileTabBar.svelte`,
+   `position: fixed; bottom: 0`) so the document's last row is never drawn
+   under it. `--tabbar-h` is measured live off the bar's own rendered
+   height (it includes `env(safe-area-inset-bottom)` already, and it is 0
+   at `sm:hidden` widths, so this is a no-op on desktop without a media
+   query). */
+body {
+	padding-bottom: var(--tabbar-h, 0px);
+}
+
+/* Locks the document scroll while a dialog or the command palette is open
+   (`ChangeVersionModal.svelte`, `CommandPalette.svelte`). Unlayered so a
+   Tailwind utility can never accidentally beat it; `scrollbar-gutter:
+   stable` above is what keeps the page from shifting sideways the instant
+   this engages. */
+html.scroll-locked {
+	overflow: hidden;
+}
+
 @layer base {
 	/* ⚠️ DARK HAD NO BASE INK, so anything that did not name its own colour
 	   INHERITED BLACK — the root shell computes `color: rgb(0,0,0)` in dark.

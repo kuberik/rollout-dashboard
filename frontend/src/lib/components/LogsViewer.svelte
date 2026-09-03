@@ -1040,13 +1040,96 @@
 			clearTimeout(scrollTimeout);
 		}
 	});
+
+	/**
+	 * ⭐ THIS PANE BOUNDS ITSELF NOW — IT NO LONGER TRUSTS AN ANCESTOR TO
+	 * BE THE VIEWPORT'S HEIGHT. (2026-09-03, scroll model rewrite)
+	 *
+	 * `min-h-0 flex-1` (below) used to be enough because the page this
+	 * component was handed a flex column whose OWN height came from
+	 * `<main>` being pinned to exactly `h-screen` (see `app.css`'s "THE
+	 * DOCUMENT SCROLLS"). `<main>` is a plain, unbounded block now — the
+	 * DOCUMENT scrolls — so a `flex-1` chain rooted in it has nothing left
+	 * to fill against and would happily grow to the height of every log
+	 * line in the buffer, which is exactly the unbounded-pane defect this
+	 * rewrite exists to avoid (see `lib/CLAUDE.md`'s "the Logs pane…must
+	 * be bounded by the viewport (max-height in dvh)").
+	 *
+	 * `paneMaxHeight` measures the ONE thing that answers "how much room is
+	 * actually left below this pane in the viewport": the element's own
+	 * position in the DOCUMENT (`getBoundingClientRect().top +
+	 * window.scrollY` — scroll-position-INDEPENDENT, so this cannot be
+	 * bothered to also listen for `scroll` and cannot feed back into
+	 * itself the way listening on `scroll` here would), subtracted from
+	 * the viewport height, minus the fixed mobile tab bar's own measured
+	 * height (`--tabbar-h`, published by `MobileTabBar.svelte` — 0 above
+	 * `sm`, where that bar does not render) and a small breathing gutter.
+	 * Measured once on mount (when a fresh navigation has already put
+	 * `scrollY` at 0 — see the root layout's scroll-restoration note) and
+	 * on resize; NOT on every `scroll` event, which would be circular
+	 * (this pane's own height affects the document's scrollable extent).
+	 *
+	 * `min-h-0 flex-1` stays: it is what makes the header row (`shrink-0`)
+	 * and the content area split correctly WITHIN whatever height this
+	 * grants, on any ancestor that is bounded too (unchanged from before).
+	 *
+	 * ⚠️ `max-height` ALONE MEASURED AS A 173px SLIVER, NOT THE 712px IT
+	 * WAS SET TO. A `max-height` only ever CAPS a box that something else
+	 * is trying to grow — it is not itself a sizing force. With `<main>`
+	 * unbounded, nothing downstream of this element was trying to grow it
+	 * at all: this element's own `flex-1` had no ancestor height left to
+	 * fill, so it settled to its CONTENT'S natural height (just the
+	 * header row) and the `max-height` had nothing to clamp. The template
+	 * below sets `height` from this value too — `height` is what actually
+	 * establishes the box's size for the `flex-1` content area beneath it
+	 * to fill; `max-height` stays alongside it purely as a floor against
+	 * any child that refuses to shrink.
+	 */
+	let paneRootEl: HTMLDivElement | undefined = $state();
+	let paneMaxHeight = $state<number | null>(null);
+
+	$effect(() => {
+		if (typeof window === 'undefined' || !paneRootEl) return;
+		const el = paneRootEl;
+		function recompute() {
+			const docTop = el.getBoundingClientRect().top + window.scrollY;
+			const tabbarH =
+				parseFloat(
+					getComputedStyle(document.documentElement).getPropertyValue('--tabbar-h')
+				) || 0;
+			const BOTTOM_GUTTER = 16;
+			paneMaxHeight = Math.max(240, window.innerHeight - docTop - tabbarH - BOTTOM_GUTTER);
+		}
+		recompute();
+		window.addEventListener('resize', recompute);
+		return () => window.removeEventListener('resize', recompute);
+	});
 </script>
 
 <!-- `min-h-0 flex-1`, NOT `h-full`. The Logs tab hands this component a flex
      column whose height comes from `flex-1`, and a percentage height inside
      that resolved to the header's own 150px — the virtual list beneath it
-     measured 0px tall and the tab printed "378 lines" over an empty pane. -->
-<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+     measured 0px tall and the tab printed "378 lines" over an empty pane.
+
+     ⚠️ `flex: none` OVERRIDES `flex-1` THE INSTANT `paneMaxHeight` IS KNOWN.
+     (2026-09-03, scroll model rewrite) `flex-1` is `flex: 1 1 0%` — that
+     `0%` FLEX-BASIS, not the `height` property, is what a flex item uses as
+     its hypothetical main size, and it wins over an inline `height` on the
+     SAME element. With an unbounded ancestor (see the `$effect` above)
+     there is no extra space for `flex-grow` to distribute, so the element
+     rendered at its `shrink-0` header's own content height — 173px, not
+     the 712px `paneMaxHeight` had just computed — and the `height` in the
+     `style` attribute below sat there doing nothing. `flex: none` (`flex:
+     0 0 auto`) makes `flex-basis` defer to the `height` property instead,
+     so the explicit pixel height actually wins regardless of what the
+     ancestor's own (now-unbounded) flex context does with it. -->
+<div
+	bind:this={paneRootEl}
+	class="flex min-h-0 flex-1 flex-col overflow-hidden"
+	style={paneMaxHeight != null
+		? `flex: none; height: ${paneMaxHeight}px; max-height: ${paneMaxHeight}px;`
+		: ''}
+>
 	<!-- Header with controls -->
 	<div class="mb-3 flex flex-shrink-0 flex-col gap-2 border-b border-gray-200 pb-3 dark:border-gray-700 sm:mb-4 sm:gap-3">
 		<!-- Status indicators -->
