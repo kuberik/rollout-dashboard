@@ -650,7 +650,8 @@
 	 * environment still asks for nothing at all.
 	 */
 	const level = $derived(confirmLevel(intent));
-	const needsTypedConfirmation = $derived(level === 'typed');
+	// Every version change is confirmed by typing it — see `typedPrompt`.
+	const needsTypedConfirmation = $derived(direction !== 'same');
 	/**
 	 * ⭐ THE PICKER'S OWN `N back`, CARRIED INTO THE CONFIRMATION. (B3,
 	 * 2026-09-03, operator walk) `pickerRankLabel` already computes this per

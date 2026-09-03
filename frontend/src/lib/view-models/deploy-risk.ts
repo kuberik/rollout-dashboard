@@ -443,6 +443,13 @@ export function splitLeadSentence(text: string): { lead: string; rest: string } 
 
 /** The label above the type-to-confirm box, when there is one. */
 export function typedPrompt(intent: DeployIntent): string {
+	// ⭐ EVERY CHANGE IS TYPED. (2026-09-03, from the human: "any time we change
+	// the version we must ask for confirmation.") `confirmLevel` still grades
+	// the alert — none / notice / typed decide its colour and sentence — but
+	// the typed field itself no longer waits for `typed`; the caller shows it
+	// for every direction but `same`. Below `typed` the prompt claims nothing
+	// about vouching or tiers, because nothing adverse is being asserted.
+	if (confirmLevel(intent) !== 'typed') return 'Type';
 	if (intent.custom) return 'This version is not in the release list. Type';
 	// ⭐ A ROLLBACK IS A DIFFERENT CLAIM. (B3, 2026-09-03) `production` now
 	// reaches `typed` on a rollback too (see `confirmLevel`'s own note), and
