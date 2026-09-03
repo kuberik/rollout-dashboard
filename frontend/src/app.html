@@ -3,6 +3,47 @@
 
 <head>
 	<meta charset="utf-8" />
+	<!--
+		⭐ THE FIRST FRAME, BEFORE THE APP EXISTS. (Operator-walk finding 21)
+		Throttling `**/api/**` and hard-loading `/apps` showed a full-brightness
+		WHITE screen for the whole wait even with the theme persisted as dark —
+		`document.body.innerText` was empty and `html` carried no `dark` class,
+		because `theme.init()` only runs from `Navbar.svelte`'s `onMount`, which
+		cannot fire until Svelte has parsed, compiled and mounted the app. On a
+		cold SPA load (no SSR — see `+layout.ts`) that window is real, not a
+		one-frame flicker, and someone opening a link from an alert at 3am reads
+		it as "is this down?" not "this is loading."
+
+		This is the ONLY thing that can beat that race: synchronous, blocking,
+		before any paint, before the stylesheet or the framework. It reads the
+		exact key `theme.ts` writes (`localStorage['theme']`) and the same
+		`prefers-color-scheme` fallback, so it can never disagree with the
+		store once `theme.init()` runs — that call becomes a no-op re-assertion
+		on the happy path, not a correction.
+
+		⚠️ `background-color` is set on `<html>`, not assumed from a stylesheet
+		that has not loaded yet. `oklch(0.21 0.034 264.665)` is Tailwind's own
+		`gray-900` (`node_modules/tailwindcss/theme.css`), read via
+		`getComputedStyle` off the running shell rather than guessed, so it is
+		pixel-identical to the `dark:bg-gray-900` the shell paints on top of it
+		one frame later — the swap is invisible even under a slow mount.
+	-->
+	<script>
+		(function () {
+			try {
+				var stored = localStorage.getItem('theme');
+				var prefersDark =
+					window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+				var dark = stored ? stored === 'dark' : prefersDark;
+				var html = document.documentElement;
+				html.style.colorScheme = dark ? 'dark' : 'light';
+				html.style.backgroundColor = dark ? 'oklch(0.21 0.034 264.665)' : '#ffffff';
+				if (dark) html.classList.add('dark');
+			} catch (e) {
+				/* localStorage/matchMedia unavailable — fall back to the light shell. */
+			}
+		})();
+	</script>
 	<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 	<link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/logo.svg" />
 	<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
