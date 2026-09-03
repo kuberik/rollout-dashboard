@@ -194,7 +194,9 @@ lib/components/DeploymentTimeline.svelte	code	, rolled back
 lib/components/DeploymentTimeline.svelte	code	… — … deploys, left and right arrows to move between them
 lib/components/DeploymentTimeline.svelte	code	… — 1 deploy
 lib/components/DeploymentTimeline.svelte	code	… — no deploys in this period
+lib/components/DeploymentTimeline.svelte	text	… deploy …
 lib/components/DeploymentTimeline.svelte	code	… on …… — ………
+lib/components/DeploymentTimeline.svelte	text	· … ago
 lib/components/DeploymentTimeline.svelte	aria-label	Deployment timeline — one mark per deploy, newest to the right. Every mark is also a row in the list below. Each lane is one tab stop; left and right arrows move between the marks in a lane.
 lib/components/DeploymentTimeline.svelte	text	drag to zoom
 lib/components/DeploymentTimeline.svelte	text	No data
@@ -273,21 +275,39 @@ lib/components/HowItsGoing.svelte	title	How it’s going
 lib/components/HowItsGoing.svelte	text	no measured trip yet
 lib/components/HowItsGoing.svelte	text	Typical deploy
 lib/components/HowItsGoing.svelte	text	Typical to prod
+lib/components/LogsViewer.svelte	text	, finished … . New lines appear here as the next run writes them.
+lib/components/LogsViewer.svelte	text	… / … lines
+lib/components/LogsViewer.svelte	text	… error …
+lib/components/LogsViewer.svelte	text	… line … have arrived; every one of them is hidden by a pod, container, level or search filter.
 lib/components/LogsViewer.svelte	code	… pod…
 lib/components/LogsViewer.svelte	code	(${query.replace(/[.*+?^…()|[\]\\]/g, '\\$&')})
+lib/components/LogsViewer.svelte	text	Clear filters
+lib/components/LogsViewer.svelte	aria-label	Clear search
 lib/components/LogsViewer.svelte	text	Columns …
 lib/components/LogsViewer.svelte	code	Connecting to pods…
 lib/components/LogsViewer.svelte	code	Connecting to test runs…
 lib/components/LogsViewer.svelte	code	Connection lost
 lib/components/LogsViewer.svelte	text	Containers …
 lib/components/LogsViewer.svelte	text	Error loading logs
+lib/components/LogsViewer.svelte	text	Failed to load logs
 lib/components/LogsViewer.svelte	text	Filters …
+lib/components/LogsViewer.svelte	code	last line …
 lib/components/LogsViewer.svelte	text	Log Levels
+lib/components/LogsViewer.svelte	text	No lines match the current filters
+lib/components/LogsViewer.svelte	text	No log lines yet
+lib/components/LogsViewer.svelte	text	No test output yet
+lib/components/LogsViewer.svelte	aria-label	Search logs
+lib/components/LogsViewer.svelte	placeholder	Search logs...
 lib/components/LogsViewer.svelte	text	Select All
 lib/components/LogsViewer.svelte	text	Show All
 lib/components/LogsViewer.svelte	text	Source …
 lib/components/LogsViewer.svelte	code	stream closed
 lib/components/LogsViewer.svelte	code	Stream closed
+lib/components/LogsViewer.svelte	code	Stream closed — …
+lib/components/LogsViewer.svelte	code	Streaming — …
+lib/components/LogsViewer.svelte	text	The last run,
+lib/components/LogsViewer.svelte	text	The stream is open and … written nothing since this view opened. New lines appear here as they are written.
+lib/components/LogsViewer.svelte	text	The stream is open and no test has written anything since this view opened. New lines appear here as a test run writes them.
 lib/components/LogsViewer.svelte	code	Unknown error
 lib/components/NextStep.svelte	code	btn … …
 lib/components/NextStep.svelte	code	Choose a version
@@ -407,6 +427,7 @@ lib/ControlCenter.svelte	title	No deploy yet
 lib/ControlCenter.svelte	text	No rollouts yet
 lib/ControlCenter.svelte	text	Nothing is at the head of its own release list yet.
 lib/ControlCenter.svelte	text	Once you create
+lib/ControlCenter.svelte	title	Pinned to … — automatic deploys are paused until the pin is cleared.
 lib/ControlCenter.svelte	code	Promote now
 lib/ControlCenter.svelte	text	resources, the fleet overview will appear here.
 lib/ControlCenter.svelte	code	Retry deploy
@@ -433,7 +454,9 @@ lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
 lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
 lib/rollout-cards.ts	code	Pinned there.
+lib/rollout-cards.ts	code	pinned to …
 lib/rollout-cards.ts	code	Pinned to … — automatic deploys are paused until the pin is cleared.
+lib/rollout-cards.ts	code	pinned to … by …
 lib/rollout-cards.ts	code	reopens … on its own
 lib/rollout-cards.ts	code	rolled back
 lib/rollout-cards.ts	code	Rolled back … version…: … → ….…
@@ -479,6 +502,7 @@ lib/view-models/auto-deploy.ts	code	Automatic promotion is held right now — �
 lib/view-models/auto-deploy.ts	code	Automatic promotion is running, so the newest allowed build deploys here again.
 lib/view-models/auto-deploy.ts	code	Automatic promotion resumes, and the rollout moves to the newest allowed version.
 lib/view-models/auto-deploy.ts	code	Automatic promotion resumes, but nothing will move yet — …. The rollout stays on the version it is running until that clears.
+lib/view-models/auto-deploy.ts	code	Automatic promotion resumes; the newest allowed build is … (… newer).
 lib/view-models/auto-deploy.ts	code	health checks are failing
 lib/view-models/auto-deploy.ts	code	it is pinned to one version
 lib/view-models/auto-deploy.ts	code	It will not move today — … — but the newest allowed build deploys here again as soon as that clears.
@@ -910,9 +934,11 @@ routes/environments/+page.svelte	title	… here is running …, which cannot be 
 routes/environments/+page.svelte	code	… in …
 routes/environments/+page.svelte	code	… is stuck in …
 routes/environments/+page.svelte	title	… of … apps here are deployed and serving
+routes/environments/+page.svelte	title	… of … apps here are pinned to one version by a person
 routes/environments/+page.svelte	title	… of … apps here are stuck
 routes/environments/+page.svelte	title	… of … apps here failed their last deploy
 routes/environments/+page.svelte	title	… of … apps here have newer builds that no rule will let in yet
+routes/environments/+page.svelte	text	… pinned
 routes/environments/+page.svelte	text	… rollout … without an Environment record
 routes/environments/+page.svelte	code	… rollouts are stuck
 routes/environments/+page.svelte	text	… stuck
@@ -931,6 +957,7 @@ routes/environments/+page.svelte	code	not moving
 routes/environments/+page.svelte	code	Open …
 routes/environments/+page.svelte	code	Open … in …
 routes/environments/+page.svelte	code	Open rollout
+routes/environments/+page.svelte	title	Pinned to … — automatic deploys are paused until the pin is cleared.
 routes/environments/+page.svelte	text	Production regions
 routes/environments/+page.svelte	text	resources to see what is running in each one.
 routes/environments/+page.svelte	title	Running a version that is on no environment’s release list
@@ -939,8 +966,10 @@ routes/environments/+page.svelte	code	The last deploy did not complete, and noth
 routes/environments/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	title	… — the newest version this app has
 routes/envs/[name]/+page.svelte	title	… — this page
+routes/envs/[name]/+page.svelte	code	… · … pinned
 routes/envs/[name]/+page.svelte	code	… deploys have failed here
 routes/envs/[name]/+page.svelte	code	… failed to deploy here
+routes/envs/[name]/+page.svelte	code	… failing · …/… running
 routes/envs/[name]/+page.svelte	title	… here can still take … newer version…
 routes/envs/[name]/+page.svelte	title	… here is running …, which cannot be placed on this app’s build ladder
 routes/envs/[name]/+page.svelte	code	… is stuck here
@@ -950,7 +979,9 @@ routes/envs/[name]/+page.svelte	code	… newer build… of … … ….
 routes/envs/[name]/+page.svelte	code	… regions
 routes/envs/[name]/+page.svelte	title	… rollout… in … matched no Environment object for … and … not counted above
 routes/envs/[name]/+page.svelte	code	… rollouts are stuck here
+routes/envs/[name]/+page.svelte	code	… stuck · …/… running
 routes/envs/[name]/+page.svelte	title	… version… have reached … and have not yet reached …
+routes/envs/[name]/+page.svelte	code	…/… running
 routes/envs/[name]/+page.svelte	code	+… regions
 routes/envs/[name]/+page.svelte	text	Back to environments
 routes/envs/[name]/+page.svelte	title	Deploys …, the newest version every rule already allows
@@ -959,6 +990,7 @@ routes/envs/[name]/+page.svelte	code	held by … rule…
 routes/envs/[name]/+page.svelte	code	It has not advanced for longer than this app takes to deploy.
 routes/envs/[name]/+page.svelte	text	kuberik | …
 routes/envs/[name]/+page.svelte	text	last deploy … ago
+routes/envs/[name]/+page.svelte	code	nothing deployed
 routes/envs/[name]/+page.svelte	text	Nothing is deployed to … yet. Apps appear here the first time one promotes into it.
 routes/envs/[name]/+page.svelte	code	Open rollout
 routes/envs/[name]/+page.svelte	code	Promotion into … is held
@@ -1007,20 +1039,21 @@ routes/revisions/[...slug]/+page.svelte	title	A newer release of this build exis
 routes/revisions/[...slug]/+page.svelte	title	A place is one service in one environment.
 routes/revisions/[...slug]/+page.svelte	text	All revisions
 routes/revisions/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
+routes/revisions/[...slug]/+page.svelte	text	built …
 routes/revisions/[...slug]/+page.svelte	text	Commit message and author need GitHub. …
+routes/revisions/[...slug]/+page.svelte	text	deployed …
 routes/revisions/[...slug]/+page.svelte	title	Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest.
+routes/revisions/[...slug]/+page.svelte	text	Held — still running
 routes/revisions/[...slug]/+page.svelte	code	Held by a deploy window
 routes/revisions/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
 routes/revisions/[...slug]/+page.svelte	code	Held for another …
-routes/revisions/[...slug]/+page.svelte	code	in … · …
 routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard.
 routes/revisions/[...slug]/+page.svelte	text	knows the revision
 routes/revisions/[...slug]/+page.svelte	text	kuberik | …
 routes/revisions/[...slug]/+page.svelte	text	No repository
-routes/revisions/[...slug]/+page.svelte	code	Not passing
 routes/revisions/[...slug]/+page.svelte	text	Nothing in
 routes/revisions/[...slug]/+page.svelte	text	now on
-routes/revisions/[...slug]/+page.svelte	text	of … places running it
+routes/revisions/[...slug]/+page.svelte	text	of … places run this revision …
 routes/revisions/[...slug]/+page.svelte	aria-label	Open the … rollout for …
 routes/revisions/[...slug]/+page.svelte	title	Open the … rollout for …
 routes/revisions/[...slug]/+page.svelte	text	Pinned in … — automatic updates are off …
@@ -1073,6 +1106,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… Nothing promo
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… Refresh
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… release candidate … available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	…${e.requiredVersion ?
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	&nbsp;· running …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	1 new version found!
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a check
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a deploy window
@@ -1231,5 +1265,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show sib
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	System … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Try again
+routes/rollouts/[cluster]/[namespace]/[name]/logs/+page.svelte	text	… error …
 routes/rollouts/[cluster]/[namespace]/[name]/logs/+page.svelte	text	kuberik | … ( … ) Logs
 routes/rollouts/+page.svelte	text	kuberik | Rollouts

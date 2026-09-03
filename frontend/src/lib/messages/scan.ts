@@ -258,7 +258,8 @@ const ATTRS = new Set(['title', 'aria-label', 'alt', 'placeholder', 'aria-descri
  * several lines and carry `{}` expressions with `>` inside them -- the shape
  * that made a regex splitter emit half-tags as if they were prose.
  */
-function scanMarkup(src: string, file: string, out: Literal[]): void {
+/** Exported for `scan.test.ts` -- direct unit coverage of the markup walker, without going through the `import.meta.glob` census over real files. */
+export function scanMarkup(src: string, file: string, out: Literal[]): void {
 	const markup = src
 		.replace(/<script[\s\S]*?<\/script>/g, ' ')
 		.replace(/<style[\s\S]*?<\/style>/g, ' ')
@@ -273,16 +274,41 @@ function scanMarkup(src: string, file: string, out: Literal[]): void {
 		}
 		text = '';
 	};
-	/** Skip a `{...}` expression, honouring nesting and quotes. */
+	/**
+	 * Skip a `{...}` expression, honouring nesting, quotes AND comments.
+	 *
+	 * A `//` or `/* *\/` comment inside a handler (`onclick={(e) => { //
+	 * comment }}`) is not code, and an apostrophe inside one -- `// Don't
+	 * allow ...` -- is not a string open. Without stripping comments first,
+	 * the quote tracker below reads that apostrophe as the start of a `'...'`
+	 * literal and does not close it until the NEXT real apostrophe anywhere
+	 * later in the file, silently swallowing every tag, attribute and text
+	 * node in between as "inside an expression" -- no error, no truncated
+	 * catalogue entry, just everything after it missing. `LogsViewer.svelte`
+	 * lost its whole tail (`Failed to load logs`, `No log lines yet`, the
+	 * `N error(s)` button) to exactly this: a `// Don't allow hiding all
+	 * columns` comment inside a `DropdownItem`'s `onclick={...}` attribute.
+	 */
 	const skipExpr = (start: number): number => {
 		let d = 0;
 		let j = start;
 		let q: string | null = null;
 		for (; j < markup.length; j++) {
 			const c = markup[j];
+			const n = markup[j + 1];
 			if (q) {
 				if (c === '\\') j++;
 				else if (c === q) q = null;
+				continue;
+			}
+			if (c === '/' && n === '/') {
+				while (j < markup.length && markup[j] !== '\n') j++;
+				continue;
+			}
+			if (c === '/' && n === '*') {
+				j += 2;
+				while (j < markup.length && !(markup[j] === '*' && markup[j + 1] === '/')) j++;
+				j++;
 				continue;
 			}
 			if (c === '"' || c === "'" || c === '`') {
