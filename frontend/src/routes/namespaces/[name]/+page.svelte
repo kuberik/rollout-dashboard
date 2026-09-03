@@ -262,6 +262,27 @@
 	 * apps this card cannot see — every row here is optional, and these two
 	 * are not TRUE facts about this population yet.
 	 */
+	/**
+	 * ⛔ THE CARD HAD NO ROLLUP, AND EVERY OTHER INSTANCE HAS ONE. (2026-09-03,
+	 * activity/touch lane, F11) `/`, `/apps`, `/apps/[name]` and `/envs/[name]`
+	 * each pass a `verdict` — the one figure a reader can take without opening
+	 * the card. This page's call left it `null` and rendered a title with no
+	 * answer beside it.
+	 *
+	 * SAME ROLLUP AS `/`'S FLEET SCOPE, SCOPED TO THIS NAMESPACE — `N of M
+	 * newest`, off the SAME `ranks` map the row's own chips read (see the note
+	 * above), not a second ladder. `unknown` is excluded from the denominator
+	 * for the same reason `HomeRail`'s `rankable` excludes it: an unresolvable
+	 * comparison is neither "newest" nor "behind", and counting it against
+	 * either would be a claim `env-rank.ts` itself refuses to make.
+	 */
+	const rankable = $derived(
+		apps.filter((a) => (ranks.get(a.rollout)?.kind ?? 'unknown') !== 'unknown')
+	);
+	const onNewest = $derived(
+		rankable.filter((a) => (ranks.get(a.rollout)?.kind ?? 'unknown') === 'newest').length
+	);
+
 	const SPARK_DAYS = 7;
 	const deploys7d = $derived.by(() => {
 		const start = $now.getTime() - SPARK_DAYS * 24 * 60 * 60 * 1000;
@@ -609,6 +630,9 @@
 			<div class="min-w-0 space-y-4">
 				<HowItsGoing
 					scope="apps"
+					verdict="{onNewest} of {rankable.length} newest"
+					verdictTone={rankable.length > 0 && onNewest === rankable.length ? 'good' : 'neutral'}
+					verdictTitle="Rollouts in this namespace running the newest build their own release list offers them"
 					windowLabel="{SPARK_DAYS}d"
 					deploys={deploys7d}
 					deploysTitle="{deploys7d} deploy{deploys7d === 1

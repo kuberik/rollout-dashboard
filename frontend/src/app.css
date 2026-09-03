@@ -825,6 +825,25 @@ textarea {
 		color: var(--color-gray-200);
 	}
 
+	/* ── THE NON-CLIPPING WRAPPER for a JOINED chip's `valueHref` link.
+	   (2026-09-03, F5c) `Chip.svelte`'s `valueHalf` snippet wraps the anchor
+	   in this span so `.hit-32`'s touch-floor `::before` (below) centres on
+	   an element with no `overflow: hidden` of its own — `.chip-value` keeps
+	   its clip (it truncates a long build id) and is never the thing the
+	   slop is generated on. See `Chip.svelte` for the full account of why the
+	   direct approach (`.chip-value` itself in the touch-floor selector list)
+	   was tried and measured broken.
+
+	   Visually inert BY CONSTRUCTION, not by care: no padding, no border, no
+	   background, `inline-flex` so it hugs the anchor's own rendered size
+	   exactly, and `min-width: 0` so `.chip-joined`'s flex row can still
+	   shrink it exactly as it shrank the bare anchor before. */
+	.chip-value-wrap {
+		display: inline-flex;
+		align-items: stretch;
+		min-width: 0;
+	}
+
 	/* THE IDENTIFIER ALONE — the value half with all four corners at 4px.
 	   `/versions`'s Revision cell used to be `[wordless status dot][sha]`, and
 	   that dot half was the sub-badge the human rejected on 2026-08-27. It is
@@ -1298,6 +1317,30 @@ textarea {
 		transform: translate(-50%, -50%);
 	}
 
+	/* ⭐ `.pill-btn` NARROWS ITS OWN HORIZONTAL REACH TO 4px A SIDE, AND THAT
+	   IS DELIBERATE, NOT A WEAKER FLOOR. (2026-09-03, activity/touch lane,
+	   F5b) The shared rule above gives every control 6px of reach a side,
+	   which is right for an isolated control but wrong for a ROW of them:
+	   `/activity`'s filter pills sit in `gap-x-2` (8px), so two neighbours'
+	   6px reaches sum to 12px inside an 8px gap — a 4px OVERLAP in the middle
+	   third, and CSS paints later DOM siblings on top, so the earlier pill's
+	   entire rightward reach was measured as belonging to its neighbour
+	   instead ("adjacent pills butt with no gutter, a between-pill tap lands
+	   left"). Two honest fixes exist — widen every filter row's gap to 12px,
+	   or narrow the horizontal reach to fit the gap that already ships — and
+	   this is the second: `.pill-btn`'s own `gap-x-2` is shared by every
+	   filter row this class ships on (`/activity`'s state/env pills,
+	   `DeploymentTimeline`'s range pills), so narrowing the CLASS fixes every
+	   row without a page-by-page gap audit. `4px` a side sums to exactly 8px
+	   — the two reaches now MEET at the gap's midpoint rather than overlap
+	   it, so every point in the gap resolves to exactly one pill and none is
+	   dead. The vertical reach is untouched (still the shared `+12px`
+	   formula, still >= 32px total, still >= 6px a side — nothing above a
+	   pill row competes with it the way a neighbour does horizontally). */
+	.pill-btn::before {
+		width: max(100% + 8px, 32px);
+	}
+
 	.tap-zone {
 		min-height: 32px;
 	}
@@ -1505,6 +1548,49 @@ textarea {
 	border-color: var(--rollout-theme-dark-border);
 	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, transparent);
 	color: var(--rollout-theme-dark-text);
+}
+
+/* ── AN ENV FILTER CHIP'S "SELECTED" STATE, MATCHING THE STATUS PILLS BESIDE
+   IT. (2026-09-03, activity/touch lane, F1)
+
+   `/activity`'s env filter row used to mark its pressed chip with a 40%-alpha
+   2px `ring` — the only "selected" treatment on the whole strip that changes
+   nothing SOLID. The state pill group four columns left fills gray-900/
+   gray-100 for its own selected member (`.pill-btn`'s inline classes, this
+   file's own note above `.pill-selected`), so a reader learns one selected
+   grammar on the left half of the row and a different, much fainter one on
+   the right half of the SAME row.
+
+   `.chip-env`'s border/background/ink are inline custom properties
+   (`--rollout-theme-*`), which is what lets one class carry every
+   environment's colour — so overriding them here needs a selector that
+   outranks `.chip-env` at EQUAL cascade layer without touching that class
+   itself (identity's colour must stay a pure function of the environment's
+   NAME everywhere the chip is not a pressed filter — `Chip.svelte`'s own
+   header names this invariant). `.env-filter-selected .chip-env` is two
+   classes (0,2,0) against `.chip-env`'s one (0,1,0), so it wins in light
+   unconditionally; the dark pair needs `.dark .env-filter-selected
+   .chip-env` (0,3,0) to outrank `.dark .chip-env` (0,2,0) specifically,
+   because a plain `.env-filter-selected .chip-env` rule (0,2,0, matching
+   in EITHER theme) declared after `.dark .chip-env` would otherwise win the
+   dark case too and paint it with the LIGHT pair.
+
+   The identity hue is deliberately lost while a chip is the pressed filter —
+   documented here, not silently dropped: the whole point of matching the
+   status pills is that "selected" reads as ONE state across the row, and a
+   selected chip that also kept its own colour would be a THIRD grammar
+   (neutral-fill boolean AND colour-preserving identity) rather than either
+   of the other two. */
+.env-filter-selected .chip-env {
+	border-color: var(--color-gray-900);
+	background-color: var(--color-gray-900);
+	color: #fff;
+}
+
+.dark .env-filter-selected .chip-env {
+	border-color: var(--color-gray-100);
+	background-color: var(--color-gray-100);
+	color: var(--color-gray-900);
 }
 
 /* ── Deploy board grids ──────────────────────────────────────────────

@@ -252,6 +252,36 @@
 		return out;
 	});
 
+	/**
+	 * ⭐ THE CARD'S OWN DENOMINATOR WAS SILENT ABOUT WHAT IT LEFT OUT.
+	 * (2026-09-03, operator-walk P13) `slots` above only holds a cell whose
+	 * `environment` matched an `Environment` CR for THIS tier — so a rollout
+	 * that lives in the same namespace as an app this card already shows,
+	 * but has no `Environment` object of its own, never reaches `rows` at
+	 * all. Live proof: `hello-world-prod` holds `hello-world-app` AND
+	 * `hello-world-manifests`, and `/envs/prod` printed `4/4 running · 3 of 4
+	 * up to date` with no note that a fifth rollout in that same namespace
+	 * was never counted. `/dependencies` already admits this exact gap (`N
+	 * not in the graph`); this is the same admission, scoped to namespaces
+	 * this card's OWN rows already touch — a rollout in some unrelated
+	 * namespace says nothing about this environment and must not inflate the
+	 * count.
+	 */
+	const envNamespaces = $derived(
+		new Set(
+			slots.map((s) => s.cell.rollout.metadata?.namespace).filter((n): n is string => !!n)
+		)
+	);
+	const excludedRollouts = $derived.by(() => {
+		const included = new Set(slots.map((s) => s.cell.rollout));
+		return rollouts.filter(
+			(r) => r.metadata?.namespace && envNamespaces.has(r.metadata.namespace) && !included.has(r)
+		);
+	});
+	const excludedNamespaces = $derived(
+		new Set(excludedRollouts.map((r) => r.metadata?.namespace).filter((n): n is string => !!n))
+	);
+
 	// The same succeeded|failed|active|pending classification `/` and
 	// `/rollouts` use, so "healthy" here means what it means everywhere.
 	const statusByRollout = $derived.by<Map<Rollout, StatusKey>>(() => {
@@ -1237,6 +1267,28 @@
 											{#if row.slot.cell.rollout.spec?.wantedVersion}
 												<PinBadge version={row.slot.cell.rollout.spec.wantedVersion} size="xs" />
 											{/if}
+											<!-- ⛔ "HELD" WAS SPELLED FIVE WAYS ACROSS THE PRODUCT'S
+											     LIST SURFACES, AND THIS ROW WAS ONE OF THE TWO SAYING
+											     NOTHING (0 of 4 list pages; `/`, `/rollouts` and
+											     `/environments` all print it). (2026-09-03, activity/
+											     touch lane, F3) The disc above already draws the
+											     orange held pause glyph via `markByRollout`'s
+											     `cardStateMark` precedence, and `BlockReason` two
+											     lines below can print the clause, but neither is a
+											     WORD beside the app's own name and the disc is silent
+											     on touch. `row.block.blocked` is the exact
+											     `promotionBlock(rollout).blocked` this page already
+											     computed for `BlockReason` — one more reader of an
+											     existing fact. Same atom as `/`, `/rollouts`,
+											     `/environments`, `/namespaces/<name>`: `Chip
+											     role="held" label="held"`. -->
+											{#if row.block.blocked}
+												<Chip
+													role="held"
+													label="held"
+													title={row.mark?.kind === 'held' ? row.mark.title : undefined}
+												/>
+											{/if}
 											{#if row.stuck}
 												<Chip role="alarm" label="stuck" title="{row.appName} is stuck here" />
 											{/if}
@@ -1551,6 +1603,35 @@
 								</li>
 							{/each}
 						</ul>
+					{/if}
+					<!-- ⭐ THE EXCLUDED ROLLOUT NAMES ITSELF, SAME SHAPE AS
+					     `/dependencies`' `N not in the graph` (2026-09-03,
+					     operator-walk P13) — see the note on `excludedRollouts`
+					     above. Only ONE namespace links: with more than one, the
+					     count is still true but no single href answers "which
+					     one", so it prints plain rather than picking one
+					     namespace to send every reader to. -->
+					{#if excludedRollouts.length > 0}
+						{@const label = `${rows.length} app${rows.length === 1 ? '' : 's'} · ${excludedRollouts.length} rollout${excludedRollouts.length === 1 ? '' : 's'} without an Environment record`}
+						{#if excludedNamespaces.size === 1}
+							<a
+								href="/namespaces/{[...excludedNamespaces][0]}"
+								class="tap-link t-micro block border-t border-gray-100 px-4 py-2.5 text-gray-500 hover:text-gray-700 hover:underline dark:border-gray-700/60 dark:text-gray-400 dark:hover:text-gray-200"
+								title="{excludedRollouts.length} rollout{excludedRollouts.length === 1
+									? ''
+									: 's'} in {[...excludedNamespaces][0]} matched no Environment object for {envName} and {excludedRollouts.length ===
+								1
+									? 'is'
+									: 'are'} not counted above"
+								>{label} ›</a
+							>
+						{:else}
+							<p
+								class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
+							>
+								{label}
+							</p>
+						{/if}
 					{/if}
 				</Card>
 			</div>

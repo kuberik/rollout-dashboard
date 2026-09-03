@@ -160,6 +160,12 @@
 	// stops the most-read line on the page from spelling the fact a second
 	// way, which is exactly what it was doing.
 	import { blockReason } from '$lib/components/BlockReason.svelte';
+	// ⭐ P9 — ONE VERB FOR THE UNPIN ACTION, EVERYWHERE. (2026-09-03, operator
+	// walk) `pin-copy.ts` is the nav lane's single spelling of the trigger
+	// (`Clear pin`, sentence case) so this page's link, `ClearPinModal`'s
+	// title and rollout detail's own button cannot drift back to four labels
+	// for one action.
+	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
 	import {
@@ -1341,6 +1347,22 @@
 			// banner said the same build two different ways depending on which
 			// branch fired.
 			const pin = blockReason({ pinnedTo: cell.wantedDisplay || cell.version });
+			// ⛔ "NONE WILL DEPLOY UNTIL SOMEONE RELEASES THE HOLD" NAMED ONLY
+			// ONE HOLD, AND THE CLEAR PIN DIALOG ON THE SAME ROW SAYS ANOTHER
+			// ONE SURVIVES IT. (2026-09-03, operator-walk P10) `promotionBlock`
+			// evaluates the controller's GATES independent of the pin — a
+			// schedule window or an approval can be refusing every candidate
+			// at the same time the pin is — so a cell can be BOTH pinned and
+			// gated, and the banner's own "releases the hold" implied clearing
+			// the pin was the whole story. `cell.block` already carries the
+			// other gates' names (unaffected by the pin), so `blockReason`
+			// (the same function this file already calls for the pin clause)
+			// says what ELSE holds it, in the vocabulary `/environments` and
+			// `/envs/<name>` already use for a non-pin gate.
+			const otherHold = blockReason({
+				awaiting: cell.block.awaitingApprovalGates,
+				notPassing: cell.block.notPassingGates
+			});
 			return {
 				severity: 'pinned',
 				icon: PauseSolid,
@@ -1348,7 +1370,9 @@
 				message: `${pin ? `${pin.line}. ` : ''}${plural(
 					cell.behindBy,
 					'newer version'
-				)} available, and none will deploy until someone releases the hold.`,
+				)} available, and none will deploy until the pin is cleared${
+					otherHold ? `. Clearing it alone will not be enough: ${otherHold.short.toLowerCase()}` : ''
+				}.`,
 				footnote: 'Automatic updates into this environment are off, not broken.',
 				app: app.appName,
 				pulse: false
@@ -2004,6 +2028,32 @@
 							>{app.desc}</span
 						>
 					{/if}
+					<!-- ⛔ "HELD" WAS SPELLED FIVE WAYS ACROSS THE PRODUCT'S LIST
+					     SURFACES, AND THIS ROW WAS ONE OF THE TWO SAYING NOTHING
+					     (0 of 4 list pages; `/`, `/rollouts` and `/environments` all
+					     print it). (2026-09-03, activity/touch lane, F3) The row
+					     already draws the orange held disc via `circleBakeStatus`'s
+					     `gateHeld` branch and the lede sentence below can say
+					     `… have N newer versions held`, but neither is a WORD next
+					     to the object on a row a sighted reader scans by name, and
+					     the disc is silent on touch. `app.gateHeld` is the same
+					     `story.blocked` union the disc and the lede already read —
+					     one more reader of an existing fact, not a new one — so this
+					     cannot disagree with either. Same atom as `/`, `/rollouts`,
+					     `/environments`, `/namespaces/<name>`: `Chip role="held"
+					     label="held"`. It sits beside the NAME, not inside the
+					     per-environment mark row below, because it is a fact about
+					     the APP'S FLEET as a whole (it can be true with zero adverse
+					     cells — `hello-frontend-app`'s live case, gated everywhere,
+					     failing nowhere), not about one boxed environment. -->
+					{#if app.gateHeld}
+						<Chip
+							role="held"
+							label="held"
+							title="{app.appName} — a newer build exists here, but no gate lets it through yet"
+							class="shrink-0"
+						/>
+					{/if}
 				</span>
 				<!-- THE MARK ROW. `gap-x-4 sm:gap-x-6` is the denominator of the
 				     proximity ratio that keeps each unit bound to itself at 4px
@@ -2268,12 +2318,21 @@
 			     inside it, so this cell cannot fall under the overlay and neither
 			     can anything added beside it later. -->
 			<span class="apps-step flex items-center justify-end">
+				<!-- ⛔ "RELEASE THE HOLD" NAMED AN ACT IN WORDS THE DIALOG IT
+				     OPENS DOES NOT USE. (2026-09-03, operator-walk P9) The
+				     link lands on `ClearPinModal`, whose title, button and
+				     rollout detail's own trigger all say `Clear pin` — a
+				     reader who clicked "release the hold" then read a dialog
+				     that never repeats those words back. `CLEAR_PIN_LABEL`
+				     (`pin-copy.ts`) is the nav lane's one spelling; importing
+				     it instead of a local literal is what keeps this page from
+				     drifting the moment that word changes again. -->
 				<a
 					href="/apps/{app.appName}?release={encodeURIComponent(app.stepEnvName)}"
 					class="nav-link"
 					title="{app.stepEnv} — {STEP_WHY.unpin}"
-					aria-label="Release the hold on {app.appName} in {app.stepEnv}"
-					>Release the hold<ChevronRightOutline /></a
+					aria-label="{CLEAR_PIN_LABEL} on {app.appName} in {app.stepEnv}"
+					>{CLEAR_PIN_LABEL}<ChevronRightOutline /></a
 				>
 			</span>
 		{/if}

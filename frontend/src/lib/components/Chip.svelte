@@ -223,7 +223,15 @@
 		if (!import.meta.env.DEV || !el) return;
 		const box = el.classList.contains('chip-joined') ? el : el.parentElement;
 		if (!box || !box.classList.contains('chip-joined')) return;
-		const halves = box.querySelectorAll(':scope > .chip, :scope > .chip-value');
+		// `:scope > .chip-value-wrap` joins the list (2026-09-03, F5c): a
+		// `valueHref` half now renders behind a non-clipping wrapper (see
+		// `valueHalf` below), so the value half is a GRANDCHILD of
+		// `.chip-joined` and `:scope > .chip-value` alone would silently
+		// undercount it, disarming this exact assertion for every joined
+		// chip that links anywhere.
+		const halves = box.querySelectorAll(
+			':scope > .chip, :scope > .chip-value, :scope > .chip-value-wrap'
+		);
 		if (halves.length > 2) {
 			console.error(
 				`A .chip-joined box is rendering ${halves.length} halves ` +
@@ -1218,7 +1226,47 @@
 	     this element IS the chip — the same place `class` lands in the lone
 	     form. In the joined form it lands on the `.chip-joined` wrapper and
 	     must not be repeated here. -->
-	{#if valueHref}
+	{#if valueHref && !solo}
+		<!-- ⭐ THE NON-CLIPPING WRAPPER, SHIPPED (2026-09-03, activity/touch
+		     lane, F5c). `app.css`'s "THE 32px TOUCH FLOOR" note records this
+		     was TRIED AND REVERTED once already, MEASURED not guessed:
+		     `.chip-value` carries its own `overflow: hidden` — load-bearing,
+		     it is what ellipsises a long build id instead of pushing the row
+		     — and a `::before` is generated content OF THAT SAME BOX, so the
+		     box's own clip silently ate the slop on all four sides
+		     (`getComputedStyle(el, '::before').height` read `32px` while
+		     `elementFromPoint` at every point past the visible 20px rect
+		     still resolved to something else). That pass left it flagged
+		     rather than fixed because the markup is `Chip.svelte`'s and the
+		     lane doing the touch-floor pass did not own this file; this lane
+		     does.
+
+		     The fix is exactly the one `/envs/<name>`'s promotion-chain chip
+		     already ships (a plain `<a class="hit-32">` wrapping a `<Chip>`):
+		     a non-clipping element OUTSIDE the overflow:hidden box, sized to
+		     it exactly. `.chip-value-wrap` is `inline-flex` with no padding,
+		     no border and no background — visually inert — and `min-width: 0`
+		     so the flex parent (`.chip-joined`) can still shrink it exactly
+		     as it always could. `.hit-32`'s existing `::before` (app.css) now
+		     centres on THIS box instead of the clipped one, so the slop is
+		     never inside an `overflow: hidden` ancestor.
+
+		     ⛔ ONLY THE JOINED (`!solo`) FORM WRAPS. The `solo` form is
+		     `/versions`' grid cell, where `.chip-value--solo` carries its own
+		     `justify-self: start` because IT is the grid item; wrapping it
+		     would move that property onto a span this rule does not touch
+		     and silently break the column. Nothing in the reported defect
+		     names the solo form, so it is left byte-identical. -->
+		<span class="chip-value-wrap hit-32">
+			<a
+				class="chip-value {valueDim ? 'chip-value--dim' : ''}"
+				href={valueHref}
+				title={valueTitle ?? value}
+			>
+				<span class="min-w-0 truncate">{value}</span>
+			</a>
+		</span>
+	{:else if valueHref}
 		<a
 			class="chip-value {solo ? `chip-value--solo ${className}` : ''} {valueDim
 				? 'chip-value--dim'

@@ -705,7 +705,23 @@
 
 <div class="relative w-full select-none" bind:this={containerEl}>
 	<!-- Time range selector -->
-	<div class="mb-3 flex flex-wrap items-center gap-1">
+	<!-- ⛔ `gap-1` (4px) WAS TIGHTER THAN THE TOUCH FLOOR'S OWN MATH ASSUMES,
+	     ON BOTH AXES. (2026-09-03, activity/touch lane, F5b) `app.css`'s
+	     `.pill-btn::before` narrows to 4px of horizontal reach a side so two
+	     neighbours' slop MEETS instead of overlapping — `4 + 4 = 8`, tuned
+	     to `/activity`'s own filter rows (`gap-x-2`). At this row's bare
+	     `gap-1` that arithmetic still summed to more than the visible 4px
+	     column gap, so `1H`/`6H`/`1D` measured ZERO right-reach at 390.
+	     `gap-x-2` alone was not enough either: at 390 this row WRAPS to two
+	     lines, and the vertical reach (`+12px` formula: a 20px pill needs
+	     6px a side) needs 6 + 6 = 12px between wrapped rows — a flat `gap-2`
+	     row-gap (8px) reproduced the identical overlap one axis over,
+	     measured live as a 2px downward reach on the wrapped row's own
+	     pills. `gap-x-2 gap-y-3` is the EXACT recipe `/activity`'s own
+	     control strip already uses one section down, for the identical
+	     reason (see that file's comment above its `mb-4 flex flex-wrap …
+	     gap-y-3`) — reused, not reinvented. -->
+	<div class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-3">
 		<!-- THE LOUDEST OBJECT IN THE PRODUCT WAS THIS BUTTON (2026-08-27,
 		     colour audit §2a). Selected, it was `bg-blue-600 #155dfc` at
 		     presence 207.8 — louder than the `stuck` alarm chip anywhere

@@ -14,10 +14,15 @@
 	 * ── 1. THE LOUDEST OBJECT WAS A FILTER BUTTON ───────────────────────────
 	 * The `7d` pill measured 207.8 presence — louder than the `stuck` alarm
 	 * anywhere in the product — and sat 0.059 dEok from `Deploying` blue, so a
-	 * CONTROL wore a STATE's hue. Fixed in the 2026-08-27 colour pass and
-	 * VERIFIED HERE: both filter rows now share one near-neutral selected
-	 * state (`gray-900` / `gray-100`). Nothing on this page is allowed to be
-	 * louder than a failed deploy.
+	 * CONTROL wore a STATE's hue. Fixed in the 2026-08-27 colour pass for the
+	 * state-pill rows; the env chip row was left on record here as "VERIFIED"
+	 * while its own selected state was still a 40%-alpha `ring`, not a fill —
+	 * a fourth re-check (F1, 2026-09-03) caught the gap between what this
+	 * comment claimed and what shipped. `.env-filter-selected` (app.css) now
+	 * gives the pressed env chip the same solid `gray-900`/`gray-100` fill,
+	 * so this sentence is finally true: every filter row on this page shares
+	 * one near-neutral selected state, and nothing is allowed to be louder
+	 * than a failed deploy.
 	 *
 	 * ── 2. `Show changes` EXPANDED TO NOTHING ───────────────────────────────
 	 * See `ChangeList.svelte`. The control is `What changed` now and every
@@ -480,6 +485,12 @@
 		return [...map.values()].sort((a, b) => compareEnvironmentNames(a.label, b.label));
 	});
 
+	/** The env filter's own display word, for a clear-ONE-filter button — see
+	 *  the empty state below. Falls back to the raw key so a filter that
+	 *  matched nothing still names itself (its label never made it into
+	 *  `knownEnvs`, which is built from the feed the filter just emptied). */
+	const envFilterLabel = $derived(knownEnvs.find((e) => e.key === envFilter)?.label ?? envFilter);
+
 	// ── DISAMBIGUATION, ONLY WHERE IT IS NEEDED ────────────────────────────
 	// The env chip carries identity for almost every row. It cannot when two
 	// events in view share BOTH an app name and an environment and differ only
@@ -585,7 +596,14 @@
 		if (failed > 0) out = { text: `${noun} · ${failed} failed`, tone: 'adverse' };
 		else if (flying > 0) out = { text: `${noun} · ${flying} still going`, tone: 'active' };
 		else if (rolledBack > 0) out = { text: `${noun} · ${rolledBack} rolled back`, tone: 'neutral' };
-		else if (entries.every((e) => e.bakeStatus === 'Succeeded')) out = { text: `${noun} · all fine`, tone: 'good' };
+		// ⛔ `n > 0 &&`, NOT A BARE `.every()`. (2026-09-03, operator-walk P7)
+		// `[].every(...)` is vacuously TRUE — an empty window read `0 deploys ·
+		// all fine`, a verdict about zero evidence dressed as good news. This
+		// surfaces the moment the chart card renders for an empty filtered
+		// set (see the note above `chartServices.length > 0` below), which a
+		// widened window control makes reachable for the first time.
+		else if (n > 0 && entries.every((e) => e.bakeStatus === 'Succeeded'))
+			out = { text: `${noun} · all fine`, tone: 'good' };
 		else out = { text: noun, tone: 'neutral' };
 		return { ...out, mayBeIncomplete };
 	}
@@ -813,7 +831,21 @@
 	     card's whole rollup. The window still rides in the title: it is a
 	     real fact, and the buttons inside this card govern the feed below
 	     it too, so a reader hovering the verdict still finds it. -->
-	{#if chartServices.length > 0}
+	<!-- ⛔ THE GATE WAS `chartServices.length > 0`, WHICH HID THE ONLY COPY OF
+	     THE WINDOW CONTROL. (2026-09-03, operator-walk P7) `chartServices` is
+	     built from `scoped` (env/app/ns/kind, no time window) — so a filter
+	     combination with zero matches EVER (`?kind=failed&env=prod` on a
+	     cluster with no failed prod deploys) hid this whole card, and the
+	     empty state 300px below still said "Widen the window above" —
+	     pointing at a control that no longer existed on the page.
+	     `DeploymentTimeline` already draws its range-pill row unconditionally
+	     and only swaps its OWN chart body for a `No data` placeholder when
+	     `services.length === 0` (see that file), so the card only needs to
+	     stop hiding itself: `allEntries.length > 0` — this fleet has SOME
+	     history at all — is the only real precondition for a window control
+	     to mean anything. A cluster with zero deploys ever is the one case
+	     that still hides it, because there is no window to set. -->
+	{#if allEntries.length > 0}
 		<Card
 			icon={ChartLineUpOutline}
 			title="When deploys happened"
@@ -911,6 +943,15 @@
 			></span>
 			<div class="flex flex-nowrap items-center gap-x-2">
 				{#each knownEnvs as e (e.key)}
+					<!-- ⛔ THE RING WAS THE ONLY "SELECTED" ON THIS ROW THAT CHANGED
+					     NOTHING SOLID (2026-09-03, activity/touch lane, F1). A 40%-
+					     alpha 2px ring on a 20px chip against the state-pill group
+					     four columns left, which fills gray-900/gray-100 SOLID for
+					     its own selected member — two different "selected" grammars
+					     on one strip. `.env-filter-selected` (app.css, declared right
+					     after `.chip-env`) gives the pressed env chip the SAME solid
+					     fill; the identity hue is deliberately lost while pressed,
+					     which is documented there rather than guessed at here. -->
 					<button
 						type="button"
 						aria-pressed={envFilter === e.key}
@@ -918,7 +959,7 @@
 						onclick={() => setParam('env', envFilter === e.key ? null : e.key)}
 						class="pill-btn environment-theme-scope inline-flex items-center rounded transition-opacity
 							{envFilter === e.key
-							? 'ring-2 ring-gray-900/40 dark:ring-gray-100/40'
+							? 'env-filter-selected'
 							: envFilter === null
 								? ''
 								: 'opacity-45 hover:opacity-100'}"
@@ -1012,12 +1053,66 @@
 				<p class="t-body font-semibold text-gray-900 dark:text-white">
 					Nothing matches these filters
 				</p>
+				<!-- ⛔ "WIDEN THE WINDOW ABOVE" NAMED A CONTROL THAT COULD BE
+				     ENTIRELY OFF SCREEN. (2026-09-03, operator-walk P7) With
+				     `?kind=failed&env=prod` on a cluster with no failed prod
+				     deploys, `chartServices` (env/app/ns/kind scoped, no time
+				     window) was empty too, so the whole chart card — the ONLY
+				     copy of the window buttons — did not render. The card's own
+				     gate is fixed (`allEntries.length > 0`, above), but a bare
+				     "clear the filters" button was still the wrong ACTION: it
+				     also drops `env=prod`, which the reader never asked to
+				     remove — they asked about prod, specifically, and got told
+				     there is nothing to see under that scope at all. Each active
+				     dimension gets its own button now, so clearing one preserves
+				     the rest; `Widen to 30 days` is offered beside them because a
+				     narrow window is the OTHER thing that can cause this, and
+				     there is no way to tell which from here without just
+				     trying it. -->
 				<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
-					Widen the window above, or clear the filters.
+					Try widening the window, or clearing one filter at a time.
 				</p>
-				<button type="button" onclick={clearAllFilters} class="btn btn-secondary mt-4"
-					>Clear the filters</button
-				>
+				<div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+					{#if timelineRange !== '30d' && timelineRange !== 'all'}
+						<button
+							type="button"
+							onclick={() => {
+								timelineRange = '30d';
+								rangeTouched = true;
+							}}
+							class="btn btn-secondary">Widen to 30 days</button
+						>
+					{/if}
+					{#if kindFilter !== 'all'}
+						<button type="button" onclick={() => setKindFilter('all')} class="btn btn-secondary"
+							>Clear “{KIND_FILTERS.find((f) => f.key === kindFilter)?.label}”</button
+						>
+					{/if}
+					{#if envFilter}
+						<button
+							type="button"
+							onclick={() => setParam('env', null)}
+							class="btn btn-secondary">Clear “{envFilterLabel}”</button
+						>
+					{/if}
+					{#if appFilter}
+						<button
+							type="button"
+							onclick={() => setParam('app', null)}
+							class="btn btn-secondary">Clear “{appFilter}”</button
+						>
+					{/if}
+					{#if nsFilter}
+						<button type="button" onclick={() => setParam('ns', null)} class="btn btn-secondary"
+							>Clear “{nsFilter}”</button
+						>
+					{/if}
+					{#if activeFilterCount + (kindFilter !== 'all' ? 1 : 0) > 1}
+						<button type="button" onclick={clearAllFilters} class="btn btn-secondary"
+							>Clear all filters</button
+						>
+					{/if}
+				</div>
 			{:else}
 				<p class="t-body font-semibold text-gray-900 dark:text-white">Nothing has deployed yet</p>
 				<p class="t-dense mt-1 max-w-sm text-gray-500 dark:text-gray-400">

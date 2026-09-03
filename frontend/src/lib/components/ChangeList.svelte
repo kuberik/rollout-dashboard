@@ -66,6 +66,7 @@
 		githubStatusQueryKey,
 		connectGithub,
 		formatCommitMessage,
+		githubAbsenceSentence,
 		FetchCommitsError,
 		type CommitInfo
 	} from '$lib/api/github';
@@ -126,21 +127,34 @@
 		return `${s}/compare/${base}...${head}`;
 	});
 
-	/** One sentence, in ordinary English, naming why the list is not here. */
+	/**
+	 * One sentence, in ordinary English, naming why the list is not here.
+	 *
+	 * ⛔ THIS WAS A FOURTH SPELLING OF GITHUB'S ABSENCE. (2026-09-03,
+	 * operator-walk P14) `$lib/api/github.ts`'s own `githubAbsenceSentence`
+	 * exists exactly to stop this — its own doc comment records THREE prior
+	 * copies saying three different things about the same fact
+	 * (`ChangeVersionModal`, `/versions/<rev>`, and the app-detail `Source`
+	 * card, which said nothing). This component's `not_connected` branch was
+	 * a fourth: "This kuberik has no GitHub connection set up…" for
+	 * `configured === false` and a bespoke "connect your GitHub account"
+	 * sentence otherwise, neither reachable from anywhere that could keep
+	 * them in sync with the other three. The escape hatch below (the public
+	 * compare URL) is unchanged — this only replaces the ONE sentence that
+	 * had drifted.
+	 */
 	const reason = $derived.by<string | null>(() => {
 		const err = query.error;
 		if (!err) return null;
 		if (err instanceof FetchCommitsError) {
 			if (err.reason === 'not_connected') {
-				return statusQuery.data?.configured === false
-					? 'This kuberik has no GitHub connection set up, so it cannot list the commits itself.'
-					: 'kuberik cannot read this repository until you connect your GitHub account.';
+				return githubAbsenceSentence(statusQuery.data);
 			}
 			if (err.reason === 'no_access') {
 				return 'Your GitHub account cannot read this repository.';
 			}
 		}
-		return `GitHub did not answer: ${(err as Error).message}`;
+		return `${githubAbsenceSentence(null, { unreachable: true })} (${(err as Error).message})`;
 	});
 
 	const canConnect = $derived(
@@ -199,7 +213,7 @@
 			aria-expanded={open}
 			aria-controls={panelId}
 			aria-label={`What changed in ${name}${head ? ` at ${head.slice(0, 7)}` : ''}`}
-			class="t-micro inline-flex shrink-0 items-center gap-1 rounded text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+			class="hit-32 t-micro inline-flex shrink-0 items-center gap-1 rounded text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 		>
 			<CodeBranchSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
 			{triggerLabel}
