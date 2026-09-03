@@ -145,6 +145,7 @@
 
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
+	import { formatTimeUntil } from '$lib/api/schedules';
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
@@ -755,14 +756,40 @@
 	}
 
 	/**
-	 * The chip word. A COUNT AND A NOUN — true right now, and it clears.
-	 * It never varies by cause: the causes vary in width from `check` to
-	 * `approval` and this chip sits in a wrapping flex beside a 23-character
-	 * mono build id at 390px. The cause goes in the hover, which has room for
-	 * the whole sentence and for the gate names.
+	 * ⭐ THE CHIP IS PIN-AWARE NOW. (2026-09-03, operator-walk finding)
+	 *
+	 * It used to read `Held by a gate` / `Held by N gates` regardless of
+	 * whether a PIN was the actual reason nothing deploys automatically —
+	 * `getBlockingGates`/`classifyBlockingGates` only ever consult
+	 * `rollout.status.gates`, which is the CONTROLLER's own evaluation and
+	 * says nothing about `spec.wantedVersion`. Measured on the live cluster,
+	 * pinning `hello-world-app/dev` (with a schedule gate also closed) left
+	 * this chip reading `HELD by a gate` three lines under a banner already
+	 * saying `Automatic deploys paused — this rollout is pinned` — two
+	 * reasons, and neither one named the gate the Clear Pin modal on the
+	 * SAME page already names (`Business Hours Only`).
+	 *
+	 * `blocking-story.ts`'s own rule is that a pin outranks every gate, so
+	 * when pinned the pin clause leads. A clock-classified gate among the
+	 * ones actually holding THIS candidate still carries real information —
+	 * when it reopens — so its `subject`/`predicate`/`clearsAt` (the SAME
+	 * drawn-relation fields `blockingStory()`'s own consequence composes
+	 * from, not a second sentence invented here) ride along:
+	 * `pinned to 0afab6f, and Business Hours Only reopens in 11h 19m`.
 	 */
 	function heldWord(gates: ClassifiedGate[]): string {
-		return gates.length === 1 ? 'Held by a gate' : `Held by ${gates.length} gates`;
+		if (blockStory.pinnedTo) {
+			const pinClause = `pinned to ${blockStory.pinnedToDisplay}`;
+			const reopeners = gates
+				.filter((g) => g.clears === 'clock' && g.subject && g.predicate && g.clearsAt)
+				.map((g) => {
+					const until = formatTimeUntil(g.clearsAt!, $now);
+					return until ? `${g.subject} ${g.predicate} ${until}` : null;
+				})
+				.filter((s): s is string => s !== null);
+			return reopeners.length > 0 ? joinClauses([pinClause, ...reopeners]) : pinClause;
+		}
+		return gates.length === 1 ? 'by a gate' : `by ${gates.length} gates`;
 	}
 
 	/**
@@ -770,9 +797,16 @@
 	 * uses, and the same refusal to invent: an `unknown` gate says we cannot
 	 * tell rather than naming a remedy, and a `clock` gate carries its real
 	 * time or no time at all.
+	 *
+	 * ⛔ A PIN OUTRANKS EVERY GATE HERE TOO. Without this, a pinned candidate
+	 * whose only listed gate is a clock one said `This clears on its own` —
+	 * true of the GATE, false of the CANDIDATE, which will not deploy
+	 * automatically no matter what the clock does until the pin is cleared.
 	 */
 	function heldClears(gates: ClassifiedGate[]): string {
 		if (gates.length === 0) return '';
+		if (blockStory.pinnedTo)
+			return 'Clearing the pin is what lets this deploy automatically — the gates below may also still apply.';
 		if (gates.some((g) => g.clears === 'unknown'))
 			return 'This dashboard cannot tell what clears this — it may or may not need a person.';
 		if (gates.some((g) => g.clears === 'person')) return 'This will not clear on its own.';
@@ -786,6 +820,7 @@
 
 	/** The popover title: the fact the chip states, spelled out. */
 	function heldTitle(gates: ClassifiedGate[]): string {
+		if (blockStory.pinnedTo) return `Pinned to ${blockStory.pinnedToDisplay}`;
 		const kinds: string[] = [];
 		if (gates.some((g) => g.clears === 'person')) kinds.push('an approval');
 		if (gates.some((g) => g.clears === 'unknown')) kinds.push('a rule we cannot attribute');
@@ -1640,14 +1675,88 @@
 				     if it were the only one. The panel below covers the case
 				     `ScheduleStatus` cannot see at all — held by an approval or by
 				     an upstream deploy, with no schedule involved — which is
-				     precisely where this page used to render nothing. -->
+				     precisely where this page used to render nothing.
+
+				     ⛔ THIS WAS THREE PANELS FOR ONE FACT, AND `ScheduleStatus`
+				     WAS THE HIDDEN SECOND SOURCE. (2026-09-03, operator-walk
+				     finding) Pinning `hello-world-app/dev` (through the UI, with a
+				     rollback in its history) rendered: `ScheduleStatus`'s own
+				     AlertPanel (blue, `story.headline`/`story.consequence` — it
+				     defers its WORDS to `story` once blocked, per the note above,
+				     but its RENDER CONDITION is still its own `isBlocked`, derived
+				     from the raw schedule fetch, not from `story`), then this
+				     page's own `<BlockingStoryPanel>` rendering the BYTE-IDENTICAL
+				     headline and consequence in `pinned` orange, then a THIRD
+				     panel below for the rollback (`rollbackWent`/`rollbackNext`,
+				     which already states the pin's consequence in its own words —
+				     `truth.test.ts` pins the exact sentence: *"Went back N
+				     release(s), X → Y, and pinned there. Nothing moves off Y
+				     until the pin is cleared."*). `blockingStory()`'s pin branch
+				     spreads `...NOT_BLOCKED` and never populates `clock`, so
+				     `blockStory.clock.length === 0` is true whenever pinned —
+				     which is exactly the signal this page used to decide
+				     `ScheduleStatus` wasn't already covering it, and exactly why
+				     it was wrong the one time a pin was also present.
+
+				     THE FIX IS TWO PARTS. `ScheduleStatus` no longer renders its
+				     own banner when `story?.pinnedTo` is set (see its own note) —
+				     a pin outranks every gate, including a schedule, so that
+				     leaves at most ONE of {this page's `BlockingStoryPanel`, the
+				     `Rolled back` panel below}. And this panel does not render AT
+				     ALL when `rolledBack` — not because its words are wrong, but
+				     because the `Rolled back` panel already states the SAME pin
+				     consequence in its own tested sentence, so drawing this one
+				     too would be the identical duplicate one level down. -->
 				<ScheduleStatus
 					{rollout}
 					{cluster}
 					story={blockStory}
 					onSchedules={(s) => (scheduleObjects = s)}
 				/>
-				{#if blockStory.blocked && blockStory.clock.length === 0}
+				{#if blockStory.pinnedTo}
+					<!--
+						⛔ THIS WAS `{#if pinnedTo && !rolledBack} … {:else if
+						blocked && clock.length === 0} …` — TWO BRANCHES THAT
+						CAN BOTH BE TRUE AT ONCE. (2026-09-03, operator-walk
+						finding, caught live while verifying the fix) A pinned
+						AND rolled-back rollout has `blocked: true` (a newer
+						build exists) and `clock: []` (the pin branch never
+						populates it), so when the first branch's `!rolledBack`
+						made it fall through, the `{:else if}` fired anyway and
+						rendered the SAME `BlockingStoryPanel` a second time —
+						the exact duplicate this pass exists to remove, just
+						moved one branch over. Verified on the live cluster:
+						pinning `hello-world-app/dev` with a rollback in its
+						history rendered `DEV is pinned to 0afab6f` (this
+						panel) directly above `Rolled back / Went back 1
+						release, 064b655 → 0afab6f, and pinned there.` (the
+						panel below) — both true, both about the pin. Nesting
+						the `rolledBack` check INSIDE the `pinnedTo` branch,
+						rather than beside it, is what makes "pinned" and "not
+						pinned" mutually exclusive with "rolled back" or not.
+					-->
+					{#if !rolledBack}
+						<!-- `Clear pin` rides on the banner now, not only the
+						     compact one further down the page — it is the one
+						     control that actually resolves the fact this
+						     banner states. -->
+						{#snippet clearPinAction()}
+							{#if canModify}
+								<button
+									type="button"
+									class="btn btn-secondary"
+									disabled={!isDashboardManagingWantedVersion}
+									onclick={() => {
+										showClearPinModal = true;
+									}}
+								>
+									Clear pin
+								</button>
+							{/if}
+						{/snippet}
+						<BlockingStoryPanel story={blockStory} actions={clearPinAction} />
+					{/if}
+				{:else if blockStory.blocked && blockStory.clock.length === 0}
 					<BlockingStoryPanel story={blockStory} />
 				{/if}
 
@@ -1857,35 +1966,20 @@
 						message={rollbackWent(rolledBack, autoDeploy)}
 						footnoteBody={rollbackDetail}
 					/>
-				{:else if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
-					{@const trig = latestEntry?.triggeredBy}
-					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
-					{@const pinnedTo =
-						displayVersionForTag(rollout, rollout.spec.wantedVersion) || rollout.spec.wantedVersion}
-					<!-- ⭐ SAME SPLIT AS THE ROLLBACK ABOVE. `Pinned by
-					     admin@example.com · Automatic deployments resume as soon as
-					     the pin is cleared.` is an ACTOR and a PROMISE joined by a
-					     middle dot — and with no actor it degraded to the bare word
-					     `Pinned ·`, a field name with nothing after it. The promise
-					     is the sentence; the actor is a field and only exists when
-					     the controller recorded one. -->
-					{#snippet pinDetail()}
-						<p class="break-words">Automatic deployments resume as soon as the pin is cleared.</p>
-						{#if author}
-							<FactList
-								class="mt-2"
-								tone="banner"
-								facts={[{ label: 'Pinned by', value: author, handle: true }]}
-							/>
-						{/if}
-					{/snippet}
-					<AlertPanel
-						severity="pinned"
-						title="Version pinned"
-						message="Held on {pinnedTo} — no newer build will deploy here while the pin is set."
-						footnoteBody={pinDetail}
-					/>
 				{/if}
+				<!-- ⛔ THE `Version pinned` BANNER THAT USED TO SIT IN THE
+				     `{:else if rollout.spec?.wantedVersion && !isPinnedVersionCustom}`
+				     BRANCH HERE IS GONE. (2026-09-03, operator-walk finding) It read
+				     `rollout.spec.wantedVersion` directly — the SAME source
+				     `blockStory.pinnedTo` reads — so it was a second, independently-
+				     worded rendering of the exact fact the pin-aware branch above
+				     (`{#if blockStory.pinnedTo}`, by the `ScheduleStatus` call)
+				     already covers for every pin state, blocked or not
+				     (`BlockingStoryPanel`'s own guard is `story.pinnedTo ||
+				     story.blocked`). It also claimed "no newer build will deploy"
+				     unconditionally, which was false whenever a candidate WAS
+				     available — `blockStory.consequence` already branches on
+				     `candidateCount`. -->
 
 				<!--
 					⭐ F4: THE RAIL FLIPS ON A CONTAINER QUERY NOW, NOT `lg`.
@@ -2401,7 +2495,7 @@
 															     separate template (not shared markup) and still needs
 															     the same fix — flagged to the graph lane. -->
 															<Chip role="held" label="held" />
-															<span class="text-gray-500 dark:text-gray-400">{heldWord(held).replace(/^Held /, '')}</span>
+															<span class="text-gray-500 dark:text-gray-400">{heldWord(held)}</span>
 															<QuestionCircleOutline class="h-3 w-3 text-gray-500 dark:text-gray-400" aria-hidden="true" />
 														</button>
 														<Popover class="max-w-sm text-sm" title={heldTitle(held)}>

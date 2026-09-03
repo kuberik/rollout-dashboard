@@ -355,7 +355,28 @@
 		</p>
 	{/if}
 {:else if !loading && !error && allSchedules.length > 0}
-	{#if isBlocked}
+	<!--
+		⛔ `isBlocked` ALONE WAS THE HIDDEN SECOND SOURCE OF THE PINNED BANNER.
+		(2026-09-03, operator-walk finding) This branch decides whether to
+		render its OWN `AlertPanel` from `isBlocked` — a value computed purely
+		from this component's own raw schedule fetch, independent of `story`.
+		Once blocked it borrows `story`'s WORDS (see the branch below), but
+		never asked whether the CALLER was already going to render a banner
+		for that same `story`. `blockingStory()`'s pin branch is a short-circuit
+		that spreads `...NOT_BLOCKED` and never reaches the gate-classification
+		code that populates `clock` — so a pinned rollout always has
+		`story.clock.length === 0`, which is precisely the signal rollout
+		detail used to decide THIS component wasn't already covering the
+		gate. Pinning `hello-world-app/dev` rendered this banner (blue,
+		`story.headline`/`story.consequence`, a `1 schedule` chip that no
+		longer matched the sentence above it once that sentence stopped being
+		about the schedule) AND the page's own `<BlockingStoryPanel>` with the
+		BYTE-IDENTICAL headline and consequence, one panel apart. A pin
+		outranks every gate including a schedule (`blocking-story.ts`'s own
+		comment), so the ONE banner for a pinned rollout is the caller's, not
+		this popover's — `!story?.pinnedTo` is the guard.
+	-->
+	{#if isBlocked && !story?.pinnedTo}
 		<!--
 			⛔ THIS BANNER USED TO SAY SOMETHING FALSE, AND IT WAS FALSE FOR
 			EXACTLY THE ACTION THE READER WAS ABOUT TO TAKE.
