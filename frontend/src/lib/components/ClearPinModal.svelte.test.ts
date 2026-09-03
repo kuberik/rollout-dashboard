@@ -89,13 +89,30 @@ describe('defect 2 — Clear Version Pin names the environment it acts on', () =
 	});
 
 	test('a spoke cluster name rides along, for the ambiguous case', () => {
-		render(ClearPinModal, { open: true, rollout: devRollout(), cluster: 'dev' });
+		// A genuinely different cluster from the environment word — the case
+		// the suffix exists for.
+		render(ClearPinModal, { open: true, rollout: devRollout(), cluster: 'eu-spoke-1' });
 
-		expect(screen.getByText(/on the dev cluster/)).toBeInTheDocument();
+		expect(screen.getByText(/on the eu-spoke-1 cluster/)).toBeInTheDocument();
 	});
 
 	test('no cluster prop: no cluster clause at all — the hub is unambiguous on its own', () => {
 		render(ClearPinModal, { open: true, rollout: devRollout() });
+
+		expect(screen.queryByText(/on the .* cluster/)).not.toBeInTheDocument();
+	});
+
+	test('cluster equal to the environment word, same case: no stutter', () => {
+		// ⭐ THE COORDINATOR'S RESIDUE. (2026-09-03) `devRollout()` is
+		// `environment: 'dev'`; a cluster ALSO literally named `dev`
+		// disambiguates nothing and must not repeat the environment word.
+		render(ClearPinModal, { open: true, rollout: devRollout(), cluster: 'dev' });
+
+		expect(screen.queryByText(/on the .* cluster/)).not.toBeInTheDocument();
+	});
+
+	test('cluster equal to the environment word, different case: still no stutter', () => {
+		render(ClearPinModal, { open: true, rollout: devRollout(), cluster: 'DEV' });
 
 		expect(screen.queryByText(/on the .* cluster/)).not.toBeInTheDocument();
 	});

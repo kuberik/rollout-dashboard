@@ -179,6 +179,19 @@
 	 * can mean two different clusters.
 	 */
 	const envLabel = $derived(rolloutEnvironmentName(rollout, environmentName).toUpperCase());
+	/**
+	 * ⛔ NOT WHEN IT REPEATS THE ENVIRONMENT. (coordinator residue,
+	 * 2026-09-03) On the prod rollout `cluster` is also literally `"prod"`
+	 * (this cluster's own name), so the naive "cluster ? show : don't" this
+	 * mirrored from `ClearPinModal` printed `PROD · PROD` — the suffix
+	 * added nothing a reader didn't already have. It earns its place only
+	 * when it says something `envLabel` does not: a DIFFERENT string,
+	 * case-insensitively (`cluster` and the environment label are never in
+	 * the same case).
+	 */
+	const clusterLabel = $derived(
+		cluster && cluster.toLowerCase() !== envLabel.toLowerCase() ? cluster : null
+	);
 	// Display form (semver/revision) of the currently-deployed version, so the
 	// delta summary reads consistently with the picked side rather than dumping
 	// the raw OCI tag.
@@ -652,7 +665,7 @@
 				<span
 					class="shrink-0 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400"
 				>
-					{envLabel}{cluster ? ` · ${cluster}` : ''}
+					{envLabel}{clusterLabel ? ` · ${clusterLabel}` : ''}
 				</span>
 			{/if}
 			<div class="flex-1"></div>

@@ -86,10 +86,16 @@
 	// `DEV`, `STAGING`, `PROD` — the product's own case for an environment
 	// tier, matched to the `[DEV]` chips this rollout appears under elsewhere.
 	const envLabel = $derived(rolloutEnvironmentName(rollout, environmentName).toUpperCase());
-	// A cluster name is only worth saying when it disambiguates something —
-	// the environment word alone is enough on a single-cluster dashboard, and
-	// repeating "dev" right after "DEV" would read as a stutter, not a fact.
-	const clusterSuffix = $derived(cluster ? ` on the ${cluster} cluster` : '');
+	// ⛔ THE COMMENT ABOVE PROMISED THIS AND THE CODE DID NOT DO IT.
+	// (coordinator residue, 2026-09-03) `cluster ? … : ''` said it aloud
+	// whenever the prop was merely present, so the prod rollout — whose
+	// cluster is itself named "prod" — read "in PROD on the prod cluster",
+	// the exact stutter this comment already said to avoid. Comparing
+	// case-insensitively against `envLabel` is what actually disambiguates:
+	// `cluster` and the environment word are never spelled in the same case.
+	const clusterSuffix = $derived(
+		cluster && cluster.toLowerCase() !== envLabel.toLowerCase() ? ` on the ${cluster} cluster` : ''
+	);
 	const clearPinTitle = $derived(
 		rollout?.metadata?.name && envLabel
 			? `Remove the pin on ${rollout.metadata.name} in ${envLabel}?`
