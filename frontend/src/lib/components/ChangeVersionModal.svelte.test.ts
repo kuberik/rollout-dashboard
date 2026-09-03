@@ -287,7 +287,7 @@ describe('defect 5 — rollback direction copy (locked)', () => {
 	 * ${version}."`) instead of a switch nobody can operate. See
 	 * `ChangeVersionModal.svelte`'s own note beside the toggle.
 	 */
-	test('rolling back shows "Rollback", "Commits reverted", the pin stated as a sentence, and the older-code consequence sentence', async () => {
+	test('rolling back shows "Rollback", "Commits to revert", the pin stated as a sentence, and the older-code consequence sentence', async () => {
 		const rollout = rolloutFixture({
 			metadata: { name: 'hello-world-app', namespace: 'hello-world-prod', labels: { environment: 'prod' } },
 			status: {
@@ -311,7 +311,7 @@ describe('defect 5 — rollback direction copy (locked)', () => {
 		expect(screen.getAllByText('0afab6f').length).toBeGreaterThan(0);
 
 		// Changelist heading.
-		expect(screen.getByText('Commits reverted')).toBeInTheDocument();
+		expect(screen.getByText('Commits to revert')).toBeInTheDocument();
 
 		// Pin Version: stated as a fact, not offered as a switch.
 		expect(screen.getByText('Pin Version')).toBeInTheDocument();
