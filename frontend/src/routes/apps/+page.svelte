@@ -1543,7 +1543,7 @@
 	<title>kuberik | Apps</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="apps-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!-- ══ PAGE HEADER — THE ROLLUP, NOT THE SECTION NAME ═══════════════════
 	     ⛔ THE VISIBLE `Apps` TITLE IS GONE. (2026-09-01, from the human:
 	     *"i think i don't like that we have a title on the page when it's
@@ -1807,10 +1807,19 @@
 
 		     ⚠️ IF THE PAGE'S MAX WIDTH OR THE 720px CONTAINER QUERY MOVES, THIS
 		     PAIR IS WRONG. Re-derive it; do not nudge it. -->
-		<div
-			class="min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_320px] min-[1440px]:items-start min-[1440px]:gap-6"
-		>
-			<div class="mb-4 flex min-w-0 flex-col gap-4 min-[1440px]:mb-0">
+		<!-- ⛔ SUPERSEDED 2026-09-03 — THE SPLIT IS A CONTAINER QUERY, LIKE
+		     `/envs/<name>`'s, NOT A VIEWPORT BREAKPOINT. From the human: *"why is
+		     the app page the only one that doesn't have multi column layout …
+		     these components on other pages are on the side."* `min-[1440px]`
+		     asked the VIEWPORT, so with the sidebar collapsed to 64px a 1300px
+		     window had 1188px of content — room for the rail with 100px to
+		     spare — and stacked anyway, while /envs/<name> and /apps/<name>
+		     beside it split. The arithmetic above still holds; it is applied to
+		     the page's own content box now: rail beside the list once the box
+		     is ≥ 720 (the list's own desktop query) + 16 (gap) + 320 (rail) =
+		     1056px, whatever the sidebar is doing. See `.apps-split` below. -->
+		<div class="apps-split">
+			<div class="apps-split-main mb-4 flex min-w-0 flex-col gap-4">
 				<!-- ══ NEEDS ATTENTION ════════════════════════════════════════════
 			     MEMBERSHIP OF THIS CARD IS THE MARK. The row inside it is
 			     byte-identical to a row in the card below — no band, no second
@@ -2762,6 +2771,29 @@
 		}
 		.ra-wide {
 			display: revert;
+		}
+	}
+
+	/* ── THE RAIL SPLIT, BY CONTAINER (2026-09-03) ────────────────────────
+	   `.apps-cq` is the page's content container; `.apps-split` puts the
+	   320px rail beside the list once that container is ≥ 1056px — the
+	   list's own 720px desktop query, plus a 16px gap, plus the rail. Same
+	   device as `/envs/<name>`'s `.env-split` at 1050. Below it the rail
+	   stacks under the list at full width, unchanged. */
+	.apps-cq {
+		container-type: inline-size;
+	}
+
+	@container (min-width: 1056px) {
+		.apps-split {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) 320px;
+			align-items: start;
+			column-gap: 1rem;
+		}
+
+		.apps-split-main {
+			margin-bottom: 0;
 		}
 	}
 </style>
