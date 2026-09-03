@@ -435,17 +435,22 @@
 		}[status];
 	}
 
+	/**
+	 * ⛔ THE STEP LABEL IS THE CHIP ATOM. (2026-09-03, from the human: "typography
+	 * on these badges looks weird.") The type census had moved these pills to
+	 * `t-label` — Montserrat 10/600 at 0.16em tracking — inside a rounded-full
+	 * ring, which is the eyebrow role wearing a badge's clothes. A state word in
+	 * a box is what `.chip` is for: mono 10/600 uppercase at 0.08em, 20px, 4px
+	 * radius, 1px border. Only ink changes per state; the border stays neutral
+	 * and nothing fills — the alarm chip is the only fill in the product.
+	 */
 	function pillClasses(status: NodeStatus): string {
 		return {
-			done: 'bg-green-50 text-green-700 ring-green-200 dark:bg-green-900/30 dark:text-green-300 dark:ring-green-800/60',
-			running:
-				'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800/60',
-			paused:
-				'bg-yellow-50 text-yellow-700 ring-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:ring-yellow-800/60',
-			failed:
-				'bg-red-50 text-red-700 ring-red-200 dark:bg-red-900/30 dark:text-red-300 dark:ring-red-800/60',
-			pending:
-				'bg-gray-50 text-gray-600 ring-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700'
+			done: 'border-gray-200 text-green-700 dark:border-gray-700 dark:text-green-400',
+			running: 'border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400',
+			paused: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400',
+			failed: 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400',
+			pending: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
 		}[status];
 	}
 
@@ -680,7 +685,7 @@
 					{/if}
 				</div>
 				<span
-					class="t-label inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 ring-1 ring-inset {pillClasses(
+					class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
 						node.status
 					)}"
 				>
@@ -718,7 +723,7 @@
 				{/if}
 			</span>
 			<span
-				class="inline-flex flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset {pillClasses(
+				class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
 					status
 				)}"
 			>
@@ -915,7 +920,7 @@
 					</span>
 				{/if}
 				<span
-					class="t-label inline-flex items-center rounded-full px-2.5 py-0.5 ring-1 ring-inset {pillClasses(
+					class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
 						node.status
 					)}"
 				>
@@ -1333,7 +1338,7 @@
 								{/if}
 							</div>
 							<span
-								class="t-label inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 ring-1 ring-inset {pillClasses(
+								class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
 									node.status
 								)}"
 							>
