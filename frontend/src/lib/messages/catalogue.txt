@@ -129,9 +129,9 @@ lib/components/ChangeVersionModal.svelte	code	Rolling back…
 lib/components/ChangeVersionModal.svelte	placeholder	Search versions...
 lib/components/ChangeVersionModal.svelte	text	Show all repo tags
 lib/components/ChangeVersionModal.svelte	code	Successfully pinned and deployed version
-lib/components/ChangeVersionModal.svelte	code	Why are you deploying this version? (optional)
+lib/components/ChangeVersionModal.svelte	code	Why are you deploying this version?
 lib/components/ChangeVersionModal.svelte	code	Why are you overriding the rules?
-lib/components/ChangeVersionModal.svelte	code	Why are you rolling back? (recommended)
+lib/components/ChangeVersionModal.svelte	code	Why are you rolling back?
 lib/components/Chip.svelte	code	— see the note above
 lib/components/Chip.svelte	code	, 14). This one will truncate. Either shorten the ' + 'word or pass
 lib/components/Chip.svelte	code	, not on the chip half, so it ' + 'silently does nothing. Use the
@@ -226,7 +226,6 @@ lib/components/FailurePanel.svelte	title	Deployment Failed
 lib/components/FailurePanel.svelte	text	Disabled: wantedVersion managed externally.
 lib/components/FailurePanel.svelte	text	Reset health checks and failed tests, then retry the deployment.
 lib/components/FailurePanel.svelte	text	Revert to the previous version. …
-lib/components/FailurePanel.svelte	code	Rollback from … to … due to issues with the current deployment.
 lib/components/FleetSpread.svelte	title	… in … — …
 lib/components/FleetSpread.svelte	title	… in … is stuck
 lib/components/GateRecord.svelte	code	deploy window
@@ -816,7 +815,6 @@ routes/apps/[name]/+page.svelte	title	Promotion pipeline
 routes/apps/[name]/+page.svelte	title	Recent activity
 routes/apps/[name]/+page.svelte	code	Released …
 routes/apps/[name]/+page.svelte	text	resources reference
-routes/apps/[name]/+page.svelte	code	Rollback from … to … due to issues with the current deployment.
 routes/apps/[name]/+page.svelte	title	Running a version that is on no environment's release list
 routes/apps/[name]/+page.svelte	text	See what's waiting
 routes/apps/[name]/+page.svelte	code	ship … …

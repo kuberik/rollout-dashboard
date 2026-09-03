@@ -525,7 +525,7 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		});
 	}
 
-	const NOTE_PLACEHOLDER = 'Why are you rolling back? (recommended)';
+	const NOTE_PLACEHOLDER = 'Why are you rolling back? (required)';
 
 	test('P5 — the note is required for a rollback and gates the confirm until filled', async () => {
 		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
@@ -546,7 +546,7 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		renderModal({ rollout: rolloutFixture(), initialSelectedVersion: 'rel-67' });
 		await screen.findByRole('button', { name: /Deploy to production/i });
 		expect(
-			screen.getByPlaceholderText('Why are you overriding the rules?')
+			screen.getByPlaceholderText('Why are you overriding the rules? (required)')
 		).toBeInTheDocument();
 	});
 
