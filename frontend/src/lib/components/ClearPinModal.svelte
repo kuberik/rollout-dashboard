@@ -28,7 +28,11 @@
 	import { Modal, Button, Toast } from 'flowbite-svelte';
 	import { LockOpenOutline, ExclamationCircleSolid } from 'flowbite-svelte-icons';
 	import type { Rollout } from '../../types';
-	import { autoDeployState, clearPinOutcome, type AutoDeployState } from '$lib/view-models/auto-deploy';
+	import {
+		autoDeployState,
+		clearPinOutcome,
+		type AutoDeployState
+	} from '$lib/view-models/auto-deploy';
 	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
 	import { isFieldManagedByManager, isFieldManagedByOtherManager } from '$lib/utils';
 	import { announce } from '$lib/stores/announce.svelte';
@@ -171,7 +175,16 @@
 	}
 </script>
 
-<Modal bind:open title={clearPinTitle}>
+<!-- ⛔ NO `role`/`aria-modal`/LABELLED TITLE ANYWHERE IN THIS PRODUCT'S
+     MODALS. (operator walk, 2026-09-03) flowbite's `Dialog` sets neither on
+     the native `<dialog>` element and relies on implicit semantics that a
+     live accessibility check did not observe — every open dialog's computed
+     role came back `group`/`alert`/`status`, never `dialog`. `role="dialog"`
+     and `aria-modal="true"` flow through `restProps` straight onto the
+     `<dialog>`. `title` alone renders flowbite's own `<h3>`, which has no
+     `id` for `aria-labelledby` to point at — `aria-label` gives the dialog
+     an accessible name directly, without needing one. -->
+<Modal bind:open title={clearPinTitle} role="dialog" aria-modal="true" aria-label={clearPinTitle}>
 	<div class="space-y-4">
 		<p class="text-sm text-gray-600 dark:text-gray-400">
 			<!-- ⛔ THIS USED TO NAME NO ENVIRONMENT, ON A PAGE LISTING THREE OF

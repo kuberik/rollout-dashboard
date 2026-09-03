@@ -62,7 +62,7 @@ function devRollout(over: Record<string, unknown> = {}): Rollout {
 }
 
 describe('defect 2 — Clear Version Pin names the environment it acts on', () => {
-	test('title and body both name the environment, in the product\'s own case', () => {
+	test("title and body both name the environment, in the product's own case", () => {
 		render(ClearPinModal, { open: true, rollout: devRollout() });
 
 		// The title — a reader deciding whether to press has the answer before
@@ -76,7 +76,11 @@ describe('defect 2 — Clear Version Pin names the environment it acts on', () =
 		render(ClearPinModal, {
 			open: true,
 			rollout: devRollout({
-				metadata: { name: 'hello-world-app', namespace: 'hello-world-prod', labels: { environment: 'prod' } }
+				metadata: {
+					name: 'hello-world-app',
+					namespace: 'hello-world-prod',
+					labels: { environment: 'prod' }
+				}
 			})
 		});
 
@@ -94,5 +98,31 @@ describe('defect 2 — Clear Version Pin names the environment it acts on', () =
 		render(ClearPinModal, { open: true, rollout: devRollout() });
 
 		expect(screen.queryByText(/on the .* cluster/)).not.toBeInTheDocument();
+	});
+});
+
+/**
+ * ⭐ NO MODAL IN THIS PRODUCT HAD `role="dialog"`/`aria-modal`/A LABELLED
+ * TITLE. (operator walk, 2026-09-03) flowbite's `Dialog` renders a native
+ * `<dialog>` with neither attribute, and a live accessibility check found
+ * every open dialog's computed role coming back `group`/`alert`/`status` —
+ * never `dialog`. This is the one assertion `ChangeVersionModal`'s own test
+ * cannot make for every modal in the product; each dialog gets it locked
+ * here so the underlying `<Modal role="dialog" aria-modal="true">` cannot
+ * quietly drop back to relying on implicit semantics.
+ */
+describe('the dialog has role="dialog", aria-modal and a labelled name', () => {
+	test('role, aria-modal and an accessible name are all present on the open dialog', () => {
+		render(ClearPinModal, { open: true, rollout: devRollout() });
+
+		const dialog = document.querySelector('dialog');
+		expect(dialog, 'no <dialog> rendered').not.toBeNull();
+		expect(dialog?.getAttribute('role')).toBe('dialog');
+		expect(dialog?.getAttribute('aria-modal')).toBe('true');
+		// `title` renders flowbite's own `<h3>`, which has no `id` for
+		// `aria-labelledby` to reference — `aria-label` gives the dialog an
+		// accessible name directly, and it is the same words the visible
+		// `<h3>` shows, verbatim.
+		expect(dialog?.getAttribute('aria-label')).toBe('Remove the pin on hello-world-app in DEV?');
 	});
 });

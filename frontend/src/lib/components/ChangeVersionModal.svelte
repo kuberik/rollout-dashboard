@@ -25,13 +25,17 @@
 		deployActionLabel,
 		deployIntent,
 		releaseIndex,
+		rolloutEnvironmentName,
 		typedPrompt
 	} from '$lib/view-models/deploy-risk';
 	import { promotionBlock, gateAllows } from '$lib/view-models/promotion';
+	import { requirementsChangedSentence } from '$lib/view-models/release-delta';
 	import {
 		commitsQueryOptions,
 		formatCommitMessage,
-		connectGithub,
+		connectGithubInNewTab,
+		fetchGithubStatus,
+		githubStatusQueryKey,
 		FetchCommitsError,
 		type CommitsError
 	} from '$lib/api/github';
@@ -130,7 +134,9 @@
 
 	async function loadOverrideContext(namespace: string) {
 		try {
-			const response = await fetch(apiUrl(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`));
+			const response = await fetch(
+				apiUrl(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`)
+			);
 			if (!response.ok) return;
 			const data = await response.json();
 			overrideEnvironments = data?.environments?.items ?? [];
@@ -163,6 +169,16 @@
 
 	const availableReleases = $derived(rollout?.status?.availableReleases ?? []);
 	const currentTag = $derived(rollout?.status?.history?.[0]?.version?.tag ?? null);
+	/**
+	 * ⭐ THE TITLE NAMES WHERE THIS LANDS. (operator walk, 2026-09-03)
+	 * `Change Version / hello-world-app` said nothing about WHICH
+	 * `hello-world-app` — the same header renders for every environment this
+	 * app runs in. `rolloutEnvironmentName` is the same derivation
+	 * `ClearPinModal`'s title already uses; `cluster` only prints when this
+	 * rollout lives on a spoke, which is the one case one environment name
+	 * can mean two different clusters.
+	 */
+	const envLabel = $derived(rolloutEnvironmentName(rollout, environmentName).toUpperCase());
 	// Display form (semver/revision) of the currently-deployed version, so the
 	// delta summary reads consistently with the picked side rather than dumping
 	// the raw OCI tag.
@@ -276,11 +292,18 @@
 	}
 
 	// --- Direction + changelist -------------------------------------------
-	const selectedRelease = $derived(availableReleases.find((r) => r.tag === selectedVersion) ?? null);
-	const selectedRevision = $derived(
-		selectedRelease?.revision || annotations[selectedVersion ?? '']?.['org.opencontainers.image.revision'] || null
+	const selectedRelease = $derived(
+		availableReleases.find((r) => r.tag === selectedVersion) ?? null
 	);
-
+	// The currently-deployed release's own `VersionInfo` — the OTHER half
+	// `requirementsChangedSentence` needs. Separate from `currentTag` (a bare
+	// string): this is the object `releaseRequires` reads `requires` off.
+	const currentRelease = $derived(availableReleases.find((r) => r.tag === currentTag) ?? null);
+	const selectedRevision = $derived(
+		selectedRelease?.revision ||
+			annotations[selectedVersion ?? '']?.['org.opencontainers.image.revision'] ||
+			null
+	);
 
 	/**
 	 * DIRECTION, TARGET AND VOUCHING — one object, computed in
@@ -326,6 +349,25 @@
 	const commitsError = $derived<CommitsError | null>(
 		commitsQuery.error instanceof FetchCommitsError ? commitsQuery.error.reason : null
 	);
+
+	/**
+	 * ⭐ NEVER OFFER `Connect GitHub` WITHOUT KNOWING IT WILL WORK. (operator
+	 * walk, 2026-09-03) `commitsError === 'not_connected'` fires identically
+	 * whether the SERVER has no GitHub App configured at all, or the SERVER
+	 * is configured and this one person just hasn't linked their account —
+	 * `fetchCommits` cannot tell those apart from a 401 alone. Pressing
+	 * `Connect GitHub` in the first case took a live reader to a 503
+	 * (`GitHub integration not configured`), raw JSON, no chrome. This is
+	 * the same status query `GithubConnectButton` (navbar) and `ChangeList`
+	 * (`/activity`) already use — same query key, so it is usually already
+	 * cached and this costs nothing extra.
+	 */
+	const githubStatusQuery = createQuery(() => ({
+		queryKey: githubStatusQueryKey,
+		queryFn: fetchGithubStatus,
+		staleTime: 60_000,
+		refetchInterval: false as const
+	}));
 
 	const supportsManifestDiff = $derived(
 		rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'
@@ -428,7 +470,11 @@
 		void loadOverrideContext(namespace);
 	});
 
-	function overrideFact(gateName: string | undefined, tag: string, namespace: string | undefined): Fact {
+	function overrideFact(
+		gateName: string | undefined,
+		tag: string,
+		namespace: string | undefined
+	): Fact {
 		if (!gateName) return { label: 'a rule', value: 'currently does not allow this build' };
 		const dep = overrideDependencies.find(
 			(d) => d.metadata?.namespace === namespace && d.status?.gateName === gateName
@@ -442,7 +488,9 @@
 			const needClause = need ? `needs ${contract} ${need}` : `needs a newer ${contract}`;
 			return {
 				label: dep.metadata?.name ?? gateName,
-				value: have ? `${needClause}, ${provider} serves ${have}` : `${needClause} — ${provider} has not shipped it`
+				value: have
+					? `${needClause}, ${provider} serves ${have}`
+					: `${needClause} — ${provider} has not shipped it`
 			};
 		}
 		const env = overrideEnvironments.find(
@@ -476,7 +524,9 @@
 
 	const mustPin = $derived(isPinVersionMode || direction === 'rollback' || intent.custom);
 	const pinVersionToggleComputed = $derived(mustPin || rollout?.spec?.wantedVersion !== undefined);
-	const isPinVersionToggleDisabled = $derived(mustPin || hasForceDeployAnnotation(rollout ?? undefined));
+	const isPinVersionToggleDisabled = $derived(
+		mustPin || hasForceDeployAnnotation(rollout ?? undefined)
+	);
 
 	$effect(() => {
 		pinVersionToggle = pinVersionToggleComputed;
@@ -571,6 +621,8 @@
 	bind:open
 	title=""
 	size="none"
+	role="dialog"
+	aria-modal="true"
 	class="[&>div]:p-0 {selectedVersion ? 'max-w-4xl' : 'max-w-md'}"
 	aria-labelledby="cvm-title"
 >
@@ -578,14 +630,30 @@
 		<!-- Header. pr-14 reserves space for the modal's floating close (✕) in the
 		     top-right corner so the right-aligned mobile Back button clears it. -->
 		<div
-			class="flex shrink-0 items-center gap-2 border-b border-gray-200 py-4 pl-5 pr-14 dark:border-gray-700"
+			class="flex shrink-0 items-center gap-2 border-b border-gray-200 py-4 pr-14 pl-5 dark:border-gray-700"
 		>
 			<h2 id="cvm-title" class="text-base font-semibold text-gray-900 dark:text-white">
 				Change Version
 			</h2>
 			{#if rollout?.metadata?.name}
 				<span class="text-gray-500 dark:text-gray-400">/</span>
-				<code class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">{rollout.metadata.name}</code>
+				<code class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400"
+					>{rollout.metadata.name}</code
+				>
+			{/if}
+			{#if envLabel}
+				<!-- ⭐ NAMES WHERE THIS LANDS. (operator walk, 2026-09-03) The crumb
+				     said `Change Version / hello-world-app` on a page listing this
+				     app in three environments, with nothing above it naming which
+				     one this dialog acts on. `cluster` only prints when this
+				     rollout lives on a spoke — the one case one environment word
+				     is ambiguous. -->
+				<span class="text-gray-500 dark:text-gray-400" aria-hidden="true">·</span>
+				<span
+					class="shrink-0 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400"
+				>
+					{envLabel}{cluster ? ` · ${cluster}` : ''}
+				</span>
 			{/if}
 			<div class="flex-1"></div>
 			{#if selectedVersion}
@@ -620,10 +688,19 @@
 						<span id="cvm-showall-label" class="text-xs text-gray-500 dark:text-gray-400"
 							>Show all repo tags</span
 						>
+						<!-- ⛔ NOT BLUE. (operator walk, 2026-09-03) `src/lib/CLAUDE.md`'s
+						     rule: a selected toggle is gray-900/gray-100, always — blue
+						     is `Deploying`'s colour and this switch deploys nothing.
+						     `color="gray"` only neutralises the focus ring
+						     (flowbite's `gray` variant checks in at `gray-500`, not
+						     `gray-900`); the checked fill is overridden to match every
+						     other toggle in the product (`LogsViewer`'s `Follow`/`Wrap`,
+						     the History tab's `Compare namespace`/`Show environments`). -->
 						<Toggle
 							bind:checked={showAllTags}
 							size="small"
-							color="blue"
+							color="gray"
+							classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
 							aria-labelledby="cvm-showall-label"
 							onchange={() => {
 								if (showAllTags && allRepositoryTags.length === 0) getAllRepositoryTags();
@@ -726,10 +803,8 @@
 								{#if direction === 'rollback'}
 									<ReplyOutline class="h-4 w-4 text-amber-600 dark:text-amber-400" />
 									<span class="text-amber-700 dark:text-amber-400">
-										Rollback{#if commitsQuery.data}&nbsp;— reverts {commitsQuery.data.commits.length} commit{commitsQuery
-												.data.commits.length !== 1
-												? 's'
-												: ''}{/if}
+										Rollback{#if commitsQuery.data}&nbsp;— reverts {commitsQuery.data.commits
+												.length} commit{commitsQuery.data.commits.length !== 1 ? 's' : ''}{/if}
 									</span>
 								{:else if direction === 'forward'}
 									<ArrowUpOutline class="h-4 w-4 text-green-700 dark:text-green-400" />
@@ -744,7 +819,9 @@
 								{/if}
 							</div>
 							{#if currentTag}
-								<div class="flex flex-wrap items-center gap-1.5 pl-6 text-xs text-gray-500 dark:text-gray-400">
+								<div
+									class="flex flex-wrap items-center gap-1.5 pl-6 text-xs text-gray-500 dark:text-gray-400"
+								>
 									<code>{currentDisplayVersion}</code>
 									<span>&rarr;</span>
 									<code>{getDisplaySelectedVersion()}</code>
@@ -756,7 +833,9 @@
 						{#if direction !== 'same'}
 							<div>
 								<div class="mb-2 flex items-center justify-between">
-									<span class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
+									<span
+										class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400"
+									>
 										{direction === 'rollback' ? 'Commits reverted' : 'Commits deployed'}
 									</span>
 									{#if supportsManifestDiff}
@@ -782,33 +861,66 @@
 								{:else if commitsQuery.isLoading}
 									<p class="text-sm text-gray-500 dark:text-gray-400">Loading commits…</p>
 								{:else if commitsError === 'not_connected'}
+									<!-- ⛔ NEVER OFFER THE BUTTON UNTIL WE KNOW IT WORKS, AND NEVER
+									     NAVIGATE AWAY FROM AN OPEN DIALOG. (operator walk,
+									     2026-09-03) See `githubStatusQuery`'s own note above: this
+									     branch used to offer `Connect GitHub` unconditionally, which
+									     404/503'd for a server with no GitHub App at all, via a
+									     full-page nav that destroyed this dialog. Now it says the
+									     honest thing while `githubStatusQuery` is still loading (no
+									     button, so nothing destructive can happen), then either names
+									     the missing server-side setup or offers the button — opened
+									     in a new tab, never `window.location.href`. -->
 									<div class="flex flex-col items-start gap-2">
-										<p class="text-sm text-gray-500 dark:text-gray-400">
-											Connect your GitHub account to see which commits will {direction === 'rollback'
-												? 'be reverted'
-												: 'deploy'}.
-										</p>
-										<Button size="xs" color="light" onclick={() => connectGithub()}>
-											<GithubSolid class="mr-1.5 h-3.5 w-3.5" />
-											Connect GitHub
-										</Button>
+										{#if githubStatusQuery.data && !githubStatusQuery.data.configured}
+											<p class="text-sm text-gray-500 dark:text-gray-400">
+												GitHub is not configured for this dashboard.
+											</p>
+										{:else}
+											<p class="text-sm text-gray-500 dark:text-gray-400">
+												Connect your GitHub account to see which commits will {direction ===
+												'rollback'
+													? 'be reverted'
+													: 'deploy'}.
+											</p>
+											{#if githubStatusQuery.data?.configured}
+												<Button size="xs" color="light" onclick={() => connectGithubInNewTab()}>
+													<GithubSolid class="mr-1.5 h-3.5 w-3.5" />
+													Connect GitHub
+												</Button>
+											{/if}
+										{/if}
 									</div>
 								{:else if commitsError === 'no_access'}
 									<p class="text-sm text-gray-500 dark:text-gray-400">
 										You don't have access to this repository on GitHub. You can still proceed.
 									</p>
 								{:else if commitsQuery.isError}
+									<!-- ⛔ ONE SENTENCE FOR "UNREACHABLE", IN EVERY DIALOG.
+									     (operator walk, 2026-09-03) A live walk found the PROD
+									     force-deploy dialog printing `No commit changes detected
+									     between versions.` while GitHub answered 401 — asserting
+									     ABSENCE for a question that was never actually answered.
+									     This is `ChangeList.svelte`'s own wording
+									     (`GitHub did not answer: …`), reused rather than
+									     reinvented, so the same failure reads the same way on
+									     every surface that can hit it. -->
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										Unable to load commit history. You can still proceed.
+										GitHub did not answer: {commitsQuery.error instanceof Error
+											? commitsQuery.error.message
+											: 'unknown error'}. You can still proceed.
 									</p>
-								{:else if commitsQuery.data && commitsQuery.data.commits.length > 0}
+								{:else if commitsQuery.isSuccess && commitsQuery.data.commits.length > 0}
 									<ul
 										class="space-y-3"
 										aria-label={direction === 'rollback' ? 'Commits reverted' : 'Commits deployed'}
 									>
 										{#each commitsQuery.data.commits as commit (commit.sha)}
 											<li class="flex gap-2.5">
-												<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {direction === 'rollback' ? 'bg-amber-500' : 'bg-green-700 dark:bg-green-400'}"
+												<span
+													class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {direction === 'rollback'
+														? 'bg-amber-500'
+														: 'bg-green-700 dark:bg-green-400'}"
 												></span>
 												<div class="min-w-0 flex-1">
 													<a
@@ -819,7 +931,9 @@
 													>
 														{formatCommitMessage(commit.message)}
 													</a>
-													<div class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+													<div
+														class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+													>
 														<span>{commit.author || 'unknown'}</span>
 														<span>·</span>
 														<code>{commit.sha.slice(0, 7)}</code>
@@ -834,9 +948,32 @@
 											</li>
 										{/each}
 									</ul>
-								{:else}
+								{:else if commitsQuery.isSuccess}
+									<!-- ⭐ "SAME COMMIT" IS NOT "NOTHING CHANGED". (operator walk,
+									     2026-09-03) Two releases can share a git revision — a
+									     re-published artifact — while asking something different of
+									     the fleet: `rel-67` moved `requires.api` from `^1.66.0` to
+									     `^1.67.0` on the exact commit `rel-66` shipped.
+									     `requirementsChangedSentence` reads the two releases'
+									     `VersionInfo.requires`, already on `availableReleases`, and
+									     says so; `null` falls back to the plain sentence, which is
+									     now provably true (`commitsQuery.isSuccess` — GitHub actually
+									     answered zero commits, this branch is not also catching the
+									     unreachable case). -->
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										No commit changes detected between versions.
+										{requirementsChangedSentence(
+											currentDisplayVersion,
+											currentRelease,
+											selectedRelease
+										) ?? 'No commit changes detected between versions.'}
+									</p>
+								{:else}
+									<!-- The query never ran or never resolved (e.g. `canFetchCommits`
+									     was false for a reason none of the branches above name) — the
+									     SAME unreachable sentence as the `isError` branch, never the
+									     "no changes" one. Absence is a claim; this is not one. -->
+									<p class="text-sm text-gray-500 dark:text-gray-400">
+										GitHub did not answer. You can still proceed.
 									</p>
 								{/if}
 							</div>
@@ -915,7 +1052,9 @@
 						{/if}
 
 						{#if rollout && !hasForceDeployAnnotation(rollout)}
-							<div class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800">
+							<div
+								class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800"
+							>
 								<div>
 									<div class="text-sm font-medium text-gray-900 dark:text-white">Pin Version</div>
 									<!-- ⛔ THIS CAPTION SAID `Required for rollback` ON A MODAL
@@ -931,7 +1070,27 @@
 												: 'Lock to this version'}
 									</p>
 								</div>
-								<Toggle bind:checked={pinVersionToggle} disabled={isPinVersionToggleDisabled} color="blue" />
+								<!-- ⛔ NOT BLUE, AND A DISABLED ONE MUST READ DISABLED. (operator
+									     walk, 2026-09-03) Same rule as the picker's own toggle
+									     above — blue is `Deploying`'s colour. The rollback path
+									     pins unconditionally and disables this control (a rollback
+									     always pins), and disabled+checked was rendering at the
+									     SAME full-saturation fill as an enabled one — flowbite's
+									     `disabled` variant only drops the surrounding `<label>` to
+									     `opacity-50`, and one `!important` background utility beat
+									     another only by luck of generation order. A dedicated,
+									     visibly muted fill for the disabled+checked pair removes
+									     that race and is the actual "this cannot be touched" cue. -->
+								<Toggle
+									bind:checked={pinVersionToggle}
+									disabled={isPinVersionToggleDisabled}
+									color="gray"
+									classes={{
+										span: isPinVersionToggleDisabled
+											? 'peer-checked:!bg-gray-400 dark:peer-checked:!bg-gray-600'
+											: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100'
+									}}
+								/>
 							</div>
 						{/if}
 

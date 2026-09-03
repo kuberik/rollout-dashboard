@@ -138,7 +138,11 @@ function plan(route: string) {
 }
 
 /** Assert the subject property over one already-rendered surface. */
-function assertSubject(route: string, container: HTMLElement, opts: { expectClaims?: boolean } = {}) {
+function assertSubject(
+	route: string,
+	container: HTMLElement,
+	opts: { expectClaims?: boolean } = {}
+) {
 	const p = plan(route);
 	const all = subjectViolations(container, {
 		row: p.row,
@@ -353,35 +357,22 @@ describe('a modal states what it is about to change', () => {
 	});
 
 	/**
-	 * FAILING AND NAMED ON PURPOSE — A PRODUCT DECISION.
-	 *
-	 * The header is `Change Version / alpha-app` and that is the whole
-	 * subject. The component already HAS the rest: `rollout.metadata.namespace`
-	 * is `alpha-dev` and there is a `cluster` prop, used to build the deploy
-	 * URL and never shown. On the live hub two clusters are named `prod` and
-	 * `dev`, a namespace and a rollout name can exist on both, and this is the
-	 * dialog whose confirm button deploys. A reader who opened it from a list,
-	 * scrolled the version picker, and came back has nothing on screen telling
-	 * them WHERE this lands.
-	 *
-	 * The fix is a crumb (`Change Version / alpha-app · alpha-dev ·
-	 * rollout-a`) or a subtitle, and which one is a layout decision on a
-	 * header that is already tight at 390 — the owner's, not a test's.
+	 * ⭐ RESOLVED. (operator walk, 2026-09-03) This was
+	 * `test.skip('DECISION NEEDED: …')` plus a companion "status quo" tripwire
+	 * that failed the moment the modal started naming its environment or
+	 * cluster — which is exactly what the fix below does, so the tripwire did
+	 * its job and is deleted rather than left permanently red. The header now
+	 * reads `Change Version / alpha-app · ALPHA-APP-DEV · rollout-a`
+	 * (`envLabel`, uppercase, matches the chip vocabulary the rest of the
+	 * product already uses for a tier — `ClearPinModal`'s title does the same
+	 * derivation) — `/i` because the rendered word is uppercase and this
+	 * regex predates that decision.
 	 */
-	test.skip('DECISION NEEDED: the change-version modal names where it will deploy', async () => {
+	test('the change-version modal names where it will deploy', async () => {
 		const text = openChangeVersion();
 		await waitFor(() => expect(text()).toMatch(/Deploy|Version/i), { timeout: 5000 });
-		expect(text()).toMatch(/\balpha-dev\b|\bdev\b/);
+		expect(text()).toMatch(/\balpha-dev\b|\bdev\b/i);
 		expect(text()).toMatch(/rollout-a/);
-	});
-
-	test('the status quo, encoded so the decision above is visible and not silent', async () => {
-		const text = openChangeVersion();
-		await waitFor(() => expect(text()).toMatch(/Deploy|Version/i), { timeout: 5000 });
-		expect(
-			/\bdev\b/i.test(text()) || /rollout-a/.test(text()),
-			'the change-version modal started naming its environment or cluster — un-skip the test above'
-		).toBe(false);
 	});
 
 	test('the recovery warning renders', async () => {
@@ -424,7 +415,8 @@ describe('a modal states what it is about to change', () => {
 		const text = openRecovery();
 		await waitFor(() => expect(text()).toMatch(/Recovery|recovery/), { timeout: 5000 });
 		expect(
-			APPS.some((a) => text().includes(a)) || TIERS.some((t) => new RegExp(`\\b${t}\\b`).test(text())),
+			APPS.some((a) => text().includes(a)) ||
+				TIERS.some((t) => new RegExp(`\\b${t}\\b`).test(text())),
 			'the recovery modal started naming its subject — un-skip the test above'
 		).toBe(false);
 	});

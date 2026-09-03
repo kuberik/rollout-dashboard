@@ -70,10 +70,18 @@
 	const blocked = $derived(level === 'typed' && typed.trim() !== (tag ?? ''));
 </script>
 
+<!-- role="dialog" aria-modal="true": flowbite's `Dialog` sets neither on the
+     native `<dialog>` it renders, and a live accessibility check found this
+     product's open modals computing to group/alert/status roles, never
+     `dialog`. `aria-labelledby`/`aria-describedby` already point at real
+     `id`s below (`rcm-title`, `rcm-sub`) — this modal was already correctly
+     labelled, just not correctly ROLED. -->
 <Modal
 	bind:open
 	title=""
 	size="sm"
+	role="dialog"
+	aria-modal="true"
 	class="[&>div]:p-0"
 	aria-labelledby="rcm-title"
 	aria-describedby="rcm-sub"
@@ -111,7 +119,9 @@
 			>
 				{#each consequences as line}
 					<li class="flex gap-2">
-						<span class="mt-2 h-1 w-1 shrink-0 rounded-full bg-current opacity-60" aria-hidden="true"
+						<span
+							class="mt-2 h-1 w-1 shrink-0 rounded-full bg-current opacity-60"
+							aria-hidden="true"
 						></span>
 						<span class="min-w-0 break-words">{line}</span>
 					</li>

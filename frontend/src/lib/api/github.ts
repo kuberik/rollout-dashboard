@@ -1,26 +1,26 @@
 import { ApiError, apiJson } from './errors';
 
 export type CommitInfo = {
-    sha: string;
-    message: string;
-    author: string;
-    authorUrl: string;
-    avatarUrl: string;
-    commitDate: string;
-    url: string;
+	sha: string;
+	message: string;
+	author: string;
+	authorUrl: string;
+	avatarUrl: string;
+	commitDate: string;
+	url: string;
 };
 
 export type CommitsResponse = {
-    // Inferred by the server from the range: 'forward' = commits deployed,
-    // 'rollback' = commits reverted (head is behind base; the server re-fetched
-    // the swapped range so `commits` lists what was reverted), 'same' = no change.
-    direction: 'forward' | 'rollback' | 'same';
-    ahead: number;
-    behind: number;
-    commits: CommitInfo[];
-    additions: number;
-    deletions: number;
-    changedFiles: number;
+	// Inferred by the server from the range: 'forward' = commits deployed,
+	// 'rollback' = commits reverted (head is behind base; the server re-fetched
+	// the swapped range so `commits` lists what was reverted), 'same' = no change.
+	direction: 'forward' | 'rollback' | 'same';
+	ahead: number;
+	behind: number;
+	commits: CommitInfo[];
+	additions: number;
+	deletions: number;
+	changedFiles: number;
 };
 
 // Distinguishable failure reasons so the UI can show a "Connect GitHub" prompt
@@ -39,21 +39,21 @@ export type CommitsError = 'not_connected' | 'no_access' | 'error';
  * `reason` stays for the three different things the UI SAYS.
  */
 export class FetchCommitsError extends ApiError {
-    reason: CommitsError;
-    constructor(reason: CommitsError, message: string, status = 0, detail = '', url = '') {
-        super(status, message, detail || message, url);
-        this.name = 'FetchCommitsError';
-        this.reason = reason;
-    }
+	reason: CommitsError;
+	constructor(reason: CommitsError, message: string, status = 0, detail = '', url = '') {
+		super(status, message, detail || message, url);
+		this.name = 'FetchCommitsError';
+		this.reason = reason;
+	}
 }
 
 export type GithubStatus = {
-    // Whether the server has GitHub App user-auth configured at all.
-    configured: boolean;
-    // Whether the current user has connected their GitHub account.
-    connected: boolean;
-    login?: string;
-    avatarUrl?: string;
+	// Whether the server has GitHub App user-auth configured at all.
+	configured: boolean;
+	// Whether the current user has connected their GitHub account.
+	connected: boolean;
+	login?: string;
+	avatarUrl?: string;
 };
 
 /**
@@ -73,98 +73,120 @@ export type GithubStatus = {
 const COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
 
 export function isCommitSha(ref: string | null | undefined): boolean {
-    if (!ref) return false;
-    const r = ref.includes('@sha1:') ? ref.split('@sha1:')[1] : ref;
-    return COMMIT_SHA.test(r);
+	if (!ref) return false;
+	const r = ref.includes('@sha1:') ? ref.split('@sha1:')[1] : ref;
+	return COMMIT_SHA.test(r);
 }
 
 export function isImmutableRange(
-    base: string | null | undefined,
-    head: string | null | undefined
+	base: string | null | undefined,
+	head: string | null | undefined
 ): boolean {
-    return isCommitSha(base) && isCommitSha(head);
+	return isCommitSha(base) && isCommitSha(head);
 }
 
 export const commitsQueryKey = (
-    namespace: string,
-    name: string,
-    base: string,
-    head: string,
-    cluster?: string
+	namespace: string,
+	name: string,
+	base: string,
+	head: string,
+	cluster?: string
 ) => ['rollout-commits', namespace, name, base, head, cluster] as const;
 
 export const githubStatusQueryKey = ['github-status'] as const;
 
 export async function fetchCommits(
-    namespace: string,
-    name: string,
-    base: string,
-    head: string,
-    cluster?: string
+	namespace: string,
+	name: string,
+	base: string,
+	head: string,
+	cluster?: string
 ): Promise<CommitsResponse> {
-    const params = new URLSearchParams({ base, head });
-    if (cluster) params.set('cluster', cluster);
-    const url = `/api/rollouts/${namespace}/${name}/commits?${params}`;
-    const res = await fetch(url).catch(() => null);
-    if (!res) {
-        throw new FetchCommitsError('error', 'No response from the server', 0, '', url);
-    }
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        if (body.error === 'github_not_connected') {
-            throw new FetchCommitsError(
-                'not_connected',
-                'Connect GitHub to see changes',
-                res.status,
-                'GitHub account not connected',
-                url
-            );
-        }
-        if (body.error === 'github_no_access') {
-            throw new FetchCommitsError(
-                'no_access',
-                'You do not have access to this repository',
-                res.status,
-                body.details || 'No access to this repository',
-                url
-            );
-        }
-        throw new FetchCommitsError(
-            'error',
-            body.error || 'Failed to fetch commit range',
-            res.status,
-            body.details || body.error || '',
-            url
-        );
-    }
-    return (await res.json()) as CommitsResponse;
+	const params = new URLSearchParams({ base, head });
+	if (cluster) params.set('cluster', cluster);
+	const url = `/api/rollouts/${namespace}/${name}/commits?${params}`;
+	const res = await fetch(url).catch(() => null);
+	if (!res) {
+		throw new FetchCommitsError('error', 'No response from the server', 0, '', url);
+	}
+	if (!res.ok) {
+		const body = await res.json().catch(() => ({}));
+		if (body.error === 'github_not_connected') {
+			throw new FetchCommitsError(
+				'not_connected',
+				'Connect GitHub to see changes',
+				res.status,
+				'GitHub account not connected',
+				url
+			);
+		}
+		if (body.error === 'github_no_access') {
+			throw new FetchCommitsError(
+				'no_access',
+				'You do not have access to this repository',
+				res.status,
+				body.details || 'No access to this repository',
+				url
+			);
+		}
+		throw new FetchCommitsError(
+			'error',
+			body.error || 'Failed to fetch commit range',
+			res.status,
+			body.details || body.error || '',
+			url
+		);
+	}
+	return (await res.json()) as CommitsResponse;
 }
 
 export async function fetchGithubStatus(): Promise<GithubStatus> {
-    // Not being able to ask IS the answer here: "GitHub is not available to
-    // you". There is nothing for the reader to do about it and nothing to
-    // print, so this one legitimately swallows.
-    return apiJson<GithubStatus>('/api/auth/github/status').catch(() => ({
-        configured: false,
-        connected: false
-    }));
+	// Not being able to ask IS the answer here: "GitHub is not available to
+	// you". There is nothing for the reader to do about it and nothing to
+	// print, so this one legitimately swallows.
+	return apiJson<GithubStatus>('/api/auth/github/status').catch(() => ({
+		configured: false,
+		connected: false
+	}));
 }
 
 // Full-page navigation to start the OAuth flow (a 302 to GitHub can't be
 // followed by fetch). return_to brings the user back to where they were.
-export function connectGithub(returnTo: string = window.location.pathname + window.location.search) {
-    const params = new URLSearchParams({ return_to: returnTo });
-    window.location.href = `/api/auth/github/login?${params}`;
+export function connectGithub(
+	returnTo: string = window.location.pathname + window.location.search
+) {
+	const params = new URLSearchParams({ return_to: returnTo });
+	window.location.href = `/api/auth/github/login?${params}`;
+}
+
+/**
+ * ⛔ NEVER `connectGithub()` FROM AN OPEN DIALOG. (operator walk, 2026-09-03)
+ *
+ * A live walk pressed `Connect GitHub` inside `ChangeVersionModal`'s
+ * COMMITS REVERTED/DEPLOYED block, which called plain `connectGithub()` —
+ * a full-page navigation — and it took the whole tab to
+ * `/api/auth/github/login?return_to=…`, which 503'd (`GitHub integration
+ * not configured`) as raw JSON, no chrome, with the half-filled rollback
+ * dialog gone. A caller with an OPEN DIALOG cannot risk that: this opens
+ * the exact same OAuth entry in a new tab instead, so a 503 lands
+ * somewhere the reader can just close, and the dialog underneath — its
+ * typed confirmation, its picked version — survives either way.
+ */
+export function connectGithubInNewTab(
+	returnTo: string = window.location.pathname + window.location.search
+) {
+	const params = new URLSearchParams({ return_to: returnTo });
+	window.open(`/api/auth/github/login?${params}`, '_blank', 'noopener,noreferrer');
 }
 
 export async function disconnectGithub(): Promise<void> {
-    await fetch('/api/auth/github/logout', { method: 'POST' });
+	await fetch('/api/auth/github/logout', { method: 'POST' });
 }
 
 // First line of a commit message, truncated for compact display.
 export function formatCommitMessage(message: string): string {
-    const firstLine = message.split('\n')[0];
-    return firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine;
+	const firstLine = message.split('\n')[0];
+	return firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine;
 }
 
 /**
@@ -192,29 +214,29 @@ export function formatCommitMessage(message: string): string {
  * genuine refetch usually costs GitHub a `304` and no rate-limit budget.
  */
 export function commitsQueryOptions(args: {
-    namespace: string;
-    name: string;
-    base: string | null | undefined;
-    head: string | null | undefined;
-    cluster?: string;
-    /** Extra condition from the caller, e.g. "the panel is open". */
-    enabled?: boolean;
+	namespace: string;
+	name: string;
+	base: string | null | undefined;
+	head: string | null | undefined;
+	cluster?: string;
+	/** Extra condition from the caller, e.g. "the panel is open". */
+	enabled?: boolean;
 }) {
-    const { namespace, name, base, head, cluster, enabled = true } = args;
-    const immutable = isImmutableRange(base, head);
-    const rangeOk = !!namespace && !!name && !!base && !!head && base !== head;
-    return {
-        queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
-        queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
-        enabled: enabled && rangeOk,
-        staleTime: immutable ? Infinity : 5 * 60_000,
-        gcTime: immutable ? 60 * 60_000 : 5 * 60_000,
-        refetchInterval: false as const,
-        refetchOnWindowFocus: false as const,
-        refetchOnReconnect: false as const,
-        retry: (failureCount: number, error: unknown) => {
-            if (error instanceof FetchCommitsError) return false;
-            return failureCount < 1;
-        }
-    };
+	const { namespace, name, base, head, cluster, enabled = true } = args;
+	const immutable = isImmutableRange(base, head);
+	const rangeOk = !!namespace && !!name && !!base && !!head && base !== head;
+	return {
+		queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
+		queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
+		enabled: enabled && rangeOk,
+		staleTime: immutable ? Infinity : 5 * 60_000,
+		gcTime: immutable ? 60 * 60_000 : 5 * 60_000,
+		refetchInterval: false as const,
+		refetchOnWindowFocus: false as const,
+		refetchOnReconnect: false as const,
+		retry: (failureCount: number, error: unknown) => {
+			if (error instanceof FetchCommitsError) return false;
+			return failureCount < 1;
+		}
+	};
 }
