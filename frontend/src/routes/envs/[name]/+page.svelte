@@ -109,9 +109,9 @@
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
-		ClockOutline,
-		CalendarWeekSolid
+		ClockOutline
 	} from 'flowbite-svelte-icons';
+	import { iconForStory } from '$lib/components/BlockingStoryPanel.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import { getStatusCircleClass, bakeWord } from '$lib/bake-status';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
@@ -663,7 +663,14 @@
 				: `waiting on ${g} gate${g === 1 ? '' : 's'}`;
 			return {
 				severity: 'warning',
-				icon: CalendarWeekSolid,
+				// ⭐ THE STORY'S OWN GLYPH, NOT A HAND-PICKED CALENDAR. (2026-09-03)
+				// This banner is the exact "hello-frontend-app hasn't shipped api
+				// ^1.67.0" fact `/apps`, `/apps/<name>`, `/environments` and rollout
+				// detail all draw as a share-node — this used to draw a calendar
+				// over it instead, which is `ScheduleStatus`'s glyph on a gate that
+				// is not a schedule. `blocked[0].story` is a full `BlockingStory`,
+				// so it asks the same question every other surface asks.
+				icon: iconForStory(story),
 				title: `Promotion into ${envName} is blocked`,
 				message: `${n} newer build${n === 1 ? '' : 's'} of ${blocked[0].appName} ${n === 1 ? 'is' : 'are'} ${clause}.`,
 				gates: [...gates],
@@ -1360,7 +1367,13 @@
 															class="shrink-0"
 														/>
 													{:else if link.tier}
-														<a href="/envs/{encodeURIComponent(link.tier)}" class="shrink-0">
+														<!-- ⭐ `.hit-32` — a RAISED link inside the row's own
+														     `.tap-zone`, pointing at a DIFFERENT destination
+														     (that environment's own page) than the row's
+														     `.tap-link` (this app's rollout). Measured at 390:
+														     the chip's own box is 34×24, under the 32px floor
+														     this pass closes — see `app.css`'s touch floor note. -->
+														<a href="/envs/{encodeURIComponent(link.tier)}" class="hit-32 shrink-0">
 															<Chip role="count" label={link.label} title={link.tier} wide />
 														</a>
 													{:else}
@@ -1588,9 +1601,27 @@
 					     8px one. -->
 					<Card icon={ClockOutline} title="Recent activity" padded={false}>
 						{#snippet rollup()}
-							<!-- `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
+							<!-- ⭐ `N deploys` NOW LEADS, LIKE `/apps/<name>`'s OWN CARD OF
+							     THE SAME NAME. (2026-09-03) This card and `/apps`' printed
+							     the bare link while `/apps/[name]` already answered "how
+							     much history is there" beside it. Same unbounded count —
+							     every `status.history` entry with a timestamp across every
+							     rollout in this environment, not the 24h `deploys24h`
+							     `How it's going` already spends two rows up. `Card`'s
+							     header WRAPS the rollup to its own line when the two do
+							     not both fit, so this cannot reproduce the truncation the
+							     old `sm:flex-nowrap` behaviour had.
+							     `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
 							     `ActivityRail`'s OWN DEFAULT HEADER, NOT A THIRD PRIVATE
 							     ONE. (2026-09-02) -->
+							{@const n = slots.reduce(
+								(acc, s) =>
+									acc + (s.cell.rollout.status?.history?.filter((h) => h.timestamp).length ?? 0),
+								0
+							)}
+							<span class="t-code-sm text-gray-500 dark:text-gray-400"
+								>{n} deploy{n === 1 ? '' : 's'}</span
+							>
 							<a
 								href={`/activity?env=${encodeURIComponent(envName)}`}
 								class="nav-link"

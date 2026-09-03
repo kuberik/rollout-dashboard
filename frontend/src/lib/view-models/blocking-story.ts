@@ -131,6 +131,30 @@ import { displayVersionForTag } from '$lib/version-utils';
  */
 export type GateClears = 'clock' | 'check' | 'upstream' | 'person' | 'unknown';
 
+/**
+ * ⭐ THE GLYPH IS A FUNCTION OF THE STORY, COMPUTED ONCE, HERE. (2026-09-03)
+ *
+ * `BlockingStoryPanel.svelte`'s own `iconForStory` picked this off `story`'s
+ * arrays every time it rendered, worst-first — pinned, then person, then
+ * unknown, then upstream (split dependency/promotion), then clock, else
+ * check. That is correct and stays correct; the defect was that three OTHER
+ * surfaces (`/envs/<name>`, `/dependencies`, `/versions/<rev>`) each faced
+ * the exact same blocking fact — *"hello-frontend-app hasn't shipped api
+ * ^1.67.0"* — and each hand-picked a DIFFERENT icon for it (a calendar, a
+ * padlock, a person), because none of them had the classified story to read
+ * a glyph off. `iconKind` is that story's own answer, carried on the object
+ * so every consumer asks the same question of the same data and a picture
+ * can never disagree with the one the reference banner already draws.
+ */
+export type StoryIconKind =
+	| 'pinned'
+	| 'person'
+	| 'unknown'
+	| 'dependency'
+	| 'promotion'
+	| 'clock'
+	| 'check';
+
 export type ClassifiedGate = {
 	/** The Kubernetes object name. A HANDLE — never a headline, never a label. */
 	id: string;
@@ -687,6 +711,8 @@ export type BlockingStory = {
 	resolution: string;
 	/** `warning` when something needs a person; `info` when it clears itself. */
 	severity: 'warning' | 'info';
+	/** Which glyph this story earns. See `StoryIconKind`'s own note. */
+	iconKind: StoryIconKind;
 };
 
 export const NOT_BLOCKED: BlockingStory = {
@@ -706,7 +732,11 @@ export const NOT_BLOCKED: BlockingStory = {
 	consequence: '',
 	verdict: '',
 	resolution: '',
-	severity: 'info'
+	severity: 'info',
+	// Never rendered — nothing is blocked, so no banner reads this — but a
+	// concrete value beats leaving the one non-optional field on the type
+	// without one where `NOT_BLOCKED` is spread as a base.
+	iconKind: 'check'
 };
 
 const COUNT_WORD = ['no', 'One', 'Two', 'Three', 'Four', 'Five', 'Six'];
@@ -1096,7 +1126,8 @@ export function blockingStory(
 					? `${candidateCount} newer build${candidateCount === 1 ? '' : 's'} ${candidateCount === 1 ? 'is' : 'are'} available and none of them will deploy while the pin is set.`
 					: 'Automatic updates are off here until the pin is cleared.',
 			verdict: 'Clearing the pin is the only thing that restarts automatic deploys.',
-			resolution: 'Clearing the pin is the only thing that restarts automatic deploys.'
+			resolution: 'Clearing the pin is the only thing that restarts automatic deploys.',
+			iconKind: 'pinned'
 		};
 	}
 
@@ -1238,6 +1269,23 @@ export function blockingStory(
 	}
 	const resolution = verdictCoversManual ? verdict : `${verdict} ${manual}`;
 
+	// ⭐ WORST-FIRST, THE SAME ORDER THE SENTENCE ITSELF IS BUILT IN. A person
+	// glyph over "we cannot tell what clears this" is the same picture-scale
+	// lie an unattributed gate would tell with `person`'s icon, so `unknown`
+	// still outranks `upstream` here exactly as it does in every clause above.
+	const iconKind: StoryIconKind =
+		person.length > 0
+			? 'person'
+			: unknown.length > 0
+				? 'unknown'
+				: upstream.length > 0
+					? upstream[0].kind === 'dependency'
+						? 'dependency'
+						: 'promotion'
+					: clock.length > 0
+						? 'clock'
+						: 'check';
+
 	return {
 		blocked: true,
 		candidateCount,
@@ -1255,7 +1303,8 @@ export function blockingStory(
 		consequence,
 		verdict,
 		resolution,
-		severity: selfClearing ? 'info' : 'warning'
+		severity: selfClearing ? 'info' : 'warning',
+		iconKind
 	};
 }
 

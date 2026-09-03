@@ -97,6 +97,27 @@
 	const rankable = $derived(cards.filter((c) => c.rank.kind !== 'unknown'));
 	const onNewest = $derived(rankable.filter((c) => c.rank.kind === 'newest').length);
 
+	/**
+	 * ⭐ THE CARD'S OWN ROLLUP — "HOW MUCH HISTORY IS THERE", not the 7-day
+	 * `volume.deploys` two rows up. (2026-09-03) `/apps/[name]`'s own
+	 * `Recent activity` card already answers this (`deployEvents`, unbounded
+	 * — every `status.history` entry with a timestamp, across the rollouts
+	 * fed to the rail) and reads `5 deploys · View all activity ›`; this
+	 * card, `/apps`' and `/envs/<name>`'s all printed the bare link, so the
+	 * one page that answers "how much" sat beside three that only offered
+	 * "go look". Same field, same guard, same unbounded count — deliberately
+	 * NOT `volume.deploys`, which is a 7-day window already spent on
+	 * `How it's going` two rows up and would restate that card's own number
+	 * under a different label.
+	 */
+	const activityDeployCount = $derived.by<number>(() => {
+		let n = 0;
+		for (const r of rollouts) {
+			for (const h of r.status?.history ?? []) if (h.timestamp) n++;
+		}
+		return n;
+	});
+
 	const windowStartMs = $derived($now.getTime() - SPARK_DAYS * 24 * 60 * 60 * 1000);
 
 	/**
@@ -264,6 +285,9 @@
 				`/namespaces/<name>`) is a different component this pass does not
 				own and is untouched.
 			-->
+			<span class="t-code-sm text-gray-500 dark:text-gray-400"
+				>{activityDeployCount} deploy{activityDeployCount === 1 ? '' : 's'}</span
+			>
 			<a href="/activity" class="nav-link" aria-label="View all deploy activity">
 				View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
 			</a>

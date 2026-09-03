@@ -46,12 +46,12 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
 		ShareNodesSolid,
-		LockSolid,
 		ServerSolid,
 		ArrowRightOutline,
 		ExclamationCircleSolid
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import { iconForKind } from '$lib/components/BlockingStoryPanel.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
@@ -176,6 +176,21 @@
 			: `${from?.name ?? 'the provider'} has not deployed a version of it here.`;
 		return `Its next release needs ${e.contract}${needs}. ${serves}`;
 	}
+
+	/**
+	 * ⭐ THE SAME GLYPH MAP `BlockingStoryPanel` USES, NOT A HAND-PICKED
+	 * PADLOCK. (2026-09-03) `/apps`, `/apps/<name>`, `/environments` and
+	 * rollout detail all draw a share-node for a contract block (the same
+	 * "hello-frontend-app hasn't shipped api ^1.67.0" fact this page's own
+	 * `Blocked links` card names below); this banner drew a padlock for it
+	 * regardless of kind. An edge's `writer` — `contract` or `promotion` — IS
+	 * `blocking-story.ts`'s `dependency`/`promotion` split, so worst-first
+	 * (a contract present outranks a bare promotion order, same as the
+	 * classified story) picks the same glyph the rest of the product would.
+	 */
+	const bannerIcon = $derived(
+		iconForKind(blocked.some((e) => e.writer === 'contract') ? 'dependency' : 'promotion')
+	);
 
 	const bannerTitle = $derived.by(() => {
 		if (blocked.length === 1) {
@@ -340,7 +355,7 @@
 			<!-- THE PAGE'S ONE BLOCKING FACT, at banner scale. Amber: neither kind
 			     of block clears itself and neither clears on approval — somebody
 			     has to ship the thing in front. -->
-			<AlertPanel severity="warning" icon={LockSolid} title={bannerTitle} message={bannerMessage} />
+			<AlertPanel severity="warning" icon={bannerIcon} title={bannerTitle} message={bannerMessage} />
 		{/if}
 
 		{#if graphEnvs.length > 1}

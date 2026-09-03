@@ -13,7 +13,16 @@
 	 * beside it, which is the picture-scale version of the defect this whole
 	 * pass exists to close.
 	 *
-	 * Worst-first, the same order `blockingStory` sorts its gates in.
+	 * ⭐ NARROWED 2026-09-03: the CHOICE now lives in `blocking-story.ts`, as
+	 * `story.iconKind` — worst-first, the same order `blockingStory` sorts its
+	 * gates in, computed ONCE where the gates are classified. This module is
+	 * left holding only the MAPPING from that kind to a glyph, so a surface
+	 * with no `BlockingStoryPanel` in sight (`/envs/<name>`'s banner,
+	 * `/dependencies`', `/versions/<rev>`'s) can still ask the one function
+	 * that speaks for the icon rather than hand-picking its own — which is
+	 * exactly how the same fact ended up behind a calendar on `/envs/prod`, a
+	 * padlock on `/dependencies` and a person on `/versions/<rev>` while this
+	 * banner drew a share-node for it.
 	 */
 	import {
 		UserCircleSolid,
@@ -24,32 +33,39 @@
 		LockSolid,
 		QuestionCircleSolid
 	} from 'flowbite-svelte-icons';
-	import type { BlockingStory as Story } from '$lib/view-models/blocking-story';
+	import type { BlockingStory as Story, StoryIconKind } from '$lib/view-models/blocking-story';
+
+	/**
+	 * ⛔ A PERSON GLYPH OVER "we cannot tell what clears this" IS THE SAME
+	 * PICTURE-SCALE LIE AS THE CALENDAR THIS MAP WAS WRITTEN TO KILL — see
+	 * `unknown` below. And NOT AN HOURGLASS for `check`: an hourglass means
+	 * *time will fix this*, which is `clock`'s meaning, and a `check` gate is
+	 * precisely the kind that is NOT on a clock (not passing, and nothing
+	 * published a window). Two kinds may not share one meaning; a shield-check
+	 * is a guard that has not cleared. `dependency`/`promotion` are two
+	 * mechanisms, not one bare direction (`ArrowRightAltSolid` names no
+	 * object, and at the banner's 40px rendered as a solid smudge) — a
+	 * cross-service contract and a promotion order each already have a mark
+	 * elsewhere in the product: `ShareNodesSolid` is `contractBlockReason`'s
+	 * and the `/dependencies` graph's, `ChevronDoubleRightOutline` is the
+	 * `Promotion pipeline` card header's on `/apps/<name>`.
+	 */
+	const ICON_FOR_KIND: Record<StoryIconKind, typeof UserCircleSolid> = {
+		pinned: LockSolid,
+		person: UserCircleSolid,
+		unknown: QuestionCircleSolid,
+		dependency: ShareNodesSolid,
+		promotion: ChevronDoubleRightOutline,
+		clock: CalendarWeekSolid,
+		check: ShieldCheckSolid
+	};
+
+	export function iconForKind(kind: StoryIconKind) {
+		return ICON_FOR_KIND[kind];
+	}
 
 	export function iconForStory(story: Story) {
-		if (story.pinnedTo) return LockSolid;
-		if (story.person.length > 0) return UserCircleSolid;
-		// ⛔ A PERSON GLYPH OVER "we cannot tell what clears this" IS THE SAME
-		// PICTURE-SCALE LIE AS THE CALENDAR THIS FUNCTION WAS WRITTEN TO KILL.
-		// An unattributed gate gets a question mark and nothing else does.
-		if (story.unknown.length > 0) return QuestionCircleSolid;
-		// ⭐ `upstream` IS TWO MECHANISMS AND WAS ONE GLYPH. (2026-09-02, from the
-		// human: *"still don't like these details when we have this nonsense
-		// icon."*) `ArrowRightAltSolid` is a bare DIRECTION — it names no object,
-		// and at the banner's 40px it renders as a solid smudge. A cross-service
-		// contract and a promotion order are different things and this product
-		// already has a mark for each: `ShareNodesSolid` is `contractBlockReason`'s
-		// and the `/dependencies` graph's, `ChevronDoubleRightOutline` is the
-		// `Promotion pipeline` card header's on `/apps/<name>`. Worst-first still,
-		// so the glyph names whichever upstream gate leads the sentence.
-		if (story.upstream.length > 0)
-			return story.upstream[0].kind === 'dependency' ? ShareNodesSolid : ChevronDoubleRightOutline;
-		if (story.clock.length > 0) return CalendarWeekSolid;
-		// ⛔ NOT AN HOURGLASS. An hourglass means *time will fix this*, which is
-		// `clock`'s meaning — and a `check` gate is precisely the kind that is NOT
-		// on a clock (not passing, and nothing published a window). Two kinds may
-		// not share one meaning. A shield-check is a guard that has not cleared.
-		return ShieldCheckSolid;
+		return iconForKind(story.iconKind);
 	}
 </script>
 

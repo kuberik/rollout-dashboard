@@ -2330,8 +2330,19 @@
 							class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
 						>
 							<!-- Header -->
+							<!--
+								⭐ THE HEADER SLOT TAKES THE ROLLUP, NEVER A BUTTON BESIDE IT.
+								(2026-09-03, F12) This was 57px — the chip/text answer PLUS a
+								32px icon button — against every other card header on this page
+								at the standard 47px. `COMPOSITION-GRAMMAR.md`'s slot is a
+								rolled-up ANSWER (`3/3 healthy`, a chip, a `.nav-link` at rollup
+								scale); a mutating control is not a rollup and does not belong
+								beside one. The refresh action moves to its own thin row in the
+								body, where `Chip`'s `Held`/pin banners already sit — a control
+								row, not a header.
+							-->
 							<div
-								class="flex items-center gap-2.5 border-b border-gray-100 px-5 py-3.5 dark:border-gray-700"
+								class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-100 px-5 py-3 dark:border-gray-700"
 							>
 								<CodeOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 								<span class="text-sm font-semibold text-gray-900 dark:text-white"
@@ -2362,23 +2373,34 @@
 											>up to date</span
 										>
 									{/if}
-									<button
-										id="refresh-versions-btn"
-										onclick={reconcileFluxResources}
-										disabled={isReconciling}
-										aria-label="Refresh available versions"
-										class="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-									>
-										{#if isReconciling}
-											<StatusSpinner size="4" color="gray" />
-										{:else}
-											<RefreshOutline class="h-4 w-4" />
-										{/if}
-									</button>
-									<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
-										Refresh available versions
-									</Tooltip>
 								</div>
+							</div>
+
+							<!-- ⭐ THE REFRESH CONTROL, NOW A BODY ROW. It is a MUTATING
+							     control (re-runs the Flux reconcile), so it earns button
+							     chrome — just not in the slot COMPOSITION-GRAMMAR reserves
+							     for the card's own rolled-up answer. Always present: staleness
+							     is possible whatever the candidate count reads. -->
+							<div
+								class="flex items-center justify-end border-b border-gray-100 px-5 py-1.5 dark:border-gray-700"
+							>
+								<button
+									id="refresh-versions-btn"
+									onclick={reconcileFluxResources}
+									disabled={isReconciling}
+									aria-label="Refresh available versions"
+									class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+								>
+									{#if isReconciling}
+										<StatusSpinner size="4" color="gray" />
+									{:else}
+										<RefreshOutline class="h-3.5 w-3.5" />
+									{/if}
+									Refresh
+								</button>
+								<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
+									Refresh available versions
+								</Tooltip>
 							</div>
 
 							<!--

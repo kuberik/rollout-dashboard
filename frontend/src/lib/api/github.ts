@@ -140,6 +140,47 @@ export async function fetchCommits(
 	return (await res.json()) as CommitsResponse;
 }
 
+/**
+ * ⭐ ONE SENTENCE PER STATE, PRODUCT-WIDE. (2026-09-03)
+ *
+ * GitHub's absence had three copies saying three different things about the
+ * SAME fact: `ChangeVersionModal`'s dialog said *"GitHub did not answer. You
+ * can still proceed."*, `/versions/<rev>` said *"Commit message and author
+ * need GitHub, which is not connected."*, and the app-detail `Source` card
+ * said nothing at all. A reader moving between them could not tell whether
+ * "not connected" meant "nobody has set this dashboard up for GitHub at all"
+ * or "the request timed out" — two facts with different remedies (an admin
+ * has to act on one; the other might just work on retry).
+ *
+ * So the wording is a function of `GithubStatus`, computed once:
+ *
+ *   unreachable (the request itself failed)     → "GitHub did not answer."
+ *   `configured === false`                      → "GitHub is not configured
+ *                                                   for this dashboard."
+ *   `configured === true`, `connected === false` → "GitHub is not connected
+ *                                                   for this dashboard."
+ *
+ * The middle case is the one `ChangeVersionModal`'s own `commitsError ===
+ * 'not_connected'` branch already draws correctly (it offers a `Connect
+ * GitHub` button only when `configured` is true) — this only gives that same
+ * distinction a name every OTHER surface can reuse instead of re-deriving it
+ * or collapsing it into "not connected" regardless of cause, which is what
+ * `/versions/<rev>` did.
+ *
+ * A caller that wants the dialog's extra clause appends it itself
+ * (`+ ' You can still proceed.'`) — that sentence only belongs where a
+ * person is mid-action and needs to know the door is still open, which is
+ * not true of an informational card.
+ */
+export function githubAbsenceSentence(
+	status: GithubStatus | null | undefined,
+	opts: { unreachable?: boolean } = {}
+): string {
+	if (opts.unreachable) return 'GitHub did not answer.';
+	if (status?.configured) return 'GitHub is not connected for this dashboard.';
+	return 'GitHub is not configured for this dashboard.';
+}
+
 export async function fetchGithubStatus(): Promise<GithubStatus> {
 	// Not being able to ask IS the answer here: "GitHub is not available to
 	// you". There is nothing for the reader to do about it and nothing to

@@ -5,7 +5,7 @@
 	import { replaceState } from '$app/navigation';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
+	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { repoBody, revisionPath } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
@@ -30,7 +30,13 @@
 		type CoverageKey,
 		type CoverageSlotVM
 	} from '$lib/view-models/revision-coverage';
-	import { joinClauses } from '$lib/view-models/blocking-story';
+	import {
+		joinClauses,
+		buildGateContext,
+		blockingStory,
+		type GateContext
+	} from '$lib/view-models/blocking-story';
+	import { iconForStory } from '$lib/components/BlockingStoryPanel.svelte';
 	import { formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -271,6 +277,57 @@
 		const behind =
 			coverage.buckets.find((b) => b.key === 'live')?.slots.filter((s) => !s.onOwnRelease) ?? [];
 		return [...notYet, ...behind].filter((s) => s.blockingGates.length > 0);
+	});
+
+	/**
+	 * ⭐ THE GATE JOIN TABLE, so the banner can ask `blocking-story.ts` the
+	 * same classification question every other surface asks instead of the
+	 * bare `notPassingGates.length > 0` coin-flip it used to run its icon on.
+	 * Built from the same `/api/rollouts` payload as `/envs/<name>`'s and
+	 * `/apps/<name>`'s own `gateContext`.
+	 */
+	const gateContext = $derived.by<GateContext>(() =>
+		buildGateContext({
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null
+		})
+	);
+
+	/**
+	 * ⭐ THE BANNER'S GLYPH, READ OFF THE SAME CLASSIFIED STORY EVERY OTHER
+	 * SURFACE DRAWS. (2026-09-03) `blockedSlots.some((s) =>
+	 * s.notPassingGates.length > 0) ? CalendarMonthSolid : UserCircleSolid`
+	 * treated `awaitingApprovalGates` as "needs a person" — but that bucket is
+	 * only "this gate published an allow-list", and the environment
+	 * controller and the dependency controller both publish one (see
+	 * `lib/CLAUDE.md`'s note on `promotionBlock.awaitingApprovalGates`). So a
+	 * page whose only block is `hello-frontend-app` waiting on `hello-api-app`
+	 * to ship `api ^1.67.0` — a `dependency` gate, no person anywhere —
+	 * printed a person glyph for it, while `/apps`, `/apps/<name>`,
+	 * `/environments` and rollout detail all draw a share-node for the exact
+	 * same fact. Worst-first over every blocked slot's own classified story,
+	 * same ordering `blockingStory` itself sorts gates in.
+	 */
+	const bannerIcon = $derived.by(() => {
+		let worst = null as ReturnType<typeof blockingStory> | null;
+		const rank: Record<string, number> = {
+			person: 0,
+			unknown: 1,
+			dependency: 2,
+			promotion: 2,
+			check: 3,
+			clock: 4,
+			pinned: -1
+		};
+		for (const s of blockedSlots) {
+			if (!s.rolloutRef) continue;
+			const story = blockingStory(s.slot.cell.rollout, gateContext, {
+				place: s.envLabel,
+				now: $now
+			});
+			if (!worst || rank[story.iconKind] < rank[worst.iconKind]) worst = story;
+		}
+		return iconForStory(worst ?? blockingStory(null, gateContext));
 	});
 
 	/**
@@ -771,9 +828,7 @@
 
 			<AlertPanel
 				severity="warning"
-				icon={blockedSlots.some((s) => s.notPassingGates.length > 0)
-					? CalendarMonthSolid
-					: UserCircleSolid}
+				icon={bannerIcon}
 				title="{row.short} can’t go any further yet"
 				message={bannerMessage}
 				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
@@ -825,18 +880,37 @@
 				digits a fourth time; its accessible name carries the full sentence
 				for anyone who cannot see the segments.
 			-->
-			<Card icon={RocketOutline} title="This build">
-				{#snippet rollup()}
-					<CoverageBar
-						segments={coverageSegments(coverage)}
-						compact
-						class="w-20"
-						label="{coverage.liveCount} of {coverage.totalCount} places running {row.short} · {coverage.buckets
-							.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
-							.join(' · ')}"
-					/>
-				{/snippet}
+			<!--
+				⭐ THE HEADER SLOT TAKES A ROLLUP, NEVER A BARE GRAPHIC WITH NO WORDS
+				OF ITS OWN. (2026-09-03, F12) This was a `compact` `CoverageBar`
+				alone in the slot — a 20px-wide unlabelled green/gray strip, legible
+				only via its `aria-label` (a graphic wearing an accessible name is
+				not the same as a rollup a sighted reader can take at a glance, and
+				every OTHER card header on this page answers in TEXT). The slot is
+				now `verdict`, the plain string form every other card on the
+				product uses (`3/3 healthy`, `10/10 ready`) — the same fact the
+				head band already states in words 60px up, which is the accepted
+				shape here (`/apps`' head band and its `All apps` card both name
+				`2 of 4 blocked` too). The bar itself did not vanish: it moves into
+				the body, at FULL scale, as its own row — the one place on this
+				page a reader could see the segmented shape at all.
+			-->
+			<Card
+				icon={RocketOutline}
+				title="This build"
+				verdict="{coverage.liveCount} of {coverage.totalCount} places"
+				verdictTitle="{coverage.liveCount} of {coverage.totalCount} places running {row.short}"
+			>
 				<ul class="space-y-3">
+					<li class="flex items-start gap-2.5">
+						<CoverageBar
+							segments={coverageSegments(coverage)}
+							class="w-full"
+							label="{coverage.liveCount} of {coverage.totalCount} places running {row.short} · {coverage.buckets
+								.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
+								.join(' · ')}"
+						/>
+					</li>
 					<!--
 						THE COMMIT — DEGRADES HONESTLY. Concept 07 puts the commit message
 						and author here. GitHub is not connected on this cluster — that is
@@ -844,6 +918,15 @@
 						missing and why, and takes no data row and no second button.
 						`CommitSummary` draws its own branch glyph, so the row's icon track
 						is not doubled with a second one in the connected case.
+
+						⭐ THE SENTENCE IS `githubAbsenceSentence`'s NOW, NOT A PRIVATE
+						SPELLING. (2026-09-03) This used to say "which is not connected"
+						whatever the reason — the same fact `ChangeVersionModal`'s dialog
+						worded as "did not answer" and the app-detail `Source` card said
+						nothing about at all. `githubStatus.data` distinguishes "nobody
+						has set this dashboard up for GitHub" from "configured, but this
+						account is not the one connected", which are different facts with
+						different remedies.
 					-->
 					{#if githubConnected && rep && prev}
 						<li class="flex items-start gap-2.5">
@@ -865,7 +948,9 @@
 								aria-hidden="true"
 							/>
 							<span class="t-body text-gray-500 dark:text-gray-400">
-								Commit message and author need GitHub, which is not connected.
+								Commit message and author need GitHub. {githubAbsenceSentence(
+									githubStatus.data
+								)}
 							</span>
 						</li>
 					{/if}

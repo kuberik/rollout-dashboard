@@ -1880,9 +1880,29 @@
 
 				<Card icon={ClockOutline} title="Recent activity" padded={false}>
 					{#snippet rollup()}
-						<!-- `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
+						<!-- ⭐ `N deploys` NOW LEADS, LIKE `/apps/<name>`'s OWN CARD OF
+						     THE SAME NAME. (2026-09-03) `/apps/[name]` answers "how
+						     much history is there" (`deployEvents`, unbounded); this
+						     card and `/envs/<name>`'s printed the bare link, so the
+						     one page with an answer sat beside two that only offered
+						     "go look". Same unbounded count — every `status.history`
+						     entry with a timestamp across every rollout on this page,
+						     not the 7-day `fleetDeploys7d` `How it's going` already
+						     spends two rows up. Card's header now WRAPS the rollup to
+						     its own line when the two do not both fit (2026-09-03,
+						     the `flex-wrap` fix above `Card`'s title), so this cannot
+						     reproduce the truncation the old `sm:flex-nowrap` behaviour
+						     had.
+						     `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
 						     `ActivityRail`'s OWN DEFAULT HEADER, NOT A THIRD PRIVATE
 						     ONE. (2026-09-02) -->
+						{@const n = allRollouts.reduce(
+							(acc, r) => acc + (r.status?.history?.filter((h) => h.timestamp).length ?? 0),
+							0
+						)}
+						<span class="t-code-sm text-gray-500 dark:text-gray-400"
+							>{n} deploy{n === 1 ? '' : 's'}</span
+						>
 						<a href="/activity" class="nav-link" aria-label="View all deploy activity">
 							View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
 						</a>
