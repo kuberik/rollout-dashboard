@@ -580,7 +580,7 @@
 	<title>kuberik | {row ? row.short : urlKey}</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="rev-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<a
 		href="/versions"
 		class="t-micro mb-4 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -1263,6 +1263,24 @@
 	 * calls it` moved up to sit right after `This build` in the template —
 	 * see the comment there.
 	 */
+	/*
+	 * ⭐ F3: A CONTAINER QUERY, NOT `@media (min-width: 640px)`. (2026-09-03,
+	 * breakpoints pass) The sidebar is 175px from `sm` (640px) viewport width
+	 * on, so this page's own content box is not monotonic in viewport width
+	 * — a 639px viewport gives it ~624px, a 640px viewport gives it ~449px.
+	 * The old media query flipped to two columns at the exact viewport where
+	 * the box available to `.rev-buckets` SHRANK below what two tracks need,
+	 * so every card here truncated at 640 (`What each service calls it`
+	 * 202→62px = `What …`, `This build`→`Thi…`). `.rev-cq`
+	 * (`container-type: inline-size` on the page's own content container,
+	 * two lines up) makes the query subject the box `.rev-buckets` actually
+	 * has, at the same 640px number — moved from the wrong signal to the
+	 * right one, not re-tuned.
+	 */
+	.rev-cq {
+		container-type: inline-size;
+	}
+
 	.rev-buckets {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -1270,7 +1288,7 @@
 		align-items: stretch;
 	}
 
-	@media (min-width: 640px) {
+	@container (min-width: 640px) {
 		.rev-buckets {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}

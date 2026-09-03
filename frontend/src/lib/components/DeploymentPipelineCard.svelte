@@ -1147,7 +1147,7 @@
 <!-- ━━━━━━━━━━━━━━━━━━━━━━ card ━━━━━━━━━━━━━━━━━━━━━━ -->
 
 <div
-	class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	class="dpc-cq overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 >
 	<!--
 		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
@@ -1217,8 +1217,22 @@
 		</div>
 	</div>
 
-	<!-- Desktop (md+): master-detail split -->
-	<div class="hidden md:grid md:grid-cols-[minmax(260px,300px)_1fr]">
+	<!--
+		⭐ F4: MASTER-DETAIL SPLIT ON A CONTAINER QUERY (`.dpc-desktop`), NOT
+		`md`. (2026-09-03,
+		breakpoints pass) This card sits in rollout detail's MAIN column, whose
+		own width is decided by a separate container query now (see that
+		page's `.ov-split` note) — so this card's rendered width and the
+		viewport are two different numbers. Measured on the live page at 1024
+		viewport (main 417px before that fix): the explanation pane fell to
+		127px, wrapping a single sentence over 14 lines. `.dpc-cq`
+		(`container-type: inline-size`, on the card's own outer wrapper above)
+		makes the query subject this card's actual box. 600px is the same
+		floor the finding measured against (`~600px`): below it, the nav list
+		and the step detail stack in reading order (the mobile shape below);
+		at or above it, the two-pane split returns.
+	-->
+	<div class="dpc-desktop">
 		<!-- Left nav -->
 		<nav
 			class="border-r border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/30"
@@ -1245,8 +1259,8 @@
 		</div>
 	</div>
 
-	<!-- Mobile (<md): vertical stepper with inline detail -->
-	<div class="md:hidden">
+	<!-- Mobile (card under 600px): vertical stepper with inline detail -->
+	<div class="dpc-mobile">
 		<ol class="py-2">
 			{#each nodes as node, idx}
 				{@const isSelected = selectedIds.includes(node.id)}
@@ -1338,6 +1352,40 @@
 		</ol>
 	</div>
 </div>
+
+<style>
+	/*
+	 * ⭐ F4: THE TWO RENDERED SHAPES, TOGGLED BY THE CARD'S OWN WIDTH. See the
+	 * doc comment on `.dpc-desktop` in the markup. Both blocks always render
+	 * (two different DOM structures, not a CSS reflow of one), so the
+	 * container query only ever flips `display`, matching the mobile-first
+	 * default `hidden md:grid` / `md:hidden` used to. One class per state,
+	 * both properties set together in each rule, so there is no cross-class
+	 * specificity tie to reason about.
+	 */
+	.dpc-cq {
+		container-type: inline-size;
+	}
+
+	.dpc-desktop {
+		display: none;
+	}
+
+	.dpc-mobile {
+		display: block;
+	}
+
+	@container (min-width: 600px) {
+		.dpc-desktop {
+			display: grid;
+			grid-template-columns: minmax(260px, 300px) 1fr;
+		}
+
+		.dpc-mobile {
+			display: none;
+		}
+	}
+</style>
 
 {#if pendingAdvance}
 	<Modal bind:open={advanceModalOpen} title={pendingAdvance.adv.confirmTitle} size="sm" autoclose={false}>

@@ -159,10 +159,10 @@
 	the other half; with `flex-basis: auto` it never shrinks natural content.
 -->
 <section
-	class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
+	class="card-cq flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
 >
 	<header
-		class="flex min-h-[47px] shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-gray-200 px-4 py-3 sm:flex-nowrap dark:border-gray-700 {titleHref
+		class="flex min-h-[47px] shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-gray-200 px-4 py-3 dark:border-gray-700 {titleHref
 			? 'tap-zone transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30'
 			: ''}"
 	>
@@ -186,15 +186,35 @@
 			mechanism the truncation bug was missing: the group used to compute
 			a zero hypothetical size (effectively `flex-1`-shaped), so nothing
 			ever wrapped and the title was squeezed instead. `min-w-0` stays on
-			both the group and the `h2` — it only lowers the shrink FLOOR, which
-			still matters for the one case where the title alone is wider than
-			the card: then, and only then, it truncates.
+			both the group and the `h2` — it only lowers the shrink FLOOR.
+
+			⛔ `sm:flex-nowrap` IS GONE. (F3, 2026-09-03, breakpoints pass) It
+			forced title+rollup onto ONE line at every viewport ≥640 regardless
+			of the CARD's own rendered width — and a card sitting in a two-up
+			grid (`/versions/<rev>`) can be far narrower than the viewport
+			suggests. Measured on the live page at 640: all four card titles
+			truncated (`What each service calls it` 202→62px = `What …`); the
+			rollup was winning a fight the header wasn't free to lose. Plain
+			`flex-wrap`, unprefixed, is ALREADY the container query this needs —
+			a flex line's wrap decision is made against the box's own computed
+			width, not the viewport's, which is exactly the mechanism the
+			comment above already relies on for the rollup. Removing the
+			viewport override just lets it run at every width, not only below
+			640.
+
+			⛔ `truncate` ON THE TITLE IS GONE TOO. A title that cannot share a
+			line with its rollup now WRAPS (this component's job is answering a
+			question, not fitting a single line) — `break-words` so an
+			identifier with no spaces (a mono revision, a service name) still
+			wraps instead of overflowing the card. Truncation is what a narrow
+			CARD used to do when the real defect was an unconditional shared
+			line; the fix is not to have that fight at all.
 		-->
 		<div class="flex min-w-0 items-center gap-2.5">
 			{#if Icon}
 				<Icon class="h-4 w-4 shrink-0 {iconClass}" />
 			{/if}
-			<h2 class="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-white">
+			<h2 class="min-w-0 break-words text-sm font-semibold text-gray-900 dark:text-white">
 				{#if titleHref}
 					<a
 						href={titleHref}
@@ -207,15 +227,27 @@
 			</h2>
 		</div>
 		<!--
-			HARD-ALIGNED RIGHT AT `sm`+, ALWAYS. Below `sm` the margin is NOT
-			auto: `margin-left: auto` resolves against the FREE SPACE OF ITS OWN
-			LINE, so on a line the rollup has wrapped onto BY ITSELF that free
-			space is the whole remaining card width — exactly the 155px empty
-			gutter the design re-check measured (the rollup right-floating on a
-			mobile-width line with nothing beside it). Below `sm` it sits at its
-			natural position instead: immediately after the title when they
-			share a line, or flush left under the title when they do not — the
-			same left edge as the title in both cases.
+			HARD-ALIGNED RIGHT ONCE THE CARD IS WIDE ENOUGH, ALWAYS. Below that
+			the margin is NOT auto: `margin-left: auto` resolves against the
+			FREE SPACE OF ITS OWN LINE, so on a line the rollup has wrapped onto
+			BY ITSELF that free space is the whole remaining card width —
+			exactly the 155px empty gutter the design re-check measured (the
+			rollup right-floating on a narrow line with nothing beside it).
+			Below the threshold it sits at its natural position instead:
+			immediately after the title when they share a line, or flush left
+			under the title when they do not — the same left edge as the title
+			in both cases.
+
+			⛔ WAS `sm:ml-auto` — A VIEWPORT THRESHOLD FOR A DECISION THE HEADER
+			ITSELF NOW MAKES FROM ITS OWN WIDTH. (F3, 2026-09-03) With
+			`sm:flex-nowrap` gone (see the header's own note), the rollup can
+			wrap onto its own line at ANY viewport once the card is narrow
+			enough — a card in a two-up grid at 1024 viewport is exactly this
+			case — and `sm:ml-auto` would still fire because it never stopped
+			reading the viewport, reopening the 155px-gutter bug one level up.
+			`.card-cq` (`container-type: inline-size` on the `<section>`) makes
+			the CARD the query subject; the threshold is the same 640px number
+			`sm` used, moved from the wrong signal to the right one.
 		-->
 		{#if rollup}
 			<!-- ⭐ `.card-header-rollup` — F6, DESIGN PASS 5. A card header whose
@@ -226,12 +258,12 @@
 			     than the title's 20px (`text-sm`) line box. A link in THIS slot is
 			     a rollup, not a button, and app.css now sizes it at the rollup's
 			     own scale — see the rule beside `.nav-link`. -->
-			<div class="card-header-rollup flex shrink-0 items-center gap-2 sm:ml-auto">
+			<div class="card-header-rollup flex shrink-0 items-center gap-2">
 				{@render rollup()}
 			</div>
 		{:else if verdict}
 			<span
-				class="shrink-0 text-xs font-medium whitespace-nowrap sm:ml-auto {VERDICT_TONE[verdictTone]}"
+				class="card-header-verdict shrink-0 text-xs font-medium whitespace-nowrap {VERDICT_TONE[verdictTone]}"
 				title={verdictTitle}>{verdict}</span
 			>
 		{/if}
@@ -240,3 +272,24 @@
 		{@render children()}
 	</div>
 </section>
+
+<style>
+	/*
+	 * ⭐ F3: THE CARD IS ITS OWN QUERY SUBJECT, NOT THE VIEWPORT. (2026-09-03,
+	 * breakpoints pass) Every reusable card sits in layouts of very different
+	 * widths — a full-bleed rail card, one of two on `/versions/<rev>`, one
+	 * of three in a grid — so a rule keyed to the VIEWPORT is a rule keyed to
+	 * the wrong box. `container-type: inline-size` here is the same
+	 * mechanism `/apps/<name>`'s own container-query notes already use.
+	 */
+	.card-cq {
+		container-type: inline-size;
+	}
+
+	@container (min-width: 640px) {
+		.card-header-rollup,
+		.card-header-verdict {
+			margin-left: auto;
+		}
+	}
+</style>

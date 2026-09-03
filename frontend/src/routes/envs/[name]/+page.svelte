@@ -170,7 +170,24 @@
 	// 168px, not 156: the widest joined badge the column draws is `1 BEHIND 2.66.0-66`,
 	// and at 156 its version half measured 60px against 62px of text — the identifier
 	// that answers "which build" ellipsised on the one row that is stuck.
-	const ROW_GRID = 'lg:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.4fr)_168px_56px_152px]';
+	//
+	// ⭐ F5: THE 152px ACTION TRACK IS ONLY IN THE TEMPLATE WHEN A ROW HAS AN
+	// ACTION. (2026-09-03, breakpoints pass) The single `ROW_GRID` constant
+	// used to apply to EVERY row, including the ones whose sixth cell was a
+	// deliberately empty `<div>` — an action only ever renders when
+	// `row.adverse && row.promoteTag`. Measured on `/envs/prod` at 1280 (rail
+	// flipped to `xl`, main column 697px): every `Running now` row reserved
+	// that 152px column with nothing in it, while the app name 163px to its
+	// left was the thing actually short of room. `rowGrid(row)` picks the
+	// 5-column template (no trailing track) for a row with nothing to put in
+	// it — the freed 152px is not wasted, it goes to the two flexible tracks
+	// ahead of it (`1fr` app, `1.4fr` chain) in their existing ratio, which is
+	// "make it 1fr for the name" without inventing a new column weight.
+	const ROW_GRID_ACTION = 'lg:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.4fr)_168px_56px_152px]';
+	const ROW_GRID_PLAIN = 'lg:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.4fr)_168px_56px]';
+	function rowGrid(row: Pick<Row, 'adverse' | 'promoteTag'>): string {
+		return row.adverse && row.promoteTag ? ROW_GRID_ACTION : ROW_GRID_PLAIN;
+	}
 
 	const envName = $derived(page.params.name as string);
 
@@ -919,7 +936,7 @@
 	<title>kuberik | {envName}</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="env-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!--
 		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
 		replied and names the ones that did not in `clusterErrors`, so this page
@@ -1064,14 +1081,34 @@
 			</AlertPanel>
 		{/if}
 
-		<!-- TWO COLUMNS FROM `xl`, NOT `lg`. Measured at 1280 with the 176px
-		     sidebar: a 320px rail left the app list 712px, and seven tracks
-		     inside that pushed a three-stage chain onto two lines and squeezed
-		     the build badge into an ellipsis. Between `lg` and `xl` the rail
-		     moves BELOW the list at full width instead — it loses nothing but
-		     its adjacency. -->
-		<div class="xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6">
-			<div class="mb-6 min-w-0 xl:mb-0">
+		<!--
+			⭐ F5: TWO COLUMNS ON A CONTAINER QUERY, NOT `xl`. (2026-09-03,
+			breakpoints pass, supersedes the `lg`→`xl` fix below) `xl` (1280
+			viewport) was itself measured WORSE than 1200: at 1280 the rail
+			flips (main 697px, 7 truncations, env chips stacked 3 lines, rows
+			101px tall) while 1200 stays one column (main 961px, 0
+			truncations, 65px rows) — `xl` is a fixed viewport number and the
+			sidebar makes viewport and content width two different curves, so
+			the breakpoint that "fixed" `lg` just moved the same cliff to a
+			width that still doesn't clear it. THE THRESHOLD IS DERIVED: the
+			rail is a fixed 320px, the gap is `xl:gap-6` (24px), so the main
+			column clears its own measured 700px floor only once the
+			container clears `700 + 320 + 24 = 1044px` — rounded to 1050px.
+			`.env-cq` (`container-type: inline-size`, on the page's own
+			content container above) is the query subject.
+
+			(Superseded reasoning, kept for the record: "Measured at 1280
+			with the 176px sidebar: a 320px rail left the app list 712px, and
+			seven tracks inside that pushed a three-stage chain onto two
+			lines" — the number this page shipped with was 712, live
+			measurement now reads 697; the `lg`→`xl` move narrowed the WIDTH
+			of the failure without changing its KIND, which is exactly why a
+			container query and not a bigger viewport number is the fix this
+			time.) Between one column and two, the rail moves BELOW the list
+			at full width instead — it loses nothing but its adjacency.
+		-->
+		<div class="env-split">
+			<div class="env-split-main min-w-0">
 				<!-- ── CRITERION 1 · WHAT IS RUNNING HERE RIGHT NOW ──────────
 				     A titled card with a 47px header bar and a HARD RIGHT-ALIGNED
 				     ROLLUP, which is the single most transferable thing on the
@@ -1164,7 +1201,9 @@
 								     the row's action button all stay independently
 								     clickable because the zone raises them. -->
 								<li
-									class="tap-zone grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors lg:items-center {ROW_GRID} hover:bg-gray-50 dark:hover:bg-gray-700/30"
+									class="tap-zone grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors lg:items-center {rowGrid(
+										row
+									)} hover:bg-gray-50 dark:hover:bg-gray-700/30"
 								>
 									<span
 										class="col-start-1 row-start-1 {STATUS_CIRCLE} {getStatusCircleClass(
@@ -1488,9 +1527,14 @@
 												title="Deploys {row.promoteTag}, the newest version every rule already allows"
 											/>
 										</div>
-									{:else}
-										<div class="hidden lg:col-start-6 lg:row-start-1 lg:block"></div>
 									{/if}
+									<!-- ⛔ THE EMPTY `lg:col-start-6` PLACEHOLDER IS GONE. (F5,
+									     2026-09-03, breakpoints pass) It rendered on every row
+									     with nothing to show, reserving the action column's
+									     152px for content that was never there — `rowGrid(row)`
+									     above no longer puts that column in this row's template
+									     at all when there is no action, so there is nothing left
+									     for a placeholder to occupy. -->
 								</li>
 							{/each}
 						</ul>
@@ -1578,3 +1622,35 @@
 		/>
 	{/if}
 </div>
+
+<style>
+	/*
+	 * ⭐ F5: THE RAIL FLIPS ON A CONTAINER QUERY. See the doc comment on
+	 * `.env-split` in the markup for the measurement and the derivation of
+	 * the 1050px threshold. `.env-cq` (on the page's own content container)
+	 * is the query subject; `.env-split` / `.env-split-main` are the grid
+	 * that used to be `xl:grid xl:grid-cols-[minmax(0,1fr)_320px]
+	 * xl:items-start xl:gap-6` / `xl:mb-0`, byte-identical below the
+	 * threshold and above it.
+	 */
+	.env-cq {
+		container-type: inline-size;
+	}
+
+	.env-split-main {
+		margin-bottom: 1.5rem;
+	}
+
+	@container (min-width: 1050px) {
+		.env-split {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) 320px;
+			align-items: start;
+			column-gap: 1.5rem;
+		}
+
+		.env-split-main {
+			margin-bottom: 0;
+		}
+	}
+</style>

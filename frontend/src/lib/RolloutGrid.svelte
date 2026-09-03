@@ -439,11 +439,22 @@
 				     — unless it is the ACTIVE one, so clearing a filter that
 				     just emptied out is still reachable without a resize. -->
 				{#each statusPills as sp (sp.key)}
+					<!--
+						⭐ F2: ONE HEIGHT, ONE RADIUS, ACROSS ALL THREE FILTER-CHIP ROWS.
+						(2026-09-03, breakpoints pass) Measured on the live page:
+						status pills 18px/pill, cluster pills 26px/pill, env chips
+						20px/4px — three different controls in one filter bar reading
+						as three different KINDS of thing when they are all the same
+						kind (a toggle). `rounded` (4px, matching the `Chip` the env
+						row already renders) and `min-h-[26px]` (the tallest of the
+						three, so raising the shorter two never clips their own
+						content) now apply to all three rows below.
+					-->
 					<button
 						type="button"
 						onclick={() => (quickFilter = quickFilter === sp.key ? 'all' : sp.key)}
 						aria-pressed={quickFilter === sp.key}
-						class="t-label items-center gap-1.5 rounded-full border px-2.5 py-0.5 transition-colors
+						class="t-label min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
 							{sp.count === 0 && quickFilter !== sp.key ? 'hidden sm:inline-flex' : 'inline-flex'}
 							{quickFilter === sp.key
 								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
@@ -469,7 +480,7 @@
 							type="button"
 							onclick={() => toggleCluster(cl.url)}
 							aria-pressed={sel}
-							class="inline-flex items-center rounded-full border px-2.5 py-1 transition-colors
+							class="inline-flex min-h-[26px] items-center rounded border px-2.5 py-1 transition-colors
 								{sel
 									? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
 									: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
@@ -487,7 +498,7 @@
 						onclick={() => toggleEnv(e.key)}
 						aria-pressed={sel}
 						aria-label={`Environment ${e.display}`}
-						class="environment-theme-scope inline-flex items-center rounded transition-opacity
+						class="environment-theme-scope inline-flex min-h-[26px] items-center rounded transition-opacity
 							{sel
 								? 'ring-1 ring-gray-900/30 dark:ring-gray-100/30'
 								: envFilters.length === 0
@@ -608,7 +619,7 @@
 	{:else}
 		<div class="space-y-6">
 			{#each grouped as g (g.clusterLabel + '|' + g.clusterURL + '|' + g.ns)}
-				<section>
+				<section class="rg-cq">
 					<!--
 						⛔ THE LEADING WORD IN THIS HEADER USED TO BE THE CLUSTER, AND IT
 						WAS READ AS THE ENVIRONMENT. (2026-08-31)
@@ -660,9 +671,7 @@
 <!-- Responsive grid of compact rollout cards. State column dropped
 					     (redundant with the status circle); cards flow into columns so wide
 					     screens are not one stretched row each. -->
-					<div
-					class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:justify-start xl:[grid-template-columns:repeat(auto-fit,minmax(360px,460px))]"
-				>
+					<div class="rg-grid grid gap-2">
 						{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
 							<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS
@@ -712,9 +721,20 @@
 											txt: verdict.label,
 											tip: verdict.title
 										}}
+							<!--
+								⭐ F2: THE HOVER IS A FILL NOW, NOT JUST A BORDER STEP.
+								(2026-09-03, breakpoints pass) `hover:border-gray-300` on a
+								1px border is a ΔL of 0.056 — measured invisible in a
+								screenshot diff. `.tap-zone` rows elsewhere (`Card`'s own
+								header, `/`'s rows) signal hover with
+								`hover:bg-gray-50 dark:hover:bg-gray-700/30`, the same
+								background step this card now uses too — one hover
+								language for every clickable row/card in the product,
+								not a border nobody can see change.
+							-->
 							<a
 								href={rolloutHref}
-								class="environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+								class="environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:bg-gray-700/30"
 								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 							>
 								<!-- Identity: status circle + metadata.name (+ title) + env badge -->
@@ -842,3 +862,48 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/*
+	 * ⭐ F2: THE GRID WAS TWO-COLUMN AT EVERY VIEWPORT ≥640, AND THE SIDEBAR
+	 * MAKES 640px OF VIEWPORT MEAN AS LITTLE AS 449px OF CONTENT. (2026-09-03,
+	 * breakpoints pass)
+	 *
+	 * `grid-cols-1 sm:grid-cols-2` decides column count from the VIEWPORT,
+	 * but this page's content column is not monotonic in viewport width —
+	 * the sidebar is 175px from `sm` (640px) on, so a 639px viewport gives
+	 * ~624px of content and a 640px viewport gives ~449px. `sm:grid-cols-2`
+	 * fired at exactly the width where the content SHRANK, not grew.
+	 * Measured on the live fleet at 640: two 196.5px cards, 30 truncated
+	 * fields (`hello-world-manifests` needs 177px and got 61,
+	 * `2.66.0-66` clipped to `2.…`), not recovering until 1024 viewport
+	 * happened to give the container enough room again.
+	 *
+	 * Each namespace's own `<section>` is the query subject now (`.rg-cq`),
+	 * not the viewport. Below ~730px of the GROUP'S OWN width — not enough
+	 * for two `minmax(360px, 460px)` tracks plus the 8px gap (2×360+8=728)
+	 * — the grid is one column, full width, at every viewport including
+	 * 640–1023 where it used to force two. At 730px+ the SAME `auto-fit`
+	 * rule this grid already used above `xl` (see the "THE GRID MUST FILL
+	 * ITS ROW" note near `grouped`'s definition, and its two supersessions)
+	 * now governs every width that can afford it, not only the widest one:
+	 * `auto-fit` collapses an empty trailing track to 0 so a lone-rollout
+	 * group still draws one ~460px card, ragged right, and a busy group
+	 * fills as many 360–460px tracks as its own width allows, capped by the
+	 * page's own `max-w-7xl` the same way the old `xl`-only rule was.
+	 */
+	.rg-cq {
+		container-type: inline-size;
+	}
+
+	.rg-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	@container (min-width: 730px) {
+		.rg-grid {
+			grid-template-columns: repeat(auto-fit, minmax(360px, 460px));
+			justify-content: start;
+		}
+	}
+</style>

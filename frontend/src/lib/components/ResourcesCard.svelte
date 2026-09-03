@@ -298,7 +298,7 @@
 									title="{resource.name} — Deployment">{resource.name}</span
 								>
 								<span
-									class="hidden shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 sm:inline-block dark:bg-gray-700 dark:text-gray-300"
+									class="rc-type-tag hidden shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300"
 									>Deployment</span
 								>
 							</div>
@@ -312,7 +312,7 @@
 								title="{replicas.ready}/{replicas.total} pods"
 							>
 								{replicas.ready}/{replicas.total}
-								<span class="hidden font-normal t-micro text-gray-500 sm:inline dark:text-gray-400">pods</span>
+								<span class="rc-pods-word hidden font-normal t-micro text-gray-500 dark:text-gray-400">pods</span>
 							</span>
 						{/if}
 						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
@@ -586,3 +586,31 @@
 		{/if}
 	</Card>
 {/if}
+
+<style>
+	/*
+	 * ⭐ F4: THE `Deployment` TAG AND `pods` WORD DROP ON THE CARD'S OWN
+	 * WIDTH, NOT THE VIEWPORT. (2026-09-03, breakpoints pass) `sm:inline` /
+	 * `sm:inline-block` hid them below 640px of VIEWPORT — a guard that
+	 * never fires once this card is used inside rollout detail's rail,
+	 * because the rail sits at 1024–1440+ viewport while its OWN rendered
+	 * width is 352–486px (a fixed `minmax(22rem, 2fr)` track that can never
+	 * clear 640, since it is capped by the page's own 1280px content cap).
+	 * Measured on the live page: the name column down to 44px beside 200px
+	 * of `Deployment 2/2 pods CURRENT` — the exact "type tag repeated on
+	 * every row" clutter the row's own F7 note already argued against, just
+	 * arriving through the wrong signal. No `container-type` declared here:
+	 * `Card.svelte`'s own `<section class="card-cq">` — this component
+	 * always renders inside a `Card` — is already the nearest container
+	 * ancestor, so this reuses that context rather than nesting a second
+	 * one.
+	 */
+	@container (min-width: 640px) {
+		.rc-type-tag {
+			display: inline-block;
+		}
+		.rc-pods-word {
+			display: inline;
+		}
+	}
+</style>

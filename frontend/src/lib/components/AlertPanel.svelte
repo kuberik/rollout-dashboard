@@ -369,7 +369,7 @@
 </script>
 
 <div class={className}>
-	<div class="relative overflow-hidden rounded-xl {palette.container}">
+	<div class="ap-cq relative overflow-hidden rounded-xl {palette.container}">
 		<div class="pointer-events-none absolute inset-0 overflow-hidden">
 			<div class="absolute -top-10 -right-10 h-48 w-48 rounded-full {palette.glowA} blur-3xl"></div>
 			<div
@@ -409,7 +409,7 @@
 				into the 16-20px of banner padding, which is where the reference page
 				puts it too.
 			-->
-			<div class="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-x-4">
+			<div class="ap-grid grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-x-4">
 				<!--
 					⭐ `min-h-12 sm:min-h-10` IS THE ROOM THE FULL-SIZE HALO NEEDS, AND IT
 					IS SPENT ON EVERY SEVERITY, NOT ONLY THE PULSING ONE.
@@ -460,7 +460,7 @@
 					only ever raises the disc, never caps the content.
 				-->
 				<div
-					class="col-start-2 col-end-4 row-start-1 flex min-h-12 min-w-0 flex-wrap items-center gap-2 sm:col-end-3 sm:min-h-10"
+					class="ap-headline-row col-start-2 col-end-4 row-start-1 flex min-h-12 min-w-0 flex-wrap items-center gap-2"
 				>
 					<!--
 						⭐ THE DISC IS A ZERO-HEIGHT FLEX ITEM ON THE HEADLINE'S OWN
@@ -580,7 +580,7 @@
 						is the longhand `grid-column-end` and never touches
 						`grid-column-start`, so it composes safely with `col-start-2`.
 					-->
-					<div class="col-start-2 col-end-4 row-start-2 min-w-0 sm:col-end-3">
+					<div class="ap-message-row col-start-2 col-end-4 row-start-2 min-w-0">
 						{#if messageBody}
 							<div class="mt-0.5 text-sm break-words {palette.message}">
 								{@render messageBody()}
@@ -722,7 +722,7 @@
 						`actions` was a flex sibling this morning.
 					-->
 					<div
-						class="col-start-3 row-start-3 mt-1 flex shrink-0 items-center gap-3 self-start sm:row-start-1 sm:row-end-4 sm:mt-0 sm:self-center {palette.title}"
+						class="ap-actions-cell col-start-3 row-start-3 mt-1 flex shrink-0 items-center gap-3 self-start {palette.title}"
 						style="--nav-link-ink: currentColor"
 					>
 						{@render actions()}
@@ -757,9 +757,63 @@
 	 * below it behind a clamp. Weight (600) is untouched; only size steps
 	 * down, and only below `sm`, where the reference banner already fits.
 	 */
-	@media (max-width: 639px) {
+	@container (max-width: 699px) {
 		.t-headline {
 			font-size: 14px;
+		}
+	}
+
+	/*
+	 * ⭐ F-BREAKPOINTS: THE `Open <app> →` COLUMN WAS DECIDED BY VIEWPORT,
+	 * NOT BY THE BANNER'S OWN RENDERED WIDTH — AND THE TWO ARE NOT THE SAME
+	 * NUMBER. (2026-09-03, breakpoints pass)
+	 *
+	 * The sidebar is 175px wide from `sm` (640px) on. So content width is
+	 * NOT monotonic in viewport width: a 639px viewport gives this banner
+	 * ~624px, a 640px viewport gives it ~449px — an 175px CLIFF at the exact
+	 * pixel the old `sm:` classes flipped the layout to "actions own a full-
+	 * height right column, text gets column 2 only". Measured on `/apps` at
+	 * 640: banner 443px tall, headline 7 lines, message 11 lines at ~1.5
+	 * words/line, text:action width ratio 85:196 — the layout SM asked for
+	 * but the container never had room to give.
+	 *
+	 * `.ap-cq` makes the banner itself the query subject. Below 700px of its
+	 * OWN width the text spans the full row (mobile shape: `col-end-4`,
+	 * actions drops into the disclosure row) regardless of what the
+	 * viewport happens to be; at 700px+ of banner width there is
+	 * comfortably enough room for a 30ch prose column AND a ~200px action
+	 * column side by side (2.5rem + 30ch + auto + 2 gaps ≈ 490px, well
+	 * under 700), so the two-column shape returns.
+	 *
+	 * ⚠️ THE COLUMN GRID ITSELF STAYS `minmax(0,1fr)` BELOW 700px, ON
+	 * PURPOSE. Adding a 30ch floor there too would let a wide `actions`
+	 * snippet (a button plus a link, real content on some call sites) force
+	 * the row past the container's edge — grid tracks don't shrink a floor
+	 * away, they overflow it. `minmax(0,1fr)` is the safety valve that lets
+	 * the text column go narrow (more LINES, never more WIDTH than it has)
+	 * in the stacked shape; the 30ch floor is spent only where the layout
+	 * has already proven there is room for it.
+	 */
+	.ap-cq {
+		container-type: inline-size;
+	}
+
+	@container (min-width: 700px) {
+		.ap-grid {
+			grid-template-columns: 2.5rem minmax(30ch, 1fr) auto;
+		}
+		.ap-headline-row {
+			grid-column-end: 3;
+			min-height: 2.5rem;
+		}
+		.ap-message-row {
+			grid-column-end: 3;
+		}
+		.ap-actions-cell {
+			grid-row-start: 1;
+			grid-row-end: 4;
+			margin-top: 0;
+			align-self: center;
 		}
 	}
 </style>

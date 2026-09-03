@@ -1887,9 +1887,38 @@
 					/>
 				{/if}
 
-				<div
-					class="flex flex-col gap-4 lg:grid lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start"
-				>
+				<!--
+					⭐ F4: THE RAIL FLIPS ON A CONTAINER QUERY NOW, NOT `lg`.
+					(2026-09-03, breakpoints pass) `lg` is a VIEWPORT breakpoint
+					(1024px) and the sidebar is 175px from `sm` on, so a 1024px
+					viewport does not mean 1024px of content — measured on the live
+					page: main 417px / rail 352px, the pipeline card's explanation
+					pane down to 127px wide (a sentence over 14 lines), resource
+					names truncated to 44px beside 200px of `Deployment 2/2 pods
+					CURRENT`, 57% of the rail empty. `.ov-split-cq`
+					(`container-type: inline-size`, on this same wrapper) makes the
+					query subject the box this grid actually has. THE THRESHOLD IS
+					DERIVED, NOT GUESSED: the rail floors at `22rem` (352px) and the
+					gap is 16px, so the main column clears 700px only once the
+					container clears `700 + 352 + 16 = 1068px` — rounded up to
+					1080px for a small margin. Plain `lg` (1024) undershoots this by
+					44px even ignoring the sidebar; `xl` (1280) was tried and
+					rejected on `/envs/[name]` for the identical reason (main lands
+					at 697, one pixel under its own floor) — see that page's own
+					note.
+				-->
+				<!--
+					⚠️ TWO NESTED DIVS, NOT ONE. A container-query SUBJECT cannot be
+					the same element as its own query CONTAINER — `@container`
+					rules targeting `.ov-split`'s own `display`/`grid-template-columns`
+					never matched when `.ov-split-cq` (the `container-type` owner)
+					sat on that identical element; verified via
+					`getComputedStyle(...).containerType` reading `normal` instead of
+					`inline-size` in that shape. `.ov-split-cq` wraps; `.ov-split` is
+					its one child and the actual grid.
+				-->
+				<div class="ov-split-cq">
+					<div class="ov-split flex flex-col gap-4">
 					<div class="flex flex-col gap-4">
 						<!--
 							⭐ THE HERO STAYS A HERO, AND THAT MEANS NO BORDER. (2026-09-02,
@@ -2500,8 +2529,21 @@
 													class="!p-1.5"
 												/>
 												{#if canModify}
+													<!--
+														⭐ F4: `size="sm"`, NOT `size="xs"`. (2026-09-03,
+														breakpoints pass) This is the one `.btn-primary`-weight
+														action in the release-candidate list — deploying a
+														build — and it was rendering SMALLER than every
+														secondary control on the page: measured 66×32px/12px
+														here against 38px/14px on `View on GitHub`, `Change
+														Version` and `Rollback` above (all `size="sm"`). A
+														primary action may not be the smallest control on its
+														own page. The row's icon-only siblings (`View on
+														GitHub`, copy) stay `xs` — they are utilities, not the
+														row's verb.
+													-->
 													<Button
-														size="xs"
+														size="sm"
 														color="blue"
 														aria-label={`Deploy version ${getDisplayVersion(releaseCandidate)}`}
 														disabled={!isDashboardManagingWantedVersion &&
@@ -2634,8 +2676,9 @@
 							{filteredManagedResources}
 							{cluster}
 						/>
-						<EventsCard {events} />
+						<EventsCard {events} deployedAt={errorCutoff} />
 					</div>
+				</div>
 				</div>
 			{:else}
 				<!-- No deploy yet — minimal but informative empty state -->
@@ -2850,4 +2893,24 @@
 </Toast>
 
 <style>
+	/*
+	 * ⭐ F4: THE MAIN/RAIL SPLIT IS A CONTAINER QUERY. See the doc comment on
+	 * `.ov-split` in the markup for the measurement and the derivation of
+	 * the 1080px threshold. `.ov-split-cq` is the query subject (this
+	 * component's own content column, already capped at `max-w-7xl` two
+	 * levels up); `.ov-split` is the grid that used to be `lg:grid
+	 * lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start`, byte-identical
+	 * below the threshold and above it.
+	 */
+	.ov-split-cq {
+		container-type: inline-size;
+	}
+
+	@container (min-width: 1080px) {
+		.ov-split {
+			display: grid;
+			grid-template-columns: 3fr minmax(22rem, 2fr);
+			align-items: start;
+		}
+	}
 </style>
