@@ -199,7 +199,16 @@
 			     opened for — so it says which one before the press, the same way
 			     the title above it does. -->
 			This clears the pin currently held in <strong>{envLabel}</strong>{clusterSuffix}.
-			{clearPinOutcome(gateState)}
+			<!-- ⭐ THE ROLLOUT RIDES ALONG NOW. (2026-09-03, UX-walk iteration 2,
+			     finding 5) The dialog used to promise "moves to the newest
+			     allowed version" with no version anywhere in the sentence — an
+			     operator confirming the press could not tell whether that meant
+			     one build away or twenty. `clearPinOutcome`'s optional second
+			     argument names the actual target and how many builds are newer,
+			     computed from the SAME `promotionCandidates`/
+			     `newestDeployableCandidate` the upgrades card reads, so this
+			     sentence cannot name a different build than that card does. -->
+			{clearPinOutcome(gateState, rollout)}
 		</p>
 		{#if !isDashboardManaging}
 			<p class="text-xs text-amber-600 dark:text-amber-400">

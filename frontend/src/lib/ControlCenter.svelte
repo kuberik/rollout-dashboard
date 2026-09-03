@@ -4,7 +4,13 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import type { ClusterError } from '$lib/api/rollouts';
-	import { buildRolloutCards, cardVerdict, cardStateMark, heldCauseText } from '$lib/rollout-cards';
+	import {
+		buildRolloutCards,
+		cardVerdict,
+		cardStateMark,
+		heldCauseText,
+		pinnedCauseText
+	} from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
 	import {
@@ -151,7 +157,20 @@
 		return heldCauseText(blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now }));
 	}
 
-	const trailing = $derived.by<RolloutCard[]>(() => cards.filter((c) => isTrailing(c) && !c.held));
+	/**
+	 * ⭐ THE CAUSE LINE, PICKING PIN OVER RULE. (2026-09-03, UX-walk iteration
+	 * 2, finding 1) `blockingStory`'s own precedence is "a pin outranks every
+	 * gate" (see that function's note) — while a pin is set, none of the
+	 * gates is the reason, so `heldCause` would print nothing (or, worse, a
+	 * rule sentence that is not why this card is stuck). Reading `pinned`
+	 * first keeps this card's second line honest with the SAME precedence
+	 * every other pin sentence in the product already uses.
+	 */
+	function cardCause(c: RolloutCard): string | null {
+		return c.pinnedVersion ? pinnedCauseText(c) : heldCause(c);
+	}
+
+	const trailing = $derived.by<RolloutCard[]>(() => cards.filter((c) => isTrailing(c) && !isHeld(c)));
 	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady));
 	const pendingCards = $derived.by<RolloutCard[]>(() => cards.filter(isPending));
 	const pendingCount = $derived(pendingCards.length);
@@ -774,8 +793,19 @@
 					     that card's second line. The header used to claim EVERY held
 					     card needed a person; now it names only the shared fact
 					     (a rule, not a person, decided this), and the self-clearing
-					     exception is stated per-card where it is true. -->
-					<span class="text-xs text-gray-500 dark:text-gray-400">held by a rule</span>
+					     exception is stated per-card where it is true.
+
+					     ⛔ AND NOW FALSE OF A PIN, TOO. (2026-09-03, UX-walk iteration
+					     2, finding 1) This section folds a pinned-but-not-gate-blocked
+					     rollout in alongside a genuinely rule-held one (see `isHeld`'s
+					     own note in `fleet-groups.ts`) — "held by a rule" is not true
+					     of a card whose only reason is a person's pin, so the header
+					     claim narrows to what every card in the section actually
+					     shares: it will not move on its own. A card's own second line
+					     (`cardCause`) says WHICH of the two this one is. -->
+					{#if held.every((c) => c.held)}
+						<span class="text-xs text-gray-500 dark:text-gray-400">held by a rule</span>
+					{/if}
 				</div>
 				<div
 					class="grid gap-2 {held.length === 1
@@ -794,8 +824,12 @@
 						     cards used to be the SAME card repeated four times (name +
 						     a `held` chip, nothing else); this is what tells
 						     `hello-frontend-app` (waiting on a service) apart from a
-						     card held by a clock that clears itself this afternoon. -->
-						{@const cause = heldCause(c)}
+						     card held by a clock that clears itself this afternoon.
+						     `cardCause` (2026-09-03, UX-walk iteration 2, finding 1)
+						     reads `pinned` first — see its own comment — so a pinned
+						     card says WHO pinned WHAT, never a rule sentence that is
+						     not the reason it is stuck. -->
+						{@const cause = cardCause(c)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
@@ -845,8 +879,33 @@
 								     sighted reader who is not hovering either. `role="held"`
 								     is the alias `rollout detail` already shipped for this
 								     exact word: TRAILING's deep orange, not `blocked`'s red —
-								     a gate correctly refusing a candidate is not adverse. -->
-								<Chip role="held" label="held" title={mark ? mark.title : undefined} class="shrink-0" />
+								     a gate correctly refusing a candidate is not adverse.
+
+								     ⛔ GATED ON `c.held` NOW, NOT ON MEMBERSHIP IN THIS
+								     SECTION. (2026-09-03, UX-walk iteration 2, finding 1)
+								     This section now also holds pinned-only cards (see
+								     `isHeld`'s note), and this chip's own word — "held" — is
+								     a claim about a RULE, which is false of those. -->
+								{#if c.held}
+									<Chip role="held" label="held" title={mark ? mark.title : undefined} class="shrink-0" />
+								{/if}
+								<!-- ⭐ THE PIN, AS ITS OWN WORD, NOT SILENT INSIDE `held`.
+								     (2026-09-03, UX-walk iteration 2, finding 1) Only
+								     `/rollouts` said `pinned` out loud before this — `/`
+								     filed the identical rollout under `Trailing` with no
+								     mark. Same shape `RolloutGrid.svelte` already ships
+								     (`role="unranked" label="pinned"`, independent of
+								     `held` — the two can co-occur): the disc still resolves
+								     to one glyph (`held` outranks `pinned` there, unchanged),
+								     but a word-level chip has no such limit. -->
+								{#if c.pinnedVersion}
+									<Chip
+										role="unranked"
+										label="pinned"
+										title="Pinned to {c.pinnedVersion} — automatic deploys are paused until the pin is cleared."
+										class="shrink-0"
+									/>
+								{/if}
 							</div>
 							<!-- Lines up under the name, same `pl-[34px]` indent as the
 							     chips row above it. Silent (renders nothing) when the

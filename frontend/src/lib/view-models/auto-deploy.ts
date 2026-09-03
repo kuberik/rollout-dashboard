@@ -37,6 +37,8 @@
  */
 
 import type { Rollout, RolloutGate } from '../../types';
+import { promotionCandidates, newestDeployableCandidate } from './promotion';
+import { displayVersionForTag } from '../version-utils';
 
 export type AutoDeployReason = 'gates' | 'health' | 'pin' | 'failed';
 
@@ -164,10 +166,38 @@ export function manualDeployNote(state: AutoDeployState): string | null {
  *
  * `state` must be the state INCLUDING the pin; this function reasons about the
  * world after the pin is gone, which is why it ignores the `pin` reason.
+ *
+ * ⭐ NAMES THE TARGET NOW, NOT JUST "the newest allowed version". (2026-09-03,
+ * UX-walk iteration 2, finding 5) A live UX walk found the Clear pin dialog
+ * never named the build the rollout would actually move to, even in the one
+ * branch where it promised movement — an operator confirming "moves to the
+ * newest allowed version" has no way to know whether that is one build away
+ * or twenty. `rollout` is optional and additive: every existing caller that
+ * passes only `state` keeps the old generic sentence (asserted by
+ * `auto-deploy.test.ts`); a caller that also has the rollout object gets the
+ * SAME data `promotionCandidates`/`newestDeployableCandidate` compute for the
+ * `Available Version Upgrades` card's own `N newer` chip, so this sentence
+ * and that card cannot name two different counts for the same rollout.
  */
-export function clearPinOutcome(state: AutoDeployState): string {
+export function clearPinOutcome(state: AutoDeployState, rollout?: Rollout | null): string {
 	const rest = { ...state, reasons: state.reasons.filter((r) => r !== 'pin') };
 	if (rest.reasons.length === 0) {
+		if (rollout) {
+			// Reasoning about the world WITHOUT the pin: every gate already
+			// passes (`rest.reasons` is empty), so the candidate every gate
+			// allows is simply the newest one — but `newestDeployableCandidate`
+			// itself still reads the CURRENT (pinned) rollout, and a pin does
+			// not change what any gate allows, only whether the controller may
+			// act on it. Safe to call as-is.
+			const target = newestDeployableCandidate(rollout);
+			const count = promotionCandidates(rollout).length;
+			const version = target
+				? displayVersionForTag(rollout, target.tag ?? target.version ?? null)
+				: '';
+			if (target && version) {
+				return `Automatic promotion resumes; the newest allowed build is ${version} (${count} newer).`;
+			}
+		}
 		return 'Automatic promotion resumes, and the rollout moves to the newest allowed version.';
 	}
 	return `Automatic promotion resumes, but nothing will move yet — ${autoDeployWhy(rest)}. The rollout stays on the version it is running until that clears.`;

@@ -109,7 +109,8 @@
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
-		ClockOutline
+		ClockOutline,
+		PauseSolid
 	} from 'flowbite-svelte-icons';
 	import { iconForStory } from '$lib/components/BlockingStoryPanel.svelte';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
@@ -459,6 +460,17 @@
 		story: BlockingStory;
 		/** `rolled back` / `pinned` / `held`, for the disc — see `markByRollout`. */
 		mark: CardStateMark | null;
+		/**
+		 * ⭐ INDEPENDENT OF `mark` — see `/environments`' `EnvApp.pinned` for
+		 * why. (2026-09-03, UX-walk iteration 2, finding 1) The disc's `mark`
+		 * reports `pinned` only when `held`/`rolledBack` are both absent
+		 * (`cardStateMark`'s own precedence), so a row that is BOTH held by a
+		 * rule and pinned by a person would otherwise have no way to say the
+		 * second half. The row's own `PINNED` chip reads this raw field, the
+		 * same way its `held` chip already reads `block.blocked` rather than
+		 * `mark`.
+		 */
+		pinned: boolean;
 		/** Tag a `Promote` here would deploy, or null when none may be offered. */
 		promoteTag: string | null;
 		adverse: boolean;
@@ -514,6 +526,7 @@
 				block: promotionBlock(slot.cell.rollout),
 				story: blockingStory(slot.cell.rollout, gateContext, { place: envName, now: $now }),
 				mark: markByRollout.get(slot.cell.rollout) ?? null,
+				pinned: !!slot.cell.rollout.spec?.wantedVersion,
 				promoteTag: candidate ? (candidate.tag ?? candidate.version ?? null) : null,
 				adverse,
 				primary: false,
@@ -571,6 +584,45 @@
 	const healthyCount = $derived(
 		rows.filter((r) => r.statusKey !== 'failed' && !r.stuck && r.status !== 'None').length
 	);
+	/**
+	 * ⭐ COUNTED SEPARATELY FROM ANYTHING `held`-SHAPED. (2026-09-03, UX-walk
+	 * iteration 2, finding 1) This page never printed a held count at all —
+	 * unlike `/environments`' sibling card, `Running now`'s rollup stops at
+	 * failing/stuck/running — so there was no pre-existing count to conflate
+	 * a pin with. Added here as its own figure so a pinned app is at least
+	 * as visible in the rollup as it now is on its own row's chip.
+	 */
+	const pinnedCount = $derived(rows.filter((r) => r.pinned).length);
+	/**
+	 * ⭐ FOR THE TONE, NOT THE SENTENCE. (2026-09-03, UX-walk iteration 2,
+	 * finding 2, relayed live from a peer lane's pixel-sampled report on
+	 * this exact card: *"the card prints '4/4 running · 1 pinned' — the ink
+	 * on '4/4 running' is exactly the product's green-700, sitting right
+	 * next to '1 pinned' in the same sentence."*) `Card`'s `verdict` is ONE
+	 * string painted in ONE ink (`verdictTone`), so a held or pinned app
+	 * anywhere on this page was invisible to the tone even though the
+	 * sentence now names it. `heldCount` mirrors `/environments`' own
+	 * `EnvApp.pinned`/held split — read off `row.block.blocked` directly,
+	 * never off `story.blocked` (which is true for a pin too — see that
+	 * file's own note on the identical conflation).
+	 */
+	const heldCount = $derived(rows.filter((r) => r.block.blocked).length);
+	/**
+	 * ⭐ APPENDED, NEVER SUBSTITUTED. Pinned is a different axis from
+	 * failing/stuck/running (a person's choice, not a health verdict), so it
+	 * trails whichever of those three already leads — same shape as
+	 * `/environments`' own separate pinned span beside its rollup.
+	 */
+	const runningVerdict = $derived.by(() => {
+		if (rows.length === 0) return 'nothing deployed';
+		const base =
+			failingCount > 0
+				? `${failingCount} failing · ${healthyCount}/${rows.length} running`
+				: stuckCount > 0
+					? `${stuckCount} stuck · ${healthyCount}/${rows.length} running`
+					: `${healthyCount}/${rows.length} running`;
+		return pinnedCount > 0 ? `${base} · ${pinnedCount} pinned` : base;
+	});
 
 	// ──────────────────────────── The banner ───────────────────────────────
 	/**
@@ -1170,26 +1222,43 @@
 				     version is allowed yet`: a green verdict on the same object the
 				     line under it says is held. `/environments`'s sibling card
 				     already says `4/4 running`; this one had not been carried along. -->
+				<!-- ⛔ THE ICON AND THE TONE WERE BLIND TO `held`/`pinned`. (2026-09-03,
+				     UX-walk iteration 2, finding 2, from a peer lane's live pixel
+				     sample on this exact card: "the ink on '4/4 running' is exactly
+				     the product's green-700, sitting right next to '1 pinned' in the
+				     same sentence.") `verdict` is ONE string in ONE ink (`Card`'s own
+				     contract), so `runningVerdict` naming a hold or a pin changed the
+				     WORDS but not the colour they read in — the all-clear icon and the
+				     all-clear ink both stayed green. Folded `heldCount`/`pinnedCount`
+				     into both, matching `/environments`' sibling card exactly: a held
+				     app takes the disc's own orange pause glyph (a gate refusing a
+				     candidate is not adverse — `PauseSolid`, `CLAUDE.md`'s "a gate
+				     correctly refusing a candidate is not a stoppage"); a pin alone
+				     (no rule holding anything) keeps the check glyph — pinning is a
+				     CHOICE, not a deviation — but neither may paint the sentence
+				     green while it is naming either fact. -->
 				<Card
 					icon={failingCount > 0
 						? ExclamationCircleSolid
 						: stuckCount > 0
 							? ClockSolid
-							: CheckCircleSolid}
+							: heldCount > 0
+								? PauseSolid
+								: CheckCircleSolid}
 					iconClass={failingCount > 0
 						? 'text-red-600 dark:text-red-400'
 						: stuckCount > 0
 							? 'text-amber-600 dark:text-amber-400'
-							: 'text-green-700 dark:text-green-400'}
+							: heldCount > 0
+								? 'text-orange-950 dark:text-orange-300'
+								: 'text-green-700 dark:text-green-400'}
 					title="Running now"
-					verdict={rows.length === 0
-						? 'nothing deployed'
-						: failingCount > 0
-							? `${failingCount} failing · ${healthyCount}/${rows.length} running`
-							: stuckCount > 0
-								? `${stuckCount} stuck · ${healthyCount}/${rows.length} running`
-								: `${healthyCount}/${rows.length} running`}
-					verdictTone={failingCount > 0 ? 'adverse' : stuckCount > 0 ? 'neutral' : 'good'}
+					verdict={runningVerdict}
+					verdictTone={failingCount > 0
+						? 'adverse'
+						: stuckCount > 0 || heldCount > 0 || pinnedCount > 0
+							? 'neutral'
+							: 'good'}
 					padded={false}
 				>
 					{#if rows.length === 0}

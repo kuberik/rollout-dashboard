@@ -18,6 +18,7 @@ import {
 	rolloutMatchesEnvironment
 } from './source-dashboard';
 import type { BlockingStory } from './view-models/blocking-story';
+import { displayVersionForTag } from './version-utils';
 
 export type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
 
@@ -557,4 +558,36 @@ export function heldCauseText(story: BlockingStory): string | null {
 	// No second party to draw (`check`, `approval`, `unknown`) — `short` is
 	// already complete prose for exactly this case; see its own doc comment.
 	return g.short;
+}
+
+/**
+ * ⭐ THE CAUSE LINE FOR A CARD HELD BY A PIN, NOT A RULE. (2026-09-03,
+ * UX-walk iteration 2, finding 1)
+ *
+ * `heldCauseText` reads `story.gates[0]` — and `blockingStory` short-circuits
+ * on a pin BEFORE it ever classifies a gate (see that function's own "A PIN
+ * OUTRANKS EVERY GATE" note), so a purely-pinned card's story carries `gates:
+ * []` and `heldCauseText` prints nothing. A live UX walk found the Held
+ * section's cards saying nothing at all for a pinned rollout, and the SAME
+ * card filed under `/`'s **Trailing** bucket, where nothing marks the pin as
+ * the reason it will not move — the rule sentence would have been wrong
+ * (there IS no rule holding it) and silence is not the fix.
+ *
+ * The cause is the pin itself: which build it is pinned to, and — when the
+ * pinning deploy was a person, not the controller — who. `displayVersionForTag`
+ * is the same lookup `blockingStory`'s own pin branch and every other pin
+ * sentence in the product uses, so this never prints the ~60-character raw
+ * OCI tag. The actor comes off the CURRENT history entry's `triggeredBy`,
+ * the same field rollout detail's `Rolled back by` reads — pinning the
+ * running version through the UI (Change Version → same version → pin on)
+ * writes a fresh history entry with the pressing user as its trigger, so
+ * this is honest for a person-initiated pin and silent (no "by …" clause)
+ * for one the controller or an external system set.
+ */
+export function pinnedCauseText(c: Pick<RolloutCard, 'pinnedVersion' | 'rollout'>): string | null {
+	if (!c.pinnedVersion) return null;
+	const display = displayVersionForTag(c.rollout, c.pinnedVersion) || c.pinnedVersion;
+	const trig = c.rollout.status?.history?.[0]?.triggeredBy;
+	const who = trig?.kind === 'User' && trig?.name ? trig.name : null;
+	return who ? `pinned to ${display} by ${who}` : `pinned to ${display}`;
 }

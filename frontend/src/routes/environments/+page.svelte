@@ -370,6 +370,17 @@
 		 * every other list surface's `c.held` does, not `mark?.kind`.
 		 */
 		held: boolean;
+		/**
+		 * ⭐ A PERSON'S CHOICE, NOT A RULE — CARRIED SEPARATELY FROM `held`.
+		 * (2026-09-03, UX-walk iteration 2, finding 1) `story.blocked` (what
+		 * `heldCount` used to be computed from) is TRUE for a pinned app too
+		 * — `blockingStory`'s pin branch sets `blocked: candidateCount > 0`
+		 * — so a card holding only a pinned app, no rule, read `1 held` with
+		 * no `PINNED` chip anywhere to say why. `pinned` is `held`'s sibling,
+		 * never derived from `story`: `spec.wantedVersion` is set or it is
+		 * not, independent of whether any candidate exists to be held.
+		 */
+		pinned: boolean;
 		timestamp: string | null;
 		/** Sort key inside a card. Failing first, then stuck, then depth. */
 		severity: number;
@@ -399,8 +410,18 @@
 		notPassingGates: string[];
 		/** The single app whose block the card speaks for. Never a union. */
 		blockedApp: EnvApp | null;
-		/** How many apps here are held by a gate. The header's second rollup. */
+		/**
+		 * How many apps here are held by a GATE. The header's second rollup.
+		 *
+		 * ⛔ NO LONGER `story.blocked` — SEE `EnvApp.pinned`'s OWN NOTE.
+		 * (2026-09-03, UX-walk iteration 2, finding 1) `a.held` (`promotionBlock`
+		 * directly) never looks at `spec.wantedVersion`, so it is the pure
+		 * "a rule refuses every candidate" count `pinnedCount` below needed
+		 * to be split OUT of.
+		 */
 		heldCount: number;
+		/** How many apps here are pinned by a person. The header's third rollup. */
+		pinnedCount: number;
 		lastDeployTs: string | null;
 		severity: number;
 	};
@@ -515,6 +536,7 @@
 							held: block.blocked
 						}),
 						held: block.blocked,
+						pinned: !!cell.rollout.spec?.wantedVersion,
 						timestamp: latest?.timestamp ?? null,
 						severity:
 							state === 'failing'
@@ -628,8 +650,21 @@
 				 * body is about: how many are held. The header now agrees with
 				 * what is underneath it, and it still answers criterion 1 at a
 				 * glance.
+				 *
+				 * ⛔ `a.held`, NOT `a.story.blocked`. (2026-09-03, UX-walk
+				 * iteration 2, finding 1) `story.blocked` is TRUE for a pinned
+				 * app with newer candidates too — `blockingStory`'s pin branch
+				 * says so explicitly ("A PIN OUTRANKS EVERY GATE") — so this
+				 * count used to fold a person's pin in with a rule's refusal,
+				 * and a card holding one pinned app with no rule anywhere read
+				 * `1 held` beside a row carrying no `held` chip at all (the
+				 * row's own chip already correctly reads `a.held`). `a.held`
+				 * (`promotionBlock` directly) never looks at the pin, so this
+				 * rollup and the row chip it summarises now count the same
+				 * predicate.
 				 */
-				heldCount: apps.filter((a) => a.story.blocked).length,
+				heldCount: apps.filter((a) => a.held).length,
+				pinnedCount: apps.filter((a) => a.pinned).length,
 				lastDeployTs,
 				severity: failing > 0 ? 4 : stuck > 0 ? 3 : (deepest?.by ?? 0) > 0 ? 1 : 0
 			});
@@ -837,6 +872,30 @@
 			// are about to open before they click.
 			let target = worstBlocked;
 			if (peers.length > 1) {
+				// ⛔ THE TARGET IS PICKED *BEFORE* THE SENTENCE NOW — IT USED TO BE
+				// THE OTHER WAY ROUND, AND THAT ORDER IS THE BUG. (2026-09-03,
+				// UX-walk iteration 2, finding 5) `base` below asks
+				// `blockingStory` a promotion-order question ("which environment
+				// deploys this build first?"), and that gate is bound to ONE
+				// rollout's own namespace (`ctx.promotion` is keyed on
+				// `namespace + gate name`) — so the answer depends on WHICH
+				// peer's rollout you ask. The CTA a few lines down always opened
+				// the MOST DOWNSTREAM peer (`target`, picked by `envTiers` index)
+				// while the sentence above it was built from `worstBlocked` — the
+				// peer picked by an unrelated "who needs a person" ranking. On a
+				// fleet where those two peers differ (a dependency contract
+				// holding an app in both STAGING and PROD, `worstBlocked` landing
+				// on STAGING's own instance while `target` opens PROD), the
+				// banner read `dev deploys it first` — true of STAGING's OWN
+				// upstream gate — with a CTA that opened PROD, whose upstream gate
+				// might name a different environment entirely. Deriving `target`
+				// first and asking `blockingStory` of `target.app.rollout` makes
+				// the clause and the CTA answer about the SAME rollout, so
+				// whichever environment the order clause names is the one
+				// pressing the button actually opens.
+				target = peers.reduce((worst, p) =>
+					envTiers.indexOf(p.c.tier) > envTiers.indexOf(worst.c.tier) ? p : worst
+				, peers[0]);
 				const names = peers.map((p) => p.c.tier.toUpperCase());
 				const where =
 					peers.length === deployedForApp
@@ -845,17 +904,14 @@
 							? joinClauses(names)
 							: `${names.length} environments`;
 				const base = withPinScheduleClause(
-					blockingStory(worstBlocked.app.rollout, gateContext, {
+					blockingStory(target.app.rollout, gateContext, {
 						subject: appName,
 						now: $now
 					}),
-					worstBlocked.app.rollout,
+					target.app.rollout,
 					gateContext
 				);
 				story = { ...base, headline: `${base.headline} in ${where}` };
-				target = peers.reduce((worst, p) =>
-					envTiers.indexOf(p.c.tier) > envTiers.indexOf(worst.c.tier) ? p : worst
-				, peers[0]);
 			}
 
 			return {
@@ -1087,6 +1143,23 @@
 				class="shrink-0"
 			/>
 		{/if}
+		<!-- ⭐ THE PIN, AS ITS OWN CHIP — INDEPENDENT OF `held`. (2026-09-03,
+		     UX-walk iteration 2, finding 1) `/rollouts` was the only list
+		     surface that ever said `pinned` out loud; this row drew a pinned
+		     app with the SAME `held` chip above (`story.blocked` conflated
+		     the two — see `EnvApp.pinned`'s own note) or, once a real rule
+		     was also present, nothing distinguishing "a rule" from "a
+		     person" at all. Same shape `/`'s Held section and `RolloutGrid`
+		     both now ship: `role="unranked"`, because a pin is a choice, not
+		     a rule, and `Chip`'s role vocabulary has no dedicated pinned hue. -->
+		{#if a.pinned}
+			<Chip
+				role="unranked"
+				label="pinned"
+				title="Pinned to {a.rollout.spec?.wantedVersion} — automatic deploys are paused until the pin is cleared."
+				class="shrink-0"
+			/>
+		{/if}
 	</div>
 	<!-- ⭐ THE REASON LIVES ON THE ROW IT EXPLAINS. (2026-09-01)
 
@@ -1216,8 +1289,22 @@
 			     for `held` — and the deviation (at most one clause: failing,
 			     else stuck, else held) is a second, separately-inked span
 			     appended to it, never a replacement for it. -->
+			<!-- ⛔ THE NORM STAYED GREEN BESIDE ITS OWN DEVIATION. (2026-09-03,
+			     UX-walk iteration 2, finding 2, from a peer lane's live pixel
+			     sample: "the ink on '4/4 running' is exactly the product's
+			     green-700, sitting right next to '1 held' in amber, on the same
+			     line.") This span's own rule two comments up already says the
+			     norm's ink goes neutral the moment a deviation sits beside it —
+			     the code only tested `failing`/`stuck` and never `heldCount`, so
+			     a card whose ONLY deviation was `held` (or a pin) kept the
+			     all-clear green. `c.pinnedCount` folded in for the same reason
+			     `heldCount` is: a pin is not adverse, but "all clear" is still
+			     the wrong claim to paint beside it. -->
 			<span
-				class="text-xs font-medium whitespace-nowrap {c.failing > 0 || c.stuck > 0
+				class="text-xs font-medium whitespace-nowrap {c.failing > 0 ||
+				c.stuck > 0 ||
+				c.heldCount > 0 ||
+				c.pinnedCount > 0
 					? 'text-gray-500 dark:text-gray-400'
 					: 'text-green-700 dark:text-green-400'}"
 				title="{c.healthy} of {c.apps.length} apps here are deployed and serving"
@@ -1244,6 +1331,25 @@
 					title="{c.heldCount} of {c.apps.length} apps here have newer builds that no rule will let in yet"
 				>
 					{c.heldCount} held
+				</span>
+			{/if}
+			<!-- ⭐ A SEPARATE ROLLUP, NOT A FOURTH BRANCH OF THE CHAIN ABOVE.
+			     (2026-09-03, UX-walk iteration 2, finding 1) `failing`/`stuck`/
+			     `held` are the worst thing true of the CARD and are mutually
+			     exclusive by construction (`AppState` is one bucket per app).
+			     Pinned is a different axis — a person's CHOICE, which can sit
+			     alongside any of the three (a pinned app can also be stuck) —
+			     so it prints unconditionally beside whichever of those fired,
+			     the same way `N/M running` always leads regardless of what
+			     follows it. Matches `/`'s and `/rollouts`' own count: `held`
+			     and `pinned` are counted separately everywhere a rollup adds
+			     them up. -->
+			{#if c.pinnedCount > 0}
+				<span
+					class="text-xs font-medium whitespace-nowrap text-gray-500 dark:text-gray-400"
+					title="{c.pinnedCount} of {c.apps.length} apps here are pinned to one version by a person"
+				>
+					{c.pinnedCount} pinned
 				</span>
 			{/if}
 		{/snippet}
@@ -1293,8 +1399,20 @@
 				     kind of card-body sentence. `t-dense` (12.5px/400/1.45) is the
 				     nearest declared role and the one every other card-body
 				     sentence on this page already uses. -->
+				<!-- ⛔ THE ICON STAYED GREEN OVER ITS OWN "held" BLOCK, 30px BELOW
+				     IT. (2026-09-03, UX-walk iteration 2, finding 2, from a peer
+				     lane's live report on this exact branch.) The sentence itself
+				     stays true — every app here really is at the head of its own
+				     ladder — but a solid green check reads as "nothing to see",
+				     directly above a `BlockingStoryLines` block that exists
+				     because there IS something to see. Same swap the card's own
+				     header icon already makes for `c.heldCount`. -->
 				<p class="flex items-center gap-2">
-					<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
+					{#if c.blockedApp}
+						<PauseSolid class="h-4 w-4 shrink-0 text-orange-950 dark:text-orange-300" />
+					{:else}
+						<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
+					{/if}
 					<span class="t-dense text-gray-900 dark:text-white"
 						>All {c.apps.length} app{c.apps.length === 1 ? '' : 's'} here are up to date</span
 					>

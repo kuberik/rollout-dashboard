@@ -161,4 +161,39 @@ describe('clearPinOutcome — the promise the old dialog could not keep', () => 
 		expect(out).toContain('Business Hours Only');
 		expect(out).not.toContain('moves to the newest allowed version');
 	});
+
+	/**
+	 * ⭐ UX-WALK ITERATION 2, FINDING 5: THE DIALOG NEVER NAMED THE VERSION.
+	 * (2026-09-03) "moves to the newest allowed version" is true and useless
+	 * — an operator confirming the press cannot tell one build away from
+	 * twenty. Passing the rollout names both.
+	 */
+	it('names the target build and the count of newer builds, when the rollout is passed', () => {
+		const r = rollout({ spec: { wantedVersion: 'main-abc' } });
+		r.status!.conditions = [{ type: 'GatesPassing', status: 'True' } as never];
+		r.status!.gates = [];
+		r.status!.releaseCandidates = [
+			{ version: 'def456', tag: 'def456' },
+			{ version: 'abc123', tag: 'abc123' }
+		] as never;
+		const s = autoDeployState(r);
+		const out = clearPinOutcome(s, r);
+		expect(out).toContain('def456');
+		expect(out).toContain('2 newer');
+		expect(out).not.toContain('moves to the newest allowed version');
+	});
+
+	it('falls back to the generic sentence when no rollout is passed, unchanged', () => {
+		// The pre-existing call sites (none currently pass a second argument)
+		// must keep reading exactly what they always have.
+		const pinnedOnly = autoDeployState(
+			(() => {
+				const r = rollout({ spec: { wantedVersion: 'main-abc' } });
+				r.status!.conditions = [{ type: 'GatesPassing', status: 'True' } as never];
+				r.status!.gates = [];
+				return r;
+			})()
+		);
+		expect(clearPinOutcome(pinnedOnly, null)).toContain('moves to the newest allowed version');
+	});
 });

@@ -1829,6 +1829,24 @@ describe('auto-deploy: why promotion is paused, and what clearing a pin does', (
 		);
 	});
 
+	/**
+	 * ⭐ UX-WALK ITERATION 2, FINDING 5: "moves to the newest allowed version"
+	 * NAMED NO VERSION. When the caller has the rollout object (every real
+	 * call site does -- `ClearPinModal` passes it), the sentence names the
+	 * actual target build and how many candidates exist, read off the SAME
+	 * `promotionCandidates`/`newestDeployableCandidate` the upgrades card
+	 * uses -- ground truth is `promotionCandidates`'s own doc comment: newest
+	 * first, and the deployable one is whichever candidate every gate
+	 * already allows.
+	 */
+	test('clearing the pin, with the rollout, names the target build and count', () => {
+		const r = rollout({ releases: ['a1', 'b2', 'c3'], at: 0, pinned: 'a1' });
+		says(
+			clearPinOutcome({ paused: true, reasons: ['pin'], gateNames: [] }, r),
+			'Automatic promotion resumes; the newest allowed build is c3 (2 newer).'
+		);
+	});
+
 	test('clearing the pin when something else still holds it -- says nothing will move', () => {
 		says(
 			clearPinOutcome({ paused: true, reasons: ['pin', 'gates'], gateNames: [] }),

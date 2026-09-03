@@ -117,9 +117,35 @@ export function isSteady(c: RolloutCard): boolean {
  * predicate now, imported by both, so `held` cannot drift from `trailing`
  * (which still includes it — `held` is a REFINEMENT of trailing, not a
  * disjoint fifth bucket) on one surface and not the other.
+ *
+ * ⛔ WIDENED, 2026-09-03 (UX-walk iteration 2, finding 1): A PIN IS ALSO A
+ * REASON THIS ROLLOUT WILL NOT MOVE ON ITS OWN. `c.held` (`promotionBlock`)
+ * only ever looks at gates — it has no idea `spec.wantedVersion` exists — so
+ * a rollout with every gate open but a pin set was `isHeld === false` and
+ * fell into `Trailing`, filed on `/` under the header *"healthy, but behind
+ * a newer build"* and counted by `/rollouts`' own `Trailing` pill, with
+ * nothing on either page saying a person, not a rule, is the reason it has
+ * not moved. `held` and `pinned` answer the identical downstream question —
+ * "will automatic promotion take this rollout anywhere by itself" — so both
+ * belong in the one bucket that question already has a name for. The WORD
+ * shown for each stays distinct (`cardStateMark`'s `held` vs `pinned`
+ * branches, and the chip vocabulary each list surface renders) — only the
+ * BUCKET is shared, so `/` and `/rollouts` cannot count this rollout under
+ * two different headline words again.
  */
 export function isHeld(c: RolloutCard): boolean {
-	return isTrailing(c) && c.held;
+	return isTrailing(c) && (c.held || c.pinnedVersion != null);
+}
+
+/**
+ * A rollout that will not move on its own SPECIFICALLY because a person
+ * pinned it — as opposed to a rule (gate) refusing every candidate. The two
+ * can co-occur (a pin does not know or care what the gates are doing), so
+ * this is not `isHeld`'s complement; it is the independent fact a PINNED
+ * chip renders from, on every list surface that shows one.
+ */
+export function isPinned(c: RolloutCard): boolean {
+	return c.pinnedVersion != null;
 }
 
 /**
@@ -151,14 +177,23 @@ export type FleetGroups = {
 	pending: RolloutCard[];
 };
 
-/** Every bucket at once, for a page that needs all six counts. */
+/**
+ * Every bucket at once, for a page that needs all six counts.
+ *
+ * ⛔ `held`/`trailing` READ `isHeld` NOW, NOT THE RAW `c.held` FIELD.
+ * (2026-09-03, UX-walk iteration 2, finding 1) `isHeld` above now folds a
+ * pin in alongside a gate block; filtering on `c.held` directly here would
+ * have quietly reopened the exact drift this function exists to prevent —
+ * a pinned-only rollout counted under `held` by `isHeld` callers but still
+ * landing in `trailing` here.
+ */
 export function fleetGroups(cards: RolloutCard[]): FleetGroups {
 	const trailingAll = cards.filter(isTrailing);
 	return {
 		needsYou: cards.filter(isNeedsYou),
 		inMotion: cards.filter(isInMotion),
-		held: trailingAll.filter((c) => c.held),
-		trailing: trailingAll.filter((c) => !c.held),
+		held: trailingAll.filter(isHeld),
+		trailing: trailingAll.filter((c) => !isHeld(c)),
 		steady: cards.filter(isSteady),
 		pending: cards.filter(isPending)
 	};
