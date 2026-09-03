@@ -1700,16 +1700,38 @@
 									acc + (s.cell.rollout.status?.history?.filter((h) => h.timestamp).length ?? 0),
 								0
 							)}
-							<span class="t-code-sm text-gray-500 dark:text-gray-400"
-								>{n} deploy{n === 1 ? '' : 's'}</span
-							>
-							<a
-								href={`/activity?env=${encodeURIComponent(envName)}`}
-								class="nav-link"
-								aria-label={`View all activity in ${envName}`}
-							>
-								View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
-							</a>
+							<!-- ⭐ F7, 2026-09-03 (coordinator hand-off): IN THE RAIL THE
+							     ROLLUP IS THE LINK. Same defect and fix as `/apps`' own
+							     identical snippet and `HomeRail.svelte`'s: two flex
+							     children do not both fit this card's ~320px rail width,
+							     so `.ra-narrow` folds the count into the link's own text
+							     below the card's own 640px (see the `<style>` block at
+							     the end of this file), and `.ra-wide` keeps the old
+							     two-piece form for whatever width can afford it. -->
+							<div class="rail-activity-rollup flex shrink-0 items-center gap-1.5">
+								<a
+									href={`/activity?env=${encodeURIComponent(envName)}`}
+									class="nav-link ra-narrow"
+									aria-label={`View all activity in ${envName}`}
+								>
+									{n} deploy{n === 1 ? '' : 's'}
+									<ChevronRightOutline class="h-3.5 w-3.5" />
+								</a>
+								<span class="ra-wide t-code-sm text-gray-500 dark:text-gray-400">
+									{n} deploy{n === 1 ? '' : 's'}
+								</span>
+								<span
+									class="ra-wide t-code-sm text-gray-500 dark:text-gray-400"
+									aria-hidden="true">·</span
+								>
+								<a
+									href={`/activity?env=${encodeURIComponent(envName)}`}
+									class="nav-link ra-wide"
+									aria-label={`View all activity in ${envName}`}
+								>
+									View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+								</a>
+							</div>
 						{/snippet}
 						<ActivityRail
 							rollouts={slots.map((s) => s.cell.rollout)}
@@ -1763,6 +1785,25 @@
 
 		.env-split-main {
 			margin-bottom: 0;
+		}
+	}
+
+	/*
+	 * ⭐ F7, 2026-09-03 (coordinator hand-off). Same mechanism as
+	 * `HomeRail.svelte`'s own note and `/apps`' identical copy: `.ra-wide`
+	 * starts hidden, threshold rides `Card.svelte`'s own `.card-cq` ancestor
+	 * (no `container-type` declared here), `display: revert` restores each
+	 * element's own default on the winning side.
+	 */
+	.ra-wide {
+		display: none;
+	}
+	@container (min-width: 640px) {
+		.ra-narrow {
+			display: none;
+		}
+		.ra-wide {
+			display: revert;
 		}
 	}
 </style>

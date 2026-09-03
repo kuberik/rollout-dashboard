@@ -1924,12 +1924,32 @@
 							(acc, r) => acc + (r.status?.history?.filter((h) => h.timestamp).length ?? 0),
 							0
 						)}
-						<span class="t-code-sm text-gray-500 dark:text-gray-400"
-							>{n} deploy{n === 1 ? '' : 's'}</span
-						>
-						<a href="/activity" class="nav-link" aria-label="View all deploy activity">
-							View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
-						</a>
+						<!-- ⭐ F7, 2026-09-03 (coordinator hand-off): IN THE RAIL THE
+						     ROLLUP IS THE LINK. Two separate flex children — the count
+						     and the link — do not both fit this card's own ~320px rail
+						     width; they wrapped to a second line, measuring 65px against
+						     every other header's 47px. `.ra-narrow` folds the count into
+						     the link's own text (`{n} deploys ›`) with `aria-label`
+						     supplying the verb the visible text leaves out; `.ra-wide` is
+						     the old two-piece form, kept for whatever width can afford it
+						     (see the `<style>` block at the end of this file — same
+						     `@container (min-width: 640px)` number `Card.svelte` itself
+						     uses, riding its `.card-cq` ancestor). -->
+						<div class="rail-activity-rollup flex shrink-0 items-center gap-1.5">
+							<a href="/activity" class="nav-link ra-narrow" aria-label="View all deploy activity">
+								{n} deploy{n === 1 ? '' : 's'}
+								<ChevronRightOutline class="h-3.5 w-3.5" />
+							</a>
+							<span class="ra-wide t-code-sm text-gray-500 dark:text-gray-400">
+								{n} deploy{n === 1 ? '' : 's'}
+							</span>
+							<span class="ra-wide t-code-sm text-gray-500 dark:text-gray-400" aria-hidden="true"
+								>·</span
+							>
+							<a href="/activity" class="nav-link ra-wide" aria-label="View all deploy activity">
+								View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+							</a>
+						</div>
 					{/snippet}
 					<ActivityRail
 						rollouts={allRollouts}
@@ -2645,4 +2665,26 @@
 	   reported. The step is a band at every width now. If a second step shape
 	   is ever added back, it belongs in the band beside `unpin`, not in a
 	   column that most rows cannot fill. */
+
+	/*
+	 * ⭐ F7, 2026-09-03 (coordinator hand-off). Same mechanism as
+	 * `HomeRail.svelte`'s own note: `.ra-wide` starts hidden, and the
+	 * threshold queries the nearest `container-type` ancestor, which is
+	 * `Card.svelte`'s own `.card-cq` on the `<section>` this snippet renders
+	 * inside — no `container-type` declared here. `display: revert` on the
+	 * winning side restores `.nav-link`'s own `inline-flex` / the plain
+	 * `<span>`'s default `inline`, one rule instead of two element-specific
+	 * ones.
+	 */
+	.ra-wide {
+		display: none;
+	}
+	@container (min-width: 640px) {
+		.ra-narrow {
+			display: none;
+		}
+		.ra-wide {
+			display: revert;
+		}
+	}
 </style>

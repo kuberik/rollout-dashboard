@@ -665,16 +665,38 @@
 						     `status.history` entry with a timestamp across this
 						     namespace's own rollouts, not the 7-day `deploys7d`
 						     `How it's going` already spends a row on above. -->
-						<span class="t-code-sm text-gray-500 dark:text-gray-400"
-							>{totalDeployCount} deploy{totalDeployCount === 1 ? '' : 's'}</span
-						>
-						<a
-							href={`/activity?ns=${encodeURIComponent(namespace)}`}
-							class="nav-link"
-							aria-label={`View all activity for ${namespace}`}
-						>
-							View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
-						</a>
+						<!-- ⭐ F7, 2026-09-03 (coordinator hand-off): IN THE RAIL THE
+						     ROLLUP IS THE LINK. Same defect and fix as `/apps`' and
+						     `/envs/<name>`'s identical snippets and `HomeRail.svelte`'s:
+						     two flex children do not both fit this card's ~320px rail
+						     width, so `.ra-narrow` folds the count into the link's own
+						     text below the card's own 640px (see the `<style>` block
+						     added at the end of this file), and `.ra-wide` keeps the old
+						     two-piece form for whatever width can afford it. -->
+						<div class="rail-activity-rollup flex shrink-0 items-center gap-1.5">
+							<a
+								href={`/activity?ns=${encodeURIComponent(namespace)}`}
+								class="nav-link ra-narrow"
+								aria-label={`View all activity for ${namespace}`}
+							>
+								{totalDeployCount} deploy{totalDeployCount === 1 ? '' : 's'}
+								<ChevronRightOutline class="h-3.5 w-3.5" />
+							</a>
+							<span class="ra-wide t-code-sm text-gray-500 dark:text-gray-400">
+								{totalDeployCount} deploy{totalDeployCount === 1 ? '' : 's'}
+							</span>
+							<span
+								class="ra-wide t-code-sm text-gray-500 dark:text-gray-400"
+								aria-hidden="true">·</span
+							>
+							<a
+								href={`/activity?ns=${encodeURIComponent(namespace)}`}
+								class="nav-link ra-wide"
+								aria-label={`View all activity for ${namespace}`}
+							>
+								View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+							</a>
+						</div>
 					{/snippet}
 					<ActivityRail
 						rollouts={apps.map((a) => a.rollout)}
@@ -691,3 +713,24 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/*
+	 * ⭐ F7, 2026-09-03 (coordinator hand-off). Same mechanism as
+	 * `HomeRail.svelte`'s own note and `/apps`'/`/envs/<name>`'s identical
+	 * copies: `.ra-wide` starts hidden, threshold rides `Card.svelte`'s own
+	 * `.card-cq` ancestor (no `container-type` declared here), `display:
+	 * revert` restores each element's own default on the winning side.
+	 */
+	.ra-wide {
+		display: none;
+	}
+	@container (min-width: 640px) {
+		.ra-narrow {
+			display: none;
+		}
+		.ra-wide {
+			display: revert;
+		}
+	}
+</style>
