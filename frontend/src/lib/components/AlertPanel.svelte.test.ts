@@ -190,7 +190,19 @@ describe('BlockingStoryPanel: the verdict and the rule handle are the disclosed 
 		// The promise that stops a reader treating every banner as an outage.
 		// It is also stated again inside `ChangeVersionModal`, where the
 		// decision is actually made (`manualDeployNote`).
+		//
+		// ⛔ NOT THE GENERIC SENTENCE FOR THIS FIXTURE. (2026-09-03, coordinator
+		// follow-up) This rollout is held by a CONTRACT gate, and
+		// `upstreamVerdict` now states the hand-started-deploy escape hatch
+		// itself — `resolution` no longer appends the generic
+		// `A deploy you start by hand still applies immediately.` on top of
+		// it, because that read as the identical fact twice back to back.
+		// The clause is still never LOST — it rides in the verdict's own
+		// sentence instead.
 		expect(document.body.textContent).toContain(
+			'the only way forward is a hand-started deploy, which bypasses the check'
+		);
+		expect(document.body.textContent).not.toContain(
 			'A deploy you start by hand still applies immediately.'
 		);
 	});

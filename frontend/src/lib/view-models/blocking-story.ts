@@ -898,19 +898,21 @@ export function upstreamVerdict(gates: ClassifiedGate[]): string {
 		return 'Nobody has to approve anything — this clears when the deploy in front of it lands.';
 	}
 
-	// ⭐ CONTRACT CLAUSES FIRST, THE PROMOTION CLAUSE LAST — see the doc
-	// comment on the function above. `joinClauses` renders this as `a and b`
-	// / `a, b and c`, so with one contract and the promotion clause the
-	// sentence reads "…ship <contract> <need> from <provider> and the deploy
-	// in front of it lands" — the binding cause named before the bookkeeping
-	// that follows from it.
-	const whenClauses: string[] = dependencies.map((g) => {
+	// ⭐ CONTRACT CLAUSES FIRST, THEN THE PROMOTION CLAUSE AS A CONSEQUENCE,
+	// NOT A COORDINATE ITEM. (2026-09-03, coordinator follow-up) `joinClauses`
+	// joining "ship api ^1.67.0 from hello-api-app" AND "the deploy in front
+	// of it lands" with a plain `and` read as two peer facts, when the second
+	// is actually what happens NEXT, once the first is true — the promotion
+	// gate is bookkeeping that resolves once the contract does (see the
+	// function doc above). `, then … has to land` states the sequence instead
+	// of a coordination.
+	const shipClauses = dependencies.map((g) => {
 		const provider = g.subject ?? 'the service it depends on';
 		const contract = g.contract ?? 'a newer version';
 		return g.need ? `ship ${contract} ${g.need} from ${provider}` : `ship a newer ${contract} from ${provider}`;
 	});
-	if (promotion) whenClauses.push('the deploy in front of it lands');
-	return `No approval will unblock this. Someone has to ${joinClauses(whenClauses)}; until then the only way forward is a hand-started deploy, which bypasses the check.`;
+	const then = promotion ? ', then the deploy in front of it has to land' : '';
+	return `No approval will unblock this. Someone has to ${joinClauses(shipClauses)}${then}; until then the only way forward is a hand-started deploy, which bypasses the check.`;
 }
 
 /**
@@ -1207,6 +1209,17 @@ export function blockingStory(
 	// The 3am answer, and the promise the product already keeps.
 	const manual = 'A deploy you start by hand still applies immediately.';
 	let verdict: string;
+	// ⛔ THE MANUAL CLAUSE WAS DOUBLING ITSELF. (2026-09-03, coordinator
+	// follow-up) `upstreamVerdict` now STATES the hand-started-deploy escape
+	// hatch itself for a CONTRACT gate — "…until then the only way forward is
+	// a hand-started deploy, which bypasses the check." — and `resolution`
+	// below unconditionally appended the generic `manual` sentence after
+	// every verdict, so a contract gate's banner read the identical fact
+	// twice back to back. `verdictCoversManual` is true exactly when the
+	// verdict already said it; every OTHER gate class (person, unknown, a
+	// promotion-only upstream gate, check, clock) still needs `manual`
+	// appended, because none of THEIR verdict sentences mention it.
+	let verdictCoversManual = false;
 	if (person.length > 0) {
 		verdict = 'This will not clear on its own.';
 	} else if (unknown.length > 0) {
@@ -1217,12 +1230,13 @@ export function blockingStory(
 		verdict = 'This dashboard cannot tell what clears this — it may or may not need a person.';
 	} else if (upstream.length > 0) {
 		verdict = upstreamVerdict(upstream);
+		verdictCoversManual = upstream.some((g) => g.kind === 'dependency');
 	} else if (clearsAt) {
 		verdict = 'This clears on its own.';
 	} else {
 		verdict = 'This clears on its own once the check passes.';
 	}
-	const resolution = `${verdict} ${manual}`;
+	const resolution = verdictCoversManual ? verdict : `${verdict} ${manual}`;
 
 	return {
 		blocked: true,

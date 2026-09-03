@@ -664,7 +664,7 @@ describe('upstreamVerdict', () => {
 		// checked in, not a choice. The contract is the binding cause and
 		// leads; the promotion gate is the consequence and trails.
 		expect(upstreamVerdict(gates)).toBe(
-			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app, then the deploy in front of it has to land; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 
@@ -683,7 +683,7 @@ describe('upstreamVerdict', () => {
 			upstreamGate({ kind: 'promotion' })
 		];
 		expect(upstreamVerdict(gates)).toBe(
-			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app, then the deploy in front of it has to land; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 
@@ -693,7 +693,7 @@ describe('upstreamVerdict', () => {
 			upstreamGate({ kind: 'dependency', subject: 'hello-api-app', contract: 'api', need: null })
 		];
 		expect(upstreamVerdict(gates)).toBe(
-			'No approval will unblock this. Someone has to ship a newer api from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
+			'No approval will unblock this. Someone has to ship a newer api from hello-api-app, then the deploy in front of it has to land; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 

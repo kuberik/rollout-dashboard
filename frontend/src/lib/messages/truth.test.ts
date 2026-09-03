@@ -664,6 +664,15 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		);
 		expect(s.verdict).not.toContain('deploy in front');
 		expect(s.selfClearing).toBe(false);
+		// ⛔ THE MANUAL CLAUSE DOES NOT DOUBLE ITSELF. (2026-09-03, coordinator
+		// follow-up) `upstreamVerdict` already states the hand-started-deploy
+		// escape hatch for a contract gate, so `resolution` must not append
+		// the generic `A deploy you start by hand still applies immediately.`
+		// a second time — the banner read the identical fact twice back to
+		// back before this fix. `resolution` here is BYTE-IDENTICAL to
+		// `verdict`, not `verdict + manual`.
+		expect(s.resolution).toBe(s.verdict);
+		expect(s.resolution.match(/hand-started deploy|start.*by hand/gi)?.length).toBe(1);
 	});
 
 	test('a promotion gate AND a contract gate together -- the contract LEADS', () => {
@@ -710,7 +719,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		);
 		says(
 			s.verdict,
-			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app, then the deploy in front of it has to land; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 		// ⛔ THE DEFECT: `hello-frontend-app`'s Overview banner read "Two things
 		// are holding PROD" for this exact shape — a contract gate and the
@@ -720,6 +729,9 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		// rather than counting to two.
 		says(s.headline, 'STAGING is waiting for hello-api-app to ship api ^1.67.0');
 		expect(s.headline).not.toMatch(/things are holding/);
+		// Mixed gates too: the verdict already carries the escape hatch, so
+		// `resolution` must not append it a second time.
+		expect(s.resolution).toBe(s.verdict);
 	});
 
 	test('a promotion gate AND a contract with no agreed requirement -- the headline falls back to "a newer <contract>"', () => {
@@ -772,7 +784,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		// <contract> from <provider>` unproduced by any state in this file.
 		says(
 			s.verdict,
-			'No approval will unblock this. Someone has to ship a newer api from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
+			'No approval will unblock this. Someone has to ship a newer api from hello-api-app, then the deploy in front of it has to land; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 
