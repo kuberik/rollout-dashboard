@@ -419,12 +419,36 @@
 	 * finding actually measured — a contract gate, whose banner has real
 	 * spare room in its own disclosure for the second fact.
 	 */
+	/**
+	 * ⭐ A ROLLBACK STOPS BEING NEWS AFTER A DAY. (P4, operator-walk finding)
+	 * The `Rolled back` panel is a full-width `info` band, the same weight
+	 * the page spends on an active gate — right for an event from THIS
+	 * visit, wrong for one three days old that a reader has to re-read past
+	 * every time they open this rollout. `rollbackIsStale` is that
+	 * threshold; the panel demotes to a one-line fact (see the template)
+	 * once it fires, and — see `rollbackFoldedIntoGateBanner` below — a
+	 * stale rollback is no longer folded into the gate banner either, so an
+	 * old event does not keep resurfacing in a second surface once its own
+	 * panel has already stepped back.
+	 *
+	 * 24h, not a round "1 day": `formatTimeAgoCompact` already speaks in
+	 * hours below that and days above it, so the demotion threshold is the
+	 * same boundary the displayed unit itself changes at.
+	 */
+	const rollbackAgeMs = $derived.by(() => {
+		const ts = rollout?.status?.history?.[0]?.timestamp;
+		if (!ts) return 0;
+		return $now.getTime() - new Date(ts).getTime();
+	});
+	const rollbackIsStale = $derived(rollbackAgeMs > 24 * 60 * 60 * 1000);
+
 	const rollbackFoldedIntoGateBanner = $derived(
 		!!rolledBack &&
 			!blockStory.pinnedTo &&
 			blockStory.blocked &&
 			blockStory.clock.length === 0 &&
-			blockStory.gates.some((g) => g.kind === 'dependency')
+			blockStory.gates.some((g) => g.kind === 'dependency') &&
+			!rollbackIsStale
 	);
 
 	/**
@@ -663,33 +687,56 @@
 
 	let showClearPinModal = $state(false);
 
+	/**
+	 * ⭐ "AND IT IS NOT PINNED THERE" DOES NOT SAY WHETHER CLEARING JUST
+	 * WORKED. (P4, operator-walk finding) The `Rolled back` panel's message
+	 * is `rollbackWent`, computed fresh from CURRENT server state — before a
+	 * clear it says "…and pinned there.", after it says "…and it is not
+	 * pinned there." Both are TRUE, but a reader who just pressed `Clear
+	 * pin` and watches the SAME banner mutate one clause is left asking
+	 * "did that work, or did the rollback itself never pin?" — the sentence
+	 * reads as a description of the past, not a confirmation of the action
+	 * just taken. `justClearedPin` is a short-lived flag, set the instant
+	 * `ClearPinModal` reports success, that swaps the panel to an explicit
+	 * confirmation sentence for a few seconds before handing back to the
+	 * steady-state wording — the same idea `pendingAction` uses for a
+	 * deploy, at a smaller scale because clearing a pin needs no poll-gap
+	 * bridge (it's a direct field write, reflected on the next refetch).
+	 */
+	let justClearedPin = $state(false);
+
 	// Change version / deploy modal (picker + live changelist + deploy confirm)
 	let showChangeVersionModal = $state(false);
 	let deployExplanation = $state('');
 
 	/**
 	 * ⭐ THE POLL GAP IS WHERE A SECOND TAP WALKS THE ENVIRONMENT A SECOND
-	 * BUILD BACK. (B3, operator-walk finding) `ChangeVersionModal`'s own
-	 * `onSuccess` fires the moment its POST resolves — fast, on this
-	 * cluster — but the CONTROLLER still has to reconcile and this page's
-	 * poll still has to catch up, and measured live that gap was 5-8s with
-	 * the Overview UNCHANGED: same button armed, no toast, no pending
-	 * state. A second `Deploy`/`Rollback` press in that window is a second,
-	 * real mutation.
+	 * BUILD BACK. (B3, operator-walk finding) Measured live: confirming
+	 * Deploy/Rollback produced no visible change on this page for 5-8s (a
+	 * real round trip to the Go backend, then to the k8s API, then this
+	 * page's own poll) while the button stayed fully armed — no spinner,
+	 * no toast, no pending state. A second press in that window is a
+	 * second, real mutation.
 	 *
-	 * `pendingAction` bridges it: set the instant `onSuccess` fires, it
-	 * disables every control on this page that starts another deploy
-	 * (Change Version, Rollback, Clear pin, each release candidate's own
-	 * Deploy) and shows `Deploy requested — starting` beside the version.
+	 * ⭐ DRIVEN BY `onDeployStart`, NOT `onSuccess`. (coordinator relay,
+	 * 2026-09-03) The dialog lane's `ChangeVersionModal` now fires
+	 * `onDeployStart()` the instant a person confirms — BEFORE its own
+	 * `await`, alongside its own `deploying` state that drives the
+	 * button's spinner — so this page's own "Deploy requested — starting"
+	 * appears within the same frame as the click, not after the network
+	 * round trip `onSuccess` waits for. `beginPendingAction` is the
+	 * receiving end: it disables every control on this page that starts
+	 * another deploy (Change Version, Rollback, Clear pin, each release
+	 * candidate's own Deploy) and shows that sentence beside the version.
 	 * It clears itself the moment `rollout.status.history[0]` actually
 	 * changes — the same signature `lastAnnouncedDeploy` above already
 	 * tracks — with a 20s safety timeout so a detection miss cannot wedge
 	 * every action control open forever.
 	 *
-	 * ⛔ NOT THE MODAL'S OWN PENDING STATE. Disabling the modal's Confirm
-	 * button while ITS OWN fetch is in flight is a different, narrower
-	 * problem (that dialog is a different lane's file); this is the gap
-	 * AFTER the modal has already told the operator "done."
+	 * ⛔ NOT THE MODAL'S OWN PENDING STATE. `deploying` (the confirm
+	 * button's own spinner/label while ITS fetch is in flight) is that
+	 * dialog's concern and stays there; this is the gap AFTER the modal
+	 * has already told the operator "sent."
 	 */
 	let pendingAction = $state<{ sinceKey: string } | null>(null);
 
@@ -700,7 +747,6 @@
 
 	function beginPendingAction() {
 		pendingAction = { sinceKey: historySignature() };
-		void rolloutQuery.refetch();
 		const startedWith = pendingAction;
 		setTimeout(() => {
 			if (pendingAction === startedWith) pendingAction = null;
@@ -2067,9 +2113,10 @@
 					panel steps aside rather than repeating it one level down.
 					See `rollbackFoldedIntoGateBanner`'s own comment.
 				-->
-				{#if rolledBack && !rollbackFoldedIntoGateBanner}
+				{#if rolledBack}
 					{@const trig = latestEntry?.triggeredBy}
 					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
+					{@const rollbackAge = formatTimeAgoCompact(latestEntry.timestamp, $now)}
 					<!--
 						⛔ NOT `warning`, AND NOT `pinned`. MEASURED ON THE PAGE,
 						NOT CHOSEN FROM THE ENUM.
@@ -2096,55 +2143,133 @@
 						tab draw for this state, so one act has one symbol
 						everywhere.
 					-->
-					<!--
-						⭐ TWO TIERS, NOT ONE PARAGRAPH. (2026-08-31) Measured at 390 on
-						this very rollout, this banner was 198px and 237 characters
-						under a 226px gate banner — 456px of an 844px viewport before
-						the status card. And the two fields SAID THE SAME THING: amber
-						*"Nothing promotes itself until hello-api-app ships a newer api
-						than 1.66.0"*, blue *"It will not move today — a rule is holding
-						it"*. The duplicated half is the MECHANISM, which is exactly the
-						tier `AlertPanel` now discloses everywhere.
+					{#if rollbackIsStale}
+						<!--
+							⭐ DEMOTED: AN OLD ROLLBACK IS A HISTORY FACT, NOT A
+							STANDING PANEL. (P4, operator-walk finding) The full
+							`AlertPanel` below is right for an event from THIS
+							visit; three days on, a reader who opens this rollout
+							for an unrelated reason has to read past a full-width
+							blue band restating something they already know, every
+							single time. See `rollbackIsStale`'s own comment (24h,
+							the same boundary `formatTimeAgoCompact` itself switches
+							units at). Same facts — both versions implicitly (the
+							link goes to where they're drawn), who, when — at the
+							density a list row already uses for this exact state.
+						-->
+						<p
+							class="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+						>
+							<UndoOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+							Rolled back {rollbackAge} ago{author ? ` · by ${author}` : ''}.
+							<a href={rolloutPath(cluster, namespace, name, 'history')} class="nav-link"
+								>History</a
+							>
+						</p>
+					{:else if !rollbackFoldedIntoGateBanner}
+						<!--
+							⭐ TWO TIERS, NOT ONE PARAGRAPH. (2026-08-31) Measured at 390 on
+							this very rollout, this banner was 198px and 237 characters
+							under a 226px gate banner — 456px of an 844px viewport before
+							the status card. And the two fields SAID THE SAME THING: amber
+							*"Nothing promotes itself until hello-api-app ships a newer api
+							than 1.66.0"*, blue *"It will not move today — a rule is holding
+							it"*. The duplicated half is the MECHANISM, which is exactly the
+							tier `AlertPanel` now discloses everywhere.
 
-						So `rollbackWent` is printed — it names both versions and whether
-						the rollback pinned, which is the whole fact — and `rollbackNext`
-						plus the actor are behind the control. `rollbackStory` still
-						exists and still returns the assembled sentence; nothing was
-						shortened, it was split.
+							So `rollbackWent` is printed — it names both versions and whether
+							the rollback pinned, which is the whole fact — and `rollbackNext`
+							plus the actor are behind the control. `rollbackStory` still
+							exists and still returns the assembled sentence; nothing was
+							shortened, it was split.
 
-						⛔ THE ACTOR RIDES WITH IT DELIBERATELY. *"Rolled back by
-						admin@example.com"* answers a question an AUDITOR asks later, not
-						one the operator asks at a glance, and it is the reason the label
-						is `What happens next` rather than `Who did this`: the label must
-						name the thing a reader would go looking for, and nobody opens a
-						banner to find an email address.
-					-->
-					<!-- ⭐ THE SENTENCE AND THE ACTOR ARE TWO DIFFERENT KINDS OF
-					     THING, AND THE FOOTNOTE HAD WELDED THEM. (2026-09-02)
-					     `rollbackNext` is a verdict — prose, correctly. *"Rolled back
-					     by admin@example.com."* is a FIELD with a value, and an email
-					     address inside a full stop is a value a reader cannot select
-					     cleanly. The verdict keeps the sentence tier, the actor gets a
-					     label, and the note above still holds: the label on the
-					     control stays `Details`, because nobody opens a banner to
-					     find an email address and ONE record is not a set. -->
-					{#snippet rollbackDetail()}
-						<p class="break-words">{rollbackNext(rolledBack, autoDeploy)}</p>
-						{#if author}
-							<FactList
-								class="mt-2"
-								tone="banner"
-								facts={[{ label: 'Rolled back by', value: author, handle: true }]}
-							/>
-						{/if}
-					{/snippet}
-					<AlertPanel
-						severity="info"
-						icon={UndoOutline}
-						title="Rolled back"
-						message={rollbackWent(rolledBack, autoDeploy)}
-						footnoteBody={rollbackDetail}
-					/>
+							⛔ THE ACTOR RIDES WITH IT DELIBERATELY. *"Rolled back by
+							admin@example.com"* answers a question an AUDITOR asks later, not
+							one the operator asks at a glance, and it is the reason the label
+							is `What happens next` rather than `Who did this`: the label must
+							name the thing a reader would go looking for, and nobody opens a
+							banner to find an email address.
+						-->
+						<!-- ⭐ THE SENTENCE AND THE ACTOR ARE TWO DIFFERENT KINDS OF
+						     THING, AND THE FOOTNOTE HAD WELDED THEM. (2026-09-02)
+						     `rollbackNext` is a verdict — prose, correctly. *"Rolled back
+						     by admin@example.com."* is a FIELD with a value, and an email
+						     address inside a full stop is a value a reader cannot select
+						     cleanly. The verdict keeps the sentence tier, the actor gets a
+						     label, and the note above still holds: the label on the
+						     control stays `Details`, because nobody opens a banner to
+						     find an email address and ONE record is not a set. -->
+						{#snippet rollbackDetail()}
+							<p class="break-words">{rollbackNext(rolledBack, autoDeploy)}</p>
+							{#if author}
+								<FactList
+									class="mt-2"
+									tone="banner"
+									facts={[{ label: 'Rolled back by', value: author, handle: true }]}
+								/>
+							{/if}
+						{/snippet}
+						<!--
+							⭐ THE PRINTED SENTENCE CONFIRMS AN ACTION JUST TAKEN, WHEN
+							ONE WAS. (P4, operator-walk finding) `rollbackWent` reads
+							CURRENT server state fresh on every render — before a clear
+							it says "…and pinned there.", after it says "…and it is not
+							pinned there." Both true, but a reader who just pressed
+							`Clear pin` and watches this exact sentence mutate one
+							clause cannot tell "that worked" from "the rollback never
+							pinned in the first place." `justClearedPin` swaps in an
+							explicit confirmation for a few seconds — see its own
+							comment for why a poll-gap bridge isn't needed here.
+
+							⭐ AND THE MANUAL-DEPLOY ESCAPE RIDES HERE NOW, NOT ONLY
+							BEHIND AN 18px `?` ELSEWHERE. (P4) The release-candidate
+							row's `Held by a gate` popover already states "Pressing
+							Deploy applies it immediately — gates only hold back
+							automatic promotion" — the single most actionable fact on
+							a page where automatic promotion is stuck — but only to a
+							reader who hovers a tiny icon on a specific candidate row
+							they may never scroll to. This panel is the one an operator
+							actually reads when a rollback is the live question, so the
+							SAME fact (this product's one canonical phrasing for it,
+							`blocking-story.ts`'s own) prints here too, as a quiet
+							second line, whenever automatic promotion is genuinely
+							paused (`autoDeploy.paused`) — never a duplicate claim when
+							clearing the pin just reopened it.
+						-->
+						{#snippet rollbackMessage()}
+							<p>
+								{justClearedPin
+									? 'The pin has been cleared; automatic promotion is back on.'
+									: rollbackWent(rolledBack, autoDeploy)}
+							</p>
+							{#if autoDeploy.paused && !justClearedPin}
+								<p class="mt-1 opacity-80">
+									A deploy you start by hand still applies immediately.
+								</p>
+							{/if}
+						{/snippet}
+						<AlertPanel
+							severity="info"
+							icon={UndoOutline}
+							title="Rolled back"
+							messageBody={rollbackMessage}
+							footnoteBody={rollbackDetail}
+						>
+							{#snippet extra()}
+								<!-- ⭐ THE PANEL CARRIES ITS OWN AGE. (P4, operator-walk
+								     finding) The event this panel is ABOUT was invisible
+								     as a fact — three days old with nothing on screen
+								     saying so, next to a `Rolled back` headline that reads
+								     identically whether it happened a minute or a week
+								     ago. Same slot `AlertPanel`'s `extra` already reserves
+								     beside the headline for exactly this kind of chip. -->
+								<span
+									class="t-micro font-normal text-blue-700/80 dark:text-blue-300/70"
+									>{rollbackAge} ago</span
+								>
+							{/snippet}
+						</AlertPanel>
+					{/if}
 				{/if}
 				<!-- ⛔ THE `Version pinned` BANNER THAT USED TO SIT IN THE
 				     `{:else if rollout.spec?.wantedVersion && !isPinnedVersionCustom}`
@@ -3212,6 +3337,8 @@
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
 		rolloutQuery.refetch();
+		justClearedPin = true;
+		setTimeout(() => (justClearedPin = false), 8000);
 	}}
 	onError={(m) => {
 		toastType = 'error';
@@ -3230,12 +3357,17 @@
 	initialExplanation={deployExplanation}
 	{cluster}
 	environmentName={environment?.spec?.environment ?? null}
+	onDeployStart={beginPendingAction}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
-		beginPendingAction();
+		// The mutation is DONE now (unlike `onDeployStart`, which fires
+		// before it) — an explicit refetch here is what actually shrinks
+		// the poll gap `pendingAction` is bridging, rather than waiting for
+		// the next scheduled interval.
+		void rolloutQuery.refetch();
 	}}
 	onError={(m) => {
 		toastType = 'error';

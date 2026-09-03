@@ -392,6 +392,56 @@ spent by `/apps` and `/apps/[name]`'s own hand-rolled pin banners (`severity: 'p
 not sourced from `blocking-story.ts`), which this pass does not own. Only
 `BlockingStoryPanel`'s call site was fixed.
 
+### Superseded in part, P9 second re-check (2026-09-03): hue is STILL kind-only, but queue state now picks a SHAPE, not a colour
+
+The rule above closed the amber-vs-blue question for `blocked` vs `pinned`/`rolled back`.
+It did not close a THIRD hue this same gate produced: `ScheduleStatus`'s own banner, for
+the identical schedule gate, rendered **amber** on `hello-world-dev/hello-world-app`
+("Automatic deploys are paused") and **blue** on `hello-world-staging` and
+`hello-world-prod` ("Deploys pause outside business hours") — one gate, two hues, keyed on
+`nothingWaiting` (`story.candidateCount === 0`, "is anything actually queued behind the
+closed window"), a variable no reader can see. `nothingWaiting` is real and still
+distinguishes a genuine stoppage from an informational closed window — it just may not
+pick the COLOUR any more, only the SHAPE:
+
+- A schedule gate is **always amber** when it renders as a banner. `nothingWaiting` no
+  longer branches `severity`/`icon`/`pulse` to `'info'`/blue.
+- **When nothing is queued, it does not render as a banner at all.** The banner slot is
+  reserved for an actual blocking fact; a closed-but-empty window is informational, so
+  `ScheduleStatus` hands the sentence UP via an `onMeta` callback instead, and the caller
+  prints it as a one-line meta row beside the version — `Deploys pause outside business
+  hours · reopens 09:00 America/New_York (13:00 UTC)`, 12px, calendar glyph, in the same
+  row `isCurrentVersionCustom` and the upgrade count already share. Verified live on
+  `hello-world-staging`/`hello-world-prod`: no banner, meta row only, `Available Version
+  Upgrades` correctly says `up to date` alongside it — the three surfaces agree for the
+  first time.
+
+**Two stories on one rollout collapse into ONE panel, never two full-width bands** — the
+second finding this same pass closed. `/rollouts/dev/hello-dep-dev/hello-frontend-app` is
+both held by a `dependency` gate AND has gone backwards (unpinned): measured live, two
+full-width `AlertPanel`s, 122px each, neither carrying a right-slot action. The fix is
+`BlockingStoryPanel`'s new `secondaryFact` prop — the blocking gate's headline stays the
+printed tier, the rollback's own sentence (`rollbackWent`) rides underneath it as a
+quieter second line in the same fill, and the standalone `Rolled back` panel steps aside
+(`rollbackFoldedIntoGateBanner`, scoped narrowly to "a `dependency` gate present, not
+pinned, not stale" — a first, broader pass on `clock.length === 0` alone folded a
+`check`/schedule-fallback block too and deleted the `Rolled back` panel's own
+`rollbackNext` disclosure with nothing to replace it, breaking a pinned test; ⛔ do not
+widen this past `dependency` without re-reading that test). **The right slot is part of
+the banner now, not an empty column**: a `dependency`-kind blocking gate gets a
+`Dependencies ›` nav-link (the tab where the contract's provider and required range are
+actually drawn); otherwise a plain rule-count chip, so the slot `/apps` and `/environments`
+fill with a nav-link is never rendered empty on rollout detail just because there is
+nowhere else on THIS page to navigate to.
+
+**`Available Version Upgrades` no longer spends 710×230 restating its own header.**
+`up to date` in the header pill and a centred 32px check plus `Up to date — no upgrades
+available` in the body said the identical fact twice. The body's empty state is deleted;
+an up-to-date, non-custom rollout shows the header and the refresh row and nothing below —
+the ONLY action left ("check again") stays reachable, the restatement does not.
+`heldByThis` and the pin banner inside the card are untouched (real additional facts, not
+restatements).
+
 ## Production is a ceiling now, not a direction-dependent step (B3, 2026-09-03)
 
 **Any change to a PRODUCTION rollout — forward or rollback — requires the typed
@@ -488,3 +538,133 @@ the container's own `background`, never looked one layer down. Deleted, both dis
 fields. Not the same element as `pulse`'s `animate-alert-halo` ping (a ring on the 40px
 icon disc, kept — the human asked to keep the pulse, only ever complaining about its
 *position*).
+
+## The clock's absolute half is formatted against the SCHEDULE's own zone, never the reader's (P2, 2026-09-03, P9 second re-check)
+
+`blocking-story.ts`'s clock loop and `ScheduleStatus.svelte`'s own fallback branches used
+to hand `clearsAt` to `new Date(iso).toLocaleString()` / `.toLocaleTimeString()` — both
+silently defer to whatever timezone the READER's machine happens to be in. Measured live: a
+rule whose own label says `9 AM - 5 PM EST` reopened at `(9/3/2026, 1:00:00 PM)` with no
+zone printed anywhere, and `EST` in September is itself wrong (the US is on daylight time).
+The `RolloutSchedule`'s own `spec.timezone` (an IANA name, `America/New_York`) was in the
+payload the whole time and nothing read it.
+
+`formatAbsoluteReopen`/`formatReopensAt` (`lib/api/schedules.ts`) are the fix, shared by
+both files so they cannot drift back apart the way the two old hand-rolled formatters
+already had (one with seconds, one without, both silently local): **24-hour, no AM/PM
+ambiguity, no seconds, zone named by IANA identifier, UTC alongside it** —
+`reopens in 6h 4m — 09:00 America/New_York (13:00 UTC)`. The relative figure leads (it is
+the number a reader acts on); the absolute clock trails it after an em dash, never
+parenthesised — a parenthetical reads as a footnote nobody has to check, when it is the
+one thing that disambiguates WHOSE clock the countdown is running on.
+
+`ClassifiedGate` carries a new `timezone: string | null` field (populated only for
+`clears: 'clock'` gates, from `GateContext.schedule`'s own `RolloutSchedule.spec.timezone`)
+so every renderer of a clock clause formats against the SCHEDULE's zone, never a caller's
+own guess. `scheduleForTransition()` in `ScheduleStatus.svelte` resolves the zone for the
+page-level `nextChange` figure (the earliest transition across possibly several schedules)
+by matching the ISO instant back to the schedule object it came from.
+
+Verified live on `hello-world-dev/hello-world-app`: `Nothing promotes itself for another
+5h 51m — 09:00 America/New_York (13:00 UTC).` Every absolute-time rendering in these two
+files was moved to this one function; none is left calling `toLocaleString()`/
+`toLocaleTimeString()` with no explicit zone.
+
+## The Rolled back panel carries its own age, and stops being news after 24h (P4, 2026-09-03, P9 second re-check)
+
+Three defects, one panel. `/rollouts/dev/hello-world-dev/hello-world-app`'s `Rolled back`
+banner rendered identically whether the event was a minute old or three days old — no
+timestamp anywhere on it — and after pressing `Clear pin` the SAME sentence mutated one
+clause (`"…and pinned there."` → `"…and it is not pinned there."`), which a reader watching
+it happen cannot distinguish from "the rollback itself never pinned."
+
+- **The panel carries the time now.** `AlertPanel`'s `extra` slot (the chip-beside-headline
+  slot `/activity`'s own banner already uses) gets a small `{age} ago` label —
+  `formatTimeAgoCompact`, the product's own compact idiom — beside `Rolled back`.
+- **A clear-pin action gets an explicit confirmation, not a mutated description.**
+  `justClearedPin` — set the instant `ClearPinModal`'s `onSuccess` fires, cleared after 8s
+  — swaps the printed sentence to `The pin has been cleared; automatic promotion is back
+  on.` for that window. No poll-gap bridge is needed here (unlike a deploy): clearing a pin
+  is a direct field write, reflected on the immediate `rolloutQuery.refetch()` already
+  fired alongside it.
+- **After 24h the panel demotes to a one-line fact, not a standing band.** `rollbackIsStale`
+  (`rollbackAgeMs > 24h` — the same boundary `formatTimeAgoCompact` itself changes units
+  at) replaces the full `AlertPanel` with a single muted line — `Rolled back 3d ago · by
+  sam.` plus a `History` link — so a reader who opens the rollout for an unrelated reason
+  three days later does not have to read past a full-width band restating something they
+  already know, every single visit. `rollbackFoldedIntoGateBanner` (the finding-10 fold,
+  above) also stops applying once stale — an old fact does not get to resurface as a
+  secondary line in the gate banner either, once its own panel has already stepped back.
+- **The manual-deploy escape rides in the panel now, not only behind an 18px `?`
+  elsewhere.** The release-candidate row's `Held by a gate` popover already states
+  "Pressing Deploy applies it immediately — gates only hold back automatic promotion" — the
+  single most actionable fact on a page where automatic promotion is stuck — reachable only
+  by hovering a tiny icon on a specific candidate row a reader may never scroll to. The
+  panel an operator actually reads when a rollback is the live question now prints the same
+  fact (this product's one canonical phrasing, `blocking-story.ts`'s own — never the
+  popover's alternate wording) as a quiet second line, whenever automatic promotion is
+  genuinely paused and the confirmation sentence is not currently showing.
+
+⛔ **The fixture used to test this is a fixed calendar date and goes stale itself.**
+`fleet-fixture.ts`'s `history[0].timestamp` is hardcoded to `2026-08-31`, which drifts
+further behind "now" every day this suite runs — a test asserting on the FRESH panel's
+wording must re-stamp that timestamp to the moment it runs (`freshDetailFetch` in
+`subject-detail.svelte.test.ts`) rather than silently start asserting on the DEMOTED line
+instead just because the calendar moved on.
+
+## Up to date waits for the version to SERVE, not for the request to have been made (P10, 2026-09-03, P9 second re-check)
+
+Two defects in the same family: a claim of "available"/"up to date" that outran what was
+actually true.
+
+- **`↑ N upgrade available` on a PINNED rollout was a false claim.** `available` means "this
+  dashboard would deploy it automatically" — false the moment `wantedVersion` is set (a pin
+  refuses every candidate). The metadata line beside the version now reads `N newer · held
+  by the pin` when `blockStory.pinnedTo` is set, dropping "available" entirely; unpinned,
+  the wording is unchanged.
+- **`Available Version Upgrades` said `up to date` fifteen seconds after a deploy was
+  requested, before any pod had run the new build.** `releaseCandidates` are newer than
+  `history[0].version`, and `history[0]` becomes the NEW build the instant a deploy
+  STARTS (a `Deploying`/`InProgress` entry is pushed immediately) — long before it actually
+  serves. `stillCatchingUp` (`latestEntry.bakeStatus === 'Deploying' || 'InProgress'`) is
+  the second half of the fact `releaseCandidates.length === 0` alone does not carry; while
+  it is true the card's header pill reads the in-flight bake word (`Deploying…`) instead of
+  the green `up to date`, in the same neutral ink the rest of the page uses for an in-flight
+  state.
+
+## The commits rollup names why it has nothing to say, rather than saying nothing (P11, 2026-09-03, P9 second re-check)
+
+`CommitSummary`'s own `query.isError` branch is deliberately silent — its own comment
+records why: a page rendering MANY of these should surface a GitHub-absence sentence once,
+panel-level, not N times. Rollout detail renders exactly one (the version card's commits
+rollup) and had never built that panel-level fallback, so a 401 on `/commits` left the row
+blank where `/versions` already says `Commit message and author need GitHub. GitHub is not
+configured for this dashboard.` The page now runs the same `githubStatus` query that page
+does (`fetchGithubStatus`/`githubStatusQueryKey`, `staleTime: 300_000`) and renders
+`githubAbsenceSentence(githubStatus.data)` in place of `<CommitSummary>` whenever GitHub is
+not connected — the fallback lives on THIS page, not inside the shared component, because
+the shared component's silence is still correct for its list callers.
+
+## The poll gap after Deploy/Rollback is bridged from the click, not from the response (B3, 2026-09-03, P9 second re-check)
+
+Measured live: confirming Deploy/Rollback produced no visible change on this page for 5-8s
+— a real round trip to the Go backend, then to the k8s API, then this page's own poll —
+while the button stayed fully armed: no spinner, no toast, no pending state. A second press
+in that window is a second, real mutation (a rollback walked an environment a second build
+back this way).
+
+The dialog lane's `ChangeVersionModal` now fires `onDeployStart()` the instant a person
+confirms — BEFORE its own `await`, alongside its own `deploying` state that drives the
+confirm button's spinner and label — so this page's `beginPendingAction()` (wired to
+`onDeployStart`, not `onSuccess`) can react within the same frame as the click, not after
+the network round trip. `pendingAction` disables every control on this page that starts
+another deploy (Change Version, Rollback, Clear pin, each release candidate's own Deploy)
+and shows `Deploy requested — starting` beside the version; it clears itself the moment
+`rollout.status.history[0]`'s signature actually changes, with a 20s safety timeout so a
+detection miss cannot wedge every action control open forever. `onSuccess` (once the
+mutation has genuinely completed) fires an explicit `rolloutQuery.refetch()` to shrink the
+remaining gap rather than waiting for the next scheduled poll.
+
+⛔ **Not the modal's own pending state.** `deploying` (the confirm button's own
+spinner/label while ITS fetch is in flight) is that dialog's concern and stays there; this
+is the gap AFTER the modal has already told the operator "sent."

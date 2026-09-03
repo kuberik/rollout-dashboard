@@ -75,6 +75,38 @@ function detailFetch(shape?: (app: string, tier: string) => Shape) {
 	};
 }
 
+/**
+ * ⭐ SAME FIXTURE, A `history[0]` TIMESTAMP RELATIVE TO WHENEVER THE SUITE
+ * ACTUALLY RUNS. (P4, operator-walk finding) `fleet-fixture.ts` hardcodes
+ * `2026-08-31T00:00:00Z` for the latest deploy, which is a fixed few days
+ * behind "now" on the day this was written and only grows staler as real
+ * time passes. That was harmless while nothing on rollout detail read the
+ * deploy's AGE — it now does (`rollbackIsStale`, 24h): a test asserting on
+ * the FRESH `Rolled back` panel's wording must not silently start asserting
+ * on the DEMOTED meta line instead just because the calendar moved on. This
+ * re-stamps `history[0].timestamp` to the moment the test runs, without
+ * touching the shared fixture file every other test in this suite also
+ * reads.
+ */
+function freshDetailFetch(shape?: (app: string, tier: string) => Shape) {
+	const fetcher = detailFetch(shape);
+	return async (input: any) => {
+		const res = await fetcher(input);
+		const url = String(typeof input === 'string' ? input : (input?.url ?? input));
+		if (/\/api\/rollouts\/[^/]+\/[^/]+(\?|$)/.test(url)) {
+			const body = await res.json();
+			if (body?.rollout?.status?.history?.[0]) {
+				body.rollout.status.history[0].timestamp = new Date().toISOString();
+			}
+			return new Response(JSON.stringify(body), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+		return res;
+	};
+}
+
 const CASES: Array<{
 	route: string;
 	Comp: unknown;
@@ -210,11 +242,19 @@ describe('rollout detail and the app page give the same answer about one rollout
 describe('rollout detail says the rollout went backwards, and whether anything holds it', () => {
 	const rolledBack = (): Shape => ({ at: 0, cameFrom: 2, hold: 'none' });
 
+	// ⭐ `freshDetailFetch`, NOT `detailFetch`. (P4, operator-walk finding)
+	// These two cases assert on the FULL `Rolled back` panel's wording —
+	// `rollbackWent`/`rollbackNext`'s own sentences — which only renders
+	// while the event is recent (`rollbackIsStale`, 24h). See
+	// `freshDetailFetch`'s own comment for why the shared fixture's
+	// hardcoded timestamp cannot be trusted to stay "recent" as real time
+	// passes. The demoted, 24h+ case has its own test below, deliberately
+	// using the unmodified (and by now always stale) `detailFetch`.
 	test('a rollback that is PINNED reads as one act, not as two badges', async () => {
 		const { container } = await mount(
 			RolloutDetail,
 			{ cluster: 'rollout-a', namespace: 'alpha-dev', name: 'alpha-app' },
-			detailFetch(() => ({ ...rolledBack(), pinned: 'r1aaaaa' }))
+			freshDetailFetch(() => ({ ...rolledBack(), pinned: 'r1aaaaa' }))
 		);
 		const text = (container.textContent ?? '').replace(/\s+/g, ' ');
 		expect(text).toContain('Rolled back');
@@ -235,12 +275,38 @@ describe('rollout detail says the rollout went backwards, and whether anything h
 		const { container } = await mount(
 			RolloutDetail,
 			{ cluster: 'rollout-a', namespace: 'alpha-dev', name: 'alpha-app' },
-			detailFetch(() => ({ ...rolledBack(), hold: 'schedule' }))
+			freshDetailFetch(() => ({ ...rolledBack(), hold: 'schedule' }))
 		);
 		const text = (container.textContent ?? '').replace(/\s+/g, ' ');
 		expect(text).toContain('Rolled back');
 		expect(text).toContain('it is not pinned there');
 		expect(text).toContain('It will not move today');
 		expect(text).toContain('as soon as that clears');
+	});
+
+	/**
+	 * ⭐ AND ONCE IT IS NOT RECENT, IT IS NOT A STANDING PANEL. (P4,
+	 * operator-walk finding) `detailFetch` (unmodified) carries the shared
+	 * fixture's own `2026-08-31` timestamp, which is more than 24h behind
+	 * any date this suite actually runs on — exactly the "three days later"
+	 * case measured live. The full panel's own sentences must NOT be on
+	 * the page; the demoted line names the same two facts (when, who) at a
+	 * fraction of the space and points at History for the rest.
+	 */
+	test('an old rollback demotes to a one-line fact, not a standing panel', async () => {
+		const { container } = await mount(
+			RolloutDetail,
+			{ cluster: 'rollout-a', namespace: 'alpha-dev', name: 'alpha-app' },
+			detailFetch(() => ({ ...rolledBack(), pinned: 'r1aaaaa' }))
+		);
+		const text = (container.textContent ?? '').replace(/\s+/g, ' ');
+		expect(text).toContain('Rolled back');
+		expect(text).toContain('ago');
+		expect(text).toContain('by sam');
+		expect(text).toContain('History');
+		// The full panel's own disclosed/printed sentences are gone —
+		// demoted means demoted, not "also printed under a smaller label."
+		expect(text).not.toContain('and pinned there');
+		expect(text).not.toContain('Nothing moves off');
 	});
 });
