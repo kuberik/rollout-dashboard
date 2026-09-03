@@ -2845,6 +2845,9 @@
 										{@const blockingGates = getBlockingGates(version)}
 										{@const isBlocked = blockingGates.length > 0}
 										{@const depInfo = getDependencyStatus(version)}
+										{@const commitBase =
+											rollout.status.releaseCandidates[candidateIndex + 1]?.revision ??
+											latestEntry?.version?.revision}
 										<li class="flex items-center gap-3 px-4 py-3.5">
 											<!-- Version info -->
 											<div class="min-w-0 flex-1">
@@ -2993,9 +2996,6 @@
 												     newest-first, so a row's base is the NEXT-OLDER candidate,
 												     and only the oldest candidate reaches back to what is
 												     running. -->
-												{@const commitBase =
-													rollout.status.releaseCandidates[candidateIndex + 1]?.revision ??
-													latestEntry?.version?.revision}
 												{#if githubConnected && commitBase && releaseCandidate.revision}
 													<CommitSummary
 														{namespace}
