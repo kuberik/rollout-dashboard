@@ -30,8 +30,18 @@
 	// the leading figure, `rest` is everything after it — so the head row
 	// below can print them at two type roles instead of one. See
 	// `LogsSummary` in LogsViewer.svelte for why: the sr-only `h1` note there
-	// explains what used to live in this slot.
-	let summary = $state<{ count: number; rest: string }>({ count: 0, rest: '' });
+	// explains what used to live in this slot. `errorCount`/`errorsFiltered`/
+	// `toggleErrorFilter` are the same bound-out shape for the error rollup
+	// (finding #3c) — mirrored here rather than imported because
+	// `LogsSummary` lives in `LogsViewer.svelte`'s instance script, not its
+	// `module` context, so it isn't an importable type.
+	let summary = $state<{
+		count: number;
+		rest: string;
+		errorCount: number;
+		errorsFiltered: boolean;
+		toggleErrorFilter: () => void;
+	}>({ count: 0, rest: '', errorCount: 0, errorsFiltered: false, toggleErrorFilter: () => {} });
 </script>
 
 <svelte:head>
@@ -68,6 +78,24 @@
 				>{summary.count.toLocaleString()}</span
 			>
 			<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">{summary.rest || 'Logs'}</p>
+			<!-- ⭐ THE ERROR COUNT, ALSO HERE. (2026-09-03, design pass 6,
+			     operator-walk finding #3c) `LogsViewer`'s own Card rollup
+			     carries the same control right beside the log pane; this
+			     copy is the one a reader sees FIRST, before scrolling past
+			     the tab strip to the pane itself — both toggle the identical
+			     `Level` filter via the same `toggleErrorFilter` callback
+			     `LogsViewer` binds out through `summary`, so the two can
+			     never disagree about whether the filter is on. -->
+			{#if summary.errorCount > 0}
+				<button
+					type="button"
+					class="nav-link text-red-600 dark:text-red-400"
+					aria-pressed={summary.errorsFiltered}
+					onclick={summary.toggleErrorFilter}
+				>
+					{summary.errorCount} error{summary.errorCount === 1 ? '' : 's'}
+				</button>
+			{/if}
 		</div>
 		<!-- Tab buttons inline on mobile.
 		     ⛔ `py-1.5` MADE THIS 28PX AGAINST THE FILTER DROPDOWNS' 34PX, 60PX

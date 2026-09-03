@@ -40,6 +40,22 @@ let capturedOnPodsUpdate: ((pods: PodInfo[] | null) => void) | null = null;
  */
 let capturedResolveLogs: ((logs: LogLine[]) => void) | null = null;
 
+/**
+ * ⭐ THE OTHER SEAM: `client.setQueryData`, NOT the fetch promise.
+ * (2026-09-03, design pass 6, operator-walk finding #3) `capturedResolveLogs`
+ * above SETTLES the fetch — fine for the null-crash and pod-filter suites,
+ * which never needed `isFetching` to stay true once data existed, but wrong
+ * for testing the `streaming` tone specifically: `connectionState` reads
+ * `isPending || isFetching` (see its own comment in LogsViewer.svelte), and
+ * resolving the mocked promise flips that false, landing on `closed` no
+ * matter what data arrived. `context.client` is the same `QueryClient` the
+ * real production write path uses (per this file's own comment above,
+ * mirroring the SSE handler's `queryClient.setQueryData` push) — captured
+ * here so a test can land data WITHOUT ever settling the fetch, exactly like
+ * a real open stream pushing a batch mid-flight.
+ */
+let capturedPushLogs: ((logs: LogLine[]) => void) | null = null;
+
 vi.mock('$lib/api/logs', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('$lib/api/logs')>();
 	return {
@@ -52,17 +68,20 @@ vi.mock('$lib/api/logs', async (importOriginal) => {
 			cluster?: string;
 		}) => {
 			capturedOnPodsUpdate = opts.onPodsUpdate ?? null;
+			const queryKey = ['test-logs', opts.namespace, opts.name, opts.filterType, opts.cluster];
 			return {
-				queryKey: ['test-logs', opts.namespace, opts.name, opts.filterType, opts.cluster],
+				queryKey,
 				// Never resolves on its own — mirrors the real stream's
 				// `isFetching: true` for its whole life (see the `isLoading`
 				// comment in LogsViewer.svelte). `capturedResolveLogs` is the
 				// escape hatch a test can use to land a batch, exactly once,
 				// whenever it chooses to.
-				queryFn: () =>
-					new Promise<LogLine[]>((resolve) => {
+				queryFn: (context: { client: { setQueryData: (key: unknown, data: LogLine[]) => void } }) => {
+					capturedPushLogs = (logs: LogLine[]) => context.client.setQueryData(queryKey, logs);
+					return new Promise<LogLine[]>((resolve) => {
 						capturedResolveLogs = resolve;
-					})
+					});
+				}
 			};
 		}
 	};
@@ -88,12 +107,17 @@ vi.mock('$lib/api/rollouts', async (importOriginal) => {
 	};
 });
 
-import LogsViewer, { normalizePodsPayload } from './LogsViewer.svelte';
+import LogsViewer, {
+	normalizePodsPayload,
+	computeLineFreshness,
+	FRESH_LINE_WINDOW_MS
+} from './LogsViewer.svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 
 afterEach(() => {
 	capturedOnPodsUpdate = null;
 	capturedResolveLogs = null;
+	capturedPushLogs = null;
 	rolloutTestsResponse = { rolloutTests: { items: [] } };
 });
 
@@ -479,5 +503,216 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 			expect(row.querySelector('span.font-semibold')).toBeNull();
 			expect(row.querySelector('span[title]')?.getAttribute('title')).toBe(target);
 		}
+	});
+});
+
+/**
+ * ⭐ FINDING #3 (operator-walk, 2026-09-03). Three defects in one header: a
+ * live dot claimed freshness over a buffer whose newest line was hours old,
+ * Follow opened at the top of a real backlog instead of the bottom, and a
+ * traceback in the buffer had no count anywhere on screen. The pure
+ * `computeLineFreshness` boundary is covered directly; the error count and
+ * its filter toggle are covered through the rendered Card rollup — the same
+ * surface `rollupDot`'s hollow/filled state lives on.
+ */
+describe('computeLineFreshness — the boundary the hollow dot and the head sentence read', () => {
+	test('no line has ever arrived: not live, no age to show', () => {
+		expect(computeLineFreshness(null, Date.now())).toEqual({ live: false, staleForMs: null });
+		expect(computeLineFreshness(undefined, Date.now())).toEqual({ live: false, staleForMs: null });
+	});
+
+	test('a line 10s old is live — the fresh window is 60s, and a live line carries no age', () => {
+		const now = 1_000_000;
+		expect(computeLineFreshness(now - 10_000, now)).toEqual({ live: true, staleForMs: null });
+	});
+
+	test('a line exactly at the window edge reads as stale — the comparison is strict `<`', () => {
+		const now = 1_000_000;
+		const result = computeLineFreshness(now - FRESH_LINE_WINDOW_MS, now);
+		expect(result).toEqual({ live: false, staleForMs: FRESH_LINE_WINDOW_MS });
+	});
+
+	test('the literal reported bug: a 3-hour-old newest line is stale, with its exact age', () => {
+		const now = 1_000_000_000;
+		const threeHoursMs = 3 * 60 * 60 * 1000;
+		expect(computeLineFreshness(now - threeHoursMs, now)).toEqual({
+			live: false,
+			staleForMs: threeHoursMs
+		});
+	});
+
+	test('a timestamp ahead of `now` (clock skew) never reads as negatively stale', () => {
+		const now = 1_000_000;
+		const result = computeLineFreshness(now + 5_000, now);
+		// Clamped to 0ms of age, which is inside the fresh window.
+		expect(result).toEqual({ live: true, staleForMs: null });
+	});
+});
+
+describe('LogsViewer: the header states the freshness of the DATA, not only the socket', () => {
+	function findRollupDot(container: HTMLElement): HTMLElement | null {
+		return container.querySelector('.card-header-rollup span.rounded-full');
+	}
+
+	test('a newest line 3 hours old renders a hollow dot and "last line … ago", not a bare live claim', async () => {
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+			}
+		});
+
+		await waitFor(() => expect(capturedPushLogs).not.toBeNull());
+		const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000;
+		capturedPushLogs!([
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'the last thing that happened',
+				timestamp: threeHoursAgo,
+				formattedTimestamp: '00:00:00'
+			}
+		]);
+
+		await waitFor(() => {
+			const dot = findRollupDot(container);
+			expect(dot).not.toBeNull();
+			expect(dot?.getAttribute('title')).toMatch(/Streaming — last line .+ ago/);
+		});
+
+		// Hollow (a ring), not filled: `stale` and `streaming` share a hue but
+		// not a fill — this is the whole point of the tone (see
+		// `ROLLUP_DOT_CLASS` in LogsViewer.svelte).
+		const dot = findRollupDot(container)!;
+		expect(dot.className).toContain('border-green-500');
+		expect(dot.className).not.toContain('bg-green-500');
+	});
+
+	test('a newest line that just arrived renders the plain filled "Streaming" dot, no age', async () => {
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+			}
+		});
+
+		await waitFor(() => expect(capturedPushLogs).not.toBeNull());
+		capturedPushLogs!([
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'just written',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:00'
+			}
+		]);
+
+		await waitFor(() => {
+			const dot = findRollupDot(container);
+			expect(dot?.getAttribute('title')).toBe('Streaming');
+		});
+		const dot = findRollupDot(container)!;
+		expect(dot.className).toContain('bg-green-500');
+		expect(dot.className).not.toContain('border-green-500');
+	});
+});
+
+describe('LogsViewer: the error count and its filter toggle', () => {
+	function nudge(container: HTMLElement) {
+		const pane = container.querySelector('.overflow-auto');
+		if (pane) fireEvent.scroll(pane);
+	}
+
+	test('one ERROR-level line renders "1 error", and clicking it narrows the pane to just that line', async () => {
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+			}
+		});
+
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!([
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'starting up',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:00'
+			},
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'ERROR: traceback follows',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:01'
+			},
+			{
+				pod: 'pod-b',
+				container: 'app',
+				type: 'pod',
+				line: 'still fine',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:02'
+			}
+		]);
+
+		const errorButton = await screen.findByRole('button', { name: '1 error' });
+		expect(errorButton).toHaveAttribute('aria-pressed', 'false');
+
+		await waitFor(() => {
+			nudge(container);
+			expect(container.querySelectorAll('[data-index]').length).toBeGreaterThan(0);
+		});
+
+		await fireEvent.click(errorButton);
+
+		await waitFor(() => {
+			nudge(container);
+			const rows = Array.from(container.querySelectorAll('[data-index]'));
+			expect(rows.length).toBe(1);
+			expect(rows[0].textContent).toMatch(/ERROR: traceback follows/);
+		});
+		expect(errorButton).toHaveAttribute('aria-pressed', 'true');
+
+		// Clicking again clears the filter — the same control is the on/off
+		// switch, not a one-way narrowing.
+		await fireEvent.click(errorButton);
+		await waitFor(() => {
+			nudge(container);
+			expect(container.querySelectorAll('[data-index]').length).toBe(3);
+		});
+		expect(errorButton).toHaveAttribute('aria-pressed', 'false');
+	});
+
+	test('with no ERROR-level lines in the buffer, no error control renders at all', async () => {
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+			}
+		});
+
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!([
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'all good here',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:00'
+			}
+		]);
+
+		await waitFor(() => {
+			nudge(container);
+			expect(container.querySelectorAll('[data-index]').length).toBeGreaterThan(0);
+		});
+		expect(screen.queryByRole('button', { name: /error/ })).not.toBeInTheDocument();
 	});
 });

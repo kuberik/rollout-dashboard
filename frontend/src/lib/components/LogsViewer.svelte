@@ -18,6 +18,41 @@
 	export function normalizePodsPayload(pods: PodInfo[] | null | undefined): PodInfo[] {
 		return pods ?? [];
 	}
+
+	/**
+	 * ⭐ THE FRESH-LINE WINDOW. (2026-09-03, design pass 6, operator-walk
+	 * finding #3) `connectionState==='streaming'` only ever answers "is the
+	 * SOCKET open" — a socket can sit open for hours after the last pod wrote
+	 * a line, and the header said `streaming` with a live dot the entire
+	 * time over a buffer whose newest line was 3 hours old. This is the
+	 * other half of that fact: whether a LINE has actually landed recently.
+	 * Exported and pure so the boundary (a line at exactly the window edge)
+	 * is a unit test against a function, not a setInterval-driven live-
+	 * cluster wait.
+	 */
+	export interface LineFreshness {
+		/** The ONLY condition that earns the filled/live dot: a line landed
+		 *  within the fresh window. */
+		live: boolean;
+		/** Milliseconds since the newest line — present exactly when `live`
+		 *  is false and at least one line has arrived, which is what the
+		 *  hollow dot's age label reads. `null` covers both "no line yet"
+		 *  and "still fresh", neither of which has an age to show. */
+		staleForMs: number | null;
+	}
+
+	export const FRESH_LINE_WINDOW_MS = 60_000;
+
+	export function computeLineFreshness(
+		newestLineAt: number | null | undefined,
+		now: number,
+		freshWindowMs: number = FRESH_LINE_WINDOW_MS
+	): LineFreshness {
+		if (newestLineAt == null) return { live: false, staleForMs: null };
+		const ageMs = Math.max(0, now - newestLineAt);
+		const live = ageMs < freshWindowMs;
+		return { live, staleForMs: live ? null : ageMs };
+	}
 </script>
 
 <script lang="ts">
@@ -41,6 +76,7 @@
 	import { logsStreamQueryOptions } from '$lib/api/logs';
 	import { rolloutTestsQueryOptions } from '$lib/api/rollouts';
 	import { formatTimeAgo } from '$lib/utils';
+	import { now } from '$lib/stores/time';
 	import Card from '$lib/components/Card.svelte';
 
 	/**
@@ -56,6 +92,19 @@
 	interface LogsSummary {
 		count: number;
 		rest: string;
+		/**
+		 * ⭐ THE ERROR ROLLUP. (2026-09-03, design pass 6, operator-walk
+		 * finding #3c) A traceback sat in the buffer with no count anywhere
+		 * on screen. Bound out alongside `count`/`rest` — same reason: the
+		 * page head one level up (`+page.svelte`) prints it next to the
+		 * rollup sentence, and this component's own Card rollup prints it a
+		 * second time right beside the log pane it describes, so the
+		 * `.nav-link` that applies the filter is in reach wherever the
+		 * reader's eye already is.
+		 */
+		errorCount: number;
+		errorsFiltered: boolean;
+		toggleErrorFilter: () => void;
 	}
 
 	interface Props {
@@ -71,7 +120,13 @@
 		name,
 		filterType = '',
 		cluster,
-		summary = $bindable({ count: 0, rest: '' })
+		summary = $bindable({
+			count: 0,
+			rest: '',
+			errorCount: 0,
+			errorsFiltered: false,
+			toggleErrorFilter: () => {}
+		})
 	}: Props = $props();
 
 	let selectedPod = $state<string | null>(null);
@@ -322,6 +377,27 @@
 		return null;
 	}
 
+	/**
+	 * ⭐ THE ERROR COUNT. (2026-09-03, design pass 6, operator-walk finding
+	 * #3c) Reads `logs` — the unfiltered stream for THIS view — not
+	 * `filteredLogs`: the count states what is IN the buffer, the same
+	 * framing `hasFilters`'s "N lines have arrived" empty-state copy already
+	 * uses below, not what a filter happens to be showing right now. Reuses
+	 * `getLogLevel`, the same classifier the `Level` filter dropdown already
+	 * filters by — one detector, not a second one that could disagree.
+	 */
+	const errorCount = $derived.by(() => {
+		let count = 0;
+		for (const log of logs) {
+			if (getLogLevel(log.line) === 'error') count++;
+		}
+		return count;
+	});
+	const errorsFiltered = $derived(selectedLogLevels.size === 1 && selectedLogLevels.has('error'));
+	function toggleErrorFilter() {
+		selectedLogLevels = errorsFiltered ? new Set() : new Set(['error']);
+	}
+
 	function getLogLevelColor(level: 'error' | 'warn' | 'info' | 'debug' | null): string {
 		switch (level) {
 			case 'error':
@@ -459,6 +535,27 @@
 	const singlePodMode = $derived(effectivePodCount === 1);
 
 	/**
+	 * ⭐ THE NEWEST LINE'S OWN TIMESTAMP — independent of `connectionState`,
+	 * which only ever describes the SOCKET (see `computeLineFreshness`'s own
+	 * note above for why the two are different facts). Reads `logs`, the
+	 * raw unfiltered stream, not `allLogLines`: `allLogLines` defaults a
+	 * missing `timestamp` to `Date.now()` at map time (for the row's own
+	 * display), which would make a genuinely un-timestamped stale line read
+	 * as live the instant it was mapped. `$now` (the shared 100ms ticker
+	 * every relative-time display in this app already reads) is what keeps
+	 * `lineFreshness` recomputing as real time passes with no new line
+	 * arriving — a plain `$derived` off a static `Date.now()` read once
+	 * would freeze the age at whatever it was on the last log event.
+	 */
+	const newestLineAt = $derived(logs.length > 0 ? logs[logs.length - 1].timestamp : null);
+	const lineFreshness = $derived(computeLineFreshness(newestLineAt, $now.getTime()));
+	const lineFreshnessLabel = $derived(
+		lineFreshness.staleForMs != null && newestLineAt != null
+			? `last line ${formatTimeAgo(new Date(newestLineAt).toISOString(), $now)}`
+			: null
+	);
+
+	/**
 	 * THE PAGE'S OWN `h1` SAID "Logs" DIRECTLY UNDER A TAB STRIP WHOSE ACTIVE
 	 * TAB ALREADY SAYS "Logs" — the duplicate-heading rule in the components
 	 * CLAUDE.md. The heading goes `sr-only`; this is what fills the slot,
@@ -471,8 +568,17 @@
 	 * print them at two different type roles instead of one `t-headline`
 	 * line — the defect measured against `/activity`'s head, which does the
 	 * same split for the same reason.
+	 *
+	 * ⭐ `lineFreshnessLabel` JOINS THE SAME SENTENCE. (2026-09-03, design
+	 * pass 6, operator-walk finding #3a) `streamLabel` only ever stated the
+	 * SOCKET's state — a socket can say `streaming` for hours after the
+	 * newest line went stale. This appends the DATA's own age, but only when
+	 * it is not already implied: `lineFreshness.live` (a line within the
+	 * last minute) makes `streaming` alone an honest, current claim, so the
+	 * age adds nothing there and is left out; the moment a line is stale
+	 * this is the ONLY place on the page that says so in words.
 	 */
-	const summaryParts = $derived.by((): LogsSummary => {
+	const summaryParts = $derived.by((): { count: number; rest: string } => {
 		const lineCount = filteredLogs.length;
 		const podCount = effectivePodCount;
 		const podsLabel = podCount > 0 ? `${podCount} pod${podCount === 1 ? '' : 's'}` : null;
@@ -494,14 +600,20 @@
 					: connectionState === 'error'
 						? null
 						: 'stream closed';
-		const rest = [`line${lineCount === 1 ? '' : 's'}`, podsLabel, streamLabel]
+		const rest = [`line${lineCount === 1 ? '' : 's'}`, podsLabel, streamLabel, lineFreshnessLabel]
 			.filter(Boolean)
 			.join(' · ');
 		return { count: lineCount, rest };
 	});
 
 	$effect(() => {
-		summary = summaryParts;
+		summary = {
+			count: summaryParts.count,
+			rest: summaryParts.rest,
+			errorCount,
+			errorsFiltered,
+			toggleErrorFilter
+		};
 	});
 
 	/**
@@ -521,8 +633,17 @@
 	 * accessible name carries the same information the retired text did, so
 	 * nothing is lost for a screen reader, only for a sighted reader who
 	 * already read it 20px above the tab strip.
+	 *
+	 * ⭐ `stale` IS A FIFTH TONE, NOT A FOOTNOTE ON `streaming`. (2026-09-03,
+	 * design pass 6, operator-walk finding #3b) A FILLED dot here used to
+	 * mean only "the socket is open" — the exact lie finding #3 reported: a
+	 * live-looking dot over a buffer whose newest line was 3 hours old. The
+	 * socket being open is real and still worth a dot; it is just no longer
+	 * the SAME dot as "a line landed within the last minute". Hollow (a
+	 * ring, `bg-transparent`) reads as "open but quiet" at a glance without
+	 * inventing a new colour — same hue as `streaming`, just not filled in.
 	 */
-	type RollupDotTone = 'streaming' | 'connecting' | 'closed' | 'error';
+	type RollupDotTone = 'streaming' | 'stale' | 'connecting' | 'closed' | 'error';
 	const rollupDot = $derived.by((): { tone: RollupDotTone; label: string } => {
 		if (connectionState === 'error') return { tone: 'error', label: 'Connection lost' };
 		if (connectionState === 'connecting') {
@@ -531,11 +652,20 @@
 				label: filterType === 'test' ? 'Connecting to test runs…' : 'Connecting to pods…'
 			};
 		}
-		if (connectionState === 'streaming') return { tone: 'streaming', label: 'Streaming' };
-		return { tone: 'closed', label: 'Stream closed' };
+		if (connectionState === 'streaming') {
+			if (!lineFreshness.live && lineFreshnessLabel) {
+				return { tone: 'stale', label: `Streaming — ${lineFreshnessLabel}` };
+			}
+			return { tone: 'streaming', label: 'Streaming' };
+		}
+		return {
+			tone: 'closed',
+			label: lineFreshnessLabel ? `Stream closed — ${lineFreshnessLabel}` : 'Stream closed'
+		};
 	});
 	const ROLLUP_DOT_CLASS: Record<RollupDotTone, string> = {
 		streaming: 'bg-green-500 dark:bg-green-400',
+		stale: 'border-2 border-green-500 bg-transparent dark:border-green-400',
 		connecting: 'bg-amber-400 animate-pulse',
 		closed: 'bg-gray-400 dark:bg-gray-600',
 		error: 'bg-red-500 dark:bg-red-400'
@@ -791,6 +921,15 @@
 			}
 			setTimeout(() => {
 				isAutoScrolling = false;
+				// ⭐ CATCH UP ON WHATEVER GREW WHILE THIS CALL WAS IN FLIGHT.
+				// (2026-09-03, design pass 6, operator-walk finding #3b) See
+				// `pendingRescroll`'s own note below — this is the other
+				// half of that fix: the moment this call stops holding the
+				// gate, immediately re-run if something asked for it.
+				if (pendingRescroll) {
+					pendingRescroll = false;
+					scrollToBottom();
+				}
 			}, 100);
 		});
 	}
@@ -798,6 +937,29 @@
 	// Auto-scroll when new logs arrive (if enabled)
 	let previousLogCount = $state(0);
 	let previousLastTimestamp = $state<number | null>(null);
+
+	/**
+	 * ⛔ THE PANE OPENED WITH FOLLOW ON AND SHOWED OLD LINES ANYWAY.
+	 * (2026-09-03, design pass 6, operator-walk finding #3b) On first load a
+	 * real backlog streams in as several batches within the first ~1–2s —
+	 * faster than one `scrollToBottom()` cycle (tick + rAF + a 100ms settle)
+	 * can complete. The effect below used to gate its OWN re-entry on
+	 * `!isAutoScrolling`, which is correct for not fighting `handleScroll`
+	 * over a scroll event `scrollToBottom()` triggers itself — but it paid
+	 * for that by SKIPPING the scroll-to-bottom call entirely for any batch
+	 * that landed mid-cycle, while `previousLogCount`/`previousLastTimestamp`
+	 * below still advanced unconditionally, so that growth was marked "seen"
+	 * and never revisited. Measured live (`hello-multi-dev/hello-multi-app`,
+	 * 5 pods): `scrollTop` sat 40,781px short of the true bottom at 500ms
+	 * and only converged by ~2s, on a pane whose header said "streaming"
+	 * with Follow on the whole time — the reader watched it happen instead
+	 * of never seeing it. `pendingRescroll` is the fix: growth that arrives
+	 * mid-cycle is not dropped, it is QUEUED, and the in-flight call's own
+	 * completion (see the `setTimeout` above) drains the queue by calling
+	 * itself again — so a burst of N batches converges in a short chain of
+	 * back-to-back corrections instead of losing everything after the first.
+	 */
+	let pendingRescroll = false;
 
 	// Handle auto-scroll
 	$effect(() => {
@@ -807,11 +969,15 @@
 
 		const logsChanged = currentCount > previousLogCount || lastTimestamp !== previousLastTimestamp;
 
-		if (autoScroll && logsChanged && !isUserScrolling && !isAutoScrolling) {
-			// Use tick to ensure DOM updates first
-			tick().then(() => {
-				scrollToBottom();
-			});
+		if (autoScroll && logsChanged && !isUserScrolling) {
+			if (isAutoScrolling) {
+				pendingRescroll = true;
+			} else {
+				// Use tick to ensure DOM updates first
+				tick().then(() => {
+					scrollToBottom();
+				});
+			}
 		}
 
 		previousLogCount = currentCount;
@@ -1260,6 +1426,24 @@
 		class="min-h-0 flex-1"
 	>
 		{#snippet rollup()}
+			<!-- ⭐ THE ERROR COUNT, RIGHT BESIDE THE PANE IT DESCRIBES.
+			     (2026-09-03, design pass 6, operator-walk finding #3c) A
+			     traceback could sit in the buffer with no count anywhere on
+			     screen; this is the `.nav-link` Card.svelte's own rollup
+			     styling already sizes correctly (`.card-header-rollup
+			     .nav-link`), toggling the SAME `Level` filter the dropdown
+			     above applies — one control, two entry points, not a second
+			     filter mechanism. -->
+			{#if errorCount > 0}
+				<button
+					type="button"
+					class="nav-link text-red-600 dark:text-red-400"
+					aria-pressed={errorsFiltered}
+					onclick={toggleErrorFilter}
+				>
+					{errorCount} error{errorCount === 1 ? '' : 's'}
+				</button>
+			{/if}
 			<!-- ⛔ NOT WHILE `connecting` — the status row above (the spinner
 			     + "Connecting to pods…"/"Connecting to test runs…") already
 			     says exactly this, louder, in the one state that has no
