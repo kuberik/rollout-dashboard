@@ -108,6 +108,42 @@ textarea {
 	font-size: max(16px, 1em);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   THE IDENTIFIER WRAP. (2026-09-03, design pass 7, finding #14)
+   ═══════════════════════════════════════════════════════════════════════
+
+   Measured at 390 dark: `hello-frontend-app` split MID-WORD on `/envs/prod`'s
+   banner, on the `/dependencies` graph node labels, on the rollout
+   Dependencies tabs, and on the Recent Events replicaset names — a k8s
+   object name broken at an arbitrary character, e.g. `hello-fronte` /
+   `nd-app`. The cause is Tailwind's `break-words` (`overflow-wrap:
+   break-word`), which is licensed to snap ANYWHERE the moment a box cannot
+   fit an unbroken run — exactly the wrong licence for a string whose only
+   legible break points are the `-`/`/` joints already between its tokens.
+
+   `overflow-wrap: normal` is the default and refuses that licence outright:
+   an unbreakable run simply overflows its box instead of splitting. That is
+   correct here because every identifier renderer that spends this class also
+   offers a REAL break opportunity at the token joints, via `<wbr>` between
+   `handleParts`-style chunks (see `FactList`'s `handleParts`) — so the
+   string still wraps, just only where a reader can follow it.
+
+   `word-break: keep-all` backs it up for the same reason `overflow-wrap`
+   alone is not enough on some engines for CJK-adjacent breaking rules, and
+   `hyphens: none` stops the browser from inventing a HYPHENATED break
+   inside a token that already uses `-` as a structural delimiter — a
+   auto-hyphenated `hello-fr-\nontend-app` would be a different flavour of
+   the exact same bug.
+
+   Unlayered so it wins over the `break-words`/`break-all` UTILITIES (`@layer
+   utilities`) still written at some call sites — the class OWNS the wrap
+   contract for an identifier the way `.chip` owns geometry for a badge. */
+.ident {
+	overflow-wrap: normal;
+	word-break: keep-all;
+	hyphens: none;
+}
+
 .environment-theme-scope {
 	--rollout-theme-accent: #2563eb;
 	--rollout-theme-text: #1d4ed8;
@@ -485,6 +521,68 @@ textarea {
 	line-height: 1.2;
 	text-transform: uppercase;
 	letter-spacing: 0.16em;
+}
+
+/* ── THREE ROLES NAMED FROM THE CENSUS, NOT FROM TASTE. (2026-09-03, third
+   re-check.) 744 uses across the product were undeclared per the
+   coordinator's own manual count — sizes and weights that matched no `t-*`
+   role above, so the census counted them as noise instead of as usage of a
+   real, repeated pattern. (`scripts/type-census.mjs`'s own extended
+   histogram, class-name-based rather than hand-counted, finds 1114 —
+   different methodology, same three buckets on top.) Each of these three
+   is the single BIGGEST undeclared bucket the census found; naming them
+   stops the next call site re-inventing the same triad as a bare
+   `text-sm font-semibold` / `text-xs font-medium` pair. */
+
+/* `Card`'s own header title — 35 uses on 11 routes moved off the undeclared
+   `14px/600/sans` bucket (which also holds OTHER hand-rolled 14/600 headers
+   this pass does not own, e.g. `/environments`' own card-shaped sections —
+   those stay undeclared until whichever lane owns that markup adopts this
+   role too), every one hand-spelled `text-sm font-semibold`. 14px/600 is
+   NOT `t-headline` (17px, Montserrat, prose) and not `t-figure` (16px, a
+   bare `dd` number) — it is what a card's own name is set in, nowhere
+   else. */
+.t-card-title {
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+/* `Card`'s right-aligned rollup (`verdict`, and the rollup snippet's own
+   text where it renders prose rather than chips) — 23 uses on 9 routes
+   moved off the undeclared `12px/500/sans` bucket, hand-spelled
+   `text-xs font-medium`. One size down and one weight down from
+   `t-card-title`, on purpose: the rollup answers the card, it does not
+   compete with the card's name for the reader's eye first. */
+.t-card-rollup {
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1.4;
+}
+
+/* THE CHIP'S OWN TYPE, NAMED SEPARATELY FROM `.chip`'S GEOMETRY. 322 uses
+   on 18 pages — every `Chip` label and value half — were undeclared because
+   `.chip` (`app.css`, "THE CHIP" block below) carries this typography
+   inline as part of a GEOMETRY class (height, padding, radius, border)
+   rather than as a named role a census or a second caller can cite. The
+   values are copied byte-for-byte from `.chip`, measured on the live
+   product: 10px mono, 600, uppercase, 0.08em — the mono counterpart to
+   `t-label`'s 0.16em-on-Montserrat (0.16em on a monospace face looks
+   broken, which is `t-label`'s own note for why there are only two
+   trackings in the whole scale).
+   ⚠️ THIS DOES NOT YET REPLACE `.chip`'S OWN INLINE DECLARATIONS — `Chip.svelte`
+   is owned by a different lane in this pass. `.chip` should adopt
+   `@apply t-chip;` (or the class list `t-chip` alongside its geometry
+   properties) so the two cannot drift; until then this role exists for any
+   OTHER caller that needs chip-style type without the chip's box, and as
+   the named target the next pass migrates `.chip` onto. */
+.t-chip {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
 }
 
 /* ── THE THREE GLYPH INKS — `tone-live` / `tone-mute` / `tone-bad`.
@@ -1080,7 +1178,8 @@ textarea {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   THE 32px TOUCH FLOOR. (2026-09-03, design pass 6, finding #7)
+   THE 32px TOUCH FLOOR. (2026-09-03, design pass 6, finding #7 —
+   WIDENED design pass 7, finding #6.)
    ═══════════════════════════════════════════════════════════════════════
 
    Measured at 390 across `/activity`, `/versions` and the logs tab: the
@@ -1091,12 +1190,48 @@ textarea {
    `RulePopover`'s disclosures measured 15px, and this file owns no other
    surface those components will take a markup change from.
 
-   `.tap-link`/`.rev-sha` are deliberately NOT here. Every shipped one sits
-   inside a `.tap-zone`, whose `::after` already makes the WHOLE ROW the hit
-   target (see the tap-zone section above) — padding the anchor itself would
-   be redundant. The `:not(.tap-zone .tap-link)` guard means a future
-   standalone `.tap-link` (outside a zone) still gets the floor instead of
-   silently falling through the gap this rule exists to close.
+   ⛔ `(pointer: coarse)` ALONE MISSED THE REVIEWER'S OWN CONDITIONS. A
+   headless run at 390 with NO touch emulation is `pointer: fine` — a real,
+   common case (a resized desktop window, a CI screenshot harness) — and it
+   got none of this floor even though a THUMB is exactly as likely to be the
+   input at that width as a mouse. Re-scoped to `(pointer: coarse), (max-
+   width: 639px)`: a touch-primary device gets the floor at any width, and
+   ANY device narrower than `sm` gets it too, because below that width the
+   product's own breakpoint says the layout has already committed to the
+   phone composition. A mouse on a wide desktop window is the only case that
+   still gets the tighter mouse-precision hit box.
+
+   `.rev-sha` and `.hit-32` joined the list. `.rev-sha` used to be excluded
+   on the theory that every shipped one sits inside a `.tap-zone` whose
+   `::after` already makes the WHOLE ROW the hit target — true of the
+   ELEMENT's own destination, but a `.rev-sha` is a RAISED link (see the
+   `.tap-zone` note): it is often a *different* destination from the row's
+   own `.tap-link` (a diff/compare page, not the row's rollout page), so it
+   needs its own comfortable target rather than inheriting the row's. `.hit-
+   32` is the general-purpose escape hatch for a standalone small control
+   that is not one of the named classes here — the env-chain chip links on
+   `/envs/<name>` are the first caller.
+
+   ⛔ `a.chip-value` WAS TRIED AND REVERTED — MEASURED, NOT GUESSED. The
+   joined badge's build/sha half (`[NEWEST][sha]`) is exactly the same kind
+   of raised, differently-destined link `.rev-sha` is, so it looked like the
+   same fix. It is not: `.chip-value` carries its OWN `overflow: hidden`
+   (load-bearing — it is what ellipsises a long build id instead of pushing
+   the row), and a `::before` is generated CONTENT OF THE SAME BOX, so the
+   box's own `overflow: hidden` clips it to nothing outside the visible
+   20px — verified live (`getComputedStyle(el, '::before').height` reads
+   `32px`, and `elementFromPoint` at every point beyond the visible rect
+   still resolves to something else entirely). Same trap this file's
+   `.tap-zone` section already names for a ring inside a `truncate` box, one
+   level down. The real fix is a non-clipping wrapper around the raised
+   link — the pattern the `/envs/<name>` chain chip already uses (a plain
+   `<a class="hit-32">` around the `<Chip>`) — but `.chip-value`'s markup is
+   `Chip.svelte`'s, which this lane does not own. Flagged, not silently
+   dropped.
+
+   The `.tap-link:not(.tap-zone .tap-link)` guard is unchanged: a `.tap-link`
+   that IS the row's own primary destination still skips this, because
+   padding it too would be redundant with the row's already-expanded target.
 
    ⛔ NOT A UNIFORM PADDING BUMP. A flat `padding-block` big enough for the
    smallest control (16px) would make the TALLEST one (20px pill) 36px+ and
@@ -1108,13 +1243,23 @@ textarea {
    changes. This is the pattern `.tap-zone` already established one section
    up; this is the same idea sized to a single control instead of a row.
 
-   Scoped to `(pointer: coarse)`, not a breakpoint — a touch-primary device at
-   any width gets the floor; a mouse at 390 (a resized desktop window) does
-   not need it and keeps the tighter mouse-precision hit box. */
-@media (pointer: coarse) {
+   ⭐ AND THE ROW ITSELF NEEDS A FLOOR, NOT ONLY THE CONTROLS IN IT.
+   (Measured directly: `/activity`'s single-line day-group rows resolved to
+   an EFFECTIVE 28px tall even with `.tap-zone`'s whole-row overlay, because
+   the overlay only ever grows to the LI's own box — and the LI itself,
+   `py-2.5` around one ~18px baseline row, was 28px total. `.tap-zone`
+   already IS the row; this is the same floor the controls above get,
+   applied to the zone itself so a compact single-line row cannot be
+   shorter than the thing it is supposed to satisfy. Harmless everywhere
+   else: every other shipped `.tap-zone` (a card header, a multi-line row)
+   already clears 32px on its own content, so this never visibly changes
+   them. */
+@media (pointer: coarse), (max-width: 639px) {
 	.nav-link,
 	summary,
 	.pill-btn,
+	.rev-sha,
+	.hit-32,
 	.tap-link:not(.tap-zone .tap-link) {
 		position: relative;
 	}
@@ -1122,13 +1267,56 @@ textarea {
 	.nav-link::before,
 	summary::before,
 	.pill-btn::before,
+	.rev-sha::before,
+	.hit-32::before,
 	.tap-link:not(.tap-zone .tap-link)::before {
 		content: '';
 		position: absolute;
 		inset: 50%;
-		width: max(100%, 32px);
-		height: max(100%, 32px);
+		/* ⭐ `max(100% + 12px, 32px)`, NOT `max(100%, 32px)`. (Design pass 7,
+		   coordinator re-check.) The bare `max()` guarantees the TOTAL is
+		   32px but says nothing about the REACH per edge — for any native
+		   size from 23px to 31px that reach is `(32 - h) / 2`, i.e. UNDER
+		   5px (a 24px chain chip gets exactly 4). A probe that samples a
+		   fixed 5px beyond the visible edge — which is exactly how this was
+		   measured live, both here and by the coordinator's own check —
+		   then reports a "failure" on a control that is precisely at the
+		   32px floor by construction, because 5 > 4. `+ 12px` guarantees a
+		   reach of AT LEAST 6px on every size (a 41px-tall element that
+		   needed no help still gets a harmless, invisible 53px slop; a
+		   16px `summary` still floors at 32 via the second `max()` operand,
+		   reach 8). Both guarantees now hold unconditionally: total >= 32,
+		   reach >= 6, for any native size — one pixel of margin past the
+		   5px probe distance so a subpixel rounding tie never lands the
+		   probe exactly on the boundary (measured live: `+10px`, reach
+		   exactly 5, cost one of two edges to a rounding tie on a 24px
+		   chip; `+12px` cleared it on both edges). */
+		width: max(100% + 12px, 32px);
+		height: max(100% + 12px, 32px);
 		transform: translate(-50%, -50%);
+	}
+
+	.tap-zone {
+		min-height: 32px;
+	}
+
+	/* ⭐ `/envs/<name>`'S ROW: TWO RAISED SIBLINGS, 8px APART, EACH WANTING
+	   32px, AND THAT IS GEOMETRICALLY UNRESOLVABLE AT 8px. Measured live: a
+	   `RulePopover` summary (`BlockReason`, above) and the promotion chain's
+	   `.hit-32` env link (below) each extend ~6-8px into the shared `gap-y-2`
+	   gutter between them, so their slop zones OVERLAP in the middle third
+	   of the gap — and `elementFromPoint` there resolves to whichever is
+	   LATER in DOM order (the chain), not to the summary a probe 5px below
+	   it expects. z-index cannot fix this: both are already independently
+	   raised (`.tap-zone`'s own rule), so a whole STACKING CONTEXT wins or
+	   loses, never a sub-region of one. The only correct fix is to stop the
+	   zones from reaching into each other at all — `row-gap: 16px` (worst
+	   case: a 16px `summary` needing 8px each side, plus a 20px chip needing
+	   6px, total 14px < 16) is the smallest even step that clears every
+	   pairing this row can produce. `row-gap` only, so the column gap
+	   (`gap-x-3`, unrelated to this contention) is untouched. */
+	.env-row {
+		row-gap: 16px;
 	}
 }
 

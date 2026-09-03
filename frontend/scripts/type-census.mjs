@@ -20,6 +20,118 @@ import path from 'node:path';
 const BASE = 'https://127.0.0.1:5173';
 const OUT = process.argv[2] || '/tmp/claude/pass3/type/census-before.json';
 
+/**
+ * ⭐ 2026-09-03 · THE DECLARED ROLES, MIRRORED FROM `app.css`'S TYPE-ROLE
+ * BLOCK, SO THE CENSUS CAN TELL "USES A ROLE" FROM "HAPPENS TO MATCH ONE".
+ *
+ * Declared-ness is a CLASS-NAME question, not a computed-style question: an
+ * element wearing `.chip`'s hand-spelled `font-size: 10px; font-weight: 600`
+ * computes identically to `.t-chip` but is not USING the role — nobody
+ * reading `.chip`'s rule can tell it is the same triad as `.t-label`'s
+ * mono counterpart without this cross-reference existing somewhere. So an
+ * element counts as declared only when one of its own class tokens is
+ * literally one of the keys below; everything else is undeclared, however
+ * closely its rendered numbers match a role, and is bucketed by its own
+ * computed `size/weight/family` so a repeated hand-rolled spelling shows up
+ * as a single line item instead of one anonymous element at a time.
+ */
+const DECLARED_ROLES = {
+	't-display': { fontSize: '24px', fontWeight: '300', family: 'Montserrat' },
+	't-display-id': { fontSize: '24px', fontWeight: '500', family: 'mono' },
+	't-headline': { fontSize: '17px', fontWeight: '600', family: 'Montserrat' },
+	't-figure': { fontSize: '16px', fontWeight: '600', family: 'sans' },
+	't-body': { fontSize: '14px', fontWeight: '400', family: 'sans' },
+	't-dense': { fontSize: '12.5px', fontWeight: '400', family: 'sans' },
+	't-micro': { fontSize: '11px', fontWeight: '400', family: 'sans' },
+	't-code': { fontSize: '13px', fontWeight: '500', family: 'mono' },
+	't-code-sm': { fontSize: '11.5px', fontWeight: '400', family: 'mono' },
+	't-button': { fontSize: '12px', fontWeight: '600', family: 'sans' },
+	't-label': { fontSize: '10px', fontWeight: '600', family: 'Montserrat' },
+	// ⭐ Third re-check, added alongside this pass's app.css declarations.
+	't-card-title': { fontSize: '14px', fontWeight: '600', family: 'sans' },
+	't-card-rollup': { fontSize: '12px', fontWeight: '500', family: 'sans' },
+	't-chip': { fontSize: '10px', fontWeight: '600', family: 'mono' }
+};
+
+/** `font-family` computed strings are stacks (`"Menlo, Monaco, ..."`); this
+ *  collapses one to the short label the table above and the printed report
+ *  both use. */
+function familyShort(fontFamily) {
+	const f = fontFamily.toLowerCase();
+	if (f.includes('montserrat')) return 'Montserrat';
+	if (f.includes('mono') || f.includes('menlo') || f.includes('consolas')) return 'mono';
+	return 'sans';
+}
+
+/** The literal `t-*` class name on the element, if it wears one — this is
+ *  what makes it DECLARED, whatever its computed style says. */
+function declaredRole(classes) {
+	const tokens = (classes || '').split(/\s+/);
+	for (const t of tokens) {
+		if (Object.prototype.hasOwnProperty.call(DECLARED_ROLES, t)) return t;
+	}
+	return null;
+}
+
+/**
+ * Build the declared/undeclared histogram across every route's census.
+ * "File path" in this product means the DOM census's own `path` (a CSS
+ * selector) plus the ROUTE it was found on — a browser-side census has no
+ * way to resolve a Svelte SOURCE file, so route path is the closest
+ * per-occurrence location this instrument can name, and it is exactly what
+ * the next pass needs to go find the call site.
+ */
+function summarize(allResults) {
+	const declared = {}; // role -> { count, routes: Set }
+	const undeclared = {}; // "size/weight/family" -> { count, routes: Set, samples: [{route, path, text}] }
+
+	for (const [routeName, result] of Object.entries(allResults)) {
+		if (!result.elements) continue;
+		for (const el of result.elements) {
+			const role = declaredRole(el.classes);
+			if (role) {
+				declared[role] ??= { count: 0, routes: new Set() };
+				declared[role].count++;
+				declared[role].routes.add(routeName);
+				continue;
+			}
+			const family = familyShort(el.fontFamily);
+			const key = `${el.fontSize}/${el.fontWeight}/${family}`;
+			undeclared[key] ??= { count: 0, routes: new Set(), samples: [] };
+			undeclared[key].count++;
+			undeclared[key].routes.add(routeName);
+			if (undeclared[key].samples.length < 5) {
+				undeclared[key].samples.push({ route: routeName, path: el.path, text: el.text });
+			}
+		}
+	}
+	return { declared, undeclared };
+}
+
+function printSummary({ declared, undeclared }) {
+	console.error('\n── DECLARED ROLES ──────────────────────────────────────');
+	const declaredRows = Object.entries(declared).sort((a, b) => b[1].count - a[1].count);
+	for (const [role, v] of declaredRows) {
+		console.error(`  ${role.padEnd(16)} x${v.count} on ${v.routes.size} routes`);
+	}
+	const totalDeclared = declaredRows.reduce((s, [, v]) => s + v.count, 0);
+
+	console.error('\n── UNDECLARED (size/weight/family) ─────────────────────');
+	const undeclaredRows = Object.entries(undeclared).sort((a, b) => b[1].count - a[1].count);
+	for (const [key, v] of undeclaredRows) {
+		console.error(`  ${key.padEnd(20)} x${v.count} on ${v.routes.size} routes`);
+		const topPaths = v.samples.map((s) => `${s.route}: ${s.path}`).slice(0, 3);
+		for (const p of topPaths) console.error(`      · ${p}`);
+	}
+	const totalUndeclared = undeclaredRows.reduce((s, [, v]) => s + v.count, 0);
+
+	console.error(
+		`\nTOTAL: ${totalDeclared} declared, ${totalUndeclared} undeclared (${
+			declaredRows.length
+		} declared roles, ${undeclaredRows.length} undeclared buckets)\n`
+	);
+}
+
 const ROUTES = [
 	{ path: '/', name: 'home' },
 	{ path: '/rollouts', name: 'rollouts' },
@@ -202,6 +314,32 @@ async function run() {
 	fs.mkdirSync(path.dirname(OUT), { recursive: true });
 	fs.writeFileSync(OUT, JSON.stringify(allResults, null, 2));
 	console.error(`Wrote ${OUT}`);
+
+	const summary = summarize(allResults);
+	printSummary(summary);
+	const summaryOut = OUT.replace(/\.json$/, '-summary.json');
+	fs.writeFileSync(
+		summaryOut,
+		JSON.stringify(
+			{
+				declared: Object.fromEntries(
+					Object.entries(summary.declared).map(([k, v]) => [
+						k,
+						{ count: v.count, routes: [...v.routes] }
+					])
+				),
+				undeclared: Object.fromEntries(
+					Object.entries(summary.undeclared).map(([k, v]) => [
+						k,
+						{ count: v.count, routes: [...v.routes], samples: v.samples }
+					])
+				)
+			},
+			null,
+			2
+		)
+	);
+	console.error(`Wrote ${summaryOut}`);
 }
 
 run().catch((err) => {

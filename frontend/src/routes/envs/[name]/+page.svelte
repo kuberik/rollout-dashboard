@@ -1208,7 +1208,7 @@
 								     the row's action button all stay independently
 								     clickable because the zone raises them. -->
 								<li
-									class="tap-zone grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors lg:items-center {rowGrid(
+									class="tap-zone env-row grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors lg:items-center {rowGrid(
 										row
 									)} hover:bg-gray-50 dark:hover:bg-gray-700/30"
 								>

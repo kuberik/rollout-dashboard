@@ -214,7 +214,7 @@
 			{#if Icon}
 				<Icon class="h-4 w-4 shrink-0 {iconClass}" />
 			{/if}
-			<h2 class="min-w-0 break-words text-sm font-semibold text-gray-900 dark:text-white">
+			<h2 class="t-card-title min-w-0 break-words text-gray-900 dark:text-white">
 				{#if titleHref}
 					<a
 						href={titleHref}
@@ -263,7 +263,7 @@
 			</div>
 		{:else if verdict}
 			<span
-				class="card-header-verdict shrink-0 text-xs font-medium whitespace-nowrap {VERDICT_TONE[verdictTone]}"
+				class="t-card-rollup card-header-verdict shrink-0 whitespace-nowrap {VERDICT_TONE[verdictTone]}"
 				title={verdictTitle}>{verdict}</span
 			>
 		{/if}

@@ -363,6 +363,33 @@
 	// Owned by the effect below — `rankdir` is read there so a caller that
 	// switches it at runtime is followed rather than sampled once at mount.
 	let orientation = $state<'LR' | 'TB'>('LR');
+	/**
+	 * ⭐ 2026-09-03 · THE RESTING FIT'S OWN ESCAPE HATCH FROM THE ZOOM FLOOR —
+	 * see `SINGLE_FILE_FLOOR` beside `restingFit`. Set true when `LR` cannot
+	 * hold the whole graph (or the anchor span) at a legible zoom; reset on
+	 * a resize so a wider frame gets a fresh `LR` trial rather than staying
+	 * stacked forever.
+	 *
+	 * ⛔ NOT reset on EVERY resize notification, though — `singleFile`'s own
+	 * `TB` layout is far taller than `LR`'s (every node stacks into one
+	 * column, unclamped `maxHeight`), so flipping into it can grow the page
+	 * enough to bring in a scrollbar, which shrinks THIS component's own
+	 * measured width by the scrollbar's ~15px and fires the SAME
+	 * `ResizeObserver` that is supposed to only hear about the READER
+	 * resizing something. Measured live: that shrink reset `forceStack`,
+	 * flipping back to `LR`, which un-grows the page, which regrows the
+	 * width, which re-fires the observer, which re-derives `forceStack`
+	 * from the (still too-small) zoom and sets it again — an infinite
+	 * LR⇄TB oscillation with no user input, one tick after the very first
+	 * layout. `widthAtForceStack` below is what breaks it: only a width
+	 * change bigger than a scrollbar (`FORCE_STACK_RESIZE_TOLERANCE`) counts
+	 * as a real resize worth re-trying `LR` for.
+	 */
+	let forceStack = $state(false);
+	/** The width `forceStack` was set at — see its own doc. Not `$state`:
+	 *  read only inside the resize handler and `restingFit`, never rendered. */
+	let widthAtForceStack = 0;
+	const FORCE_STACK_RESIZE_TOLERANCE = 24;
 	/** dagre's own content box, in graph units. */
 	let contentSize = $state({ width: 0, height: 0 });
 
@@ -526,10 +553,91 @@
 	 * screen.
 	 */
 	const READABLE_FLOOR = 0.6;
+	/**
+	 * ⭐ 2026-09-03 · THE RESTING VIEW's OWN, HIGHER BAR — FIT-TO-PANE WINS
+	 * OVER THE ZOOM FLOOR. (Third re-check finding: at 1024/1152 the whole
+	 * dependency graph fit landed BETWEEN this line and `FIT.minZoom`
+	 * — e.g. ~0.80 — so `fitView({ ...FIT })` clamped the RESTING zoom up to
+	 * the 0.85 floor rather than down to what actually fits, and the floor
+	 * WINNING is exactly what let `prod hello-frontend-app` render 47px past
+	 * the pane's right edge: the fit no longer matched what was requested,
+	 * it matched the floor.
+	 *
+	 * `anchorSpan`'s subset-fit branch already existed for a lower bar
+	 * (`READABLE_FLOOR`, 0.6 — still what the `Fit the whole graph` BUTTON
+	 * uses, unchanged) but that bar sat below the resting floor itself, so
+	 * there was a band — `READABLE_FLOOR` to `FIT.minZoom` — where NEITHER
+	 * branch fired: too legible for the subset rescue, not legible enough
+	 * to rest on without the floor clamping it. Raising the resting-view
+	 * trigger to `FIT.minZoom` (0.85 at these widths, unifying with
+	 * `narrow`'s own floor) closes that band: whenever the whole graph
+	 * cannot rest AT the floor without the floor doing the clamping, the
+	 * blocked pair's own two-node span is fit instead — a subset fit's zoom
+	 * is set by the SPAN's own extent, not by the fleet's, so it lands
+	 * near 1 for two ~200px boxes and both ends are guaranteed inside the
+	 * frame (`fitView({ nodes })` computes bounds for exactly those nodes).
+	 * `FIT.minZoom` still does not apply to the subset fit itself — see the
+	 * existing note below; capping it would recreate the exact bug at a
+	 * smaller scale if the pair's own natural fit ever needed to go lower.
+	 */
+	function readableSpanFloor(): number {
+		return FIT.minZoom;
+	}
+	/**
+	 * ⭐ 2026-09-03 · WHEN THERE IS NO PAIR TO RESCUE THE VIEW WITH — e.g. an
+	 * environment filtered down to no blocked edge — OR THE PAIR ITSELF
+	 * CANNOT BE SHOWN AT A LEGIBLE ZOOM (`anchorSpanFitZoom` below the same
+	 * line — a "column span" running edge-to-edge on the graph, see
+	 * `DependencyNetwork`'s own extension), clamping to the floor and
+	 * letting it clip — or shrinking the subset fit to satisfy it — is still
+	 * the worse choice. Below this line the resting view switches the graph
+	 * to the `singleFile` stacked column (`forceStack`) instead: one node
+	 * per row, zoom 1, the page scrolls. `AppPromotionFlow` never passes
+	 * `singleFile` so this branch never touches it.
+	 *
+	 * Measured on the live fleet's `/dependencies` at 1024: the DEV→PROD
+	 * column span (three environments all holding `hello-frontend-app` at
+	 * once) needs **0.727** to show both ends — clearing the OLD `0.7` cut
+	 * by a hair while still printing a 7.3px `Chip` label, well under the
+	 * "no label under 8.5 effective px" bar. `0.75` catches it; `0.85`
+	 * itself is not the cut here on purpose — a span that needs, say, 0.80
+	 * is still far more legible resting on ITS OWN two ends than stacked
+	 * into a scrolling column it did not otherwise need.
+	 */
+	const SINGLE_FILE_FLOOR = 0.75;
 	function wholeGraphFitZoom(): number {
 		if (contentSize.width <= 0 || contentSize.height <= 0 || containerWidth <= 0) return 0;
 		const zw = (containerWidth - fitInset(containerWidth)) / contentSize.width;
 		const zh = (frameHeight - fitInset(frameHeight)) / contentSize.height;
+		return Math.min(1, zw, zh);
+	}
+
+	/**
+	 * ⭐ 2026-09-03 · WHAT ZOOM THE SUBSET FIT WILL ACTUALLY LAND ON, before
+	 * asking the library to compute it — so `restingFit` can tell "both ends
+	 * fit at a legible zoom" from "both ends fit, but only by shrinking past
+	 * `SINGLE_FILE_FLOOR`" BEFORE committing to the subset-fit branch. A
+	 * `anchorSpan` that runs from the graph's first column to its last (the
+	 * "column span" case — see `DependencyNetwork`'s own extension) has a
+	 * bounding box nearly as wide as the WHOLE graph, so it is not safe to
+	 * assume a 2-node subset is always small and always near zoom 1.
+	 * Mirrors `wholeGraphFitZoom`'s own arithmetic, over the span's bounding
+	 * box instead of the full content box.
+	 */
+	function anchorSpanFitZoom(a: string, b: string): number {
+		const na = flowNodes.find((n) => n.id === a);
+		const nb = flowNodes.find((n) => n.id === b);
+		if (!na || !nb || containerWidth <= 0) return 0;
+		const wa = na.measured?.width ?? fallbackNodeWidth;
+		const wb = nb.measured?.width ?? fallbackNodeWidth;
+		const ha = na.measured?.height ?? fallbackNodeHeight;
+		const hb = nb.measured?.height ?? fallbackNodeHeight;
+		const boxWidth = Math.max(na.position.x + wa, nb.position.x + wb) - Math.min(na.position.x, nb.position.x);
+		const boxHeight =
+			Math.max(na.position.y + ha, nb.position.y + hb) - Math.min(na.position.y, nb.position.y);
+		if (boxWidth <= 0 || boxHeight <= 0) return 0;
+		const zw = (containerWidth - fitInset(containerWidth)) / boxWidth;
+		const zh = (frameHeight - fitInset(frameHeight)) / boxHeight;
 		return Math.min(1, zw, zh);
 	}
 
@@ -583,9 +691,11 @@
 		}
 		/**
 		 * ⭐ `anchorSpan` SKIPS THE WHOLE-GRAPH FIT AND ASKS THE LIBRARY TO
-		 * FIT JUST THOSE TWO NODES — BUT ONLY WHEN THE WHOLE GRAPH CANNOT BE
-		 * READ. See the prop's own comment for the defect this exists to fix,
-		 * and `READABLE_FLOOR` above for why it is now conditional.
+		 * FIT JUST THOSE TWO NODES — BUT ONLY WHEN THE WHOLE GRAPH CANNOT
+		 * REST AT THE FLOOR WITHOUT THE FLOOR CLAMPING IT. See the prop's own
+		 * comment for the defect this exists to fix, and `readableSpanFloor`
+		 * above for why the resting view's own trigger sits at `FIT.minZoom`
+		 * now, not at `READABLE_FLOOR` (still the button's own, lower bar).
 		 * `fitView({ nodes })` is `@xyflow/system`'s own subset-fit — it
 		 * computes the bounds and the zoom for exactly the nodes named, so
 		 * the two ends of a blocked edge are guaranteed to both be on screen
@@ -606,10 +716,34 @@
 		 * WHATEVER ZOOM THAT TAKES to show both ends, not at whatever zoom
 		 * the fleet-sized floor still allows.
 		 */
-		if (anchorSpan && wholeGraphFitZoom() < READABLE_FLOOR) {
+		const wholeZoom = wholeGraphFitZoom();
+		if (anchorSpan && wholeZoom > 0 && wholeZoom < readableSpanFloor()) {
 			const [a, b] = anchorSpan;
 			const ids = new Set(flowNodes.map((n) => n.id));
 			if (ids.has(a) && ids.has(b)) {
+				/**
+				 * ⭐ A "column span" can run edge-to-edge on the graph (see
+				 * `DependencyNetwork`'s own extension), so before committing to
+				 * the subset fit, check whether IT ALSO clears a legible zoom —
+				 * `anchorSpanFitZoom` mirrors `wholeGraphFitZoom`'s own maths
+				 * over just the span's bounding box. Below `SINGLE_FILE_FLOOR`
+				 * the subset fit would satisfy "both ends inside" only by
+				 * shrinking type past the floor `narrow` itself exists to
+				 * hold — the same failure this whole branch exists to fix, one
+				 * level down. Stack instead.
+				 */
+				const spanZoom = anchorSpanFitZoom(a, b);
+				if (
+					singleFile &&
+					orientation === 'LR' &&
+					!forceStack &&
+					spanZoom > 0 &&
+					spanZoom < SINGLE_FILE_FLOOR
+				) {
+					forceStack = true;
+					widthAtForceStack = containerWidth;
+					return;
+				}
 				fitView({
 					nodes: [{ id: a }, { id: b }],
 					padding: FIT.padding,
@@ -618,6 +752,23 @@
 				} as Parameters<typeof fitView>[0]);
 				return;
 			}
+		}
+		/**
+		 * No pair to rescue the view with, and the floor would be clamping the
+		 * zoom UP from something genuinely illegible-at-scale — stack instead
+		 * of resting on a clip. See `SINGLE_FILE_FLOOR`'s own doc.
+		 */
+		if (
+			!anchorSpan &&
+			singleFile &&
+			orientation === 'LR' &&
+			!forceStack &&
+			wholeZoom > 0 &&
+			wholeZoom < SINGLE_FILE_FLOOR
+		) {
+			forceStack = true;
+			widthAtForceStack = containerWidth;
+			return;
 		}
 		fitView({ ...FIT, duration: 0 });
 		requestAnimationFrame(() => {
@@ -647,14 +798,22 @@
 			/**
 			 * ⭐ 2026-09-03 · THE RANK AXIS NOW PANS TOO, BUT ONLY TO KEEP AN
 			 * `anchorSpan` WHOLE — NEVER TO PREFER AN ENVIRONMENT.
-			 * (Coordinator finding: at 1024/1152 the whole graph reads ABOVE
-			 * `READABLE_FLOOR`, so `anchorSpan`'s subset-fit branch above
-			 * never engages, and the ordinary fit's own centring left
-			 * `hello-frontend-app` PROD clipped a few px past the frame's
-			 * right edge while `anchor` — `hello-api-app` PROD, on a
-			 * provider's own page — sat just inside it. The single-node
-			 * anchor rule was satisfied to the letter while the edge it
-			 * anchors was not.)
+			 * (Coordinator finding, ORIGINAL cut: at 1024/1152 the whole graph
+			 * read above the OLD `READABLE_FLOOR` of 0.6, so `anchorSpan`'s
+			 * subset-fit branch above never engaged, and the ordinary fit's
+			 * own centring left `hello-frontend-app` PROD clipped a few px
+			 * past the frame's right edge while `anchor` — `hello-api-app`
+			 * PROD, on a provider's own page — sat just inside it. The
+			 * single-node anchor rule was satisfied to the letter while the
+			 * edge it anchors was not.
+			 *
+			 * ⭐ Third re-check: raising the subset-fit trigger to
+			 * `readableSpanFloor()` (`FIT.minZoom`, above) means 1024/1152 now
+			 * take the subset-fit branch directly and this code below never
+			 * runs for THAT case — but it stays load-bearing for any
+			 * `anchorSpan` whose whole-graph fit clears the new, higher
+			 * floor (e.g. 1280+) and would otherwise centre the span
+			 * off-balance within a fit that basically works.)
 			 *
 			 * This nudges `x` ONLY WHEN THE SPAN ITSELF FITS the frame at the
 			 * resting zoom (`spanWidthPx <= containerWidth`) — a span wider
@@ -729,7 +888,8 @@
 		if (rankdir !== 'auto') {
 			orientation = rankdir;
 		} else {
-			orientation = containerWidth > 0 && containerWidth < stackBelow ? 'TB' : 'LR';
+			orientation =
+				containerWidth > 0 && (containerWidth < stackBelow || forceStack) ? 'TB' : 'LR';
 		}
 		onorientation?.(orientation);
 	});
@@ -740,7 +900,17 @@
 		containerWidth = el.clientWidth;
 		const refit = () => requestAnimationFrame(() => restingFit());
 		const ro = new ResizeObserver((entries) => {
-			for (const entry of entries) containerWidth = entry.contentRect.width;
+			const newWidth = entries[entries.length - 1]?.contentRect.width ?? containerWidth;
+			/**
+			 * A resize is a new width, so it earns a fresh `LR` trial — but
+			 * see `forceStack`'s own doc for why a SMALL width delta while
+			 * already stacked is not treated as one (a scrollbar toggling on
+			 * `TB`'s own taller layout, not the reader resizing anything).
+			 */
+			if (!(forceStack && Math.abs(newWidth - widthAtForceStack) < FORCE_STACK_RESIZE_TOLERANCE)) {
+				forceStack = false;
+			}
+			containerWidth = newWidth;
 			refit();
 		});
 		ro.observe(el);

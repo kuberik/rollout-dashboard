@@ -387,13 +387,50 @@
 	 *
 	 * `null` here (nothing on either edge is blocked, or there is no anchor)
 	 * falls back to `GraphCanvasInner`'s single-node `anchor` path unchanged.
+	 *
+	 * ⭐ 2026-09-03 · THIRD RE-CHECK — AND EXTENDED TO THE FURTHEST COLUMN
+	 * THE SAME STORY REACHES, ON THE OVERVIEW PAGE ONLY. The pair above is
+	 * always SAME-COLUMN (a contract runs within one environment), so on
+	 * `/dependencies` — no `focus`, `anchor` is just the first blocked node
+	 * `orderedNodes` finds — the span this produces sits wherever that FIRST
+	 * held column happens to be, which on the live fleet is DEV (held first
+	 * in promotion order). When `hello-api-app` blocks `hello-frontend-app`
+	 * in DEV *and* STAGING *and* PROD at once (the banner's own "in dev,
+	 * staging and prod" sentence), the DEV pair being fully on screen proves
+	 * nothing about PROD, which is the column most likely to run past the
+	 * frame's right edge at the resting floor zoom — measured, 47px past it
+	 * at 1024. `GraphCanvasInner`'s own subset-fit and rank-axis-pan both
+	 * operate on WHATEVER two ids this returns; they do not know or care
+	 * that a "column span" can cross ranks, so widening the pair here is
+	 * sufficient — no change needed on that side.
+	 *
+	 * Extending is SAFE to skip whenever it does not apply: `sameStory` is
+	 * only non-trivial when more than one node shares `anchorNode.name` and
+	 * is ALSO blocked, which is exactly the multi-environment-hold shape.
+	 * `focus` is left untouched — a rollout's own Dependencies tab already
+	 * names the ONE environment the reader came for (`hello-api-app`'s own
+	 * tab, PROD), and widening its own pair to reach past that would show
+	 * the reader environments they did not ask about.
 	 */
 	const anchorSpan = $derived.by<[string, string] | null>(() => {
 		if (!anchor) return null;
 		const holding = (inbound.get(anchor) ?? []).find((e) => e.state === 'blocked');
-		if (holding) return [holding.from, anchor];
-		const held = (outbound.get(anchor) ?? []).find((e) => e.state === 'blocked');
-		return held ? [anchor, held.to] : null;
+		const held = !holding ? (outbound.get(anchor) ?? []).find((e) => e.state === 'blocked') : null;
+		const near: [string, string] | null = holding
+			? [holding.from, anchor]
+			: held
+				? [anchor, held.to]
+				: null;
+		if (!near || focus) return near;
+		const anchorNode = nodeById.get(anchor);
+		if (!anchorNode) return near;
+		const sameStory = graph.nodes.filter((n) => n.name === anchorNode.name && n.blocked);
+		if (sameStory.length <= 1) return near;
+		const furthest = sameStory.reduce((f, n) => (n.envRank > f.envRank ? n : f));
+		if (furthest.id === anchorNode.id || furthest.envRank <= anchorNode.envRank) return near;
+		// Keep the PROVIDER end (`near[0]`) — the column span runs from where
+		// the story starts to the furthest column it still holds.
+		return [near[0], furthest.id];
 	});
 
 	/**
