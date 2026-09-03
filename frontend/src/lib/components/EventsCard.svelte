@@ -21,10 +21,23 @@
 	the four to migrate outright rather than patch a floor onto.
 -->
 <Card icon={CalendarWeekSolid} title="Recent Events" padded={false}>
+	<!--
+		⛔ AN EMPTY ROLLUP SLOT WAS A BLANK WHERE ITS THREE SIBLINGS PRINT AN
+		ANSWER. (F11, 2026-09-03) `Health Checks` says `1/1 healthy`,
+		`Resources` says `6/6 ready`, `Deployment Pipeline` says `2/2 done` —
+		every one of them states its N/N even in the all-good case. This
+		card's own rollup only rendered when `events.length > 0`, so the
+		fourth header in the same rail measured a 0-width child at its right
+		edge: not absent, RENDERED EMPTY, over a body that already says `No
+		recent events`. `COMPOSITION-GRAMMAR.md` §1's rule for the identical
+		shape on `Available Version Upgrades` ("the rollup is not conditional
+		on having something to say") applies here unchanged — `0 events` is
+		the honest reading of a header whose body has already looked and
+		found nothing, the same "the empty state PROVES the page looked"
+		argument `/dependencies` makes for its own empty card.
+	-->
 	{#snippet rollup()}
-		{#if events.length > 0}
-			<span class="text-xs text-gray-500 dark:text-gray-400">{events.length} event{events.length !== 1 ? 's' : ''}</span>
-		{/if}
+		<span class="text-xs text-gray-500 dark:text-gray-400">{events.length} event{events.length !== 1 ? 's' : ''}</span>
 	{/snippet}
 	{#if events.length === 0}
 		<p class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No recent events</p>

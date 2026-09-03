@@ -108,3 +108,35 @@ Ranked residue and wave-3 disposition:
 Verdict quoted: "a designer would put their name on `/`, rollout detail, `/dependencies` and
 `/activity` at 1440. They would not yet sign `/environments`, `/versions/<sha>`, or any page
 at 390."
+
+## Second re-check at `660de38` (390 light + 1440 dark), 2026-09-03 00:10
+
+6 of 10 wave-3 claims hold exactly; the AlertPanel, chip vocabulary (h20/r4/bw1/10-600 on nine
+routes) and the four reference headers at 47px are confirmed. Ranked residue → wave 4:
+
+1. INCOHERENT — `/namespaces/<name>` still draws a 36px green disc for a rollout every other
+   page draws 28px orange; its rollup says `all 2 deployed cleanly`. → **p5-lists**
+2. INCOHERENT — the `HELD` chip is red on the rollout Overview and Dependencies tab; held is
+   orange everywhere else. → **p5-chrome** (Overview), **p5-graph** (tab)
+3. INCOHERENT — the graph ships to 390 at scale 0.52: 39 labels at 5–7 effective px, 52% of
+   the drawing off the right edge, 152px void above (page) / below (tab). The type census
+   cannot see it (font-size is pre-transform). → **p5-graph**
+4. INCOHERENT — `/rollouts` auto-fit inflates a one-rollout namespace to a 1201px card with
+   15.8% ink; RolloutGrid's own note predicted it. → **p5-lists** (track cap 460)
+5. `/activity` rows: version pair flushed 600–800px from its sentence. → **p5-activity**
+6. `Recent activity` header 61px (link box 35.6px in a 47px band) on four pages. → **p5-activity** (Card)
+7. Names truncate first: `hello-fronte…` on `/environments`, `hell…` ×2 on Resources at 390,
+   3px ellipsis on `/`. → **p5-lists**
+8. `/rollouts` orphans `updated` at 1440 only. → **p5-lists**
+9. Log pane bisects a row (14 of 29px); rollup three times. → **p5-chrome**
+10. `1 rule` breaks onto two lines at 390. → **p5-chrome**
+11. `Recent Events` empty rollup slot. → **p5-chrome**
+12. `/environments` 390 legend describes the desktop order. → **p5-lists**
+13. Revision cards height-matched and 32% unfilled. → **p5-chrome**
+14. `/apps` 390 prints 12 tracked labels over self-naming cells. → **p5-lists**
+15–20. Descriptor at 24px beside a 24px name; filter groups 2px apart; 6 vs 9 bar segments;
+   one 6px radius; six one-page warm inks; `Two things are holding PROD`. → lanes above; the
+   colour fold (19) deferred.
+
+LEFT by the critic: hover/focus/active states; command palette at 390; open RulePopover at 390;
+every modal at both widths; long-name fixtures; widths between 390 and 1440; motion.

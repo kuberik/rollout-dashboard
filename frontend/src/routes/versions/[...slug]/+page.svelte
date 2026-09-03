@@ -45,6 +45,7 @@
 		FolderOutline,
 		HourglassOutline,
 		LayersOutline,
+		LockSolid,
 		QuestionCircleOutline,
 		RocketOutline,
 		TagOutline,
@@ -341,6 +342,48 @@
 		if (!body.includes('/')) return null;
 		return `https://${body}/commit/${revision}`;
 	});
+
+	/**
+	 * ⭐ PER-PLACE AGE, FOR THE `live` BUCKET ONLY. (F13, 2026-09-03)
+	 *
+	 * `Running it now` used to print an environment's chip and stop —
+	 * `hello-api-app › DEV STAGING PROD` — leaving 65.9% of the card's
+	 * height-matched row empty while `This build` beside it ran to 249px of
+	 * real content. The fact was already on the wire and unused: a slot in
+	 * this bucket is CURRENTLY running the row's own revision, which by
+	 * `revision-ledger.ts`'s own `onIt = cur === revision` derivation means
+	 * `history[0]` IS that deploy — the same entry `currentKeyOf` reads to
+	 * decide `onIt` in the first place. So the age is not a new fetch or a
+	 * new field, only a read of a timestamp that was already being compared.
+	 *
+	 * Three environments running one build rarely arrived at the same
+	 * moment — DEV got it days before PROD did — so this also answers a
+	 * question the bare chip row could not: how long has EACH place actually
+	 * had it, not just the row's own single `last deployed N ago`.
+	 */
+	function slotDeployedAgo(s: CoverageSlotVM): string | null {
+		const ts = s.slot.cell.rollout?.status?.history?.[0]?.timestamp;
+		return ts ? formatTimeAgo(ts, $now) : null;
+	}
+
+	/**
+	 * ⭐ PER-SERVICE ENV PINS, ON `What each service calls it`. (F13,
+	 * 2026-09-03)
+	 *
+	 * The card's row was a name, a rank chip and an `of N` — one line, done,
+	 * while its neighbour `This build` ran on for five. `spec.wantedVersion`
+	 * is already on every slot's own `rollout` (the same object `promoteTag`
+	 * reads three lines up in `revision-ledger.ts`), so a service pinned
+	 * somewhere is a fact this page already has and was not saying — and it
+	 * is directly relevant to the row it sits under: a reader looking at
+	 * `hello-api-app · NEWEST · of 1` benefits from knowing PROD will not
+	 * move off it even though nothing is holding it, because it is pinned.
+	 */
+	function pinnedEnvsOf(svc: RevisionService): string[] {
+		return svc.slots
+			.filter((s) => s.cell.rollout?.spec?.wantedVersion)
+			.map((s) => s.envName.toUpperCase());
+	}
 
 	/** Where a place actually lives. Never `/apps/<name>` — see the header block. */
 	function placeHref(s: CoverageSlotVM): string {
@@ -836,6 +879,7 @@
 					{#each row.services as svc (svc.appName)}
 						{@const rank = rankSentence(svc)}
 						{@const chip = rankChipFor(svc)}
+						{@const pinned = pinnedEnvsOf(svc)}
 						<!--
 							ONE INK FOR A SERVICE NAME, ON BOTH REVISION PAGES. A service is
 							never the subject of either page — the revision is — so it takes
@@ -891,6 +935,19 @@
 									/>
 								{/if}
 							</span>
+							{#if pinned.length > 0}
+								<div
+									class="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+								>
+									<LockSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
+									<span
+										>Pinned in {pinned.join(', ')} — automatic updates are off {pinned.length ===
+										1
+											? 'there'
+											: 'in those environments'}</span
+									>
+								</div>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -1110,6 +1167,20 @@
 															/>
 														{/if}
 													</span>
+													<!-- ⭐ PER-PLACE AGE — `live` ONLY. (F13, 2026-09-03) See
+													     `slotDeployedAgo`'s own note: three environments
+													     running one build rarely arrived together, and this
+													     is the one card on the page that can say when EACH
+													     place actually got it, from data already read to
+													     decide the place belongs in this bucket at all. -->
+													{#if bucket.key === 'live'}
+														{@const age = slotDeployedAgo(s)}
+														{#if age}
+															<span class="t-micro text-gray-500 dark:text-gray-400"
+																>{age}</span
+															>
+														{/if}
+													{/if}
 												{/each}
 												<!-- WHAT TOOK ITS PLACE — once per (service, build), not
 												     once per environment. -->

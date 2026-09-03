@@ -1590,7 +1590,13 @@
 								{rollout.metadata?.name}
 							</span>
 							{#if rollout.status?.title && rollout.status.title !== rollout.metadata?.name}
-								<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">
+								<!-- ⛔ WAS `t-display` — THE SAME 24px AS `hello-frontend-app`
+								     BESIDE IT. (F15, 2026-09-03) Measured 24/500 (mono id) next
+								     to 24/300 (sans title): at 390, where this row wraps, two
+								     equal-size headings stack instead of a name and its
+								     one-line gloss. `t-dense` (12.5px) is the declared caption
+								     role — same fix as `/apps/<name>`'s identical head. -->
+								<span class="t-dense min-w-0 truncate text-gray-500 dark:text-gray-400">
 									{rollout.status.title}
 								</span>
 							{/if}
@@ -2355,10 +2361,17 @@
 															aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
 															class="inline-flex cursor-help items-center gap-1 rounded text-xs"
 														>
-															<!-- The SAME mark the Dependencies tab draws for the same fact
-															     about the same version: the `held` chip. It was amber ink
-															     here and a red chip one tab over — two hues, two shapes. -->
-															<Chip role="blocked" label="held" />
+															<!-- `held` is a gate correctly refusing a candidate, not an
+															     adverse outcome — `role="blocked"` (red) was the wrong
+															     word wearing the wrong ink; a held rollout is not failing
+															     or diverged. `role="held"` aliases the same deep orange
+															     every status disc in the product already resolves `held`
+															     to (`getStatusCircleClass`), and the orange pin banner
+															     30px above says the identical thing. The Dependencies tab
+															     draws its own `Chip role="blocked" label="held"` from a
+															     separate template (not shared markup) and still needs
+															     the same fix — flagged to the graph lane. -->
+															<Chip role="held" label="held" />
 															<span class="text-gray-500 dark:text-gray-400">{heldWord(held).replace(/^Held /, '')}</span>
 															<QuestionCircleOutline class="h-3 w-3 text-gray-500 dark:text-gray-400" aria-hidden="true" />
 														</button>

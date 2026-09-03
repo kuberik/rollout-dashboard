@@ -2545,7 +2545,15 @@
 							{appName}
 						</span>
 						{#if appTitle && appTitle !== appName}
-							<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">
+							<!-- ⛔ WAS `t-display` — THE SAME 24px AS THE NAME NEXT TO IT.
+							     (F15, 2026-09-03) `hello-frontend-app` (24/500, mono) and
+							     `Hello Dep frontend` (24/300, sans) measured the SAME size,
+							     so at 390 — where the flex row wraps — they stack as two
+							     headings rather than a name and its one-line gloss. The
+							     descriptor is a caption on the identifier, not a second
+							     identifier: `t-dense` (12.5px), the declared role for
+							     exactly this — same change on rollout detail's own head. -->
+							<span class="t-dense min-w-0 truncate text-gray-500 dark:text-gray-400">
 								{appTitle}
 							</span>
 						{/if}

@@ -624,6 +624,18 @@
 						triangle so the chevron is the only affordance, and it rotates
 						90° on open — the same motion the `Resources` card's
 						`Show 8 ready resources ›` uses. One idiom, learned once.
+
+						⛔ `whitespace-nowrap` IS LOAD-BEARING TOO. (F10, 2026-09-03)
+						`1 rule` broke across two lines on `/apps` and `/environments`
+						at 390 (39px wide, 32px tall) while `2 rules` fit fine on
+						`/envs/prod` — same control, same two words, different row.
+						The difference is `actions` sharing this flex row: on the
+						pages that broke, the CTA squeezed this cell down until the
+						label itself had less width than "1 rule" needs, so the
+						words split onto their own lines instead of the row wrapping.
+						`whitespace-nowrap` on the label makes the CTA give way and
+						wrap to its own line first, which is the row's `flex-wrap`
+						already promises everywhere else on this banner.
 					-->
 					<!--
 						⚠️ `flex flex-col items-start` IS LOAD-BEARING, NOT TIDINESS.
@@ -635,7 +647,7 @@
 					<div class="col-start-2 row-start-3 mt-1 min-w-0 self-start">
 						<details class="group flex flex-col items-start">
 							<summary
-								class="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
+								class="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium whitespace-nowrap {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
 							>
 								<ChevronRightOutline
 									class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"

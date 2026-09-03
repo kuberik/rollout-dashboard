@@ -57,7 +57,8 @@
 		| 'alarm'
 		| 'failing'
 		| 'blocked'
-		| 'unranked';
+		| 'unranked'
+		| 'held';
 
 	let {
 		role = 'rank',
@@ -897,6 +898,19 @@
 		// state (DESIGN.md, "Colour — closed"), and a gate correctly refusing a
 		// candidate is not a stoppage.
 		blocked: ADVERSE,
+		// `held` IS NOT ADVERSE. (2026-09-03) A gate correctly refusing a
+		// candidate — the exact predicate `blocked`'s own note above states —
+		// is what `held` names, so it may not wear the adverse red either. The
+		// rollout Overview's `Available Version Upgrades` list printed
+		// `Chip role="blocked" label="held"`, 30px under an orange banner
+		// stating the same fact, in `red-50`/`red-700` — the ink this file
+		// reserves for `failing`/`diverged`/`blocked`, none of which is true
+		// here. Every status DISC in the product already resolves `held` to
+		// orange (`getStatusCircleClass`, `bake-status.ts`); this is the same
+		// call for the chip. ALIAS, not a new tone — `held` is `TRAILING`
+		// verbatim, the same deep desaturated orange `N behind` already
+		// spends, because both say "present, and normal, but needs a look".
+		held: TRAILING,
 		count: NEUTRAL,
 		// `unranked` FILLS THE RANK SLOT WITH THE REASON THERE IS NO RANK —
 		// `held`, `pending`, `unknown`. It exists because on a page where the

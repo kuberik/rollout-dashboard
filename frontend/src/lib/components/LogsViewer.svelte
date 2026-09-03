@@ -431,14 +431,22 @@
 		const podsLabel = podCount > 0 ? `${podCount} pod${podCount === 1 ? '' : 's'}` : null;
 		// Reads `connectionState` exclusively — see its definition for why this
 		// used to fall through to "Stream closed" while still connecting.
+		//
+		// ⛔ LOWERCASE, MATCHING `paneRollup` BELOW. (F9, 2026-09-03) This head
+		// sentence and the card header's rollup used to print the SAME fact
+		// twice with different casing — "Streaming" here, "streaming" there —
+		// which read as two different states rather than one word spelled
+		// twice. `paneRollup` no longer states it in words at all (see its own
+		// note), but the sentence stays lowercase on its own terms: every
+		// other qualifier in this join (`pods`, `stream closed`) already is.
 		const streamLabel =
 			connectionState === 'streaming'
-				? 'Streaming'
+				? 'streaming'
 				: connectionState === 'connecting'
-					? 'Connecting…'
+					? 'connecting…'
 					: connectionState === 'error'
 						? null
-						: 'Stream closed';
+						: 'stream closed';
 		const rest = [`line${lineCount === 1 ? '' : 's'}`, podsLabel, streamLabel]
 			.filter(Boolean)
 			.join(' · ');
@@ -450,24 +458,41 @@
 	});
 
 	/**
-	 * THE CARD HEADER'S RIGHT-ALIGNED ROLLUP — `4 pods · streaming` /
-	 * `connection lost`, `COMPOSITION-GRAMMAR.md` §1's "single most
-	 * transferable thing", now spent on the log pane instead of a card with
-	 * a header and no answer. Lowercase throughout: it sits beside a 14/600
-	 * title, not as a second headline. `filterType`-aware so the Tests view
-	 * says "runs", not "pods" — the same defect as the empty-state copy
-	 * below, one level up.
+	 * ⛔ THE CARD HEADER'S ROLLUP USED TO RESTATE THE HEAD ROW. (F9,
+	 * 2026-09-03) `378 lines · 4 pods · streaming` printed in the page head
+	 * (`summaryParts`, one level up), THEN `4 pods · streaming` again here
+	 * 180px below it, THEN `378 lines` a third time in the footer — one fact
+	 * in three captions, `Streaming`/`streaming` differing only by an
+	 * accident of case between two of them. The head already owns the count,
+	 * the pod/run tally and the connection word; this card's own header has
+	 * nothing left to say in PROSE.
+	 *
+	 * IT IS A DOT NOW, NOT A SENTENCE. `COMPOSITION-GRAMMAR.md` §1's "single
+	 * most transferable thing" is answering the card's own question WITHOUT
+	 * reading a row of it — a live/closed/error indicator does that in one
+	 * glance, at card scale, without repeating the head's words. The
+	 * accessible name carries the same information the retired text did, so
+	 * nothing is lost for a screen reader, only for a sighted reader who
+	 * already read it 20px above the tab strip.
 	 */
-	const paneRollup = $derived.by((): string => {
-		if (connectionState === 'error') return 'connection lost';
+	type RollupDotTone = 'streaming' | 'connecting' | 'closed' | 'error';
+	const rollupDot = $derived.by((): { tone: RollupDotTone; label: string } => {
+		if (connectionState === 'error') return { tone: 'error', label: 'Connection lost' };
 		if (connectionState === 'connecting') {
-			return filterType === 'test' ? 'connecting to test runs…' : 'connecting to pods…';
+			return {
+				tone: 'connecting',
+				label: filterType === 'test' ? 'Connecting to test runs…' : 'Connecting to pods…'
+			};
 		}
-		const podCount = selectedPods.size > 0 ? selectedPods.size : uniquePods.length;
-		const noun = filterType === 'test' ? (podCount === 1 ? 'run' : 'runs') : podCount === 1 ? 'pod' : 'pods';
-		const stateLabel = connectionState === 'streaming' ? 'streaming' : 'stream closed';
-		return podCount > 0 ? `${podCount} ${noun} · ${stateLabel}` : stateLabel;
+		if (connectionState === 'streaming') return { tone: 'streaming', label: 'Streaming' };
+		return { tone: 'closed', label: 'Stream closed' };
 	});
+	const ROLLUP_DOT_CLASS: Record<RollupDotTone, string> = {
+		streaming: 'bg-green-500 dark:bg-green-400',
+		connecting: 'bg-amber-400 animate-pulse',
+		closed: 'bg-gray-400 dark:bg-gray-600',
+		error: 'bg-red-500 dark:bg-red-400'
+	};
 
 	// The empty state's icon, keyed off the same view split as the copy
 	// beside it and the Card's own header icon. Capitalised: a lowercase
@@ -575,16 +600,81 @@
 	);
 
 	// Scroll to bottom
-	function scrollToBottom() {
+	async function scrollToBottom() {
 		if (!virtualListEl || allLogLines.length === 0) return;
 
 		isAutoScrolling = true;
-		// Use virtualizer's scroll method
-		$virtualizer.scrollToIndex(allLogLines.length - 1, { align: 'end' });
 
-		setTimeout(() => {
-			isAutoScrolling = false;
-		}, 100);
+		// ⛔ WAS PIXEL-ALIGNED, AND THE PANE BISECTED A ROW EVERY TIME FOLLOW
+		// LANDED. (F9, 2026-09-03) `scrollToIndex(last, {align:'end'})` puts
+		// the LAST row's bottom flush with the viewport's bottom edge — but
+		// the viewport's own height is essentially never an exact multiple of
+		// a row's height, so the TOPMOST row in that window lands mid-row,
+		// straddling the card header's rule by whatever is left over
+		// (measured: 14 of 29px). The fade softened the look of that cut; it
+		// could not prevent it, because the cut is arithmetic, not visual.
+		//
+		// ⛔ AND `scrollToIndex(topIndex, {align:'start'})` — THIS FUNCTION'S
+		// OWN FIRST ATTEMPT AT THE FIX — TRADED ONE ARITHMETIC CUT FOR
+		// ANOTHER. It aligns to the virtualizer's ESTIMATED row offset
+		// (`index * ROW_HEIGHT`), and `ROW_HEIGHT` is a single constant for a
+		// row whose true rendered height is NOT constant: 29px at `sm` and
+		// above, 25px below it (the row drops to `text-xs` with no `sm:`
+		// bump). Measured after shipping: 19 of 29px still clipped at 1440,
+		// worse below `sm` where the estimate is off by 5px/row. The error is
+		// `(rows scrolled past) × (estimate − true height)` and it was never
+		// going to be zero at both breakpoints from one number.
+		//
+		// SO THIS ALIGNS TO A REAL, MEASURED ROW — NOT AN ESTIMATED ONE.
+		// Phase 1 scrolls to the true bottom via the browser's own clamp
+		// (`scrollTop = scrollHeight` always saturates at the real max,
+		// which is built from actually-rendered row heights for every row
+		// in view, regardless of what the virtualizer estimated to get
+		// there — the same self-correction `{align:'end'}` relied on).
+		// Phase 2 then reads the ACTUAL bounding rect of whichever row is
+		// currently straddling the container's own top edge and nudges
+		// `scrollTop` by exactly that many real pixels, so the partial row
+		// scrolls fully out of view and the next one starts flush. This
+		// holds at every breakpoint and every font size because it measures
+		// the DOM instead of predicting it.
+		virtualListEl.scrollTop = virtualListEl.scrollHeight;
+
+		await tick();
+		requestAnimationFrame(() => {
+			if (!virtualListEl) {
+				isAutoScrolling = false;
+				return;
+			}
+			const containerTop = virtualListEl.getBoundingClientRect().top;
+			const rows = virtualListEl.querySelectorAll('[data-index]');
+			for (const row of rows) {
+				const r = row.getBoundingClientRect();
+				// The row whose box crosses the container's own top edge —
+				// visible below it, clipped above it.
+				if (r.top < containerTop && r.bottom > containerTop) {
+					// ⛔ THIS WAS `+=` AND IT WAS A NO-OP. (F9, 2026-09-03,
+					// caught only by measuring the RESULT, not just the
+					// intent.) Phase 1 already scrolled to the browser's own
+					// clamped maximum — `scrollTop` cannot go any higher,
+					// there is nothing further down to reveal — so adding a
+					// positive delta was clamped straight back to where it
+					// started and the row stayed exactly as clipped as
+					// before. Revealing the REST of this row means scrolling
+					// UP (a smaller `scrollTop`), which is a NEGATIVE delta:
+					// `r.top − containerTop` is negative here by definition
+					// (`r.top < containerTop`), and adding it pulls the row
+					// down until its top is flush with the container's,
+					// pulling the LAST row up off the bottom edge by the
+					// same amount — the "slack goes to the bottom" trade
+					// this whole fix is for.
+					virtualListEl.scrollTop += r.top - containerTop;
+					break;
+				}
+			}
+			setTimeout(() => {
+				isAutoScrolling = false;
+			}, 100);
+		});
 	}
 
 	// Auto-scroll when new logs arrive (if enabled)
@@ -1002,13 +1092,13 @@
 		⛔ THE PANE WAS A BORDERED BOX WITH NO HEADER AND AN EMPTY STATE
 		FLOATING IN A 620px VOID. (defect #3, `COMPOSITION-GRAMMAR.md` §1: "a
 		panel with no header and no rollup is the shape that keeps getting
-		rejected.") It is a titled `Card` now — icon, 14/600 title, and the
-		right-aligned rollup (`paneRollup`) that answers the pane's own
-		question ("4 pods · streaming" / "connection lost") without reading a
-		row of it. `padded={false}` because the terminal-black log stream
-		wants to run to the card's own edges, not sit in a 16px frame; the
-		three OTHER states (connecting/error/empty) supply their own padding
-		instead.
+		rejected.") It is a titled `Card` now — icon, 14/600 title, and a
+		right-aligned STATUS DOT (`rollupDot`, see its own note — F9) rather
+		than a sentence, since the page head 20px above already states the
+		line/pod/stream words this header used to repeat. `padded={false}`
+		because the terminal-black log stream wants to run to the card's own
+		edges, not sit in a 16px frame; the three OTHER states
+		(connecting/error/empty) supply their own padding instead.
 	-->
 	<Card
 		icon={filterType === 'test' ? FlaskOutline : TerminalOutline}
@@ -1018,13 +1108,20 @@
 		class="min-h-0 flex-1"
 	>
 		{#snippet rollup()}
-			<span
-				class="text-xs font-medium whitespace-nowrap {connectionState === 'error'
-					? 'text-red-600 dark:text-red-400'
-					: 'text-gray-500 dark:text-gray-400'}"
-			>
-				{paneRollup}
-			</span>
+			<!-- ⛔ NOT WHILE `connecting` — the status row above (the spinner
+			     + "Connecting to pods…"/"Connecting to test runs…") already
+			     says exactly this, louder, in the one state that has no
+			     rows to answer for yet. A second copy of the same sentence
+			     in the card header is the defect this note exists to close,
+			     not a case this dot should also cover. -->
+			{#if rollupDot.tone !== 'connecting'}
+				<span
+					class="inline-flex h-2 w-2 shrink-0 rounded-full {ROLLUP_DOT_CLASS[rollupDot.tone]}"
+					title={rollupDot.label}
+					aria-hidden="true"
+				></span>
+				<span class="sr-only">{rollupDot.label}</span>
+			{/if}
 		{/snippet}
 		{#if isConnecting}
 			<div class="flex flex-1 items-center justify-center">
@@ -1095,27 +1192,24 @@
 		{:else}
 			<div class="relative min-h-0 flex-1 bg-gray-900 dark:bg-gray-950">
 				<!--
-					⭐ THE FADE, NOT PADDING. (defect #6, design re-check) Measured on
-					this pane while `Follow` is on (the common case: the stream lands
-					scrolled to the newest line): the topmost VISIBLE row straddles the
-					scroll container's own top edge — `firstVisibleRowTop` sat 14-20px
-					ABOVE `scrollTop`, i.e. above the container's own clip boundary, so
-					the row's top half is cut and reads as sliced by the header's rule
-					directly above it. That is ordinary scrolled-list behaviour (the
-					container height is rarely an exact multiple of a row's height) and
-					is true AT EVERY WIDTH — it is not a 390-vs-1440 defect, and giving
-					the scroll container its own `padding-top` would only move the same
-					straddle down by that amount while also perturbing the virtualizer's
-					own scrollHeight math (it measures the CONTENT box, not the padded
-					one). A `pointer-events-none` gradient matching the pane's own
-					ground, drawn ABOVE the scroll container and not inside it, softens
-					the cut into a fade instead — same 24px at 1440 and 390, both themes,
-					and it costs the virtualizer nothing because it never enters its
-					scrollable content.
+					⭐ THE FADE, NOT PADDING — NOW A SECOND LINE OF DEFENCE, NOT THE
+					ONLY ONE. (F9, 2026-09-03, narrowing the defect #6 fix) The 24px fade
+					could only ever SOFTEN the slice, never prevent it, and at 24px it was
+					also SHORTER than the 29px row it was covering — measured, the fade
+					ended 5px before the sliced row did, so it ghosted both the cut row
+					and the top of the FULL row below it. `scrollToBottom()` now aligns
+					to a row BOUNDARY (see its own note) so the common Follow-on case
+					never straddles the rule at all — the fade is not doing that job any
+					more. It stays, widened to one full row pitch (`ROW_HEIGHT`, 30px) so
+					it still fully covers a straddling row for the one case row-alignment
+					cannot reach: a reader scrolled to an arbitrary position by hand,
+					where the top row is whatever the drag left it at. Same treatment at
+					1440 and 390, both themes; still costs the virtualizer nothing
+					because it never enters its scrollable content.
 				-->
 				<div
 					aria-hidden="true"
-					class="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-gray-900 to-transparent dark:from-gray-950"
+					class="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30px] bg-gradient-to-b from-gray-900 to-transparent dark:from-gray-950"
 				></div>
 				<div
 					bind:this={virtualListEl}
@@ -1169,29 +1263,22 @@
 
 	<!-- Footer with stats -->
 	<!--
-		⭐ THE FOOTER KEEPS ONLY WHAT THE ROLLUP DOES NOT SAY. (defect #6,
-		design re-check) Measured on `/rollouts/…/logs`: `4 pods` printed
-		THREE times in one viewport (page head, `Card`'s own `paneRollup`,
-		this footer) and `Streaming` printed three times (same three), because
-		this footer independently re-derived the pod count and the connection
-		state `paneRollup` (immediately above it, in the card header) already
-		states. The line count is the one fact the rollup does not carry —
-		`paneRollup` answers "who, and is it live"; this footer answers "how
-		many, of how many, matching what" — so pod count and stream state are
-		gone from here and the search query (which nothing else prints) stays.
+		⛔ THE FOOTER'S PLAIN CASE STILL SAID NOTHING NEW. (F9, 2026-09-03,
+		narrowing the defect#6 fix above) With no filter active it printed
+		`{filteredLogs.length} lines` — the exact figure the page head
+		already leads with at 24px, a THIRD spelling of one fact once the
+		card header's own rollup collapsed to a dot. It renders now ONLY when
+		a filter narrows the view, because that is the only time it states
+		something the head does not: `X/Y lines` is a comparison (shown vs.
+		total) the head's bare total cannot make, and the search term is
+		printed nowhere else. Cleared filters → the footer goes with them.
 	-->
-	{#if filteredLogs.length > 0 || logs.length > 0}
+	{#if searchQuery || selectedPods.size > 0 || selectedContainers.size > 0 || selectedLogLevels.size > 0}
 		<div
 			class="mt-2 flex flex-shrink-0 items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs"
 		>
 			<div class="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-				<span>
-					{#if searchQuery || selectedPods.size > 0 || selectedContainers.size > 0 || selectedLogLevels.size > 0}
-						{filteredLogs.length}/{logs.length} lines
-					{:else}
-						{filteredLogs.length} lines
-					{/if}
-				</span>
+				<span>{filteredLogs.length}/{logs.length} lines</span>
 				{#if searchQuery}
 					<span class="text-blue-600 dark:text-blue-400">"{searchQuery}"</span>
 				{/if}
