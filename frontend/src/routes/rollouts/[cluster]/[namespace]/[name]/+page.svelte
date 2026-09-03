@@ -2840,7 +2840,7 @@
 							<!-- Release candidates -->
 							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
 								<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-									{#each rollout.status.releaseCandidates as releaseCandidate}
+									{#each rollout.status.releaseCandidates as releaseCandidate, candidateIndex}
 										{@const version = releaseCandidate.tag}
 										{@const blockingGates = getBlockingGates(version)}
 										{@const isBlocked = blockingGates.length > 0}
@@ -2986,12 +2986,22 @@
 												     "available version list also must show the commit
 												     information.") The same summary the status card draws for
 												     the last deploy, from the running revision to this one. -->
-												{#if githubConnected && latestEntry?.version?.revision && releaseCandidate.revision}
+												<!-- ⛔ EACH ROW SHOWS ONLY ITS OWN COMMITS. (2026-09-03, from the
+												     human: "commits are repeating now for each available
+												     version.") From the running revision every row's range
+												     overlapped the one below it. `releaseCandidates` is
+												     newest-first, so a row's base is the NEXT-OLDER candidate,
+												     and only the oldest candidate reaches back to what is
+												     running. -->
+												{@const commitBase =
+													rollout.status.releaseCandidates[candidateIndex + 1]?.revision ??
+													latestEntry?.version?.revision}
+												{#if githubConnected && commitBase && releaseCandidate.revision}
 													<CommitSummary
 														{namespace}
 														{name}
 														{cluster}
-														base={latestEntry.version.revision}
+														base={commitBase}
 														head={releaseCandidate.revision}
 														showAvatars
 														showMessages
