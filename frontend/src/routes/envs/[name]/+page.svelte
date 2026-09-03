@@ -1830,5 +1830,13 @@
 		.ra-wide {
 			display: revert;
 		}
+		/* `revert` rolls `display` back to the USER-AGENT value — `inline` for an
+		   `<a>` — not to `.nav-link`'s own `inline-flex`, so the chevron SVG
+		   became an inline box that could wrap: at 1024/1280 the rollup read
+		   `View all activity` with the `›` orphaned on a second line and the
+		   band at 55px. The link gets its flex back explicitly. */
+		a.ra-wide {
+			display: inline-flex;
+		}
 	}
 </style>
