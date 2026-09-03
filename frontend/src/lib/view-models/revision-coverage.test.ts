@@ -3,6 +3,7 @@ import { buildRevisionLedger } from './revision-ledger';
 import {
 	revisionCoverage,
 	coverageSegments,
+	coverageFill,
 	COVERAGE_ORDER,
 	buildState,
 	releaseSplit,
@@ -233,6 +234,74 @@ describe('revisionCoverage', () => {
 		// The ordinary case — no second release sharing the revision — must be
 		// byte-identical to before: three places are live, not reclassified.
 		expect(counts(head)).toEqual({ live: 3, notYet: 1 });
+	});
+
+	/**
+	 * ⭐ THE BAR MAY NOT PAINT A HELD PLACE AS DONE. (2026-09-03, design pass
+	 * 7, finding #5) `buildState()` already leads with `held in N places` for
+	 * this exact fixture — checked BEFORE `done` — so a segment list that
+	 * still called every one of these three slots plain `live` would draw the
+	 * page's largest colour mass in direct contradiction of its own hero word,
+	 * 40px above the bar. `classify()` and the bucket count are unchanged
+	 * (`live: 3`, asserted above and in `heldRevisionFixture`'s own tests);
+	 * only the BAR's segmentation carves the held slots back out.
+	 */
+	describe('coverageSegments: a `live` slot held on an older release is not `live` on the bar', () => {
+		it('draws the whole bucket as `held`, not `live`, when every place is held', () => {
+			const repo = heldRevisionFixture();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			// The bucket itself is untouched — this is still `live: 3` to every
+			// consumer that reads `cov.buckets` or `cov.liveCount` directly.
+			expect(counts(repo.rows[0])).toEqual({ live: 3 });
+			const segs = coverageSegments(cov);
+			expect(segs).toEqual([
+				{ key: 'held', count: 3, title: 'Held on an older release', reachable: true }
+			]);
+		});
+
+		it('splits the bucket into both segments when only part of it is held', () => {
+			// One service on its own release, one held behind a gate — the
+			// ordinary partial case, not the all-or-nothing fixture above.
+			const sha = 'fffffff0000000000000000000000000000000';
+			const older = { tag: 'main-66', version: '1.66.0-66', revision: sha, created: minsAgo(120) };
+			const newer = { tag: 'main-67', version: '1.67.0-67', revision: sha, created: minsAgo(10) };
+			const rollouts = [
+				rollout('hello-frontend-app', 'hfa-dev', [newer, older], [{ r: older, minutesAgo: 5 }]),
+				rollout('hello-frontend-app', 'hfa-prod', [newer, older], [{ r: newer, minutesAgo: 5 }])
+			];
+			const environments = [
+				environment('hello-frontend-app', 'hfa-dev', 'dev'),
+				environment('hello-frontend-app', 'hfa-prod', 'prod')
+			];
+			const repo = buildRevisionLedger(rollouts, environments)[0];
+			const row = repo.rows.find((r) => r.short === sha.slice(0, 7))!;
+			const cov = revisionCoverage(row, new Date());
+			const segs = coverageSegments(cov);
+			expect(segs).toEqual([
+				{ key: 'live', count: 1, title: 'Running it now', reachable: true },
+				{ key: 'held', count: 1, title: 'Held on an older release', reachable: true }
+			]);
+		});
+
+		it('does not appear at all in the ordinary case — byte-identical to before', () => {
+			const repo = fixture();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const segs = coverageSegments(cov);
+			expect(segs.some((s) => s.key === 'held')).toBe(false);
+		});
+	});
+
+	/**
+	 * ⭐ THE HELD FILL IS `tone-mute`'S OWN TWO TOKENS, NOT `live`'S GREEN OR
+	 * `ahead`'S LIGHTER GRAY. `BuildStateMark`'s `held` glyph already wears
+	 * `tone-mute` 40px above the bar; a third value here would still leave
+	 * the bar and the word disagreeing on WEIGHT even after they agreed on
+	 * hue. Zero new colour values — see `HELD_SEGMENT_FILL`'s own comment.
+	 */
+	it('`coverageFill` gives `held` the same muted tone `BuildStateMark` wears, never `live`\'s green', () => {
+		expect(coverageFill('held')).toBe('bg-gray-500 dark:bg-gray-400');
+		expect(coverageFill('held')).not.toBe(coverageFill('live'));
+		expect(coverageFill('held')).not.toBe(coverageFill('ahead'));
 	});
 
 	/** Same shape as `heldRevisionFixture`, plus the gate the live cluster

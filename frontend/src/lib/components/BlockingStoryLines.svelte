@@ -158,6 +158,29 @@
 	}
 
 	/**
+	 * ⭐ THE ROW'S OWN MARK, NOT `gateMark()` UNTOUCHED. (2026-09-03, design
+	 * pass 7, finding #1) `gateMark({kind:'promotion'})` is `ChevronDoubleRightOutline`
+	 * — the SAME svg `PromotionPipeline`'s own card header wears on
+	 * `/apps/<name>` (`GateRecord.svelte`'s own comment names it: *"a
+	 * promotion order takes `ChevronDoubleRightOutline` (the `Promotion
+	 * pipeline` card header's)"*). That is correct where `gateMark` is used
+	 * as a RECORD field (`GateRecord`'s own popover rows, one scale down,
+	 * where the icon sits beside the rule's NAME) — it is wrong here, where
+	 * it sits as a bare bullet in front of a whole clause (`dev deploys it
+	 * first`). An icon that NAMES A CARD elsewhere in the product is not a
+	 * bullet; a reader who has seen the `Promotion pipeline` card reads this
+	 * row as "this is that card", which it is not. `gateMark` itself is
+	 * unchanged — `GateRecord.svelte`'s popover and its own test still pin
+	 * `ChevronDoubleRightOutline` for `kind: 'promotion'` — this only
+	 * overrides what THIS LIST draws, for this one kind, to the product's
+	 * plain directional glyph instead.
+	 */
+	function lineMark(g: ClassifiedGate) {
+		if (g.kind === 'promotion') return ArrowRightOutline;
+		return gateMark(g);
+	}
+
+	/**
 	 * ⭐ THE STATE OF `subject`, IN THE ROW'S RIGHT-HAND SLOT — the card-header
 	 * grammar (`COMPOSITION-GRAMMAR.md` §1: icon + title left, rolled-up verdict
 	 * right) brought down to row scale.
@@ -177,7 +200,7 @@
 	<div class="mt-1.5 flex min-w-0 flex-col gap-1 {className}">
 		<ul class="flex min-w-0 flex-col gap-1">
 			{#each story.gates as g (g.id)}
-				{@const Icon = gateMark(g)}
+				{@const Icon = lineMark(g)}
 				{@const until = untilFor(g)}
 				{@const state = rowState(g, until)}
 				{@const drawn = !!g.subject && (drawsVersions(g) || state !== null)}

@@ -20,6 +20,22 @@
 
 	let showAllEvents = $state(false);
 	const visibleEvents = $derived(showAllEvents ? events : events.slice(0, 5));
+
+	/**
+	 * ⭐ THE IDENTIFIER WRAP. (2026-09-03, design pass 7, finding #2)
+	 * `event.involvedObject` names a Kubernetes object — a replicaset like
+	 * `hello-frontend-app-7d9f8b6c99` — and Tailwind's default `break-words`
+	 * is licensed to snap it anywhere the box cannot fit an unbroken run. At
+	 * 390 this row split mid-token (`hello-fronte` / `nd-app-7d9f8b6c99`),
+	 * the exact defect `app.css`'s `.ident` rule exists to close — see that
+	 * rule's own note, and `FactList.svelte`'s `handleParts`, whose split
+	 * this copies rather than imports (it lives in that component's instance
+	 * script, not a shared module). `.ident` refuses to break anywhere but a
+	 * `<wbr>`, so every `-`/`/` joint needs one or the whole string just
+	 * overflows instead of wrapping. */
+	function identParts(value: string): string[] {
+		return value.split(/(?<=[-/])/);
+	}
 </script>
 
 <!--
@@ -60,6 +76,10 @@
 	{:else}
 		<div class="divide-y divide-gray-100 dark:divide-gray-700">
 			{#each visibleEvents as event}
+				<!-- `{@const}`'s parent must be a block, never a nested element —
+				     computed here, at the `{#each}`'s own top, rather than three
+				     `<div>`s down beside the span that uses it. -->
+				{@const identParts_ = identParts(`${event.involvedObject?.kind ?? ''}/${event.involvedObject?.name ?? ''}`)}
 				<div class="flex items-start gap-3 px-4 py-2.5">
 					{#if event.type === 'Warning'}
 						<ExclamationCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-700 dark:text-yellow-400" />
@@ -69,7 +89,10 @@
 					<div class="min-w-0 flex-1">
 						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
 							<span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{event.reason}</span>
-							<span class="text-xs text-gray-500 dark:text-gray-400">{event.involvedObject?.kind}/{event.involvedObject?.name}</span>
+							<span class="ident text-xs text-gray-500 dark:text-gray-400"
+								>{#each identParts_ as part, pi (pi)}{part}{#if pi < identParts_.length - 1}<wbr
+									/>{/if}{/each}</span
+							>
 							<span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{formatTimeAgo(event.lastTimestamp, $now)}</span>
 						</div>
 						<p class="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{event.message}</p>

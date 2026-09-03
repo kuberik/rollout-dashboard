@@ -346,7 +346,8 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
  *
  * ZERO NEW COLOUR VALUES: it is `ahead`'s existing pair.
  */
-export function coverageFill(key: CoverageKey, _reachable = true): string {
+export function coverageFill(key: CoverageKey | 'held', _reachable = true): string {
+	if (key === 'held') return HELD_SEGMENT_FILL;
 	return COVERAGE_FILL[key];
 }
 
@@ -587,14 +588,41 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
  * The bar, at both scales, is the SAME OBJECT — so the list and the detail page
  * are one idea rather than two designs that rhyme. This is the shape both feed
  * to `CoverageBar.svelte`.
+ *
+ * ⭐ `'held'` IS A SEGMENT, NEVER A BUCKET. (2026-09-03, design pass 7,
+ * finding #5) `classify()`'s `live` means exactly one thing — "running the
+ * revision" — and that question is right for the bucket cards and for
+ * `liveCount`. It is the WRONG question for the bar's own fill: a `live`
+ * slot with `onOwnRelease: false` runs this git revision on an OLDER
+ * release while a newer one sits behind a gate, which is precisely the
+ * fact `buildState()` leads with (`held in N places`, checked BEFORE
+ * `done`). Painting that slot the same solid health-green as a place that
+ * is genuinely finished told two opposite stories 40px apart: the hero's
+ * own word said "held", the largest colour mass on the page said "done".
+ * `coverageSegments()` below carves the `held` slots back out of the
+ * `live` bucket for the BAR ONLY — `classify()`, the bucket cards and
+ * `liveCount` are untouched, because "does this place run the revision"
+ * did not change; only "does the bar get to call it done" did.
  */
 export type CoverageSegment = {
-	key: CoverageKey;
+	key: CoverageKey | 'held';
 	count: number;
 	title: string;
 	/** Carried per segment so the bar needs no second prop; see `coverageFill`. */
 	reachable: boolean;
 };
+
+/**
+ * THE HELD SEGMENT'S OWN FILL — `tone-mute`'s two tokens, not a new value.
+ * `BuildStateMark` already draws this exact fact in words 40px above the bar
+ * (`PauseSolid` + `held in N places`, both `tone-mute`), so a held segment
+ * that used `live`'s green or `ahead`'s lighter gray would still disagree
+ * with the sentence sitting on top of it — one in hue, the other in weight.
+ * Reusing `tone-mute`'s own `gray-500` / `gray-400` pair makes the bar and
+ * the state word the same fact in two channels, which is this object's
+ * whole reason to be one component. Zero new colour values.
+ */
+const HELD_SEGMENT_FILL = 'bg-gray-500 dark:bg-gray-400';
 
 /**
  * ⭐ THE BUILD'S ONE-LINE ANSWER, IN WORDS A NOVICE ALREADY OWNS.
@@ -764,10 +792,29 @@ export function releaseSplit(coverage: RevisionCoverage): ReleaseSplitLine[] {
 }
 
 export function coverageSegments(coverage: RevisionCoverage): CoverageSegment[] {
-	return coverage.buckets.map((b) => ({
-		key: b.key,
-		count: b.slots.length,
-		title: b.title,
-		reachable: coverage.reachable
-	}));
+	const segments: CoverageSegment[] = [];
+	for (const b of coverage.buckets) {
+		// ⭐ THE ONE BUCKET THAT MAY DRAW AS TWO SEGMENTS — see the type's own
+		// note above. Ordinary case (every `live` slot on its own release) is
+		// byte-identical to before: `held.length` is 0 and only the `live`
+		// segment is pushed, in the same position `COVERAGE_ORDER` already put it.
+		if (b.key === 'live') {
+			const heldCount = b.slots.filter((s) => !s.onOwnRelease).length;
+			const doneCount = b.slots.length - heldCount;
+			if (doneCount > 0) {
+				segments.push({ key: 'live', count: doneCount, title: b.title, reachable: coverage.reachable });
+			}
+			if (heldCount > 0) {
+				segments.push({
+					key: 'held',
+					count: heldCount,
+					title: 'Held on an older release',
+					reachable: coverage.reachable
+				});
+			}
+			continue;
+		}
+		segments.push({ key: b.key, count: b.slots.length, title: b.title, reachable: coverage.reachable });
+	}
+	return segments;
 }

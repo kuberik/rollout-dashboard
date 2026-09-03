@@ -1214,9 +1214,17 @@
 			{#if c.apps.length === 0}
 				<p class="text-xs text-gray-500 dark:text-gray-400">No app has ever deployed here.</p>
 			{:else if c.behindCount === 0}
+				<!-- ⭐ `t-dense`, NOT `text-[13px]`. (2026-09-03, design pass 7,
+				     finding #3) A hand-spelled 13px/400/sans one-off the census had
+				     no name for, sitting beside `text-xs` (12px, the empty-state
+				     sibling three lines up) and this same card's own `t-dense`
+				     rollup in the head band — three declared-or-not sizes for one
+				     kind of card-body sentence. `t-dense` (12.5px/400/1.45) is the
+				     nearest declared role and the one every other card-body
+				     sentence on this page already uses. -->
 				<p class="flex items-center gap-2">
 					<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
-					<span class="text-[13px] text-gray-900 dark:text-white"
+					<span class="t-dense text-gray-900 dark:text-white"
 						>All {c.apps.length} app{c.apps.length === 1 ? '' : 's'} here are up to date</span
 					>
 				</p>

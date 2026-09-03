@@ -624,6 +624,7 @@ lib/view-models/revision-coverage.ts	code	Every place that can run this build is
 lib/view-models/revision-coverage.ts	code	failing in … place…
 lib/view-models/revision-coverage.ts	code	fully rolled out
 lib/view-models/revision-coverage.ts	code	held in … place…
+lib/view-models/revision-coverage.ts	code	Held on an older release
 lib/view-models/revision-coverage.ts	code	never deployed
 lib/view-models/revision-coverage.ts	code	No service is running this build right now
 lib/view-models/revision-coverage.ts	code	Not here yet

@@ -162,8 +162,20 @@
 						class="h-3.5 w-3.5 shrink-0 {tone === 'card' ? 'text-gray-500 dark:text-gray-400' : ''}"
 						aria-hidden="true"
 					/>
+					<!--
+						⭐ PLAIN `t-dense`, NOT `t-dense font-medium`. (2026-09-03, design
+						pass 7, finding #3) COMPOSITION-GRAMMAR names no inline-emphasis
+						exception for a declared role, and this label is not a WORD
+						picked out of a sentence — it is the whole line, the rule's own
+						name, so there is no surrounding non-bold text for a heavier
+						weight to emphasise AGAINST. `font-medium` here only turned
+						`t-dense` (12.5px/400) into a fourth, undeclared 12.5px/500
+						pairing the census had no name for. The role's own weight already
+						reads as the line's lead — `Icon` and colour (full ink vs the
+						record's gray-500) carry the hierarchy this line needs.
+					-->
 					<span
-						class="t-dense min-w-0 font-medium break-words {tone === 'card'
+						class="t-dense min-w-0 break-words {tone === 'card'
 							? 'text-gray-900 dark:text-white'
 							: ''}">{g.label}</span
 					>

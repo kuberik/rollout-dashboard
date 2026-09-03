@@ -96,36 +96,61 @@
 				     A numeral here would be the same fact a third time. -->
 				<span class="fs-title">{bucket.title}</span>
 			</div>
-			<ul class="fs-runs">
+			<!--
+				⭐ THE NAME GETS A FIXED TRACK, THE CHIPS HANG OFF IT. (2026-09-03,
+				design pass 7, finding #4) `.fs-run` used to be one `flex-wrap` row
+				per app, with the app name as its first, VARIABLE-WIDTH child — so
+				`hello-api-app`'s env chips started at a different x than
+				`hello-frontend-app`'s one row down. Measured live at 1440:
+				`hello-api-app`'s first chip at x=295, `hello-frontend-app`'s at
+				x=325, a ragged left edge the reader has to re-parse per row.
+				`/versions`' own `.rev-name-row` (this file's sibling, in
+				`versions/+page.svelte`) already solved the identical shape for the
+				labels above this list — a fixed name column so the thing beside it
+				starts at one x — but that fix only holds WITHIN one revision's own
+				internal grid; it does not reach across ROWS. This one has to,
+				because the alignment complaint is exactly "hello-api-app's row vs
+				hello-frontend-app's row", i.e. across `<li>`s. A `display: grid` on
+				each `<li>` would size its own name column from its OWN content and
+				land right back at two different x's — CSS Grid tracks are scoped to
+				one grid CONTAINER, not shared by sibling containers that merely use
+				the same template. So `.fs-runs` (the `<ul>`) is the ONE grid now,
+				and each `<li>` is `display: contents` — no box of its own, so its
+				`.fs-svc`/`.fs-chips` children flatten straight into the list's
+				shared two-column grid and every row's chips start at the SAME x.
+			-->
+			<ul class="fs-runs {oneService ? 'fs-runs--unnamed' : ''}">
 				{#each runs(bucket) as run (run.appName)}
 					<li class="fs-run">
 						{#if !oneService}
 							<span class="fs-svc">{run.appName}</span>
 						{/if}
-						{#each run.slots as s (s.envName)}
-							<!-- `[ENV]` and nothing beside it unless the place is stuck, in
-							     the loose `.chip-mark` group `/apps` and `/rollouts` already
-							     ship. `wide` is load-bearing: `.chip`'s 12ch cap renders
-							     `prod-us-east` and `prod-us-west` as the same eight
-							     characters, which is the defect that killed the `/apps`
-							     convergence bar. -->
-							<span class="chip-mark">
-								<Chip
-									role="env"
-									theme={s.slot.cell.theme}
-									label={s.envLabel}
-									wide
-									title="{s.appName} in {s.envLabel.toUpperCase()} — {s.statusWord}"
-								/>
-								{#if s.stuck}
+						<span class="fs-chips">
+							{#each run.slots as s (s.envName)}
+								<!-- `[ENV]` and nothing beside it unless the place is stuck, in
+								     the loose `.chip-mark` group `/apps` and `/rollouts` already
+								     ship. `wide` is load-bearing: `.chip`'s 12ch cap renders
+								     `prod-us-east` and `prod-us-west` as the same eight
+								     characters, which is the defect that killed the `/apps`
+								     convergence bar. -->
+								<span class="chip-mark">
 									<Chip
-										role="alarm"
-										label="stuck"
-										title="{s.appName} in {s.envLabel.toUpperCase()} is stuck"
+										role="env"
+										theme={s.slot.cell.theme}
+										label={s.envLabel}
+										wide
+										title="{s.appName} in {s.envLabel.toUpperCase()} — {s.statusWord}"
 									/>
-								{/if}
-							</span>
-						{/each}
+									{#if s.stuck}
+										<Chip
+											role="alarm"
+											label="stuck"
+											title="{s.appName} in {s.envLabel.toUpperCase()} is stuck"
+										/>
+									{/if}
+								</span>
+							{/each}
+						</span>
 					</li>
 				{/each}
 			</ul>
@@ -182,25 +207,50 @@
 		color: #fff;
 	}
 
+	/*
+	 * THE SHARED GRID. (2026-09-03, design pass 7, finding #4) THE LIST is
+	 * the grid container now, not each row — see the markup comment above
+	 * for why a per-`<li>` grid cannot align across `<li>`s. `minmax(64px,
+	 * max-content)`, not a hard 64px: a longer app name pushes the WHOLE
+	 * list's name column wider rather than ellipsising into a neighbour's
+	 * alignment (the same trade `.rev-name-row` makes one screen up, at a
+	 * smaller floor — `fs-svc` is an 11px service name, not a card's own
+	 * label). `column-gap`, never a flex `gap`, is what makes the chip
+	 * column start at the SAME x on every row regardless of how long the
+	 * name beside it is.
+	 */
 	.fs-runs {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
+		display: grid;
+		grid-template-columns: minmax(64px, max-content) minmax(0, 1fr);
+		column-gap: 8px;
+		row-gap: 6px;
+		align-items: center;
 		margin-top: 8px;
 		min-width: 0;
 	}
 
-	/* The service name leads, its environments wrap after it. A 13-region
-	   service is one wrapped line here, never thirteen rows. */
+	/* NO SERVICE NAME ANYWHERE IN THIS GROUP (`oneService`) — SO NO NAME
+	   TRACK EITHER. Holding a 64px column open on every row of a build that
+	   never prints a name in it is 64px of nothing; the chips take the whole
+	   row instead of auto-placing into track 1 and starting one column left
+	   of where a named build's chips would sit. */
+	.fs-runs--unnamed {
+		grid-template-columns: minmax(0, 1fr);
+		column-gap: 0;
+	}
+
+	/* NOT A BOX. `<li>` carries no layout of its own — its children flatten
+	   straight into `.fs-runs`'s grid, which is what lets the grid's own
+	   auto-flow place one app's `.fs-svc` + `.fs-chips` pair as one "row" of
+	   the shared template. List semantics (and `role`/keyboard behaviour, if
+	   this ever grows either) are unaffected: `display: contents` removes
+	   the element's OWN box, never the element. */
 	.fs-run {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px 6px;
-		min-width: 0;
+		display: contents;
 	}
 
 	.fs-svc {
+		grid-column: 1;
 		font-size: 11px;
 		line-height: 16px;
 		color: var(--color-gray-500);
@@ -208,6 +258,24 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* PINNED TO TRACK 2 (TRACK 1 ON AN UNNAMED LIST), NOT AUTO-PLACED — a run
+	   with no `.fs-svc` sibling would otherwise auto-place into track 1 and
+	   start one column left of every run that does print a name. The
+	   environments still wrap inside this one fixed-x column exactly as they
+	   did in the old flex row. */
+	.fs-chips {
+		grid-column: 2;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 6px;
+		min-width: 0;
+	}
+
+	.fs-runs--unnamed .fs-chips {
+		grid-column: 1;
 	}
 
 	:global(.dark) .fs-svc {

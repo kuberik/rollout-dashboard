@@ -232,3 +232,17 @@ heights, hero bar contradicting `held in 3 places`, three GitHub-absence copies,
 `»` as icon and bullet. Lanes: p7-lists, p7-chrome, p7-touch, p7-graph-type, p7-shell,
 p7-podfilter. Verdict quoted: signs the Overview, app page, /envs/prod and the revision page;
 not the seams between pages.
+
+## Wave 6 landed at `2311817` (2026-09-03 04:10) — 57 commits since `b59d040`
+/rollouts cards end where their group header ends (solo ≤460, multi fill); one HELD atom on
+every list row; / and /rollouts share one taxonomy (Needs you · In motion · Held · Trailing ·
+Steady); /environments one body template; banner glyph keyed to gate kind; every rail states
+'N deploys'; card header slots hold no buttons or bars; touch slop max(100%+12px, 32px) below
+sm regardless of pointer, timeline dots with 32px hit circles, identifiers wrap only at '-';
+History chart fits its data; graph subset-fit engages below the floor and falls back to the
+column layout below 0.75; t-card-title / t-card-rollup / t-chip declared and adopted;
+/namespaces gets How it's going and a counted rail; the version picker's pane fits its list;
+the Logs pod filter narrows rows (virtualizer count race). Cold-load shell finding did not
+reproduce (a Vite full reload from concurrent edits). Left for the finish lane: `»` as bullet
+in GateRecord, EventsCard identifiers, one-off type roles in environments/+page and
+GateRecord, /versions row alignment, the hero bar under 'held in 3 places'.
