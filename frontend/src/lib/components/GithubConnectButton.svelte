@@ -42,6 +42,18 @@
 	only that there wasn't one, same as a dashboard where GitHub was never a
 	feature at all. `status === undefined` (still loading) still renders
 	nothing, so there's no flash before the first answer arrives.
+
+	⭐ AND BELOW `sm` THE BUTTON WAS A BARE GLYPH. (2026-09-03, follow-on, from
+	the coordinator relaying the same human report.) `<span class="hidden
+	sm:inline">Connect GitHub</span>` left nothing but `GithubSolid` visible
+	at 390 — a mark that reads as "this app integrates with GitHub somehow",
+	not as "press this to log in". A hidden `aria-label` fixes screen readers,
+	not a thumb scanning a toolbar. Both states below now print a SHORT label
+	at every width instead of going icon-only below `sm` — "Connect" / "Not
+	set up" under 640px, the full "Connect GitHub" / "Not configured" at
+	`sm+` — sized against the navbar's other controls (Search, this, theme
+	toggle) at 390 with room to spare; see verification notes for the
+	measured boxes.
 -->
 {#if status?.configured}
 	{#if status.connected}
@@ -75,6 +87,7 @@
 			title="Connect your GitHub account to see deployed changes"
 		>
 			<GithubSolid class="h-4 w-4" />
+			<span class="sm:hidden">Connect</span>
 			<span class="hidden sm:inline">Connect GitHub</span>
 		</button>
 	{/if}
@@ -85,15 +98,17 @@
 	     sentence — the same one every other GitHub-absence surface in the
 	     product uses (`githubAbsenceSentence`) — so it reads identically to
 	     a screen reader or on hover regardless of viewport. The printed
-	     label stays short ("Not configured") to match `Connect GitHub`'s own
-	     footprint; the navbar is not the place for a full sentence, and the
-	     full one is one tap/hover away via `title`/aria-label either way. -->
+	     label stays short ("Not set up" / "Not configured") to match
+	     `Connect GitHub`'s own footprint at every width, same reasoning as
+	     the button above; the full sentence is one tap/hover away via
+	     `title`/aria-label either way. -->
 	<span
 		class="t-button flex cursor-default items-center gap-2 rounded border border-dashed border-gray-200 bg-transparent px-3 py-1 text-gray-400 dark:border-gray-700 dark:text-gray-500"
 		aria-label={githubAbsenceSentence(status)}
 		title={githubAbsenceSentence(status)}
 	>
 		<GithubSolid class="h-4 w-4" />
+		<span class="sm:hidden">Not set up</span>
 		<span class="hidden sm:inline">Not configured</span>
 	</span>
 {/if}
