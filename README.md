@@ -157,3 +157,7 @@ kubectl create secret tls rollout-dashboard-tls \
 - Update the hostnames inside `deploy/base/gateway.yaml` (or patch them per environment) so they match the certificate's Subject Alternative Names.
 
 - For local testing with Kind, run `scripts/setup-dev-environment.sh`. The script installs Envoy Gateway which implements the Gateway API and exposes the dashboard via Gateway resources. Add the chosen hostname to `/etc/hosts` if it is not already resolvable.
+
+## GitHub commit changelists
+
+The dashboard can show the commits between the running build and the one you are about to deploy. That needs a GitHub App — see [docs/github-app.md](docs/github-app.md).
