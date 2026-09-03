@@ -292,6 +292,20 @@
 	 * page measures `box-shadow: none` and this was the one shipped object
 	 * still spending a glow. The 1px `ring` is the whole separation now, same
 	 * as every other panel in the product.
+	 *
+	 * ⛔ AND THE RADIAL BLOB BEHIND ALL OF IT WAS THE SAME DEFECT, MISSED BY
+	 * THE FLAT-WASH PASS ABOVE. (F12, 2026-09-03) `palette.glowA`/`glowB` —
+	 * `h-48 w-48 rounded-full bg-<hue>-400/8 blur-3xl` at `-top-10 -right-10`,
+	 * plus a second smaller one bottom-left — was a leftover radial wash
+	 * painted UNDER the flat tint in a `pointer-events-none absolute inset-0
+	 * overflow-hidden` layer. The 2026-09-02 note above only ever measured
+	 * and replaced the CONTAINER's own `background`; it never looked inside
+	 * that layer, so the gradient it declared dead kept rendering one level
+	 * down. Gone, both discs, both fields. **This is not the same element as
+	 * `pulse`'s `animate-alert-halo` ping** — that one sits ON the 40px icon
+	 * disc, is a rendered ring the human explicitly asked to keep ("Icon is
+	 * not positioned the same on both of these" — a request about placement,
+	 * never about removing the halo), and is untouched.
 	 */
 	const palette = $derived.by(() => {
 		switch (severity) {
@@ -299,8 +313,6 @@
 				return {
 					container:
 						'bg-red-50 dark:bg-red-950/40 ring-1 ring-red-300/60 dark:ring-red-800/60',
-					glowA: 'bg-red-400/8 dark:bg-red-500/10',
-					glowB: 'bg-red-300/10 dark:bg-red-400/8',
 					ping: 'bg-red-500/30 dark:bg-red-500/40',
 					iconWrap: 'bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50',
 					iconColor: 'text-red-700 dark:text-red-300',
@@ -313,8 +325,6 @@
 				return {
 					container:
 						'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300/60 dark:ring-amber-800/60',
-					glowA: 'bg-amber-400/8 dark:bg-amber-500/10',
-					glowB: 'bg-amber-300/10 dark:bg-amber-400/8',
 					ping: 'bg-amber-500/25 dark:bg-amber-500/30',
 					iconWrap:
 						'bg-amber-200 ring-2 ring-amber-400/60 dark:bg-amber-500/20 dark:ring-amber-500/50',
@@ -328,8 +338,6 @@
 				return {
 					container:
 						'bg-orange-50 dark:bg-orange-950/40 ring-1 ring-orange-300/60 dark:ring-orange-800/60',
-					glowA: 'bg-orange-400/8 dark:bg-orange-500/10',
-					glowB: 'bg-orange-300/10 dark:bg-orange-400/8',
 					ping: 'bg-orange-500/25 dark:bg-orange-500/30',
 					iconWrap:
 						'bg-orange-200 ring-2 ring-orange-400/60 dark:bg-orange-500/20 dark:ring-orange-500/50',
@@ -344,8 +352,6 @@
 				return {
 					container:
 						'bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-300/60 dark:ring-blue-800/60',
-					glowA: 'bg-blue-400/8 dark:bg-blue-500/10',
-					glowB: 'bg-blue-300/10 dark:bg-blue-400/8',
 					ping: 'bg-blue-500/25 dark:bg-blue-500/30',
 					iconWrap: 'bg-blue-200 ring-2 ring-blue-400/60 dark:bg-blue-500/20 dark:ring-blue-500/50',
 					iconColor: 'text-blue-700 dark:text-blue-300',
@@ -370,13 +376,6 @@
 
 <div class={className}>
 	<div class="ap-cq relative overflow-hidden rounded-xl {palette.container}">
-		<div class="pointer-events-none absolute inset-0 overflow-hidden">
-			<div class="absolute -top-10 -right-10 h-48 w-48 rounded-full {palette.glowA} blur-3xl"></div>
-			<div
-				class="absolute -bottom-6 left-1/4 h-32 w-32 rounded-full {palette.glowB} blur-2xl"
-			></div>
-		</div>
-
 		<div
 			class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5"
 		>
@@ -606,11 +605,29 @@
 				{#if footnote || footnoteBody}
 					<!--
 						⭐ THE DISCLOSURE. See the `footnote` prop's note for the
-						measurement that produced it. Its own grid cell now
-						(`col-start-2 row-start-3`, NEVER spanning into column 3) —
-						that column belongs to `actions` on this row at every width,
-						mobile included, which is what "flows into the disclosure row"
-						means below.
+						measurement that produced it. Its own grid cell,
+						`col-start-2 row-start-3` — and NOW SPANNING TO `col-end-4`
+						BELOW 700px OF THE BANNER'S OWN WIDTH (P5, 2026-09-03,
+						operator walk).
+
+						⛔ THIS USED TO SAY THE OPPOSITE, ON PURPOSE, AND IT WAS
+						WRONG AT PHONE WIDTH. `col-end-4` was withheld at every
+						width because column 3 "belongs to `actions` on this row" —
+						true at `sm`+, where `actions` really does share this row
+						(column 3, see its own note below), but at 390 `actions` sits
+						on ITS OWN row underneath (see `.ap-actions-cell`'s base
+						placement, row 4 now) precisely BECAUSE column 3 was too
+						narrow to hold a real control there. Leaving the disclosure
+						pinned to column 2 anyway meant it inherited that same
+						narrow column with nothing left in column 3 to justify it:
+						measured on `hello-frontend-app`'s open `› 1 rule` disclosure
+						at 390, the record rendered in a **50px-wide, 491px-tall**
+						column — thirteen one-word lines — beside 196px of dead grid
+						track where the CTA used to sit before it moved to its own
+						row. `col-end-4` reclaims that track the moment nothing else
+						is using it; the `@container (min-width: 700px)` block
+						below narrows it back to `col-end-3` once `actions` returns
+						to column 3 and needs it back.
 
 						THE CONTROL IS NOT QUIET GRAY TEXT AND MUST NOT BECOME IT.
 						It is 12px/500 in the severity's OWN ink — the same full
@@ -644,7 +661,7 @@
 						strut — so the 16px control measured **24px**. As a flex
 						column the summary is a flex item with no strut.
 					-->
-					<div class="col-start-2 row-start-3 mt-1 min-w-0 self-start">
+					<div class="ap-disclosure-cell col-start-2 col-end-4 row-start-3 mt-1 min-w-0 self-start">
 						<details class="group flex flex-col items-start">
 							<summary
 								class="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium whitespace-nowrap {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
@@ -694,14 +711,28 @@
 						     no longer freed up the row it used to occupy.
 
 						THIS IS THE THIRD SHAPE: `actions` is its own grid item, a
-						sibling of the headline/message/disclosure cells above, in
-						column 3 (`grid-cols-[2.5rem_minmax(0,1fr)_auto]` on the
-						shared grid) — the SAME single DOM node at every width.
+						sibling of the headline/message/disclosure cells above —
+						column 3 at `sm`+ (`grid-cols-[2.5rem_minmax(0,1fr)_auto]` on
+						the shared grid) — the SAME single DOM node at every width.
 
-						  below `sm`  `row-start-3`, same row as the disclosure
-						              (column 2), different column — "flows into
-						              the disclosure row" without being IN its flex
-						              flow, so there is nothing to duplicate.
+						  below `sm`  ⛔ WAS `row-start-3`, SAME ROW AS THE
+						              DISCLOSURE, DIFFERENT COLUMN. (P5, 2026-09-03,
+						              operator walk) Column 3's width there is
+						              `auto` — sized to THIS control's own
+						              max-content — so a real CTA (`Open
+						              hello-frontend-app ›`, ~196px) squeezed the
+						              disclosure's column down to 50px on the SAME
+						              row, and an opened `› N rules` record rendered
+						              as a 13-line, 491px-tall column of one-word
+						              lines. `actions` now gets `row-start-4`, ITS
+						              OWN row, spanning `col-start-2 col-end-4` —
+						              the full banner width the headline and
+						              message rows already use below `sm` — with the
+						              disclosure directly above it at its own full
+						              width (see `.ap-disclosure-cell`'s own note).
+						              "Flows into the disclosure row" is retired:
+						              stacking under it, not squeezing beside it, is
+						              what a narrow banner needs.
 						  `sm`+       `row-start-1` / `row-end-4` spans all three
 						              explicit rows (headline, message, disclosure
 						              — `-4` is the line after row 3, not a magic
@@ -713,16 +744,19 @@
 						              vertically centred against the WHOLE banner —
 						              `sm:items-center` on the old outer flex row,
 						              reproduced without a second sibling to centre
-						              against.
+						              against. Column reclaimed back to 3 in the
+						              same query (see `.ap-actions-cell`'s override
+						              below), since `row-start-4`/`col-end-4` are the
+						              MOBILE placement only.
 
-						The right edge itself needed no new rule: this cell is the
-						grid's own last column, and the grid still sits inside the
-						same `px-5 sm:px-6` padded row every other cell does, so its
-						edge is the banner's padding edge exactly as it was when
-						`actions` was a flex sibling this morning.
+						The right edge itself needed no new rule at `sm`+: this cell
+						is the grid's own last column there, and the grid still
+						sits inside the same `px-5 sm:px-6` padded row every other
+						cell does, so its edge is the banner's padding edge exactly
+						as it was when `actions` was a flex sibling this morning.
 					-->
 					<div
-						class="ap-actions-cell col-start-3 row-start-3 mt-1 flex shrink-0 items-center gap-3 self-start {palette.title}"
+						class="ap-actions-cell col-start-2 col-end-4 row-start-4 mt-1 flex shrink-0 items-center gap-3 self-start {palette.title}"
 						style="--nav-link-ink: currentColor"
 					>
 						{@render actions()}
@@ -809,7 +843,22 @@
 		.ap-message-row {
 			grid-column-end: 3;
 		}
+		/*
+		 * ⭐ P5, 2026-09-03: BOTH RECLAIM COLUMN 3 FOR `actions` AT `sm`+.
+		 * Base (mobile) placement spans the disclosure and the actions row
+		 * across the full `col-end-4` width because at that size `actions`
+		 * sits BELOW the disclosure, not beside it — see both cells' own
+		 * markup notes. Once the banner clears 700px of its own width,
+		 * `actions` moves back into column 3 as a right-hand rail spanning
+		 * every row, so the disclosure narrows back to column 2 only, same
+		 * as `.ap-headline-row`/`.ap-message-row` above.
+		 */
+		.ap-disclosure-cell {
+			grid-column-end: 3;
+		}
 		.ap-actions-cell {
+			grid-column-start: 3;
+			grid-column-end: 4;
 			grid-row-start: 1;
 			grid-row-end: 4;
 			margin-top: 0;

@@ -27,6 +27,7 @@
 		releaseIndex,
 		rolloutEnvironmentName,
 		splitLeadSentence,
+		targetPhrase,
 		typedPrompt
 	} from '$lib/view-models/deploy-risk';
 	import { promotionBlock, gateAllows } from '$lib/view-models/promotion';
@@ -135,7 +136,25 @@
 	let leftHeaderEl: HTMLDivElement | undefined = $state();
 	let leftListEl: HTMLDivElement | undefined = $state();
 	let rightPaneEl: HTMLDivElement | undefined = $state();
+	let rightContentEl: HTMLDivElement | undefined = $state();
 	let leftPaneMaxHeight = $state<number | null>(null);
+	/**
+	 * ⭐ THE MIRROR OF `leftPaneMaxHeight`, FOR THE SAME DEFECT ON THE OTHER
+	 * SIDE. (F6, 2026-09-03 re-check) The note above only ever caps the LEFT
+	 * pane — it was written for a short PICKER beside a tall preview (2-3
+	 * releases, a long changelist). Nothing capped the inverse: a rollout
+	 * with a long release history (17 rows) beside a preview whose commits
+	 * region collapses to one sentence — "GitHub is not configured for this
+	 * dashboard." — measured 279px of blank space under that sentence, because
+	 * `align-items: stretch` (the grid's default, unchanged, and still needed
+	 * for the case above) stretches BOTH columns to the row's height, and the
+	 * row's height is the LEFT list's, whichever side happens to be taller.
+	 * `rightPaneMaxHeight` is the same cap, aimed the other way: when the
+	 * RIGHT side's own content is the shorter one, it gets the explicit
+	 * `max-height` instead of the left, so a short answer renders as a short
+	 * pane rather than as a short paragraph inside a tall one.
+	 */
+	let rightPaneMaxHeight = $state<number | null>(null);
 
 	/**
 	 * ⛔ `scrollHeight` LIES ONCE THE ELEMENT IS THE THING BEING STRETCHED.
@@ -162,19 +181,42 @@
 		// the DOM nodes) makes this re-run on search/tag-toggle filtering too,
 		// where the list's own box does not resize but its CONTENT does.
 		const rowCount = filteredVersionsForDisplay.length;
-		if (!selectedVersion || !leftHeaderEl || !leftListEl || !rightPaneEl) {
+		if (!selectedVersion || !leftHeaderEl || !leftListEl || !rightPaneEl || !rightContentEl) {
 			leftPaneMaxHeight = null;
+			rightPaneMaxHeight = null;
 			return;
 		}
 		const header = leftHeaderEl;
 		const list = leftListEl;
 		const right = rightPaneEl;
+		const rightContent = rightContentEl;
 		void rowCount;
 
+		/**
+		 * ⭐ WHICHEVER SIDE IS THE SHORTER ONE GETS CAPPED; THE OTHER KEEPS
+		 * `stretch` AND ITS OWN SCROLL. (F6, 2026-09-03 re-check) Comparing
+		 * the two sides' NATURAL content heights directly — not each side's
+		 * currently-rendered (possibly already-stretched) height — is what
+		 * keeps this from being circular: `measuredContentHeight` reads
+		 * actual child positions, which do not grow just because an ancestor
+		 * stretched the box around them (same reasoning as the function's own
+		 * doc comment). Only the LONGER side's rendered height is used as the
+		 * ceiling for the shorter one, because that is the one number that is
+		 * still honest under `stretch` — it is the row's own real height, not
+		 * a capped one.
+		 */
 		function recompute() {
-			const natural = header.getBoundingClientRect().height + measuredContentHeight(list);
-			const available = right.getBoundingClientRect().height;
-			leftPaneMaxHeight = available > 0 && natural < available ? natural : null;
+			const leftNatural = header.getBoundingClientRect().height + measuredContentHeight(list);
+			const rightNatural = measuredContentHeight(rightContent);
+			if (leftNatural <= rightNatural) {
+				const available = right.getBoundingClientRect().height;
+				leftPaneMaxHeight = available > 0 && leftNatural < available ? leftNatural : null;
+				rightPaneMaxHeight = null;
+			} else {
+				const available = leftPaneEl?.getBoundingClientRect().height ?? 0;
+				rightPaneMaxHeight = available > 0 && rightNatural < available ? rightNatural : null;
+				leftPaneMaxHeight = null;
+			}
 		}
 
 		recompute();
@@ -187,6 +229,7 @@
 		const ro = new ResizeObserver(recompute);
 		ro.observe(list);
 		ro.observe(right);
+		ro.observe(rightContent);
 		return () => {
 			cancelAnimationFrame(raf);
 			ro.disconnect();
@@ -401,6 +444,11 @@
 	 */
 	const intent = $derived(deployIntent(rollout, selectedVersion, environmentName));
 	const direction = $derived(intent.direction);
+	/** `targetPhrase` capitalized for the one place it opens a sentence. */
+	const targetPhraseCapitalized = $derived.by(() => {
+		const t = targetPhrase(intent);
+		return t.charAt(0).toUpperCase() + t.slice(1);
+	});
 
 	// Commit range is always requested oldest→newest; direction only changes
 	// how it's labeled (added vs. reverted).
@@ -493,7 +541,24 @@
 	 */
 	const level = $derived(confirmLevel(intent));
 	const needsTypedConfirmation = $derived(level === 'typed');
-	const deployNotice = $derived(selectedVersion ? confirmNotice(intent, pinVersionToggle) : null);
+	/**
+	 * ⭐ THE PICKER'S OWN `N back`, CARRIED INTO THE CONFIRMATION. (B3,
+	 * 2026-09-03, operator walk) `pickerRankLabel` already computes this per
+	 * row via `releaseIndex`; a rollback's confirmation sentence gets the
+	 * same number rather than restating "goes back to a version" with no
+	 * count, which was true and told a reader nothing the picker's row had
+	 * not already said better.
+	 */
+	const deployStepsBack = $derived.by<number | null>(() => {
+		if (direction !== 'rollback' || !rollout || !currentTag || !selectedVersion) return null;
+		const curIdx = releaseIndex(rollout, currentTag);
+		const selIdx = releaseIndex(rollout, selectedVersion);
+		if (curIdx === -1 || selIdx === -1) return null;
+		return curIdx - selIdx;
+	});
+	const deployNotice = $derived(
+		selectedVersion ? confirmNotice(intent, pinVersionToggle, deployStepsBack) : null
+	);
 	/**
 	 * ⭐ ONE BOLD SENTENCE, NOT FOUR EQUAL INKS. (F10, design pass 2 re-check)
 	 * The consequence alert set the icon, the full multi-sentence notice, the
@@ -727,16 +792,26 @@
 >
 	<div class="flex max-h-[85vh] flex-col">
 		<!-- Header. pr-14 reserves space for the modal's floating close (✕) in the
-		     top-right corner so the right-aligned mobile Back button clears it. -->
+		     top-right corner so the right-aligned mobile Back button clears it.
+
+		     ⭐ WRAPS, NEVER TRUNCATES. (B3, 2026-09-03, operator walk) This was
+		     `truncate` on the app name alone — a namespace holding two rollouts
+		     (`hello-world-*`) truncated to `hello-wo…`, on the SAME dialog that
+		     asks a reader to roll back production. A destructive dialog cannot
+		     hide the one word that says which object it acts on. `flex-wrap` on
+		     the row plus `break-words` (not `truncate`) on the name lets it wrap
+		     to a second line instead — the row is already this tall on any
+		     narrow viewport that also shows the env crumb, so the extra line is
+		     not a new shape, only a safer one. -->
 		<div
-			class="flex shrink-0 items-center gap-2 border-b border-gray-200 py-4 pr-14 pl-5 dark:border-gray-700"
+			class="flex shrink-0 flex-wrap items-center gap-2 gap-y-1 border-b border-gray-200 py-4 pr-14 pl-5 dark:border-gray-700"
 		>
 			<h2 id="cvm-title" class="text-base font-semibold text-gray-900 dark:text-white">
 				Change Version
 			</h2>
 			{#if rollout?.metadata?.name}
 				<span class="text-gray-500 dark:text-gray-400">/</span>
-				<code class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400"
+				<code class="min-w-0 text-sm break-words text-gray-500 dark:text-gray-400"
 					>{rollout.metadata.name}</code
 				>
 			{/if}
@@ -850,9 +925,23 @@
 				     pagination — two ways to reach the same tail, and the pagination
 				     bar sliced the last row of whichever page it sat under. Scroll
 				     alone is the list's own idiom everywhere else in the product. -->
+				<!-- ⭐ `pb-4` + `cvm-scroll-fade`. (F6, 2026-09-03 re-check) The last
+				     row used to sit flush against the dialog's own bottom edge —
+				     zero padding below it, no fade, no scrollbar affordance, so a
+				     17-row list read as though it just stopped rather than
+				     continuing off-screen. `pb-4` matches the deploy footer's own
+				     `p-4` so the last row breathes the same 16px every other edge
+				     of this dialog does. `cvm-scroll-fade` is the classic
+				     background-attachment scroll-shadow (see the `<style>` block
+				     below): two soft shadows pinned to the viewport's own top/bottom
+				     edges (`background-attachment: scroll`), masked by two matching
+				     covers that scroll WITH the content (`attachment: local`) — so
+				     the cue is only visible on the edge that still has more list
+				     behind it, and disappears on its own once you have scrolled
+				     past it. No JS scroll-position tracking needed. -->
 				<div
 					bind:this={leftListEl}
-					class="flex-1 overflow-y-auto"
+					class="cvm-scroll-fade flex-1 overflow-y-auto pb-4"
 					role="group"
 					aria-label="Available versions"
 				>
@@ -929,9 +1018,22 @@
 				     picked — the placeholder pane ("Select a version to preview
 				     what will change") is gone with it; before a pick this is the
 				     whole dialog, so there is nothing beside the list for a
-				     placeholder to fill. -->
-				<div bind:this={rightPaneEl} class="flex flex-col overflow-hidden">
-					<div class="flex-1 space-y-4 overflow-y-auto p-5">
+				     placeholder to fill.
+
+				     ⭐ `style="max-height"` MIRRORS `leftPaneEl`'S OWN. (F6,
+				     2026-09-03 re-check) See `rightPaneMaxHeight`'s own doc
+				     comment: when this pane's content (the delta summary plus a
+				     short "not configured"/"no changes" sentence) is shorter than
+				     the LEFT list's own rendered height, grid `stretch` was
+				     inflating this box to match it anyway — 279px of blank space
+				     under one sentence. Explicit `max-height`, exactly like
+				     `leftPaneEl`'s, clamps the stretch instead of fighting it. -->
+				<div
+					bind:this={rightPaneEl}
+					style={rightPaneMaxHeight != null ? `max-height: ${rightPaneMaxHeight}px` : ''}
+					class="flex flex-col overflow-hidden"
+				>
+					<div bind:this={rightContentEl} class="flex-1 space-y-4 overflow-y-auto p-5">
 						<!-- Delta summary -->
 						<div
 							class="flex flex-col gap-2 rounded-lg p-3 {direction === 'rollback'
@@ -1047,19 +1149,32 @@
 										You don't have access to this repository on GitHub. You can still proceed.
 									</p>
 								{:else if commitsQuery.isError}
-									<!-- ⛔ ONE SENTENCE FOR "UNREACHABLE", IN EVERY DIALOG.
-									     (operator walk, 2026-09-03) A live walk found the PROD
-									     force-deploy dialog printing `No commit changes detected
-									     between versions.` while GitHub answered 401 — asserting
-									     ABSENCE for a question that was never actually answered.
-									     `githubAbsenceSentence({unreachable:true})` is the shared
-									     wording now (F10, design pass 2 re-check) — its own doc
-									     comment names this exact call site and says the caller
-									     appends its extra clause by concatenation, so `You can
-									     still proceed.` stays a dialog-only suffix rather than
-									     something rebuilt into the shared sentence. -->
+									<!-- ⛔ ONE SENTENCE FOR "UNREACHABLE", IN EVERY DIALOG —
+									     AND ONE DIAGNOSIS PER FAILURE, NOT A HARD-CODED ONE.
+									     (P14, 2026-09-03, operator walk) This branch used to say
+									     `githubAbsenceSentence(undefined, { unreachable: true })`
+									     UNCONDITIONALLY — "GitHub did not answer" — whatever the
+									     commits endpoint actually returned. A live walk found the
+									     SAME 401, on the SAME cluster config, printing that
+									     sentence in the force-deploy dialog while the rollback
+									     dialog (which reaches the `not_connected` branch above
+									     for the identical cause) correctly said "GitHub is not
+									     configured for this dashboard." One fact, two diagnoses,
+									     because this branch asked the COMMITS query what went
+									     wrong instead of asking the STATUS query what is actually
+									     true — and the commits endpoint's error body does not
+									     always carry the `github_not_connected` marker
+									     `fetchCommitRange` classifies on, even when the STATUS
+									     query already knows GitHub is not configured or not
+									     connected. `githubStatusQuery` is authoritative here
+									     exactly as it is in the branch above; only when IT also
+									     has nothing to say (still loading, or it reports GitHub
+									     genuinely connected) does "did not answer" remain the
+									     honest read of a commits-fetch failure. -->
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										{githubAbsenceSentence(undefined, { unreachable: true })}
+										{githubStatusQuery.data && !githubStatusQuery.data.connected
+											? githubAbsenceSentence(githubStatusQuery.data)
+											: githubAbsenceSentence(undefined, { unreachable: true })}
 										{commitsQuery.error instanceof Error
 											? commitsQuery.error.message
 											: 'unknown error'}. You can still proceed.
@@ -1124,10 +1239,14 @@
 								{:else}
 									<!-- The query never ran or never resolved (e.g. `canFetchCommits`
 									     was false for a reason none of the branches above name) — the
-									     SAME unreachable sentence as the `isError` branch, never the
-									     "no changes" one. Absence is a claim; this is not one. -->
+									     SAME diagnosis as the `isError` branch just above (status
+									     query first, "did not answer" only once it has nothing to
+									     say), never the "no changes" one. Absence is a claim; this
+									     is not one. -->
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										{githubAbsenceSentence(undefined, { unreachable: true })} You can still
+										{githubStatusQuery.data && !githubStatusQuery.data.connected
+											? githubAbsenceSentence(githubStatusQuery.data)
+											: githubAbsenceSentence(undefined, { unreachable: true })} You can still
 										proceed.
 									</p>
 								{/if}
@@ -1240,27 +1359,36 @@
 												: 'Lock to this version'}
 									</p>
 								</div>
-								<!-- ⛔ NOT BLUE, AND A DISABLED ONE MUST READ DISABLED. (operator
-									     walk, 2026-09-03) Same rule as the picker's own toggle
-									     above — blue is `Deploying`'s colour. The rollback path
-									     pins unconditionally and disables this control (a rollback
-									     always pins), and disabled+checked was rendering at the
-									     SAME full-saturation fill as an enabled one — flowbite's
-									     `disabled` variant only drops the surrounding `<label>` to
-									     `opacity-50`, and one `!important` background utility beat
-									     another only by luck of generation order. A dedicated,
-									     visibly muted fill for the disabled+checked pair removes
-									     that race and is the actual "this cannot be touched" cue. -->
-								<Toggle
-									bind:checked={pinVersionToggle}
-									disabled={isPinVersionToggleDisabled}
-									color="gray"
-									classes={{
-										span: isPinVersionToggleDisabled
-											? 'peer-checked:!bg-gray-400 dark:peer-checked:!bg-gray-600'
-											: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100'
-									}}
-								/>
+								<!-- ⛔ A LOCKED SETTING IS A SENTENCE NOW, NOT A DISABLED
+									     TOGGLE. (B3, 2026-09-03, operator walk) The previous fix
+									     here gave disabled+checked a dedicated muted fill
+									     (`gray-400`) so it would not read as the SAME full-strength
+									     "on" as an enabled toggle — and a live walk found the
+									     result still reads as OFF at a glance: a light-grey track
+									     is this product's own vocabulary for "not set" everywhere
+									     else it appears, whatever the knob's own position says.
+									     `hasForceDeployAnnotation(rollout)` is `false` for every
+									     branch that reaches this element (the whole block is
+									     already gated on `!hasForceDeployAnnotation(rollout)`
+									     above), so INSIDE this block `isPinVersionToggleDisabled`
+									     is exactly `mustPin` — there is no other reason for it to
+									     be disabled here. A control with only one possible value
+									     is not a control; it is a fact, and a fact reads better as
+									     words than as a switch nobody can flip. -->
+								{#if mustPin}
+									<p class="max-w-[55%] text-right text-xs font-medium text-gray-700 dark:text-gray-300">
+										{targetPhraseCapitalized} will be pinned to {getDisplaySelectedVersion()}.
+									</p>
+								{:else}
+									<Toggle
+										bind:checked={pinVersionToggle}
+										disabled={isPinVersionToggleDisabled}
+										color="gray"
+										classes={{
+											span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100'
+										}}
+									/>
+								{/if}
 							</div>
 						{/if}
 
@@ -1335,3 +1463,53 @@
 		{localToastMessage}
 	</Toast>
 {/if}
+
+<style>
+	/*
+	 * ⭐ THE CSS-ONLY SCROLL SHADOW. (F6, 2026-09-03 re-check) Four background
+	 * layers on the SCROLLING element itself, no JS scroll-position tracking:
+	 *
+	 *   layers 1-2  a flat cover matching the dialog's own background, pinned
+	 *               to the CONTENT (`background-attachment: local`) at the
+	 *               list's top and bottom edge.
+	 *   layers 3-4  a soft radial shadow, pinned to the VIEWPORT
+	 *               (`background-attachment: scroll`, i.e. fixed relative to
+	 *               the element's own box, not the content inside it).
+	 *
+	 * At `scrollTop: 0` the top cover sits exactly over the top shadow and
+	 * hides it — there is nothing above to hint at. Scroll down 1px and the
+	 * cover (attached to the content) moves away while the shadow (attached
+	 * to the viewport) stays put, so the cue appears exactly when there is
+	 * more list behind it, and the same mechanism at the bottom edge retires
+	 * itself once the list is scrolled to its end. Dark mode gets its own
+	 * cover colour (`gray-800`, this dialog's own dark background) — the
+	 * shadow itself is already a neutral black wash and needs no swap.
+	 */
+	.cvm-scroll-fade {
+		background-repeat: no-repeat;
+		background-image:
+			linear-gradient(to bottom, #fff 40%, rgba(255, 255, 255, 0)),
+			linear-gradient(to top, #fff 40%, rgba(255, 255, 255, 0)),
+			radial-gradient(farthest-side at 50% 0%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0)),
+			radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0));
+		background-position:
+			top,
+			bottom,
+			top,
+			bottom;
+		background-size:
+			100% 24px,
+			100% 24px,
+			100% 10px,
+			100% 10px;
+		background-attachment: local, local, scroll, scroll;
+	}
+
+	:global(.dark) .cvm-scroll-fade {
+		background-image:
+			linear-gradient(to bottom, #1f2937 40%, rgba(31, 41, 55, 0)),
+			linear-gradient(to top, #1f2937 40%, rgba(31, 41, 55, 0)),
+			radial-gradient(farthest-side at 50% 0%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0)),
+			radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0));
+	}
+</style>

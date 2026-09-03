@@ -284,13 +284,44 @@
 				header (used verbatim by `/apps`, `/apps/<name>`, `/envs/<name>`,
 				`/namespaces/<name>`) is a different component this pass does not
 				own and is untouched.
+
+				⭐ F7, 2026-09-03 re-check: IN THE RAIL THE ROLLUP IS THE LINK. This
+				card lives in a ~320px rail column, so `{n} deploys` and `View all
+				activity ›` as two separate flex children (the shape a wide
+				"Recent activity" card also uses, e.g. `/apps/[name]`'s own
+				main-column card) wrapped onto two lines and measured 65px against
+				every other header's 47px — the header's own `min-h-[47px]` floor
+				only ever raises a SHORT header, it cannot stop a WRAPPED one from
+				growing past it. A rail this narrow never has room for both; two
+				elements racing for one line was the wrong shape for it, not a
+				wrapping bug to patch.
+
+				So the rail renders ONE control, `.ra-narrow` — the count folded
+				into the link's own text, `{n} deploys ›`, with `aria-label="View
+				all activity"` supplying the verb the visible text leaves out (a
+				bare "5 deploys" does not say the link navigates). `.ra-wide` is
+				the old two-piece form, kept for a card wide enough to afford it —
+				none of THIS page's rail is, so it never shows here, but the
+				`@container` toggle below matches `Card.svelte`'s own 640px number
+				rather than inventing a second one. `display: none` on whichever
+				form loses, not a second query duplicating markup with different
+				props: the count is computed once and both forms share it.
 			-->
-			<span class="t-code-sm text-gray-500 dark:text-gray-400"
-				>{activityDeployCount} deploy{activityDeployCount === 1 ? '' : 's'}</span
-			>
-			<a href="/activity" class="nav-link" aria-label="View all deploy activity">
-				View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
-			</a>
+			<div class="rail-activity-rollup flex shrink-0 items-center gap-1.5">
+				<a href="/activity" class="nav-link ra-narrow" aria-label="View all activity">
+					{activityDeployCount} deploy{activityDeployCount === 1 ? '' : 's'}
+					<ChevronRightOutline class="h-3.5 w-3.5" />
+				</a>
+				<span class="ra-wide t-code-sm text-gray-500 dark:text-gray-400">
+					{activityDeployCount} deploy{activityDeployCount === 1 ? '' : 's'}
+				</span>
+				<span class="ra-wide t-code-sm text-gray-500 dark:text-gray-400" aria-hidden="true"
+					>·</span
+				>
+				<a href="/activity" class="nav-link ra-wide" aria-label="View all activity">
+					View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+				</a>
+			</div>
 		{/snippet}
 		<ActivityRail
 			{rollouts}
@@ -303,3 +334,28 @@
 		/>
 	</Card>
 </div>
+
+<style>
+	/*
+	 * ⭐ F7, 2026-09-03 re-check. `.ra-wide` starts hidden; the `Card`-scale
+	 * threshold (`Card.svelte`'s own `.card-cq`, `min-width: 640px` of the
+	 * CARD, not the viewport) is the ancestor container this rule queries —
+	 * this component never declares its own `container-type`, it rides the
+	 * one `Card.svelte` already sets on the `<section>` this snippet renders
+	 * inside. `display: revert` on the winning side, not a hand-picked
+	 * value, so the anchor gets `.nav-link`'s own `inline-flex` back and the
+	 * plain `<span>`s get their default `inline` — one rule instead of two
+	 * element-specific ones.
+	 */
+	.ra-wide {
+		display: none;
+	}
+	@container (min-width: 640px) {
+		.ra-narrow {
+			display: none;
+		}
+		.ra-wide {
+			display: revert;
+		}
+	}
+</style>

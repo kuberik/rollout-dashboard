@@ -162,7 +162,7 @@
 	class="card-cq flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
 >
 	<header
-		class="flex min-h-[47px] shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-gray-200 px-4 py-3 dark:border-gray-700 {titleHref
+		class="flex min-h-[47px] shrink-0 flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-b border-gray-200 px-4 py-3 dark:border-gray-700 {titleHref
 			? 'tap-zone transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30'
 			: ''}"
 	>
@@ -227,27 +227,46 @@
 			</h2>
 		</div>
 		<!--
-			HARD-ALIGNED RIGHT ONCE THE CARD IS WIDE ENOUGH, ALWAYS. Below that
-			the margin is NOT auto: `margin-left: auto` resolves against the
-			FREE SPACE OF ITS OWN LINE, so on a line the rollup has wrapped onto
-			BY ITSELF that free space is the whole remaining card width —
-			exactly the 155px empty gutter the design re-check measured (the
-			rollup right-floating on a narrow line with nothing beside it).
-			Below the threshold it sits at its natural position instead:
-			immediately after the title when they share a line, or flush left
-			under the title when they do not — the same left edge as the title
-			in both cases.
+			⭐ HARD-RIGHT AT EVERY WIDTH, NOW VIA `justify-between` ON THE
+			HEADER ITSELF, NOT A CONTAINER-QUERIED `margin-left: auto` ON THE
+			ROLLUP. (F13, 2026-09-03 re-check)
 
-			⛔ WAS `sm:ml-auto` — A VIEWPORT THRESHOLD FOR A DECISION THE HEADER
-			ITSELF NOW MAKES FROM ITS OWN WIDTH. (F3, 2026-09-03) With
-			`sm:flex-nowrap` gone (see the header's own note), the rollup can
-			wrap onto its own line at ANY viewport once the card is narrow
-			enough — a card in a two-up grid at 1024 viewport is exactly this
-			case — and `sm:ml-auto` would still fire because it never stopped
-			reading the viewport, reopening the 155px-gutter bug one level up.
-			`.card-cq` (`container-type: inline-size` on the `<section>`) makes
-			the CARD the query subject; the threshold is the same 640px number
-			`sm` used, moved from the wrong signal to the right one.
+			THE DEFECT: the `margin-left: auto` version only fired past a
+			640px CARD-width threshold (below, unchanged from the old `sm:`
+			one). A card between roughly 594–710px sits either side of that
+			line depending on its OWN title/rollup content, not on any number
+			a reader could predict — measured live, a 593px card left `6 of 6
+			places` 386px from the card's right edge, title-adjacent, while a
+			711px card put it 17px from the edge. Same component, two
+			placements, no visible reason. The threshold was trying to guess,
+			from the CARD's width alone, whether THIS title and THIS rollup
+			would actually share their line — a question their own content
+			answers for free via `flex-wrap`, one paragraph down.
+
+			THE FIX NEEDS NO THRESHOLD. `justify-content: space-between` on a
+			`flex-wrap` row with exactly two children (the title group, the
+			rollup) does the right thing in both cases through nothing but the
+			flexbox spec's own single-item rule:
+
+			  ON ONE LINE   both children present on the line → space-between
+			                pushes them to the line's two ends: title flush
+			                left, rollup flush right. HARD RIGHT, at every
+			                width, the moment they fit together — no card-width
+			                number involved at all.
+			  WRAPPED       the rollup alone on its own line has nothing to
+			                space itself between, and per the flexbox spec a
+			                single item under `space-between` is treated as
+			                `flex-start` — flush LEFT, directly under the
+			                title, never floating right with the 155px empty
+			                gutter the ORIGINAL `margin-left: auto` version (no
+			                threshold at all) produced and that the container
+			                query above was invented to prevent.
+
+			So the container query is gone, not narrowed: `justify-between`
+			is correct at every card width unconditionally, because the
+			decision it needs (did the row actually wrap) is exactly the
+			thing `flex-wrap` itself decides, and CSS already tells
+			`space-between` what to do with either answer.
 		-->
 		{#if rollup}
 			<!-- ⭐ `.card-header-rollup` — F6, DESIGN PASS 5. A card header whose
@@ -281,15 +300,14 @@
 	 * of three in a grid — so a rule keyed to the VIEWPORT is a rule keyed to
 	 * the wrong box. `container-type: inline-size` here is the same
 	 * mechanism `/apps/<name>`'s own container-query notes already use.
+	 *
+	 * ⛔ STILL NEEDED EVEN THOUGH THE ROLLUP'S OWN CONTAINER QUERY IS GONE
+	 * (F13, 2026-09-03) — `ResourcesCard.svelte`'s own `.rc-type-tag` /
+	 * `.rc-pods-word` container query targets THIS `.card-cq` as its nearest
+	 * container-type ancestor; removing it here would silently break that
+	 * unrelated rule two files away.
 	 */
 	.card-cq {
 		container-type: inline-size;
-	}
-
-	@container (min-width: 640px) {
-		.card-header-rollup,
-		.card-header-verdict {
-			margin-left: auto;
-		}
 	}
 </style>

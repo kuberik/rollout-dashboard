@@ -806,7 +806,11 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		expect(s.consequence).toMatch(/Nothing promotes itself until the deploy window reopens in 4h/);
 		says(s.verdict, 'This clears on its own.');
 		expect(s.selfClearing).toBe(true);
-		expect(s.severity).toBe('info');
+		// ⛔ SUPERSEDED 2026-09-03 (F2): `warning`, not `info` -- a schedule is
+		// a RULE holding the rollout, not a state a person chose, whatever
+		// `selfClearing` says about whether a person has to act on it. See
+		// `blocking-story.ts`'s own doc comment on the `severity` field.
+		expect(s.severity).toBe('warning');
 		saw(s.consequence);
 	});
 
@@ -1131,12 +1135,21 @@ describe('deploy-risk: the confirmation table, every row', () => {
 		...o
 	});
 
-	test('the ten rows of the documented table', () => {
+	// ⛔ SUPERSEDED 2026-09-03 (B3, operator walk). The table `deploy-risk.ts`
+	// documents at its own top was rewritten the same day this test was:
+	// PRODUCTION is `typed` in every direction now (forward, rollback, and a
+	// vouched retry), not only the unvouched forward/retry rows. A live walk
+	// found a rollback into production was two taps with no typed
+	// confirmation, a non-alarm blue primary and a disabled toggle reading as
+	// off while it silently pinned production — the exact ceremony gap this
+	// table exists to close, just on the direction the old table exempted.
+	// Every NON-production row is byte-identical to before.
+	test('the documented table, PRODUCTION now a ceiling regardless of direction', () => {
 		expect(confirmLevel(base({ direction: 'forward', production: true, vouched: false }))).toBe(
 			'typed'
 		);
 		expect(confirmLevel(base({ direction: 'forward', production: true, vouched: true }))).toBe(
-			'notice'
+			'typed'
 		);
 		expect(confirmLevel(base({ direction: 'forward', production: false, vouched: false }))).toBe(
 			'notice'
@@ -1144,12 +1157,13 @@ describe('deploy-risk: the confirmation table, every row', () => {
 		expect(confirmLevel(base({ direction: 'forward', production: false, vouched: true }))).toBe(
 			'none'
 		);
-		expect(confirmLevel(base({ direction: 'rollback', production: true }))).toBe('notice');
+		expect(confirmLevel(base({ direction: 'rollback', production: true }))).toBe('typed');
+		expect(confirmLevel(base({ direction: 'rollback', production: false }))).toBe('notice');
 		expect(confirmLevel(base({ direction: 'retry', production: true, vouched: false }))).toBe(
 			'typed'
 		);
 		expect(confirmLevel(base({ direction: 'retry', production: true, vouched: true }))).toBe(
-			'notice'
+			'typed'
 		);
 		expect(confirmLevel(base({ direction: 'retry', production: false, vouched: false }))).toBe(
 			'notice'
@@ -1161,9 +1175,15 @@ describe('deploy-risk: the confirmation table, every row', () => {
 		expect(confirmLevel(base({ direction: 'same' }))).toBe('none');
 	});
 
-	test('a rollback NEVER reaches typed, not even in production', () => {
-		expect(confirmLevel(base({ direction: 'rollback', production: true, vouched: false }))).toBe(
+	test('a rollback OUT of production still never reaches typed — the fast 3am recovery survives', () => {
+		expect(confirmLevel(base({ direction: 'rollback', production: false, vouched: false }))).toBe(
 			'notice'
+		);
+	});
+
+	test('a rollback INTO production reaches typed now, same ceiling as forward (B3)', () => {
+		expect(confirmLevel(base({ direction: 'rollback', production: true, vouched: false }))).toBe(
+			'typed'
 		);
 	});
 
@@ -1283,6 +1303,18 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		says(
 			typedPrompt(intent({ production: true, environment: 'prod' })),
 			'Nothing has vouched for this build in production. Type'
+		);
+	});
+
+	// ⭐ 2026-09-03 (B3, operator walk): a rollback into production reaches
+	// `typed` now too (see `confirmLevel`'s own doc comment), and "nothing has
+	// vouched for this build" is false of it -- the build already ran here
+	// successfully, which is why it is a safe place to go back to. This
+	// state is what `typedPrompt`'s own rollback branch exists for.
+	test('the typed prompt for a rollback names the tier, not a false vouching claim', () => {
+		says(
+			typedPrompt(intent({ direction: 'rollback', production: true, environment: 'prod' })),
+			'This changes production. Type'
 		);
 	});
 

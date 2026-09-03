@@ -709,7 +709,30 @@ export type BlockingStory = {
 	 * does not know that reads every banner on this product as an outage.
 	 */
 	resolution: string;
-	/** `warning` when something needs a person; `info` when it clears itself. */
+	/**
+	 * ⭐ THE HUE RULE (F2, 2026-09-03): blocked by a RULE — a contract, a
+	 * promotion order, a schedule, a health check, an approval — is
+	 * `warning` (amber). A STATE A PERSON CHOSE — pinned, rolled back — is
+	 * `info` (blue). Failed is `error` (red), but that is never THIS field:
+	 * a failure is `isFailed`'s own `FailurePanel`, which this story does not
+	 * model.
+	 *
+	 * ⛔ IT USED TO BE `selfClearing ? 'info' : 'warning'`, WHICH ANSWERED A
+	 * DIFFERENT QUESTION. `selfClearing` is "does this need a PERSON", not
+	 * "is this a rule or a choice" — a rollout held by a schedule alone
+	 * (`person`/`upstream`/`unknown` all empty) is `selfClearing: true` and
+	 * was rendering `info` (blue), identical to the "Rolled back" panel
+	 * directly below it on `/rollouts/dev/hello-world-dev/hello-world-app`.
+	 * Both are true facts and neither is a choice: a clock and a health check
+	 * are rules exactly like an approval is, so every non-pinned branch of
+	 * this function is `warning` now, `selfClearing` or not. `selfClearing`
+	 * still gates what a caller may say ("clears on its own") — it just no
+	 * longer picks the colour.
+	 *
+	 * The pin branch below keeps `info` — pinning is the one choice this
+	 * story itself renders, and the gate kind (`iconKind`) is the only thing
+	 * that may vary the GLYPH; it never touches this field.
+	 */
 	severity: 'warning' | 'info';
 	/** Which glyph this story earns. See `StoryIconKind`'s own note. */
 	iconKind: StoryIconKind;
@@ -1119,6 +1142,8 @@ export function blockingStory(
 			pinnedTo,
 			pinnedToDisplay,
 			selfClearing: false,
+			// `info` (blue) — pinning is a STATE A PERSON CHOSE, not a rule
+			// holding the rollout back. See the field's own doc comment (F2).
 			severity: 'info',
 			headline: `${subjectLead} ${isVerb} pinned to ${pinnedToDisplay}`,
 			consequence:
@@ -1303,7 +1328,13 @@ export function blockingStory(
 		consequence,
 		verdict,
 		resolution,
-		severity: selfClearing ? 'info' : 'warning',
+		// ⭐ ALWAYS `warning` HERE. See the field's own doc comment (F2,
+		// 2026-09-03): every gate this branch can hold on — person, unknown,
+		// upstream, clock, check — is a RULE, not a choice, whether or not it
+		// clears on its own. `selfClearing` answers "does this need a
+		// person", a different question this field no longer conflates with
+		// colour.
+		severity: 'warning',
 		iconKind
 	};
 }

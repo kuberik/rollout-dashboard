@@ -233,15 +233,49 @@ export function retryIntent(
 	};
 }
 
-/** The rule. One table, one place, and it has tests. */
+/**
+ * ⛔ SUPERSEDED, 2026-09-03 (B3, operator walk): **PRODUCTION IS `typed` IN
+ * EITHER DIRECTION NOW**, including a rollback.
+ *
+ * The table and the reasoning above this function are the PREVIOUS ruling —
+ * kept rather than deleted, because the argument it made ("a rollback is the
+ * recovery you want fast at 3am") is still true in general and still governs
+ * every NON-production rollback (`intent.production` false still falls
+ * through to `notice`, unchanged — dev keeps its softer path). What changed
+ * is narrower than it looks: a live walk rolled back
+ * `hello-world-prod/hello-world-app` and found it was TWO TAPS — no typed
+ * confirmation at all, a filled BLUE primary reading `Roll back production`
+ * (blue is this product's colour for "a controller-speed forward move", not
+ * a destructive one), a `Pin Version` toggle rendered `disabled checked`
+ * (a locked-on switch drawn with a light, off-looking track — the same
+ * "disabled reads as off" defect this pass also fixes on the toggle itself),
+ * and no stated DISTANCE (the picker said `15 back`; the dialog never
+ * repeated it). The forward force-deploy dialog on the identical rollout
+ * demanded the typed sha and a red button for the identical class of change
+ * — production, unattended by the controller — while going backwards did
+ * not. **A rollback into production is still the fast, correct recovery;
+ * "fast" cannot mean "with less ceremony than the forward move it is
+ * undoing," on the one tier where a mistake is most expensive.**
+ *
+ * `intent.vouched` no longer spares a production FORWARD deploy either: the
+ * old table read `notice` for "every rule currently allows this build,
+ * which is the move the controller would make on its own" — true, but the
+ * controller has not actually made it, and this function's OWN job is
+ * deciding how much ceremony a PERSON'S press deserves on this tier, not
+ * whether the controller agrees with them.
+ *
+ * The rule, restated: PRODUCTION IS `typed`, full stop, except a genuine
+ * no-op (`same`) and an unlisted tag (already `typed` via `custom`, which
+ * fires first and is unchanged). Every non-production row is untouched.
+ */
 export function confirmLevel(intent: DeployIntent): ConfirmLevel {
 	// ⛔ `retry` DELIBERATELY DOES NOT REACH THIS LINE. A retry sends the
 	// version that is already running, so a `same`-style short-circuit would
 	// wave through the exact act this module exists to slow down.
 	if (intent.direction === 'same') return 'none';
 	if (intent.custom) return 'typed';
+	if (intent.production) return 'typed';
 	if (intent.direction === 'rollback') return 'notice';
-	if (intent.production) return intent.vouched ? 'notice' : 'typed';
 	return intent.vouched ? 'none' : 'notice';
 }
 
@@ -333,7 +367,23 @@ export function targetPhrase(intent: DeployIntent): string {
  * Returns `null` when the level is `none` — a modal that explains every deploy
  * teaches the reader to stop reading it.
  */
-export function confirmNotice(intent: DeployIntent, pins = false): string | null {
+export function confirmNotice(
+	intent: DeployIntent,
+	pins = false,
+	/**
+	 * ⭐ THE DISTANCE, STATED. (B3, 2026-09-03, operator walk) The version
+	 * PICKER already says `15 back` on the row a reader clicked; the dialog
+	 * one screen later dropped the number entirely and said only "goes back
+	 * to a version". `releaseIndex`'s own oldest-first list is what the
+	 * caller already counts this from (`env-rank.ts`'s own `N behind`
+	 * vocabulary) — passed in rather than recomputed here, because this
+	 * module takes no `Rollout` and has no release list of its own to count
+	 * against. `null`/`undefined`/`0` all print the sentence without a
+	 * count: a rollback whose distance could not be resolved, or a
+	 * same-build edge case, states the fact it can prove and no more.
+	 */
+	stepsBack?: number | null
+): string | null {
 	const level = confirmLevel(intent);
 	if (level === 'none') return null;
 	const where = targetPhrase(intent);
@@ -345,7 +395,8 @@ export function confirmNotice(intent: DeployIntent, pins = false): string | null
 		return `This tag is not in ${where}'s release list, so no rule here has vouched for it and the commit list above may be incomplete. It applies immediately.${pinNote}`;
 	}
 	if (intent.direction === 'rollback') {
-		return `Goes back to a version ${where} has already run. It applies immediately; older code will run against data the newer version has already written.${pinNote}`;
+		const distance = stepsBack && stepsBack > 0 ? ` ${stepsBack} build${stepsBack === 1 ? '' : 's'}` : '';
+		return `Goes back${distance} to a version ${where} has already run. It applies immediately; older code will run against data the newer version has already written.${pinNote}`;
 	}
 	if (intent.production) {
 		return intent.vouched
@@ -393,6 +444,16 @@ export function splitLeadSentence(text: string): { lead: string; rest: string } 
 /** The label above the type-to-confirm box, when there is one. */
 export function typedPrompt(intent: DeployIntent): string {
 	if (intent.custom) return 'This version is not in the release list. Type';
+	// ⭐ A ROLLBACK IS A DIFFERENT CLAIM. (B3, 2026-09-03) `production` now
+	// reaches `typed` on a rollback too (see `confirmLevel`'s own note), and
+	// "nothing has vouched for this build" is false of it: the build already
+	// ran here successfully, which is the whole reason it is a safe place to
+	// go back to. The prompt names the actual reason typing is required —
+	// the TIER, not a claim about vouching that only ever applied to a
+	// forward move.
+	if (intent.direction === 'rollback') {
+		return `This changes ${targetPhrase(intent)}. Type`;
+	}
 	return `Nothing has vouched for this build in ${targetPhrase(intent)}. Type`;
 }
 

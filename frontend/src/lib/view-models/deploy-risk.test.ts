@@ -150,7 +150,13 @@ describe('confirmLevel — THE SAFETY RULE', () => {
 		expect(confirmLevel(intent)).toBe('typed');
 	});
 
-	it('forward into production that every gate already allows gets a notice, not a typing test', () => {
+	it('⛔ SUPERSEDED 2026-09-03 (B3): forward into production is `typed` now even when every gate already allows it', () => {
+		// This used to be `notice` — "every rule allows it, so this is the move
+		// the controller would make on its own". A live walk found the ceremony
+		// gap was on the OTHER side (a rollback into production skipped typing
+		// entirely), and closing it meant PRODUCTION itself earns the pause in
+		// either direction, not just the unvouched half of it. See
+		// `confirmLevel`'s own doc comment for the full account.
 		const r = rollout({
 			status: {
 				...(rollout().status as object),
@@ -159,7 +165,7 @@ describe('confirmLevel — THE SAFETY RULE', () => {
 		});
 		const intent = deployIntent(r, NEWEST);
 		expect(intent).toMatchObject({ production: true, vouched: true });
-		expect(confirmLevel(intent)).toBe('notice');
+		expect(confirmLevel(intent)).toBe('typed');
 	});
 
 	it('forward into a non-production environment past its gates gets a notice', () => {
@@ -181,10 +187,24 @@ describe('confirmLevel — THE SAFETY RULE', () => {
 		expect(confirmLevel(intent)).toBe('none');
 	});
 
-	it('⛔ a ROLLBACK never reaches typed, not even in production', () => {
+	it('⛔ SUPERSEDED 2026-09-03 (B3): a rollback into production now reaches typed too', () => {
+		// Renamed from "a ROLLBACK never reaches typed, not even in
+		// production" — that title was the bug report. A live walk rolled
+		// back `hello-world-prod/hello-world-app` in two taps with no typed
+		// confirmation, a blue (non-alarm) primary, and a disabled toggle
+		// that read as off while it silently pinned production. The general
+		// argument survives for NON-production rollbacks — see the test
+		// below — but production itself is `typed` in either direction now.
 		const intent = deployIntent(rollout(), OLDEST);
 		expect(intent.direction).toBe('rollback');
 		expect(intent.production).toBe(true);
+		expect(confirmLevel(intent)).toBe('typed');
+	});
+
+	it('a rollback OUT of production keeps the soft `notice` path — the fast 3am recovery', () => {
+		const intent = deployIntent(devRollout(), OLDEST);
+		expect(intent.direction).toBe('rollback');
+		expect(intent.production).toBe(false);
 		expect(confirmLevel(intent)).toBe('notice');
 	});
 
@@ -198,11 +218,22 @@ describe('confirmLevel — THE SAFETY RULE', () => {
 		expect(confirmLevel(deployIntent(rollout(), RUNNING))).toBe('none');
 	});
 
-	it('the direction of travel is what moved: forward-to-prod is stricter than back-from-prod', () => {
-		const forward = confirmLevel(deployIntent(rollout(), NEWEST));
-		const back = confirmLevel(deployIntent(rollout(), OLDEST));
+	it('⛔ SUPERSEDED 2026-09-03 (B3): production is a CEILING now, not a direction-dependent step', () => {
+		// This used to assert forward-to-prod strictly stricter than
+		// back-from-prod — true under the old table, where a rollback got a
+		// free pass on the one tier a mistake costs the most. Both directions
+		// land on `typed` in production now; direction still matters, but
+		// only OUTSIDE production, where a rollback keeps its softer
+		// `notice` and a vouched forward deploy stays a free `none`.
 		const order: Record<string, number> = { none: 0, notice: 1, typed: 2 };
-		expect(order[forward]).toBeGreaterThan(order[back]);
+		const prodForward = confirmLevel(deployIntent(rollout(), NEWEST));
+		const prodBack = confirmLevel(deployIntent(rollout(), OLDEST));
+		expect(prodForward).toBe('typed');
+		expect(prodBack).toBe('typed');
+
+		const devForward = confirmLevel(deployIntent(devRollout(), MID));
+		const devBack = confirmLevel(deployIntent(devRollout(), OLDEST));
+		expect(order[devBack]).toBeGreaterThan(order[devForward]);
 	});
 });
 
@@ -364,14 +395,19 @@ describe('⚠️ retry risk — the rule decides, and it is the SAME rule', () =
 		expect(typedPrompt(intent)).toBe('Nothing has vouched for this build in production. Type');
 	});
 
-	it('a retry in production the rules DO allow is a notice, not a transcription', () => {
+	it('⛔ SUPERSEDED 2026-09-03 (B3): a vouched retry in production is `typed` too now', () => {
+		// Was `notice` — "every rule allows it, so this is the move the
+		// controller would make on its own". Production is a ceiling now
+		// regardless of vouching or direction (see `confirmLevel`'s own doc
+		// comment); a retry that lands production traffic is not exempt just
+		// because it resends a build already running.
 		const r = rollout() as unknown as Record<string, any>;
 		r.status = {
 			...r.status,
 			gates: [{ name: 'ghd-cmppc', passing: true, allowedVersions: [RUNNING] }]
 		};
 		const intent = retryIntent(r as unknown as Rollout);
-		expect(confirmLevel(intent)).toBe('notice');
+		expect(confirmLevel(intent)).toBe('typed');
 	});
 
 	it('⭐ retrying a transient failure in dev STAYS ONE CLICK', () => {

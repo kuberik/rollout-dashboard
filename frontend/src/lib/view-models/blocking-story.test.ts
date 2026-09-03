@@ -427,7 +427,19 @@ describe('blockingStory — the defect the critic filed', () => {
 		expect(s.gates[0].clears).toBe('person');
 	});
 
-	it('a clock-only block is INFO, not a warning — nobody has to get up', () => {
+	it('⛔ SUPERSEDED 2026-09-03 (F2): a clock-only block is still a WARNING — a schedule is a rule, not a choice', () => {
+		// Renamed from "a clock-only block is INFO, not a warning — nobody
+		// has to get up". That reasoning conflated two different questions:
+		// `selfClearing` answers "does this need a person", which is true —
+		// nobody has to act — but `severity` answers "is this a rule holding
+		// the rollout or a state a person chose", and a schedule is
+		// unambiguously the former. Measured live: this exact story rendered
+		// BLUE on `/rollouts/dev/hello-world-dev/hello-world-app`, identical
+		// to the "Rolled back" panel two cards below it, which genuinely is a
+		// chosen state. The hue rule is in `blocking-story.ts`'s own doc
+		// comment on the `severity` field: blocked-by-a-rule (contract,
+		// order, schedule, health, approval) is amber; a state a person
+		// chose (pinned, rolled back) is blue.
 		const c = withSchedules(ctx, 'hello-world-dev', [
 			{
 				metadata: {
@@ -445,7 +457,7 @@ describe('blockingStory — the defect the critic filed', () => {
 			c,
 			{ place: 'dev', now: NOW }
 		);
-		expect(s.severity).toBe('info');
+		expect(s.severity).toBe('warning');
 		expect(s.selfClearing).toBe(true);
 		expect(s.headline).toBe('Automatic deploys are paused');
 		expect(s.clearsAt).toBe('2026-08-31T13:00:00Z');

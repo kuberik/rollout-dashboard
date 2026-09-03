@@ -274,7 +274,20 @@ describe('defect 3 — the version picker labels build age vs deploy age, and ra
 });
 
 describe('defect 5 — rollback direction copy (locked)', () => {
-	test('rolling back shows "Rollback", "Commits reverted", a pinned+disabled toggle, and the older-code consequence sentence', async () => {
+	/**
+	 * ⭐ SUPERSEDED 2026-09-03 (B3, operator walk): A LOCKED PIN IS A
+	 * SENTENCE, NOT A DISABLED TOGGLE. `mustPin` is true for EVERY rollback
+	 * (`direction === 'rollback'`, dev or production alike) — a rollback in
+	 * this product always pins — so this test used to assert a
+	 * disabled+checked checkbox, which a live walk found reads as OFF at a
+	 * glance regardless of its fill: a muted grey track is this product's
+	 * own vocabulary for "not set" everywhere else it appears. A control
+	 * with only one possible value is not a control, so `ChangeVersionModal`
+	 * now renders the fact as words (`"${target} will be pinned to
+	 * ${version}."`) instead of a switch nobody can operate. See
+	 * `ChangeVersionModal.svelte`'s own note beside the toggle.
+	 */
+	test('rolling back shows "Rollback", "Commits reverted", the pin stated as a sentence, and the older-code consequence sentence', async () => {
 		const rollout = rolloutFixture({
 			metadata: { name: 'hello-world-app', namespace: 'hello-world-prod', labels: { environment: 'prod' } },
 			status: {
@@ -300,18 +313,38 @@ describe('defect 5 — rollback direction copy (locked)', () => {
 		// Changelist heading.
 		expect(screen.getByText('Commits reverted')).toBeInTheDocument();
 
-		// Pin defaults ON and disabled — a rollback in this product always
-		// pins. Two checkboxes exist (the hidden picker's "show all repo tags"
-		// toggle rides along in the DOM too), so find the disabled one.
+		// Pin Version: stated as a fact, not offered as a switch.
+		expect(screen.getByText('Pin Version')).toBeInTheDocument();
+		expect(screen.getByText(/Production will be pinned to 0afab6f\./)).toBeInTheDocument();
 		const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
-		const pinToggle = checkboxes.find((cb) => cb.disabled);
-		expect(pinToggle, 'no disabled checkbox found — expected the Pin Version toggle').toBeDefined();
-		expect(pinToggle!.checked).toBe(true);
+		expect(checkboxes.find((cb) => cb.disabled && cb.checked)).toBeUndefined();
 
 		// The consequence sentence, verbatim.
 		expect(
 			screen.getByText(/older code will run against data the newer version has already written/)
 		).toBeInTheDocument();
+	});
+
+	// A rollback out of a NON-production environment pins too (`mustPin`
+	// does not read `intent.production`), so it gets the same sentence, not
+	// the toggle either — the shape is uniform, only the target word and the
+	// tier (`notice` here, `typed` in the test above) differ.
+	test('rolling back a non-production rollout states the pin as a sentence too', async () => {
+		const rollout = rolloutFixture({
+			metadata: { name: 'hello-world-app', namespace: 'hello-world-dev', labels: { environment: 'dev' } },
+			status: {
+				availableReleases: [
+					{ tag: 'old', version: '0afab6f', created: daysAgo(10) },
+					{ tag: 'new', version: '064b655', created: daysAgo(1) }
+				],
+				gates: [{ name: 'ghd-open', passing: true, allowedVersions: null }],
+				conditions: [{ type: 'GatesPassing', status: 'True' }],
+				history: [{ version: { tag: 'new', version: '064b655' }, bakeStatus: 'Succeeded', timestamp: daysAgo(1) }]
+			}
+		});
+		renderModal({ rollout, initialSelectedVersion: 'old' });
+
+		expect(screen.getByText(/Dev will be pinned to 0afab6f\./)).toBeInTheDocument();
 	});
 });
 

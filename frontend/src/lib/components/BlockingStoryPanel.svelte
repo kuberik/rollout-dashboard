@@ -153,6 +153,17 @@
 	 * holds what the banner does not: which object, of what kind, on what
 	 * clock, under what name. `GateRecord`'s `clearsFor` defaults to null for
 	 * exactly this reason.
+	 *
+	 * ⛔ THE COLOUR NO LONGER SWITCHES ON `pinnedTo` HERE. (F2, 2026-09-03)
+	 * This used to render `severity={story.pinnedTo ? 'pinned' : story.severity}`
+	 * — a hand-picked ORANGE for the pin case, ignoring the `info` (blue)
+	 * `blockingStory()` itself already computes for that branch. Orange is
+	 * not this product's hue for "a state a person chose"; blue is
+	 * (`Rolled back`, two panels down on rollout detail, already spends it
+	 * for the identical reason). `story.severity` is the one place the rule
+	 * lives now (see its own doc comment in `blocking-story.ts`) — a caller
+	 * that re-derives colour from `pinnedTo` can drift from it exactly as
+	 * this one did.
 	 */
 </script>
 
@@ -173,7 +184,7 @@
 	     disclosure its own test file forbids. With no gates the story still has
 	     a `resolution`, so it falls back to the sentence form and `Details`. -->
 	<AlertPanel
-		severity={story.pinnedTo ? 'pinned' : story.severity}
+		severity={story.severity}
 		title={story.headline}
 		message={story.consequence}
 		footnote={gates.length === 0 ? story.resolution : undefined}
@@ -182,6 +193,6 @@
 		{icon}
 		{actions}
 		class={className}
-		pulse={story.severity === 'warning' && !story.pinnedTo}
+		pulse={story.severity === 'warning'}
 	/>
 {/if}

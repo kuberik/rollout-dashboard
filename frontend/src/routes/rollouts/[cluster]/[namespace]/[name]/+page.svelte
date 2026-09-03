@@ -2326,8 +2326,17 @@
 						/>
 
 						<!-- Available Upgrades card (full width) -->
+						<!-- ⭐ 8px, NOT 12px. (F10, 2026-09-03 re-check) This was the
+						     only `rounded-xl` card on a page whose every other card
+						     (`Card.svelte`, `DeploymentPipelineCard`, the resources
+						     list) is `rounded-lg` (8px) — `COMPOSITION-GRAMMAR.md` §2
+						     reserves 12px for the OUTERMOST panel (the hero status
+						     card above, which deliberately has no header bar and is
+						     not one of this stack's cards) and 8px for everything in
+						     the stack. This card has a header bar and sits in the
+						     stack, so it takes the stack's radius. -->
 						<div
-							class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+							class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
 						>
 							<!-- Header -->
 							<!--
@@ -2742,8 +2751,15 @@
 							<div
 								class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 							>
+								<!-- ⭐ `min-h-[47px]`, LIKE EVERY OTHER CARD HEADER. (NIT,
+								     2026-09-03 re-check) This was a hand-rolled header with
+								     no height floor — 45px, against the 47px `Card.svelte`
+								     enforces everywhere else, because a header with no
+								     rollup measures a line box 2px shorter than one with a
+								     chip on it. Same fix `Card.svelte`'s own doc comment
+								     already made the rule for. -->
 								<div
-									class="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+									class="flex min-h-[47px] items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 								>
 									<ArrowUpRightFromSquareOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 									<h2 class="text-sm font-semibold text-gray-900 dark:text-white">

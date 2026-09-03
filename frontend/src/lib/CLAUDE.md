@@ -344,3 +344,131 @@ arrived** — a rhythm defect that only exists for one frame and is therefore ne
 screenshotted. `/rollouts/…/diff/<version>` was `py-8` outright, 32px against everyone
 else's 24. All four are `pt-6` now. When you touch a container, grep the file for its
 `{#if loading}` and `{:else if error}` siblings.
+
+## The banner hue rule (F2, 2026-09-03, design pass 8 re-check)
+
+**Blocked by a RULE (contract, promotion order, schedule, health check, approval) is
+amber (`warning`). A STATE A PERSON CHOSE (pinned, rolled back) is blue (`info`). Failed
+is red (`error`), but `blocking-story.ts` never models a failure — that's `FailurePanel`'s
+severity, chosen separately. The gate KIND (`iconKind`) picks only the GLYPH, never the
+colour.**
+
+Measured live: `/rollouts/dev/hello-world-dev/hello-world-app`'s banner ("Automatic
+deploys are paused / 1 newer build is waiting") rendered **blue**, identical to the
+"Rolled back" notice below it, because `blockingStory()`'s `severity` field was
+`selfClearing ? 'info' : 'warning'` — and a schedule-only block (nobody has to get up) is
+`selfClearing: true`. That question (`selfClearing`, "does a person have to act") is real
+and still governs other copy, but it is not the same question as "is this a rule or a
+choice", and conflating them painted a rule blue. `severity` is `'warning'` unconditionally
+now for every non-pinned blocked story; the pin branch alone stays `'info'` (a pin is the
+one choice this story itself renders).
+
+`BlockingStoryPanel` used to override this with `severity={story.pinnedTo ? 'pinned' :
+story.severity}` — a hand-picked ORANGE for the pin case that ignored the model's own
+`'info'`. That override is gone; the panel reads `story.severity` directly. Verified live:
+pinning `hello-world-dev/hello-world-app` via a rollback (rollback always pins) rendered
+the blue "Rolled back" panel — `Went back 1 release, 0afab6f → 6f9524e, and pinned
+there.` — and clearing the pin returned the schedule-only case to amber. The two states
+never render as the same colour.
+
+⚠️ **`AlertPanel`'s own `pinned` severity variant (orange) is untouched** — it is still
+spent by `/apps` and `/apps/[name]`'s own hand-rolled pin banners (`severity: 'pinned'`,
+not sourced from `blocking-story.ts`), which this pass does not own. Only
+`BlockingStoryPanel`'s call site was fixed.
+
+## Production is a ceiling now, not a direction-dependent step (B3, 2026-09-03)
+
+**Any change to a PRODUCTION rollout — forward or rollback — requires the typed
+confirmation (`confirmLevel` returns `'typed'`).** `deploy-risk.ts`'s `confirmLevel` used
+to exempt a vouched forward deploy and EVERY rollback from typing once the target was
+production; a live walk found a production rollback was two taps with no typed
+confirmation, a non-alarm BLUE primary (`Roll back production`), a `Pin Version` toggle
+rendered `disabled checked` (reads as OFF, not "locked on"), and no stated distance. The
+forward force-deploy dialog on the identical rollout demanded the typed sha and a red
+button for the same class of change. Non-production is untouched: a rollback there still
+gets the soft `notice` path (no typing) — "a rollback is the fast 3am recovery" still
+holds, just not as an excuse to skip ceremony on the one tier a mistake costs the most.
+
+- **A locked `Pin Version` control renders as a SENTENCE, not a disabled toggle.**
+  `mustPin` (rollback, forced-pin mode, or a custom tag) means the setting has exactly one
+  possible value, which is a fact, not a control. `ChangeVersionModal` prints `"${target}
+  will be pinned to ${version}."` instead of a switch nobody can flip — a disabled+checked
+  toggle rendered with the SAME muted-grey vocabulary the product uses for "not set"
+  everywhere else, so it read as off regardless of its actual position.
+- **The rollback confirmation states the DISTANCE** (`Goes back N build(s) to a version …`),
+  reusing the same `releaseIndex` arithmetic the picker's own `N back` row already shows —
+  the dialog had dropped the number the picker had just told the reader.
+- **`typedPrompt`'s rollback branch does not claim "nothing has vouched for this build".**
+  That sentence is true of an unvouched FORWARD deploy; a rollback target already ran here
+  successfully, which is the whole reason it is safe to return to. It says `"This changes
+  ${target}. Type"` instead — the TIER, not a false claim about vouching.
+- **The header wraps the app name, never truncates it**, in every `ChangeVersionModal`
+  dialog — a destructive confirmation cannot hide the one word naming what it acts on.
+
+## GitHub absence: ask the STATUS query, not the query that failed (P14, 2026-09-03)
+
+`ChangeVersionModal`'s generic `commitsQuery.isError` branch used to say
+`githubAbsenceSentence(undefined, { unreachable: true })` — "GitHub did not answer." —
+unconditionally, whatever the commits endpoint's error body actually contained. A live
+walk found the SAME 401, on the SAME cluster config, diagnosed two different ways: the
+rollback dialog (which reaches the `not_connected` branch, keyed off `githubStatusQuery`)
+correctly said "GitHub is not configured for this dashboard.", while the force-deploy
+dialog on the same rollout hit this generic branch and said "did not answer" — because the
+commits endpoint's error body does not always carry the `github_not_connected` marker
+`fetchCommitRange` classifies on, even when the status query already knows the true cause.
+Both the `isError` branch and its sibling ("query never ran") now check
+`githubStatusQuery.data` FIRST and only fall back to "did not answer" when the status
+query has nothing to say (still loading) or reports GitHub genuinely connected.
+
+## AlertPanel's disclosure gets the full width below 700px, `actions` moves to its own row (P5, 2026-09-03)
+
+`.ap-disclosure-cell` (the `› N rules` control) used to stop at `col-end-3` at every
+width, on the stated reason that column 3 "belongs to `actions` on this row" — true at
+`sm`+, false below the banner's own 700px container-query threshold, where `actions` sits
+on an entirely separate row (`row-start-4`, spanning the full width) precisely because
+column 3 is too narrow there for a real control. Measured: an open `› 1 rule` disclosure
+on `/apps/hello-frontend-app` at 390 rendered a **50px-wide, 491px-tall** column (13
+one-word lines) beside 196px of dead grid track. Fixed: the disclosure spans `col-end-4`
+below 700px (reclaimed in the `@container (min-width: 700px)` block once `actions` returns
+to column 3), and `actions` itself moved from sharing the disclosure's row to
+`row-start-4`, its own full-width row underneath. Verified: `detailsWidth` 247/343px
+(72%), `detailsHeight` 100–188px (down from 491), `actions` below the disclosure in both
+themes.
+
+## The card header rollup is hard-right at every width, via `justify-between` (F13, 2026-09-03)
+
+`Card.svelte`'s header used `margin-left: auto` on the rollup, gated by a `@container
+(min-width: 640px)` threshold keyed to the CARD's own width — meant to stop the rollup
+floating far right on a line it had wrapped onto alone (a real defect, once). But the
+640px number cannot know whether THIS card's title+rollup actually fit one line; measured,
+a 593px card put its rollup title-adjacent while a 711px card put the identical shape
+hard-right 17px from the edge. Fixed: the header is `justify-between` unconditionally, no
+container query. Flexbox's own single-item rule does the rest — `space-between` with two
+items on one line pushes them to the line's ends (hard right); a rollup wrapped alone onto
+its own line has nothing to space itself against and lands at `flex-start` (flush left,
+under the title) instead of floating in the middle of a mostly-empty line. Verified on `/`:
+delta (`cardRight − rollupRight`) is 17px on every header, at 1440 and 390, light and dark.
+
+## Rail headers: the rollup IS the link below the card's own 640px (F7, 2026-09-03)
+
+A rail card's "N deploys" count and its "View all activity ›" link, as two separate
+flex-wrap children, do not both fit a ~320px rail column — they wrapped to a second line,
+measuring 65px against every other header's 47px. `HomeRail.svelte`'s `Recent activity`
+card now renders ONE control below the card's own 640px width (`.ra-narrow`, `.nav-link`):
+`{n} deploys ›` with `aria-label="View all activity"` supplying the verb the visible text
+leaves out. `.ra-wide` (the old two-piece `N deploys · View all activity ›` form) is kept,
+toggled in with `display: revert` past 640px, for a card wide enough to afford it — none of
+`/`'s own rail is. **Not yet applied to `/apps`, `/envs/[name]`, `/namespaces/[name]`'s
+identical hand-rolled copies of this same snippet** — those three files were already under
+concurrent edit by other lanes at the time of this pass and were left alone; they still
+measure 65px/98–121px delta and need the identical `.ra-narrow`/`.ra-wide` treatment.
+
+## AlertPanel's radial glow blob (F12, 2026-09-03)
+
+`pointer-events-none absolute inset-0 overflow-hidden` held two `blur-3xl`/`blur-2xl`
+gradient discs (`palette.glowA`/`glowB`) UNDER the flat-tint container the 2026-09-02 pass
+believed had already killed every status-driven gradient — that pass measured and replaced
+the container's own `background`, never looked one layer down. Deleted, both discs, both
+fields. Not the same element as `pulse`'s `animate-alert-halo` ping (a ring on the 40px
+icon disc, kept — the human asked to keep the pulse, only ever complaining about its
+*position*).
