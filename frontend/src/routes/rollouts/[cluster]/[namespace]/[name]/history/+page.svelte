@@ -1289,7 +1289,7 @@
 													selectedVersionTag = entry.version.tag;
 													if (rollout?.status?.history && rollout.status.history.length > 0) {
 														const cur = rollout.status.history[0].version;
-														deployExplanation = `Rollback from ${getDisplayVersion(cur)} to ${getDisplayVersion(entry.version)} due to issues with the current deployment.`;
+														deployExplanation = ''; // the operator writes the reason; nothing is pre-asserted
 													}
 													showChangeVersionModal = true;
 												}}

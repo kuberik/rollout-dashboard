@@ -2650,7 +2650,10 @@
 														isPinVersionMode = true;
 														selectedVersion = rollbackNow.tag;
 														const currentVersionName = getDisplayVersion(running);
-														deployExplanation = `Rollback from ${currentVersionName} to ${rollbackDisplay} due to issues with the current deployment.`;
+														// ⛔ NO PRE-WRITTEN REASON. (2026-09-03, operator walk) A cause nobody
+														// asserted was landing in the deploy history. The note is required;
+														// the operator writes it.
+														deployExplanation = '';
 														requestChangeVersionModal();
 													}
 												}}

@@ -165,7 +165,7 @@
 		const current = history[0];
 		const previous = history[1];
 		rollbackVersionTag = previous.version.tag;
-		rollbackExplanation = `Rollback from ${getDisplayVersion(current.version)} to ${getDisplayVersion(previous.version)} due to issues with the current deployment.`;
+		rollbackExplanation = ''; // the operator writes the reason; nothing is pre-asserted
 		showRollbackModal = true;
 	}
 </script>

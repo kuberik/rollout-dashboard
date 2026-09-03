@@ -2329,9 +2329,7 @@
 		modalRollout = cell.rollout;
 		modalPin = true;
 		modalVersion = previousTag(cell);
-		modalExplanation = target
-			? `Rollback from ${cellVersion(cell)} to ${target} due to issues with the current deployment.`
-			: '';
+		modalExplanation = ''; // the operator writes the reason; nothing is pre-asserted
 		modalCluster = cellCluster(cell);
 		modalOpen = true;
 	}
