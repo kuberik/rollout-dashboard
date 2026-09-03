@@ -1219,10 +1219,10 @@
 											>{displayVersion}</span
 										>
 										{#if isCurrent}
-											<Badge color="green" class="text-[10px]">Current</Badge>
+											<Chip role="count" label="current" />
 										{/if}
 										{#if isPinned}
-											<Badge color="blue" class="text-[10px]">Pinned</Badge>
+											<Chip role="count" label="pinned" />
 										{/if}
 										<!-- ⭐ THE PICKER SAYS `held` WHERE THE PAGE BEHIND IT DOES.
 										     (operator walk, 2026-09-03) A newer build the rules do
@@ -1231,7 +1231,7 @@
 										     rules is one tap away. Same chip as rollout detail's
 										     upgrade list; the confirm step still spells the rules out. -->
 										{#if isHeld}
-											<Chip role="blocked" label="held" />
+											<Chip role="held" label="held" />
 										{/if}
 									</div>
 									{#if pickerLine || rank}
