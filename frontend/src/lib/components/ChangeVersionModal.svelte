@@ -1351,6 +1351,16 @@
 						<!-- Changelist -->
 						{#if direction !== 'same'}
 							<div>
+								{#if compareBase && compareHead && compareBase === compareHead}
+									<!-- The one fact that decides whether a bypass is safe: two
+									     releases of the same commit ship no code. (operator walk,
+									     2026-09-03 — rel-66 and rel-67 share 9f10e49, and the dialog
+									     only said GitHub was not connected.) -->
+									<p class="mb-2 text-sm text-gray-700 dark:text-gray-200">
+										Same commit as the running build (<code class="t-code-sm">{compareHead.slice(0, 7)}</code>)
+										— only the release changed. No code moves.
+									</p>
+								{/if}
 								<div class="mb-2 flex items-center justify-between">
 									<!-- A section title at the card-title role, not a tracked
 									     eyebrow over a prose sentence (`lib/CLAUDE.md` bans the
