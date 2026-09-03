@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { buildRevisionLedger } from './revision-ledger';
-import { revisionCoverage, coverageSegments, COVERAGE_ORDER } from './revision-coverage';
+import {
+	revisionCoverage,
+	coverageSegments,
+	COVERAGE_ORDER,
+	buildState,
+	releaseSplit,
+	type RevisionCoverage,
+	type CoverageSlotVM
+} from './revision-coverage';
 import type { Environment, Rollout } from '../../types';
 
 /**
@@ -183,18 +191,40 @@ describe('revisionCoverage', () => {
 		return new Date(Date.now() - m * 60_000).toISOString();
 	}
 
-	it('does not call a held release "live" because an older release shares its revision', () => {
+	/**
+	 * ⛔ (2026-09-03, operator-walk BLOCKING item — supersedes the assertion
+	 * this test used to make.) Every place running rel-66 IS running the
+	 * revision — `onIt` is a git-sha match and does not care which release
+	 * tag is on screen. Filing all three under `notYet` was the false claim
+	 * an operator read as "PROD has not gotten this build" about a place
+	 * that had run it for days. `live` now means exactly "running the
+	 * revision", full stop; `onOwnRelease` (below) is the separate, narrower
+	 * fact about whether it is on the row's own headline release of it.
+	 */
+	it('counts a place running an OLDER release of the revision as live, not "not here yet"', () => {
 		const repo = heldRevisionFixture();
 		// One row: both releases share the revision, so the ledger groups them.
 		expect(repo.rows).toHaveLength(1);
 		const row = repo.rows[0];
 		const cov = revisionCoverage(row, new Date());
-		// Every place is running rel-66, not rel-67 — the row's own (newest)
-		// release has landed NOWHERE, so nothing may read as `live`.
-		expect(cov.liveCount).toBe(0);
-		const notYet = cov.buckets.find((b) => b.key === 'notYet');
-		expect(notYet?.slots.length).toBe(3);
-		expect(cov.buckets.some((b) => b.key === 'live')).toBe(false);
+		// All three run the revision — 3 of 3, not 0 of 3.
+		expect(cov.liveCount).toBe(3);
+		expect(cov.totalCount).toBe(3);
+		const live = cov.buckets.find((b) => b.key === 'live');
+		expect(live?.slots.length).toBe(3);
+		expect(cov.buckets.some((b) => b.key === 'notYet')).toBe(false);
+		// None of them are on the row's OWN release (rel-67, held) — they are
+		// on the older one (rel-66) that shares its revision.
+		expect(live?.slots.every((s) => s.onOwnRelease === false)).toBe(true);
+		expect(live?.slots.every((s) => s.runs === '1.66.0-66')).toBe(true);
+		expect(live?.slots.every((s) => s.label === '1.67.0-67')).toBe(true);
+	});
+
+	it('does not mark a place "on its own release" merely for sharing the revision', () => {
+		const repo = heldRevisionFixture();
+		const cov = revisionCoverage(repo.rows[0], new Date());
+		const live = cov.buckets.find((b) => b.key === 'live')!;
+		expect(live.slots.map((s) => s.onOwnRelease)).toEqual([false, false, false]);
 	});
 
 	it('keeps a release "live" when the environment is genuinely on this row\'s own build', () => {
@@ -203,5 +233,138 @@ describe('revisionCoverage', () => {
 		// The ordinary case — no second release sharing the revision — must be
 		// byte-identical to before: three places are live, not reclassified.
 		expect(counts(head)).toEqual({ live: 3, notYet: 1 });
+	});
+
+	/** Same shape as `heldRevisionFixture`, plus the gate the live cluster
+	 *  fixture actually carries — a contract with an empty allow-list, which
+	 *  refuses the newer release (rel-67) everywhere. */
+	function heldRevisionFixtureWithGate() {
+		const sha = 'eeeeeee0000000000000000000000000000000';
+		const older = { tag: 'main-66', version: '1.66.0-66', revision: sha, created: minsAgo(120) };
+		const newer = { tag: 'main-67', version: '1.67.0-67', revision: sha, created: minsAgo(10) };
+		const gated = (r: Rollout): Rollout => {
+			r.status!.gates = [{ name: 'dependency-hello-frontend-needs-api', allowedVersions: [] }];
+			return r;
+		};
+		const rollouts = [
+			gated(
+				rollout('hello-frontend-app', 'hfa-dev', [newer, older], [{ r: older, minutesAgo: 5 }])
+			),
+			gated(
+				rollout(
+					'hello-frontend-app',
+					'hfa-staging',
+					[newer, older],
+					[{ r: older, minutesAgo: 5 }]
+				)
+			),
+			gated(
+				rollout('hello-frontend-app', 'hfa-prod', [newer, older], [{ r: older, minutesAgo: 3 }])
+			)
+		];
+		const environments = [
+			environment('hello-frontend-app', 'hfa-dev', 'dev'),
+			environment('hello-frontend-app', 'hfa-staging', 'staging'),
+			environment('hello-frontend-app', 'hfa-prod', 'prod')
+		];
+		return buildRevisionLedger(rollouts, environments)[0];
+	}
+
+	/**
+	 * ⭐ THE RELEASE-LINE CLAUSE — the fact `classify()` folds into `live`
+	 * without saying which release. (2026-09-03, operator-walk BLOCKING item)
+	 */
+	describe('releaseSplit', () => {
+		it("is empty when every live place is on the row's own release — the ordinary case", () => {
+			const repo = fixture();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			expect(releaseSplit(cov)).toEqual([]);
+		});
+
+		it("names the older release, the count, the places, and the row's own release they have not taken", () => {
+			const repo = heldRevisionFixture();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const lines = releaseSplit(cov);
+			expect(lines).toHaveLength(1);
+			expect(lines[0].behindLabel).toBe('1.66.0-66');
+			expect(lines[0].count).toBe(3);
+			expect(lines[0].aheadLabel).toBe('1.67.0-67');
+			expect(lines[0].envLabels.slice().sort()).toEqual(['dev', 'prod', 'staging']);
+			// No gate on this fixture — no evidence, so no "held" claim.
+			expect(lines[0].held).toBe(false);
+		});
+
+		it('says `held` only when every one of the places has real gate evidence', () => {
+			const repo = heldRevisionFixtureWithGate();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const lines = releaseSplit(cov);
+			expect(lines).toHaveLength(1);
+			expect(lines[0].held).toBe(true);
+		});
+	});
+
+	/**
+	 * ⛔ NOT `fully rolled out` WHILE A RELEASE OF THE REVISION IS HELD.
+	 * (2026-09-03, operator-walk BLOCKING item) `liveCount === totalCount`
+	 * alone used to be the ONLY test `done` made — true here (3 of 3), and
+	 * still false: the row's own headline release has landed nowhere.
+	 */
+	describe('buildState — the held-release case', () => {
+		it("is `held`, never `done`, when a live place is not on the row's own release", () => {
+			const repo = heldRevisionFixture();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const state = buildState(cov);
+			expect(state.key).toBe('held');
+			expect(state.word).not.toContain('fully rolled out');
+			expect(state.word).toContain('on an older release of it');
+		});
+
+		it('names the gate-held case with its own word when there is real gate evidence', () => {
+			const repo = heldRevisionFixtureWithGate();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const state = buildState(cov);
+			expect(state.key).toBe('held');
+			expect(state.word).toBe('held in 3 places');
+		});
+
+		it('stays `done` in the ordinary case — every live place IS on its own release', () => {
+			// Hand-built rather than derived from a row: the fixtures above have
+			// no shape that is fully converged with nothing else to say, and
+			// `done` is exactly the absence of every other bucket AND of any
+			// held-behind slot.
+			const slot = (envLabel: string): CoverageSlotVM => ({
+				key: 'live',
+				appName: 'api',
+				envName: envLabel.toLowerCase(),
+				envLabel,
+				slot: {} as CoverageSlotVM['slot'],
+				label: '1.3.0',
+				labelDiffers: true,
+				dotClass: '',
+				statusWord: 'deploy succeeded',
+				stuck: false,
+				runs: '1.3.0',
+				currentRank: 0,
+				revRank: 0,
+				onOwnRelease: true,
+				gap: 0,
+				blockingGates: [],
+				awaitingApprovalGates: [],
+				notPassingGates: [],
+				candidate: false,
+				promoteTag: null,
+				rolloutRef: null
+			});
+			const slots = [slot('DEV'), slot('PROD')];
+			const cov: RevisionCoverage = {
+				liveCount: 2,
+				totalCount: 2,
+				buckets: [{ key: 'live', title: 'Running it now', description: '', slots }],
+				reachable: true
+			};
+			const state = buildState(cov);
+			expect(state.key).toBe('done');
+			expect(state.word).toBe('fully rolled out');
+		});
 	});
 });

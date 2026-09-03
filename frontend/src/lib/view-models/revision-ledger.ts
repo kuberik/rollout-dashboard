@@ -263,6 +263,20 @@ type ServiceCtx = {
 	/** revision key → what this service labels it. */
 	labelByKey: Map<string, string>;
 	/**
+	 * ⭐ DISPLAY VERSION → ITS OWN TAG, THE PARALLEL FIX TO `label`'s
+	 * `placed.version` ONE. (2026-09-03, operator-walk BLOCKING item)
+	 * `tagByKey` has the SAME "first noted wins" collapse `labelByKey` had —
+	 * two releases sharing one revision (rel-66/rel-67) keep whichever tag
+	 * `note()` saw FIRST (oldest-first `availableReleases`, so rel-66's), so
+	 * `revisionCoverage.ts`'s `candidate` check compared the CURRENT release's
+	 * tag against rel-66's own when it needed rel-67's — the tag `service.rank`
+	 * and `service.label` both actually name. Keyed by DISPLAY VERSION rather
+	 * than by revision, so it cannot collapse two releases that share a
+	 * revision into one entry the way `tagByKey` does: every release has its
+	 * own, unique display version even when it shares a commit with another.
+	 */
+	tagByVersion: Map<string, string>;
+	/**
 	 * Display version → revision key. A `status.history` entry frequently omits
 	 * the revision that its `availableReleases` twin carries — `buildLadder`
 	 * already merges the two into one record per build, so this map is how a
@@ -301,6 +315,7 @@ function contextFor(group: AppGroup): ServiceCtx {
 	}
 	const tagByKey = new Map<string, string>();
 	const labelByKey = new Map<string, string>();
+	const tagByVersion = new Map<string, string>();
 	const note = (raw: { tag?: string; version?: string; revision?: string } | undefined | null) => {
 		if (!raw) return;
 		const label = getDisplayVersion(raw as { version?: string; revision?: string; tag: string });
@@ -309,6 +324,10 @@ function contextFor(group: AppGroup): ServiceCtx {
 		const tag = tagOf(raw);
 		if (tag && !tagByKey.has(key)) tagByKey.set(key, tag);
 		if (label && !labelByKey.has(key)) labelByKey.set(key, label);
+		// Unlike `tagByKey`, this one CANNOT collapse two releases: `label` is
+		// the exact display version, unique to this one release even when it
+		// shares `key` (the revision) with another.
+		if (label && tag && !tagByVersion.has(label)) tagByVersion.set(label, tag);
 	};
 	for (const c of group.cells) {
 		for (const rel of c.rollout.status?.availableReleases ?? []) note(rel);
@@ -320,6 +339,7 @@ function contextFor(group: AppGroup): ServiceCtx {
 		byKey,
 		tagByKey,
 		labelByKey,
+		tagByVersion,
 		keyByVersion,
 		cells: group.cells,
 		lagByCell: rankVerdicts(group)
@@ -366,7 +386,6 @@ function buildRow(
 		const label0 = ctx.labelByKey.get(revision);
 		if (label0 === undefined) continue; // this service has never seen the build
 		const placed = ctx.byKey.get(revision);
-		const tag = ctx.tagByKey.get(revision) ?? null;
 		/**
 		 * ⛔ THE LABEL NOW COMES FROM `placed` — THE SAME RELEASE `rank`
 		 * NAMES — NEVER FROM `labelByKey` ALONE. (2026-09-02)
@@ -399,6 +418,15 @@ function buildRow(
 		 * label was the only field that was wrong; only it moves.
 		 */
 		const label = placed ? placed.version : label0;
+		// ⭐ THE TAG NOW FOLLOWS `label`, THE PARALLEL FIX. (2026-09-03) Same
+		// reasoning as the label move above: `tagByKey` keeps whichever tag
+		// `note()` saw FIRST for this revision, which can be the OLDER release
+		// when two share a commit. `tagByVersion` is keyed on the exact
+		// release `label` now names, so the two can no longer point at
+		// different releases — `revisionCoverage.ts`'s `candidate` check reads
+		// this `tag` to decide whether the release the row is ABOUT is a real,
+		// gate-checkable candidate.
+		const tag = ctx.tagByVersion.get(label) ?? ctx.tagByKey.get(revision) ?? null;
 
 		const slots: RevisionSlot[] = ctx.cells
 			.map((cell) => {

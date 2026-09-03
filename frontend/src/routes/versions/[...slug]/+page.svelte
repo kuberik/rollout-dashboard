@@ -26,9 +26,11 @@
 		revisionCoverage,
 		coverageSwatch,
 		coverageSegments,
+		releaseSplit,
 		type CoverageKey,
 		type CoverageSlotVM
 	} from '$lib/view-models/revision-coverage';
+	import { joinClauses } from '$lib/view-models/blocking-story';
 	import { formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -252,12 +254,49 @@
 			: '';
 	}
 
-	const blockedSlots = $derived.by<CoverageSlotVM[]>(
-		() =>
-			coverage?.buckets
-				.find((b) => b.key === 'notYet')
-				?.slots.filter((s) => s.blockingGates.length > 0) ?? []
-	);
+	/**
+	 * ⛔ NOT ONLY `notYet` ANY MORE. (2026-09-03, operator-walk BLOCKING item)
+	 * `classify()` no longer routes a place on an OLDER release of this
+	 * revision through `notYet` — it is `live`, correctly, because it IS
+	 * running the revision. It still has exactly the same gate question a
+	 * `notYet` place has (`onOwnRelease: false` on a `live` slot is the same
+	 * evidence `revision-coverage.ts` computes `blockingGates` for now), so
+	 * the banner below must keep seeing it or the disclosure — the rule
+	 * names, the clock — silently vanishes the moment the false `Not here
+	 * yet` count is fixed.
+	 */
+	const blockedSlots = $derived.by<CoverageSlotVM[]>(() => {
+		if (!coverage) return [];
+		const notYet = coverage.buckets.find((b) => b.key === 'notYet')?.slots ?? [];
+		const behind =
+			coverage.buckets.find((b) => b.key === 'live')?.slots.filter((s) => !s.onOwnRelease) ?? [];
+		return [...notYet, ...behind].filter((s) => s.blockingGates.length > 0);
+	});
+
+	/**
+	 * ⭐ THE RELEASE-LINE CLAUSE, AS ITS OWN SENTENCE. (2026-09-03,
+	 * operator-walk BLOCKING item) `coverage.liveCount` of `coverage.totalCount`
+	 * answers "does this place run the revision" — the head band's job. It
+	 * says nothing about WHICH release, and folding that into the count is
+	 * the defect this whole pass exists to close: a place on an older release
+	 * sharing the revision is not "not here yet". `releaseSplit` is the
+	 * missing half, read straight off the SAME `live` bucket, and this turns
+	 * it into the sentence the head band prints under the count: *"3 of them
+	 * on 2.66.0-66; 2.67.0-67 is held in dev, staging and prod."*
+	 */
+	const releaseSplitLines = $derived(coverage ? releaseSplit(coverage) : []);
+
+	function releaseSplitSentence(): string {
+		return releaseSplitLines
+			.map((l) => {
+				const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
+				const clause = l.held
+					? `${l.aheadLabel} is held in ${envs}`
+					: `${l.aheadLabel} has not reached ${envs} yet`;
+				return `${l.count} of them on ${l.behindLabel}; ${clause}.`;
+			})
+			.join(' ');
+	}
 
 	$effect(() => {
 		for (const s of blockedSlots) {
@@ -558,8 +597,28 @@
 		return out;
 	}
 
+	/**
+	 * ⛔ `NEWEST` ON A RELEASE DEPLOYED NOWHERE IS THE SAME LIE AS `NEWEST` ON
+	 * ONE DEPLOYED EVERYWHERE. (2026-09-03, operator-walk BLOCKING item)
+	 * `svc.rank === 0` is true of the row's own headline release whether or
+	 * not anyone has actually taken it — it is a fact about the LADDER, not
+	 * about deployment. `NEWEST` beside `2.67.0-67` here read exactly like
+	 * `NEWEST` beside `1.66.0-66` on an ordinary, fully-arrived row: one badge,
+	 * two different meanings, and nothing on the card said which one this
+	 * was. `heldNewest` is true only when the coverage bar's OWN `live`
+	 * bucket agrees nobody is on this exact release yet (`onOwnRelease` —
+	 * same field the release-line clause above reads), so the chip and the
+	 * clause cannot disagree about the same fact.
+	 */
+	function heldNewest(svc: RevisionService): boolean {
+		if (!coverage || svc.rank !== 0) return false;
+		const live = coverage.buckets.find((b) => b.key === 'live');
+		const mine = live?.slots.filter((s) => s.appName === svc.appName) ?? [];
+		return mine.length > 0 && mine.every((s) => !s.onOwnRelease);
+	}
+
 	function rankChipFor(svc: RevisionService): {
-		role: 'newest' | 'rank' | 'diverged';
+		role: 'newest' | 'rank' | 'diverged' | 'held';
 		label: string;
 	} | null {
 		const r = rankSentence(svc);
@@ -572,6 +631,7 @@
 		// this call site cannot drift again. Same `diverged` Chip ROLE, same
 		// colour value; only the string moves.
 		if (svc.diverged) return { role: 'diverged', label: rankLabel({ kind: 'diverged' }) };
+		if (heldNewest(svc)) return { role: 'held', label: 'held' };
 		return { role: svc.rank === 0 ? 'newest' : 'rank', label: r.rank };
 	}
 </script>
@@ -682,6 +742,19 @@
 				>of {coverage.totalCount} places running it</span
 			>
 		</div>
+
+		<!--
+			⭐ THE RELEASE-LINE CLAUSE. (2026-09-03, operator-walk BLOCKING item)
+			`6 of 6 places running it` is true and, on its own, misleading the
+			moment two releases share this revision: it does not say that three
+			of them are on an OLDER release than the one this row is named for.
+			Rendered ONLY when `releaseSplitLines` is non-empty — the ordinary
+			case (everyone live is on the row's own release) has nothing to add
+			here and stays exactly the single count line above.
+		-->
+		{#if releaseSplitLines.length > 0}
+			<p class="t-body -mt-2 mb-5 text-gray-500 dark:text-gray-400">{releaseSplitSentence()}</p>
+		{/if}
 
 		<!--
 			THE ONE BLOCKING FACT, AS A FILLED FIELD. `AlertPanel` IS the object
@@ -899,9 +972,11 @@
 										label={chip.label}
 										title={svc.diverged
 											? 'On no environment’s release list — promotion does not arrive at it'
-											: chip.role === 'newest'
-												? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`
-												: `${chip.label} the newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
+											: chip.role === 'held'
+												? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy — not running anywhere yet`
+												: chip.role === 'newest'
+													? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`
+													: `${chip.label} the newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
 										value={svc.label}
 										valueTitle={svc.label}
 										wide
@@ -1188,6 +1263,34 @@
 													<span class="t-micro ml-auto text-gray-500 dark:text-gray-400"
 														>now on <span class="t-code-sm">{rg.runs}</span></span
 													>
+												{:else if bucket.key === 'live' && rg.slots.some((s) => !s.onOwnRelease)}
+													<!--
+														⭐ THE RELEASE EACH PLACE RUNS, SAID ONCE THE ROW HAS
+														TWO TO CHOOSE FROM. (2026-09-03, operator-walk
+														BLOCKING item) `live` used to mean "running the row's
+														OWN release" by construction, so a place here never
+														needed to say which release — it was always this
+														one. Now `live` means "running the revision", and a
+														place on an OLDER release sharing it (rel-66 while
+														the row is named for rel-67) is exactly the deviation
+														this product's whole design marks: the ordinary case
+														(every place onOwnRelease) prints nothing extra, same
+														as before.
+													-->
+													<span
+														class="t-micro ml-auto flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+													>
+														on <span class="t-code-sm">{rg.runs}</span>
+														{#if rg.slots.some((s) => s.blockingGates.length > 0)}
+															<Chip
+																role="held"
+																label="held"
+																title="A newer release of this build exists and no gate lets it through yet"
+															/>
+														{:else}
+															<span>— on an older release of it</span>
+														{/if}
+													</span>
 												{/if}
 											</div>
 										{/each}

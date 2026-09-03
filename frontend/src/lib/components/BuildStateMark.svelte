@@ -44,7 +44,8 @@
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		HourglassOutline,
-		MinusOutline
+		MinusOutline,
+		PauseSolid
 	} from 'flowbite-svelte-icons';
 	import { buildState, type RevisionCoverage } from '$lib/view-models/revision-coverage';
 
@@ -73,10 +74,22 @@
 
 	const state = $derived(buildState(coverage));
 
+	// ⭐ `held` ADDED 2026-09-03 (operator-walk BLOCKING item — see
+	// `revision-coverage.ts`'s `buildState`). A `live` place that is not on
+	// the row's own release of the revision — held by a gate, or simply not
+	// promoted to it yet — is neither `done` nor absent, and reusing
+	// `notYet`'s glyph would say "this place has not taken the REVISION",
+	// which is false: it has. `PauseSolid` is the product's own glyph for
+	// this exact fact everywhere else it is drawn (`BakeStatusIcon.svelte`'s
+	// `held` state, `getStatusCircleClass`), reused rather than invented.
+	// TONE stays `tone-mute`, the SAME two-ink discipline the header comment
+	// above states: a gate correctly refusing a candidate is not adverse, so
+	// it takes no third colour here either.
 	const GLYPH = {
 		failing: ExclamationCircleSolid,
 		notYet: HourglassOutline,
 		ahead: ArrowRightOutline,
+		held: PauseSolid,
 		nowhere: MinusOutline,
 		done: CheckCircleSolid
 	} as const;
@@ -85,6 +98,7 @@
 		failing: 'tone-bad',
 		notYet: 'tone-mute',
 		ahead: 'tone-mute',
+		held: 'tone-mute',
 		nowhere: 'tone-mute',
 		done: 'tone-live'
 	} as const;

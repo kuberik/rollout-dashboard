@@ -82,6 +82,22 @@ export type CoverageSlotVM = {
 	 */
 	gap: number | null;
 	/**
+	 * ⭐ ON THIS REVISION, BUT NOT ON THE ROW'S OWN RELEASE OF IT. (2026-09-03,
+	 * operator-walk BLOCKING item) Two releases can share one revision — a
+	 * rollback re-ships a build already released once before under a new tag
+	 * (`hello-frontend-app` rel-66/rel-67, same commit). `onIt` alone answers
+	 * "is this place running the revision" and now decides `live` on its own
+	 * (see `classify()`); it does NOT answer "is this place running the row's
+	 * own HEADLINE release of it" — `2.67.0-67`, the release `service.rank`
+	 * and `service.label` both name. `onOwnRelease` is that second, narrower
+	 * question: true only when `slot.currentRank === service.rank`, i.e. this
+	 * place is on the EXACT release the row is named for, not merely the same
+	 * commit under an older tag. A `live` slot with `onOwnRelease: false` is
+	 * the deviation this row's "release-line clause" exists to name — see
+	 * `releaseSplit()`.
+	 */
+	onOwnRelease: boolean;
+	/**
 	 * WHY IT HAS NOT ARRIVED — named ONLY from the field that establishes it.
 	 *
 	 * `promotionBlock().blockingGates` is a real gate list or it is empty; when
@@ -422,43 +438,50 @@ export function runningLabel(slot: RevisionSlot): string | null {
 }
 
 /**
- * ⛔ THE TWO-DENOMINATOR BUG, AND WHY `onIt` ALONE CANNOT DECIDE `live`.
- * (2026-09-02) `onIt` is REVISION-scoped (`currentKeyOf(cell, ctx) ===
- * revision`, a git-sha match), but a row's `service.rank` is the rank of the
- * NEWEST release under that revision — `buildRow`'s `byKey` keeps the
- * highest-ranked ladder entry when two releases share one commit (a rollback
- * re-deploying a build already shipped once before under a new tag). Two
- * releases, two tags, two `Build` entries on `build-ladder.ts`'s own ladder
- * (keyed by display version, never by revision) — one row here.
+ * ⛔ `onIt` DECIDES THE BUCKET; THE RANK COMPARISON DECIDES SOMETHING ELSE.
+ * (2026-09-03, operator-walk BLOCKING item — supersedes the 2026-09-02 fix
+ * kept below for the measurement it recorded.)
  *
- * Measured: `hello-frontend-app` rel-66 and rel-67 share revision
- * `9f10e494d560`. Every environment running rel-66 (rel-67 is held
- * everywhere) satisfied `onIt` — same commit — and the old branch returned
- * `live` unconditionally, so the row for `9f10e494d560` read `6 of 6 places
- * running it` / `fully rolled out`, gold tick and all, while rel-67 — the
- * release the row's own `NEWEST` rank names — had landed nowhere.
+ * `onIt` is REVISION-scoped (`currentKeyOf(cell, ctx) === revision`, a
+ * git-sha match): it answers "is this place running the build this ROW is
+ * about", which is the row's own thesis (`/versions` keys rows by revision
+ * precisely so one commit is one row). The 2026-09-02 fix made `live` depend
+ * on a SECOND, narrower question too — is this place on the row's own
+ * HEADLINE release of the revision (`service.rank`), not merely the same
+ * commit under an older tag — and let that second question overrule the
+ * first. Measured on the live cluster: `hello-frontend-app` rel-66 and
+ * rel-67 share revision `9f10e494d560`; every environment ran rel-66 while
+ * rel-67 (held by a contract) had landed nowhere. Gating `live` on rank
+ * equality fixed the FALSE POSITIVE (`6 of 6 · fully rolled out`) by
+ * introducing a FALSE NEGATIVE one bucket over: the SAME three places, which
+ * genuinely run the row's revision, printed `3 of 6 places running it` and
+ * were filed under `Not here yet` — an operator asking "did this reach
+ * PROD?" read `Not here yet — PROD` about a place that had run this exact
+ * commit for days, and went hunting a stuck deploy that did not exist.
+ * Moving the false claim from one sentence to an adjacent one is not a fix.
  *
- * `slot.currentRank` is the environment's lag from the ladder's absolute
- * newest build, which is the SAME numbering `service.rank` is drawn from, so
- * the two are directly comparable. When they disagree while `onIt` is true,
- * the environment is provably on an OLDER release of this revision than the
- * one `service.rank` describes — this row's own release has not arrived
- * there, whatever the git sha says. `ahead` is defensive (a release cannot
- * legitimately outrank the newest release sharing its revision) but keeps
- * the comparison symmetric with the non-`onIt` branch below rather than
- * asserting a direction the data has not earned.
+ * THE TWO QUESTIONS ARE BOTH REAL AND NEITHER MAY ANSWER FOR THE OTHER.
+ * `onIt` decides the BUCKET — `live`/`failing` the moment the commit
+ * matches, full stop, because that is what "running this revision" means and
+ * it is the row's own denominator (`row.liveSlots`, already computed this
+ * way in `revision-ledger.ts` and never wrong). The rank comparison becomes
+ * `onOwnRelease` on the slot instead (below) — a fact ABOUT a `live` slot,
+ * never a gate that reclassifies it out of `live`. A page that wants to say
+ * "these three are on an older release of it, and the newer one is held"
+ * reads `onOwnRelease` and `blockingGates`; it does not need — and must not
+ * need — a bucket named `Not here yet` to say something that IS here.
  */
 function classify(service: RevisionService, slot: RevisionSlot, state: SlotState): CoverageKey {
-	// A rank is a position on the service's OWN ladder, so both ends of the
-	// comparison have to be placed on it before a direction can be claimed.
-	if (service.rank === null || slot.currentRank === null) {
-		return slot.onIt ? (state === 'fail' ? 'failing' : 'live') : 'unplaceable';
-	}
+	// THE ONLY QUESTION THIS FUNCTION ANSWERS NOW: is this place running the
+	// REVISION. A rank comparison against `service.rank` no longer gates it —
+	// see the doc above and `onOwnRelease`, computed alongside this in the
+	// caller, for the release-line question that used to live here.
+	if (slot.onIt) return state === 'fail' ? 'failing' : 'live';
+	if (service.rank === null || slot.currentRank === null) return 'unplaceable';
 	if (slot.currentRank === service.rank) {
-		// Equal rank AND on it: genuinely running this row's own release.
-		// Equal rank but not on it: two ladder entries collapsed to one rank —
+		// Equal rank but NOT onIt: two ladder entries collapsed to one rank —
 		// the comparison resolves to nothing, so it is not rendered as one.
-		return slot.onIt ? (state === 'fail' ? 'failing' : 'live') : 'unplaceable';
+		return 'unplaceable';
 	}
 	if (slot.currentRank < service.rank) return 'ahead';
 	return 'notYet';
@@ -472,6 +495,13 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
 		for (const slot of service.slots) {
 			const state = slotState(slot, refNow, service.slots);
 			const key = classify(service, slot, state);
+			// ⭐ ON THIS REVISION, BUT ON THE ROW'S OWN RELEASE OF IT? See the
+			// field's own doc comment on `CoverageSlotVM.onOwnRelease`. Computed
+			// for every slot, not only `live` ones, because a slot that is not
+			// even `onIt` is trivially not on the row's own release either —
+			// the flag stays meaningful (false) rather than undefined there.
+			const onOwnRelease =
+				slot.onIt && service.rank !== null && slot.currentRank === service.rank;
 			// A CANDIDATE IS A BUILD THE CONTROLLER WOULD CONSIDER. Compared on the
 			// TAG, which is what `allowedVersions` and `releaseCandidates` are keyed
 			// on — comparing the display version makes every gate look like it
@@ -481,9 +511,18 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
 				promotionCandidates(slot.cell.rollout).some(
 					(c) => (c.tag ?? c.version ?? c.revision ?? '') === slot.tag
 				);
-			// Gates are only attributable where the build is actually in the
-			// running. Everywhere else the honest statement is the observable.
-			const block = key === 'notYet' && candidate ? promotionBlock(slot.cell.rollout) : null;
+			// ⭐ GATES ARE ALSO ATTRIBUTABLE ON A `live` SLOT THAT IS NOT ON ITS
+			// OWN RELEASE. (2026-09-03) `notYet` used to be the only place this
+			// row's evidence for "why hasn't it moved" was computed — but a
+			// place on an OLDER release sharing this revision has exactly the
+			// same question and the same answer available (`promotionBlock`
+			// reads the rollout, not the bucket), and `classify()` no longer
+			// routes it through `notYet` to get one. Everywhere else the
+			// honest statement is the observable, same as before.
+			const block =
+				(key === 'notYet' || (key === 'live' && !onOwnRelease)) && candidate
+					? promotionBlock(slot.cell.rollout)
+					: null;
 			const meta = slot.cell.rollout?.metadata;
 			byKey.get(key)!.push({
 				key,
@@ -499,6 +538,7 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
 				runs: runningLabel(slot),
 				currentRank: slot.currentRank,
 				revRank: service.rank,
+				onOwnRelease,
 				gap:
 					service.rank !== null && slot.currentRank !== null
 						? slot.currentRank - service.rank
@@ -575,12 +615,28 @@ export type CoverageSegment = {
  * merely unfinished, which outranks something being replaced.
  */
 export type BuildState = {
-	key: 'failing' | 'notYet' | 'ahead' | 'done' | 'nowhere';
+	key: 'failing' | 'notYet' | 'ahead' | 'held' | 'done' | 'nowhere';
 	/** The row's word. Lower case: it follows a sha in running text. */
 	word: string;
 	/** The long form, for a `title` — same fact, room to name the unit. */
 	title: string;
 };
+
+/**
+ * ⛔ EVERY PLACE RUNNING THE REVISION IS NOT THE SAME CLAIM AS "FULLY ROLLED
+ * OUT". (2026-09-03, operator-walk BLOCKING item) `classify()` now counts
+ * `live` the moment a place is `onIt` — correct, and the fix `liveCount ===
+ * totalCount` alone is not enough to say the row is DONE with: a `live` slot
+ * can still be on an OLDER release than the row's own headline one, with that
+ * newer release held by a gate (`onOwnRelease: false`). The live cluster's
+ * exact shape — `hello-frontend-app` rel-66/rel-67 sharing one revision — is
+ * `6 of 6 places running it`, and it is not "fully rolled out": the row's
+ * own `2.67.0-67` has landed nowhere. `heldBehind()` below is read BEFORE the
+ * `done` fallback for exactly this reason.
+ */
+function heldBehind(coverage: RevisionCoverage): CoverageSlotVM[] {
+	return coverage.buckets.find((b) => b.key === 'live')?.slots.filter((s) => !s.onOwnRelease) ?? [];
+}
 
 export function buildState(coverage: RevisionCoverage): BuildState {
 	const n = (key: CoverageKey) =>
@@ -629,11 +685,82 @@ export function buildState(coverage: RevisionCoverage): BuildState {
 			title: 'No service is running this build right now'
 		};
 
+	// ⛔ CHECKED BEFORE `done`, NOT INSTEAD OF IT — see `heldBehind`'s doc
+	// above. `notYet`/`ahead` already covered the places that have not taken
+	// this REVISION at all; this is the narrower remainder: places that HAVE,
+	// just not under the row's own headline release of it.
+	const behind = heldBehind(coverage);
+	if (behind.length > 0) {
+		const held = behind.some((s) => s.blockingGates.length > 0);
+		return held
+			? {
+					key: 'held',
+					word: `held in ${behind.length} place${plural(behind.length)}`,
+					title: `${behind.length} place${plural(behind.length)} run this revision on an older release, and a newer one is held by a gate`
+				}
+			: {
+					key: 'held',
+					word: `${behind.length} place${plural(behind.length)} on an older release of it`,
+					title: `${behind.length} place${plural(behind.length)} run this revision on an older release than the newest one carries`
+				};
+	}
+
 	return {
 		key: 'done',
 		word: 'fully rolled out',
 		title: 'Every place that can run this build is running it'
 	};
+}
+
+/**
+ * ⭐ THE RELEASE-LINE CLAUSE — the fact `classify()` deliberately no longer
+ * folds into the coverage count. (2026-09-03, operator-walk BLOCKING item)
+ * `6 of 6 places running it` answers "does this place run the revision" —
+ * the coverage bar's whole job. It is silent on WHICH release each place
+ * calls it, and that silence is right for the ordinary case (every live
+ * place is on the row's own headline release, nothing to say) and wrong the
+ * moment it is not. This groups the `live` bucket's `onOwnRelease: false`
+ * slots — same commit, older release — by what they actually run, so the
+ * page can say the missing half as its OWN sentence: *"3 of them on
+ * 2.66.0-66; 2.67.0-67 is held in dev, staging and prod."* Empty when every
+ * live place already carries the row's own release — the common case.
+ */
+export type ReleaseSplitLine = {
+	/** What these places actually run — an OLDER release under this revision. */
+	behindLabel: string;
+	count: number;
+	/** Environment labels, ready to join into prose. */
+	envLabels: string[];
+	/** The row's own headline release for this service — what they have not taken. */
+	aheadLabel: string;
+	/**
+	 * True when a gate is refusing every candidate ahead at EVERY one of
+	 * these places — `false` does not mean nothing is holding them, only that
+	 * this module found no gate evidence for at least one, and `DESIGN.md`
+	 * forbids naming a mechanism it cannot evidence.
+	 */
+	held: boolean;
+};
+
+export function releaseSplit(coverage: RevisionCoverage): ReleaseSplitLine[] {
+	const live = coverage.buckets.find((b) => b.key === 'live');
+	if (!live) return [];
+	const behind = live.slots.filter((s) => !s.onOwnRelease && s.runs);
+	if (behind.length === 0) return [];
+	const byKey = new Map<string, CoverageSlotVM[]>();
+	for (const s of behind) {
+		const key = `${s.runs}\u0000${s.label}`;
+		const list = byKey.get(key) ?? [];
+		list.push(s);
+		byKey.set(key, list);
+	}
+	return [...byKey.values()].map((slots) => ({
+		behindLabel: slots[0].runs!,
+		count: slots.length,
+		envLabels: slots.map((s) => s.envLabel),
+		aheadLabel: slots[0].label,
+		held: slots.every((s) => s.blockingGates.length > 0)
+	}));
 }
 
 export function coverageSegments(coverage: RevisionCoverage): CoverageSegment[] {
