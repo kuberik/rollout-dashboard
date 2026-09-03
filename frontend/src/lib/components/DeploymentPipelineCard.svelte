@@ -678,7 +678,7 @@
 					</span>
 					{#if node.isActive}
 						<span
-							class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+							class="chip t-chip border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400"
 						>
 							Active
 						</span>
@@ -1331,7 +1331,7 @@
 								</span>
 								{#if node.isActive}
 									<span
-										class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+										class="chip t-chip border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400"
 									>
 										Active
 									</span>
