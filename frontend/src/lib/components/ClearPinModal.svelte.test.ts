@@ -67,7 +67,7 @@ describe('defect 2 — Clear Version Pin names the environment it acts on', () =
 
 		// The title — a reader deciding whether to press has the answer before
 		// reading the body.
-		expect(screen.getByText('Remove the pin on hello-world-app in DEV?')).toBeInTheDocument();
+		expect(screen.getByText('Clear the pin on hello-world-app in DEV?')).toBeInTheDocument();
 		// The body repeats it as a fact, not just in the heading.
 		expect(screen.getByText('DEV', { selector: 'strong' })).toBeInTheDocument();
 	});
@@ -84,7 +84,7 @@ describe('defect 2 — Clear Version Pin names the environment it acts on', () =
 			})
 		});
 
-		expect(screen.getByText('Remove the pin on hello-world-app in PROD?')).toBeInTheDocument();
+		expect(screen.getByText('Clear the pin on hello-world-app in PROD?')).toBeInTheDocument();
 		expect(screen.queryByText(/in DEV\?/)).not.toBeInTheDocument();
 	});
 
@@ -140,6 +140,6 @@ describe('the dialog has role="dialog", aria-modal and a labelled name', () => {
 		// `aria-labelledby` to reference — `aria-label` gives the dialog an
 		// accessible name directly, and it is the same words the visible
 		// `<h3>` shows, verbatim.
-		expect(dialog?.getAttribute('aria-label')).toBe('Remove the pin on hello-world-app in DEV?');
+		expect(dialog?.getAttribute('aria-label')).toBe('Clear the pin on hello-world-app in DEV?');
 	});
 });

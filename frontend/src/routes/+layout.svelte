@@ -6,6 +6,57 @@
 	import LiveRegion from '$lib/components/LiveRegion.svelte';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { queryRetry, queryRetryDelay, pollWhenHealthy } from '$lib/api/errors';
+	import { afterNavigate } from '$app/navigation';
+
+	/**
+	 * ⛔ P12 — FOCUS RESET TO BODY ON EVERY NAVIGATION. (2026-09-03,
+	 * operator walk)
+	 *
+	 * > *"Enter on a card navigates and leaves activeElement === BODY.
+	 * > Reaching content again is 10 tabs (skip link → logo → theme → 6
+	 * > sidebar items → Collapse)."*
+	 *
+	 * SvelteKit's client router swaps the page component but does nothing
+	 * about focus — the element that was activated (a card, a row) is
+	 * destroyed with the old page, and the browser's only remaining option
+	 * is `<body>`. `#main-content` already carries `tabindex="-1"` for the
+	 * skip link; landing focus there after a REAL navigation puts a keyboard
+	 * user one Tab from the new page's own content instead of ten.
+	 *
+	 * Three guards keep this from misfiring:
+	 *  - `nav.type === 'enter'` is the very first load — never steal focus
+	 *    from wherever the browser or a fragment/`autofocus` already put it.
+	 *  - same-route navigations (a tab strip's `?tab=` swap, `?deploy=`
+	 *    arrival, a filter pill) are excluded by comparing route IDs — those
+	 *    are page-local state changes with their own, more specific focus
+	 *    handling (e.g. rollout detail's own arrival-row focus), not a trip
+	 *    to a new page.
+	 *  - if something has already claimed focus by the time this runs (an
+	 *    arrival feature that focused a specific row), it is not overridden.
+	 *
+	 * ⚠️ MEASURED RACE: checking `document.activeElement` synchronously
+	 * inside `afterNavigate` is NOT safe on its own. The OLD page's focused
+	 * element (the card that was just activated) is sometimes still
+	 * `document.activeElement` at the instant this callback runs — it has
+	 * not been torn down yet — so the naive guard reads "something already
+	 * has focus" and skips, and only AFTER that does the old element's
+	 * removal blank focus to `<body>` with nothing left to claim it. One
+	 * `requestAnimationFrame` is enough to run after that teardown (and
+	 * before it, if any other page-level effect wants to claim focus more
+	 * specifically) — verified over repeated runs against the synchronous
+	 * version, which landed on `<body>` roughly one time in three.
+	 */
+	afterNavigate((nav) => {
+		if (nav.type === 'enter') return;
+		if (!nav.to) return;
+		if (nav.from?.route?.id === nav.to.route?.id) return;
+		requestAnimationFrame(() => {
+			const active = document.activeElement;
+			const claimed = active && active !== document.body && active.isConnected;
+			if (claimed) return;
+			document.getElementById('main-content')?.focus();
+		});
+	});
 
 	/**
 	 * ⛔ `retry` AND `refetchInterval` ARE DECISIONS. THEY USED TO BE DEFAULTS.

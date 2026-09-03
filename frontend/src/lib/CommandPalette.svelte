@@ -52,7 +52,7 @@
 	 * the marks never do.
 	 */
 	import { goto } from '$app/navigation';
-	import { tick } from 'svelte';
+	import { untrack } from 'svelte';
 	import type { Rollout, Environment } from '../types';
 	import { formatTimeAgoCompact, getDisplayVersion, formatDate } from '$lib/utils';
 	import Chip from '$lib/components/Chip.svelte';
@@ -473,19 +473,57 @@
 		return Array.from(map.values()).sort((a, b) => KIND_PRIORITY[b.kind] - KIND_PRIORITY[a.kind]);
 	});
 
+	/**
+	 * ⛔ P8 — THE PALETTE OPENED UNFOCUSED AT 390, AND ESCAPE FORGOT ITS
+	 * TRIGGER. (2026-09-03, operator walk)
+	 *
+	 * > *"The command palette opens unfocused at 390 (activeElement === BODY;
+	 * > typing goes nowhere) while at 768/1440 the input is focused. Same in
+	 * > the app switcher and rollout switcher."*
+	 *
+	 * Two bugs stacked. First, an explicit `isTouch` check SKIPPED the focus
+	 * call on any coarse pointer — every phone, on purpose, forever. Second,
+	 * the whole body ran inside `(async () => { … await tick(); … })()`, so
+	 * even on desktop the `.focus()` call landed a microtask after the click
+	 * or keydown that opened the dialog. iOS Safari only keeps a `.focus()`
+	 * call inside the gesture that grants it permission to raise the
+	 * keyboard when nothing async separates them — an `await` is enough to
+	 * lose it. `$effect` already runs AFTER the DOM has been patched for the
+	 * state change that triggered it (the input this dialog renders is
+	 * already mounted and `bind:this` has already run), so neither the
+	 * `async` wrapper nor `tick()` were ever buying correctness, only delay.
+	 */
 	$effect(() => {
 		if (!open) return;
-		(async () => {
+		untrack(() => {
 			query = '';
-			await tick();
 			selectedIndex = 0;
-			const isTouch =
-				typeof window !== 'undefined' &&
-				(window.matchMedia?.('(pointer: coarse)').matches ?? false);
-			if (!isTouch) searchInput?.focus();
+			// ⭐ PRESELECT THE OBJECT WE'RE ALREADY ON. Opening the app switcher
+			// from `/apps/hello-world-app` used to land on row 0 — whichever
+			// app happened to be inserted first — so Enter navigated the
+			// reader OFF the app they were looking at. `currentName` (and, for
+			// a rollout, `currentNamespace` too) is the same route param the
+			// breadcrumb itself reads, so this can't drift from what page
+			// you're actually on.
+			const s = scope;
+			if (s) {
+				const idx = filtered.findIndex((r) => isCurrentResult(r, s));
+				if (idx >= 0) selectedIndex = idx;
+			}
+			searchInput?.focus();
 			scrollSelectedIntoView();
-		})();
+		});
 	});
+
+	/** Does this result name the object the reader is currently looking at? */
+	function isCurrentResult(r: Result, s: ResultKind): boolean {
+		if (s === 'rollout') return !!r.isCurrent;
+		if (!currentName) return false;
+		if (s === 'app') return r.key === `app:${currentName}`;
+		if (s === 'env') return r.key === `env:${currentName}`;
+		if (s === 'namespace') return r.key === `ns:${currentName}`;
+		return false;
+	}
 
 	function scrollSelectedIntoView() {
 		requestAnimationFrame(() => {

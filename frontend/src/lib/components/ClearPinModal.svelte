@@ -36,6 +36,7 @@
 	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
 	import { isFieldManagedByManager, isFieldManagedByOtherManager } from '$lib/utils';
 	import { announce } from '$lib/stores/announce.svelte';
+	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
 
 	interface Props {
 		open: boolean;
@@ -98,8 +99,8 @@
 	);
 	const clearPinTitle = $derived(
 		rollout?.metadata?.name && envLabel
-			? `Remove the pin on ${rollout.metadata.name} in ${envLabel}?`
-			: 'Clear Version Pin'
+			? clearPinDialogTitle(rollout.metadata.name, envLabel)
+			: CLEAR_PIN_LABEL
 	);
 
 	let showLocalToast = $state(false);
@@ -210,7 +211,7 @@
 			<Button color="light" onclick={() => (open = false)}>Cancel</Button>
 			<Button color="blue" disabled={busy} onclick={clearPin}>
 				<LockOpenOutline class="mr-1.5 h-4 w-4" />
-				Clear Pin
+				{CLEAR_PIN_LABEL}
 			</Button>
 		</div>
 	</div>

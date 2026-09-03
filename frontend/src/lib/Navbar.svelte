@@ -242,6 +242,29 @@
 			{#if import.meta.env.VITE_APP_VERSION}
 				<Badge color="gray" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
 			{/if}
+			<!-- ⭐ THE ONLY WAY TO OPEN THE PALETTE, ON THE HOME PAGE, AT ANY
+			     WIDTH, WAS A PHYSICAL KEYBOARD SHORTCUT. (P8 follow-on,
+			     2026-09-03) The breadcrumb's item chevron only renders on
+			     detail pages (`currentSection.key !== 'control'`), and `/`
+			     itself is deliberately crumb-less, so there was never a click
+			     target for the palette there — measured: `SearchOutline` was
+			     imported into this file and never rendered. At 390 there is no
+			     physical keyboard to press ⌘K/Ctrl K on, so this button is the
+			     ONLY way in on a phone, not a convenience. -->
+			<button
+				type="button"
+				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
+				onclick={() => {
+					paletteScope = null;
+					switcherOpen = true;
+				}}
+				aria-haspopup="dialog"
+				aria-expanded={switcherOpen}
+				aria-label={isMac ? 'Search (⌘K)' : 'Search (Ctrl K)'}
+				title={isMac ? 'Search (⌘K)' : 'Search (Ctrl K)'}
+			>
+				<SearchOutline class="h-4 w-4 sm:h-5 sm:w-5" />
+			</button>
 			<GithubConnectButton />
 			<button
 				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
