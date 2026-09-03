@@ -122,6 +122,26 @@ export function isHeld(c: RolloutCard): boolean {
 	return isTrailing(c) && c.held;
 }
 
+/**
+ * No `Environment` custom resource matched this rollout — `envName` comes
+ * straight off `rolloutMatchesEnvironment` in `rollout-cards.ts` and is `''`
+ * exactly when that search found nothing.
+ *
+ * ⛔ NOT THE SAME QUESTION AS "does the card have an env chip". A rollout can
+ * still carry `envDisplay`/`theme` with no `Environment` object behind it —
+ * `getRolloutEnvironmentTheme` also reads the rollout's OWN annotations and
+ * infers a preset from the environment NAME string, so a card can draw a
+ * fully-coloured `PROD` chip while `envName` (and therefore this predicate)
+ * says there is no record. `/apps`, `/environments` and `/envs/[name]`
+ * already name this exact gap (`unboundRolloutCount` / `excludedRollouts`) —
+ * this is `/rollouts`' own copy of the same fact, so a rollout the hub
+ * cannot bind to an `Environment` reads the same on every page that says so.
+ * (2026-09-03, UX sweep finding 4.)
+ */
+export function isUnlinked(c: RolloutCard): boolean {
+	return !c.envName;
+}
+
 export type FleetGroups = {
 	needsYou: RolloutCard[];
 	inMotion: RolloutCard[];

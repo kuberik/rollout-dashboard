@@ -355,7 +355,7 @@ lib/components/RetryTestsModal.svelte	text	Retry Tests
 lib/components/RetryTestsModal.svelte	text	Skip Tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
 lib/components/RevisionLead.svelte	code	… of … places running … ·
-lib/components/RevisionLead.svelte	text	· … held on …
+lib/components/RevisionLead.svelte	text	&nbsp;· … held on …
 lib/components/RevisionLead.svelte	title	A place is one service in one environment.
 lib/components/RevisionLead.svelte	text	running it …
 lib/components/RolloutStepper.svelte	text	… / … stages done
@@ -447,6 +447,7 @@ lib/RolloutGrid.svelte	text	… rollout … … ·
 lib/RolloutGrid.svelte	code	+… pending
 lib/RolloutGrid.svelte	text	Cards like the one above will appear here once you create a
 lib/RolloutGrid.svelte	text	Clear “ … ”
+lib/RolloutGrid.svelte	text	Clear “No Environment record”
 lib/RolloutGrid.svelte	text	Clear all filters
 lib/RolloutGrid.svelte	text	Clear clusters
 lib/RolloutGrid.svelte	text	Clear environments
@@ -454,7 +455,10 @@ lib/RolloutGrid.svelte	title	Held: a newer build exists, but no rule lets it thr
 lib/RolloutGrid.svelte	code	In motion
 lib/RolloutGrid.svelte	text	My App
 lib/RolloutGrid.svelte	code	Needs you
+lib/RolloutGrid.svelte	title	No `Environment` object in the cluster matched this rollout
 lib/RolloutGrid.svelte	text	no deploy
+lib/RolloutGrid.svelte	text	no Environment record
+lib/RolloutGrid.svelte	text	No Environment record
 lib/RolloutGrid.svelte	text	No rollouts yet
 lib/RolloutGrid.svelte	text	Nothing matches these filters
 lib/RolloutGrid.svelte	title	Pinned to … — automatic deploys are paused until the pin is cleared.
@@ -494,6 +498,7 @@ lib/view-models/blocking-story.ts	code	… and …
 lib/view-models/blocking-story.ts	code	… in … — …
 lib/view-models/blocking-story.ts	code	… newer build… … available and none of them will deploy while the pin is set.
 lib/view-models/blocking-story.ts	code	… newer build… … waiting.
+lib/view-models/blocking-story.ts	code	… of …
 lib/view-models/blocking-story.ts	code	… ships a newer …
 lib/view-models/blocking-story.ts	code	… ships a newer … than …
 lib/view-models/blocking-story.ts	code	… things are holding …
@@ -713,7 +718,7 @@ routes/+error.svelte	code	The dashboard hit an error rendering this page. It is 
 routes/+error.svelte	code	This address does not exist
 routes/+error.svelte	code	This page could not be loaded
 routes/+layout.svelte	text	Skip to main content
-routes/activity/+page.svelte	text	… … · … still going …
+routes/activity/+page.svelte	text	… … · … still going … … · … rolled back …
 routes/activity/+page.svelte	code	… · … failed
 routes/activity/+page.svelte	code	… · … rolled back
 routes/activity/+page.svelte	code	… · … still going
@@ -721,7 +726,7 @@ routes/activity/+page.svelte	code	… · all fine
 routes/activity/+page.svelte	code	… deploy…
 routes/activity/+page.svelte	code	… deploys failed
 routes/activity/+page.svelte	text	… failed
-routes/activity/+page.svelte	text	… failed … in-flight … … deploy … in … … · … rollout … … … ·
+routes/activity/+page.svelte	text	… failed … in-flight … rolled-back … … deploy … in … … · … rollout … … … ·
 routes/activity/+page.svelte	code	…… failed …, on ….
 routes/activity/+page.svelte	code	A deploy failed
 routes/activity/+page.svelte	code	all time
@@ -731,6 +736,7 @@ routes/activity/+page.svelte	text	Clear all
 routes/activity/+page.svelte	text	Clear all filters
 routes/activity/+page.svelte	code	Deploys still going out or still being checked
 routes/activity/+page.svelte	code	Deploys that did not finish cleanly
+routes/activity/+page.svelte	code	Deploys that moved a rollout to an OLDER build than it was already running
 routes/activity/+page.svelte	code	Every deploy in this window
 routes/activity/+page.svelte	text	Every version a rollout puts live shows up here, newest first.
 routes/activity/+page.svelte	code	In flight
@@ -741,6 +747,7 @@ routes/activity/+page.svelte	code	no result yet
 routes/activity/+page.svelte	text	Nothing has deployed yet
 routes/activity/+page.svelte	text	Nothing matches these filters
 routes/activity/+page.svelte	code	Press Failed below to see all ….
+routes/activity/+page.svelte	code	Rolled back
 routes/activity/+page.svelte	text	Showing only:
 routes/activity/+page.svelte	title	Stop showing only …
 routes/activity/+page.svelte	code	the last 30 days
@@ -924,6 +931,7 @@ routes/environments/+page.svelte	text	no deploys yet
 routes/environments/+page.svelte	text	No environments configured
 routes/environments/+page.svelte	code	not moving
 routes/environments/+page.svelte	code	Open …
+routes/environments/+page.svelte	code	Open … in …
 routes/environments/+page.svelte	code	Open rollout
 routes/environments/+page.svelte	text	Production regions
 routes/environments/+page.svelte	text	resources to see what is running in each one.
@@ -985,6 +993,8 @@ routes/revisions/[...slug]/+page.svelte	text	. This page covers every commit on 
 routes/revisions/[...slug]/+page.svelte	code	… … held in ….
 routes/revisions/[...slug]/+page.svelte	title	… can still take … newer version…
 routes/revisions/[...slug]/+page.svelte	code	… has not reached … yet
+routes/revisions/[...slug]/+page.svelte	code	… in …
+routes/revisions/[...slug]/+page.svelte	code	… in … — the worst of … held environments
 routes/revisions/[...slug]/+page.svelte	title	… is held
 routes/revisions/[...slug]/+page.svelte	code	… is held in …
 routes/revisions/[...slug]/+page.svelte	title	… is stuck
@@ -1002,12 +1012,12 @@ routes/revisions/[...slug]/+page.svelte	code	Already on …, and newer builds ar
 routes/revisions/[...slug]/+page.svelte	text	Commit message and author need GitHub. …
 routes/revisions/[...slug]/+page.svelte	title	Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest.
 routes/revisions/[...slug]/+page.svelte	code	Held by a deploy window
+routes/revisions/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
 routes/revisions/[...slug]/+page.svelte	code	Held for another …
 routes/revisions/[...slug]/+page.svelte	code	in … · …
 routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard.
 routes/revisions/[...slug]/+page.svelte	text	knows the revision
 routes/revisions/[...slug]/+page.svelte	text	kuberik | …
-routes/revisions/[...slug]/+page.svelte	code	Needs an approval or an external check
 routes/revisions/[...slug]/+page.svelte	text	No repository
 routes/revisions/[...slug]/+page.svelte	code	Not passing
 routes/revisions/[...slug]/+page.svelte	text	Nothing in

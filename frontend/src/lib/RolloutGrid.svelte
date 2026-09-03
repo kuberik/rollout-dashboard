@@ -17,7 +17,8 @@
 		isTrailing,
 		isHeld,
 		isSteady,
-		isPending
+		isPending,
+		isUnlinked
 	} from '$lib/view-models/fleet-groups';
 	import { checkFailureTitle } from '$lib/view-models/health-witness';
 	import { compareEnvironmentNames } from '$lib/env-order';
@@ -235,6 +236,24 @@
 	// only where the filtering itself needs one.
 	const clusterFilters = $derived(page.url.searchParams.getAll('cluster')); // set of cluster display NAMES
 
+	/**
+	 * ⭐ `?unlinked=1` — UX SWEEP FINDING 4. `/apps`, `/environments` and
+	 * `/envs/[name]` each name the rollouts they cannot bind to an
+	 * `Environment` object and send the reader here (`N rollouts without an
+	 * Environment record ›`) — but the link landed on the UNFILTERED grid: 15
+	 * rows, nothing marked, no way to find the 3 the sentence was about. This
+	 * is a boolean fact about a card (`isUnlinked`, `fleet-groups.ts`), not a
+	 * bucket in the five-way `QuickFilter` partition above and not a value in
+	 * the env-chip multi-select (`envFilters` matches `envKey`, which an
+	 * unlinked card can still have via its own annotations — see
+	 * `isUnlinked`'s note) — so it is its own single param, `1`/absent,
+	 * spelled the same short way `?status=`/`?env=` already are.
+	 */
+	const unlinkedOnly = $derived(page.url.searchParams.get('unlinked') === '1');
+	function toggleUnlinked() {
+		setParam('unlinked', unlinkedOnly ? null : '1');
+	}
+
 	function toggleEnv(name: string) {
 		setMultiParam(
 			'env',
@@ -282,6 +301,7 @@
 			if (quickFilter === 'steady' && !(isSteady(c) || isPending(c))) return false;
 			if (quickFilter === 'pending' && !isPending(c)) return false;
 			if (quickFilter === 'healthy' && !(isTrailing(c) || isSteady(c))) return false;
+			if (unlinkedOnly && !isUnlinked(c)) return false;
 			if (envFilters.length > 0 && !envFilters.includes(c.envKey)) return false;
 			// ⛔ MATCHED AGAINST THE URL UNTIL 2026-09-03 — see the note on
 			// `clusterFilters`' own declaration. The card's cluster identity is
@@ -430,6 +450,7 @@
 	// `Held` pill at all) on `/`'s `Held` section.
 	const trailingCards = $derived.by(() => cards.filter((c) => isTrailing(c) && !c.held));
 	const steadyCards = $derived.by(() => cards.filter(isSteady));
+	const unlinkedCards = $derived.by(() => cards.filter(isUnlinked));
 
 	// Compact status filter pills (single-select) shown in the filter bar.
 	//
@@ -588,7 +609,11 @@
 				figure is the FILTERED count against the total instead.
 			-->
 			{@const filtersActive =
-				envFilters.length > 0 || quickFilter !== 'all' || clusterFilters.length > 0 || !!searchQuery}
+				envFilters.length > 0 ||
+				quickFilter !== 'all' ||
+				clusterFilters.length > 0 ||
+				unlinkedOnly ||
+				!!searchQuery}
 			<span class="t-display text-gray-900 tabular-nums dark:text-white"
 				>{filtersActive ? filtered.length : cards.length}</span
 			>
@@ -670,13 +695,24 @@
 				     390. A filter that can select nothing is still one of the
 				     product's five named buckets and belongs in the same place
 				     at every width; what it must not do is compete for ink with
-				     one that can. It renders everywhere now, MUTED — `gray-400`
-				     / `gray-500` ink, a lighter `gray-100` / `gray-800` hairline,
-				     no fill (unselected pills never had one) — never hidden, and
-				     still a real control: `onclick` and `aria-pressed` are
-				     unchanged, so selecting an empty bucket is honest (the grid
-				     falls through to `No matches` below, the same empty state
-				     every other filter combination reaches). -->
+				     one that can. It renders everywhere now, MUTED — a lighter
+				     `gray-100` / `gray-800` hairline, no fill (unselected pills
+				     never had one) — never hidden, and still a real control:
+				     `onclick` and `aria-pressed` are unchanged, so selecting an
+				     empty bucket is honest (the grid falls through to `No
+				     matches` below, the same empty state every other filter
+				     combination reaches).
+
+				     ⛔ THE INK ITSELF STAYED `gray-400` LIGHT / `gray-500` DARK,
+				     AND THAT FAILED 4.5:1. (Design sweep follow-up, 2026-09-03.)
+				     `gray-400` on white measures 2.60:1 at 10px — `text-gray-500`
+				     (the SAME ink the non-zero pill already uses, measured
+				     4.83:1) is the muted floor this product can spend without
+				     going illegible; `dark:gray-500` (3.67:1) has the identical
+				     problem in the other theme and drops to the non-zero pill's
+				     own `dark:gray-400`. "Quieter than a real bucket" is now said
+				     ENTIRELY by the lighter border and the `hover:` step, never
+				     by ink a reader with normal vision has to squint at. -->
 				{#each statusPills as sp (sp.key)}
 					<!--
 						⭐ F2: ONE HEIGHT, ONE RADIUS, ACROSS ALL THREE FILTER-CHIP ROWS.
@@ -697,7 +733,7 @@
 							{quickFilter === sp.key
 								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
 								: sp.count === 0
-									? 'border-gray-100 text-gray-400 hover:border-gray-300 hover:text-gray-600 dark:border-gray-800 dark:text-gray-500 dark:hover:border-gray-600 dark:hover:text-gray-300'
+									? 'border-gray-100 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'
 									: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
 					>
 						<span class="h-[5px] w-[5px] shrink-0 rounded {sp.dot}"></span>
@@ -754,8 +790,40 @@
 					><Chip role="env" theme={e.theme} label={e.display} wide /></button>
 				{/each}
 			</div>
+			<!--
+				⭐ THE FOURTH WRAP GROUP — UX SWEEP FINDING 4. Same 26px/rounded
+				chip shape the status/cluster/env groups above already use (see
+				F2's note on that unification), its own `flex-wrap` group so it
+				never strands a member of another family on its line, and gated
+				on `unlinkedCards.length > 0` for the same reason the status
+				pills are not (`/apps`, `/environments`, `/envs/[name]` all hide
+				their own version of this sentence when the count is zero — a
+				control for a set that can never be non-empty on this cluster
+				is not a control, it is a caption). It is the landing state for
+				`?unlinked=1`: `aria-pressed` already reads `unlinkedOnly`, so a
+				reader arriving from `/apps`' "N rollouts without an Environment
+				record ›" sees the chip lit, not just the grid narrowed.
+			-->
+			{#if unlinkedCards.length > 0}
+				<div class="flex flex-wrap items-center gap-1.5">
+					<button
+						type="button"
+						onclick={toggleUnlinked}
+						aria-pressed={unlinkedOnly}
+						title="No `Environment` object in the cluster matched this rollout"
+						class="t-label inline-flex min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
+							{unlinkedOnly
+								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+								: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+					>
+						<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-400"></span>
+						No Environment record
+						<span class="font-mono tabular-nums">{unlinkedCards.length}</span>
+					</button>
+				</div>
+			{/if}
 			</div>
-			{#if envFilters.length > 0 || quickFilter !== 'all' || clusterFilters.length > 0 || searchQuery}
+			{#if envFilters.length > 0 || quickFilter !== 'all' || clusterFilters.length > 0 || unlinkedOnly || searchQuery}
 				<button
 					type="button"
 					onclick={clearFilters}
@@ -869,7 +937,8 @@
 			!!searchQuery,
 			quickFilter !== 'all',
 			envFilters.length > 0,
-			clusterFilters.length > 0
+			clusterFilters.length > 0,
+			unlinkedOnly
 		].filter(Boolean).length}
 		<div class="flex flex-col items-center justify-center py-12 text-center">
 			<p class="text-sm font-medium text-gray-700 dark:text-gray-300">Nothing matches these filters</p>
@@ -898,6 +967,11 @@
 						type="button"
 						onclick={() => setMultiParam('cluster', [])}
 						class="btn btn-secondary">Clear clusters</button
+					>
+				{/if}
+				{#if unlinkedOnly}
+					<button type="button" onclick={toggleUnlinked} class="btn btn-secondary"
+						>Clear “No Environment record”</button
 					>
 				{/if}
 				{#if activeDims > 1}
@@ -1057,6 +1131,15 @@
 												/>{/if}
 										</div>
 										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{c.title}</span>{/if}
+										<!-- ⭐ WHY THIS ROW IS HERE — UX SWEEP FINDING 4. `c.envDisplay`
+										     can still be a fully-themed chip with no `Environment`
+										     object behind it (see `isUnlinked`'s note in
+										     `fleet-groups.ts`), so the env chip alone cannot tell a
+										     reader who followed "N rollouts without an Environment
+										     record ›" which rows are the ones the sentence meant.
+										     Same words the source pages already print, said once per
+										     row instead of once in a header. -->
+										{#if isUnlinked(c)}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">no Environment record</span>{/if}
 									</div>
 									{#if c.envDisplay}
 										<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />

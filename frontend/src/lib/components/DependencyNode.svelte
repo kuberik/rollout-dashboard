@@ -67,7 +67,7 @@
 	 * here — the page scrolls — so trading a wider box for a taller one is the
 	 * whole trade.
 	 */
-	import { Handle, Position } from '@xyflow/svelte';
+	import { Handle, Position, useViewport } from '@xyflow/svelte';
 	import {
 		ServerSolid,
 		QuestionCircleOutline,
@@ -81,6 +81,30 @@
 	let { data }: { data: DependencyNodeData } = $props();
 
 	const linked = $derived(Boolean(data.href) && !data.unresolved);
+
+	/**
+	 * ⭐ THE `Chip` COUNTER-SCALES AGAINST THE CANVAS'S OWN ZOOM. (Design
+	 * sweep follow-up, 2026-09-03.) `GraphCanvasInner`'s resting fit rarely
+	 * lands on exactly `1` — `fitView`'s padded fit to a measured frame
+	 * computed **0.98** on the live `/dependencies` at 1440, **0.95** on the
+	 * rollout Dependencies tab's `compact` graph — and every node (this
+	 * component) renders INSIDE `.svelte-flow__viewport`, which the library
+	 * scales by that exact number via a single ancestor `transform`. A `Chip`
+	 * sized 20px everywhere else in the product (`app.css`'s `.chip`) was
+	 * measuring **19px** here, and 16px measuring 14px on the compact graph —
+	 * the one surface where the product's own fixed type scale was not fixed.
+	 *
+	 * `useViewport()` reads the SAME reactive `store.viewport` `GraphCanvasInner`
+	 * already keeps as `liveZoom` — this component is rendered as a child of
+	 * `<SvelteFlow>` (via the library's own `NodeWrapper`), so the context it
+	 * needs is already in scope with no prop threading required. The inverse
+	 * scale is applied to the `Chip` ONLY, not the whole node: the box, the
+	 * name and the build id are DAGRE'S layout and are supposed to shrink and
+	 * grow with the canvas the reader is panning and zooming — only the type
+	 * atom the design system has already fixed a size for must not.
+	 */
+	const viewport = useViewport();
+	const chipInvZoom = $derived(viewport.current.zoom > 0 ? 1 / viewport.current.zoom : 1);
 
 	/**
 	 * The environment axis is the one dagre RANKS along, so it follows the
@@ -134,20 +158,54 @@
 	The `id`s are what `DependencyNetwork` names on each edge and they are
 	STABLE; the SIDES follow the canvas's layout direction, so under `LR` the
 	environment axis is Left/Right and under `TB` it is Top/Bottom.
+
+	⛔ THE LIBRARY'S OWN `Handle` HARD-CODES `role="button"`. (UX sweep finding
+	5.) `tabindex="-1"` is already the library default, so Tab never lands on
+	one — but `role="button"` survives regardless of tab order, and a screen
+	reader's rotor/virtual-cursor navigation (element-by-role, not tab order)
+	still discovers it: 4 fake buttons per node, 24 on a 6-node graph, none of
+	which do anything (`nodesConnectable={false}` in `GraphCanvasInner`, so
+	even a click on one is a no-op). `role`/`aria-hidden` are not destructured
+	by the library's `Handle.svelte` — they fall into its `...rest` spread,
+	which renders AFTER its own `role="button"`, so passing both here
+	overrides the library's role rather than fighting it. `role="presentation"`
+	strips the node from the accessibility tree entirely; `aria-hidden="true"`
+	is the belt-and-braces second signal every other invisible/inert element
+	in this product already carries. The four nodes' own `role="group"`
+	wrapper (the library's `NodeWrapper`) is what Tab visits — these are never
+	meant to be in that list.
 -->
-<Handle id="env-in" type="target" position={envIn} class="!pointer-events-none !opacity-0" />
-<Handle id="env-out" type="source" position={envOut} class="!pointer-events-none !opacity-0" />
+<Handle
+	id="env-in"
+	type="target"
+	position={envIn}
+	class="!pointer-events-none !opacity-0"
+	role="presentation"
+	aria-hidden="true"
+/>
+<Handle
+	id="env-out"
+	type="source"
+	position={envOut}
+	class="!pointer-events-none !opacity-0"
+	role="presentation"
+	aria-hidden="true"
+/>
 <Handle
 	id="contract-in"
 	type="target"
 	position={contractIn}
 	class="!pointer-events-none !opacity-0"
+	role="presentation"
+	aria-hidden="true"
 />
 <Handle
 	id="contract-out"
 	type="source"
 	position={contractOut}
 	class="!pointer-events-none !opacity-0"
+	role="presentation"
+	aria-hidden="true"
 />
 
 <svelte:element
@@ -169,7 +227,9 @@
 		<!-- ⭐ CHIP ON ITS OWN LINE, ICON DROPPED. Neither competes with the
 		     name for the one axis this box is short of. The icon said
 		     nothing the border/fill colour does not already say. -->
-		<Chip role="env" label={data.envLabel} />
+		<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
+			<Chip role="env" label={data.envLabel} />
+		</span>
 		<span
 			class="ident min-w-0 text-wrap text-[12px] leading-tight font-semibold text-gray-900 dark:text-white"
 			>{#each identParts(data.name) as part, pi (pi)}{part}{#if pi < identParts(data.name).length - 1}<wbr
@@ -182,7 +242,9 @@
 			     and it would vanish the moment one environment is filtered out. The
 			     chip's hue is the product's env identity, so a column reads as one
 			     colour without anything being drawn between the boxes. -->
-			<Chip role="env" label={data.envLabel} />
+			<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
+				<Chip role="env" label={data.envLabel} />
+			</span>
 			{#if data.unresolved}
 				<QuestionCircleOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
 			{:else}

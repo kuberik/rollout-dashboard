@@ -77,6 +77,7 @@
 	import { MiniMap } from '@xyflow/svelte';
 	import * as dagre from '@dagrejs/dagre';
 	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { ZoomInOutline, ZoomOutOutline, ExpandOutline } from 'flowbite-svelte-icons';
 
 	let {
@@ -357,6 +358,43 @@
 			'Use tab to move between items. Enter opens the one in focus.',
 		'edge.a11yDescription.default': ''
 	};
+
+	/**
+	 * ⛔ THE ARIA TEXT ABOVE PROMISED "Enter opens the one in focus" AND
+	 * NOTHING DID IT. (UX sweep finding 5.) The library's own `NodeWrapper`
+	 * keydown handler only acts when `selectable` (Escape/select) or
+	 * `draggable` (arrow keys) — this canvas sets `elementsSelectable={false}`
+	 * and `nodesDraggable={false}` (see the note on those props below), which
+	 * a screen-reader user cannot see from the DOM: the node is still
+	 * `tabIndex=0`/`role="group"`, still takes focus, and Enter on it was
+	 * silently swallowed. `DependencyNode`/`PromotionNode` both already wrap
+	 * their content in an `<a href={data.href}>` for the MOUSE path — a click
+	 * anywhere in the box works today — so this is the keyboard path to the
+	 * exact same destination, not a new affordance.
+	 *
+	 * Delegated on the container (below `SvelteFlow`'s own subtree) rather
+	 * than owned per-node: the library re-renders `.svelte-flow__node` on
+	 * every layout pass, so a listener attached there would need re-binding
+	 * on every dagre run. One listener, `event.target.closest`, done. `data-id`
+	 * is the library's own attribute on that element (`NodeWrapper.svelte`,
+	 * vendored copy) — reading it needs no new markup on either node type.
+	 *
+	 * `preventDefault` fires whenever a node was hit, href or not: Space on a
+	 * focused, non-input element is the browser's own "scroll the page" key,
+	 * and swallowing Enter/Space is only half the fix if Space still jumps
+	 * the reader's scroll position on an unresolved (href-less) node.
+	 */
+	function onCanvasKeydown(event: KeyboardEvent) {
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		const target = event.target as HTMLElement | null;
+		const nodeEl = target?.closest<HTMLElement>('.svelte-flow__node');
+		if (!nodeEl) return;
+		event.preventDefault();
+		const id = nodeEl.dataset.id;
+		const node = id ? flowNodes.find((n) => n.id === id) : undefined;
+		const href = (node?.data as { href?: string | null } | undefined)?.href;
+		if (href) goto(href);
+	}
 
 	let containerEl = $state<HTMLDivElement | null>(null);
 	let containerWidth = $state(0);
@@ -1374,12 +1412,20 @@
 			</div>
 		</div>
 	{/if}
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<!-- This `div` (`role="group"`) is a DELEGATION HOST, not itself the
+	     interactive element — see `onCanvasKeydown`'s own note. The actual
+	     keyboard target is the library's per-node wrapper, four+ levels
+	     down, which already carries `role="group"`/`tabindex="0"` and is
+	     where Tab actually lands; re-binding a listener there on every
+	     dagre re-layout is the cost this delegation avoids. -->
 	<div
 		bind:this={containerEl}
 		class="relative overflow-hidden"
 		style="height: {frameHeight}px"
 		role="group"
 		aria-label={ariaLabel}
+		onkeydown={onCanvasKeydown}
 	>
 		<SvelteFlow
 			bind:nodes={flowNodes}

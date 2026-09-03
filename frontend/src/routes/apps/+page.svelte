@@ -1601,7 +1601,7 @@
 				· {currentCount} on the newest
 				{#if unboundRolloutCount > 0}
 					·
-					<a href="/rollouts" class="nav-link"
+					<a href="/rollouts?unlinked=1" class="nav-link"
 						>{unboundRolloutCount} rollout{unboundRolloutCount === 1 ? '' : 's'} without an
 						Environment record <ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a
 					>

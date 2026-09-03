@@ -50,11 +50,23 @@ describe('the rollback mark is at rest, not only on hover, and not only on the c
 		);
 	});
 
+	// ⛔ `selector: ':not(button)'` — UX SWEEP FINDING 6, 2026-09-03.
+	// `/activity` now has a `Rolled back` KIND FILTER pill (a `<button>`,
+	// spelled the same word this suite is proving the ROW prints) sitting in
+	// the control strip from first paint, before the fixture's fetch even
+	// resolves. Without the exclusion, `getAllByText('Rolled back')` matches
+	// that static button immediately and the `waitFor` below resolves before
+	// the feed has loaded at all — the two tests below would go on to assert
+	// against a still-loading page (or, for the row-printing test, "pass" by
+	// finding the filter's OWN label rather than the row's). Excluding
+	// `button` is what keeps both tests proving the thing their names say.
+	const ROW_MARK = { exact: false, selector: ':not(button)' };
+
 	test('/activity prints the word on the row, at rest', async () => {
 		vi.stubGlobal('fetch', vi.fn(respond(rollbackFleet())));
 		render(WithQueryClient, { props: { component: Activity as any } });
 		await waitFor(
-			() => expect(screen.getAllByText('Rolled back', { exact: false }).length).toBeGreaterThan(0),
+			() => expect(screen.getAllByText('Rolled back', ROW_MARK).length).toBeGreaterThan(0),
 			{ timeout: 5000 }
 		);
 	});
@@ -63,7 +75,7 @@ describe('the rollback mark is at rest, not only on hover, and not only on the c
 		vi.stubGlobal('fetch', vi.fn(respond(rollbackFleet())));
 		render(WithQueryClient, { props: { component: Activity as any } });
 		await waitFor(
-			() => expect(screen.getAllByText('Rolled back', { exact: false }).length).toBeGreaterThan(0),
+			() => expect(screen.getAllByText('Rolled back', ROW_MARK).length).toBeGreaterThan(0),
 			{ timeout: 5000 }
 		);
 		// The day carrying the rollback (all 6 fixture rollouts deploy on it)

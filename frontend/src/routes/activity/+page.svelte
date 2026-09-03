@@ -330,19 +330,27 @@
 		(envFilter ? 1 : 0) + (appFilter ? 1 : 0) + (nsFilter ? 1 : 0)
 	);
 
-	// THREE STATES, NOT FOUR. The old row was `All / Deploys / In progress /
+	// FOUR STATES, NOT THREE. The old row was `All / Deploys / In progress /
 	// Failures`, where `Deploys` meant Succeeded+Deploying — i.e. "everything
 	// except failures", which is what `All` already is on a healthy cluster,
 	// and it overlapped `In progress` on one of its two values. A filter whose
 	// result a reader cannot predict is a filter they will not press.
-	type KindFilter = 'all' | 'in_flight' | 'failed';
+	//
+	// ⛔ `rolled_back` ADDED — UX SWEEP FINDING 6. Four rollups on this page
+	// already count rollbacks (`groupRollup`'s `rolledBack` branch, the day
+	// cards, the chart card's own verdict) and none of them was a FILTER: a
+	// reader who saw "3 rolled back" in a day card's rollup had no press that
+	// scoped the feed to just those three, unlike `Failed`/`In flight`, which
+	// both already had one. `isRolledBack` (below) is the existing predicate
+	// every rollup already reads — this is its first use as a `kindFilter`.
+	type KindFilter = 'all' | 'in_flight' | 'failed' | 'rolled_back';
 	// `?kind=` — absent (or any other value) reads as `all`, and `all` is
 	// never itself written to the URL, so the default URL for this page stays
 	// clean, matching every other filter here.
 	const kindFilter = $derived<KindFilter>(
 		(() => {
 			const raw = page.url.searchParams.get('kind');
-			return raw === 'in_flight' || raw === 'failed' ? raw : 'all';
+			return raw === 'in_flight' || raw === 'failed' || raw === 'rolled_back' ? raw : 'all';
 		})()
 	);
 	function setKindFilter(next: KindFilter) {
@@ -355,12 +363,22 @@
 			label: 'In flight',
 			title: 'Deploys still going out or still being checked'
 		},
-		{ key: 'failed', label: 'Failed', title: 'Deploys that did not finish cleanly' }
+		{ key: 'failed', label: 'Failed', title: 'Deploys that did not finish cleanly' },
+		{
+			key: 'rolled_back',
+			label: 'Rolled back',
+			title: 'Deploys that moved a rollout to an OLDER build than it was already running'
+		}
 	];
-	function matchesKind(bakeStatus: string): boolean {
+	// ⛔ TAKES THE ENTRY, NOT JUST `bakeStatus`, NOW. A rollback IS a
+	// `Succeeded` deploy (see `groupRollup`'s own note on why it ranks above
+	// "all fine" anyway) — there is no `bakeStatus` value for it, so scoping
+	// to it needs the same `rollbackAct` field `isRolledBack` already reads.
+	function matchesKind(e: ActivityEntry): boolean {
 		if (kindFilter === 'all') return true;
-		if (kindFilter === 'failed') return bakeStatus === 'Failed';
-		return bakeStatus === 'InProgress' || bakeStatus === 'Deploying';
+		if (kindFilter === 'failed') return e.bakeStatus === 'Failed';
+		if (kindFilter === 'rolled_back') return isRolledBack(e);
+		return e.bakeStatus === 'InProgress' || e.bakeStatus === 'Deploying';
 	}
 
 	/** Everything the reader has scoped to, WITHOUT the time window. */
@@ -369,7 +387,7 @@
 			.filter((e) => !envFilter || e.envKey === envFilter)
 			.filter((e) => !appFilter || e.rolloutName === appFilter)
 			.filter((e) => !nsFilter || e.rolloutNamespace === nsFilter)
-			.filter((e) => matchesKind(e.bakeStatus))
+			.filter((e) => matchesKind(e))
 	);
 
 	// ── THE WINDOW, COMPUTED TO FIT THE DATA ───────────────────────────────
@@ -623,6 +641,7 @@
 
 	const failedCount = $derived(feed.filter(isFailed).length);
 	const flyingCount = $derived(feed.filter(isInFlight).length);
+	const rolledBackCount = $derived(feed.filter(isRolledBack).length);
 	const appCount = $derived(
 		new Set(feed.map((e) => `${e.rolloutNamespace}/${e.rolloutName}`)).size
 	);
@@ -791,7 +810,7 @@
 						survives because the compiler only trims TEMPLATE whitespace, not
 						a string an expression returns.
 					-->
-					{#if kindFilter === 'failed'}failed{:else if kindFilter === 'in_flight'}in-flight{/if}{kindFilter !==
+					{#if kindFilter === 'failed'}failed{:else if kindFilter === 'in_flight'}in-flight{:else if kindFilter === 'rolled_back'}rolled-back{/if}{kindFilter !==
 					'all'
 						? ' '
 						: ''}deploy{feed.length === 1 ? '' : 's'} in {rangeLabel}
@@ -803,6 +822,9 @@
 					{/if}
 					{#if flyingCount > 0 && kindFilter !== 'in_flight'}
 						· {flyingCount} still going
+					{/if}
+					{#if rolledBackCount > 0 && kindFilter !== 'rolled_back'}
+						· {rolledBackCount} rolled back
 					{/if}
 				</p>
 			</div>
