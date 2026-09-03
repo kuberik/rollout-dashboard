@@ -1012,7 +1012,7 @@
 		     narrow viewport that also shows the env crumb, so the extra line is
 		     not a new shape, only a safer one. -->
 		<div
-			class="flex shrink-0 flex-wrap items-center gap-2 gap-y-1 border-b border-gray-200 py-4 pl-5 dark:border-gray-700"
+			class="flex shrink-0 flex-wrap items-center gap-2 gap-y-1 border-b border-gray-200 px-5 py-4 dark:border-gray-700"
 		>
 			<h2 id="cvm-title" class="text-base font-semibold text-gray-900 dark:text-white">
 				Change Version
@@ -1038,6 +1038,17 @@
 				</span>
 			{/if}
 			<div class="flex-1"></div>
+			<!-- ⭐ STEP ONE HAS A WAY OUT. (2026-09-03, from the human: "on mobile,
+			     change version first step doesn't have cancel or some way to
+			     exit.") The footer `Cancel` lives in the preview pane, which only
+			     exists once a version is picked, and the corner `✕` was removed
+			     above — so on a phone the picker was a full-screen sheet with no
+			     exit but the hardware back. One labelled control in the header,
+			     for whichever step has no other: `Cancel` on step one, `Back` on
+			     step two (below `md`, where the panes stack). Step two's footer
+			     keeps its own `Cancel`; nothing is doubled.
+			     `px-5`, not `pl-5`: the header lost its right padding with the
+			     `✕`, and the Back button sat on the sheet's edge. -->
 			{#if selectedVersion}
 				<button
 					type="button"
@@ -1045,6 +1056,15 @@
 					onclick={() => (selectedVersion = null)}
 				>
 					&larr; Back
+				</button>
+			{:else}
+				<button
+					type="button"
+					class="shrink-0 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+					disabled={deploying}
+					onclick={() => (open = false)}
+				>
+					Cancel
 				</button>
 			{/if}
 		</div>
