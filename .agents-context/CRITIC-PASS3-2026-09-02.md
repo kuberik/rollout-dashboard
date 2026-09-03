@@ -278,3 +278,18 @@ vs at least 4; duplicated sr-only status. Praise: force-deploy dialog, API-down 
 +28s, slow-load honesty, live deploy reporting on six surfaces, combined cause strings,
 Clear Pin copy, History retention honesty. Cluster residue: two more history entries on
 hello-world-dev/hello-world-app; deploy-message annotation cleared.
+
+## Wave 7 landed at `9e21437` (2026-09-03 05:30) — 65 commits since `b59d040`
+Amber = blocked by a rule, blue = a state a person chose (recorded); the blob is gone; 390
+banner disclosure gets the full width with the action under it; production changes are typed
+in both directions with a red confirm, a distance and the pin as a sentence; the provider's
+Overview and app page both say who waits on it; the graph node names the schedule gate; the
+/activity env filter fills gray-900 when selected; HELD on /apps and /envs rows; /namespaces
+rollup; true-reach touch targets incl. Details triggers and joined-chip links; held cards
+state their cause; solo groups on / shrink-wrap; adverse rows never truncate 640–1440; zero-
+count pills visible and muted at every width; cluster filter uses a display name; revision
+cards match heights only within 25%; repo-not-found copy; palette focused on open at 390 with
+a navbar Search button; navigation focuses main; 'Clear pin' everywhere (pin-copy.ts);
+History separates a blank note from the system description; the schedule sentence is a
+sentence; /versions hero bar paints held places orange with a caption; rail headers 47px on
+every page. Not actioned: `.btn` action rows on /apps and /environments (human decision).
