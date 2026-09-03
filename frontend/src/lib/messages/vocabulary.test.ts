@@ -98,6 +98,13 @@ const DENY: Array<{
 			// everywhere a pin appears -- not a competing spelling of `held`.
 			'lib/rollout-cards.ts\tcode\tPinned to … — automatic deploys are paused until the pin is cleared.',
 			'lib/RolloutGrid.svelte\ttitle\tPinned to … — automatic deploys are paused until the pin is cleared.',
+			// Same one consequence sentence, now also on `/`'s Held section and
+			// `/environments`' row chip -- see `lib/CLAUDE.md`'s finding 1
+			// (2026-09-03, UX-walk iteration 2): a pinned rollout gets the
+			// SAME `PINNED` chip and title everywhere it is listed, not a
+			// fresh spelling per surface.
+			'lib/ControlCenter.svelte\ttitle\tPinned to … — automatic deploys are paused until the pin is cleared.',
+			'routes/environments/+page.svelte\ttitle\tPinned to … — automatic deploys are paused until the pin is cleared.',
 			'routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte\ttext\tAutomatic deploys paused — this rollout is pinned to a version.',
 			'routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte\ttitle\tAutomatic deploys are paused until this pin is cleared.'
 		]
