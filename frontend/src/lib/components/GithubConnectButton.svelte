@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	import { GithubSolid } from 'flowbite-svelte-icons';
-	import { Dropdown, DropdownItem } from 'flowbite-svelte';
+	import { Dropdown, DropdownItem, Popover } from 'flowbite-svelte';
 	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import {
 		fetchGithubStatus,
@@ -92,23 +92,31 @@
 		</button>
 	{/if}
 {:else if status && !status.configured}
-	<!-- Nothing here would ever do anything different when pressed, so it is
-	     a muted, non-interactive affordance rather than a button. The
-	     ACCESSIBLE name and the hover `title` carry the full canonical
-	     sentence — the same one every other GitHub-absence surface in the
-	     product uses (`githubAbsenceSentence`) — so it reads identically to
-	     a screen reader or on hover regardless of viewport. The printed
-	     label stays short ("Not set up" / "Not configured") to match
-	     `Connect GitHub`'s own footprint at every width, same reasoning as
-	     the button above; the full sentence is one tap/hover away via
-	     `title`/aria-label either way. -->
-	<span
-		class="t-button flex cursor-default items-center gap-2 rounded border border-dashed border-gray-200 bg-transparent px-3 py-1 text-gray-400 dark:border-gray-700 dark:text-gray-500"
+	<!-- ⭐ A BUTTON, NOT A SPAN. (2026-09-03, from the human: "github button just
+	     says not configured and i cannot seem to click it.") The dashed box
+	     LOOKS pressable, so it must do something when pressed — and on a phone
+	     there is no hover to reveal the `title`. Pressing it opens the one
+	     sentence a reader needs: what is missing and where it is set. The
+	     label stays short so the control keeps `Connect GitHub`'s footprint. -->
+	<button
+		type="button"
+		id="github-unconfigured"
+		class="t-button flex cursor-help items-center gap-2 rounded border border-dashed border-gray-200 bg-transparent px-3 py-1 text-gray-400 transition-colors hover:border-gray-300 hover:text-gray-500 dark:border-gray-700 dark:text-gray-500 dark:hover:border-gray-600 dark:hover:text-gray-400"
 		aria-label={githubAbsenceSentence(status)}
-		title={githubAbsenceSentence(status)}
 	>
 		<GithubSolid class="h-4 w-4" />
 		<span class="sm:hidden">Not set up</span>
 		<span class="hidden sm:inline">Not configured</span>
-	</span>
+	</button>
+	<Popover triggeredBy="#github-unconfigured" trigger="click" class="w-72 text-sm" title="GitHub is not configured">
+		<p class="text-gray-600 dark:text-gray-300">
+			This dashboard has no GitHub App credentials, so there is nothing to sign in to and
+			commit lists stay empty.
+		</p>
+		<p class="mt-2 text-gray-600 dark:text-gray-300">
+			Set <code class="t-code-sm">GITHUB_APP_CLIENT_ID</code> and
+			<code class="t-code-sm">GITHUB_APP_CLIENT_SECRET</code> on the dashboard — the secret
+			<code class="t-code-sm">github-app-credentials</code> in its namespace — and restart it.
+		</p>
+	</Popover>
 {/if}
