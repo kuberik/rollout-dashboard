@@ -2757,17 +2757,9 @@
 											>on the newest</span
 										>
 									{/if}
-								</div>
-							</div>
-
-							<!-- ⭐ THE REFRESH CONTROL, NOW A BODY ROW. It is a MUTATING
-							     control (re-runs the Flux reconcile), so it earns button
-							     chrome — just not in the slot COMPOSITION-GRAMMAR reserves
-							     for the card's own rolled-up answer. Always present: staleness
-							     is possible whatever the candidate count reads. -->
-							<div
-								class="flex items-center justify-end border-b border-gray-100 px-4 py-1.5 dark:border-gray-700"
-							>
+									<!-- The refresh control lives beside the rollup. (2026-09-03, from
+									     the human: "refresh button there is also in an awkward place"
+									     — it had a 37px band of its own under the header.) -->
 								<button
 									id="refresh-versions-btn"
 									onclick={reconcileFluxResources}
@@ -2785,7 +2777,14 @@
 								<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
 									Refresh available versions
 								</Tooltip>
+								</div>
 							</div>
+
+							<!-- ⭐ THE REFRESH CONTROL, NOW A BODY ROW. It is a MUTATING
+							     control (re-runs the Flux reconcile), so it earns button
+							     chrome — just not in the slot COMPOSITION-GRAMMAR reserves
+							     for the card's own rolled-up answer. Always present: staleness
+							     is possible whatever the candidate count reads. -->
 
 							<!--
 								⭐ THE PROVIDER FACT. This rollout's own upgrade state ("up to
@@ -2983,6 +2982,23 @@
 														</JoinedBadge>
 													{/if}
 												</div>
+												<!-- WHAT THIS BUILD WOULD SHIP. (2026-09-03, from the human:
+												     "available version list also must show the commit
+												     information.") The same summary the status card draws for
+												     the last deploy, from the running revision to this one. -->
+												{#if githubConnected && latestEntry?.version?.revision && releaseCandidate.revision}
+													<CommitSummary
+														{namespace}
+														{name}
+														{cluster}
+														base={latestEntry.version.revision}
+														head={releaseCandidate.revision}
+														showAvatars
+														showMessages
+														hideWhenEmpty
+														class="mt-1.5"
+													/>
+												{/if}
 											</div>
 
 											<!-- Actions -->
@@ -3064,6 +3080,15 @@
 										</li>
 									{/each}
 								</ul>
+							{:else if !rollout.status?.releaseCandidates || rollout.status.releaseCandidates.length === 0}
+								<!-- (2026-09-03, from the human: "when there's no available version,
+								     we don't display anything.") The header's rollup is the verdict;
+								     the body still has to say it in a sentence, or the card reads
+								     as a title with nothing under it. -->
+								<p class="t-dense px-4 py-3 text-gray-500 dark:text-gray-400">
+									No newer build to deploy right now. New builds appear here as the
+									registry publishes them.
+								</p>
 							{:else if isCurrentVersionCustom}
 								<div class="p-5">
 									<!--
