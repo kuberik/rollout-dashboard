@@ -408,7 +408,15 @@
 				into the 16-20px of banner padding, which is where the reference page
 				puts it too.
 			-->
-			<div class="ap-grid grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-x-4">
+			<!-- `3rem`, NOT `2.5rem`. (2026-09-03, from the human: "pulse animation hits
+			     into text which suggest we don't have enough spacing there.") The disc
+			     is 40px and the halo doubles it, so it reaches 20px past the disc's
+			     right edge; with a 16px gutter the ring crossed 4px into the headline.
+			     The first column is 48px wide now and the disc keeps its first 40px,
+			     so the text sits 24px from the disc — the halo's 20px overhang and a
+			     hairline to spare — and the disc's centre does not move: the 40px
+			     from the panel's edges that the halo needs on that side is unchanged. -->
+			<div class="ap-grid grid min-w-0 flex-1 grid-cols-[3rem_minmax(0,1fr)_auto] gap-x-4">
 				<!--
 					⭐ `min-h-12 sm:min-h-10` IS THE ROOM THE FULL-SIZE HALO NEEDS, AND IT
 					IS SPENT ON EVERY SEVERITY, NOT ONLY THE PULSING ONE.
@@ -479,10 +487,11 @@
 
 						HOW IT WORKS. `h-0` means the disc contributes NO height, so it can
 						never push the headline off its own baseline — the invariant the
-						old absolute form was protecting, kept. `-ml-14 mr-4` makes its net
-						advance exactly zero (−56 + 40 + 16), so the headline still begins
+						old absolute form was protecting, kept. `-ml-16 mr-6` makes its net
+						advance exactly zero (−64 + 40 + 24), so the headline still begins
 						on the grid's column-2 edge and the message below it stays aligned,
-						while the box itself spans −56..−16, which IS column 1. Then
+						while the box itself spans −64..−24 — the first 40px of the 48px
+						column 1, leaving 24px between the disc and the text for the halo. Then
 						`items-center` centres a zero-height item on the cross-size of its
 						flex line — the headline's box. One line: centre at 12px,
 						byte-identical to `top-3`. Two lines: 24px, the headline's actual
@@ -524,7 +533,7 @@
 					     used to wrap. The disc contributes 0 to the group's min-content
 					     (−56 + 40 + 16), so the floor is byte-identical to the old one. -->
 					<div class="flex items-center">
-						<div class="relative mr-4 -ml-14 h-0 w-10 shrink-0">
+						<div class="relative mr-6 -ml-16 h-0 w-10 shrink-0">
 							<div class="absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
 								{#if pulse}
 									<!-- `animate-alert-halo` IS `ping`, VALUE FOR VALUE — scale(1)
