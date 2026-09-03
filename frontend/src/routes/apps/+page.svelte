@@ -2696,7 +2696,12 @@
 			   reverted product-wide, because each row is its own grid and an
 			   intrinsic track sizes per row, so the columns stop lining up
 			   down the list. One flexible track, everything else fixed. */
-			grid-template-columns: minmax(0, 1fr) 164px 128px 96px 20px;
+			/* Fleet 184px, not 164 (design sweep, 2026-09-03): the verdict line
+			   `2 of 3 on the newest` measures 16px glyph + 6px gap + ~150px of
+			   text = 172, and at 164 it ellipsised to `on the new…` with 300px
+			   of unused width in the id track beside it. 184 clears today's
+			   widest verdict with 12px to spare; still a fixed track. */
+			grid-template-columns: minmax(0, 1fr) 184px 128px 96px 20px;
 			grid-template-areas: 'id fleet act lead chev';
 			align-items: center;
 			column-gap: 16px;
