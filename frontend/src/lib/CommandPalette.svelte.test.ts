@@ -4,6 +4,23 @@ import CommandPalette from './CommandPalette.svelte';
 import { SOURCE_CLUSTER_ANNOTATION } from './source-dashboard';
 import type { Rollout, Environment } from '../types';
 
+function baseProps() {
+	return {
+		open: true,
+		scope: null,
+		rollouts: [] as Rollout[],
+		environments: [] as Environment[],
+		localClusterName: 'hub'
+	};
+}
+
+async function waitForFocusRestore() {
+	// `modalFocusReturn` restores immediately, then again past its own
+	// transition timers (`setTimeout(restore, 0)` and `setTimeout(restore,
+	// 180)`) — wait past the longest one.
+	await new Promise((r) => setTimeout(r, 200));
+}
+
 // Multi-cluster: the hub merges rollouts from several clusters. Two clusters
 // can share an app's namespace+name. The palette's per-row {#each} key includes
 // the source-cluster name so these two rollouts don't collide on the same
@@ -124,5 +141,60 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 		const selected = container.querySelector('[aria-selected="true"]');
 		expect(rows.length).toBe(2);
 		expect(selected?.textContent).toContain('hello-world');
+	});
+});
+
+/**
+ * ⭐ NIT 12 — CTRL+K OPENS WITH NOTHING FOCUSED; ESCAPE MUST NOT LAND ON
+ * `<body>`. (2026-09-03) `Navbar.svelte`'s ⌘K/Ctrl K handler is a global
+ * `<svelte:window onkeydown>` that never focuses anything, unlike clicking
+ * the Search button (which focuses it for free) — so `document.activeElement`
+ * is `<body>` at the instant the palette opens via the shortcut, same as this
+ * test's fresh mount with `open: true` and nothing focused beforehand.
+ * `modalFocusReturn` treats `<body>` as "nothing was focused" and declines to
+ * restore anything, which is correct in general but left Escape with nowhere
+ * honest to go for this one trigger. The fix redirects that specific case
+ * onto the navbar's one `[aria-label^="Search ("]` button before
+ * `modalFocusReturn` takes its own snapshot.
+ */
+describe('nit 12 — focus return after close, regardless of trigger', () => {
+	test('nothing focused on open (⌘K trigger): closing returns focus to the Search button, not <body>', async () => {
+		const searchButton = document.createElement('button');
+		searchButton.setAttribute('aria-label', 'Search (Ctrl K)');
+		document.body.appendChild(searchButton);
+		try {
+			(document.activeElement as HTMLElement | null)?.blur();
+			expect(document.activeElement).toBe(document.body);
+
+			const { rerender } = render(CommandPalette, { props: baseProps() });
+			await rerender({ ...baseProps(), open: false });
+			await waitForFocusRestore();
+
+			expect(document.activeElement).toBe(searchButton);
+		} finally {
+			searchButton.remove();
+		}
+	});
+
+	test('something already focused on open (click trigger): closing restores that element, not the Search button', async () => {
+		const searchButton = document.createElement('button');
+		searchButton.setAttribute('aria-label', 'Search (Ctrl K)');
+		document.body.appendChild(searchButton);
+		const otherTrigger = document.createElement('button');
+		otherTrigger.textContent = 'Switch rollout';
+		document.body.appendChild(otherTrigger);
+		try {
+			otherTrigger.focus();
+			expect(document.activeElement).toBe(otherTrigger);
+
+			const { rerender } = render(CommandPalette, { props: baseProps() });
+			await rerender({ ...baseProps(), open: false });
+			await waitForFocusRestore();
+
+			expect(document.activeElement).toBe(otherTrigger);
+		} finally {
+			searchButton.remove();
+			otherTrigger.remove();
+		}
 	});
 });

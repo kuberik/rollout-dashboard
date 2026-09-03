@@ -620,6 +620,7 @@ function upstreamGate(overrides: Partial<ClassifiedGate>): ClassifiedGate {
 		clause: '',
 		short: '',
 		clearsAt: null,
+		timezone: null,
 		subject: null,
 		subjectKind: null,
 		predicate: null,

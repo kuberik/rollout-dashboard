@@ -113,6 +113,40 @@
 	 * it. The three flowbite `Modal`s never had this bug because a native
 	 * `<dialog>` opened with `showModal()` does all three for free.
 	 */
+
+	/**
+	 * ⭐ NIT 12 — CTRL+K OPENS WITH NOTHING FOCUSED, SO THE RETURN HAD NOWHERE
+	 * HONEST TO GO. (2026-09-03) Measured: a click on the navbar's Search
+	 * button opens the palette and Escape correctly returns focus to that
+	 * button, because CLICKING A BUTTON FOCUSES IT — `modalFocusReturn`'s own
+	 * capture (`document.activeElement` at the instant `open` turns true)
+	 * legitimately reads the button. `⌘K`/`Ctrl K` is a GLOBAL
+	 * `<svelte:window onkeydown>` in `Navbar.svelte` that never focuses
+	 * anything, so the same capture reads `<body>` — which `modalFocusReturn`
+	 * correctly treats as "nothing was focused" (see its own doc comment) and
+	 * declines to restore, leaving Escape's landing spot wherever the browser
+	 * defaults an unmount to (`<body>`).
+	 *
+	 * Both triggers open the SAME dialog with the SAME one way in from a
+	 * keyboard (there is exactly one `[aria-label^="Search ("]` per navbar,
+	 * shared by both entry points), so "nothing was focused" and "the
+	 * keyboard shortcut fired" are the same fact from two directions. This
+	 * runs as its own `$effect.pre`, BEFORE `modalFocusReturn`'s (source
+	 * order — Svelte runs a component's own pre-effects in the order they
+	 * were created), so when there truly was nothing focused it moves focus
+	 * onto that button FIRST; `modalFocusReturn`'s capture then reads the
+	 * button `.focus()` just placed, exactly as if the reader had clicked it.
+	 * A genuine prior focus (a keyboard user was mid-edit in a text field
+	 * before pressing ⌘K) is left alone — only the true "nothing was
+	 * focused" case is redirected.
+	 */
+	$effect.pre(() => {
+		if (!open) return;
+		const active = document.activeElement;
+		if (active && active !== document.body) return;
+		document.querySelector<HTMLElement>('[aria-label^="Search ("]')?.focus();
+	});
+
 	modalFocusReturn(() => open);
 
 	let searchInput = $state<HTMLInputElement | null>(null);
@@ -824,12 +858,21 @@
 		use:inertSiblings
 		use:trapFocus
 	>
-		<button
-			type="button"
-			aria-label="Close"
+		<!-- ⛔ ONE CLOSE AFFORDANCE, NOT TWO. (cosmetic, coordinator operator
+		     walk, 2026-09-03) This was a `<button aria-label="Close">` —
+		     the SAME accessible name as the explicit `✕` button in the header
+		     below, so the accessibility tree (and Tab, since it sat first in
+		     DOM order inside `use:trapFocus`, ahead of the search input) had
+		     two controls both announcing "Close" for one dismiss action. A
+		     backdrop click-to-dismiss is a mouse/touch convenience with no
+		     keyboard equivalent to lose — Escape and the header's own `✕`
+		     already cover keyboard and touch — so it is a plain `aria-hidden`,
+		     untabbable `<div>` now, not a second labelled button. -->
+		<div
+			aria-hidden="true"
 			class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm backdrop-enter"
 			onclick={() => (open = false)}
-		></button>
+		></div>
 
 		<div
 			class="relative z-10 flex h-full w-full flex-col overflow-hidden bg-white palette-enter dark:bg-gray-800 sm:mx-4 sm:h-auto sm:max-w-2xl sm:rounded-xl sm:shadow-2xl sm:ring-1 sm:ring-gray-200 sm:dark:ring-gray-700"

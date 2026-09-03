@@ -109,6 +109,61 @@ export function formatTimeUntil(iso: string, now: Date = new Date()): string | n
 }
 
 /**
+ * ⭐ THE ABSOLUTE INSTANT, IN THE SCHEDULE'S OWN ZONE — NOT THE BROWSER'S.
+ * (P2, operator-walk finding) `clearsAt` used to reach the screen as
+ * `new Date(iso).toLocaleString()` or `.toLocaleTimeString([], {...})` —
+ * both silently defer to whatever timezone the READER's machine happens to
+ * be in, print in US date order, and (the `toLocaleString()` form) carry
+ * seconds nobody asked for on a schedule boundary. Measured live: a rule
+ * whose own label says `9 AM - 5 PM EST` reopened at `(9/3/2026, 1:00:00
+ * PM)` with no zone printed at all — a reader in any OTHER zone has no way
+ * to tell whose 1:00 PM that is, and `EST` in September is itself wrong
+ * (the US is on daylight time) — the schedule's OWN `spec.timezone` (an
+ * IANA name, `America/New_York`) is authoritative and is what this
+ * formats against, never a hand-typed abbreviation.
+ *
+ * 24-hour, no AM/PM ambiguity, no seconds: `09:00 America/New_York (13:00
+ * UTC)`. The UTC figure rides along unconditionally — it is the one
+ * reading every reader can convert from without knowing the IANA name's
+ * own offset — and is dropped only when the schedule's zone already IS
+ * UTC, where repeating it would say the same clock time twice.
+ */
+export function formatAbsoluteReopen(iso: string, timezone: string | null | undefined): string {
+	const target = new Date(iso);
+	if (Number.isNaN(target.getTime())) return '';
+	const zone = timezone && timezone.trim() ? timezone : null;
+	const clock = (tz: string) =>
+		target.toLocaleTimeString('en-GB', {
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false,
+			timeZone: tz
+		});
+	if (!zone || zone === 'UTC') return `${clock('UTC')} UTC`;
+	return `${clock(zone)} ${zone} (${clock('UTC')} UTC)`;
+}
+
+/**
+ * `reopens in 7h 21m — 09:00 America/New_York (13:00 UTC)` — the relative
+ * figure LEADS (it is the number a reader actually acts on) and the
+ * absolute clock trails it, joined by an em dash rather than parentheses:
+ * this pass's own finding is that a parenthetical absolute time reads as a
+ * footnote nobody has to check, when it is the one thing that disambiguates
+ * WHOSE clock the relative figure is counting down on. Returns just the
+ * absolute form once the countdown has expired (`formatTimeUntil` false),
+ * so a caller never has to special-case "the moment has passed."
+ */
+export function formatReopensAt(
+	iso: string,
+	timezone: string | null | undefined,
+	now: Date = new Date()
+): string {
+	const until = formatTimeUntil(iso, now);
+	const absolute = formatAbsoluteReopen(iso, timezone);
+	return until ? `reopens in ${until} — ${absolute}` : `reopens ${absolute}`;
+}
+
+/**
  * The RAW schedule objects for one rollout.
  *
  * `fetchScheduleWindow` reduces to a page-level "is anything closed, and when

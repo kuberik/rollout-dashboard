@@ -153,6 +153,7 @@
 		type RolloutResponse,
 		rolloutPermissionsQueryOptions
 	} from '$lib/api/rollouts';
+	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
@@ -387,6 +388,46 @@
 	);
 
 	/**
+	 * ⭐ TWO TRUE FACTS ABOUT ONE ROLLOUT COLLAPSE INTO ONE PANEL. (P9, second
+	 * re-check, finding 10) `/rollouts/dev/hello-dep-dev/hello-frontend-app`
+	 * is BOTH held by a dependency gate AND has gone backwards — measured
+	 * live, two full-width `AlertPanel`s, 122px each, 264px total above a
+	 * 90px status card, neither carrying a right-slot action. Both facts are
+	 * real; stacking a second full-width band for the quieter one is the
+	 * defect. When this is true the gate banner below takes
+	 * `secondaryFact={rollbackWent(...)}` and the standalone `Rolled back`
+	 * panel further down does not render at all — one banner, headline is
+	 * the blocking fact (the one to act on), the rollback rides as a line
+	 * inside it.
+	 *
+	 * ⛔ NOT WHEN PINNED. A pinned rollout already collapses the two (a
+	 * rollback always pins, and the `Rolled back` panel states the pin's
+	 * consequence in its own tested sentence — see that branch's own
+	 * comment); this flag only covers the OTHER gate-blocked case, which
+	 * had no such collapse.
+	 *
+	 * ⛔ AND ONLY WHEN A `dependency` GATE IS PART OF THE STORY, NOT ANY
+	 * NON-CLOCK BLOCK. A first pass folded on `clock.length === 0` alone
+	 * and broke `subject-detail.svelte.test.ts`'s own rolled-back-and-held
+	 * fixture (a `check`/schedule-fallback gate, no dependency in sight):
+	 * that scenario's TWO panels are the tested, correct shape — the gate
+	 * banner states the check, the `Rolled back` panel states the rollback
+	 * AND its disclosed `rollbackNext` verdict ("It will not move today…").
+	 * Folding there deleted the `Rolled back` panel's own DISCLOSED tier
+	 * with nothing to replace it, which is a bigger loss than the two-band
+	 * stacking this fold exists to fix. Narrowed to the ONE shape the
+	 * finding actually measured — a contract gate, whose banner has real
+	 * spare room in its own disclosure for the second fact.
+	 */
+	const rollbackFoldedIntoGateBanner = $derived(
+		!!rolledBack &&
+			!blockStory.pinnedTo &&
+			blockStory.blocked &&
+			blockStory.clock.length === 0 &&
+			blockStory.gates.some((g) => g.kind === 'dependency')
+	);
+
+	/**
 	 * ⭐ THE PROVIDER FACT, ON THE PROVIDER'S OWN OVERVIEW. (2026-09-02)
 	 *
 	 * From the critic: `/rollouts/prod/hello-dep-prod/hello-api-app` Overview
@@ -574,6 +615,38 @@
 	}));
 	const events = $derived(eventsQuery.data?.events ?? []);
 
+	/**
+	 * ⭐ THE ROLLUP DOES NOT GO SILENT WHEN GITHUB DOES. (P11, operator-walk
+	 * finding) `CommitSummary`'s own `query.isError` branch renders NOTHING,
+	 * deliberately — its own comment says why: a page that renders MANY of
+	 * these should say it once, panel-level, rather than N times. This page
+	 * renders exactly one, in the version card's rollup slot, and had never
+	 * built that panel-level fallback — so a 401 on `/commits` left the
+	 * whole row blank where `/versions` already says `Commit message and
+	 * author need GitHub. …`. `githubStatus` is the same query that page
+	 * runs (`fetchGithubStatus`/`githubStatusQueryKey`, `staleTime: 300_000`
+	 * — the connection state does not change mid-visit) so the two surfaces
+	 * cannot disagree about whether GitHub is reachable.
+	 */
+	const githubStatus = createQuery(() => ({
+		queryKey: githubStatusQueryKey,
+		queryFn: fetchGithubStatus,
+		staleTime: 300_000
+	}));
+	const githubConnected = $derived(githubStatus.data?.connected ?? false);
+
+	/**
+	 * ⭐ THE SCHEDULE'S "NOTHING WAITING" FACT, HANDED UP AS TEXT — NOT A
+	 * BANNER. (F2, second re-check, 2026-09-03) A closed deploy window with
+	 * no candidate behind it is not a blocking fact, so it does not spend
+	 * the page's one banner slot; `ScheduleStatus` hands the sentence up
+	 * through `onMeta` and this page prints it beside the version, in the
+	 * same row `isCurrentVersionCustom` and the upgrade count already share.
+	 * See `ScheduleStatus.svelte`'s own `metaText` comment for the hue
+	 * defect this replaces.
+	 */
+	let scheduleMetaText = $state<string | null>(null);
+
 	// removed Clear Pin functionality
 	let selectedVersion = $state<string | null>(null);
 
@@ -593,6 +666,53 @@
 	// Change version / deploy modal (picker + live changelist + deploy confirm)
 	let showChangeVersionModal = $state(false);
 	let deployExplanation = $state('');
+
+	/**
+	 * ⭐ THE POLL GAP IS WHERE A SECOND TAP WALKS THE ENVIRONMENT A SECOND
+	 * BUILD BACK. (B3, operator-walk finding) `ChangeVersionModal`'s own
+	 * `onSuccess` fires the moment its POST resolves — fast, on this
+	 * cluster — but the CONTROLLER still has to reconcile and this page's
+	 * poll still has to catch up, and measured live that gap was 5-8s with
+	 * the Overview UNCHANGED: same button armed, no toast, no pending
+	 * state. A second `Deploy`/`Rollback` press in that window is a second,
+	 * real mutation.
+	 *
+	 * `pendingAction` bridges it: set the instant `onSuccess` fires, it
+	 * disables every control on this page that starts another deploy
+	 * (Change Version, Rollback, Clear pin, each release candidate's own
+	 * Deploy) and shows `Deploy requested — starting` beside the version.
+	 * It clears itself the moment `rollout.status.history[0]` actually
+	 * changes — the same signature `lastAnnouncedDeploy` above already
+	 * tracks — with a 20s safety timeout so a detection miss cannot wedge
+	 * every action control open forever.
+	 *
+	 * ⛔ NOT THE MODAL'S OWN PENDING STATE. Disabling the modal's Confirm
+	 * button while ITS OWN fetch is in flight is a different, narrower
+	 * problem (that dialog is a different lane's file); this is the gap
+	 * AFTER the modal has already told the operator "done."
+	 */
+	let pendingAction = $state<{ sinceKey: string } | null>(null);
+
+	function historySignature(): string {
+		const h = rollout?.status?.history?.[0];
+		return `${h?.version?.tag ?? ''}|${h?.bakeStatus ?? ''}|${h?.timestamp ?? ''}`;
+	}
+
+	function beginPendingAction() {
+		pendingAction = { sinceKey: historySignature() };
+		void rolloutQuery.refetch();
+		const startedWith = pendingAction;
+		setTimeout(() => {
+			if (pendingAction === startedWith) pendingAction = null;
+		}, 20000);
+	}
+
+	$effect(() => {
+		if (!pendingAction) return;
+		if (historySignature() !== pendingAction.sinceKey) {
+			pendingAction = null;
+		}
+	});
 
 	// Recovery-mode pre-confirmation modal state
 	let showRecoveryWarningModal = $state(false);
@@ -1549,6 +1669,22 @@
 		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
 			{#if rollout.status?.history?.[0]}
 				{@const latestEntry = rollout.status.history[0]}
+				<!--
+					⭐ "UP TO DATE" WAITS FOR THE VERSION TO BE SERVING, NOT FOR THE
+					REQUEST TO HAVE BEEN MADE. (P10, operator-walk finding)
+					`releaseCandidates` are newer than `history[0].version` — and
+					`history[0]` becomes the NEW build the instant a deploy STARTS
+					(a `Deploying`/`InProgress` entry is pushed immediately), long
+					before any pod actually runs it. Measured live: fifteen seconds
+					after pressing Deploy, `Available Version Upgrades` already read
+					`up to date` while zero pods had run the new build. `releaseCandidates.length
+					=== 0` says "nothing newer is ALLOWED"; it does not say "this is
+					SERVING". `stillCatchingUp` is the second half of that fact —
+					true exactly while the current history entry hasn't settled —
+					and every `up to date` verdict on this card checks it too.
+				-->
+				{@const stillCatchingUp =
+					latestEntry.bakeStatus === 'Deploying' || latestEntry.bakeStatus === 'InProgress'}
 				{@const currentEnv = environment?.spec?.environment}
 				{@const pipelineKruiseRollouts = Object.values(managedResources)
 					.flat()
@@ -1712,6 +1848,7 @@
 					{cluster}
 					story={blockStory}
 					onSchedules={(s) => (scheduleObjects = s)}
+					onMeta={(t) => (scheduleMetaText = t)}
 				/>
 				{#if blockStory.pinnedTo}
 					<!--
@@ -1745,7 +1882,7 @@
 								<button
 									type="button"
 									class="btn btn-secondary"
-									disabled={!isDashboardManagingWantedVersion}
+									disabled={!isDashboardManagingWantedVersion || !!pendingAction}
 									onclick={() => {
 										showClearPinModal = true;
 									}}
@@ -1757,7 +1894,39 @@
 						<BlockingStoryPanel story={blockStory} actions={clearPinAction} />
 					{/if}
 				{:else if blockStory.blocked && blockStory.clock.length === 0}
-					<BlockingStoryPanel story={blockStory} />
+					<!--
+						⭐ THE RIGHT SLOT IS PART OF THIS BANNER, NOT AN EMPTY ONE.
+						(P9, second re-check, finding 10) `/apps` and `/environments`
+						fill `BlockingStoryPanel`'s `actions` slot with a nav-link to
+						the object the banner is about; this page IS that object, so
+						there is nowhere to navigate TO. What survives is the more
+						useful half of that same idea: a `dependency` gate has a real
+						second destination on THIS rollout (its Dependencies tab,
+						where the contract's provider and required range are drawn),
+						so that wins when one is present; otherwise the slot carries
+						the same rule count the disclosure below already states, so
+						the banner is never rendered with a bare unused column.
+					-->
+					{#snippet blockedActions()}
+						{#if blockStory.gates.some((g) => g.kind === 'dependency')}
+							<a href={rolloutPath(cluster, namespace, name, 'dependencies')} class="nav-link">
+								Dependencies
+								<ChevronRightOutline class="h-3.5 w-3.5" />
+							</a>
+						{:else}
+							<span class="t-micro font-medium">
+								{blockStory.gates.length}
+								{blockStory.gates.length === 1 ? 'rule' : 'rules'}
+							</span>
+						{/if}
+					{/snippet}
+					<BlockingStoryPanel
+						story={blockStory}
+						actions={blockedActions}
+						secondaryFact={rollbackFoldedIntoGateBanner && rolledBack
+							? rollbackWent(rolledBack, autoDeploy)
+							: undefined}
+					/>
 				{/if}
 
 				<!-- ══ FAILURE PANEL ══ -->
@@ -1887,8 +2056,18 @@
 					that knows — the same object the clear-pin dialog and the
 					deploy confirmation read, so the three cannot drift into
 					three answers about one rollout.
+
+					⛔ AND NOT WHEN `rollbackFoldedIntoGateBanner` IS TRUE. (P9,
+					second re-check, finding 10) A NON-pinned gate block and a
+					rollback are two independent facts, and this panel used to
+					render unconditionally beside the gate banner above —
+					measured live, two full-width bands for one rollout. The
+					gate banner is the one to act on, so it takes this panel's
+					sentence (`rollbackWent`) as its own `secondaryFact` and this
+					panel steps aside rather than repeating it one level down.
+					See `rollbackFoldedIntoGateBanner`'s own comment.
 				-->
-				{#if rolledBack}
+				{#if rolledBack && !rollbackFoldedIntoGateBanner}
 					{@const trig = latestEntry?.triggeredBy}
 					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
 					<!--
@@ -2089,19 +2268,49 @@
 												{#if stuckReason}
 													<StuckBadge reason={stuckReason} />
 												{/if}
+												{#if pendingAction}
+													<!-- ⭐ THE POLL-GAP BRIDGE. See `pendingAction`'s own
+													     comment (B3, operator-walk finding): a mutation the
+													     modal already confirmed can still take 5-8s to reach
+													     this page's own data, and an unchanged screen in that
+													     window reads as "did that even work" — or invites a
+													     second press. -->
+													<span
+														class="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400"
+													>
+														<StatusSpinner size="3" color="blue" />
+														Deploy requested — starting
+													</span>
+												{/if}
 											</div>
-											<!-- Metadata line: upgrades, custom, hash (pinned shown as alert above) -->
-											{#if isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version))}
+											<!-- Metadata line: upgrades, custom, hash, schedule meta (pinned shown as alert above) -->
+											{#if isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
 												<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
 													{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+														<!--
+															⭐ `available` MEANS `allowed`, AND A PIN ALLOWS
+															NOTHING. (P10, operator-walk finding) This line said
+															`↑ 1 upgrade available` while the panel one row down
+															said the rollout is PINNED — `available` is a claim
+															this dashboard would actually DEPLOY the candidate on
+															its own, which is false the moment `wantedVersion` is
+															set (see `blocking-story.ts`: a pin outranks every
+															gate and refuses ALL builds). The count is still true
+															and still worth a glance; the verb changes to name
+															what is actually true.
+														-->
 														<span
 															class="flex items-center gap-1 text-orange-700 dark:text-orange-400"
 														>
-															<ArrowUpOutline class="h-3 w-3" />{rollout.status.releaseCandidates
-																.length}
-															{rollout.status.releaseCandidates.length === 1
-																? 'upgrade'
-																: 'upgrades'} available
+															<ArrowUpOutline class="h-3 w-3" />
+															{#if blockStory.pinnedTo}
+																{rollout.status.releaseCandidates.length} newer · held by the pin
+															{:else}
+																{rollout.status.releaseCandidates.length}
+																{rollout.status.releaseCandidates.length === 1
+																	? 'upgrade'
+																	: 'upgrades'} available
+															{/if}
 														</span>
 													{/if}
 													{#if isCurrentVersionCustom}
@@ -2112,6 +2321,21 @@
 													{#if getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
 														<span class="font-mono text-gray-500 dark:text-gray-400">
 															{formatRevision(getRevisionInfo(latestEntry.version)!)}
+														</span>
+													{/if}
+													<!--
+														⭐ THE SCHEDULE'S "NOTHING WAITING" FACT LANDS HERE,
+														NOT IN A BANNER. (F2, second re-check, 2026-09-03)
+														See `scheduleMetaText`'s own comment: a closed deploy
+														window with no candidate behind it is informational,
+														so it takes the same quiet, one-line treatment as
+														the upgrade count and the custom-version flag beside
+														it, instead of the page's one banner slot.
+													-->
+													{#if scheduleMetaText}
+														<span class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+															<CalendarWeekSolid class="h-3 w-3" />
+															{scheduleMetaText}
 														</span>
 													{/if}
 												</div>
@@ -2164,20 +2388,36 @@
 												{@const historyHref = rolloutPath(cluster, namespace, name, 'history')}
 												{@const latestKey = deployKey(latestEntry)}
 												<div class="mt-1.5">
-													<CommitSummary
-														{namespace}
-														{name}
-														{cluster}
-														base={rollout.status.history[1]?.version?.revision}
-														head={latestEntry.version?.revision}
-														href={latestKey
-															? `${historyHref}?${DEPLOY_PARAM}=${encodeURIComponent(latestKey)}`
-															: historyHref}
-														hrefLabel="Open this deploy in the history"
-														showAvatars
-														hideWhenEmpty
-														class="-mx-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
-													/>
+													<!--
+														⭐ P11: THE ROLLUP NAMES WHY IT HAS NOTHING TO SAY,
+														RATHER THAN SAYING NOTHING. See `githubStatus`'s own
+														comment. `CommitSummary`'s `query.isError` branch is
+														deliberately silent for a LIST of these; this is the
+														page's only one, so the fallback is drawn HERE rather
+														than inside that shared component.
+													-->
+													{#if githubConnected}
+														<CommitSummary
+															{namespace}
+															{name}
+															{cluster}
+															base={rollout.status.history[1]?.version?.revision}
+															head={latestEntry.version?.revision}
+															href={latestKey
+																? `${historyHref}?${DEPLOY_PARAM}=${encodeURIComponent(latestKey)}`
+																: historyHref}
+															hrefLabel="Open this deploy in the history"
+															showAvatars
+															hideWhenEmpty
+															class="-mx-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+														/>
+													{:else}
+														<p class="text-xs text-gray-500 dark:text-gray-400">
+															Commit message and author need GitHub. {githubAbsenceSentence(
+																githubStatus.data
+															)}
+														</p>
+													{/if}
 												</div>
 											{/if}
 										</div>
@@ -2226,7 +2466,7 @@
 												size="sm"
 												color="light"
 												class="w-full justify-center sm:w-auto"
-												disabled={!isDashboardManagingWantedVersion}
+												disabled={!isDashboardManagingWantedVersion || !!pendingAction}
 												onclick={() => {
 													showClearPinModal = true;
 												}}
@@ -2239,7 +2479,7 @@
 											size="sm"
 											color="light"
 											class="w-full justify-center sm:w-auto"
-											disabled={!isDashboardManagingWantedVersion}
+											disabled={!isDashboardManagingWantedVersion || !!pendingAction}
 											onclick={() => {
 												if (isDashboardManagingWantedVersion) {
 													isPinVersionMode = false;
@@ -2271,7 +2511,7 @@
 												size="sm"
 												color="light"
 												class="w-full justify-center sm:w-auto"
-												disabled={!isDashboardManagingWantedVersion}
+												disabled={!isDashboardManagingWantedVersion || !!pendingAction}
 												title={rollbackNow.basis === 'ran-here'
 													? `Go back to ${rollbackDisplay}, the last older version this environment ran${
 															rollbackSkipped.length > 0
@@ -2377,6 +2617,16 @@
 											role="count"
 											label="{rollout.status.releaseCandidates.length} newer"
 										/>
+									{:else if stillCatchingUp}
+										<!-- ⭐ P10: NOT `up to date` YET. `releaseCandidates` is
+										     already empty (nothing newer is ALLOWED) but the current
+										     history entry hasn't settled — see `stillCatchingUp`'s own
+										     comment. Same neutral ink `BakeStatusIcon`'s in-flight
+										     states use elsewhere on this page; green is reserved for
+										     the verdict actually being true. -->
+										<span class="text-xs font-medium text-gray-500 dark:text-gray-400"
+											>{bakeWord(latestEntry.bakeStatus)}…</span
+										>
 									{:else}
 										<span class="text-xs font-medium text-green-700 dark:text-green-400"
 											>up to date</span
@@ -2452,7 +2702,7 @@
 											size="xs"
 											color="light"
 											class="shrink-0"
-											disabled={!isDashboardManagingWantedVersion}
+											disabled={!isDashboardManagingWantedVersion || !!pendingAction}
 											onclick={() => {
 												showClearPinModal = true;
 											}}
@@ -2671,8 +2921,9 @@
 														size="sm"
 														color="blue"
 														aria-label={`Deploy version ${getDisplayVersion(releaseCandidate)}`}
-														disabled={!isDashboardManagingWantedVersion &&
-															!hasForceDeployAnnotation(rollout)}
+														disabled={(!isDashboardManagingWantedVersion &&
+														!hasForceDeployAnnotation(rollout)) ||
+														!!pendingAction}
 														onclick={() => {
 															selectedVersion = version;
 															const isCustom = isSelectedVersionCustom(version);
@@ -2697,7 +2948,7 @@
 										2.53:1 pair the missing-release banner was rebuilt out of. Leaving one
 										of the two behind is precisely the "minority spelling survives the
 										sweep" failure this pass exists to end.
-									
+
 										The fill is light in BOTH themes here (Flowbite paints `dark:bg-yellow-200`),
 										so one ink serves both — but `yellow-700` on `yellow-200` is only
 										4.24:1, so the fill is pinned to `yellow-100` in dark as well and
@@ -2736,14 +2987,22 @@
 										</div>
 									</Alert>
 								</div>
-							{:else}
-								<div
-									class="flex flex-col items-center gap-2 py-10 text-gray-500 dark:text-gray-400"
-								>
-									<CheckCircleSolid class="h-8 w-8 text-green-700 dark:text-green-400" />
-									<p class="text-sm">Up to date — no upgrades available</p>
-								</div>
 							{/if}
+							<!--
+								⛔ THE `up to date` EMPTY STATE — A CENTRED 32px CHECK PLUS
+								`Up to date — no upgrades available` IN A 40px-PADDED
+								BODY — USED TO RENDER HERE UNCONDITIONALLY IN THE FINAL
+								BRANCH, AND IT WAS THE CARD'S ROLLUP RESTATED. (P9, second
+								re-check, finding 14) The header 32px above already answers
+								the question this body existed to answer — the `up to date`
+								pill IS the green tick — so an up-to-date rollout spent
+								710×230 (measured) drawing one fact twice. When there ARE no
+								candidates and the current version is not custom, the card
+								now collapses to its header and the refresh row: the ONLY
+								action left to take ("check again") stays reachable, the
+								restatement does not. `heldByThis` and the pin banner above
+								are untouched — those are facts the header does not carry.
+							-->
 						</div>
 					</div>
 					<div class="flex flex-col gap-4">
@@ -2976,6 +3235,7 @@
 		toastMessage = m;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
+		beginPendingAction();
 	}}
 	onError={(m) => {
 		toastType = 'error';

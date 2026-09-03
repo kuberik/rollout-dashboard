@@ -80,7 +80,7 @@
 
 import type { Rollout, Environment, RolloutDependency, RolloutGate } from '$lib/../types';
 import { promotionBlock, promotionCandidates, type PromotionBlock } from './promotion';
-import { formatTimeUntil } from '$lib/api/schedules';
+import { formatTimeUntil, formatAbsoluteReopen } from '$lib/api/schedules';
 import { displayVersionForTag } from '$lib/version-utils';
 
 /**
@@ -236,6 +236,21 @@ export type ClassifiedGate = {
 	 * support. The row falls back to the sentence there.
 	 */
 	need: string | null;
+	/**
+	 * ⭐ THE SCHEDULE'S OWN ZONE, FOR A `clock` GATE ONLY. (P2, operator-walk
+	 * finding) `clearsAt` is an absolute ISO instant and an instant alone
+	 * does not say WHOSE wall clock a reader should read it against —
+	 * `blockingStory`'s clock loop used to hand it to `toLocaleString()`,
+	 * which silently substitutes the READER's machine zone (and, in that
+	 * form, prints US date order plus seconds nobody asked for on a
+	 * schedule boundary). The `RolloutSchedule`'s own `spec.timezone` (an
+	 * IANA name) is the authoritative zone; carried here so every renderer
+	 * of a clock clause formats against IT rather than guessing. `null` for
+	 * every non-`clock` gate — and for a `clock` gate whose schedule never
+	 * declared one, in which case the renderer falls back to UTC rather
+	 * than the reader's own zone, which is at least a NAMED zone.
+	 */
+	timezone: string | null;
 };
 
 /** The five drawing fields, off. Spread by every branch that draws no object. */
@@ -272,7 +287,7 @@ export type GateContext = {
 	 * page-level `ScheduleWindow` could only say "some schedule is closed", and
 	 * a card that names one gate must name that gate's own schedule.
 	 */
-	schedule: Map<string, { label: string; nextTransition: string | null }>;
+	schedule: Map<string, { label: string; nextTransition: string | null; timezone: string | null }>;
 	/**
 	 * ⭐ THE OWNER-REFERENCE VETO. Gate name → its CONTROLLER owner, read off
 	 * `metadata.ownerReferences[controller=true]` of the `RolloutGate` objects
@@ -407,7 +422,7 @@ export function withSchedules(
 	namespace: string | undefined,
 	schedules: Array<{
 		metadata?: { name?: string; annotations?: Record<string, string> };
-		spec?: { action?: 'Allow' | 'Deny' };
+		spec?: { action?: 'Allow' | 'Deny'; timezone?: string };
 		status?: { active?: boolean; nextTransition?: string; managedGates?: string[] };
 	}>
 ): GateContext {
@@ -430,7 +445,11 @@ export function withSchedules(
 		for (const g of s?.status?.managedGates ?? []) {
 			next.schedule.set(key(namespace, g), {
 				label,
-				nextTransition: s?.status?.nextTransition ?? null
+				nextTransition: s?.status?.nextTransition ?? null,
+				// ⭐ P2, operator-walk finding — see `ClassifiedGate.timezone`'s
+				// own comment. The schedule's IANA zone, carried through so the
+				// gate's clause can be formatted against IT, not the reader's.
+				timezone: s?.spec?.timezone ?? null
 			});
 		}
 	}
@@ -478,6 +497,7 @@ export function classifyGate(
 				? `Waiting for ${promo.after} to ${noun}`
 				: 'Waiting for its upstream environment to deploy this build',
 			clearsAt: null,
+			timezone: null,
 			...NOTHING_TO_DRAW,
 			subject,
 			subjectKind: 'environment',
@@ -499,6 +519,7 @@ export function classifyGate(
 				? `Waiting for ${dep.provider} to ship a newer ${dep.contract} — it is on ${dep.providedVersion}`
 				: `Waiting for ${dep.provider} to ship a newer ${dep.contract}`,
 			clearsAt: null,
+			timezone: null,
 			...NOTHING_TO_DRAW,
 			// THE ONE GATE KIND WITH AN OBVIOUS SHAPE: a provider, a contract, the
 			// version it serves, and the range the held build asks for. Drawn as a
@@ -528,6 +549,7 @@ export function classifyGate(
 				clause: 'the deploy window reopens',
 				short: `Outside the ${sched.label} deploy window`,
 				clearsAt: sched.nextTransition,
+				timezone: sched.timezone,
 				...NOTHING_TO_DRAW,
 				// The window has a NAME and a REOPENING TIME, and both are already
 				// carried on this object (`label`, `clearsAt`). Drawn, the row is
@@ -556,6 +578,7 @@ export function classifyGate(
 			clause: 'a check starts passing',
 			short: 'A check is not passing',
 			clearsAt: null,
+			timezone: null,
 			// NOTHING TO DRAW, AND THAT IS THE HONEST ANSWER. A check names no
 			// second party; the only concrete thing it carries is the gate's
 			// generated id, which belongs in the disclosed tier. The row prints
@@ -583,6 +606,7 @@ export function classifyGate(
 				clause: 'its upstream environment deploys this build',
 				short: 'Waiting for its upstream environment to deploy this build',
 				clearsAt: null,
+				timezone: null,
 				...NOTHING_TO_DRAW,
 				subject: 'its upstream environment',
 				subjectKind: 'environment',
@@ -598,6 +622,7 @@ export function classifyGate(
 				clause: 'the service it depends on ships a newer version',
 				short: 'Waiting for the service it depends on to ship a newer version',
 				clearsAt: null,
+				timezone: null,
 				// ⛔ NOTHING TO DRAW. The owner reference proves a `RolloutDependency`
 				// wrote this gate and proves nothing about WHICH provider or WHICH
 				// contract — that join is exactly what this branch is the fallback
@@ -615,6 +640,7 @@ export function classifyGate(
 			clause: `${ownerName} allows this build`,
 			short: `Held by ${ownerName}`,
 			clearsAt: null,
+			timezone: null,
 			...NOTHING_TO_DRAW
 		};
 	}
@@ -633,6 +659,7 @@ export function classifyGate(
 			clause: 'someone approves it',
 			short: 'Waiting for someone to approve it',
 			clearsAt: null,
+			timezone: null,
 			...NOTHING_TO_DRAW
 		};
 	}
@@ -649,6 +676,7 @@ export function classifyGate(
 		clause: `the rule ${id} allows this build`,
 		short: `Held by ${id} — this dashboard cannot tell what clears it`,
 		clearsAt: null,
+		timezone: null,
 		...NOTHING_TO_DRAW
 	};
 }
@@ -1245,8 +1273,18 @@ export function blockingStory(
 	for (const g of checks) parts.push(g.clause);
 	for (const g of clock) {
 		const until = g.clearsAt ? formatTimeUntil(g.clearsAt, now) : null;
+		// ⭐ P2, operator-walk finding — see `ClassifiedGate.timezone`'s own
+		// comment. This used to be `new Date(g.clearsAt!).toLocaleString()`:
+		// the READER's machine zone, US date order, and seconds on a
+		// schedule boundary — `(9/3/2026, 1:00:00 PM)` beside a rule whose
+		// own label says `9 AM - 5 PM EST`, with no zone printed at all.
+		// `formatAbsoluteReopen` formats against the SCHEDULE's own
+		// `spec.timezone` and states it by name, with the UTC reading beside
+		// it so no reader has to already know what that zone means.
 		parts.push(
-			until ? `${g.clause} in ${until} (${new Date(g.clearsAt!).toLocaleString()})` : g.clause
+			until
+				? `${g.clause} in ${until} — ${formatAbsoluteReopen(g.clearsAt!, g.timezone)}`
+				: g.clause
 		);
 	}
 	// ⭐ ONE OPENER, THE REFERENCE PAGE'S OWN WORDS. The rollout detail banner —

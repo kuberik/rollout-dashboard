@@ -105,17 +105,41 @@
 		 * Off where the surround already draws them.
 		 */
 		showRules = true,
+		/**
+		 * ⭐ A SECOND TRUE FACT ABOUT THE SAME ROLLOUT, FOLDED INSIDE THIS ONE
+		 * PANEL. (P9, second re-check, finding 10) A rollout that is both held
+		 * by a gate AND has gone backwards used to render TWO full-width
+		 * bands — this panel's amber blocking story, then a second, blue
+		 * `Rolled back` panel directly under it — 264px above a 90px status
+		 * card, for one rollout. Both facts were true; nether was wrong; the
+		 * DEFECT was spending a whole banner's fill on the second one.
+		 *
+		 * `story.consequence` is still the headline fact — it is the one a
+		 * reader has to act on — and `secondaryFact` rides underneath it as a
+		 * quieter line, in the SAME severity ink, inside the SAME fill. It
+		 * never gets its own colour, its own icon or its own pulse: two
+		 * facts, one panel.
+		 *
+		 * ⛔ NOT A REPLACEMENT FOR THE DISCLOSURE. The gates' own record
+		 * still lives behind `showRules`; this is for a fact that is not a
+		 * gate at all (a completed rollback, say) and therefore has nowhere
+		 * else on this panel to go.
+		 */
+		secondaryFact,
 		class: className = 'mb-4'
 	}: {
 		story: BlockingStory;
 		actions?: Snippet;
 		showRules?: boolean;
+		secondaryFact?: string | null;
 		class?: string;
 	} = $props();
 
 	const icon = $derived(iconForStory(story));
 
 	const gates = $derived(showRules ? story.gates : []);
+
+	const hasSecondaryFact = $derived(!!secondaryFact);
 
 	/**
 	 * ⭐ THE DISCLOSED TIER IS A RECORD NOW, NOT A PARAGRAPH, AND THE TRIGGER
@@ -176,6 +200,16 @@
 	<GateRecord {gates} foot={story.resolution} tone="banner" />
 {/snippet}
 
+{#snippet consequenceWithSecondaryFact()}
+	<!-- ⭐ TWO FACTS, ONE FILL. See `secondaryFact`'s own doc comment. The
+	     headline fact keeps its full-strength sentence; the second rides
+	     underneath, quieter (`opacity-80`, same ink — never a second colour)
+	     so it reads as a footnote to THIS panel rather than a panel of its
+	     own. -->
+	<p>{story.consequence}</p>
+	<p class="mt-1 opacity-80">{secondaryFact}</p>
+{/snippet}
+
 {#if story.pinnedTo || story.blocked}
 	<!-- ⚠️ THE SNIPPET IS PASSED CONDITIONALLY, NOT GUARDED INSIDE ITSELF. A
 	     snippet reference is always truthy, so handing one over unconditionally
@@ -186,7 +220,8 @@
 	<AlertPanel
 		severity={story.severity}
 		title={story.headline}
-		message={story.consequence}
+		message={hasSecondaryFact ? undefined : story.consequence}
+		messageBody={hasSecondaryFact ? consequenceWithSecondaryFact : undefined}
 		footnote={gates.length === 0 ? story.resolution : undefined}
 		footnoteBody={gates.length === 0 ? undefined : gateBody}
 		footnoteCount={gates.length === 0 ? undefined : gates.length}

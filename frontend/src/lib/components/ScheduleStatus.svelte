@@ -10,6 +10,7 @@
 	import AlertPanel from './AlertPanel.svelte';
 	import type { BlockingStory } from '$lib/view-models/blocking-story';
 	import { iconForStory } from './BlockingStoryPanel.svelte';
+	import { formatAbsoluteReopen } from '$lib/api/schedules';
 
 	type RolloutSchedule = {
 		metadata: { name: string; namespace: string };
@@ -67,12 +68,25 @@
 	// `onSchedules` hands the already-fetched objects back UP so the parent can
 	// build its gate→schedule join from them. A second `/schedules` request here
 	// would be the third fetch of the same fact on one page.
+	//
+	// ⭐ `onMeta` HANDS UP A ONE-LINE FACT INSTEAD OF A BANNER. (F2, second
+	// re-check, 2026-09-03) See `nothingWaiting`'s own comment for the defect:
+	// a closed window with nothing queued behind it used to render its OWN
+	// full-width `info` (blue) banner here, hue-keyed on "is anything
+	// queued" — the same schedule gate painted amber on one rollout and blue
+	// on another. The banner slot is reserved for a blocking fact now; a
+	// closed-but-empty window is not one, so it hands its sentence UP as
+	// plain text (`Deploys pause outside business hours · reopens 1:00 PM`)
+	// for the parent to print beside the version, the way `isCurrentVersionCustom`
+	// and the upgrade count already do in that row. `null` means "nothing to
+	// say" — the parent clears whatever it was showing.
 	let {
 		rollout,
 		cluster,
 		compact = false,
 		story = null,
-		onSchedules
+		onSchedules,
+		onMeta
 	}: {
 		rollout: Rollout;
 		cluster?: string;
@@ -80,6 +94,7 @@
 		story?: BlockingStory | null;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		onSchedules?: (schedules: any[]) => void;
+		onMeta?: (text: string | null) => void;
 	} = $props();
 
 	let allSchedules = $state<Array<RolloutSchedule | ClusterRolloutSchedule>>([]);
@@ -123,6 +138,24 @@
 		}
 		return earliestTransition ? earliestTransition.toISOString() : null;
 	});
+
+	/**
+	 * ⭐ THE ZONE BELONGS TO A SCHEDULE, NOT TO `nextChange`. (P2,
+	 * operator-walk finding) `nextChange` is the earliest transition across
+	 * every schedule this rollout carries — a page-level reduction with no
+	 * timezone of its own. Formatting it against the reader's machine (the
+	 * old `toLocaleString()`/`toLocaleTimeString()` behaviour) is exactly
+	 * the ambiguity this fix removes, so the absolute clock is always
+	 * printed against the SCHEDULE that owns the transition — found here by
+	 * matching the ISO instant back to the object it came from. On the
+	 * ordinary one-schedule rollout this is unambiguous; on the rare
+	 * multi-schedule one it is still correct, because the zone printed is
+	 * the zone of the window that is actually about to change.
+	 */
+	function scheduleForTransition(iso: string | null): RolloutSchedule | ClusterRolloutSchedule | null {
+		if (!iso) return null;
+		return allSchedules.find((s) => s.status.nextTransition === iso) ?? null;
+	}
 
 	let blockingSchedulesFull = $derived(
 		allSchedules.filter((s) => {
@@ -220,12 +253,49 @@
 	 * `candidateCount === 0`), so this branch fell to the hard-coded
 	 * `'warning'` fallback below EVEN THOUGH `story.candidateCount` — always
 	 * handed down alongside `blocked`, see the call site's own note — already
-	 * says there is nothing waiting. Amber means "something needs you"; a
-	 * schedule that is closed on an up-to-date rollout needs nobody.
+	 * says there is nothing waiting.
+	 *
+	 * ⛔ THE FIRST FIX PAINTED IT BLUE, WHICH WAS A DIFFERENT WRONG ANSWER.
+	 * (F2, second re-check, 2026-09-03 — from the human's own instrument:
+	 * the SAME `Business Hours Only` gate rendered amber on dev
+	 * `hello-world-app`, "Automatic deploys are paused", and blue on staging
+	 * and prod, "Deploys pause outside business hours" — one gate, two hues,
+	 * keyed on `nothingWaiting`, a variable no reader can see. The banner
+	 * hue rule (`lib/CLAUDE.md`) is HUE = KIND, and a schedule gate is a
+	 * RULE: it is amber whether or not anything happens to be queued behind
+	 * it right now. `nothingWaiting` no longer picks a colour. It picks a
+	 * SHAPE — see `metaText` below and this component's template: a closed,
+	 * empty window is not a filled full-width banner at all, so the banner
+	 * slot stays reserved for an actual blocking fact.
 	 */
 	let nothingWaiting = $derived(
 		!!story && !story.pinnedTo && !story.blocked && story.candidateCount === 0
 	);
+
+	/**
+	 * ⭐ THE ONE-LINE FORM `nothingWaiting` PRINTS INSTEAD OF A BANNER.
+	 * (F2, second re-check, 2026-09-03) Handed up via `onMeta` so the parent
+	 * can place it beside the version — the same row `isCurrentVersionCustom`
+	 * and the upgrade count already share — rather than spending the page's
+	 * one banner slot on a fact nobody needs to act on. The NEWS in this
+	 * sentence is "nothing is waiting"; naming the window is what makes that
+	 * news legible, so both ride in one short line: `Deploys pause outside
+	 * business hours · reopens 09:00 America/New_York (13:00 UTC)`. No
+	 * duration arithmetic here — a meta row is furniture, not a countdown;
+	 * the clock TIME is enough. ⭐ P2: the absolute clock is stated against
+	 * the SCHEDULE's own zone, never the reader's — see
+	 * `formatAbsoluteReopen`'s own comment.
+	 */
+	let metaText = $derived.by(() => {
+		if (!nothingWaiting) return null;
+		return nextChange
+			? `Deploys pause outside business hours · reopens ${formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}`
+			: 'Deploys pause outside business hours';
+	});
+
+	$effect(() => {
+		onMeta?.(metaText);
+	});
 
 	// Check if window is closing soon (within 1 hour)
 	let isClosingSoon = $derived.by(() => {
@@ -346,52 +416,34 @@
 		return `${minutes}m`;
 	}
 
-	function formatTime(isoString: string): string {
-		return new Date(isoString).toLocaleString();
-	}
-
 	/**
-	 * ⭐ THE CLOCK TIME, NOT THE CALENDAR DATE. (2026-09-03, operator-walk
-	 * COSMETIC finding — *"`Nothing promotes itself until 8h 33m
-	 * (9/3/2026, 1:00:00 PM).` is not a sentence."*) `until <duration>` reads
-	 * as if the duration itself were the deadline, and stapling a full
-	 * `date, time` onto it in parens restates today's date for a window that
-	 * reopens today. `heldCauseText` (`$lib/rollout-cards`) already prints a
-	 * clock's reopening time this way — `1:00 PM` — for the same reason.
-	 */
-	function formatClockTime(isoString: string): string {
-		return new Date(isoString).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-	}
-
-	/**
-	 * ⭐ THE SAME "NOT A SENTENCE" DEFECT, ONE LAYER DEEPER. (2026-09-03,
-	 * operator-walk COSMETIC finding) The quoted example — *"Nothing promotes
-	 * itself until 8h 33m (9/3/2026, 1:00:00 PM)."* — is not this file's own
-	 * fallback wording (that branch is fixed above, see `formatClockTime`'s
-	 * own note); it is `story.consequence`, built in `blocking-story.ts`'s
-	 * clock loop as `${g.clause} in ${until} (${new
-	 * Date(g.clearsAt!).toLocaleString()})` — the identical shape, a duration
-	 * glued to a full calendar date-time nobody asked for on a window that
-	 * reopens today. `blocking-story.ts` is the product's one shared
-	 * classifier and is not touched here (its sentence is correct for every
-	 * MIXED cause — a person, a contract and a clock joined in one sentence
-	 * cannot be reformatted by a component 40px away without risking drift).
+	 * ⭐ THE ABSOLUTE HALF NOW COMES FROM `api/schedules.ts`, ZONE-AWARE.
+	 * (P2, operator-walk finding, second pass) This file used to carry two
+	 * hand-rolled formatters — `formatTime` (`toLocaleString()`, full date,
+	 * seconds, the READER's machine zone) and `formatClockTime`
+	 * (`toLocaleTimeString()`, no date/seconds, still the reader's machine
+	 * zone) — and both were the same class of bug at different severities:
+	 * neither ever named WHOSE clock it was reading. Measured live: a rule
+	 * labelled `9 AM - 5 PM EST` reopened at `(9/3/2026, 1:00:00 PM)` with
+	 * no zone printed anywhere, and `EST` in September is itself wrong (the
+	 * US is on daylight time) — the schedule's own `spec.timezone` (an IANA
+	 * name) was sitting on the object the whole time and nothing read it.
 	 *
-	 * This reshapes ONLY the one case this finding's own example is: a story
-	 * held by EXACTLY one gate and it is the clock — the same shape
-	 * `ScheduleStatus`'s own fallback branch already prints. Rebuilt from
-	 * `story.clock[0].label` and `story.clearsAt` (already on the object,
-	 * never re-parsed out of the rendered sentence), so it cannot disagree
-	 * with the fact `blocking-story.ts` computed — only the WORDS around it
-	 * change. Any other shape (two gates, or one gate that is not a clock)
-	 * returns `story.consequence` verbatim, byte-identical to before.
+	 * `formatAbsoluteReopen` is that fix, shared with `blocking-story.ts`'s
+	 * own clock loop so the two cannot drift back apart the way `formatTime`
+	 * and `formatClockTime` already had (one with seconds, one without, both
+	 * silently local). Every call site below now hands it the ZONE off the
+	 * schedule the instant belongs to — `scheduleForTransition` for the
+	 * page-level `nextChange` figure, the gate's own carried `.timezone` for
+	 * `shapedConsequence`, and the schedule object directly inside the
+	 * popover's per-schedule loop.
 	 */
 	function shapedConsequence(s: BlockingStory | null | undefined): string {
 		if (!s) return '';
 		if (s.gates.length === 1 && s.clock.length === 1 && s.clearsAt) {
 			const n = s.candidateCount;
 			const lead = n > 0 ? `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. ` : '';
-			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} (until ${formatClockTime(s.clearsAt)}).`;
+			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt, s.clock[0].timezone)}.`;
 		}
 		return s.consequence;
 	}
@@ -409,7 +461,7 @@
 				Automatic deploys resume in <span class="text-gray-600 dark:text-gray-300"
 					>{formatTimeUntil(nextChange)}</span
 				>
-				· {formatTime(nextChange)}
+				· {formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}
 			{:else}
 				Automatic deploys paused by {blockingSchedules.length} schedule{blockingSchedules.length ===
 				1
@@ -440,7 +492,7 @@
 		comment), so the ONE banner for a pinned rollout is the caller's, not
 		this popover's — `!story?.pinnedTo` is the guard.
 	-->
-	{#if isBlocked && !story?.pinnedTo}
+	{#if isBlocked && !story?.pinnedTo && !nothingWaiting}
 		<!--
 			⛔ THIS BANNER USED TO SAY SOMETHING FALSE, AND IT WAS FALSE FOR
 			EXACTLY THE ACTION THE READER WAS ABOUT TO TAKE.
@@ -475,37 +527,32 @@
 		     person. The fallback below is the schedule-only wording, which is
 		     still correct on a surface that hands down no story.
 
-		     ⭐ AND WHEN NOTHING IS WAITING, IT IS BLUE, NOT AMBER — see
-		     `nothingWaiting`'s own comment. This is the ONE place `severity`,
-		     `title` and `pulse` read it; `story?.blocked` still wins whenever
-		     there genuinely IS a candidate held (a schedule closing on an
-		     up-to-date rollout and a schedule closing on a held one are
-		     different facts and must not share a colour). -->
+		     ⭐ ALWAYS `warning` HERE NOW. (F2, second re-check, 2026-09-03) A
+		     schedule gate is a RULE, and hue is a function of KIND, never of
+		     "is anything queued behind it" — see `nothingWaiting`'s own
+		     comment for the live measurement that caught this branch
+		     rendering the SAME gate amber on one rollout and blue on another.
+		     The `nothingWaiting` case no longer reaches this branch at all
+		     (guarded above): it has no candidate to name and no verdict to
+		     print, so it is not a banner, it is `metaText`, handed to the
+		     parent to print beside the version instead. -->
 		<AlertPanel
-			severity={story?.blocked ? story.severity : nothingWaiting ? 'info' : 'warning'}
-			title={story?.blocked
-				? story.headline
-				: nothingWaiting
-					? 'Deploys pause outside business hours'
-					: 'Automatic deploys are paused'}
+			severity="warning"
+			title={story?.blocked ? story.headline : 'Automatic deploys are paused'}
 			message={story?.blocked
 				? shapedConsequence(story)
-				: nothingWaiting
-					? 'Deploys pause outside business hours; nothing is waiting.'
-					: nextChange
-						? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} (until ${formatClockTime(nextChange)}). A deploy you start by hand still applies immediately.`
-						: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
+				: nextChange
+					? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} — ${formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}. A deploy you start by hand still applies immediately.`
+					: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
 			footnote={story?.blocked ? story.resolution : undefined}
 			icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
-			pulse={!nothingWaiting}
+			pulse
 		>
 			{#snippet actions()}
 				<button
 					type="button"
 					id="schedule-details"
-					class="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition {nothingWaiting
-						? 'bg-blue-800/10 text-blue-900 ring-blue-400/30 hover:bg-blue-800/15 hover:ring-blue-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15'
-						: 'bg-amber-800/10 text-amber-900 ring-amber-400/30 hover:bg-amber-800/15 hover:ring-amber-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15'}"
+					class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-800/10 px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-400/30 transition hover:bg-amber-800/15 hover:ring-amber-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15"
 				>
 					{blockingSchedules.length} schedule{blockingSchedules.length > 1 ? 's' : ''}
 				</button>
@@ -559,7 +606,7 @@
 								Automatic deploys resume in <span class="font-medium"
 									>{formatTimeUntil(schedule.status.nextTransition)}</span
 								>
-								· {formatTime(schedule.status.nextTransition)}
+								· {formatAbsoluteReopen(schedule.status.nextTransition, schedule.spec.timezone ?? null)}
 							</p>
 						{/if}
 					</li>
@@ -570,7 +617,7 @@
 		<AlertPanel
 			severity="warning"
 			title="Automatic deploys pause soon"
-			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} (${formatClockTime(nextChange!)}). Deploys you start by hand are not affected.`}
+			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} — ${formatAbsoluteReopen(nextChange!, scheduleForTransition(nextChange!)?.spec.timezone ?? null)}. Deploys you start by hand are not affected.`}
 			icon={ClockSolid}
 		>
 			{#snippet actions()}
