@@ -41,4 +41,14 @@ export type DependencyNodeData = {
 	 * `DependencyNode`.
 	 */
 	orientation?: 'LR' | 'TB';
+	/**
+	 * ⭐ ALSO WRITTEN BY `GraphCanvasInner`. Under `TB`, `singleFile` puts every
+	 * node in its own rank, so a contract partner is no longer beside this
+	 * node — it is somewhere else in the SAME column. `contractIn` moves to
+	 * the same side as `contractOut` (`Right`) so the edge can hook out into
+	 * the gutter and back in without crossing the column, instead of routing
+	 * itself behind the whole stack looking for a `Left` it no longer has a
+	 * clear line to. See `ContractHopEdge`.
+	 */
+	singleFile?: boolean;
 };

@@ -90,7 +90,15 @@
 	const stacked = $derived(data.orientation === 'TB');
 	const envIn = $derived(stacked ? Position.Top : Position.Left);
 	const envOut = $derived(stacked ? Position.Bottom : Position.Right);
-	const contractIn = $derived(stacked ? Position.Left : Position.Top);
+	/**
+	 * ⭐ BOTH CONTRACT HANDLES ON THE RIGHT UNDER `singleFile` — see
+	 * `DependencyNodeData.singleFile`'s own note. Every other case is
+	 * unchanged: plain `TB` (not `singleFile` — `AppPromotionFlow` never
+	 * sets it) keeps `Left`/`Right`, and `LR` keeps `Top`/`Bottom`.
+	 */
+	const contractIn = $derived(
+		stacked ? (data.singleFile ? Position.Right : Position.Left) : Position.Top
+	);
 	const contractOut = $derived(stacked ? Position.Right : Position.Bottom);
 
 	const HOLD_ICON = {

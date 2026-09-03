@@ -10,7 +10,13 @@
 	 * is also the one place the library's stylesheet is imported so no caller
 	 * has to remember to.
 	 */
-	import { SvelteFlowProvider, type Node, type Edge, type NodeTypes } from '@xyflow/svelte';
+	import {
+		SvelteFlowProvider,
+		type Node,
+		type Edge,
+		type NodeTypes,
+		type EdgeTypes
+	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import GraphCanvasInner from '$lib/components/GraphCanvasInner.svelte';
 
@@ -20,6 +26,8 @@
 		/** Rank-advancing edges only, when that is not every drawn edge. */
 		layoutEdges?: Edge[] | null;
 		nodeTypes: NodeTypes;
+		/** Custom edge renderers, keyed by `edge.type`. */
+		edgeTypes?: EdgeTypes;
 		rankdir?: 'LR' | 'TB' | 'auto';
 		stackBelow?: number;
 		nodesep?: number;

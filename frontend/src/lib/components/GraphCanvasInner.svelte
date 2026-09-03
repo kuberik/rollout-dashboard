@@ -71,7 +71,8 @@
 		useSvelteFlow,
 		type Node,
 		type Edge,
-		type NodeTypes
+		type NodeTypes,
+		type EdgeTypes
 	} from '@xyflow/svelte';
 	import { MiniMap } from '@xyflow/svelte';
 	import * as dagre from '@dagrejs/dagre';
@@ -83,6 +84,7 @@
 		edges: sourceEdges,
 		layoutEdges = null,
 		nodeTypes,
+		edgeTypes = undefined,
 		rankdir = 'LR',
 		stackBelow = 620,
 		nodesep,
@@ -135,6 +137,10 @@
 		 */
 		layoutEdges?: Edge[] | null;
 		nodeTypes: NodeTypes;
+		/** Custom edge renderers, keyed by `edge.type`. `undefined` — the
+		 *  default — leaves the library's own built-ins (`smoothstep` etc.)
+		 *  as the only registered types, exactly as before this prop existed. */
+		edgeTypes?: EdgeTypes;
 		/** `auto` flips to `TB` below `stackBelow` px of container width. */
 		rankdir?: 'LR' | 'TB' | 'auto';
 		stackBelow?: number;
@@ -472,15 +478,30 @@
 		 */
 		if (singleFile && orientation === 'TB') {
 			if (contentSize.width > 0 && containerWidth > 0) {
-				const x = Math.max(0, (containerWidth - contentSize.width) / 2);
 				/**
-				 * ⭐ CENTRED, NOT TOP-PINNED — measured, `y: 0` put dagre's own
-				 * 12px top margin above the first row and the frame's `+16`
-				 * slack (`frameFor`) entirely below the last one: 12px above,
-				 * 28px below, same drawing, opposite void. Splitting the ONE
-				 * pool of slack (content already carries its own 12px margin
-				 * on both edges — this is the `frameFor` pad only) evens it to
-				 * ~20/20, under the 24px ceiling either side.
+				 * ⭐ LEFT-ALIGNED, NOT CENTRED, WHEN A HOOK NEEDS THE GUTTER.
+				 * (2026-09-03.) Centring split the frame's leftover width
+				 * evenly on both sides of the column, which is exactly wrong
+				 * once `ContractHopEdge` needs a right-hand lane to route
+				 * in: half the slack a hook could use was spent on a LEFT
+				 * margin nothing draws into. A small fixed margin instead
+				 * hands the rest to the gutter, where `gutterX` (computed
+				 * above, from the widest node in the column) already assumes
+				 * it is there. A graph with no contract edges — nothing to
+				 * hook — keeps the old centred reading, since there is no
+				 * gutter to reserve room for.
+				 */
+				const hasHook = flowEdges.some((e) => e.type === 'contractHop');
+				const x = hasHook ? 20 : Math.max(0, (containerWidth - contentSize.width) / 2);
+				/**
+				 * ⭐ CENTRED VERTICALLY, NOT TOP-PINNED — measured, `y: 0` put
+				 * dagre's own 12px top margin above the first row and the
+				 * frame's `+16` slack (`frameFor`) entirely below the last
+				 * one: 12px above, 28px below, same drawing, opposite void.
+				 * Splitting the ONE pool of slack (content already carries
+				 * its own 12px margin on both edges — this is the `frameFor`
+				 * pad only) evens it to ~20/20, under the 24px ceiling either
+				 * side.
 				 */
 				const y = Math.max(0, (frameHeight - contentSize.height) / 2);
 				setViewport({ x, y, zoom: 1 }, { duration: 0 });
@@ -628,7 +649,7 @@
 		const incoming = sourceNodes.map((n) => ({
 			...n,
 			position: n.position ?? { x: 0, y: 0 },
-			data: { ...n.data, orientation }
+			data: { ...n.data, orientation, singleFile }
 		}));
 		const incomingEdges = sourceEdges;
 		untrack(() => {
@@ -875,6 +896,49 @@
 			contentSize = nextSize;
 		}
 
+		/**
+		 * ⭐ `gutterX`, FOR EVERY `contractHop` EDGE — see `ContractHopEdge`'s
+		 * own header for why this cannot be computed there. Every node shares
+		 * one x under `singleFile` (a single dagre chain has no reason to
+		 * stagger any node off it — see the prop's own doc), so ONE centre
+		 * plus the WIDEST node in the column is enough to clear every node the
+		 * vertical run passes, not just this edge's own two ends. `data.lane`
+		 * — a caller-assigned integer, sharing edges get consecutive ones — is
+		 * added on top so two hooks sharing the gutter still run in parallel
+		 * channels instead of on top of each other.
+		 */
+		if (singleFile && dir === 'TB' && flowEdges.some((e) => e.type === 'contractHop')) {
+			const centerX = g.node(flowNodes[0]?.id)?.x ?? 0;
+			const maxWidth = Math.max(
+				fallbackNodeWidth,
+				...flowNodes.map((n) => n.measured?.width ?? fallbackNodeWidth)
+			);
+			/**
+			 * ⭐ 2026-09-03 · `GUTTER_BASE` MUST CLEAR THE LABEL, NOT JUST THE
+			 * NODE. Measured: `api ^1.67.0` at `t-button` (12/600) renders
+			 * ~84px wide; `label` sits centred on the OUTBOUND segment's own
+			 * midpoint (`ContractHopEdge`), so that segment has to be AT LEAST
+			 * the label's width or the label's own left half overlaps the
+			 * node it just left — exactly the residue this constant exists to
+			 * fix. 96 clears the widest label this graph draws with margin to
+			 * spare; the pane has the width for it (`restingFit`'s `singleFile`
+			 * branch reserves the gutter on purpose).
+			 */
+			const GUTTER_BASE = 96;
+			const LANE_GAP = 20;
+			const nextEdges = flowEdges.map((e) => {
+				if (e.type !== 'contractHop') return e;
+				const lane = typeof (e.data as { lane?: number } | undefined)?.lane === 'number'
+					? (e.data as { lane: number }).lane
+					: 0;
+				const gutterX = centerX + maxWidth / 2 + GUTTER_BASE + lane * LANE_GAP;
+				const prevGutterX = (e.data as { gutterX?: number } | undefined)?.gutterX;
+				if (prevGutterX === gutterX) return e;
+				return { ...e, data: { ...(e.data ?? {}), gutterX } };
+			});
+			if (nextEdges.some((e, i) => e !== flowEdges[i])) flowEdges = nextEdges;
+		}
+
 		let changed = false;
 		const next = flowNodes.map((node) => {
 			const dn = g.node(node.id);
@@ -1010,6 +1074,7 @@
 			bind:nodes={flowNodes}
 			bind:edges={flowEdges}
 			{nodeTypes}
+			{edgeTypes}
 			colorMode={dark ? 'dark' : 'light'}
 			fitView
 			fitViewOptions={FIT}

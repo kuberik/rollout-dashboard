@@ -99,10 +99,11 @@
 	 * drawing it is captioning. The card is not the viewport — it is 326px
 	 * inside a 390px page and 526px inside a 768px one.
 	 */
-	import { MarkerType, type Node, type Edge } from '@xyflow/svelte';
+	import { MarkerType, type Node, type Edge, type EdgeTypes } from '@xyflow/svelte';
 	import { ChevronDoubleRightOutline, ShareNodesSolid } from 'flowbite-svelte-icons';
 	import GraphCanvas from '$lib/components/GraphCanvas.svelte';
 	import DependencyNode from '$lib/components/DependencyNode.svelte';
+	import ContractHopEdge from '$lib/components/ContractHopEdge.svelte';
 	import { theme } from '$lib/stores/theme';
 	import { getEnvironmentThemeStyle, shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
 	import type { DependencyNodeData } from '$lib/components/dependency-node-data';
@@ -135,6 +136,8 @@
 	} = $props();
 
 	const nodeTypes = { rollout: DependencyNode };
+	/** `contractHop` only means something under `singleFile` — see `edgeOf`. */
+	const edgeTypes: EdgeTypes = { contractHop: ContractHopEdge };
 
 	/**
 	 * ⭐ THE FLIP IS ON THE CARD'S WIDTH, NOT THE VIEWPORT'S, and 620 is where
@@ -235,10 +238,58 @@
 		return base;
 	}
 
+	/**
+	 * ⭐ ONE LANE PER CONTRACT EDGE THAT SHARES GUTTER SPACE WITH ANOTHER —
+	 * greedy interval scheduling over RANK SPANS, the same trick a calendar
+	 * view uses to stack overlapping meetings into columns.
+	 *
+	 * `orderedNodes`' own position IS the rank a `singleFile` layout assigns
+	 * (`GraphCanvasInner`'s spine walks this exact array), so a contract
+	 * edge's span in that order is the range of rows its hook's vertical run
+	 * actually crosses. Two edges whose spans overlap would draw the same
+	 * gutter channel on top of each other; sorted by where they start and
+	 * assigned the lowest lane not already busy past that point, they don't.
+	 * Only read when `stacked` — `LR` never asks for a lane.
+	 */
+	const contractLane = $derived.by(() => {
+		const rankOf = new Map(orderedNodes.map((n, i) => [n.id, i] as const));
+		const spans = graph.edges
+			.filter((e) => e.writer === 'contract')
+			.map((e) => {
+				const a = rankOf.get(e.from) ?? 0;
+				const b = rankOf.get(e.to) ?? 0;
+				return { key: e.key, lo: Math.min(a, b), hi: Math.max(a, b) };
+			})
+			.sort((x, y) => x.lo - y.lo);
+		const laneEnds: number[] = [];
+		const lanes = new Map<string, number>();
+		for (const s of spans) {
+			let lane = laneEnds.findIndex((end) => end < s.lo);
+			if (lane === -1) {
+				lane = laneEnds.length;
+				laneEnds.push(s.hi);
+			} else {
+				laneEnds[lane] = s.hi;
+			}
+			lanes.set(s.key, lane);
+		}
+		return lanes;
+	});
+
 	function edgeOf(e: GraphEdge): Edge {
 		const stroke = e.state === 'blocked' ? ink('blocked') : ink('quiet');
 		const promotion = e.writer === 'promotion';
 		const label = promotion ? undefined : contractLabel(e);
+		/**
+		 * ⭐ `contractHop` UNDER `singleFile` ONLY. See `ContractHopEdge`'s own
+		 * header for the defect this replaces — the library's `smoothstep`
+		 * routes a `Right`→`Left` edge between two vertically stacked nodes
+		 * by swinging behind the column, off the pane's own left edge. `LR`
+		 * (`stacked` false) keeps the library's default; it never had this
+		 * problem, because a contract partner really is beside the node
+		 * there, not somewhere else in the same column.
+		 */
+		const type = !promotion && stacked ? 'contractHop' : 'smoothstep';
 		return {
 			id: e.key,
 			source: e.from,
@@ -248,7 +299,8 @@
 			// `DependencyNode`.
 			sourceHandle: promotion ? 'env-out' : 'contract-out',
 			targetHandle: promotion ? 'env-in' : 'contract-in',
-			type: 'smoothstep',
+			type,
+			data: type === 'contractHop' ? { lane: contractLane.get(e.key) ?? 0 } : undefined,
 			label,
 			// An edge label is an HTML div in this library, so it takes `color`
 			// and `background` — not the SVG `fill` a <text> node would.
@@ -389,6 +441,7 @@
 		edges={flowEdges}
 		layoutEdges={rankEdges}
 		{nodeTypes}
+		{edgeTypes}
 		rankdir="auto"
 		stackBelow={STACK_BELOW}
 		singleFile
