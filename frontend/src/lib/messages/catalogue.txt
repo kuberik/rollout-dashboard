@@ -1119,6 +1119,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Mark Successful
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Message (Optional)
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No deploys yet
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	No new versions available
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No newer build to deploy right now. New builds appear here as the registry publishes them.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	on the newest
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	pinned to …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Pinned to …

@@ -497,6 +497,18 @@ describe('F6, fifth re-check — the confirm button structurally cannot be clipp
  * had no resting affordance), P5 (the note field said "(optional)" on a
  * production change or a rollback), and a cosmetic duplicate close control.
  */
+
+/** Every version change is confirmed by typing it (2026-09-03). The label
+ *  prints the version in its own span; type exactly that. */
+async function typeConfirmVersion() {
+	const label = document.querySelector('label[for="cvm-confirm-version"]');
+	const v = label?.querySelector('span')?.textContent?.trim() ?? '';
+	expect(v).not.toBe('');
+	await fireEvent.input(document.getElementById('cvm-confirm-version') as HTMLInputElement, {
+		target: { value: v }
+	});
+}
+
 describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 	function devRollbackRollout() {
 		return rolloutFixture({
@@ -523,6 +535,9 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		expect(note).toBeInTheDocument();
 
 		await fireEvent.input(note, { target: { value: 'testing a recovery path' } });
+		// The note alone no longer arms it: every version change is typed too.
+		expect(confirmBtn).toBeDisabled();
+		await typeConfirmVersion();
 		expect(confirmBtn).not.toBeDisabled();
 	});
 
@@ -614,6 +629,7 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		await fireEvent.input(screen.getByPlaceholderText(NOTE_PLACEHOLDER), {
 			target: { value: 'testing pending state' }
 		});
+		await typeConfirmVersion();
 		expect(confirmBtn).not.toBeDisabled();
 
 		await fireEvent.click(confirmBtn);
