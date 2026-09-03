@@ -718,13 +718,18 @@
 	 * `typed`, there).
 	 */
 	const deployNoteRequired = $derived(intent.production || direction === 'rollback');
-	const deployNotePlaceholder = $derived(
-		direction === 'rollback'
-			? 'Why are you rolling back? (recommended)'
-			: level === 'typed'
-				? 'Why are you overriding the rules?'
-				: 'Why are you deploying this version? (optional)'
-	);
+	// The suffix states the rule, not a hope: the note IS required for a
+	// rollback and for production (`deployNoteRequired`), and the button
+	// stays dead until it is written. "(recommended)" was a lie of omission.
+	const deployNotePlaceholder = $derived.by(() => {
+		const q =
+			direction === 'rollback'
+				? 'Why are you rolling back?'
+				: level === 'typed'
+					? 'Why are you overriding the rules?'
+					: 'Why are you deploying this version?';
+		return `${q} ${deployNoteRequired ? '(required)' : '(optional)'}`;
+	});
 	/**
 	 * The caller may hand us the state it already derived (rollout detail does,
 	 * because it holds the full gate objects and so can print their published
@@ -1682,6 +1687,14 @@
 							rows="2"
 							class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 						></textarea>
+						{#if deployNoteRequired && deployExplanation.trim() === ''}
+							<!-- The reason the confirm is disabled, said where the reader
+							     is looking. (operator walk, 2026-09-03: typed the version
+							     exactly, button stayed dead, nothing on screen said why.) -->
+							<p class="t-dense text-gray-500 dark:text-gray-400">
+								The note is required here — it is recorded with the deploy.
+							</p>
+						{/if}
 
 						{#if needsTypedConfirmation}
 							<div>
