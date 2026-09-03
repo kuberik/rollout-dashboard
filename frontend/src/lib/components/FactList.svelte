@@ -82,21 +82,86 @@
 	}: { facts: Fact[]; tone?: Tone; class?: string } = $props();
 
 	const ink = $derived(TONES[tone]);
+
+	/**
+	 * ⛔ `break-all` WAS CHARACTER-LEVEL WRAP, AND IT SHIPPED
+	 * `dependenc / y-hello-f / rontend-n / eeds-api`. (F17, 2026-09-03,
+	 * `/envs/prod` at 390.) A generated k8s name is a run of short tokens
+	 * joined by `-` and `/`; the reader can follow a wrap at one of those
+	 * joints and cannot follow one mid-word. `overflow-wrap: normal` in the
+	 * markup below refuses to break anywhere else, and this only offers the
+	 * boundaries that already mean something — the delimiter stays attached
+	 * to the chunk it ends, so a `<wbr>` between chunks is a wrap
+	 * opportunity, never a mid-character split.
+	 */
+	function handleParts(value: string): string[] {
+		return value.split(/(?<=[-/])/);
+	}
+
+	/**
+	 * ⭐ THE LABEL COLUMN COLLAPSES WHEN THE RECORD IS NARROW — MEASURED WITH
+	 * A `ResizeObserver`, NOT `container-type`. (F17, 2026-09-03)
+	 *
+	 * `grid-cols-[auto_1fr]` sizes the label column to the widest `<dt>`
+	 * across every row — fine at the popover's own 22rem, and a defect the
+	 * moment the same `<dl>` renders inside a 390 banner: `RULE` took ~90px
+	 * of a ~300px record, leaving the identifier a column too narrow to hold
+	 * one token. That called for a size query, and `container-type:
+	 * inline-size` was the first attempt — and it broke the host it landed
+	 * in. `RulePopover`'s mobile panel is `self-stretch` inside a
+	 * `<details class="flex flex-col items-start">` (load-bearing: see that
+	 * component's own note on why `items-start` is there at all) —
+	 * `align-self: stretch` fills the flex container's cross size, but
+	 * `container-type: inline-size` implies containment, and a contained
+	 * descendant reports NO intrinsic size to the sizing pass that resolves
+	 * `stretch`. Measured live on `/envs/prod`: the panel — with `<details>`
+	 * sitting right next to it at 227px — collapsed to **26px**, its own
+	 * padding and border and nothing else. Deleting `container-type` and
+	 * nothing else on the same DOM restored 227px immediately; that is the
+	 * whole diagnosis, not a guess.
+	 *
+	 * A `ResizeObserver` measures without containing: it does not change
+	 * what this element reports upward, so the ancestor's `stretch` still
+	 * resolves against the real flex container width, and `narrow` reflects
+	 * the width `stretch` actually produced.
+	 */
+	let wrapperEl: HTMLDivElement | undefined = $state();
+	let narrow = $state(false);
+
+	$effect(() => {
+		if (!wrapperEl) return;
+		const el = wrapperEl;
+		const ro = new ResizeObserver((entries) => {
+			const width = entries[0]?.contentRect.width;
+			if (width !== undefined) narrow = width > 0 && width < 260;
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 </script>
 
 {#if facts.length > 0}
-	<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 {className}">
-		{#each facts as f, i (`${f.label}-${i}`)}
-			<dt class="t-label {ink.label}">{f.label}</dt>
-			{#if f.handle}
-				<!-- A HANDLE IS DRESSED AS ONE: mono, and `break-all` so a generated
-				     name wider than the column wraps inside the record rather than
-				     widening it. It only ever fires on a name that genuinely does
-				     not fit. -->
-				<dd class="t-code-sm min-w-0 break-all {ink.handle}">{f.value}</dd>
-			{:else}
-				<dd class="t-micro min-w-0 break-words {ink.value}">{f.value}</dd>
-			{/if}
-		{/each}
-	</dl>
+	<!-- See `narrow`'s note above for why this is a `ResizeObserver`, not a
+	     `@container` query. -->
+	<div bind:this={wrapperEl} class={className}>
+		<dl
+			class="grid gap-x-3 gap-y-1 {narrow ? 'grid-cols-1' : 'grid-cols-[auto_1fr]'}"
+			class:gap-y-0.5={narrow}
+		>
+			{#each facts as f, i (`${f.label}-${i}`)}
+				<dt class="t-label {ink.label}">{f.label}</dt>
+				{#if f.handle}
+					<!-- A HANDLE IS DRESSED AS ONE: mono, and wrapped only at its own
+					     `-`/`/` joints (see `handleParts` above) so a name wider than
+					     the column wraps AT A TOKEN, not through one. -->
+					<dd class="t-code-sm min-w-0 [overflow-wrap:normal] [word-break:normal] {ink.handle}">
+						{#each handleParts(f.value) as part, pi (pi)}{part}{#if pi < handleParts(f.value).length - 1}<wbr
+								/>{/if}{/each}
+					</dd>
+				{:else}
+					<dd class="t-micro min-w-0 break-words {ink.value}">{f.value}</dd>
+				{/if}
+			{/each}
+		</dl>
+	</div>
 {/if}

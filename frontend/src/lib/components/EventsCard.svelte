@@ -2,11 +2,21 @@
 
 <script lang="ts">
 	import { ExclamationCircleSolid, InfoCircleSolid, CalendarWeekSolid } from 'flowbite-svelte-icons';
-	import { formatTimeAgo } from '$lib/utils';
+	import { formatTimeAgo, formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import Card from './Card.svelte';
 
-	let { events }: { events: any[] } = $props();
+	/**
+	 * ⭐ `deployedAt` IS THE ANCHOR FOR THE HONEST EMPTY ROW. (F16, 2026-09-03)
+	 * `No recent events` was true but unanchored — the reader cannot tell
+	 * whether it means "quiet for an hour" or "this card has never received
+	 * an event". The rollout's own current deploy timestamp turns it into a
+	 * dated claim (`Nothing since the deploy started · 2d`), the same
+	 * `history[0].timestamp` `HealthChecksCard`'s `windowStart` and rollout
+	 * detail's `errorCutoff` already anchor to. `null` (no deploy on record)
+	 * keeps the older, honestly-unanchored sentence.
+	 */
+	let { events, deployedAt = null }: { events: any[]; deployedAt?: Date | null } = $props();
 
 	let showAllEvents = $state(false);
 	const visibleEvents = $derived(showAllEvents ? events : events.slice(0, 5));
@@ -40,7 +50,13 @@
 		<span class="text-xs text-gray-500 dark:text-gray-400">{events.length} event{events.length !== 1 ? 's' : ''}</span>
 	{/snippet}
 	{#if events.length === 0}
-		<p class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No recent events</p>
+		<p class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+			{#if deployedAt}
+				Nothing since the deploy started · {formatTimeAgoCompact(deployedAt.toISOString(), $now)}
+			{:else}
+				No recent events
+			{/if}
+		</p>
 	{:else}
 		<div class="divide-y divide-gray-100 dark:divide-gray-700">
 			{#each visibleEvents as event}

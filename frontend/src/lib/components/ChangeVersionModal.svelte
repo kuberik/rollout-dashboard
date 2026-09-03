@@ -108,12 +108,10 @@
 	let selectedVersion = $state<string | null>(null);
 	let searchQuery = $state('');
 	let showAllTags = $state(false);
-	let currentPage = $state(1);
 	let allRepositoryTags = $state<string[]>([]);
 	let loadingAllTags = $state(false);
 	let annotations = $state<Record<string, Record<string, string>>>({});
 	let loadingAnnotations = $state<Record<string, boolean>>({});
-	const itemsPerPage = 10;
 
 	// --- Override context: WHO this force-deploy overrides ----------------
 	// ⭐ THE PROD FORCE-DEPLOY DIALOG NAMED NO RULE. The banner behind it says
@@ -160,7 +158,6 @@
 			deployConfirmationVersion = '';
 			searchQuery = '';
 			showAllTags = false;
-			currentPage = 1;
 		}
 	});
 
@@ -273,15 +270,6 @@
 			return searchQuery === '' || versionTag.toLowerCase().includes(searchQuery.toLowerCase());
 		})
 	);
-
-	const totalPages = $derived(Math.ceil(filteredVersionsForDisplay.length / itemsPerPage));
-	const paginatedVersions = $derived(
-		filteredVersionsForDisplay.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-	);
-
-	function goToPage(page: number) {
-		if (page >= 1 && page <= totalPages) currentPage = page;
-	}
 
 	function selectVersion(versionTag: string) {
 		selectedVersion = versionTag;
@@ -569,8 +557,23 @@
 
 <!-- `aria-labelledby` rather than `title`: the header is a two-part crumb
      (`Change Version / <rollout>`) that `Modal`'s own `title` slot cannot
-     render, and without either the dialog announced as an unnamed "dialog". -->
-<Modal bind:open title="" size="lg" class="[&>div]:p-0" aria-labelledby="cvm-title">
+     render, and without either the dialog announced as an unnamed "dialog".
+
+     ⭐ THE DIALOG IS ONE COLUMN UNTIL THERE IS SOMETHING TO PREVIEW. (F11,
+     2026-09-03) At `size="lg"` (896px) with nothing picked yet, the list
+     column was 300px and the other 597px held one gray sentence — 2.3% ink.
+     `size="none"` plus a class that switches on `selectedVersion` narrows the
+     dialog to the list's own measure (`max-w-md`, 448px — inside the
+     420-480px the list needs at full width) before a pick, and widens back to
+     the original 896px (`max-w-4xl`, byte-identical to the old `size="lg"`)
+     only once the right pane has something to draw. -->
+<Modal
+	bind:open
+	title=""
+	size="none"
+	class="[&>div]:p-0 {selectedVersion ? 'max-w-4xl' : 'max-w-md'}"
+	aria-labelledby="cvm-title"
+>
 	<div class="flex max-h-[85vh] flex-col">
 		<!-- Header. pr-14 reserves space for the modal's floating close (✕) in the
 		     top-right corner so the right-aligned mobile Back button clears it. -->
@@ -596,11 +599,12 @@
 			{/if}
 		</div>
 
-		<div class="grid flex-1 overflow-hidden md:grid-cols-[300px_1fr]">
-			<!-- LEFT: version picker -->
+		<div class="grid flex-1 overflow-hidden {selectedVersion ? 'md:grid-cols-[300px_1fr]' : ''}">
+			<!-- LEFT: version picker. Full width, on its own, until a version is
+			     picked; a narrow bordered column beside the preview once one is. -->
 			<div
-				class="flex-col overflow-hidden border-gray-200 md:flex md:border-r dark:border-gray-700 {selectedVersion
-					? 'hidden'
+				class="flex-col overflow-hidden border-gray-200 dark:border-gray-700 {selectedVersion
+					? 'hidden md:flex md:border-r'
 					: 'flex'}"
 			>
 				<div class="shrink-0 space-y-3 p-4">
@@ -623,15 +627,19 @@
 							aria-labelledby="cvm-showall-label"
 							onchange={() => {
 								if (showAllTags && allRepositoryTags.length === 0) getAllRepositoryTags();
-								currentPage = 1;
 							}}
 						/>
 					</div>
 				</div>
 
+				<!-- ⛔ ONE TAIL MECHANISM, NOT TWO. (F11, 2026-09-03) This list had
+				     both a scrollbar (`overflow-y-auto`, below) AND `Prev 1/2 Next`
+				     pagination — two ways to reach the same tail, and the pagination
+				     bar sliced the last row of whichever page it sat under. Scroll
+				     alone is the list's own idiom everywhere else in the product. -->
 				<div class="flex-1 overflow-y-auto" role="group" aria-label="Available versions">
-					{#if paginatedVersions.length > 0}
-						{#each paginatedVersions as version (typeof version === 'string' ? version : version.tag)}
+					{#if filteredVersionsForDisplay.length > 0}
+						{#each filteredVersionsForDisplay as version (typeof version === 'string' ? version : version.tag)}
 							{@const versionTag = typeof version === 'string' ? version : version.tag}
 							{@const availableRelease = availableReleases.find((ar) => ar.tag === versionTag)}
 							{@const displayVersion = availableRelease
@@ -696,27 +704,15 @@
 						</div>
 					{/if}
 				</div>
-
-				{#if totalPages > 1}
-					<div class="flex shrink-0 items-center justify-center gap-3 border-t border-gray-100 p-2 dark:border-gray-800">
-						<Button size="xs" color="light" onclick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>
-							Prev
-						</Button>
-						<span class="text-xs text-gray-500 dark:text-gray-400">{currentPage} / {totalPages}</span>
-						<Button size="xs" color="light" onclick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}>
-							Next
-						</Button>
-					</div>
-				{/if}
 			</div>
 
-			<!-- RIGHT: changelist + deploy -->
-			<div class="flex-col overflow-hidden md:flex {selectedVersion ? 'flex' : 'hidden'}">
-				{#if !selectedVersion}
-					<div class="flex flex-1 items-center justify-center p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-						Select a version to preview what will change.
-					</div>
-				{:else}
+			{#if selectedVersion}
+				<!-- RIGHT: changelist + deploy. Renders only once a version is
+				     picked — the placeholder pane ("Select a version to preview
+				     what will change") is gone with it; before a pick this is the
+				     whole dialog, so there is nothing beside the list for a
+				     placeholder to fill. -->
+				<div class="flex flex-col overflow-hidden">
 					<div class="flex-1 space-y-4 overflow-y-auto p-5">
 						<!-- Delta summary -->
 						<div
@@ -989,8 +985,8 @@
 							</Button>
 						</div>
 					</div>
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 </Modal>

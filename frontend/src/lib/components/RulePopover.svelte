@@ -184,10 +184,50 @@
 	     gate popover on rollout detail's release-candidate rows are one object
 	     with one chrome. `w-[19rem]` is the record's measure — two aligned
 	     columns of 11px — and `max-w-[calc(100vw-16px)]` is what keeps it
-	     inside the 390 viewport once `place()` has clamped its left edge. -->
+	     inside the 390 viewport once `place()` has clamped its left edge.
+
+	     ⛔ BELOW `sm` IT IS NOT A FLOATING PANEL AT ALL. (F17, 2026-09-03,
+	     `/envs/prod` at 390 dark) `place()` clamps against
+	     `document.documentElement.clientWidth`, which is only the panel's
+	     true bound when nothing between it and the viewport establishes its
+	     OWN containing block for fixed descendants (a `transform`, a
+	     `filter`, `contain`) — measured live, the row's own ancestry does,
+	     so the panel's right edge (382px, `place()`'s own arithmetic) landed
+	     23px past a 359px ancestor instead, clipped, and — because `fixed`
+	     content does not participate in layout — sitting on top of the row's
+	     own DEV › STAGING › PROD chips rather than pushing them down.
+	     `static sm:fixed` is the fix that does not depend on knowing which
+	     ancestor is guilty: at <sm the record renders IN FLOW, directly
+	     under the summary, at the row's own width — nothing to clip, and the
+	     chips below are pushed down like any other block content. `sm:` and
+	     up is byte-identical to before.
+
+	     ⛔ `w-full`, NOT WHAT MAKES THAT WIDTH HAPPEN. `<details>` is
+	     `flex flex-col items-start` (load-bearing per the note above, so the
+	     SUMMARY doesn't inherit a taller line-box strut) — `items-start`
+	     means a flex-column's cross axis (width) is NOT stretched by
+	     default, so a percentage width on the item is asked to resolve
+	     against `<details>`'s OWN width, which is itself a shrink-to-fit
+	     (indefinite) value. Percentages against an indefinite containing
+	     block resolve as `auto` per spec, and `auto` on a non-stretched
+	     column flex item shrinks to content — the exact collapse this note
+	     exists to name: measured on the live `/envs/prod` row, the panel
+	     came back **26px wide** (its own padding and border, nothing else)
+	     while `<details>` sat at 227px right next to it. `self-stretch`
+	     overrides `items-start` for THIS ONE ITEM and asks for "as wide as
+	     the flex container's content box" directly — no percentage, no
+	     indefinite-size ambiguity.
+
+	     ⚠️ AND `w-full` HAD TO GO WITH IT. `align-self: stretch` only fills
+	     the cross axis when the item's cross-size is `auto`; a `width`
+	     that's already definite (`w-full` = `width: 100%`, however it
+	     resolves) wins over stretch and the collapse comes right back.
+	     `sm:w-[22rem]` still gives the `fixed` panel its explicit measure —
+	     that one is never a flex item (out-of-flow, `align-self` does not
+	     apply to it), so it needs the width set outright. -->
 	<div
 		bind:this={panelEl}
-		class="fixed z-50 w-[22rem] max-w-[calc(100vw-16px)] rounded-lg border border-gray-200 bg-white p-3 shadow-md dark:border-gray-700 dark:bg-gray-800"
+		class="static z-50 mt-2 self-stretch rounded-lg border border-gray-200 bg-white p-3 shadow-md sm:fixed sm:mt-0 sm:w-[22rem] sm:max-w-[calc(100vw-16px)] dark:border-gray-700 dark:bg-gray-800"
 	>
 		{@render children()}
 	</div>

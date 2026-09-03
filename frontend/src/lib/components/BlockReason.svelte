@@ -259,6 +259,7 @@
 	import { ArrowRightOutline } from 'flowbite-svelte-icons';
 	import Chip from './Chip.svelte';
 	import RulePopover from './RulePopover.svelte';
+	import FactList, { type Fact } from './FactList.svelte';
 
 	/**
 	 * WHY NOTHING NEWER HAS ARRIVED — said as a CONSEQUENCE, never as a name.
@@ -381,6 +382,27 @@
 
 	/** The version relation is drawable only when BOTH ends are known. */
 	const drawsVersions = $derived(!!(reason?.contract && reason?.have && reason?.need));
+
+	/**
+	 * ⭐ THE RECORD IS `FactList` NOW, NOT A SECOND HAND-ROLLED `<dl>`. (F17,
+	 * 2026-09-03, `/envs/prod` at 390) This snippet's own doc comment already
+	 * named the risk — *"a shared object copied into a second file will not
+	 * receive the shared object's next fix"* — and this was that copy: a
+	 * `grid-cols-[auto_1fr]` grid, `break-all` on the handle rows, spelled
+	 * independently of `GateRecord`'s. It did not receive `FactList`'s
+	 * container-query label collapse or its `-`/`/`-boundary `<wbr>` wrap, so
+	 * this popover was the one still shipping `dependenc / y-hello-f / …` —
+	 * the live symptom, on THIS row, `/envs/prod` at 390 dark. Same fields,
+	 * same order; the grid and the wrap are `FactList`'s problem exactly
+	 * once now.
+	 */
+	function factsFor(r: BlockReason): Fact[] {
+		const facts: Fact[] = [{ label: 'Kind', value: kindWord(r.kind) }];
+		if (r.form === 'short' || drawsVersions) facts.push({ label: 'Clears', value: r.line });
+		for (const name of ruleNames) facts.push({ label: 'Rule', value: name, handle: true });
+		if (r.reasonEnum) facts.push({ label: 'Status', value: r.reasonEnum, handle: true });
+		return facts;
+	}
 </script>
 
 <!-- ⛔ THE RENDERING IS THE BLOCK'S, NOT THE CALLER'S. (2026-08-30)
@@ -486,42 +508,11 @@
 
 {#snippet record(r: BlockReason)}
 	<RulePopover count={ruleNames.length} class="mt-0.5">
-		<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-			<dt class="t-label text-gray-500 dark:text-gray-400">Kind</dt>
-			<dd class="t-micro min-w-0 text-gray-900 dark:text-white">{kindWord(r.kind)}</dd>
-			<!-- ⭐ THE CONSEQUENCE IN FULL. For the three gate branches this is the
-			     LONG form — a different, fuller sentence than the `short` printed
-			     above, and the only place it is rendered at all. For `contract` it
-			     is the sentence the drawing replaced. Either way it is IN THE DOM
-			     with the panel closed, which is what keeps `lib/messages/`'s
-			     `textContent` walk honest.
-
-			     ⛔ AND NOT WHERE THE ROW ALREADY PRINTED IT. A `long` block whose
-			     relation could not be drawn prints `line` itself; repeating it here
-			     would make the reward for opening the control a sentence already on
-			     screen. THE RECORD HOLDS WHAT THE ROW DOES NOT. -->
-			{#if r.form === 'short' || drawsVersions}
-				<dt class="t-label text-gray-500 dark:text-gray-400">Clears</dt>
-				<dd class="t-micro min-w-0 break-words text-gray-900 dark:text-white">{r.line}</dd>
-			{/if}
-			{#each ruleNames as name (name)}
-				<dt class="t-label text-gray-500 dark:text-gray-400">Rule</dt>
-				<!-- THE NAME IS AN IDENTIFIER AND IS DRESSED AS ONE. Mono, muted, one
-				     per row. `break-all` fires only on a name genuinely wider than the
-				     column, and inside the panel it has the panel's full measure
-				     rather than the remainder of a sentence. -->
-				<dd class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400">{name}</dd>
-			{/each}
-			{#if r.reasonEnum}
-				<!-- THE CONTROLLER'S OWN WORD, VERBATIM AND UNSWITCHED. The same
-				     dependency reports `ConstraintNotSatisfied` on the spoke and
-				     `ProviderVersionTooOld` on the hub, so a friendly label per case
-				     would ship its fallback. It is a handle, and it is dressed as one. -->
-				<dt class="t-label text-gray-500 dark:text-gray-400">Status</dt>
-				<dd class="t-code-sm min-w-0 break-all text-gray-500 dark:text-gray-400">
-					{r.reasonEnum}
-				</dd>
-			{/if}
-		</dl>
+		<!-- `factsFor` above carries the same fields in the same order the old
+		     hand-rolled `<dl>` did (Kind, Clears when drawable, one Rule row per
+		     handle, Status); `FactList` is what draws them now — its own
+		     container-query label collapse and `-`/`/`-boundary `<wbr>` wrap
+		     apply here for free, and can never drift from `GateRecord`'s again. -->
+		<FactList facts={factsFor(r)} />
 	</RulePopover>
 {/snippet}
