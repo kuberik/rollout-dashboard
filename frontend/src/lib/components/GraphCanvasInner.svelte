@@ -100,6 +100,7 @@
 		anchor = null,
 		anchorSpan = null,
 		fillWidth = false,
+		singleFile = false,
 		onorientation = undefined,
 		class: className = ''
 	}: {
@@ -201,6 +202,45 @@
 		 * dependency network only. Off, the layout is byte-identical to before.
 		 */
 		fillWidth?: boolean;
+		/**
+		 * ⭐ 2026-09-03 · ONE NODE PER RANK, UNDER `TB` ONLY — THE FIX FOR A
+		 * WIDTH `fillWidth`/A NARROWER BOX COULD NOT REACH.
+		 *
+		 * The coordinator's own measurement on the live fleet: at 390 a `TB`
+		 * rank is not "the held pair" — dagre ranks by PROMOTION edges only
+		 * (`layoutEdges`), and every independent service chain starts its own
+		 * rank 0, so a rank at ENVIRONMENT `dev` holds every service the
+		 * fleet has, not just the two in the story. Four ~100px boxes plus
+		 * the gutters between them do not fit a 307px pane at any zoom this
+		 * product accepts as legible (`NARROW`, 0.85), and a `Chip` label is
+		 * already AT the 10px floor — this canvas cannot shrink to rescue it.
+		 *
+		 * `singleFile` replaces the caller's `layoutEdges` with a SYNTHETIC
+		 * spine — `flowNodes[i] → flowNodes[i+1]` for every consecutive pair,
+		 * in the caller's own insertion order — used for RANKING ONLY, never
+		 * drawn. A spine edge between every node guarantees `rank(i) = i`
+		 * (`minlen: 1` on a total order), so there is never more than one
+		 * node per rank and the within-rank axis this file already had to
+		 * fight (`nodesep`, `fillWidth`) simply has nothing left to hold. The
+		 * REAL edges — promotion and contract — are still `flowEdges`,
+		 * unranked and unchanged; dagre supplies positions, the library still
+		 * routes them, exactly as `layoutEdges`'s own doc describes for the
+		 * contract edges it already excludes.
+		 *
+		 * A contract pair is no longer guaranteed adjacent ranks (the caller
+		 * orders by SERVICE, not by environment, to keep held components
+		 * first — see `layoutOrder`), so a contract edge may now span more
+		 * than one row. It still lands on `contractIn`/`contractOut`
+		 * (`DependencyNode`'s Left/Right under `TB`), so it still reads as a
+		 * sideways relationship and not a promotion, whatever its length.
+		 *
+		 * `false` — the default, and what `AppPromotionFlow` gets since it
+		 * never passes this — keeps `layoutEdges` exactly as the caller sent
+		 * it, at every orientation. Only `orientation === 'TB'` engages it
+		 * even when `true`: the `LR` desktop reading has room for the real
+		 * ranking and loses nothing by keeping it.
+		 */
+		singleFile?: boolean;
 		/**
 		 * ⭐ THE DIRECTION THIS CANVAS SETTLED ON, back to the caller.
 		 *
@@ -416,6 +456,38 @@
 
 	function restingFit() {
 		/**
+		 * ⭐ `singleFile` UNDER `TB` SKIPS `fitView` ENTIRELY — ZOOM 1, ALWAYS.
+		 *
+		 * `fitView`'s `padding` is a PROPORTION of the frame, and the frame
+		 * this canvas grows for `singleFile` is sized to the content it holds
+		 * (`frameFor`, below — no `maxHeight` clamp on this path). A
+		 * proportional pad on a frame that is ALREADY a snug fit is not
+		 * breathing room, it is a forced shrink: measured, `FIT.padding:
+		 * 0.14` on a 12-row single column pushed the resting zoom under 1 and
+		 * put the 10px `Chip` label under its own floor for no reason a
+		 * reader could see (nothing was cropped; there was nothing left to
+		 * fit). Every node is already guaranteed to fit the frame's width at
+		 * zoom 1 — that guarantee is `singleFile`'s whole job — so the
+		 * resting view is just "zoom 1, centred", no fit maths required.
+		 */
+		if (singleFile && orientation === 'TB') {
+			if (contentSize.width > 0 && containerWidth > 0) {
+				const x = Math.max(0, (containerWidth - contentSize.width) / 2);
+				/**
+				 * ⭐ CENTRED, NOT TOP-PINNED — measured, `y: 0` put dagre's own
+				 * 12px top margin above the first row and the frame's `+16`
+				 * slack (`frameFor`) entirely below the last one: 12px above,
+				 * 28px below, same drawing, opposite void. Splitting the ONE
+				 * pool of slack (content already carries its own 12px margin
+				 * on both edges — this is the `frameFor` pad only) evens it to
+				 * ~20/20, under the 24px ceiling either side.
+				 */
+				const y = Math.max(0, (frameHeight - contentSize.height) / 2);
+				setViewport({ x, y, zoom: 1 }, { duration: 0 });
+			}
+			return;
+		}
+		/**
 		 * ⭐ `anchorSpan` SKIPS THE WHOLE-GRAPH FIT AND ASKS THE LIBRARY TO
 		 * FIT JUST THOSE TWO NODES — BUT ONLY WHEN THE WHOLE GRAPH CANNOT BE
 		 * READ. See the prop's own comment for the defect this exists to fix,
@@ -483,6 +555,13 @@
 	 * the instant resting settle.
 	 */
 	function fitAll() {
+		/** Same reasoning as `restingFit`'s own `singleFile` branch — there is
+		 *  nothing this button can show that the resting view does not
+		 *  already, since every row is already on screen at zoom 1. */
+		if (singleFile && orientation === 'TB') {
+			restingFit();
+			return;
+		}
 		if (anchorSpan && wholeGraphFitZoom() < READABLE_FLOOR) {
 			const [a, b] = anchorSpan;
 			const ids = new Set(flowNodes.map((n) => n.id));
@@ -606,6 +685,17 @@
 		// Read so a resize re-lays-out rather than only re-fitting.
 		const frameWidth = containerWidth;
 
+		/**
+		 * `singleFile`'s spine — see the prop's own doc. `minlen` defaults to
+		 * 1, so a chain covering every node forces `rank(i) = i`: one node per
+		 * rank, guaranteed, whatever the real edges look like. Not drawn —
+		 * `flowEdges` (below) is what `<SvelteFlow>` actually renders.
+		 */
+		const rankSource: { source: string; target: string; label?: unknown }[] =
+			singleFile && dir === 'TB'
+				? flowNodes.slice(1).map((n, i) => ({ source: flowNodes[i].id, target: n.id }))
+				: (layoutEdges ?? flowEdges);
+
 		const build = (ns: number, rs: number) => {
 			const g = new dagre.graphlib.Graph();
 			g.setDefaultEdgeLabel(() => ({}));
@@ -622,7 +712,7 @@
 					height: node.measured?.height ?? fallbackNodeHeight
 				});
 			});
-			(layoutEdges ?? flowEdges).forEach((edge) => {
+			rankSource.forEach((edge) => {
 				// A self-loop would make dagre's ranking meaningless; xyflow draws it
 				// on its own without help from the layout.
 				if (edge.source === edge.target) return;
@@ -848,20 +938,36 @@
 	 * `controls={false}` outright.
 	 */
 	const showControls = $derived(controls && flowNodes.length > 0);
-	const showMinimap = $derived(minimapFrom !== null && flowNodes.length >= minimapFrom);
+	/**
+	 * A minimap sells "pan to see the rest of a shape you cannot see" — under
+	 * `singleFile`+`TB` there is no rest: the resting view is already zoom 1
+	 * with every row inside the frame, so a minimap here would be furniture
+	 * with nothing to navigate to.
+	 */
+	const showMinimap = $derived(
+		!(singleFile && orientation === 'TB') &&
+			minimapFrom !== null &&
+			flowNodes.length >= minimapFrom
+	);
 </script>
 
-<div class="graph-canvas relative {className}">
+<div class="graph-canvas relative {singleFile && orientation === 'TB' ? 'graph-canvas--scroll' : ''} {className}">
 	{#if showControls}
 		<!-- ⭐ A STRIP, NOT AN OVERLAY. (2026-09-02) These used to float
 		     `absolute` on top of the pane, which is how the zoom stack ended up
 		     printed over the DEV node at 390 — there is no width narrow enough
 		     to guarantee a top-right corner is empty. A row ABOVE the drawing
 		     reserves its own space instead of gambling on the layout leaving a
-		     gap, so it can never overlap a node at any width. -->
+		     gap, so it can never overlap a node at any width.
+
+		     `rounded-lg` (2026-09-03; was `rounded-md`, the only 6px radius
+		     across 18 routes) — the card vocabulary is 8px/4px, and a floating
+		     control group reads as a small card, not as the odd radius in
+		     between. The minimap below takes the same value for the same
+		     reason. -->
 		<div class="mb-1.5 flex justify-end">
 			<div
-				class="flex overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900"
+				class="flex overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900"
 			>
 				<button
 					type="button"
@@ -941,7 +1047,7 @@
 								: '#cbd5e1'}
 					nodeStrokeWidth={0}
 					nodeBorderRadius={2}
-					class="!m-2 !rounded-md !border !border-gray-200 !bg-white/80 dark:!border-gray-700 dark:!bg-gray-900/80"
+					class="!m-2 !rounded-lg !border !border-gray-200 !bg-white/80 dark:!border-gray-700 dark:!bg-gray-900/80"
 				/>
 			{/if}
 		</SvelteFlow>
@@ -954,6 +1060,20 @@
 	   cursor states are the ones the interaction actually offers. */
 	.graph-canvas :global(.svelte-flow) {
 		background: transparent;
+	}
+	/**
+	 * ⭐ `singleFile`+`TB`: THE PAGE OWNS VERTICAL, THE LIBRARY OWNS THE REST.
+	 * (2026-09-03.) `overflows` is false on this path (the frame is sized to
+	 * the content — see `frameFor`), so `panOnDrag`/`zoomOnPinch` are already
+	 * off and nothing here NEEDS this rule to behave correctly. It is a
+	 * second, CSS-level guarantee, on the browser's own terms rather than
+	 * this file's JS: a single finger scrolls the page (`pan-y`, native,
+	 * no JS in the loop at all) and anything else (pinch) still reaches
+	 * d3-zoom. Harmless alongside the capture-phase `touchstart` listener
+	 * below, which exists for the `overflows === true` cases this rule does
+	 * not cover. */
+	.graph-canvas--scroll :global(.svelte-flow__pane) {
+		touch-action: pan-y;
 	}
 	.graph-canvas :global(.svelte-flow__node) {
 		cursor: default;

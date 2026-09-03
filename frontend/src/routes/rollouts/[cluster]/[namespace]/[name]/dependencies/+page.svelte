@@ -1318,15 +1318,20 @@
 											</ul>
 										{/if}
 
-										<!-- THE ADVERSE CASE, AND THE ONLY THING IN THIS CARD THAT
-										     SPENDS AN ADVERSE COLOUR. Every other row is neutral or
+										<!-- THE ONLY ROW IN THIS CARD THAT SPENDS COLOUR, AND IT IS
+										     ORANGE, NOT RED. (2026-09-03) A gate correctly refusing a
+										     candidate is `held`, not adverse — `Chip`'s own ruling,
+										     see its `held: TRAILING` note — so this left rule takes
+										     the same deep desaturated orange every status disc in the
+										     product already resolves `held` to, not the red `failing`/
+										     `diverged`/`blocked` share. Every other row is neutral or
 										     an identity chip, so a quiet card means nothing is
 										     held. -->
 										{#each b.blocked as w (w.key)}
-											<div class="mt-3 border-l-2 border-red-700/40 pl-3 dark:border-red-400/40">
+											<div class="mt-3 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40">
 												<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
 													<Chip
-														role="blocked"
+														role="held"
 														label="held"
 														value={w.display}
 														valueTitle={w.tag}
@@ -1579,17 +1584,18 @@
 														{/if}
 													</p>
 
-													<!-- THE ADVERSE CASE, AND THE ONLY THING IN THIS CARD
-													     THAT SPENDS AN ADVERSE COLOUR. Same mark, same
-													     sentence and same left rule as the contract card:
-													     one relation stated identically from both ends. -->
+													<!-- THE ONLY ROW HERE THAT SPENDS COLOUR, SAME ORANGE AS
+													     THE CONTRACT CARD ABOVE, NOT RED — see that card's
+													     own note. Same mark, same sentence and same left
+													     rule: one relation stated identically from both
+													     ends. -->
 													{#each d.holds as h (h.key)}
 														<div
-															class="mt-2 border-l-2 border-red-700/40 pl-3 dark:border-red-400/40"
+															class="mt-2 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40"
 														>
 															<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
 																<Chip
-																	role="blocked"
+																	role="held"
 																	label="held"
 																	value={h.display}
 																	valueTitle={h.tag}

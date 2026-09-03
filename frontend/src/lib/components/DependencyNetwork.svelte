@@ -314,35 +314,16 @@
 	});
 
 	/**
-	 * ⭐ THE GUTTER THE CONTRACT LABELS LIVE IN, AND WHY IT TRANSPOSES.
-	 *
-	 * The contract edges are the LABELLED ones and they run along the
-	 * WITHIN-RANK axis, which `nodesep` sizes. Under `LR` that axis is vertical
-	 * and a label is ~18px TALL, so 36px of row gap has always been plenty.
-	 * Under `TB` the same axis is horizontal and the same label is ~70px WIDE:
-	 * measured at 768, `api ^1.67.0` in a 28px gutter printed straight across
-	 * `hello-frontend-app`'s environment chip.
-	 *
-	 * ⛔ AND dagre CANNOT BE ASKED. Contract edges are deliberately kept out of
-	 * `layoutEdges` (they must not advance a rank), so the space dagre reserves
-	 * for a labelled edge is never reserved for these. The gutter is therefore
-	 * sized here, from the widest label actually on this graph, using the same
-	 * `length * 6 + 12` estimate `GraphCanvasInner` gives dagre for the edges it
-	 * does rank — an estimate a few pixels out only moves a gutter.
-	 *
-	 * ⭐ AND BOTH SEPARATIONS ARE A FLOOR, NOT A FIGURE, SINCE `fillWidth`.
-	 * The canvas may widen whichever of them runs along the frame's constrained
-	 * axis — `ranksep` under `LR`, THIS one under `TB` — so that a small graph
-	 * spans its card instead of floating in the middle of it at scale 1. These
-	 * numbers are still the minimum every graph gets; nothing here shrinks.
+	 * ⭐ THE `TB` GUTTER USED TO CARRY A CONTRACT LABEL IN A SHARED ROW —
+	 * THERE IS NO SHARED ROW ANY MORE. (2026-09-03) Before `singleFile`, a
+	 * `TB` rank held every service at one environment side by side, and the
+	 * within-rank gutter (`nodesep`) had to be sized from the widest contract
+	 * label so it did not print across the neighbour's chip. `singleFile`
+	 * puts one node per row, so nothing shares a row under `TB` any more and
+	 * the label-width gutter this used to compute is dead weight — deleted
+	 * with it. `LR`'s `nodesep={36}` was always a plain constant (a label is
+	 * ~18px tall there, not wide) and is untouched.
 	 */
-	const contractGutter = $derived(
-		graph.edges.reduce(
-			(w, e) =>
-				e.writer === 'promotion' ? w : Math.max(w, contractLabel(e).length * 6 + 12),
-			0
-		)
-	);
 </script>
 
 {#if graph.nodes.length > 0}
@@ -371,6 +352,38 @@
 			services in one environment
 		</span>
 	</p>
+	<!--
+		⭐ 2026-09-03 · THE SAME COMPONENT, ONE NODE PER ROW UNDER `TB`, NOT A
+		SECOND COMPONENT. The human's standing decision, reaffirmed this week:
+		one component at every width now that this is the flow library, not a
+		hand-rolled mobile list ("I'd rather have one component now that we
+		use flow library instead").
+
+		`DependencyNode` shrinks its own box under `TB` (see its header), but
+		measured, a narrower box alone does not clear the floor: a `TB` rank
+		is every SERVICE at one environment, not just the held pair, because
+		`rankEdges` (promotion only) ranks each service chain independently
+		from rank 0. Four boxes plus three gutters is wider than a 307px pane
+		at any zoom this product accepts as legible, and a `Chip` label is
+		already AT the "no label under 10 effective px" floor — this canvas
+		cannot shrink even a little to rescue it. `singleFile` (passed to
+		`GraphCanvas` below) is the actual fix: under `TB` it replaces ranking
+		by ENVIRONMENT with ranking by NODE, one per row, in this file's own
+		`orderedNodes` order — so the held component still opens at the top,
+		and no row is ever more than one box wide. `fillWidth` goes off at the
+		same time: it exists to spend a WIDE card's slack (`AppPromotionFlow`'s
+		reason for it); at 390 there is no slack to spend.
+
+		`ranksep`/`nodesep` shrink to match: `ranksep` is now the gap between
+		CONSECUTIVE ROWS, not between environment bands, so the generous `TB`
+		gutter this card used before (sized for a labelled edge landing in a
+		shared row) is unnecessary — every row holds one box and dagre's own
+		`nodesep` no longer separates anything. `maxHeight` stops clamping,
+		because a single-file list is exactly as tall as its rows and there is
+		nothing to fit into a fixed frame — the PAGE scrolls, the pane's own
+		height just follows its content (`frameFor` in `GraphCanvasInner`,
+		unclamped once `maxHeight` is this large).
+	-->
 	<GraphCanvas
 		nodes={flowNodes}
 		edges={flowEdges}
@@ -378,16 +391,17 @@
 		{nodeTypes}
 		rankdir="auto"
 		stackBelow={STACK_BELOW}
-		ranksep={stacked ? 60 : compact ? 96 : 116}
-		nodesep={stacked ? Math.max(36, contractGutter + 16) : 36}
+		singleFile
+		ranksep={stacked ? 22 : compact ? 96 : 116}
+		nodesep={stacked ? 24 : 36}
 		minHeight={compact ? 148 : 168}
-		maxHeight={compact ? 400 : 680}
-		fallbackNodeWidth={compact ? 190 : 210}
-		fallbackNodeHeight={68}
+		maxHeight={stacked ? 100000 : compact ? 400 : 680}
+		fallbackNodeWidth={stacked ? 110 : compact ? 190 : 210}
+		fallbackNodeHeight={stacked ? 72 : 68}
 		minimapFrom={14}
 		{anchor}
 		{anchorSpan}
-		fillWidth
+		fillWidth={!stacked}
 		onorientation={(o) => (stacked = o === 'TB')}
 		{dark}
 		ariaLabel="Dependency graph"

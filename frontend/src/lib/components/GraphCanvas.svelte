@@ -40,6 +40,8 @@
 		anchorSpan?: [string, string] | null;
 		/** Derive the horizontal gutter from the frame so the drawing spans it. */
 		fillWidth?: boolean;
+		/** One node per rank under `TB` — see `GraphCanvasInner`'s own doc. */
+		singleFile?: boolean;
 		/** The `LR`/`TB` this canvas settled on, for a caller that names axes. */
 		onorientation?: ((o: 'LR' | 'TB') => void) | undefined;
 		class?: string;

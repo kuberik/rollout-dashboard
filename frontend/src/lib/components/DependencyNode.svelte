@@ -50,6 +50,22 @@
 	 * rollout waiting only on a deploy window is NOT red: amber means `stuck`
 	 * and nothing else, and a clock that reopens at 1pm is neither. It carries
 	 * a clock glyph and says when.
+	 *
+	 * ── ⭐ 2026-09-03 · THE BOX ITSELF SHRINKS UNDER `TB`, AND THAT IS WHAT
+	 * MAKES ONE COMPONENT WORK AT 390 ─────────────────────────────────────
+	 *
+	 * The desktop box lays `[env chip][icon] name` on one row because a 1182px
+	 * canvas has the width to spare. At 390 it does not: two of these boxes
+	 * side by side (a held contract pair, which is the exact case the reader
+	 * came to see) need more width than a phone card has at any zoom this
+	 * product accepts as legible (`GraphCanvasInner`'s `NARROW` floor, 0.85).
+	 * Shrinking the ROW does not fit; shrinking the BOX does — the chip moves
+	 * to its own line, the status icon (redundant with the red border/fill
+	 * already on a blocked box) is dropped, and the name WRAPS instead of
+	 * truncating, because at this width there is no ellipsis short enough to
+	 * still say `hello-frontend-app` and `hello-api-app` apart. Height is free
+	 * here — the page scrolls — so trading a wider box for a taller one is the
+	 * whole trade.
 	 */
 	import { Handle, Position } from '@xyflow/svelte';
 	import {
@@ -114,7 +130,8 @@
 	this={linked ? 'a' : 'div'}
 	href={linked ? data.href : undefined}
 	title={data.title}
-	class="environment-theme-scope flex w-max min-w-[176px] max-w-[280px] flex-col gap-1 rounded-lg border px-2.5 py-2 transition-colors
+	class="environment-theme-scope flex w-max flex-col rounded-lg border transition-colors
+		{stacked ? 'min-w-[92px] max-w-[132px] gap-0.5 px-2 py-1.5' : 'min-w-[176px] max-w-[280px] gap-1 px-2.5 py-2'}
 		{data.blocked
 		? 'border-red-300 bg-red-50/70 dark:border-red-900 dark:bg-red-950/40'
 		: data.unresolved
@@ -124,26 +141,37 @@
 		{data.focused ? 'ring-2 ring-gray-900/70 dark:ring-white/70' : ''}"
 	style={data.themeStyle ?? undefined}
 >
-	<span class="flex min-w-0 items-center gap-1.5">
-		<!-- THE ENVIRONMENT IS ON THE NODE, NOT ONLY IN THE COLUMN. A column
-		     header would be a fifth thing to keep aligned with dagre's output,
-		     and it would vanish the moment one environment is filtered out. The
-		     chip's hue is the product's env identity, so a column reads as one
-		     colour without anything being drawn between the boxes. -->
+	{#if stacked}
+		<!-- ⭐ CHIP ON ITS OWN LINE, ICON DROPPED. Neither competes with the
+		     name for the one axis this box is short of. The icon said
+		     nothing the border/fill colour does not already say. -->
 		<Chip role="env" label={data.envLabel} />
-		{#if data.unresolved}
-			<QuestionCircleOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
-		{:else}
-			<ServerSolid
-				class="h-3.5 w-3.5 shrink-0 {data.blocked
-					? 'text-red-600 dark:text-red-400'
-					: 'text-gray-400 dark:text-gray-500'}"
-			/>
-		{/if}
-		<span class="min-w-0 truncate text-[13px] font-semibold text-gray-900 dark:text-white"
+		<span
+			class="min-w-0 text-wrap break-words text-[12px] leading-tight font-semibold text-gray-900 dark:text-white"
 			>{data.name}</span
 		>
-	</span>
+	{:else}
+		<span class="flex min-w-0 items-center gap-1.5">
+			<!-- THE ENVIRONMENT IS ON THE NODE, NOT ONLY IN THE COLUMN. A column
+			     header would be a fifth thing to keep aligned with dagre's output,
+			     and it would vanish the moment one environment is filtered out. The
+			     chip's hue is the product's env identity, so a column reads as one
+			     colour without anything being drawn between the boxes. -->
+			<Chip role="env" label={data.envLabel} />
+			{#if data.unresolved}
+				<QuestionCircleOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
+			{:else}
+				<ServerSolid
+					class="h-3.5 w-3.5 shrink-0 {data.blocked
+						? 'text-red-600 dark:text-red-400'
+						: 'text-gray-400 dark:text-gray-500'}"
+				/>
+			{/if}
+			<span class="min-w-0 truncate text-[13px] font-semibold text-gray-900 dark:text-white"
+				>{data.name}</span
+			>
+		</span>
+	{/if}
 
 	<!--
 		THE BUILD IS THE SECOND LINE, AND IT IS WHAT MAKES A PROMOTION EDGE
