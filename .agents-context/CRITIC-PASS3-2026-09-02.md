@@ -367,3 +367,22 @@ behind / deploy and promote (ship kept for a provider publishing). /versions →
 a 308. Measured zero hits for gate, blocked, paused, can't-go-further on nine routes.
 Remaining open: real Deploy actions per station on the app page; the unblock event (nothing
 can publish hello-api 1.67.0); a failure-state walk once a failing deploy can be staged.
+
+## Peer sweep round, iteration 2 → landed at `73cba59` on main (2026-09-03 18:05)
+kuberik-46 ran design + UX sweeps (all routes, four combos + 1024/1280) and handed me the
+correctness items; four lanes plus a scanner fix: pinned is its own state on every list with
+the PINNED chip and cause ('pinned to <sha> by <who>'), / and /rollouts agree (Held 4),
+/environments and /envs count 'N pinned' and keep rollup ink neutral beside held/pinned, Clear
+pin names the build it lets through, the environments order clause matches its CTA; the home
+rollup reads '11 of 15 newest · 4 held' in neutral ink; rail rows are one sentence at every
+width (gap ≤ 7.5% from 640 to 1680); the revision page states one fact per line ('6 of 6
+places run this revision · 3 hold a newer build', service rows name held AND running, rules
+grouped per environment, every time with its verb), the Overview subtitle appends '· running
+<sha>', History keeps ?range=/?kind=, a one-deploy timeline is a row; Logs head states the
+data's freshness with a hollow dot when stale, Follow converges to the newest line, 'N errors'
+filters. The message scanner went blind after an apostrophe inside a markup comment — fixed,
+15 LogsViewer strings censused for the first time. Lessons: verify 1024–1600 too (a /rollouts
+search-box squeeze lived only at 1210–1530); one lane pinned a rollout by POSTing the API
+directly when the dialog's same-version gate blocked the UI path — the gate was my d2145eb's
+regression, kuberik-46 is fixing it. Cluster: hello-multi-app dev carries a pin nobody owns
+('c98bfab by admin@example.com') — flagged to the human.
