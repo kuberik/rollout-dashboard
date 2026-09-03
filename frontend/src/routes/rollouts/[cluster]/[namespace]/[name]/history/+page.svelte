@@ -771,10 +771,10 @@
 			     the left, the rolled-up answer hard-right, body below the rule.
 			     Both other regions on this page follow the same header. -->
 			<div
-				class="mb-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800/50"
+				class="mb-5 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 			>
 				<div
-					class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+					class="flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 				>
 					<h3
 						class="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white"
@@ -789,6 +789,12 @@
 						<span class="text-xs text-gray-500 tabular-nums dark:text-gray-400">
 							{timelineRollup}
 						</span>
+					</div>
+				</div>
+				<div class="p-4">
+					<!-- A header slot holds an ANSWER, not a control (wave 6). The two
+					     toggles sit with the chart they change, on their own row. -->
+					<div class="mb-3 flex flex-wrap justify-end gap-2">
 						{#if hasOtherEnvs}
 							<button
 								class="hit-32 flex items-center gap-1.5 rounded border px-3 py-[1px] text-xs font-medium transition-colors {showEnvironments
@@ -819,8 +825,6 @@
 							{/if}
 						</button>
 					</div>
-				</div>
-				<div class="p-4">
 					<DeploymentTimeline
 						services={chartServices}
 						bind:timeRange
@@ -833,9 +837,13 @@
 			</div>
 
 			<!-- Deployment list -->
-			<div class="space-y-1">
+			<!-- A TITLED CARD, like the timeline above it and the three tabs beside
+			     it — not a heading floating over a stack of bordered boxes. Rows are
+			     divided rows now; the selected row is a tinted ground, the same mark
+			     the pipeline card uses for its selected step. -->
+			<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 				<div
-					class="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-gray-200 pb-2 dark:border-gray-700"
+					class="flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 				>
 					<h3
 						class="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white"
@@ -872,9 +880,7 @@
 				</div>
 
 				{#if filteredHistory.length === 0}
-					<div
-						class="flex h-24 items-center justify-center rounded-xl border border-dashed border-gray-200 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
-					>
+					<div class="flex h-24 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
 						No deployments in this time range
 					</div>
 				{:else}
@@ -887,9 +893,9 @@
 
 						<div
 							use:registerEntry={i}
-							class="scroll-mt-28 overflow-hidden rounded-xl border transition-all duration-200 {isSelected
-								? 'border-blue-400 shadow-md shadow-blue-100 dark:border-blue-600 dark:shadow-blue-950/50'
-								: 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-800/50"
+							class="scroll-mt-28 border-b border-gray-200 transition-colors last:border-b-0 dark:border-gray-700 {isSelected
+								? 'bg-blue-50/50 dark:bg-blue-900/20'
+								: ''}"
 						>
 							<!--
 								⭐ THE ROW IS A `.tap-zone` AND THE CONTROL THAT OWNS IT IS THE
