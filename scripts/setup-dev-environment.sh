@@ -5,6 +5,18 @@ set -x
 SCRIPT_DIR=$(dirname "$0")
 GITHUB_TOKEN=${GITHUB_TOKEN:-$(gh auth token)}
 
+# GitHub App credentials come from rollout-dashboard/.env (gitignored) so a cluster
+# reset keeps the GitHub login without exporting them by hand. The .env held the
+# secret for two months while the script only ever looked at the environment, and
+# printed "skipping github-app-credentials" every run. Exported vars still win;
+# tracing is paused so the secret never lands in the set -x log.
+_env_id="${GITHUB_APP_CLIENT_ID:-}"; _env_secret="${GITHUB_APP_CLIENT_SECRET:-}"
+if [ -f "${SCRIPT_DIR}/../.env" ]; then
+  set +x; set -a; . "${SCRIPT_DIR}/../.env"; set +a; set -x
+fi
+[ -n "$_env_id" ] && GITHUB_APP_CLIENT_ID="$_env_id"
+[ -n "$_env_secret" ] && GITHUB_APP_CLIENT_SECRET="$_env_secret"
+
 # Parameters (defaults match the original single-cluster setup):
 #   CLUSTER_NAME       — kind cluster name (default: rollout-dev)
 #   HOSTNAME_PREFIX    — subdomain prefix for the dashboard (default: kuberik)
