@@ -15,6 +15,7 @@
 		isNeedsYou,
 		isInMotion,
 		isTrailing,
+		isHeld,
 		isSteady,
 		isPending
 	} from '$lib/view-models/fleet-groups';
@@ -118,11 +119,33 @@
 	// `healthy` survives as a QuickFilter key for `trailing ∪ steady`; nothing
 	// selects it, and it is kept only so a saved/deep-linked state that used
 	// it still resolves rather than throwing away the filter.
-	type QuickFilter = 'all' | 'attention' | 'active' | 'pending' | 'healthy' | 'trailing' | 'steady';
+	//
+	// ⛔ `held` ADDED, 2026-09-03 (F4 third re-check, finding 5: "`Held 4` on
+	// `/` vs `Trailing 4` on `/rollouts` for the same four"). `/`'s Trailing
+	// section has always excluded rollouts `isHeld` splits out into its own
+	// `Held` section — this page's `Trailing` pill did not, so four rollouts
+	// blocked by a gate were counted as `Trailing 4` here and `Held 4` there.
+	// One taxonomy now: the five VISIBLE pills below are `/`'s five section
+	// names in `/`'s own order (`Needs you`, `In motion`, `Held`, `Trailing`,
+	// `Steady`). `pending` has no dedicated pill — `/` has never had a
+	// standalone Pending section; it folds pending rollouts into Steady's own
+	// count with a qualifier (see `statusPills` below) — but the KEY survives
+	// for the same reason `healthy` does: an old deep link must still filter
+	// to something instead of silently resetting to `all`.
+	type QuickFilter =
+		| 'all'
+		| 'attention'
+		| 'active'
+		| 'held'
+		| 'pending'
+		| 'healthy'
+		| 'trailing'
+		| 'steady';
 	const QUICK_FILTER_KEYS: QuickFilter[] = [
 		'all',
 		'attention',
 		'active',
+		'held',
 		'pending',
 		'healthy',
 		'trailing',
@@ -208,9 +231,17 @@
 		return cards.filter((c) => {
 			if (quickFilter === 'attention' && !isNeedsYou(c)) return false;
 			if (quickFilter === 'active' && !isInMotion(c)) return false;
+			if (quickFilter === 'held' && !isHeld(c)) return false;
+			// ⛔ `trailing` NOW EXCLUDES `held` — see the note on `QuickFilter`.
+			if (quickFilter === 'trailing' && !(isTrailing(c) && !c.held)) return false;
+			// ⛔ `steady` INCLUDES PENDING, MATCHING `/`'s `steadySectionAll`. A
+			// rollout that has never deployed has no rank to be Trailing OR
+			// Steady about, and `/` has always drawn it inside the Steady grid
+			// (with a `· N pending` qualifier on the header) rather than giving
+			// it a section — never-deployed and gate-blocked are different
+			// facts. `pending` survives only as a deep-link key (see above).
+			if (quickFilter === 'steady' && !(isSteady(c) || isPending(c))) return false;
 			if (quickFilter === 'pending' && !isPending(c)) return false;
-			if (quickFilter === 'trailing' && !isTrailing(c)) return false;
-			if (quickFilter === 'steady' && !isSteady(c)) return false;
 			if (quickFilter === 'healthy' && !(isTrailing(c) || isSteady(c))) return false;
 			if (envFilters.length > 0 && !envFilters.includes(c.envKey)) return false;
 			if (clusterFilters.length > 0) {
@@ -350,16 +381,37 @@
 	// predicate is `/`'s — see the note on QuickFilter.
 	const attentionCards = $derived.by(() => cards.filter(isNeedsYou));
 	const inMotionCards = $derived.by(() => cards.filter(isInMotion));
+	const heldCards = $derived.by(() => cards.filter(isHeld));
 	const pendingCardsAll = $derived.by(() => cards.filter(isPending));
-	const trailingCards = $derived.by(() => cards.filter(isTrailing));
+	// ⛔ `trailing` EXCLUDES `held` NOW — see the note on `QuickFilter` and on
+	// `filtered` above. Before this fix these four rollouts were counted
+	// under BOTH the `Trailing` pill here and (nowhere — this page had no
+	// `Held` pill at all) on `/`'s `Held` section.
+	const trailingCards = $derived.by(() => cards.filter((c) => isTrailing(c) && !c.held));
 	const steadyCards = $derived.by(() => cards.filter(isSteady));
 
 	// Compact status filter pills (single-select) shown in the filter bar.
 	//
-	// ⚠️ `Trailing` SITS BETWEEN `Pending` AND `Steady`, IN SEVERITY ORDER, and
+	// ⭐ FIVE PILLS, `/`'S FIVE SECTIONS, `/`'S OWN ORDER AND WORDS.
+	// (2026-09-03, F4 third re-check, finding 5) This used to be
+	// `Attention · In motion · Pending · Trailing · Steady` — four of those
+	// five words do not appear anywhere on `/`, which spells the identical
+	// buckets `Needs you now` (the section header's full form; the pill
+	// keeps the shorter `Needs you` — see below), `In motion`, `Held`,
+	// `Trailing`, `Steady`. `Attention` and `Needs you` are the same set
+	// counted correctly the whole time; the defect was the WORD, which an
+	// operator moving between the two pages has to re-learn maps to the same
+	// thing. `Held` is new here (see `heldCards` above); `Pending` is gone as
+	// a pill because `/` has never had a standalone Pending section — it
+	// folds into Steady's own count with a qualifier, which this pill does
+	// too now (see the `qualifier` field and its render site).
+	//
+	// ⚠️ `Trailing` SITS BETWEEN `Held` AND `Steady`, IN SEVERITY ORDER, and
 	// takes the same amber the product spends on drift everywhere else — NOT
-	// red, which belongs to `Attention`. Drift is the normal state of a
-	// promotion pipeline; the adverse state is stuck.
+	// red, which belongs to `Needs you`. Drift is the normal state of a
+	// promotion pipeline; the adverse state is stuck. `Held` sits between
+	// `In motion` and `Trailing`, exactly where `/` draws its own Held
+	// section.
 	//
 	// ⚠️ `Healthy` IS RENAMED `Steady`, NOT REDEFINED IN PLACE. Leaving the
 	// word `Healthy` on a count that no longer includes trailing rollouts
@@ -367,11 +419,22 @@
 	// that `Healthy 14` means "everything is fine" would read `Healthy 11` the
 	// same way. `/` has called this bucket Steady since it was built.
 	const statusPills = $derived([
-		{ key: 'attention' as QuickFilter, label: 'Attention', count: attentionCards.length, dot: 'bg-red-500' },
-		{ key: 'active' as QuickFilter, label: 'In motion', count: inMotionCards.length, dot: 'bg-blue-500' },
-		{ key: 'pending' as QuickFilter, label: 'Pending', count: pendingCardsAll.length, dot: 'bg-gray-400' },
-		{ key: 'trailing' as QuickFilter, label: 'Trailing', count: trailingCards.length, dot: 'bg-amber-500' },
-		{ key: 'steady' as QuickFilter, label: 'Steady', count: steadyCards.length, dot: 'bg-green-700 dark:bg-green-400' }
+		{ key: 'attention' as QuickFilter, label: 'Needs you', count: attentionCards.length, dot: 'bg-red-500', qualifier: null as string | null },
+		{ key: 'active' as QuickFilter, label: 'In motion', count: inMotionCards.length, dot: 'bg-blue-500', qualifier: null as string | null },
+		{ key: 'held' as QuickFilter, label: 'Held', count: heldCards.length, dot: 'bg-orange-500', qualifier: null as string | null },
+		{ key: 'trailing' as QuickFilter, label: 'Trailing', count: trailingCards.length, dot: 'bg-amber-500', qualifier: null as string | null },
+		{
+			key: 'steady' as QuickFilter,
+			label: 'Steady',
+			count: steadyCards.length,
+			dot: 'bg-green-700 dark:bg-green-400',
+			// `/`'s Steady grid also holds pending rollouts, with a
+			// `· N pending` qualifier on the header rollup rather than a
+			// section of their own — see the `steadySectionAll` note in
+			// `ControlCenter.svelte`. Selecting this pill filters the same
+			// union (`isSteady(c) || isPending(c)`, see `filtered` above).
+			qualifier: pendingCardsAll.length > 0 ? `+${pendingCardsAll.length} pending` : null
+		}
 	]);
 
 	// The head band's rollup — SCALE AND SPREAD, over the unfiltered set. It is
@@ -387,6 +450,61 @@
 
 
 </script>
+
+<!--
+	⛔ THE LEADING WORD IN THIS HEADER USED TO BE THE CLUSTER, AND IT
+	WAS READ AS THE ENVIRONMENT. (2026-08-31)
+
+	It rendered `<cluster> / <namespace>` — on the live hub that is
+	`dev / hello-world-staging`, with every row inside it correctly
+	marked **STAGING**. From the critique: *"An operator scanning at
+	3am reads the header."* The two words genuinely differ here (the
+	spoke cluster is named `dev` and hosts the staging namespaces),
+	so this is not a naming bug to be fixed upstream; the DISPLAY has
+	to say which is which.
+
+	THREE CHANGES, and the first one is the fix:
+
+	1. THE NAMESPACE LEADS. Groups are grouped and sorted by
+	   namespace, so the namespace is this section's title and the
+	   cluster is a qualifier on it. There is no longer a cluster
+	   name in first position to be misread — and the sort key now
+	   starts at the same x on every group, which it could not do
+	   behind a variable-width prefix.
+	2. The cluster is a `<ClusterMark>`: the word `cluster`, a server
+	   glyph, lowercase — the SAME token the filter row uses, so the
+	   two teach each other.
+	3. The count moves to a RIGHT-ALIGNED ROLLUP beside the chevron,
+	   which is `COMPOSITION-GRAMMAR.md` §1's shape for a titled
+	   region and lets a reader take the group's answer without
+	   reading a row of it.
+
+	⭐ EXTRACTED TO A SNIPPET, 2026-09-03 (F4, third re-check). A solo
+	group now wraps this header in the SAME shrink-wrapped box as its
+	one card (see the note beside `grouped`'s `<section>` below), so
+	the header markup has to render identically from two call sites
+	instead of one. -->
+{#snippet groupHeader(g: NsGroup)}
+	<a
+		href={`/namespaces/${g.ns}`}
+		class="group mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-2 dark:border-gray-700/60"
+	>
+		<div class="flex min-w-0 items-center gap-2">
+			<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{g.ns}</h2>
+			{#if isMultiCluster}
+				<ClusterMark name={g.clusterLabel} class="shrink-0 text-gray-500 dark:text-gray-400" />
+			{/if}
+		</div>
+		<div class="flex shrink-0 items-center gap-2">
+			<span class="text-[11px] text-gray-500 dark:text-gray-400">
+				{g.cards.length} rollout{g.cards.length === 1 ? '' : 's'}{#if g.attentionCount > 0}
+					· <span class="font-medium text-red-600 dark:text-red-400">{g.attentionCount} need attention</span>
+				{/if}
+			</span>
+			<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
+		</div>
+	</a>
+{/snippet}
 
 <div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
@@ -520,6 +638,12 @@
 						     the pill's own ink, which is the muted token in the resting
 						     state and the knockout in the selected one - both measured. -->
 						<span class="font-mono tabular-nums">{sp.count}</span>
+						<!-- `Steady`'s pending qualifier — `/`'s own `· N pending` on
+						     the section header, folded into the pill since a filter
+						     chip has no header of its own. See `statusPills`' note. -->
+						{#if sp.qualifier}
+							<span class="font-mono text-[10px] tabular-nums">{sp.qualifier}</span>
+						{/if}
 					</button>
 				{/each}
 			</div>
@@ -670,60 +794,40 @@
 	{:else}
 		<div class="space-y-6">
 			{#each grouped as g (g.clusterLabel + '|' + g.clusterURL + '|' + g.ns)}
+				<!--
+					⭐ F4 (fourth correction, 2026-09-03 third re-check): CARDS AND
+					THE GROUP'S HEADER RULE SHARE A RIGHT EDGE AT EVERY WIDTH. The
+					previous `minmax(360px, 460px)` cap fixed the card-inflation
+					defect but left the header's hairline and rollup running the
+					section's FULL width while the card(s) stopped 273–741px short
+					of it — nine groups, nine identical margins-that-read-as-holes.
+
+					A group with ≥2 rollouts genuinely wants to fill the row (two
+					real cards side by side reads as content, not as a stretched
+					single card), so those grids go back to `minmax(360px, 1fr)`
+					and the header stays a full-width block — both edges are the
+					container's edge, byte-identical, nothing to reconcile.
+
+					A group with EXACTLY ONE rollout cannot make that same claim: a
+					single 1fr track inflates to the whole row (measured 1201px,
+					15.8% ink — the defect the 460px cap existed to fix in the first
+					place). So a solo group's header AND grid are wrapped in one
+					`width: fit-content; max-width: 460px` container instead: the
+					card still tops out at 460px, and now the header rule and
+					rollup are IN that same shrink-wrapped box, so they end at the
+					card's own right edge rather than the row's. Below the 730px
+					container threshold (mobile) the wrapper is untouched — both
+					header and card are already full-width blocks there.
+				-->
+				{@const solo = g.cards.length === 1}
 				<section class="rg-cq">
-					<!--
-						⛔ THE LEADING WORD IN THIS HEADER USED TO BE THE CLUSTER, AND IT
-						WAS READ AS THE ENVIRONMENT. (2026-08-31)
-
-						It rendered `<cluster> / <namespace>` — on the live hub that is
-						`dev / hello-world-staging`, with every row inside it correctly
-						marked **STAGING**. From the critique: *"An operator scanning at
-						3am reads the header."* The two words genuinely differ here (the
-						spoke cluster is named `dev` and hosts the staging namespaces),
-						so this is not a naming bug to be fixed upstream; the DISPLAY has
-						to say which is which.
-
-						THREE CHANGES, and the first one is the fix:
-
-						1. THE NAMESPACE LEADS. Groups are grouped and sorted by
-						   namespace, so the namespace is this section's title and the
-						   cluster is a qualifier on it. There is no longer a cluster
-						   name in first position to be misread — and the sort key now
-						   starts at the same x on every group, which it could not do
-						   behind a variable-width prefix.
-						2. The cluster is a `<ClusterMark>`: the word `cluster`, a server
-						   glyph, lowercase — the SAME token the filter row uses, so the
-						   two teach each other.
-						3. The count moves to a RIGHT-ALIGNED ROLLUP beside the chevron,
-						   which is `COMPOSITION-GRAMMAR.md` §1's shape for a titled
-						   region and lets a reader take the group's answer without
-						   reading a row of it.
-					-->
-					<a
-						href={`/namespaces/${g.ns}`}
-						class="group mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-2 dark:border-gray-700/60"
-					>
-						<div class="flex min-w-0 items-center gap-2">
-							<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{g.ns}</h2>
-							{#if isMultiCluster}
-								<ClusterMark name={g.clusterLabel} class="shrink-0 text-gray-500 dark:text-gray-400" />
-							{/if}
-						</div>
-						<div class="flex shrink-0 items-center gap-2">
-							<span class="text-[11px] text-gray-500 dark:text-gray-400">
-								{g.cards.length} rollout{g.cards.length === 1 ? '' : 's'}{#if g.attentionCount > 0}
-									· <span class="font-medium text-red-600 dark:text-red-400">{g.attentionCount} need attention</span>
-								{/if}
-							</span>
-							<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
-						</div>
-					</a>
-
-<!-- Responsive grid of compact rollout cards. State column dropped
-					     (redundant with the status circle); cards flow into columns so wide
-					     screens are not one stretched row each. -->
-					<div class="rg-grid grid gap-2">
-						{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+					<div class={solo ? 'rg-solo' : ''}>
+						{@render groupHeader(g)}
+						<!-- Responsive grid of compact rollout cards. State column dropped
+						     (redundant with the status circle); cards flow into columns so wide
+						     screens are not one stretched row each. -->
+						<div class="rg-grid grid gap-2 {solo ? 'rg-grid-solo' : 'rg-grid-multi'}">
+							{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
 							<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS
 							     EVERY OTHER PAGE'S. This card used to hand-roll it: a
@@ -824,22 +928,6 @@
 													wide
 													class="shrink-0"
 												/>{/if}
-											<!-- ⛔ THE STANDALONE `HELD` CHIP IS GONE. (2026-09-02, defect
-											     1 of the disc consistency pass) It was added here so "1
-											     BEHIND" and "1 BEHIND, HELD" would not read identical — a
-											     real problem when the disc drew a plain green tick for
-											     every settled row. It no longer does: the disc now carries
-											     `state="held"` (pause glyph) on every held row, on every
-											     list surface, from `cardStateMark` — see `rollout-cards.ts`
-											     and `BakeStatusIcon.svelte`'s diameter-token note. A chip
-											     restating a fact the disc 24px to its left already draws is
-											     the SAME defect the `rolled back`/`pinned` marks were
-											     folded into the disc to avoid. The rank chip's own `title`
-											     still carries the full sentence
-											     (`cardVerdict`/`stateMark.title`), so hovering either mark
-											     explains it. If a future page cannot afford the disc (too
-											     tight to show `state`), THAT page earns the chip back — not
-											     this one, which has room for both and was showing both. -->
 										</div>
 										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{c.title}</span>{/if}
 									</div>
@@ -849,7 +937,7 @@
 								</div>
 								<!-- Version tag + last change -->
 								<div class="flex items-center justify-between gap-2">
-									<span class="flex min-w-0 items-center gap-1.5">
+									<span class="flex min-w-0 flex-wrap items-center gap-1.5">
 										<!-- ⛔ A ROLLBACK USED TO BE INDISTINGUISHABLE FROM A DEPLOY
 										     ON EVERY LIST SURFACE. A live UX critique rolled production
 										     back to a one-hour-old build and this card drew it exactly
@@ -878,6 +966,32 @@
 											valueDim={!c.version}
 											class="min-w-0"
 										/>
+									<!-- ⛔ REVERSED, 2026-09-03 (F4 third re-check, finding 2:
+									     "HELD IS SPELLED FIVE WAYS"). A prior pass deleted this
+									     chip on the theory that the disc's pause glyph already
+									     says it — true for a mouse hovering the disc's `title`,
+									     false for everyone else: the glyph has no visible word,
+									     `sr-only` text is silent to a sighted reader, and touch
+									     has no hover at all. Measured across the product, "held"
+									     was spelled FIVE different ways on five list surfaces (a
+									     chip here once, then nothing on `/rollouts` or
+									     `/namespaces`, a lock glyph + sentence on `/envs/<name>`,
+									     a nested rule block on `/environments`, prose on `/apps`)
+									     — only the orange disc was constant. One atom now: the
+									     SAME `Chip role="held" label="held"` `/` already ships in
+									     its own Held section, wrapping onto its own line beside
+									     the rank chip (the span above is `flex-wrap` now) rather
+									     than competing with the app name for width. See the same
+									     chip on `/namespaces/[name]` and `/environments` for the
+									     other two surfaces this pass fixed. -->
+									{#if c.held}
+										<Chip
+											role="held"
+											label="held"
+											title="Held: a newer build exists, but no gate lets it through yet."
+											class="shrink-0"
+										/>
+									{/if}
 									</span>
 									<!-- ⛔ F8: THE NOUN LINE SURVIVED AT `sm`+ AND ORPHANED ITSELF.
 									     (2026-09-03, re-check) The 2026-09-02 fix above stopped `4d
@@ -908,6 +1022,7 @@
 							</a>
 						{/each}
 					</div>
+					</div>
 				</section>
 			{/each}
 		</div>
@@ -932,16 +1047,44 @@
 	 *
 	 * Each namespace's own `<section>` is the query subject now (`.rg-cq`),
 	 * not the viewport. Below ~730px of the GROUP'S OWN width — not enough
-	 * for two `minmax(360px, 460px)` tracks plus the 8px gap (2×360+8=728)
-	 * — the grid is one column, full width, at every viewport including
-	 * 640–1023 where it used to force two. At 730px+ the SAME `auto-fit`
-	 * rule this grid already used above `xl` (see the "THE GRID MUST FILL
-	 * ITS ROW" note near `grouped`'s definition, and its two supersessions)
-	 * now governs every width that can afford it, not only the widest one:
-	 * `auto-fit` collapses an empty trailing track to 0 so a lone-rollout
-	 * group still draws one ~460px card, ragged right, and a busy group
-	 * fills as many 360–460px tracks as its own width allows, capped by the
-	 * page's own `max-w-7xl` the same way the old `xl`-only rule was.
+	 * for two 360px tracks plus the 8px gap (2×360+8=728) — the grid is one
+	 * column, full width, at every viewport including 640–1023 where it
+	 * used to force two. At 730px+ the SAME `auto-fit` rule this grid
+	 * already used above `xl` (see the "THE GRID MUST FILL ITS ROW" note
+	 * near `grouped`'s definition, and its supersessions below) now governs
+	 * every width that can afford it, not only the widest one.
+	 *
+	 * ⭐ F4 (fourth correction, third re-check, same day): SPLIT BY GROUP
+	 * SIZE INSTEAD OF ONE TEMPLATE FOR BOTH. `minmax(360px, 460px)` capped
+	 * card width, which stopped a lone card from inflating to the full
+	 * row — but the header rule and rollup are DRAWN BY THE SECTION, not
+	 * the grid, so they kept the section's full width regardless of the
+	 * cap: measured at 1440, a lone card's row was 460px wide inside a
+	 * 1201px section, a 741px gap between the card's edge and the header
+	 * rule's. A two-card group had the same defect at 273px. "The grid
+	 * fills its row" and "the header matches the grid" are different
+	 * claims, and the 460px cap only ever tried to satisfy the first one.
+	 *
+	 * `.rg-grid-multi` (≥2 cards): unchanged claim, `1fr` tracks so real
+	 * multi-card rows fill the container — and the header is a full-width
+	 * block in the same container, so the two edges are the SAME edge,
+	 * nothing to reconcile.
+	 *
+	 * `.rg-grid-solo` (exactly 1 card): the track keeps its fixed
+	 * `minmax(360px, 460px)` range — NOT `1fr` — because a flexible track's
+	 * intrinsic (max-content) contribution is not a fixed number the
+	 * ancestor `fit-content` box below can shrink-wrap to; a fixed range
+	 * gives the grid box a deterministic max-content width (360–460px)
+	 * to report upward. It lives inside `.rg-solo` — a sibling wrapper
+	 * around BOTH the header and the grid — capped at `max-width: 460px`
+	 * and shrink-wrapped (`width: fit-content`) to that. A block child
+	 * with `width: auto` (the header `<a>`, the grid) fills its parent's
+	 * resolved width, so once `.rg-solo` resolves to ≤460px both children
+	 * resolve to that same width — the header rule and the card's right
+	 * edge become one edge by construction, not by measurement. Below
+	 * 730px `.rg-solo` is inert (no `fit-content` override), so mobile is
+	 * untouched: both header and card are already full-width blocks
+	 * there.
 	 */
 	.rg-cq {
 		container-type: inline-size;
@@ -952,9 +1095,17 @@
 	}
 
 	@container (min-width: 730px) {
-		.rg-grid {
-			grid-template-columns: repeat(auto-fit, minmax(360px, 460px));
-			justify-content: start;
+		.rg-grid-multi {
+			grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+		}
+
+		.rg-grid-solo {
+			grid-template-columns: minmax(360px, 460px);
+		}
+
+		.rg-solo {
+			width: fit-content;
+			max-width: 460px;
 		}
 	}
 </style>

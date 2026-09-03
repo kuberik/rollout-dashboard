@@ -103,20 +103,42 @@ export function isSteady(c: RolloutCard): boolean {
 	return isHealthy(c) && (c.rank.kind === 'newest' || c.rank.kind === 'unknown');
 }
 
+/**
+ * Trailing, but blocked by a gate — no candidate the rollout could take
+ * passes every check, so this rollout will not move on its own.
+ *
+ * ⛔ LIFTED OUT OF `ControlCenter.svelte`, 2026-09-03 (F4 third re-check,
+ * finding 5: "`Held 4` on `/` vs `Trailing 4` on `/rollouts` for the same
+ * four"). `/` computed `held`/`trailing` as a local split of `trailingAll`
+ * (`c.held` filtering a `$derived.by` two components never shared); `/rollouts`
+ * had no `held` bucket at all and counted every one of those four rollouts
+ * under its own `Trailing` pill instead — same four rollouts, two different
+ * headline words for them on the two pages an operator moves between. One
+ * predicate now, imported by both, so `held` cannot drift from `trailing`
+ * (which still includes it — `held` is a REFINEMENT of trailing, not a
+ * disjoint fifth bucket) on one surface and not the other.
+ */
+export function isHeld(c: RolloutCard): boolean {
+	return isTrailing(c) && c.held;
+}
+
 export type FleetGroups = {
 	needsYou: RolloutCard[];
 	inMotion: RolloutCard[];
+	held: RolloutCard[];
 	trailing: RolloutCard[];
 	steady: RolloutCard[];
 	pending: RolloutCard[];
 };
 
-/** Every bucket at once, for a page that needs all five counts. */
+/** Every bucket at once, for a page that needs all six counts. */
 export function fleetGroups(cards: RolloutCard[]): FleetGroups {
+	const trailingAll = cards.filter(isTrailing);
 	return {
 		needsYou: cards.filter(isNeedsYou),
 		inMotion: cards.filter(isInMotion),
-		trailing: cards.filter(isTrailing),
+		held: trailingAll.filter((c) => c.held),
+		trailing: trailingAll.filter((c) => !c.held),
 		steady: cards.filter(isSteady),
 		pending: cards.filter(isPending)
 	};

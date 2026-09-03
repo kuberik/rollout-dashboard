@@ -789,16 +789,25 @@
 		padding-block: 8px;
 	}
 
-	/* THE DISC IS THE PRODUCT'S STATUS CIRCLE, at the 32px this page's task
-	   rows already use. Not a new atom, not a new colour: the ground comes
-	   from `getStatusCircleClass` and the glyph from `BakeStatusIcon`, which
-	   are the two functions that own the six status hues. */
+	/* THE DISC IS THE PRODUCT'S STATUS CIRCLE, at the 28px `h-7 w-7` list
+	   token every other list row (`/`, `/rollouts`, `/namespaces/<name>`,
+	   `/environments`) already uses — see `BakeStatusIcon.svelte`'s
+	   diameter-token note. Not a new atom, not a new colour: the ground
+	   comes from `getStatusCircleClass` and the glyph from
+	   `BakeStatusIcon`, which are the two functions that own the six
+	   status hues.
+
+	   ⛔ WAS 32px. (2026-09-03, F4 third re-check, finding 22) Measured
+	   against every list surface's disc, the station discs on `/apps/<name>`
+	   were the one outlier at 32px — a fifth diameter for the same atom.
+	   The 40px banner disc (`AlertPanel`'s own severity glyph, a different
+	   role entirely) is unaffected. */
 	.pp-disc {
 		grid-area: disc;
 		position: relative;
 		display: inline-flex;
-		height: 32px;
-		width: 32px;
+		height: 28px;
+		width: 28px;
 		flex-shrink: 0;
 		align-items: center;
 		justify-content: center;

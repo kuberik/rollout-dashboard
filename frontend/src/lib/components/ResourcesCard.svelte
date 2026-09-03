@@ -466,6 +466,17 @@
 							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
 							{resourceStatusWord(resource.status)}
 						</span>
+						<!-- ⛔ F4 (finding 13): FIXED COLUMNS — THE CHEVRON HAS ITS OWN
+						     TRACK WHETHER PRESENT OR NOT. (2026-09-03) The Deployment
+						     row above ends in a real toggle button; this row (and the
+						     two below) had nothing there, so the status chip — the same
+						     `Current` pill, same column, same card — landed 26px further
+						     right. Measured on the live cluster: 1358 (Deployment row)
+						     vs 1384 (this row). An `invisible` same-box spacer keeps the
+						     chip's right edge identical without adding a fake control. -->
+						<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
+							<ChevronRightOutline class="h-3.5 w-3.5" />
+						</span>
 					</div>
 
 					<!-- URL children -->
@@ -520,6 +531,11 @@
 							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
 							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
 							{resourceStatusWord(resource.status)}
+						</span>
+						<!-- Fixed chevron column — see the note beside the HTTPRoute
+						     row above (finding 13). -->
+						<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
+							<ChevronRightOutline class="h-3.5 w-3.5" />
 						</span>
 					</div>
 				{/each}
@@ -578,6 +594,11 @@
 								: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
 								: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
 								{resourceStatusWord(resource.status)}
+							</span>
+							<!-- Fixed chevron column — see the note beside the HTTPRoute
+							     row (finding 13). -->
+							<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
+								<ChevronRightOutline class="h-3.5 w-3.5" />
 							</span>
 						</div>
 					{/each}

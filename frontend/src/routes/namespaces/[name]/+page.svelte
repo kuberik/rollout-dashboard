@@ -67,7 +67,13 @@
 		formatDate,
 		shortenVersion
 	} from '$lib/utils';
-	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
+	import {
+		rankVerdictsByRollout,
+		rankLabel,
+		rankRole,
+		rankTitle,
+		rankBehindBy
+	} from '$lib/view-models/env-rank';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -87,6 +93,7 @@
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
+	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
 	import { getStatusCircleClass, bakeTitle } from '$lib/bake-status';
 	import { cardStateMark, detectRollback } from '$lib/rollout-cards';
 	import { promotionBlock } from '$lib/view-models/promotion';
@@ -240,6 +247,51 @@
 	 * that is on the line. Same function, same numbers as `/` and `/rollouts`.
 	 */
 	const ranks = $derived(rankVerdictsByRollout(rollouts, environments));
+
+	/**
+	 * ⭐ `How it's going`, SCOPED TO THE NAMESPACE — the rail card `/apps`,
+	 * `/apps/[name]` and `/envs/[name]` all carry and this page did not.
+	 * (2026-09-03, F4 third re-check, finding 9: *"the page left behind ...
+	 * no stat tiles"*.) Two rows only, both computed from data this page
+	 * already fetched — `Deploys` (the same 7-day window `/apps` uses) and
+	 * `Furthest behind` (the same `env-rank` ladder the list above already
+	 * reads for its own chips, at THIS namespace's scope rather than the
+	 * fleet's). `Typical deploy`/`Typical to prod` are deliberately omitted:
+	 * both need `lead-time.ts`'s pipeline-stage machinery, and a namespace
+	 * being one tier of one or more apps makes "time to prod" a claim about
+	 * apps this card cannot see — every row here is optional, and these two
+	 * are not TRUE facts about this population yet.
+	 */
+	const SPARK_DAYS = 7;
+	const deploys7d = $derived.by(() => {
+		const start = $now.getTime() - SPARK_DAYS * 24 * 60 * 60 * 1000;
+		let n = 0;
+		for (const a of apps) {
+			for (const h of a.rollout.status?.history ?? []) {
+				if (!h.timestamp) continue;
+				const t = new Date(h.timestamp).getTime();
+				if (t >= start && t <= $now.getTime()) n++;
+			}
+		}
+		return n;
+	});
+	const furthestBehind = $derived.by<{ appName: string; by: number } | null>(() => {
+		let best: { appName: string; by: number } | null = null;
+		for (const a of apps) {
+			const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const };
+			const by = rankBehindBy(rank);
+			if (by <= 0) continue;
+			if (!best || by > best.by) best = { appName: a.rollout.metadata?.name || '', by };
+		}
+		return best;
+	});
+	/** Every deploy this namespace's own rollouts have ever recorded — the
+	 *  same unbounded count `/apps` and `/apps/[name]` lead their `Recent
+	 *  activity` rollup with, not the 7-day window `deploys7d` above spends
+	 *  on `How it's going`. */
+	const totalDeployCount = $derived(
+		apps.reduce((n, a) => n + (a.rollout.status?.history?.filter((h) => h.timestamp).length ?? 0), 0)
+	);
 
 	/**
 	 * ── THE TAIL IS DISCLOSED, NOT PRINTED ────────────────────────────────
@@ -469,7 +521,7 @@
 									</div>
 								</div>
 								<div
-									class="col-start-2 flex min-w-0 items-center gap-2 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end sm:gap-1"
+									class="col-start-2 flex min-w-0 flex-wrap items-center gap-2 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end sm:gap-1"
 								>
 									<!-- ⭐ THE VERDICT FIRST, THE SHA SECOND, IN ONE BOX — the
 									     `/rollouts` unit, from the ONE derivation
@@ -494,6 +546,22 @@
 											title="This app has never deployed here"
 											wide
 											class="min-w-0"
+										/>
+									{/if}
+									<!-- ⛔ "HELD" WAS SPELLED FIVE WAYS ACROSS THE PRODUCT'S LIST
+									     SURFACES, AND THIS ROW WAS ONE OF THE TWO SAYING NOTHING.
+									     (2026-09-03, F4 third re-check, finding 2) The disc above
+									     already carries `state="held"` (a pause glyph, from the
+									     same `cardStateMark` precedence), but a glyph with no word
+									     is silent on touch and to a sighted reader who never
+									     hovers it. Same atom as `/`'s own Held section and
+									     `/rollouts`' card: `Chip role="held" label="held"`. -->
+									{#if promotionBlock(a.rollout).blocked}
+										<Chip
+											role="held"
+											label="held"
+											title={mark ? mark.title : undefined}
+											class="shrink-0"
 										/>
 									{/if}
 									{#if latest?.timestamp}
@@ -532,47 +600,70 @@
 				{/if}
 			</Card>
 
-			<!-- ══ WHAT JUST HAPPENED ═══════════════════════════════════════
-			     THE SHARED RAIL, IN A TITLED CARD. `chrome={false}` hands the
-			     frame to `Card` so the two do not nest — the same call
-			     `/apps/[name]` and `/envs/[name]` already make. The 24h
-			     sparkline is the rollup: it summarises exactly the list under
-			     it, which is the only place it carries anything. -->
-			<Card icon={ClockSolid} title="Recent activity" padded={false} class="min-w-0">
-				{#snippet rollup()}
-					<!-- `.nav-link`, ONE SPELLING WITH `HomeRail`'s AND
-					     `ActivityRail`'s OWN DEFAULT HEADER, NOT A THIRD PRIVATE ONE.
-					     (2026-09-02) `{activityCount} deploys` sat in front of this
-					     link at `t-micro` — the pairing survives on `/apps/[name]`'s
-					     wide, main-column History card, but this one is the 320px
-					     rail width `/apps` and `/envs/[name]`'s own `Recent activity`
-					     cards already carry, and neither of THOSE prints a count
-					     beside the link. Measured: at 1440 the header is 318px and
-					     `View all activity ›` at 14px/500 needs the room the count
-					     was spending — with both, `Recent activity` truncated to
-					     `Rece…`, the exact "a titled card which cannot print its
-					     title is not one" defect. The count is not lost: each day
-					     group below already prints its own, and the card's own
-					     `ActivityRail` is one click away. -->
-					<a
-						href={`/activity?ns=${encodeURIComponent(namespace)}`}
-						class="nav-link"
-						aria-label={`View all activity for ${namespace}`}
-					>
-						View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
-					</a>
-				{/snippet}
-				<ActivityRail
-					rollouts={apps.map((a) => a.rollout)}
-					{environments}
-					limit={20}
-					{localClusterName}
-					showEnv={showEnvInRail}
-					chrome={false}
-					collapseAfter={8}
-					activityHref={`/activity?ns=${encodeURIComponent(namespace)}`}
+			<!-- ══ THE RAIL: HOW IT'S GOING, THEN WHAT JUST HAPPENED ═════════
+			     (2026-09-03, F4 third re-check, finding 9: *"the page left
+			     behind ... no stat tiles"*.) This was one `Card`; it is the
+			     `/apps` idiom now — a `space-y-4` column carrying `HowItsGoing`
+			     above the shared `ActivityRail`, same two objects `/apps` and
+			     `/apps/[name]` already stack in this exact slot. -->
+			<div class="min-w-0 space-y-4">
+				<HowItsGoing
+					scope="apps"
+					windowLabel="{SPARK_DAYS}d"
+					deploys={deploys7d}
+					deploysTitle="{deploys7d} deploy{deploys7d === 1
+						? ''
+						: 's'} across every rollout in this namespace in the last {SPARK_DAYS} days"
+					sparklineRollouts={apps.map((a) => a.rollout)}
+					sparklineDays={SPARK_DAYS}
+					furthestBehind={{
+						entry: furthestBehind,
+						title: furthestBehind
+							? `${furthestBehind.appName} can still take ${furthestBehind.by} newer version${furthestBehind.by === 1 ? '' : 's'}`
+							: 'No rollout in this namespace has a newer version waiting'
+					}}
 				/>
-			</Card>
+				<!-- THE SHARED RAIL, IN A TITLED CARD. `chrome={false}` hands the
+				     frame to `Card` so the two do not nest — the same call
+				     `/apps/[name]` and `/envs/[name]` already make. -->
+				<Card icon={ClockSolid} title="Recent activity" padded={false} class="min-w-0">
+					{#snippet rollup()}
+						<!-- ⛔ REVERSED, 2026-09-03 (F4 third re-check, finding 9). The
+						     2026-09-02 note below argued the 320px rail could not
+						     afford both `{n} deploys` and `View all activity ›` — true
+						     THEN, when `Card`'s header forced title+rollup onto one
+						     line at every viewport ≥640 regardless of fit. `Card`'s
+						     header now wraps the rollup to its own line when the two
+						     do not both fit (see `Card.svelte`), which is the exact
+						     fix `/apps`' own `Recent activity` rail card used to bring
+						     this same count back on 2026-09-03. Same unbounded count
+						     `/apps` and `/apps/[name]` lead with — every
+						     `status.history` entry with a timestamp across this
+						     namespace's own rollouts, not the 7-day `deploys7d`
+						     `How it's going` already spends a row on above. -->
+						<span class="t-code-sm text-gray-500 dark:text-gray-400"
+							>{totalDeployCount} deploy{totalDeployCount === 1 ? '' : 's'}</span
+						>
+						<a
+							href={`/activity?ns=${encodeURIComponent(namespace)}`}
+							class="nav-link"
+							aria-label={`View all activity for ${namespace}`}
+						>
+							View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
+						</a>
+					{/snippet}
+					<ActivityRail
+						rollouts={apps.map((a) => a.rollout)}
+						{environments}
+						limit={20}
+						{localClusterName}
+						showEnv={showEnvInRail}
+						chrome={false}
+						collapseAfter={8}
+						activityHref={`/activity?ns=${encodeURIComponent(namespace)}`}
+					/>
+				</Card>
+			</div>
 		</div>
 	{/if}
 </div>

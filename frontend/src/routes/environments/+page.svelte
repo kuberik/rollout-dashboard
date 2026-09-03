@@ -346,6 +346,16 @@
 		 * below.
 		 */
 		mark: CardStateMark | null;
+		/**
+		 * ⛔ INDEPENDENT OF `mark`'S TIERING — deliberately. (2026-09-03, F4
+		 * third re-check, finding 2) `cardStateMark` only reports `held` when
+		 * `rolledBack`/`pinnedVersion` are both null, so a rolled-back-and-held
+		 * app's `mark.kind` reads `rolled-back` and the disc's THIRD tier never
+		 * shows. The row's `HELD` chip is a fact about a GATE, not about the
+		 * disc's one free slot, so it reads the same `promotionBlock` boolean
+		 * every other list surface's `c.held` does, not `mark?.kind`.
+		 */
+		held: boolean;
 		timestamp: string | null;
 		/** Sort key inside a card. Failing first, then stuck, then depth. */
 		severity: number;
@@ -482,6 +492,7 @@
 							pinnedVersion: cell.rollout.spec?.wantedVersion ?? null,
 							held: block.blocked
 						}),
+						held: block.blocked,
 						timestamp: latest?.timestamp ?? null,
 						severity:
 							state === 'failing'
@@ -1003,6 +1014,23 @@
 				class="ml-[38px] basis-full sm:ml-0 sm:basis-auto"
 			/>
 		{/if}
+		<!-- ⛔ "HELD" WAS SPELLED FIVE WAYS ACROSS THE PRODUCT'S LIST SURFACES.
+		     (2026-09-03, F4 third re-check, finding 2) This row was the nested-
+		     rule-block surface: a gate holding this app rendered as
+		     `BlockingStoryLines` prose two lines below (see the note under
+		     this snippet), with no mark on the row itself naming the fact in
+		     one word. Same atom as `/`, `/rollouts` and `/namespaces/<name>`:
+		     `Chip role="held" label="held"`. The nested rule block stays —
+		     it is progressive disclosure BEHIND this chip (the clause and its
+		     `N rules` control), not a substitute for it. -->
+		{#if a.held}
+			<Chip
+				role="held"
+				label="held"
+				title={a.mark?.kind === 'held' ? a.mark.title : 'Held: a newer build exists, but no gate lets it through yet.'}
+				class="shrink-0"
+			/>
+		{/if}
 	</div>
 	<!-- ⭐ THE REASON LIVES ON THE ROW IT EXPLAINS. (2026-09-01)
 
@@ -1149,160 +1177,42 @@
 			{/if}
 		{/snippet}
 
-		<!-- ── CRITERION 3, THE ONE QUANTITY ────────────────────────────
-		     Deepest lag, in builds, with the app that owns it named under it.
-		     At a FIXED offset inside every card, so the comparison is read
-		     down one track even though the layout is a grid.
+		<!-- ── CRITERION 3, THE ONE QUANTITY, MOVED TO THE ROW IT NAMES ──
+		     (2026-09-03, F4 third re-check, finding 4: "the dev card shows the
+		     gate as a separate top block ... staging/prod nest the gate inside
+		     the app row ... app lists start at y=460/361/361".) This block used
+		     to draw a SECOND figure for the fleet's deepest lag whenever a card
+		     had two or more apps behind — a 20px `N newer versions waiting
+		     <appName>` sentence, above the very row that already prints
+		     `<appName> [N BEHIND][build]`. On the live cluster `dev` (two apps
+		     behind) drew this block and `staging`/`prod` (one app behind each)
+		     did not, so the three cards — one environment tier apiece, same
+		     card component — started their app lists at three different y
+		     offsets for no reason a reader could see.
 
-		     An environment with nothing behind prints the answer as a
-		     SENTENCE with a green check rather than a `0`: `0 builds` reads
-		     as a measurement of nothing, and this page has one job that a
-		     zero cannot do — say that a place is current. -->
-		<!-- ⛔ THE ROLL-UP IS SUPPRESSED WHEN THERE IS NOTHING TO ROLL UP.
-		     (2026-08-30) A card with exactly ONE app behind printed a 20px `1`,
-		     an eyebrow and the app's name — and then printed the same fact
-		     again 30px below as `[1 behind][a92c6f4]` on the app's own row. On
-		     the 22-environment fixture that was TWELVE cards whose entire body
-		     above the rows restated the single row under it. A summary of one
-		     item is not a summary; it is the item, said twice, in a bigger
-		     font. It draws when it genuinely aggregates — two or more apps
-		     behind — and the reason line draws whenever there is a reason. -->
-		<!-- ⛔ AND THE EXEMPTION THAT UNDID IT IS GONE TOO. (2026-09-01) A
-		     held lag used to earn the summary even when it was the only one,
-		     on the argument that the row can print `20 behind` and cannot
-		     print WHY. That premise was right and the remedy was wrong: it
-		     restored the whole block — eyebrow, 20px digit, name — to carry
-		     one gate clause, so the live cluster showed three cards each with
-		     a big `1` over the same sentence, and each of them named an app
-		     the row 30px below named again. The reason now rides on the row
-		     (`appRow`'s `withStory`), which is where its subject already is,
-		     and the rule above holds with no exemption. -->
-		<!-- ⭐ WHAT THE BODY BLOCK IS FOR, AFTER THE REASON MOVED TO THE ROW.
-		     (2026-09-01) Exactly the facts NO ROW CAN CARRY:
+		     ⚠️ THE OLD JUSTIFICATION WAS AN ANTI-REPETITION RULE THAT NO LONGER
+		     APPLIES. It held the deepest app's REASON off the row (once here,
+		     rather than repeated per row) — but the NUMBER it led with was
+		     never the reason, it was `rankBehindBy`, which every deviation row
+		     already prints in its own `N behind` chip. Restating the deepest
+		     row's own number in a bigger font one card-width above it is the
+		     exact defect ("a summary of one item is not a summary; it is the
+		     item, said twice, in a bigger font") this file already named for
+		     the ONE-app case — it was only ever true of SOME app counts and
+		     false of others, which produced this y-offset defect.
 
-		       · nothing has ever deployed here — there are no rows at all;
-		       · a COMPARISON across several behind apps, which is criterion 3
-		         and the reason this page exists rather than 22 env pages;
-		       · everything here is current — the good news, which by
-		         construction has no deviation row to hang on;
-		       · and, in that last case only, a gate holding a build nobody is
-		         behind on yet, whose app is SETTLED and therefore folded.
-
-		     A card whose single behind app is held no longer draws this block
-		     at all: `soloReason` puts the same story on that app's own row,
-		     where the subject is already printed. -->
-		{#if c.apps.length === 0 || c.behindCount > 1 || c.behindCount === 0}
+		     THE FIX IS THE SAME ONE THE ONE-APP CASE ALREADY SHIPPED, MADE
+		     UNCONDITIONAL: every deviation row may show its OWN
+		     `BlockingStoryLines` when IT is blocked (see `appRow` below,
+		     `withStory` no longer gated on `c.deviations.length === 1`) — so a
+		     card with two blocked apps tells two REASONS, correctly, rather
+		     than aggregating into one borrowed number. One env-card body
+		     template now: the gate always attaches to the row it blocks, and
+		     no card draws a numeral no other card draws. -->
+		{#if c.apps.length === 0 || c.behindCount === 0}
 		<div class="shrink-0 border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
 			{#if c.apps.length === 0}
 				<p class="text-xs text-gray-500 dark:text-gray-400">No app has ever deployed here.</p>
-			{:else if c.deepest && c.behindCount > 1}
-				<!-- ⛔ `BEHIND NEWEST · 19 builds` DID NOT SAY BEHIND WHAT. The
-				     eyebrow names the comparison in full now — the number is a
-				     distance and a distance with no second end is not readable
-				     by anyone who has not been told what the second end is.
-
-				     ⛔ AND `THE NEWEST` WAS THE WRONG SECOND END. (2026-08-31)
-				     `deepest.by` is `rankBehindBy`, which since 8bfa829 counts
-				     the rollout's OWN `availableReleases` — the list `Change
-				     Version` shows and the one `N behind` is spelled from. Two
-				     environments on the identical sha legitimately hold different
-				     numbers, so a claim about "the newest" was false for at least
-				     one of any such pair, and it contradicted `rankTitle`'s
-				     *"can still take N newer versions"* two elements away. The
-				     number counts versions this environment could take; the
-				     eyebrow says exactly that and nothing more. -->
-				<!-- ⛔ THE EYEBROW IS GONE, AND SO IS THE CASE THAT PRINTED A
-				     BIG `1`. (2026-09-01) From the human: *"i think details of
-				     environment card here can be better visualized"* — looking at
-				     a card whose loudest element was a 20px bold `1` over the
-				     words `NEWER VERSIONS WAITING`, with the app that owned it in
-				     11.5px mono underneath and the gate holding it in 11px gray
-				     under that. Three cards on the page, three identical `1`s.
-
-				     Two defects, one cause: ATTENTION WAS ALLOCATED TO THE
-				     NUMBER AND THE NUMBER WAS THE LEAST INTERESTING THING ON THE
-				     CARD.
-
-				     1. **The figure now draws only when it AGGREGATES** —
-				        `behindCount > 1`, which is the rule this file already
-				        stated (*"a summary of one item is not a summary; it is
-				        the item, said twice, in a bigger font"*) and then
-				        exempted for held rows. The exemption was right that a
-				        blocked row cannot print WHY; it was wrong that the
-				        exemption needed the FIGURE. One app behind now falls to
-				        the `blockedApp` branch below, which prints the subject
-				        and the reason and no digit — so the loudest thing in a
-				        one-app card is the reason, which is the thing that needs
-				        a person.
-				     2. **The eyebrow is deleted.** A 10px uppercase caption over
-				        a bordered region is the shape `DESIGN.md` names on every
-				        rejected page and the reference page has nowhere. Its
-				        content moves INTO the figure's own line, where it reads
-				        as a sentence instead of as a label for one.
-
-				     ⛔ AND THE FIGURE'S UNIT STILL DOES NOT CLAIM A SECOND END.
-				     `rankBehindBy` counts the rollout's OWN `availableReleases`,
-				     so two environments on the identical sha legitimately hold
-				     different numbers. `newer versions waiting` is what the
-				     number counts; `behind the newest` would be false for one of
-				     any such pair. -->
-				<p class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-					<span class="text-xl font-bold text-gray-900 tabular-nums dark:text-white"
-						>{c.deepest.by}</span
-					>
-					<span class="text-[13px] text-gray-500 dark:text-gray-400"
-						>newer version{c.deepest.by === 1 ? '' : 's'} waiting</span
-					>
-					<span class="min-w-0 truncate font-mono text-[11.5px] text-gray-500 dark:text-gray-400"
-						>{c.deepest.appName}</span
-					>
-				</p>
-				<!-- WHY THE NUMBER IS NOT SHRINKING. A distance states a fact;
-				     this states the CAUSE, and it is the difference between a
-				     complaint and something a reader can act on. It renders only
-				     while a gate refuses EVERY newer build the environment could
-				     take (`promotionBlock().blocked`) — a transient, checkable
-				     condition — never on an environment that is merely trailing.
-
-				     ⚠️ THIS IS THE AGGREGATE BRANCH ONLY, AND THAT IS THE WHOLE
-				     ANTI-REPETITION RULE. (2026-09-01) With SEVERAL apps behind
-				     the card summarises, so the deepest app's story is told once
-				     here rather than N times on N rows —
-				     `BlockingStoryLines`' own note records the defect of one
-				     fact printed five times in one viewport. With ONE app behind
-				     the card speaks for that app, and the story is on its row.
-
-				     IT CARRIES A WORD, NOT A BARE GLYPH. The human has twice
-				     deleted an unexplained graphic from these pages (*"i also
-				     don't understand what these gray bars mean"* — that is the
-				     rejection that killed `EnvHealthStrip`, and it is why this
-				     pass added NO new graphic: every mark that could answer
-				     *"is this environment healthy"* — the tick strip, the
-				     per-environment status dot, a segmented composition bar —
-				     is already on `DESIGN.md`'s do-not-rebuild list. What was
-				     wrong here was the HIERARCHY, not the absence of a chart). -->
-				<!-- ⛔ THIS LINE USED TO BE A UNION, AND THAT IS AN ATTRIBUTION
-				     BUG, NOT A ROUNDING ERROR. (finding 7)
-				
-				     The heading two lines up names ONE app — `20 versions ·
-				     hello-world-app` — and the reason under it was built from
-				     `c.awaitingGates` / `c.notPassingGates`, the union of every
-				     app's gates in this tier. On the live cluster that printed
-				     gates belonging to *hello-multi* under a heading about
-				     *hello-world-app*. A join across the wrong grain reads as a
-				     fact, and this one sent readers to the wrong object.
-				
-				     `blockedApp` is the ONE app the card speaks for, ranked
-				     needs-a-person first, and `deepest.app` is the one the
-				     heading names. They are the same rollout whenever the
-				     deepest lag is held, which is the case this branch draws.
-				
-				     ⛔ AND IT LISTS EVERY GATE. `BlockReason` printed the first
-				     matching branch, so an environment held by an approval AND a
-				     closed window rendered one line about the approval. -->
-				<BlockingStoryLines story={(c.deepest.app.story.blocked
-					? c.deepest.app
-					: (c.blockedApp ?? c.deepest.app)).story} />
 			{:else if c.behindCount === 0}
 				<p class="flex items-center gap-2">
 					<CheckCircleSolid class="h-4 w-4 shrink-0 text-green-700 dark:text-green-400" />
@@ -1324,6 +1234,7 @@
 		</div>
 		{/if}
 
+
 		<!-- ── THE DEVIATIONS, then the fold ─────────────────────────────
 
 		     ⭐ `grow` ON THE ROWS, NOT `mt-auto` ON THE FOOTER. In the
@@ -1335,15 +1246,23 @@
 		     row's shared baselines and the slack falls where a list would grow
 		     anyway.
 
-		     `soloReason`: when the card speaks for exactly one app, that app's
-		     row carries its own blocking story. See `appRow`. -->
-		{@const soloReason = c.deviations.length === 1}
+		     ⛔ EVERY DEVIATION ROW CARRIES ITS OWN BLOCKING STORY NOW, NOT
+		     ONLY WHEN THE CARD SPEAKS FOR EXACTLY ONE APP. (2026-09-03, F4
+		     third re-check, finding 4) This was `c.deviations.length === 1`
+		     — true for `staging`/`prod` (one behind) and false for `dev`
+		     (two behind), which is why `dev`'s two blocked rows drew no
+		     reason while the CARD's own top block spoke for one of them
+		     instead (deleted above). `appRow`'s own guard is
+		     `withStory && a.story.blocked`, so passing `true` here does not
+		     print a reason on a row that has none — it only stops SUPPRESSING
+		     one that does. Two apps blocked by two different causes now get
+		     two different reasons, each on the row it explains. -->
 		{@const folded = c.settled.length >= SETTLED_FOLD_MIN}
 		<div class="grow">
 			{#if c.deviations.length > 0}
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 					{#each c.deviations as a (a.key)}
-						{@render appRow(a, c.tier, soloReason)}
+						{@render appRow(a, c.tier, true)}
 					{/each}
 				</ul>
 			{/if}

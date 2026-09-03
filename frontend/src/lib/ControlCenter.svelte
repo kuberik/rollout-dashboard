@@ -11,6 +11,7 @@
 		isNeedsYou,
 		isInMotion,
 		isTrailing,
+		isHeld,
 		isSteady,
 		isPending
 	} from '$lib/view-models/fleet-groups';
@@ -91,9 +92,13 @@
 	// permanently blocked" are different facts and had one header. `held`
 	// gets its own section, between `In motion` and `Trailing`, and its own
 	// cards say the word `held` out loud — see the section below.
-	const trailingAll = $derived.by<RolloutCard[]>(() => cards.filter(isTrailing));
-	const held = $derived.by<RolloutCard[]>(() => trailingAll.filter((c) => c.held));
-	const trailing = $derived.by<RolloutCard[]>(() => trailingAll.filter((c) => !c.held));
+	// ⛔ `isHeld` MOVED TO `fleet-groups.ts`, 2026-09-03 (F4 third re-check,
+	// finding 5). This was the only place the predicate existed — `/rollouts`
+	// had no equivalent split and counted these same rollouts under its own
+	// `Trailing` pill, so the same four rollouts read `Held 4` here and
+	// `Trailing 4` there. Both pages import the shared predicate now.
+	const held = $derived.by<RolloutCard[]>(() => cards.filter(isHeld));
+	const trailing = $derived.by<RolloutCard[]>(() => cards.filter((c) => isTrailing(c) && !c.held));
 	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady));
 	const pendingCards = $derived.by<RolloutCard[]>(() => cards.filter(isPending));
 	const pendingCount = $derived(pendingCards.length);
