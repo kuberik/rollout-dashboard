@@ -337,3 +337,25 @@ held amber → not actioned (identity hues are in the closed budget); P13 palett
 → not actioned. Praise: the in-flight Home card, rollback and Clear Pin copy, the Dependencies
 tab, History's honesty, live updates everywhere. Residue: hello-world-dev/hello-world-app
 back on 064b655 (cleaner than found), three history entries prefixed `pass9 walk:`.
+
+## Wave 8 landed at `ca611aa` (2026-09-03 07:25) — 78 commits since `b59d040`
+Five lanes were cut off by a rate limit mid-edit; their on-disk work was measured, committed
+per lane, and resumed to finish. Landed: the dialog's confirm pane is never clipped (footer
+outside the scroller, test-locked), pending state and no double-submit, required and
+correctly-verbed note on rollbacks and production changes, red rollback confirm, row
+affordances, one dialog element per step; hue follows gate kind with a non-blocking schedule
+as a meta row; one panel per rollout with the right slot filled; dated rollback notice;
+labelled reopen time with the schedule's zone; '1 newer · held by the pin'; 'Deploy
+requested — starting'; a schedule hold is held not stuck; PINNED on /rollouts with Clear pin;
+/ opens with a display figure; Held header no longer says 'will not move on their own';
+census credits inherited roles (t-chip, t-code-sm); names never yield on five pages; omitted
+rollouts disclosed; '≥ N' counts; env card rollups one grammar; /namespaces rows with chain,
+ticks and gate text; rails within 10% of the subject; GateRecord and BlockReason get NOW /
+CLEARS rows; /activity shows the recorded note; timeline hit boxes per side; History counts
+each deploy once with the pin state in the head; Resources believes Flux; the tab bar yields
+to dialogs. Human feedback this morning: GitHub connect on a phone (label at 390, same-tab
+navigation, honest 'Not configured' chip), NO two-tone split on the revision bars (reverted
+to one fill — second time this rule was set), and the dialog step-two ghost (not reproducible
+after the clip fix; one dialog element at 40–800ms after a pick). Cluster residue: an agent
+force-deployed rel-67 to dev hello-frontend-app during a dialog test; rolled back to
+2.66.0-66 through the UI and unpinned — dev is held by the contract again.
