@@ -44,7 +44,12 @@
 	 * it was a byte-identical local copy of `getBakeStatusColor`.
 	 */
 	import { bakeWord, bakeTitle, getBakeStatusColor } from '$lib/bake-status';
-	import { deployActs, historyAtLimit } from '$lib/history-marks';
+	import {
+		deployActs,
+		historyAtLimit,
+		isSystemDefaultNote,
+		systemNoteDescription
+	} from '$lib/history-marks';
 	import { DEPLOY_PARAM, deployAnnouncement, findDeployIndex } from '$lib/history-deeplink';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { now } from '$lib/stores/time';
@@ -1109,22 +1114,47 @@
 											{/if}
 											{#if entry.message}
 												<!--
-													`Reason` CLAIMED MORE THAN THE FIELD HOLDS. This string is
-													whatever the API recorded, and on the live cluster it says
-													`Force deploy` for a deploy no UI ever called forced, and
-													`Pinned version` for a rollback — losing the rollback. It is
-													an audit RECORD, not the page's account of what happened;
-													the account is the act sentence on the row above, which is
-													derived from the release ordering and cannot disagree with
-													`/` or `/rollouts`. Naming it for what it is stops the two
-													from being read as one claim.
+													`Reason` CLAIMED MORE THAN THE FIELD HOLDS, AND RENAMING
+													IT TO `Recorded note` WAS ONLY HALF THE FIX. (2026-09-03,
+													operator-walk finding P11) This string is whatever the API
+													recorded — and when a person leaves the reason field BLANK,
+													the API does not record silence, it records ITS OWN
+													boilerplate: `Pinned version` after a rollback, `Force
+													deploy` after a manual deploy — see `isSystemDefaultNote`'s
+													own note in `history-marks.ts` for the closed set, joined on
+													`rollout-dashboard/main.go`'s own literal strings. Printed
+													under `Recorded note` unconditionally, that boilerplate
+													reads exactly like a colleague typed it — the defect this
+													branch exists to close. A default is presented as what it
+													is (the note slot says nobody left one, a SEPARATE labelled
+													field says what the system did), and a genuine note is
+													printed exactly as before.
 												-->
-												<div class="flex items-baseline gap-1.5 text-xs">
-													<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">
-														Recorded note
-													</span>
-													<span class="text-gray-600 dark:text-gray-400">{entry.message}</span>
-												</div>
+												{#if isSystemDefaultNote(entry.message)}
+													<div class="flex items-baseline gap-1.5 text-xs">
+														<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">
+															Recorded note
+														</span>
+														<span class="text-gray-400 italic dark:text-gray-500">
+															no note recorded
+														</span>
+													</div>
+													<div class="flex items-baseline gap-1.5 text-xs">
+														<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">
+															System
+														</span>
+														<span class="text-gray-600 dark:text-gray-400">
+															{systemNoteDescription(entry.message)}
+														</span>
+													</div>
+												{:else}
+													<div class="flex items-baseline gap-1.5 text-xs">
+														<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">
+															Recorded note
+														</span>
+														<span class="text-gray-600 dark:text-gray-400">{entry.message}</span>
+													</div>
+												{/if}
 											{/if}
 										</div>
 

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { deployActs, rollbackCount, historyAtLimit } from './history-marks';
+import {
+	deployActs,
+	rollbackCount,
+	historyAtLimit,
+	isSystemDefaultNote,
+	systemNoteDescription
+} from './history-marks';
 import { detectRollback } from './rollout-cards';
 
 // The live hub, 2026-08-30, `hello-world-prod/hello-world-app` — the exact
@@ -119,5 +125,33 @@ describe('deployActs', () => {
 			expect(historyAtLimit(rollout(ten))).toBe(true);
 			expect(deployActs(rollout(ten))[9]).toMatchObject({ kind: 'unknown' });
 		});
+	});
+});
+
+describe('isSystemDefaultNote / systemNoteDescription (2026-09-03, operator-walk P11)', () => {
+	// Every string here is a LITERAL from `rollout-dashboard/main.go`'s
+	// `/pin`, `/force-deploy` and `/change-version` handlers' default
+	// `explanation`/`message` values — the controller's own boilerplate for
+	// a blank reason field, not a guess at what one might look like.
+	it('recognises every controller default, from the live handlers', () => {
+		expect(isSystemDefaultNote('Cleared version pin')).toBe(true);
+		expect(isSystemDefaultNote('Pinned version')).toBe(true);
+		expect(isSystemDefaultNote('Force deploy')).toBe(true);
+		expect(isSystemDefaultNote('Pinned to version 0afab6f')).toBe(true);
+		expect(isSystemDefaultNote('Force deploy version 0afab6f')).toBe(true);
+	});
+
+	it('leaves a genuine, human-typed note alone', () => {
+		expect(isSystemDefaultNote('Rolling back — bad config in prod')).toBe(false);
+		expect(isSystemDefaultNote('')).toBe(false);
+		expect(isSystemDefaultNote(null)).toBe(false);
+		expect(isSystemDefaultNote(undefined)).toBe(false);
+	});
+
+	it('describes the default as a fact about the system, same words, lower case', () => {
+		expect(systemNoteDescription('Force deploy')).toBe('force deploy');
+		expect(systemNoteDescription('Pinned version')).toBe('pinned version');
+		expect(systemNoteDescription('Cleared version pin')).toBe('cleared version pin');
+		expect(systemNoteDescription('Pinned to version 0afab6f')).toBe('pinned to version 0afab6f');
 	});
 });

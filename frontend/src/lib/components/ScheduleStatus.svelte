@@ -209,6 +209,24 @@
 			.map((s) => s.metadata.name)
 	);
 
+	/**
+	 * ⭐ A CLOSED WINDOW WITH NOTHING BEHIND IT IS INFORMATIONAL, NOT A
+	 * STOPPAGE. (2026-09-03, operator-walk COSMETIC finding — the PROD
+	 * `hello-world-app` page opened with a full-width AMBER `Automatic
+	 * deploys are paused` banner while `Available Version Upgrades` said
+	 * `up to date — no upgrades available` and `/` filed the same rollout
+	 * under Steady.) `story?.blocked` is false whenever there is no candidate
+	 * to hold back (`promotionBlock` returns `blocked: false` the moment
+	 * `candidateCount === 0`), so this branch fell to the hard-coded
+	 * `'warning'` fallback below EVEN THOUGH `story.candidateCount` — always
+	 * handed down alongside `blocked`, see the call site's own note — already
+	 * says there is nothing waiting. Amber means "something needs you"; a
+	 * schedule that is closed on an up-to-date rollout needs nobody.
+	 */
+	let nothingWaiting = $derived(
+		!!story && !story.pinnedTo && !story.blocked && story.candidateCount === 0
+	);
+
 	// Check if window is closing soon (within 1 hour)
 	let isClosingSoon = $derived.by(() => {
 		if (!nextChange) return false;
@@ -331,6 +349,52 @@
 	function formatTime(isoString: string): string {
 		return new Date(isoString).toLocaleString();
 	}
+
+	/**
+	 * ⭐ THE CLOCK TIME, NOT THE CALENDAR DATE. (2026-09-03, operator-walk
+	 * COSMETIC finding — *"`Nothing promotes itself until 8h 33m
+	 * (9/3/2026, 1:00:00 PM).` is not a sentence."*) `until <duration>` reads
+	 * as if the duration itself were the deadline, and stapling a full
+	 * `date, time` onto it in parens restates today's date for a window that
+	 * reopens today. `heldCauseText` (`$lib/rollout-cards`) already prints a
+	 * clock's reopening time this way — `1:00 PM` — for the same reason.
+	 */
+	function formatClockTime(isoString: string): string {
+		return new Date(isoString).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+	}
+
+	/**
+	 * ⭐ THE SAME "NOT A SENTENCE" DEFECT, ONE LAYER DEEPER. (2026-09-03,
+	 * operator-walk COSMETIC finding) The quoted example — *"Nothing promotes
+	 * itself until 8h 33m (9/3/2026, 1:00:00 PM)."* — is not this file's own
+	 * fallback wording (that branch is fixed above, see `formatClockTime`'s
+	 * own note); it is `story.consequence`, built in `blocking-story.ts`'s
+	 * clock loop as `${g.clause} in ${until} (${new
+	 * Date(g.clearsAt!).toLocaleString()})` — the identical shape, a duration
+	 * glued to a full calendar date-time nobody asked for on a window that
+	 * reopens today. `blocking-story.ts` is the product's one shared
+	 * classifier and is not touched here (its sentence is correct for every
+	 * MIXED cause — a person, a contract and a clock joined in one sentence
+	 * cannot be reformatted by a component 40px away without risking drift).
+	 *
+	 * This reshapes ONLY the one case this finding's own example is: a story
+	 * held by EXACTLY one gate and it is the clock — the same shape
+	 * `ScheduleStatus`'s own fallback branch already prints. Rebuilt from
+	 * `story.clock[0].label` and `story.clearsAt` (already on the object,
+	 * never re-parsed out of the rendered sentence), so it cannot disagree
+	 * with the fact `blocking-story.ts` computed — only the WORDS around it
+	 * change. Any other shape (two gates, or one gate that is not a clock)
+	 * returns `story.consequence` verbatim, byte-identical to before.
+	 */
+	function shapedConsequence(s: BlockingStory | null | undefined): string {
+		if (!s) return '';
+		if (s.gates.length === 1 && s.clock.length === 1 && s.clearsAt) {
+			const n = s.candidateCount;
+			const lead = n > 0 ? `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. ` : '';
+			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} (until ${formatClockTime(s.clearsAt)}).`;
+		}
+		return s.consequence;
+	}
 </script>
 
 {#if compact}
@@ -409,24 +473,39 @@
 		     "a window is closed" to every gate actually holding this rollout,
 		     each with whether it clears on a clock, on another deploy, or on a
 		     person. The fallback below is the schedule-only wording, which is
-		     still correct on a surface that hands down no story. -->
+		     still correct on a surface that hands down no story.
+
+		     ⭐ AND WHEN NOTHING IS WAITING, IT IS BLUE, NOT AMBER — see
+		     `nothingWaiting`'s own comment. This is the ONE place `severity`,
+		     `title` and `pulse` read it; `story?.blocked` still wins whenever
+		     there genuinely IS a candidate held (a schedule closing on an
+		     up-to-date rollout and a schedule closing on a held one are
+		     different facts and must not share a colour). -->
 		<AlertPanel
-			severity={story?.blocked ? story.severity : 'warning'}
-			title={story?.blocked ? story.headline : 'Automatic deploys are paused'}
+			severity={story?.blocked ? story.severity : nothingWaiting ? 'info' : 'warning'}
+			title={story?.blocked
+				? story.headline
+				: nothingWaiting
+					? 'Deploys pause outside business hours'
+					: 'Automatic deploys are paused'}
 			message={story?.blocked
-				? story.consequence
-				: nextChange
-					? `Nothing promotes itself until ${formatTimeUntil(nextChange)} (${formatTime(nextChange)}). A deploy you start by hand still applies immediately.`
-					: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
+				? shapedConsequence(story)
+				: nothingWaiting
+					? 'Deploys pause outside business hours; nothing is waiting.'
+					: nextChange
+						? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} (until ${formatClockTime(nextChange)}). A deploy you start by hand still applies immediately.`
+						: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
 			footnote={story?.blocked ? story.resolution : undefined}
 			icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
-			pulse
+			pulse={!nothingWaiting}
 		>
 			{#snippet actions()}
 				<button
 					type="button"
 					id="schedule-details"
-					class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-800/10 px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-400/30 transition hover:bg-amber-800/15 hover:ring-amber-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15"
+					class="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition {nothingWaiting
+						? 'bg-blue-800/10 text-blue-900 ring-blue-400/30 hover:bg-blue-800/15 hover:ring-blue-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15'
+						: 'bg-amber-800/10 text-amber-900 ring-amber-400/30 hover:bg-amber-800/15 hover:ring-amber-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15'}"
 				>
 					{blockingSchedules.length} schedule{blockingSchedules.length > 1 ? 's' : ''}
 				</button>
@@ -491,7 +570,7 @@
 		<AlertPanel
 			severity="warning"
 			title="Automatic deploys pause soon"
-			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} (${formatTime(nextChange!)}). Deploys you start by hand are not affected.`}
+			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} (${formatClockTime(nextChange!)}). Deploys you start by hand are not affected.`}
 			icon={ClockSolid}
 		>
 			{#snippet actions()}

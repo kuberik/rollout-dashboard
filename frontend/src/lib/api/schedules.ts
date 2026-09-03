@@ -140,3 +140,59 @@ export async function fetchScheduleObjects(
 	}>(`/api/rollouts/${namespace}/${name}/schedules${params}`);
 	return [...(data?.rolloutSchedules?.items ?? []), ...(data?.clusterRolloutSchedules?.items ?? [])];
 }
+
+/**
+ * ⭐ THE BULK FORM, FOR A GRAPH OF MANY ROLLOUTS. (2026-09-03, operator-walk
+ * finding B1)
+ *
+ * `fetchScheduleObjects` above is scoped to ONE rollout and is what
+ * `ScheduleStatus`/rollout detail already call. `/dependencies` and the
+ * rollout `Dependencies` tab classify gates for an entire NETWORK of
+ * rollouts across many namespaces, and were calling `buildGateContext` with
+ * no schedule join at all — so a `RolloutSchedule`-owned gate had no
+ * `ctx.schedule` entry, `classifyGate` fell through to the last, most
+ * pessimistic branch (`clears: 'check'`, `short: 'A check is not passing'`),
+ * and a schedule holding a rollout printed the SAME sentence a genuinely
+ * failing health check does — while the same rollout's own Overview
+ * correctly named the window (`Business Hours Only — reopens 1:00 PM`).
+ *
+ * `GET /api/schedules?namespace=all` (a bulk, ALL-namespaces list — see
+ * `main.go`) is the one request per CLUSTER that makes the join possible
+ * without an N-rollout fan-out of the single-rollout endpoint. One call per
+ * cluster the fleet actually uses (typically 1–2, never N).
+ */
+export type NetworkScheduleObject = {
+	metadata?: { name?: string; namespace?: string; annotations?: Record<string, string> };
+	spec?: { action?: 'Allow' | 'Deny' };
+	status?: { active?: boolean; nextTransition?: string; managedGates?: string[] };
+};
+
+export type NetworkSchedules = {
+	rolloutSchedules?: { items?: NetworkScheduleObject[] } | null;
+	clusterRolloutSchedules?: { items?: NetworkScheduleObject[] } | null;
+};
+
+/**
+ * One request per cluster name given (`''` = the local/hub cluster, matching
+ * every other `?cluster=` call site in this product). Failures degrade to an
+ * empty result for that cluster rather than rejecting the whole call — a
+ * spoke that cannot be reached should not blank out every OTHER cluster's
+ * schedule join, and `classifyGate` already has an honest `unknown`/`check`
+ * fallback for gates it ends up with no schedule join for.
+ */
+export async function fetchNetworkSchedules(
+	clusters: string[]
+): Promise<Map<string, NetworkSchedules>> {
+	const names = [...new Set(clusters)];
+	const results = await Promise.all(
+		names.map(async (cluster) => {
+			const params = cluster ? `?namespace=all&cluster=${encodeURIComponent(cluster)}` : '?namespace=all';
+			try {
+				return await apiJson<NetworkSchedules>(`/api/schedules${params}`);
+			} catch {
+				return { rolloutSchedules: { items: [] }, clusterRolloutSchedules: { items: [] } };
+			}
+		})
+	);
+	return new Map(names.map((cluster, i) => [cluster, results[i]]));
+}

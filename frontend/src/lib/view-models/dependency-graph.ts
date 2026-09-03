@@ -87,10 +87,12 @@ import { promotionBlock } from './promotion';
 import {
 	blockingStory,
 	joinClauses,
+	withSchedules,
 	EMPTY_GATE_CONTEXT,
 	type GateClears,
 	type GateContext
 } from './blocking-story';
+import type { NetworkSchedules, NetworkScheduleObject } from '$lib/api/schedules';
 
 // =========================================================================
 // THE MODEL
@@ -210,6 +212,30 @@ function clusterOf(obj: { metadata?: { annotations?: Record<string, string> | nu
 	return obj?.metadata?.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? '';
 }
 
+/**
+ * Every (cluster, namespace) pair a set of rollouts actually touches, keyed by
+ * cluster. What `withNetworkSchedules` needs to know which namespaces on a
+ * given cluster's bulk `/api/schedules?namespace=all` response are actually
+ * relevant to THIS graph, and which cluster-scoped schedules to fan out to
+ * them — see that function's own comment for why this is not simply "every
+ * namespace on the response".
+ */
+export function namespacesByCluster(rollouts: Rollout[]): Map<string, Set<string>> {
+	const map = new Map<string, Set<string>>();
+	for (const r of rollouts) {
+		const ns = r?.metadata?.namespace;
+		if (!ns) continue;
+		const cluster = clusterOf(r);
+		let set = map.get(cluster);
+		if (!set) {
+			set = new Set();
+			map.set(cluster, set);
+		}
+		set.add(ns);
+	}
+	return map;
+}
+
 function displayBuild(r: Rollout | undefined): string | null {
 	const v = r?.status?.history?.[0]?.version;
 	if (!v) return null;
@@ -220,6 +246,66 @@ function displayBuild(r: Rollout | undefined): string | null {
 function agreed<T>(values: (T | null | undefined)[]): T | null {
 	const set = new Set(values.filter((v) => v !== null && v !== undefined) as T[]);
 	return set.size === 1 ? [...set][0] : null;
+}
+
+/**
+ * ⭐ THE SCHEDULE JOIN, FOR A GRAPH OF MANY ROLLOUTS. (2026-09-03,
+ * operator-walk finding B1 — "the dependency graph node prints `A check is
+ * not passing` for a SCHEDULE gate.")
+ *
+ * `/dependencies` and the rollout `Dependencies` tab both built their
+ * `GateContext` with `buildGateContext` alone, so `ctx.schedule` was always
+ * empty and every `RolloutSchedule`-owned gate fell through `classifyGate`
+ * to its LAST, most pessimistic branch — `clears: 'check'`, `short: 'A check
+ * is not passing'` — the exact wording reserved for a gate that is not
+ * passing and publishes no window, printed instead on a gate that names its
+ * window and the exact minute it reopens. The rollout's own Overview
+ * (`ScheduleStatus`, which DOES call `withSchedules`) said the true thing
+ * four clicks away: `Business Hours Only — reopens 1:00 PM`.
+ *
+ * `fetchNetworkSchedules` (`$lib/api/schedules`) is the one bulk request per
+ * CLUSTER this needs (`GET /api/schedules?namespace=all`) — not one request
+ * per rollout, which is the `/schedules` storm this product has already paid
+ * for once (see `ScheduleStatus.svelte`'s own history). This function is the
+ * pure join: it takes that per-cluster response and folds it into the SAME
+ * `GateContext` `buildGateContext` produced, one call to `withSchedules` per
+ * namespace so a namespace only ever sees its OWN `RolloutSchedule` objects
+ * plus its cluster's cluster-scoped ones — never another cluster's, even
+ * when two clusters happen to share a namespace name (`key()` in
+ * `blocking-story.ts` is namespace-scoped, not cluster-scoped, which is the
+ * existing convention `buildGateContext`'s own dependency/promotion maps
+ * already accept).
+ *
+ * `namespaces`, from `namespacesByCluster`, is what stops a cluster's
+ * cluster-scoped schedules leaking onto a namespace that cluster does not
+ * actually run — and it is also what lets a namespace with ONLY a
+ * cluster-scoped schedule (no `RolloutSchedule` of its own) still get the
+ * join: the namespace is seeded with the cluster-wide list before any
+ * namespaced schedule is added to it.
+ */
+export function withNetworkSchedules(
+	base: GateContext,
+	schedulesByCluster: Map<string, NetworkSchedules>,
+	namespaces: Map<string, Set<string>>
+): GateContext {
+	let ctx = base;
+	for (const [cluster, data] of schedulesByCluster) {
+		const clusterNamespaces = namespaces.get(cluster);
+		if (!clusterNamespaces || clusterNamespaces.size === 0) continue;
+		const clusterWide = data?.clusterRolloutSchedules?.items ?? [];
+		const byNs = new Map<string, NetworkScheduleObject[]>();
+		for (const ns of clusterNamespaces) byNs.set(ns, [...clusterWide]);
+		for (const s of data?.rolloutSchedules?.items ?? []) {
+			const ns = s?.metadata?.namespace;
+			if (!ns || !byNs.has(ns)) continue;
+			byNs.get(ns)!.push(s);
+		}
+		for (const [ns, list] of byNs) {
+			if (list.length === 0) continue;
+			ctx = withSchedules(ctx, ns, list);
+		}
+	}
+	return ctx;
 }
 
 export function buildRolloutGraph(args: {

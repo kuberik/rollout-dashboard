@@ -117,6 +117,7 @@
 		type BlockingStory,
 		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
+	import { withPinScheduleClause } from '$lib/view-models/pin-schedule-clause';
 	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
 	import { regionLabel } from '$lib/view-models/regions';
@@ -475,17 +476,25 @@
 						blockingGates: block.blockingGates,
 						awaitingGates: block.awaitingApprovalGates,
 						notPassingGates: block.notPassingGates,
-						story: blockingStory(cell.rollout, gateContext, { place: tier, now: $now }),
+						story: withPinScheduleClause(
+							blockingStory(cell.rollout, gateContext, { place: tier, now: $now }),
+							cell.rollout,
+							gateContext
+						),
 						// THE SAME STORY, SUBJECTED FOR THE PAGE BANNER. Inside a card
 						// the environment is fixed and `DEV is waiting on an approval` is
 						// exact; the page-level banner sits above THREE environment cards
 						// and two apps, so there it has to name both. Same pure function,
 						// same facts — only the subject differs.
-						pageStory: blockingStory(cell.rollout, gateContext, {
-							place: tier,
-							subject: `${group.appName} in ${tier.toUpperCase()}`,
-							now: $now
-						}),
+						pageStory: withPinScheduleClause(
+							blockingStory(cell.rollout, gateContext, {
+								place: tier,
+								subject: `${group.appName} in ${tier.toUpperCase()}`,
+								now: $now
+							}),
+							cell.rollout,
+							gateContext
+						),
 						rollout: cell.rollout,
 						mark: cardStateMark({
 							rolledBack: detectRollback(cell.rollout),
@@ -807,10 +816,14 @@
 						: names.length <= 3
 							? joinClauses(names)
 							: `${names.length} environments`;
-				const base = blockingStory(worstBlocked.app.rollout, gateContext, {
-					subject: appName,
-					now: $now
-				});
+				const base = withPinScheduleClause(
+					blockingStory(worstBlocked.app.rollout, gateContext, {
+						subject: appName,
+						now: $now
+					}),
+					worstBlocked.app.rollout,
+					gateContext
+				);
 				story = { ...base, headline: `${base.headline} in ${where}` };
 			}
 

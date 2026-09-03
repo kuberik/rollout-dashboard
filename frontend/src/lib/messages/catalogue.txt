@@ -270,7 +270,6 @@ lib/components/NextStep.svelte	code	btn … …
 lib/components/NextStep.svelte	code	Choose a version
 lib/components/NextStep.svelte	code	Deploy newest
 lib/components/NextStep.svelte	code	Go back a version
-lib/components/NextStep.svelte	code	Release the hold
 lib/components/NextStep.svelte	code	See what's blocking
 lib/components/PartialDataNotice.svelte	code	… clusters did not answer — this page is incomplete
 lib/components/PartialDataNotice.svelte	code	… did not answer — this page is incomplete
@@ -339,7 +338,9 @@ lib/components/RolloutStepper.svelte	code	… rolling out
 lib/components/RolloutStepper.svelte	code	…/… done
 lib/components/RolloutStepper.svelte	aria-label	Deploy pipeline
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
+lib/components/ScheduleStatus.svelte	code	… newer build… … waiting.
 lib/components/ScheduleStatus.svelte	text	… schedule …
+lib/components/ScheduleStatus.svelte	code	…Nothing promotes itself for another … (until …).
 lib/components/ScheduleStatus.svelte	text	· … … Automatic deploys paused by … schedule … …
 lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
@@ -588,6 +589,7 @@ lib/view-models/health-witness.ts	code	A health check
 lib/view-models/health-witness.ts	code	Health check …
 lib/view-models/health-witness.ts	code	passing, last errored …
 lib/view-models/health-witness.ts	code	This check
+lib/view-models/pin-schedule-clause.ts	code	…, and … reopens ….
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
 lib/view-models/regions.ts	code	… of … … on …
@@ -772,7 +774,6 @@ routes/apps/[name]/+page.svelte	code	Promote … to ….
 routes/apps/[name]/+page.svelte	code	Promotion is not moving
 routes/apps/[name]/+page.svelte	title	Promotion pipeline
 routes/apps/[name]/+page.svelte	title	Recent activity
-routes/apps/[name]/+page.svelte	text	Release the hold
 routes/apps/[name]/+page.svelte	code	Released …
 routes/apps/[name]/+page.svelte	text	resources reference
 routes/apps/[name]/+page.svelte	code	Rollback from … to … due to issues with the current deployment.
@@ -793,31 +794,23 @@ routes/apps/[name]/+page.svelte	code	window closed
 routes/apps/+page.svelte	code	: ''}… available, and none will deploy until the pin is cleared${ otherHold ?
 routes/apps/+page.svelte	code	… — … is stuck
 routes/apps/+page.svelte	code	… — …’s last deploy failed
-routes/apps/+page.svelte	title	… — a newer build exists here, but no gate lets it through yet
 routes/apps/+page.svelte	code	… … … newer version… held
 routes/apps/+page.svelte	text	… … · … deploying now …
 routes/apps/+page.svelte	text	… · … on the newest
 routes/apps/+page.svelte	code	… ago · …
 routes/apps/+page.svelte	text	… blocked
 routes/apps/+page.svelte	code	… can still take … newer version…
-routes/apps/+page.svelte	text	… deploy …
-routes/apps/+page.svelte	text	… deploy … in 7d … …
 routes/apps/+page.svelte	code	… different versions live
 routes/apps/+page.svelte	code	… environments
 routes/apps/+page.svelte	code	… in …
 routes/apps/+page.svelte	code	… is pinned on …
-routes/apps/+page.svelte	title	… is stuck
 routes/apps/+page.svelte	text	… need … attention
 routes/apps/+page.svelte	code	… never deployed
 routes/apps/+page.svelte	code	… of … running the newest version
 routes/apps/+page.svelte	code	… of this app are failing. No newer version gets past them until a deploy succeeds.
-routes/apps/+page.svelte	aria-label	… on … in …
 routes/apps/+page.svelte	code	… rolling out
 routes/apps/+page.svelte	code	… running a version nobody released
 routes/apps/+page.svelte	code	… whose version could not be placed
-routes/apps/+page.svelte	title	…’s last deploy failed
-routes/apps/+page.svelte	title	…{cell.version ? ` · $…` : ''} · …
-routes/apps/+page.svelte	text	+ … more
 routes/apps/+page.svelte	code	${pin ?
 routes/apps/+page.svelte	code	a newer version exists and a person has to pick it
 routes/apps/+page.svelte	code	a newer version is allowed here and nobody has deployed it
@@ -834,22 +827,15 @@ routes/apps/+page.svelte	code	never deployed anywhere
 routes/apps/+page.svelte	code	newer versions are on hold until a check or time window passes
 routes/apps/+page.svelte	text	No apps yet
 routes/apps/+page.svelte	code	no environments
-routes/apps/+page.svelte	text	no full trip yet
 routes/apps/+page.svelte	code	No newer version gets past … until a deploy there succeeds.
 routes/apps/+page.svelte	code	No progress for … and nothing is holding it on purpose.
 routes/apps/+page.svelte	code	No progress for long enough that it will not clear on its own.
-routes/apps/+page.svelte	title	No version has gone all the way from the first environment to production inside the deploy history kept for this app
 routes/apps/+page.svelte	text	Open …
 routes/apps/+page.svelte	code	open this app
 routes/apps/+page.svelte	title	Recent activity
 routes/apps/+page.svelte	text	resource. Apps consolidate the same rollout across all environments.
-routes/apps/+page.svelte	title	Running a version that is on no environment’s release list
 routes/apps/+page.svelte	code	someone pinned a version here, so nothing newer can deploy
 routes/apps/+page.svelte	code	the version running here is worse than the one before it
-routes/apps/+page.svelte	text	To prod
-routes/apps/+page.svelte	title	Typical time a version takes to get from … to …, measured over … version… that made the whole trip
-routes/apps/+page.svelte	text	View all activity
-routes/apps/+page.svelte	aria-label	View all deploy activity
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
 routes/dependencies/+page.svelte	text	… holding
@@ -886,7 +872,6 @@ routes/environments/+page.svelte	code	… is stuck in …
 routes/environments/+page.svelte	title	… of … apps here are deployed and serving
 routes/environments/+page.svelte	title	… of … apps here have newer versions that no gate will let in yet
 routes/environments/+page.svelte	code	… rollouts are stuck
-routes/environments/+page.svelte	code	…, and … reopens ….
 routes/environments/+page.svelte	text	· … , the ones furthest behind first
 routes/environments/+page.svelte	text	· a version starts on the left and ends on the right
 routes/environments/+page.svelte	text	All … app … here are up to date
@@ -910,7 +895,6 @@ routes/environments/+page.svelte	code	The last deploy did not complete, and noth
 routes/environments/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	title	… — the newest version this app has
 routes/envs/[name]/+page.svelte	title	… — this page
-routes/envs/[name]/+page.svelte	text	… deploy …
 routes/envs/[name]/+page.svelte	code	… deploys have failed here
 routes/envs/[name]/+page.svelte	code	… failed to deploy here
 routes/envs/[name]/+page.svelte	title	… here can still take … newer version…
@@ -940,11 +924,9 @@ routes/envs/[name]/+page.svelte	title	Running a version that is on no environmen
 routes/envs/[name]/+page.svelte	title	Running now
 routes/envs/[name]/+page.svelte	code	The last deploy did not complete. Nothing newer will promote past it.
 routes/envs/[name]/+page.svelte	title	This app has never deployed here
-routes/envs/[name]/+page.svelte	text	View all activity
 routes/envs/[name]/+page.svelte	code	waiting for … to ship … … — it is on …
 routes/envs/[name]/+page.svelte	code	waiting on … gate…
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …
-routes/namespaces/[name]/+page.svelte	text	… deploy …
 routes/namespaces/[name]/+page.svelte	code	… deploying now
 routes/namespaces/[name]/+page.svelte	text	… failing
 routes/namespaces/[name]/+page.svelte	code	… of … failing
@@ -959,7 +941,6 @@ routes/namespaces/[name]/+page.svelte	text	No rollouts in namespace
 routes/namespaces/[name]/+page.svelte	title	Recent activity
 routes/namespaces/[name]/+page.svelte	text	Show … more rollouts ›
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
-routes/namespaces/[name]/+page.svelte	text	View all activity
 routes/rollouts/[cluster]/[namespace]/[name]/+layout.svelte	aria-label	Rollout sections
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.
@@ -1111,6 +1092,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Deploymen
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	kuberik | …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	No deployments in this time range
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	no deploys
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	no note recorded
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	no rollbacks in … deploy … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Recorded note
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	rolled back
@@ -1173,8 +1155,11 @@ routes/versions/[...slug]/+page.svelte	text	View commit
 routes/versions/[...slug]/+page.svelte	title	What each service calls it
 routes/versions/+page.svelte	title	… can’t go any further yet
 routes/versions/+page.svelte	code	… cannot deploy it in … yet.
+routes/versions/+page.svelte	code	… has not reached … yet
+routes/versions/+page.svelte	code	… is held in …
 routes/versions/+page.svelte	title	… lists this build on no environment’s release list
 routes/versions/+page.svelte	text	… of … revisions deployed …
+routes/versions/+page.svelte	code	… of them on …; ….
 routes/versions/+page.svelte	title	… places — a place is one service in one environment — are waiting on a gate
 routes/versions/+page.svelte	text	… service …
 routes/versions/+page.svelte	code	… service…

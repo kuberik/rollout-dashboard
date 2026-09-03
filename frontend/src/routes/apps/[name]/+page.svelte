@@ -186,6 +186,8 @@
 		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
 	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
+	import { buildRolloutGraph, heldSubjects, type GraphNode } from '$lib/view-models/dependency-graph';
+	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
 	import WaitingBuilds from '$lib/components/WaitingBuilds.svelte';
 	import DeployVolumeSparkline from '$lib/components/DeployVolumeSparkline.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
@@ -210,7 +212,8 @@
 		ChevronDoubleRightOutline,
 		ChevronRightOutline,
 		LinkOutline,
-		LockOpenOutline
+		LockOpenOutline,
+		ShareNodesSolid
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, RolloutGate, Environment, Kustomization } from '../../../types';
 	import type { ManagedResourceStatus } from '../../../types/managed-resource';
@@ -727,6 +730,100 @@
 		});
 		for (const [ns, objs] of Object.entries(scheduleObjects)) ctx = withSchedules(ctx, ns, objs);
 		return ctx;
+	});
+
+	/**
+	 * ⭐ THE OTHER DIRECTION: WHO IS WAITING ON THIS APP. (2026-09-03,
+	 * operator-walk finding B2 — "every `Open hello-api-app →` CTA lands on
+	 * `/apps/hello-api-app`, which prints `3 of 3 up to date` and not one word
+	 * that three rollouts are held on it.")
+	 *
+	 * Everything above this page's fold is about whether THIS app is up to
+	 * date — the correct, but incomplete, half of the question for a
+	 * PROVIDER. `hello-api-app` can be `3 of 3 up to date` and still be the
+	 * one thing three OTHER rollouts cannot ship past. That fact already
+	 * exists on the CONSUMER's own Dependencies tab (`3 rollouts held across
+	 * 1 service`); it was nowhere on the page every `Open <provider> →` CTA
+	 * in the product actually lands on.
+	 *
+	 * Built the same way `/dependencies` and the Dependencies tab build their
+	 * own graph — `buildRolloutGraph` off this SAME `/api/rollouts` payload —
+	 * so this page cannot disagree with either about who is held on what.
+	 * `heldSubjects` is the one place the product folds "one app held in N
+	 * environments" into a single subject, reused here rather than re-derived.
+	 */
+	const dependencies = $derived(query.data?.rolloutDependencies?.items ?? []);
+	const networkEnvOrder = $derived(
+		[...new Set(environments.map((e) => e.spec?.environment).filter(Boolean) as string[])].sort(
+			compareEnvironmentNames
+		)
+	);
+	const network = $derived(
+		buildRolloutGraph({
+			rollouts,
+			environments,
+			dependencies,
+			envOrder: networkEnvOrder,
+			gates: gateContext
+		})
+	);
+
+	type ProviderHold = {
+		count: number;
+		subjects: string;
+		clause: string;
+		href: string | null;
+	};
+
+	const providerHoldBanner = $derived.by<ProviderHold | null>(() => {
+		const nodesById = new Map(network.nodes.map((n) => [n.id, n] as const));
+		const heldEdges = network.edges.filter(
+			(e) => e.writer === 'contract' && e.state === 'blocked' && nodesById.get(e.from)?.name === appName
+		);
+		if (heldEdges.length === 0) return null;
+
+		// Grouped by (contract, requiredVersion) — the live cluster has one
+		// group, but two consumers on two different contracts of the same
+		// provider is a real shape and must not silently pick one.
+		const order: string[] = [];
+		const byKey = new Map<string, { contract: string; requiredVersion: string | null }>();
+		for (const e of heldEdges) {
+			const contract = e.contract ?? 'a contract';
+			const key = `${contract}::${e.requiredVersion ?? ''}`;
+			if (!byKey.has(key)) {
+				order.push(key);
+				byKey.set(key, { contract, requiredVersion: e.requiredVersion });
+			}
+		}
+		const shipClauses = order.map((k) => {
+			const { contract, requiredVersion } = byKey.get(k)!;
+			return requiredVersion ? `ship ${contract} ${requiredVersion}` : `ship a newer ${contract}`;
+		});
+
+		const heldNodes: GraphNode[] = [];
+		const seen = new Set<string>();
+		for (const e of heldEdges) {
+			const n = nodesById.get(e.to);
+			if (!n || seen.has(n.id)) continue;
+			seen.add(n.id);
+			heldNodes.push(n);
+		}
+
+		// ⭐ THE LINK GOES TO A HELD CONSUMER'S OWN DEPENDENCIES TAB, not this
+		// app's — the concrete "N rollouts held across N services" fact this
+		// banner summarises already lives there, and this app's own tab (were
+		// it linked instead) reads namespace-scoped and would not show it.
+		const first = heldNodes[0];
+		const href = first
+			? rolloutPath(first.cluster || localClusterName, first.namespace, first.name, 'dependencies')
+			: null;
+
+		return {
+			count: new Set(heldEdges.map((e) => e.to)).size,
+			subjects: heldSubjects(heldNodes),
+			clause: joinClauses(shipClauses),
+			href
+		};
 	});
 
 	/*
@@ -2548,6 +2645,18 @@
 	</a>
 {/snippet}
 
+<!-- The provider-hold banner's own action: navigation to a held consumer's
+     Dependencies tab, where the concrete `N rollouts held across N services`
+     fact this banner summarises already lives. `href` guards whether this is
+     ever handed to `AlertPanel` — see `providerAction`'s own note for why an
+     unconditional snippet reference would be wrong. -->
+{#snippet providerHoldAction()}
+	<a href={providerHoldBanner?.href} class="nav-link">
+		See what's waiting
+		<ArrowRightOutline />
+	</a>
+{/snippet}
+
 <!--
 	⛔ `Investigate` WAS A LINK WEARING A BUTTON, AND ONCE PER PAGE A FILLED
 	BLUE ONE. (2026-09-02)
@@ -2757,6 +2866,27 @@
 				showRules={!bannerRulesDrawn}
 				class="mb-6"
 				actions={bannerProviderHref ? providerAction : undefined}
+			/>
+		{/if}
+
+		<!-- ═══ THIS APP AS A PROVIDER: WHO IS WAITING ON IT ══════════════════
+		     (2026-09-03, operator-walk finding B2.) INDEPENDENT of the banner
+		     above — this app can be perfectly on time (the fleet block below
+		     can read `3 of 3 up to date`) and still be the one thing another
+		     app cannot ship past. That is a DIFFERENT fact from "is this app
+		     healthy" and gets its own banner rather than overloading the one
+		     above, which is scoped to this app's OWN state. -->
+		{#if providerHoldBanner}
+			<AlertPanel
+				severity="warning"
+				icon={ShareNodesSolid}
+				title="{providerHoldBanner.count} rollout{providerHoldBanner.count === 1
+					? ''
+					: 's'} {providerHoldBanner.count === 1 ? 'is' : 'are'} waiting on this app"
+				message="They need it to {providerHoldBanner.clause} — {providerHoldBanner.subjects}."
+				footnote="Ship a release that satisfies it to clear them — nothing here needs a person to approve anything."
+				class="mb-6"
+				actions={providerHoldBanner.href ? providerHoldAction : undefined}
 			/>
 		{/if}
 
@@ -3296,7 +3426,7 @@
 														onclick={() => openReleaseHold(f.cell)}
 													>
 														<LockOpenOutline />
-														Release the hold
+														{CLEAR_PIN_LABEL}
 													</button>
 													<button
 														type="button"

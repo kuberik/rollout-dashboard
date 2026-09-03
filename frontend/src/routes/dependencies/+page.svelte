@@ -72,9 +72,12 @@
 		networkVerdict,
 		heldSubjects,
 		heldClause,
+		namespacesByCluster,
+		withNetworkSchedules,
 		type GraphEdge,
 		type GraphNode
 	} from '$lib/view-models/dependency-graph';
+	import { fetchNetworkSchedules } from '$lib/api/schedules';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({
@@ -87,16 +90,35 @@
 	const deps = $derived(query.data?.rolloutDependencies?.items ?? []);
 
 	/**
+	 * ⭐ ONE `/api/schedules` REQUEST PER CLUSTER, NOT PER ROLLOUT. (2026-09-03,
+	 * operator-walk finding B1 — see `withNetworkSchedules`'s own comment for
+	 * the full account.) `''` is the local/hub cluster, matching every other
+	 * `?cluster=` call site; `clusters` lists only the discovered SPOKES.
+	 */
+	const clusterNames = $derived(['', ...(query.data?.clusters ?? []).map((c) => c.name)]);
+	const schedulesQuery = createQuery(() => ({
+		queryKey: ['network-schedules', clusterNames],
+		queryFn: () => fetchNetworkSchedules(clusterNames),
+		staleTime: 15000,
+		refetchInterval: pollWhenHealthy(30000),
+		enabled: clusterNames.length > 0
+	}));
+
+	/**
 	 * The gate join table, built ONCE from this payload and handed to the graph
 	 * builder. It is what classifies the gates that are NOT edges — a schedule,
 	 * a check, an approval — so a clock on a node here and the banner on the
 	 * rollout's own page cannot disagree about what it is.
 	 */
 	const gateContext = $derived(
-		buildGateContext({
-			environments: query.data?.environments ?? null,
-			rolloutDependencies: query.data?.rolloutDependencies ?? null
-		})
+		withNetworkSchedules(
+			buildGateContext({
+				environments: query.data?.environments ?? null,
+				rolloutDependencies: query.data?.rolloutDependencies ?? null
+			}),
+			schedulesQuery.data ?? new Map(),
+			namespacesByCluster(rollouts)
+		)
 	);
 
 	/** One theme per tier, for the chips. Identity is a function of the name. */

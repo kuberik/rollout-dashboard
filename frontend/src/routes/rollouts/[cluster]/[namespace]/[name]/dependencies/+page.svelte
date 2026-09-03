@@ -189,8 +189,11 @@
 		buildRolloutGraph,
 		neighbourhood,
 		networkVerdict,
-		nodeId
+		nodeId,
+		namespacesByCluster,
+		withNetworkSchedules
 	} from '$lib/view-models/dependency-graph';
+	import { fetchNetworkSchedules } from '$lib/api/schedules';
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
@@ -981,11 +984,34 @@
 		)
 	);
 
+	/**
+	 * ⭐ SAME FIX AS `/dependencies` — see `withNetworkSchedules`'s own comment.
+	 * Without this, a `RolloutSchedule`-owned gate anywhere in this rollout's
+	 * neighbourhood fell through `classifyGate` to `'A check is not passing'`
+	 * instead of naming the window, on the ONE tab whose whole job is to say
+	 * what is holding this rollout. `''` is the local/hub cluster.
+	 */
+	const networkClusterNames = $derived([
+		'',
+		...(listQuery.data?.clusters ?? []).map((c) => c.name)
+	]);
+	const networkSchedulesQuery = createQuery(() => ({
+		queryKey: ['network-schedules', networkClusterNames],
+		queryFn: () => fetchNetworkSchedules(networkClusterNames),
+		staleTime: 15000,
+		refetchInterval: pollWhenHealthy(30000),
+		enabled: networkClusterNames.length > 0
+	}));
+
 	const networkGateContext = $derived(
-		buildGateContext({
-			environments: listQuery.data?.environments ?? null,
-			rolloutDependencies: listQuery.data?.rolloutDependencies ?? null
-		})
+		withNetworkSchedules(
+			buildGateContext({
+				environments: listQuery.data?.environments ?? null,
+				rolloutDependencies: listQuery.data?.rolloutDependencies ?? null
+			}),
+			networkSchedulesQuery.data ?? new Map(),
+			namespacesByCluster(listRollouts)
+		)
 	);
 
 	const fullNetwork = $derived(

@@ -176,3 +176,59 @@ export function deployActs(r: Rollout | null | undefined): DeployAct[] {
 export function rollbackCount(r: Rollout | null | undefined): number {
 	return deployActs(r).filter((a) => a?.kind === 'rollback').length;
 }
+
+/**
+ * ⭐ A DEFAULT IS NOT A NOTE. (2026-09-03, operator-walk finding P11.)
+ *
+ * `entry.message` reads as if a person had typed it — the History tab's own
+ * `Recorded note` label already said so once, in the comment beside the row
+ * this module now covers (*"it is an audit RECORD, not the page's account of
+ * what happened"*). What that fix did not do is tell the two apart: a BLANK
+ * reason field does not stay blank, it becomes the CONTROLLER's own
+ * boilerplate — `rollout-dashboard/main.go`'s `/pin`, `/force-deploy` and
+ * `/change-version` handlers all fill an empty `explanation`/`message` field
+ * with one of a closed set of defaults before it ever reaches
+ * `history[].message`:
+ *
+ *   · `/pin` (no version)        → `Cleared version pin`
+ *   · `/pin` (a version)         → `Pinned to version <tag>`
+ *   · `/force-deploy`            → `Force deploy version <tag>`
+ *   · `/change-version` (pin)    → `Pinned version`
+ *   · `/change-version` (unpin)  → `Force deploy`
+ *
+ * A reader who rolled back with a blank reason field and later opens History
+ * sees `Recorded note: Pinned version` and reasonably reads it as something a
+ * colleague typed — the exact defect the finding names (*"a blank reason
+ * field yields `Pinned version` after Roll back"*). `isSystemDefaultNote`
+ * recognises exactly this closed set, by JOIN on the controller's own literal
+ * strings — never a guess, never "any short message" — so a genuine note
+ * that happens to read `Force deploy` verbatim would still be misclassified
+ * only if a person typed the controller's own boilerplate by coincidence,
+ * which is the same class of edge every string-literal join in this product
+ * accepts (see `blocking-story.ts`'s own `⛔ NEVER PATTERN-MATCH THE NAME`
+ * for the one this is NOT — a generated ID varies per object, these strings
+ * do not).
+ */
+const SYSTEM_DEFAULT_NOTES: RegExp[] = [
+	/^Cleared version pin$/,
+	/^Pinned version$/,
+	/^Force deploy$/,
+	/^Pinned to version /,
+	/^Force deploy version /
+];
+
+export function isSystemDefaultNote(message: string | null | undefined): boolean {
+	if (!message) return false;
+	return SYSTEM_DEFAULT_NOTES.some((re) => re.test(message));
+}
+
+/**
+ * The default, said as a fact about the SYSTEM rather than read as a note —
+ * `Force deploy` (a title-cased control label) becomes `force deploy` (a
+ * lowercase clause after "System"), same words, so the printed sentence
+ * cannot disagree with the raw value a reviewer can still find in the API
+ * response. Only meaningful when `isSystemDefaultNote(message)` is true.
+ */
+export function systemNoteDescription(message: string): string {
+	return message.charAt(0).toLowerCase() + message.slice(1);
+}

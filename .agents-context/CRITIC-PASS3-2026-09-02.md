@@ -246,3 +246,35 @@ the Logs pod filter narrows rows (virtualizer count race). Cold-load shell findi
 reproduce (a Vite full reload from concurrent edits). Left for the finish lane: `»` as bullet
 in GateRecord, EventsCard identifiers, one-off type roles in environments/+page and
 GateRecord, /versions row alignment, the hero bar under 'held in 3 places'.
+
+## Fourth craft re-check + third operator walk at `2311817`/`fe44de4`, 2026-09-03 05:00
+Craft: /rollouts, the Overview, /activity, /dependencies signed; icons 26–143 per page, one 8px
+card radius, 47px headers on 17 of 19 routes. Its lead ask — `.btn` rows on /apps and
+/environments ("offer the action") — is NOT actioned: the human rejected navigation dressed as
+action on 2026-09-01 ("investigate button / choose version that act as if they're doing
+something smart but are just navigating"). Actioned → wave 7: /activity env filter has no
+selected fill (p8-touch); pin banner blue vs held amber — rule: blocked-by-rule amber, a state
+a person chose blue (p8-panel); HELD chip missing on /apps and /envs rows (p8-touch); blurred
+amber blob back in AlertPanel (p8-panel); rail header 65px at 320 → the count is the link
+(p8-panel); rollup hard-right at every width (p8-panel); /namespaces How it's going rollup
+(p8-touch); dialog empty commits region 279px + sliced last row (p8-panel); true-reach touch
+targets: Details trigger, pills' right slop, a.chip-value clipping (p8-touch); / In motion
+group rule, adverse row truncating at 1024, revision card 52% fill, zero-count pills differ
+by width (p8-groups); spacing scale is really 2/4/6/8/10/12/16/24 (doc).
+Walk: BLOCKING B1 graph node says `A check is not passing` for a schedule gate (p8-truth2);
+B2 every `Open hello-api-app` lands on a page that says nothing waits on it (p8-truth2 app
+page, p8-panel Overview); B3 prod rollback: no typed confirm, blue button, disabled pin toggle
+reads off, truncated header, no distance (p8-panel); B4 /versions hero 6/6 over a 3/6-looking
+bar (p8-truth2). PAINFUL P5 390 banner disclosure under the CTA (p8-panel); P6 held cards
+never say why (p8-groups); P7 activity empty state points at a removed control (p8-touch);
+P8 palette unfocused at 390, Escape focus (p8-nav); P9 four spellings each for held / the rule
+/ the unpin action (p8-nav + lanes); P10 /apps and /environments card copy names only the pin
+(p8-touch, p8-truth2); P11 `Recorded note` prints controller defaults as human notes
+(p8-truth2); P12 focus resets to BODY on navigation (p8-nav); P13 /envs/prod drops a rollout
+silently (p8-touch); P14 four GitHub-absence copies (lanes); P15 tap targets (p8-touch).
+Cosmetic: 'until 8h 33m', prod schedule banner while up to date (p8-truth2); cluster param
+bakes a URL, not-found repo copy (p8-groups); two denominators on the in-motion card; Today 5
+vs at least 4; duplicated sr-only status. Praise: force-deploy dialog, API-down self-heal at
++28s, slow-load honesty, live deploy reporting on six surfaces, combined cause strings,
+Clear Pin copy, History retention honesty. Cluster residue: two more history entries on
+hello-world-dev/hello-world-app; deploy-message annotation cleared.

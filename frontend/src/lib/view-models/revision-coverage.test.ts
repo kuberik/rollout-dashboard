@@ -292,14 +292,21 @@ describe('revisionCoverage', () => {
 	});
 
 	/**
-	 * ⭐ THE HELD FILL IS `tone-mute`'S OWN TWO TOKENS, NOT `live`'S GREEN OR
-	 * `ahead`'S LIGHTER GRAY. `BuildStateMark`'s `held` glyph already wears
-	 * `tone-mute` 40px above the bar; a third value here would still leave
-	 * the bar and the word disagreeing on WEIGHT even after they agreed on
-	 * hue. Zero new colour values — see `HELD_SEGMENT_FILL`'s own comment.
+	 * ⭐ SUPERSEDED 2026-09-03 (operator-walk finding B4). This asserted the
+	 * gray `tone-mute` pair `BuildStateMark`'s word wears, on the theory that
+	 * matching it in HUE was the whole requirement. Measured on the live
+	 * page instead: `6 of 6 places running it` over a bar painted 3 green +
+	 * 3 gray reads as "3 of 6", because gray is this table's colour for
+	 * ABSENCE everywhere else (`ahead`, `notYet`'s outline) — a held place
+	 * IS running the revision, just on an older release, and needs a fill
+	 * that says "filled". `HELD_SEGMENT_FILL` is now the exact orange
+	 * `ControlCenter.svelte`/`RolloutGrid.svelte` already paint their own
+	 * `held` dot — zero new colour values, see its own comment. It still
+	 * must not collide with `live`'s green or `ahead`'s gray, which is the
+	 * one assertion this test keeps.
 	 */
-	it('`coverageFill` gives `held` the same muted tone `BuildStateMark` wears, never `live`\'s green', () => {
-		expect(coverageFill('held')).toBe('bg-gray-500 dark:bg-gray-400');
+	it('`coverageFill` gives `held` the product\'s own orange `held` tone, never `live`\'s green or `ahead`\'s gray', () => {
+		expect(coverageFill('held')).toBe('bg-orange-500');
 		expect(coverageFill('held')).not.toBe(coverageFill('live'));
 		expect(coverageFill('held')).not.toBe(coverageFill('ahead'));
 	});

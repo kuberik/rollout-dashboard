@@ -14,8 +14,10 @@
 	import {
 		revisionCoverage,
 		coverageSegments,
+		releaseSplit,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
+	import { joinClauses } from '$lib/view-models/blocking-story';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	// THE RAIL CARD'S TITLE IS THE REPO, NOT THE URL. See `repo-title.ts`.
 	import { repoTitle } from './repo-title';
@@ -270,6 +272,30 @@
 	function commitUrlFor(repoKey: string, revision: string): string | null {
 		const base = repoUrl(repoKey);
 		return base ? `${base}/commit/${revision}` : null;
+	}
+
+	/**
+	 * ⭐ THE HERO'S OWN RELEASE-SPLIT CAPTION. (2026-09-03, operator-walk
+	 * finding B4 — *"`6 of 6 PLACES RUNNING IT` over a bar that reads 3 green
+	 * + 3 [held]; the operator reads the bar as 3 of 6."*) `6 of 6` and the
+	 * bar both answer "does this place run the revision", correctly — the
+	 * held segment's fill is what stopped implying "empty" (see
+	 * `HELD_SEGMENT_FILL`'s own note). What was still missing on THIS page's
+	 * hero is the sentence `/versions/<rev>`'s own head band already prints
+	 * for the identical fact — same `releaseSplit()`, same wording, so the
+	 * list's hero and the detail page's hero cannot describe one build two
+	 * ways two clicks apart.
+	 */
+	function releaseSplitSentence(coverage: RevisionCoverage): string {
+		return releaseSplit(coverage)
+			.map((l) => {
+				const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
+				const clause = l.held
+					? `${l.aheadLabel} is held in ${envs}`
+					: `${l.aheadLabel} has not reached ${envs} yet`;
+				return `${l.count} of them on ${l.behindLabel}; ${clause}.`;
+			})
+			.join(' ');
 	}
 
 	/* ── THE PAGE'S ONE BLOCKING FACT ────────────────────────────────────────
@@ -720,6 +746,21 @@
 								     the same list twice, 40px apart. -->
 								{@render names(lead, true)}
 							{/snippet}
+						{/if}
+						<!--
+							⭐ THE RELEASE-SPLIT CAPTION — see `releaseSplitSentence`'s own
+							note (2026-09-03, operator-walk B4). Rendered as a full-width
+							`children` row (`RevisionLead`'s own prop doc: "a second line …
+							Buttons and any page-specific note, under the spread" — this IS
+							that note), `basis-full` so it takes its own line above
+							`View commit` rather than sitting inline beside it. Empty on the
+							ordinary build (every live place on its own release), which is
+							most of them — `releaseSplit` returns `[]` and nothing renders.
+						-->
+						{#if releaseSplitSentence(leadCov)}
+							<p class="t-body basis-full text-gray-500 dark:text-gray-400">
+								{releaseSplitSentence(leadCov)}
+							</p>
 						{/if}
 						<!--
 							⛔ `Open <sha>` IS GONE, NOT RESTYLED. (2026-09-02, from the

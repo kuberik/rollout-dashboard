@@ -613,16 +613,30 @@ export type CoverageSegment = {
 };
 
 /**
- * THE HELD SEGMENT'S OWN FILL — `tone-mute`'s two tokens, not a new value.
- * `BuildStateMark` already draws this exact fact in words 40px above the bar
- * (`PauseSolid` + `held in N places`, both `tone-mute`), so a held segment
- * that used `live`'s green or `ahead`'s lighter gray would still disagree
- * with the sentence sitting on top of it — one in hue, the other in weight.
- * Reusing `tone-mute`'s own `gray-500` / `gray-400` pair makes the bar and
- * the state word the same fact in two channels, which is this object's
- * whole reason to be one component. Zero new colour values.
+ * ⛔ SUPERSEDED 2026-09-03 (operator-walk finding B4). This was
+ * `'bg-gray-500 dark:bg-gray-400'` — `tone-mute`'s two tokens, reasoned as
+ * agreeing with `BuildStateMark`'s gray `PauseSolid` word 40px above the bar.
+ * Measured on the live page instead of read off the word beside it: `6 of 6
+ * places running it` over a bar painted 3 green + 3 GRAY reads as *"3 of 6"*
+ * — gray is this object's colour for ABSENCE everywhere else in the same
+ * table (`ahead`, `notYet`'s outline), so a held segment sharing it told the
+ * operator a running place was empty. `held` is a place that IS running the
+ * revision, just on an older release with a newer one gated — that is
+ * `RUNNING, HELD`, not `not here`, and it needs a fill that says "filled"
+ * the way `live`/`failing` do.
+ *
+ * THE ORANGE HELD TONE — `bg-orange-500`, ZERO NEW COLOUR VALUES: it is the
+ * exact literal `ControlCenter.svelte`'s and `RolloutGrid.svelte`'s own
+ * `held` dot already paints, unconditional across both themes there (a small
+ * dot needs no per-theme step; measured on a 26px bar it reads clearly on
+ * both a white and a `gray-800` card without one either). `BuildStateMark`'s
+ * word stays `tone-mute` gray — that is a decision about TEXT weight, not
+ * about naming the SAME fact as `alarm`'s amber, so the two channels
+ * diverging in hue here is not the disagreement the superseded reasoning
+ * guarded against; the bar and the word still agree on WHICH slots are held,
+ * only the bar now also agrees with itself about which slots are filled.
  */
-const HELD_SEGMENT_FILL = 'bg-gray-500 dark:bg-gray-400';
+const HELD_SEGMENT_FILL = 'bg-orange-500';
 
 /**
  * ⭐ THE BUILD'S ONE-LINE ANSWER, IN WORDS A NOVICE ALREADY OWNS.

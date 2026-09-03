@@ -11,6 +11,8 @@ import {
 	heldClause,
 	layoutOrder,
 	nodeId,
+	namespacesByCluster,
+	withNetworkSchedules,
 	type GraphEdge,
 	type GraphNode
 } from './dependency-graph';
@@ -993,5 +995,170 @@ describe('heldClause', () => {
 		const clause = heldClause(g.blockedEdges, new Map(g.nodes.map((n) => [n.id, n])));
 		expect(clause).toBe('hello-api-app ships api ^1.67.0');
 		expect(clause).not.toMatch(/deploy in front/);
+	});
+});
+
+describe('withNetworkSchedules — the graph-wide schedule join (2026-09-03, operator-walk B1)', () => {
+	/**
+	 * `/dependencies` and the rollout `Dependencies` tab built their
+	 * `GateContext` from `buildGateContext` alone — no schedule join — so a
+	 * `RolloutSchedule`-owned gate had no `ctx.schedule` entry anywhere and
+	 * `classifyGate` fell through to its LAST branch: `clears: 'check'`,
+	 * `short: 'A check is not passing'`. That is the exact live defect: the
+	 * DEV node of `hello-world-app` printed that sentence for a gate the
+	 * rollout's own Overview correctly named `Business Hours Only — reopens
+	 * 1:00 PM`. This locks the fix at the graph layer so neither surface can
+	 * regress to the fallback silently.
+	 */
+	const SCHEDULE_GATE = 'schedule-gate-nwm62';
+
+	function scheduleFixture() {
+		const dev = rollout({
+			name: 'hello-world-app',
+			ns: 'hello-world-dev',
+			cluster: 'dev',
+			candidates: ['rel-2'],
+			// Not passing, no allow-list — the shape a schedule-owned gate
+			// publishes, and the exact shape `classifyGate` cannot tell apart
+			// from a genuinely failing health check without a schedule join.
+			gates: [{ name: SCHEDULE_GATE, passing: false }]
+		});
+		const staging = rollout({
+			name: 'hello-world-app',
+			ns: 'hello-world-staging',
+			cluster: 'dev',
+			gates: [{ name: 'ghd-staging', passing: true, allowedVersions: [] }]
+		});
+		// A promotion edge (dev → staging) is what puts BOTH nodes in the
+		// graph at all — `buildRolloutGraph` only creates nodes edges touch.
+		const environments: Environment[] = [
+			environment({
+				line: 'hello-world-app',
+				tier: 'dev',
+				ns: 'hello-world-dev',
+				rollout: 'hello-world-app',
+				gate: 'ghd-dev'
+			}),
+			environment({
+				line: 'hello-world-app',
+				tier: 'staging',
+				ns: 'hello-world-staging',
+				rollout: 'hello-world-app',
+				gate: 'ghd-staging',
+				after: 'dev'
+			})
+		];
+		return { rollouts: [dev, staging], environments };
+	}
+
+	function devNodeOf(g: ReturnType<typeof buildRolloutGraph>) {
+		return g.nodes.find((n) => n.id === nodeId('dev', 'hello-world-dev', 'hello-world-app'));
+	}
+
+	it('without the join, a schedule gate is misreported as a failing check', () => {
+		const f = scheduleFixture();
+		const base = buildGateContext({ environments: { items: f.environments }, rolloutDependencies: null });
+		const g = buildRolloutGraph({
+			rollouts: f.rollouts,
+			environments: f.environments,
+			dependencies: [],
+			envOrder: ORDER,
+			gates: base
+		});
+		const dev = devNodeOf(g);
+		expect(dev?.holds).toEqual([
+			expect.objectContaining({ gate: SCHEDULE_GATE, clears: 'check', short: 'A check is not passing' })
+		]);
+	});
+
+	it('with the join, the same gate names its window instead', () => {
+		const f = scheduleFixture();
+		const base = buildGateContext({ environments: { items: f.environments }, rolloutDependencies: null });
+		const schedulesByCluster = new Map([
+			[
+				'dev',
+				{
+					rolloutSchedules: {
+						items: [
+							{
+								metadata: {
+									name: 'business-hours',
+									namespace: 'hello-world-dev',
+									annotations: { 'gate.kuberik.com/pretty-name': 'Business Hours Only' }
+								},
+								spec: { action: 'Allow' as const },
+								status: {
+									active: false,
+									nextTransition: '2026-09-03T13:00:00Z',
+									managedGates: [SCHEDULE_GATE]
+								}
+							}
+						]
+					}
+				}
+			]
+		]);
+		const ctx = withNetworkSchedules(base, schedulesByCluster, namespacesByCluster(f.rollouts));
+		const g = buildRolloutGraph({
+			rollouts: f.rollouts,
+			environments: f.environments,
+			dependencies: [],
+			envOrder: ORDER,
+			gates: ctx
+		});
+		const dev = devNodeOf(g);
+		expect(dev?.holds).toEqual([
+			expect.objectContaining({
+				gate: SCHEDULE_GATE,
+				clears: 'clock',
+				short: 'Outside the Business Hours Only deploy window',
+				clearsAt: '2026-09-03T13:00:00Z'
+			})
+		]);
+	});
+
+	it("does not leak one cluster's schedules onto a namespace another cluster owns", () => {
+		const f = scheduleFixture();
+		const base = buildGateContext({ environments: { items: f.environments }, rolloutDependencies: null });
+		// The schedule exists on a DIFFERENT cluster than the one that runs
+		// `hello-world-dev` — it must not be joined in.
+		const schedulesByCluster = new Map([
+			[
+				'prod',
+				{
+					rolloutSchedules: {
+						items: [
+							{
+								metadata: { name: 'business-hours', namespace: 'hello-world-dev' },
+								spec: { action: 'Allow' as const },
+								status: { active: false, nextTransition: '2026-09-03T13:00:00Z', managedGates: [SCHEDULE_GATE] }
+							}
+						]
+					}
+				}
+			]
+		]);
+		const ctx = withNetworkSchedules(base, schedulesByCluster, namespacesByCluster(f.rollouts));
+		const g = buildRolloutGraph({
+			rollouts: f.rollouts,
+			environments: f.environments,
+			dependencies: [],
+			envOrder: ORDER,
+			gates: ctx
+		});
+		const dev = devNodeOf(g);
+		expect(dev?.holds[0].clears).toBe('check');
+	});
+});
+
+describe('namespacesByCluster', () => {
+	it('groups a set of rollouts by cluster, then namespace', () => {
+		const map = namespacesByCluster([
+			rollout({ name: 'a', ns: 'dev', cluster: 'spoke' }),
+			rollout({ name: 'b', ns: 'staging', cluster: 'spoke' }),
+			rollout({ name: 'c', ns: 'prod', cluster: '' })
+		]);
+		expect(map.get('spoke')).toEqual(new Set(['dev', 'staging']));
+		expect(map.get('')).toEqual(new Set(['prod']));
 	});
 });

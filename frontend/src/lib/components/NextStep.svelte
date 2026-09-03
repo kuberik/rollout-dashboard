@@ -102,15 +102,20 @@
 		ChevronRightOutline,
 		BadgeCheckOutline
 	} from 'flowbite-svelte-icons';
+	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
 
-
+	// ⭐ P9 — ONE VERB FOR THE UNPIN ACTION, EVERYWHERE. (2026-09-03) This was
+	// its own literal, `'Release the hold'` — the third of four spellings a
+	// single action collected across a trigger, a dialog title and a confirm
+	// button. `pin-copy.ts` is now the one place that spells it; see its own
+	// header for the full account.
 	const STEP: Record<Step, { label: string; icon: typeof SearchOutline }> = {
 		approve: { label: 'Choose a version', icon: BadgeCheckOutline },
 		promote: { label: 'Deploy newest', icon: RocketSolid },
 		investigate: { label: 'Investigate', icon: SearchOutline },
 		rollback: { label: 'Go back a version', icon: UndoOutline },
 		unblock: { label: "See what's blocking", icon: LockOutline },
-		unpin: { label: 'Release the hold', icon: LockOpenOutline },
+		unpin: { label: CLEAR_PIN_LABEL, icon: LockOpenOutline },
 		open: { label: 'Open', icon: ChevronRightOutline }
 	};
 
