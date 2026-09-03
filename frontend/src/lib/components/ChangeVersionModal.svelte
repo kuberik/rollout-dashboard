@@ -31,7 +31,8 @@
 		targetPhrase,
 		typedPrompt
 	} from '$lib/view-models/deploy-risk';
-	import { promotionBlock, gateAllows } from '$lib/view-models/promotion';
+	import { promotionBlock, gateAllows, isDeployable } from '$lib/view-models/promotion';
+	import Chip from '$lib/components/Chip.svelte';
 	import { requirementsChangedSentence } from '$lib/view-models/release-delta';
 	import {
 		commitsQueryOptions,
@@ -1058,9 +1059,12 @@
 					&larr; Back
 				</button>
 			{:else}
+				<!-- A bordered control, not bare text: the critic read the plain
+				     word as a caption. Same box as the footer's own Cancel, at the
+				     header's scale. -->
 				<button
 					type="button"
-					class="shrink-0 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+					class="shrink-0 rounded border border-gray-200 px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
 					disabled={deploying}
 					onclick={() => (open = false)}
 				>
@@ -1192,6 +1196,8 @@
 							{@const pickerLine = pickerRowLine(created, isCurrent)}
 							{@const rank = pickerRankLabel(versionTag)}
 							{@const isBackRank = rank?.endsWith('back') ?? false}
+							{@const isHeld =
+								!isCurrent && rank?.endsWith('newer') === true && !isDeployable(rollout, versionTag)}
 							{#await loadAnnotationsOnDemand(versionTag)}{/await}
 							<!-- ⭐ A RESTING AFFORDANCE, NOT JUST A HOVER FILL. (P6,
 							     2026-09-03, operator walk) `dark:border-gray-800` on the row
@@ -1224,6 +1230,15 @@
 										{/if}
 										{#if isPinned}
 											<Badge color="blue" class="text-[10px]">Pinned</Badge>
+										{/if}
+										<!-- ⭐ THE PICKER SAYS `held` WHERE THE PAGE BEHIND IT DOES.
+										     (operator walk, 2026-09-03) A newer build the rules do
+										     not allow yet showed here as `2.67.0-67 · 1 newer` and
+										     nothing else — on the one screen where overriding those
+										     rules is one tap away. Same chip as rollout detail's
+										     upgrade list; the confirm step still spells the rules out. -->
+										{#if isHeld}
+											<Chip role="blocked" label="held" />
 										{/if}
 									</div>
 									{#if pickerLine || rank}
