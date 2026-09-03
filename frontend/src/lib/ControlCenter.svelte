@@ -633,9 +633,26 @@
 							rankTitle(c.rank, c.envDisplay || c.name)
 						)}
 						{@const mark = cardStateMark(c)}
+						<!-- ⛔ F7: `hello-frontend-app` ELLIPSISED FOR 3px, IN ONE OF
+						     THREE IDENTICAL CARDS. (2026-09-03, re-check) At 1440 the
+						     `min-[1440px]:grid-cols-[minmax(0,1fr)_320px]` rail (below)
+						     narrows this section's own row to 857px, which the 2-column
+						     `auto-fill` grid splits into 424.5px cards — 127px clear for
+						     the name against a 130px need, on the one 19-character app
+						     name in the fleet. The row's four items (disc, name, env
+						     chip, joined rank chip) are ALL already at their content
+						     floor; there is no redundant constant left to drop. Per
+						     `COMPOSITION-GRAMMAR.md`'s own "worst spacing census" note,
+						     this page already carries off-scale `gap-1.5`/`gap-2.5` and
+						     is still called one of the two best pages — `gap-2` (8px) →
+						     `gap-1.5` (6px) across the row's three seams gives the name
+						     its 3px back with margin, at a value already in this file's
+						     own histogram, not a new one. Applies to both this card
+						     (`trailing`) and its `steadySectionPreview` twin below, same
+						     markup. -->
 						<a
 							href={href(c)}
-							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE
@@ -826,7 +843,7 @@
 						{@const mark = cardStateMark(c)}
 						<a
 							href={href(c)}
-							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE

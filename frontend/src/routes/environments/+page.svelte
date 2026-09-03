@@ -885,7 +885,16 @@
 	     the band: ONE tab stop, no nested `<a>`, and the chip's own version link
 	     stays independently clickable because the zone raises it. -->
 	<li class="tap-zone px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30">
-	<div class="flex items-center gap-2.5">
+	<!-- ⛔ F7: `hello-frontend-app` TRUNCATED TO `hello-fronte…` (clientW 103 /
+	     scrollW 141) WHILE `hello-world-app`'S ROW RENDERED IN FULL AT THE SAME
+	     x — the held row's `1 BEHIND <build>` badge is wider than a plain
+	     `newest` chip and, on one line, ate 12px this page's own name never
+	     gets to spend. Same defect and same fix `/namespaces/[name]` already
+	     shipped: `flex-wrap` and the build badge forced onto its own line
+	     below `sm`, indented under the name (`38px` = disc `28px` + `gap-x-2.5`
+	     `10px`), so the identifier gets the row's full width at the one size
+	     that cannot afford both. -->
+	<div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
 		<!-- DISC DIAMETER: `h-7 w-7`, the list-row token — see
 		     `BakeStatusIcon.svelte`. `state`/`stateWord` are `a.mark`
 		     (`cardStateMark`, the SAME precedence every list surface reads),
@@ -943,6 +952,7 @@
 				value={a.version}
 				valueHref={a.versionHref}
 				wide
+				class="ml-[38px] basis-full sm:ml-0 sm:basis-auto"
 			/>
 		{:else if a.behindBy > 0}
 			<Chip
@@ -954,6 +964,7 @@
 				value={a.version}
 				valueHref={a.versionHref}
 				wide
+				class="ml-[38px] basis-full sm:ml-0 sm:basis-auto"
 			/>
 		{:else if a.rank.kind === 'unknown' && a.version}
 			<!-- ⛔ AN UNRESOLVABLE COMPARISON IS NOT `newest`. (2026-08-30) This
@@ -971,6 +982,7 @@
 				value={a.version}
 				valueHref={a.versionHref}
 				wide
+				class="ml-[38px] basis-full sm:ml-0 sm:basis-auto"
 			/>
 		{:else if a.version}
 			<Chip
@@ -979,6 +991,7 @@
 				title="{a.version} — the newest version this app has"
 				value={a.version}
 				valueHref={a.versionHref}
+				class="ml-[38px] basis-full sm:ml-0 sm:basis-auto"
 			/>
 		{:else}
 			<Chip
@@ -986,6 +999,7 @@
 				label="never deployed"
 				title="This app has never deployed here"
 				wide
+				class="ml-[38px] basis-full sm:ml-0 sm:basis-auto"
 			/>
 		{/if}
 	</div>
@@ -1507,8 +1521,18 @@
 						<CodeBranchOutline class="h-3.5 w-3.5" aria-hidden="true" />
 						{regionCards.length > 0 ? 'Pipeline stages' : 'Environments'}
 						<!-- `4 in promotion order` assumed the reader knew what a
-						     promotion order is. This says which way it runs. -->
-						<span class="t-micro"
+						     promotion order is. This says which way it runs.
+
+						     ⛔ F12: THE SENTENCE DESCRIBED A LAYOUT THAT DOES NOT EXIST
+						     AT 390. (2026-09-03, re-check) `.env-stack` is `auto-fit`, so
+						     under `sm` the cards it describes collapse to ONE column,
+						     stacked top to bottom — the exact axis the sentence explicitly
+						     denies ("starts on the left and ENDS ON THE RIGHT"), printed
+						     as 3 lines of 10px tracked uppercase over three vertically
+						     stacked cards. A caption that contradicts the thing it
+						     captions is worse than none; it drops below `sm`, where the
+						     grid it describes is still true. -->
+						<span class="t-micro hidden sm:inline"
 							>· a version starts on the left and ends on the right</span
 						>
 					</h2>

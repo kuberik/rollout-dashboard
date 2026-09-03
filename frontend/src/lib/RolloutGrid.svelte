@@ -278,6 +278,21 @@
 	 * track at any viewport this product ships, so the "xl track count is
 	 * capped at 3" intent survives with no JS to maintain it. Below `xl` the
 	 * grid stays `grid-cols-1 sm:grid-cols-2` — unmeasured, untouched.
+	 *
+	 * ⛔ SUPERSEDED 2026-09-03 — `1fr` PASSED ITS OWN CENSUS BY INFLATING THE
+	 * CARD, NOT BY FILLING THE ROW. `minmax(360px, 1fr)` let a lone card's
+	 * track absorb the WHOLE freed row: measured at 1440, a one-rollout
+	 * group's single track is **1201px** with the card's own content at
+	 * **190px, 15.8% ink** (53.7% at 390) — a 965px internal gap. A
+	 * two-rollout group's cards inflate to **596.5px** each. "≥95%
+	 * used-width" was true and worthless: it cannot distinguish a full row
+	 * from a card stretched thin around unchanged content. Capping the track
+	 * at `minmax(360px, 460px)` (with `xl:justify-start` so the freed space
+	 * lands as a ragged-right margin, not inside the tracks) keeps
+	 * `auto-fit`'s empty-track collapse — the 44.8%-hole fix stays — while
+	 * putting a ceiling back on card width, so a lone rollout reads as ONE
+	 * rollout-sized card, not a namespace-wide banner. See `CLAUDE.md`'s
+	 * "ragged right" note, third correction.
 	 */
 
 	// Quick-filter tile counts, from the full (unfiltered) set of cards. Every
@@ -646,7 +661,7 @@
 					     (redundant with the status circle); cards flow into columns so wide
 					     screens are not one stretched row each. -->
 					<div
-					class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]"
+					class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:justify-start xl:[grid-template-columns:repeat(auto-fit,minmax(360px,460px))]"
 				>
 						{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
@@ -793,26 +808,26 @@
 											class="min-w-0"
 										/>
 									</span>
-									<!-- ⛔ THE AGE AND ITS NOUN WRAPPED ON EVERY 390 TILE, ORPHANING
-									     THE NOUN. (2026-09-02, design re-check) Neither span was
-									     `whitespace-nowrap`, so at the card's narrowest widths `4d
-									     ago` itself could break between the two words, and the
-									     `updated`/`started` line below it read as a stray third
-									     line. `nowrap` stops `4d ago` splitting; the noun (a
-									     secondary fact — the row's disc and chip already carry the
-									     primary ones) drops below `sm` rather than fight it for the
-									     same line, with the full phrase moved to the `title` so it
-									     is not lost, only quieted at the width that cannot afford
-									     it. -->
-									<span class="flex shrink-0 flex-col items-end leading-tight">
+									<!-- ⛔ F8: THE NOUN LINE SURVIVED AT `sm`+ AND ORPHANED ITSELF.
+									     (2026-09-03, re-check) The 2026-09-02 fix above stopped `4d
+									     ago` splitting and dropped the `updated`/`started` noun
+									     below `sm` — which quieted the wrap at 390 but left it
+									     drawn at 1440, where the meta column measured **h=31, two
+									     lines**, on all fifteen cards, beside a card that is
+									     otherwise one line everywhere else on the row. A fact worth
+									     a whole second line at 1440 and worth NOTHING at 390 is not
+									     a fact the layout has an opinion about, it's a fact the
+									     layout hasn't decided about. The noun was never load-bearing
+									     — the disc's own glyph and the chip already say whether the
+									     row is mid-deploy — so it drops into the `title` at every
+									     width now, same as the tail-8 pattern; the age is one line
+									     everywhere. -->
+									<span class="flex shrink-0 items-center">
 										{#if c.timestamp}
 											<span
 												class="t-micro font-mono whitespace-nowrap text-gray-500 dark:text-gray-400"
 												title="{formatDate(c.timestamp)} — {c.isRunning ? 'started' : 'updated'}"
 												>{formatTimeAgoCompact(c.timestamp, $now)} ago</span
-											>
-											<span class="t-micro hidden whitespace-nowrap text-gray-500 sm:block dark:text-gray-400"
-												>{c.isRunning ? 'started' : 'updated'}</span
 											>
 										{:else}
 											<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400">no deploy</span>

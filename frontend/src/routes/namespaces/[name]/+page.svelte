@@ -87,7 +87,9 @@
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
-	import { getStatusCircleClass } from '$lib/bake-status';
+	import { getStatusCircleClass, bakeTitle } from '$lib/bake-status';
+	import { cardStateMark, detectRollback } from '$lib/rollout-cards';
+	import { promotionBlock } from '$lib/view-models/promotion';
 	import type { Rollout, Environment } from '../../../types';
 
 	const namespace = $derived(page.params.name as string);
@@ -146,6 +148,23 @@
 		}).length
 	);
 	/**
+	 * ⛔ THE ROLLUP SAID `all N deployed cleanly` OVER A HELD ROW. (F1,
+	 * 2026-09-03) `hello-frontend-app` in `hello-dep-prod` is held by a
+	 * dependency contract — `Succeeded` bake, so it fell out of both counts
+	 * above and the card printed the green "all clean" sentence beside a
+	 * disc that (before this fix) also lied and drew plain green. Only
+	 * counted among rows that are not already failing/active, matching the
+	 * rollup's own priority order below — a failing or in-flight row is a
+	 * louder fact than a held one.
+	 */
+	const heldCount = $derived(
+		apps.filter((a) => {
+			const s = a.rollout.status?.history?.[0]?.bakeStatus;
+			if (s === 'Failed' || s === 'InProgress' || s === 'Deploying') return false;
+			return promotionBlock(a.rollout).blocked;
+		}).length
+	);
+	/**
 	 * ⛔ NOT `deploys in the last 24h`, AND THE SPARKLINE IS GONE WITH IT.
 	 *
 	 * The tile said `DEPLOYS · 24H  0` while the rail beside it listed EIGHT
@@ -194,6 +213,11 @@
 		if (failedCount > 0)
 			return { text: `${failedCount} of ${n} failing`, tone: 'adverse' as const };
 		if (activeCount > 0) return { text: `${activeCount} deploying now`, tone: 'active' as const };
+		// A held promotion is a MEASUREMENT, not a verdict — per
+		// `src/lib/CLAUDE.md`'s "a gate correctly refusing a candidate is not
+		// a stoppage" ruling, so it takes the same neutral tone the disc's
+		// own orange fill carries, not `adverse`.
+		if (heldCount > 0) return { text: `${heldCount} of ${n} held`, tone: 'neutral' as const };
 		return { text: `all ${n} deployed cleanly`, tone: 'good' as const };
 	});
 
@@ -349,6 +373,11 @@
 						{@const stuck = detectStuck(a.rollout, { now: $now })}
 						{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
 						{@const appName = a.rollout.metadata?.name || ''}
+						{@const mark = cardStateMark({
+							rolledBack: detectRollback(a.rollout),
+							pinnedVersion: a.rollout.spec?.wantedVersion ?? null,
+							held: promotionBlock(a.rollout).blocked
+						})}
 						<li
 							class="environment-theme-scope"
 							style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
@@ -372,14 +401,32 @@
 							     own line under the name and the name gets the full track;
 							     from `sm` up the row is what it was. -->
 							<div
-								class="tap-zone grid grid-cols-[36px_minmax(0,1fr)_16px] items-center gap-x-3 gap-y-1.5 px-4 py-3 transition-colors hover:bg-gray-50 sm:grid-cols-[36px_minmax(0,1fr)_auto_16px] dark:hover:bg-gray-700/30"
+								class="tap-zone grid grid-cols-[28px_minmax(0,1fr)_16px] items-center gap-x-3 gap-y-1.5 px-4 py-3 transition-colors hover:bg-gray-50 sm:grid-cols-[28px_minmax(0,1fr)_auto_16px] dark:hover:bg-gray-700/30"
 							>
+								<!-- ⛔ F1: THIS DISC WAS 36px AND CALLED
+								     `getStatusCircleClass(status)` WITH NO `state` — the ONE list
+								     surface skipped by the disc-consistency pass. `hello-frontend-app`
+								     in `hello-dep-prod` is held by a dependency contract right now, and
+								     a `Succeeded` bake with no `state` renders plain green: the row
+								     drew a 36px GREEN disc while every other page (`/`, `/rollouts`,
+								     `/apps`, `/envs/prod`, `/environments`, the palette) drew the SAME
+								     rollout as a 28px ORANGE held disc. Both the diameter (the
+								     product's `h-7 w-7` list-row token — see `BakeStatusIcon.svelte`'s
+								     token note) and the `state` (`cardStateMark`, the one precedence
+								     every other list surface reads) are fixed here. -->
 								<span
-									class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-										status
+									class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+										status,
+										mark?.kind ?? null
 									)}"
+									title={mark ? mark.title : bakeTitle(status)}
 								>
-									<BakeStatusIcon bakeStatus={status} size="medium" />
+									<BakeStatusIcon
+										bakeStatus={status}
+										size="medium"
+										state={mark?.kind ?? null}
+										stateWord={mark?.word ?? ''}
+									/>
 								</span>
 								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<div class="flex min-w-0 items-center gap-2">

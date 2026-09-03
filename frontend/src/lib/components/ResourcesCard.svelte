@@ -282,18 +282,37 @@
 								<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 							{/if}
 						</div>
+						<!-- ⛔ F7: `hello-frontend` AND `hello-api` BOTH TRUNCATED TO
+						     `hell…` AT 390 (35/85 and 35/52 client/scroll) WHILE
+						     `Deployment`, `2/2 pods` AND THE STATUS BADGE — IDENTICAL,
+						     NON-DISCRIMINATING TEXT — KEPT FULL WIDTH. The name is the
+						     one thing on this row that tells two deployments apart; a
+						     type tag repeated on every Deployment row and a `pods` noun
+						     the number beside it already implies are not. Both drop below
+						     `sm`, in the `title` instead — the name gets the width back
+						     at the one size where the row cannot afford both. -->
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
-								<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">Deployment</span>
+								<span
+									class="truncate text-xs font-medium text-gray-900 dark:text-white"
+									title="{resource.name} — Deployment">{resource.name}</span
+								>
+								<span
+									class="hidden shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 sm:inline-block dark:bg-gray-700 dark:text-gray-300"
+									>Deployment</span
+								>
 							</div>
 							{#if resource.message && !isReady}
 								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 							{/if}
 						</div>
 						{#if replicas}
-							<span class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}">
-								{replicas.ready}/{replicas.total} <span class="font-normal t-micro text-gray-500 dark:text-gray-400">pods</span>
+							<span
+								class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}"
+								title="{replicas.ready}/{replicas.total} pods"
+							>
+								{replicas.ready}/{replicas.total}
+								<span class="hidden font-normal t-micro text-gray-500 sm:inline dark:text-gray-400">pods</span>
 							</span>
 						{/if}
 						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5

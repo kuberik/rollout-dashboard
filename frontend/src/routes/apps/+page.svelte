@@ -2035,16 +2035,17 @@
 		     states that have no distance (`pending`, `diverged`, `unknown`) —
 		     and never restates the mark. -->
 		<span class="apps-fleet flex min-w-0 flex-col gap-1">
-			<!-- ⛔ THE LABEL SAID `UP TO DATE` OVER A VALUE READING `0 OF 3 UP TO
-			     DATE`. (2026-09-02) At 390 the two stack: a label asserting the
-			     claim directly above a sentence denying it reads as the page
-			     contradicting itself in eleven vertical pixels. `Fleet` is this
-			     column's own name everywhere else in this file (criterion 1's own
-			     doc comment, `.apps-fleet`) — a neutral noun the mark under it
-			     answers rather than echoes. -->
-			<span class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-				>Fleet</span
-			>
+			<!-- ⛔ F14: THE `Fleet` LABEL IS GONE OUTRIGHT, NOT JUST RENAMED.
+			     (2026-09-03, re-check) The 2026-09-02 fix above renamed `Up to
+			     date` (a label contradicting the claim under it) to the neutral
+			     noun `Fleet` — but a neutral noun over a cell that already names
+			     itself is still a label with nothing left to say. Measured at
+			     390: this row printed 12 tracked-uppercase labels
+			     (`FLEET`/`DEPLOYS · 7D`/`TO PROD` × 4 apps) over cells that all
+			     self-name (`0 of 3 up to date`, `5 deploys · 2d ago`). `UpToDate`
+			     prints `All up to date` or `N of M up to date` — that sentence
+			     IS the column; a caption reading `Fleet` above it teaches
+			     nothing a blank space would not. -->
 			<!-- ⛔ `N/M ON HEAD` IS GONE, AND ONLY THE WORDS CHANGED. (2026-08-30)
 			     `head` is git's name for a pointer, not a person's name for a
 			     state, and `0/3 on head` gives a reader who has never seen this
@@ -2079,9 +2080,6 @@
 		     last-deploy time lives here because volume and recency are one
 		     question — is this app churning or asleep. -->
 		<span class="apps-act flex min-w-0 flex-col gap-1">
-			<span class="apps-inline-label t-label whitespace-nowrap text-gray-500 dark:text-gray-400"
-				>Deploys · 7d</span
-			>
 			<!-- THE CHART SITS IN THE SAME 20px MARK LINE the fleet verdict and
 			     the lead figure do, and it HOLDS that height when there is no
 			     chart, so a row with a sparkline and a row without share a
@@ -2095,18 +2093,20 @@
 					>
 				{/if}
 			</span>
-			<!-- ⚠️ THE WINDOW IS NAMED ONCE PER SCREEN, NOT ONCE PER ROW, AND AT
-			     EVERY WIDTH. `7d` used to live only in the deleted column header,
-			     and `9 deploys · 1d ago` alone reads as nine deploys EVER. Adding
-			     `in 7d` to fifty captions is the mistake `/envs/<name>` measured
-			     and rejected on its gap pills — it costs ~40px in a track that
-			     has none and repeats a constant on every row. So the denominator
-			     rides where it is stated once: BELOW 720px of panel the row prints
-			     its own `Deploys · 7d` inline label (`.apps-inline-label`), and
-			     above it the rail's `Deploys · 7d` row is in the same viewport,
-			     over the same window, from the same `SPARK_DAYS`. -->
+			<!-- ⛔ F14: THE WINDOW MOVES INTO THE CELL, AND THE 2026-08-30 NOTE
+			     ABOVE THIS ONE IS SUPERSEDED, NOT REPEATED. That note rejected
+			     `in 7d` per caption on the grounds that `/envs/<name>` measured
+			     the identical string costing ~40px in a track THAT HAD NONE — a
+			     fixed-width gap pill, not this cell. This caption sits alone on
+			     its own full-width line at 390 with nothing beside it to
+			     squeeze; the ~40px argument does not transfer. And the inline
+			     label it relied on to name the window is itself gone now (see
+			     `Fleet`, above, same defect: a label repeating what the cell
+			     already says teaches nothing) — the window has to live
+			     somewhere, and folding it into the sentence that already states
+			     the count is one fact restated as one fact, not two. -->
 			<span class="t-micro truncate text-gray-500 dark:text-gray-400"
-				>{app.deploys7d} deploy{app.deploys7d === 1 ? '' : 's'}{#if app.mostRecentTs}{' · '}<span
+				>{app.deploys7d} deploy{app.deploys7d === 1 ? '' : 's'} in 7d{#if app.mostRecentTs}{' · '}<span
 						title={formatDate(app.mostRecentTs)}
 						>{formatTimeAgoCompact(app.mostRecentTs, $now)} ago</span
 					>{/if}</span

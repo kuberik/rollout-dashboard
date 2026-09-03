@@ -268,6 +268,36 @@ the page can fill.**
   every group on the live fleet.** See `RolloutGrid.svelte`'s own note for
   the full account; the bullets below are kept as the historical record of
   what was tried and why, not as the current rule.
+- ⛔ **SUPERSEDED AGAIN, 2026-09-03 — THE "≥95% USED-WIDTH" CENSUS MEASURED THE
+  WRONG AXIS.** (F4, re-check pass) `minmax(360px,1fr)` passed its own census by
+  doing the one thing this note's PREVIOUS correction already rejected once:
+  it let `1fr` INFLATE a lone card to fill the track. Measured on the live
+  fleet at 1440: a two-rollout group prints two **596.5px** cards, and a
+  ONE-rollout group's single track is **1201px** — the whole row — with the
+  card's own content covering **190px, 15.8% ink**, a **965px internal gap**.
+  The same card at 390 is 53.7% ink. "≥95% used-width" was satisfied by an
+  1100px hole INSIDE one card; that is not emptiness fixed, it is emptiness
+  relocated from between cards to inside one. The 2026-09-02 note above
+  measured this exact failure mode (*"Cards go to 596px against 264px of
+  content, so the badge row's two facts separate by ~460px"*) and called it a
+  SECOND-ORDER cosmetic complaint that loses to the emptiness metric — it
+  shouldn't have, because the metric it was losing to was itself blind to
+  ink-inside-a-card.
+  **Current: `xl:[grid-template-columns:repeat(auto-fit,minmax(360px,460px))]`
+  with `xl:justify-start`.** `auto-fit` still collapses an empty trailing
+  track to 0 (a two-rollout group still fills two 460px tracks, not one
+  inflated 920px one — the 44.8%-hole defect stays fixed), but the **460px
+  ceiling** stops a lone card's track from growing past a comfortable card
+  width, and `justify-start` leaves the freed row space as a ragged-right
+  margin AFTER the last track instead of distributing it into the card. This
+  is the SAME 460px figure as the superseded JS-cap bullet below, reused
+  here paired with `auto-fit`'s per-group track-collapsing instead of a
+  page-wide JS `min(3, largest group)` — so a lone-rollout namespace draws
+  ONE ~460px card, ragged right, neither the 1201px stretch nor the JS cap's
+  38.3%-used single track it replaced. The lesson, not just the number: a
+  used-width census cannot tell a full row from a card stretched thin: it
+  needs an ink-inside-the-card check (or a card-width ceiling) alongside it,
+  or the next pass will re-derive `1fr` all over again.**
 - `RolloutGrid`'s track COUNT is `min(3, largest group)` and its track WIDTH is capped at
   **460px** so cards cannot inflate. On this fleet 45% → **26 / 36 / 37%**; on any fleet
   where a namespace holds three or more the class string is **byte-identical** to before.
