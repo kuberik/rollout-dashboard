@@ -896,6 +896,15 @@ export function upstreamVerdict(gates: ClassifiedGate[]): string {
  * argument. Falls back to the generic sentence when no `dependency` gate is
  * present to name: two promotion gates holding the same rollout at two hops
  * is the one shape left with nothing more specific to say.
+ *
+ * ⭐ SHARED BY BOTH THE LONE-GATE AND THE UNIFORM-BUCKET CALLER. (2026-09-03)
+ * `/rollouts/dev/hello-dep-dev/hello-frontend-app` carries ONLY the contract
+ * gate, and it used to print the same generic sentence a lone promotion gate
+ * does — "DEV is waiting on another deploy" — for the SAME contract that
+ * PROD's two-gate banner (fixed above) now names by provider and range. One
+ * gate is not a reason to say less than two gates of the identical kind, so
+ * `blockingStory`'s `upstream.length === 1` branch calls this function too,
+ * not a copy of it.
  */
 function upstreamHeadline(upstream: ClassifiedGate[], subjectLead: string, isVerb: string): string {
 	const dep = upstream.find((g) => g.kind === 'dependency' && g.subject && g.contract);
@@ -1122,7 +1131,18 @@ export function blockingStory(
 		// `subjectObject` (never `isVerb`: "is" agrees with "Something").
 		headline = `Something is holding ${subjectObject}`;
 	} else if (upstream.length === 1) {
-		headline = `${subjectLead} ${isVerb} waiting on another deploy`;
+		// ⭐ THE SAME RULE AS THE MULTI-GATE CASE, FOR ONE GATE. (2026-09-03)
+		// `/rollouts/dev/hello-dep-dev/hello-frontend-app` has ONLY the contract
+		// gate and used to print the generic "DEV is waiting on another
+		// deploy" while the two-gate PROD banner, fixed above, named
+		// `hello-api-app` and `^1.67.0` for the SAME contract. One gate is not
+		// a reason to know less than two gates of the identical kind —
+		// `upstreamHeadline` already carries the "name the contract when
+		// there is one to name" rule, so the lone-gate branch calls the exact
+		// function the uniform-bucket branch does, and a lone promotion-order
+		// gate (no `dependency` gate present) still falls back to the generic
+		// sentence unchanged.
+		headline = upstreamHeadline(upstream, subjectLead, isVerb);
 	} else {
 		headline = 'Automatic deploys are paused';
 	}

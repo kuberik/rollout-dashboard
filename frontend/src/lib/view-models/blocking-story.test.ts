@@ -848,6 +848,14 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 	it('⭐ with the dependency join restored, all four surfaces say the same thing', () => {
 		// The join, when the payload carries it, is still what NAMES the provider
 		// and the version. The owner veto is a floor, never a substitute for it.
+		//
+		// ⭐ THE HEADLINE NAMES THE CONTRACT NOW TOO. (2026-09-03) A lone contract
+		// gate used to print the same generic sentence a lone promotion gate
+		// does — this is `hello-dep-dev/hello-frontend-app`'s exact live shape,
+		// one gate only, and it read "DEV is waiting on another deploy" while
+		// PROD's two-gate banner (contract + downstream order gate, fixed above)
+		// named `hello-api-app` and `^1.67.0` for the SAME contract. One gate is
+		// not a reason to know less than two gates of the identical kind.
 		const whole = buildGateContext({
 			environments: ENVIRONMENTS,
 			rolloutDependencies: DEPENDENCIES,
@@ -857,7 +865,7 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 			place: 'prod',
 			now: NOW
 		});
-		expect(s.headline).toBe('PROD is waiting on another deploy');
+		expect(s.headline).toBe('PROD is waiting for hello-api-app to ship api ^1.67.0');
 		expect(s.consequence).toContain('hello-api-app ships a newer api than 1.66.0');
 		// ⛔ NOT "the deploy in front of it lands" — this gate is a CONTRACT
 		// (RolloutDependency), not a promotion order, and nothing is "in front
@@ -938,6 +946,28 @@ describe('pluralSubject — a headline whose subject is a set', () => {
 			{ subject: pluralSubject('All 3 environments', 'all 3 environments'), now: NOW }
 		);
 		expect(s.headline).toBe('All 3 environments are waiting on another deploy');
+	});
+
+	it('conjugates "is" to "are" — a lone CONTRACT gate, `/apps/<name>`\'s own shape', () => {
+		// ⭐ (2026-09-03) `/apps/<name>` drops the app from the sentence and
+		// lets the environment SET stand as `subject`, which is what
+		// `pluralSubject` is for — see its own doc. `upstreamHeadline` reads
+		// `subjectLead`/`isVerb` exactly like every other branch, so naming
+		// the contract on a lone gate conjugates the same way naming nothing
+		// did: "All 3 environments ARE waiting for hello-api-app to ship api
+		// ^1.67.0", never "is".
+		const whole = buildGateContext({
+			environments: ENVIRONMENTS,
+			rolloutDependencies: DEPENDENCIES,
+			rolloutGates: DEP_GATE_OBJECT
+		});
+		const s = blockingStory(rolloutWith('hello-dep-prod', [DEP_GATE]), whole, {
+			subject: pluralSubject('All 3 environments', 'all 3 environments'),
+			now: NOW
+		});
+		expect(s.headline).toBe(
+			'All 3 environments are waiting for hello-api-app to ship api ^1.67.0'
+		);
 	});
 
 	it('conjugates "is" to "are" — the person-gate headline', () => {
@@ -1086,21 +1116,61 @@ describe('⭐ same-bucket multi-gate headlines name the cause, not the count', (
 		expect(s.resolution).toContain('will not clear on its own');
 	});
 
-	it('single-gate headlines are untouched — a lone dependency gate still says the generic thing', () => {
-		// ⛔ LOCKED. `sameBucketHeadline` returns `null` below `gates.length <= 1`
-		// specifically so this byte-identical case — already pinned above at
-		// "'⭐ with the dependency join restored, all four surfaces say the same
-		// thing'" — never changes shape just because the SAME contract gate can
-		// now also drive a two-gate headline.
-		const whole = buildGateContext({
-			environments: ENVIRONMENTS,
-			rolloutDependencies: DEPENDENCIES,
-			rolloutGates: DEP_GATE_OBJECT
+	it('⭐ the live DEV fixture: a lone contract gate names the provider too, the same rule as two gates of the same kind', () => {
+		// `/rollouts/dev/hello-dep-dev/hello-frontend-app` carries ONLY the
+		// contract gate — no downstream order gate, since dev has no upstream
+		// environment. It used to print the same generic sentence a lone
+		// promotion gate does, while the two-gate PROD banner (fixed above)
+		// named `hello-api-app` and `^1.67.0` for the identical contract. One
+		// gate is not a reason to say less than two gates of the same kind.
+		//
+		// ⛔ THE MODULE-LEVEL `DEPENDENCIES` FIXTURE ONLY JOINS `hello-dep-prod`
+		// — a dev-namespace item is built here so the join actually resolves a
+		// provider, rather than falling through to the owner-veto's GENERIC
+		// dependency clause (already covered by "the owner veto alone is
+		// upstream but GENERIC", above).
+		const devCtx = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: {
+				items: [
+					{
+						metadata: { namespace: 'hello-dep-dev', name: 'hello-frontend-needs-api' },
+						spec: { contract: 'api', providerRef: { name: 'hello-api-app' } },
+						status: {
+							gateName: 'dependency-hello-frontend-needs-api',
+							providedVersion: '1.66.0',
+							blockedReleases: [
+								{ tag: 'rel-67', requiredVersion: '^1.67.0', reason: 'ConstraintNotSatisfied' }
+							]
+						}
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
 		});
-		const s = blockingStory(rolloutWith('hello-dep-prod', [DEP_GATE]), whole, {
-			place: 'prod',
+		const s = blockingStory(rolloutWith('hello-dep-dev', [DEP_GATE]), devCtx, {
+			place: 'dev',
 			now: NOW
 		});
+		expect(s.gates).toHaveLength(1);
+		expect(s.headline).toBe('DEV is waiting for hello-api-app to ship api ^1.67.0');
+	});
+
+	it('a lone PROMOTION-order gate is untouched — the generic sentence stays, because there is no contract to name', () => {
+		// ⛔ LOCKED, and this is the case `upstreamHeadline` falls back for:
+		// the sole upstream gate is `kind: 'promotion'`, so there is no
+		// `dependency` gate's provider/contract/need to name. Already pinned
+		// above at "'an upstream-only block is a WARNING…'" with the same
+		// `ghd-xm669` fixture; repeated here beside its contract counterpart
+		// so the asymmetry (one names the cause, one stays generic) reads as
+		// a deliberate pair rather than an accident of which test ran first.
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
+			ctx,
+			{ place: 'prod', now: NOW }
+		);
+		expect(s.upstream).toHaveLength(1);
+		expect(s.upstream[0].kind).toBe('promotion');
 		expect(s.headline).toBe('PROD is waiting on another deploy');
 	});
 });

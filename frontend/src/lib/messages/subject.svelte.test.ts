@@ -259,6 +259,17 @@ describe('the cluster is legible where it is the only discriminator', () => {
  * locative appended after the fact: *"<app> is waiting on another deploy in
  * all N environments"*. This locks the exact string so a future pass cannot
  * reopen the agreement error by a different route.
+ *
+ * ⭐ (2026-09-03) THE VERB PHRASE CHANGED, THE COMPOSITION DID NOT. The
+ * fixture's one gate is a `RolloutDependency` contract, and a lone contract
+ * gate now names its provider and required version the same way a two-gate
+ * bucket of the same kind does (`upstreamHeadline`, called from BOTH
+ * `blockingStory` branches) -- so the locked string below moved from "is
+ * waiting on another deploy" to "is waiting for beta-app to ship a newer api
+ * ^1.67.0". The thing this test exists to catch, subject/verb agreement and
+ * the trailing locative, is unchanged: `pluralSubject` never enters it, and
+ * the environment set still appends AFTER the finished sentence rather than
+ * folding into `subject`.
  */
 describe('the plural-cause headline still agrees with its singular subject', () => {
 	for (const [surface, Comp] of [
@@ -271,9 +282,12 @@ describe('the plural-cause headline still agrees with its singular subject', () 
 			expect(
 				headline,
 				`headline was ${JSON.stringify(headline)} -- expected the singular app to stay the ` +
-					`sentence's subject ("<app> is waiting on another deploy in all 3 environments"), ` +
-					`not the environment set ("<app> in all 3 environments ARE waiting…").`
-			).toMatch(/^alpha-app is waiting on another deploy in all 3 environments$/);
+					`sentence's subject ("<app> is waiting for beta-app to ship a newer api ^1.67.0 in ` +
+					`all 3 environments"), not the environment set ("<app> in all 3 environments ARE ` +
+					`waiting…").`
+			).toMatch(
+				/^alpha-app is waiting for beta-app to ship a newer api \^1\.67\.0 in all 3 environments$/
+			);
 		});
 	}
 });

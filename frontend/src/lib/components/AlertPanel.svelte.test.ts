@@ -146,7 +146,12 @@ describe('BlockingStoryPanel: the verdict and the rule handle are the disclosed 
 		// renders NOTHING when it is not, and every assertion below would then
 		// be vacuously true against an empty banner.
 		expect(story.blocked).toBe(true);
-		expect(story.headline).toBe('DEV is waiting on another deploy');
+		// ⭐ (2026-09-03) A lone contract gate now names its provider the same
+		// way a two-gate bucket of the same kind does — see
+		// `blocking-story.ts`'s `upstreamHeadline`. This fixture's dependency
+		// carries no `blockedReleases`, so `need` is null and the sentence
+		// falls back to "a newer api" rather than a spelled-out range.
+		expect(story.headline).toBe('DEV is waiting for hello-api-app to ship a newer api');
 		render(BlockingStoryPanel, { props: { story } });
 
 		// PRINTED — the fact with its subject, and one consequence line.

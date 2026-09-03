@@ -647,7 +647,12 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			ctx,
 			{ place: 'prod' }
 		);
-		says(s.headline, 'PROD is waiting on another deploy');
+		// ⭐ (2026-09-03) A lone contract gate now names the provider and the
+		// required version in the HEADLINE too, not only the verdict — see
+		// `upstreamHeadline`'s doc: the live `hello-dep-dev` shape carries only
+		// this one gate, and it used to print the same generic sentence a lone
+		// promotion gate does.
+		says(s.headline, 'PROD is waiting for hello-api-app to ship api ^1.67.0');
 		says(
 			s.verdict,
 			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0.'
