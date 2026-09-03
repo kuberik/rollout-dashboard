@@ -653,9 +653,14 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		// this one gate, and it used to print the same generic sentence a lone
 		// promotion gate does.
 		says(s.headline, 'PROD is waiting for hello-api-app to ship api ^1.67.0');
+		// ⛔ NOT "Nobody has to approve anything" LEADING — superseded
+		// 2026-09-03 (operator-walk finding 6): that clause is the one a 3am
+		// reader takes as "not mine" and stops reading. A contract gate leads
+		// with the negative and names the escape hatch (a hand-started
+		// deploy) instead. See `upstreamVerdict`.
 		says(
 			s.verdict,
-			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 		expect(s.verdict).not.toContain('deploy in front');
 		expect(s.selfClearing).toBe(false);
@@ -705,7 +710,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		);
 		says(
 			s.verdict,
-			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0 and the deploy in front of it lands.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 		// ⛔ THE DEFECT: `hello-frontend-app`'s Overview banner read "Two things
 		// are holding PROD" for this exact shape — a contract gate and the
@@ -762,6 +767,13 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			{ place: 'staging' }
 		);
 		says(s.headline, 'STAGING is waiting for hello-api-app to ship a newer api');
+		// ⭐ (2026-09-03) Reaches `upstreamVerdict`'s "no agreed requirement"
+		// fallback template too — the headline alone left `ship a newer
+		// <contract> from <provider>` unproduced by any state in this file.
+		says(
+			s.verdict,
+			'No approval will unblock this. Someone has to ship a newer api from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
+		);
 	});
 
 	test('one clock gate -- the time is printed, and the verdict is go back to bed', () => {

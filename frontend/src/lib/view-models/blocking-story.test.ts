@@ -619,11 +619,15 @@ function upstreamGate(overrides: Partial<ClassifiedGate>): ClassifiedGate {
 }
 
 describe('upstreamVerdict', () => {
-	// ⭐ (2026-09-02, second pass, from the human: "The contract is the
-	// binding cause; the order gate follows on its own once the provider
-	// ships.") The CONTRACT leads a mixed sentence — it names who has to
-	// act; the promotion gate is the environment controller's own
-	// bookkeeping, which opens once the provider ships.
+	// ⭐ (2026-09-03, operator-walk finding 6, from the human: "the leading
+	// clause is the one a 3am reader takes.") A CONTRACT gate no longer
+	// leads with "nobody has to approve anything" — that reads as an
+	// all-clear on a gate that will not move without a person shipping
+	// something. It leads with the negative, names who has to act, and
+	// names the one thing that DOES move it right now: a hand-started
+	// deploy bypasses the check. A `promotion`-only gate is unaffected — see
+	// below — because it really is inert, and "nobody has to approve
+	// anything" is the whole, honest answer there.
 	it('contract-only names the provider and the required version', () => {
 		const gates = [
 			upstreamGate({
@@ -634,7 +638,7 @@ describe('upstreamVerdict', () => {
 			})
 		];
 		expect(upstreamVerdict(gates)).toBe(
-			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 
@@ -655,12 +659,12 @@ describe('upstreamVerdict', () => {
 				need: '^1.67.0'
 			})
 		];
-		// ⛔ NOT "…the deploy in front of it lands and hello-api-app ships api
-		// ^1.67.0" — that was the order the two `kind`s happened to be
+		// ⛔ NOT "…the deploy in front of it lands and ship api ^1.67.0 from
+		// hello-api-app" — that was the order the two `kind`s happened to be
 		// checked in, not a choice. The contract is the binding cause and
 		// leads; the promotion gate is the consequence and trails.
 		expect(upstreamVerdict(gates)).toBe(
-			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0 and the deploy in front of it lands.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 
@@ -679,7 +683,7 @@ describe('upstreamVerdict', () => {
 			upstreamGate({ kind: 'promotion' })
 		];
 		expect(upstreamVerdict(gates)).toBe(
-			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0 and the deploy in front of it lands.'
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 
@@ -689,7 +693,7 @@ describe('upstreamVerdict', () => {
 			upstreamGate({ kind: 'dependency', subject: 'hello-api-app', contract: 'api', need: null })
 		];
 		expect(upstreamVerdict(gates)).toBe(
-			'Nobody has to approve anything — this clears when hello-api-app ships a newer api and the deploy in front of it lands.'
+			'No approval will unblock this. Someone has to ship a newer api from hello-api-app and the deploy in front of it lands; until then the only way forward is a hand-started deploy, which bypasses the check.'
 		);
 	});
 
@@ -870,7 +874,13 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 		// ⛔ NOT "the deploy in front of it lands" — this gate is a CONTRACT
 		// (RolloutDependency), not a promotion order, and nothing is "in front
 		// of it". The verdict names who has to ship what. See `upstreamVerdict`.
-		expect(s.verdict).toBe('Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0.');
+		// ⛔ NOR "Nobody has to approve anything" LEADING — superseded
+		// 2026-09-03 (operator-walk finding 6): that clause is the one a 3am
+		// reader takes as "not mine" and stops reading. A contract gate leads
+		// with the negative and the escape hatch instead.
+		expect(s.verdict).toBe(
+			'No approval will unblock this. Someone has to ship api ^1.67.0 from hello-api-app; until then the only way forward is a hand-started deploy, which bypasses the check.'
+		);
 		expect(s.person).toHaveLength(0);
 		expect(s.unknown).toHaveLength(0);
 	});

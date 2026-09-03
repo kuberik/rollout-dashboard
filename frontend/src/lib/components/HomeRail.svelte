@@ -138,12 +138,25 @@
 		const byApp = new Map<string, LeadEnv[]>();
 		for (const c of cards) {
 			if (!c.name || !c.envName) continue;
-			const deploys: { version: string; ms: number }[] = [];
+			// ⛔ `inFlight` MARKS A DEPLOY THAT HAS NOT SETTLED YET, SO `leadTime`
+			// CAN LEAVE IT OUT OF BOTH ENDS OF THE HOP. (2026-09-03, operator-walk
+			// finding 18) `status.history[].timestamp` is written the instant a
+			// deploy STARTS, not once it succeeds — see `lead-time.ts`'s module
+			// doc for the live flip this caused (`Typical to prod` going
+			// `11m → — no full trip yet → 11m` across one deploy). `bakeStatus`
+			// is already read straight off the same history entry.
+			const deploys: { version: string; ms: number; inFlight: boolean }[] = [];
 			for (const h of c.rollout.status?.history ?? []) {
 				const v = getDisplayVersion(h.version);
 				if (!v || !h.timestamp) continue;
 				const ms = new Date(h.timestamp).getTime();
-				if (Number.isFinite(ms)) deploys.push({ version: v, ms });
+				if (Number.isFinite(ms)) {
+					deploys.push({
+						version: v,
+						ms,
+						inFlight: h.bakeStatus === 'InProgress' || h.bakeStatus === 'Deploying'
+					});
+				}
 			}
 			const list = byApp.get(c.name) ?? [];
 			list.push({

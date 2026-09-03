@@ -126,6 +126,81 @@ describe('leadTime', () => {
 		]);
 		expect(vm?.medianMs).toBe(2 * HOUR);
 	});
+
+	// ⭐ (2026-09-03, operator-walk finding 18) `status.history[].timestamp` is
+	// written the instant a deploy STARTS, not once it settles, so a rollout
+	// mid-bake or mid-deploy already has a `history[0]` entry with a real
+	// timestamp and no verdict. Measured live: `/apps/hello-world-app`'s
+	// `Typical to prod` flipped `11m` → `— no full trip yet` → `11m` across
+	// ONE deploy, because the in-flight entry was read as both a possible
+	// departure and a possible arrival right alongside the already-completed
+	// trip that had earned the `11m` figure.
+	describe('an in-flight deploy never removes a completed trip from the sample', () => {
+		it('an in-flight deploy in the SOURCE env does not disturb an already-completed trip', () => {
+			const vm = leadTime([
+				env({
+					label: 'dev',
+					order: 1,
+					deploys: [
+						// The completed trip: `a` departed dev, arrived prod 11m later.
+						{ version: 'a', ms: 0 },
+						// A brand-new build starts deploying to dev — in flight, no
+						// verdict yet. It must not touch `a`'s own sample.
+						{ version: 'b', ms: 20 * HOUR, inFlight: true }
+					]
+				}),
+				env({
+					label: 'prod',
+					order: 7,
+					prod: true,
+					deploys: [{ version: 'a', ms: 11 * MIN }]
+				})
+			]);
+			expect(vm?.samples).toBe(1);
+			expect(vm?.medianMs).toBe(11 * MIN);
+		});
+
+		it('an in-flight deploy in the TARGET env is not counted as an arrival', () => {
+			const vm = leadTime([
+				env({
+					label: 'dev',
+					order: 1,
+					deploys: [
+						{ version: 'a', ms: 0 },
+						{ version: 'b', ms: 5 * HOUR }
+					]
+				}),
+				env({
+					label: 'prod',
+					order: 7,
+					prod: true,
+					deploys: [
+						// `a`'s completed trip.
+						{ version: 'a', ms: 11 * MIN },
+						// `b` has started deploying to prod but has not settled —
+						// this must not read as "`b` arrived" and must not disturb
+						// `a`'s already-completed sample either.
+						{ version: 'b', ms: 6 * HOUR, inFlight: true }
+					]
+				})
+			]);
+			expect(vm?.samples).toBe(1);
+			expect(vm?.medianMs).toBe(11 * MIN);
+		});
+
+		it('an app with ONLY an in-flight trip returns null, not a premature number', () => {
+			const vm = leadTime([
+				env({ label: 'dev', order: 1, deploys: [{ version: 'a', ms: 0 }] }),
+				env({
+					label: 'prod',
+					order: 7,
+					prod: true,
+					deploys: [{ version: 'a', ms: 11 * MIN, inFlight: true }]
+				})
+			]);
+			expect(vm).toBeNull();
+		});
+	});
 });
 
 describe('compactSpan', () => {

@@ -16,11 +16,11 @@
 	} from '$lib/view-models/fleet-groups';
 	import { checkFailureTitle } from '$lib/view-models/health-witness';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
-	import { shortenVersion } from '$lib/utils';
+	import { shortenVersion, getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { getStatusCircleClass, BAKE_WORD, bakeTitle } from '$lib/bake-status';
 	import { derivePipeline, kruiseRolloutsForRollout } from '$lib/pipeline';
-	import { rolloutPath } from '$lib/source-dashboard';
+	import { rolloutPath, rolloutMatchesEnvironment } from '$lib/source-dashboard';
 	import { computeBakeProgress } from '$lib/view-models/bake-progress';
 	import { compactSpan } from '$lib/view-models/lead-time';
 	import { Button } from 'flowbite-svelte';
@@ -79,7 +79,21 @@
 	// Healthy = succeeded and not stuck. Split into those at the head of their
 	// own release list (Steady) and those with newer builds they could still
 	// take (Trailing) — healthy but not caught up, the promotion candidates.
-	const trailing = $derived.by<RolloutCard[]>(() => cards.filter(isTrailing));
+	//
+	// ⛔ TRAILING ITSELF SPLITS AGAIN, ON `c.held`. (2026-09-03, operator-walk
+	// finding 5) `hello-frontend-app` is held in all three environments by a
+	// `RolloutDependency` contract nothing in this cluster can satisfy — and
+	// this section's own header used to read *"Trailing — healthy, but behind
+	// a newer build"* over all three, with the only signal that anything was
+	// different a WORDLESS orange pause glyph (`deploy succeeded, held` lives
+	// only in `sr-only` text — no hover exists on touch, so a phone reader
+	// never gets it at all). "Behind, promoting normally" and "behind,
+	// permanently blocked" are different facts and had one header. `held`
+	// gets its own section, between `In motion` and `Trailing`, and its own
+	// cards say the word `held` out loud — see the section below.
+	const trailingAll = $derived.by<RolloutCard[]>(() => cards.filter(isTrailing));
+	const held = $derived.by<RolloutCard[]>(() => trailingAll.filter((c) => c.held));
+	const trailing = $derived.by<RolloutCard[]>(() => trailingAll.filter((c) => !c.held));
 	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady));
 	const pendingCards = $derived.by<RolloutCard[]>(() => cards.filter(isPending));
 	const pendingCount = $derived(pendingCards.length);
@@ -105,7 +119,18 @@
 	// Downstream promotion target for a rollout: the Environment (of the same
 	// app) whose relationship points "After" this env — i.e. the env that
 	// deploys next once this one is healthy.
-	function nextEnvLabel(c: RolloutCard): string | null {
+	//
+	// ⛔ "NEXT: STAGING" WHEN STAGING ALREADY HAS THE BUILD IS A PROMISE THE
+	// PAGE HAD ALREADY KEPT. (2026-09-03, operator-walk finding 12) A card
+	// mid-check printed `checking · 14s of 15s … next: staging` while staging
+	// was on the identical sha — NEWEST in this same screen's Steady list a
+	// moment later. `next` used to answer only "which environment is
+	// downstream", never "has it already arrived there" — so a hop already
+	// closed still read as a hop still open. `alreadyHasIt` compares the
+	// downstream environment's OWN current version (read off its rollout,
+	// not this card's) against the version THIS card is deploying, both
+	// through `getDisplayVersion` so a sha and a display tag compare equal.
+	function nextEnvLabel(c: RolloutCard): { label: string; alreadyHasIt: boolean } | null {
 		if (!c.envName) return null;
 		const appName = c.rollout.metadata?.name;
 		const next = environments.find(
@@ -114,7 +139,13 @@
 				e.spec?.relationship?.type === 'After' &&
 				e.spec?.relationship?.environment === c.envName
 		);
-		return next?.spec?.environment ? shortEnvLabel(next.spec.environment) : null;
+		if (!next?.spec?.environment) return null;
+		const nextRollout = rollouts.find((r) => rolloutMatchesEnvironment(r, next));
+		const nextVersion = nextRollout?.status?.history?.[0]?.version
+			? getDisplayVersion(nextRollout.status.history[0].version)
+			: null;
+		const alreadyHasIt = !!nextVersion && !!c.version && nextVersion === c.version;
+		return { label: shortEnvLabel(next.spec.environment), alreadyHasIt };
 	}
 
 	// Per-track status detail for an in-motion card. The check window is a
@@ -567,12 +598,107 @@
 										</span>
 									{/each}
 								</div>
-								{#if next}
+								{#if next && !next.alreadyHasIt}
 									<span class="shrink-0 text-gray-500 dark:text-gray-400"
-										>next: <span class="font-medium text-gray-600 dark:text-gray-300">{next}</span
+										>next: <span class="font-medium text-gray-600 dark:text-gray-300">{next.label}</span
 										></span
 									>
 								{/if}
+							</div>
+						</a>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
+		<!-- ⛔ HELD: A CARD THAT WILL NOT MOVE ON ITS OWN, SPLIT OUT OF TRAILING.
+		     (2026-09-03, operator-walk finding 5) See the `held` derivation
+		     above for the defect. This section carries every `trailing` card
+		     `promotionBlock` marks blocked — a newer build exists and no gate
+		     lets any candidate through — so an operator does not read `Trailing`
+		     and file it as "promoting on its own, just slow".
+
+		     ⛔ THE CARD IS TWO LINES, DELIBERATELY WIDER THAN TRAILING'S. A
+		     single `sm:flex` row (Trailing's own shape) was measured and
+		     REJECTED for a standalone `held` chip on 2026-09-02 — a third mark
+		     beside the rank chip took `hello-frontend-app` (19 characters) from
+		     130px needed to 86-113px available and clipped the one identifier
+		     that answers "which app". Splitting the row is the same fix as
+		     giving the name its OWN line: name gets the full card width on line
+		     one, chips wrap freely on line two, so a third chip never competes
+		     with the name for width — and it costs nothing on touch, where
+		     Trailing's `sm:flex` collapse already goes single-column anyway. -->
+		{#if held.length > 0}
+			<section class="mb-8">
+				<div class="mb-3 flex items-center gap-2">
+					<span class="h-[5px] w-[5px] shrink-0 rounded bg-orange-500"></span>
+					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Held</h2>
+					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{held.length}</span>
+					<span class="text-xs text-gray-500 dark:text-gray-400"
+						>blocked by a rule, will not move on their own</span
+					>
+				</div>
+				<div
+					class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+				>
+					{#each held as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
+						{@const verdict = cardVerdict(
+							c,
+							rankLabel(c.rank),
+							rankTitle(c.rank, c.envDisplay || c.name)
+						)}
+						{@const mark = cardStateMark(c)}
+						<a
+							href={href(c)}
+							class="environment-theme-scope flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+						>
+							<div class="flex items-center gap-1.5">
+								<span
+									class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+										c.bakeStatus,
+										mark?.kind ?? null
+									)}"
+									title={mark ? mark.title : undefined}
+								>
+									<BakeStatusIcon
+										bakeStatus={c.bakeStatus}
+										size="small"
+										state={mark?.kind ?? null}
+										stateWord={mark?.word ?? ''}
+									/>
+								</span>
+								<span
+									class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
+									>{c.name}</span
+								>
+							</div>
+							<!-- ⛔ `pl-[34px]` LINES THE CHIPS UP UNDER THE NAME, NOT THE
+							     DISC — 28px disc + 6px (`gap-1.5`) = 34. `flex-wrap` so a
+							     phone-width card wraps the third chip onto its own row
+							     rather than clipping anything: at 390 this card is 358px
+							     and three wide chips do not fit one line. -->
+							<div class="flex flex-wrap items-center gap-1.5 pl-[34px]">
+								{#if c.envDisplay}
+									<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
+								{/if}
+								<Chip
+									role={rankRole(c.rank)}
+									label={verdict.label}
+									title={verdict.title}
+									wide
+									value={c.version ? shortenVersion(c.version) : '—'}
+									valueTitle={c.version ?? undefined}
+									class="min-w-0 shrink-0"
+								/>
+								<!-- ⭐ THE WORD, VISIBLE, NOT GLYPH-ONLY. (2026-09-03) The
+								     Trailing card's fallback — the disc's `sr-only` text and
+								     `title` — is invisible on touch (no hover) and silent to a
+								     sighted reader who is not hovering either. `role="held"`
+								     is the alias `rollout detail` already shipped for this
+								     exact word: TRAILING's deep orange, not `blocked`'s red —
+								     a gate correctly refusing a candidate is not adverse. -->
+								<Chip role="held" label="held" title={mark ? mark.title : undefined} class="shrink-0" />
 							</div>
 						</a>
 					{/each}

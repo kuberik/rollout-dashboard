@@ -21,6 +21,28 @@
  * no hop at all. In both cases this returns null and the column prints an
  * em-dash: `DESIGN.md` — never render an unresolvable comparison as a definite
  * claim, and never name a fact you cannot evidence.
+ *
+ * ⛔ "MEASURED" MEANT "SETTLED", AND AN IN-FLIGHT DEPLOY WAS BEING READ AS
+ * BOTH A DEPARTURE AND AN ARRIVAL. (2026-09-03, operator-walk finding 18)
+ * `status.history[].timestamp` is written the INSTANT a deploy STARTS — "the
+ * time when the deployment occurred" is the controller's own phrasing, not
+ * "when it succeeded" — so a rollout mid-bake or mid-deploy already has a
+ * `history[0]` entry with a real timestamp and no verdict yet. Measured live:
+ * `/apps/hello-world-app`'s `Typical to prod` went `11m` → `— no full trip
+ * yet` → `11m` across one deploy, and `/`'s fleet median moved `9m → 6m →
+ * 9m` in the same window — the SAME already-completed trip appearing and
+ * disappearing depending on whether a poll landed while something else was
+ * mid-flight.
+ *
+ * A trip is a fact about a build that ACTUALLY ARRIVED, not one that started
+ * moving — a deploy that is still baking can still fail. `LeadDeploy.inFlight`
+ * marks a history entry as unsettled, and `firstSeen` (below) excludes it
+ * from both `source` and `arrival`: an in-flight deploy is never counted as a
+ * departure a new sample can pair against, is never counted as an arrival
+ * that closes one, and — the specific defect above — never gets the chance to
+ * replace or hide an already-completed sample, because it is never in the map
+ * at all. `inFlight` is optional so existing fixtures/callers default to
+ * settled, matching every trip that predates this field.
  */
 
 export type LeadDeploy = {
@@ -28,6 +50,14 @@ export type LeadDeploy = {
 	version: string;
 	/** Deploy time, ms epoch. */
 	ms: number;
+	/**
+	 * True when this history entry's deploy has not settled yet — the
+	 * caller's `bakeStatus` was `InProgress` or `Deploying`. See the module
+	 * doc above: an in-flight deploy is excluded from the median entirely,
+	 * on both ends of the hop, rather than counted as an arrival that might
+	 * still fail or a departure with nothing settled behind it yet.
+	 */
+	inFlight?: boolean;
 };
 
 export type LeadEnv = {
@@ -100,7 +130,12 @@ export function medianBakeSpan(
 }
 
 /** Earliest deploy of each build in one environment. A redeploy of the same
- *  build is not a second arrival. */
+ *  build is not a second arrival.
+ *
+ *  ⛔ `inFlight` IS SKIPPED, NOT JUST DEPRIORITISED. (2026-09-03) A deploy
+ *  that has not settled yet is not a departure OR an arrival — it is a claim
+ *  the controller has not confirmed. See the module doc's "MEASURED meant
+ *  SETTLED" note. */
 function firstSeen(env: LeadEnv): Map<string, number> {
 	const out = new Map<string, number>();
 	for (const d of env.deploys) {
@@ -108,7 +143,7 @@ function firstSeen(env: LeadEnv): Map<string, number> {
 		// meant to reject "no timestamp" and instead rejected a legitimate
 		// epoch-zero one — a magic-value test standing in for a validity test.
 		// The caller already drops entries with no parsable timestamp.
-		if (!d.version || !Number.isFinite(d.ms)) continue;
+		if (!d.version || !Number.isFinite(d.ms) || d.inFlight) continue;
 		const prev = out.get(d.version);
 		if (prev === undefined || d.ms < prev) out.set(d.version, d.ms);
 	}

@@ -810,13 +810,17 @@ export function pluralSubject(lead: string, object: string = lead): StorySubject
  *
  * ONE SENTENCE PER GATE CLASS, NEVER ONE PER CARD. A contract's own class
  * names WHO has to publish WHAT, read straight off `subject` / `contract` /
- * `need` — *"Nobody has to approve anything — this clears when
- * hello-api-app ships api ^1.67.0."* A gate whose held candidates disagree
- * on the required range (`need === null`) falls back to "ships a newer
- * `<contract>`", same wording `classifyGate`'s own clause uses. Mixed gates
- * — a promotion order AND a contract both holding the same rollout — say
- * both, joined as one list of `when` clauses so the sentence reads as
- * English rather than two verdicts glued together.
+ * `need` — *"No approval will unblock this. Someone has to ship api ^1.67.0
+ * from hello-api-app; until then the only way forward is a hand-started
+ * deploy, which bypasses the check."* (See the second doc comment below,
+ * 2026-09-03, for why the LEAD clause changed from "nobody has to approve
+ * anything" — that reasoning belongs next to the function it decides, not
+ * duplicated here.) A gate whose held candidates disagree on the required
+ * range (`need === null`) falls back to "ship a newer `<contract>`", same
+ * wording `classifyGate`'s own clause uses. Mixed gates — a promotion order
+ * AND a contract both holding the same rollout — say both, joined as one
+ * list of `when` clauses so the sentence reads as English rather than two
+ * verdicts glued together.
  *
  * Every surface that renders the `upstream` verdict calls this ONE function:
  * `blockingStory` itself, and rollout detail's `heldClears()` (the
@@ -856,32 +860,57 @@ export function pluralSubject(lead: string, object: string = lead): StorySubject
  * reader can act on, without promising a chain neither `blockingStory` nor
  * its caller has verified.
  */
+/**
+ * ⭐ "NOBODY HAS TO APPROVE ANYTHING" IS THE CLAUSE A 3AM READER STOPS AT,
+ * AND FOR A CONTRACT GATE IT LEADS WITH THE WRONG HALF. (2026-09-03,
+ * operator-walk finding 6) *"Nobody has to approve anything — this clears
+ * when hello-api-app ships api ^1.67.0 and the deploy in front of it
+ * lands."* The leading clause is the one a tired reader takes — "not mine" —
+ * and stops there. It is true (no approval clears a contract gate) but it is
+ * not the ACTIONABLE half, and it reads exactly like an all-clear on a gate
+ * that will not move without hello-api-app's owner doing something.
+ *
+ * A `promotion`-only gate keeps the original sentence: it really is inert
+ * from this rollout's own side, nothing but time and an upstream deploy
+ * clears it, and "nobody has to approve anything" is the whole, honest
+ * answer.
+ *
+ * A gate carrying a CONTRACT (`dependency`) is different, and now says so by
+ * leading with the negative — *"No approval will unblock this."* — then
+ * naming who has to ship what, then the one thing that DOES move it right
+ * now: `!r.hasManualDeployment(&rollout) && ...` in the controller means a
+ * gate only holds AUTOMATIC promotion, so a deploy a person starts by hand
+ * still applies immediately. That is not a workaround the dashboard is
+ * inventing; it is the one true escape hatch, and burying it under "nobody
+ * has to approve anything" is why the rule's binding party never got the
+ * page's attention.
+ */
 export function upstreamVerdict(gates: ClassifiedGate[]): string {
 	const upstream = gates.filter((g) => g.clears === 'upstream');
 	const promotion = upstream.some((g) => g.kind === 'promotion');
 	const dependencies = upstream.filter((g) => g.kind === 'dependency');
 
-	// ⭐ CONTRACT CLAUSES FIRST, THE PROMOTION CLAUSE LAST — see the doc
-	// comment above. `joinClauses` renders this as `a and b` / `a, b and c`,
-	// so with one contract and the promotion clause the sentence reads
-	// "…when <provider> ships <contract> <need> and the deploy in front of
-	// it lands" — the binding cause named before the bookkeeping that
-	// follows from it.
-	const whenClauses: string[] = [];
-	for (const g of dependencies) {
-		const provider = g.subject ?? 'the service it depends on';
-		const contract = g.contract ?? 'a newer version';
-		whenClauses.push(
-			g.need ? `${provider} ships ${contract} ${g.need}` : `${provider} ships a newer ${contract}`
-		);
-	}
-	if (promotion) whenClauses.push('the deploy in front of it lands');
-	// Defensive: called with no `upstream` gate at all. Falls back to the
-	// original, general sentence rather than an empty clause.
-	if (whenClauses.length === 0) {
+	// A promotion-order gate ALONE is bookkeeping, not a stoppage: it opens
+	// itself once the environment in front deploys. Keep the original
+	// sentence — including the defensive "called with no upstream gate at
+	// all" case, which falls back here too.
+	if (dependencies.length === 0) {
 		return 'Nobody has to approve anything — this clears when the deploy in front of it lands.';
 	}
-	return `Nobody has to approve anything — this clears when ${joinClauses(whenClauses)}.`;
+
+	// ⭐ CONTRACT CLAUSES FIRST, THE PROMOTION CLAUSE LAST — see the doc
+	// comment on the function above. `joinClauses` renders this as `a and b`
+	// / `a, b and c`, so with one contract and the promotion clause the
+	// sentence reads "…ship <contract> <need> from <provider> and the deploy
+	// in front of it lands" — the binding cause named before the bookkeeping
+	// that follows from it.
+	const whenClauses: string[] = dependencies.map((g) => {
+		const provider = g.subject ?? 'the service it depends on';
+		const contract = g.contract ?? 'a newer version';
+		return g.need ? `ship ${contract} ${g.need} from ${provider}` : `ship a newer ${contract} from ${provider}`;
+	});
+	if (promotion) whenClauses.push('the deploy in front of it lands');
+	return `No approval will unblock this. Someone has to ${joinClauses(whenClauses)}; until then the only way forward is a hand-started deploy, which bypasses the check.`;
 }
 
 /**
