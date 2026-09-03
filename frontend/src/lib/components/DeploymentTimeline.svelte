@@ -3,6 +3,7 @@
 	// label used to say `still baking`, the product's own field name, inside
 	// the accessible name of every in-flight dot on `/activity`.
 	import { BAKE_WORD } from '$lib/bake-status';
+	import { formatTimeAgoCompact } from '$lib/utils';
 
 	type HistoryEntry = {
 		timestamp: string;
@@ -217,6 +218,33 @@
 		}
 		return { startMs: earliest - (nowMs - earliest) * 0.05, endMs: nowMs };
 	}
+
+	/**
+	 * ⭐ UNDER 3 POINTS, THE CHART ITSELF DOES NOT DRAW — A COMPACT ROW DOES.
+	 * (2026-09-03, operator-walk finding 6) `computeBounds`'s own "under 3
+	 * points" branch above already knew a single retained deploy has no span
+	 * worth an axis — it padded the window instead of stretching to `now`.
+	 * Measured on the History tab at 390: even padded, that window still
+	 * drew ONE 5px dot in a full-width band, all axis and no shape — a chart
+	 * with nothing to show a TREND of. Same threshold, same "count every
+	 * point across every visible lane" definition as `computeBounds` reads
+	 * (not scoped to the current `timeRange` window — a service with two
+	 * deploys EVER has nothing to gain from a preset picker either), so the
+	 * two can never disagree about whether this rollout has "enough" points
+	 * to be worth a real timeline.
+	 */
+	const totalPoints = $derived(services.reduce((n, s) => n + s.history.length, 0));
+	const latestPointMs = $derived.by(() => {
+		let best = -Infinity;
+		for (const svc of services) {
+			for (const e of svc.history) {
+				const t = new Date(e.timestamp).getTime();
+				if (t > best) best = t;
+			}
+		}
+		return Number.isFinite(best) ? best : null;
+	});
+	const isCompact = $derived(totalPoints > 0 && totalPoints < 3);
 
 	const bounds = $derived(computeBounds(timeRange));
 	const startMs = $derived(bounds.startMs);
@@ -801,6 +829,26 @@
 </script>
 
 <div class="relative w-full select-none" bind:this={containerEl}>
+	{#if isCompact}
+		<!--
+			⭐ THE COMPACT ROW. One line, no axis, no picker — see the
+			`isCompact` derivation above for why fewer than 3 points earns this
+			instead of a chart. `deploy`/`deploys` matches the vocabulary
+			decision's noun for THIS rollout's own act (`lib/CLAUDE.md`, "(d)
+			`deploy` is the act"); `ago` always carries its own number, never a
+			bare one.
+		-->
+		<div
+			class="flex min-h-[52px] items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400"
+		>
+			<span class="text-gray-700 dark:text-gray-200"
+				>{totalPoints} deploy{totalPoints === 1 ? '' : 's'}</span
+			>
+			{#if latestPointMs !== null}
+				<span>· {formatTimeAgoCompact(new Date(latestPointMs).toISOString(), now)} ago</span>
+			{/if}
+		</div>
+	{:else}
 	<!-- Time range selector -->
 	<!-- ⛔ `gap-1` (4px) WAS TIGHTER THAN THE TOUCH FLOOR'S OWN MATH ASSUMES,
 	     ON BOTH AXES. (2026-09-03, activity/touch lane, F5b) `app.css`'s
@@ -1322,4 +1370,5 @@
 	     the only place three of the off-token hexes above were still spelled
 	     out. With `Succeeded` now neutral, the encoding is "coloured = a
 	     deploy that is not finished or not fine", which needs no key. -->
+	{/if}
 </div>

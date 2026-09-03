@@ -66,6 +66,7 @@
 	import FactList from '$lib/components/FactList.svelte';
 
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -92,9 +93,44 @@
 		envInfos.filter((e) => e.environment !== currentEnvName).length > 0
 	);
 
+	/**
+	 * ⭐ THE VIEW STATE IS DEEPLINKABLE, LIKE `/activity`'s OWN FILTERS.
+	 * (2026-09-03, operator-walk finding 6) Neither the time-range preset nor
+	 * these two toggles survived a reload or a paste — a reader who scoped
+	 * this page to `7d` with siblings showing, then sent the link, sent a
+	 * link back to the default `all` view instead. `?kind=env+ns` names
+	 * which comparison lanes are on (`env` = `Show environments`, `ns` =
+	 * `Compare namespace`); absent means neither, matching every other
+	 * filter's "the default state writes nothing" rule.
+	 */
+	function parseKindParam(raw: string | null): { env: boolean; ns: boolean } {
+		if (!raw) return { env: false, ns: false };
+		return { env: raw.includes('env'), ns: raw.includes('ns') };
+	}
+	const initialKind = parseKindParam(get(page).url.searchParams.get('kind'));
+
 	// Toggles: show sibling environments / compare rollouts across namespace
-	let showEnvironments = $state(false);
-	let showComparison = $state(false);
+	let showEnvironments = $state(initialKind.env);
+	let showComparison = $state(initialKind.ns);
+
+	/** One place that writes a query param, shared by both URL-synced states below. */
+	function setQueryParam(key: string, next: string | null) {
+		const url = new URL(get(page).url);
+		if (url.searchParams.get(key) === next) return;
+		if (next) url.searchParams.set(key, next);
+		else url.searchParams.delete(key);
+		// `replaceState: true` — a brush drag on the chart or a fast double-toggle
+		// must not spend a browser-history entry per intermediate value, unlike
+		// `/activity`'s discrete filter chips.
+		goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+	}
+
+	$effect(() => {
+		const parts = [showEnvironments ? 'env' : null, showComparison ? 'ns' : null].filter(
+			(p): p is string => p !== null
+		);
+		setQueryParam('kind', parts.length > 0 ? parts.join('+') : null);
+	});
 
 	const nsRolloutsQuery = createQuery(() => ({
 		...rolloutsInNamespaceQueryOptions({ namespace }),
@@ -174,8 +210,34 @@
 	 * reader touches it" latch is needed, unlike `/activity`: `all` is not a
 	 * computed value that would fight the reader for the control, it is a
 	 * window the chart re-derives from whatever data it has.
+	 *
+	 * ⭐ AND IT IS THE ONE STATE ON THIS PAGE `?deploy=` CANNOT DEEPLINK
+	 * THROUGH. (2026-09-03, operator-walk finding 6) A reader who scoped the
+	 * chart to `7d` to find a deploy, then copied the URL, sent a link back
+	 * to `all` — the range was never written to the query string, unlike the
+	 * `?deploy=` this page already deeplinks. `?range=7d` mirrors the preset
+	 * name exactly; a brush-selected custom window (`{ start, end }`, not a
+	 * preset) encodes as `?range=<start>-<end>` epoch ms so a reader who drew
+	 * a precise window gets it back too, not just the nearest preset.
 	 */
-	let timeRange = $state<TimeRange>('all');
+	function parseRangeParam(raw: string | null): TimeRange {
+		if (!raw) return 'all';
+		if (raw === '1h' || raw === '6h' || raw === '1d' || raw === '7d' || raw === '30d') return raw;
+		const m = /^(\d+)-(\d+)$/.exec(raw);
+		if (m) {
+			const start = Number(m[1]);
+			const end = Number(m[2]);
+			if (Number.isFinite(start) && Number.isFinite(end) && end > start) return { start, end };
+		}
+		return 'all';
+	}
+	let timeRange = $state<TimeRange>(parseRangeParam(get(page).url.searchParams.get('range')));
+
+	$effect(() => {
+		const encoded =
+			typeof timeRange === 'object' ? `${timeRange.start}-${timeRange.end}` : timeRange;
+		setQueryParam('range', encoded === 'all' ? null : encoded);
+	});
 	let selectedEntry = $state<{ serviceId: string; index: number } | null>(null);
 
 	/**

@@ -815,6 +815,30 @@
 		}
 	});
 
+	/**
+	 * ⭐ THE SUBTITLE NAMES WHAT IS ACTUALLY RUNNING, WHEN IT DIFFERS FROM
+	 * WHAT THE DESCRIPTION IS ABOUT. (2026-09-03, operator-walk finding 6)
+	 * `rollout.status.description` is server-authored FROM THE NEWEST
+	 * AVAILABLE RELEASE (`rollout-controller`'s `updateAvailableReleases`
+	 * reads it off the `ImagePolicy`'s own `LatestRef`, not off what is
+	 * deployed) — measured live, `hello-dep frontend service, release
+	 * rel-67` printed unconditionally two lines above the version card's own
+	 * `2.66.0-66` runs, true of two different builds read as one because
+	 * nothing on the subtitle line said which build IT was about.
+	 * `releaseCandidates.length > 0` is the SAME evidence `Available Version
+	 * Upgrades` already uses to say a newer build exists — when it is
+	 * nonzero, the description is necessarily about a build ahead of
+	 * `history[0]`, so this states the one fact the subtitle is otherwise
+	 * silent on. `null` whenever nothing is running yet or the fleet has
+	 * already caught up, so the ordinary (converged) case prints nothing new.
+	 */
+	function subtitleRunningLabel(): string | null {
+		const running = rollout?.status?.history?.[0]?.version;
+		if (!running) return null;
+		if ((rollout?.status?.releaseCandidates?.length ?? 0) === 0) return null;
+		return getDisplayVersion(running);
+	}
+
 	// Selected version display label (for modal confirmation)
 	function selectedVersionDisplay(): string | null {
 		if (!selectedVersion) return null;
@@ -1843,8 +1867,13 @@
 						</a>
 					</div>
 					{#if rollout.status?.description && rollout.status.description !== (rollout.status?.title || rollout.metadata?.name)}
+						{@const runningLabel = subtitleRunningLabel()}
 						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-							{rollout.status.description}
+							{rollout.status.description}{#if runningLabel}
+								<span class="text-gray-400 dark:text-gray-500"
+									>&nbsp;· running {runningLabel}</span
+								>
+							{/if}
 						</p>
 					{/if}
 				</div>

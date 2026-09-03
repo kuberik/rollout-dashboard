@@ -42,11 +42,14 @@
 	// ⭐ THE OVERVIEW'S OWN WORDS. `GateRecord`'s `Kind` row already calls this
 	// for `RulePopover`/`BlockingStoryPanel`, so a rule labelled here cannot
 	// say something the Overview banner for the same rollout would disagree
-	// with. See the `bannerFacts`/`reasonsFor` notes below (finding 1).
-	import { gateKindWord, gateMark } from '$lib/components/GateRecord.svelte';
+	// with. See the `bannerEnvSections`/`reasonsFor` notes below (finding 1,
+	// finding 4).
+	import GateRecord, { gateMark } from '$lib/components/GateRecord.svelte';
 	import { countLabel } from '$lib/disclosure';
 	import { formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { compareEnvironmentNames } from '$lib/env-order';
+	import type { EnvironmentTheme } from '$lib/environment-theme';
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
@@ -69,7 +72,7 @@
 		UserCircleSolid
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import FactList, { type Fact } from '$lib/components/FactList.svelte';
+	import FactList from '$lib/components/FactList.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
@@ -367,6 +370,21 @@
 	 */
 	const releaseSplitLines = $derived(coverage ? releaseSplit(coverage) : []);
 
+	/**
+	 * ⭐ THE HEAD BAND'S OWN CLAUSE — ONE SENTENCE, NO BARE `HELD` BESIDE A
+	 * COUNT. (2026-09-03, operator-walk finding 4) `6 of 6 places running it`
+	 * sat directly above a banner titled `9f10e49 is held` next to a chip
+	 * reading `3 HELD` — true on their own terms (all six run the commit,
+	 * three of them under an older, held release of it) but unreadable as a
+	 * pair: the hero says "running", the banner says "held", and nothing ties
+	 * the two counts together. This sums `releaseSplitLines`' own `held`
+	 * lines — the same evidence the banner below is built from, never a
+	 * second count of its own — so the two can never disagree.
+	 */
+	const headBandHeldCount = $derived(
+		releaseSplitLines.filter((l) => l.held).reduce((n, l) => n + l.count, 0)
+	);
+
 	function releaseSplitSentence(): string {
 		return releaseSplitLines
 			.map((l) => {
@@ -392,75 +410,83 @@
 		}
 	});
 
-	/** The soonest a window blocking THIS build opens, across every place. */
-	const opensIn = $derived.by(() => {
-		let best: string | null = null;
-		for (const s of blockedSlots) {
-			const w = windows[slotKey(s)];
-			if (!w?.blocked || !w.nextTransition) continue;
-			if (!best || new Date(w.nextTransition) < new Date(best)) best = w.nextTransition;
-		}
-		return best;
-	});
-
 	/**
-	 * ⭐ THE DISCLOSED TIER IS A RECORD, AND THE TRIGGER COUNTS. (2026-09-02)
-	 * Same object, same argument, same shape as `/versions`' banner — see the
-	 * note there and `lib/disclosure.ts` for the rule that decides between a
-	 * noun and a count. A SET of gate handles with a clock in front of it is
-	 * not a sentence, and it had been narrated as one.
+	 * ⭐ THE DISCLOSED TIER IS GROUPED BY ENVIRONMENT, AND EACH RULE CARRIES
+	 * THE RECORD `GateRecord` ALREADY DRAWS EVERYWHERE ELSE ON THIS PRODUCT.
+	 * (2026-09-03, operator-walk finding 4) The old body was one flat
+	 * `FactList` — `label: gateKindWord(g), value: g.id` pairs with no
+	 * environment named on the row at all, so a reader looking at
+	 * `ghd-p2fld` had no way to tell PROD's rule from DEV's without leaving
+	 * the popover, and the classified story's own sentence (`g.clause`,
+	 * `g.label`) never reached the screen — only the bare handle did.
+	 * Grouping by environment and handing each group's gates to `GateRecord`
+	 * (the same component the card and banner scale draw a rule with
+	 * everywhere else — `BlockingStoryLines`, `BlockingStoryPanel`) means
+	 * this disclosure can never say something about a rule that `GateRecord`
+	 * itself would draw differently.
 	 *
-	 * ⭐ FINDING 1 (coordinator sweep, 2026-09-03): THE ALLOW-LIST BUCKET IS
-	 * LABELLED BY KIND, NEVER BLANKET `Approval`. This used to build from
-	 * `s.awaitingApprovalGates` — every gate that published an allow-list —
-	 * and print all of them under one label, `Approval`. But three of the
-	 * four gate writers publish an allow-list (see `lib/CLAUDE.md`'s table
-	 * on `promotionBlock.awaitingApprovalGates`), so a `RolloutDependency`
-	 * contract and an `Environment` promotion-order gate both read `Approval`
-	 * here while the SAME rollout's Overview banner correctly said "No
-	 * approval will unblock this." The fix reads `slotStories`' already
-	 * classified gates (the exact `classifyGate` call the Overview makes)
-	 * and labels each with `gateKindWord` — the Overview's own words — so
-	 * this record can never disagree with the banner it sits under.
-	 *
-	 * The `windowGates` (no-allow-list) loop is UNCHANGED: without
-	 * `withSchedules` wired into this page's `gateContext`, a schedule gate
-	 * and a bare health check are not yet distinguishable through
-	 * `classifyGate` here (both fall through to `check`), so that half keeps
-	 * its own established "Not passing" label rather than guessing a kind it
-	 * cannot back up. `reasonsFor` below already tells a deploy window from
-	 * a check correctly, from the separate per-slot `windows` fetch.
+	 * ⭐ FINDING 1 (coordinator sweep, 2026-09-03), preserved: THE ALLOW-LIST
+	 * BUCKET IS CLASSIFIED, THE CLOCK/CHECK BUCKET IS NOT. `g.clears !==
+	 * 'clock' && g.clears !== 'check'` is the identical structural split
+	 * `classifyGate` itself branches on (`hasAllowList`) — the same set
+	 * `awaitingApprovalGates` names, but carrying each gate's real `kind`
+	 * instead of just its id. Without `withSchedules` wired into this page's
+	 * `gateContext`, a schedule gate and a bare health check are not yet
+	 * distinguishable through `classifyGate` here (both fall through to
+	 * `check`), so running THOSE through `GateRecord`/`gateKindWord` would
+	 * mislabel a deploy window as a generic check — they keep the
+	 * established, honest "Not passing" name instead, still grouped per
+	 * environment, with that environment's own soonest `Opens` time from the
+	 * separate per-slot `windows` fetch below.
 	 */
-	const bannerFacts = $derived.by<Fact[]>(() => {
-		const windowGates = [...new Set(blockedSlots.flatMap((s) => s.notPassingGates))];
-		const facts: Fact[] = [];
-		// ⛔ ONLY WHERE THERE IS A CLOCK. `opens` with nothing after it is a
-		// broken row, not a terse one.
-		if (windowGates.length > 0 && opensIn) {
-			facts.push({
-				label: 'Opens',
-				value: `in ${formatTimeUntil(opensIn, $now)} · ${new Date(opensIn).toLocaleString()}`
-			});
-		}
-		for (const name of windowGates) facts.push({ label: 'Not passing', value: name, handle: true });
+	type BannerEnvSection = {
+		envLabel: string;
+		theme: EnvironmentTheme | null;
+		classifiedGates: ClassifiedGate[];
+		windowGateNames: string[];
+		opensAt: string | null;
+	};
 
-		// THE ALLOW-LIST BUCKET, CLASSIFIED. `g.clears !== 'clock' && g.clears
-		// !== 'check'` is the identical structural split `classifyGate` itself
-		// branches on (`hasAllowList`) — the same set `awaitingApprovalGates`
-		// names, but carrying each gate's real `kind` instead of just its id.
-		const seen = new Map<string, ClassifiedGate>();
-		for (const { story } of slotStories) {
-			for (const g of story.gates) {
-				if (g.clears === 'clock' || g.clears === 'check') continue;
-				if (!seen.has(g.id)) seen.set(g.id, g);
+	const bannerEnvSections = $derived.by<BannerEnvSection[]>(() => {
+		const byEnv = new Map<string, BannerEnvSection>();
+		const ensure = (envLabel: string, theme: EnvironmentTheme | null) => {
+			let e = byEnv.get(envLabel);
+			if (!e) {
+				e = { envLabel, theme, classifiedGates: [], windowGateNames: [], opensAt: null };
+				byEnv.set(envLabel, e);
+			}
+			return e;
+		};
+		for (const s of blockedSlots) {
+			if (s.notPassingGates.length === 0) continue;
+			const e = ensure(s.envLabel, s.slot.cell.theme);
+			for (const name of s.notPassingGates) {
+				if (!e.windowGateNames.includes(name)) e.windowGateNames.push(name);
+			}
+			const w = windows[slotKey(s)];
+			if (
+				w?.blocked &&
+				w.nextTransition &&
+				(!e.opensAt || new Date(w.nextTransition) < new Date(e.opensAt))
+			) {
+				e.opensAt = w.nextTransition;
 			}
 		}
-		for (const g of seen.values()) facts.push({ label: gateKindWord(g), value: g.id, handle: true });
-		return facts;
+		for (const { slot, story } of slotStories) {
+			const gates = story.gates.filter((g) => g.clears !== 'clock' && g.clears !== 'check');
+			if (gates.length === 0) continue;
+			const e = ensure(slot.envLabel, slot.slot.cell.theme);
+			for (const g of gates) {
+				if (!e.classifiedGates.some((x) => x.id === g.id)) e.classifiedGates.push(g);
+			}
+		}
+		return [...byEnv.values()].sort((a, b) => compareEnvironmentNames(a.envLabel, b.envLabel));
 	});
 
 	/** The SET the trigger counts: gate handles, both buckets, never the clock. */
-	const bannerRuleCount = $derived(bannerFacts.filter((f) => f.handle).length);
+	const bannerRuleCount = $derived(
+		bannerEnvSections.reduce((n, s) => n + s.classifiedGates.length + s.windowGateNames.length, 0)
+	);
 
 	/**
 	 * ⭐ FINDING 2 (coordinator sweep, 2026-09-03): NEVER A SILENT UNION.
@@ -844,6 +870,26 @@
 		return mine.length > 0 && mine.every((s) => !s.onOwnRelease);
 	}
 
+	/**
+	 * ⭐ WHAT A `held` SERVICE ROW ACTUALLY RUNS, ON THE SAME ROW. (2026-09-03,
+	 * operator-walk finding 4) `What each service calls it` printed `HELD
+	 * 2.67.0-67` and stopped; forty pixels down, `Running it now` printed the
+	 * SAME service on `2.66.0-66` — true, but reachable only by reading two
+	 * cards and holding both in mind at once, which one live read out loud as
+	 * a contradiction. This reads the identical `live` bucket `heldNewest`
+	 * already checks, so the two can never name different releases. `null`
+	 * when the places running it disagree on WHAT they run — a genuine split
+	 * is not sayable as one label, and `DESIGN.md` forbids naming half of it.
+	 */
+	function runningLabelFor(svc: RevisionService): string | null {
+		if (!coverage) return null;
+		const live = coverage.buckets.find((b) => b.key === 'live');
+		const mine = live?.slots.filter((s) => s.appName === svc.appName && !s.onOwnRelease) ?? [];
+		if (mine.length === 0) return null;
+		const runs = new Set(mine.map((s) => s.runs).filter((r): r is string => Boolean(r)));
+		return runs.size === 1 ? [...runs][0] : null;
+	}
+
 	function rankChipFor(svc: RevisionService): {
 		role: 'newest' | 'rank' | 'diverged' | 'held';
 		label: string;
@@ -997,7 +1043,9 @@
 			<span
 				class="t-body text-gray-500 dark:text-gray-400"
 				title="A place is one service in one environment."
-				>of {coverage.totalCount} places running it</span
+				>of {coverage.totalCount} places run this revision{headBandHeldCount > 0
+					? ` · ${headBandHeldCount} hold${headBandHeldCount === 1 ? 's' : ''} a newer build`
+					: ''}</span
 			>
 		</div>
 
@@ -1021,10 +1069,43 @@
 			ONE banner: a page with three has none.
 		-->
 		{#if blockedSlots.length > 0}
-			<!-- ⭐ THE RECORD. One aligned `<dl>`, the product's only one, reading
-			     `currentColor` off the banner's own footnote ink. -->
+			<!-- ⭐ THE RECORD, GROUPED BY ENVIRONMENT. Each section leads with
+			     that environment's own chip, so a reader never has to hold
+			     `ghd-p2fld` in their head while scrolling to find out whose
+			     rule it is — the row IS the answer. `GateRecord` reads
+			     `currentColor` off the banner's own footnote ink at
+			     `tone="banner"`, same as `BlockingStoryPanel`'s call. -->
 			{#snippet gateFacts()}
-				<FactList facts={bannerFacts} tone="banner" />
+				<div class="flex min-w-0 flex-col gap-3">
+					{#each bannerEnvSections as section (section.envLabel)}
+						<div class="flex min-w-0 flex-col gap-1.5">
+							<Chip role="env" theme={section.theme} label={section.envLabel} wide />
+							{#if section.classifiedGates.length > 0}
+								<GateRecord gates={section.classifiedGates} tone="banner" />
+							{/if}
+							{#if section.windowGateNames.length > 0}
+								<FactList
+									tone="banner"
+									facts={[
+										...(section.opensAt
+											? [
+													{
+														label: 'Opens',
+														value: `in ${formatTimeUntil(section.opensAt, $now)} · ${new Date(section.opensAt).toLocaleString()}`
+													}
+												]
+											: []),
+										...section.windowGateNames.map((name) => ({
+											label: 'Not passing',
+											value: name,
+											handle: true
+										}))
+									]}
+								/>
+							{/if}
+						</div>
+					{/each}
+				</div>
 			{/snippet}
 
 			<AlertPanel
@@ -1177,6 +1258,28 @@
 							>{row.services.length} service{row.services.length === 1 ? '' : 's'}</span
 						>
 					</li>
+					<!--
+						⭐ `built` NAMED, NOT JUST `deployed`. (2026-09-03, operator-walk
+						finding 4) This page said `last deployed 10 hours ago` and left
+						`row.createdMs` — when the commit itself was built — unprinted
+						anywhere on it, so the ONE other bare age on the page (each
+						place's own deploy time, in `Running it now`) had nothing to be
+						confused WITH by name, only by omission. Both clocks get their
+						verb now. Omitted when it would restate `lastDeployMs` to the
+						minute — the ordinary case for a build deployed the moment it
+						was pushed.
+					-->
+					{#if row.createdMs && Math.abs(row.createdMs - row.lastDeployMs) > 60_000}
+						<li class="flex items-start gap-2.5">
+							<CalendarMonthSolid
+								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+								aria-hidden="true"
+							/>
+							<span class="t-body text-gray-700 dark:text-gray-200">
+								built {formatTimeAgo(new Date(row.createdMs).toISOString(), $now)}
+							</span>
+						</li>
+					{/if}
 					<li class="flex items-start gap-2.5">
 						<ClockOutline
 							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
@@ -1301,6 +1404,26 @@
 									/>
 								{/if}
 							</span>
+							<!--
+								⭐ THE ROW'S SECOND FACT, ON THE SAME ROW. (2026-09-03,
+								operator-walk finding 4) `HELD 2.67.0-67` names what this
+								service is being kept FROM; it does not say what is actually
+								running instead, and that answer lived in a different card
+								(`Running it now`) forty pixels down. `runningLabelFor` reads
+								the SAME `live` bucket `heldNewest` above already checked, so
+								this can never name a different release than the chip does.
+							-->
+							{#if chip?.role === 'held'}
+								{@const runningLabel = runningLabelFor(svc)}
+								{#if runningLabel}
+									<div
+										class="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+									>
+										<HourglassOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+										<span>Held — still running <span class="t-code-sm">{runningLabel}</span></span>
+									</div>
+								{/if}
+							{/if}
 							{#if pinned.length > 0}
 								<div
 									class="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
@@ -1539,12 +1662,16 @@
 													     running one build rarely arrived together, and this
 													     is the one card on the page that can say when EACH
 													     place actually got it, from data already read to
-													     decide the place belongs in this bucket at all. -->
+													     decide the place belongs in this bucket at all.
+													     ⛔ `{age}` PRINTED BARE — the same "4h ago" a `built`
+													     time on `This build` could just as easily be — and an
+													     operator walk read them as the same clock. The verb
+													     is always in front of the number now. -->
 													{#if bucket.key === 'live'}
 														{@const age = slotDeployedAgo(s)}
 														{#if age}
 															<span class="t-micro text-gray-500 dark:text-gray-400"
-																>{age}</span
+																>deployed {age}</span
 															>
 														{/if}
 													{/if}
