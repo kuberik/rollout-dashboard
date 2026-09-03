@@ -359,3 +359,11 @@ to one fill — second time this rule was set), and the dialog step-two ghost (n
 after the clip fix; one dialog element at 40–800ms after a pick). Cluster residue: an agent
 force-deployed rel-67 to dev hello-frontend-app during a dialog test; rolled back to
 2.66.0-66 through the UI and unpinned — dev is held by the contract again.
+
+## Vocabulary pass at `07295b2` → landed 2026-09-03 08:10 — 81 commits since `b59d040`
+One word per concept, recorded in lib/CLAUDE.md and locked by vocabulary.test.ts: held /
+rule (+kind: contract, deploy window, approval, health check; never gate) / newest and N
+behind / deploy and promote (ship kept for a provider publishing). /versions → /revisions with
+a 308. Measured zero hits for gate, blocked, paused, can't-go-further on nine routes.
+Remaining open: real Deploy actions per station on the app page; the unblock event (nothing
+can publish hello-api 1.67.0); a failure-state walk once a failing deploy can be staged.
