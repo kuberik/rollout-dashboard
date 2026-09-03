@@ -1254,7 +1254,7 @@
 	     and not as a chip that happens to sit next to a sha. -->
 	<span class="chip-joined {className}" bind:this={el}>
 		<span
-			class="chip {TONE[role]} {capClass}"
+			class="chip t-chip {TONE[role]} {capClass}"
 			style={role === 'env' && theme ? getEnvironmentThemeStyle(theme) : undefined}
 			title={title ?? label}
 		>
@@ -1264,7 +1264,7 @@
 	</span>
 {:else}
 	<span
-		class="chip {TONE[role]} {capClass} {className}"
+		class="chip t-chip {TONE[role]} {capClass} {className}"
 		style={role === 'env' && theme ? getEnvironmentThemeStyle(theme) : undefined}
 		title={title ?? label}
 		bind:this={el}

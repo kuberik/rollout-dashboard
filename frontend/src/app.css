@@ -570,12 +570,13 @@ textarea {
    `t-label`'s 0.16em-on-Montserrat (0.16em on a monospace face looks
    broken, which is `t-label`'s own note for why there are only two
    trackings in the whole scale).
-   ⚠️ THIS DOES NOT YET REPLACE `.chip`'S OWN INLINE DECLARATIONS — `Chip.svelte`
-   is owned by a different lane in this pass. `.chip` should adopt
-   `@apply t-chip;` (or the class list `t-chip` alongside its geometry
-   properties) so the two cannot drift; until then this role exists for any
-   OTHER caller that needs chip-style type without the chip's box, and as
-   the named target the next pass migrates `.chip` onto. */
+   ⭐ MIGRATED, 2026-09-03 (F4 third re-check lane, on request while it held
+   `Chip.svelte`). `Chip` now puts `t-chip` on the chip label element
+   alongside `chip` in both the lone and joined forms, and `.chip`'s own
+   six inline type declarations are gone — see "THE CHIP" block below.
+   Computed style verified identical before/after (10px mono/600/uppercase/
+   0.08em, line-height 1). This role still exists independently for any
+   OTHER caller that wants chip-style type without the chip's box. */
 .t-chip {
 	font-family: var(--font-mono);
 	font-size: 10px;
@@ -661,6 +662,13 @@ textarea {
    class owns the GEOMETRY, the role owns the COLOUR. ─────────────────── */
 @layer components {
 	.chip {
+		/* Type (font-family/size/weight/line-height/uppercase/tracking) moved
+		   to `.t-chip` (declared role, see the block above `@layer
+		   components`) — Chip.svelte now puts both classes on the element, so
+		   the census counts the chip label as a declared type role instead of
+		   six inline properties repeated here. Byte-identical: `.t-chip`'s
+		   values were copied from this rule to begin with. Geometry (box
+		   model, colour-neutral chrome) stays here, unrelated to type. */
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -670,12 +678,6 @@ textarea {
 		border: 1px solid transparent;
 		background-color: transparent;
 		max-width: 12ch;
-		font-family: var(--font-mono);
-		font-size: 10px;
-		font-weight: 600;
-		line-height: 1;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
 		white-space: nowrap;
 		overflow: hidden;
 	}
