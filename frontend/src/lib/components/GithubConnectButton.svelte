@@ -8,7 +8,8 @@
 		fetchGithubStatus,
 		githubStatusQueryKey,
 		connectGithub,
-		disconnectGithub
+		disconnectGithub,
+		githubAbsenceSentence
 	} from '$lib/api/github';
 
 	const queryClient = useQueryClient();
@@ -31,7 +32,17 @@
 	}
 </script>
 
-<!-- Hidden entirely when the server has no GitHub App configured. -->
+<!--
+	⭐ CONFIGURED: FALSE USED TO RENDER NOTHING HERE — INDISTINGUISHABLE FROM
+	"HASN'T LOADED YET". (2026-09-03, from the human: "there's no way to login
+	to GitHub on mobile.") This is the ONLY GitHub control anywhere on the
+	product's chrome (the bottom tab bar has no overflow menu; every other
+	surface's GitHub-absence sentence is plain text). A reader with no other
+	way to learn WHY there is no connect control had no way to learn it —
+	only that there wasn't one, same as a dashboard where GitHub was never a
+	feature at all. `status === undefined` (still loading) still renders
+	nothing, so there's no flash before the first answer arrives.
+-->
 {#if status?.configured}
 	{#if status.connected}
 		<button
@@ -60,10 +71,29 @@
 			type="button"
 			class="t-button flex items-center gap-2 rounded border border-gray-200 bg-transparent px-3 py-1 text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
 			onclick={() => connectGithub()}
+			aria-label="Connect GitHub"
 			title="Connect your GitHub account to see deployed changes"
 		>
 			<GithubSolid class="h-4 w-4" />
 			<span class="hidden sm:inline">Connect GitHub</span>
 		</button>
 	{/if}
+{:else if status && !status.configured}
+	<!-- Nothing here would ever do anything different when pressed, so it is
+	     a muted, non-interactive affordance rather than a button. The
+	     ACCESSIBLE name and the hover `title` carry the full canonical
+	     sentence — the same one every other GitHub-absence surface in the
+	     product uses (`githubAbsenceSentence`) — so it reads identically to
+	     a screen reader or on hover regardless of viewport. The printed
+	     label stays short ("Not configured") to match `Connect GitHub`'s own
+	     footprint; the navbar is not the place for a full sentence, and the
+	     full one is one tap/hover away via `title`/aria-label either way. -->
+	<span
+		class="t-button flex cursor-default items-center gap-2 rounded border border-dashed border-gray-200 bg-transparent px-3 py-1 text-gray-400 dark:border-gray-700 dark:text-gray-500"
+		aria-label={githubAbsenceSentence(status)}
+		title={githubAbsenceSentence(status)}
+	>
+		<GithubSolid class="h-4 w-4" />
+		<span class="hidden sm:inline">Not configured</span>
+	</span>
 {/if}

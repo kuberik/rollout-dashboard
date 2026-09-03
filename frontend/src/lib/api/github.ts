@@ -201,7 +201,27 @@ export function connectGithub(
 }
 
 /**
- * ⛔ NEVER `connectGithub()` FROM AN OPEN DIALOG. (operator walk, 2026-09-03)
+ * ⭐ "OPEN A NEW TAB" IS A DESKTOP IDIOM, NOT A MOBILE-SAFE ONE. (2026-09-03,
+ * follow-on to the note below — the human reported "there's no way to login
+ * to GitHub on mobile.") `window.open()` from an `onclick` handler is still a
+ * user gesture on desktop, so the browser allows it; on a phone browser the
+ * SAME call is frequently treated as a popup and silently blocked, and even
+ * where it is not blocked, a background tab is the wrong shape on a device
+ * that has no tab strip to switch back from. Narrow viewport OR a coarse
+ * (touch) pointer is enough to call it a phone — `pointer: coarse` alone
+ * would miss a narrow *desktop* window resize test, and viewport alone would
+ * miss a tablet in a narrow split-view that still has a touch pointer.
+ */
+function isMobileConnectContext(): boolean {
+	if (typeof window === 'undefined') return false;
+	const narrow = window.matchMedia?.('(max-width: 639px)').matches ?? window.innerWidth < 640;
+	const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+	return narrow || coarse;
+}
+
+/**
+ * ⛔ NEVER `connectGithub()` FROM AN OPEN DIALOG — ON DESKTOP. (operator
+ * walk, 2026-09-03)
  *
  * A live walk pressed `Connect GitHub` inside `ChangeVersionModal`'s
  * COMMITS REVERTED/DEPLOYED block, which called plain `connectGithub()` —
@@ -212,10 +232,23 @@ export function connectGithub(
  * the exact same OAuth entry in a new tab instead, so a 503 lands
  * somewhere the reader can just close, and the dialog underneath — its
  * typed confirmation, its picked version — survives either way.
+ *
+ * ⚠️ ON A PHONE THAT PROTECTION BACKFIRES (see `isMobileConnectContext`
+ * above): the "new tab" this function promises either never opens (silently
+ * blocked) or opens somewhere the reader has to know how to find. So on a
+ * phone this falls through to the SAME-TAB navigation `connectGithub()`
+ * already does — the OAuth round-trip's own `return_to` is what gets the
+ * reader back to the dialog's URL, not tab isolation. The caller (this repo's
+ * `ChangeVersionModal`) does not need to know which path ran; both leave
+ * `returnTo` pointing at where the reader was.
  */
 export function connectGithubInNewTab(
 	returnTo: string = window.location.pathname + window.location.search
 ) {
+	if (isMobileConnectContext()) {
+		connectGithub(returnTo);
+		return;
+	}
 	const params = new URLSearchParams({ return_to: returnTo });
 	window.open(`/api/auth/github/login?${params}`, '_blank', 'noopener,noreferrer');
 }
