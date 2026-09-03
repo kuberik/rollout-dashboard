@@ -173,6 +173,16 @@
 		 * See the same note in `ActivityRail.svelte`.
 		 */
 		rollbackAct: RollbackAct | null;
+		/**
+		 * ⛔ TRUE ONLY FOR THE OLDEST ENTRY OF A ROLLOUT WHOSE HISTORY IS AT ITS
+		 * RETENTION LIMIT. (2026-09-03, operator-walk finding 13.) Every deploy
+		 * this rollout made before this one is gone — evicted by
+		 * `spec.versionHistoryLimit`, not "there weren't any" — so any day
+		 * group holding this row may be missing deploys the API no longer has
+		 * a record of. `groupRollup` uses it to say "at least N" instead of a
+		 * bare count it cannot actually vouch for.
+		 */
+		retentionCut: boolean;
 	};
 
 	/**
@@ -224,6 +234,10 @@
 				seenNewest = true;
 				const act = acts[i];
 				const rollbackAct = act?.kind === 'rollback' ? act : null;
+				// `deployActs` already resolves this exact question for the History
+				// tab: `kind === 'unknown'` IS "the oldest surviving entry, and
+				// retention may have evicted one before it" — see `history-marks.ts`.
+				const retentionCut = act?.kind === 'unknown';
 				const currentV = getDisplayVersion(h.version);
 				// Find the previous *different* version in this rollout's history,
 				// capturing its revision for the lazy commit changelist.
@@ -262,7 +276,8 @@
 					cluster: sourceClusterName(rollout) || localClusterName,
 					isLive,
 					rollout,
-					rollbackAct
+					rollbackAct,
+					retentionCut
 				});
 			}
 		}
@@ -272,7 +287,12 @@
 	});
 
 	// ── FILTERS ────────────────────────────────────────────────────────────
-	// Synced with ?env=&app=&ns= so a filtered feed is deeplinkable.
+	// Synced with ?env=&app=&ns=&kind= so a filtered feed is deeplinkable —
+	// paste "the four that need attention", refresh, and Back all have to
+	// undo a chip. (2026-09-03, operator-walk finding 20.) `kind` used to be
+	// a bare `$state`: every other chip on this page changed the URL, and
+	// `Failed`/`In flight` were the one row that silently didn't — the
+	// exact defect this fixes.
 	const envFilter = $derived(page.url.searchParams.get('env'));
 	const appFilter = $derived(page.url.searchParams.get('app'));
 	const nsFilter = $derived(page.url.searchParams.get('ns'));
@@ -285,7 +305,6 @@
 		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
 	function clearAllFilters() {
-		kindFilter = 'all';
 		goto('?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
 
@@ -299,7 +318,18 @@
 	// and it overlapped `In progress` on one of its two values. A filter whose
 	// result a reader cannot predict is a filter they will not press.
 	type KindFilter = 'all' | 'in_flight' | 'failed';
-	let kindFilter = $state<KindFilter>('all');
+	// `?kind=` — absent (or any other value) reads as `all`, and `all` is
+	// never itself written to the URL, so the default URL for this page stays
+	// clean, matching every other filter here.
+	const kindFilter = $derived<KindFilter>(
+		(() => {
+			const raw = page.url.searchParams.get('kind');
+			return raw === 'in_flight' || raw === 'failed' ? raw : 'all';
+		})()
+	);
+	function setKindFilter(next: KindFilter) {
+		setParam('kind', next === 'all' ? null : next);
+	}
 	const KIND_FILTERS: { key: KindFilter; label: string; title: string }[] = [
 		{ key: 'all', label: 'All', title: 'Every deploy in this window' },
 		{
@@ -531,20 +561,33 @@
 	 * ONE FUNCTION, TWO CALLERS: a day card's rollup and the chart card's
 	 * verdict (`windowRollup` below) are the same sentence over two
 	 * different sets, so they can never disagree about what "fine" means.
+	 *
+	 * ⛔ AND NEITHER CALLER MAY STATE `n` AS IF IT WERE THE WHOLE DAY.
+	 * (2026-09-03, operator-walk finding 13.) A day group can hold a
+	 * `retentionCut` row — the oldest surviving entry of a rollout whose
+	 * `versionHistoryLimit` has evicted everything before it. Deploys that
+	 * rollout made earlier THAT SAME DAY are gone from the API entirely, not
+	 * merely filtered out, so `n` is a FLOOR on that day's real total, not the
+	 * total. `at least n` says exactly that; a bare `n` was the sentence that
+	 * turned `Monday 5 deploys` into `Monday 4 deploys` overnight with nothing
+	 * on the page explaining why the count moved.
 	 */
 	function groupRollup(entries: ActivityEntry[]) {
 		const failed = entries.filter(isFailed).length;
 		const flying = entries.filter(isInFlight).length;
 		const rolledBack = entries.filter(isRolledBack).length;
+		const mayBeIncomplete = entries.some((e) => e.retentionCut);
 		const n = entries.length;
-		const noun = `${n} deploy${n === 1 ? '' : 's'}`;
-		if (failed > 0) return { text: `${noun} · ${failed} failed`, tone: 'adverse' as const };
-		if (flying > 0) return { text: `${noun} · ${flying} still going`, tone: 'active' as const };
-		if (rolledBack > 0)
-			return { text: `${noun} · ${rolledBack} rolled back`, tone: 'neutral' as const };
-		if (entries.every((e) => e.bakeStatus === 'Succeeded'))
-			return { text: `${noun} · all fine`, tone: 'good' as const };
-		return { text: noun, tone: 'neutral' as const };
+		const noun = mayBeIncomplete
+			? `at least ${n} deploy${n === 1 ? '' : 's'}`
+			: `${n} deploy${n === 1 ? '' : 's'}`;
+		let out: { text: string; tone: 'adverse' | 'active' | 'neutral' | 'good' };
+		if (failed > 0) out = { text: `${noun} · ${failed} failed`, tone: 'adverse' };
+		else if (flying > 0) out = { text: `${noun} · ${flying} still going`, tone: 'active' };
+		else if (rolledBack > 0) out = { text: `${noun} · ${rolledBack} rolled back`, tone: 'neutral' };
+		else if (entries.every((e) => e.bakeStatus === 'Succeeded')) out = { text: `${noun} · all fine`, tone: 'good' };
+		else out = { text: noun, tone: 'neutral' };
+		return { ...out, mayBeIncomplete };
 	}
 
 	const failedCount = $derived(feed.filter(isFailed).length);
@@ -697,14 +740,37 @@
 			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
 				<span class="t-display text-gray-900 tabular-nums dark:text-white">{feed.length}</span>
 				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-					deploy{feed.length === 1 ? '' : 's'} in {rangeLabel}
+					<!--
+						⛔ THE ROLLUP NUMBER DID NOT CARRY THE ACTIVE FILTER. (2026-09-03,
+						operator-walk finding 19.) With the FAILED chip pressed this said
+						`0 deploys in all time` — true of the count, silent about WHY it
+						is zero, indistinguishable from "nothing has deployed" when the
+						real answer is "nothing has FAILED". `kindFilter` already scopes
+						`feed`; the noun now names what it was scoped TO.
+
+						Branches, not a ternary collapsed into one text node: the census
+						scanner cannot see a literal that shares its text node with an
+						adjacent interpolation and no separating prose, and this exact
+						wording is what the operator-walk finding is about.
+
+						⚠️ THE SEPARATING SPACE IS ITS OWN HOLE, NOT TRAILING TEMPLATE
+						WHITESPACE. Svelte trims literal whitespace sitting at a block's
+						edge, so `{#if …}failed {:else …}` silently rendered
+						`faileddeploys` — verified on the live page. A JS-expression space
+						survives because the compiler only trims TEMPLATE whitespace, not
+						a string an expression returns.
+					-->
+					{#if kindFilter === 'failed'}failed{:else if kindFilter === 'in_flight'}in-flight{/if}{kindFilter !==
+					'all'
+						? ' '
+						: ''}deploy{feed.length === 1 ? '' : 's'} in {rangeLabel}
 					{#if appCount > 0}
 						· {appCount} rollout{appCount === 1 ? '' : 's'}
 					{/if}
-					{#if failedCount > 0}
+					{#if failedCount > 0 && kindFilter !== 'failed'}
 						· <span class="font-medium text-gray-700 dark:text-gray-200">{failedCount} failed</span>
 					{/if}
-					{#if flyingCount > 0}
+					{#if flyingCount > 0 && kindFilter !== 'in_flight'}
 						· {flyingCount} still going
 					{/if}
 				</p>
@@ -829,7 +895,7 @@
 					type="button"
 					aria-pressed={kindFilter === f.key}
 					title={f.title}
-					onclick={() => (kindFilter = f.key)}
+					onclick={() => setKindFilter(f.key)}
 					class="pill-btn t-label rounded border px-3 py-[3px] transition-colors
 						{kindFilter === f.key
 						? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
@@ -984,7 +1050,9 @@
 					title={dayGroup.label}
 					verdict={rollup.text}
 					verdictTone={rollup.tone}
-					verdictTitle="How many deploys landed in this window, and how many of them failed"
+					verdictTitle={rollup.mayBeIncomplete
+						? 'How many deploys landed in this window, and how many of them failed. At least one rollout here has hit its retention limit (spec.versionHistoryLimit), so earlier deploys that day may have already been evicted — this count is a floor, not a total.'
+						: 'How many deploys landed in this window, and how many of them failed'}
 					padded={false}
 				>
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">

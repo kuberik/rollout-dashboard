@@ -32,6 +32,8 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
@@ -117,28 +119,77 @@
 	// selects it, and it is kept only so a saved/deep-linked state that used
 	// it still resolves rather than throwing away the filter.
 	type QuickFilter = 'all' | 'attention' | 'active' | 'pending' | 'healthy' | 'trailing' | 'steady';
-	let quickFilter = $state<QuickFilter>('all');
+	const QUICK_FILTER_KEYS: QuickFilter[] = [
+		'all',
+		'attention',
+		'active',
+		'pending',
+		'healthy',
+		'trailing',
+		'steady'
+	];
+
+	/**
+	 * ⛔ FILTER STATE WAS INVISIBLE TO THE URL. (2026-09-03, operator-walk
+	 * finding 20.) Every chip here worked — the grid filtered correctly — but
+	 * `page.url()` never moved, so pasting "the four that need attention" gave
+	 * the recipient the unfiltered grid, a refresh dropped every selection,
+	 * and Back could not undo a chip because nothing had been pushed to undo.
+	 * `?status=` / `?env=` / `?cluster=` are the URL now, `goto` with
+	 * `replaceState: false` is what makes Back work, and the default URL
+	 * (nothing selected) stays exactly `/rollouts` — `all`/empty are never
+	 * themselves written as params.
+	 */
+	function setParam(key: string, next: string | null) {
+		const params = new URLSearchParams(page.url.searchParams);
+		if (next) params.set(key, next);
+		else params.delete(key);
+		const qs = params.toString();
+		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
+	}
+	// Repeated keys (`?env=dev&env=staging`), not a comma join — a cluster URL
+	// can itself contain characters a naive split/join would mangle, and
+	// `URLSearchParams` already percent-encodes each occurrence correctly.
+	function setMultiParam(key: string, values: string[]) {
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete(key);
+		for (const v of values) params.append(key, v);
+		const qs = params.toString();
+		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
+	}
+
+	const quickFilter = $derived<QuickFilter>(
+		(() => {
+			const raw = page.url.searchParams.get('status');
+			return (QUICK_FILTER_KEYS as string[]).includes(raw ?? '') ? (raw as QuickFilter) : 'all';
+		})()
+	);
+	function setQuickFilter(next: QuickFilter) {
+		setParam('status', next === 'all' ? null : next);
+	}
 
 	// Filters
 	let searchQuery = $state('');
-	let envFilters = $state<string[]>([]);
-	let clusterFilters = $state<string[]>([]); // set of cluster URLs
+	const envFilters = $derived(page.url.searchParams.getAll('env'));
+	const clusterFilters = $derived(page.url.searchParams.getAll('cluster')); // set of cluster URLs
 
 	function toggleEnv(name: string) {
-		envFilters = envFilters.includes(name)
-			? envFilters.filter((x) => x !== name)
-			: [...envFilters, name];
+		setMultiParam(
+			'env',
+			envFilters.includes(name) ? envFilters.filter((x) => x !== name) : [...envFilters, name]
+		);
 	}
 	function toggleCluster(url: string) {
-		clusterFilters = clusterFilters.includes(url)
-			? clusterFilters.filter((x) => x !== url)
-			: [...clusterFilters, url];
+		setMultiParam(
+			'cluster',
+			clusterFilters.includes(url)
+				? clusterFilters.filter((x) => x !== url)
+				: [...clusterFilters, url]
+		);
 	}
 	function clearFilters() {
-		quickFilter = 'all';
-		envFilters = [];
-		clusterFilters = [];
 		searchQuery = '';
+		goto('?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
 
 	const knownEnvs = $derived.by(() => {
@@ -452,7 +503,7 @@
 					-->
 					<button
 						type="button"
-						onclick={() => (quickFilter = quickFilter === sp.key ? 'all' : sp.key)}
+						onclick={() => setQuickFilter(quickFilter === sp.key ? 'all' : sp.key)}
 						aria-pressed={quickFilter === sp.key}
 						class="t-label min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
 							{sp.count === 0 && quickFilter !== sp.key ? 'hidden sm:inline-flex' : 'inline-flex'}

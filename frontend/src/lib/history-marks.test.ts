@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deployActs, rollbackCount } from './history-marks';
+import { deployActs, rollbackCount, historyAtLimit } from './history-marks';
 import { detectRollback } from './rollout-cards';
 
 // The live hub, 2026-08-30, `hello-world-prod/hello-world-app` — the exact
@@ -12,10 +12,10 @@ AVAILABLE[5] = '991829b';
 AVAILABLE[7] = 'aa17645';
 AVAILABLE[19] = '0afab6f';
 
-function rollout(history: string[]) {
+function rollout(history: string[], opts: { versionHistoryLimit?: number } = {}) {
 	return {
 		metadata: { name: 'hello-world-app', namespace: 'hello-world-prod' },
-		spec: {},
+		spec: { versionHistoryLimit: opts.versionHistoryLimit },
 		status: {
 			history: history.map((v, i) => ({
 				version: { version: v },
@@ -83,5 +83,41 @@ describe('deployActs', () => {
 	it('returns nothing for an empty or single-entry history', () => {
 		expect(deployActs(null)).toEqual([]);
 		expect(deployActs(rollout(['0afab6f']))).toEqual([null]);
+	});
+
+	// ⛔ THE RETRACTIVE-UN-LABELLING BUG (2026-09-03, operator-walk finding
+	// 13). `hello-world-dev/hello-world-app`'s live `versionHistoryLimit: 5`
+	// evicted the entry a rollback's "from" pointed at, and the row silently
+	// stopped being a rollback — `null` and "genuinely nothing preceded this"
+	// are not the same fact.
+	describe('the oldest surviving entry, when retention may have evicted one before it', () => {
+		it('is "unknown", not null, once history is at the retention limit', () => {
+			// Five forward-only deploys (no rollback anywhere in this fixture) —
+			// isolates the oldest-entry classification from `rollback` itself.
+			const r = rollout(['rel-10', 'rel-9', 'rel-8', 'rel-7', 'rel-6'], {
+				versionHistoryLimit: 5
+			});
+			expect(historyAtLimit(r)).toBe(true);
+			const acts = deployActs(r);
+			expect(acts[4]).toMatchObject({ kind: 'unknown' });
+			// Unknown is not counted either way — `rollbackCount` only tallies
+			// `kind === 'rollback'`, so the unknown entry contributes to neither
+			// the rollback count nor a "no rollbacks" claim.
+			expect(rollbackCount(r)).toBe(0);
+		});
+
+		it('stays null below the limit — the history is provably complete', () => {
+			const r = rollout(['aa17645', '51b976a', '991829b'], { versionHistoryLimit: 5 });
+			expect(historyAtLimit(r)).toBe(false);
+			expect(deployActs(r)[2]).toBeNull();
+		});
+
+		it('falls back to the CRD default (10) when the limit is unset', () => {
+			const nine = Array.from({ length: 9 }, () => 'rel-1');
+			expect(historyAtLimit(rollout(nine))).toBe(false);
+			const ten = Array.from({ length: 10 }, () => 'rel-1');
+			expect(historyAtLimit(rollout(ten))).toBe(true);
+			expect(deployActs(rollout(ten))[9]).toMatchObject({ kind: 'unknown' });
+		});
 	});
 });

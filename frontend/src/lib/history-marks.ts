@@ -38,6 +38,29 @@
 import type { Rollout } from '../types';
 import { getDisplayVersion } from './utils';
 
+/**
+ * The CRD's own default (`spec.versionHistoryLimit`'s `@default 10`). Used
+ * only when the field is genuinely absent from the payload — every real
+ * rollout has it set by the API server's own defaulting.
+ */
+const DEFAULT_VERSION_HISTORY_LIMIT = 10;
+
+/**
+ * ⛔ TRUE WHEN `status.history` MAY HAVE BEEN TRUNCATED. (2026-09-03,
+ * operator-walk finding 13.) `spec.versionHistoryLimit` bounds the array; once
+ * the rollout has deployed that many times, every new entry evicts the
+ * oldest. At that point the array's own length cannot tell an eviction apart
+ * from "this rollout has simply never deployed more than the limit" — both
+ * produce an array exactly at the cap. Below the cap, the history is provably
+ * COMPLETE: there has never been more to keep, so nothing has ever been
+ * evicted.
+ */
+export function historyAtLimit(r: Rollout | null | undefined): boolean {
+	const history = r?.status?.history ?? [];
+	const limit = r?.spec?.versionHistoryLimit ?? DEFAULT_VERSION_HISTORY_LIMIT;
+	return history.length >= limit;
+}
+
 /** What one history entry DID, relative to the entry it replaced. */
 export type DeployAct =
 	| {
@@ -53,7 +76,19 @@ export type DeployAct =
 	  }
 	| { kind: 'forward'; by: number; from: string; to: string; word: string; sentence: string }
 	| { kind: 'redeploy'; word: string; sentence: string }
-	/** No predecessor, or no position to compare — say nothing. */
+	/**
+	 * ⛔ NOT THE SAME THING AS `null`. (2026-09-03, operator-walk finding 13.)
+	 * This is the oldest SURVIVING entry, and `historyAtLimit` says an older
+	 * one may have been evicted before it. Its "from" is genuinely
+	 * unrecoverable — not "nothing preceded it", which is what `null` still
+	 * means for a rollout whose whole lifetime fits in the window. A rollback
+	 * un-labels itself the moment its predecessor ages out if this case is
+	 * folded into `null`: the entry silently reads as an ordinary, unremarkable
+	 * deploy instead of an unanswerable question. `rollbackCount` does not
+	 * count it either way — "unknown" is not "not a rollback".
+	 */
+	| { kind: 'unknown'; word: string; sentence: string }
+	/** No predecessor, and the history is provably complete — say nothing. */
 	| null;
 
 // The OCI tag identifies a release; `version` is the display form. Real cluster
@@ -65,7 +100,9 @@ function releaseKey(v: { tag?: string; version?: string } | undefined): string |
 
 /**
  * One act per history entry, index-aligned with `rollout.status.history`.
- * The oldest entry is always `null` — nothing precedes it to move away from.
+ * The oldest entry is `null` when the history is provably complete (below
+ * `spec.versionHistoryLimit`), or `{ kind: 'unknown' }` when it might not be
+ * — see `historyAtLimit` and the `DeployAct` doc above.
  */
 export function deployActs(r: Rollout | null | undefined): DeployAct[] {
 	const history = r?.status?.history ?? [];
@@ -74,7 +111,20 @@ export function deployActs(r: Rollout | null | undefined): DeployAct[] {
 
 	return history.map((entry, i) => {
 		const prev = history[i + 1];
-		if (!prev) return null;
+		if (!prev) {
+			// The oldest entry the array still holds. If retention could have
+			// evicted one before it, its "from" is unknown — say so, rather than
+			// letting it read as an ordinary deploy with nothing behind it.
+			if (historyAtLimit(r)) {
+				const to = getDisplayVersion(entry.version);
+				return {
+					kind: 'unknown' as const,
+					word: 'Unknown',
+					sentence: `What ${to} replaced is unknown — it is the oldest deploy the retained history (last ${history.length}) still holds.`
+				};
+			}
+			return null;
+		}
 		const nowKey = releaseKey(entry.version);
 		const prevKey = releaseKey(prev.version);
 		if (!nowKey || !prevKey) return null;

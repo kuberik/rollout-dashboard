@@ -44,7 +44,7 @@
 	 * it was a byte-identical local copy of `getBakeStatusColor`.
 	 */
 	import { bakeWord, bakeTitle, getBakeStatusColor } from '$lib/bake-status';
-	import { deployActs } from '$lib/history-marks';
+	import { deployActs, historyAtLimit } from '$lib/history-marks';
 	import { DEPLOY_PARAM, deployAnnouncement, findDeployIndex } from '$lib/history-deeplink';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { now } from '$lib/stores/time';
@@ -258,6 +258,19 @@
 	const succeeded = $derived(allHistory.filter((e) => e.bakeStatus === 'Succeeded').length);
 	const failed = $derived(allHistory.filter((e) => e.bakeStatus === 'Failed').length);
 	const successRate = $derived(totalDeploys > 0 ? Math.round((succeeded / totalDeploys) * 100) : 0);
+
+	/**
+	 * ⛔ `spec.versionHistoryLimit` BOUNDS `status.history`, AND EVERY STAT
+	 * ABOVE READS THAT ARRAY AS IF IT WERE THE WHOLE STORY. (2026-09-03,
+	 * operator-walk finding 13.) `hello-world-dev/hello-world-app`'s own
+	 * `versionHistoryLimit: 5` evicts its oldest entry every time a new deploy
+	 * lands, so `totalDeploys` and `successRate` are both a measurement of the
+	 * RETAINED WINDOW, not of the rollout's lifetime — and printing them bare
+	 * states them as if they were. `historyAtLimit` is the same predicate
+	 * `history-marks.ts` uses to decide whether the oldest surviving entry's
+	 * "from" is unknown; here it gates whether the header has to say so.
+	 */
+	const atLimit = $derived(historyAtLimit(rollout));
 
 	/**
 	 * The card header's right-aligned rollup — the composition grammar's one
@@ -603,9 +616,19 @@
 				     Ink keeps its meaning — green for healthy, red for failed, the rate in
 				     its own band — and nothing is boxed. -->
 				<p class="t-dense flex flex-wrap items-center gap-x-2 text-gray-500 dark:text-gray-400">
-					<span>
+					<span
+						title={atLimit
+							? `Showing the last ${totalDeploys} deploys — the retention limit (spec.versionHistoryLimit). Earlier deploys have already been evicted.`
+							: undefined}
+					>
+						{#if atLimit}
+							showing the last
+						{/if}
 						<span class="font-semibold tabular-nums text-gray-900 dark:text-white">{totalDeploys}</span>
 						{totalDeploys === 1 ? 'deploy' : 'deploys'}
+						{#if atLimit}
+							<span class="text-gray-400 dark:text-gray-500">(retention limit)</span>
+						{/if}
 					</span>
 					<span aria-hidden="true">·</span>
 					<span title="{succeeded} of {totalDeploys} deploys finished healthy">
@@ -632,7 +655,13 @@
 					     same number restated in bold green, and it reads as a track
 					     record the page does not have. Same rule as `newerReleaseCount`
 					     returning null instead of 0: say nothing rather than a confident
-					     nothing. -->
+					     nothing.
+
+					     ⛔ AND ONCE THE HISTORY IS AT ITS RETENTION LIMIT, THE RATE IS
+					     OVER THE RETAINED WINDOW, NOT THE ROLLOUT'S LIFETIME. (2026-09-03,
+					     operator-walk finding 13.) `80% success` over five kept entries
+					     reads as a whole track record; `80% of the last 5` says exactly
+					     what was measured. -->
 					{#if totalDeploys > 1}
 					<span aria-hidden="true">·</span>
 					<span
@@ -640,7 +669,17 @@
 							? 'text-green-700 dark:text-green-400'
 							: successRate >= 70
 								? 'text-yellow-700 dark:text-yellow-400'
-								: 'text-red-700 dark:text-red-400'}">{successRate}% success</span
+								: 'text-red-700 dark:text-red-400'}"
+						title={atLimit
+							? `${successRate}% over the last ${totalDeploys} deploys — the retained window, not the rollout's lifetime.`
+							: undefined}
+						>{successRate}%
+						<!-- Two branches, not a ternary collapsed into one text node — the
+						     census scanner cannot see a literal split across two
+						     interpolations with nothing but whitespace between them ("…% …"
+						     falls under its own documented prose-threshold gap), and this
+						     wording is exactly the fact operator-walk finding 13 is about. -->
+						{#if atLimit}of last {totalDeploys}{:else}success{/if}</span
 					>
 					{/if}
 				</p>
