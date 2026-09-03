@@ -680,7 +680,17 @@
 	 * stays at rest weight. See `splitLeadSentence`'s own note.
 	 */
 	const deployNoticeParts = $derived(deployNotice ? splitLeadSentence(deployNotice) : null);
-	const deployButtonLabel = $derived(deployActionLabel(intent));
+	// ⭐ PINNING THE RUNNING VERSION IS A REAL ACT. `direction === 'same'` is
+	// a no-op deploy, but with Pin on it writes `spec.wantedVersion` — the
+	// dialog's own pin flow, which the Clear Pin verification walks. The
+	// button is live for it and says what it does; no typed confirm, since
+	// nothing moves.
+	const isSameVersionPin = $derived(direction === 'same' && pinVersionToggle);
+	const deployButtonLabel = $derived(
+		isSameVersionPin
+			? `Pin ${targetPhrase(intent)} to ${getDisplaySelectedVersion()}`
+			: deployActionLabel(intent)
+	);
 	/**
 	 * ⭐ THE LABEL WHILE THE REQUEST IS IN FLIGHT. (B3, 2026-09-03, operator
 	 * walk) `deployButtonLabel` ("Roll back production" / "Deploy to dev") is
@@ -688,7 +698,9 @@
 	 * happened and the button is disabled. The present-continuous form says
 	 * what is happening NOW, matching the spinner beside it.
 	 */
-	const deployingLabel = $derived(direction === 'rollback' ? 'Rolling back…' : 'Deploying…');
+	const deployingLabel = $derived(
+		isSameVersionPin ? 'Pinning…' : direction === 'rollback' ? 'Rolling back…' : 'Deploying…'
+	);
 	/**
 	 * ⭐ THE CONFIRM IS NEVER THE SAME BLUE AS AN ORDINARY FORWARD DEPLOY. (P6,
 	 * 2026-09-03, operator walk) `Roll back dev` rendered in the identical
@@ -1771,7 +1783,7 @@
 								class="flex-1"
 								disabled={(needsTypedConfirmation &&
 									deployConfirmationVersion !== getDisplaySelectedVersion()) ||
-									direction === 'same' ||
+									(direction === 'same' && !pinVersionToggle) ||
 									(deployNoteRequired && deployExplanation.trim() === '') ||
 									deploying}
 								onclick={handleDeploy}
