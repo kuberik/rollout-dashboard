@@ -1405,7 +1405,7 @@
 									<!-- Hue tells pods apart; weight was making the one column
 									     that repeats on every row the loudest thing in the pane
 									     while the message that varies sat in gray-300. -->
-									<span class="mx-1 shrink-0 sm:mx-2" style="color: {podColor}"
+									<span class="mx-1 shrink-0 sm:mx-2" style="color: {podColor}" title={logItem.pod}
 										>{logItem.pod}</span
 									>
 								{/if}
