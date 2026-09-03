@@ -38,7 +38,7 @@
 	import {
 		commitsQueryOptions,
 		formatCommitMessage,
-		connectGithubInNewTab,
+		connectGithubInNewTab, isMobileConnectContext,
 		fetchGithubStatus,
 		githubAbsenceSentence,
 		githubStatusQueryKey,
@@ -1415,10 +1415,20 @@
 													: 'deploy'}.
 											</p>
 											{#if githubStatusQuery.data?.configured}
-												<Button size="xs" color="light" onclick={() => connectGithubInNewTab()}>
-													<GithubSolid class="mr-1.5 h-3.5 w-3.5" />
-													Connect GitHub
-												</Button>
+												{#if isMobileConnectContext()}
+													<!-- ⛔ NEVER NAVIGATE AWAY FROM AN ARMED DIALOG. On a phone the
+													     connect flow is a same-tab redirect (see `connectGithubInNewTab`),
+													     and an operator walk lost a typed production rollback to it.
+													     The navbar's own Connect GitHub is the way in from here. -->
+													<p class="text-xs text-gray-500 dark:text-gray-400">
+														Connect GitHub from the navbar first, then reopen this dialog.
+													</p>
+												{:else}
+													<Button size="xs" color="light" onclick={() => connectGithubInNewTab()}>
+														<GithubSolid class="mr-1.5 h-3.5 w-3.5" />
+														Connect GitHub
+													</Button>
+												{/if}
 											{/if}
 										{/if}
 									</div>

@@ -212,7 +212,7 @@ export function connectGithub(
  * would miss a narrow *desktop* window resize test, and viewport alone would
  * miss a tablet in a narrow split-view that still has a touch pointer.
  */
-function isMobileConnectContext(): boolean {
+export function isMobileConnectContext(): boolean {
 	if (typeof window === 'undefined') return false;
 	const narrow = window.matchMedia?.('(max-width: 639px)').matches ?? window.innerWidth < 640;
 	const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
