@@ -368,7 +368,7 @@
 	{/if}
 {/snippet}
 
-{#snippet hopRow(h: Hop)}
+{#snippet hopRow(h: Hop, toLabel: string | null = null)}
 	<!-- ⭐ THE EDGE, AND WHAT IS ON IT.
 	     · OPEN — a plain rail. Nothing else: `in sync` was cut from this object
 	       once already for marking the norm once per promotion edge.
@@ -415,7 +415,21 @@
 				/>
 			</div>
 		{:else if h.label}
-			<span class="t-code-sm truncate text-gray-500 dark:text-gray-400">{h.label}</span>
+			<!-- ⭐ P4, OPERATOR-WALK FINDING (2026-09-03): THE HOP HAD NO SUBJECT.
+			     `1 version ahead` printed at the DEV station's own indent, right
+			     under its pod count and age, with nothing on the hop itself
+			     saying which edge it was — a reader reads it as one more fact
+			     ABOUT DEV ("DEV is 1 version ahead") when it is actually the
+			     DEV→STAGING promotion. `toLabel` is the destination station's
+			     own chip text (`stages[i+1].label` at the call site, "STAGING"
+			     for the fleet edge, or the first stage's label for the entry
+			     hop) — the same word already drawn in that station's `env` chip
+			     two rows down, so naming it here costs no new vocabulary. -->
+			<span class="t-code-sm truncate text-gray-500 dark:text-gray-400"
+				>{#if toLabel}<span class="font-semibold uppercase text-gray-600 dark:text-gray-300"
+						>{toLabel}</span
+					>{' '}{/if}{h.label}</span
+			>
 		{/if}
 	</li>
 {/snippet}
@@ -493,7 +507,7 @@
 		{/if}
 		<ol class="pp-line">
 			{#if entryHop}
-				{@render hopRow(entryHop)}
+				{@render hopRow(entryHop, stages[0]?.label ?? null)}
 			{/if}
 			{#each stages as s, i (s.key)}
 				{@const inFlight = s.status === 'Deploying' || s.status === 'InProgress'}
@@ -593,12 +607,12 @@
 				</li>
 
 				{#if hops[i]}
-					{@render hopRow(hops[i] as Hop)}
+					{@render hopRow(hops[i] as Hop, stages[i + 1]?.label ?? null)}
 				{/if}
 			{/each}
 
 			{#if fleet.length > 0 && fleetHop}
-				{@render hopRow(fleetHop)}
+				{@render hopRow(fleetHop, 'production')}
 			{/if}
 		</ol>
 

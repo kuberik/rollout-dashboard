@@ -19,7 +19,8 @@
 		RefreshOutline,
 		ChevronRightOutline,
 		ChartLineUpOutline,
-		ListOutline
+		ListOutline,
+		LockSolid
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -31,7 +32,7 @@
 		buildDatadogTestRunsUrl,
 		buildDatadogLogsUrl
 	} from '$lib/utils';
-	import { versionPathForRollout } from '$lib/version-utils';
+	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
 	/**
 	 * ⛔ THE DEPLOY-STATE WORDS AND THEIR COLOUR ARE NOT THIS PAGE'S TO SPELL.
 	 * (2026-09-01) The badge printed `entry.bakeStatus` RAW — `InProgress`,
@@ -292,6 +293,28 @@
 	 * "from" is unknown; here it gates whether the header has to say so.
 	 */
 	const atLimit = $derived(historyAtLimit(rollout));
+
+	/**
+	 * ⭐ THE CURRENT PIN STATE, IN THE HISTORY HEAD. (2026-09-03,
+	 * operator-walk finding.) Pinning and clearing a pin do NOT append a
+	 * `status.history` entry by themselves — verified live: clearing
+	 * `hello-world-dev/hello-world-app`'s pin changed only
+	 * `metadata.annotations['rollout.kuberik.com/deploy-message']` (which the
+	 * next actual deploy overwrites) and `spec.wantedVersion`; `status.history`
+	 * stayed at the same `id`. So a colleague reading History has no way to
+	 * see "dev was pinned for 10 minutes" — there is no record to draw, and
+	 * `deployActs` correctly draws nothing for an act that left no entry.
+	 *
+	 * The honest fallback: state the CURRENT pin, not a past that cannot be
+	 * reconstructed. `wantedVersion` is the plain tag string (not a version
+	 * object), same shape `rollout-cards.ts::cardStateMark` and `/apps` both
+	 * already resolve through `displayVersionForTag`.
+	 */
+	const pinnedDisplay = $derived(
+		rollout?.spec?.wantedVersion
+			? displayVersionForTag(rollout, rollout.spec.wantedVersion) || rollout.spec.wantedVersion
+			: null
+	);
 
 	/**
 	 * The card header's right-aligned rollup — the composition grammar's one
@@ -651,25 +674,52 @@
 							<span class="text-gray-400 dark:text-gray-500">(retention limit)</span>
 						{/if}
 					</span>
+					{#if pinnedDisplay}
+						<span aria-hidden="true">·</span>
+						<!-- ⭐ THE CURRENT PIN STATE — see `pinnedDisplay`'s own note.
+						     No record of past pin/clear-pin events exists to draw, so
+						     this states the fact that IS knowable: whether this rollout
+						     is pinned RIGHT NOW, and to what. -->
+						<span
+							class="inline-flex items-center gap-1"
+							title="Automatic deploys are paused until this pin is cleared."
+						>
+							<LockSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
+							pinned to
+							<span class="t-code-sm font-semibold text-gray-900 dark:text-white">{pinnedDisplay}</span>
+						</span>
+					{/if}
 					<span aria-hidden="true">·</span>
-					<span title="{succeeded} of {totalDeploys} deploys finished healthy">
+					<!-- ⛔ OPERATOR-WALK FINDING (2026-09-03): `4 healthy · 2 rolled
+					     back · 80% of last 5` SUMS TO 6 OF 5. `succeeded` and
+					     `rollbacks` are not two partitions of `totalDeploys` — a
+					     rollback still bakes, so a rolled-back deploy is counted
+					     inside `succeeded` too (`hello-world-app`: 4 succeeded, 2 of
+					     which were rollbacks, 5 total). Printed as coordinate `·`
+					     items it reads like an accounting that should add up and
+					     does not. `rolled back` moves INSIDE the `healthy` clause as
+					     a parenthetical — the subset it actually is — so there is
+					     only ONE count of deploys in the row (plus `failed`, which
+					     really is disjoint from `healthy` by definition) and
+					     nothing implies a sum that was never true. -->
+					<span
+						title="{succeeded} of {totalDeploys} deploys finished healthy{rollbacks > 0
+							? `, ${rollbacks} of them by rolling back to an older release`
+							: ''}"
+					>
 						<span class="font-semibold tabular-nums text-green-700 dark:text-green-400">{succeeded}</span>
 						healthy
+						{#if rollbacks > 0}
+							<span class="text-gray-400 dark:text-gray-500"
+								>({rollbacks} rolled back)</span
+							>
+						{/if}
 					</span>
 					{#if failed > 0}
 						<span aria-hidden="true">·</span>
 						<span title="{failed} of {totalDeploys} deploys failed">
 							<span class="font-semibold tabular-nums text-red-700 dark:text-red-400">{failed}</span>
 							failed
-						</span>
-					{/if}
-					{#if rollbacks > 0}
-						<span aria-hidden="true">·</span>
-						<span
-							title="{rollbacks} of these {totalDeploys} deploys moved this rollout to an OLDER release. A rollback still bakes and still counts as a success."
-						>
-							<span class="font-semibold tabular-nums text-gray-900 dark:text-white">{rollbacks}</span>
-							rolled back
 						</span>
 					{/if}
 					<!-- A rate needs a sample. "100% success" over one deploy is the
@@ -682,7 +732,17 @@
 					     OVER THE RETAINED WINDOW, NOT THE ROLLOUT'S LIFETIME. (2026-09-03,
 					     operator-walk finding 13.) `80% success` over five kept entries
 					     reads as a whole track record; `80% of the last 5` says exactly
-					     what was measured. -->
+					     what was measured.
+
+					     ⛔ AND THE WORD IS `healthy`, NOT `success`/`of last N` ALONE
+					     (operator-walk finding, same day, second half). The rate is
+					     `succeeded / totalDeploys` — the exact figure the `healthy`
+					     clause above already counts — so the rate's own word now
+					     matches it instead of introducing a second vocabulary
+					     (`success`) for one fact. `of last N` still follows it when
+					     retention-limited: that clause is ABOUT THE WINDOW, not a
+					     restatement of what is being measured, so it survives
+					     alongside `healthy` rather than replacing it. -->
 					{#if totalDeploys > 1}
 					<span aria-hidden="true">·</span>
 					<span
@@ -692,7 +752,7 @@
 								? 'text-yellow-700 dark:text-yellow-400'
 								: 'text-red-700 dark:text-red-400'}"
 						title={atLimit
-							? `${successRate}% over the last ${totalDeploys} deploys — the retained window, not the rollout's lifetime.`
+							? `${successRate}% healthy over the last ${totalDeploys} deploys — the retained window, not the rollout's lifetime.`
 							: undefined}
 						>{successRate}%
 						<!-- Two branches, not a ternary collapsed into one text node — the
@@ -700,7 +760,7 @@
 						     interpolations with nothing but whitespace between them ("…% …"
 						     falls under its own documented prose-threshold gap), and this
 						     wording is exactly the fact operator-walk finding 13 is about. -->
-						{#if atLimit}of last {totalDeploys}{:else}success{/if}</span
+						{#if atLimit}healthy, of last {totalDeploys}{:else}healthy{/if}</span
 					>
 					{/if}
 				</p>

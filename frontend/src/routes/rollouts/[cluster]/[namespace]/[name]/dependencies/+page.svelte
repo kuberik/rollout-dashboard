@@ -1433,14 +1433,32 @@
 										     held. -->
 										{#each b.blocked as w (w.key)}
 											<div class="mt-3 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40">
-												<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+												<!-- ⛔ P4, OPERATOR-WALK FINDING (2026-09-03): THIS ROW HAD
+												     NO SUBJECT, AND THE ROW ABOVE IT DOES.
+												     `b.providerName` ("hello-api-app") headlines this
+												     card and `From {b.providedTag}` right above states
+												     THAT service's own served version — so a `held`
+												     chip with no subject of its own, sitting directly
+												     under both, reads as one more fact about the
+												     provider. It is the opposite: `w` comes from
+												     `dep.status.blockedReleases`, which is a release of
+												     THIS rollout (the consumer `name` this whole page is
+												     about) that the provider's contract has refused. The
+												     subject is named explicitly now, the same
+												     "subject verb" shape `BlockingStoryLines` uses on
+												     every other held row in the product. -->
+												<p class="text-xs text-gray-500 dark:text-gray-400">
+													<span class="font-medium text-gray-700 dark:text-gray-300">{name}</span>
+													can't deploy this yet
+												</p>
+												<div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
 													<Chip
 														role="held"
 														label="held"
 														value={w.display}
 														valueTitle={w.tag}
 														wide
-														title="{w.envs.join(', ')} cannot deploy {w.tag} yet"
+														title="{name} cannot deploy {w.tag} yet in {w.envs.join(', ')}"
 														class="shrink-0"
 													/>
 													{#if hasChain && w.envs.length > 0}

@@ -208,17 +208,45 @@
 	const failedInHeader = $derived(
 		notReadyResources.filter((r) => ['Unhealthy', 'Failed', 'Error'].includes(r.status || ''))
 	);
+
+	/**
+	 * ⛔ P10, OPERATOR-WALK FINDING (2026-09-03): "Resources 10/10 ready"
+	 * WHILE FLUX SAID "Pending resources: hello-python (ReplicaSet not
+	 * Available)". `notReadyResources` is derived entirely from
+	 * `filteredManagedResources` — each item's OWN `.status`, as this
+	 * dashboard's backend classifies it. `kustomizations` was a prop this
+	 * component already received and never read: Flux's Kustomization
+	 * controller runs a SEPARATE, more thorough health evaluation (kstatus)
+	 * over the same inventory and publishes its verdict on the
+	 * Kustomization's own `Ready` condition — including cases this
+	 * component's simpler per-resource status missed. A rollup that ignores
+	 * the more authoritative source and reports "ready" anyway is a false
+	 * "all clear".
+	 *
+	 * This does not try to re-derive WHICH resource Flux considers
+	 * unhealthy or reproduce kstatus — that is Flux's job, not this
+	 * dashboard's. It only refuses to say "ready" when Flux itself has not
+	 * said so, and surfaces Flux's own message (the fact this dashboard
+	 * cannot originate) rather than inventing a different one.
+	 */
+	const unreadyKustomizations = $derived(
+		kustomizations.filter((k) => {
+			const ready = (k.status?.conditions ?? []).find((c) => c.type === 'Ready');
+			return !!ready && ready.status !== 'True';
+		})
+	);
+	const fluxDisagrees = $derived(notReadyResources.length === 0 && unreadyKustomizations.length > 0);
 	const HeaderIcon = $derived(
 		failedInHeader.length > 0
 			? ExclamationCircleSolid
-			: notReadyResources.length > 0
+			: notReadyResources.length > 0 || fluxDisagrees
 				? ClockSolid
 				: CheckCircleSolid
 	);
 	const headerIconClass = $derived(
 		failedInHeader.length > 0
 			? 'text-red-500 dark:text-red-400'
-			: notReadyResources.length > 0
+			: notReadyResources.length > 0 || fluxDisagrees
 				? 'text-yellow-700 dark:text-yellow-400'
 				: 'text-green-700 dark:text-green-400'
 	);
@@ -251,6 +279,17 @@
 				</span>
 			{:else if notReadyResources.length > 0}
 				<span class="text-xs text-yellow-700 dark:text-yellow-400">{notReadyResources.length} not ready</span>
+			{:else if fluxDisagrees}
+				<!-- ⛔ EVERY RESOURCE THIS CARD KNOWS ABOUT LOOKS READY, AND FLUX
+				     STILL SAYS OTHERWISE. Named, not silenced — see
+				     `unreadyKustomizations`'s own note above. -->
+				{@const msg = unreadyKustomizations[0]?.status?.conditions?.find((c) => c.type === 'Ready')?.message}
+				<span
+					class="text-xs text-yellow-700 dark:text-yellow-400"
+					title={msg ?? 'Flux has not marked this Kustomization Ready'}
+				>
+					Flux reports issues
+				</span>
 			{:else}
 				<span class="text-xs text-green-700 dark:text-green-400">{allManagedResources.length}/{allManagedResources.length} ready</span>
 			{/if}
