@@ -1272,18 +1272,25 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 
+	/* ⛔ FIXED TRACKS, BY DECISION (2026-09-03, from the human: "rollouts page
+	   splits the cards sometimes in 2 and sometimes in 3 columns. 3 looks
+	   better and is how it looked before"). `auto-fit` let each group pick
+	   its own count, so a two-rollout namespace drew two 880px cards under a
+	   three-card neighbour. Every group now shares one template — two tracks
+	   from 730px, three from 1024px — and a group's cards are the same width
+	   as every other group's. A one-card group is one card in a three-track
+	   row; the empty tracks are the margin the human prefers. */
 	@container (min-width: 730px) {
-		.rg-grid-multi {
-			grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-		}
-
+		.rg-grid-multi,
 		.rg-grid-solo {
-			grid-template-columns: minmax(360px, 460px);
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+	}
 
-		.rg-solo {
-			width: fit-content;
-			max-width: 460px;
+	@container (min-width: 1024px) {
+		.rg-grid-multi,
+		.rg-grid-solo {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 		}
 	}
 </style>

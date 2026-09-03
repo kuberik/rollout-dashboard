@@ -318,6 +318,13 @@ the page can fill.**
   identical and every left-anchored child sits at the same offset from the card origin —
   only `width` and the five right-anchored spans move, by exactly the 65px delta.
 
+  ⛔ CLOSED BY DECISION, 2026-09-03. The human, on the auto-fit result: *"rollouts
+  page splits the cards sometimes in 2 and sometimes in 3 columns. 3 looks better
+  and is how it looked before."* `.rg-grid-multi` and `.rg-grid-solo` are one fixed
+  template again — `repeat(2, …)` from 730px, `repeat(3, …)` from 1024px — and the
+  empty tracks in a short group are accepted as margin. The four corrections above
+  are history; do not reintroduce `auto-fit` here.
+
 **VERTICAL — the head band is chrome and is identical everywhere:**
 
 ```
