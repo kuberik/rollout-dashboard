@@ -19,6 +19,9 @@ lib/api/errors.ts	code	Your session has expired
 lib/api/github.ts	code	Connect GitHub to see changes
 lib/api/github.ts	code	Failed to fetch commit range
 lib/api/github.ts	code	GitHub account not connected
+lib/api/github.ts	code	GitHub did not answer.
+lib/api/github.ts	code	GitHub is not configured for this dashboard.
+lib/api/github.ts	code	GitHub is not connected for this dashboard.
 lib/api/github.ts	code	No access to this repository
 lib/api/github.ts	code	No response from the server
 lib/api/github.ts	code	You do not have access to this repository
@@ -93,9 +96,12 @@ lib/components/ChangeList.svelte	text	See the full diff on GitHub
 lib/components/ChangeList.svelte	code	This kuberik has no GitHub connection set up, so it cannot list the commits itself.
 lib/components/ChangeList.svelte	code	Your GitHub account cannot read this repository.
 lib/components/ChangeVersionModal.svelte	code	… — … has not shipped it
+lib/components/ChangeVersionModal.svelte	text	… … . You can still proceed.
+lib/components/ChangeVersionModal.svelte	text	… … … … Connect your GitHub account to see which commits will … .
 lib/components/ChangeVersionModal.svelte	code	… back
 lib/components/ChangeVersionModal.svelte	code	… has not taken this build
 lib/components/ChangeVersionModal.svelte	code	… newer
+lib/components/ChangeVersionModal.svelte	text	… You can still proceed.
 lib/components/ChangeVersionModal.svelte	code	…, … serves …
 lib/components/ChangeVersionModal.svelte	text	&larr; Back
 lib/components/ChangeVersionModal.svelte	code	a contract
@@ -110,7 +116,6 @@ lib/components/ChangeVersionModal.svelte	code	Built …
 lib/components/ChangeVersionModal.svelte	code	Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system.
 lib/components/ChangeVersionModal.svelte	text	Change Version
 lib/components/ChangeVersionModal.svelte	text	Connect GitHub
-lib/components/ChangeVersionModal.svelte	text	Connect your GitHub account to see which commits will … .
 lib/components/ChangeVersionModal.svelte	code	currently does not allow this build
 lib/components/ChangeVersionModal.svelte	code	dashboard is not managing the wantedVersion field
 lib/components/ChangeVersionModal.svelte	text	Deploy … &nbsp;— ships … commit … …
@@ -119,9 +124,6 @@ lib/components/ChangeVersionModal.svelte	code	Failed to change version
 lib/components/ChangeVersionModal.svelte	code	Failed to deploy version
 lib/components/ChangeVersionModal.svelte	text	Force deploy already set. Only version pinning available.
 lib/components/ChangeVersionModal.svelte	code	Force deploy initiated, version rolling out soon
-lib/components/ChangeVersionModal.svelte	text	GitHub did not answer: … . You can still proceed.
-lib/components/ChangeVersionModal.svelte	text	GitHub did not answer. You can still proceed.
-lib/components/ChangeVersionModal.svelte	text	GitHub is not configured for this dashboard.
 lib/components/ChangeVersionModal.svelte	code	its upstream environment has not taken this build
 lib/components/ChangeVersionModal.svelte	text	Loading commits…
 lib/components/ChangeVersionModal.svelte	code	needs … …
@@ -262,6 +264,7 @@ lib/components/HealthChecksCard.svelte	text	… failing … … · … passing
 lib/components/HealthChecksCard.svelte	text	… passing · … recovered
 lib/components/HealthChecksCard.svelte	text	… pending … · … passing
 lib/components/HealthChecksCard.svelte	title	Health Checks
+lib/components/HomeRail.svelte	text	… deploy …
 lib/components/HomeRail.svelte	title	Recent activity
 lib/components/HomeRail.svelte	text	View all activity
 lib/components/HomeRail.svelte	aria-label	View all deploy activity
@@ -427,10 +430,13 @@ lib/rollout-cards.ts	code	rolled back
 lib/rollout-cards.ts	code	Rolled back … version…: … → ….…
 lib/RolloutGrid.svelte	text	… need attention
 lib/RolloutGrid.svelte	text	… rollout … … ·
+lib/RolloutGrid.svelte	code	+… pending
 lib/RolloutGrid.svelte	text	Cards like the one above will appear here once you create a
 lib/RolloutGrid.svelte	text	Clear filters
+lib/RolloutGrid.svelte	title	Held: a newer build exists, but no gate lets it through yet.
 lib/RolloutGrid.svelte	code	In motion
 lib/RolloutGrid.svelte	text	My App
+lib/RolloutGrid.svelte	code	Needs you
 lib/RolloutGrid.svelte	text	no deploy
 lib/RolloutGrid.svelte	text	No matches
 lib/RolloutGrid.svelte	text	No rollouts yet
@@ -799,6 +805,7 @@ routes/apps/+page.svelte	text	… · … on the newest
 routes/apps/+page.svelte	code	… ago · …
 routes/apps/+page.svelte	text	… blocked
 routes/apps/+page.svelte	code	… can still take … newer version…
+routes/apps/+page.svelte	text	… deploy …
 routes/apps/+page.svelte	text	… deploy … in 7d … …
 routes/apps/+page.svelte	code	… different versions live
 routes/apps/+page.svelte	code	… environments
@@ -894,7 +901,6 @@ routes/environments/+page.svelte	code	It has been running longer than a deploy o
 routes/environments/+page.svelte	text	kuberik | Environments
 routes/environments/+page.svelte	text	last deploy … ago
 routes/environments/+page.svelte	code	never deployed
-routes/environments/+page.svelte	text	newer version … waiting
 routes/environments/+page.svelte	text	No app has ever deployed here.
 routes/environments/+page.svelte	text	no deploys yet
 routes/environments/+page.svelte	text	No environments configured
@@ -909,6 +915,7 @@ routes/environments/+page.svelte	code	The last deploy did not complete, and noth
 routes/environments/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	title	… — the newest version this app has
 routes/envs/[name]/+page.svelte	title	… — this page
+routes/envs/[name]/+page.svelte	text	… deploy …
 routes/envs/[name]/+page.svelte	code	… deploys have failed here
 routes/envs/[name]/+page.svelte	code	… failed to deploy here
 routes/envs/[name]/+page.svelte	title	… here can still take … newer version…
@@ -941,6 +948,7 @@ routes/envs/[name]/+page.svelte	text	View all activity
 routes/envs/[name]/+page.svelte	code	waiting for … to ship … … — it is on …
 routes/envs/[name]/+page.svelte	code	waiting on … gate…
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …
+routes/namespaces/[name]/+page.svelte	text	… deploy …
 routes/namespaces/[name]/+page.svelte	code	… deploying now
 routes/namespaces/[name]/+page.svelte	text	… failing
 routes/namespaces/[name]/+page.svelte	code	… of … failing
@@ -961,6 +969,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	… new versions found!
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… Nothing promotes this version automatically while it is held. Pressing
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… Refresh
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… release candidate … available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	…${e.requiredVersion ?
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	1 new version found!
@@ -1138,7 +1147,7 @@ routes/versions/[...slug]/+page.svelte	title	A newer release of this build exist
 routes/versions/[...slug]/+page.svelte	title	A place is one service in one environment.
 routes/versions/[...slug]/+page.svelte	text	All revisions
 routes/versions/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
-routes/versions/[...slug]/+page.svelte	text	Commit message and author need GitHub, which is not connected.
+routes/versions/[...slug]/+page.svelte	text	Commit message and author need GitHub. …
 routes/versions/[...slug]/+page.svelte	code	Deploys here are paused for another …
 routes/versions/[...slug]/+page.svelte	code	Deploys here are paused on a schedule
 routes/versions/[...slug]/+page.svelte	title	Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be up to date.

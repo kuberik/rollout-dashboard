@@ -373,6 +373,23 @@ export function confirmNotice(intent: DeployIntent, pins = false): string | null
 	return `This overrides the rules holding ${where}, which do not currently allow this build. It applies immediately. It does not deploy to production — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after ${where}.${pinNote}`;
 }
 
+/**
+ * ⭐ THE CONSEQUENCE IS BOLD; EVERYTHING AFTER IT IS NOT. (F10, design pass 2
+ * re-check) `confirmNotice` composes several sentences — the consequence
+ * itself, then how it applies, then (optionally) the pin note — and the
+ * dialog printed all of them, plus the `gateWhy` sentence beside them, at one
+ * flat weight: four facts (an icon, the prose, a `FactList` label and its
+ * value) at equal loudness in the same red reads as nothing being louder than
+ * anything else. This splits at the first sentence boundary so the template
+ * can bold only the lead sentence — the one that names the actual
+ * consequence — and print the rest at rest weight.
+ */
+export function splitLeadSentence(text: string): { lead: string; rest: string } {
+	const match = text.match(/^([^.!?]*[.!?])\s*([\s\S]*)$/);
+	if (!match) return { lead: text, rest: '' };
+	return { lead: match[1], rest: match[2] };
+}
+
 /** The label above the type-to-confirm box, when there is one. */
 export function typedPrompt(intent: DeployIntent): string {
 	if (intent.custom) return 'This version is not in the release list. Type';

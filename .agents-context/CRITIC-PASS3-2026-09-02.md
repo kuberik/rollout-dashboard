@@ -189,3 +189,46 @@ Praise: task 1 is one tap on a phone to the sentence naming hello-api-app and ^1
 zero clicks; the force-deploy dialog; Clear Pin copy; live updates in ~3s; the graph at 390.
 Cluster residue: two history entries on hello-world-dev/hello-world-app (rollback drill +
 restore), which evicted the two oldest under versionHistoryLimit 5.
+
+## Wave 5 landed at `ef4b051` (2026-09-03 02:55) — 50 commits since `b59d040`
+Every mid-width finding and every operator-walk finding actioned except filter state
+persistence beyond URL params. Layouts flip on container queries (banner action, Card title
+wrap, /rollouts groups, revision grid, Overview and /envs rails, pipeline step detail);
+32px touch targets via pointer:coarse hit-slop; one --focus-ring-color token; Logs menus
+neutral; the version picker is one column until a pick; Health Checks and Recent Events have
+bodies; popovers render in flow at 390; the graph floors at 0.85 and anchors the blocked
+pair; palette rows lead with the namespace; the provider's Dependencies tab counts rollouts;
+/ has a Held group; the contract verdict says a person must ship; medians ignore in-flight
+deploys; /apps leads with the exception and its row names all three environments; the app
+page says 'deploying · 37s'; station discs match the lists; /environments dev card and links;
+Clear Pin names the gate from every entry; the first frame of a cold load is the persisted
+theme; the version dialog never leaves the page and never asserts what GitHub cannot say;
+every modal is role=dialog; a pinned rollout shows one panel and HELD names pin and gate; the
+revision page counts places by revision ('6 of 6 · 3 on 2.66.0-66; 2.67.0-67 held'); filters
+live in the URL; History states its retention window; logs on a phone show the message.
+
+Open: the Logs pod-filter checkbox does not narrow the rendered rows (virtualizer count
+sync; pre-existing) → next; the app page's station discs are 32px against the 28px token;
+cluster residue: hello-world-app dev is on 0afab6f unpinned until Business Hours Only
+reopens at 13:00, then automation returns it to 064b655.
+
+## Third craft re-check at `ef4b051` (1440 light / 390 dark / 768 light), 2026-09-03 03:20
+Eight of ten wave-5 claims verified (Held group, verdict once, revision recount, Logs at 390,
+dialog attributes, URL filters, retention note, dark first frame). Refuted: the pointer:coarse
+hit-slop never engaged in a 390 window without touch emulation (195/195 under 32px on
+/activity; /rollouts 0/32 because its rows are whole-row tap zones); the graph's 0.85 floor
+clips the prod column at 1024 (blocked pair's right end 47px outside). Ranked residue →
+**wave 6**: (1) /rollouts pins 460px tracks — cards and the group rule must share a right
+edge; (2) "held" spelled five ways on six pages — one HELD atom on every list row; (3) banner
+glyph varies by page, not gate kind (calendar on /envs/prod lies); (4) /environments two body
+templates; (5) `Held 4` on / vs `Trailing 4` on /rollouts — one taxonomy; (6) per-page tap
+model — slop below sm regardless of pointer, whole-row zones everywhere; (7) 17 undeclared
+type roles, the card title/rollup among them → t-card-title/t-card-rollup/t-chip; (8) graph
+fit beats floor; (9) /namespaces has no banner, no tiles; (10) dialog left pane 65% empty,
+two switch sizes; (11) Recent activity rollup on one page of five; (12) header slot holds
+buttons/bars on three cards; (13–23) rag, mid-token identifiers, /versions row alignment,
+cold-load shell still gated on the API, History chart for one dot, two GitHub icons, pill
+heights, hero bar contradicting `held in 3 places`, three GitHub-absence copies, disc 28/32/40,
+`»` as icon and bullet. Lanes: p7-lists, p7-chrome, p7-touch, p7-graph-type, p7-shell,
+p7-podfilter. Verdict quoted: signs the Overview, app page, /envs/prod and the revision page;
+not the seams between pages.

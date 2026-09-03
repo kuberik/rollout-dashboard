@@ -314,3 +314,91 @@ describe('defect 5 — rollback direction copy (locked)', () => {
 		).toBeInTheDocument();
 	});
 });
+
+describe('defect 6 — the commits block speaks GitHub\'s absence in the shared wording (F10, design pass 2 re-check)', () => {
+	// All three scenarios need a `source` (or the dialog never reaches the
+	// commits block at all — it shows "No source repository linked" first)
+	// and a `revision` on the picked release (or "No commit revision known").
+	function sourcedRollout() {
+		return rolloutFixture({
+			status: {
+				source: 'https://github.com/org/repo',
+				availableReleases: [
+					{ tag: 'rel-66', version: '1.66.0-66', created: daysAgo(35), revision: 'a'.repeat(40) },
+					{ tag: 'rel-67', version: '2.67.0-67', created: daysAgo(1), revision: 'b'.repeat(40) }
+				],
+				gates: [{ name: 'ghd-open', passing: true, allowedVersions: null }],
+				conditions: [{ type: 'GatesPassing', status: 'True' }],
+				history: [
+					{
+						version: { tag: 'rel-66', version: '1.66.0-66', revision: 'a'.repeat(40) },
+						bakeStatus: 'Succeeded',
+						timestamp: daysAgo(4)
+					}
+				]
+			}
+		});
+	}
+
+	function mockFetch(commitsResponse: () => Response, statusBody: object) {
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) {
+				return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			}
+			if (url.includes('/auth/github/status')) {
+				return new Response(JSON.stringify(statusBody), { status: 200 });
+			}
+			if (url.includes('/commits')) {
+				return commitsResponse();
+			}
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+	}
+
+	test('GitHub not configured at all — the shared sentence, no button', async () => {
+		mockFetch(
+			() => new Response(JSON.stringify({ error: 'github_not_connected' }), { status: 401 }),
+			{ configured: false, connected: false }
+		);
+		renderModal({ rollout: sourcedRollout() });
+		await selectRow('2.67.0-67');
+
+		await waitFor(() =>
+			expect(screen.getByText('GitHub is not configured for this dashboard.')).toBeInTheDocument()
+		);
+		expect(screen.queryByRole('button', { name: /Connect GitHub/i })).not.toBeInTheDocument();
+	});
+
+	test('configured but not connected — the shared sentence prefixes the CTA, and the button appears', async () => {
+		mockFetch(
+			() => new Response(JSON.stringify({ error: 'github_not_connected' }), { status: 401 }),
+			{ configured: true, connected: false }
+		);
+		renderModal({ rollout: sourcedRollout() });
+		await selectRow('2.67.0-67');
+
+		await waitFor(() =>
+			expect(
+				screen.getByText(/GitHub is not connected for this dashboard\./)
+			).toBeInTheDocument()
+		);
+		expect(
+			screen.getByText(/Connect your GitHub account to see which commits will deploy/)
+		).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: /Connect GitHub/i })).toBeInTheDocument();
+	});
+
+	test('GitHub unreachable — "did not answer", the error detail, then the dialog-only "still proceed" suffix', async () => {
+		mockFetch(
+			() => new Response(JSON.stringify({ error: 'boom' }), { status: 500 }),
+			{ configured: true, connected: true }
+		);
+		renderModal({ rollout: sourcedRollout() });
+		await selectRow('2.67.0-67');
+
+		await waitFor(() => expect(screen.getByText(/GitHub did not answer\./)).toBeInTheDocument());
+		expect(screen.getByText(/boom/)).toBeInTheDocument();
+		expect(screen.getByText(/You can still proceed\./)).toBeInTheDocument();
+	});
+});

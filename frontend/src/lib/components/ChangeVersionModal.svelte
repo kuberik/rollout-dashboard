@@ -26,6 +26,7 @@
 		deployIntent,
 		releaseIndex,
 		rolloutEnvironmentName,
+		splitLeadSentence,
 		typedPrompt
 	} from '$lib/view-models/deploy-risk';
 	import { promotionBlock, gateAllows } from '$lib/view-models/promotion';
@@ -35,6 +36,7 @@
 		formatCommitMessage,
 		connectGithubInNewTab,
 		fetchGithubStatus,
+		githubAbsenceSentence,
 		githubStatusQueryKey,
 		FetchCommitsError,
 		type CommitsError
@@ -116,6 +118,80 @@
 	let loadingAllTags = $state(false);
 	let annotations = $state<Record<string, Record<string, string>>>({});
 	let loadingAnnotations = $state<Record<string, boolean>>({});
+
+	/**
+	 * ⭐ SHRINK THE PICKER TO ITS CONTENT ONLY WHEN THAT IS SAFE. See the note
+	 * above the grid markup for the full account of why this is measured in
+	 * JS rather than solved with `align-items` alone: `stretch` is what makes
+	 * an oversized picker correctly shrink-and-scroll inside the dialog's
+	 * `max-h-[85vh]` budget, and `start` breaks exactly that for a rollout
+	 * with enough releases to need it. This never touches the right pane —
+	 * its rendered height (under untouched `stretch`) is the one honest
+	 * reading of "what the row actually has available," which is why it is
+	 * the thing measured against rather than the picker's own (self-inflicted)
+	 * height.
+	 */
+	let leftPaneEl: HTMLDivElement | undefined = $state();
+	let leftHeaderEl: HTMLDivElement | undefined = $state();
+	let leftListEl: HTMLDivElement | undefined = $state();
+	let rightPaneEl: HTMLDivElement | undefined = $state();
+	let leftPaneMaxHeight = $state<number | null>(null);
+
+	/**
+	 * ⛔ `scrollHeight` LIES ONCE THE ELEMENT IS THE THING BEING STRETCHED.
+	 * `scrollHeight` is defined as `max(clientHeight, content height)` — so on
+	 * a `flex-1` list that the grid has ALREADY inflated to 517px, two ~60px
+	 * rows still read back as 517, because there is nothing to "scroll past"
+	 * relative to the list's own (inflated) box. Measuring the true content
+	 * extent needs the list's CHILDREN's own rendered positions, which do not
+	 * grow just because their container did.
+	 */
+	function measuredContentHeight(container: HTMLElement): number {
+		const top = container.getBoundingClientRect().top;
+		let bottom = top;
+		for (const child of Array.from(container.children)) {
+			bottom = Math.max(bottom, child.getBoundingClientRect().bottom);
+		}
+		return bottom - top;
+	}
+
+	$effect(() => {
+		// Re-run whenever the shape of the picker or the preview can change —
+		// `selectedVersion` mounts/unmounts the right pane and the ResizeObserver
+		// targets with it. Referencing the list's own length (rather than just
+		// the DOM nodes) makes this re-run on search/tag-toggle filtering too,
+		// where the list's own box does not resize but its CONTENT does.
+		const rowCount = filteredVersionsForDisplay.length;
+		if (!selectedVersion || !leftHeaderEl || !leftListEl || !rightPaneEl) {
+			leftPaneMaxHeight = null;
+			return;
+		}
+		const header = leftHeaderEl;
+		const list = leftListEl;
+		const right = rightPaneEl;
+		void rowCount;
+
+		function recompute() {
+			const natural = header.getBoundingClientRect().height + measuredContentHeight(list);
+			const available = right.getBoundingClientRect().height;
+			leftPaneMaxHeight = available > 0 && natural < available ? natural : null;
+		}
+
+		recompute();
+		// A second pass after layout settles: the effect's own `recompute()`
+		// can land between the DOM update and the browser's next layout (e.g.
+		// while `{#await loadAnnotationsOnDemand}` rows are still resolving
+		// their build-date line), and a `requestAnimationFrame` catches that
+		// without re-measuring on every animation frame forever.
+		const raf = requestAnimationFrame(recompute);
+		const ro = new ResizeObserver(recompute);
+		ro.observe(list);
+		ro.observe(right);
+		return () => {
+			cancelAnimationFrame(raf);
+			ro.disconnect();
+		};
+	});
 
 	// --- Override context: WHO this force-deploy overrides ----------------
 	// ⭐ THE PROD FORCE-DEPLOY DIALOG NAMED NO RULE. The banner behind it says
@@ -418,6 +494,16 @@
 	const level = $derived(confirmLevel(intent));
 	const needsTypedConfirmation = $derived(level === 'typed');
 	const deployNotice = $derived(selectedVersion ? confirmNotice(intent, pinVersionToggle) : null);
+	/**
+	 * ⭐ ONE BOLD SENTENCE, NOT FOUR EQUAL INKS. (F10, design pass 2 re-check)
+	 * The consequence alert set the icon, the full multi-sentence notice, the
+	 * `gateWhy` tail and the override `FactList` all at one flat weight in one
+	 * red — nothing read as louder than anything else. The lead sentence (the
+	 * actual consequence) is bolded; everything after it — the "how it
+	 * applies" detail, the paused-automation tail, the overridden rules —
+	 * stays at rest weight. See `splitLeadSentence`'s own note.
+	 */
+	const deployNoticeParts = $derived(deployNotice ? splitLeadSentence(deployNotice) : null);
 	const deployButtonLabel = $derived(deployActionLabel(intent));
 	/**
 	 * The caller may hand us the state it already derived (rollout detail does,
@@ -680,15 +766,44 @@
 			{/if}
 		</div>
 
+		<!-- ⭐ THE LEFT PANE'S HEIGHT IS ITS OWN CONTENT'S, NOT THE RIGHT PANE'S —
+		     BUT ONLY WHEN THAT IS SAFE. (F10, design pass 2 re-check)
+		     `align-items: stretch` (the grid default) forced the picker column
+		     to match the preview column's height every time they differ —
+		     measured 300×626 holding a search field and two rows, 65% empty,
+		     while the right pane's own content ran the full height beside it.
+		     A first attempt switched the grid to `items-start`, and a second
+		     look with a 22-release fixture (`hello-multi-app`) caught what it
+		     broke: `align-items` does not just position an already-sized
+		     track, it changes whether an OVERSIZED item is allowed to overflow
+		     it. With `stretch`, an oversized grid item forces the ancestor
+		     flex chain to `flex-shrink` the whole grid down to the dialog's
+		     `max-h-[85vh]` budget and the picker's own `overflow-y-auto`
+		     engages correctly (verified: 708px, scrollable). With `start`, the
+		     picker used its own uncapped intrinsic height (1406px) and spilled
+		     the version list out through the BOTTOM of the dialog card onto
+		     the page behind it — worse than the defect it fixed.
+		     `leftPaneMaxHeight` below measures the picker's true content need
+		     (header + the list's real `scrollHeight`, not its stretched
+		     rendered height) against the RIGHT pane's own rendered height —
+		     the right pane is never overridden, so its height is always an
+		     honest read of what the row actually has available. Only when the
+		     picker's content is SHORTER than that does an explicit `max-height`
+		     apply, which `stretch` still respects (a definite max-height wins
+		     over "fill the track"); otherwise no override is set and the
+		     picker keeps the exact stretch-and-scroll behaviour verified safe
+		     above. -->
 		<div class="grid flex-1 overflow-hidden {selectedVersion ? 'md:grid-cols-[300px_1fr]' : ''}">
 			<!-- LEFT: version picker. Full width, on its own, until a version is
 			     picked; a narrow bordered column beside the preview once one is. -->
 			<div
+				bind:this={leftPaneEl}
+				style={leftPaneMaxHeight != null ? `max-height: ${leftPaneMaxHeight}px` : ''}
 				class="flex-col overflow-hidden border-gray-200 dark:border-gray-700 {selectedVersion
 					? 'hidden md:flex md:border-r'
 					: 'flex'}"
 			>
-				<div class="shrink-0 space-y-3 p-4">
+				<div bind:this={leftHeaderEl} class="shrink-0 space-y-3 p-4">
 					<input
 						type="text"
 						placeholder="Search versions..."
@@ -708,10 +823,18 @@
 						     (flowbite's `gray` variant checks in at `gray-500`, not
 						     `gray-900`); the checked fill is overridden to match every
 						     other toggle in the product (`LogsViewer`'s `Follow`/`Wrap`,
-						     the History tab's `Compare namespace`/`Show environments`). -->
+						     the History tab's `Compare namespace`/`Show environments`).
+
+						     ⛔ ONE SWITCH SIZE. (F10, design pass 2 re-check) This was
+						     `size="small"` (36×20) while `Pin Version` below — the
+						     dialog's other, more consequential toggle — is the
+						     default 44×24. Two sizes for the same control in one
+						     dialog reads as two different KINDS of control; there is
+						     no reading of "show all repo tags" that is less important
+						     than "pin this deploy" to justify it being smaller. Sized
+						     to match. -->
 						<Toggle
 							bind:checked={showAllTags}
-							size="small"
 							color="gray"
 							classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
 							aria-labelledby="cvm-showall-label"
@@ -727,7 +850,12 @@
 				     pagination — two ways to reach the same tail, and the pagination
 				     bar sliced the last row of whichever page it sat under. Scroll
 				     alone is the list's own idiom everywhere else in the product. -->
-				<div class="flex-1 overflow-y-auto" role="group" aria-label="Available versions">
+				<div
+					bind:this={leftListEl}
+					class="flex-1 overflow-y-auto"
+					role="group"
+					aria-label="Available versions"
+				>
 					{#if filteredVersionsForDisplay.length > 0}
 						{#each filteredVersionsForDisplay as version (typeof version === 'string' ? version : version.tag)}
 							{@const versionTag = typeof version === 'string' ? version : version.tag}
@@ -802,7 +930,7 @@
 				     what will change") is gone with it; before a pick this is the
 				     whole dialog, so there is nothing beside the list for a
 				     placeholder to fill. -->
-				<div class="flex flex-col overflow-hidden">
+				<div bind:this={rightPaneEl} class="flex flex-col overflow-hidden">
 					<div class="flex-1 space-y-4 overflow-y-auto p-5">
 						<!-- Delta summary -->
 						<div
@@ -887,11 +1015,21 @@
 									<div class="flex flex-col items-start gap-2">
 										{#if githubStatusQuery.data && !githubStatusQuery.data.configured}
 											<p class="text-sm text-gray-500 dark:text-gray-400">
-												GitHub is not configured for this dashboard.
+												{githubAbsenceSentence(githubStatusQuery.data)}
 											</p>
 										{:else}
 											<p class="text-sm text-gray-500 dark:text-gray-400">
-												Connect your GitHub account to see which commits will {direction ===
+												<!-- ⭐ THE SENTENCE IS `githubAbsenceSentence`'s NOW, NOT A
+												     PRIVATE SPELLING. (F10, design pass 2 re-check) See its
+												     own note on `/versions/<rev>`: "GitHub is not connected"
+												     is one canonical fact, worded once, and every surface
+												     that can hit it says it the same way. Prefixed only once
+												     `githubStatusQuery` has actually answered `configured` —
+												     while it is still loading, the bare CTA below is honest
+												     on its own and there is no fact yet to prefix. -->
+												{#if githubStatusQuery.data?.configured}{githubAbsenceSentence(
+														githubStatusQuery.data
+													)}{' '}{/if}Connect your GitHub account to see which commits will {direction ===
 												'rollback'
 													? 'be reverted'
 													: 'deploy'}.
@@ -914,12 +1052,15 @@
 									     force-deploy dialog printing `No commit changes detected
 									     between versions.` while GitHub answered 401 — asserting
 									     ABSENCE for a question that was never actually answered.
-									     This is `ChangeList.svelte`'s own wording
-									     (`GitHub did not answer: …`), reused rather than
-									     reinvented, so the same failure reads the same way on
-									     every surface that can hit it. -->
+									     `githubAbsenceSentence({unreachable:true})` is the shared
+									     wording now (F10, design pass 2 re-check) — its own doc
+									     comment names this exact call site and says the caller
+									     appends its extra clause by concatenation, so `You can
+									     still proceed.` stays a dialog-only suffix rather than
+									     something rebuilt into the shared sentence. -->
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										GitHub did not answer: {commitsQuery.error instanceof Error
+										{githubAbsenceSentence(undefined, { unreachable: true })}
+										{commitsQuery.error instanceof Error
 											? commitsQuery.error.message
 											: 'unknown error'}. You can still proceed.
 									</p>
@@ -986,7 +1127,8 @@
 									     SAME unreachable sentence as the `isError` branch, never the
 									     "no changes" one. Absence is a claim; this is not one. -->
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										GitHub did not answer. You can still proceed.
+										{githubAbsenceSentence(undefined, { unreachable: true })} You can still
+										proceed.
 									</p>
 								{/if}
 							</div>
@@ -1039,8 +1181,17 @@
 									: 'dark:bg-yellow-950/50 dark:text-yellow-100'}"
 							>
 								<ExclamationCircleSolid class="h-4 w-4" />
+								<!-- ⭐ ONE BOLD SENTENCE — THE CONSEQUENCE — THEN REST WEIGHT.
+								     (F10, design pass 2 re-check) The icon, the full notice,
+								     the paused-automation tail and the override `FactList`
+								     were all one flat red at one flat weight: four facts at
+								     equal loudness reads as none of them loud. Only the LEAD
+								     sentence (`splitLeadSentence`) — the one that names the
+								     actual consequence — carries `font-semibold` now. -->
 								<div>
-									{deployNotice}
+									<span class="font-semibold">{deployNoticeParts?.lead}</span>{deployNoticeParts?.rest
+										? ` ${deployNoticeParts.rest}`
+										: ''}
 									{#if gateWhy}
 										<span class="mt-1 block opacity-90"
 											>Automatic promotion is paused right now — {gateWhy}.</span
@@ -1050,13 +1201,19 @@
 									     dialog used to say only "a rule is holding it" while the
 									     banner behind it named the count and the Dependencies tab
 									     named the contract. Structured, not a second sentence: a
-									     `FactList` under the consequence, one row per gate, in the
-									     alert's own ink (`tone="banner"`, same idiom `AlertPanel`
-									     uses for its own disclosure). -->
+									     `FactList` under the consequence, one row per gate.
+									     ⛔ NOT `tone="banner"` here — that tone gives the label
+									     AND the value the alert's own ink on purpose (see its own
+									     note: no alpha clears 4.5:1 over `AlertPanel`'s gradient),
+									     which is what made the label, the value and the prose
+									     read as one undifferentiated red block. This alert is a
+									     flat tint, not a gradient, so the value can afford to be
+									     the same neutral ink the `card` record uses — the label
+									     stays in the alert's own ink via `tone="alert"`. -->
 									{#if overrideFacts.length > 0}
 										<FactList
 											facts={overrideFacts}
-											tone="banner"
+											tone="alert"
 											class="mt-2 border-t border-current/15 pt-2"
 										/>
 									{/if}

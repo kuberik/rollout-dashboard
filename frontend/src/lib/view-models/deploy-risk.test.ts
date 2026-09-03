@@ -12,6 +12,7 @@ import {
 	retryConsequences,
 	retryIntent,
 	retryTag,
+	splitLeadSentence,
 	targetPhrase,
 	typedPrompt
 } from './deploy-risk';
@@ -227,6 +228,27 @@ describe('copy', () => {
 
 	it('says nothing at all when the level is none', () => {
 		expect(confirmNotice(deployIntent(devRollout(), NEWEST))).toBeNull();
+	});
+});
+
+describe('splitLeadSentence — the consequence is bold, the rest is not', () => {
+	it('splits the first sentence from the rest', () => {
+		const notice = confirmNotice(deployIntent(rollout(), NEWEST))!;
+		const { lead, rest } = splitLeadSentence(notice);
+		expect(notice.startsWith(lead)).toBe(true);
+		expect(lead).toMatch(/[.!?]$/);
+		expect(`${lead} ${rest}`.trim()).toBe(notice);
+	});
+
+	it('a single sentence has an empty rest', () => {
+		expect(splitLeadSentence('Only one sentence here.')).toEqual({
+			lead: 'Only one sentence here.',
+			rest: ''
+		});
+	});
+
+	it('a string with no terminal punctuation is the whole lead', () => {
+		expect(splitLeadSentence('no punctuation')).toEqual({ lead: 'no punctuation', rest: '' });
 	});
 });
 
