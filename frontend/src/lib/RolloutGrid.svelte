@@ -648,7 +648,15 @@
 	<!-- Filter bar: search + compact env filter pills + cluster filter pills (per design). -->
 	{#if cards.length > 0}
 		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-			<div class="relative min-w-0 flex-1 sm:max-w-xs">
+			<!-- ⛔ A FIXED WIDTH, NOT `flex-1`. (2026-09-03, from the human: "search is
+			     visually broken on rollout list.") As `min-w-0 flex-1` beside a
+			     filter group whose max-content is ~1195px, this box got whatever
+			     the group left over once both fit one line — at row widths
+			     between ~1210 and ~1530 (a wide window with the sidebar collapsed)
+			     that was ~90px: the icon and nothing else, with the first pill
+			     touching it. 320px at sm+, full width below; the filter group
+			     wraps its own pills when the line is tight. -->
+			<div class="relative w-full sm:w-80 sm:flex-none">
 				<SearchOutline
 					class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
 				/>
