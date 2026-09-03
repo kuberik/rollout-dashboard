@@ -346,19 +346,11 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
  *
  * ZERO NEW COLOUR VALUES: it is `ahead`'s existing pair.
  */
-export function coverageFill(key: CoverageKey | 'held', _reachable = true): string {
-	if (key === 'held') return HELD_SEGMENT_FILL;
+export function coverageFill(key: CoverageKey, _reachable = true): string {
 	return COVERAGE_FILL[key];
 }
 
-export function coverageSwatch(key: CoverageKey | 'held', _reachable = true): string {
-	// ⭐ THE HELD SWATCH IS THE BAR'S OWN ORANGE, NOT A SECOND PALETTE.
-	// (2026-09-03, operator-walk B4.) `held` is a SEGMENT (see `CoverageSegment`'s
-	// own note), never one of the five bucket keys `COVERAGE_SWATCH` indexes —
-	// so a caller drawing the two-swatch legend beside the hero's bar needs a
-	// third branch here rather than reaching for `HELD_SEGMENT_FILL` directly
-	// and inventing a second lookup that could drift from the bar's own fill.
-	if (key === 'held') return `${HELD_SEGMENT_FILL} border-transparent`;
+export function coverageSwatch(key: CoverageKey, _reachable = true): string {
 	return COVERAGE_SWATCH[key];
 }
 
@@ -596,54 +588,26 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
  * are one idea rather than two designs that rhyme. This is the shape both feed
  * to `CoverageBar.svelte`.
  *
- * ⭐ `'held'` IS A SEGMENT, NEVER A BUCKET. (2026-09-03, design pass 7,
- * finding #5) `classify()`'s `live` means exactly one thing — "running the
- * revision" — and that question is right for the bucket cards and for
- * `liveCount`. It is the WRONG question for the bar's own fill: a `live`
- * slot with `onOwnRelease: false` runs this git revision on an OLDER
- * release while a newer one sits behind a gate, which is precisely the
- * fact `buildState()` leads with (`held in N places`, checked BEFORE
- * `done`). Painting that slot the same solid health-green as a place that
- * is genuinely finished told two opposite stories 40px apart: the hero's
- * own word said "held", the largest colour mass on the page said "done".
- * `coverageSegments()` below carves the `held` slots back out of the
- * `live` bucket for the BAR ONLY — `classify()`, the bucket cards and
- * `liveCount` are untouched, because "does this place run the revision"
- * did not change; only "does the bar get to call it done" did.
+ * ⛔ THE `'held'` SEGMENT IS GONE — ONE BAR, ONE FILL. (2026-09-03, direct
+ * from the human, overriding design pass 7 finding #5 and the legend built
+ * on top of it: *"I don't like that revisions status bars are split in
+ * two."*) The same human had already rejected a segmented bar on THIS page
+ * once before; splitting `live` into a green "done" slice and an orange
+ * "held" slice reintroduced exactly that shape, however well-reasoned the
+ * colour math behind it was. The held fact is not deleted — it still lives
+ * in `buildState()`'s word (`held in N places`), in the hero rollup
+ * (`6 of 6 running it · 3 held on a newer release`) and in
+ * `releaseSplitSentence`'s caption — it just no longer gets a second colour
+ * on the bar itself. Every place that runs the revision paints the same
+ * green `live` fill, whichever release it is on.
  */
 export type CoverageSegment = {
-	key: CoverageKey | 'held';
+	key: CoverageKey;
 	count: number;
 	title: string;
 	/** Carried per segment so the bar needs no second prop; see `coverageFill`. */
 	reachable: boolean;
 };
-
-/**
- * ⛔ SUPERSEDED 2026-09-03 (operator-walk finding B4). This was
- * `'bg-gray-500 dark:bg-gray-400'` — `tone-mute`'s two tokens, reasoned as
- * agreeing with `BuildStateMark`'s gray `PauseSolid` word 40px above the bar.
- * Measured on the live page instead of read off the word beside it: `6 of 6
- * places running it` over a bar painted 3 green + 3 GRAY reads as *"3 of 6"*
- * — gray is this object's colour for ABSENCE everywhere else in the same
- * table (`ahead`, `notYet`'s outline), so a held segment sharing it told the
- * operator a running place was empty. `held` is a place that IS running the
- * revision, just on an older release with a newer one gated — that is
- * `RUNNING, HELD`, not `not here`, and it needs a fill that says "filled"
- * the way `live`/`failing` do.
- *
- * THE ORANGE HELD TONE — `bg-orange-500`, ZERO NEW COLOUR VALUES: it is the
- * exact literal `ControlCenter.svelte`'s and `RolloutGrid.svelte`'s own
- * `held` dot already paints, unconditional across both themes there (a small
- * dot needs no per-theme step; measured on a 26px bar it reads clearly on
- * both a white and a `gray-800` card without one either). `BuildStateMark`'s
- * word stays `tone-mute` gray — that is a decision about TEXT weight, not
- * about naming the SAME fact as `alarm`'s amber, so the two channels
- * diverging in hue here is not the disagreement the superseded reasoning
- * guarded against; the bar and the word still agree on WHICH slots are held,
- * only the bar now also agrees with itself about which slots are filled.
- */
-const HELD_SEGMENT_FILL = 'bg-orange-500';
 
 /**
  * ⭐ THE BUILD'S ONE-LINE ANSWER, IN WORDS A NOVICE ALREADY OWNS.
@@ -813,29 +777,16 @@ export function releaseSplit(coverage: RevisionCoverage): ReleaseSplitLine[] {
 }
 
 export function coverageSegments(coverage: RevisionCoverage): CoverageSegment[] {
-	const segments: CoverageSegment[] = [];
-	for (const b of coverage.buckets) {
-		// ⭐ THE ONE BUCKET THAT MAY DRAW AS TWO SEGMENTS — see the type's own
-		// note above. Ordinary case (every `live` slot on its own release) is
-		// byte-identical to before: `held.length` is 0 and only the `live`
-		// segment is pushed, in the same position `COVERAGE_ORDER` already put it.
-		if (b.key === 'live') {
-			const heldCount = b.slots.filter((s) => !s.onOwnRelease).length;
-			const doneCount = b.slots.length - heldCount;
-			if (doneCount > 0) {
-				segments.push({ key: 'live', count: doneCount, title: b.title, reachable: coverage.reachable });
-			}
-			if (heldCount > 0) {
-				segments.push({
-					key: 'held',
-					count: heldCount,
-					title: 'Held on an older release',
-					reachable: coverage.reachable
-				});
-			}
-			continue;
-		}
-		segments.push({ key: b.key, count: b.slots.length, title: b.title, reachable: coverage.reachable });
-	}
-	return segments;
+	// ⛔ NO PER-BUCKET SPECIAL CASE. (2026-09-03, direct from the human —
+	// see this function's own type doc.) Every bucket, `live` included,
+	// draws as ONE segment at its own fill. A `live` slot on an older
+	// release still paints plain `live` green; the fact that a newer
+	// release is held lives in the WORD (`buildState()`), not in a second
+	// colour carved out of this segment.
+	return coverage.buckets.map((b) => ({
+		key: b.key,
+		count: b.slots.length,
+		title: b.title,
+		reachable: coverage.reachable
+	}));
 }

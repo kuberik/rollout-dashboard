@@ -42,7 +42,6 @@
 	import FleetSpread from '$lib/components/FleetSpread.svelte';
 	import {
 		coverageSegments,
-		coverageSwatch,
 		buildState,
 		releaseSplit,
 		type RevisionCoverage
@@ -116,7 +115,14 @@
 			<div class="t-label text-gray-500 dark:text-gray-400">{eyebrow}</div>
 			<div class="lead-name">
 				{#if href}
-					<a class="t-display-id text-gray-900 hover:underline dark:text-white" {href}>{short}</a>
+					<!-- ⭐ `.hit-32` — THE LINK'S OWN 27.6px BOX IS UNDER THE 32px TOUCH
+					     FLOOR. (2026-09-03, touch lane hand-off) Same general-purpose
+					     slop `app.css` already gives `.rev-sha`/other raised controls;
+					     `.lead-name`'s `margin-top: 10px` (see the style block below)
+					     is what keeps its expanded reach clear of the eyebrow above. -->
+					<a class="t-display-id hit-32 text-gray-900 hover:underline dark:text-white" {href}
+						>{short}</a
+					>
 				{:else}
 					<h1 class="t-display-id text-gray-900 dark:text-white">{short}</h1>
 				{/if}
@@ -176,27 +182,15 @@
 
 	<CoverageBar {segments} label={barLabel} class="mt-3" />
 
-	<!-- ⭐ TWO SWATCHES, BOTH REAL. (2026-09-03, operator-walk B4.) This is not
-	     the rejected legend — the human's own objection was a key built from a
-	     dummy graphic, unconnected to anything on the card. These two swatches
-	     are the bar's own fill values, at the same size `FleetSpread` already
-	     uses, and the second one names an actual version this build ships as.
-	     Rendered ONLY when the bar has a `held` segment to explain: an
-	     ordinary fully-live build has one colour on the bar and needs no key
-	     for it. -->
-	{#if heldTotal > 0}
-		<div class="lead-legend mt-2">
-			<span class="lead-legend-item">
-				<span class="cov-swatch {coverageSwatch('live', coverage.reachable)}" aria-hidden="true"
-				></span>
-				Running it now
-			</span>
-			<span class="lead-legend-item">
-				<span class="cov-swatch {coverageSwatch('held')}" aria-hidden="true"></span>
-				Held on {heldLabel ?? 'a newer release'}
-			</span>
-		</div>
-	{/if}
+	<!-- ⛔ THE TWO-SWATCH LEGEND IS GONE. (2026-09-03, direct from the human,
+	     overriding the note this comment used to carry.) It explained a bar
+	     segment that no longer exists — `coverageSegments()` paints one green
+	     `live` fill now, whatever release a place is on — and the held fact
+	     it named is not lost: the rollup two lines up already says
+	     `N held on <release>`, and `releaseSplitSentence` (the page's own
+	     caption, unowned by this component) says it again in a full
+	     sentence. Two objects were enough; a third, graphical one was the
+	     segmented-bar shape the human has now rejected twice on this page. -->
 
 	{#if spread}
 		<FleetSpread {coverage} class="mt-4" />
@@ -244,12 +238,21 @@
 
 	/* The identifier's own row. The state word is NOT in here — see `.lead-sub`
 	   and the comment above it in the markup. */
+	/* ⛔ `margin-top: 4px` WAS TOO TIGHT FOR THE LINK'S OWN TOUCH FLOOR.
+	   (2026-09-03, touch lane hand-off) The identifier link's rendered box
+	   is 27.6px tall (24px `t-display-id` at line-height 1.15) — under the
+	   32px floor `app.css`'s slop mechanism (`.rev-sha`/`.hit-32`) enlarges
+	   a control to, which reaches `(32 - 27.6) / 2 + 6px ≈ 8.2px` above the
+	   link's own top edge (the `+12px` term in that formula's `max()`). A
+	   4px gap to the eyebrow above it is short of that reach, so a point
+	   just inside the link's expanded hit box can resolve to the eyebrow
+	   instead. 10px clears it with margin to spare. */
 	.lead-name {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 4px 12px;
-		margin-top: 4px;
+		margin-top: 10px;
 		min-width: 0;
 	}
 
@@ -274,29 +277,6 @@
 
 	.lead-count :global(.t-label) {
 		width: 100%;
-	}
-
-	/* THE LEGEND, AT CAPTION SCALE — 11px, gray, below the bar it explains,
-	   never competing with the 24px identifier for attention. */
-	.lead-legend {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px 14px;
-		font-size: 11px;
-		line-height: 16px;
-		color: var(--color-gray-500);
-	}
-
-	:global(.dark) .lead-legend {
-		color: var(--color-gray-400);
-	}
-
-	.lead-legend-item {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
 	}
 
 	/* 8px, NOT 16 — the row holds `.nav-link`s now, and `.nav-link` carries

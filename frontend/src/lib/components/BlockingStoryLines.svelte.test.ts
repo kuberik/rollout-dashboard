@@ -303,9 +303,17 @@ describe('BlockReason: the consequence prints, the generated name does not', () 
 		expect(details?.textContent).toContain('dependency-hello-frontend-needs-api');
 		expect(details?.textContent).toContain('ghd-5b2wn');
 		expect(details?.querySelector(SUMMARY)?.textContent).toContain('2 rules');
-		// THE LONG CONSEQUENCE IS THE RECORD'S `Clears` ROW, and it is the only
-		// place the short form renders it at all.
-		expect(details?.textContent).toContain('No newer version is on this rule');
+		// ⛔ NOT THE LONG `line` SENTENCE ANY MORE. (2026-09-03, touch lane
+		// hand-off) A single `Clears` row used to hold `line` — the STATE
+		// sentence, not a remedy, the same "Clears: outside the window"
+		// inversion `GateRecord.svelte`'s own fix already closed once. The
+		// record's `Clears` row is the REMEDY now (`r.clears`); the STATE
+		// (`r.short`, "No newer version is allowed yet") is not repeated
+		// here at all — it already printed above the control, asserted by
+		// the PRINTED check at the top of this test.
+		expect(details?.textContent).toContain(
+			"Whatever maintains this rule's allow-list changes it"
+		);
 	});
 
 	// THE LABEL IS A NOUN AND IT COUNTS. (2026-09-01) It was `Which rule` /

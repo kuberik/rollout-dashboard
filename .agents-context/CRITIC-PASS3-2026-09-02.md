@@ -293,3 +293,47 @@ a navbar Search button; navigation focuses main; 'Clear pin' everywhere (pin-cop
 History separates a blank note from the system description; the schedule sentence is a
 sentence; /versions hero bar paints held places orange with a caption; rail headers 47px on
 every page. Not actioned: `.btn` action rows on /apps and /environments (human decision).
+
+## Fifth craft re-check at `9e21437`, 2026-09-03 06:00 → wave 8
+Eleven of twelve wave-7 claims hold. BLOCKING REGRESSION: the Change Version confirm pane
+is capped at 148px (last pass's F6 max-height), so at ≥768 the gates, typed field, Cancel and
+the red confirm are clipped and unclickable (`sh 514 / ch 148`, elementFromPoint at the
+button returns the grid) → p9-dialog first. Then: one schedule gate is amber on dev and blue
+on prod/staging — hue was keyed on the queue, not the kind; a non-blocking schedule notice
+becomes a meta row, not a second banner (p9-banner); two stacked banners on the dev frontend
+Overview with empty right slots → one panel with the rule-count chip (p9-banner); Available
+Version Upgrades collapses when up to date (p9-banner); /versions hero bar's orange half has
+no legend and the rollup says 6 of 6 running while the title says 3 held (p9-lists);
+/namespaces rows are 57% hole with 16 icons (p9-lists); names truncate on the stuck/held rows
+of /environments, /versions, /namespaces and the graph node's sentence clips (p9-lists); the
+activity rail is 1.9× the subject on three pages (p9-lists); /envs/prod rows carry a 168px
+hole (p9-lists); half the text wears no role because t-chip sits on the wrapper, plus 111
+default-16px leaves (p9-type); / has no display figure (p9-type); seven controls under 32px
+true reach (p9-touch); Ctrl+K-opened palette drops focus on Escape (p9-dialog).
+
+## Fourth operator walk (new-engineer persona) at `9e21437`, 2026-09-03 06:05 → wave 8 follow-ups
+Cold read of /: 3 of 5 beliefs true; false: "will not move on their own" for a window that
+reopens at 13:00; `Deploys · 7d 50` and `Failed 0` are floors from a 5-entry history; `Typical
+to prod 6m` is n=1. BLOCKING: B1 /apps says `DEV is stuck — nothing is holding it on purpose`
+with a schedule gate shut (HELD and STUCK chips on one card; "31m" is time since last deploy)
+→ p9-truth3; B2 /rollouts shows an operator's pin as HELD and never says "pin" → p9-truth3;
+B3 Deploy/Roll back give no feedback for 5–8s with the button still armed → p9-dialog +
+p9-banner; B4 /versions hero `6 of 6` beside a 3/6-looking bar with no orange legend →
+p9-lists (count by revision stays the decision; the card must not disagree with itself);
+B5 Held header contradicts the tooltip's "This clears on its own" → p9-type. PAINFUL: P1 every
+deploy count is a floor (History hedges, Home does not) → p9-lists; P2 reopen time unlabelled
+(`9/3/2026, 1:00:00 PM` vs `9 AM - 5 PM EST`) → p9-banner; P3 vocabulary census 14/9/7/9
+spellings for held / the rule / newest / deploying → wave 9 lane; P4 eleven misreadable
+sentences (CLEARS label over a state sentence; `1 version ahead` at the station's indent;
+three-day-old rollback as a standing alert; `HELD 2.67.0-67` under hello-api-app's name; `4
+healthy · 2 rolled back · 80% of last 5`; `of 33`) → lanes; P5 /activity never shows the
+recorded note, pin/clear-pin absent from History, note optional on rollback → p9-touch,
+p9-truth3, p9-dialog; P6 Roll back styled like Deploy; list rows no affordance → p9-dialog;
+P7 the key sentence lives in an 18px hover tooltip → p9-banner; P8 app page has no actions →
+wave 9 (real Deploy per station is an action, not navigation); P9 hello-world-manifests
+dropped silently from /apps and /environments → p9-lists; P10 ten disagreeing number pairs →
+lanes; P11 Overview swallows the commits 401 → p9-banner; P12 PROD identity amber beside
+held amber → not actioned (identity hues are in the closed budget); P13 palette has no verbs
+→ not actioned. Praise: the in-flight Home card, rollback and Clear Pin copy, the Dependencies
+tab, History's honesty, live updates everywhere. Residue: hello-world-dev/hello-world-app
+back on 064b655 (cleaner than found), three history entries prefixed `pass9 walk:`.

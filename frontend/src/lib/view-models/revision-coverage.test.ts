@@ -3,7 +3,6 @@ import { buildRevisionLedger } from './revision-ledger';
 import {
 	revisionCoverage,
 	coverageSegments,
-	coverageFill,
 	COVERAGE_ORDER,
 	buildState,
 	releaseSplit,
@@ -237,29 +236,26 @@ describe('revisionCoverage', () => {
 	});
 
 	/**
-	 * ⭐ THE BAR MAY NOT PAINT A HELD PLACE AS DONE. (2026-09-03, design pass
-	 * 7, finding #5) `buildState()` already leads with `held in N places` for
-	 * this exact fixture — checked BEFORE `done` — so a segment list that
-	 * still called every one of these three slots plain `live` would draw the
-	 * page's largest colour mass in direct contradiction of its own hero word,
-	 * 40px above the bar. `classify()` and the bucket count are unchanged
-	 * (`live: 3`, asserted above and in `heldRevisionFixture`'s own tests);
-	 * only the BAR's segmentation carves the held slots back out.
+	 * ⛔ THE `held` SEGMENT IS GONE — ONE BAR, ONE FILL. (2026-09-03, direct
+	 * from the human, overriding design pass 7 finding #5: *"I don't like
+	 * that revisions status bars are split in two."*) A `live` slot on an
+	 * older release now draws the SAME plain `live` segment as any other —
+	 * `classify()` and the bucket count are still unchanged (`live: 3`,
+	 * asserted above and in `heldRevisionFixture`'s own tests) and so is the
+	 * WORD (`buildState()` still leads with `held in N places` for this
+	 * fixture — see the describe block below); only the bar's SEGMENTATION
+	 * reverted to one segment per bucket.
 	 */
-	describe('coverageSegments: a `live` slot held on an older release is not `live` on the bar', () => {
-		it('draws the whole bucket as `held`, not `live`, when every place is held', () => {
+	describe('coverageSegments: a `live` slot held on an older release still draws as plain `live`', () => {
+		it('draws the whole bucket as `live`, even when every place is held', () => {
 			const repo = heldRevisionFixture();
 			const cov = revisionCoverage(repo.rows[0], new Date());
-			// The bucket itself is untouched — this is still `live: 3` to every
-			// consumer that reads `cov.buckets` or `cov.liveCount` directly.
 			expect(counts(repo.rows[0])).toEqual({ live: 3 });
 			const segs = coverageSegments(cov);
-			expect(segs).toEqual([
-				{ key: 'held', count: 3, title: 'Held on an older release', reachable: true }
-			]);
+			expect(segs).toEqual([{ key: 'live', count: 3, title: 'Running it now', reachable: true }]);
 		});
 
-		it('splits the bucket into both segments when only part of it is held', () => {
+		it('never emits a `held` segment, even when the bucket is a partial mix of releases', () => {
 			// One service on its own release, one held behind a gate — the
 			// ordinary partial case, not the all-or-nothing fixture above.
 			const sha = 'fffffff0000000000000000000000000000000';
@@ -277,38 +273,15 @@ describe('revisionCoverage', () => {
 			const row = repo.rows.find((r) => r.short === sha.slice(0, 7))!;
 			const cov = revisionCoverage(row, new Date());
 			const segs = coverageSegments(cov);
-			expect(segs).toEqual([
-				{ key: 'live', count: 1, title: 'Running it now', reachable: true },
-				{ key: 'held', count: 1, title: 'Held on an older release', reachable: true }
-			]);
+			expect(segs).toEqual([{ key: 'live', count: 2, title: 'Running it now', reachable: true }]);
 		});
 
 		it('does not appear at all in the ordinary case — byte-identical to before', () => {
 			const repo = fixture();
 			const cov = revisionCoverage(repo.rows[0], new Date());
 			const segs = coverageSegments(cov);
-			expect(segs.some((s) => s.key === 'held')).toBe(false);
+			expect(segs.some((s) => (s.key as string) === 'held')).toBe(false);
 		});
-	});
-
-	/**
-	 * ⭐ SUPERSEDED 2026-09-03 (operator-walk finding B4). This asserted the
-	 * gray `tone-mute` pair `BuildStateMark`'s word wears, on the theory that
-	 * matching it in HUE was the whole requirement. Measured on the live
-	 * page instead: `6 of 6 places running it` over a bar painted 3 green +
-	 * 3 gray reads as "3 of 6", because gray is this table's colour for
-	 * ABSENCE everywhere else (`ahead`, `notYet`'s outline) — a held place
-	 * IS running the revision, just on an older release, and needs a fill
-	 * that says "filled". `HELD_SEGMENT_FILL` is now the exact orange
-	 * `ControlCenter.svelte`/`RolloutGrid.svelte` already paint their own
-	 * `held` dot — zero new colour values, see its own comment. It still
-	 * must not collide with `live`'s green or `ahead`'s gray, which is the
-	 * one assertion this test keeps.
-	 */
-	it('`coverageFill` gives `held` the product\'s own orange `held` tone, never `live`\'s green or `ahead`\'s gray', () => {
-		expect(coverageFill('held')).toBe('bg-orange-500');
-		expect(coverageFill('held')).not.toBe(coverageFill('live'));
-		expect(coverageFill('held')).not.toBe(coverageFill('ahead'));
 	});
 
 	/** Same shape as `heldRevisionFixture`, plus the gate the live cluster

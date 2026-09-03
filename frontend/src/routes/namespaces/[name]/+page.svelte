@@ -92,6 +92,8 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import DeployHistoryTicks from '$lib/components/DeployHistoryTicks.svelte';
+	import BlockReason from '$lib/components/BlockReason.svelte';
+	import { sortEnvironmentNames } from '$lib/env-order';
 	import Card from '$lib/components/Card.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
@@ -346,6 +348,49 @@
 		}
 		return null;
 	}
+
+	/**
+	 * ⭐ THE ROW EARNS ITS WIDTH, PART TWO — THE PROMOTION CHAIN. (2026-09-03,
+	 * design pass 9 re-check, F4) A row here answered "how far behind is
+	 * this app" (the rank chip) but never "where does this app run at all" —
+	 * the fact `/envs/<name>`'s own `chainFor` already draws per row, one
+	 * scope over. `dev › staging › prod`, this namespace's own tier
+	 * highlighted, is real content this page already has the data for
+	 * (`environments` carries every `Environment` CR fleet-wide, not just
+	 * this namespace's), and it is what the environments a bare rank chip
+	 * only measures the DISTANCE across.
+	 *
+	 * ⚠️ NOT `chainFor` FROM `/envs/<name>`. That function is keyed off a
+	 * `group.cells` list already scoped to ONE app (`slot.group`); this page
+	 * has no such per-row group, only the fleet-wide `environments` list, so
+	 * it re-derives the same shape from that instead of importing a
+	 * function whose signature assumes a different caller's data.
+	 */
+	type ChainLink = {
+		tier: string;
+		label: string;
+		theme: ReturnType<typeof getRolloutEnvironmentTheme> | null;
+		current: boolean;
+	};
+	function chainFor(appName: string, currentTier: string): ChainLink[] {
+		const byTier = new Map<string, Environment>();
+		for (const e of environments) {
+			const tier = e.spec?.environment;
+			if (!tier || e.spec?.rolloutRef?.name !== appName || byTier.has(tier)) continue;
+			byTier.set(tier, e);
+		}
+		return sortEnvironmentNames([...byTier.keys()]).map((tier) => {
+			const env = byTier.get(tier)!;
+			const rollout = rollouts.find((r) => rolloutMatchesEnvironment(r, env));
+			const theme = rollout ? getRolloutEnvironmentTheme(rollout, env) : null;
+			return {
+				tier,
+				label: (theme ? shortEnvLabel(theme) : '') || tier,
+				theme,
+				current: tier === currentTier
+			};
+		});
+	}
 </script>
 
 <svelte:head>
@@ -455,11 +500,13 @@
 						{@const stuck = detectStuck(a.rollout, { now: $now })}
 						{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
 						{@const appName = a.rollout.metadata?.name || ''}
+						{@const block = promotionBlock(a.rollout)}
 						{@const mark = cardStateMark({
 							rolledBack: detectRollback(a.rollout),
 							pinnedVersion: a.rollout.spec?.wantedVersion ?? null,
-							held: promotionBlock(a.rollout).blocked
+							held: block.blocked
 						})}
+						{@const chain = chainFor(appName, a.envName)}
 						<li
 							class="environment-theme-scope"
 							style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
@@ -562,6 +609,43 @@
 											>
 										{/if}
 									</div>
+									<!-- ⭐ THE PROMOTION CHAIN — see `chainFor`'s own note. Real
+									     content for the row's width, and the answer to "where
+									     else does this app run" a bare rank chip cannot give.
+									     The CURRENT tier (this namespace's own) is a normal env
+									     chip; every other tier is a muted link to its own env
+									     page, `.hit-32` for a comfortable touch target. -->
+									{#if chain.length > 1}
+										<div class="flex min-w-0 flex-wrap items-center gap-1">
+											{#each chain as link, i (link.tier)}
+												{#if i > 0}
+													<ChevronRightOutline
+														class="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500"
+														aria-hidden="true"
+													/>
+												{/if}
+												{#if link.current}
+													<Chip role="env" theme={link.theme} label={link.label} title="{link.tier} \u2014 this page" wide />
+												{:else}
+													<a href="/envs/{encodeURIComponent(link.tier)}" class="hit-32 shrink-0 opacity-70 hover:opacity-100">
+														<Chip role="env" theme={link.theme} label={link.label} title={link.tier} wide />
+													</a>
+												{/if}
+											{/each}
+										</div>
+									{/if}
+									<!-- ⭐ THE GATE, NAMED — see `BlockReason`'s own note. Same
+									     atom `/environments` and `/envs/<name>` already print on
+									     a held row; this page's `HELD` chip (above) named the
+									     FACT, this names WHY. -->
+									{#if block.blocked}
+										<BlockReason
+											awaiting={block.awaitingApprovalGates}
+											notPassing={block.notPassingGates}
+											pinnedTo={a.rollout.spec?.wantedVersion ?? null}
+											class="min-w-0"
+										/>
+									{/if}
 								</div>
 								<div
 									class="col-start-2 flex min-w-0 flex-wrap items-center gap-2 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end sm:gap-1"
@@ -732,7 +816,7 @@
 						rollouts={apps.map((a) => a.rollout)}
 						{environments}
 						limit={20}
-						maxEntries={4}
+						maxEntries={1}
 						{localClusterName}
 						showEnv={showEnvInRail}
 						chrome={false}

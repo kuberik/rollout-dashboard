@@ -1761,7 +1761,7 @@
 							rollouts={slots.map((s) => s.cell.rollout)}
 							{environments}
 							limit={8}
-							maxEntries={4}
+							maxEntries={2}
 							showEnv={false}
 							chrome={false}
 							activityHref={`/activity?env=${encodeURIComponent(envName)}`}

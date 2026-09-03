@@ -2012,7 +2012,7 @@
 						rollouts={allRollouts}
 						{environments}
 						limit={8}
-						maxEntries={4}
+						maxEntries={1}
 						showEnv={true}
 						chrome={false}
 						{localClusterName}

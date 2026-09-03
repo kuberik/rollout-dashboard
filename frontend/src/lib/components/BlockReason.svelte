@@ -41,6 +41,18 @@
 		 * `rule:` handle under it that is THREE rendered lines for one fact.
 		 */
 		short: string;
+		/**
+		 * ⭐ THE REMEDY, SEPARATE FROM THE STATE. (2026-09-03, touch lane
+		 * hand-off — the same `NOW` vs `CLEARS` split `GateRecord.svelte`'s
+		 * own `factsFor` already carries: *"`Clears` … was the STATE, not
+		 * the REMEDY … a reader sees 'Clears: outside the window' and has
+		 * to work out that it means the opposite."* `short` is the fact
+		 * (what is true right now); this is what makes it stop being true.
+		 * `undefined` on the `contract` branch — its `drawsVersions` case
+		 * already draws the relation and keeps `line` as the record's one
+		 * detail row, which this split does not reach.
+		 */
+		clears?: string;
 		/** The handle, not the explanation. Render as `rule: <names>`. */
 		names: string | null;
 		/**
@@ -117,6 +129,7 @@
 				// `PinBadge` beside this prints the word `pinned` and puts the
 				// version only in a tooltip, so nothing else on the row says it.
 				short: `Held on ${pinnedTo} on purpose`,
+				clears: 'Someone clears the pin',
 				names: null,
 				form: 'short'
 			};
@@ -150,6 +163,7 @@
 				icon: LockSolid,
 				line: 'No newer version is on this rule\u2019s allow-list, and it will not clear until whatever maintains that list changes it',
 				short: 'No newer version is allowed yet',
+				clears: "Whatever maintains this rule's allow-list changes it",
 				names: awaiting.join(', '),
 				form: 'short'
 			};
@@ -169,6 +183,7 @@
 				// resolve themselves), and it still reads as the opposite of
 				// `Needs a person to approve` without borrowing a surround.
 				short: 'Waiting on a check or a time window',
+				clears: 'The check passes or the window reopens',
 				names: notPassing.join(', '),
 				form: 'short'
 			};
@@ -395,10 +410,37 @@
 	 * the live symptom, on THIS row, `/envs/prod` at 390 dark. Same fields,
 	 * same order; the grid and the wrap are `FactList`'s problem exactly
 	 * once now.
+	 *
+	 * ⛔ AND IT COPIED `GateRecord`'S OLD BUG TOO, NOT JUST ITS OLD MARKUP.
+	 * (2026-09-03, touch lane hand-off) A single `Clears` row held `r.line`
+	 * — the STATE sentence, not the remedy (`Outside the Business Hours
+	 * Only deploy window` filed under `Clears` reads as its own inverse).
+	 * Same split `GateRecord`'s `factsFor` already shipped: `Now` is the
+	 * fact (`r.short`), `Clears` is the remedy (`r.clears`, new on the
+	 * type). Scoped to the three GATE-shaped branches (`form === 'short'`
+	 * — pinned/awaiting/notPassing), which is exactly where `short` is a
+	 * STATE fact; the `contract` branch's `drawsVersions` case is
+	 * untouched — there the relation is already DRAWN as a diagram and
+	 * `line` is the record's one fallback detail, not a state/remedy pair.
 	 */
 	function factsFor(r: BlockReason): Fact[] {
 		const facts: Fact[] = [{ label: 'Kind', value: kindWord(r.kind) }];
-		if (r.form === 'short' || drawsVersions) facts.push({ label: 'Clears', value: r.line });
+		// ⛔ NO `Now` ROW HERE, UNLIKE `GateRecord`'S. (2026-09-03, touch lane
+		// hand-off, corrected) `GateRecord`'s `clearsFor` returns null exactly
+		// where the host already draws the state, and `BlockReason`'s OWN row
+		// (`{reason.short}`, printed just above this popover's trigger,
+		// unconditionally on every `form === 'short'` block) is precisely that
+		// case — this control's `<summary>` sits directly under a line that
+		// already says "No newer version is allowed yet". Repeating it as
+		// `Now` inside the record would be one fact printed twice in one
+		// viewport, the exact defect `GateRecord`'s own rule forbids
+		// ("a row that printed `short` does not get a second row for it").
+		// `Clears` is the ONLY new row: the remedy the row does not carry.
+		if (r.form === 'short' && r.clears) {
+			facts.push({ label: 'Clears', value: r.clears });
+		} else if (drawsVersions) {
+			facts.push({ label: 'Clears', value: r.line });
+		}
 		for (const name of ruleNames) facts.push({ label: 'Rule', value: name, handle: true });
 		if (r.reasonEnum) facts.push({ label: 'Status', value: r.reasonEnum, handle: true });
 		return facts;
