@@ -111,6 +111,7 @@
 	import type { RankVerdict } from '$lib/view-models/env-rank';
 	import { buildFleetStrip } from '$lib/view-models/fleet-strip';
 	import { promotionBlock } from '$lib/view-models/promotion';
+	import { historyAtLimit } from '$lib/history-marks';
 	import {
 		buildGateContext,
 		withSchedules,
@@ -204,6 +205,23 @@
 		groupRolloutsByApp(rollouts, environments)
 	);
 	const matrix = $derived.by(() => buildMatrix(rollouts, environments));
+	/**
+	 * ⭐ THE ROLLOUTS THIS PAGE CANNOT SHOW, NAMED — same disclosure
+	 * `/dependencies` already prints for its own `unlinkedRollouts`.
+	 * (2026-09-03, operator-walk P9) `groupRolloutsByApp`'s fallback branch
+	 * groups a rollout with no `Environment` CR by its own name — real data,
+	 * a real deploy — but `buildMatrix` keys every cell on an environment
+	 * TIER, which an unbound rollout has none of, so its row renders with
+	 * every cell empty and is filtered out downstream. `hello-world-manifests`
+	 * (3 rollouts, one per namespace) was invisible on this page with nothing
+	 * saying so — `4 apps` read as the whole fleet when it was 4 of 5. The
+	 * count is ROLLOUTS, not apps: one app name can be unbound in several
+	 * namespaces at once, and `/rollouts` (where they DO appear) lists them
+	 * one row per rollout.
+	 */
+	const unboundRolloutCount = $derived(
+		[...groups.values()].filter((g) => !g.hasEnvironmentBinding).reduce((n, g) => n + g.cells.length, 0)
+	);
 
 	type CellState =
 		| 'fail'
@@ -1159,8 +1177,17 @@
 	 * "a gate correctly refusing a candidate is not a stoppage" rule, a held
 	 * promotion does not need a person the way `failing`/`stuck` do, so it
 	 * keeps its own, quieter, count rather than inflating `Needs you`.
+	 *
+	 * ⛔ `a.rank !== 0`, NOT A BARE `.gateHeld`. (2026-09-03, operator-walk
+	 * P10) The head printed `4 apps · 1 needs attention · 2 blocked · 2 on
+	 * the newest` — five counted slots over four apps, because `hello-world-app`
+	 * was `rank === 0` (needs attention) AND `gateHeld` at once and this
+	 * count did not exclude it. The head band is a PARTITION now, not four
+	 * independent readings of the same fleet: precedence is needs attention
+	 * > blocked > on the newest > behind, and each bucket below excludes
+	 * every app a HIGHER bucket already claimed.
 	 */
-	const blockedCount = $derived(appRows.filter((a) => a.gateHeld).length);
+	const blockedCount = $derived(appRows.filter((a) => a.gateHeld && a.rank !== 0).length);
 
 	// ── ATTENTION IS A CARD, NOT A ROW BAND. (2026-08-30) ────────────────────
 	//
@@ -1202,9 +1229,17 @@
 	 * ⛔ CONVERGED WAS NEVER UP TO DATE, AND GREEN MAY ONLY MEAN THE SECOND.
 	 * (2026-08-31) `UpToDate` already draws that line per row (`allCurrent`);
 	 * `currentCount` below is the same predicate at page scope.
+	 *
+	 * ⛔ ALSO EXCLUDES `attnCount` AND `blockedCount` NOW (2026-09-03,
+	 * operator-walk P10) — see `blockedCount`'s own note. An app fully
+	 * deployed on its own head build can still be `gateHeld` (a NEWER
+	 * build exists and is refused), and counting it as both "blocked" and
+	 * "on the newest" is the same double-count one bucket up.
 	 */
 	const currentCount = $derived(
-		appRows.filter((a) => a.fleet.deployed > 0 && a.fleet.onHead === a.fleet.deployed).length
+		appRows.filter(
+			(a) => a.fleet.deployed > 0 && a.fleet.onHead === a.fleet.deployed && a.rank !== 0 && !a.gateHeld
+		).length
 	);
 
 	/* ══ THE RAIL'S THREE NUMBERS ═══════════════════════════════════════════
@@ -1220,6 +1255,15 @@
 	const fleetDeploys7d = $derived(appRows.reduce((n, a) => n + a.deploys7d, 0));
 	/** Every rollout on the page, for the rail's sparkline. */
 	const allRollouts = $derived(appRows.flatMap((a) => a.rolloutsForSpark));
+	/**
+	 * ⭐ THE DEPLOY COUNT IS A FLOOR, NOT A TOTAL, THE MOMENT ONE ROLLOUT HAS
+	 * EVICTED HISTORY. See `HowItsGoing`'s own `historyMayBeIncomplete` note
+	 * (2026-09-03, operator-walk P1) — `fleetDeploys7d` above sums
+	 * `status.history`, which is capped at `spec.versionHistoryLimit` per
+	 * rollout, so a busy rollout's earlier-in-the-window deploys can already
+	 * be gone from the API before this page ever sees them.
+	 */
+	const fleetHistoryMayBeIncomplete = $derived(allRollouts.some(historyAtLimit));
 
 	/**
 	 * ⚠️ A MEDIAN OF MEDIANS, AND IT SAYS SO. Each app's `lead.medianMs` is
@@ -1354,15 +1398,20 @@
 			// schedule window or an approval can be refusing every candidate
 			// at the same time the pin is — so a cell can be BOTH pinned and
 			// gated, and the banner's own "releases the hold" implied clearing
-			// the pin was the whole story. `cell.block` already carries the
-			// other gates' names (unaffected by the pin), so `blockReason`
-			// (the same function this file already calls for the pin clause)
-			// says what ELSE holds it, in the vocabulary `/environments` and
-			// `/envs/<name>` already use for a non-pin gate.
-			const otherHold = blockReason({
-				awaiting: cell.block.awaitingApprovalGates,
-				notPassing: cell.block.notPassingGates
-			});
+			// the pin was the whole story.
+			//
+			// ⛔ `blockReason({awaiting, notPassing})` NAMED NO GATE. (2026-09-03,
+			// operator-walk P4) It printed `waiting on a check or a time
+			// window` — true of every schedule gate in the product and
+			// specific to none of them — while `cell.story` (the SAME
+			// `blockingStory` classification `/environments` and rollout
+			// detail already render) carries each gate's OWN clause, e.g.
+			// `Outside the Business Hours Only deploy window`. `cell.story.gates`
+			// is every gate holding this cell independent of the pin, so it is
+			// the exact "what else" this sentence needs, named rather than
+			// typed.
+			const otherHold =
+				cell.story.gates.length > 0 ? joinClauses(cell.story.gates.map((g) => g.short)) : null;
 			return {
 				severity: 'pinned',
 				icon: PauseSolid,
@@ -1371,7 +1420,7 @@
 					cell.behindBy,
 					'newer version'
 				)} available, and none will deploy until the pin is cleared${
-					otherHold ? `. Clearing it alone will not be enough: ${otherHold.short.toLowerCase()}` : ''
+					otherHold ? `. Clearing it alone will not be enough: ${otherHold}` : ''
 				}.`,
 				footnote: 'Automatic updates into this environment are off, not broken.',
 				app: app.appName,
@@ -1550,6 +1599,13 @@
 					>
 				{/if}
 				· {currentCount} on the newest
+				{#if unboundRolloutCount > 0}
+					·
+					<a href="/rollouts" class="nav-link"
+						>{unboundRolloutCount} rollout{unboundRolloutCount === 1 ? '' : 's'} without an
+						Environment record <ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a
+					>
+				{/if}
 			</p>
 		{/if}
 	</div>
@@ -1885,6 +1941,7 @@
 					deploysTitle="{fleetDeploys7d} deploy{fleetDeploys7d === 1
 						? ''
 						: 's'} across every app on this page in the last {SPARK_DAYS} days"
+					historyMayBeIncomplete={fleetHistoryMayBeIncomplete}
 					sparklineRollouts={allRollouts}
 					sparklineDays={SPARK_DAYS}
 					typicalToProd={{
@@ -1955,6 +2012,7 @@
 						rollouts={allRollouts}
 						{environments}
 						limit={8}
+						maxEntries={4}
 						showEnv={true}
 						chrome={false}
 						{localClusterName}
@@ -2133,7 +2191,13 @@
 					<!-- THE SENTENCE SAYS WHAT NO BOX SAYS. Never an environment
 					     that already has one. -->
 					{#if app.lede}
-						<span class="t-micro truncate text-gray-500 dark:text-gray-400">{app.lede}</span>
+						<!-- ⛔ F6 (2026-09-03, design pass 9 re-check): `truncate` clipped
+						     this sentence to 239px of 252 at 1024 — it was fighting the
+						     environment chips above it for room on one flex-wrap line.
+						     `w-full` gives it a line of its own (a flex item at 100%
+						     width is always alone on its line in a wrapping row), so it
+						     gets the row's FULL measure and never has to compete. -->
+						<span class="t-micro w-full text-gray-500 dark:text-gray-400">{app.lede}</span>
 					{/if}
 				</span>
 			</span>

@@ -42,7 +42,9 @@
 	import FleetSpread from '$lib/components/FleetSpread.svelte';
 	import {
 		coverageSegments,
+		coverageSwatch,
 		buildState,
+		releaseSplit,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 
@@ -81,6 +83,31 @@
 		`${coverage.liveCount} of ${coverage.totalCount} places running ${short} · ` +
 			coverage.buckets.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`).join(' · ')
 	);
+
+	/**
+	 * ⭐ THE ROLLUP MAY NOT DISAGREE WITH THE BAR IT SITS ON. (2026-09-03,
+	 * operator-walk B4, re-check of F3.) `6 of 6 places running it` said
+	 * nothing about the bar's own orange segment two lines below it, so an
+	 * operator read the two together as "fully out" — the exact `fully
+	 * rolled out` claim `buildState`'s own `held` branch exists to refuse.
+	 * `releaseSplit` is the same grouping `releaseSplitSentence` (the page's
+	 * own caption) already reads, so the rollup's count and the caption's
+	 * sentence cannot drift: both are read off one function.
+	 */
+	const splits = $derived(releaseSplit(coverage));
+	const heldTotal = $derived(splits.reduce((sum, s) => sum + s.count, 0));
+	/**
+	 * NAMED ONLY WHEN EVERY HELD GROUP AGREES ON THE VERSION. A build that
+	 * ships as two services can have two different releases held — `2.67.0-67`
+	 * for one, a different tag for the other — and printing either alone
+	 * would be a claim about the wrong service. `null` falls back to the
+	 * honest, ungraded `a newer release`.
+	 */
+	const heldLabel = $derived.by(() => {
+		if (splits.length === 0) return null;
+		const labels = new Set(splits.map((s) => s.aheadLabel));
+		return labels.size === 1 ? [...labels][0] : null;
+	});
 </script>
 
 <div class="lead">
@@ -125,7 +152,9 @@
 				class="t-label text-gray-500 dark:text-gray-400"
 				title="A place is one service in one environment."
 			>
-				places running it
+				running it{#if heldTotal > 0}<span class="text-orange-950 dark:text-orange-300">
+						· {heldTotal} held on {heldLabel ?? 'a newer release'}</span
+					>{/if}
 			</div>
 		</div>
 	</div>
@@ -146,6 +175,28 @@
 	</div>
 
 	<CoverageBar {segments} label={barLabel} class="mt-3" />
+
+	<!-- ⭐ TWO SWATCHES, BOTH REAL. (2026-09-03, operator-walk B4.) This is not
+	     the rejected legend — the human's own objection was a key built from a
+	     dummy graphic, unconnected to anything on the card. These two swatches
+	     are the bar's own fill values, at the same size `FleetSpread` already
+	     uses, and the second one names an actual version this build ships as.
+	     Rendered ONLY when the bar has a `held` segment to explain: an
+	     ordinary fully-live build has one colour on the bar and needs no key
+	     for it. -->
+	{#if heldTotal > 0}
+		<div class="lead-legend mt-2">
+			<span class="lead-legend-item">
+				<span class="cov-swatch {coverageSwatch('live', coverage.reachable)}" aria-hidden="true"
+				></span>
+				Running it now
+			</span>
+			<span class="lead-legend-item">
+				<span class="cov-swatch {coverageSwatch('held')}" aria-hidden="true"></span>
+				Held on {heldLabel ?? 'a newer release'}
+			</span>
+		</div>
+	{/if}
 
 	{#if spread}
 		<FleetSpread {coverage} class="mt-4" />
@@ -223,6 +274,29 @@
 
 	.lead-count :global(.t-label) {
 		width: 100%;
+	}
+
+	/* THE LEGEND, AT CAPTION SCALE — 11px, gray, below the bar it explains,
+	   never competing with the 24px identifier for attention. */
+	.lead-legend {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 14px;
+		font-size: 11px;
+		line-height: 16px;
+		color: var(--color-gray-500);
+	}
+
+	:global(.dark) .lead-legend {
+		color: var(--color-gray-400);
+	}
+
+	.lead-legend-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
 	}
 
 	/* 8px, NOT 16 — the row holds `.nav-link`s now, and `.nav-link` carries

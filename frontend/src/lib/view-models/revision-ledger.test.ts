@@ -254,11 +254,11 @@ describe('buildRevisionLedger', () => {
 		const head = repo.rows[0];
 		expect(rankSentence(head.services.find((s) => s.appName === 'api')!)).toEqual({
 			rank: 'newest',
-			of: 'of 3'
+			of: 'of 3 builds'
 		});
 		expect(rankSentence(head.services.find((s) => s.appName === 'web')!)).toEqual({
 			rank: 'newest',
-			of: 'of 3'
+			of: 'of 3 builds'
 		});
 	});
 

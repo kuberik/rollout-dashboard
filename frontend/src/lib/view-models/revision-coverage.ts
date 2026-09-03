@@ -351,7 +351,14 @@ export function coverageFill(key: CoverageKey | 'held', _reachable = true): stri
 	return COVERAGE_FILL[key];
 }
 
-export function coverageSwatch(key: CoverageKey, _reachable = true): string {
+export function coverageSwatch(key: CoverageKey | 'held', _reachable = true): string {
+	// ⭐ THE HELD SWATCH IS THE BAR'S OWN ORANGE, NOT A SECOND PALETTE.
+	// (2026-09-03, operator-walk B4.) `held` is a SEGMENT (see `CoverageSegment`'s
+	// own note), never one of the five bucket keys `COVERAGE_SWATCH` indexes —
+	// so a caller drawing the two-swatch legend beside the hero's bar needs a
+	// third branch here rather than reaching for `HELD_SEGMENT_FILL` directly
+	// and inventing a second lookup that could drift from the bar's own fill.
+	if (key === 'held') return `${HELD_SEGMENT_FILL} border-transparent`;
 	return COVERAGE_SWATCH[key];
 }
 

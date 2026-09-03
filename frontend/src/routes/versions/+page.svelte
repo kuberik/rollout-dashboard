@@ -226,6 +226,20 @@
 		return rows.some(rowNamesBuild);
 	}
 
+	/**
+	 * ⭐ WRAP AT A TOKEN, NEVER THROUGH ONE. (2026-09-03, design pass 9
+	 * re-check, F6) `.rev-svc-name` truncated `hello-world-manifests` to
+	 * 127px of 151 at 1024 and 99 of 151 at 640 — an ellipsis on a SERVICE
+	 * NAME, the one string the row exists to identify. The same defect and
+	 * the same fix as `DependencyNode`'s stacked box: a bare `overflow-wrap`
+	 * would break mid-word (`hello-fronte` / `nd-app`, the live bug that fix
+	 * closed), so this inserts a `<wbr>` after every hyphen instead — the
+	 * only break points a kebab-case app name actually has.
+	 */
+	function identParts(name: string): string[] {
+		return name.split(/(?<=-)/);
+	}
+
 	function ageOf(row: RevisionRow): string {
 		const ms = row.lastDeployMs || row.createdMs;
 		return ms ? `${formatTimeAgoCompact(new Date(ms).toISOString(), $now)} ago` : '';
@@ -1171,7 +1185,9 @@
 				<span class="rev-name-svcs">
 					{#each g.services as svc, i (svc.appName)}
 						<span class="rev-svc">
-							<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200">{svc.appName}</span
+							<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200"
+								>{#each identParts(svc.appName) as part, pi (pi)}{part}{#if pi < identParts(svc.appName).length - 1}<wbr
+										/>{/if}{/each}</span
 							>
 							{#if svc.diverged}
 								<!--
@@ -1394,14 +1410,18 @@
 		min-width: 0;
 	}
 
-	/* A NAME NEVER BREAKS ACROSS TWO LINES. The run breaks between services
-	   only; a name that cannot fit ellipsises rather than splitting, because an
-	   ellipsised name still identifies and a split one does not. */
+	/* ⛔ SUPERSEDED (2026-09-03, design pass 9 re-check, F6): ellipsis is not
+	   the safer choice here — it CLIPPED the name, which is a worse defect
+	   than a wrap. `identParts` in the markup breaks only after a `-`, so
+	   "the run breaks between services only" survives as "the run breaks
+	   between services, or at a hyphen inside a name that has run out of
+	   room" — never mid-token. `white-space: normal` (the default, stated
+	   for clarity against the sibling rules around it) plus `overflow-wrap:
+	   normal` refuses the browser's own last-resort mid-word break. */
 	.rev-svc-name {
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		white-space: normal;
+		overflow-wrap: normal;
 	}
 
 	/*

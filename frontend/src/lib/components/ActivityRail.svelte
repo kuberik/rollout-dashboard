@@ -40,7 +40,8 @@
 		showAppName = true,
 		showEnv = true,
 		chrome = true,
-		collapseAfter = null
+		collapseAfter = null,
+		maxEntries = null
 	}: {
 		rollouts: Rollout[];
 		environments?: Environment[];
@@ -95,6 +96,13 @@
 		 * asks for 20 and is the one that needed it.
 		 */
 		collapseAfter?: number | null;
+		/**
+		 * Overrides `AUTO_CAP_ENTRIES` for a caller whose subject column is
+		 * shorter than the default 6-row ceiling leaves room for. `null`
+		 * (default) keeps the unmodified auto-cap. See the note on
+		 * `effectiveCapEntries` below.
+		 */
+		maxEntries?: number | null;
 	} = $props();
 
 	type ActivityEntry = {
@@ -297,13 +305,24 @@
 	 */
 	const AUTO_CAP_ENTRIES = 6;
 	const AUTO_CAP_DAYS = 2;
+	/**
+	 * ⭐ THE DEFAULT CEILING WAS STILL TOO GENEROUS ON THREE PAGES. (2026-09-03,
+	 * design pass 9 re-check, F5) `/apps`, `/envs/<name>` and `/namespaces/<name>`
+	 * all measured a rail ~1.9x the height of the subject column beside it —
+	 * `AUTO_CAP_ENTRIES` bounds a single busy DAY, but a rail spanning 2 quieter
+	 * days can still print more rows than the subject beside it has. `maxEntries`
+	 * is the caller's own tighter number, read only where it is set; every other
+	 * call site (`/`, via `HomeRail`) is byte-identical, since `null` falls
+	 * through to the unmodified `AUTO_CAP_ENTRIES`.
+	 */
+	const effectiveCapEntries = $derived(maxEntries ?? AUTO_CAP_ENTRIES);
 	const autoCapApplies = $derived(collapseAfter === null && showAppName !== false);
 	const autoCapped = $derived.by<ActivityEntry[]>(() => {
 		if (!autoCapApplies) return entries;
 		const out: ActivityEntry[] = [];
 		const daysSeen = new Set<string>();
 		for (const a of entries) {
-			if (out.length >= AUTO_CAP_ENTRIES) break;
+			if (out.length >= effectiveCapEntries) break;
 			const key = dayKey(a.timestamp);
 			if (!daysSeen.has(key)) {
 				if (daysSeen.size >= AUTO_CAP_DAYS) break;

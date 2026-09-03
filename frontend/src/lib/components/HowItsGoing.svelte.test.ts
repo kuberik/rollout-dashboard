@@ -160,7 +160,7 @@ describe('HowItsGoing: the same dt/dd shape across all four scopes', () => {
 		expect(dts[0].textContent).toContain('Deploys · 7d · 15 rollouts');
 	});
 
-	test('`Typical to prod` renders "— no full trip yet" rather than a bare dash', () => {
+	test('`Typical to prod` renders "— no measured trip yet" rather than a bare dash', () => {
 		const { container } = render(HowItsGoing, {
 			props: {
 				scope: 'app',
@@ -170,7 +170,7 @@ describe('HowItsGoing: the same dt/dd shape across all four scopes', () => {
 				typicalToProd: { ms: null, title: 'no trip yet' }
 			}
 		});
-		expect(container.textContent).toContain('no full trip yet');
+		expect(container.textContent).toContain('no measured trip yet');
 	});
 
 	test('`Furthest behind` with nothing behind renders a GREEN dash, not the neutral figure ink', () => {

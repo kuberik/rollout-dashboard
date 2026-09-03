@@ -205,6 +205,19 @@
 	const groups = $derived.by<Map<string, AppGroup>>(() =>
 		groupRolloutsByApp(rollouts, environments)
 	);
+	/**
+	 * ⭐ THE ROLLOUTS THIS PAGE CANNOT SHOW, NAMED — same disclosure
+	 * `/dependencies` prints for `unlinkedRollouts`, and `/apps` now prints
+	 * for the same reason. (2026-09-03, operator-walk P9) A rollout with no
+	 * `Environment` CR has no TIER, and this page is organised entirely by
+	 * tier, so `groupRolloutsByApp`'s fallback group for it never lands in
+	 * any card here. `hello-world-manifests` (3 rollouts) was silently
+	 * absent; the count is rollouts, not apps, because one app name can be
+	 * unbound in several namespaces at once.
+	 */
+	const unboundRolloutCount = $derived(
+		[...groups.values()].filter((g) => !g.hasEnvironmentBinding).reduce((n, g) => n + g.cells.length, 0)
+	);
 
 	// The same succeeded|failed|active|pending classification `/` and
 	// `/rollouts` use, so "healthy" here means what it means everywhere.
@@ -944,10 +957,22 @@
 		     the card's own `h2` says the environment. A links list has no cards
 		     in it — dumping this page's accessibility tree produced FOUR links
 		     called `hello-world-app`, one per environment, indistinguishable. -->
+		<!-- ⛔ F6 (2026-09-03, design pass 9 re-check): `flex-1` IS `flex: 1 1
+		     0%` — a ZERO hypothetical basis, so on a `flex-wrap` row the name
+		     never counted toward "does this line still fit" and NEVER
+		     wrapped; every chip after it was placed first and the name was
+		     squeezed into whatever the chips left over. Measured on the STUCK
+		     and HELD rows in the narrow 1440 three-column grid: `117px` left
+		     for a `hello-frontend-app`-shaped name. `flex-auto` (`flex: 1 1
+		     auto`) restores a CONTENT-sized hypothetical size, so the wrap
+		     algorithm now sees the name's real width when deciding what fits
+		     — the trailing chip cluster wraps to its own line under the name
+		     instead, and `truncate` is left as the genuine last resort (the
+		     name alone still wider than the row). -->
 		<a
 			href={a.rolloutHref}
 			aria-label={`${a.appName} in ${tier} — ${APP_STATE_WORD[a.state]}`}
-			class="tap-link min-w-0 flex-1 truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
+			class="tap-link min-w-0 flex-auto truncate font-mono text-[13px] font-medium text-gray-900 hover:underline dark:text-white"
 			>{a.appName}</a
 		>
 		{#if a.state === 'stuck'}
@@ -1162,25 +1187,40 @@
 			     carries colour, never the norm"), and `held` — the deviation —
 			     takes the disc's own orange rather than the alarm's amber,
 			     because amber is `stuck` and nothing else for state. -->
+			<!-- ⛔ F16 (2026-09-03, design pass 9 re-check): THREE ROLLUP
+			     GRAMMARS ON SIBLING CARDS. A `stuck` card printed `DEV · 1
+			     stuck` — no running count at all — while a `held` card
+			     printed `STAGING · 4/4 running · 1 held`, so the same header
+			     shape read two different sentence structures depending on
+			     which deviation fired. `N/M running` now leads EVERY card,
+			     unconditionally — it is true and worth saying whatever else
+			     is going on, the same argument the note above already makes
+			     for `held` — and the deviation (at most one clause: failing,
+			     else stuck, else held) is a second, separately-inked span
+			     appended to it, never a replacement for it. -->
 			<span
-				class="text-xs font-medium whitespace-nowrap {c.failing > 0
-					? 'text-red-700 dark:text-red-400'
-					: c.stuck > 0
-						? 'text-gray-500 dark:text-gray-400'
-						: c.heldCount > 0
-							? 'text-gray-900 dark:text-white'
-							: 'text-green-700 dark:text-green-400'}"
+				class="text-xs font-medium whitespace-nowrap {c.failing > 0 || c.stuck > 0
+					? 'text-gray-500 dark:text-gray-400'
+					: 'text-green-700 dark:text-green-400'}"
 				title="{c.healthy} of {c.apps.length} apps here are deployed and serving"
 			>
-				{#if c.failing > 0}
-					{c.failing} failing
-				{:else if c.stuck > 0}
-					{c.stuck} stuck
-				{:else}
-					{c.healthy}/{c.apps.length} running
-				{/if}
+				{c.healthy}/{c.apps.length} running
 			</span>
-			{#if c.heldCount > 0 && c.failing === 0 && c.stuck === 0}
+			{#if c.failing > 0}
+				<span
+					class="text-xs font-medium whitespace-nowrap text-red-700 dark:text-red-400"
+					title="{c.failing} of {c.apps.length} apps here failed their last deploy"
+				>
+					{c.failing} failing
+				</span>
+			{:else if c.stuck > 0}
+				<span
+					class="text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-400"
+					title="{c.stuck} of {c.apps.length} apps here are stuck"
+				>
+					{c.stuck} stuck
+				</span>
+			{:else if c.heldCount > 0}
 				<span
 					class="text-xs font-medium whitespace-nowrap text-orange-950 dark:text-orange-300"
 					title="{c.heldCount} of {c.apps.length} apps here have newer versions that no gate will let in yet"
@@ -1394,6 +1434,13 @@
 			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 				{envTiers.length === 1 ? 'environment' : 'environments'} · {appCount}
 				{appCount === 1 ? 'app' : 'apps'}
+				{#if unboundRolloutCount > 0}
+					·
+					<a href="/rollouts" class="nav-link"
+						>{unboundRolloutCount} rollout{unboundRolloutCount === 1 ? '' : 's'} without an
+						Environment record <ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a
+					>
+				{/if}
 			</p>
 		{/if}
 	</div>
@@ -1491,21 +1538,18 @@
 					>
 						<CodeBranchOutline class="h-3.5 w-3.5" aria-hidden="true" />
 						{regionCards.length > 0 ? 'Pipeline stages' : 'Environments'}
-						<!-- `4 in promotion order` assumed the reader knew what a
-						     promotion order is. This says which way it runs.
-
-						     ⛔ F12: THE SENTENCE DESCRIBED A LAYOUT THAT DOES NOT EXIST
-						     AT 390. (2026-09-03, re-check) `.env-stack` is `auto-fit`, so
-						     under `sm` the cards it describes collapse to ONE column,
-						     stacked top to bottom — the exact axis the sentence explicitly
-						     denies ("starts on the left and ENDS ON THE RIGHT"), printed
-						     as 3 lines of 10px tracked uppercase over three vertically
-						     stacked cards. A caption that contradicts the thing it
-						     captions is worse than none; it drops below `sm`, where the
-						     grid it describes is still true. -->
-						<span class="t-micro hidden sm:inline"
-							>· a version starts on the left and ends on the right</span
-						>
+						<!-- ⛔ F15, DROPPED AT EVERY WIDTH (2026-09-03, design pass 9
+						     re-check). `4 in promotion order` became "a version starts
+						     on the left and ends on the right", hidden below `sm` after
+						     F12 caught it describing a layout that collapses to one
+						     column there — but the sentence never earned its keep even
+						     where the grid IS wide: each card's own `dev › staging ›
+						     prod` chain already draws the promotion order the eyebrow
+						     only described in words, 60px below it. A caption that
+						     restates what the row beneath it already shows is
+						     furniture, not information — dropped entirely rather than
+						     re-gated to a width where it would merely be redundant
+						     instead of false. -->
 					</h2>
 					<!-- ⭐ A REAL GRID, READ LEFT TO RIGHT. The masonry that was
 					     here read TOP-TO-BOTTOM THEN ACROSS, which drew a

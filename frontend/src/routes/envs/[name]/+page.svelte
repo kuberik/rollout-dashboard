@@ -119,6 +119,8 @@
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 	import NextStep from '$lib/components/NextStep.svelte';
 	import BlockReason from '$lib/components/BlockReason.svelte';
+	import DeployHistoryTicks from '$lib/components/DeployHistoryTicks.svelte';
+	import { historyAtLimit } from '$lib/history-marks';
 	import PinBadge from '$lib/components/PinBadge.svelte';
 	import type { Rollout, Environment } from '../../../types';
 
@@ -763,6 +765,13 @@
 			}
 		return n;
 	});
+	/**
+	 * ⭐ THE 24H COUNT IS A FLOOR, NOT A TOTAL, THE MOMENT ONE ROLLOUT HERE HAS
+	 * EVICTED HISTORY — see `HowItsGoing`'s own `historyMayBeIncomplete` note
+	 * (2026-09-03, operator-walk P1). `deploys24h` above sums `status.history`,
+	 * capped per rollout at `spec.versionHistoryLimit`.
+	 */
+	const deploysMayBeIncomplete = $derived(slots.some((s) => historyAtLimit(s.cell.rollout)));
 
 	/**
 	 * MEDIAN BAKE — the median of every bake window this environment has a
@@ -1443,6 +1452,20 @@
 														/>
 													{/if}
 												{/each}
+												<!-- ⭐ F8 (2026-09-03, design pass 9 re-check): AN
+												     IDENTICAL 168px HOLE ON EVERY ROW, between the
+												     chain's last chip and the build column — the
+												     `minmax(0, 1.4fr)` chain track is wider than a
+												     short chain ever needs, and nothing else in it
+												     was claiming the leftover width. The six-tick
+												     deploy history already exists on the rollout
+												     (`status.history`) and is not drawn anywhere on
+												     this row; it is real content for a real gap,
+												     not padding invented to close it. -->
+												<DeployHistoryTicks
+													history={row.slot.cell.rollout.status?.history}
+													class="ml-1"
+												/>
 											</div>
 										{/if}
 									</div>
@@ -1652,6 +1675,7 @@
 						verdictTitle="Apps here running the newest version they have"
 						windowLabel="{SPARK_HOURS}h"
 						deploys={deploys24h}
+						historyMayBeIncomplete={deploysMayBeIncomplete}
 						sparklineRollouts={slots.map((s) => s.cell.rollout)}
 						sparklineHours={SPARK_HOURS}
 						sparklineBuckets={SPARK_BUCKETS}
@@ -1737,6 +1761,7 @@
 							rollouts={slots.map((s) => s.cell.rollout)}
 							{environments}
 							limit={8}
+							maxEntries={4}
 							showEnv={false}
 							chrome={false}
 							activityHref={`/activity?env=${encodeURIComponent(envName)}`}

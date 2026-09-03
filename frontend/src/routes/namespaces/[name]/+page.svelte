@@ -91,12 +91,14 @@
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import PinBadge from '$lib/components/PinBadge.svelte';
+	import DeployHistoryTicks from '$lib/components/DeployHistoryTicks.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import ActivityRail from '$lib/components/ActivityRail.svelte';
 	import HowItsGoing from '$lib/components/HowItsGoing.svelte';
 	import { getStatusCircleClass, bakeTitle } from '$lib/bake-status';
 	import { cardStateMark, detectRollback } from '$lib/rollout-cards';
 	import { promotionBlock } from '$lib/view-models/promotion';
+	import { historyAtLimit } from '$lib/history-marks';
 	import type { Rollout, Environment } from '../../../types';
 
 	const namespace = $derived(page.params.name as string);
@@ -296,6 +298,13 @@
 		}
 		return n;
 	});
+	/**
+	 * ⭐ THE COUNT IS A FLOOR, NOT A TOTAL, THE MOMENT ONE ROLLOUT HERE HAS
+	 * EVICTED HISTORY — see `HowItsGoing`'s own `historyMayBeIncomplete` note
+	 * (2026-09-03, operator-walk P1). `deploys7d` and `failedCount` above both
+	 * read `status.history`, capped per rollout at `spec.versionHistoryLimit`.
+	 */
+	const historyMayBeIncomplete = $derived(apps.some((a) => historyAtLimit(a.rollout)));
 	const furthestBehind = $derived.by<{ appName: string; by: number } | null>(() => {
 		let best: { appName: string; by: number } | null = null;
 		for (const a of apps) {
@@ -474,7 +483,7 @@
 							     own line under the name and the name gets the full track;
 							     from `sm` up the row is what it was. -->
 							<div
-								class="tap-zone grid grid-cols-[28px_minmax(0,1fr)_16px] items-center gap-x-3 gap-y-1.5 px-4 py-3 transition-colors hover:bg-gray-50 sm:grid-cols-[28px_minmax(0,1fr)_auto_16px] dark:hover:bg-gray-700/30"
+								class="tap-zone grid grid-cols-[28px_minmax(0,1fr)_16px] items-center gap-x-3 gap-y-1.5 px-4 py-3 transition-colors hover:bg-gray-50 sm:grid-cols-[28px_minmax(9rem,1fr)_auto_16px] dark:hover:bg-gray-700/30"
 							>
 								<!-- ⛔ F1: THIS DISC WAS 36px AND CALLED
 								     `getStatusCircleClass(status)` WITH NO `state` — the ONE list
@@ -502,7 +511,15 @@
 									/>
 								</span>
 								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-									<div class="flex min-w-0 items-center gap-2">
+									<!-- ⛔ F6 (2026-09-03, design pass 9 re-check): NO `flex-wrap`
+									     HERE MEANT THE NAME SHRANK INSTEAD OF THE CHIPS WRAPPING —
+									     `hello-frontend-app` clipped to 128px of 141 at 1024, 80 of
+									     141 at 640. The env chip and badges are `shrink-0`; with
+									     wrap allowed, a line that does not fit sends the LAST item
+									     (badges, then the deploy-history ticks) to a second line
+									     under the name instead of squeezing the one string that
+									     identifies the row. -->
+									<div class="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
 										{#if a.envName || a.theme}
 											<Chip
 												role="env"
@@ -526,6 +543,11 @@
 												version={a.rollout.spec.wantedVersion}
 												size="xs"
 											/>{/if}
+										<!-- ⭐ THE ROW EARNS ITS WIDTH — see `DeployHistoryTicks`'
+										     own note. This is what used to be a 489px hole
+										     between the name and the verdict chip on the same
+										     baseline (F4, design pass 9 re-check). -->
+										<DeployHistoryTicks history={a.rollout.status?.history} class="ml-1" />
 									</div>
 									<div class="flex min-w-0 items-baseline gap-2">
 										{#if a.title !== appName}<span
@@ -638,8 +660,16 @@
 					deploysTitle="{deploys7d} deploy{deploys7d === 1
 						? ''
 						: 's'} across every rollout in this namespace in the last {SPARK_DAYS} days"
+					{historyMayBeIncomplete}
 					sparklineRollouts={apps.map((a) => a.rollout)}
 					sparklineDays={SPARK_DAYS}
+					failed={{
+						count: failedCount,
+						title:
+							failedCount > 0
+								? `${failedCount} rollout${failedCount === 1 ? '' : 's'} in this namespace failed its last deploy`
+								: 'No rollout in this namespace failed its last deploy'
+					}}
 					furthestBehind={{
 						entry: furthestBehind,
 						title: furthestBehind
@@ -702,10 +732,10 @@
 						rollouts={apps.map((a) => a.rollout)}
 						{environments}
 						limit={20}
+						maxEntries={4}
 						{localClusterName}
 						showEnv={showEnvInRail}
 						chrome={false}
-						collapseAfter={8}
 						activityHref={`/activity?ns=${encodeURIComponent(namespace)}`}
 					/>
 				</Card>

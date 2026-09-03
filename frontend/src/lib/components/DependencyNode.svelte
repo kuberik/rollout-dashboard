@@ -224,14 +224,25 @@
 	-->
 	{#each data.holds as hold (hold.gate + hold.short)}
 		{@const Icon = HOLD_ICON[hold.clears] ?? QuestionCircleOutline}
-		<span class="flex min-w-0 items-center gap-1.5">
+		<!-- ⛔ F6 (2026-09-03, design pass 9 re-check): `truncate` CLIPPED THE
+		     GATE'S OWN SENTENCE TO 94px OF 266 AT EVERY WIDTH FROM 390 TO
+		     1024 — `Outside the Business Hours Only deploy window` is prose,
+		     not an identifier, and this box has no ellipsis short enough to
+		     keep it a claim anyone could act on. Height is free here (the
+		     canvas scrolls, and `GraphCanvas`'s own note records that this
+		     component's frame is height-derived, never height-constrained) —
+		     the same trade the name above already makes with `identParts`.
+		     `items-start`, not `items-center`: a two-line sentence beside a
+		     14px icon needs the icon pinned to the FIRST line, not centred
+		     across both. -->
+		<span class="flex min-w-0 items-start gap-1.5">
 			<Icon
-				class="h-3.5 w-3.5 shrink-0 {hold.clears === 'person' || hold.clears === 'unknown'
+				class="mt-px h-3.5 w-3.5 shrink-0 {hold.clears === 'person' || hold.clears === 'unknown'
 					? 'text-red-500 dark:text-red-400'
 					: 'text-gray-400 dark:text-gray-500'}"
 			/>
 			<span
-				class="t-micro min-w-0 truncate {hold.clears === 'person' || hold.clears === 'unknown'
+				class="t-micro min-w-0 text-wrap {hold.clears === 'person' || hold.clears === 'unknown'
 					? 'text-red-700 dark:text-red-400'
 					: 'text-gray-500 dark:text-gray-400'}">{hold.short}</span
 			>

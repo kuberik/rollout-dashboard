@@ -690,7 +690,13 @@ export function rankSentence(service: RevisionService): { rank: string; of: stri
 	// already said `19 behind`. Same chip, same role, same geometry.
 	return {
 		rank: service.rank === 0 ? 'newest' : `${service.rank} behind`,
-		of: `of ${service.ladderLength}`
+		// ⛔ WAS A BARE `of ${n}` — A NUMBER WITH NO NOUN. (2026-09-03, operator
+		// walk, P4) `/versions/<rev>`'s service row printed `NEWEST 064b655
+		// of 33` and left the reader to guess "33 what" — the row's own `title`
+		// tooltip already answers it (`"the N builds ${appName} can deploy"`),
+		// so the visible text gets the same noun the ledger uses everywhere
+		// else for this count, instead of relying on a hover to supply it.
+		of: `of ${service.ladderLength} build${service.ladderLength === 1 ? '' : 's'}`
 	};
 }
 

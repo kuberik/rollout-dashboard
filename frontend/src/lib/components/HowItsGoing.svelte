@@ -120,12 +120,29 @@
 		typicalDeployTitle = undefined,
 
 		/** `undefined` omits the row. `{ ms: null }` renders the em dash with
-		 *  its `no full trip yet` caption — the same shape on every page now,
+		 *  its `no measured trip yet` caption — the same shape on every page now,
 		 *  not just the two it already shipped on. */
 		typicalToProd = undefined,
 
 		/** `undefined` omits the row. */
 		failed = undefined,
+
+		/**
+		 * ⭐ THE COUNT IS A FLOOR WHEN ANY ROLLOUT BEHIND IT HAS EVICTED HISTORY.
+		 * (2026-09-03, operator-walk P1.) `/api/rollouts` never carries more than
+		 * `spec.versionHistoryLimit` entries per rollout — `history-marks.ts`'s
+		 * `historyAtLimit()` is the product's one test for it, the same one
+		 * `/activity`'s `groupRollup` already reads. Home's `Deploys · 7d 50`,
+		 * `/apps`' `35` and `/activity`'s own hero `50` are all counting a
+		 * TRUNCATED history and printing the truncated number as if it were the
+		 * total, while the History tab says outright *"showing the last 5
+		 * deploys (retention limit)"* — three surfaces disagreeing about
+		 * whether a number is exact. The caller states whether the population
+		 * behind THIS card has hit the limit; this component is the one place
+		 * that decides what that does to the printed figure, so the same fact
+		 * cannot render three different ways across call sites.
+		 */
+		historyMayBeIncomplete = false,
 
 		/** `undefined` omits the row. `{ entry: null, title }` renders the
 		 *  green em dash — nothing is behind. */
@@ -149,7 +166,11 @@
 		typicalToProd?: { ms: number | null; title: string };
 		failed?: { count: number; title: string };
 		furthestBehind?: { entry: FurthestBehind | null; title: string };
+		historyMayBeIncomplete?: boolean;
 	} = $props();
+
+	const INCOMPLETE_NOTE =
+		'At least one rollout counted here has hit its version history retention limit, so earlier deploys have already been evicted from the API — this count is a floor, not a total.';
 </script>
 
 <Card icon={ChartMixedOutline} title="How it’s going" {verdict} {verdictTone} {verdictTitle}>
@@ -160,7 +181,12 @@
 					? ` · ${population}`
 					: ''}
 			</dt>
-			<dd class="flex items-center gap-2" title={deploysTitle}>
+			<dd
+				class="flex items-center gap-2"
+				title={historyMayBeIncomplete
+					? `${deploysTitle ? deploysTitle + ' ' : ''}${INCOMPLETE_NOTE}`
+					: deploysTitle}
+			>
 				{#if showSparkline ?? deploys >= SPARK_MIN}
 					<DeployVolumeSparkline
 						rollouts={sparklineRollouts}
@@ -169,7 +195,9 @@
 						buckets={sparklineBuckets}
 					/>
 				{/if}
-				<span class="t-figure text-gray-900 tabular-nums dark:text-white">{deploys}</span>
+				<span class="t-figure text-gray-900 tabular-nums dark:text-white"
+					>{historyMayBeIncomplete ? '≥ ' : ''}{deploys}</span
+				>
 			</dd>
 		</div>
 
@@ -202,7 +230,7 @@
 						     shipped it. -->
 						<span class="t-figure text-gray-500 dark:text-gray-400">—</span>
 						<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
-							>no full trip yet</span
+							>no measured trip yet</span
 						>
 					{:else}
 						<span class="t-figure">{compactSpan(typicalToProd.ms)}</span>
@@ -225,7 +253,7 @@
 					class="t-figure tabular-nums {failed.count > 0
 						? 'text-red-700 dark:text-red-400'
 						: 'text-gray-900 dark:text-white'}"
-					title={failed.title}
+					title={historyMayBeIncomplete ? `${failed.title} ${INCOMPLETE_NOTE}` : failed.title}
 				>
 					{failed.count}
 				</dd>
