@@ -1140,7 +1140,7 @@
 			<span class="truncate">{info.name}</span>
 			<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
 			<span
-				class="t-micro flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-px text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+				class="chip t-chip chip-wide flex-shrink-0 border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400"
 				title="Parallel rollouts progress independently"
 			>
 				track {info.index} / {info.total}

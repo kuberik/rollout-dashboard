@@ -172,7 +172,7 @@ lib/components/DeploymentPipelineCard.svelte	text	… failed · … / … done
 lib/components/DeploymentPipelineCard.svelte	title	… retr…
 lib/components/DeploymentPipelineCard.svelte	text	After it is deployed, the new version runs live for a configured period while its health checks are watched. If every check holds for the whole window, the deploy is marked successful.
 lib/components/DeploymentPipelineCard.svelte	text	Deployment initiated … … at … … .
-lib/components/DeploymentPipelineCard.svelte	text	Deployment Pipeline
+lib/components/DeploymentPipelineCard.svelte	text	Deployment pipeline
 lib/components/DeploymentPipelineCard.svelte	code	Deployment started
 lib/components/DeploymentPipelineCard.svelte	code	Final check
 lib/components/DeploymentPipelineCard.svelte	text	Final check window. The new version is already live; health checks are watched before the deploy counts as done.
@@ -213,7 +213,7 @@ lib/components/ErrorState.svelte	text	Sign in again
 lib/components/ErrorState.svelte	code	this page
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	… Nothing since the deploy started · … … No recent events …
-lib/components/EventsCard.svelte	title	Recent Events
+lib/components/EventsCard.svelte	title	Recent events
 lib/components/ExposureBar.svelte	title	… — … ready pod… (…%)
 lib/components/ExposureBar.svelte	text	… environment … not counted
 lib/components/ExposureBar.svelte	aria-label	…% of ready pods on the newest build
@@ -261,7 +261,7 @@ lib/components/HealthChecksCard.svelte	text	… / … healthy
 lib/components/HealthChecksCard.svelte	text	… failing … … · … passing
 lib/components/HealthChecksCard.svelte	text	… passing · … recovered
 lib/components/HealthChecksCard.svelte	text	… pending … · … passing
-lib/components/HealthChecksCard.svelte	title	Health Checks
+lib/components/HealthChecksCard.svelte	title	Health checks
 lib/components/HomeRail.svelte	text	… deploy …
 lib/components/HomeRail.svelte	title	Recent activity
 lib/components/HomeRail.svelte	aria-label	View all activity
@@ -1089,7 +1089,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	applies it immedi
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Are you sure you want to mark the deployment for
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	as successful?
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Automatic deploys paused — this rollout is pinned to a version.
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Available Version Upgrades
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Back to all rollouts
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	by … rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	by a rule
@@ -1117,6 +1116,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Mark as Successfu
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Mark Deployment as Successful
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Mark Successful
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Message (Optional)
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Newer builds
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No deploys yet
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	No new versions available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No newer build to deploy right now. New builds appear here as the registry publishes them.
