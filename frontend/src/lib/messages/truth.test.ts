@@ -702,6 +702,61 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			s.verdict,
 			'Nobody has to approve anything — this clears when hello-api-app ships api ^1.67.0 and the deploy in front of it lands.'
 		);
+		// ⛔ THE DEFECT: `hello-frontend-app`'s Overview banner read "Two things
+		// are holding PROD" for this exact shape — a contract gate and the
+		// promotion-order gate downstream of the same contract, both
+		// `clears: 'upstream'`. Two gates, one cause, so the headline names
+		// the cause the same way a lone contract gate's verdict already does,
+		// rather than counting to two.
+		says(s.headline, 'STAGING is waiting for hello-api-app to ship api ^1.67.0');
+		expect(s.headline).not.toMatch(/things are holding/);
+	});
+
+	test('a promotion gate AND a contract with no agreed requirement -- the headline falls back to "a newer <contract>"', () => {
+		// ⛔ Masterminds semver constraints are not orderable across spellings,
+		// so two held candidates asking for different ranges have no single
+		// "the" requirement (see `ClassifiedGate.need`). The headline falls
+		// back the same way the dependency clause itself does.
+		const ctx = buildGateContext({
+			environments: {
+				items: [
+					{
+						metadata: { namespace: 'ns2', name: 'e' },
+						spec: { environment: 'staging', relationship: { environment: 'dev', type: 'After' } },
+						status: { rolloutGateRef: { name: 'ghd-1' } }
+					}
+				]
+			},
+			rolloutDependencies: {
+				items: [
+					{
+						metadata: { namespace: 'ns2', name: 'd' },
+						spec: { contract: 'api', providerRef: { name: 'hello-api-app' } },
+						status: {
+							gateName: 'dep-1',
+							providedVersion: '1.66.0',
+							blockedReleases: [
+								{ tag: 'x', requiredVersion: '^1.1.0' },
+								{ tag: 'y', requiredVersion: '^2.0.0' }
+							]
+						}
+					}
+				]
+			}
+		} as any);
+		const s = blockingStory(
+			rollout({
+				ns: 'ns2',
+				at: 0,
+				gates: [
+					{ name: 'ghd-1', allowedVersions: [] },
+					{ name: 'dep-1', allowedVersions: [] }
+				]
+			}),
+			ctx,
+			{ place: 'staging' }
+		);
+		says(s.headline, 'STAGING is waiting for hello-api-app to ship a newer api');
 	});
 
 	test('one clock gate -- the time is printed, and the verdict is go back to bed', () => {

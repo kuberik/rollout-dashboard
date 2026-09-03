@@ -1000,3 +1000,107 @@ describe('pluralSubject — a headline whose subject is a set', () => {
 		expect(s.headline).toBe('PROD is waiting on another deploy');
 	});
 });
+
+// ── ⭐ ONE CAUSE UNDER TWO NAMES IS STILL ONE CAUSE ─────────────────────────
+//
+// The defect: `/rollouts/prod/hello-dep-prod/hello-frontend-app`'s Overview
+// banner read "Two things are holding PROD" — `blockingStory` fell back to a
+// bare count the moment `gates.length > 1`, before either gate's `clears` was
+// read. Both of PROD's gates are `hello-frontend-needs-api`'s contract: the
+// `RolloutDependency` gate directly, and the promotion-order gate ("after
+// staging") only because staging is held on the identical contract. Every
+// other surface for this same rollout named the cause —
+// `/envs/prod` → "… waiting for hello-api-app to ship api ^1.67.0 — it is on
+// 1.66.0", `/apps` → "hello-frontend-app is waiting on another deploy in all
+// 3 environments", `/dependencies` → "… until hello-api-app ships api
+// ^1.67.0" — and the Overview banner was the one page still counting.
+describe('⭐ same-bucket multi-gate headlines name the cause, not the count', () => {
+	const NOW = new Date('2026-09-03T00:00:00Z');
+
+	it('the live fixture: a contract gate and its downstream order gate both read `upstream` — the headline names hello-api-app and ^1.67.0, never "things"', () => {
+		const frontendCtx = buildGateContext({
+			environments: {
+				items: [
+					{
+						metadata: { namespace: 'hello-dep-prod', name: 'hello-frontend-app' },
+						spec: {
+							environment: 'prod',
+							relationship: { environment: 'staging', type: 'After' as const },
+							rolloutRef: { name: 'hello-frontend-app' }
+						},
+						status: { rolloutGateRef: { name: 'ghd-frontend-prod' } }
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any,
+			rolloutDependencies: DEPENDENCIES
+		});
+		const s = blockingStory(
+			rolloutWith('hello-dep-prod', [
+				{ name: 'dependency-hello-frontend-needs-api', passing: true, allowedVersions: ['rel-66'] },
+				{ name: 'ghd-frontend-prod', passing: true, allowedVersions: [] }
+			]),
+			frontendCtx,
+			{ place: 'prod', now: NOW }
+		);
+		expect(s.gates).toHaveLength(2);
+		// Both gates read the SAME bucket — the order gate is downstream of the
+		// same contract, not a second cause.
+		expect(s.gates.every((g) => g.clears === 'upstream')).toBe(true);
+		expect(s.headline).toBe('PROD is waiting for hello-api-app to ship api ^1.67.0');
+		expect(s.headline).not.toContain('things');
+		expect(s.headline).not.toMatch(/^(One|Two|Three|Four|Five|Six|no) /);
+		// The contract leads the consequence too, regardless of the gates'
+		// generated-name alphabetical order.
+		expect(s.consequence.indexOf('hello-api-app ships')).toBeLessThan(
+			s.consequence.indexOf('staging deploys it first')
+		);
+	});
+
+	it('a person gate plus a contract: the buckets differ, so the count headline stays — and the consequence still names the approval first', () => {
+		const frontendCtx = buildGateContext({
+			// `{ items: [] }` — CONSULTED and empty, not `null` — so the
+			// provenance test can clear a hand-authored gate as `person`.
+			environments: { items: [] },
+			rolloutDependencies: DEPENDENCIES
+		});
+		const s = blockingStory(
+			rolloutWith('hello-dep-prod', [
+				{ name: 'dependency-hello-frontend-needs-api', passing: true, allowedVersions: ['rel-66'] },
+				{ name: 'hello-frontend-manual-approval', passing: true, allowedVersions: [] }
+			]),
+			frontendCtx,
+			{ place: 'prod', now: NOW }
+		);
+		expect(s.gates).toHaveLength(2);
+		expect(s.person).toHaveLength(1);
+		expect(s.upstream).toHaveLength(1);
+		// Mixed buckets: a person and a contract are two DIFFERENT kinds of
+		// story, so the count headline is still the honest one.
+		expect(s.headline).toBe('Two things are holding PROD');
+		// But the human-actionable clause still leads the consequence — the
+		// worst-first build order already puts `person` before `upstream`.
+		expect(s.consequence.indexOf('someone approves it')).toBeLessThan(
+			s.consequence.indexOf('hello-api-app ships')
+		);
+		expect(s.resolution).toContain('will not clear on its own');
+	});
+
+	it('single-gate headlines are untouched — a lone dependency gate still says the generic thing', () => {
+		// ⛔ LOCKED. `sameBucketHeadline` returns `null` below `gates.length <= 1`
+		// specifically so this byte-identical case — already pinned above at
+		// "'⭐ with the dependency join restored, all four surfaces say the same
+		// thing'" — never changes shape just because the SAME contract gate can
+		// now also drive a two-gate headline.
+		const whole = buildGateContext({
+			environments: ENVIRONMENTS,
+			rolloutDependencies: DEPENDENCIES,
+			rolloutGates: DEP_GATE_OBJECT
+		});
+		const s = blockingStory(rolloutWith('hello-dep-prod', [DEP_GATE]), whole, {
+			place: 'prod',
+			now: NOW
+		});
+		expect(s.headline).toBe('PROD is waiting on another deploy');
+	});
+});

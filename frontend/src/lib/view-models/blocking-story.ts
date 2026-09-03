@@ -885,6 +885,108 @@ export function upstreamVerdict(gates: ClassifiedGate[]): string {
 }
 
 /**
+ * ⭐ THE CONTRACT LEADS THE HEADLINE TOO, NOT ONLY THE VERDICT. (2026-09-03)
+ *
+ * A promotion-order gate is the environment controller's own bookkeeping —
+ * it opens once the environment IN FRONT deploys, and on `hello-frontend-app`
+ * prod that environment is itself held on the SAME contract. Naming the order
+ * gate ("waiting on another deploy") instead of the contract answers a
+ * different question than the reader asked, for the same reason
+ * `upstreamVerdict` leads with it — see that function's doc for the full
+ * argument. Falls back to the generic sentence when no `dependency` gate is
+ * present to name: two promotion gates holding the same rollout at two hops
+ * is the one shape left with nothing more specific to say.
+ */
+function upstreamHeadline(upstream: ClassifiedGate[], subjectLead: string, isVerb: string): string {
+	const dep = upstream.find((g) => g.kind === 'dependency' && g.subject && g.contract);
+	if (!dep) return `${subjectLead} ${isVerb} waiting on another deploy`;
+	const verb = dep.need ? `ship ${dep.contract} ${dep.need}` : `ship a newer ${dep.contract}`;
+	return `${subjectLead} ${isVerb} waiting for ${dep.subject} to ${verb}`;
+}
+
+/**
+ * ⭐ ONE CAUSE UNDER TWO NAMES IS STILL ONE CAUSE. (2026-09-03)
+ *
+ * ── THE DEFECT ────────────────────────────────────────────────────────────
+ *
+ * `hello-frontend-app`'s rollout Overview banner read *"Two things are
+ * holding PROD"* while `/envs/prod`, `/apps` and `/dependencies` all named
+ * the cause — `hello-api-app` has not shipped `api ^1.67.0`. Both of PROD's
+ * gates ARE that one cause: `hello-frontend-needs-api` is the contract, and
+ * the promotion-order gate ("after staging") only exists because staging is
+ * held on the identical contract — it is downstream bookkeeping, not a
+ * second reason. `gates.length > 1` used to fire before either gate's
+ * `clears` was even read, so a rollout held twice by ONE mechanism and a
+ * rollout held by a person AND a contract printed the identical shape of
+ * sentence: a bare count.
+ *
+ * ── THE FIX ───────────────────────────────────────────────────────────────
+ *
+ * When EVERY blocking gate agrees on `clears`, there is only one KIND of
+ * story regardless of how many gates carry it, so the headline is the one
+ * that kind would print alone: `person` and `unknown` read exactly like
+ * their single-gate branches below (the verb does not change with the
+ * count — only the disclosure control, `N rules`, does, and that lives in
+ * `BlockingStoryPanel`, not here). `upstream` goes through
+ * `upstreamHeadline`, which names the contract for the same reason
+ * `upstreamVerdict` does.
+ *
+ * ⛔ `clock` AND `check` ARE LEFT OUT ON PURPOSE. Neither has a headline of
+ * its own that says more than the count already does — a lone `check` gate
+ * prints the SAME generic `'Automatic deploys are paused'` a mixed pile of
+ * seven does, so collapsing a uniform pile of seven checks to that sentence
+ * would throw away the one fact the count carries (how many) for no fact
+ * gained. `person`/`unknown`/`upstream` are different: each has a headline
+ * that names something the count does not.
+ *
+ * ⛔ WHEN THE BUCKETS DIFFER, THE COUNT STAYS. A person gate and a contract
+ * are two DIFFERENT kinds of story — one needs a human, one does not — and
+ * collapsing them into either one's headline would misreport the other. The
+ * count headline already exists for exactly this case and is untouched;
+ * only the CONSEQUENCE below reorders to put the human-actionable clause
+ * first, which the existing worst-first build order already does.
+ *
+ * Returns `null` for a single gate, a mixed bucket, or a uniform `clock`/
+ * `check` bucket, so the caller falls through to the count headline in all
+ * three cases — every single-gate headline this file has ever printed stays
+ * byte-identical.
+ */
+function sameBucketHeadline(
+	gates: ClassifiedGate[],
+	upstream: ClassifiedGate[],
+	subjectLead: string,
+	subjectObject: string,
+	isVerb: string
+): string | null {
+	if (gates.length <= 1) return null;
+	const cause = gates[0].clears;
+	if (!gates.every((g) => g.clears === cause)) return null;
+	if (cause === 'person') return `${subjectLead} ${isVerb} waiting on an approval`;
+	if (cause === 'unknown') return `Something is holding ${subjectObject}`;
+	if (cause === 'upstream') return upstreamHeadline(upstream, subjectLead, isVerb);
+	// `clock`/`check`: no headline of their own beats the count — see the doc
+	// above. Falls through to it.
+	return null;
+}
+
+/**
+ * ⭐ THE CONTRACT LEADS THE CONSEQUENCE TOO, AND NOT BY ACCIDENT OF SPELLING.
+ * (2026-09-03) `upstream`'s only order was the gates' own worst-first sort's
+ * id tiebreak — `dependency-hello-frontend-needs-api` happened to sort before
+ * `ghd-frontend-prod` alphabetically, which is exactly why this drifted
+ * unnoticed: a hand-authored gate or a differently-`generateName`d one is not
+ * guaranteed to alphabetise the same way. `upstreamVerdict` already has the
+ * real rule — the contract is the binding cause, the promotion gate is the
+ * consequence that resolves once it ships — so the consequence's clause list
+ * uses the same ordering rather than reusing whatever the id sort produced.
+ */
+function orderedUpstream(upstream: ClassifiedGate[]): ClassifiedGate[] {
+	const dependencies = upstream.filter((g) => g.kind === 'dependency');
+	const rest = upstream.filter((g) => g.kind !== 'dependency');
+	return [...dependencies, ...rest];
+}
+
+/**
  * ⭐ THE ONE STORY. Every surface calls this and renders the same three
  * strings, so two pages cannot answer the 3am question differently again.
  *
@@ -998,9 +1100,15 @@ export function blockingStory(
 	// ── THE HEADLINE ────────────────────────────────────────────────────────
 	// With more than one gate it COUNTS THEM AND SAYS SO, because the single
 	// biggest thing wrong with the old pages was each naming one gate as if it
-	// were the whole story. With exactly one it names that one's kind.
+	// were the whole story — UNLESS every gate agrees on `clears`, in which
+	// case there is only one KIND of story and `sameBucketHeadline` names it
+	// the same way its single-gate branch would. With exactly one gate it
+	// names that one's kind.
 	let headline: string;
-	if (gates.length > 1) {
+	const bucketHeadline = sameBucketHeadline(gates, upstream, subjectLead, subjectObject, isVerb);
+	if (bucketHeadline) {
+		headline = bucketHeadline;
+	} else if (gates.length > 1) {
 		headline = `${countWord(gates.length)} things are holding ${subjectObject}`;
 	} else if (person.length === 1) {
 		headline = `${subjectLead} ${isVerb} waiting on an approval`;
@@ -1026,7 +1134,7 @@ export function blockingStory(
 	const parts: string[] = [];
 	for (const g of person) parts.push(g.clause);
 	for (const g of unknown) parts.push(g.clause);
-	for (const g of upstream) parts.push(g.clause);
+	for (const g of orderedUpstream(upstream)) parts.push(g.clause);
 	for (const g of checks) parts.push(g.clause);
 	for (const g of clock) {
 		const until = g.clearsAt ? formatTimeUntil(g.clearsAt, now) : null;
