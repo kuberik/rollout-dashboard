@@ -440,6 +440,43 @@
 	});
 
 	/**
+	 * ⭐ F9: HEIGHT-MATCH `This build` / `What each service calls it` ONLY
+	 * WHEN THEY ARE CLOSE — NOT UNCONDITIONALLY. (2026-09-03, fourth re-check)
+	 * `.rev-buckets`' `align-items: stretch` (below) makes every card sharing
+	 * a grid row share that row's height, which is right when a bucket card
+	 * sits beside another bucket card of similar shape but wrong for THIS
+	 * pair: `This build` runs 5-6 fixed rows (bar, commit, repo, service
+	 * count, last deployed, the outbound link) while `What each service
+	 * calls it` is one row per service — on a repo with one or two services
+	 * it measured 52% fill, stretched to match its taller neighbour with
+	 * nothing to say in the other 48%.
+	 *
+	 * A grid item's OWN height cannot be read while it is stretched — a
+	 * stretched item's height IS the row's height, not its content's — so
+	 * this measures the wrapper BEFORE opting in: `rev-pair-natural` (below)
+	 * is the default and holds `align-self: start`, which is what lets
+	 * `bind:clientHeight` see each card's true, un-stretched content height.
+	 * Only once BOTH are known and the shorter is within 25% of the taller
+	 * does the wrapper drop that class and fall back to the grid's own
+	 * `stretch` — which, once applied, re-measures as the (now equal) row
+	 * height and the comparison stays true. A large gap never opts in, and
+	 * the pair just sits at its own two different heights, which reads as
+	 * two cards of different KINDS rather than one card mostly empty.
+	 *
+	 * Scoped to exactly these two cards (the grid's first two children) —
+	 * the bucket cards after them are unaffected and keep the plain
+	 * `align-items: stretch` this grid has used since the "ONE FLAT GRID"
+	 * fix, because nothing has measured THEM as a mismatched pair.
+	 */
+	let buildCardHeight = $state(0);
+	let svcCardHeight = $state(0);
+	const heightsClose = $derived(
+		buildCardHeight > 0 && svcCardHeight > 0
+			? Math.min(buildCardHeight, svcCardHeight) >= Math.max(buildCardHeight, svcCardHeight) * 0.75
+			: false
+	);
+
+	/**
 	 * ⭐ PER-PLACE AGE, FOR THE `live` BUCKET ONLY. (F13, 2026-09-03)
 	 *
 	 * `Running it now` used to print an environment's chip and stop —
@@ -741,21 +778,52 @@
 			class="mt-4"
 		/>
 	{:else if !row || !ledger || !coverage}
+		<!--
+			⛔ A REPO THAT DOES NOT EXIST WAS CALLED A "REVISION NOT FOUND", AND
+			THE REVISION IT NAMED WAS A REPO SEGMENT. (2026-09-03,
+			operator-walk) `/versions/github.com/littlechimera/no-such-repo` —
+			three path segments, no revision anywhere in it — printed `Nothing
+			in github.com/littlechimera knows the revision no-such-repo.`. The
+			URL scheme (`repoPath` + `/` + `key`) always pops the LAST segment
+			as the "revision", so a bare repo path with nothing after it gets
+			its own final segment relabelled as one; `repoPath` is then an
+			OWNER, not a repo, and matches nothing by construction.
+
+			`!ledger` is exactly that case — the split-based lookup found no
+			repo AT ALL — and is now told apart from the real "revision not
+			found IN a real repo" case (`ledger` resolved, `row`/`coverage`
+			did not). The rejoined FULL path is what the reader actually
+			typed or followed; that is the object that does not exist, not a
+			revision inside a truncated one.
+		-->
 		<div class="flex flex-col items-center justify-center py-20 text-center">
 			<TagOutline class="mb-3 h-8 w-8 text-gray-500 dark:text-gray-400" />
-			<h1 class="t-body font-semibold text-gray-900 dark:text-white">Revision not found</h1>
-			<!--
-				THE REPO CLAUSE ONLY PRINTS WHEN THERE IS A REPO. Naming a scope you
-				do not have is the same defect as naming a cause you cannot evidence.
-			-->
-			<p class="t-body mt-1 max-w-md text-gray-500 dark:text-gray-400">
-				{#if repoPath}
+			{#if !ledger}
+				<h1 class="t-body font-semibold text-gray-900 dark:text-white">Repository not found</h1>
+				<p class="t-body mt-1 max-w-md text-gray-500 dark:text-gray-400">
+					No repository
+					<span class="t-code">{repoPath ? `${repoPath}/${urlKey}` : urlKey}</span> is known to this
+					dashboard.
+				</p>
+			{:else}
+				<h1 class="t-body font-semibold text-gray-900 dark:text-white">Revision not found</h1>
+				<p class="t-body mt-1 max-w-md text-gray-500 dark:text-gray-400">
 					Nothing in <span class="t-code">{repoPath}</span> knows the revision
-					<span class="t-code">{urlKey}</span>.
-				{:else}
-					No revision matches <span class="t-code">{urlKey}</span>.
-				{/if} This page covers every commit on a service's release ladder, deployed or not.
-			</p>
+					<span class="t-code">{urlKey}</span>. This page covers every commit on a service's release
+					ladder, deployed or not.
+				</p>
+			{/if}
+			<!--
+				⛔ THIS PAGE HAD NO WAY BACK OF ITS OWN. (2026-09-03,
+				operator-walk) The breadcrumb 40px above the head band is easy to
+				miss coming in on a bad link — every OTHER not-found/error state
+				in the product (`ErrorState`'s `backHref`/`backLabel`) repeats its
+				way out INSIDE the centred message, and this hand-rolled block
+				was the one that did not.
+			-->
+			<a href="/versions" class="nav-link mt-4">
+				<ArrowLeftOutline class="h-4 w-4" /> All revisions
+			</a>
 		</div>
 	{:else}
 		<!--
@@ -895,11 +963,13 @@
 				the body, at FULL scale, as its own row — the one place on this
 				page a reader could see the segmented shape at all.
 			-->
+			<div bind:clientHeight={buildCardHeight} class={heightsClose ? '' : 'rev-pair-natural'}>
 			<Card
 				icon={RocketOutline}
 				title="This build"
 				verdict="{coverage.liveCount} of {coverage.totalCount} places"
 				verdictTitle="{coverage.liveCount} of {coverage.totalCount} places running {row.short}"
+				class={heightsClose ? 'h-full' : ''}
 			>
 				<ul class="space-y-3">
 					<li class="flex items-start gap-2.5">
@@ -1015,6 +1085,7 @@
 					{/if}
 				</ul>
 			</Card>
+			</div>
 
 				<!--
 					CRITERION 2, NOW A PEER TILE IN THE SAME FLAT GRID, NOT A FIXED-WIDTH
@@ -1026,12 +1097,14 @@
 					restate the buckets: the buckets say WHERE, this says WHAT EACH
 					SERVICE CALLS IT and how far down its own ladder it now sits.
 				-->
+				<div bind:clientHeight={svcCardHeight} class={heightsClose ? '' : 'rev-pair-natural'}>
 				<Card
 					icon={TagSolid}
 					title="What each service calls it"
 					verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
 					verdictTitle="One commit, one row per service — each service names and ranks it on its own"
 					padded={false}
+					class={heightsClose ? 'h-full' : ''}
 				>
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 					{#each row.services as svc (svc.appName)}
@@ -1116,6 +1189,7 @@
 				     on the term it defines, which is where a definition belongs and
 				     is the only place it is legible without counting rows. -->
 			</Card>
+			</div>
 
 			<!--
 				THE BUCKETS, AS TITLED CARDS. One per NON-EMPTY bucket, so a fully
@@ -1480,6 +1554,18 @@
 		.rev-buckets {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+	}
+
+	/*
+	 * ⭐ F9: THE ONE PAIR THAT MAY OPT OUT OF THE ROW'S SHARED HEIGHT — see the
+	 * `heightsClose` comment in the script block for the full account. The
+	 * wrapper around `This build` and around `What each service calls it` is
+	 * a plain grid item; this class is its DEFAULT (present until the two
+	 * are measured and found close), and dropping it is what falls back to
+	 * `.rev-buckets`' own `align-items: stretch` above.
+	 */
+	.rev-pair-natural {
+		align-self: start;
 	}
 
 	/*

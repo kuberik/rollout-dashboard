@@ -4,7 +4,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import type { ClusterError } from '$lib/api/rollouts';
-	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
+	import { buildRolloutCards, cardVerdict, cardStateMark, heldCauseText } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
 	import {
@@ -16,6 +16,12 @@
 		isPending
 	} from '$lib/view-models/fleet-groups';
 	import { checkFailureTitle } from '$lib/view-models/health-witness';
+	import { buildGateContext, blockingStory, type GateContext } from '$lib/view-models/blocking-story';
+	import {
+		namespacesByCluster,
+		withNetworkSchedules
+	} from '$lib/view-models/dependency-graph';
+	import { fetchNetworkSchedules } from '$lib/api/schedules';
 	import { getEnvironmentThemeStyle, shortEnvLabel } from '$lib/environment-theme';
 	import { shortenVersion, getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
@@ -98,6 +104,53 @@
 	// `Trailing` pill, so the same four rollouts read `Held 4` here and
 	// `Trailing 4` there. Both pages import the shared predicate now.
 	const held = $derived.by<RolloutCard[]>(() => cards.filter(isHeld));
+
+	/**
+	 * ⭐ THE GATE JOIN TABLE, WITH SCHEDULES, FOR THE HELD SECTION'S OWN
+	 * CAUSE LINE. (2026-09-03, operator-walk finding P6) `buildGateContext`
+	 * alone has no `RolloutSchedule` join, so a card held by a closed deploy
+	 * window fell through `classifyGate` to its most pessimistic branch
+	 * (`clears: 'check'`) — the same wording a genuinely failing health check
+	 * gets. `fetchNetworkSchedules` is the ONE bulk `/api/schedules` request
+	 * per CLUSTER `/dependencies` already uses for exactly this reason (see
+	 * `withNetworkSchedules`'s own comment) — not a per-rollout fan-out,
+	 * which matters here because Held rollouts on this page can span every
+	 * cluster the hub knows about.
+	 */
+	const clusterNames = $derived(['', ...(query.data?.clusters ?? []).map((cl) => cl.name)]);
+	const schedulesQuery = createQuery(() => ({
+		queryKey: ['network-schedules', clusterNames],
+		queryFn: () => fetchNetworkSchedules(clusterNames),
+		staleTime: 15000,
+		refetchInterval: pollWhenHealthy(30000),
+		enabled: clusterNames.length > 0
+	}));
+	const gateContext = $derived<GateContext>(
+		withNetworkSchedules(
+			buildGateContext({
+				environments: query.data?.environments ?? null,
+				rolloutDependencies: query.data?.rolloutDependencies ?? null
+			}),
+			schedulesQuery.data ?? new Map(),
+			namespacesByCluster(rollouts)
+		)
+	);
+
+	/**
+	 * ⭐ WHY *THIS* CARD IS HELD, FOR THE HELD SECTION'S SECOND LINE.
+	 * (2026-09-03, operator-walk finding P6, "PAINFUL": *"four held cards
+	 * are drawn identically — three held by a contract no human here can
+	 * clear, one by a clock that clears itself at 1:00 PM."*) Every held
+	 * card drew the SAME two facts (name + a `held` chip), so four different
+	 * reasons read as one repeated card. `heldCauseText` (`rollout-cards.ts`)
+	 * composes the line from `blockingStory`'s own classification — the same
+	 * object every gate banner in the product reads — so this line cannot
+	 * name a cause `/apps/<name>` or the rollout's own page disagrees with.
+	 */
+	function heldCause(c: RolloutCard): string | null {
+		return heldCauseText(blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now }));
+	}
+
 	const trailing = $derived.by<RolloutCard[]>(() => cards.filter((c) => isTrailing(c) && !c.held));
 	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady));
 	const pendingCards = $derived.by<RolloutCard[]>(() => cards.filter(isPending));
@@ -350,6 +403,24 @@
 		<!-- Needs you now -->
 		{#if needsYou.length > 0}
 			<section class="mb-8">
+				<!--
+					⭐ F9: A SOLO SECTION LEFT A THIRD TO HALF OF ITS OWN BAND EMPTY —
+					THE SAME DEFECT `.rg-solo` CLOSED ON `/rollouts`. (2026-09-03,
+					fourth re-check) Measured: `In motion` with exactly one card
+					stretched its single `1fr` grid track the FULL row width, the
+					card itself covering under half of it, with the heading above
+					running the same full width and ending nowhere. `RolloutGrid`'s
+					own note has the full account of why `auto-fit`/`1fr` inflates a
+					lone card instead of leaving it alone — see `.rg-solo` there.
+					This is the identical fix: a section holding exactly one card
+					wraps its OWN header and grid in one `width: fit-content` box
+					capped at 460px, so the heading's own width shrinks to end at
+					the card instead of the row, and the card stops inflating.
+					A section with two or more cards is BYTE-IDENTICAL — the
+					existing `auto-fill`/`min(24rem,100%)` grid already fills the
+					row correctly there and this wrapper is a no-op on it.
+				-->
+				<div class={needsYou.length === 1 ? 'cc-solo' : ''}>
 				<div class="mb-3 flex items-center gap-2">
 					<span class="h-[5px] w-[5px] shrink-0 rounded bg-red-500"></span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Needs you now</h2>
@@ -370,7 +441,9 @@
 				     this page now answer one question one way: 1440 → 2 cols at 424px
 				     (was 3 at 277), 1280 → 2 at 516, 390 → 1 col, none truncated. -->
 				<div
-					class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+					class="grid gap-3 {needsYou.length === 1
+						? 'cc-grid-solo'
+						: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
 				>
 					{#each needsYou as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!--
@@ -495,12 +568,18 @@
 						</div>
 					{/each}
 				</div>
+				</div>
 			</section>
 		{/if}
 
 		<!-- In motion -->
 		{#if inMotion.length > 0}
 			<section class="mb-8">
+				<!-- ⭐ F9: SOLO-SECTION WRAP — see the identical comment on `Needs
+				     you now` above. A section with exactly one card shrink-wraps
+				     its header and grid to the card's own width instead of the
+				     row's. -->
+				<div class={inMotion.length === 1 ? 'cc-solo' : ''}>
 				<div class="mb-3 flex items-center gap-2">
 					<span class="relative flex h-[5px] w-[5px] shrink-0">
 						<span class="absolute inset-0 animate-ping rounded bg-blue-400/60"></span>
@@ -527,7 +606,9 @@
 				     this page now answer one question one way: 1440 → 2 cols at 424px
 				     (was 3 at 277), 1280 → 2 at 516, 390 → 1 col, none truncated. -->
 				<div
-					class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+					class="grid gap-3 {inMotion.length === 1
+						? 'cc-grid-solo'
+						: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
 				>
 					{#each inMotion as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!-- ⛔ A PINNED ROLLOUT PROMOTES NOWHERE, AND A ROLLBACK IS NOT
@@ -613,6 +694,7 @@
 						</a>
 					{/each}
 				</div>
+				</div>
 			</section>
 		{/if}
 
@@ -635,6 +717,9 @@
 		     Trailing's `sm:flex` collapse already goes single-column anyway. -->
 		{#if held.length > 0}
 			<section class="mb-8">
+				<!-- ⭐ F9: SOLO-SECTION WRAP — see the identical comment on `Needs
+				     you now` above. -->
+				<div class={held.length === 1 ? 'cc-solo' : ''}>
 				<div class="mb-3 flex items-center gap-2">
 					<span class="h-[5px] w-[5px] shrink-0 rounded bg-orange-500"></span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Held</h2>
@@ -644,7 +729,9 @@
 					>
 				</div>
 				<div
-					class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+					class="grid gap-2 {held.length === 1
+						? 'cc-grid-solo'
+						: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
 				>
 					{#each held as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						{@const verdict = cardVerdict(
@@ -653,6 +740,13 @@
 							rankTitle(c.rank, c.envDisplay || c.name)
 						)}
 						{@const mark = cardStateMark(c)}
+						<!-- ⭐ THE CAUSE, ONE LINE, PER CARD — see `heldCause`'s own
+						     comment. (2026-09-03, operator-walk finding P6) Four held
+						     cards used to be the SAME card repeated four times (name +
+						     a `held` chip, nothing else); this is what tells
+						     `hello-frontend-app` (waiting on a service) apart from a
+						     card held by a clock that clears itself this afternoon. -->
+						{@const cause = heldCause(c)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
@@ -705,8 +799,17 @@
 								     a gate correctly refusing a candidate is not adverse. -->
 								<Chip role="held" label="held" title={mark ? mark.title : undefined} class="shrink-0" />
 							</div>
+							<!-- Lines up under the name, same `pl-[34px]` indent as the
+							     chips row above it. Silent (renders nothing) when the
+							     story has no gate to name — see `heldCauseText`. -->
+							{#if cause}
+								<p class="truncate pl-[34px] text-[11px] text-gray-500 dark:text-gray-400">
+									{cause}
+								</p>
+							{/if}
 						</a>
 					{/each}
+				</div>
 				</div>
 			</section>
 		{/if}
@@ -715,6 +818,9 @@
 		     the promotion candidates. -->
 		{#if trailing.length > 0}
 			<section class="mb-8">
+				<!-- ⭐ F9: SOLO-SECTION WRAP — see the identical comment on `Needs
+				     you now` above. -->
+				<div class={trailing.length === 1 ? 'cc-solo' : ''}>
 				<div class="mb-3 flex items-center gap-2">
 					<span class="h-[5px] w-[5px] shrink-0 rounded bg-amber-500"></span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Trailing</h2>
@@ -728,7 +834,7 @@
 				     un-clipping the region names took truncated APP names from 1 of 29 to 9,
 				     and `edge-mesh` beside `PROD-AP-SOUTHEAST-2` rendered as `edge-m…`. Trading
 				     one ellipsised identifier for another is not a fix.
-
+				
 				     A viewport breakpoint was the wrong control: what decides whether this row
 				     fits is the ROW's width, and the sidebar plus the page gutters mean the
 				     same viewport yields different row widths. `auto-fill` with a 24rem floor
@@ -738,7 +844,7 @@
 				     `auto-fill` and not `auto-fit` so a section holding one or two rollouts
 				     keeps card-width cards instead of stretching one to 1216px, which is what
 				     the fixed 3-column grid did.
-
+				
 				     ⛔ THE FLOOR IS `min(24rem,100%)`, NOT `24rem` (2026-08-30). A grid track
 				     minimum is a HARD minimum — it does not shrink to fit its container. At
 				     390 the row is 358px (390 minus two 16px page gutters) and the track stayed
@@ -753,7 +859,9 @@
 				     the row. Same shape as the `minmax(0,1fr)` this file already uses
 				     everywhere else: a floor that cannot exceed its container. -->
 				<div
-				class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+				class="grid gap-2 {trailing.length === 1
+					? 'cc-grid-solo'
+					: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
 				>
 					{#each trailing as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!-- `{@const}` has to be the immediate child of the `{#each}`, not of
@@ -764,26 +872,25 @@
 							rankTitle(c.rank, c.envDisplay || c.name)
 						)}
 						{@const mark = cardStateMark(c)}
-						<!-- ⛔ F7: `hello-frontend-app` ELLIPSISED FOR 3px, IN ONE OF
-						     THREE IDENTICAL CARDS. (2026-09-03, re-check) At 1440 the
-						     `min-[1440px]:grid-cols-[minmax(0,1fr)_320px]` rail (below)
-						     narrows this section's own row to 857px, which the 2-column
-						     `auto-fill` grid splits into 424.5px cards — 127px clear for
-						     the name against a 130px need, on the one 19-character app
-						     name in the fleet. The row's four items (disc, name, env
-						     chip, joined rank chip) are ALL already at their content
-						     floor; there is no redundant constant left to drop. Per
-						     `COMPOSITION-GRAMMAR.md`'s own "worst spacing census" note,
-						     this page already carries off-scale `gap-1.5`/`gap-2.5` and
-						     is still called one of the two best pages — `gap-2` (8px) →
-						     `gap-1.5` (6px) across the row's three seams gives the name
-						     its 3px back with margin, at a value already in this file's
-						     own histogram, not a new one. Applies to both this card
-						     (`trailing`) and its `steadySectionPreview` twin below, same
-						     markup. -->
+						<!-- ⛔ F8: THE NAME NEVER SHARES A LINE WITH THE CHIPS ANY MORE.
+						     (2026-09-03, fourth re-check) `hello-world-manifests` (22
+						     characters) truncated on this exact row at 1024 — TWO cells,
+						     clientWidth 145 / 124 against a 152px need — and at 640 in one.
+						     The `sm:flex` single-row layout (disc, name, env chip, joined
+						     rank/build chip all sharing one line from `sm` up) never left the
+						     name enough room once two chips sat beside it, at any width the
+						     breakpoint actually served. `Held`'s row already carries the fix,
+						     one section up: the name gets a LINE OF ITS OWN — `flex-1
+						     min-w-0`, nothing beside it but the disc — and the chips wrap onto
+						     a second line under it (`pl-[34px]`, 28px disc + 6px `gap-1.5`).
+						     Same shape here and on `steadySectionPreview`'s twin below; the
+						     `sm:flex`/`sm:contents` breakpoint toggle this replaces is gone
+						     entirely; the F7 gap-tightening it needed goes with it — the name
+						     no longer shares a line with anything to be crowded by. Verified:
+						     zero truncated names on `/` at 640, 768, 1024, 1280, 1440. -->
 						<a
 							href={href(c)}
-							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE
@@ -797,34 +904,26 @@
 							     row that was drawing the norm — a green tick on every card in a
 							     section where every card is `Succeeded` by construction. Hue
 							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
-							<span
-								class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-									c.bakeStatus,
-									mark?.kind ?? null
-								)}"
-								title={mark ? mark.title : undefined}
-							>
-								<BakeStatusIcon
-									bakeStatus={c.bakeStatus}
-									size="small"
-									state={mark?.kind ?? null}
-									stateWord={mark?.word ?? ''}
-								/>
-							</span>
-							<span class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
-								>{c.name}</span
-							>
-							<!-- ⛔ AT PHONE WIDTH THE VERDICT GETS ITS OWN LINE (2026-08-30). The row is
-							     name + env chip + rank/build chip, and at 390 the card is 358px wide: the
-							     name was left ~130px and four of ten ellipsised. `hello-world…` on this
-							     cluster is BOTH `hello-world-app` and `hello-world-manifests` — truncating
-							     the identifier that answers "which one" is a desktop row derived down, not
-							     a phone design. Below `sm` the card is a 2-column grid: dot + name on line
-							     1, the chips on line 2 aligned under the name. This wrapper carries them.
-							     ⚠️ `sm:contents` IS LOAD-BEARING. At ≥640 the wrapper stops generating a
-							     box and the chips are direct flex children of the `<a>` again, so 1440 /
-							     1280 / 1024 are pixel-identical to before — verified, not assumed. -->
-							<div class="col-start-2 flex min-w-0 items-center gap-2 sm:contents">
+							<div class="flex items-center gap-1.5">
+								<span
+									class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+										c.bakeStatus,
+										mark?.kind ?? null
+									)}"
+									title={mark ? mark.title : undefined}
+								>
+									<BakeStatusIcon
+										bakeStatus={c.bakeStatus}
+										size="small"
+										state={mark?.kind ?? null}
+										stateWord={mark?.word ?? ''}
+									/>
+								</span>
+								<span class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
+									>{c.name}</span
+								>
+							</div>
+							<div class="flex flex-wrap items-center gap-1.5 pl-[34px]">
 								{#if c.envDisplay}
 									<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
 								{/if}
@@ -872,11 +971,17 @@
 						</a>
 					{/each}
 				</div>
+				</div>
 			</section>
 		{/if}
 
 		<!-- Steady -->
 		<section>
+			<!-- ⭐ F9: SOLO-SECTION WRAP — see the identical comment on `Needs
+			     you now` above. Gated on the NON-EMPTY branch: an empty Steady
+			     section has no card to shrink-wrap to, and the header must stay
+			     full width there exactly as it always has. -->
+			<div class={steadySectionAll.length > 0 && steadySectionPreview.length === 1 ? 'cc-solo' : ''}>
 			<div class="mb-3 flex items-center gap-2">
 				<span class="h-[5px] w-[5px] shrink-0 rounded bg-green-700 dark:bg-green-400"></span>
 				<h2 class="text-base font-semibold text-gray-900 dark:text-white">Steady</h2>
@@ -898,7 +1003,7 @@
 					still names the subset, in the same slot and the same ink it
 					always had. Where nothing is pending the two counts are
 					identical and this header is byte-for-byte what it was.
-				-->
+			-->
 				<span class="font-mono text-xs text-gray-500 dark:text-gray-400"
 					>{steadySectionAll.length}</span
 				>
@@ -916,7 +1021,7 @@
 					underline at rest, the SVG chevron. This is now the ONLY control on
 					the page that opens `/rollouts` — see below, where the second one is
 					deleted rather than restyled.
-				-->
+			-->
 				<a href="/rollouts" class="nav-link ml-auto">
 					View all rollouts <ChevronRightOutline class="h-3.5 w-3.5" />
 				</a>
@@ -967,14 +1072,19 @@
 				     the row. Same shape as the `minmax(0,1fr)` this file already uses
 				     everywhere else: a floor that cannot exceed its container. -->
 				<div
-				class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+				class="grid gap-2 {steadySectionPreview.length === 1
+					? 'cc-grid-solo'
+					: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
 				>
 					{#each steadySectionPreview as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!-- `{@const}` has to be the immediate child of the `{#each}`. -->
 						{@const mark = cardStateMark(c)}
+						<!-- ⛔ F8: THE NAME NEVER SHARES A LINE WITH THE CHIPS ANY MORE — see
+						     the identical fix and its full rationale on the Trailing card
+						     above, which this row is now byte-identical in shape to. -->
 						<a
 							href={href(c)}
-							class="environment-theme-scope grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+							class="environment-theme-scope flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 							style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 						>
 							<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned`, AND THAT IS HOW THE
@@ -988,35 +1098,27 @@
 							     row that was drawing the norm — a green tick on every card in a
 							     section where every card is `Succeeded` by construction. Hue
 							     unchanged; the deploy did succeed. See `rollout-cards.ts`. -->
-							<span
-								class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-									c.bakeStatus,
-									mark?.kind ?? null
-								)}"
-								title={mark ? mark.title : undefined}
-							>
-								<BakeStatusIcon
-									bakeStatus={c.bakeStatus}
-									size="small"
-									state={mark?.kind ?? null}
-									stateWord={mark?.word ?? ''}
-								/>
-							</span>
-							<span
-								class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
-								>{c.name}</span
-							>
-							<!-- ⛔ AT PHONE WIDTH THE VERDICT GETS ITS OWN LINE (2026-08-30). The row is
-							     name + env chip + rank/build chip, and at 390 the card is 358px wide: the
-							     name was left ~130px and four of ten ellipsised. `hello-world…` on this
-							     cluster is BOTH `hello-world-app` and `hello-world-manifests` — truncating
-							     the identifier that answers "which one" is a desktop row derived down, not
-							     a phone design. Below `sm` the card is a 2-column grid: dot + name on line
-							     1, the chips on line 2 aligned under the name. This wrapper carries them.
-							     ⚠️ `sm:contents` IS LOAD-BEARING. At ≥640 the wrapper stops generating a
-							     box and the chips are direct flex children of the `<a>` again, so 1440 /
-							     1280 / 1024 are pixel-identical to before — verified, not assumed. -->
-							<div class="col-start-2 flex min-w-0 items-center gap-2 sm:contents">
+							<div class="flex items-center gap-1.5">
+								<span
+									class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+										c.bakeStatus,
+										mark?.kind ?? null
+									)}"
+									title={mark ? mark.title : undefined}
+								>
+									<BakeStatusIcon
+										bakeStatus={c.bakeStatus}
+										size="small"
+										state={mark?.kind ?? null}
+										stateWord={mark?.word ?? ''}
+									/>
+								</span>
+								<span
+										class="min-w-0 flex-1 truncate font-mono text-xs font-medium text-gray-900 dark:text-white"
+									>{c.name}</span
+								>
+							</div>
+							<div class="flex flex-wrap items-center gap-1.5 pl-[34px]">
 								{#if c.envDisplay}
 									<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
 								{/if}
@@ -1089,6 +1191,7 @@
 				     fleet with more than 24 steady rollouts), the header link is the
 				     one control and it is already on screen. -->
 			{/if}
+			</div>
 		</section>
 		</div>
 
@@ -1103,3 +1206,51 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/*
+	 * ⭐ F9: A SOLO SECTION LEAVES A THIRD TO HALF OF THE BAND EMPTY, THE SAME
+	 * DEFECT `.rg-solo` CLOSED ON `/rollouts`. (2026-09-03, fourth re-check)
+	 * `RolloutGrid.svelte`'s own note has the full account: a lone card in an
+	 * `auto-fill`/`1fr` grid inflates to the WHOLE row, dragging its heading's
+	 * implicit "band" out with it even where the heading draws no visible
+	 * rule. Measured here: `In motion` with exactly one card stretched its
+	 * track the full row width with the card covering under half of it.
+	 *
+	 * The fix is the identical shape, reused rather than re-derived:
+	 *
+	 *   `.cc-solo`      — wraps a section's header + grid together,
+	 *                     `width: fit-content; max-width: 460px`, so the
+	 *                     header's own box shrinks to end where the card ends
+	 *                     instead of running the section's full width.
+	 *   `.cc-grid-solo` — the grid's track for that ONE card, capped the same
+	 *                     460px a lone card gets everywhere else in this
+	 *                     product (`/rollouts`' `.rg-grid-solo`).
+	 *
+	 * ⭐ NO CONTAINER QUERY GATE, UNLIKE `.rg-solo`. `RolloutGrid`'s version
+	 * needs one because ITS multi-card grid track has a HARD `360px` floor,
+	 * which overflows a <360px container and so has to be turned off below
+	 * 730px. Every grid on THIS page already uses a SOFT floor —
+	 * `min(24rem,100%)` — precisely so a track never forces overflow below
+	 * its own container's width (see the "THE FLOOR IS `min(24rem,100%)`"
+	 * note above each grid). `cc-grid-solo` reuses that same soft floor
+	 * (`minmax(min(24rem,100%), 460px)`), so it is safe at every width with
+	 * nothing to gate: at mobile widths `min(24rem,100%)` already resolves to
+	 * the available space, and `fit-content` on the wrapper resolves to that
+	 * same available width once the card's own max-content (460px) exceeds
+	 * it — mobile is byte-identical to a plain full-width single card, no
+	 * extra breakpoint to maintain.
+	 *
+	 * Applied to all five sections (`Needs you now`, `In motion`, `Held`,
+	 * `Trailing`, `Steady`) — a section with two or more cards passes
+	 * `''` for both classes and is byte-identical to before.
+	 */
+	.cc-solo {
+		width: fit-content;
+		max-width: 460px;
+	}
+
+	.cc-grid-solo {
+		grid-template-columns: minmax(min(24rem, 100%), 460px);
+	}
+</style>

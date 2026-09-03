@@ -194,7 +194,16 @@
 	// Filters
 	let searchQuery = $state('');
 	const envFilters = $derived(page.url.searchParams.getAll('env'));
-	const clusterFilters = $derived(page.url.searchParams.getAll('cluster')); // set of cluster URLs
+	// ⛔ WAS THE CLUSTER's URL, RAW, IN THE ADDRESS BAR. (2026-09-03,
+	// operator-walk, cosmetic) `?cluster=https%3A%2F%2Fkuberik.192.168.1.102
+	// .nip.io` while `?env=` and `?status=` both spell their filter in short,
+	// human words — the one param on this page that leaked an implementation
+	// detail (a dashboard URL) into a link a reader might paste into chat.
+	// The set is now the cluster's DISPLAY NAME (`prod`, `dev` —
+	// `clusterLabelForCard`'s own vocabulary, the same word the filter pill
+	// and every row's `ClusterMark` already print), resolved back to a URL
+	// only where the filtering itself needs one.
+	const clusterFilters = $derived(page.url.searchParams.getAll('cluster')); // set of cluster display NAMES
 
 	function toggleEnv(name: string) {
 		setMultiParam(
@@ -202,12 +211,12 @@
 			envFilters.includes(name) ? envFilters.filter((x) => x !== name) : [...envFilters, name]
 		);
 	}
-	function toggleCluster(url: string) {
+	function toggleCluster(name: string) {
 		setMultiParam(
 			'cluster',
-			clusterFilters.includes(url)
-				? clusterFilters.filter((x) => x !== url)
-				: [...clusterFilters, url]
+			clusterFilters.includes(name)
+				? clusterFilters.filter((x) => x !== name)
+				: [...clusterFilters, name]
 		);
 	}
 	function clearFilters() {
@@ -244,11 +253,13 @@
 			if (quickFilter === 'pending' && !isPending(c)) return false;
 			if (quickFilter === 'healthy' && !(isTrailing(c) || isSteady(c))) return false;
 			if (envFilters.length > 0 && !envFilters.includes(c.envKey)) return false;
-			if (clusterFilters.length > 0) {
-				// Match against the source URL; treat empty/local sourceURL as localClusterURL.
-				const cardURL = c.sourceURL || localClusterURL;
-				if (!clusterFilters.includes(cardURL)) return false;
-			}
+			// ⛔ MATCHED AGAINST THE URL UNTIL 2026-09-03 — see the note on
+			// `clusterFilters`' own declaration. The card's cluster identity is
+			// still the URL underneath (`sourceURL`/`localClusterURL`); only the
+			// PARAM changed to a name, so the comparison resolves through the
+			// same `clusterLabelForCard` the filter pill and every row already
+			// render, never a second lookup of its own.
+			if (clusterFilters.length > 0 && !clusterFilters.includes(clusterLabelForCard(c))) return false;
 			if (q) {
 				const hay = `${c.ns} ${c.name} ${c.title} ${c.envKey} ${c.envDisplay} ${c.version ?? ''}`.toLowerCase();
 				if (!hay.includes(q)) return false;
@@ -532,12 +543,34 @@
 	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 		<h1 class="sr-only">Rollouts</h1>
 		{#if cards.length > 0}
-			<span class="t-display text-gray-900 tabular-nums dark:text-white">{cards.length}</span>
+			<!--
+				⛔ THE HEAD BAND SAID `15 rollouts in 9 namespaces` OVER A GRID
+				THAT HAD JUST FILTERED ITSELF TO ZERO. (2026-09-03, operator-walk,
+				cosmetic) The rollup was always the UNFILTERED total, deliberately
+				— see the note on `nsSpread`/`clusterSpread` below, "SCALE AND
+				SPREAD ... deliberately NOT the severity partition" — and that
+				argument still holds for the ordinary, unfiltered case: the
+				number here is not supposed to re-derive the status pills'
+				breakdown. But a SEARCH/env/cluster filter narrowing the set to
+				zero is a different fact than "the fleet has 15 rollouts", and
+				printing only the latter over an empty grid reads as the page
+				disagreeing with itself. While any filter is active, the leading
+				figure is the FILTERED count against the total instead.
+			-->
+			{@const filtersActive =
+				envFilters.length > 0 || quickFilter !== 'all' || clusterFilters.length > 0 || !!searchQuery}
+			<span class="t-display text-gray-900 tabular-nums dark:text-white"
+				>{filtersActive ? filtered.length : cards.length}</span
+			>
 			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-				rollout{cards.length === 1 ? '' : 's'} in {nsSpread}
-				namespace{nsSpread === 1 ? '' : 's'}{clusterSpread > 1
-					? ` · ${clusterSpread} clusters`
-					: ''}
+				{#if filtersActive}
+					of {cards.length} rollout{cards.length === 1 ? '' : 's'} match the filters
+				{:else}
+					rollout{cards.length === 1 ? '' : 's'} in {nsSpread}
+					namespace{nsSpread === 1 ? '' : 's'}{clusterSpread > 1
+						? ` · ${clusterSpread} clusters`
+						: ''}
+				{/if}
 			</p>
 		{/if}
 	</div>
@@ -597,16 +630,23 @@
 				<!-- Status filter pills (compact, single-select) — replaces the old
 				     tile banner while keeping the filtering it provided.
 
-				     ⛔ A ZERO-COUNT PILL PUSHED THE FIRST TILE TO y≈328 AT 390.
-				     (2026-09-02, design re-check) `Attention 0 · In motion 0 ·
-				     Pending 0` still drew all five pills at their FULL width —
-				     the count made them cheap ink to keep on a 1440 screen,
-				     but at 390 the row is the whole card width and a mark of
-				     the norm (three empty buckets) cost a full 44px band before
-				     a single rollout appeared. Hidden below `sm` — a filter
-				     that can select nothing is not a control, it is a caption
-				     — unless it is the ACTIVE one, so clearing a filter that
-				     just emptied out is still reachable without a resize. -->
+				     ⛔ A ZERO-COUNT PILL WAS FULL-INK AT 1440 AND GONE AT 390 —
+				     THE TAXONOMY DIFFERED BY WIDTH. (2026-09-03, fourth re-check,
+				     NIT) The 2026-09-02 fix above hid an empty bucket below `sm`
+				     so it would not cost a 44px band before the first rollout on
+				     a phone; measured against 1440, where the same pill drew at
+				     FULL contrast, an operator moving between the two widths saw
+				     a different SET of buckets — five at 1440, as few as two at
+				     390. A filter that can select nothing is still one of the
+				     product's five named buckets and belongs in the same place
+				     at every width; what it must not do is compete for ink with
+				     one that can. It renders everywhere now, MUTED — `gray-400`
+				     / `gray-500` ink, a lighter `gray-100` / `gray-800` hairline,
+				     no fill (unselected pills never had one) — never hidden, and
+				     still a real control: `onclick` and `aria-pressed` are
+				     unchanged, so selecting an empty bucket is honest (the grid
+				     falls through to `No matches` below, the same empty state
+				     every other filter combination reaches). -->
 				{#each statusPills as sp (sp.key)}
 					<!--
 						⭐ F2: ONE HEIGHT, ONE RADIUS, ACROSS ALL THREE FILTER-CHIP ROWS.
@@ -623,11 +663,12 @@
 						type="button"
 						onclick={() => setQuickFilter(quickFilter === sp.key ? 'all' : sp.key)}
 						aria-pressed={quickFilter === sp.key}
-						class="t-label min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
-							{sp.count === 0 && quickFilter !== sp.key ? 'hidden sm:inline-flex' : 'inline-flex'}
+						class="t-label inline-flex min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
 							{quickFilter === sp.key
 								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
-								: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+								: sp.count === 0
+									? 'border-gray-100 text-gray-400 hover:border-gray-300 hover:text-gray-600 dark:border-gray-800 dark:text-gray-500 dark:hover:border-gray-600 dark:hover:text-gray-300'
+									: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
 					>
 						<span class="h-[5px] w-[5px] shrink-0 rounded {sp.dot}"></span>
 						{sp.label}
@@ -650,10 +691,10 @@
 			{#if isMultiCluster && allClusters.length > 0}
 				<div class="flex flex-wrap items-center gap-1.5">
 					{#each allClusters as cl}
-						{@const sel = clusterFilters.includes(cl.url)}
+						{@const sel = clusterFilters.includes(cl.name)}
 						<button
 							type="button"
-							onclick={() => toggleCluster(cl.url)}
+							onclick={() => toggleCluster(cl.name)}
 							aria-pressed={sel}
 							class="inline-flex min-h-[26px] items-center rounded border px-2.5 py-1 transition-colors
 								{sel
@@ -783,13 +824,58 @@
 			</div>
 		</div>
 	{:else if grouped.length === 0}
+		<!--
+			⛔ WAS `No matches` / a single `Clear filters` LINK, UNDER A HEADER
+			THAT STILL SAID THE FULL FLEET SIZE. (2026-09-03, operator-walk,
+			cosmetic) `/activity` reaches the identical shape — a filtered set
+			with nothing in it — and answers with a named state
+			(`Nothing matches these filters`) and ONE BUTTON PER ACTIVE
+			DIMENSION, so clearing the search does not also throw away an
+			env/cluster/status pick the reader never asked to remove. Same
+			wording, same `btn btn-secondary` control `/activity`'s own empty
+			state uses.
+		-->
+		{@const activeDims = [
+			!!searchQuery,
+			quickFilter !== 'all',
+			envFilters.length > 0,
+			clusterFilters.length > 0
+		].filter(Boolean).length}
 		<div class="flex flex-col items-center justify-center py-12 text-center">
-			<p class="text-sm font-medium text-gray-700 dark:text-gray-300">No matches</p>
-			<button
-				type="button"
-				onclick={clearFilters}
-				class="mt-2 text-xs text-gray-500 underline underline-offset-2 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-			>Clear filters</button>
+			<p class="text-sm font-medium text-gray-700 dark:text-gray-300">Nothing matches these filters</p>
+			<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+				Try clearing one filter at a time, or clear them all.
+			</p>
+			<div class="mt-3 flex flex-wrap items-center justify-center gap-2">
+				{#if searchQuery}
+					<button type="button" onclick={() => (searchQuery = '')} class="btn btn-secondary"
+						>Clear “{searchQuery}”</button
+					>
+				{/if}
+				{#if quickFilter !== 'all'}
+					{@const label = statusPills.find((sp) => sp.key === quickFilter)?.label ?? quickFilter}
+					<button type="button" onclick={() => setQuickFilter('all')} class="btn btn-secondary"
+						>Clear “{label}”</button
+					>
+				{/if}
+				{#if envFilters.length > 0}
+					<button type="button" onclick={() => setMultiParam('env', [])} class="btn btn-secondary"
+						>Clear environments</button
+					>
+				{/if}
+				{#if clusterFilters.length > 0}
+					<button
+						type="button"
+						onclick={() => setMultiParam('cluster', [])}
+						class="btn btn-secondary">Clear clusters</button
+					>
+				{/if}
+				{#if activeDims > 1}
+					<button type="button" onclick={clearFilters} class="btn btn-secondary"
+						>Clear all filters</button
+					>
+				{/if}
+			</div>
 		</div>
 	{:else}
 		<div class="space-y-6">

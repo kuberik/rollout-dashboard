@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { buildRolloutCards, detectRollback, cardVerdict, cardStateMark } from './rollout-cards';
+import {
+	buildRolloutCards,
+	detectRollback,
+	cardVerdict,
+	cardStateMark,
+	heldCauseText
+} from './rollout-cards';
 import { rankBehindBy, rankLabel } from './view-models/env-rank';
+import type { BlockingStory, ClassifiedGate } from './view-models/blocking-story';
 
 // Fixtures reproduce the live `hello-world-app` shape that exposed the bug:
 // prod is 24 releases and 32 days behind, but its current version has already
@@ -313,6 +320,26 @@ describe('cardVerdict', () => {
 	});
 
 	/**
+	 * ⭐ HELD OUTRANKS ROLLED BACK AND PINNED. (2026-09-03, operator-walk
+	 * finding P6) Measured live: `hello-world-app` DEV showed the rollback
+	 * arrow while it was, right now, held by a dependency contract nothing
+	 * in this cluster can satisfy — the disc named a past event instead of
+	 * the current one. `held` is a fact about right now; a stale rollback
+	 * arrow is not. This does NOT reopen "rolled back vs pinned" above —
+	 * that ordering is unchanged and still tested.
+	 */
+	it('marks HELD over ROLLED BACK, even with a pin too', () => {
+		const m = cardStateMark({ rolledBack: back, pinnedVersion: 'main-abc', held: true });
+		expect(m).not.toBeNull();
+		expect(m!.kind).toBe('held');
+	});
+
+	it('marks HELD over a plain PIN', () => {
+		const m = cardStateMark({ rolledBack: null, pinnedVersion: 'main-abc', held: true });
+		expect(m!.kind).toBe('held');
+	});
+
+	/**
 	 * ⭐ THE PIN HALF IS THE ONLY THING `/` AND `/rollouts` SAY ABOUT THE
 	 * DIFFERENCE, AND IT COSTS NOTHING. A rollback started in this product
 	 * always pins (`ChangeVersionModal.mustPin`), so a rollback WITHOUT one
@@ -383,5 +410,69 @@ describe('cardVerdict', () => {
 		const v = cardVerdict(c, rankLabel(c.rank), 'sentence');
 		expect(v.label).toBe('24 behind');
 		expect(cardStateMark(c)!.kind).toBe('rolled-back');
+	});
+});
+
+/**
+ * ⭐ `heldCauseText` — one line naming why a held card is held. (operator-walk
+ * finding P6) `gate()` fills in only the fields the function reads; the rest
+ * are `blocking-story.ts`'s own concern and are asserted there.
+ */
+function gate(overrides: Partial<ClassifiedGate>): ClassifiedGate {
+	return {
+		id: 'g',
+		kind: 'dependency',
+		clears: 'upstream',
+		label: 'l',
+		clause: 'c',
+		short: 'short',
+		clearsAt: null,
+		subject: null,
+		subjectKind: null,
+		predicate: null,
+		contract: null,
+		have: null,
+		need: null,
+		...overrides
+	};
+}
+function story(gates: ClassifiedGate[]): BlockingStory {
+	return { gates } as BlockingStory;
+}
+
+describe('heldCauseText', () => {
+	it('names the provider and the required range for a dependency gate', () => {
+		const g = gate({ subject: 'hello-api-app', need: '^1.67.0' });
+		expect(heldCauseText(story([g]))).toBe('waiting on hello-api-app ^1.67.0');
+	});
+
+	it('names just the provider when the required range is not knowable', () => {
+		const g = gate({ subject: 'hello-api-app', need: null });
+		expect(heldCauseText(story([g]))).toBe('waiting on hello-api-app');
+	});
+
+	it('names the reopen time for a closed deploy window, never the raw label', () => {
+		const g = gate({
+			clears: 'clock',
+			clearsAt: '2026-09-03T13:00:00Z',
+			short: 'Outside the Business Hours Only deploy window'
+		});
+		const text = heldCauseText(story([g]));
+		expect(text).toMatch(/^deploy window reopens /);
+	});
+
+	it('falls back to `short` when there is no second party to draw', () => {
+		const g = gate({ subject: null, short: 'A check is not passing' });
+		expect(heldCauseText(story([g]))).toBe('A check is not passing');
+	});
+
+	it('is null when nothing is holding it', () => {
+		expect(heldCauseText(story([]))).toBeNull();
+	});
+
+	it('reads the WORST gate — the first one — when several hold it at once', () => {
+		const worst = gate({ subject: 'hello-api-app', need: '^1.67.0' });
+		const other = gate({ clears: 'clock', clearsAt: '2026-09-03T13:00:00Z' });
+		expect(heldCauseText(story([worst, other]))).toBe('waiting on hello-api-app ^1.67.0');
 	});
 });

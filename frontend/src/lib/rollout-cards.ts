@@ -17,6 +17,7 @@ import {
 	sourceClusterName,
 	rolloutMatchesEnvironment
 } from './source-dashboard';
+import type { BlockingStory } from './view-models/blocking-story';
 
 export type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
 
@@ -417,6 +418,31 @@ export type CardStateMark = {
 export function cardStateMark(
 	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held'>>
 ): CardStateMark | null {
+	// ⛔ HELD NOW OUTRANKS EVERYTHING ELSE HERE — THE DISC MUST NAME THE
+	// CURRENT STATE, NOT THE MOST RECENT HISTORY. (2026-09-03, operator-walk
+	// finding P6) Measured live: `hello-world-app` DEV showed the rollback
+	// arrow (↩) while it was, RIGHT NOW, held by a `RolloutDependency`
+	// contract nothing in this cluster can satisfy. The arrow is true of
+	// something that happened once; `held` is true of what is happening. A
+	// reader glancing at the disc needs the second one, and the two are not
+	// mutually exclusive: a rollout can be rolled back to an older build
+	// AND, separately, blocked from moving off it.
+	//
+	// ⚠️ THIS DOES NOT TOUCH `rolled back` vs `pinned` BELOW, WHICH STAYS
+	// DELIBERATE (see that branch's own note and
+	// `rollout-cards.test.ts`'s "marks ROLLED BACK, not PINNED, when both
+	// are true"): a rollback PINS by construction, so demoting `rolled back`
+	// under `pinned` would make the rollback glyph nearly unreachable on the
+	// one row it explains. `held` is a different, later-arriving fact
+	// (a gate closing AFTER the rollback settled), not the rollback's own
+	// mechanism, so it alone moves to the front.
+	if (c.held) {
+		return {
+			kind: 'held',
+			word: 'held',
+			title: `Held: a newer build exists, but no gate lets it through yet.`
+		};
+	}
 	if (c.rolledBack) {
 		const { from, to, by } = c.rolledBack;
 		const plural = by === 1 ? '' : 's';
@@ -469,18 +495,58 @@ export function cardStateMark(
 	// 130px of needed width to 86-113px of available, i.e. it clipped the name
 	// on the exact row the mark exists to explain. Same shape as `rolled
 	// back`/`pinned` above: the disc has ONE free slot and the row's budget is
-	// closed, so a THIRD fact takes the THIRD tier of the same slot rather
-	// than a pixel of its own. `/rollouts`' card has the room and keeps a real
-	// `Chip role="blocked" label="held"` beside the name — see
-	// `RolloutGrid.svelte` — so the SAME fact is marked on both list surfaces;
-	// only the tight `/` rows fall back to the disc, exactly as they already
-	// do for the other two state words.
-	if (c.held) {
-		return {
-			kind: 'held',
-			word: 'held',
-			title: `Held: a newer build exists, but no gate lets it through yet.`
-		};
-	}
+	// closed. `/rollouts`' card has the room and keeps a real `Chip
+	// role="blocked" label="held"` beside the name — see `RolloutGrid.svelte`
+	// — so the SAME fact is marked on both list surfaces; only the tight `/`
+	// rows fall back to the disc, exactly as they already do for the other
+	// two state words. ⛔ Moved to the TOP of this function, 2026-09-03 — see
+	// the note there; this comment records why the mark exists, not where.
 	return null;
+}
+
+/**
+ * ⭐ ONE LINE NAMING *WHY* A HELD CARD IS HELD, AND WHEN IT CLEARS.
+ * (2026-09-03, operator-walk finding P6 — "PAINFUL": *"four held cards are
+ * drawn identically — three held by a contract no human here can clear, one
+ * by a clock that clears itself at 1:00 PM."*)
+ *
+ * `/`'s Held section drew every card with the SAME two facts — the app name
+ * and a `held` chip — so four rollouts held for four different reasons (a
+ * dependency contract, a schedule window, an approval, an upstream deploy)
+ * were visually one card repeated four times. This is the second line the
+ * two-line held card already has ROOM for (see `ControlCenter.svelte`'s own
+ * note on that layout).
+ *
+ * ⛔ NOT A NEW SENTENCE. `story.gates` is `blocking-story.ts`'s own
+ * classification — the SAME object the banner on `/apps/<name>`, `/envs/*`
+ * and the revision pages already read — so this cannot name a cause those
+ * pages disagree with. It composes from the SAME vetted fields
+ * (`subject`/`need`/`clearsAt`) `BlockingStoryLines` draws its relation from,
+ * rather than printing a private guess.
+ *
+ * `story.gates` is worst-first (`blockingStory`'s own ordering), so
+ * `gates[0]` is the one cause a reader most needs — a card holding both a
+ * contract and a closed window prints the contract, not a list.
+ */
+export function heldCauseText(story: BlockingStory): string | null {
+	const g = story.gates[0];
+	if (!g) return null;
+	// A closed deploy window: name the CLOCK, not the mechanism — `Outside
+	// the X deploy window` (short's own wording) restates what `held`
+	// already says; `reopens <time>` is the fact `held` does not carry.
+	if (g.clears === 'clock' && g.clearsAt) {
+		const time = new Date(g.clearsAt).toLocaleTimeString([], {
+			hour: 'numeric',
+			minute: '2-digit'
+		});
+		return `deploy window reopens ${time}`;
+	}
+	// A cross-service contract or an upstream promotion: name the PROVIDER
+	// and, where the payload carries it, the required range — `waiting on
+	// hello-api-app ^1.67.0`.
+	if (g.subject && g.need) return `waiting on ${g.subject} ${g.need}`;
+	if (g.subject) return `waiting on ${g.subject}`;
+	// No second party to draw (`check`, `approval`, `unknown`) — `short` is
+	// already complete prose for exactly this case; see its own doc comment.
+	return g.short;
 }
