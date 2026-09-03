@@ -3003,6 +3003,7 @@
 														{cluster}
 														base={commitBase}
 														head={releaseCandidate.revision}
+														verb="to deploy"
 														showAvatars
 														showMessages
 														hideWhenEmpty

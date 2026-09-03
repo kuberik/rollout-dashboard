@@ -1352,7 +1352,7 @@
 									     latter, and the sentence under it is prose whenever GitHub
 									     is absent). -->
 									<span class="text-sm font-semibold text-gray-900 dark:text-white">
-										{direction === 'rollback' ? 'Commits reverted' : 'Commits deployed'}
+										{direction === 'rollback' ? 'Commits to revert' : 'Commits to deploy'}
 									</span>
 									{#if supportsManifestDiff}
 										<Button
@@ -1455,7 +1455,7 @@
 								{:else if commitsQuery.isSuccess && commitsQuery.data.commits.length > 0}
 									<ul
 										class="space-y-3"
-										aria-label={direction === 'rollback' ? 'Commits reverted' : 'Commits deployed'}
+										aria-label={direction === 'rollback' ? 'Commits to revert' : 'Commits to deploy'}
 									>
 										{#each commitsQuery.data.commits as commit (commit.sha)}
 											<li class="flex gap-2.5">
