@@ -403,6 +403,27 @@
 	);
 
 	/**
+	 * ⭐ 2026-09-03 · THE SPAN'S OWN X-EXTENT, IN GRAPH UNITS — for the
+	 * horizontal pan-to-anchorSpan fix below. `anchorPosition` is a single
+	 * point; the RANK axis (columns, under `LR`) never had ANY pan-to-anchor
+	 * logic at all before this — see `restingFit`'s own note on why not, and
+	 * why that stopped being enough once `anchorSpan` existed.
+	 */
+	function anchorSpanXBounds(): { left: number; right: number } | null {
+		if (!anchorSpan) return null;
+		const [a, b] = anchorSpan;
+		const na = flowNodes.find((n) => n.id === a);
+		const nb = flowNodes.find((n) => n.id === b);
+		if (!na || !nb) return null;
+		const wa = na.measured?.width ?? fallbackNodeWidth;
+		const wb = nb.measured?.width ?? fallbackNodeWidth;
+		return {
+			left: Math.min(na.position.x, nb.position.x),
+			right: Math.max(na.position.x + wa, nb.position.x + wb)
+		};
+	}
+
+	/**
 	 * ⭐ `zoomIn`/`zoomOut` FROM `useSvelteFlow()` ARE DEAD ON THIS CANVAS, AND
 	 * IT IS AN UPSTREAM GOTCHA, NOT A TYPO. (2026-09-02, measured: every click
 	 * resolved `false` and the transform never moved, forever, at both 390 and
@@ -612,11 +633,63 @@
 				if (Math.abs(x - vp.x) > 0.5) setViewport({ x, y: vp.y, zoom: z }, { duration: 0 });
 				return;
 			}
-			if (contentSize.height === 0) return;
-			if (contentSize.height * z <= frameHeight + 4) return;
-			const want = a ? 8 - (a.y - lead) * z : 8;
-			const y = Math.min(8, Math.max(frameHeight - contentSize.height * z - 8, want));
-			if (Math.abs(y - vp.y) > 0.5) setViewport({ x: vp.x, y, zoom: z }, { duration: 0 });
+			let nextX = vp.x;
+			let nextY = vp.y;
+			let move = false;
+			if (contentSize.height > 0 && contentSize.height * z > frameHeight + 4) {
+				const want = a ? 8 - (a.y - lead) * z : 8;
+				const y = Math.min(8, Math.max(frameHeight - contentSize.height * z - 8, want));
+				if (Math.abs(y - vp.y) > 0.5) {
+					nextY = y;
+					move = true;
+				}
+			}
+			/**
+			 * ⭐ 2026-09-03 · THE RANK AXIS NOW PANS TOO, BUT ONLY TO KEEP AN
+			 * `anchorSpan` WHOLE — NEVER TO PREFER AN ENVIRONMENT.
+			 * (Coordinator finding: at 1024/1152 the whole graph reads ABOVE
+			 * `READABLE_FLOOR`, so `anchorSpan`'s subset-fit branch above
+			 * never engages, and the ordinary fit's own centring left
+			 * `hello-frontend-app` PROD clipped a few px past the frame's
+			 * right edge while `anchor` — `hello-api-app` PROD, on a
+			 * provider's own page — sat just inside it. The single-node
+			 * anchor rule was satisfied to the letter while the edge it
+			 * anchors was not.)
+			 *
+			 * This nudges `x` ONLY WHEN THE SPAN ITSELF FITS the frame at the
+			 * resting zoom (`spanWidthPx <= containerWidth`) — a span wider
+			 * than the frame has no position that shows both ends, and
+			 * `fitView`'s own centring is left alone rather than nudged
+			 * toward a false promise. `docstring` above `anchorSpan` still
+			 * governs WHICH two nodes this is; nothing about which
+			 * environment reads "first" changes for a graph with no
+			 * `anchorSpan` at all — `bounds` is `null` and this is a no-op,
+			 * byte-identical to before.
+			 */
+			if (contentSize.width > 0 && containerWidth > 0) {
+				const bounds = anchorSpanXBounds();
+				if (bounds) {
+					const spanWidthPx = (bounds.right - bounds.left) * z;
+					if (spanWidthPx <= containerWidth + 4) {
+						const screenLeft = bounds.left * z + nextX;
+						const screenRight = bounds.right * z + nextX;
+						let dx = 0;
+						if (screenLeft < 8) dx = 8 - screenLeft;
+						else if (screenRight > containerWidth - 8) dx = containerWidth - 8 - screenRight;
+						if (dx !== 0) {
+							const clampedX = Math.min(
+								8,
+								Math.max(containerWidth - contentSize.width * z - 8, nextX + dx)
+							);
+							if (Math.abs(clampedX - nextX) > 0.5) {
+								nextX = clampedX;
+								move = true;
+							}
+						}
+					}
+				}
+			}
+			if (move) setViewport({ x: nextX, y: nextY, zoom: z }, { duration: 0 });
 		});
 	}
 

@@ -787,14 +787,30 @@ export function providedContracts(args: {
 	/** This rollout. */
 	provider: string;
 	providerNamespace: string;
+	/**
+	 * ⭐ 2026-09-03 · EVERY NAMESPACE THIS APP'S OWN PROMOTION LINE RUNS IN —
+	 * see the widened scope note below. `[providerNamespace]` (the default)
+	 * keeps a caller that never passes this byte-identical to before this
+	 * prop existed.
+	 */
+	providerNamespaces?: Iterable<string>;
 	/** The consumer's running release, or null when it cannot be seen. */
 	consumerState: (namespace: string, name: string, contract: string) => ConsumerState | null;
 	/** Cluster attribution for a gate, for links. */
 	clusterOf?: (dep: RolloutDependency) => string | null;
 }): ProvidedContract[] {
 	const { deps, provider, providerNamespace, consumerState, clusterOf } = args;
+	const scopeNamespaces = new Set(args.providerNamespaces ?? [providerNamespace]);
 	const byContract = new Map<string, ProvidedContract>();
 	const dependentsByContract = new Map<string, Map<string, Dependent>>();
+	/**
+	 * Own-instance PROVIDED versions, per contract — kept apart from the
+	 * widened dependents loop below so `providedVaries` still asks only "do
+	 * THIS instance's own gates agree", never "does dev agree with prod",
+	 * which is expected and not an anomaly. See the `providedVaries` note
+	 * beside its assignment.
+	 */
+	const ownProvidedVersions = new Map<string, Set<string>>();
 
 	for (const dep of deps) {
 		if (dep?.spec?.providerRef?.name !== provider) continue;
@@ -803,7 +819,26 @@ export function providedContracts(args: {
 		// it to the dependency's OWN namespace. Defaulting here costs one line
 		// and keeps a gate from silently pointing at nothing.
 		const ns = dep.spec.providerRef.namespace || dep.metadata?.namespace || '';
-		if (ns !== providerNamespace) continue;
+		/**
+		 * ⭐ 2026-09-03 · WIDENED FROM `ns !== providerNamespace` — SEE THE
+		 * CALL SITE'S OWN NOTE (`+page.svelte`, AXIS 3) FOR THE FULL DEFECT.
+		 * In one sentence: the graph above this card already walks this
+		 * app's whole promotion line (`neighbourhood()`) and draws every
+		 * held sibling — dev, staging AND prod — while this function kept
+		 * only the ONE namespace the page happened to be open on, so
+		 * `hello-api-app`'s own tab said `1 of 1 held` under a graph
+		 * drawing three. `scopeNamespaces` is that same app's own namespace
+		 * set (the caller's `siblings`, i.e. `groupRolloutsByApp` — the one
+		 * authority the graph, the chain and this card must not disagree
+		 * about), not "any namespace anywhere with a same-named provider".
+		 * `isOwnInstance`, below, is what keeps the PROVIDED VERSION itself
+		 * — a genuinely per-instance fact — from being folded across
+		 * environments, which is the ORIGINAL `in hello-dep-prod` defect
+		 * this file's history warns about and which this change does not
+		 * reopen.
+		 */
+		if (!scopeNamespaces.has(ns)) continue;
+		const isOwnInstance = ns === providerNamespace;
 
 		const contract = dep.spec.contract || provider;
 		const consumerName = dep.spec.rolloutRef?.name ?? '';
@@ -868,18 +903,33 @@ export function providedContracts(args: {
 		}
 		d.places.push(place);
 
-		if (c.providedTag === null && dep.status?.providedTag) c.providedTag = dep.status.providedTag;
-		if (c.providedVersion === null && place.providedVersion) {
-			c.providedVersion = place.providedVersion;
+		// ⭐ ONLY THIS INSTANCE'S OWN GATES SET THE HEADLINE VERSION — see the
+		// widened-scope note above. A sibling environment's gate can (and on
+		// a diverged fleet will) report a DIFFERENT `providedVersion`; that
+		// is not this card's disagreement to flag.
+		if (isOwnInstance) {
+			if (c.providedTag === null && dep.status?.providedTag) c.providedTag = dep.status.providedTag;
+			if (c.providedVersion === null && place.providedVersion) {
+				c.providedVersion = place.providedVersion;
+			}
+			if (place.providedVersion) {
+				let versions = ownProvidedVersions.get(contract);
+				if (!versions) {
+					versions = new Set();
+					ownProvidedVersions.set(contract, versions);
+				}
+				versions.add(place.providedVersion);
+			}
 		}
 	}
 
 	const out = [...byContract.values()];
 	for (const c of out) {
-		c.providedVaries =
-			new Set(
-				c.dependents.flatMap((d) => d.places.map((p) => p.providedVersion)).filter((v) => v !== null)
-			).size > 1;
+		// Disagreement WITHIN this instance's own gates only — see the
+		// `ownProvidedVersions` note above. Widening `dependents` to other
+		// environments must not turn "dev and prod serve different builds",
+		// which is normal, into a false "the gates disagree" flag.
+		c.providedVaries = (ownProvidedVersions.get(c.key)?.size ?? 0) > 1;
 
 		for (const d of c.dependents) {
 			d.places.sort((a, b) => a.namespace.localeCompare(b.namespace));

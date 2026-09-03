@@ -9,6 +9,7 @@ import {
 	hopBetween,
 	isReady,
 	isSatisfied,
+	providedContracts,
 	rankOfTag,
 	splitBlocked,
 	type EnvInfo
@@ -526,5 +527,127 @@ describe('blocked builds group by BUILD, not by environment', () => {
 		});
 		expect(blocks[0].ungatedEnvs).toEqual(['staging', 'prod']);
 		expect(blocks[0].ungated).toBe(2);
+	});
+});
+
+/**
+ * ⭐ 2026-09-03 · THE LIVE FIXTURE SHAPE, LOCKED. From the coordinator's own
+ * operator walk on `hello-api-app`'s Dependencies tab: the graph drew three
+ * held rollouts (`hello-frontend-app` in dev, staging AND prod, each behind
+ * its own independent `RolloutDependency` in its own namespace — verified
+ * against the live hub, `GET /api/rollouts`) while `providedContracts`,
+ * scoped to one namespace, could only ever see one of them and the card
+ * printed `1 of 1 held` under a graph counting three. `providerNamespaces`
+ * is the fix — every namespace this app's own promotion line runs in, not
+ * just the one the page happens to be open on — and this is the regression
+ * test for it: three real `RolloutDependency` objects, one per environment,
+ * every field exactly as the live cluster serves it.
+ */
+function apiGate(ns: string): RolloutDependency {
+	return dep({
+		ns,
+		status: {
+			providedVersion: '1.66.0',
+			providedTag: 'rel-66',
+			admittedVersions: ['rel-66'],
+			blockedReleases: [
+				{ tag: 'rel-67', requiredVersion: '^1.67.0', reason: 'ConstraintNotSatisfied' }
+			],
+			conditions: [
+				{ type: 'Ready', status: 'True', reason: 'GateSynced' },
+				{ type: 'Satisfied', status: 'False', reason: 'DependencyBlocked' }
+			],
+			gateName: `dependency-hello-frontend-needs-api-${ns}`
+		}
+	});
+}
+
+describe('providedContracts — widened across this app\'s own environments', () => {
+	const deps = [
+		apiGate('hello-dep-dev'),
+		apiGate('hello-dep-staging'),
+		apiGate('hello-dep-prod')
+	];
+
+	it('by default (no providerNamespaces) stays scoped to one instance — unchanged behaviour', () => {
+		const provided = providedContracts({
+			deps,
+			provider: 'hello-api-app',
+			providerNamespace: 'hello-dep-prod',
+			consumerState: () => null
+		});
+		expect(provided).toHaveLength(1);
+		expect(provided[0].dependents).toHaveLength(1);
+		expect(provided[0].dependents[0].places.map((p) => p.namespace)).toEqual(['hello-dep-prod']);
+	});
+
+	it('widened: one rollout per environment, three rollouts, one service', () => {
+		const provided = providedContracts({
+			deps,
+			provider: 'hello-api-app',
+			providerNamespace: 'hello-dep-prod',
+			providerNamespaces: ['hello-dep-dev', 'hello-dep-staging', 'hello-dep-prod'],
+			consumerState: () => null
+		});
+		expect(provided).toHaveLength(1);
+		// ONE SERVICE — `hello-frontend-app` is a single `Dependent`, not one
+		// per environment. This is the axis `dependentCount` counts.
+		expect(provided[0].dependents).toHaveLength(1);
+		const d = provided[0].dependents[0];
+		expect(d.name).toBe('hello-frontend-app');
+		// THREE ROLLOUTS — one place per environment, matching the graph's
+		// own three red nodes. This is the axis `rolloutCount` counts.
+		expect(d.places.map((p) => p.namespace)).toEqual([
+			'hello-dep-dev',
+			'hello-dep-prod',
+			'hello-dep-staging'
+		]);
+		expect(d.adverse).toBe(true);
+		// ONE HELD BUILD (`rel-67`, same clause everywhere) — held in all
+		// three places, not three separate holds. This is what feeds the
+		// per-hold environment chips the list renders.
+		expect(d.holds).toHaveLength(1);
+		expect(d.holds[0].tag).toBe('rel-67');
+		expect(d.holds[0].places).toEqual(['hello-dep-dev', 'hello-dep-prod', 'hello-dep-staging']);
+	});
+
+	it('the PROVIDED VERSION stays scoped to this instance even when dependents widen', () => {
+		const deps2 = [
+			apiGate('hello-dep-dev'),
+			apiGate('hello-dep-staging'),
+			dep({
+				ns: 'hello-dep-prod',
+				status: {
+					// A different served version in prod than dev/staging — the
+					// exact case the `in hello-dep-prod` defect got wrong by
+					// reading whichever gate happened to be first.
+					providedVersion: '1.67.0',
+					providedTag: 'rel-67',
+					admittedVersions: ['rel-67'],
+					blockedReleases: [],
+					conditions: [
+						{ type: 'Ready', status: 'True', reason: 'GateSynced' },
+						{ type: 'Satisfied', status: 'True', reason: 'DependencySatisfied' }
+					],
+					gateName: 'dependency-hello-frontend-needs-api-hello-dep-prod'
+				}
+			})
+		];
+		const provided = providedContracts({
+			deps: deps2,
+			provider: 'hello-api-app',
+			providerNamespace: 'hello-dep-prod',
+			providerNamespaces: ['hello-dep-dev', 'hello-dep-staging', 'hello-dep-prod'],
+			consumerState: () => null
+		});
+		// THIS instance's own number (prod: 1.67.0), never dev's or
+		// staging's (1.66.0) — the fold this test exists to forbid.
+		expect(provided[0].providedVersion).toBe('1.67.0');
+		expect(provided[0].providedTag).toBe('rel-67');
+		// Not "varies": prod has exactly one gate of its own, and dev/staging
+		// serving a different number is not a disagreement WITHIN prod.
+		expect(provided[0].providedVaries).toBe(false);
+		// Still three places — the widening is untouched by the version fix.
+		expect(provided[0].dependents[0].places).toHaveLength(3);
 	});
 });

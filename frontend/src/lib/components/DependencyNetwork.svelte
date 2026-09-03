@@ -157,6 +157,20 @@
 		for (const e of graph.edges) m.set(e.to, [...(m.get(e.to) ?? []), e]);
 		return m;
 	});
+	/**
+	 * ⭐ 2026-09-03 · THE OTHER DIRECTION, FOR `anchorSpan` ON A PROVIDER'S
+	 * OWN PAGE — see that derivation's own note. `inbound` answers "what is
+	 * holding this node back"; a rollout that HOLDS someone else back (and is
+	 * not itself held by anything) has nothing in `inbound`, so without this
+	 * `anchorSpan` fell back to `null` on exactly the page most likely to
+	 * want it: `hello-api-app`'s own Dependencies tab, where `anchor` is
+	 * `hello-api-app` and the story is who IT is holding, not who holds it.
+	 */
+	const outbound = $derived.by(() => {
+		const m = new Map<string, GraphEdge[]>();
+		for (const e of graph.edges) m.set(e.from, [...(m.get(e.from) ?? []), e]);
+		return m;
+	});
 
 	/**
 	 * An SVG `stroke` and a marker `color` take a literal, not a Tailwind class,
@@ -355,14 +369,31 @@
 	 * `blocked` — there can be more than one (a node held by both a
 	 * promotion gate and a contract gate at once), and the first is as good
 	 * as any: the point is showing A blocked relationship, not an exhaustive
-	 * one, and `null` here (nothing inbound is blocked, or there is no
-	 * anchor) falls back to `GraphCanvasInner`'s single-node `anchor` path
-	 * unchanged.
+	 * one.
+	 *
+	 * ⭐ 2026-09-03 · AND WHEN `anchor` HOLDS SOMEONE ELSE INSTEAD OF BEING
+	 * HELD. Measured on `hello-api-app`'s own tab at 1024/1152: `anchor` is
+	 * the PROVIDER, which has no inbound blocked edge at all (nothing holds
+	 * IT back), so this used to fall through to `null` and the single-node
+	 * `anchor` path — no promise that the consumer it is holding stays on
+	 * screen. At 1024, measured, that clipped `hello-frontend-app` PROD by 3px
+	 * off the pane's own right edge: the anchor itself rested inside the
+	 * frame, satisfying the single-node rule to the letter, while the other
+	 * half of the one relationship this page is ABOUT sat just past it.
+	 * `outbound` is checked second, so a node that is BOTH held and holding
+	 * (rare, but the promotion axis and the contract axis can both bite one
+	 * node) keeps its inbound span — the row this reader is standing on beats
+	 * the row it is blocking.
+	 *
+	 * `null` here (nothing on either edge is blocked, or there is no anchor)
+	 * falls back to `GraphCanvasInner`'s single-node `anchor` path unchanged.
 	 */
 	const anchorSpan = $derived.by<[string, string] | null>(() => {
 		if (!anchor) return null;
 		const holding = (inbound.get(anchor) ?? []).find((e) => e.state === 'blocked');
-		return holding ? [holding.from, anchor] : null;
+		if (holding) return [holding.from, anchor];
+		const held = (outbound.get(anchor) ?? []).find((e) => e.state === 'blocked');
+		return held ? [anchor, held.to] : null;
 	});
 
 	/**

@@ -175,6 +175,7 @@
 		type ConsumerState,
 		type ContractBlock,
 		type Dependent,
+		type DependentPlace,
 		type EnvHistoryEntry,
 		type EnvInfo,
 		type ProvidedContract,
@@ -648,14 +649,27 @@
 
 	// ── AXIS 3 · WHAT THIS ROLLOUT IS HOLDING ───────────────────────────
 	//
-	// ⛔ SCOPED TO THIS ROLLOUT INSTANCE, WHICH IS THE OPPOSITE OF AXIS 2 AND
-	// IS DELIBERATE. The contract card folds this app's environments together
-	// because it is describing what the APP consumes. This card's subject is
-	// ONE NUMBER — the contract version THIS rollout has deployed — and the
-	// `hello-api-app` in `hello-dep-staging` is a different rollout serving a
-	// different number, with its own page. Folding its consumers in here would
-	// print one version for two, which is the `in hello-dep-prod` defect one
-	// axis over.
+	// ⛔ THE PROVIDED VERSION STAYS SCOPED TO THIS ROLLOUT INSTANCE — THE
+	// DEPENDENTS LIST NO LONGER DOES. `hello-api-app` in `hello-dep-staging`
+	// is a different rollout serving a different number, with its own page,
+	// so `providedContracts`' `providerNamespace` still keeps THIS card's
+	// headline `[api|1.66.0]` badge sourced from THIS instance's own gates
+	// only — folding that would reopen the `in hello-dep-prod` defect this
+	// comment used to warn about wholesale.
+	//
+	// ⭐ 2026-09-03 · BUT WHO IS STANDING ON THE CONTRACT IS NOW THE WHOLE
+	// APP'S PICTURE, NOT THIS INSTANCE'S ALONE. From the coordinator, walking
+	// `hello-api-app`'s own tab: the graph directly above this card already
+	// draws `hello-frontend-app` held in dev, staging AND prod — it walks
+	// this app's whole promotion line (`neighbourhood()`, AXIS-1-shaped) —
+	// while this card, scoped to one namespace, printed `1 of 1 held` and
+	// named only the one environment the page happened to be open on. THE
+	// GRAPH COUNTS ROLLOUTS, WHICH IS THE PRODUCT'S UNIT, and the card one
+	// scroll below it must not count something narrower. `providerNamespaces`
+	// (passed to `providedContracts` below) is `siblings`' own namespace set —
+	// the SAME authority `groupRolloutsByApp` gives the chain and the graph —
+	// so this card cannot name an environment the rest of the tab disagrees
+	// is part of this app.
 
 	/** Every rollout the list can see, for resolving a consumer. */
 	const rolloutByKey = $derived.by<Map<string, Rollout>>(() => {
@@ -716,11 +730,23 @@
 		};
 	}
 
+	/**
+	 * Every namespace THIS APP runs in — `siblings` is `groupRolloutsByApp`'s
+	 * own set, the same authority the chain and the graph read, so this
+	 * card's widened scope (below) cannot include an environment the rest of
+	 * the tab does not also consider part of this app.
+	 */
+	const providerNamespaces = $derived([
+		namespace,
+		...[...siblings.values()].map((s) => s.namespace).filter(Boolean)
+	]);
+
 	const provided: ProvidedContract[] = $derived(
 		providedContracts({
 			deps: allDeps,
 			provider: name,
 			providerNamespace: namespace,
+			providerNamespaces,
 			consumerState: consumerStateFor,
 			clusterOf: (d) => dependencySourceCluster(d) ?? null
 		})
@@ -732,12 +758,28 @@
 	 * object the consumer's own page names, so the two ends of the edge quote
 	 * one identifier rather than two.
 	 */
+	/**
+	 * ⭐ 2026-09-03 · THE OWN-NAMESPACE PLACE, PREFERRED. `d.places` now spans
+	 * every environment of this APP (see AXIS 3's own note above), sorted
+	 * alphabetically by namespace — so `d.places[0]` stopped being "the one
+	 * place this instance has" and became "whichever namespace sorts first",
+	 * `hello-dep-dev` on the live fleet regardless of which environment's
+	 * page is open. The gate name and the "Open" link both belong to THIS
+	 * instance's own sibling consumer when one exists (same pairing the rest
+	 * of the fixture uses: one namespace per environment holds both ends),
+	 * falling back to the first place when this app has no consumer in this
+	 * exact namespace.
+	 */
+	function ownPlace(d: Dependent): DependentPlace | undefined {
+		return d.places.find((p) => p.namespace === namespace) ?? d.places[0];
+	}
+
 	function gateNameOf(d: Dependent): string | null {
-		return d.places[0]?.dep?.status?.gateName ?? null;
+		return ownPlace(d)?.dep?.status?.gateName ?? null;
 	}
 
 	function consumerHref(d: Dependent): string | undefined {
-		const p = d.places[0];
+		const p = ownPlace(d);
 		if (!p) return undefined;
 		return rolloutPath(p.cluster || cluster, p.namespace, d.name, 'dependencies');
 	}
@@ -772,6 +814,42 @@
 		new Set(provided.flatMap((c) => c.dependents.map((d) => d.name))).size
 	);
 	const heldCount = $derived(new Set(heldConsumers.map(({ d }) => d.name)).size);
+
+	/**
+	 * ⭐ 2026-09-03 · THE CARD'S OWN VERDICT, IN ROLLOUTS — THE PRODUCT'S
+	 * UNIT, PER THE GRAPH 20PX ABOVE IT. `dependentCount`/`heldCount` above
+	 * are SERVICES (one `hello-frontend-app`, whichever or however many of
+	 * its environments hold it); a rollout is one (service, namespace) pair,
+	 * so `hello-frontend-app` held in dev, staging AND prod is 1 service but
+	 * 3 rollouts, and the two must not be printed as if they were the same
+	 * fraction. Counted over `d.places`/`h.places` now that AXIS 3 spans this
+	 * app's whole promotion line, not row-counted — two contracts gating the
+	 * same (service, namespace) pair is still one rollout.
+	 */
+	const rolloutCount = $derived(
+		new Set(
+			provided.flatMap((c) => c.dependents.flatMap((d) => d.places.map((p) => `${d.name}/${p.namespace}`)))
+		).size
+	);
+	const heldRolloutCount = $derived(
+		new Set(
+			heldConsumers.flatMap(({ d }) =>
+				d.holds.flatMap((h) => h.places.map((ns) => `${d.name}/${ns}`))
+			)
+		).size
+	);
+	/**
+	 * `3 rollouts held across 1 service` — the rollout count leads because
+	 * it is what the reader can also see drawn in the graph above; the
+	 * service count is the second clause, not a second fraction, because a
+	 * card titled "Services waiting on this" still needs to say which and
+	 * how many SERVICES those rollouts belong to.
+	 */
+	const providedVerdict = $derived(
+		heldRolloutCount > 0
+			? `${heldRolloutCount} rollout${heldRolloutCount === 1 ? '' : 's'} held across ${heldCount} service${heldCount === 1 ? '' : 's'}`
+			: `${rolloutCount} rollout${rolloutCount === 1 ? '' : 's'} · ${dependentCount} service${dependentCount === 1 ? '' : 's'}`
+	);
 
 	// ── THE PAGE'S ONE BLOCKING FACT ────────────────────────────────────
 	//
@@ -1411,13 +1489,11 @@
 						<Card
 							icon={CodeForkSolid}
 							title="Services waiting on this"
-							verdict={heldCount > 0
-								? `${heldCount} of ${dependentCount} held`
-								: `${dependentCount} service${dependentCount === 1 ? '' : 's'}`}
-							verdictTone={heldCount > 0 ? 'adverse' : 'neutral'}
-							verdictTitle={heldCount > 0
-								? 'Services with a version they cannot deploy until this rollout ships a newer contract'
-								: 'Services gated on the contract version this rollout has deployed'}
+							verdict={providedVerdict}
+							verdictTone={heldRolloutCount > 0 ? 'adverse' : 'neutral'}
+							verdictTitle={heldRolloutCount > 0
+								? 'Rollouts with a version they cannot deploy until this rollout ships a newer contract'
+								: 'Rollouts gated on the contract version this rollout has deployed'}
 							padded={false}
 							class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
 						>
