@@ -65,6 +65,7 @@
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import { getDisplayVersion } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { isHeld } from '$lib/view-models/fleet-groups';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import type { Rollout, Environment } from '../../types';
 	import { ClockOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
@@ -96,6 +97,27 @@
 	 */
 	const rankable = $derived(cards.filter((c) => c.rank.kind !== 'unknown'));
 	const onNewest = $derived(rankable.filter((c) => c.rank.kind === 'newest').length);
+
+	/**
+	 * ⭐ THE ROLLUP MAY NOT OUTRANK THE `Held` SECTION 200PX TO ITS LEFT.
+	 * (2026-09-03, UX-walk finding 2, re-check.) `onNewest === rankable.length`
+	 * already keeps the tone off `good` whenever a held rollout exists —
+	 * `isHeld` is `isTrailing(c) && c.held` (`fleet-groups.ts`), and a held
+	 * card is by definition trailing, so it can never be counted toward
+	 * `onNewest`. What the sentence was still missing is the WORD: `12 of 15
+	 * newest` read as ordinary drift, while three of the missing three are
+	 * not merely behind — they are HELD, and the page's own `Held` section
+	 * says so 200px to the left in the same viewport. `heldCount` names it on
+	 * the same rollup the tone already downgrades, so gray means the same
+	 * thing whichever of the two a reader looks at first: `held` may not sit
+	 * unremarked behind plain "N of M newest" drift language.
+	 *
+	 * `isHeld`, not `c.held` alone — a card can be `held: true` (a gate is
+	 * refusing its newest candidate) and still be `unhealthy`/`inMotion`, in
+	 * which case it is counted under `Attention`/`In motion`, not `Held`, and
+	 * this rollup must not double-name it.
+	 */
+	const heldCount = $derived(cards.filter(isHeld).length);
 
 	/**
 	 * ⭐ THE CARD'S OWN ROLLUP — "HOW MUCH HISTORY IS THERE", not the 7-day
@@ -229,12 +251,18 @@
 	-->
 	<HowItsGoing
 		scope="fleet"
-		verdict="{onNewest} of {rankable.length} newest"
-		verdictTone={rankable.length > 0 && onNewest === rankable.length ? 'good' : 'neutral'}
+		verdict="{onNewest} of {rankable.length} newest{heldCount > 0 ? ` · ${heldCount} held` : ''}"
+		verdictTone={heldCount > 0
+			? 'neutral'
+			: rankable.length > 0 && onNewest === rankable.length
+				? 'good'
+				: 'neutral'}
 		verdictTitle="Rollouts running the newest build their own release list offers them, across {appCount} app{appCount ===
 		1
 			? ''
-			: 's'}"
+			: 's'}{heldCount > 0
+			? `. ${heldCount} of them ${heldCount === 1 ? 'is' : 'are'} held — blocked by a rule.`
+			: ''}"
 		windowLabel="{SPARK_DAYS}d"
 		population="{rollouts.length} rollout{rollouts.length === 1 ? '' : 's'}"
 		deploys={volume.deploys}

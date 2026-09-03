@@ -409,21 +409,24 @@
 	}
 </script>
 
-<!-- The `prev -> new` pair. Rendered on line 1 when the app name is suppressed
-     (a page already scoped to one app), on line 2 when it is not. One snippet so
-     the two layouts cannot drift apart.
+<!-- The `prev -> new` pair. ONE ITEM IN THE ROW'S OWN SENTENCE now (see the
+     row markup below) — not pinned to either line by its own margin. One
+     snippet so the two `showAppName` layouts cannot drift apart.
 
      ⭐ ON THE LIVE ROW THE `new` HALF BECOMES THE JOINED `[verdict][sha]` CHIP —
      the same unit `/` and `/rollouts` draw, from the same `env-rank.ts`. On
      every other row it stays a plain sha, because a rank on a superseded
-     deploy is a claim nobody can make. See `ranks`. -->
+     deploy is a claim nobody can make. See `ranks`.
+
+     ⛔ `ml-auto` IS GONE. (2026-09-03, UX-walk finding 2, re-check) It held
+     this pair flush right against the OLD line 2, which is what let it sit
+     on its own mostly-empty line while line 1 opened a 636–677px hole above
+     it. It is a plain flow item now, joining the sentence right after the
+     status word / rollback mark, exactly where `/activity`'s own version
+     pair sits in its row. -->
 {#snippet versionSnippet(a: ActivityEntry)}
 	{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
-	<!-- `ml-auto`, NOT `justify-between` ON THE PARENT — this snippet is now
-	     the ONLY thing that ever sits on the right of its row (line 2, both
-	     `showAppName` variants), and an auto margin holds it flush right
-	     whether or not the row has wrapped. See the row markup below. -->
-	<span class="ml-auto flex min-w-0 shrink-0 items-center gap-1">
+	<span class="flex min-w-0 shrink-0 items-center gap-1">
 		{#if a.previousVersion}
 			<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
 				>{a.previousVersion}</span
@@ -556,77 +559,75 @@
 									<div
 										class="tap-zone -mx-2 block rounded px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 									>
-										<div class="flex items-center justify-between gap-2">
-											<div class="flex min-w-0 items-center gap-2">
-												{#if showEnv && (a.envName || a.theme)}
-													<Chip
-														role="env"
-														theme={a.theme}
-														label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''}
-														wide
-														class="shrink-0"
-													/>
-												{/if}
-												{#if showAppName}
-													<!-- THE LIVE ROW LEADS. It is the one row of the ten
-													     that describes the present, so it takes the
-													     weight; the rest are history and read as it. -->
-													<a
-														href={a.href}
-														class="tap-link t-dense min-w-0 truncate text-gray-900 dark:text-white {a.isLive
-															? 'font-semibold'
-															: ''}">{a.displayName}</a
-													>
-												{/if}
-												<!-- ⛔ THE VERSION PAIR USED TO LIVE HERE WHEN
-												     `showAppName` WAS FALSE, ALONGSIDE THE TIMESTAMP
-												     BELOW — TWO `shrink-0` ANCHORS ON ONE LINE, NEITHER
-												     ABLE TO YIELD. Measured at 390 on
-												     `/apps/hello-frontend-app`: the version chip and the
-												     timestamp overlapped by up to 42px, because
-												     `justify-between` with negative free space just
-												     distributes a NEGATIVE gap instead of wrapping. It
-												     now lives on line 2 below, unconditionally, which is
-												     the one place a `showAppName` row already puts it —
-												     see `versionSnippet`'s own `ml-auto`. -->
-											</div>
+										<!-- ⭐ ONE SENTENCE, NOT TWO RIGID LINES — AND THE
+										     TIMESTAMP IS A FLOW ITEM, NOT A FLUSH-RIGHT ONE.
+										     (2026-09-03, UX-walk finding 2, re-check) TWO defects,
+										     found in sequence.
+
+										     FIRST: the env chip + name lived in a `justify-between`
+										     line 1 against the timestamp, and the status/rollback
+										     mark + version pair were UNCONDITIONALLY exiled to a
+										     line 2 below — so on a short name at 1024/1280 (the
+										     rail's own container-query width, not the viewport:
+										     this row also renders full-width on `/apps/[name]`'s
+										     and `/namespaces/[name]`'s main column, well past the
+										     320px rail this component was tuned for) line 1 opened
+										     a 636–677px hole between the name and the timestamp
+										     while line 2 sat underneath with its own content, unused
+										     width on both. Merging everything — chip, name, status
+										     word, version pair — into ONE flow fixed the TWO-LINE
+										     hole.
+
+										     SECOND, MEASURED AFTER THAT FIRST FIX: keeping the
+										     timestamp `justify-between`'d against that merged
+										     sentence still opened a 56–68% gap at 1024/1280,
+										     because `justify-between` spends ALL of a line's free
+										     space as the ONE gap between exactly two children,
+										     however short the sentence is — the defect just moved
+										     from "between two lines" to "between two ends of one
+										     line". `/activity`'s own row has NO flush-right child
+										     at all: its icon and timestamp are FIXED-WIDTH columns
+										     and the sentence is the only thing that fills the rest,
+										     so there is no second object for `justify-between` to
+										     throw space at. The timestamp is a plain flow item now
+										     — the LAST thing in the one `flex-wrap` sentence, an
+										     ordinary `gap-x-2` from whatever precedes it, never
+										     pinned to the row's far edge. Measured: max first-line
+										     gap 7.5% (640) / 0.9% (768) / 1.1% (1024) / 0.8% (1280)
+										     — well inside the ≤35% bar at every intermediate width.
+
+										     ⛔ THE 390 OVERLAP FIX SURVIVES BY CONSTRUCTION, NOT BY
+										     ACCIDENT. The defect `versionSnippet`'s own note used to
+										     record ("two `shrink-0` anchors, neither able to yield
+										     … a `justify-between` NEGATIVE gap") was two un-wrapped
+										     flush ends fighting over negative free space. There is
+										     no `justify-between` left on this row at all, and the
+										     one `flex-wrap` sentence simply wraps the timestamp
+										     under the rest when the line runs out of room — nothing
+										     to overlap. -->
+										<div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+											{#if showEnv && (a.envName || a.theme)}
+												<Chip
+													role="env"
+													theme={a.theme}
+													label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''}
+													wide
+													class="shrink-0"
+												/>
+											{/if}
 											{#if showAppName}
-												<span
-													class="t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
-													title={formatDate(a.timestamp)}
-												>
-													{hourLabel(a.timestamp)}
-												</span>
-											{:else}
-												<!-- NO NAME TO HANG THE DESTINATION ON. On a page
-												     already scoped to one app the row prints no app
-												     name, so the timestamp is the anchor — it is the
-												     one thing on the row that identifies THIS deploy,
-												     and the accessible name still says what opens. -->
+												<!-- THE LIVE ROW LEADS. It is the one row of the ten
+												     that describes the present, so it takes the
+												     weight; the rest are history and read as it. -->
 												<a
 													href={a.href}
-													aria-label="Open {a.displayName}"
-													class="tap-link t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
-													title={formatDate(a.timestamp)}
+													class="tap-link t-dense min-w-0 truncate text-gray-900 dark:text-white {a.isLive
+														? 'font-semibold'
+														: ''}">{a.displayName}</a
 												>
-													{hourLabel(a.timestamp)}
-												</a>
 											{/if}
-										</div>
-										<!-- ⭐ LINE 2 IS UNCONDITIONAL NOW. It used to render only
-										     when `showAppName` was true (the version pair's ONLY
-										     home) or the bake status was not `Succeeded` — which is
-										     exactly the branch that dropped a settled rollback on
-										     the floor when `showAppName` was false: line 1 had the
-										     version pair, line 2 never rendered, nowhere for the
-										     rollback mark to go. It is the version pair's one home
-										     now, on every call site, and `flex-wrap` (not
-										     `justify-between`) is the fallback if a long state word
-										     and a long version pair still cannot both fit — the row
-										     stacks instead of overlapping again. -->
-										<div class="t-micro mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
 											{#if a.bakeStatus !== 'Succeeded'}
-												<span class={STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}
+												<span class="t-micro {STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}"
 													>{STATUS_LABEL[a.bakeStatus]}</span
 												>
 											{:else if a.rollbackAct}
@@ -657,6 +658,28 @@
 												/>
 											{/if}
 											{@render versionSnippet(a)}
+											{#if showAppName}
+												<span
+													class="t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
+													title={formatDate(a.timestamp)}
+												>
+													{hourLabel(a.timestamp)}
+												</span>
+											{:else}
+												<!-- NO NAME TO HANG THE DESTINATION ON. On a page
+												     already scoped to one app the row prints no app
+												     name, so the timestamp is the anchor — it is the
+												     one thing on the row that identifies THIS deploy,
+												     and the accessible name still says what opens. -->
+												<a
+													href={a.href}
+													aria-label="Open {a.displayName}"
+													class="tap-link t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
+													title={formatDate(a.timestamp)}
+												>
+													{hourLabel(a.timestamp)}
+												</a>
+											{/if}
 										</div>
 									</div>
 								</li>
