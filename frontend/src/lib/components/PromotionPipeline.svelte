@@ -3,6 +3,7 @@
 <script module lang="ts">
 	import type { EnvironmentTheme } from '$lib/environment-theme';
 	import type { BlockingStory } from '$lib/view-models/blocking-story';
+	import type { CardStateMark } from '$lib/rollout-cards';
 
 	export type Station = {
 		key: string;
@@ -88,6 +89,16 @@
 		 * mid-promotion and the plain sentence is still true there.
 		 */
 		blocked?: boolean;
+		/**
+		 * ⭐ ROLLED BACK / PINNED / HELD — the SAME precedence `/`, `/rollouts`,
+		 * `/apps` and `/environments` already read (`rollout-cards.ts`'s
+		 * `cardStateMark`), so a settled station's disc matches the identical
+		 * rollout everywhere else it is drawn. `null`/`undefined` draws the
+		 * plain bake glyph, unchanged. (coordinator follow-up, disc-parity
+		 * pass — this chain used to draw every settled station as a plain
+		 * green tick regardless of any of the three.)
+		 */
+		mark?: CardStateMark | null;
 	};
 
 	export type Hop = {
@@ -152,6 +163,15 @@
 		/** `1d` — how long ago the build was created. */
 		age: string | null;
 		ageTitle: string | null;
+		/**
+		 * ⭐ SET ONLY WHEN EVERY STATION ON THE FRONTIER AGREES. The frontier
+		 * is an app-wide IDENTITY, not one rollout, so `mark` is `null` unless
+		 * the caller resolved every station currently running this exact
+		 * build to the SAME `cardStateMark` — see the caller's own note. Never
+		 * recompute this here: the resolution needs the per-station facts the
+		 * frontier object does not carry.
+		 */
+		mark?: CardStateMark | null;
 	};
 </script>
 
@@ -429,8 +449,28 @@
 			     against, and it is the string that goes into `kubectl`. Every
 			     station below leads with its DISTANCE from it. -->
 			<div class="pp-front">
-				<span class="pp-front-disc" aria-hidden="true">
-					<TagSolid class="h-4 w-4" />
+				<!-- ⭐ MARKED ONLY WHEN EVERY STATION ON IT AGREES — see `Frontier.mark`'s
+				     own note. Unmarked (the common case) this is byte-identical to the
+				     plain neutral tag it always was. -->
+				<span
+					class="pp-front-disc {frontier.mark
+						? `pp-front-disc--marked ${getStatusCircleClass('Succeeded', frontier.mark.kind)}`
+						: ''}"
+					aria-hidden={frontier.mark ? undefined : 'true'}
+					title={frontier.mark ? frontier.mark.title : undefined}
+				>
+					{#if frontier.mark}
+						<BakeStatusIcon
+							bakeStatus="Succeeded"
+							size="small"
+							state={frontier.mark.kind}
+							stateWord={frontier.mark.word}
+							decorative
+						/>
+						<span class="sr-only">{frontier.mark.word}</span>
+					{:else}
+						<TagSolid class="h-4 w-4" />
+					{/if}
 				</span>
 				<span class="pp-front-id">
 					<span class="t-display-id text-gray-900 dark:text-white">{frontier.version}</span>
@@ -459,11 +499,16 @@
 				{@const inFlight = s.status === 'Deploying' || s.status === 'InProgress'}
 				<li class="pp-station {inFlight ? 'pp-station--inflight' : ''}">
 					<span
-						class="pp-disc {getStatusCircleClass(s.status)}"
-						title="{s.title} — {s.statusWord}"
+						class="pp-disc {getStatusCircleClass(s.status, s.mark?.kind ?? null)}"
+						title="{s.title} — {s.mark ? s.mark.title : s.statusWord}"
 					>
-						<BakeStatusIcon bakeStatus={s.status} size="medium" />
-						<span class="sr-only">{s.statusWord}</span>
+						<BakeStatusIcon
+							bakeStatus={s.status}
+							size="medium"
+							state={s.mark?.kind ?? null}
+							stateWord={s.mark?.word ?? ''}
+						/>
+						<span class="sr-only">{s.mark ? s.mark.word : s.statusWord}</span>
 					</span>
 					<!-- WHO, THEN WHAT IT RUNS — one cluster, left. The build badge
 					     sits BESIDE the environment because they are one fact
@@ -589,11 +634,16 @@
 					{#each fleet as s (s.key)}
 						<li class="pp-region">
 							<span
-								class="pp-disc pp-disc--sm {getStatusCircleClass(s.status)}"
-								title="{s.title} — {s.statusWord}"
+								class="pp-disc pp-disc--sm {getStatusCircleClass(s.status, s.mark?.kind ?? null)}"
+								title="{s.title} — {s.mark ? s.mark.title : s.statusWord}"
 							>
-								<BakeStatusIcon bakeStatus={s.status} size="small" />
-								<span class="sr-only">{s.statusWord}</span>
+								<BakeStatusIcon
+									bakeStatus={s.status}
+									size="small"
+									state={s.mark?.kind ?? null}
+									stateWord={s.mark?.word ?? ''}
+								/>
+								<span class="sr-only">{s.mark ? s.mark.word : s.statusWord}</span>
 							</span>
 							<span class="pp-id">
 								{@render identity(s)}
@@ -665,10 +715,24 @@
 		padding-bottom: 4px;
 		margin-bottom: 0;
 	}
-	/* NEUTRAL, AND DELIBERATELY NOT A STATUS CIRCLE. The six status hues belong
-	   to the stations; the frontier is an IDENTITY, not a state, and a green
-	   disc here would read as "the newest build is healthy", which is a claim
-	   about no environment in particular. */
+	/* NEUTRAL BY DEFAULT, AND DELIBERATELY NOT A STATUS CIRCLE. The six bake
+	   hues belong to the stations; the frontier is an IDENTITY, not a state,
+	   and a green disc here would read as "the newest build is healthy",
+	   which is a claim about no environment in particular — see `Frontier.mark`'s
+	   own note for the one case that earns an exception. `:not()` rather than a
+	   plain `.pp-front-disc` rule: it has to lose outright to the
+	   `getStatusCircleClass` utility classes on a marked disc, not merely tie
+	   with them, and a same-specificity plain-class override is decided by
+	   SOURCE ORDER against Tailwind's own layer — the one thing this file does
+	   not control. */
+	.pp-front-disc:not(.pp-front-disc--marked) {
+		background: var(--color-gray-100);
+		color: var(--color-gray-500);
+	}
+	:global(.dark) .pp-front-disc:not(.pp-front-disc--marked) {
+		background: var(--color-gray-700);
+		color: var(--color-gray-300);
+	}
 	.pp-front-disc {
 		grid-area: disc;
 		display: inline-flex;
@@ -678,12 +742,6 @@
 		align-items: center;
 		justify-content: center;
 		border-radius: calc(infinity * 1px);
-		background: var(--color-gray-100);
-		color: var(--color-gray-500);
-	}
-	:global(.dark) .pp-front-disc {
-		background: var(--color-gray-700);
-		color: var(--color-gray-300);
 	}
 	.pp-front-id {
 		grid-area: id;

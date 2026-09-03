@@ -146,6 +146,7 @@
 	} from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { buildLadder, divergedFromLine, type Build } from '$lib/view-models/build-ladder';
+	import { cardStateMark, detectRollback, type CardStateMark } from '$lib/rollout-cards';
 	import {
 		promotionBlock,
 		promotionCandidates,
@@ -1454,6 +1455,28 @@
 	// The chain is the LINE of stages; production, when it fans out, is a SET
 	// and gets its own block. When there is exactly one production
 	// environment there is no set, so it is simply the chain's last node.
+
+	/**
+	 * ⭐ THE STATION DISC MATCHES `/` AND `/rollouts`, GLYPH FOR GLYPH.
+	 * (coordinator follow-up, disc-parity pass) The chain drew every settled
+	 * station as a plain green check regardless of whether a pin, a
+	 * rollback or a refusing gate was the reason it stopped moving — three
+	 * facts `cardStateMark` already resolves for every OTHER list surface
+	 * (`/`, `/rollouts`, `/apps`, `/environments`, `/envs/<name>`), from the
+	 * SAME precedence (`rolled back` > `pinned` > `held`). On the live
+	 * cluster `hello-frontend-app`'s three stations are gate-held by
+	 * `dependency-hello-frontend-needs-api` and drew a plain green tick
+	 * here while `/environments`' dev card drew the 28px orange pause disc
+	 * for the identical rollout, 8px apart in the same product.
+	 */
+	function stationMark(f: EnvFacts): CardStateMark | null {
+		return cardStateMark({
+			rolledBack: detectRollback(f.cell.rollout),
+			pinnedVersion: f.cell.rollout.spec?.wantedVersion ?? null,
+			held: f.block.blocked
+		});
+	}
+
 	function nodeOf(f: EnvFacts): Station {
 		const d = dotFor(f.status);
 		return {
@@ -1497,7 +1520,10 @@
 			// behind AND gate-refused at once (`hello-frontend-app`'s DEV, held
 			// by the `hello-api-app` contract), and `f.block.blocked` is the same
 			// flag `tasks` already reads to tell a decision from a wait.
-			blocked: f.block.blocked
+			blocked: f.block.blocked,
+			// ⭐ ROLLED BACK / PINNED / HELD, THE SAME PRECEDENCE EVERY OTHER
+			// LIST SURFACE READS — see `stationMark` above.
+			mark: stationMark(f)
 		};
 	}
 
@@ -1531,11 +1557,27 @@
 			if (f.rank === 0 && f.version && f.version !== b.version) return null;
 		}
 		const iso = b.createdMs ? new Date(b.createdMs).toISOString() : null;
+		// ⭐ THE FRONTIER'S OWN MARK — ONLY WHEN EVERY STATION ON IT AGREES.
+		// (coordinator follow-up, disc-parity pass) `rolled back` / `pinned` /
+		// `held` are facts about ONE rollout, and the frontier is an app-wide
+		// IDENTITY with no rollout of its own — painting it unconditionally
+		// would be exactly the claim this card's own note forbids ("a green
+		// disc here would read as the newest build is healthy, which is a
+		// claim about no environment in particular"). But when every station
+		// actually running this build shares the identical mark, the claim
+		// stops being about no environment and starts being about all of
+		// them. Any disagreement, or no station on it yet, leaves the disc at
+		// its plain identity gray — `mark: null` is the untouched default.
+		const onFrontier = envFacts.filter((f) => f.rank === 0 && f.version === b.version);
+		const marks = onFrontier.map(stationMark);
+		const mark =
+			marks.length > 0 && marks.every((m) => m?.kind === marks[0]?.kind) ? marks[0] : null;
 		return {
 			version: b.version,
 			tag: b.tag,
 			age: iso ? formatTimeAgoCompact(iso, $now) : null,
-			ageTitle: iso ? `Released ${formatDate(iso)}` : null
+			ageTitle: iso ? `Released ${formatDate(iso)}` : null,
+			mark
 		};
 	});
 
