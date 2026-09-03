@@ -2107,9 +2107,13 @@
 				<span class="flex min-w-0 items-baseline gap-2">
 					<a
 						href="/apps/{app.appName}"
-						class="tap-link t-code min-w-0 truncate font-semibold text-gray-900 dark:text-white"
+						class="tap-link t-code shrink-0 font-semibold text-gray-900 dark:text-white"
 						>{app.appName}</a
 					>
+					<!-- The NAME never shrinks; the description gives way. Both were
+					     `min-w-0 truncate`, so flex shrank them in proportion and at
+					     1440 the identifier lost 2px to `hello-frontend-…` while its
+					     title beside it printed whole. -->
 					{#if app.desc}
 						<span class="apps-desc t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
 							>{app.desc}</span
