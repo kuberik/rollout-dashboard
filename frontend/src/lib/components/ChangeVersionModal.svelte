@@ -5,6 +5,7 @@
 	import { Modal, Alert, Badge, Button, Toggle, Toast } from 'flowbite-svelte';
 	import {
 		ExclamationCircleSolid,
+		CodeOutline,
 		ArrowUpOutline,
 		ReplyOutline,
 		CodePullRequestSolid,
@@ -1012,59 +1013,50 @@
 		     to a second line instead — the row is already this tall on any
 		     narrow viewport that also shows the env crumb, so the extra line is
 		     not a new shape, only a safer one. -->
+		<!-- ⭐ THE PRODUCT'S OWN HEADER BAND. (design sweep, 2026-09-03) Every
+		     titled region in the product is a 47px band: 16px icon, 14/600 title,
+		     the answer hard-right, 16px side padding. This dialog — the one
+		     surface that changes production — had a 16px/600 title in a
+		     20px-padded wrapping row with its Cancel landing on a second line at
+		     the LEFT edge at 390. The crumb still wraps rather than truncates
+		     (it is what names the object being acted on); the control on the
+		     right never wraps, and is the same `hit-32` toggle geometry the
+		     history tab uses. -->
 		<div
-			class="flex shrink-0 flex-wrap items-center gap-2 gap-y-1 border-b border-gray-200 px-5 py-4 dark:border-gray-700"
+			class="flex min-h-[47px] shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 		>
-			<h2 id="cvm-title" class="text-base font-semibold text-gray-900 dark:text-white">
-				Change Version
-			</h2>
-			{#if rollout?.metadata?.name}
-				<span class="text-gray-500 dark:text-gray-400">/</span>
-				<code class="min-w-0 text-sm break-words text-gray-500 dark:text-gray-400"
-					>{rollout.metadata.name}</code
-				>
-			{/if}
-			{#if envLabel}
-				<!-- ⭐ NAMES WHERE THIS LANDS. (operator walk, 2026-09-03) The crumb
-				     said `Change Version / hello-world-app` on a page listing this
-				     app in three environments, with nothing above it naming which
-				     one this dialog acts on. `cluster` only prints when this
-				     rollout lives on a spoke — the one case one environment word
-				     is ambiguous. -->
-				<span class="text-gray-500 dark:text-gray-400" aria-hidden="true">·</span>
-				<span
-					class="shrink-0 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400"
-				>
-					{envLabel}{clusterLabel ? ` · ${clusterLabel}` : ''}
-				</span>
-			{/if}
-			<div class="flex-1"></div>
-			<!-- ⭐ STEP ONE HAS A WAY OUT. (2026-09-03, from the human: "on mobile,
-			     change version first step doesn't have cancel or some way to
-			     exit.") The footer `Cancel` lives in the preview pane, which only
-			     exists once a version is picked, and the corner `✕` was removed
-			     above — so on a phone the picker was a full-screen sheet with no
-			     exit but the hardware back. One labelled control in the header,
-			     for whichever step has no other: `Cancel` on step one, `Back` on
-			     step two (below `md`, where the panes stack). Step two's footer
-			     keeps its own `Cancel`; nothing is doubled.
-			     `px-5`, not `pl-5`: the header lost its right padding with the
-			     `✕`, and the Back button sat on the sheet's edge. -->
+			<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+				<CodeOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+				<h2 id="cvm-title" class="text-sm font-semibold text-gray-900 dark:text-white">
+					Change Version
+				</h2>
+				{#if rollout?.metadata?.name}
+					<span class="text-gray-500 dark:text-gray-400" aria-hidden="true">/</span>
+					<code class="min-w-0 text-sm break-words text-gray-500 dark:text-gray-400"
+						>{rollout.metadata.name}</code
+					>
+				{/if}
+				{#if envLabel}
+					<span class="text-gray-500 dark:text-gray-400" aria-hidden="true">·</span>
+					<span
+						class="shrink-0 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400"
+					>
+						{envLabel}{clusterLabel ? ` · ${clusterLabel}` : ''}
+					</span>
+				{/if}
+			</div>
 			{#if selectedVersion}
 				<button
 					type="button"
-					class="flex shrink-0 items-center gap-1 text-sm text-gray-500 hover:text-gray-700 md:hidden dark:text-gray-400 dark:hover:text-gray-200"
+					class="hit-32 flex shrink-0 items-center gap-1.5 rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 md:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
 					onclick={() => (selectedVersion = null)}
 				>
 					&larr; Back
 				</button>
 			{:else}
-				<!-- A bordered control, not bare text: the critic read the plain
-				     word as a caption. Same box as the footer's own Cancel, at the
-				     header's scale. -->
 				<button
 					type="button"
-					class="shrink-0 rounded border border-gray-200 px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
+					class="hit-32 flex shrink-0 items-center rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
 					disabled={deploying}
 					onclick={() => (open = false)}
 				>
@@ -1354,9 +1346,11 @@
 						{#if direction !== 'same'}
 							<div>
 								<div class="mb-2 flex items-center justify-between">
-									<span
-										class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400"
-									>
+									<!-- A section title at the card-title role, not a tracked
+									     eyebrow over a prose sentence (`lib/CLAUDE.md` bans the
+									     latter, and the sentence under it is prose whenever GitHub
+									     is absent). -->
+									<span class="text-sm font-semibold text-gray-900 dark:text-white">
 										{direction === 'rollback' ? 'Commits reverted' : 'Commits deployed'}
 									</span>
 									{#if supportsManifestDiff}
@@ -1709,7 +1703,7 @@
 						{/if}
 
 						<div class="flex gap-2">
-							<Button color="light" class="flex-1" disabled={deploying} onclick={() => (open = false)}
+							<Button size="sm" color="light" class="flex-1" disabled={deploying} onclick={() => (open = false)}
 								>Cancel</Button
 							>
 							<!-- THE BUTTON SAYS WHERE IT LANDS. `Deploy Now` named the
@@ -1733,7 +1727,11 @@
 							     present-continuous form, so a reader can see the click
 							     registered instead of an armed button that looks untouched
 							     for 5-8s. -->
+							<!-- `size="sm"`: 8/16 padding, 38px — the `.btn` height the page
+							     behind this dialog uses. The default `md` was 42px, a third
+							     height for one role. -->
 							<Button
+								size="sm"
 								color={confirmColor}
 								outline={confirmOutline}
 								class="flex-1"
