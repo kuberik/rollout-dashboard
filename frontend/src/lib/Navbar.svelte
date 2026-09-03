@@ -167,13 +167,21 @@
 			{#if currentSection.key !== 'control'}
 			<div class="flex min-w-0 items-center gap-1">
 				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
+				<!-- Below `sm` the SECTION word yields to the ITEM when there is one.
+				     (operator walk, 2026-09-03) At 390 the two crumbs split ~100px
+				     and both ellipsised — `R… / hello…` on a rollout, `Enviro… / p…`
+				     on an environment — so the bar named nothing. The bottom tab bar
+				     already says which section a phone is in; the item name is the
+				     one thing only this bar can say, so it gets the width. -->
 				<a
 					href={currentSection.href}
-					class="truncate rounded px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg"
+					class="truncate rounded px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg {detailContext
+						? 'hidden sm:inline'
+						: ''}"
 				>{currentSection.label}</a>
 
 				{#if detailContext?.kind === 'rollout' && rollout}
-					<span class="select-none text-base text-gray-500 dark:text-gray-400" aria-hidden="true">/</span>
+					<span class="hidden select-none text-base text-gray-500 sm:inline dark:text-gray-400" aria-hidden="true">/</span>
 					<button
 						type="button"
 						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
@@ -216,7 +224,7 @@
 						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
 					</button>
 				{:else if detailContext?.kind === 'item'}
-					<span class="select-none text-base text-gray-500 dark:text-gray-400" aria-hidden="true">/</span>
+					<span class="hidden select-none text-base text-gray-500 sm:inline dark:text-gray-400" aria-hidden="true">/</span>
 					{@const itemScope = appDetailMatch ? 'app' : envDetailMatch ? 'env' : nsDetailMatch ? 'namespace' : null}
 					<button
 						type="button"
@@ -253,7 +261,7 @@
 			     ONLY way in on a phone, not a convenience. -->
 			<button
 				type="button"
-				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
+				class="rounded-lg bg-gray-100 p-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
 				onclick={() => {
 					paletteScope = null;
 					switcherOpen = true;
@@ -263,19 +271,19 @@
 				aria-label={isMac ? 'Search (⌘K)' : 'Search (Ctrl K)'}
 				title={isMac ? 'Search (⌘K)' : 'Search (Ctrl K)'}
 			>
-				<SearchOutline class="h-4 w-4 sm:h-5 sm:w-5" />
+				<SearchOutline class="h-5 w-5" />
 			</button>
 			<GithubConnectButton />
 			<button
-				class="rounded-lg bg-gray-100 p-1.5 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:p-2"
+				class="rounded-lg bg-gray-100 p-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
 				onclick={() => theme.toggle()}
 				aria-label={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
 				title={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
 			>
 				{#if currentTheme === 'dark'}
-					<SunSolid class="h-4 w-4 sm:h-5 sm:w-5" />
+					<SunSolid class="h-5 w-5" />
 				{:else}
-					<MoonSolid class="h-4 w-4 sm:h-5 sm:w-5" />
+					<MoonSolid class="h-5 w-5" />
 				{/if}
 			</button>
 		</div>
