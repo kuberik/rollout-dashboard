@@ -2716,7 +2716,7 @@
 								row, not a header.
 							-->
 							<div
-								class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-100 px-5 py-3 dark:border-gray-700"
+								class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-100 px-4 py-3 dark:border-gray-700"
 							>
 								<CodeOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 								<span class="text-sm font-semibold text-gray-900 dark:text-white"
@@ -2766,7 +2766,7 @@
 							     for the card's own rolled-up answer. Always present: staleness
 							     is possible whatever the candidate count reads. -->
 							<div
-								class="flex items-center justify-end border-b border-gray-100 px-5 py-1.5 dark:border-gray-700"
+								class="flex items-center justify-end border-b border-gray-100 px-4 py-1.5 dark:border-gray-700"
 							>
 								<button
 									id="refresh-versions-btn"
@@ -2798,7 +2798,7 @@
 							-->
 							{#if heldByThis}
 								<div
-									class="flex items-start gap-3 border-b border-orange-100 bg-orange-50 px-5 py-2.5 dark:border-orange-900/30 dark:bg-orange-900/10"
+									class="flex items-start gap-3 border-b border-orange-100 bg-orange-50 px-4 py-2.5 dark:border-orange-900/30 dark:bg-orange-900/10"
 								>
 									<ShareNodesSolid
 										class="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400"
@@ -2816,7 +2816,7 @@
 							<!-- Pin warning (compact banner) -->
 							{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 								<div
-									class="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-5 py-2.5 dark:border-amber-900/30 dark:bg-amber-900/20"
+									class="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-4 py-2.5 dark:border-amber-900/30 dark:bg-amber-900/20"
 								>
 									<PauseSolid class="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
 									<p class="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
@@ -2846,7 +2846,7 @@
 										{@const blockingGates = getBlockingGates(version)}
 										{@const isBlocked = blockingGates.length > 0}
 										{@const depInfo = getDependencyStatus(version)}
-										<li class="flex items-center gap-3 px-5 py-3.5">
+										<li class="flex items-center gap-3 px-4 py-3.5">
 											<!-- Version info -->
 											<div class="min-w-0 flex-1">
 												<div class="flex flex-wrap items-center gap-1.5">
