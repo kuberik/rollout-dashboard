@@ -443,30 +443,59 @@
 	 * (the roving tabindex, unaffected by any of this) is what reaches
 	 * those; this fix is for the common case, not that degenerate one.
 	 */
-	function hitRadii(xs: number[], fan: boolean): number[] {
+	type HitBox = { left: number; right: number };
+
+	/**
+	 * ⭐ INDEPENDENT LEFT/RIGHT, NOT ONE RADIUS. (2026-09-03, coordinator
+	 * re-check after the first pass.) A `<circle>` is isotropic — ONE radius
+	 * has to serve both sides, so a dot with a tight neighbour on its RIGHT
+	 * and 40 clear px on its LEFT still had its whole hit area clamped down
+	 * to the tight side's own half-gap, throwing away real, uncontested
+	 * space the left side could have kept. Re-measured live: the original
+	 * two flagged marks (20×33, 17×33 of a 32×32 box) each had a close
+	 * neighbour on ONE side only — the symmetric circle this function used
+	 * to return could not express that, and rounded every dot down to its
+	 * WORST side. Returning `{left, right}` instead, and drawing a `<rect>`
+	 * at the draw site instead of a `<circle>`, lets each side claim up to
+	 * 16px independently — the uncontested side reaches its full 16, the
+	 * contested side still yields no more than its own half-gap.
+	 *
+	 * The vertical axis is answered separately, at the draw site — nothing
+	 * in a lane ever contests it at `fanOverlaps={false}` (`dys` is all
+	 * zero), so it stays the full ±16 the floor asks for regardless of how
+	 * tight the horizontal squeeze is. Coupling it to this radius (the
+	 * previous `<circle>` shape) was throwing away 32px of clean vertical
+	 * reach for no reason on every crowded mark — measured live, `reachV`
+	 * dropped to match `reachH` even though nothing ever competed for the
+	 * y-axis inside one lane.
+	 */
+	function hitBoxes(xs: number[], fan: boolean): HitBox[] {
 		const n = xs.length;
-		if (fan || n < 2) return xs.map(() => 16);
+		if (fan || n < 2) return xs.map(() => ({ left: 16, right: 16 }));
 		const order = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
-		const rs = new Array(n).fill(16);
+		const boxes: HitBox[] = xs.map(() => ({ left: 16, right: 16 }));
 		for (let k = 0; k < order.length; k++) {
 			const i = order[k];
 			const leftGap = k > 0 ? xs[i] - xs[order[k - 1]] : Infinity;
 			const rightGap = k < order.length - 1 ? xs[order[k + 1]] - xs[i] : Infinity;
-			// ⚠️ FLOORED AT `R_NORMAL`, NOT 0. On the live 7-day fixture several
-			// deploys land within a FRACTION OF A PIXEL of each other — the true
-			// half-gap partition above rounds to ~0 there, which would leave the
-			// whole cluster's visible bubble sitting over a set of zero-radius
-			// circles: not merely unfairly small, but a DEAD CONTROL a tap on
-			// the bubble itself resolves to nothing. Overlapping slightly in
-			// that one degenerate case is the lesser defect — it restores "a
-			// tap on the cluster hits SOMETHING", at the cost of which member
-			// is honest, unfair-but-alive rather than fair-but-dead. `R_NORMAL`
-			// (the mark's own pre-32px-pass radius) is the floor because it is
-			// never a regression below what this chart clicked like before the
-			// touch-floor pass existed at all.
-			rs[i] = Math.max(R_NORMAL, Math.min(16, leftGap / 2, rightGap / 2));
+			// ⚠️ FLOORED AT `R_NORMAL` A SIDE, NOT 0. On the live 7-day fixture
+			// several deploys land within a FRACTION OF A PIXEL of each other —
+			// the true half-gap partition rounds to ~0 there, which would leave
+			// the whole cluster's visible bubble sitting over a set of
+			// zero-width targets: not merely unfairly small, but a DEAD CONTROL
+			// a tap on the bubble itself resolves to nothing. Overlapping
+			// slightly in that one degenerate case is the lesser defect — it
+			// restores "a tap on the cluster hits SOMETHING", at the cost of
+			// which member is honest, unfair-but-alive rather than fair-but-
+			// dead. `R_NORMAL` (the mark's own pre-32px-pass radius) is the
+			// floor because it is never a regression below what this chart
+			// clicked like before the touch-floor pass existed at all.
+			boxes[i] = {
+				left: Math.max(R_NORMAL, Math.min(16, leftGap / 2)),
+				right: Math.max(R_NORMAL, Math.min(16, rightGap / 2))
+			};
 		}
-		return rs;
+		return boxes;
 	}
 
 	/**
@@ -577,7 +606,7 @@
 				order,
 				xs,
 				dys: fanOverlaps ? spreadOverlaps(xs, order) : xs.map(() => 0),
-				hitRs: hitRadii(xs, fanOverlaps),
+				hitBoxes: hitBoxes(xs, fanOverlaps),
 				clusterOf: clusters.of,
 				clusters: clusters.list
 			};
@@ -600,7 +629,7 @@
 	}
 
 	function onDotKey(
-		ev: KeyboardEvent & { currentTarget: SVGCircleElement },
+		ev: KeyboardEvent & { currentTarget: SVGRectElement },
 		svcId: string,
 		pos: number,
 		order: number[],
@@ -637,7 +666,7 @@
 		laneCursor[svcId] = next;
 		const dots = ev.currentTarget
 			.closest('g[data-lane]')
-			?.querySelectorAll<SVGCircleElement>('circle[data-dot]');
+			?.querySelectorAll<SVGRectElement>('rect[data-dot]');
 		dots?.[next]?.focus();
 	}
 
@@ -681,7 +710,10 @@
 
 	function onPointerDown(ev: PointerEvent) {
 		const target = ev.target as Element;
-		if (target.tagName === 'circle') return;
+		// `data-dot`'s hit target is a `<rect>` now (see `hitBoxes`, above) —
+		// was a `<circle>` before this pass gave each mark independent
+		// left/right reach, which a `<circle>`'s one radius cannot express.
+		if (target.tagName === 'rect') return;
 		if (!containerEl || !chartWrapperEl) return;
 		const rect = chartWrapperEl.getBoundingClientRect();
 		const x = ev.clientX - rect.left;
@@ -918,7 +950,7 @@
 				{/each}
 
 				<!-- Per-service swimlanes -->
-				{#each lanes as { svc, entries, order, xs, dys, hitRs, clusterOf, clusters }, i}
+				{#each lanes as { svc, entries, order, xs, dys, hitBoxes: laneHitBoxes, clusterOf, clusters }, i}
 					{@const cy = rowCY(i)}
 					{@const cursor = cursorFor(svc.id, order)}
 
@@ -1036,16 +1068,21 @@
 							     conditional radius on an SVG attribute has no clean
 							     media-query hook the way a CSS `::before` does.
 
-							     ⭐ THE RADIUS IS `hitRs[pos]`, NOT A BARE 16, WHEN A
-							     NEIGHBOUR IS CLOSER THAN 32px. See `hitRadii` above —
-							     16 is still what every isolated mark gets; this only
-							     narrows it where a fixed 16 would have overlapped the
-							     next mark and handed the loser's whole reach to
-							     whichever sibling paints on top. -->
-							<circle
-								cx={x}
-								cy={dy}
-								r={hitRs[pos]}
+							     ⭐ A `<rect>`, NOT A `<circle>` — SEE `hitBoxes` ABOVE.
+							     `laneHitBoxes[pos]` is `{left, right}`, each independently
+							     up to 16px, because a `<circle>`'s one radius forced the
+							     UNCONTESTED side down to match the tight one. The rect's
+							     vertical half-height is a bare `16` — not `hitBoxes`'
+							     own arithmetic — because nothing in a lane ever contests
+							     y at `fanOverlaps={false}`; coupling it to the horizontal
+							     squeeze (the old circle's radius) was giving up 32px of
+							     clean vertical reach on every crowded mark for no reason. -->
+							{@const hb = laneHitBoxes[pos]}
+							<rect
+								x={x - hb.left}
+								y={dy - 16}
+								width={hb.left + hb.right}
+								height={32}
 								fill="transparent"
 								data-dot=""
 								pointer-events="all"
