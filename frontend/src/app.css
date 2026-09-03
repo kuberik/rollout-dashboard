@@ -36,6 +36,25 @@
 @source "../node_modules/flowbite-svelte/dist";
 @source "../node_modules/flowbite-svelte-icons/dist";
 
+/* ── ONE FOCUS-RING TOKEN. (2026-09-03, design pass 6, finding #6)
+   `--focus-ring-color` is `blue-500` light / `blue-400` dark — the SAME pair
+   `:focus-visible` already painted; this only names it once so nothing below
+   re-derives the pair. Measured before touching anything: tabbing 8 routes at
+   1440 light and 390 dark, every element governed by the base `:focus-visible`
+   rule already resolved to this exact colour ONCE its `transition-colors` had
+   settled (~150ms) — the "six colours" a prior audit recorded were the SAME
+   transition sampled at t≈0, mid-fade from the element's own text colour
+   toward this token, not six different rings. Unlayered so `html.dark`'s
+   redefinition (specificity 0,1,1) beats `:root`'s (0,1,0) regardless of
+   source order, exactly like the two rules this replaces did. */
+:root {
+	--focus-ring-color: var(--color-blue-500);
+}
+
+html.dark {
+	--focus-ring-color: var(--color-blue-400);
+}
+
 @layer base {
 	/* ⚠️ DARK HAD NO BASE INK, so anything that did not name its own colour
 	   INHERITED BLACK — the root shell computes `color: rgb(0,0,0)` in dark.
@@ -72,12 +91,8 @@
 	   that states its own focus treatment (the modal inputs' `focus:ring-blue-500/20`)
 	   is a utility and still wins. */
 	:focus-visible {
-		outline: 2px solid var(--color-blue-500);
+		outline: 2px solid var(--focus-ring-color);
 		outline-offset: 2px;
-	}
-
-	html.dark :focus-visible {
-		outline-color: var(--color-blue-400);
 	}
 
 	/* disable chrome cancel button */
@@ -1061,6 +1076,59 @@ textarea {
 	.card-header-rollup .nav-link {
 		padding: 0;
 		line-height: 16px;
+	}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE 32px TOUCH FLOOR. (2026-09-03, design pass 6, finding #7)
+   ═══════════════════════════════════════════════════════════════════════
+
+   Measured at 390 across `/activity`, `/versions` and the logs tab: the
+   filter pills (`t-label` chips, `.pill-btn` below), the env-scoped filter
+   buttons and `.card-header-rollup .nav-link` all sit at 16–20px tall —
+   under the 32px minimum every mobile HIG asks for, on controls a thumb has
+   to hit first. `summary` is included globally: `AlertPanel`'s and
+   `RulePopover`'s disclosures measured 15px, and this file owns no other
+   surface those components will take a markup change from.
+
+   `.tap-link`/`.rev-sha` are deliberately NOT here. Every shipped one sits
+   inside a `.tap-zone`, whose `::after` already makes the WHOLE ROW the hit
+   target (see the tap-zone section above) — padding the anchor itself would
+   be redundant. The `:not(.tap-zone .tap-link)` guard means a future
+   standalone `.tap-link` (outside a zone) still gets the floor instead of
+   silently falling through the gap this rule exists to close.
+
+   ⛔ NOT A UNIFORM PADDING BUMP. A flat `padding-block` big enough for the
+   smallest control (16px) would make the TALLEST one (20px pill) 36px+ and
+   visibly fatten every filter row at rest. `height: max(100%, 32px)` on an
+   absolutely-positioned, invisible `::before` — centred over the element via
+   `inset: 50%` + `translate(-50%, -50%)` — extends the HIT AREA without
+   moving a single visible pixel: `getBoundingClientRect()` on the element
+   itself is untouched, only `elementFromPoint()` at the extra few pixels
+   changes. This is the pattern `.tap-zone` already established one section
+   up; this is the same idea sized to a single control instead of a row.
+
+   Scoped to `(pointer: coarse)`, not a breakpoint — a touch-primary device at
+   any width gets the floor; a mouse at 390 (a resized desktop window) does
+   not need it and keeps the tighter mouse-precision hit box. */
+@media (pointer: coarse) {
+	.nav-link,
+	summary,
+	.pill-btn,
+	.tap-link:not(.tap-zone .tap-link) {
+		position: relative;
+	}
+
+	.nav-link::before,
+	summary::before,
+	.pill-btn::before,
+	.tap-link:not(.tap-zone .tap-link)::before {
+		content: '';
+		position: absolute;
+		inset: 50%;
+		width: max(100%, 32px);
+		height: max(100%, 32px);
+		transform: translate(-50%, -50%);
 	}
 }
 

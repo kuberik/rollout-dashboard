@@ -773,7 +773,14 @@
 	     deleted. They are controls, so they sit in the control strip, after a
 	     divider, in the same pressed/unpressed language as the state filters,
 	     and each one says what it does. -->
-	<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-2">
+	<!-- `gap-y-3`, not `gap-y-2`: the status-pill and env-chip groups wrap onto
+	     two lines at 390 (each is `flex-nowrap`, so only the OUTER wrap can
+	     break between them). Design pass 6's touch-target fix gives every
+	     pill an invisible 32px hit box on coarse pointers (`.pill-btn` in
+	     `app.css`) — at the old 8px gap that box overlaps the next line's by
+	     4px (6px of slop each side, 8 - 6 - 6 < 0). 12px leaves the two
+	     expanded boxes exactly touching, never overlapping. -->
+	<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3">
 		<!-- ⛔ THIS ROW AND THE CHART'S `1H 6H 1D 7D 30D ALL` ROW WERE TWO
 		     ALMOST-IDENTICAL PILLS ONE TYPE SIZE APART. (2026-09-02) This one
 		     is `t-label` (10px/600); `DeploymentTimeline`'s presets are an ad
@@ -823,7 +830,7 @@
 					aria-pressed={kindFilter === f.key}
 					title={f.title}
 					onclick={() => (kindFilter = f.key)}
-					class="t-label rounded border px-3 py-[3px] transition-colors
+					class="pill-btn t-label rounded border px-3 py-[3px] transition-colors
 						{kindFilter === f.key
 						? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 						: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
@@ -843,7 +850,7 @@
 						aria-pressed={envFilter === e.key}
 						title={envFilter === e.key ? `Stop showing only ${e.label}` : `Show only ${e.label}`}
 						onclick={() => setParam('env', envFilter === e.key ? null : e.key)}
-						class="environment-theme-scope inline-flex items-center rounded transition-opacity
+						class="pill-btn environment-theme-scope inline-flex items-center rounded transition-opacity
 							{envFilter === e.key
 							? 'ring-2 ring-gray-900/40 dark:ring-gray-100/40'
 							: envFilter === null
@@ -858,13 +865,13 @@
 	</div>
 
 	{#if appFilter || nsFilter}
-		<div class="mb-4 flex flex-wrap items-center gap-2">
+		<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3">
 			<span class="t-micro text-gray-500 dark:text-gray-400">Showing only:</span>
 			{#if appFilter}
 				<button
 					type="button"
 					onclick={() => setParam('app', null)}
-					class="t-label inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:hover:bg-gray-700"
+					class="pill-btn t-label inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:hover:bg-gray-700"
 					title="Stop showing only {appFilter}"
 				>
 					rollout
@@ -876,7 +883,7 @@
 				<button
 					type="button"
 					onclick={() => setParam('ns', null)}
-					class="t-label inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:hover:bg-gray-700"
+					class="pill-btn t-label inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:hover:bg-gray-700"
 					title="Stop showing only {nsFilter}"
 				>
 					namespace
@@ -888,7 +895,7 @@
 				<button
 					type="button"
 					onclick={clearAllFilters}
-					class="t-micro ml-1 text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+					class="pill-btn t-micro ml-1 text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
 					>Clear all</button
 				>
 			{/if}

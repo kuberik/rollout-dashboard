@@ -850,7 +850,7 @@
 						simple
 						placement="bottom-start"
 						triggeredBy={`#${podsDropdownId}`}
-						class="max-h-96 w-64 overflow-y-auto"
+						class="max-h-96 w-64 overflow-y-auto border border-gray-200 dark:border-gray-700"
 					>
 						<DropdownItem
 							onclick={(e) => {
@@ -866,6 +866,7 @@
 							<label class="flex cursor-pointer items-center gap-2">
 								<Checkbox
 									checked={selectedPods.size === uniquePods.length && uniquePods.length > 0}
+									class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100"
 								/>
 								<span>Select All</span>
 							</label>
@@ -883,7 +884,7 @@
 								}}
 							>
 								<label class="flex cursor-pointer items-center gap-2">
-									<Checkbox checked={selectedPods.has(pod.name)} />
+									<Checkbox checked={selectedPods.has(pod.name)} class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100" />
 									<span>{pod.name}</span>
 								</label>
 							</DropdownItem>
@@ -907,7 +908,7 @@
 							simple
 							placement="bottom-start"
 							triggeredBy={`#${containersDropdownId}`}
-							class="max-h-96 w-48 overflow-y-auto"
+							class="max-h-96 w-48 overflow-y-auto border border-gray-200 dark:border-gray-700"
 						>
 							<DropdownItem
 								onclick={(e) => {
@@ -924,6 +925,7 @@
 									<Checkbox
 										checked={selectedContainers.size === uniqueContainers.length &&
 											uniqueContainers.length > 0}
+										class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100"
 									/>
 									<span>Select All</span>
 								</label>
@@ -941,7 +943,7 @@
 									}}
 								>
 									<label class="flex cursor-pointer items-center gap-2">
-										<Checkbox checked={selectedContainers.has(container)} />
+										<Checkbox checked={selectedContainers.has(container)} class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100" />
 										<span>{container}</span>
 									</label>
 								</DropdownItem>
@@ -963,7 +965,7 @@
 						simple
 						placement="bottom-start"
 						triggeredBy={`#${logLevelsDropdownId}`}
-						class="w-48"
+						class="w-48 border border-gray-200 dark:border-gray-700"
 					>
 						{@const logLevels: Array<{ value: 'error' | 'warn' | 'info' | 'debug'; label: string }> = [
 							{ value: 'error', label: 'Error' },
@@ -985,6 +987,7 @@
 							<label class="flex cursor-pointer items-center gap-2">
 								<Checkbox
 									checked={selectedLogLevels.size === logLevels.length && logLevels.length > 0}
+									class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100"
 								/>
 								<span>Select All</span>
 							</label>
@@ -1002,7 +1005,7 @@
 								}}
 							>
 								<label class="flex cursor-pointer items-center gap-2">
-									<Checkbox checked={selectedLogLevels.has(level.value)} />
+									<Checkbox checked={selectedLogLevels.has(level.value)} class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100" />
 									<span>{level.label}</span>
 								</label>
 							</DropdownItem>
@@ -1027,7 +1030,7 @@
 						simple
 						placement="bottom-start"
 						triggeredBy={`#${columnsDropdownId}`}
-						class="w-48"
+						class="w-48 border border-gray-200 dark:border-gray-700"
 					>
 						<DropdownItem
 							onclick={(e) => {
@@ -1043,6 +1046,7 @@
 							<label class="flex cursor-pointer items-center gap-2">
 								<Checkbox
 									checked={visibleColumns.size === allColumns.length}
+									class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100"
 								/>
 								<span>Show All</span>
 							</label>
@@ -1063,7 +1067,7 @@
 								}}
 							>
 								<label class="flex cursor-pointer items-center gap-2">
-									<Checkbox checked={visibleColumns.has(col.value)} />
+									<Checkbox checked={visibleColumns.has(col.value)} class="text-gray-900 focus:ring-gray-900 dark:text-gray-100 dark:focus:ring-gray-100" />
 									<span>{col.label}</span>
 								</label>
 							</DropdownItem>

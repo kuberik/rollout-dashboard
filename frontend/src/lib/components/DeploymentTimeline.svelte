@@ -707,7 +707,7 @@
 
 		{#each TIME_RANGES as { value, label }}
 			<button
-				class="t-label rounded border px-3 py-[3px] transition-colors {isPreset(timeRange) &&
+				class="pill-btn t-label rounded border px-3 py-[3px] transition-colors {isPreset(timeRange) &&
 				timeRange === value
 					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 					: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
@@ -726,7 +726,7 @@
 					)}
 				</span>
 				<button
-					class="rounded px-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+					class="pill-btn rounded px-1 hover:bg-gray-100 dark:hover:bg-gray-700"
 					onclick={() => {
 						timeRange = '7d';
 					}}

@@ -69,10 +69,20 @@
 			>
 			<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">{summary.rest || 'Logs'}</p>
 		</div>
-		<!-- Tab buttons inline on mobile -->
+		<!-- Tab buttons inline on mobile.
+		     ⛔ `py-1.5` MADE THIS 28PX AGAINST THE FILTER DROPDOWNS' 34PX, 60PX
+		     BELOW IN THE SAME PANE. (2026-09-03, design pass 6, finding #12)
+		     Flowbite's `Button size="xs"` (`LogsViewer`'s Source/Level/Columns
+		     triggers) is `px-3 py-2 text-xs` plus a 1px border each side — 34px.
+		     This segmented control carried the border on the WRAPPER, not each
+		     button, so matching the wrapper's own padding to `py-1.5` undershot
+		     by 6px: `py-1.5`(12) + `text-xs` line-height(16) = 28, +2 border on
+		     the wrapper = 30, still short. `py-2` unconditionally (dropping the
+		     `sm:py-2` duplicate — it is no longer a step up from anything) gives
+		     16+16=32 per button, +2 wrapper border = 34, matching exactly. -->
 		<div class="flex rounded border border-gray-200 dark:border-gray-700">
 			<button
-				class="px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:py-2 sm:text-sm {activeTab === 'pods'
+				class="px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm {activeTab === 'pods'
 					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
 					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-l"
 				onclick={() => (activeTab = 'pods')}
@@ -80,7 +90,7 @@
 				Pods
 			</button>
 			<button
-				class="px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:py-2 sm:text-sm {activeTab === 'tests'
+				class="px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm {activeTab === 'tests'
 					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
 					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-r"
 				onclick={() => (activeTab = 'tests')}
