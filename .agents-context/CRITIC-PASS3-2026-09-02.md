@@ -386,3 +386,10 @@ search-box squeeze lived only at 1210–1530); one lane pinned a rollout by POST
 directly when the dialog's same-version gate blocked the UI path — the gate was my d2145eb's
 regression, kuberik-46 is fixing it. Cluster: hello-multi-app dev carries a pin nobody owns
 ('c98bfab by admin@example.com') — flagged to the human.
+
+## Scroll model (human request, 2026-09-03 evening)
+"Make it standard how other apps do it; the bottom navigation bar should stay put." The
+h-screen shell with an inner-scrolling <main> is retired: the document scrolls, navbar sticky,
+tab bar fixed with safe-area padding, sidebar sticky under the navbar, dialogs lock the page,
+Back restores the offset, only the Logs pane / picker / palette keep bounded inner scrollers.
+Measured in a phone-emulated browser at 390 and at 1440.
