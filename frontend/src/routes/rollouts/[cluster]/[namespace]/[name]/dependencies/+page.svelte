@@ -184,7 +184,8 @@
 	import { rankVerdicts } from '$lib/view-models/env-rank';
 	import DependencyNetwork from '$lib/components/DependencyNetwork.svelte';
 	import { compareEnvironmentNames } from '$lib/env-order';
-	import { buildGateContext } from '$lib/view-models/blocking-story';
+	import { buildGateContext, blockingStory, contractRuleCountLabel } from '$lib/view-models/blocking-story';
+	import { countLabel } from '$lib/disclosure';
 	import {
 		buildRolloutGraph,
 		neighbourhood,
@@ -891,8 +892,19 @@
 					handle: true
 				}))
 			] as Fact[],
-			count: new Set(adverse.map((b) => b.contract)).size,
-			noun: 'contract',
+			/**
+			 * ⭐ FINDING 2's OWN LABEL. `contractRuleCountLabel` reads
+			 * `pageStory.gates` — this rollout's full, classified gate set, the
+			 * same one the Overview banner counts — and names the promotion-order
+			 * gate riding along with the contract when there is one, instead of
+			 * silently counting only contracts. Falls back to the plain contract
+			 * count if `blockingStory` finds nothing (a join timing mismatch,
+			 * never the ordinary case), so the footnote is never blank.
+			 */
+			footnoteText:
+				pageStory.gates.length > 0
+					? contractRuleCountLabel(pageStory)
+					: countLabel(new Set(adverse.map((b) => b.contract)).size, 'contract'),
 			href: one ? providerHref(adverse[0]) : null,
 			label: one ? `Open ${heldProviders[0]}` : null
 		};
@@ -936,8 +948,12 @@
 			 * rollout you can go and open, so it is a handle.
 			 */
 			facts: names.map((n) => ({ label: 'Service', value: n, handle: true })) as Fact[],
-			count: names.length,
-			noun: 'service',
+			// A count of SERVICES waiting on this rollout, not a rule count —
+			// `contractRuleCountLabel` does not apply here, so this keeps the
+			// plain `N service(s)` `countLabel` already produced via
+			// `footnoteCount`/`footnoteNoun`, just carried as the same string
+			// shape `blockedBanner`'s sibling now uses.
+			footnoteText: countLabel(names.length, 'service'),
 			href: one ? consumerHref(heldConsumers[0].d) : null,
 			label: one ? `Open ${names[0]}` : null
 		};
@@ -1013,6 +1029,21 @@
 			namespacesByCluster(listRollouts)
 		)
 	);
+
+	/**
+	 * ⭐ FINDING 2 (coordinator sweep, 2026-09-03): ONE PRODUCER FOR THIS
+	 * ROLLOUT'S COUNT. `blockedBanner` below used to count DISTINCT CONTRACTS
+	 * from this page's own `adverse`/`blocks` model (`1 contract`) with no
+	 * reference to the rollout's full gate set — so the Overview banner for
+	 * the identical rollout said `2 rules` (the contract gate PLUS the
+	 * downstream promotion-order gate that exists only because the contract
+	 * hasn't cleared) while this tab, sitting directly under it, said `1
+	 * contract` and silently dropped the second gate. `pageStory` is the same
+	 * `blockingStory` call the Overview makes, off the same schedule-aware
+	 * `networkGateContext` this page already builds for its graph — so this
+	 * tab's own footnote agrees with the banner above it.
+	 */
+	const pageStory = $derived(blockingStory(rollout, networkGateContext, { place: currentEnv }));
 
 	const fullNetwork = $derived(
 		buildRolloutGraph({
@@ -1147,8 +1178,7 @@
 						title={banner.title}
 						message={banner.message}
 						footnoteBody={banner.facts.length > 0 ? bannerFacts : undefined}
-						footnoteCount={banner.facts.length > 0 ? banner.count : undefined}
-						footnoteNoun={banner.noun}
+						footnoteLabel={banner.facts.length > 0 ? banner.footnoteText : undefined}
 					>
 						{#snippet actions()}
 							{#if banner.href && banner.label}

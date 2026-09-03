@@ -2328,8 +2328,21 @@
 		     them apart at a glance once the inline labels drop away at desktop
 		     width. -->
 		<span class="apps-lead flex min-w-0 flex-col gap-1">
-			<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400">To prod</span>
 			{#if app.lead}
+				<!--
+					⭐ THE LABEL NAMES A BARE FIGURE, AND ONLY A BARE FIGURE.
+					(coordinator hand-off, design sweep) At 390 this used to print
+					unconditionally, so an app with no full trip yet read
+					`TO PROD` over `—` — a tracked uppercase label over a dash,
+					with `no full trip yet` repeating the same fact one line below.
+					Desktop never had this label at all; the dash branch's own
+					caption already names itself (`— no full trip yet`), same as
+					`Deploys · 7d`'s dash case does with no label either (see
+					F14's note above). The label earns its keep only where the
+					value is a bare figure (`11m`) that needs a word in front of
+					it to say what it is.
+				-->
+				<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400">To prod</span>
 				<span
 					class="apps-mark flex items-center gap-1.5"
 					title="Typical time a version takes to get from {app.lead.fromLabel} to {app.lead

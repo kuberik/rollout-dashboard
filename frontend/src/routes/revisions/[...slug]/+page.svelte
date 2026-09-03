@@ -34,9 +34,17 @@
 		joinClauses,
 		buildGateContext,
 		blockingStory,
-		type GateContext
+		type GateContext,
+		type BlockingStory,
+		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
 	import { iconForStory } from '$lib/components/BlockingStoryPanel.svelte';
+	// ⭐ THE OVERVIEW'S OWN WORDS. `GateRecord`'s `Kind` row already calls this
+	// for `RulePopover`/`BlockingStoryPanel`, so a rule labelled here cannot
+	// say something the Overview banner for the same rollout would disagree
+	// with. See the `bannerFacts`/`reasonsFor` notes below (finding 1).
+	import { gateKindWord, gateMark } from '$lib/components/GateRecord.svelte';
+	import { countLabel } from '$lib/disclosure';
 	import { formatTimeAgo } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { Spinner } from 'flowbite-svelte';
@@ -308,8 +316,29 @@
 	 * same fact. Worst-first over every blocked slot's own classified story,
 	 * same ordering `blockingStory` itself sorts gates in.
 	 */
+	/**
+	 * ⭐ ONE `blockingStory` PER BLOCKED PLACE, BUILT ONCE. (finding 1 + 2,
+	 * coordinator sweep) `bannerIcon` already called `blockingStory` per slot
+	 * to pick a glyph; `bannerFacts` and the rule-count trigger below need the
+	 * SAME classified gates, not a second pass over raw gate-name arrays —
+	 * that second pass is exactly how a `RolloutDependency` contract gate
+	 * ended up captioned `Approval` here while the Overview banner for the
+	 * identical rollout said `service contract`. One list, three consumers.
+	 */
+	const slotStories = $derived.by<{ slot: CoverageSlotVM; story: BlockingStory }[]>(() => {
+		const out: { slot: CoverageSlotVM; story: BlockingStory }[] = [];
+		for (const s of blockedSlots) {
+			if (!s.rolloutRef) continue;
+			out.push({
+				slot: s,
+				story: blockingStory(s.slot.cell.rollout, gateContext, { place: s.envLabel, now: $now })
+			});
+		}
+		return out;
+	});
+
 	const bannerIcon = $derived.by(() => {
-		let worst = null as ReturnType<typeof blockingStory> | null;
+		let worst: BlockingStory | null = null;
 		const rank: Record<string, number> = {
 			person: 0,
 			unknown: 1,
@@ -319,12 +348,7 @@
 			clock: 4,
 			pinned: -1
 		};
-		for (const s of blockedSlots) {
-			if (!s.rolloutRef) continue;
-			const story = blockingStory(s.slot.cell.rollout, gateContext, {
-				place: s.envLabel,
-				now: $now
-			});
+		for (const { story } of slotStories) {
 			if (!worst || rank[story.iconKind] < rank[worst.iconKind]) worst = story;
 		}
 		return iconForStory(worst ?? blockingStory(null, gateContext));
@@ -385,9 +409,29 @@
 	 * note there and `lib/disclosure.ts` for the rule that decides between a
 	 * noun and a count. A SET of gate handles with a clock in front of it is
 	 * not a sentence, and it had been narrated as one.
+	 *
+	 * ⭐ FINDING 1 (coordinator sweep, 2026-09-03): THE ALLOW-LIST BUCKET IS
+	 * LABELLED BY KIND, NEVER BLANKET `Approval`. This used to build from
+	 * `s.awaitingApprovalGates` — every gate that published an allow-list —
+	 * and print all of them under one label, `Approval`. But three of the
+	 * four gate writers publish an allow-list (see `lib/CLAUDE.md`'s table
+	 * on `promotionBlock.awaitingApprovalGates`), so a `RolloutDependency`
+	 * contract and an `Environment` promotion-order gate both read `Approval`
+	 * here while the SAME rollout's Overview banner correctly said "No
+	 * approval will unblock this." The fix reads `slotStories`' already
+	 * classified gates (the exact `classifyGate` call the Overview makes)
+	 * and labels each with `gateKindWord` — the Overview's own words — so
+	 * this record can never disagree with the banner it sits under.
+	 *
+	 * The `windowGates` (no-allow-list) loop is UNCHANGED: without
+	 * `withSchedules` wired into this page's `gateContext`, a schedule gate
+	 * and a bare health check are not yet distinguishable through
+	 * `classifyGate` here (both fall through to `check`), so that half keeps
+	 * its own established "Not passing" label rather than guessing a kind it
+	 * cannot back up. `reasonsFor` below already tells a deploy window from
+	 * a check correctly, from the separate per-slot `windows` fetch.
 	 */
 	const bannerFacts = $derived.by<Fact[]>(() => {
-		const approval = [...new Set(blockedSlots.flatMap((s) => s.awaitingApprovalGates))];
 		const windowGates = [...new Set(blockedSlots.flatMap((s) => s.notPassingGates))];
 		const facts: Fact[] = [];
 		// ⛔ ONLY WHERE THERE IS A CLOCK. `opens` with nothing after it is a
@@ -399,12 +443,61 @@
 			});
 		}
 		for (const name of windowGates) facts.push({ label: 'Not passing', value: name, handle: true });
-		for (const name of approval) facts.push({ label: 'Approval', value: name, handle: true });
+
+		// THE ALLOW-LIST BUCKET, CLASSIFIED. `g.clears !== 'clock' && g.clears
+		// !== 'check'` is the identical structural split `classifyGate` itself
+		// branches on (`hasAllowList`) — the same set `awaitingApprovalGates`
+		// names, but carrying each gate's real `kind` instead of just its id.
+		const seen = new Map<string, ClassifiedGate>();
+		for (const { story } of slotStories) {
+			for (const g of story.gates) {
+				if (g.clears === 'clock' || g.clears === 'check') continue;
+				if (!seen.has(g.id)) seen.set(g.id, g);
+			}
+		}
+		for (const g of seen.values()) facts.push({ label: gateKindWord(g), value: g.id, handle: true });
 		return facts;
 	});
 
 	/** The SET the trigger counts: gate handles, both buckets, never the clock. */
 	const bannerRuleCount = $derived(bannerFacts.filter((f) => f.handle).length);
+
+	/**
+	 * ⭐ FINDING 2 (coordinator sweep, 2026-09-03): NEVER A SILENT UNION.
+	 *
+	 * This banner can speak for several rollouts at once (one per blocked
+	 * place), so `bannerRuleCount` above is a real total — but printing it
+	 * bare as `3 rules` reads as a claim about ONE story when it is really
+	 * `2 in prod, 1 in dev`, and comparing that bare total against a
+	 * single-rollout page (`/envs/prod`'s `2 rules`, the Dependencies tab's
+	 * own count) is what read as a contradiction. The trigger says the
+	 * breakdown instead — per environment, worst first — so a reader who
+	 * clicks through already knows which environment they are about to land
+	 * on. Past three environments it names only the worst one: a
+	 * `·`-joined clause per region is legible for dev/staging/prod and is
+	 * not for a 13-region fan-out.
+	 */
+	const ruleCountBreakdown = $derived.by<string>(() => {
+		const byEnv = new Map<string, Set<string>>();
+		for (const { slot, story } of slotStories) {
+			if (story.gates.length === 0) continue;
+			const set = byEnv.get(slot.envLabel) ?? new Set<string>();
+			for (const g of story.gates) set.add(g.id);
+			byEnv.set(slot.envLabel, set);
+		}
+		const entries = [...byEnv.entries()]
+			.filter(([, set]) => set.size > 0)
+			.sort((a, b) => b[1].size - a[1].size || a[0].localeCompare(b[0]));
+		if (entries.length === 0) return '';
+		if (entries.length === 1) return `${countLabel(entries[0][1].size, 'rule')} in ${entries[0][0]}`;
+		if (entries.length > 3) {
+			const [worstEnv, worstSet] = entries[0];
+			return `${countLabel(worstSet.size, 'rule')} in ${worstEnv} — the worst of ${entries.length} held environments`;
+		}
+		return entries
+			.map(([env, set], i) => `${i === 0 ? countLabel(set.size, 'rule') : String(set.size)} in ${env}`)
+			.join(' · ');
+	});
 
 	const bannerMessage = $derived.by(() => {
 		if (!coverage || blockedSlots.length === 0) return '';
@@ -518,6 +611,18 @@
 			.map((s) => s.envName.toUpperCase());
 	}
 
+	/**
+	 * ⭐ FINDING 1's SECOND LOCATION: THE PER-PLACE REASON ROW. (coordinator
+	 * sweep, 2026-09-03) A lookup off `slotStories` (built once, above), keyed
+	 * the same way `windows` is, so `reasonsFor` can ask for the classified
+	 * gates behind ONE place without re-running `blockingStory` per row.
+	 */
+	const storyBySlotKey = $derived.by<Map<string, BlockingStory>>(() => {
+		const map = new Map<string, BlockingStory>();
+		for (const { slot, story } of slotStories) map.set(slotKey(slot), story);
+		return map;
+	});
+
 	/** Where a place actually lives. Never `/apps/<name>` — see the header block. */
 	function placeHref(s: CoverageSlotVM): string {
 		if (!s.rolloutRef) return `/apps/${encodeURIComponent(s.appName)}`;
@@ -570,12 +675,40 @@
 			});
 		}
 		if (s.awaitingApprovalGates.length > 0) {
-			out.push({
-				icon: UserCircleSolid,
-				tone: 'tone-mute',
-				text: 'Needs an approval or an external check',
-				gates: s.awaitingApprovalGates
-			});
+			// ⭐ FINDING 1 (coordinator sweep, 2026-09-03): CLASSIFIED, NOT A
+			// BLANKET "Needs an approval." `s.awaitingApprovalGates` means only
+			// "these gates published an allow-list" — the environment controller
+			// (`promotion`) and the RolloutDependency controller (`dependency`)
+			// both do, and only ONE actual writer is a person. This printed
+			// "Needs an approval or an external check" for every member of that
+			// bucket, so a contract gate on this exact row read as an approval
+			// while the Overview banner for the same rollout said "No approval
+			// will unblock this."
+			//
+			// `storyBySlotKey` carries this SLOT's own `blockingStory` — the same
+			// classified gates the Overview reads — and one Reason row per
+			// classified gate keeps a person, a contract and a promotion order
+			// each in their own icon and their own sentence (`g.short`, the exact
+			// words `classifyGate` already computed) rather than folding all
+			// three into one caption.
+			const story = storyBySlotKey.get(slotKey(s));
+			const allowListed =
+				story?.gates.filter((g) => g.clears !== 'clock' && g.clears !== 'check') ?? [];
+			if (allowListed.length > 0) {
+				for (const g of allowListed) {
+					out.push({ icon: gateMark(g), tone: 'tone-mute', text: g.short, gates: [g.id] });
+				}
+			} else {
+				// Defensive fallback only — a slot naming allow-list gates should
+				// always resolve a story from `slotStories`. Stay honest rather
+				// than silently drop the fact if it somehow does not.
+				out.push({
+					icon: UserCircleSolid,
+					tone: 'tone-mute',
+					text: 'Held by a rule this dashboard has not classified yet',
+					gates: s.awaitingApprovalGates
+				});
+			}
 		}
 		if (out.length === 0) {
 			// NO GATE EVIDENCE. State the observable and stop.
@@ -900,7 +1033,7 @@
 				title="{row.short} is held"
 				message={bannerMessage}
 				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
-				footnoteCount={bannerRuleCount > 0 ? bannerRuleCount : undefined}
+				footnoteLabel={bannerRuleCount > 0 ? ruleCountBreakdown : undefined}
 				class="mt-5"
 			>
 				{#snippet extra()}

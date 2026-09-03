@@ -82,6 +82,7 @@ import type { Rollout, Environment, RolloutDependency, RolloutGate } from '$lib/
 import { promotionBlock, promotionCandidates, type PromotionBlock } from './promotion';
 import { formatTimeUntil, formatAbsoluteReopen } from '$lib/api/schedules';
 import { displayVersionForTag } from '$lib/version-utils';
+import { countLabel } from '$lib/disclosure';
 
 /**
  * HOW A GATE STOPS BEING A PROBLEM.
@@ -1402,6 +1403,63 @@ export function ruleHandle(story: BlockingStory): string | null {
  * never disagree. The old product had `/apps` blaming one gate, rollout detail
  * saying "1 schedule", and `/apps/<name>` naming two others.
  */
+/**
+ * ⭐ ONE STORY, ONE COUNT — SO A COUNT NEVER DRIFTS FROM THE STORY IT SITS
+ * UNDER. (2026-09-03, coordinator finding 2)
+ *
+ * `hello-frontend-app` printed FIVE different counts of "how many rules"
+ * across five surfaces for what was, on close reading, the same fact viewed
+ * from different subjects: prod's Overview banner said `2 rules`
+ * (`story.gates.length` for prod's own rollout, via `RulePopover`'s
+ * `countLabel`), the Dependencies tab said `1 contract` (only the
+ * `dependency`-kind gate, dropping the downstream promotion-order gate that
+ * is the SAME contract's own bookkeeping), and the revision page unioned
+ * gate NAMES across dev+staging+prod into a bare `3 rules` with no subject
+ * at all. Two of those five are wrong not because the number is wrong but
+ * because nothing produces it FROM a `BlockingStory` — a caller re-derived
+ * its own count from a gate-name array, which is exactly the shape that let
+ * the Overview and the tab disagree about a rollout sitting under the same
+ * banner.
+ *
+ * `ruleCountLabel` is the one producer: it reads `story.gates.length`, the
+ * same field `RulePopover`'s `Kind`/`Now`/`Clears` record already lists in
+ * full, so a caller printing this string and a caller printing the record
+ * behind it can never disagree about how many rows are in it. Never call
+ * this on a name array or a union across rollouts — a caller with MORE THAN
+ * ONE rollout's story has to say so (see the revision page's own per-
+ * environment breakdown), not flatten them into one number this function
+ * would then mislabel as a single subject's count.
+ */
+export function ruleCountLabel(story: BlockingStory): string {
+	return countLabel(story.gates.length, 'rule');
+}
+
+/**
+ * ⭐ THE DEPENDENCIES TAB'S OWN EXCEPTION, MADE PRECISE. (2026-09-03)
+ *
+ * `lib/CLAUDE.md`'s vocabulary decision (b) carves out `1 contract` on the
+ * Dependencies tab as a DELIBERATE exception to the generic `N rule(s)`
+ * disclosure — "that tab's every row IS a contract, so naming the kind
+ * there is the kind mattering". But `story.gates` for a rollout held on a
+ * contract can ALSO carry the downstream promotion-order gate that exists
+ * only because the contract hasn't cleared (see `upstreamVerdict`'s own
+ * doc) — printing bare `1 contract` there silently drops that second gate,
+ * which is the defect this pass found: the tab said `1 contract` while the
+ * Overview it sits under said `2 rules` for the identical rollout.
+ *
+ * So the tab's count names BOTH when they differ — `1 contract of 2 rules`
+ * — and collapses to the plain contract count only when every held gate
+ * actually is one (no bookkeeping gate riding along), so the common case
+ * (a rollout with nothing downstream of it, e.g. `/rollouts/dev/…`) still
+ * reads as the tab's own established `1 contract` / `N contracts`.
+ */
+export function contractRuleCountLabel(story: BlockingStory): string {
+	const contracts = story.gates.filter((g) => g.kind === 'dependency').length;
+	if (contracts === 0) return ruleCountLabel(story);
+	if (contracts === story.gates.length) return countLabel(contracts, 'contract');
+	return `${countLabel(contracts, 'contract')} of ${ruleCountLabel(story)}`;
+}
+
 export function shortStory(story: BlockingStory): string | null {
 	if (story.pinnedTo) return `Pinned to ${story.pinnedToDisplay ?? story.pinnedTo}`;
 	if (!story.blocked || story.gates.length === 0) return null;

@@ -13,6 +13,8 @@ import {
 	blockingStory,
 	shortStory,
 	ruleHandle,
+	ruleCountLabel,
+	contractRuleCountLabel,
 	joinClauses,
 	isPluralSubject,
 	pluralSubject,
@@ -20,6 +22,11 @@ import {
 	EMPTY_GATE_CONTEXT,
 	type ClassifiedGate
 } from './blocking-story';
+// ⚠️ SAME IMPORT `blocking-story.test.ts`'s OWN SIBLING
+// (`BlockingStoryLines.svelte.test.ts`) ALREADY MAKES — the kind word lives
+// in `GateRecord.svelte`, one function, arguable in a test at the same
+// address as the thing it draws. See the note there.
+import { gateKindWord } from '$lib/components/GateRecord.svelte';
 
 // ── LIVE FIXTURE ────────────────────────────────────────────────────────────
 // `/api/rollouts` → environments[].status.rolloutGateRef + spec.relationship
@@ -1195,5 +1202,183 @@ describe('⭐ same-bucket multi-gate headlines name the cause, not the count', (
 		expect(s.upstream).toHaveLength(1);
 		expect(s.upstream[0].kind).toBe('promotion');
 		expect(s.headline).toBe('PROD is waiting on another deploy');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⭐ FINDING 1 (coordinator sweep, 2026-09-03): the allow-list bucket is
+// labelled by KIND, never a blanket `Approval`.
+//
+// `/revisions/<sha>` used to build its record from `promotionBlock`'s raw
+// `awaitingApprovalGates` name array and print every member under the label
+// `Approval` — "Needs an approval or an external check" — for
+// `hello-frontend-app`'s block, while the SAME rollout's Overview banner
+// (via `RulePopover`/`GateRecord`) correctly said "No approval will unblock
+// this." The cause: `awaitingApprovalGates` means only "this gate published
+// an allow-list," and the environment controller (`promotion`) and the
+// RolloutDependency controller (`dependency`) both publish one — three of
+// the four gate writers land in that bucket, and only one of them is
+// actually a person. The fix classifies each gate through `classifyGate`
+// (via `blockingStory(...).gates`, the exact call the Overview banner
+// already makes) and labels it with `GateRecord`'s own `gateKindWord` — the
+// Overview's own words — instead of a name pulled from the raw bucket.
+// ─────────────────────────────────────────────────────────────────────────
+describe('⭐ finding 1 lock: an allow-list gate is labelled by its classified KIND, never blanket `Approval`', () => {
+	it('the live PROD fixture — a contract gate and its downstream promotion-order gate — neither classifies or reads as `approval`', () => {
+		const frontendCtx = buildGateContext({
+			environments: {
+				items: [
+					{
+						metadata: { namespace: 'hello-dep-prod', name: 'hello-frontend-app' },
+						spec: {
+							environment: 'prod',
+							relationship: { environment: 'staging', type: 'After' as const },
+							rolloutRef: { name: 'hello-frontend-app' }
+						},
+						status: { rolloutGateRef: { name: 'ghd-frontend-prod' } }
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any,
+			rolloutDependencies: DEPENDENCIES
+		});
+		const s = blockingStory(
+			rolloutWith('hello-dep-prod', [
+				{ name: 'dependency-hello-frontend-needs-api', passing: true, allowedVersions: ['rel-66'] },
+				{ name: 'ghd-frontend-prod', passing: true, allowedVersions: [] }
+			]),
+			frontendCtx,
+			{ place: 'prod' }
+		);
+
+		// THE EXACT SELECTION A RECORD BUILT FROM `story.gates` MAKES: the
+		// allow-list bucket is every gate whose `clears` is not `clock`/`check`
+		// — the identical structural predicate `classifyGate` itself branches
+		// on (`hasAllowList`). This is what `/revisions/<sha>`'s banner record
+		// now filters on instead of `awaitingApprovalGates`' raw names.
+		const allowListed = s.gates.filter((g) => g.clears !== 'clock' && g.clears !== 'check');
+		expect(allowListed).toHaveLength(2);
+		expect(allowListed.map((g) => g.kind).sort()).toEqual(['dependency', 'promotion']);
+
+		// NEITHER GATE IS `approval` — this is the assertion the old page
+		// violated for both of them at once.
+		expect(allowListed.some((g) => g.kind === 'approval')).toBe(false);
+
+		// AND THE WORDS ON SCREEN AGREE WITH THE OVERVIEW'S OWN RECORD.
+		// `gateKindWord` is the exact function `GateRecord`'s `Kind` row calls,
+		// so a caller reading this off `story.gates` cannot print a word the
+		// Overview would disagree with.
+		const words = allowListed.map((g) => gateKindWord(g)).sort();
+		expect(words).toEqual(['promotion order', 'service contract']);
+		expect(words).not.toContain('manual approval');
+	});
+
+	it('a RolloutDependency-owned gate the joins missed (owner-reference veto only) still reads `dependency`, never `approval`', () => {
+		// The owner-veto path: no `RolloutDependency` join resolved a provider,
+		// but the gate's own `ownerReferences` name the controller that wrote
+		// it. This is the SECOND way "no join matched" used to fall through to
+		// `person`/`Approval` before the veto existed.
+		const vetoCtx = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: { items: [] },
+			rolloutGates: {
+				items: [
+					{
+						metadata: {
+							namespace: 'hello-dep-prod',
+							name: 'dependency-orphan',
+							ownerReferences: [{ kind: 'RolloutDependency', name: 'hello-frontend-needs-api', controller: true }]
+						}
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		});
+		const g = classifyGate({ name: 'dependency-orphan', allowedVersions: [] }, 'hello-dep-prod', vetoCtx);
+		expect(g.kind).toBe('dependency');
+		expect(g.kind).not.toBe('approval');
+		expect(gateKindWord(g)).toBe('service contract');
+		expect(gateKindWord(g)).not.toBe('manual approval');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⭐ FINDING 2 (coordinator sweep, 2026-09-03): one story, one count.
+// ─────────────────────────────────────────────────────────────────────────
+describe('ruleCountLabel / contractRuleCountLabel — one producer for every count of one rollout’s story', () => {
+	it('ruleCountLabel reads `story.gates.length`, the same set the Overview’s own record lists', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
+			ctx,
+			{ place: 'prod' }
+		);
+		expect(s.gates).toHaveLength(1);
+		expect(ruleCountLabel(s)).toBe('1 rule');
+	});
+
+	it('a PROD block with a contract gate AND its downstream promotion gate: `1 contract of 2 rules`, agreeing with the Overview’s `2 rules`', () => {
+		const frontendCtx = buildGateContext({
+			environments: {
+				items: [
+					{
+						metadata: { namespace: 'hello-dep-prod', name: 'hello-frontend-app' },
+						spec: {
+							environment: 'prod',
+							relationship: { environment: 'staging', type: 'After' as const },
+							rolloutRef: { name: 'hello-frontend-app' }
+						},
+						status: { rolloutGateRef: { name: 'ghd-frontend-prod' } }
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any,
+			rolloutDependencies: DEPENDENCIES
+		});
+		const s = blockingStory(
+			rolloutWith('hello-dep-prod', [
+				{ name: 'dependency-hello-frontend-needs-api', passing: true, allowedVersions: ['rel-66'] },
+				{ name: 'ghd-frontend-prod', passing: true, allowedVersions: [] }
+			]),
+			frontendCtx,
+			{ place: 'prod' }
+		);
+		expect(ruleCountLabel(s)).toBe('2 rules');
+		expect(contractRuleCountLabel(s)).toBe('1 contract of 2 rules');
+	});
+
+	it('a DEV block with ONLY the contract gate collapses to the tab’s own established `1 contract`', () => {
+		const devCtx = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: {
+				items: [
+					{
+						metadata: { namespace: 'hello-dep-dev', name: 'hello-frontend-needs-api' },
+						spec: { contract: 'api', providerRef: { name: 'hello-api-app' } },
+						status: {
+							gateName: 'dependency-hello-frontend-needs-api',
+							providedVersion: '1.66.0',
+							blockedReleases: [
+								{ tag: 'rel-67', requiredVersion: '^1.67.0', reason: 'ConstraintNotSatisfied' }
+							]
+						}
+					}
+				]
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any
+		});
+		const s = blockingStory(rolloutWith('hello-dep-dev', [DEP_GATE]), devCtx, { place: 'dev' });
+		expect(s.gates).toHaveLength(1);
+		expect(ruleCountLabel(s)).toBe('1 rule');
+		expect(contractRuleCountLabel(s)).toBe('1 contract');
+	});
+
+	it('a block with no contract gate at all falls back to the generic `N rule(s)` — never `0 contract`', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: true, allowedVersions: [] }]),
+			ctx,
+			{ place: 'prod' }
+		);
+		expect(contractRuleCountLabel(s)).toBe(ruleCountLabel(s));
+		expect(contractRuleCountLabel(s)).not.toContain('contract');
 	});
 });

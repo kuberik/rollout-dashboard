@@ -158,8 +158,16 @@
 				class="t-label text-gray-500 dark:text-gray-400"
 				title="A place is one service in one environment."
 			>
+				<!--
+					⭐ THE SPACE BEFORE THE DOT IS EXPLICIT, NOT WHITESPACE-COLLAPSED.
+					(coordinator sweep, finding 7) `running it{#if …}` sat directly
+					against the `{#if}` block with nothing between them, so the join
+					relied on the span's own leading newline/tabs collapsing to a
+					single space — and it rendered `RUNNING IT·2 HELD…` with none.
+					A literal space here is unambiguous at any indentation.
+				-->
 				running it{#if heldTotal > 0}<span class="text-orange-950 dark:text-orange-300">
-						· {heldTotal} held on {heldLabel ?? 'a newer release'}</span
+						&nbsp;· {heldTotal} held on {heldLabel ?? 'a newer release'}</span
 					>{/if}
 			</div>
 		</div>

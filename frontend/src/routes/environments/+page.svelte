@@ -821,6 +821,21 @@
 			// environment set is a trailing locative appended to the finished
 			// headline instead.
 			let story = worstBlocked.app.pageStory;
+			// ⭐ FINDING 3 (coordinator sweep, 2026-09-03): THE LINK PREFERS THE
+			// MOST DOWNSTREAM ENVIRONMENT THE SENTENCE NAMES, AND SAYS WHICH.
+			// `worstBlocked` above is picked by `person`/`blockedCandidates`
+			// only, with no environment preference — so a block spanning every
+			// environment identically (the same cause holding DEV, STAGING and
+			// PROD) landed on whichever tier's card happened to iterate first,
+			// which is DEV, since `all` walks `cardsByTier` in `envTiers`'
+			// promotion order. The banner already builds `peers` (every card
+			// holding this app on the same cause) to name the SET in the
+			// headline; the CTA target is the same set's most downstream member
+			// — `envTiers` is promotion-ordered, so the highest index is the
+			// environment furthest along the pipeline, PROD in the ordinary
+			// three-tier case. The action names it, so a reader knows what they
+			// are about to open before they click.
+			let target = worstBlocked;
 			if (peers.length > 1) {
 				const names = peers.map((p) => p.c.tier.toUpperCase());
 				const where =
@@ -838,6 +853,9 @@
 					gateContext
 				);
 				story = { ...base, headline: `${base.headline} in ${where}` };
+				target = peers.reduce((worst, p) =>
+					envTiers.indexOf(p.c.tier) > envTiers.indexOf(worst.c.tier) ? p : worst
+				, peers[0]);
 			}
 
 			return {
@@ -850,8 +868,8 @@
 				// blocked branch lost the app, because it reused a sentence
 				// written for a surface where the app is already fixed.
 				story,
-				href: worstBlocked.app.rolloutHref,
-				action: `Open ${worstBlocked.app.appName}`
+				href: target.app.rolloutHref,
+				action: `Open ${target.app.appName} in ${target.c.tier.toUpperCase()}`
 			};
 		}
 
