@@ -9,7 +9,8 @@
 		ReplyOutline,
 		CodePullRequestSolid,
 		GithubSolid,
-		PauseSolid
+		PauseSolid,
+		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { hasForceDeployAnnotation, getDisplayVersion, formatTimeAgo } from '$lib/utils';
@@ -45,6 +46,7 @@
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import { announce } from '$lib/stores/announce.svelte';
 	import FactList, { type Fact } from './FactList.svelte';
+	import StatusSpinner from './StatusSpinner.svelte';
 
 	interface Props {
 		open: boolean;
@@ -80,6 +82,18 @@
 		environmentName?: string | null;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
+		/**
+		 * ⭐ THE MUTATION'S PENDING STATUS, FOR THE PAGE BEHIND THIS DIALOG.
+		 * (B3, 2026-09-03, operator walk) Confirming Deploy/Roll back changed
+		 * nothing on screen for 5-8s while the request was in flight — the
+		 * button stayed armed with no spinner, so a reader could not tell
+		 * whether the click had registered. This dialog now shows its own
+		 * pending state (see `deploying` below); `onDeployStart` fires the
+		 * instant the request is sent, before the `await`, so the Overview can
+		 * show its own "Deploy requested — starting" the moment a person acts,
+		 * not 5-8s later when the response finally lands.
+		 */
+		onDeployStart?: () => void;
 	}
 
 	let {
@@ -92,7 +106,8 @@
 		cluster,
 		environmentName = null,
 		onSuccess = () => {},
-		onError = () => {}
+		onError = () => {},
+		onDeployStart = () => {}
 	}: Props = $props();
 
 	/**
@@ -137,6 +152,7 @@
 	let leftListEl: HTMLDivElement | undefined = $state();
 	let rightPaneEl: HTMLDivElement | undefined = $state();
 	let rightContentEl: HTMLDivElement | undefined = $state();
+	let rightFooterEl: HTMLDivElement | undefined = $state();
 	let leftPaneMaxHeight = $state<number | null>(null);
 	/**
 	 * ⭐ THE MIRROR OF `leftPaneMaxHeight`, FOR THE SAME DEFECT ON THE OTHER
@@ -153,6 +169,26 @@
 	 * RIGHT side's own content is the shorter one, it gets the explicit
 	 * `max-height` instead of the left, so a short answer renders as a short
 	 * pane rather than as a short paragraph inside a tall one.
+	 *
+	 * ⛔ THE CAP MUST COVER THE WHOLE COLUMN, NOT JUST THE SCROLLABLE PART.
+	 * (F6, fifth re-check, BLOCKING) This `max-height` is applied to
+	 * `rightPaneEl`, which contains BOTH the scrollable changelist
+	 * (`rightContentEl`) AND the pinned deploy footer (Pin Version / Cancel /
+	 * confirm) as a sibling `shrink-0` block below it. The previous spelling
+	 * measured only `rightContentEl`'s own content and used that alone as the
+	 * cap — so on a short changelist ("GitHub is not configured") beside a
+	 * full-height footer (gate alert, pin row, textarea, typed-confirm
+	 * input, two buttons), the cap came out smaller than the footer alone
+	 * needs. Because `rightPaneEl` is `overflow-hidden` with no scroller of
+	 * its own, that under-measurement did not just fail to help — it PAINTED
+	 * OVER the footer: measured live, a 148px cap against 514px of real
+	 * content (delta card + footer) clipped the confirm/cancel buttons
+	 * entirely off-screen while leaving them in the layout, so
+	 * `elementFromPoint` at their centre returned the grid div instead of the
+	 * button underneath the clip. The natural height compared against
+	 * `available` must be the FULL column's need — content plus footer —
+	 * never a measurement that silently drops the one part of the pane that
+	 * must always be reachable.
 	 */
 	let rightPaneMaxHeight = $state<number | null>(null);
 
@@ -181,7 +217,14 @@
 		// the DOM nodes) makes this re-run on search/tag-toggle filtering too,
 		// where the list's own box does not resize but its CONTENT does.
 		const rowCount = filteredVersionsForDisplay.length;
-		if (!selectedVersion || !leftHeaderEl || !leftListEl || !rightPaneEl || !rightContentEl) {
+		if (
+			!selectedVersion ||
+			!leftHeaderEl ||
+			!leftListEl ||
+			!rightPaneEl ||
+			!rightContentEl ||
+			!rightFooterEl
+		) {
 			leftPaneMaxHeight = null;
 			rightPaneMaxHeight = null;
 			return;
@@ -190,6 +233,7 @@
 		const list = leftListEl;
 		const right = rightPaneEl;
 		const rightContent = rightContentEl;
+		const rightFooter = rightFooterEl;
 		void rowCount;
 
 		/**
@@ -204,10 +248,30 @@
 		 * ceiling for the shorter one, because that is the one number that is
 		 * still honest under `stretch` — it is the row's own real height, not
 		 * a capped one.
+		 *
+		 * ⛔ `rightNatural` IS THE WHOLE COLUMN'S NEED, FOOTER INCLUDED. (F6,
+		 * fifth re-check, BLOCKING) `rightPaneMaxHeight` is applied to
+		 * `rightPaneEl`, the ancestor of BOTH `rightContent` (the scrollable
+		 * changelist) and `rightFooter` (the pinned Pin Version / Cancel /
+		 * confirm block, a `shrink-0` sibling below it, never a descendant of
+		 * `rightContent`). Measuring `rightContent` alone and using that as
+		 * the cap on their shared ancestor under-sized the cap by the
+		 * footer's own height every time the changelist was short — the
+		 * footer then rendered, unclipped in the DOM, but visually painted
+		 * over by `rightPaneEl`'s own `overflow-hidden` (measured live: a
+		 * 148px cap against 514px of real content, the confirm and cancel
+		 * buttons neither painted nor at `elementFromPoint`). `rightFooter`
+		 * is `shrink-0`, so its `getBoundingClientRect().height` is its true
+		 * natural height regardless of any cap already applied to its
+		 * ancestor — flex children are not shrunk by an ancestor's
+		 * `overflow: hidden`, only clipped from view, so this measurement
+		 * stays honest even while a stale small cap is still applied from a
+		 * previous run.
 		 */
 		function recompute() {
 			const leftNatural = header.getBoundingClientRect().height + measuredContentHeight(list);
-			const rightNatural = measuredContentHeight(rightContent);
+			const rightNatural =
+				measuredContentHeight(rightContent) + rightFooter.getBoundingClientRect().height;
 			if (leftNatural <= rightNatural) {
 				const available = right.getBoundingClientRect().height;
 				leftPaneMaxHeight = available > 0 && leftNatural < available ? leftNatural : null;
@@ -230,6 +294,7 @@
 		ro.observe(list);
 		ro.observe(right);
 		ro.observe(rightContent);
+		ro.observe(rightFooter);
 		return () => {
 			cancelAnimationFrame(raf);
 			ro.disconnect();
@@ -271,6 +336,13 @@
 	let pinVersionToggle = $state(false);
 	let deployExplanation = $state('');
 	let deployConfirmationVersion = $state('');
+	/**
+	 * ⭐ THE CONFIRM BUTTON'S PENDING STATE. (B3, 2026-09-03, operator walk)
+	 * See `handleDeploy`'s own note: set the instant the request is sent,
+	 * cleared in `finally` so an error re-arms the button rather than leaving
+	 * it permanently spinning.
+	 */
+	let deploying = $state(false);
 
 	let showLocalToast = $state(false);
 	let localToastMessage = $state('');
@@ -283,6 +355,7 @@
 			deployConfirmationVersion = '';
 			searchQuery = '';
 			showAllTags = false;
+			deploying = false;
 		}
 	});
 
@@ -342,19 +415,15 @@
 		return diff > 0 ? `${diff} newer` : `${-diff} back`;
 	}
 
-	/** One composed line — build date, deploy date (current row only) and
-	 * rank — so the template never has to reason about which separators to
-	 * print. `null` when there is nothing to say. */
-	function pickerRowLine(
-		created: string | undefined,
-		isCurrent: boolean,
-		versionTag: string
-	): string | null {
+	/** The date half of the row's second line — build date, and deploy date
+	 * on the current row only. `null` when there is nothing to say. The rank
+	 * (`pickerRankLabel`) is rendered separately by the template now (P6,
+	 * 2026-09-03, operator walk) so a `back` row can carry its own warm ink
+	 * without recolouring the dates beside it. */
+	function pickerRowLine(created: string | undefined, isCurrent: boolean): string | null {
 		const parts: string[] = [];
 		if (created) parts.push(`Built ${formatTimeAgo(created)}`);
 		if (isCurrent && currentDeployedAt) parts.push(`Deployed ${formatTimeAgo(currentDeployedAt)}`);
-		const rank = pickerRankLabel(versionTag);
-		if (rank) parts.push(rank);
 		return parts.length > 0 ? parts.join(' · ') : null;
 	}
 
@@ -571,6 +640,50 @@
 	const deployNoticeParts = $derived(deployNotice ? splitLeadSentence(deployNotice) : null);
 	const deployButtonLabel = $derived(deployActionLabel(intent));
 	/**
+	 * ⭐ THE LABEL WHILE THE REQUEST IS IN FLIGHT. (B3, 2026-09-03, operator
+	 * walk) `deployButtonLabel` ("Roll back production" / "Deploy to dev") is
+	 * an IMPERATIVE — correct at rest, wrong once the click has already
+	 * happened and the button is disabled. The present-continuous form says
+	 * what is happening NOW, matching the spinner beside it.
+	 */
+	const deployingLabel = $derived(direction === 'rollback' ? 'Rolling back…' : 'Deploying…');
+	/**
+	 * ⭐ THE CONFIRM IS NEVER THE SAME BLUE AS AN ORDINARY FORWARD DEPLOY. (P6,
+	 * 2026-09-03, operator walk) `Roll back dev` rendered in the identical
+	 * filled blue `.btn-primary`, in the identical slot, as `Deploy to dev` —
+	 * a reader scanning the footer by colour alone could not tell a
+	 * destructive reversal from an ordinary forward move. Production's
+	 * `typed` rollback already reads filled red (unchanged, `confirmColor`
+	 * below still returns `'red'` there); a non-production rollback (the
+	 * `notice` level) gets the SAME hue at a lower step — text-and-outline
+	 * red rather than a filled block — so it reads as "this direction is
+	 * destructive" without competing with `typed`'s louder, filled alarm.
+	 * Forward deploys are untouched: still filled blue.
+	 */
+	const confirmColor = $derived(direction === 'rollback' ? 'red' : level === 'typed' ? 'red' : 'blue');
+	const confirmOutline = $derived(direction === 'rollback' && level !== 'typed');
+	/**
+	 * ⭐ NOTE REQUIRED FOR THE CHANGES THAT ARE HARDEST TO UNDO. (P5,
+	 * 2026-09-03, operator walk) The note field read "(optional)" on every
+	 * path, including a production change and a rollback — the two shapes
+	 * this file's own rules (B3) already single out for the typed
+	 * confirmation and the filled/outlined red button above. An ordinary dev
+	 * forward deploy keeps it optional; `intent.production` covers a
+	 * production change in EITHER direction (matching `confirmLevel`'s own
+	 * `if (intent.production) return 'typed'`, which fires before the
+	 * direction check), and `direction === 'rollback'` covers a non-production
+	 * rollback that `confirmLevel` alone would not catch (it is `notice`, not
+	 * `typed`, there).
+	 */
+	const deployNoteRequired = $derived(intent.production || direction === 'rollback');
+	const deployNotePlaceholder = $derived(
+		direction === 'rollback'
+			? 'Why are you rolling back? (recommended)'
+			: level === 'typed'
+				? 'Why are you overriding the rules?'
+				: 'Why are you deploying this version? (optional)'
+	);
+	/**
 	 * The caller may hand us the state it already derived (rollout detail does,
 	 * because it holds the full gate objects and so can print their published
 	 * pretty names). Every OTHER call site — history, `/versions/<rev>`,
@@ -702,8 +815,25 @@
 		return selectedVersion;
 	}
 
+	/**
+	 * ⭐ THE CLICK NOW HAS A PENDING STATE. (B3, 2026-09-03, operator walk)
+	 * Measured live: confirming Deploy/Roll back produced no visible change
+	 * for 5-8s (a real network round trip to the Go backend, then to the k8s
+	 * API) while the button stayed fully armed — no spinner, not disabled — so
+	 * a reader could not tell a click had registered and could press it again.
+	 * `deploying` guards against exactly that double-submit and drives the
+	 * button's own spinner + `Rolling back…`/`Deploying…` label (see the
+	 * Button markup below); `onDeployStart` fires BEFORE the `await` so a
+	 * caller holding its own banner (rollout detail's Overview) can say
+	 * "Deploy requested — starting" the instant the person acts, not once the
+	 * response finally lands. The modal already only closed on success
+	 * (`open = false` sits after the `await`, unchanged) — the missing piece
+	 * was feedback DURING the wait, not premature closing.
+	 */
 	async function handleDeploy() {
-		if (!rollout || !selectedVersion) return;
+		if (!rollout || !selectedVersion || deploying) return;
+		deploying = true;
+		onDeployStart();
 		try {
 			const response = await fetch(
 				apiUrl(
@@ -745,6 +875,11 @@
 			const message = e instanceof Error ? e.message : 'Failed to deploy version';
 			notifyError(message);
 			announce(message, 'assertive');
+		} finally {
+			// On success `open = false` already unmounts this dialog, so this is
+			// only observable on the error path — where it re-arms the button
+			// instead of leaving it spinning forever.
+			deploying = false;
 		}
 	}
 
@@ -787,12 +922,27 @@
 	size="none"
 	role="dialog"
 	aria-modal="true"
+	dismissable={false}
 	class="[&>div]:p-0 {selectedVersion ? 'max-w-4xl' : 'max-w-md'}"
 	aria-labelledby="cvm-title"
 >
 	<div class="flex max-h-[85vh] flex-col">
-		<!-- Header. pr-14 reserves space for the modal's floating close (✕) in the
-		     top-right corner so the right-aligned mobile Back button clears it.
+		<!-- Header.
+
+		     ⛔ ONE CLOSE AFFORDANCE, NOT TWO. (cosmetic, coordinator operator
+		     walk, 2026-09-03) `dismissable={false}` above drops flowbite's own
+		     floating `✕` (`Dialog.svelte` renders it independently of `Modal`'s
+		     `title` branch — it fires on `title=""` being merely falsy, which
+		     it always was here). This dialog's footer already has an explicit,
+		     labelled `Cancel` next to the very button it means to guard — a
+		     second, unlabelled corner control doing the same thing is the
+		     redundant one, and on a dialog that can ask for a typed production
+		     confirmation, a quick corner-click dismiss sat needlessly close to
+		     the reader's hand. Escape and the backdrop click still close it —
+		     `dismissable` only gates the CloseButton's own rendering in
+		     flowbite's `Dialog.svelte`, never `_oncancel`/`_onclick`. The
+		     header no longer needs `pr-14` to keep the mobile Back button
+		     clear of a button that is no longer there.
 
 		     ⭐ WRAPS, NEVER TRUNCATES. (B3, 2026-09-03, operator walk) This was
 		     `truncate` on the app name alone — a namespace holding two rollouts
@@ -804,7 +954,7 @@
 		     narrow viewport that also shows the env crumb, so the extra line is
 		     not a new shape, only a safer one. -->
 		<div
-			class="flex shrink-0 flex-wrap items-center gap-2 gap-y-1 border-b border-gray-200 py-4 pr-14 pl-5 dark:border-gray-700"
+			class="flex shrink-0 flex-wrap items-center gap-2 gap-y-1 border-b border-gray-200 py-4 pl-5 dark:border-gray-700"
 		>
 			<h2 id="cvm-title" class="text-base font-semibold text-gray-900 dark:text-white">
 				Change Version
@@ -961,12 +1111,27 @@
 							{@const isCurrent = currentTag === versionTag}
 							{@const isPinned = rollout?.spec?.wantedVersion === versionTag}
 							{@const isSelected = selectedVersion === versionTag}
-							{@const pickerLine = pickerRowLine(created, isCurrent, versionTag)}
+							{@const pickerLine = pickerRowLine(created, isCurrent)}
+							{@const rank = pickerRankLabel(versionTag)}
+							{@const isBackRank = rank?.endsWith('back') ?? false}
 							{#await loadAnnotationsOnDemand(versionTag)}{/await}
+							<!-- ⭐ A RESTING AFFORDANCE, NOT JUST A HOVER FILL. (P6,
+							     2026-09-03, operator walk) `dark:border-gray-800` on the row
+							     divider was THE SAME SHADE as the dialog's own dark
+							     background (`dark:bg-gray-800`) — invisible, so in dark mode
+							     the list read as one undivided block with no per-row edge at
+							     all, and with nothing else marking a row as a control (no
+							     border, no chevron, no icon), tapping one read like toggling
+							     a filter rather than opening a confirmation. Divider bumped
+							     one step lighter (`dark:border-gray-700`, this file's own
+							     border colour everywhere else) and a trailing chevron now
+							     sits at REST on every row, not only on `:hover` — hover does
+							     not exist on touch, so a hover-only affordance is invisible
+							     on the phone this list is equally used on. -->
 							<button
 								type="button"
 								aria-pressed={isSelected}
-								class="flex w-full items-start gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800 {isSelected
+								class="flex w-full items-start gap-2 border-b border-gray-100 px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 {isSelected
 									? 'bg-blue-50 dark:bg-blue-900/30'
 									: ''}"
 								onclick={() => selectVersion(versionTag)}
@@ -983,7 +1148,7 @@
 											<Badge color="blue" class="text-[10px]">Pinned</Badge>
 										{/if}
 									</div>
-									{#if pickerLine}
+									{#if pickerLine || rank}
 										<!-- ⛔ `created` IS THE IMAGE'S BUILD TIME, NOT WHEN THIS
 										     ROLLOUT RAN IT. Said explicitly ("Built") because the
 										     status card behind this dialog shows DEPLOY age for the
@@ -997,12 +1162,32 @@
 										     for. `current` is already the green badge above; every
 										     other row says its distance from it in release-list
 										     steps, `env-rank.ts`'s own vocabulary (`N behind` /
-										     `newest`) narrowed to a per-row `N back` / `N newer`. -->
-										<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-											{pickerLine}
+										     `newest`) narrowed to a per-row `N back` / `N newer`.
+										     ⭐ AND `back` IS THE DESTRUCTIVE DIRECTION, IN WARM INK.
+										     (P6, 2026-09-03, operator walk) `N back` and `N newer`
+										     read in the identical neutral gray — the one number that
+										     says "picking this row is a rollback" carried no more
+										     weight than the one that says "this is further ahead".
+										     Amber is this file's own rollback ink everywhere else
+										     (the delta summary's `ReplyOutline` + "Rollback" label),
+										     reused here rather than inventing a second warning hue. -->
+										<div class="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+											{#if pickerLine}<span>{pickerLine}</span>{/if}
+											{#if pickerLine && rank}<span aria-hidden="true">·</span>{/if}
+											{#if rank}
+												<span
+													class={isBackRank
+														? 'font-medium text-amber-700 dark:text-amber-400'
+														: ''}>{rank}</span
+												>
+											{/if}
 										</div>
 									{/if}
 								</div>
+								<ChevronRightOutline
+									class="mt-0.5 h-4 w-4 shrink-0 self-center text-gray-300 dark:text-gray-600"
+									aria-hidden="true"
+								/>
 							</button>
 						{/each}
 					{:else}
@@ -1033,7 +1218,7 @@
 					style={rightPaneMaxHeight != null ? `max-height: ${rightPaneMaxHeight}px` : ''}
 					class="flex flex-col overflow-hidden"
 				>
-					<div bind:this={rightContentEl} class="flex-1 space-y-4 overflow-y-auto p-5">
+					<div bind:this={rightContentEl} class="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
 						<!-- Delta summary -->
 						<div
 							class="flex flex-col gap-2 rounded-lg p-3 {direction === 'rollback'
@@ -1254,8 +1439,15 @@
 						{/if}
 					</div>
 
-					<!-- Deploy footer -->
-					<div class="shrink-0 space-y-3 border-t border-gray-200 p-4 dark:border-gray-700">
+					<!-- Deploy footer. `bind:this={rightFooterEl}` + `shrink-0`: this is
+					     the block `rightPaneMaxHeight`'s natural-height measurement must
+					     never drop (see its own doc comment) -- a sibling of the scrollable
+					     `rightContentEl` above, not a descendant of it, so it is always
+					     laid out at full height and never scrolled away. -->
+					<div
+						bind:this={rightFooterEl}
+						class="shrink-0 space-y-3 border-t border-gray-200 p-4 dark:border-gray-700"
+					>
 						{#if !deployNotice && gateNote}
 							<!-- Same `Alert color="blue"` at 12px the force-deploy note already
 							     uses: informational, because it does NOT hold this action. Its
@@ -1394,7 +1586,8 @@
 
 						<textarea
 							bind:value={deployExplanation}
-							placeholder="Why are you deploying this version? (optional)"
+							placeholder={deployNotePlaceholder}
+							aria-required={deployNoteRequired}
 							rows="2"
 							class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 						></textarea>
@@ -1420,25 +1613,56 @@
 						{/if}
 
 						<div class="flex gap-2">
-							<Button color="light" class="flex-1" onclick={() => (open = false)}>Cancel</Button>
+							<Button color="light" class="flex-1" disabled={deploying} onclick={() => (open = false)}
+								>Cancel</Button
+							>
 							<!-- THE BUTTON SAYS WHERE IT LANDS. `Deploy Now` named the
 							     act and hid the target; `Deploy to production` is the
-							     same click and the reader can predict it. RED only at
-							     `typed`, so the alarm still means something. -->
+							     same click and the reader can predict it.
+
+							     ⭐ COLOUR NOW MARKS THE DIRECTION, NOT JUST THE TIER. (P6,
+							     2026-09-03, operator walk) See `confirmColor`/`confirmOutline`'s
+							     own note: RED (filled at `typed`, outlined otherwise) for
+							     every rollback; filled BLUE only for an ordinary forward
+							     deploy. `outline` is flowbite's own variant — it swaps the
+							     filled `bg-{color}-700` for `bg-transparent` + a
+							     `border-{color}-700`/`text-{color}-700` pair via
+							     `tailwind-merge`, so the same `color="red"` reads as a
+							     quieter warning at `notice` and the full alarm at `typed`.
+
+							     ⭐ THE PENDING STATE. (B3, 2026-09-03, operator walk) See
+							     `handleDeploy`'s own note: `deploying` disables the button
+							     (on top of the existing typed/same guards) and swaps both
+							     the icon for a spinner and the label for the
+							     present-continuous form, so a reader can see the click
+							     registered instead of an armed button that looks untouched
+							     for 5-8s. -->
 							<Button
-								color={level === 'typed' ? 'red' : 'blue'}
+								color={confirmColor}
+								outline={confirmOutline}
 								class="flex-1"
 								disabled={(needsTypedConfirmation &&
 									deployConfirmationVersion !== getDisplaySelectedVersion()) ||
-									direction === 'same'}
+									direction === 'same' ||
+									(deployNoteRequired && deployExplanation.trim() === '') ||
+									deploying}
 								onclick={handleDeploy}
 							>
-								{#if direction === 'rollback'}
-									<ReplyOutline class="mr-2 h-4 w-4 shrink-0" />
+								{#if deploying}
+									<StatusSpinner
+										size="4"
+										color={confirmOutline ? 'red' : 'white'}
+										class="mr-2"
+									/>
+									<span class="truncate">{deployingLabel}</span>
 								{:else}
-									<ArrowUpOutline class="mr-2 h-4 w-4 shrink-0" />
+									{#if direction === 'rollback'}
+										<ReplyOutline class="mr-2 h-4 w-4 shrink-0" />
+									{:else}
+										<ArrowUpOutline class="mr-2 h-4 w-4 shrink-0" />
+									{/if}
+									<span class="truncate">{deployButtonLabel}</span>
 								{/if}
-								<span class="truncate">{deployButtonLabel}</span>
 							</Button>
 						</div>
 					</div>

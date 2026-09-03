@@ -435,3 +435,212 @@ describe('defect 6 — the commits block speaks GitHub\'s absence in the shared 
 		expect(screen.getByText(/You can still proceed\./)).toBeInTheDocument();
 	});
 });
+
+/**
+ * ⭐ THE BLOCKING CLIP REGRESSION (F6, fifth re-check), STRUCTURALLY, NOT BY
+ * PIXELS. jsdom computes no real layout — `scrollHeight`/`clientHeight` are
+ * both always 0 — so the actual bug (a JS-measured `max-height` on the right
+ * pane that excluded the footer's own height, painting over the confirm
+ * button under `overflow: hidden`) cannot be reproduced by measurement here.
+ * What CAN be asserted without real layout is the structural invariant the
+ * fix depends on: the footer holding Cancel/confirm is a SIBLING of the one
+ * `overflow-y-auto` scroller in the right pane (the delta summary +
+ * changelist), never nested inside it. A future pass that moves the footer
+ * back inside the scroller, or reintroduces a content-only height measurement
+ * that ignores the footer, would reproduce the clip; this fails immediately
+ * if the footer stops being the scroller's sibling.
+ */
+describe('F6, fifth re-check — the confirm button structurally cannot be clipped', () => {
+	function devRollbackRollout() {
+		return rolloutFixture({
+			metadata: { name: 'hello-world-app', namespace: 'hello-world-dev', labels: { environment: 'dev' } },
+			status: {
+				availableReleases: [
+					{ tag: 'old', version: '0afab6f', created: daysAgo(10) },
+					{ tag: 'new', version: '064b655', created: daysAgo(1) }
+				],
+				gates: [{ name: 'ghd-open', passing: true, allowedVersions: null }],
+				conditions: [{ type: 'GatesPassing', status: 'True' }],
+				history: [{ version: { tag: 'new', version: '064b655' }, bakeStatus: 'Succeeded', timestamp: daysAgo(1) }]
+			}
+		});
+	}
+
+	// The scroller under test is `rightContentEl` specifically -- flowbite's
+	// own Modal body wrapper ALSO carries `overflow-y-auto` (its default
+	// chrome, present on every modal in the product, harmless because it is
+	// never height-capped below its content) and the left picker list does
+	// too (`cvm-scroll-fade flex-1 overflow-y-auto pb-4`). Only `rightContentEl`
+	// carries BOTH `overflow-y-auto` AND `min-h-0` together (see
+	// `ChangeVersionModal.svelte`'s markup), which is what makes this
+	// selector point at the one scroller the fix is actually about.
+	const CHANGELIST_SCROLLER_SELECTOR = '.overflow-y-auto.min-h-0';
+
+	test('the confirm button is never a descendant of the scrollable changelist region', async () => {
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /Roll back dev/i });
+		expect(confirmBtn.closest(CHANGELIST_SCROLLER_SELECTOR)).toBeNull();
+	});
+
+	test('Cancel is also never a descendant of the scrollable changelist region', async () => {
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		await screen.findByRole('button', { name: /Roll back dev/i });
+		const cancelBtn = screen.getByRole('button', { name: 'Cancel' });
+		expect(cancelBtn.closest(CHANGELIST_SCROLLER_SELECTOR)).toBeNull();
+	});
+});
+
+/**
+ * ⭐ FOUR MORE DEFECTS FROM THE SAME OPERATOR WALK (2026-09-03), ALL ON THIS
+ * DIALOG: B3 (no feedback for 5-8s after confirming), P6 (a rollback confirm
+ * read as the identical blue as an ordinary forward deploy, and the picker
+ * had no resting affordance), P5 (the note field said "(optional)" on a
+ * production change or a rollback), and a cosmetic duplicate close control.
+ */
+describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
+	function devRollbackRollout() {
+		return rolloutFixture({
+			metadata: { name: 'hello-world-app', namespace: 'hello-world-dev', labels: { environment: 'dev' } },
+			status: {
+				availableReleases: [
+					{ tag: 'old', version: '0afab6f', created: daysAgo(10) },
+					{ tag: 'new', version: '064b655', created: daysAgo(1) }
+				],
+				gates: [{ name: 'ghd-open', passing: true, allowedVersions: null }],
+				conditions: [{ type: 'GatesPassing', status: 'True' }],
+				history: [{ version: { tag: 'new', version: '064b655' }, bakeStatus: 'Succeeded', timestamp: daysAgo(1) }]
+			}
+		});
+	}
+
+	const NOTE_PLACEHOLDER = 'Why are you rolling back? (recommended)';
+
+	test('P5 — the note is required for a rollback and gates the confirm until filled', async () => {
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /Roll back dev/i });
+		expect(confirmBtn).toBeDisabled();
+		const note = screen.getByPlaceholderText(NOTE_PLACEHOLDER);
+		expect(note).toBeInTheDocument();
+
+		await fireEvent.input(note, { target: { value: 'testing a recovery path' } });
+		expect(confirmBtn).not.toBeDisabled();
+	});
+
+	test('P5 — a typed-confirm forward deploy asks "why are you overriding the rules", not "(optional)"', async () => {
+		// The prod fixture from defect 1: forward, held by rules -> `typed`.
+		renderModal({ rollout: rolloutFixture(), initialSelectedVersion: 'rel-67' });
+		await screen.findByRole('button', { name: /Deploy to production/i });
+		expect(
+			screen.getByPlaceholderText('Why are you overriding the rules?')
+		).toBeInTheDocument();
+	});
+
+	test('P6 — a non-production rollback confirm is outlined red, not the forward-deploy blue', async () => {
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /Roll back dev/i });
+		expect(confirmBtn.className).toMatch(/border-red-700/);
+		expect(confirmBtn.className).toMatch(/bg-transparent/);
+		expect(confirmBtn.className).not.toMatch(/bg-blue-700/);
+	});
+
+	test('P6 — an ordinary forward deploy confirm stays filled blue', async () => {
+		const rollout = rolloutFixture({
+			metadata: { name: 'hello-world-app', namespace: 'hello-world-dev', labels: { environment: 'dev' } },
+			status: {
+				availableReleases: [
+					{ tag: 'old', version: '0afab6f', created: daysAgo(10) },
+					{ tag: 'new', version: '064b655', created: daysAgo(1) }
+				],
+				gates: [{ name: 'ghd-open', passing: true, allowedVersions: null }],
+				conditions: [{ type: 'GatesPassing', status: 'True' }],
+				history: [{ version: { tag: 'old', version: '0afab6f' }, bakeStatus: 'Succeeded', timestamp: daysAgo(4) }]
+			}
+		});
+		renderModal({ rollout, initialSelectedVersion: 'new' });
+		const confirmBtn = await screen.findByRole('button', { name: /Deploy to dev/i });
+		expect(confirmBtn.className).toMatch(/bg-blue-700/);
+	});
+
+	test('P6 — a picker row marks its "N back" distance in warm ink and carries a resting chevron', async () => {
+		renderModal({ rollout: devRollbackRollout() });
+		const row = screen.getByText('0afab6f').closest('button');
+		expect(row).not.toBeNull();
+		const rankSpan = Array.from(row!.querySelectorAll('span')).find((s) =>
+			/back/.test(s.textContent || '')
+		);
+		expect(rankSpan, 'no "N back" span on the older row').not.toBeUndefined();
+		expect(rankSpan?.className).toMatch(/text-amber-700/);
+		// The resting chevron -- present at rest, not only on `:hover` (hover
+		// does not exist on touch).
+		expect(row!.querySelector('svg')).not.toBeNull();
+	});
+
+	test('B3 — confirming shows a pending state until the request resolves, and cannot double-submit', async () => {
+		let resolveDeploy: (r: Response) => void = () => {};
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) {
+				return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			}
+			if (url.includes('/change-version')) {
+				return new Promise<Response>((resolve) => {
+					resolveDeploy = resolve;
+				});
+			}
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+
+		let startedCount = 0;
+		// ⛔ SUCCESS IS ASSERTED VIA `onSuccess`, NOT VIA THE DIALOG UNMOUNTING.
+		// jsdom has no real animation-frame pump, and flowbite's `Dialog`
+		// gates its actual DOM removal on the `fade` OUTRO transition
+		// finishing -- which never settles here (the test file's own
+		// polyfills at the top only stub `Element.animate`/`HTMLDialogElement`,
+		// not `requestAnimationFrame`), so `open = false` can be TRUE in
+		// state while the old markup is still painted. `onSuccess` fires
+		// synchronously, before `open = false`, inside `handleDeploy`'s own
+		// success branch -- the one signal that does not depend on a
+		// transition jsdom cannot run.
+		let successMessage: string | null = null;
+		renderModal({
+			rollout: devRollbackRollout(),
+			initialSelectedVersion: 'old',
+			onDeployStart: () => startedCount++,
+			onSuccess: (message: string) => {
+				successMessage = message;
+			}
+		});
+		const confirmBtn = await screen.findByRole('button', { name: /Roll back dev/i });
+		await fireEvent.input(screen.getByPlaceholderText(NOTE_PLACEHOLDER), {
+			target: { value: 'testing pending state' }
+		});
+		expect(confirmBtn).not.toBeDisabled();
+
+		await fireEvent.click(confirmBtn);
+
+		// `onDeployStart` fires before the response lands, so a caller (rollout
+		// detail's Overview) can show its own banner immediately.
+		expect(startedCount).toBe(1);
+		await waitFor(() => expect(screen.getByText('Rolling back…')).toBeInTheDocument());
+		expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+		expect(document.querySelector('.animate-spin')).not.toBeNull();
+
+		// A second click while pending must not fire a second request -- both
+		// the `disabled` attribute and `handleDeploy`'s own `deploying` guard
+		// cover this.
+		await fireEvent.click(confirmBtn);
+		expect(
+			fetchMock.mock.calls.filter((c) => String(c[0]).includes('/change-version')).length
+		).toBe(1);
+
+		resolveDeploy(new Response(JSON.stringify({}), { status: 200 }));
+		await waitFor(() => expect(successMessage).not.toBeNull());
+	});
+
+	test('cosmetic — exactly one explicit close affordance (Cancel), no second unlabelled ✕', async () => {
+		const { container } = renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		await screen.findByRole('button', { name: /Roll back dev/i });
+		expect(container.querySelectorAll('button[aria-label="Close"]').length).toBe(0);
+		expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+	});
+});
