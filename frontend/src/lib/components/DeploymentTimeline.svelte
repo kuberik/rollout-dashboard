@@ -697,10 +697,17 @@
 		     smaller in both axes at identical padding.
 		     `border-gray-900`/`border-gray-100` match the fill exactly, so
 		     the border is invisible and the box is the same size either
-		     way. -->
+		     way.
+		     ⛔ AND `py-1` MADE IT 2PX TALLER THAN THE ENV CHIPS ON `/activity`'S
+		     OWN CONTROL STRIP (F16, DESIGN PASS 5) — this row shares the exact
+		     class string with `/activity`'s `KIND_FILTERS` row by design (see
+		     that file's matching comment), so the fix travels with it: `py-1`
+		     → `py-[3px]` puts the pill at the env chip's hard 20px (`.chip` in
+		     app.css), instead of 22px. -->
+
 		{#each TIME_RANGES as { value, label }}
 			<button
-				class="t-label rounded border px-3 py-1 transition-colors {isPreset(timeRange) &&
+				class="t-label rounded border px-3 py-[3px] transition-colors {isPreset(timeRange) &&
 				timeRange === value
 					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 					: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"

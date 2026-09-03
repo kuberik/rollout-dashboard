@@ -218,7 +218,17 @@
 			same left edge as the title in both cases.
 		-->
 		{#if rollup}
-			<div class="flex shrink-0 items-center gap-2 sm:ml-auto">{@render rollup()}</div>
+			<!-- ⭐ `.card-header-rollup` — F6, DESIGN PASS 5. A card header whose
+			     rollup is a `.nav-link` (`/`, `/apps`, `/envs/<name>`'s
+			     `View all activity ›` / `Whole network ›`) measured 61px against
+			     the product's 47px, 85px at 390: `.nav-link`'s own `padding: 8px 0`
+			     + 14px/1.4 line-height resolves to 35.6px, 7.8px taller each side
+			     than the title's 20px (`text-sm`) line box. A link in THIS slot is
+			     a rollup, not a button, and app.css now sizes it at the rollup's
+			     own scale — see the rule beside `.nav-link`. -->
+			<div class="card-header-rollup flex shrink-0 items-center gap-2 sm:ml-auto">
+				{@render rollup()}
+			</div>
 		{:else if verdict}
 			<span
 				class="shrink-0 text-xs font-medium whitespace-nowrap sm:ml-auto {VERDICT_TONE[verdictTone]}"

@@ -789,7 +789,16 @@
 		     border-box element a border-less button IS 2px smaller in both
 		     axes at identical padding. `border-gray-900`/`border-gray-100`
 		     match the fill exactly, so the border is invisible and the box is
-		     the same size as its neighbours either way. -->
+		     the same size as its neighbours either way.
+		     ⛔ AND THIS ROW WAS TALLER THAN THE ENV CHIPS BESIDE IT (F16,
+		     DESIGN PASS 5). Measured at 1440: this pill's `t-label` line box
+		     (12px) + `py-1` (8px) + its 1px border each side (2px) = 22px,
+		     against the env chip's `.chip` (app.css), which is a HARD 20px —
+		     tops landed 1px apart on the shared `items-center` baseline. `py-1`
+		     → `py-[3px]` closes exactly that 2px, so both groups share one
+		     height and one baseline; nothing shrank below the chip's own
+		     20px floor, which is already the product's control size for this
+		     row (see `RolloutGrid`'s identical env-chip filter buttons). -->
 		<!-- ⭐ TWO GROUPS, EACH `nowrap`, NOT ONE FLAT ROW OF BUTTONS. (DESIGN
 		     PASS 2, defect #4) At 390 the bare divider between the status
 		     filters and the env filters used to wrap to the END of row 1 —
@@ -814,7 +823,7 @@
 					aria-pressed={kindFilter === f.key}
 					title={f.title}
 					onclick={() => (kindFilter = f.key)}
-					class="t-label rounded border px-3 py-1 transition-colors
+					class="t-label rounded border px-3 py-[3px] transition-colors
 						{kindFilter === f.key
 						? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 						: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
@@ -1000,8 +1009,18 @@
 								     disclosure below is deliberately OUTSIDE it: a tap zone
 								     makes its own text unselectable, and that panel is a list
 								     of commit subjects an operator copies. -->
+								<!-- ⛔ SUPERSEDED (F5, DESIGN PASS 5). This grid used to carry a
+								     FOURTH column (`sm:grid-cols-[…_auto]`) that pinned the
+								     version pair flush right, independent of how much the
+								     sentence in column 3 actually used. Measured: first-line
+								     gaps up to 817px (68% of a 1199px row) between the sentence's
+								     own end and the pinned pair. There is no fourth column now —
+								     the pair joins the sentence itself (below), so the row packs
+								     left and wraps like any other sentence instead of holding a
+								     reserved lane for an object that is not always as wide as the
+								     lane. -->
 								<div
-									class="tap-zone grid grid-cols-[28px_2.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-2.5 transition-colors hover:bg-gray-50 sm:grid-cols-[28px_2.75rem_minmax(0,1fr)_auto] dark:hover:bg-gray-700/30"
+									class="tap-zone grid grid-cols-[28px_2.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
 								>
 									<span
 										class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
@@ -1101,6 +1120,76 @@
 												title={entry.rollbackAct.sentence}
 											/>
 										{/if}
+										<!-- ── WHAT IT CHANGED ─────────────────────────────
+										     `prev → new`, the same pair `ActivityRail` prints.
+										     ⛔ SUPERSEDED (F5, DESIGN PASS 5). This used to be its
+										     own grid column, pinned flush right by a reserved
+										     `auto` track independent of the sentence beside it —
+										     measured up to 817px of empty row between the two.
+										     It joins the sentence now, right where a reader
+										     reading left to right expects "what changed": after
+										     the name and the rollback mark, before who did it.
+
+										     ⛔ AND (F7) THIS GROUP GETS `flex-wrap`, NOT
+										     `shrink-0`. A first attempt gave the group `shrink-0`
+										     to stop the CHIP inside it (`.chip-value` is
+										     `min-width:0` and clips under shrink pressure) from
+										     being individually squeezed — which fixed the
+										     mid-token clip but, on a row carrying BOTH a struck
+										     `prev` sha and a joined `[N BEHIND][sha]` badge (the
+										     widest case: ~220px of content in a ~213px column at
+										     390), traded it for the group overflowing the CARD's
+										     own edge instead — same visual symptom, uncaught by a
+										     `shrink-0` sanity check because nothing shrank. The
+										     group is a nested flex-wrap box now: when the parent
+										     sentence gives it less room than it wants, ITS OWN
+										     children wrap onto a second sub-line (`prev →` above,
+										     the chip below) instead of either the group
+										     overflowing or the chip's value half compressing.
+										     `min-w-0` stays so the group CAN be handed less than
+										     its own content width; `shrink-0` on the CHIP itself
+										     (`class="min-w-0 shrink-0"` below) is what stops the
+										     shrink pressure from reaching inside the chip once
+										     it, in turn, is alone on its own sub-line. -->
+										{#if entry.previousVersion || entry.version}
+											<span class="flex min-w-0 flex-wrap items-center gap-1">
+												{#if entry.previousVersion}
+													<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
+														>{entry.previousVersion}</span
+													>
+													<span class="t-micro text-gray-500 dark:text-gray-400">→</span>
+												{/if}
+												{#if entry.version && entry.isLive}
+													<!-- ⭐ THE VERDICT FIRST — the joined `[verdict][sha]`
+													     unit `/` and `/rollouts` draw, from `env-rank.ts`.
+													     ONLY on the row that is still live; see `ranks`. -->
+													{@const rank = ranks.get(entry.rollout) ?? { kind: 'unknown' as const }}
+													<Chip
+														role={rankRole(rank)}
+														label={rankLabel(rank)}
+														title={rankTitle(rank, entry.displayName)}
+														value={shortenVersion(entry.version)}
+														valueHref={buildPath(
+															repoKeyFromSource(entry.source, entry.rolloutName),
+															entry.revision,
+															entry.version
+														)}
+														valueTitle={entry.version}
+														class="min-w-0 shrink-0"
+													/>
+												{:else if entry.version}
+													<a
+														href={buildPath(
+															repoKeyFromSource(entry.source, entry.rolloutName),
+															entry.revision,
+															entry.version
+														)}
+														class="t-code-sm text-gray-700 hover:underline dark:text-gray-200"
+														>{entry.version}</a
+													>
+												{/if}
+											</span>
+										{/if}
 										{#if entry.actorKind === 'User'}
 											<span class="t-micro text-gray-500 dark:text-gray-400">by {entry.actor}</span>
 										{/if}
@@ -1128,52 +1217,6 @@
 												head={entry.revision}
 												source={entry.source}
 											/>
-										{/if}
-									</span>
-
-									<!-- ── WHAT IT CHANGED ─────────────────────────────
-									     `prev → new`, the same pair `ActivityRail`
-									     prints. It used to be `was <s>f368353</s>`,
-									     right-aligned off in a fifth column and hidden
-									     entirely below `sm` — so on a phone two deploys
-									     of the same app differed by nothing at all. -->
-									<span
-										class="col-start-3 flex min-w-0 shrink-0 items-center gap-1 sm:col-start-4 sm:row-start-1 sm:justify-self-end"
-									>
-										{#if entry.previousVersion}
-											<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
-												>{entry.previousVersion}</span
-											>
-											<span class="t-micro text-gray-500 dark:text-gray-400">→</span>
-										{/if}
-										{#if entry.version && entry.isLive}
-											<!-- ⭐ THE VERDICT FIRST — the joined `[verdict][sha]`
-											     unit `/` and `/rollouts` draw, from `env-rank.ts`.
-											     ONLY on the row that is still live; see `ranks`. -->
-											{@const rank = ranks.get(entry.rollout) ?? { kind: 'unknown' as const }}
-											<Chip
-												role={rankRole(rank)}
-												label={rankLabel(rank)}
-												title={rankTitle(rank, entry.displayName)}
-												value={shortenVersion(entry.version)}
-												valueHref={buildPath(
-													repoKeyFromSource(entry.source, entry.rolloutName),
-													entry.revision,
-													entry.version
-												)}
-												valueTitle={entry.version}
-												class="min-w-0"
-											/>
-										{:else if entry.version}
-											<a
-												href={buildPath(
-													repoKeyFromSource(entry.source, entry.rolloutName),
-													entry.revision,
-													entry.version
-												)}
-												class="t-code-sm text-gray-700 hover:underline dark:text-gray-200"
-												>{entry.version}</a
-											>
 										{/if}
 									</span>
 								</div>

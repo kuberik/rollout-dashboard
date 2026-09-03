@@ -1045,6 +1045,23 @@ textarea {
 		height: 14px;
 		flex: none;
 	}
+
+	/* ⭐ A `.nav-link` INSIDE A CARD HEADER RENDERS AT THE ROLLUP'S SCALE, NOT
+	   ITS OWN BUTTON-SIZED BLOCK. (F6, DESIGN PASS 5) Measured: `Recent
+	   activity` on `/`, `/apps` and `/envs/<name>` was 61px tall (85px
+	   wrapped at 390) against the product's 47px header. The cause is
+	   `.nav-link`'s own `padding: 8px 0` plus its 14px/1.4 line-height,
+	   35.6px total — 7.8px taller each side than the header title's 20px
+	   (`text-sm`) line box, which is what `Card`'s `min-h-[47px]` is floored
+	   to. `Card.svelte` puts `.card-header-rollup` on the wrapper around its
+	   `rollup` snippet; inside it a `.nav-link` gives up its own vertical
+	   padding and takes the 16px line-height its sibling verdict span
+	   (`text-xs`) already carries, so the header never grows past 47px
+	   whether the rollup is a verdict string or a link. */
+	.card-header-rollup .nav-link {
+		padding: 0;
+		line-height: 16px;
+	}
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
