@@ -273,8 +273,14 @@
 			const rightNatural =
 				measuredContentHeight(rightContent) + rightFooter.getBoundingClientRect().height;
 			if (leftNatural <= rightNatural) {
-				const available = right.getBoundingClientRect().height;
-				leftPaneMaxHeight = available > 0 && leftNatural < available ? leftNatural : null;
+				// ⛔ THE PICKER IS NEVER CAPPED. (2026-09-03, from the human: "version
+				// selection is not expanded to cover the full height of the modal.")
+				// Capping a short list to its own content left the left column
+				// ending mid-dialog with dead ground under it and, once the sticky
+				// header was counted, a two-row list that scrolled. The picker
+				// stretches to the row like any column; only the RIGHT side is ever
+				// capped, for the inverse case below.
+				leftPaneMaxHeight = null;
 				rightPaneMaxHeight = null;
 			} else {
 				const available = leftPaneEl?.getBoundingClientRect().height ?? 0;
@@ -1507,14 +1513,14 @@
 							     modal from being the reader's only statement about the gate.
 							     When there IS a consequence alert it moves INSIDE it rather
 							     than stacking — see below. -->
-							<Alert color="blue" class="text-xs dark:bg-blue-950/60 dark:text-blue-200">
-								<PauseSolid class="h-4 w-4" />
+							<Alert color="blue" class="flex items-start text-xs dark:bg-blue-950/60 dark:text-blue-200">
+								<PauseSolid class="mt-0.5 h-4 w-4 shrink-0" />
 								{gateNote}
 							</Alert>
 						{/if}
 						{#if rollout && hasForceDeployAnnotation(rollout)}
-							<Alert color="blue" class="text-xs">
-								<ExclamationCircleSolid class="h-4 w-4" />
+							<Alert color="blue" class="flex items-start text-xs">
+								<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
 								Force deploy already set. Only version pinning available.
 							</Alert>
 						{/if}
@@ -1539,11 +1545,14 @@
 							     `bake-status.ts` and `AlertPanel` already use. -->
 							<Alert
 								color={level === 'typed' ? 'red' : 'yellow'}
-								class="text-xs {level === 'typed'
+								class="flex items-start text-xs {level === 'typed'
 									? 'dark:bg-red-950/60 dark:text-red-200'
 									: 'dark:bg-yellow-950/50 dark:text-yellow-100'}"
 							>
-								<ExclamationCircleSolid class="h-4 w-4" />
+								<!-- `shrink-0 mt-0.5`: flowbite's Alert is not a flex box, so the
+								     glyph sat on its own line above the text. The Alert gets
+								     `flex items-start` below and the glyph rides the first line. -->
+								<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
 								<!-- ⭐ ONE BOLD SENTENCE — THE CONSEQUENCE — THEN REST WEIGHT.
 								     (F10, design pass 2 re-check) The icon, the full notice,
 								     the paused-automation tail and the override `FactList`
