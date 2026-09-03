@@ -983,7 +983,7 @@
 	dismissable={false}
 	class="[&>div]:p-0 {selectedVersion
 		? 'max-w-4xl'
-		: 'max-w-md'} max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none"
+		: 'max-w-lg'} max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none"
 	aria-labelledby="cvm-title"
 >
 	<div class="flex max-h-[85vh] flex-col max-sm:h-full max-sm:max-h-none">
