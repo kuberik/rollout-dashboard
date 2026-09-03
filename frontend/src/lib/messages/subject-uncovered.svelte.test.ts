@@ -16,7 +16,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
  * `/apps`'s banner shipped `DEV is waiting on another deploy` on a page
  * listing four apps: the string was catalogued, reviewed, and wrong.
  *
- * So: `/versions`, `/versions/<slug>`, `/namespaces/<name>`, `/dependencies`,
+ * So: `/revisions`, `/revisions/<slug>`, `/namespaces/<name>`, `/dependencies`,
  * the command palette, and the two modals. The last three are not routes and
  * are the ones that matter most per pixel — a modal is the LAST SCREEN before
  * production changes, and the reader has by then left the page that named
@@ -49,8 +49,8 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
-import Versions from '../../routes/versions/+page.svelte';
-import VersionDetail from '../../routes/versions/[...slug]/+page.svelte';
+import Versions from '../../routes/revisions/+page.svelte';
+import VersionDetail from '../../routes/revisions/[...slug]/+page.svelte';
 import Namespace from '../../routes/namespaces/[name]/+page.svelte';
 import Dependencies from '../../routes/dependencies/+page.svelte';
 import CommandPalette from '$lib/CommandPalette.svelte';
@@ -186,15 +186,15 @@ async function mount(Comp: unknown, params: Record<string, string> = {}, url?: s
 // ═════════════════════════════════════════════════════════════════════════
 
 describe('the surfaces that had no render test name their subjects too', () => {
-	test('/versions', async () => {
+	test('/revisions', async () => {
 		const { container } = await mount(Versions);
 		await waitFor(() => expect(screen.getAllByText(/r3ccccc|r1aaaaa/i).length).toBeGreaterThan(0), {
 			timeout: 5000
 		});
-		assertSubject('/versions', container);
+		assertSubject('/revisions', container);
 	});
 
-	test('/versions/[...slug]', async () => {
+	test('/revisions/[...slug]', async () => {
 		// The slug is DERIVED from the fixture rather than hard-coded, so a
 		// change to how a revision addresses itself fails here loudly instead
 		// of quietly rendering the 404 branch and asserting nothing.
@@ -204,7 +204,7 @@ describe('the surfaces that had no render test name their subjects too', () => {
 		const ledger = ledgers[0];
 		expect(ledger.rows.length, 'the fixture ledger has no revisions').toBeGreaterThan(0);
 		const path = revisionPath(ledger.repoKey, ledger.rows[0].revision);
-		const slug = path.replace(/^\/versions\//, '');
+		const slug = path.replace(/^\/revisions\//, '');
 
 		const { container } = await mount(VersionDetail, { slug }, path);
 		await waitFor(
@@ -215,7 +215,7 @@ describe('the surfaces that had no render test name their subjects too', () => {
 			container.textContent,
 			'the slug resolved to the not-found branch; the test would then assert nothing'
 		).not.toMatch(/Revision not found/);
-		assertSubject('/versions/[...slug]', container);
+		assertSubject('/revisions/[...slug]', container);
 	});
 
 	test('/namespaces/[name]', async () => {

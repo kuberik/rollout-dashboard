@@ -737,7 +737,7 @@
 						: `${failing.length} deploys have failed`,
 				message:
 					failing.length === 1
-						? 'The last deploy did not complete, and nothing newer can go out until one does.'
+						? 'The last deploy did not complete, and nothing newer can deploy until one does.'
 						: failing.map((f) => `${f.a.appName} · ${f.c.tier}`).join(' · '),
 				href: failing.length === 1 ? a.rolloutHref : c.href,
 				action: failing.length === 1 ? 'Open rollout' : `Open ${c.tier}`
@@ -1008,7 +1008,7 @@
 			<Chip
 				role="rank"
 				label={`${a.behindBy} behind`}
-				title="{a.appName} here can still take {a.behindBy} newer version{a.behindBy === 1
+				title="{a.appName} here can still take {a.behindBy} newer build{a.behindBy === 1
 					? ''
 					: 's'}"
 				value={a.version}
@@ -1065,7 +1065,7 @@
 			<Chip
 				role="held"
 				label="held"
-				title={a.mark?.kind === 'held' ? a.mark.title : 'Held: a newer build exists, but no gate lets it through yet.'}
+				title={a.mark?.kind === 'held' ? a.mark.title : 'Held: a newer build exists, but no rule lets it through yet.'}
 				class="shrink-0"
 			/>
 		{/if}
@@ -1223,7 +1223,7 @@
 			{:else if c.heldCount > 0}
 				<span
 					class="text-xs font-medium whitespace-nowrap text-orange-950 dark:text-orange-300"
-					title="{c.heldCount} of {c.apps.length} apps here have newer versions that no gate will let in yet"
+					title="{c.heldCount} of {c.apps.length} apps here have newer builds that no rule will let in yet"
 				>
 					{c.heldCount} held
 				</span>

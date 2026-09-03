@@ -775,7 +775,7 @@
 					     card needed a person; now it names only the shared fact
 					     (a rule, not a person, decided this), and the self-clearing
 					     exception is stated per-card where it is true. -->
-					<span class="text-xs text-gray-500 dark:text-gray-400">blocked by a rule</span>
+					<span class="text-xs text-gray-500 dark:text-gray-400">held by a rule</span>
 				</div>
 				<div
 					class="grid gap-2 {held.length === 1

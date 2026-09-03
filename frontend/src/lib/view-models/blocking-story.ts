@@ -1259,7 +1259,13 @@ export function blockingStory(
 		// sentence unchanged.
 		headline = upstreamHeadline(upstream, subjectLead, isVerb);
 	} else {
-		headline = 'Automatic deploys are paused';
+		// (2026-09-03, vocabulary pass) Was 'Automatic deploys are paused' —
+		// one of five "paused" spellings the state-word census found for the
+		// SAME fact `HELD`/`is held` already name everywhere else. This is
+		// the generic fallback (a `check`/`clock` gate with nothing more
+		// specific to say), so it gets the same word every other branch
+		// above it already uses.
+		headline = `${subjectLead} ${isVerb} held`;
 	}
 
 	// ── THE CONSEQUENCE ─────────────────────────────────────────────────────

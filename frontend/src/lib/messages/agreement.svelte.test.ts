@@ -160,7 +160,7 @@ describe('adjacent surfaces do not contradict each other about one fleet', () =>
 				/\bNo healthy rollouts yet\b/
 			);
 			expect(text, `${name} claims the fleet is current`).not.toMatch(
-				/\b(everything is up to date|all up to date everywhere)\b/i
+				/\b(everything is up to date|all up to date everywhere|everything is on the newest|all on the newest everywhere)\b/i
 			);
 			unmount();
 			vi.unstubAllGlobals();

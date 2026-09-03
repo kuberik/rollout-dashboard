@@ -223,9 +223,9 @@ describe('⛔ the dev-vs-staging contradiction', () => {
 		// upgrade path it is — so the title may not claim anything about the
 		// build itself.
 		const t = rankTitle({ kind: 'behind', by: 14 }, 'STAGING');
-		expect(t).toBe('STAGING can still take 14 newer versions');
+		expect(t).toBe('STAGING can still take 14 newer builds');
 		expect(t).not.toMatch(/this app has/);
-		expect(rankTitle({ kind: 'behind', by: 1 }, 'DEV')).toBe('DEV can still take 1 newer version');
+		expect(rankTitle({ kind: 'behind', by: 1 }, 'DEV')).toBe('DEV can still take 1 newer build');
 	});
 });
 

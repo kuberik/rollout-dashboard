@@ -91,7 +91,7 @@ const PENDING: Record<string, Pending[]> = {
 			axis: 'environment',
 			why:
 				"`checkFailureTitle` renders as a Chip tooltip and reads *Health check payment-latency " +
-				'is failing … Automatic deploys HERE are paused until it passes*. On `/` the word ' +
+				'is failing … Automatic deploys HERE are held until it passes*. On `/` the word ' +
 				'`here` has no antecedent inside the tooltip and the card names its environment ' +
 				'AFTER the chip, so a reader who hovers -- or a screen-reader user who is handed ' +
 				'the accessible name alone -- is told a check is failing somewhere. On ' +

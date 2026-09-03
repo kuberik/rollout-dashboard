@@ -92,7 +92,7 @@ export function resolveAxis(
  * the group's own label, the page's `<h1>` and its description.
  */
 const PEER_REGION =
-	/(is waiting on an approval|is waiting on another deploy|things are holding|Something is holding|is pinned to|Held on .* on purpose|is stuck|Unchanged for |Health check .* is failing|\d+ of \d+ |All up to date|Never deployed)/;
+	/(is waiting on an approval|is waiting on another deploy|things are holding|Something is holding|is pinned to|Held on .* on purpose|is stuck|Unchanged for |Health check .* is failing|\d+ of \d+ |All on the newest|Never deployed)/;
 
 /**
  * The text of `scope` restricted to what a reader has ALREADY READ by the
@@ -185,7 +185,7 @@ export type Claim = {
  * THE CLAIMS UNDER TEST -- patterns, not literals, so a rewording is still
  * caught by the same case.
  *
- * `aggregates` names an axis a claim deliberately spans. `0 of 3 up to date`
+ * `aggregates` names an axis a claim deliberately spans. `0 of 3 on the newest`
  * is ABOUT three environments; demanding that it name one would be demanding
  * a different sentence.
  */
@@ -202,9 +202,9 @@ export const CLAIMS: Claim[] = [
 	},
 	{
 		id: 'blocking row',
-		re: /^(Waiting for [a-z]|Held by |Outside the |A check is not passing|Waiting for someone to approve it|No newer version is allowed yet|Waiting on a check or a time window)/
+		re: /^(Waiting for [a-z]|Held by |Outside the |A check is not passing|Waiting for someone to approve it|No newer build is allowed yet|Waiting on a check or a time window)/
 	},
-	{ id: 'rank title', re: /can still take \d+ newer version/, readFirst: true },
+	{ id: 'rank title', re: /can still take \d+ newer build/, readFirst: true },
 	{
 		id: 'deploy state word',
 		re: /^(deploy succeeded|deploy failed|checking|deploying|stopped|no deploy yet)$/
@@ -230,7 +230,7 @@ export const CLAIMS: Claim[] = [
 	{ id: 'stuck span', re: /Unchanged for |Unchanged long enough/, aggregates: [] },
 	{
 		id: 'up-to-date headline',
-		re: /^(All up to date|Never deployed|\d+ of \d+ up to date)$/,
+		re: /^(All on the newest|Never deployed|\d+ of \d+ on the newest)$/,
 		aggregates: ['environment'],
 		readFirst: true
 	},
@@ -304,7 +304,7 @@ export type AxisPlan = {
 	 * ⭐ PER-SURFACE AGGREGATE OVERRIDES, because `N of M` counts a different
 	 * SET on different pages and the claim table cannot know which.
 	 *
-	 * `0 of 3 up to date` inside an app card on `/apps` counts ENVIRONMENTS;
+	 * `0 of 3 on the newest` inside an app card on `/apps` counts ENVIRONMENTS;
 	 * the identical string in the `How it's going` card on `/envs/<name>`
 	 * counts APPS. Demanding that the second name an app is demanding a
 	 * different sentence, exactly as `Claim.aggregates` says. Recording it

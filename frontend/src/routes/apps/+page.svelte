@@ -795,11 +795,11 @@
 	function plainFleetTitle(vm: FleetStripVM): string {
 		if (vm.total === 0) return 'no environments';
 		if (vm.deployed === 0) return 'never deployed anywhere';
-		const parts = [`${vm.onHead} of ${vm.deployed} running the newest version`];
-		if (vm.spread > 1) parts.push(`${vm.spread} different versions live`);
+		const parts = [`${vm.onHead} of ${vm.deployed} running the newest build`];
+		if (vm.spread > 1) parts.push(`${vm.spread} different builds live`);
 		if (vm.pending > 0) parts.push(`${vm.pending} never deployed`);
-		if (vm.diverged > 0) parts.push(`${vm.diverged} running a version nobody released`);
-		if (vm.unknown > 0) parts.push(`${vm.unknown} whose version could not be placed`);
+		if (vm.diverged > 0) parts.push(`${vm.diverged} running a build nobody released`);
+		if (vm.unknown > 0) parts.push(`${vm.unknown} whose build could not be placed`);
 		return parts.join(' · ');
 	}
 
@@ -1088,8 +1088,8 @@
 							: joinClauses(peers.map((c) => c.envLabel.toLowerCase()));
 				lede = worstFree
 					? worstFree.story.blocked
-						? `${subject} ${peers.length <= 1 ? 'has' : 'have'} ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'} held`
-						: `${subject} can still take ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'}`
+						? `${subject} ${peers.length <= 1 ? 'has' : 'have'} ${worstFree.behindBy} newer build${worstFree.behindBy === 1 ? '' : 's'} held`
+						: `${subject} can still take ${worstFree.behindBy} newer build${worstFree.behindBy === 1 ? '' : 's'}`
 					: '';
 			}
 
@@ -1151,9 +1151,9 @@
 	const STEP_WHY: Record<Step, string> = {
 		investigate: 'its last deploy failed or it has stopped moving',
 		unpin: 'someone pinned a version here, so nothing newer can deploy',
-		approve: 'a newer version exists and a person has to pick it',
-		promote: 'a newer version is allowed here and nobody has deployed it',
-		unblock: 'newer versions are on hold until a check or time window passes',
+		approve: 'a newer build exists and a person has to pick it',
+		promote: 'a newer build is allowed here and nobody has deployed it',
+		unblock: 'newer builds are on hold until a check or time window passes',
 		rollback: 'the version running here is worse than the one before it',
 		open: 'open this app'
 	};
@@ -1355,8 +1355,8 @@
 				// What they need is the consequence: newer versions stop here.
 				message:
 					envs > 1
-						? `${plural(envs, 'environment')} of this app are failing. No newer version gets past them until a deploy succeeds.`
-						: `No newer version gets past ${cell.envLabel.toUpperCase()} until a deploy there succeeds.`,
+						? `${plural(envs, 'environment')} of this app are failing. No newer build gets past them until a deploy succeeds.`
+						: `No newer build gets past ${cell.envLabel.toUpperCase()} until a deploy there succeeds.`,
 				// ⭐ A MACHINE FACT WITH A NAME, SO IT GETS A LABEL. (2026-09-02)
 				// It was the sentence-shaped `Last attempt 3h ago · 8/31/2026,
 				// 1:00:00 PM` — two words of field name in front of a value. The
@@ -1418,7 +1418,7 @@
 				title: `${cell.envLabel.toUpperCase()} is pinned on ${app.appName}`,
 				message: `${pin ? `${pin.line}. ` : ''}${plural(
 					cell.behindBy,
-					'newer version'
+					'newer build'
 				)} available, and none will deploy until the pin is cleared${
 					otherHold ? `. Clearing it alone will not be enough: ${otherHold}` : ''
 				}.`,
@@ -1595,7 +1595,7 @@
 				     this line can say that is not already on screen. -->
 				{#if blockedCount > 0}
 					· <span class="font-medium text-gray-700 dark:text-gray-200"
-						>{blockedCount} blocked</span
+						>{blockedCount} held</span
 					>
 				{/if}
 				· {currentCount} on the newest
@@ -1863,11 +1863,11 @@
 						icon={RocketSolid}
 						title={attentionRows.length > 0 ? 'Everything else' : 'All apps'}
 						verdict={blockedCount > 0
-							? `${blockedCount} of ${appRows.length} blocked`
+							? `${blockedCount} of ${appRows.length} held`
 							: `${currentCount} of ${appRows.length} on the newest`}
 						verdictTone={blockedCount === 0 && currentCount === appRows.length ? 'good' : 'neutral'}
 						verdictTitle={blockedCount > 0
-							? `${blockedCount} of ${appRows.length} apps have a newer version that no gate will let in yet`
+							? `${blockedCount} of ${appRows.length} apps have a newer build that no rule will let in yet`
 							: `${currentCount} of ${appRows.length} apps have every deployed environment on the newest version available to it`}
 						padded={false}
 					>
@@ -2128,7 +2128,7 @@
 						<Chip
 							role="held"
 							label="held"
-							title="{app.appName} — a newer build exists here, but no gate lets it through yet"
+							title="{app.appName} — a newer build exists here, but no rule lets it through yet"
 							class="shrink-0"
 						/>
 					{/if}

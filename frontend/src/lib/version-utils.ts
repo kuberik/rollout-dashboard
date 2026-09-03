@@ -60,7 +60,7 @@ export function repoLabel(repoKey: string): string {
 // URL path form of a repoKey: the repo body as real path segments (each
 // segment individually encoded, slashes kept as separators) so the version
 // detail URL reads like
-//   /versions/github.com/littlechimera/kuberik-testing/87a11cc
+//   /revisions/github.com/littlechimera/kuberik-testing/87a11cc
 // instead of one opaque percent-encoded blob.
 export function repoSlug(repoKey: string): string {
 	return repoBody(repoKey)
@@ -69,12 +69,15 @@ export function repoSlug(repoKey: string): string {
 		.join('/');
 }
 
-// Single source of truth for linking to the version detail page. The repo path
-// and version become the trailing segments of a rest-param route
-// (/versions/[...slug]); the detail page splits the last segment back off as
+// Single source of truth for linking to the revision detail page. The repo
+// path and version become the trailing segments of a rest-param route
+// (/revisions/[...slug]); the detail page splits the last segment back off as
 // the version.
+//
+// (2026-09-03, vocabulary pass) `/versions` renamed to `/revisions` — see
+// `src/routes/versions/+page.ts`, which now redirects the old address here.
 export function versionPath(repoKey: string, version: string): string {
-	return `/versions/${repoSlug(repoKey)}/${encodeURIComponent(version)}`;
+	return `/revisions/${repoSlug(repoKey)}/${encodeURIComponent(version)}`;
 }
 
 // ── REVISION IS THE IDENTITY, THE LABEL IS ONLY A NAME FOR IT ────────────
@@ -146,7 +149,7 @@ export function displayVersionForTag(
 
 /** Single source of truth for linking to a revision's detail page. */
 export function revisionPath(repoKey: string, revision: string): string {
-	return `/versions/${repoSlug(repoKey)}/${encodeURIComponent(revisionSlug(revision))}`;
+	return `/revisions/${repoSlug(repoKey)}/${encodeURIComponent(revisionSlug(revision))}`;
 }
 
 /**

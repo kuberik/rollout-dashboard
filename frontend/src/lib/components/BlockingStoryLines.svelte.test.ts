@@ -292,7 +292,7 @@ describe('BlockReason: the consequence prints, the generated name does not', () 
 		});
 
 		// PRINTED.
-		expect(screen.getByText('No newer version is allowed yet').closest('details')).toBeNull();
+		expect(screen.getByText('No newer build is allowed yet').closest('details')).toBeNull();
 
 		// DISCLOSED, and reachable — not a tooltip. `ghd-5b2wn` exists to be
 		// pasted after `kubectl get`; a `title` alone is unreachable on a phone
@@ -308,7 +308,7 @@ describe('BlockReason: the consequence prints, the generated name does not', () 
 		// sentence, not a remedy, the same "Clears: outside the window"
 		// inversion `GateRecord.svelte`'s own fix already closed once. The
 		// record's `Clears` row is the REMEDY now (`r.clears`); the STATE
-		// (`r.short`, "No newer version is allowed yet") is not repeated
+		// (`r.short`, "No newer build is allowed yet") is not repeated
 		// here at all — it already printed above the control, asserted by
 		// the PRINTED check at the top of this test.
 		expect(details?.textContent).toContain(

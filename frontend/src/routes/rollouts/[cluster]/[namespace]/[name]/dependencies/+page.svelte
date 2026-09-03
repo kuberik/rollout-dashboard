@@ -870,10 +870,10 @@
 		const n = heldTags.size;
 		const one = heldProviders.length === 1;
 		return {
-			title: `${n} version${n === 1 ? '' : 's'} can't deploy yet`,
+			title: `${n} build${n === 1 ? '' : 's'} held`,
 			message: one
-				? `${heldProviders[0]} has to move first. Nothing newer goes out here until it does.`
-				: `${heldProviders.length} other services have to move first. Nothing newer goes out here until they do.`,
+				? `${heldProviders[0]} has to move first. Nothing newer deploys here until it does.`
+				: `${heldProviders.length} other services have to move first. Nothing newer deploys here until they do.`,
 			/**
 			 * ⭐ A SET, SO IT IS A RECORD AND THE TRIGGER COUNTS. (2026-09-02)
 			 * It was `Waiting on api, web` — a comma list with a verb in front
@@ -925,11 +925,11 @@
 		const plural = versions === 1 ? '' : 's';
 		return {
 			title: one
-				? `${names[0]} can't deploy until this one ships`
-				: `${names.length} services can't deploy until this one ships`,
+				? `${names[0]} is held until this one ships`
+				: `${names.length} services are held until this one ships`,
 			message: one
-				? `${versions} version${plural} of ${names[0]} need${plural ? '' : 's'} a newer ${contracts.join(', ')} than this rollout is serving.`
-				: `Between them, ${versions} version${plural} need a newer ${contracts.join(', ')} than this rollout is serving.`,
+				? `${versions} build${plural} of ${names[0]} need${plural ? '' : 's'} a newer ${contracts.join(', ')} than this rollout is serving.`
+				: `Between them, ${versions} build${plural} need a newer ${contracts.join(', ')} than this rollout is serving.`,
 			/**
 			 * THE SET IS THE SERVICES, and the same argument applies: `Waiting on
 			 * this: alpha, beta` is a list wearing a colon. Each name is a
@@ -955,7 +955,7 @@
 			? hasContracts
 				? 'What has to ship before this app can move, and what cannot move until it does.'
 				: 'Other services can only run what this app has deployed.'
-			: 'What has to happen before a newer version of this app can go out.'
+			: 'What has to happen before a newer build of this app can deploy.'
 	);
 	/**
 	 * ⭐ THE SAME GRAPH LANGUAGE, AT ONE NODE'S SCALE.
@@ -1257,12 +1257,12 @@
 							icon={ShareNodesSolid}
 							title="Waiting on other services"
 							verdict={heldTags.size > 0
-								? `${heldTags.size} version${heldTags.size === 1 ? '' : 's'} held`
+								? `${heldTags.size} build${heldTags.size === 1 ? '' : 's'} held`
 								: 'Nothing held'}
 							verdictTone={heldTags.size > 0 ? 'adverse' : 'neutral'}
 							verdictTitle={heldTags.size > 0
-								? 'Versions this app has built that a contract will not let it deploy'
-								: 'No version this app has built is being held by a contract'}
+								? 'Builds this app has that a contract will not let it deploy'
+								: 'No build this app has is being held by a contract'}
 							padded={false}
 							class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
 						>
@@ -1449,7 +1449,7 @@
 												     every other held row in the product. -->
 												<p class="text-xs text-gray-500 dark:text-gray-400">
 													<span class="font-medium text-gray-700 dark:text-gray-300">{name}</span>
-													can't deploy this yet
+													is held
 												</p>
 												<div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
 													<Chip
@@ -1458,7 +1458,7 @@
 														value={w.display}
 														valueTitle={w.tag}
 														wide
-														title="{name} cannot deploy {w.tag} yet in {w.envs.join(', ')}"
+														title="{name} is held on {w.tag} in {w.envs.join(', ')}"
 														class="shrink-0"
 													/>
 													{#if hasChain && w.envs.length > 0}
@@ -1536,8 +1536,8 @@
 							verdict={providedVerdict}
 							verdictTone={heldRolloutCount > 0 ? 'adverse' : 'neutral'}
 							verdictTitle={heldRolloutCount > 0
-								? 'Rollouts with a version they cannot deploy until this rollout ships a newer contract'
-								: 'Rollouts gated on the contract version this rollout has deployed'}
+								? 'Rollouts with a build they cannot deploy until this rollout ships a newer contract'
+								: 'Rollouts held on the contract version this rollout has deployed'}
 							padded={false}
 							class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
 						>
@@ -1586,7 +1586,7 @@
 												     this one rollout, so there is no single number and
 												     the page does not pick one. Each row prints its
 												     own below. -->
-												The gates have read different versions from this rollout.
+												The rules have read different versions from this rollout.
 											{:else if c.providedTag}
 												From <span class="t-code-sm">{c.providedTag}</span> ·
 											{:else if !c.providedVersion}
@@ -1643,7 +1643,7 @@
 														{#if d.places.length > 1 && d.holds.length > 0}
 															<span
 																class="ml-auto shrink-0 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
-																title="Gated on this in {d.places
+																title="Held on this in {d.places
 																	.map((p) => p.namespace)
 																	.join(', ')}"
 															>
@@ -1720,7 +1720,7 @@
 																	value={h.display}
 																	valueTitle={h.tag}
 																	wide
-																	title="{d.name} cannot deploy {h.tag} until this rollout serves a newer {c.contract}"
+																	title="{d.name} is held on {h.tag} until this rollout serves a newer {c.contract}"
 																	class="shrink-0"
 																/>
 																{#if d.places.length > 1}

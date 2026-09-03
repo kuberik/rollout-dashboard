@@ -134,7 +134,7 @@ describe('manualDeployNote — the sentence inside the deploy modal', () => {
 
 	it('restates the gate AND says this deploy is not held by it', () => {
 		const note = manualDeployNote(autoDeployState(rollout(), gates))!;
-		expect(note).toContain('Automatic promotion is paused');
+		expect(note).toContain('Automatic promotion is held');
 		expect(note).toContain('Business Hours Only');
 		// The half the old UI never said, and that cost a production change.
 		expect(note).toContain('applies immediately');

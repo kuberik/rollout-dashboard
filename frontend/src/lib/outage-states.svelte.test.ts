@@ -7,7 +7,7 @@ import RolloutGrid from '$lib/RolloutGrid.svelte';
 import Apps from '../routes/apps/+page.svelte';
 import Activity from '../routes/activity/+page.svelte';
 import Environments from '../routes/environments/+page.svelte';
-import Versions from '../routes/versions/+page.svelte';
+import Versions from '../routes/revisions/+page.svelte';
 
 /**
  * ⭐ FINDING 2 OF THE 2026-08-31 OPERATOR CRITIQUE, PINNED.

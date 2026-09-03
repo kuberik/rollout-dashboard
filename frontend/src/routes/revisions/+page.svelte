@@ -394,7 +394,7 @@
 		if (!b) return '';
 		const where = b.envs.join(', ');
 		const who = b.apps.length === 1 ? b.apps[0] : `${b.apps.length} services`;
-		return `${who} cannot deploy it in ${where} yet.`;
+		return `${who} ${b.apps.length === 1 ? 'is' : 'are'} held in ${where}.`;
 	});
 
 	/**
@@ -465,7 +465,7 @@
 	 */
 	function scopeRecord(n: number): string {
 		const services = `${n} service${n === 1 ? '' : 's'}`;
-		return `Everything below is counted across the ${services} that have a release for this commit. Each service ships this commit as its own release, with its own gates.`;
+		return `Everything below is counted across the ${services} that have a release for this commit. Each service ships this commit as its own release, with its own rules.`;
 	}
 
 	const PENDING_RECORD = 'Your services can deploy these commits. None of them has yet.';
@@ -624,7 +624,7 @@
 			<AlertPanel
 				severity="warning"
 				icon={blockage.window.length > 0 ? CalendarMonthSolid : UserCircleSolid}
-				title="{blockage.head.short} can’t go any further yet"
+				title="{blockage.head.short} is held"
 				message={bannerMessage}
 				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
 				footnoteCount={bannerRuleCount > 0 ? bannerRuleCount : undefined}
@@ -633,10 +633,10 @@
 				{#snippet extra()}
 					<Chip
 						role="alarm"
-						label="{blockage.slots.length} blocked"
+						label="{blockage.slots.length} held"
 						wide
 						title="{blockage.slots
-							.length} places — a place is one service in one environment — are waiting on a gate"
+							.length} places — a place is one service in one environment — are held by a rule"
 					/>
 				{/snippet}
 				{#snippet actions()}

@@ -709,7 +709,7 @@ export function buildState(coverage: RevisionCoverage): BuildState {
 			? {
 					key: 'held',
 					word: `held in ${behind.length} place${plural(behind.length)}`,
-					title: `${behind.length} place${plural(behind.length)} run this revision on an older release, and a newer one is held by a gate`
+					title: `${behind.length} place${plural(behind.length)} run this revision on an older release, and a newer one is held by a rule`
 				}
 			: {
 					key: 'held',

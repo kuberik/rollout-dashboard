@@ -459,7 +459,7 @@ describe('blockingStory — the defect the critic filed', () => {
 		);
 		expect(s.severity).toBe('warning');
 		expect(s.selfClearing).toBe(true);
-		expect(s.headline).toBe('Automatic deploys are paused');
+		expect(s.headline).toBe('DEV is held');
 		expect(s.clearsAt).toBe('2026-08-31T13:00:00Z');
 		expect(s.resolution).toContain('clears on its own');
 	});

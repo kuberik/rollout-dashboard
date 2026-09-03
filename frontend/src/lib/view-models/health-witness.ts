@@ -140,7 +140,7 @@ export function checkFailureTitle(f: CheckFailure): string {
 	// product was carrying both scopes for one fact and only one of them was
 	// true. `blocking-story.ts`'s standing rule — never say "deployments are
 	// blocked" — applies here for the same reason.
-	return `${subject} is failing${tail}. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.`;
+	return `${subject} is failing${tail}. Automatic deploys here are held until it passes; a deploy you start by hand still applies.`;
 }
 
 /**

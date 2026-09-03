@@ -413,7 +413,7 @@
 		const who = apps.length === 1 ? apps[0] : `${apps.length} services`;
 		// THE BANNER SAYS THE BLOCK AND ONLY THE BLOCK — the hero directly under
 		// it states the coverage at 24px over the bar that draws it.
-		return `${who} cannot deploy it in ${envs} yet.`;
+		return `${who} ${apps.length === 1 ? 'is' : 'are'} held in ${envs}.`;
 	});
 
 	// THE ONE MUTATING CONTROL, and the same wiring as before: preselect
@@ -562,9 +562,9 @@
 				// does know the cluster can use them and one who does not can ignore
 				// them.
 				text: until
-					? `Deploys here are paused for another ${until}`
+					? `Held for another ${until}`
 					: w?.names.length
-						? 'Deploys here are paused on a schedule'
+						? 'Held by a deploy window'
 						: 'A check has not passed yet — it clears on its own',
 				gates: s.notPassingGates
 			});
@@ -736,7 +736,7 @@
 
 <div class="rev-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<a
-		href="/versions"
+		href="/revisions"
 		class="t-micro mb-4 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
 	>
 		<ArrowLeftOutline class="h-3 w-3" /> All revisions
@@ -771,7 +771,7 @@
 		<ErrorState
 			error={query.error}
 			subject="this revision"
-			backHref="/versions"
+			backHref="/revisions"
 			backLabel="Back to all revisions"
 			onRetry={() => query.refetch()}
 			isRetrying={query.isFetching}
@@ -821,7 +821,7 @@
 				way out INSIDE the centred message, and this hand-rolled block
 				was the one that did not.
 			-->
-			<a href="/versions" class="nav-link mt-4">
+			<a href="/revisions" class="nav-link mt-4">
 				<ArrowLeftOutline class="h-4 w-4" /> All revisions
 			</a>
 		</div>
@@ -897,7 +897,7 @@
 			<AlertPanel
 				severity="warning"
 				icon={bannerIcon}
-				title="{row.short} can’t go any further yet"
+				title="{row.short} is held"
 				message={bannerMessage}
 				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
 				footnoteCount={bannerRuleCount > 0 ? bannerRuleCount : undefined}
@@ -906,9 +906,9 @@
 				{#snippet extra()}
 					<Chip
 						role="alarm"
-						label="{blockedSlots.length} blocked"
+						label="{blockedSlots.length} held"
 						wide
-						title="{blockedSlots.length} places — a place is one service in one environment — are waiting on a gate"
+						title="{blockedSlots.length} places — a place is one service in one environment — are held by a rule"
 					/>
 				{/snippet}
 			</AlertPanel>
@@ -1150,7 +1150,7 @@
 									     is about. `scan.ts` reads `title`, so it stays pinned. -->
 									<span
 										class="t-micro text-gray-500 dark:text-gray-400"
-										title="Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be up to date."
+										title="Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest."
 										>{rank.of}</span
 									>
 								{:else}
@@ -1325,7 +1325,7 @@
 																{#each r.gates as gate (gate)}
 																	<span
 																		class="t-code-sm text-gray-500 dark:text-gray-400"
-																		title="Gate {gate}">{gate}</span
+																		title="Rule {gate}">{gate}</span
 																	>
 																{/each}
 															</div>
@@ -1444,7 +1444,7 @@
 															<Chip
 																role="held"
 																label="held"
-																title="A newer release of this build exists and no gate lets it through yet"
+																title="A newer release of this build exists and no rule lets it through yet"
 															/>
 														{:else}
 															<span>— on an older release of it</span>

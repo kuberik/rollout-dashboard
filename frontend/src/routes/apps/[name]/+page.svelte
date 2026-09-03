@@ -534,7 +534,7 @@
 		if (reason.kind === 'behind') return `Behind ${reason.peerEnv}, which moved on ${span} ago`;
 		const n = reason.candidateCount;
 		const gates =
-			reason.blockingGates.length > 0 ? `, blocked by ${reason.blockingGates.join(', ')}` : '';
+			reason.blockingGates.length > 0 ? `, held by ${reason.blockingGates.join(', ')}` : '';
 		return `${n} ${n === 1 ? 'build' : 'builds'} waiting for ${span}${gates}`;
 	}
 
@@ -735,12 +735,12 @@
 	/**
 	 * ⭐ THE OTHER DIRECTION: WHO IS WAITING ON THIS APP. (2026-09-03,
 	 * operator-walk finding B2 — "every `Open hello-api-app →` CTA lands on
-	 * `/apps/hello-api-app`, which prints `3 of 3 up to date` and not one word
+	 * `/apps/hello-api-app`, which prints `3 of 3 on the newest` and not one word
 	 * that three rollouts are held on it.")
 	 *
 	 * Everything above this page's fold is about whether THIS app is up to
 	 * date — the correct, but incomplete, half of the question for a
-	 * PROVIDER. `hello-api-app` can be `3 of 3 up to date` and still be the
+	 * PROVIDER. `hello-api-app` can be `3 of 3 on the newest` and still be the
 	 * one thing three OTHER rollouts cannot ship past. That fact already
 	 * exists on the CONSUMER's own Dependencies tab (`3 rollouts held across
 	 * 1 service`); it was nowhere on the page every `Open <provider> →` CTA
@@ -1513,7 +1513,7 @@
 	 * AND THE REASSURANCE IS NOT DELETED, IT IS PROMOTED TO A MEASUREMENT.
 	 * The state card must render either way, its header carries a hard
 	 * right-aligned rollup by construction, and on a healthy app that rollup
-	 * reads `3 of 3 up to date` in the product's one state green. That is the
+	 * reads `3 of 3 on the newest` in the product's one state green. That is the
 	 * grammar's own `3/3 healthy` idiom: a reader takes the card's answer
 	 * without reading a row of it, and the answer is COUNTED rather than
 	 * claimed. A sentence asserting nothing is wrong is a weaker object than
@@ -1917,7 +1917,7 @@
 	 * The rollup on the state card.
 	 *
 	 * ⛔ IT SAID `1/7 on newest`. `on newest` is this product's own shorthand
-	 * and nothing on the page taught it; `1 of 7 up to date` is the phrase
+	 * and nothing on the page taught it; `1 of 7 on the newest` is the phrase
 	 * `/apps`, `/environments` and `/envs/[name]` now all print for the same
 	 * fact, in the reference page's own `3/3 healthy` rollup idiom.
 	 */
@@ -1925,7 +1925,7 @@
 		const deployed = envFacts.filter((f) => f.version);
 		if (deployed.length === 0) return 'nothing deployed';
 		const onNewest = deployed.filter((f) => f.rank === 0).length;
-		return `${onNewest} of ${deployed.length} up to date`;
+		return `${onNewest} of ${deployed.length} on the newest`;
 	});
 
 	/**
@@ -2393,7 +2393,7 @@
 					pinned.block.candidateCount,
 					'newer build'
 				)} available, and none will deploy until the pin is cleared.`,
-				footnote: 'The gates on this environment are blocking too, but the pin is the cause.',
+				footnote: 'The rules on this environment are also held, but the pin is the cause.',
 				pulse: false
 			};
 		}
@@ -2872,7 +2872,7 @@
 		<!-- ═══ THIS APP AS A PROVIDER: WHO IS WAITING ON IT ══════════════════
 		     (2026-09-03, operator-walk finding B2.) INDEPENDENT of the banner
 		     above — this app can be perfectly on time (the fleet block below
-		     can read `3 of 3 up to date`) and still be the one thing another
+		     can read `3 of 3 on the newest`) and still be the one thing another
 		     app cannot ship past. That is a DIFFERENT fact from "is this app
 		     healthy" and gets its own banner rather than overloading the one
 		     above, which is scoped to this app's OWN state. -->
@@ -3721,7 +3721,7 @@
 				     you` still sits under it, and the pipeline is the object both of
 				     them are ABOUT. A healthy app is the same page with the alarm
 				     absent — an unbroken run of status circles down to the last
-				     environment and a green `3 of 3 up to date` in the header's rollup.
+				     environment and a green `3 of 3 on the newest` in the header's rollup.
 				     That is a MEASUREMENT, not a reassurance: a fraction proves what a
 				     sentence could only claim, and the human has rejected the sentence
 				     on this page by name.

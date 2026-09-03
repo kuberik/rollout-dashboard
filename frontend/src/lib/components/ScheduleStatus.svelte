@@ -463,10 +463,14 @@
 				>
 				· {formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}
 			{:else}
-				Automatic deploys paused by {blockingSchedules.length} schedule{blockingSchedules.length ===
-				1
-					? ''
-					: 's'}
+				<!-- (2026-09-03, vocabulary pass) The generic obstacle noun is
+				     `rule` everywhere — this used to say `1 schedule` while the
+				     app page's disclosure for the SAME gate said `1 rule`, 90px
+				     apart on the live product. `schedule` stays as the KIND word
+				     where the kind is what matters (the popover this button
+				     opens); the count itself now agrees with every other count
+				     in the product. -->
+				Held by {blockingSchedules.length} rule{blockingSchedules.length === 1 ? '' : 's'}
 			{/if}
 		</p>
 	{/if}
@@ -554,7 +558,10 @@
 					id="schedule-details"
 					class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-800/10 px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-400/30 transition hover:bg-amber-800/15 hover:ring-amber-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15"
 				>
-					{blockingSchedules.length} schedule{blockingSchedules.length > 1 ? 's' : ''}
+					<!-- (2026-09-03, vocabulary pass) Was `N schedule(s)` — the
+					     generic obstacle noun is `rule` everywhere; see the
+					     compact-form note above. -->
+					{blockingSchedules.length} rule{blockingSchedules.length > 1 ? 's' : ''}
 				</button>
 			{/snippet}
 		</AlertPanel>
@@ -569,9 +576,14 @@
 				<div class="flex items-center gap-2">
 					<CalendarWeekSolid class="h-4 w-4 text-amber-600 dark:text-amber-300" />
 					<p class="text-sm font-semibold tracking-tight">
+						<!-- (2026-09-03, vocabulary pass) `deploy window` is the KIND
+						     word this product uses for a schedule gate everywhere
+						     else (`GateRecord`'s `Kind` field, `BlockReason`'s
+						     `check or deploy window`) — this popover was the one
+						     surface still saying `schedule`. -->
 						{blockingSchedulesFull.length === 1
-							? 'Schedule holding automatic deploys'
-							: 'Schedules holding automatic deploys'}
+							? 'Deploy window holding automatic deploys'
+							: 'Deploy windows holding automatic deploys'}
 					</p>
 				</div>
 			</div>

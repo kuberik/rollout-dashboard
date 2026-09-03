@@ -44,8 +44,8 @@
 		apps: { label: 'Apps', href: '/apps', icon: RocketOutline },
 		environments: { label: 'Environments', href: '/environments', icon: LayersSolid },
 		envs: { label: 'Environments', href: '/environments', icon: LayersSolid },
-		versions: { label: 'Revisions', href: '/versions', icon: TagOutline },
-		revisions: { label: 'Revisions', href: '/versions', icon: TagOutline },
+		versions: { label: 'Revisions', href: '/revisions', icon: TagOutline },
+		revisions: { label: 'Revisions', href: '/revisions', icon: TagOutline },
 		namespaces: { label: 'Rollouts', href: '/rollouts', icon: GridOutline },
 		activity: { label: 'Activity', href: '/activity', icon: ClockOutline }
 	};

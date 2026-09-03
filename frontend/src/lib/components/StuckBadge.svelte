@@ -66,7 +66,7 @@
 		if (reason.kind === 'promotion') {
 			const waitingAgo = formatTimeAgoCompact(new Date(Date.now() - reason.waitingMs).toISOString());
 			const n = reason.candidateCount;
-			const blockedBy = reason.blockingGates.length > 0 ? `, blocked by ${reason.blockingGates.join(', ')}` : '';
+			const blockedBy = reason.blockingGates.length > 0 ? `, held by ${reason.blockingGates.join(', ')}` : '';
 			return `Stuck — ${n} release${n === 1 ? '' : 's'} waiting for ${waitingAgo}${blockedBy}`;
 		}
 		const peerAgo = formatTimeAgoCompact(new Date(Date.now() - reason.peerAdvancedMs).toISOString());

@@ -300,7 +300,7 @@ export function rankRole(v: RankVerdict): 'newest' | 'rank' | 'diverged' | 'unra
 export function rankTitle(v: RankVerdict, subject: string): string {
 	switch (v.kind) {
 		case 'newest':
-			return `${subject} is on the newest version available to it`;
+			return `${subject} is on the newest build available to it`;
 		case 'behind':
 			// ⛔ THE SUBJECT IS THE ENVIRONMENT'S UPGRADE PATH, NOT THE BUILD.
 			// (2026-08-31) It read *"older than the newest one this app has"*,
@@ -309,11 +309,11 @@ export function rankTitle(v: RankVerdict, subject: string): string {
 			// false for at least one of them. This says whose path it is and
 			// what the number counts, which is also exactly what the Change
 			// Version list will show.
-			return `${subject} can still take ${v.by} newer version${v.by === 1 ? '' : 's'}`;
+			return `${subject} can still take ${v.by} newer build${v.by === 1 ? '' : 's'}`;
 		case 'diverged':
-			return `${subject} is running a version that is on no environment’s release list`;
+			return `${subject} is running a build that is on no environment’s release list`;
 		default:
-			return `${subject}'s distance from the newest version cannot be resolved — the version it is running is not in its own release list`;
+			return `${subject}'s distance from the newest build cannot be resolved — the build it is running is not in its own release list`;
 	}
 }
 

@@ -955,7 +955,7 @@
 				.filter((s): s is string => s !== null);
 			return reopeners.length > 0 ? joinClauses([pinClause, ...reopeners]) : pinClause;
 		}
-		return gates.length === 1 ? 'by a gate' : `by ${gates.length} gates`;
+		return gates.length === 1 ? 'by a rule' : `by ${gates.length} rules`;
 	}
 
 	/**
@@ -972,7 +972,7 @@
 	function heldClears(gates: ClassifiedGate[]): string {
 		if (gates.length === 0) return '';
 		if (blockStory.pinnedTo)
-			return 'Clearing the pin is what lets this deploy automatically — the gates below may also still apply.';
+			return 'Clearing the pin is what lets this deploy automatically — the rules below may also still apply.';
 		if (gates.some((g) => g.clears === 'unknown'))
 			return 'This dashboard cannot tell what clears this — it may or may not need a person.';
 		if (gates.some((g) => g.clears === 'person')) return 'This will not clear on its own.';
@@ -993,7 +993,7 @@
 		if (gates.some((g) => g.clears === 'upstream')) kinds.push('another deploy');
 		if (gates.some((g) => g.clears === 'clock')) kinds.push('a deploy window');
 		if (gates.some((g) => g.clears === 'check')) kinds.push('a check');
-		return kinds.length > 0 ? `Waiting on ${joinClauses(kinds)}` : 'Held by gates';
+		return kinds.length > 0 ? `Waiting on ${joinClauses(kinds)}` : 'Held by rules';
 	}
 
 	// Computed property to determine if dashboard is managing the wantedVersion field
@@ -1723,11 +1723,11 @@
 					(a `Deploying`/`InProgress` entry is pushed immediately), long
 					before any pod actually runs it. Measured live: fifteen seconds
 					after pressing Deploy, `Available Version Upgrades` already read
-					`up to date` while zero pods had run the new build. `releaseCandidates.length
+					`on the newest` while zero pods had run the new build. `releaseCandidates.length
 					=== 0` says "nothing newer is ALLOWED"; it does not say "this is
 					SERVING". `stillCatchingUp` is the second half of that fact —
 					true exactly while the current history entry hasn't settled —
-					and every `up to date` verdict on this card checks it too.
+					and every `on the newest` verdict on this card checks it too.
 				-->
 				{@const stillCatchingUp =
 					latestEntry.bakeStatus === 'Deploying' || latestEntry.bakeStatus === 'InProgress'}
@@ -2025,7 +2025,7 @@
 					-->
 					<AlertPanel
 						severity="warning"
-						title="Automatic deploys are paused"
+						title="Held"
 						message={deploymentBlockedCondition.message || 'Health checks are unhealthy.'}
 						footnote="A deploy you start by hand still applies immediately."
 						pulse
@@ -2729,9 +2729,9 @@
 									that IS current — reached a header with no right-aligned answer at
 									all: title, icon, then straight to the refresh button. That is the
 									headerless-box defect one level down, not fixed by having a title.
-									`up to date` is the rollup's other value, in the same state-green
-									the rest of the product answers this question with (`3/3 up to
-									date`, `All up to date`).
+									`on the newest` is the rollup's other value, in the same state-green
+									the rest of the product answers this question with (`3/3 on the
+									newest`, `All on the newest`).
 								-->
 								<div class="ml-auto flex items-center gap-2">
 									{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
@@ -2743,7 +2743,7 @@
 											label="{rollout.status.releaseCandidates.length} newer"
 										/>
 									{:else if stillCatchingUp}
-										<!-- ⭐ P10: NOT `up to date` YET. `releaseCandidates` is
+										<!-- ⭐ P10: NOT `on the newest` YET. `releaseCandidates` is
 										     already empty (nothing newer is ALLOWED) but the current
 										     history entry hasn't settled — see `stillCatchingUp`'s own
 										     comment. Same neutral ink `BakeStatusIcon`'s in-flight
@@ -2754,7 +2754,7 @@
 										>
 									{:else}
 										<span class="text-xs font-medium text-green-700 dark:text-green-400"
-											>up to date</span
+											>on the newest</span
 										>
 									{/if}
 								</div>
@@ -2911,7 +2911,7 @@
 																	it is held. Pressing
 																	<span class="font-medium text-gray-900 dark:text-white"
 																		>Deploy</span
-																	> applies it immediately — gates only hold back automatic promotion.
+																	> applies it immediately — rules only hold back automatic promotion.
 																</p>
 																{#each blockingGates as gate}
 																	<!-- WHAT CLEARS THIS ONE, from the same join
@@ -2927,7 +2927,7 @@
 																			<p class="font-medium text-gray-900 dark:text-white">
 																				{getGatePrettyName(gate) ||
 																					gate.metadata?.name ||
-																					'Unknown Gate'}
+																					'Unknown rule'}
 																			</p>
 																			{#if getGateDescription(gate)}
 																				<p class="text-xs text-gray-500 dark:text-gray-400">
@@ -3114,12 +3114,12 @@
 								</div>
 							{/if}
 							<!--
-								⛔ THE `up to date` EMPTY STATE — A CENTRED 32px CHECK PLUS
+								⛔ THE `on the newest` EMPTY STATE — A CENTRED 32px CHECK PLUS
 								`Up to date — no upgrades available` IN A 40px-PADDED
 								BODY — USED TO RENDER HERE UNCONDITIONALLY IN THE FINAL
 								BRANCH, AND IT WAS THE CARD'S ROLLUP RESTATED. (P9, second
 								re-check, finding 14) The header 32px above already answers
-								the question this body existed to answer — the `up to date`
+								the question this body existed to answer — the `on the newest`
 								pill IS the green tick — so an up-to-date rollout spent
 								710×230 (measured) drawing one fact twice. When there ARE no
 								candidates and the current version is not custom, the card

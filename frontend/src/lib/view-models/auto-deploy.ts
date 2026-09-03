@@ -134,7 +134,7 @@ export function autoDeployWhy(state: AutoDeployState): string {
 			case 'failed':
 				// NOT `failed its bake`. `bake` is the CRD's field name and the
 				// product's word for that phase is `checking` (`bake-status.ts`).
-				// This clause sits inside `Automatic promotion is paused right
+				// This clause sits inside `Automatic promotion is held right
 				// now — …`, which is prose an operator reads, so it takes the
 				// product's spelling like every other sentence.
 				parts.push('the last deploy failed its checks');
@@ -154,7 +154,7 @@ export function autoDeployWhy(state: AutoDeployState): string {
  */
 export function manualDeployNote(state: AutoDeployState): string | null {
 	if (!state.paused) return null;
-	return `Automatic promotion is paused right now — ${autoDeployWhy(state)}. That does not hold this deploy: it applies immediately.`;
+	return `Automatic promotion is held right now — ${autoDeployWhy(state)}. That does not hold this deploy: it applies immediately.`;
 }
 
 /**

@@ -692,7 +692,7 @@
 				namedGate?.kind === 'dependency' && !!namedGate.contract && !!namedGate.have && !!namedGate.need;
 			const clause = drawsVersions
 				? `waiting for ${namedGate!.subject} to ship ${namedGate!.contract} ${namedGate!.need} — it is on ${namedGate!.have}`
-				: `waiting on ${g} gate${g === 1 ? '' : 's'}`;
+				: `held by ${g} rule${g === 1 ? '' : 's'}`;
 			return {
 				severity: 'warning',
 				// ⭐ THE STORY'S OWN GLYPH, NOT A HAND-PICKED CALENDAR. (2026-09-03)
@@ -703,14 +703,14 @@
 				// is not a schedule. `blocked[0].story` is a full `BlockingStory`,
 				// so it asks the same question every other surface asks.
 				icon: iconForStory(story),
-				title: `Promotion into ${envName} is blocked`,
+				title: `Promotion into ${envName} is held`,
 				message: `${n} newer build${n === 1 ? '' : 's'} of ${blocked[0].appName} ${n === 1 ? 'is' : 'are'} ${clause}.`,
 				gates: [...gates],
 				// ⭐ THE CONTROL DEEP-LINKS TO WHERE THE FIX IS DRAWN. A contract's
 				// requirement lives on the Dependencies tab, not Overview — every
 				// other gate kind keeps landing on Overview, unchanged.
 				href: rolloutHref(blocked[0].slot.cell, drawsVersions ? 'dependencies' : undefined),
-				action: 'Review gates'
+				action: 'Review rules'
 			};
 		}
 

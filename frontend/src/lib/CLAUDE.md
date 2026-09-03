@@ -668,3 +668,122 @@ remaining gap rather than waiting for the next scheduled poll.
 ⛔ **Not the modal's own pending state.** `deploying` (the confirm button's own
 spinner/label while ITS fetch is in flight) is that dialog's concern and stays there; this
 is the gap AFTER the modal has already told the operator "sent."
+
+## The vocabulary decision — four concepts, one spelling each (2026-09-03, coordinator task, operator-walk finding)
+
+An operator walk playing a new engineer found four concepts spelled many ways within three
+clicks: 14 spellings of "a rollout that cannot move," 9 of "the thing stopping it," 13 across
+"the newest build" and its gap, and 9 verbs plus 6 names for "moving it" and the object
+itself. Each individual sentence was defensible on its own page; the sprawl only exists in
+aggregate, which is exactly why no single pass had caught it. `src/lib/messages/vocabulary.test.ts`
+is the guard that keeps it from coming back — a denylist regex per concept below, with an
+allowlist for the deliberate, narrower exceptions named in each paragraph.
+
+**(a) The state is `held`.** Chip `HELD`; sentence "is held" (`Held: a newer build exists,
+but no rule lets it through yet.`, `hello-frontend-app is held`). `blocked`, `paused`,
+"can't go any further yet," "cannot deploy it in dev yet," and every bare "waiting on …"
+used AS THE STATE LABEL are retired — they were four to five competing spellings of the
+identical fact `held` already owns everywhere else. A sentence may still say what it is
+waiting FOR as the cause (`held by hello-api-app ^1.67.0`, `Waiting for hello-api-app to ship
+a newer api`) — that is elaboration, not a rival state word, and stays. Three narrower states
+are NOT folded into `held` and were never the problem: `stuck` is reserved for a stalled
+in-flight deploy or a person gate that has genuinely wedged (`detectStuckPromotion`/
+`detectStuckBehind`, `story.person.length === 0 && story.unknown.length === 0` — a gate
+correctly refusing a candidate is not stuck); `pinned` is its own state, a person's choice
+rather than a rule's refusal, and keeps its own established consequence sentence
+(`automatic deploys are paused until the pin is cleared`) — that ONE sentence, spelled
+identically everywhere pin appears, is not a competing spelling of `held`, it is `pinned`'s
+own; `Trailing` means behind but promoting normally (not held at all) and `Needs you` means
+a person specifically must act — both keep their names because they answer a different
+question than "can this move on its own."
+
+**(b) The obstacle is a `rule` everywhere**, as the generic, countable noun — `1 rule`,
+`2 rules`, `Review rules`, `N rules` in every disclosure trigger and popover. `gate` is
+retired from ALL user-facing text (never in a title, message, chip label, or button — it
+survives only as the internal type/field name, `GateSummary`/`ClassifiedGate`/
+`gate.kuberik.com/…` annotation keys, which a reader never sees). The rule's KIND is named
+where the kind is what matters: `contract` (a cross-service dependency), `deploy window`
+(never `schedule` — `schedule` is retired as the KIND word too, though the underlying
+`RolloutSchedule` object and its own zone/label fields keep their real names), `approval`,
+`health check`. The two disclosures for the SAME schedule gate that used to disagree —
+`1 rule` on the app page, `1 schedule` on the rollout page's `ScheduleStatus` popover — now
+both say `1 rule`; the popover itself, which genuinely is a list of deploy windows, is still
+titled `Deploy window(s) holding automatic deploys`, because that is the kind, not the
+count. The pretty name (`Business Hours Only`) always leads a rendered clause; the
+Kubernetes name (`schedule-gate-fk44d`) is the record's identifier row (`GateRecord`'s
+`Rule` fact), never printed as if it were a second name for the same thing. `1 contract` on
+the Dependencies tab is a deliberate exception, not a leftover: that tab's every row IS a
+contract, so naming the kind there is the kind mattering, exactly as this rule intends —
+it is not a stray fifth spelling of the same disclosure.
+
+**(c) `newest` names the top of the line** (chip `NEWEST`, "is on the newest build available
+to it") — this was already the closed, colour-audited chip vocabulary from the 2026-09-02
+rank-badge passes and did not need to move. The gap is `N behind` everywhere (chip
+`N BEHIND`, "N behind," "Furthest behind," `rankTitle`'s "can still take N newer builds") —
+also already settled. What this pass converged is the PROSE claim built on top of that
+vocabulary: **`on the newest` is the per-subject convergence phrase** — "is this one card's
+own set of places all running their own newest build" (`upToDateHeadline`'s `All on the
+newest` / `N of M on the newest`, `rankTitle`'s `is on the newest build available to it`,
+`/apps/[name]`'s state-card rollup, the rollout Overview `Available Version Upgrades` pill,
+`HomeRail`'s unscoped `N of M newest`). `up to date` is retired from that claim — it used to
+spell the identical fact four different ways in one `/apps` viewport (`2 on the newest`,
+`All up to date`, `2 of 3 up to date`, `2 of 4 apps up to date`). It survives in exactly one
+place, by design: `/environments`' ENVIRONMENT-scoped fleet-parity phrase (`All N apps here
+are up to date`, `N up-to-date apps`) asks a genuinely different question — "are the apps
+running IN THIS PLACE all settled," a parity claim across apps sharing an environment, not
+one subject's own distance to its own newest — and that word had already settled there
+before this pass touched anything. `1 newer` (the `N newer` count chip) stays exactly what
+it always was: the count of candidates above the running build, never a distance claim.
+"Ahead"/"forward"/"back" remain scoped to the version picker and History, where direction
+relative to the currently-running build is literally the subject of the row.
+
+**(d) `deploy` is the act** a person or the system performs; `promote` is reserved for the
+automatic advance to the next environment. `roll out`/`go out`/`upgrade` are retired as
+verbs for THIS rollout deploying (`nothing newer can deploy` not "can go out"). ⚠️
+**`ship` is NOT retired — it names a different subject.** Every surviving `ship` in the
+product (`Waiting for hello-api-app to ship a newer api`, `someone has to ship X first`,
+`each service ships this commit as its own release`) is a PROVIDER publishing the contract
+version another rollout depends on — a different actor and a different act than THIS
+rollout deploying, established and tested pervasively in `blocking-story.ts` and
+`BlockReason.svelte` before this pass, and correct on its own terms. Retiring it would
+have been fixing a word that was never the sprawl; the census's complaint was `ship` used
+AS A SYNONYM for "this rollout deploys," which this codebase does not do anywhere it was
+checked. `move` is similarly left alone in its established, generic sense ("will not move
+on their own," "cannot move until it does") — a description of pipeline advancement, not a
+call-to-action competing with `deploy`/`promote`. The tagged-release NOUN `release` survives
+(`release`, `releaseCandidates`, "3 releases across 3 services" for a per-service
+instantiation of one build) because it names something `build` does not: `release` is a
+SERVICE's own tagged instance of a build, and a `contract`'s required/served figure is a
+semver `version` — genuinely not the same object as a deployable `build` — so neither
+retired. "applies immediately" stays as the fixed consequence phrase for a hand-started
+deploy. **The object is a `build`.** The nav says `Revisions`, the page's own labels say
+`build` throughout, and the URL is now `/revisions` — `/versions` redirects (`308`) to it,
+both the list and the `[...slug]` detail route, so a bookmark or a pasted link under the old
+address still resolves. `revisionPath()`/`versionPath()` (`lib/version-utils.ts`) generate
+`/revisions/...` directly; nothing else in the product should hand-build that prefix. Every
+generic reference to "a newer version," "different versions live," "N versions can't
+deploy," and the rank-title "newer version(s)" is now "build(s)" — except where the literal
+OCI tag is actually being shown or copied (`Show all repo tags`, `Copy Tag`), which is the
+one place `tag` is the true, correct word and stays.
+
+**Verified:** `npx vitest run` — 55 files, 1078 passed, 3 skipped, 0 failed (catalogue
+regenerated with `-u` and stable across two consecutive runs). `npx svelte-check
+--threshold error` — 4 errors, byte-identical to the pre-existing baseline (a Vite config
+type mismatch, a `Skipped`/pipeline-phase comparison, a missing `$lib/types` import in
+`ScheduleStatus.svelte`, and a stale `imageRepoScanTime` field reference on rollout
+detail) — none in a file this pass rewrote a message in. Live-browser checked against the
+running hub cluster (`https://127.0.0.1:5173`, own playwright-core session, sandbox
+disabled for loopback) at 1440 and 390, light and dark, on `/`, `/rollouts`, `/apps`,
+`/apps/hello-frontend-app`, `/environments`, `/envs/prod`, `/revisions`, `/dependencies`,
+`/rollouts/prod/hello-dep-prod/hello-frontend-app` (Overview + Dependencies), and
+`/rollouts/dev/hello-world-dev/hello-world-app` — zero hits for `gate(s)`, `blocked`,
+"can't go any further," "is gated"/"gated on," or "cannot deploy … yet" on any of them,
+and `/versions` 308-redirects to `/revisions` (deep link included). Two defects the static
+grep missed were caught only by reading the live DOM: the Dependencies tab's own `Card`
+`verdict`/`verdictTitle` props (a second, independent code path computing "N version(s)
+held" beside the `blockedBanner`/`holdingBanner` strings already fixed) and the tab's own
+lede sentence ("a newer version of this app can go out") — both now fixed and reverified
+live. The denylist itself lives in `src/lib/messages/vocabulary.test.ts`, one rule per
+concept above; a retired spelling reappearing fails that suite by name, not by a generic
+diff, and the fix for a real new exception is one allowlisted `file\tkind\ttext` line with
+a reason, never a widened regex.

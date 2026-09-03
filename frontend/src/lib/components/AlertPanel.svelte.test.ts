@@ -50,7 +50,7 @@ describe('AlertPanel: the footnote is available, not printed', () => {
 		render(AlertPanel, {
 			props: {
 				severity: 'warning',
-				title: 'Automatic deploys are paused',
+				title: 'DEV is held',
 				message: 'Health checks are unhealthy.',
 				footnote: 'A deploy you start by hand still applies immediately.'
 			}
@@ -67,12 +67,12 @@ describe('AlertPanel: the footnote is available, not printed', () => {
 		render(AlertPanel, {
 			props: {
 				severity: 'warning',
-				title: 'Automatic deploys are paused',
+				title: 'DEV is held',
 				message: 'Health checks are unhealthy.',
 				footnote: 'A deploy you start by hand still applies immediately.'
 			}
 		});
-		expect(screen.getByText('Automatic deploys are paused').closest('details')).toBeNull();
+		expect(screen.getByText('DEV is held').closest('details')).toBeNull();
 		expect(screen.getByText('Health checks are unhealthy.').closest('details')).toBeNull();
 	});
 

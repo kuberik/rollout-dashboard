@@ -1115,7 +1115,7 @@
 										<Chip
 											role="held"
 											label="held"
-											title="Held: a newer build exists, but no gate lets it through yet."
+											title="Held: a newer build exists, but no rule lets it through yet."
 											class="shrink-0"
 										/>
 									{/if}

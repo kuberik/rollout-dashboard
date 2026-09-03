@@ -802,7 +802,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'sg-1', passing: false }] }), ctx, {
 			now: new Date('2026-08-31T09:00:00Z')
 		});
-		says(s.headline, 'Automatic deploys are paused');
+		says(s.headline, 'this service is held');
 		expect(s.consequence).toMatch(/Nothing promotes itself until the deploy window reopens in 4h/);
 		says(s.verdict, 'This clears on its own.');
 		expect(s.selfClearing).toBe(true);
@@ -831,7 +831,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 
 	test('one check gate -- clears itself, but the wording does not promise a clock', () => {
 		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'hc', passing: false }] }), ctxFull);
-		says(s.headline, 'Automatic deploys are paused');
+		says(s.headline, 'this service is held');
 		says(s.verdict, 'This clears on its own once the check passes.');
 		expect(s.selfClearing).toBe(true);
 	});
@@ -1505,15 +1505,15 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 				raw: CONDITION,
 				since: null
 			}),
-			'Health check payment-latency is failing — p99 4.2s. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.'
+			'Health check payment-latency is failing — p99 4.2s. Automatic deploys here are held until it passes; a deploy you start by hand still applies.'
 		);
 		says(
 			checkFailureTitle({ check: null, detail: null, raw: 'raw text', since: null }),
-			'A health check is failing — raw text. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.'
+			'A health check is failing — raw text. Automatic deploys here are held until it passes; a deploy you start by hand still applies.'
 		);
 		says(
 			checkFailureTitle({ check: 'c', detail: null, raw: '', since: null }),
-			'Health check c is failing. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.'
+			'Health check c is failing. Automatic deploys here are held until it passes; a deploy you start by hand still applies.'
 		);
 		expect(checkFailureTitle({ check: 'c', detail: 'd', raw: '', since: null })).not.toMatch(
 			/nothing new deploys/i
@@ -1616,25 +1616,25 @@ describe('up-to-date: the caption never completes the wrong headline', () => {
 	});
 
 	test('everything deployed is current', () => {
-		says(upToDateHeadline({ onHead: 3, deployed: 3, total: 3 }), 'All up to date');
+		says(upToDateHeadline({ onHead: 3, deployed: 3, total: 3 }), 'All on the newest');
 		says(upToDateCaption({ onHead: 3, deployed: 3, total: 3 }), 'in all 3 environments');
 	});
 
 	/**
-	 * THE REPORTED SPLICE. `0 of 3 up to date` above `in all 3 environments` --
-	 * the tail of `All up to date` reached by fall-through. Converged AND
+	 * THE REPORTED SPLICE. `0 of 3 on the newest` above `in all 3 environments` --
+	 * the tail of `All on the newest` reached by fall-through. Converged AND
 	 * behind is a real, common state and gets the fact that distinguishes it.
 	 */
 	test('converged and behind -- the state that produced the spliced caption', () => {
-		says(upToDateHeadline({ onHead: 0, deployed: 3, total: 3, spread: 1 }), '0 of 3 up to date');
+		says(upToDateHeadline({ onHead: 0, deployed: 3, total: 3, spread: 1 }), '0 of 3 on the newest');
 		says(
 			upToDateCaption({ onHead: 0, deployed: 3, total: 3, spread: 1 }),
-			'all 3 on one older version'
+			'all 3 on one older build'
 		);
 	});
 
 	test('split across versions -- the caption counts them', () => {
-		says(upToDateCaption({ onHead: 1, deployed: 3, total: 3, spread: 2 }), '2 versions live');
+		says(upToDateCaption({ onHead: 1, deployed: 3, total: 3, spread: 2 }), '2 builds live');
 	});
 
 	test('the places with no distance at all are named separately', () => {
@@ -1651,7 +1651,7 @@ describe('up-to-date: the caption never completes the wrong headline', () => {
 				diverged: 1,
 				unknown: 1
 			}),
-			'2 versions live · 2 never deployed · 1 unreleased · 1 unknown'
+			'2 builds live · 2 never deployed · 1 unreleased · 1 unknown'
 		);
 	});
 });
@@ -1682,16 +1682,16 @@ describe('env-rank: one spelling, and unknown is a legible answer', () => {
 	 * sentence about the SHA would be false for at least one of them.
 	 */
 	test('the title names the subject and says what the number counts', () => {
-		says(rankTitle({ kind: 'newest' }, 'prod'), 'prod is on the newest version available to it');
-		says(rankTitle({ kind: 'behind', by: 20 }, 'prod'), 'prod can still take 20 newer versions');
-		says(rankTitle({ kind: 'behind', by: 1 }, 'prod'), 'prod can still take 1 newer version');
+		says(rankTitle({ kind: 'newest' }, 'prod'), 'prod is on the newest build available to it');
+		says(rankTitle({ kind: 'behind', by: 20 }, 'prod'), 'prod can still take 20 newer builds');
+		says(rankTitle({ kind: 'behind', by: 1 }, 'prod'), 'prod can still take 1 newer build');
 		says(
 			rankTitle({ kind: 'diverged' }, 'prod'),
-			'prod is running a version that is on no environment’s release list'
+			'prod is running a build that is on no environment’s release list'
 		);
 		says(
 			rankTitle({ kind: 'unknown' }, 'prod'),
-			"prod's distance from the newest version cannot be resolved — the version it is running is not in its own release list"
+			"prod's distance from the newest build cannot be resolved — the build it is running is not in its own release list"
 		);
 	});
 
@@ -1818,7 +1818,7 @@ describe('auto-deploy: why promotion is paused, and what clearing a pin does', (
 	test('the note always says the deploy in front of the reader still applies', () => {
 		says(
 			manualDeployNote({ paused: true, reasons: ['gates'], gateNames: [] }),
-			'Automatic promotion is paused right now — a rule is holding it. That does not hold this deploy: it applies immediately.'
+			'Automatic promotion is held right now — a rule is holding it. That does not hold this deploy: it applies immediately.'
 		);
 	});
 

@@ -176,8 +176,8 @@ describe('defect 1 — the prod force-deploy dialog names what it overrides', ()
 	});
 });
 
-describe('defect 4 — "paused right now" agrees with promotionBlock, not the bare GatesPassing condition', () => {
-	test('a deployed build that is also the newest release is not "paused right now"', async () => {
+describe('defect 4 — "held right now" agrees with promotionBlock, not the bare GatesPassing condition', () => {
+	test('a deployed build that is also the newest release is not "held right now"', async () => {
 		const rollout = rolloutFixture({
 			status: {
 				// ONE release, already deployed — nothing newer exists, so
@@ -204,7 +204,7 @@ describe('defect 4 — "paused right now" agrees with promotionBlock, not the ba
 		// same shape as re-opening the dialog on what is already deployed).
 		await selectRow('1.66.0-66');
 
-		expect(screen.queryByText(/paused right now/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/held right now/i)).not.toBeInTheDocument();
 	});
 
 	test('a genuinely held build still says so', async () => {
@@ -228,7 +228,7 @@ describe('defect 4 — "paused right now" agrees with promotionBlock, not the ba
 		// selected, the same sentence fragment either way.
 		await selectRow('1.66.0-66');
 
-		expect(screen.getByText(/paused right now/i)).toBeInTheDocument();
+		expect(screen.getByText(/held right now/i)).toBeInTheDocument();
 	});
 });
 

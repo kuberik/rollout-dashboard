@@ -19,7 +19,7 @@
 		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
 		{ key: 'envs', href: '/environments', label: 'Environments', icon: LayersSolid },
-		{ key: 'versions', href: '/versions', label: 'Revisions', icon: TagOutline },
+		{ key: 'revisions', href: '/revisions', label: 'Revisions', icon: TagOutline },
 		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
 	] as const;
 

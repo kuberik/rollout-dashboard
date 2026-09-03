@@ -1020,7 +1020,7 @@ export function edgeSentence(e: GraphEdge, nodes: Map<string, GraphNode>): strin
 		if (e.state === 'blocked')
 			return `${toName} cannot take its next build until ${from?.env ?? 'its upstream'} ${verb}`;
 		if (e.state === 'unknown')
-			return `${toName} waits on ${from?.env ?? 'its upstream'} — this gate has not been read`;
+			return `${toName} waits on ${from?.env ?? 'its upstream'} — this rule has not been read`;
 		return `${from?.env ?? 'upstream'} ${verb}, and it has`;
 	}
 	const contract = e.contract ?? 'a contract';
@@ -1030,7 +1030,7 @@ export function edgeSentence(e: GraphEdge, nodes: Map<string, GraphNode>): strin
 		return `${toName} needs ${contract}${needs}${has} — held`;
 	}
 	if (e.state === 'unknown')
-		return `${toName} depends on ${contract} from ${fromName} — this gate has not been read`;
+		return `${toName} depends on ${contract} from ${fromName} — this rule has not been read`;
 	return `${toName} depends on ${contract} from ${fromName} — satisfied`;
 }
 
@@ -1052,7 +1052,7 @@ export function networkVerdict(graph: RolloutGraph): {
 	const links = graph.edges.length;
 	if (links === 0) return { text: 'no links', tone: 'neutral' };
 	const blocked = graph.blockedEdges.length;
-	if (blocked > 0) return { text: `${blocked} of ${links} links blocked`, tone: 'adverse' };
+	if (blocked > 0) return { text: `${blocked} of ${links} links held`, tone: 'adverse' };
 	const unknown = graph.edges.filter((e) => e.state === 'unknown').length;
 	if (unknown > 0) return { text: `${unknown} of ${links} links not read`, tone: 'neutral' };
 	return { text: `${links} link${links === 1 ? '' : 's'} open`, tone: 'neutral' };

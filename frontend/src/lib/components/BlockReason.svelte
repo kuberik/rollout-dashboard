@@ -161,8 +161,8 @@
 				// join, so it says the one thing that is true of all three
 				// writers and asks nobody to act.
 				icon: LockSolid,
-				line: 'No newer version is on this rule\u2019s allow-list, and it will not clear until whatever maintains that list changes it',
-				short: 'No newer version is allowed yet',
+				line: 'No newer build is on this rule\u2019s allow-list, and it will not clear until whatever maintains that list changes it',
+				short: 'No newer build is allowed yet',
 				clears: "Whatever maintains this rule's allow-list changes it",
 				names: awaiting.join(', '),
 				form: 'short'
@@ -172,7 +172,7 @@
 			return {
 				kind: 'notPassing',
 				icon: HourglassSolid,
-				line: 'Newer versions are on hold until a check or time window passes — this clears on its own',
+				line: 'Newer builds are on hold until a check or time window passes — this clears on its own',
 				// ⛔ `Clears on its own` WAS THE WRONG HALF. The long line's two
 				// clauses are the FACT (what is holding it) and the GLOSS (that
 				// it resolves itself); the short form kept the gloss and dropped
@@ -431,7 +431,7 @@
 		// (`{reason.short}`, printed just above this popover's trigger,
 		// unconditionally on every `form === 'short'` block) is precisely that
 		// case — this control's `<summary>` sits directly under a line that
-		// already says "No newer version is allowed yet". Repeating it as
+		// already says "No newer build is allowed yet". Repeating it as
 		// `Now` inside the record would be one fact printed twice in one
 		// viewport, the exact defect `GateRecord`'s own rule forbids
 		// ("a row that printed `short` does not get a second row for it").

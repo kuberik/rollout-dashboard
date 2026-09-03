@@ -65,8 +65,8 @@ describe('connectGithub', () => {
 
 	it('accepts an explicit return_to', () => {
 		const loc = stubLocation('/apps/hello-world-app');
-		connectGithub('/versions/x');
-		expect(loc.href).toBe('/api/auth/github/login?return_to=%2Fversions%2Fx');
+		connectGithub('/revisions/x');
+		expect(loc.href).toBe('/api/auth/github/login?return_to=%2Frevisions%2Fx');
 		loc.restore();
 	});
 });

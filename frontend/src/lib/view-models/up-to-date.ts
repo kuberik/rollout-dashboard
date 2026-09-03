@@ -4,9 +4,9 @@
  *
  * ⛔ WHY THIS IS A MODULE AND NOT MORE `$derived` IN THE COMPONENT.
  * (2026-08-31) A live critique of `/apps` caught the pair
- * `0 of 3 up to date` / `in all 3 environments` — the caption completing a
+ * `0 of 3 on the newest` / `in all 3 environments` — the caption completing a
  * headline it does not belong to. `in all N environments` is the tail of
- * `All up to date` and was reached by FALL-THROUGH from an `if` chain with
+ * `All on the newest` and was reached by FALL-THROUGH from an `if` chain with
  * nothing left to say. That is exactly the class of bug a unit test pins
  * permanently, and it could not be written while the sentence lived inside
  * a `$derived` in markup.
@@ -40,8 +40,8 @@ export function isNowhere(f: UpToDateFacts): boolean {
 
 export function upToDateHeadline(f: UpToDateFacts): string {
 	if (isNowhere(f)) return 'Never deployed';
-	if (isAllCurrent(f)) return 'All up to date';
-	return `${f.onHead} of ${f.deployed} up to date`;
+	if (isAllCurrent(f)) return 'All on the newest';
+	return `${f.onHead} of ${f.deployed} on the newest`;
 }
 
 /**
@@ -53,7 +53,7 @@ export function upToDateHeadline(f: UpToDateFacts): string {
  *
  * The final branch asks WHICH headline it is completing:
  *   · converged and current → `in all N environments`, the tail of
- *     `All up to date`.
+ *     `All on the newest`.
  *   · converged and BEHIND → the fact that actually distinguishes this row:
  *     they agree with each other and they are behind together. That shape is
  *     not an edge case; on the live hub it is `hello-world-app` on any
@@ -66,12 +66,12 @@ export function upToDateCaption(f: UpToDateFacts): string {
 	if (isNowhere(f)) return `${f.total} ${plural(f.total)} waiting`;
 
 	const parts: string[] = [];
-	if ((f.spread ?? 1) > 1) parts.push(`${f.spread} versions live`);
+	if ((f.spread ?? 1) > 1) parts.push(`${f.spread} builds live`);
 	if ((f.pending ?? 0) > 0) parts.push(`${f.pending} never deployed`);
 	if ((f.diverged ?? 0) > 0) parts.push(`${f.diverged} unreleased`);
 	if ((f.unknown ?? 0) > 0) parts.push(`${f.unknown} unknown`);
 	if (parts.length > 0) return parts.join(' · ');
 
 	if (isAllCurrent(f)) return `in all ${f.total} ${plural(f.total)}`;
-	return `all ${f.deployed} on one older version`;
+	return `all ${f.deployed} on one older build`;
 }

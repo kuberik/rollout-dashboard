@@ -274,9 +274,9 @@
 				>
 				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 					{#if trivial}
-						rollout{full.nodes.length === 1 ? '' : 's'}, none is gated on another.
+						rollout{full.nodes.length === 1 ? '' : 's'}, none depends on another.
 					{:else}
-						rollout{full.nodes.length === 1 ? '' : 's'} · {full.edges.length} gate{full.edges
+						rollout{full.nodes.length === 1 ? '' : 's'} · {full.edges.length} rule{full.edges
 							.length === 1
 							? ''
 							: 's'} between them
@@ -359,7 +359,7 @@
 				<p class="t-body font-semibold text-gray-900 dark:text-white">Nothing waits on anything</p>
 				<p class="t-dense mx-auto mt-2 max-w-md text-gray-500 dark:text-gray-400">
 					{rollouts.length} rollout{rollouts.length === 1 ? '' : 's'} across
-					{clusterCount} cluster{clusterCount === 1 ? '' : 's'}, and no gate on any of them is keyed
+					{clusterCount} cluster{clusterCount === 1 ? '' : 's'}, and no rule on any of them is keyed
 					to another rollout. This is the normal state — most fleets deploy every service
 					independently.
 				</p>
@@ -426,7 +426,7 @@
 		>
 			{#if graph.nodes.length === 0}
 				<p class="t-dense py-6 text-center text-gray-500 dark:text-gray-400">
-					No rollout in {envFilters.join(', ')} is gated on another.
+					No rollout in {envFilters.join(', ')} depends on another.
 				</p>
 			{:else}
 				<DependencyNetwork {graph} {themeOf} />
@@ -437,7 +437,7 @@
 			<Card
 				icon={ExclamationCircleSolid}
 				iconClass="text-red-500 dark:text-red-400"
-				title="Blocked links"
+				title="Held links"
 				verdict={`${blocked.length} of ${graph.edges.length}`}
 				verdictTone="adverse"
 				padded={false}

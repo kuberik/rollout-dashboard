@@ -472,7 +472,7 @@ describe('neighbourhood — the rollout tab, in the same language', () => {
 		// the gate working, not a block. Before the fix this graph did not
 		// even contain a dev→staging edge to count.
 		expect(local.blockedEdges).toHaveLength(5);
-		expect(v.text).toBe('5 of 7 links blocked');
+		expect(v.text).toBe('5 of 7 links held');
 	});
 
 	it('returns an empty graph for a rollout that is in no relation', () => {
@@ -588,7 +588,7 @@ describe('the sentences', () => {
 	it('rolls the whole graph up in one line', () => {
 		// 3 contract gates, plus the two promotion gates into staging and prod
 		// that publish an empty allow-list while `rel-67` is waiting.
-		expect(networkVerdict(build())).toEqual({ text: '5 of 7 links blocked', tone: 'adverse' });
+		expect(networkVerdict(build())).toEqual({ text: '5 of 7 links held', tone: 'adverse' });
 	});
 
 	/**
@@ -598,8 +598,8 @@ describe('the sentences', () => {
 	 * nothing said so. `links` is the noun the `Blocked links` card beside
 	 * this rollup already uses for the same objects.)
 	 */
-	it('never counts bare — every branch names "links", matching the `Blocked links` card', () => {
-		expect(networkVerdict(build()).text).toMatch(/^\d+ of \d+ links blocked$/);
+	it('never counts bare — every branch names "links", matching the `Held links` card', () => {
+		expect(networkVerdict(build()).text).toMatch(/^\d+ of \d+ links held$/);
 	});
 
 	it('says `no links` rather than inventing health for an empty graph', () => {

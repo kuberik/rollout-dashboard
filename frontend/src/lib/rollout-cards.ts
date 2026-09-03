@@ -440,7 +440,7 @@ export function cardStateMark(
 		return {
 			kind: 'held',
 			word: 'held',
-			title: `Held: a newer build exists, but no gate lets it through yet.`
+			title: `Held: a newer build exists, but no rule lets it through yet.`
 		};
 	}
 	if (c.rolledBack) {

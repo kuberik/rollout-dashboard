@@ -194,8 +194,8 @@ export const SURFACES: readonly Surface[] = [
 		'A cross-fleet feed. Nothing is fixed.'
 	),
 	surface(
-		'/versions',
-		'routes/versions/+page.svelte',
+		'/revisions',
+		'routes/revisions/+page.svelte',
 		[],
 		['version'],
 		'One row per build; the build is fixed by the row. What a row says about deployment has to name the app and the place.',
@@ -229,8 +229,8 @@ export const SURFACES: readonly Surface[] = [
 		'The page is one namespace, and the namespace name carries the tier (`alpha-dev`) — so the environment is fixed by the `<h1>`. The APP is not: two rollouts can share a namespace, and `alpha-dev` does not say `alpha-app`.'
 	),
 	surface(
-		'/versions/[...slug]',
-		'routes/versions/[...slug]/+page.svelte',
+		'/revisions/[...slug]',
+		'routes/revisions/[...slug]/+page.svelte',
 		['version'],
 		[],
 		'The page inverts the question: one BUILD, asked about across places. The build is fixed by the route; every sentence still has to say which service and which environment it is talking about.'

@@ -4,11 +4,11 @@ import { upToDateHeadline, upToDateCaption } from './up-to-date';
 /**
  * ⛔ THE SPLICE. (`/apps`, live critique 2026-08-31)
  *
- *     0 of 3 up to date
+ *     0 of 3 on the newest
  *     in all 3 environments
  *
  * Two lines of one object, printed together, saying opposite things. The
- * second is the tail of the `All up to date` sentence and was reached by
+ * second is the tail of the `All on the newest` sentence and was reached by
  * fall-through out of a chain that had nothing else to say.
  */
 describe('UpToDate never completes the wrong headline', () => {
@@ -23,20 +23,20 @@ describe('UpToDate never completes the wrong headline', () => {
 	};
 
 	it('THE REPORTED PAIR — converged but behind never says `in all N environments`', () => {
-		expect(upToDateHeadline(CONVERGED_BEHIND)).toBe('0 of 3 up to date');
+		expect(upToDateHeadline(CONVERGED_BEHIND)).toBe('0 of 3 on the newest');
 		expect(upToDateCaption(CONVERGED_BEHIND)).not.toContain('in all');
-		expect(upToDateCaption(CONVERGED_BEHIND)).toBe('all 3 on one older version');
+		expect(upToDateCaption(CONVERGED_BEHIND)).toBe('all 3 on one older build');
 	});
 
 	it('keeps `in all N environments` where it belongs — and only there', () => {
 		const current = { ...CONVERGED_BEHIND, onHead: 3 };
-		expect(upToDateHeadline(current)).toBe('All up to date');
+		expect(upToDateHeadline(current)).toBe('All on the newest');
 		expect(upToDateCaption(current)).toBe('in all 3 environments');
 	});
 
 	it('the caption never contradicts the headline, over the whole grid', () => {
 		// The invariant, not the instance: `in all …` is a claim that
-		// everything is current, so it may appear ONLY under `All up to date`.
+		// everything is current, so it may appear ONLY under `All on the newest`.
 		for (let deployed = 1; deployed <= 4; deployed++) {
 			for (let onHead = 0; onHead <= deployed; onHead++) {
 				for (const spread of [1, 2]) {
@@ -44,7 +44,7 @@ describe('UpToDate never completes the wrong headline', () => {
 						const f = { onHead, deployed, total: deployed + pending, spread, pending };
 						const caption = upToDateCaption(f);
 						if (caption.startsWith('in all')) {
-							expect(upToDateHeadline(f)).toBe('All up to date');
+							expect(upToDateHeadline(f)).toBe('All on the newest');
 						}
 					}
 				}
@@ -54,7 +54,7 @@ describe('UpToDate never completes the wrong headline', () => {
 
 	it('still leads with the facts a distance cannot carry', () => {
 		expect(upToDateCaption({ onHead: 1, deployed: 3, total: 3, spread: 2 })).toBe(
-			'2 versions live'
+			'2 builds live'
 		);
 		expect(upToDateCaption({ onHead: 1, deployed: 2, total: 3, spread: 1, pending: 1 })).toBe(
 			'1 never deployed'

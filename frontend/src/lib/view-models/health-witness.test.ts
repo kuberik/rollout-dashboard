@@ -107,7 +107,7 @@ describe('checkFailure — the fact the list surfaces threw away', () => {
 			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
 		)!;
 		expect(checkFailureTitle(f)).toBe(
-			'Health check payment-latency is failing — p99 latency 4.2s exceeds SLO of 500ms for 5m. Automatic deploys here are paused until it passes; a deploy you start by hand still applies.'
+			'Health check payment-latency is failing — p99 latency 4.2s exceeds SLO of 500ms for 5m. Automatic deploys here are held until it passes; a deploy you start by hand still applies.'
 		);
 	});
 
