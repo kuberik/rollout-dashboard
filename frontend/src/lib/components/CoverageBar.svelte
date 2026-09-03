@@ -183,10 +183,13 @@
 <style>
 	/*
 	 * The flex/min-width base is `.prop-bar` in `app.css`, shared with
-	 * `ExposureBar`. What this file overrides is the part that is NOT shared:
-	 * `ExposureBar` is one continuous bar with hairline joins, this one is a SET
-	 * of separate bars — so the container's radius and clipping move down onto
-	 * the groups, and the gutter between groups goes 1px → 8px.
+	 * `ExposureBar`. ⛔ IT IS ONE CONTINUOUS BAR NOW, LIKE `ExposureBar`.
+	 * (2026-09-03, from the human, third time: "Revisions pages bars are still
+	 * split into 2.") The 8px gutter between groups made a 9-place bar read as
+	 * two objects — a green bar and a gray bar — instead of one bar with two
+	 * buckets. The gutter between groups is the same hairline as the gutter
+	 * between cells, the radius and the clip are back on the whole bar, and a
+	 * group is just a run of cells in one colour.
 	 *
 	 * These rules are Svelte-scoped, which is unlayered and therefore outranks
 	 * `@layer components`. Nothing here may own colour (see the layering note in
@@ -194,14 +197,15 @@
 	 */
 	.cov {
 		height: 26px;
-		gap: 8px;
-		border-radius: 0;
-		overflow: visible;
+		gap: 2px;
+		border-radius: 8px;
+		overflow: hidden;
 	}
 
 	.cov--compact {
 		height: 8px;
-		gap: 4px;
+		gap: 1px;
+		border-radius: 4px;
 	}
 
 	/*
@@ -219,13 +223,10 @@
 		display: flex;
 		gap: 2px;
 		height: 100%;
-		border-radius: 8px;
-		overflow: hidden;
 	}
 
 	.cov--compact .cov-seg {
 		gap: 1px;
-		border-radius: 4px;
 	}
 
 	.cov-cell {
