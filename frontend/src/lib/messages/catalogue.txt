@@ -240,8 +240,12 @@ lib/components/GithubConnectButton.svelte	title	Connect your GitHub account to s
 lib/components/GithubConnectButton.svelte	text	Connected as …
 lib/components/GithubConnectButton.svelte	text	Disconnect GitHub
 lib/components/GithubConnectButton.svelte	aria-label	GitHub account
+lib/components/GithubConnectButton.svelte	title	GitHub is not configured
+lib/components/GithubConnectButton.svelte	text	in its namespace — and restart it.
 lib/components/GithubConnectButton.svelte	text	Not configured
 lib/components/GithubConnectButton.svelte	text	Not set up
+lib/components/GithubConnectButton.svelte	text	on the dashboard — the secret
+lib/components/GithubConnectButton.svelte	text	This dashboard has no GitHub App credentials, so there is nothing to sign in to and commit lists stay empty.
 lib/components/GitHubViewButton.svelte	text	View on GitHub
 lib/components/GitHubViewButton.svelte	title	View on GitHub
 lib/components/GraphCanvasInner.svelte	aria-label	Fit the whole graph
