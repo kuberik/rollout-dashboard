@@ -21,7 +21,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount, onDestroy, tick, untrack } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import {
 		Button,
 		Spinner,
@@ -566,7 +566,6 @@
 			index
 		}));
 	});
-
 	// Fixed row height: with no text wrapping, every row is the same height
 	// py-1 (8px) + line-height ~20px + border 1px = ~29px. Use 30 as a safe constant.
 	const ROW_HEIGHT = 30;
@@ -585,21 +584,95 @@
 		})
 	);
 
-	// Update count separately to avoid recreating virtualizer
+	/**
+	 * ⛔ TWO EFFECTS EACH CALLED `$virtualizer.setOptions({ count })`, AND
+	 * BOTH READ `$virtualizer` (THE `$`-PREFIXED STORE SUBSCRIPTION) TO DO
+	 * IT. (F9, 2026-09-03) Reading `$virtualizer` inside an `$effect` makes
+	 * THAT EFFECT a subscriber of every future emission from the store —
+	 * including the emission `setOptions` itself produces via `onChange`
+	 * (see `@tanstack/svelte-virtual`'s wrapper, which forwards every
+	 * `setOptions` call into `virtualizerWritable.set(instance)`). The old
+	 * "naive" count effect read `$virtualizer.setOptions(...)` UNGUARDED, so
+	 * every run re-queued itself; the old "guarded" sibling effect's final
+	 * line (`virtualItems = $virtualizer.getVirtualItems()`) did the same,
+	 * and which of the two effects' writes "won" the resulting ping-pong was
+	 * a race the guard could not fix, because the guard compared against
+	 * options THE PING-PONG WAS STILL MUTATING. Reproduced live
+	 * (`hello-multi-dev/hello-multi-app`, 5 pods, real SSE volume): selecting
+	 * 1 pod left all 5 pod names on screen and threw
+	 * `Cannot read properties of undefined (reading 'formattedTimestamp')`.
+	 * One extra plain read of `$virtualizer.options.count` (added temporarily
+	 * to log the race) was enough to tip it into Svelte's own
+	 * `effect_update_depth_exceeded` — a real infinite-update risk, not only
+	 * stale data.
+	 *
+	 * ⛔ A FIRST FIX TRIED `get(virtualizer)` — `svelte/store`'s one-shot,
+	 * non-subscribing read — instead of `$virtualizer`, to keep this effect
+	 * off the store's emissions entirely. That traded the ping-pong for a
+	 * WORSE bug: `get()` subscribes-then-immediately-unsubscribes, and
+	 * `@tanstack/svelte-virtual`'s store calls `setOptions(initialOptions)`
+	 * — `count: 0`, this virtualizer's ORIGINAL construction options — every
+	 * time its subscriber count goes 0→1 (see its `writable(virtualizer, ()
+	 * => { setOptions(initialOptions); return virtualizer._didMount(); })`).
+	 * While the log pane's empty state is showing, NOTHING else reads
+	 * `virtualItems` (it is only referenced inside the `{:else}` branch's
+	 * `{#each}`, and `$derived` is lazy), so `get()`'s momentary subscriber
+	 * was the ONLY one — every effect run silently reset the count to 0 and
+	 * then fixed it back up, and the FIRST render of the `{:else}` branch
+	 * (reading `virtualItems`, i.e. `$virtualizer`, for the first time) ran
+	 * that same 0→1 reset a second time, AFTER this effect had already
+	 * settled the real count — putting `options.count` back to 0 last.
+	 * Caught by this file's own unit test (`streamedLogLines` fixture),
+	 * not by the live repro: the live pane always had lines rendering
+	 * already, so `virtualItems` already had a standing subscriber and the
+	 * reset never got a window to matter there — a reminder that "a
+	 * synthetic test caught what a live click didn't" cuts both ways.
+	 *
+	 * THE FIX: read `$virtualizer` normally (tracked), and guard the write.
+	 * This effect becomes the store's ALWAYS-ON subscriber — it runs
+	 * unconditionally for the component's whole life, regardless of which
+	 * template branch is showing, so the store's subscriber count never
+	 * drops to 0 and `setOptions(initialOptions)` never fires again after
+	 * mount. Being tracked on `$virtualizer` means this effect DOES requeue
+	 * itself once after a real `setOptions` call (the emission it just
+	 * produced) — but on that second pass `count`/`scrollEl` are unchanged
+	 * and `inst.options` already matches, so the guard is false and it makes
+	 * no further write, which is what stops it there instead of ping-ponging
+	 * forever. What made the ORIGINAL bug an infinite loop was never "an
+	 * effect reads `$virtualizer`" by itself — it was TWO effects doing it
+	 * independently, each capable of invalidating the other's guard.
+	 *
+	 * Even with this single, convergent, always-subscribed writer,
+	 * `allLogLines.length` can still change (a `$derived`, recomputed
+	 * synchronously) in the SAME render pass that schedules this `$effect`
+	 * to run — `$effect`s are flushed after the render that scheduled them,
+	 * never interleaved into it. A captured trace showed `allLogLines.length`
+	 * fall from 5005 to 1001 while `$virtualizer.options.count` was still
+	 * 5005, handing back `virtualItems` with indices up to 3037 — and
+	 * `allLogLines[3037]` on the now-1001-long array is `undefined`. No
+	 * amount of consolidating the WRITE side removes that one-frame gap; it
+	 * is closed on the READ side too (see `virtualItems` below).
+	 */
 	$effect(() => {
 		const count = allLogLines.length;
-		const currentScrollTop = virtualListEl?.scrollTop ?? 0;
+		const scrollEl = virtualListEl;
+		const currentScrollTop = scrollEl?.scrollTop ?? 0;
 
 		// Save scroll position before update
 		if (!autoScroll && currentScrollTop > 0) {
 			savedScrollTop = currentScrollTop;
 		}
 
-		// Update virtualizer count
-		$virtualizer.setOptions({ count });
+		// Tracked on purpose — see the comment above for why this MUST be
+		// the store's permanent subscriber, and why reading it here cannot
+		// loop the way two independent effects doing the same thing did.
+		const inst = $virtualizer;
+		if (inst.options.count !== count || inst.options.getScrollElement() !== scrollEl) {
+			inst.setOptions({ count, getScrollElement: () => scrollEl });
+		}
 
 		// Restore scroll position after update (only when not auto-scrolling)
-		if (!autoScroll && savedScrollTop > 0 && virtualListEl) {
+		if (!autoScroll && savedScrollTop > 0 && scrollEl) {
 			tick().then(() => {
 				if (virtualListEl && !autoScroll) {
 					virtualListEl.scrollTop = savedScrollTop;
@@ -608,30 +681,28 @@
 		}
 	});
 
-	// Use $state + $effect for virtualItems to properly track store value changes
-	import type { VirtualItem } from '@tanstack/svelte-virtual';
-	let virtualItems = $state<VirtualItem[]>([]);
-
-	$effect(() => {
-		// 1. Sync Data: Track count explicitly
-		const count = allLogLines.length;
-		const _ = virtualListEl; // Track element
-
-		// Guarded update to options to prevent loops, but ensure sync
-		if (
-			untrack(() => $virtualizer.options.count) !== count ||
-			untrack(() => $virtualizer.options.getScrollElement)() !== virtualListEl
-		) {
-			untrack(() => $virtualizer).setOptions({
-				count,
-				getScrollElement: () => virtualListEl
-			});
-		}
-
-		// 2. Sync View: Subscribe to virtualizer updates (scroll/resize)
-		// This runs when $virtualizer emits OR when above dependencies change
-		virtualItems = $virtualizer.getVirtualItems();
-	});
+	/**
+	 * THE ONLY READER OF THE STORE'S EMISSIONS. `$virtualizer` here is
+	 * meant to be tracked — this is what turns the `setOptions` call above
+	 * (or a scroll/resize inside the virtualizer itself) into fresh
+	 * `virtualItems`, computed against the count that effect just settled.
+	 * A plain `$derived`, not a `$state` + `$effect` pair: it never calls
+	 * `setOptions` itself, so it cannot feed back into the effect above —
+	 * there is nothing left for the two to race over.
+	 *
+	 * THE FIX (read side): filtered to `index < allLogLines.length`. The
+	 * writer effect above is one render tick behind `allLogLines` by
+	 * construction (see its own comment) — a `$derived` reading
+	 * `allLogLines.length` directly, right here, recomputes in the SAME
+	 * pass as the filter change, so this is the one place that can close
+	 * that gap without waiting on effect scheduling at all. A row whose
+	 * index has not caught up yet is dropped for a frame rather than
+	 * rendered from `undefined` — the writer effect's next run corrects
+	 * `virtualItems` to the full, right-sized set immediately after.
+	 */
+	const virtualItems = $derived(
+		$virtualizer.getVirtualItems().filter((item) => item.index < allLogLines.length)
+	);
 
 	// Calculate before/after padding for natural document flow scrolling
 	let virtualListBefore = $derived(
