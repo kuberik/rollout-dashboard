@@ -354,11 +354,11 @@
 								<span class="rc-pods-word hidden font-normal t-micro text-gray-500 dark:text-gray-400">pods</span>
 							</span>
 						{/if}
-						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
-							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
-							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
+						<span class="chip t-chip shrink-0
+							{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
+							: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
+							: isReady ? 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+							: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
 							{resourceStatusWord(resource.status)}
 						</span>
 						<!-- A chevron is not a name. `title` alone made this announce as
@@ -498,11 +498,11 @@
 								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 							{/if}
 						</div>
-						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
-							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
-							: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
+						<span class="chip t-chip shrink-0
+							{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
+							: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
+							: isReady ? 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+							: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
 							{resourceStatusWord(resource.status)}
 						</span>
 						<!-- ⛔ F4 (finding 13): FIXED COLUMNS — THE CHEVRON HAS ITS OWN
@@ -565,10 +565,10 @@
 								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 							{/if}
 						</div>
-						<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
-							{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-							: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
-							: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
+						<span class="chip t-chip shrink-0
+							{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
+							: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
+							: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
 							{resourceStatusWord(resource.status)}
 						</span>
 						<!-- Fixed chevron column — see the note beside the HTTPRoute
@@ -627,11 +627,11 @@
 									<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
 								{/if}
 							</div>
-							<span class="shrink-0 t-label rounded-full px-1.5 py-0.5
-								{isFailing ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-								: isReconciling ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
-								: isReady ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-								: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}">
+							<span class="chip t-chip shrink-0
+								{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
+								: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
+								: isReady ? 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+								: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
 								{resourceStatusWord(resource.status)}
 							</span>
 							<!-- Fixed chevron column — see the note beside the HTTPRoute
