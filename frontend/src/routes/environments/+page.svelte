@@ -146,6 +146,7 @@
 		CalendarWeekSolid,
 		UserCircleSolid,
 		HourglassSolid,
+		PauseSolid,
 		ChevronRightOutline,
 		ChevronDownOutline,
 		CodeBranchOutline,
@@ -1040,16 +1041,37 @@
      something is stuck, green check when the environment is whole. A green
      check on a healthy card is NOT "marking the norm" — that rule is about
      not raising alarms on healthy rows, and the reference page prints
-     `3/3 healthy` in green on every settled card it has. -->
+     `3/3 healthy` in green on every settled card it has.
+
+     ⛔ AND A GREEN CHECK NEXT TO A HELD COUNT IS THE NORM MARKED OVER THE
+     DEVIATION, NOT AN EXCEPTION TO THE RULE ABOVE. (Operator walk, finding
+     15) `dev` read `4/4 running` in green beside `1 held` in amber — the
+     all-clear glyph and the all-clear ink sitting directly beside the one
+     fact on the card that says something is NOT clear. `held` now takes the
+     THIRD rung, between `stuck` and settled, with its own glyph: a pause,
+     not a check — the same `PauseSolid` / orange pair `BakeStatusIcon` and
+     `Chip`'s `rank` role already spend on this exact fact (a gate refusing a
+     candidate, not a person's problem — see `CLAUDE.md`'s "a gate correctly
+     refusing a candidate is not a stoppage"), so the disc and the rollup ink
+     follow the WORSE state, per that same disc token, rather than pairing an
+     all-clear mark with a fact that contradicts it. -->
 {#snippet envCard(c: EnvCard)}
 	{@const isOpen = expanded.has(c.tier)}
 	<Card
-		icon={c.failing > 0 ? ExclamationCircleSolid : c.stuck > 0 ? ClockSolid : CheckCircleSolid}
+		icon={c.failing > 0
+			? ExclamationCircleSolid
+			: c.stuck > 0
+				? ClockSolid
+				: c.heldCount > 0
+					? PauseSolid
+					: CheckCircleSolid}
 		iconClass={c.failing > 0
 			? 'text-red-600 dark:text-red-400'
 			: c.stuck > 0
 				? 'text-amber-600 dark:text-amber-400'
-				: 'text-green-700 dark:text-green-400'}
+				: c.heldCount > 0
+					? 'text-orange-950 dark:text-orange-300'
+					: 'text-green-700 dark:text-green-400'}
 		title={c.tier}
 		titleHref={c.href}
 		padded={false}
@@ -1088,16 +1110,25 @@
 			         in amber, beside it, so the header answers criterion 1 and
 			         still agrees with what is underneath it.
 
-			     ⛔ NOT a colour change on the first chip. Recolouring `running`
-			     amber would delete the good news, and "every app here is
-			     serving" is true and worth saying while three of them wait on a
-			     gate — that is the whole distinction this pass exists to draw. -->
+			     ⛔ NOT a colour change on the first chip's WORD. Recolouring
+			     `running` amber would delete the good news, and "every app here
+			     is serving" is true and worth saying while three of them wait
+			     on a gate — that is the whole distinction this pass exists to
+			     draw. But it also may not read as the all-clear GREEN while a
+			     held count sits right beside it (finding 15): the norm's ink
+			     goes neutral the moment a deviation is on the same line, same
+			     as `UpToDate`'s own `deviationOnly` rule ("the deviation
+			     carries colour, never the norm"), and `held` — the deviation —
+			     takes the disc's own orange rather than the alarm's amber,
+			     because amber is `stuck` and nothing else for state. -->
 			<span
 				class="text-xs font-medium whitespace-nowrap {c.failing > 0
 					? 'text-red-700 dark:text-red-400'
 					: c.stuck > 0
 						? 'text-gray-500 dark:text-gray-400'
-						: 'text-green-700 dark:text-green-400'}"
+						: c.heldCount > 0
+							? 'text-gray-900 dark:text-white'
+							: 'text-green-700 dark:text-green-400'}"
 				title="{c.healthy} of {c.apps.length} apps here are deployed and serving"
 			>
 				{#if c.failing > 0}
@@ -1110,7 +1141,7 @@
 			</span>
 			{#if c.heldCount > 0 && c.failing === 0 && c.stuck === 0}
 				<span
-					class="text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-400"
+					class="text-xs font-medium whitespace-nowrap text-orange-950 dark:text-orange-300"
 					title="{c.heldCount} of {c.apps.length} apps here have newer versions that no gate will let in yet"
 				>
 					{c.heldCount} held

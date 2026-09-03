@@ -140,3 +140,52 @@ routes) and the four reference headers at 47px are confirmed. Ranked residue →
 
 LEFT by the critic: hover/focus/active states; command palette at 390; open RulePopover at 390;
 every modal at both widths; long-name fixtures; widths between 390 and 1440; motion.
+
+## Wave 4 landed at `dbd317e` (2026-09-03 01:20)
+All 20 second-re-check findings actioned except the colour fold (19) and the 6-vs-9 bar
+segments (17, documented as deliberate in CoverageBar). Notable: the graph at 390 is a
+single-file vertical layout inside the SAME GraphCanvas component (the list renderer an agent
+first built was reverted — one component is a recorded human decision), with contract hops
+routed in a right gutter by ContractHopEdge; /rollouts tracks are minmax(360, 460) left-packed
+(the ≥95% width census had rewarded a 1201px card); held is orange on every surface including
+/namespaces and the Overview/Dependencies chips; every blocking headline names the provider
+and requirement when the gate is a contract, single or multi-gate.
+
+## Mid-width craft review (640/768/1024/1280 + interaction states) at `dbd317e`, 2026-09-03 01:40
+One habit on five pages: a fixed side column held rigid while the `1fr` identifier column
+starves — the 175px sidebar arriving at `sm` takes 28% of content and no grid responds
+(/apps banner 443px tall at 640 with an 11-line body beside a 196px link; /rollouts 30
+truncations at 640; /versions/<sha> four card titles to `Thi…`; rollout detail rail at `lg`
+gives main 417px; /envs/prod worse at 1280 than 1200 with an empty 152px column). Six
+focus-ring colours (outline inherits currentColor), none on .tap-link/.rev-sha/summary; 145
+sub-32px controls on /activity at 390; graph at 7.1px type between 1024 and 1280; Flowbite
+orange checkboxes in the Logs menus; the Change Version modal 2.3% ink. → **wave 5**:
+p6-breakpoints (container queries, rail flips, Card title wraps), p6-focus (one --focus-ring,
+32px touch, logs menus), p6-graph (scale floor 0.85, palette rows), p6-modal (one-column
+picker, Health Checks body, popover clamp). Praise: zero hover-only controls, zero document
+overflow at any width, the command palette.
+
+## Operator walk at `dbd317e` (phone first), 2026-09-03 01:50
+BLOCKING: (1) `Connect GitHub` in the Change Version modal navigates the page to a raw 503
+JSON body, destroying a half-filled rollback; (2) the revision page says `Not here yet — PROD`
+for a revision that IS running in prod under rel-66 (counts by newest tag, not by revision);
+(3) the prod force-deploy dialog asserts `No commit changes detected` for the release whose
+`requires.api` moved, while the dev dialog admits GitHub is unreachable; (4) a pinned rollout
+shows the identical pinned panel twice (blue + amber) above a third rollback panel — the whole
+first phone screen. PAINFUL: `/` files held rollouts under `Trailing — healthy, but behind`;
+`Nobody has to approve anything —` leads the contract verdict; Logs at 390 shows zero message
+text with Wrap off by default; AlertPanel CTA overprints `› 1 rule` at 390; `/apps` row says
+`DEV has 1 newer version held` under `all 3 environments`; head rollups reassure over the
+alert; app page reads at rest mid-deploy; `next: staging` for a build staging has; /activity
+un-labels rollbacks as versionHistoryLimit evicts entries; Dependencies counts services (1)
+over a graph of rollouts (3); /environments dev card omits the rule and env names are not
+links; `HELD by a gate` beside a pin notice; Clear Pin copy weaker from the app page; medians
+flip mid-deploy; `0 deploys in all time` under a FAILED filter; filters absent from the URL;
+cold load is a blank white page in dark mode; no `role=dialog`, unnamed toggles. → p6-truth
+(5, 6, 12, 18), p6-pages (9, 10, 11, 15, 17); queued as follow-ups to running lanes: 1, 3, 22,
+23 → p6-modal; 2 → versions (after p6-breakpoints); 4, 16 → Overview (after p6-breakpoints);
+7, 13, 19, 22 → p6-focus; 8 → verify after p6-breakpoints; 14 → p6-graph; 20, 21 → later.
+Praise: task 1 is one tap on a phone to the sentence naming hello-api-app and ^1.67.0; task 2
+zero clicks; the force-deploy dialog; Clear Pin copy; live updates in ~3s; the graph at 390.
+Cluster residue: two history entries on hello-world-dev/hello-world-app (rollback drill +
+restore), which evicted the two oldest under versionHistoryLimit 5.

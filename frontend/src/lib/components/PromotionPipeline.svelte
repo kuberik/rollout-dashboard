@@ -23,6 +23,20 @@
 		age: string | null;
 		ageTitle: string | null;
 		/**
+		 * ⭐ IN-FLIGHT PROGRESS, IN WORDS. (Operator walk, finding 11) A station
+		 * mid-deploy used to read exactly like a settled one — `2/2 running ·
+		 * 1m ago` — with the fact that it was moving carried only by the
+		 * disc's `sr-only` text, while `/` states the same rollout as
+		 * `deploying · 37s`. `null` on a settled station: `age` alone answers
+		 * "how long has it been here" and this field would be restating it.
+		 * On a `Deploying`/`InProgress` station it is the elapsed span
+		 * (`37s`, or `14s of 15s` for a bake window with a known total) —
+		 * built by the CALLER from the same `compactSpan` / `computeBakeProgress`
+		 * helpers `/`'s `ControlCenter.motionMessages` already uses, so the
+		 * two pages cannot spell "how long has this been going" two ways.
+		 */
+		statusDetail?: string | null;
+		/**
 		 * READY PODS IN THIS ENVIRONMENT, or `null` when they could not be
 		 * attributed to this app.
 		 *
@@ -442,7 +456,8 @@
 				{@render hopRow(entryHop)}
 			{/if}
 			{#each stages as s, i (s.key)}
-				<li class="pp-station">
+				{@const inFlight = s.status === 'Deploying' || s.status === 'InProgress'}
+				<li class="pp-station {inFlight ? 'pp-station--inflight' : ''}">
 					<span
 						class="pp-disc {getStatusCircleClass(s.status)}"
 						title="{s.title} — {s.statusWord}"
@@ -495,7 +510,34 @@
 						     the most transferable thing on the reference page, and the
 						     reference applies it to ROWS too. -->
 						<span class="pp-meta">
-							{#if s.age}
+							<!-- ⛔ AN IN-FLIGHT STATION USED TO READ "AT REST". (Operator
+							     walk, finding 11) `age` (`f.timestamp` ago) is the same
+							     field whether the deploy that started it has finished or
+							     not, so a rollback 37 seconds in and one from three days
+							     ago both printed `… ago` with only the disc's `sr-only`
+							     text — never read aloud on screen — saying which. `/`
+							     states this in words with elapsed time
+							     (`deploying · 37s`, `checking · 14s of 15s`); this is the
+							     same idiom, one column over. The VERB is coloured, same
+							     as `ControlCenter.motionMessages` (blue deploying, yellow
+							     checking); the elapsed span stays neutral. -->
+							{#if inFlight}
+								<span
+									class="t-micro whitespace-nowrap"
+									title="{s.title} — {s.statusWord}{s.statusDetail
+										? `, ${s.statusDetail}`
+										: ''}"
+								>
+									<span
+										class={s.status === 'Deploying'
+											? 'text-blue-700 dark:text-blue-400'
+											: 'text-yellow-700 dark:text-yellow-400'}>{s.statusWord}</span
+									>
+									{#if s.statusDetail}
+										<span class="text-gray-500 dark:text-gray-400"> · {s.statusDetail}</span>
+									{/if}
+								</span>
+							{:else if s.age}
 								<span
 									class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
 									title={s.ageTitle ?? undefined}>{s.age} ago</span
@@ -765,6 +807,16 @@
 			   `10/10 running` and `46m ago`. */
 			grid-template-columns: 32px 240px 108px 64px;
 			grid-template-areas: 'disc id health meta';
+		}
+		/* ⭐ THE ONE ROW THAT IS ACTUALLY MOVING GETS A WIDER TRACK, NOT EVERY
+		   ROW. (Operator walk, finding 11) `deploying · 37s` and
+		   `checking · 14s of 15s` both run past `64px` — the width `46m ago`
+		   was measured for — and every `<li>` is its own independent grid (see
+		   the note above), so widening ONLY this station's `meta` track costs
+		   nothing to its settled siblings, which keep the exact 64px they were
+		   sized against. */
+		.pp-station--inflight {
+			grid-template-columns: 32px 240px 108px max-content;
 		}
 		/* THE WRAPPER STOPS WRAPPING. Its children become direct grid items —
 		   `display: contents` removes `.pp-facts` from the box tree entirely

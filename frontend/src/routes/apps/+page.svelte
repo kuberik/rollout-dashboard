@@ -779,14 +779,29 @@
 		return parts.join(' · ');
 	}
 
-	/** `status.history` reduced to what `lead-time.ts` reads. */
+	/**
+	 * `status.history` reduced to what `lead-time.ts` reads.
+	 *
+	 * ⛔ `inFlight` MARKS A DEPLOY THAT HAS NOT SETTLED YET, SO `leadTime` CAN
+	 * LEAVE IT OUT OF BOTH ENDS OF THE HOP. (2026-09-03, operator-walk finding
+	 * 18) `status.history[].timestamp` is written the instant a deploy
+	 * STARTS, not once it succeeds — see `lead-time.ts`'s module doc for the
+	 * live flip this caused (`Typical to prod` going `11m → — no full trip
+	 * yet → 11m` across one deploy). Same shape `HomeRail.svelte` and
+	 * `/apps/[name]`'s own `appLead` build for the identical reason.
+	 */
 	function leadDeploys(cell: AppCell) {
-		const out: { version: string; ms: number }[] = [];
+		const out: { version: string; ms: number; inFlight: boolean }[] = [];
 		for (const h of cell.rollout.status?.history ?? []) {
 			const v = getDisplayVersion(h.version);
 			if (!v || !h.timestamp) continue;
 			const ms = new Date(h.timestamp).getTime();
-			if (Number.isFinite(ms)) out.push({ version: v, ms });
+			if (Number.isFinite(ms))
+				out.push({
+					version: v,
+					ms,
+					inFlight: h.bakeStatus === 'InProgress' || h.bakeStatus === 'Deploying'
+				});
 		}
 		return out;
 	}
@@ -1017,10 +1032,40 @@
 				// gate is HELD, the same word the `blocked` role chip already
 				// prints on rollout detail's own pin (`Chip role="blocked" label
 				// ="held"`), not free to accept anything.
+				//
+				// ⛔ AND THE LEDE MAY NOT SCOPE A FLEET-WIDE FACT TO ONE
+				// ENVIRONMENT. (Operator walk, finding 9) `hello-frontend-app` is
+				// held in ALL THREE environments by the SAME contract, but the
+				// row printed `DEV has 1 newer version held` — true of DEV alone
+				// and silent about staging and prod, directly under a panel that
+				// says all three are held. The row's lede has to agree with the
+				// panel's subject.
+				//
+				// `peers` is every free (unboxed) environment sharing `worstFree`'s
+				// own fact — same distance, and, when held, the SAME CAUSE
+				// (`causeKey`, the fold key `/apps/[name]` and `/environments`
+				// already use for "same cause, different environment"). A "can
+				// still take" fact has no gate to key on, so two environments
+				// tied on distance are already the same fact.
+				const worstFreeStory = worstFree?.story ?? null;
+				const peers = worstFree
+					? freeLagging.filter(
+							(c) =>
+								c.behindBy === worstFree.behindBy &&
+								c.story.blocked === worstFreeStory!.blocked &&
+								(!worstFreeStory!.blocked || causeKey(c.story) === causeKey(worstFreeStory!))
+						)
+					: [];
+				const subject =
+					peers.length <= 1
+						? worstFree?.envLabel.toUpperCase()
+						: peers.length === cells.length
+							? `all ${cells.length} environments`
+							: joinClauses(peers.map((c) => c.envLabel.toLowerCase()));
 				lede = worstFree
 					? worstFree.story.blocked
-						? `${worstFree.envLabel.toUpperCase()} has ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'} held`
-						: `${worstFree.envLabel.toUpperCase()} can still take ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'}`
+						? `${subject} ${peers.length <= 1 ? 'has' : 'have'} ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'} held`
+						: `${subject} can still take ${worstFree.behindBy} newer version${worstFree.behindBy === 1 ? '' : 's'}`
 					: '';
 			}
 
@@ -1100,6 +1145,16 @@
 
 	const attnCount = $derived(appRows.filter((a) => a.rank === 0).length);
 	const motionCount = $derived(appRows.filter((a) => a.rank === 1).length);
+	/**
+	 * ⭐ THE HEAD'S THIRD SEVERITY, AND THE CARD ROLLUP'S ONLY ONE. (Operator
+	 * walk, finding 10) `gateHeld` is the row's own `story.blocked` union —
+	 * a newer build exists and a contract, not a person, is refusing every
+	 * candidate. Deliberately NOT folded into `attnCount`: per `CLAUDE.md`'s
+	 * "a gate correctly refusing a candidate is not a stoppage" rule, a held
+	 * promotion does not need a person the way `failing`/`stuck` do, so it
+	 * keeps its own, quieter, count rather than inflating `Needs you`.
+	 */
+	const blockedCount = $derived(appRows.filter((a) => a.gateHeld).length);
 
 	// ── ATTENTION IS A CARD, NOT A ROW BAND. (2026-08-30) ────────────────────
 	//
@@ -1130,23 +1185,17 @@
 	// cannot disagree.
 	const attentionRows = $derived(appRows.filter((a) => a.rank === 0));
 	const steadyRows = $derived(appRows.filter((a) => a.rank !== 0));
-	/** The one sentence the page can say about the whole fleet. */
-	const convergedCount = $derived(
-		appRows.filter((a) => a.fleet.deployed > 0 && a.fleet.spread === 1).length
-	);
 	/**
-	 * ⛔ CONVERGED IS NOT UP TO DATE, AND GREEN MAY ONLY MEAN THE SECOND.
-	 * (2026-08-31)
+	 * ⛔ `convergedCount` ("the same version everywhere") IS GONE. (Operator
+	 * walk, finding 10) It was a fact that is trivially true whenever a fleet
+	 * is uniformly stuck — every environment agreeing with itself says
+	 * nothing about whether that one build is the right one — and both its
+	 * call sites (the head band, the "All apps" card rollup) now lead with
+	 * `blockedCount` instead, which can actually be false.
 	 *
-	 * From a live critique: the page printed `4 of 4 the same version
-	 * everywhere` — in GREEN, as the card's rollup — in the same viewport as
-	 * a row reading `0 of 3 up to date`. Both numbers were correct. The colour
-	 * was not: `convergedCount === appRows.length` says every app AGREES WITH
-	 * ITSELF, which is perfectly compatible with every app being twenty builds
-	 * behind, and green is the product's word for "nothing to do here".
-	 *
-	 * `UpToDate` already draws exactly this line per row (`allCurrent`), so
-	 * the page-level rollup uses the same predicate and no new vocabulary.
+	 * ⛔ CONVERGED WAS NEVER UP TO DATE, AND GREEN MAY ONLY MEAN THE SECOND.
+	 * (2026-08-31) `UpToDate` already draws that line per row (`allCurrent`);
+	 * `currentCount` below is the same predicate at page scope.
 	 */
 	const currentCount = $derived(
 		appRows.filter((a) => a.fleet.deployed > 0 && a.fleet.onHead === a.fleet.deployed).length
@@ -1460,24 +1509,23 @@
 				{#if motionCount > 0}
 					· {motionCount} deploying now
 				{/if}
-				<!-- THE FLEET-LEVEL ANSWER TO CRITERION 1, in one number, before
-				     any row is read: how many of these apps have every
-				     environment on one build. It comes LAST because the two
-				     counts above it are severity and severity leads — the same
-				     order `/` puts its sections in. Neutral ink: this is a
-				     summary of marks that are all already on screen.
-
-				     ⛔ AND IT NAMES THE OTHER HALF WHEN THE TWO DIFFER.
-				     (2026-08-31) `4 of 4 the same version everywhere` read as
-				     an all-clear beside a row saying `0 of 3 up to date`, and
-				     a reader cannot be expected to know that "the same
-				     version" says nothing about WHICH version. Consistency and
-				     currency are two facts; when they disagree, printing only
-				     the flattering one is the page choosing a side. -->
-				· {convergedCount} of {appRows.length} the same version everywhere{convergedCount !==
-				currentCount
-					? `, ${currentCount} on the newest`
-					: ''}
+				<!-- ⛔ THE HEAD REASSURED OVER THE ALERT. (Operator walk, finding
+				     10) `4 of 4 the same version everywhere, 3 on the newest`
+				     sat ABOVE the amber panel naming the one blocked app, and
+				     consistency-across-environments is trivially true when
+				     every environment is stuck on the same build — the sentence
+				     could never be false while something was actively wrong. It
+				     is deleted; the exception leads instead, same order as the
+				     two severities above it (`need attention`, `deploying now`,
+				     now `blocked`), and the good news — how many are current —
+				     comes last, unconditionally, since that is the one fact
+				     this line can say that is not already on screen. -->
+				{#if blockedCount > 0}
+					· <span class="font-medium text-gray-700 dark:text-gray-200"
+						>{blockedCount} blocked</span
+					>
+				{/if}
+				· {currentCount} on the newest
 			</p>
 		{/if}
 	</div>
@@ -1734,11 +1782,13 @@
 					<Card
 						icon={RocketSolid}
 						title={attentionRows.length > 0 ? 'Everything else' : 'All apps'}
-						verdict="{convergedCount} of {appRows.length} the same version everywhere"
-						verdictTone={convergedCount === appRows.length && currentCount === appRows.length
-							? 'good'
-							: 'neutral'}
-						verdictTitle="Counts the apps whose environments are all running one and the same version. {currentCount} of {appRows.length} are also on the newest version available to them."
+						verdict={blockedCount > 0
+							? `${blockedCount} of ${appRows.length} blocked`
+							: `${currentCount} of ${appRows.length} on the newest`}
+						verdictTone={blockedCount === 0 && currentCount === appRows.length ? 'good' : 'neutral'}
+						verdictTitle={blockedCount > 0
+							? `${blockedCount} of ${appRows.length} apps have a newer version that no gate will let in yet`
+							: `${currentCount} of ${appRows.length} apps have every deployed environment on the newest version available to it`}
 						padded={false}
 					>
 						<!-- ⛔ THE COLUMN HEADER ROW IS GONE. (2026-09-01)

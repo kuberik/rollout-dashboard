@@ -122,13 +122,19 @@
 	 */
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
+	import {
+		rolloutsListQueryOptions,
+		clusterInfoQueryOptions,
+		rolloutQueryOptions
+	} from '$lib/api/rollouts';
+	import { autoDeployState } from '$lib/view-models/auto-deploy';
 	import { fetchGithubStatus, githubStatusQueryKey, connectGithub } from '$lib/api/github';
 	import { rolloutPath, sourceDashboardURL } from '$lib/source-dashboard';
 	import { groupRolloutsByApp, displayVersionForTag } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { getEnvironmentRank, compareEnvironmentNames } from '$lib/env-order';
-	import { leadTime, medianBakeSpan, type LeadEnv } from '$lib/view-models/lead-time';
+	import { leadTime, medianBakeSpan, compactSpan, type LeadEnv } from '$lib/view-models/lead-time';
+	import { computeBakeProgress } from '$lib/view-models/bake-progress';
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import {
 		getDisplayVersion,
@@ -205,7 +211,7 @@
 		LinkOutline,
 		LockOpenOutline
 	} from 'flowbite-svelte-icons';
-	import type { Rollout, Environment, Kustomization } from '../../../types';
+	import type { Rollout, RolloutGate, Environment, Kustomization } from '../../../types';
 	import type { ManagedResourceStatus } from '../../../types/managed-resource';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -1421,6 +1427,28 @@
 	 */
 	/** Declared with `loneWaitGroups`, which it reads — see below. */
 
+	/**
+	 * ⭐ THE STATION SAYS HOW LONG IT HAS BEEN MOVING, THE SAME WAY `/` DOES.
+	 * (Operator walk, finding 11) `ControlCenter.motionMessages` builds
+	 * exactly this phrase for the home page's cards — `compactSpan` for the
+	 * elapsed unit, `computeBakeProgress` for a bake window's `elapsed of
+	 * total` — imported here rather than re-derived so the two pages cannot
+	 * spell "how long has this been going" two ways. `null` on a settled
+	 * station: `Station.age` already answers "how long has it been here".
+	 */
+	function inFlightDetail(f: EnvFacts): string | null {
+		if (f.status === 'InProgress') {
+			const start = f.cell.rollout.status?.history?.[0]?.bakeStartTime;
+			const p = computeBakeProgress(start, f.cell.rollout.spec?.bakeTime, $now);
+			return p ? `${compactSpan(p.elapsedMs)} of ${compactSpan(p.totalMs)}` : null;
+		}
+		if (f.status === 'Deploying') {
+			const startMs = f.timestamp ? new Date(f.timestamp).getTime() : NaN;
+			return Number.isFinite(startMs) ? compactSpan(Math.max(0, $now.getTime() - startMs)) : null;
+		}
+		return null;
+	}
+
 	// ── OBJECT 2 · THE STATE COLUMN ──────────────────────────────────────
 	//
 	// The chain is the LINE of stages; production, when it fans out, is a SET
@@ -1450,6 +1478,9 @@
 			// title.
 			age: f.timestamp ? formatTimeAgoCompact(f.timestamp, $now) : null,
 			ageTitle: f.timestamp ? `Deployed ${formatDate(f.timestamp)}` : null,
+			// ⭐ IN-FLIGHT PROGRESS, IN WORDS — see `Station.statusDetail`'s own
+			// note and `inFlightDetail` above.
+			statusDetail: inFlightDetail(f),
 			// ⭐ IS IT ACTUALLY SERVING. The number the page already fetches for
 			// the exposure bar, spent a second time where it answers a different
 			// question: the bar splits the FLEET by build, this says how much of
@@ -1920,6 +1951,15 @@
 	 * `Lead` column, computed here from the same `status.history` this page
 	 * already reads. `null` (an em dash) whenever no build has been observed at
 	 * both ends inside the retained history: never an estimate.
+	 *
+	 * ⛔ `inFlight` MARKS A DEPLOY THAT HAS NOT SETTLED YET, SO `leadTime` CAN
+	 * LEAVE IT OUT OF BOTH ENDS OF THE HOP. (2026-09-03, operator-walk finding
+	 * 18) `status.history[].timestamp` is written the instant a deploy STARTS,
+	 * not once it succeeds — see `lead-time.ts`'s module doc for the live flip
+	 * this caused on this exact page (`Typical to prod` going `11m → — no
+	 * full trip yet → 11m` across one deploy). `bakeStatus` is already read
+	 * straight off the same history entry — the same shape `HomeRail.svelte`
+	 * builds for `/`'s fleet median.
 	 */
 	const appLead = $derived.by(() => {
 		const envs: LeadEnv[] = cells.map((c) => ({
@@ -1930,7 +1970,9 @@
 				const v = getDisplayVersion(h.version);
 				if (!v || !h.timestamp) return [];
 				const ms = new Date(h.timestamp).getTime();
-				return Number.isFinite(ms) ? [{ version: v, ms }] : [];
+				return Number.isFinite(ms)
+					? [{ version: v, ms, inFlight: h.bakeStatus === 'InProgress' || h.bakeStatus === 'Deploying' }]
+					: [];
 			})
 		}));
 		return leadTime(envs);
@@ -2085,6 +2127,44 @@
 		clearPinCluster = cellCluster(cell);
 		clearPinOpen = true;
 	}
+
+	/**
+	 * ⭐ `ClearPinModal` GETS THE GATE'S NAME HERE TOO. (Operator walk,
+	 * finding 17) Rollout detail resolves `gate.kuberik.com/pretty-name` from
+	 * the FULL `RolloutGate` objects its own per-rollout query carries
+	 * (`rolloutGates`), so its dialog reads *"…a rule is holding it (Business
+	 * Hours Only)."* This page runs on the list endpoint, which — unlike the
+	 * per-rollout one — never carries gate objects, only `status.gates`'
+	 * bare `name`/`passing`; without a name to resolve, `ClearPinModal`'s own
+	 * default (`autoDeployState(rollout)`, no gates) fell back to the weaker
+	 * *"…a rule is holding it."*, silently, with no visible difference between
+	 * "there is no name" and "we never asked".
+	 *
+	 * One extra GET, the same `rolloutQueryOptions` rollout detail already
+	 * uses, fired only while the dialog is open and only for the ONE rollout
+	 * it is open for — mirroring `fetchScheduleObjects`'s own on-demand
+	 * pattern elsewhere on this page.
+	 */
+	const clearPinGateQuery = createQuery(() =>
+		rolloutQueryOptions({
+			namespace: clearPinRollout?.metadata?.namespace ?? '',
+			name: clearPinRollout?.metadata?.name ?? '',
+			cluster: clearPinCluster,
+			options: {
+				enabled:
+					clearPinOpen &&
+					!!clearPinRollout?.metadata?.namespace &&
+					!!clearPinRollout?.metadata?.name,
+				staleTime: 30_000
+			}
+		})
+	);
+	const clearPinGates = $derived<RolloutGate[]>(
+		clearPinGateQuery.data?.rolloutGates?.items ?? []
+	);
+	const clearPinAutoDeploy = $derived(
+		clearPinRollout ? autoDeployState(clearPinRollout, clearPinGates) : null
+	);
 
 	/**
 	 * THE DEEP LINK FROM `/apps`. That page's step is a LINK by design — an app
@@ -3687,6 +3767,7 @@
 			bind:open={clearPinOpen}
 			rollout={clearPinRollout}
 			cluster={clearPinCluster}
+			autoDeploy={clearPinAutoDeploy}
 			onSuccess={() => query.refetch()}
 		/>
 	{/if}
