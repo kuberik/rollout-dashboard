@@ -333,7 +333,8 @@
 			case 'debug':
 				return 'text-gray-400';
 			default:
-				return 'text-gray-300';
+				// The message is the thing that varies; it leads the row.
+				return 'text-gray-100';
 		}
 	}
 
@@ -1385,7 +1386,8 @@
 								data-index={row.index}
 							>
 							{#if visibleColumns.has('timestamp')}
-								<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
+								<!-- `gray-400`, not 500: on the gray-900 pane 500 measured 3.67:1. -->
+				<span class="shrink-0 text-gray-400">{logItem.formattedTimestamp}</span>
 							{/if}
 							{#if visibleColumns.has('pod')}
 								{#if singlePodMode}
@@ -1400,13 +1402,16 @@
 										aria-hidden="true"
 									></span>
 								{:else}
-									<span class="mx-1 shrink-0 font-semibold sm:mx-2" style="color: {podColor}"
+									<!-- Hue tells pods apart; weight was making the one column
+									     that repeats on every row the loudest thing in the pane
+									     while the message that varies sat in gray-300. -->
+									<span class="mx-1 shrink-0 sm:mx-2" style="color: {podColor}"
 										>{logItem.pod}</span
 									>
 								{/if}
 							{/if}
 							{#if visibleColumns.has('container')}
-								<span class="mx-1 shrink-0 text-green-400 sm:mx-2">{logItem.container}</span>
+								<span class="mx-1 shrink-0 text-gray-400 sm:mx-2">{logItem.container}</span>
 							{/if}
 							{#if visibleColumns.has('message')}
 								<span class="{levelColor} {wrapLines ? 'min-w-0 break-all whitespace-pre-wrap' : ''}">
