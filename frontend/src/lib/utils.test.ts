@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, formatTimeAgoCompact, formatDuration, plainMessage } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, formatTimeAgoCompact, formatDuration, plainMessage, detectStuckBehind } from './utils';
 import {
     ENVIRONMENT_THEME_ANNOTATION,
     ENVIRONMENT_THEME_COLOR_ANNOTATION,
@@ -955,5 +955,99 @@ describe('shortenVersion — the 38-zero revision', () => {
         expect(sha40).toHaveLength(40);
         expect(shortenVersion(sha40)).toBe('c0d3e88');
         expect(shortenVersion(sha40.slice(0, 38))).toHaveLength(38);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// `detectStuckBehind` — B1, OPERATOR-WALK FINDING (2026-09-03, fourth walk).
+//
+// `/apps` printed `hello-world-app — DEV is stuck / No progress for 31m and
+// nothing is holding it on purpose.` for a rollout the API itself reported
+// `schedule-gate-fk44d passing:false` for — a legitimate, self-clearing
+// hold, the same kind `promotion.ts`'s `detectStuckPromotion` already knows
+// to excuse. `classifyCell` (`/apps/+page.svelte`) calls THIS function for
+// its cross-environment comparison and it had no gate awareness at all: any
+// rollout behind a peer for >24h read `stuck`, contract-held, schedule-held
+// or genuinely wedged alike. These pin the fix — `detectStuckBehind` now
+// asks the same `blockNeedsPerson` question `detectStuckPromotion` does
+// before ever looking at peer staleness.
+// ─────────────────────────────────────────────────────────────────────────
+describe('detectStuckBehind — gates take precedence over peer staleness', () => {
+    const NOW = new Date('2026-09-03T13:30:00Z');
+
+    function makeRollout(opts: {
+        current: string;
+        timestamp: string;
+        pastVersions?: string[]; // history[1..], oldest last — so `compareRollouts` can find overlap
+        releaseCandidates?: { version: string; tag: string; created: string }[];
+        gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null }[];
+    }): any {
+        const history = [{ version: { version: opts.current }, timestamp: opts.timestamp, bakeStatus: 'Succeeded' }];
+        for (const v of opts.pastVersions ?? []) {
+            history.push({ version: { version: v }, timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' });
+        }
+        return {
+            metadata: { name: 'hello-world-app', namespace: 'hello-world-dev' },
+            spec: {},
+            status: {
+                history,
+                releaseCandidates: opts.releaseCandidates ?? [],
+                gates: opts.gates ?? []
+            }
+        };
+    }
+
+    // The peer (staging) advanced onto the newer build over a day ago, so
+    // the OLD peer-staleness-only test would call `myRollout` stuck no
+    // matter why it has not followed. Its history carries `myPastVersion`
+    // as a PAST deploy, which is what tells `compareRollouts` staging has
+    // already moved past the version `myRollout` is still on — the same
+    // "my version appears in the peer's history" shape the live payload
+    // has (dev and staging share deploy history on the same app).
+    function farAheadPeer(myPastVersion: string): any {
+        return makeRollout({
+            current: '064b655',
+            timestamp: '2026-09-01T12:00:00Z',
+            pastVersions: [myPastVersion]
+        });
+    }
+
+    it('B1 repro: rolled back into a schedule hold — behind a peer for a day, but NOT stuck', () => {
+        const myRollout = makeRollout({
+            current: '0afab6f',
+            // 8.5h since the rollback landed — this is the fact the old
+            // "No progress for 31m" sentence got wrong further up the
+            // stack too, but here it matters only insofar as it is well
+            // past the 24h... it is NOT, which is also the point: this
+            // must not read stuck even measured from a much older instant.
+            timestamp: '2026-09-03T05:00:00Z',
+            releaseCandidates: [{ version: '064b655', tag: '064b655', created: '2026-09-02T20:30:00Z' }],
+            gates: [{ name: 'schedule-gate-fk44d', passing: false, allowedVersions: null }]
+        });
+        expect(
+            detectStuckBehind(myRollout, farAheadPeer('0afab6f'), 'staging', { now: NOW })
+        ).toBeNull();
+    });
+
+    it('a peer merely ahead with NO blocking gate is still caught (the pre-existing case, unchanged)', () => {
+        const myRollout = makeRollout({
+            current: 'old-build',
+            timestamp: '2026-09-01T00:00:00Z'
+        });
+        const reason = detectStuckBehind(myRollout, farAheadPeer('old-build'), 'staging', { now: NOW });
+        expect(reason).not.toBeNull();
+        expect(reason?.kind).toBe('behind');
+    });
+
+    it('a block that genuinely needs a person (hand-authored approval) is still stuck', () => {
+        const myRollout = makeRollout({
+            current: '0afab6f',
+            timestamp: '2026-09-01T00:00:00Z',
+            releaseCandidates: [{ version: '064b655', tag: '064b655', created: '2026-09-01T00:00:00Z' }],
+            gates: [{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }]
+        });
+        const reason = detectStuckBehind(myRollout, farAheadPeer('0afab6f'), 'staging', { now: NOW });
+        expect(reason).not.toBeNull();
+        expect(reason?.kind).toBe('behind');
     });
 });

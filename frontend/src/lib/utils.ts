@@ -1,5 +1,15 @@
 import type { Rollout, Kustomization, OCIRepository } from "../types";
 import { BAKE_WORD } from './bake-status';
+// ⛔ THIS IMPORT IS CIRCULAR, AND IT IS DELIBERATE — SEE THE NOTE ON
+// `detectStuckBehind` BELOW. `view-models/promotion.ts` already imports
+// `getDisplayVersion` FROM this file; this file imports only the pure
+// gate-classification helper back. The existing `promotion.ts` <->
+// `blocking-story.ts` cycle documents why this is safe under ESM (both
+// sides are hoisted function declarations, and neither runs at the other
+// module's top level) — verified by `npx vitest run`, which throws at
+// import time if a cycle does not resolve.
+import { promotionBlock, blockNeedsPerson } from './view-models/promotion';
+import type { GateContext } from './view-models/blocking-story';
 
 
 export function formatDate(dateString: string): string {
@@ -119,16 +129,49 @@ export function detectStuck(
 // behind a peer AND the peer advanced more than `thresholdMs` ago, the
 // promotion isn't flowing — return a 'behind' StuckReason. Used on /apps
 // and /environments to flag specific cells that aren't being promoted.
+//
+// ⛔ B1, OPERATOR-WALK FINDING (2026-09-03): THIS COMPARED VERSIONS AND
+// A CLOCK, NEVER A GATE. `/apps` rolled `hello-world-dev/hello-world-app`
+// back one build through the UI and it landed schedule-held
+// (`schedule-gate-fk44d passing:false`) — a hold with a published reopen
+// time, the same kind `src/lib/CLAUDE.md`'s "a gate correctly refusing a
+// candidate is not a stoppage" rule already protects on the promotion-count
+// path (`detectStuckPromotion`). This function had no equivalent: it only
+// asked "is a newer build sitting elsewhere for a day", so ANY rollout
+// behind a peer for 24h read `stuck`, contract-held or schedule-held or
+// genuinely wedged — same amber, same "no progress" sentence, no
+// distinction. `blockNeedsPerson` is the exact predicate
+// `detectStuckPromotion` already uses for this question (extracted to
+// `view-models/promotion.ts` so both callers share one answer): a block
+// only counts as stuck when SOME blocking gate classifies `person` or
+// `unknown` — `clock` (a schedule) and `upstream` (environment order, a
+// dependency contract) are HELD, never stuck, and stay `held: true` on the
+// card via `promotionBlock(...).blocked` regardless of this predicate.
+//
+// ⚠️ `gateContext` defaults to none, same conservative-fallback shape as
+// `detectStuckPromotion`: a schedule gate never publishes an allow-list, so
+// even with NO join it classifies `check` (not `person`/`unknown`) and this
+// guard correctly excuses it — the live B1 repro is fixed by every caller,
+// unchanged. A gate that DOES publish an allow-list (the environment
+// controller's promotion gate, a `RolloutDependency` contract) without a
+// real `GateContext` falls back to `unknown` and STILL counts as stuck —
+// callers that can build the same join `/apps` already assembles for
+// `blockingStory` should pass it through here too, for the same reason
+// `detectStuckPromotion`'s own doc comment gives.
 export function detectStuckBehind(
     myRollout: Rollout | null | undefined,
     peerRollout: Rollout | null | undefined,
     peerEnvName: string,
-    options: { now?: Date; thresholdMs?: number } = {}
+    options: { now?: Date; thresholdMs?: number; gateContext?: GateContext } = {}
 ): StuckReason | null {
     if (!myRollout || !peerRollout) return null;
     if (myRollout.spec?.wantedVersion) return null; // pinned — by user choice
     const rel = compareRollouts(myRollout, peerRollout);
     if (!rel || rel.kind !== 'behind') return null;
+    const block = promotionBlock(myRollout);
+    if (block.blocked && !blockNeedsPerson(myRollout, block, options.gateContext)) {
+        return null; // held by a clock/upstream gate — that is `held`, not `stuck`
+    }
     const now = options.now ?? new Date();
     const threshold = options.thresholdMs ?? 24 * 60 * 60 * 1000; // 24h
     const peerTs = peerRollout.status?.history?.[0]?.timestamp;

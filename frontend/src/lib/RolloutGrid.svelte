@@ -33,8 +33,38 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
+	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+
+	/**
+	 * ⛔ B2, OPERATOR-WALK FINDING (2026-09-03): A PIN RENDERED AS `HELD`, AND
+	 * THE STRING "pin" APPEARED ZERO TIMES ON THIS PAGE.
+	 *
+	 * `cardStateMark`'s disc precedence puts `held` ahead of `pinned` — right
+	 * for the single-glyph disc (see that file's own note), wrong as the
+	 * ONLY place a pin was ever said: with both true, the disc drew the
+	 * pause glyph and the row's only WORD-level mark was the `held` chip.
+	 * Home (`ControlCenter`) and `/apps` both say PINNED in that state — this
+	 * page was the one surface calling an operator's own choice a rule.
+	 *
+	 * A held rollout and a pinned rollout are different facts that can
+	 * co-occur (a pin does not know or care what the gates are doing), so
+	 * they get two independent chips now rather than one overriding the
+	 * other — see the badge row below. And since a pin's remedy is a
+	 * control, not a wait, the row also gets the SAME `Clear pin` action
+	 * `/apps` and rollout detail already have, via the shared
+	 * `ClearPinModal` — one instance for the whole grid, targeting whichever
+	 * card's trigger was pressed.
+	 */
+	let clearPinCard = $state<RolloutCard | null>(null);
+	let clearPinOpen = $state(false);
+
+	function openClearPin(c: RolloutCard) {
+		clearPinCard = c;
+		clearPinOpen = true;
+	}
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
@@ -973,9 +1003,16 @@
 								language for every clickable row/card in the product,
 								not a border nobody can see change.
 							-->
-							<a
-								href={rolloutHref}
-								class="environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:bg-gray-700/30"
+							<!-- ⛔ WAS ONE `<a href={rolloutHref}>` WRAPPING THE WHOLE CARD.
+							     (2026-09-03, B2) That made the region a destination but left
+							     no legal way to add a second control inside it — a `<button>`
+							     nested in an `<a>` is invalid HTML and doubles the tab stop.
+							     `.tap-zone`/`.tap-link` (see `app.css`) is the product's one
+							     pattern for "the region navigates, AND it holds a control":
+							     the name below is the ONE `.tap-link` (its `::after` covers
+							     the region), `Clear pin` is a raised `<button>` alongside it. -->
+							<div
+								class="tap-zone environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:bg-gray-700/30"
 								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
 							>
 								<!-- Identity: status circle + metadata.name (+ title) + env badge -->
@@ -998,7 +1035,11 @@
 									</span>
 									<div class="min-w-0 flex-1">
 										<div class="flex min-w-0 items-baseline gap-1.5">
-											<span class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">{c.name}</span>
+											<a
+												href={rolloutHref}
+												class="tap-link truncate font-mono text-sm font-semibold text-gray-900 dark:text-white"
+												>{c.name}</a
+											>
 											{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
 											<!-- ⛔ THE ROW THAT SAID `deploy succeeded` WHILE THE SLO
 											     WAS BLOWN. (2026-08-31) `statusKey` is the DEPLOY's
@@ -1078,6 +1119,44 @@
 											class="shrink-0"
 										/>
 									{/if}
+									<!-- ⭐ B2, operator-walk finding (2026-09-03): AN OPERATOR'S
+									     PIN RENDERED AS `held` HERE, AND NEVER AS ITSELF. The disc
+									     above still resolves to ONE glyph (`held` outranks `pinned`
+									     there by design — see `cardStateMark`'s own note), but a
+									     WORD-level chip has no such budget limit: `held` and
+									     `pinned` are independent facts and both render when both
+									     are true, matching Home's `PINNED` chip and `/apps`'
+									     pin panel. Deliberately NOT `role="held"` (that hue is
+									     "a rule is blocking this"; a pin is a choice, not a rule —
+									     see `lib/CLAUDE.md`'s banner-hue rule) and Chip's role
+									     vocabulary (`type` lane's file) has no dedicated `pinned`
+									     hue yet, so this reads in the neutral `unranked` gray
+									     rather than inventing a colour outside this lane. -->
+									{#if c.pinnedVersion}
+										<Chip
+											role="unranked"
+											label="pinned"
+											title="Pinned to {c.pinnedVersion} — automatic deploys are paused until the pin is cleared."
+											class="shrink-0"
+										/>
+										<!-- ⭐ THE SAME CONTROL `/apps` HAS, NOT A NAVIGATION LINK TO
+										     IT. `/apps` links to `/apps/<name>?release=<env>` because
+										     ITS row is not the object being unpinned — this row IS,
+										     so the control can act in place. Raised above the card's
+										     `.tap-link` overlay automatically (`app.css`'s `.tap-zone`
+										     rule), so pressing it does not also navigate. -->
+										<button
+											type="button"
+											class="btn btn-secondary shrink-0 px-2 py-1 text-xs"
+											aria-label="{CLEAR_PIN_LABEL} on {c.name} in {c.envDisplay || c.envName}"
+											onclick={(e) => {
+												e.preventDefault();
+												openClearPin(c);
+											}}
+										>
+											{CLEAR_PIN_LABEL}
+										</button>
+									{/if}
 									</span>
 									<!-- ⛔ F8: THE NOUN LINE SURVIVED AT `sm`+ AND ORPHANED ITSELF.
 									     (2026-09-03, re-check) The 2026-09-02 fix above stopped `4d
@@ -1105,7 +1184,7 @@
 										{/if}
 									</span>
 								</div>
-							</a>
+							</div>
 						{/each}
 					</div>
 					</div>
@@ -1114,6 +1193,19 @@
 		</div>
 	{/if}
 </div>
+
+<!-- ONE MODAL FOR THE WHOLE GRID, targeting whichever card's `Clear pin`
+     button was pressed — the same shared-instance shape rollout detail uses
+     for its own single trigger. `rollout`/`cluster`/`environmentName` come
+     from `clearPinCard`, so the dialog always names the one row it was
+     opened for even though every card on the page shares this instance. -->
+<ClearPinModal
+	bind:open={clearPinOpen}
+	rollout={clearPinCard?.rollout ?? null}
+	cluster={clearPinCard?.sourceCluster || undefined}
+	environmentName={clearPinCard?.envName ?? null}
+	onSuccess={() => query.refetch()}
+/>
 
 <style>
 	/*

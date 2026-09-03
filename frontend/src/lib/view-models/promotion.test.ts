@@ -4,6 +4,7 @@ import {
 	newestCandidate,
 	promotionBlock,
 	detectStuckPromotion,
+	blockNeedsPerson,
 	gateAllows,
 	promotionCandidates,
 	newestDeployableCandidate,
@@ -517,6 +518,99 @@ describe('detectStuckPromotion — routed through blocking-story.ts classificati
 	});
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// `blockNeedsPerson` — EXTRACTED FROM `detectStuckPromotion` (2026-09-03,
+// B1 operator-walk finding) so `detectStuckBehind` (`$lib/utils`) can ask
+// the identical question. These pin the extraction did not change the
+// answer — `detectStuckPromotion`'s own describe blocks above already
+// cover every branch through the public function; this is the direct unit
+// coverage for the shared predicate itself.
+// ─────────────────────────────────────────────────────────────────────────
+describe('blockNeedsPerson', () => {
+	// Local copies of the fixtures inside the `detectStuckPromotion — routed
+	// through blocking-story.ts classification` describe above — those are
+	// scoped to that callback and not reachable here, and duplicating three
+	// small fixtures is cheaper than hoisting them out from under a block
+	// another lane may also be touching.
+	const envGate: Environment = {
+		metadata: { namespace: 'x' },
+		status: { rolloutGateRef: { name: 'ghd-5b2wn' } },
+		spec: { relationship: { environment: 'staging', type: 'After' } }
+	} as unknown as Environment;
+
+	const depGate: RolloutDependency = {
+		metadata: { namespace: 'x' },
+		status: {
+			gateName: 'dependency-hello-frontend-needs-api',
+			providedVersion: '1.66.0',
+			blockedReleases: [{ requiredVersion: '^1.67.0' }]
+		},
+		spec: { providerRef: { name: 'hello-api-app' }, contract: 'api' }
+	} as unknown as RolloutDependency;
+
+	function upstreamBlockedRollout() {
+		return rollout({
+			currentVersion: '2.66.0-66',
+			historyTimestamp: '2026-07-01T00:00:00Z',
+			releaseCandidates: [{ version: '2.67.0-67', tag: 'rel-67', created: '2026-07-01T00:00:00Z' }],
+			gates: [
+				{ name: 'ghd-5b2wn', passing: true, allowedVersions: [] },
+				{ name: 'dependency-hello-frontend-needs-api', passing: true, allowedVersions: ['rel-66'] }
+			]
+		});
+	}
+
+	it('an unblocked promotion never needs a person', () => {
+		expect(blockNeedsPerson(devRollout(), promotionBlock(devRollout()))).toBe(false);
+	});
+
+	it('a schedule-only block (no allow-list, no join) does not need a person — it is a clock', () => {
+		// The B1 repro, verbatim: `hello-world-dev/hello-world-app` rolled
+		// back one build through the UI and landed held by exactly ONE gate,
+		// `schedule-gate-fk44d passing:false` — no allow-list, matching the
+		// live RolloutSchedule shape, and NO OTHER blocking gate (unlike
+		// `prodRollout`, which also carries a genuine manual-approval gate
+		// and is deliberately excluded from this fixture). With NO
+		// GateContext at all (the B1 repro: `/apps`' classifyCell never
+		// built one for this call), it still classifies `check` — not
+		// `person`/`unknown` — because the allow-list test runs before the
+		// "we could not attribute it, so call it a person" fallback ever
+		// gets a look-in.
+		const r = rollout({
+			currentVersion: '0afab6f',
+			historyTimestamp: '2026-09-03T05:00:00Z',
+			releaseCandidates: [{ version: '064b655', tag: '064b655', created: '2026-09-02T20:30:00Z' }],
+			gates: [{ name: 'schedule-gate-fk44d', passing: false, allowedVersions: null }]
+		});
+		expect(promotionBlock(r).blocked).toBe(true);
+		expect(blockNeedsPerson(r, promotionBlock(r))).toBe(false);
+	});
+
+	it('a fully-joined upstream block (environment + dependency) does not need a person', () => {
+		const ctx = buildGateContext({
+			environments: { items: [envGate] },
+			rolloutDependencies: { items: [depGate] }
+		});
+		const r = upstreamBlockedRollout();
+		expect(blockNeedsPerson(r, promotionBlock(r), ctx)).toBe(false);
+	});
+
+	it('an allow-list gate with no join at all needs a person (conservative default)', () => {
+		const r = upstreamBlockedRollout();
+		expect(blockNeedsPerson(r, promotionBlock(r))).toBe(true);
+	});
+
+	it('a hand-authored approval gate, fully joined, needs a person', () => {
+		const r = rollout({
+			currentVersion: 'v1',
+			historyTimestamp: '2026-07-01T00:00:00Z',
+			releaseCandidates: [{ version: 'v2', tag: 'v2-tag', created: '2026-07-01T00:00:00Z' }],
+			gates: [{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }]
+		});
+		const ctx = buildGateContext({ environments: { items: [] }, rolloutDependencies: { items: [] } });
+		expect(blockNeedsPerson(r, promotionBlock(r), ctx)).toBe(true);
+	});
+});
 
 // ─────────────────────────────────────────────────────────────────────────
 // THE PROMOTE PREDICATE.

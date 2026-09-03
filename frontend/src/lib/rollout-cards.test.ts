@@ -427,6 +427,7 @@ function gate(overrides: Partial<ClassifiedGate>): ClassifiedGate {
 		clause: 'c',
 		short: 'short',
 		clearsAt: null,
+		timezone: null,
 		subject: null,
 		subjectKind: null,
 		predicate: null,

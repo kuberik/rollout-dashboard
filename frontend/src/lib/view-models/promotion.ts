@@ -313,6 +313,38 @@ export type PromotionStuckReason = {
 };
 
 /**
+ * ⭐ EXTRACTED, 2026-09-03 (B1, operator-walk finding) — SO `detectStuckBehind`
+ * (`$lib/utils`) CAN ASK THE SAME QUESTION `detectStuckPromotion` ALREADY
+ * ANSWERS CORRECTLY.
+ *
+ * Whether a rollout's promotion block needs a PERSON to clear it, or will
+ * clear on its own (a schedule window reopening, an upstream deploy
+ * landing). This is the one truth-bearing half of `detectStuckPromotion` —
+ * see its own doc comment below for the bug this predicate exists to kill
+ * (commit b3cfb15: an allow-list is not evidence of a person; the JOIN via
+ * `classifyGate` is what decides).
+ *
+ * ⚠️ Returns `false` (no person needed) whenever `block.blocked` is
+ * `false` — a promotion nothing is refusing has nothing to classify, and
+ * callers that also care about a gateless stall (unblocked but stagnant)
+ * must test that separately, exactly as `detectStuckPromotion` does below.
+ */
+export function blockNeedsPerson(
+	rollout: Rollout | null | undefined,
+	block: PromotionBlock,
+	gateContext?: GateContext
+): boolean {
+	if (!block.blocked) return false;
+	const namespace = rollout?.metadata?.namespace;
+	const ctx = gateContext ?? EMPTY_GATE_CONTEXT;
+	const holding = new Set(block.blockingGates);
+	return (rollout?.status?.gates ?? [])
+		.filter((g) => g?.name && holding.has(g.name))
+		.map((g) => classifyGate(g, namespace, ctx))
+		.some((g) => g.clears === 'person' || g.clears === 'unknown');
+}
+
+/**
  * Promotion-level stuck: releases are waiting and have been waiting a long
  * time. Shaped to feed the existing <StuckBadge>.
  *
@@ -364,15 +396,8 @@ export function detectStuckPromotion(
 	// moved) is a DIFFERENT wedge this predicate has always caught and must
 	// keep catching: there are no blocking gates to classify, so `holding` is
 	// empty and `needsPerson` would be vacuously false, wrongly clearing it.
-	if (block.blocked) {
-		const namespace = rollout?.metadata?.namespace;
-		const ctx = options?.gateContext ?? EMPTY_GATE_CONTEXT;
-		const holding = new Set(block.blockingGates);
-		const needsPerson = (rollout?.status?.gates ?? [])
-			.filter((g) => g?.name && holding.has(g.name))
-			.map((g) => classifyGate(g, namespace, ctx))
-			.some((g) => g.clears === 'person' || g.clears === 'unknown');
-		if (!needsPerson) return null;
+	if (block.blocked && !blockNeedsPerson(rollout, block, options?.gateContext)) {
+		return null;
 	}
 
 	const now = options?.now ?? new Date();
