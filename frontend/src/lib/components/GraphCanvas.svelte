@@ -50,6 +50,10 @@
 		fillWidth?: boolean;
 		/** One node per rank under `TB` — see `GraphCanvasInner`'s own doc. */
 		singleFile?: boolean;
+		/** The `LR` fit floor away from `narrow` — see `GraphCanvasInner`'s own doc. */
+		minZoomWide?: number;
+		/** Size the pane to the width-driven zoom, not to zoom 1 — see `GraphCanvasInner`'s own doc. */
+		snugHeight?: boolean;
 		/** The `LR`/`TB` this canvas settled on, for a caller that names axes. */
 		onorientation?: ((o: 'LR' | 'TB') => void) | undefined;
 		class?: string;

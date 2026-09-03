@@ -653,6 +653,18 @@
 				{#if r.kind !== 'rollout' && r.pretty}
 					<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.pretty}</span>
 				{/if}
+				{#if r.kind === 'rollout' && r.envTheme}
+					<!-- ⭐ 2026-09-03 · BESIDE THE NAME, NOT `ms-auto`. Three rows of
+					     one app across its environments print the identical title,
+					     identical verdict chip and identical build — the ONLY fact
+					     that tells them apart was the env chip, parked at the far
+					     right edge of a 592px row. A discriminator 500px from the
+					     text it discriminates does not get read; it gets scanned
+					     PAST. `shrink-0` keeps the chip from being squeezed by a
+					     long title — the chip is 3-4 characters and the title has
+					     `truncate` to give ground first. -->
+					<Chip role="env" theme={r.envTheme} label={shortEnvLabel(r.envTheme)} class="shrink-0" />
+				{/if}
 				<span class="ms-auto flex shrink-0 items-center gap-1.5">
 					{#if r.kind !== 'rollout' && (r.needsYou ?? 0) > 0}
 						<!-- A COUNT ONLY WHERE IT IS NOT 1. An app, an environment
@@ -669,13 +681,14 @@
 					{#if r.kind !== 'rollout' && r.verdict}
 						<Chip role={r.verdict.role} label={r.verdict.label} wide title={r.verdict.title} />
 					{/if}
-					{#if r.envTheme}
+					{#if r.kind !== 'rollout' && r.envTheme}
 						<!-- DELIBERATELY NOT `wide` (2026-08-26). The full namespace is printed
 						     on this same row, as the result's own subtitle -- `edge-mesh-prod-
 						     us-east-1` under `edge-mesh` -- so the chip is a colour/tier cue and
 						     not the identifier. This is the "repeated label whose full name is
 						     adjacent" case, and the palette is a fixed-width overlay that cannot
-						     grow to absorb 147px. -->
+						     grow to absorb 147px. A rollout row moved this beside its own name
+						     instead (2026-09-03) — see LINE 1 above. -->
 						<Chip role="env" theme={r.envTheme} label={shortEnvLabel(r.envTheme)} class="shrink-0" />
 					{/if}
 					{#if r.timestamp}
@@ -714,12 +727,26 @@
 				</div>
 			{:else if r.kind === 'rollout'}
 				<div class="flex min-w-0 items-center gap-2">
-					{#if r.pretty}
+					{#if r.subtitle && r.pretty}
+						<!-- ⭐ 2026-09-03 · THE DISCRIMINATOR LEADS. `truncate` cuts from
+						     the END of the string, so whichever fact was printed FIRST
+						     survived and the other was thrown away whole. This used to
+						     read `{pretty} · {subtitle}` — a display name repeated on
+						     every environment of the same app, ahead of the namespace
+						     that is the actual difference between the three rows —
+						     and a long `pretty` clipped `subtitle` to nothing:
+						     `Hello Dep frontend · …`, an ellipsis with no namespace
+						     behind it. `subtitle` (the namespace) goes first now, so a
+						     narrow row loses `pretty` — the fact repeated one line up
+						     in spirit — before it ever touches the one fact that tells
+						     this row apart from its siblings. -->
 						<span class="truncate text-xs text-gray-500 dark:text-gray-400"
-							>{r.pretty} · {r.subtitle}</span
+							>{r.subtitle} · {r.pretty}</span
 						>
 					{:else if r.subtitle}
 						<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.subtitle}</span>
+					{:else if r.pretty}
+						<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.pretty}</span>
 					{/if}
 					<span class="ms-auto flex shrink-0 items-center gap-1.5">
 						{#if r.stuck}

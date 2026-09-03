@@ -103,6 +103,8 @@
 		anchorSpan = null,
 		fillWidth = false,
 		singleFile = false,
+		minZoomWide = 0.55,
+		snugHeight = false,
 		onorientation = undefined,
 		class: className = ''
 	}: {
@@ -248,6 +250,56 @@
 		 */
 		singleFile?: boolean;
 		/**
+		 * ⭐ 2026-09-03 · THE `LR` FLOOR AT DESKTOP WIDTHS, WHICH USED TO BE
+		 * `0.55` FOR EVERY NON-`narrow` CALLER — AND `0.55` IS NOT LEGIBLE
+		 * EITHER, JUST AT A WIDER FRAME THAN `narrow`'s.
+		 *
+		 * Measured on the dependency network at its natural 927px width: a
+		 * 749px card (1024) landed the fit at **0.711 — a 10px `Chip` label
+		 * at 7.1px**, below the exact floor `narrow`'s own 0.85 exists to
+		 * hold, for the identical reason `narrow` was raised past `0.55` in
+		 * the first place. The graph was never TOO BIG here (a 40-node
+		 * fixture); it is one dagre pass short of fitting a mid-width card,
+		 * and the type paid for it.
+		 *
+		 * `AppPromotionFlow` never passes this, so its own `0.55` — measured
+		 * against ITS stages, not this graph's — is untouched. The dependency
+		 * network passes `0.85`, unifying its floor with `narrow`'s at every
+		 * width rather than only below 520px: **1024 → 0.85 (12% pan, was
+		 * 29%), 1152 → 0.85 (was already close at 0.83), 1280 → unchanged**
+		 * (0.95 already clears it). A card whose fit lands under the floor
+		 * now overflows and gets its pan/zoom controls exactly as `narrow`
+		 * already did — the mechanism is identical, only the width it kicks
+		 * in at moves.
+		 */
+		minZoomWide?: number;
+		/**
+		 * ⭐ 2026-09-03 · THE PANE STOPS ASSUMING ZOOM 1 FOR ITS OWN HEIGHT.
+		 *
+		 * `frameHeight` was always `contentHeight + 16` — the height the
+		 * drawing needs AT ZOOM 1 — clamped to `[minHeight, maxHeight]`.
+		 * That is correct when the resting fit lands at 1, but once a width
+		 * floor (`minZoomWide`, above) holds the zoom below what the frame's
+		 * width would otherwise allow, the drawing renders SMALLER than the
+		 * pane it was sized for: measured at 1024, a 380px pane held a
+		 * 259px-tall drawing at 0.711 — **36% empty board below it**, on a
+		 * card with nothing else to put there.
+		 *
+		 * `true` sizes the pane to the WIDTH-DRIVEN zoom the resting fit will
+		 * actually land on (`contentHeight * zoom`, same clamp), so the pane
+		 * shrinks to what it is actually holding instead of what it would
+		 * hold at a zoom the width floor has already ruled out. Only
+		 * `orientation === 'LR'` reads it — under `TB` the width is never the
+		 * constraint (`singleFile`'s own guarantee), so there is no zoom
+		 * shortfall to correct for and this must not perturb that branch's
+		 * already-settled height maths.
+		 *
+		 * `false` — the default, and what `AppPromotionFlow` gets since it
+		 * never passes this — keeps `frameHeight` byte-identical to before
+		 * this prop existed.
+		 */
+		snugHeight?: boolean;
+		/**
 		 * ⭐ THE DIRECTION THIS CANVAS SETTLED ON, back to the caller.
 		 *
 		 * With `rankdir="auto"` the flip is decided HERE, from the container's
@@ -341,7 +393,7 @@
 	const FIT = $derived({
 		padding: 0.14,
 		maxZoom: 1,
-		minZoom: narrow ? 0.85 : 0.55,
+		minZoom: narrow ? 0.85 : minZoomWide,
 		duration: 150
 	});
 
@@ -956,10 +1008,26 @@
 		}
 	});
 
+	/**
+	 * The width-driven zoom the resting fit will land on, for `snugHeight`
+	 * only — see that prop's own doc. `1` (no shrink) unless the pane is
+	 * genuinely `LR` and narrower than the drawing's natural width; `TB`
+	 * always returns `1` here, untouched.
+	 */
+	const restingWidthZoom = $derived.by(() => {
+		if (!snugHeight || orientation !== 'LR' || contentSize.width <= 0 || containerWidth <= 0) {
+			return 1;
+		}
+		const zw = (containerWidth - fitInset(containerWidth)) / contentSize.width;
+		return Math.min(1, Math.max(FIT.minZoom, zw));
+	});
+
 	const frameHeight = $derived.by(() => {
 		if (height !== null) return height;
 		if (contentSize.height === 0) return minHeight;
-		return Math.round(Math.min(maxHeight, Math.max(minHeight, contentSize.height + 16)));
+		return Math.round(
+			Math.min(maxHeight, Math.max(minHeight, contentSize.height * restingWidthZoom + 16))
+		);
 	});
 
 	/**

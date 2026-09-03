@@ -435,6 +435,16 @@
 		nothing to fit into a fixed frame — the PAGE scrolls, the pane's own
 		height just follows its content (`frameFor` in `GraphCanvasInner`,
 		unclamped once `maxHeight` is this large).
+
+		⭐ 2026-09-03 · `minZoomWide`/`snugHeight` — see `GraphCanvasInner`'s
+		own doc on each. Measured at 1024 (a 749px card against this graph's
+		927px natural `LR` width): the fit landed at 0.711, an under-floor
+		7.1px `Chip` label, with 36% of the pane's own height left empty
+		below a drawing that was never resized to the zoom it actually
+		rendered at. `0.85` unifies this graph's `LR` floor with `narrow`'s —
+		one legibility floor at every width, not just below 520px — and
+		`snugHeight` makes the pane follow that floor's zoom instead of
+		assuming 1. `AppPromotionFlow` passes neither and is unaffected.
 	-->
 	<GraphCanvas
 		nodes={flowNodes}
@@ -455,6 +465,8 @@
 		{anchor}
 		{anchorSpan}
 		fillWidth={!stacked}
+		minZoomWide={0.85}
+		snugHeight
 		onorientation={(o) => (stacked = o === 'TB')}
 		{dark}
 		ariaLabel="Dependency graph"
