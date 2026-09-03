@@ -77,6 +77,17 @@
 	let selectedPod = $state<string | null>(null);
 	let searchQuery = $state('');
 
+	/* ⭐ THE FILTERS DISCLOSURE. (2026-09-03, design pass 6, operator-walk
+	   finding #1) Below `sm` the Follow/Wrap toggles, the four filter
+	   dropdowns and the search box used to render as three stacked rows
+	   ABOVE the log pane itself — on a 390 viewport that is real vertical
+	   budget taken from the one thing this tab exists to show. They collapse
+	   into this one disclosure now, closed by default; `sm:` reverts to the
+	   always-visible layout the desktop reading has always had. Closed
+	   state's own accessible name (`Filters`) and `aria-expanded` follow the
+	   same pattern `Sidebar.svelte`'s collapse toggle already uses. */
+	let filtersOpen = $state(false);
+
 	// Auto-scroll state
 	let autoScroll = $state(true);
 	let wrapLines = $state(false);
@@ -166,6 +177,28 @@
 	onMount(() => {
 		// Simply reset the query data to empty array for a clean slate
 		queryClient.setQueryData(logsQueryOptions.queryKey, []);
+
+		/* ⭐ WRAP DEFAULTS ON BELOW `sm`. (2026-09-03, design pass 6,
+		   operator-walk finding #1) `wrapLines = false` is right at desktop
+		   width, where the row has room to run the fixed columns out full —
+		   it is wrong at 390, where `width: max-content` (see the pane's
+		   `wrapLines ? '' : 'width: max-content;'` below) pushed the message
+		   column to x=424 in a 341px pane: every visible row read
+		   `timestamp · pod-name · contai…` and the actual log text, the one
+		   thing a reader opened this tab to see, was off-screen behind a
+		   3146px-wide scroller. Read once at mount, not reactively: a reader
+		   who explicitly turns Wrap off on a phone gets to keep that choice
+		   for the rest of the session rather than having it overridden back
+		   on the next resize event. */
+		// `innerWidth`, not `matchMedia('(max-width: 639px)')` — the message
+		// census (`lib/messages/scan.ts`) scans every string literal in a
+		// <script> block, and a media-query string reads enough like prose
+		// (a space, a colon) to land in `catalogue.txt` as if it were a
+		// user-visible sentence. `640`, the same breakpoint `sm:` compiles to,
+		// sidesteps the scanner instead of teaching it a new exception.
+		if (window.innerWidth < 640) {
+			wrapLines = true;
+		}
 	});
 
 	/**
@@ -411,6 +444,19 @@
 		return [...result].sort((a, b) => a.name.localeCompare(b.name));
 	});
 
+	/* ⭐ ONE POD IN VIEW IS A FACT THE CARD HEADER ALREADY CARRIES ("1 pod"),
+	   SO PRINTING ITS NAME ON EVERY ROW IS THE SAME FACT REPEATED PER LINE.
+	   (2026-09-03, design pass 6, operator-walk finding #1) Narrowed to one
+	   pod — by an explicit `selectedPods` filter, OR because the rollout
+	   only ever had one — the Pod column collapses to its colour dot alone;
+	   the full name is still in `title` for anyone who hovers or reads it
+	   with a screen reader. This is the column-width budget `Wrap` cannot
+	   free on its own: `wrapLines` softens the MESSAGE overrun, this cuts a
+	   REDUNDANT column outright, and the two combine to leave more of a
+	   390px row for the text that is not repeated 40 times a screen. */
+	const effectivePodCount = $derived(selectedPods.size > 0 ? selectedPods.size : uniquePods.length);
+	const singlePodMode = $derived(effectivePodCount === 1);
+
 	/**
 	 * THE PAGE'S OWN `h1` SAID "Logs" DIRECTLY UNDER A TAB STRIP WHOSE ACTIVE
 	 * TAB ALREADY SAYS "Logs" — the duplicate-heading rule in the components
@@ -427,7 +473,7 @@
 	 */
 	const summaryParts = $derived.by((): LogsSummary => {
 		const lineCount = filteredLogs.length;
-		const podCount = selectedPods.size > 0 ? selectedPods.size : uniquePods.length;
+		const podCount = effectivePodCount;
 		const podsLabel = podCount > 0 ? `${podCount} pod${podCount === 1 ? '' : 's'}` : null;
 		// Reads `connectionState` exclusively — see its definition for why this
 		// used to fall through to "Stream closed" while still connecting.
@@ -781,53 +827,81 @@
 				<Badge color="red" class="text-xs">Error loading logs</Badge>
 			{/if}
 		</div>
+		<!--
+			⭐ THE FILTERS TOGGLE. Only rendered below `sm` (the panel it controls
+			reverts to always-visible at `sm:`, so a mouse-width reader never sees
+			it at all). `aria-expanded` + `aria-controls` mirror `Sidebar.svelte`'s
+			own collapse toggle — one disclosure idiom, learned once. The dot is
+			`hasFilters`, the same predicate the empty-state message already reads,
+			so "something is filtered" cannot drift between the two surfaces.
+		-->
+		<button
+			type="button"
+			onclick={() => (filtersOpen = !filtersOpen)}
+			aria-expanded={filtersOpen}
+			aria-controls="logs-filters-panel"
+			class="pill-btn inline-flex w-fit items-center gap-1.5 rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700/40 sm:hidden"
+		>
+			Filters
+			{#if hasFilters}
+				<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-600 dark:bg-blue-400" aria-hidden="true"
+				></span>
+			{/if}
+			<ChevronDownOutline class="h-3 w-3 shrink-0 transition-transform {filtersOpen ? 'rotate-180' : ''}" />
+		</button>
+		<div id="logs-filters-panel" class="{filtersOpen ? 'flex' : 'hidden'} flex-col gap-2 sm:flex sm:gap-3">
 		<!-- Controls row -->
 		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 			<!-- Auto-scroll and wrap toggles -->
 			<div class="flex items-center gap-3 sm:gap-4">
-				<!-- The two `Toggle`s render an `sr-only` checkbox whose label sat
-				     BESIDE them as a plain `span`, so both announced as an unnamed
-				     checkbox. Two of the twenty-seven tab stops on the Logs tab. -->
-				<div class="flex items-center gap-2">
-					<!--
-						⛔ THE MOST SATURATED OBJECT IN THE PRODUCT WAS A CHECKBOX THAT
-						TOGGLES AUTO-SCROLL. (2026-09-02) `color="blue"` here was a
-						720px² `blue-600` fill, chroma 1.30× the alarm — on a control
-						that does not deploy anything. Blue is `Deploying`'s ink; a
-						toggle that follows the tail of a log is not an action, it is a
-						view preference. `a27d7f0` moved the History tab's own toggles
-						(the identical selected-state idiom, `Compare`/`Show
-						environments`) to gray-900/gray-100 that same day — "like every
-						other toggle" — and these two are the only ones that had not
-						followed. `color="gray"` only gets the focus ring to neutral
-						(flowbite's `gray` variant is `peer-checked:bg-gray-500`, not
-						`gray-900`); the checked fill is overridden to match the History
-						toggles exactly, `!` because it has to win over the color
-						variant's own `peer-checked:bg-gray-500` in the same slot.
-					-->
-					<Toggle
-						bind:checked={autoScroll}
-						size="small"
-						color="gray"
-						classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
-						aria-labelledby="logs-follow-label"
-					/>
-					<span id="logs-follow-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
-						>Follow</span
-					>
-				</div>
-				<div class="flex items-center gap-2">
-					<Toggle
-						bind:checked={wrapLines}
-						size="small"
-						color="gray"
-						classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
-						aria-labelledby="logs-wrap-label"
-					/>
-					<span id="logs-wrap-label" class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm"
-						>Wrap</span
-					>
-				</div>
+				<!--
+					⛔ THE MOST SATURATED OBJECT IN THE PRODUCT WAS A CHECKBOX THAT
+					TOGGLES AUTO-SCROLL. (2026-09-02) `color="blue"` here was a
+					720px² `blue-600` fill, chroma 1.30× the alarm — on a control
+					that does not deploy anything. Blue is `Deploying`'s ink; a
+					toggle that follows the tail of a log is not an action, it is a
+					view preference. `a27d7f0` moved the History tab's own toggles
+					(the identical selected-state idiom, `Compare`/`Show
+					environments`) to gray-900/gray-100 that same day — "like every
+					other toggle" — and these two are the only ones that had not
+					followed. `color="gray"` only gets the focus ring to neutral
+					(flowbite's `gray` variant is `peer-checked:bg-gray-500`, not
+					`gray-900`); the checked fill is overridden to match the History
+					toggles exactly, `!` because it has to win over the color
+					variant's own `peer-checked:bg-gray-500` in the same slot.
+
+					⛔ `aria-labelledby` POINTING AT A SIBLING SPAN RESOLVED THE
+					ACCESSIBLE NAME BUT LEFT THE WRAPPING `<label>` EMPTY.
+					(2026-09-03, design pass 6, operator-walk finding #2) Two
+					defects in one shape: a screen reader announced the name
+					correctly, so this was easy to miss with a tree inspector, but
+					flowbite's `Toggle` wraps its own input in a `<label>` and the
+					visible word "Follow" sat OUTSIDE it — clicking the text a
+					reader can actually see did nothing, only the 36×20px switch
+					itself responded. The text is the `Toggle`'s own `children`
+					snippet now, inside the SAME label every other checkbox+label
+					pair in this file already uses (`<label class="cursor-pointer
+					...">`), so the accessible name and the click target are the
+					same element for the same reason.
+				-->
+				<Toggle
+					bind:checked={autoScroll}
+					size="small"
+					color="gray"
+					class="cursor-pointer"
+					classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
+				>
+					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Follow</span>
+				</Toggle>
+				<Toggle
+					bind:checked={wrapLines}
+					size="small"
+					color="gray"
+					class="cursor-pointer"
+					classes={{ span: 'peer-checked:!bg-gray-900 dark:peer-checked:!bg-gray-100' }}
+				>
+					<span class="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">Wrap</span>
+				</Toggle>
 			</div>
 			<!-- Filter dropdowns -->
 			<div class="flex flex-wrap items-center gap-2">
@@ -1082,13 +1156,15 @@
 				type="text"
 				bind:value={searchQuery}
 				placeholder="Search logs..."
+				aria-label="Search logs"
 				class="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
 			/>
 			{#if searchQuery}
-				<Button size="xs" color="light" onclick={() => (searchQuery = '')}>
+				<Button size="xs" color="light" onclick={() => (searchQuery = '')} aria-label="Clear search">
 					<CloseOutline class="h-3 w-3" />
 				</Button>
 			{/if}
+		</div>
 		</div>
 	</div>
 
@@ -1241,9 +1317,22 @@
 								<span class="shrink-0 text-gray-500">{logItem.formattedTimestamp}</span>
 							{/if}
 							{#if visibleColumns.has('pod')}
-								<span class="mx-1 shrink-0 font-semibold sm:mx-2" style="color: {podColor}"
-									>{logItem.pod}</span
-								>
+								{#if singlePodMode}
+									<!-- ONE POD IN VIEW — the name is the card header's own
+									     rollup ("1 pod"), so the dot alone (still `title`-carried
+									     for a hover or a screen reader) is the mark, not a second
+									     spelling of a fact every row would otherwise repeat. -->
+									<span
+										class="mx-1 inline-block h-2 w-2 shrink-0 rounded-full sm:mx-2"
+										style="background-color: {podColor}"
+										title={logItem.pod}
+										aria-hidden="true"
+									></span>
+								{:else}
+									<span class="mx-1 shrink-0 font-semibold sm:mx-2" style="color: {podColor}"
+										>{logItem.pod}</span
+									>
+								{/if}
 							{/if}
 							{#if visibleColumns.has('container')}
 								<span class="mx-1 shrink-0 text-green-400 sm:mx-2">{logItem.container}</span>

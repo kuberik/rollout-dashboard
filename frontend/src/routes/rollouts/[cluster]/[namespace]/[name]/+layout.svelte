@@ -109,6 +109,36 @@
 		if (href === base) return activeUrl === href;
 		return activeUrl.startsWith(href);
 	};
+
+	/* THE STRIP SCROLLS NOW (see the `overflow-x-auto` note on its row below),
+	   which means the ACTIVE tab can load off-screen: at 640 the tab strip is
+	   narrower than its four tabs' natural width, and without this a reader
+	   who follows a link straight to `/logs` lands on a strip showing
+	   `History | Dependencies | Lo…` with no visible cue that its own active
+	   tab is the clipped one. `inline: 'nearest'`, not `'center'`: centring
+	   would move a tab that is ALREADY fully visible (the common case, every
+	   width above ~460px shows all four) purely because it is not dead
+	   centre, which reads as the page fighting the reader's own scroll.
+
+	   ⚠️ `void activeUrl` ALONE MISSES THE CASE THAT ACTUALLY OVERFLOWS.
+	   `tabs`' `Dependencies` entry is gated on `hasEnvironment || hasDependencies`,
+	   both read off async queries — on first paint the strip can be THREE
+	   tabs (fits in 449px) and only becomes FOUR (488px, the overflowing
+	   case) once a query resolves, a render the effect has to see to react
+	   to. Depending on `tabs` itself (not just `activeUrl`) makes Svelte
+	   re-run this the moment that tab is inserted, which a `ResizeObserver`
+	   on the strip does not catch — `overflow-x-auto` means the strip's OWN
+	   box never changes size when a child is added, only its `scrollWidth`
+	   does, and a `ResizeObserver` reports box size, not scroll size. */
+	let tabStripEl = $state<HTMLDivElement | null>(null);
+
+	$effect(() => {
+		void activeUrl;
+		void tabs;
+		tabStripEl
+			?.querySelector('[aria-current="page"]')
+			?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+	});
 </script>
 
 <!--
@@ -200,7 +230,22 @@
 			single-row icon+label at `text-sm` — this only ever fires below
 			`sm`, the one width the defect was measured at.
 		-->
-		<div class="mx-auto flex w-full max-w-7xl items-stretch px-4 sm:justify-start sm:gap-0 sm:px-6">
+		<!-- `overflow-x-auto no-scrollbar`, NOT a bare `flex`. (2026-09-03, design
+		     pass 6, operator-walk finding: `main.scrollWidth` 464 vs `clientWidth`
+		     449 at 640.) Right at the `sm` boundary the tabs switch from the
+		     stacked icon+10px-label cell to the horizontal icon+`text-sm`-label
+		     row, and `sm:shrink-0` on each tab (added so a tab keeps its label on
+		     one line instead of wrapping) stops the row from shrinking to fit —
+		     four tabs' natural width exceeds 449px of content box, and since this
+		     div has no overflow of its own the excess painted OUTSIDE it and
+		     inflated `<main>`'s `scrollWidth` instead, the ancestor that actually
+		     owns scrolling. `app.css`'s `.no-scrollbar` was already written for
+		     exactly this shape ("horizontal-scrolling tab strips like the rollout
+		     detail tabs") but had never been wired to this strip. Containing the
+		     overflow here — a strip that scrolls internally instead of stretching
+		     its parent — keeps every tab reachable without widening the page. -->
+		<div bind:this={tabStripEl}
+			class="mx-auto flex w-full max-w-7xl items-stretch overflow-x-auto px-4 no-scrollbar sm:justify-start sm:gap-0 sm:px-6">
 			{#each tabs.filter((t) => t.show) as t (t.href)}
 				{@const active = isActive(t.href)}
 				<a

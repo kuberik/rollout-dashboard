@@ -80,8 +80,16 @@
 		     the wrapper = 30, still short. `py-2` unconditionally (dropping the
 		     `sm:py-2` duplicate — it is no longer a step up from anything) gives
 		     16+16=32 per button, +2 wrapper border = 34, matching exactly. -->
+		<!-- `aria-pressed`, not `role="tab"`. A tablist commits a keyboard
+		     contract this control does not implement (arrow-key roving focus
+		     between tabs per the ARIA APG) — adding the role without it would
+		     announce a pattern that then does not work. `aria-pressed` on a
+		     plain two-button toggle group needs no extra keyboard wiring: Tab
+		     already reaches both buttons and Enter/Space already activates
+		     them. (2026-09-03, design pass 6, operator-walk finding #2.) -->
 		<div class="flex rounded border border-gray-200 dark:border-gray-700">
 			<button
+				aria-pressed={activeTab === 'pods'}
 				class="px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm {activeTab === 'pods'
 					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
 					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-l"
@@ -90,6 +98,7 @@
 				Pods
 			</button>
 			<button
+				aria-pressed={activeTab === 'tests'}
 				class="px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm {activeTab === 'tests'
 					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
 					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-r"
