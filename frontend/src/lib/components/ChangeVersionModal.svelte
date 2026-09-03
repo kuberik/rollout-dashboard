@@ -301,6 +301,39 @@
 		};
 	});
 
+	/**
+	 * ⭐ STEP 2 STARTS SCROLLED TO ITS OWN TOP, ALWAYS. (user3 repro, 390 dark,
+	 * hello-world-prod/hello-world-app -> Change Version -> pick 0afab6f)
+	 * Measured live: the amber `Rollback 064b655 -> 0afab6f` step header sat
+	 * mostly scrolled OUT of view under the sticky title, its bottom edge
+	 * showing at y~=185 -- the content region had a non-zero initial
+	 * `scrollTop` the instant it appeared, not a user scroll. Two candidate
+	 * causes, both real and both covered by the same fix: (1) flowbite's own
+	 * `Dialog.svelte` autofocuses the first focusable
+	 * `input, textarea, select, button` in DOM order on `showModal()` — on a
+	 * rollout with `mustPin` true (every rollback), the footer's `<textarea>`
+	 * is the first ELIGIBLE one once the picker's own search input is
+	 * `hidden` (mobile, past a pick), and a browser scrolls a newly-focused
+	 * element into view; (2) CSS scroll anchoring, which can shift a
+	 * scrollable ancestor's position when content above the viewport changes
+	 * size — exactly what happens when the grid goes from one column to two
+	 * and the left picker collapses to `hidden` at mobile. Rather than
+	 * chase which one fired on a given browser, this resets BOTH scroll
+	 * containers a person could land in — `rightContentEl` itself, and
+	 * flowbite's own outer body wrapper (`<dialog><div class="... overflow-y-auto
+	 * ...">`, the direct child of `<dialog>` this component's own markup
+	 * lives inside) — to the top the instant step 2's content exists.
+	 * Depends only on `selectedVersion` and `rightContentEl`, NOT on the
+	 * effect above's `ResizeObserver`, so switching preview or annotations
+	 * loading later never yanks a reader's own manual scroll back to zero.
+	 */
+	$effect(() => {
+		if (!selectedVersion || !rightContentEl) return;
+		rightContentEl.scrollTop = 0;
+		const flowbiteBody = rightContentEl.closest('dialog')?.firstElementChild as HTMLElement | null;
+		if (flowbiteBody) flowbiteBody.scrollTop = 0;
+	});
+
 	// --- Override context: WHO this force-deploy overrides ----------------
 	// ⭐ THE PROD FORCE-DEPLOY DIALOG NAMED NO RULE. The banner behind it says
 	// `2 rules` and the Dependencies tab names the contract, provider and
@@ -915,7 +948,24 @@
      dialog to the list's own measure (`max-w-md`, 448px — inside the
      420-480px the list needs at full width) before a pick, and widens back to
      the original 896px (`max-w-4xl`, byte-identical to the old `size="lg"`)
-     only once the right pane has something to draw. -->
+     only once the right pane has something to draw.
+
+     ⭐ BELOW `sm` THIS IS A FULL-SCREEN SHEET, NOT A SHORT CARD. (user3
+     repro, 2026-09-03) Measured live at 390: the dialog's own box was
+     roughly 85vh tall and vertically CENTERED (flowbite's own
+     `my-auto mx-auto` on the underlying `<dialog>`, native UA default when
+     no explicit height overrides it) — the navbar showed, dimmed, above it
+     and a page row (`Stage 2 DONE`) showed, dimmed, below its footer. Two
+     dimmed layers of real content read as "a second modal behind this one".
+     `max-sm:` mirrors flowbite's own `fullscreen` MODAL VARIANT (see
+     `modal/theme.js`'s `fullscreen: true` classes) rather than inventing a
+     new shape — `h-dvh` over that variant's own `h-screen` because a mobile
+     browser's collapsing address bar makes `100vh` taller than the ACTUAL
+     visible area, which is exactly the gap that let the page underneath
+     show through in the first place. `max-w-none` overrides the width class
+     two lines above it (a `max-sm:` utility wins over an unprefixed one of
+     the same property at the same specificity — ordinary Tailwind cascade,
+     already relied on everywhere else in this file). -->
 <Modal
 	bind:open
 	title=""
@@ -923,10 +973,12 @@
 	role="dialog"
 	aria-modal="true"
 	dismissable={false}
-	class="[&>div]:p-0 {selectedVersion ? 'max-w-4xl' : 'max-w-md'}"
+	class="[&>div]:p-0 {selectedVersion
+		? 'max-w-4xl'
+		: 'max-w-md'} max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none"
 	aria-labelledby="cvm-title"
 >
-	<div class="flex max-h-[85vh] flex-col">
+	<div class="flex max-h-[85vh] flex-col max-sm:h-full max-sm:max-h-none">
 		<!-- Header.
 
 		     ⛔ ONE CLOSE AFFORDANCE, NOT TWO. (cosmetic, coordinator operator
