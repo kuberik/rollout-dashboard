@@ -1813,7 +1813,7 @@
 								     equal-size headings stack instead of a name and its
 								     one-line gloss. `t-dense` (12.5px) is the declared caption
 								     role — same fix as `/apps/<name>`'s identical head. -->
-								<span class="t-dense min-w-0 truncate text-gray-500 dark:text-gray-400">
+								<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">
 									{rollout.status.title}
 								</span>
 							{/if}
