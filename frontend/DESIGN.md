@@ -3853,6 +3853,39 @@ decision. Left as-is here so the next pass does not "fix" `Deploy` to gray.
 - Pre-existing: `svelte-check` error at rollout `+page.svelte:1082` (`imageRepoScanTime` is not
   on `RolloutResponse`) — on the base commit, not introduced here.
 
+## DESIGN PASS 4 — iteration 2 (2026-09-03, afternoon)
+
+Second sweep (both agents, four combos + 1024/1280) and the human's own reports. Fixed, one
+commit each, all on `main`:
+
+- **Rollout detail.** Newer builds card: empty-state sentence, Refresh beside the rollup,
+  a per-row `CommitSummary` from the NEXT-OLDER candidate (not the running build — "commits
+  are repeating for each available version"), verb **"to deploy"** (not "deployed"). Title
+  pair restored to `t-display-id` + `t-display` (the census had demoted the descriptor; the
+  sibling tabs had not). Card titles sentence case; "Available Version Upgrades" → "Newer
+  builds".
+- **Badges are the chip atom, everywhere the census had put `t-label` on them:** pipeline
+  step labels + Active + track/retry, Resources status words, the pin mark, and the dialog's
+  held / current / pinned. Ink per state, neutral border, no fill; `held` is the orange role
+  in the dialog too (was red `blocked`).
+- **Change Version:** typed confirmation on every direction but `same`; note "(required)"
+  for rollbacks and production with a reason line while empty; no pre-written rollback
+  reason at any entry point (Overview, History, /apps/<name>, FailurePanel); Connect GitHub
+  is a hint below `sm` (never navigates away from an armed dialog); "Same commit as the
+  running build" when base === head; "Commits to deploy / to revert".
+- **Rails:** `a.ra-wide { display: inline-flex }` — `revert` had given the link the UA's
+  `inline` and the chevron wrapped at 1024/1280 (55px band). `/rollouts` search is 320px
+  fixed (was `flex-1`, collapsed to an icon at ~1210–1530). `/apps` splits by container at
+  ≥1056px; fleet track 184px; the app name never yields to its description.
+
+### Raised, not decided here
+- A pinned rollout is invisible on `/` ("Trailing") and `/environments` ("held"); only
+  `/rollouts` says pinned. Green rollups above amber banners on four pages. Logs says
+  "streaming" over a stale buffer. `/revisions/<sha>` contradicts itself (running 6/6 vs held
+  3; "What each service calls it" prints the held version). Clear pin never names its target.
+- `/environments` cards declare `min-height: 32px`, not the 47px band. `/` rail rows at
+  1024/1280 leave a ~650px hole. The 11–13px type band and `Envs` vs `Environments`.
+
 ## DESIGN PASS 3 — the four-combination sweep (2026-09-03)
 
 Every route × light/dark × 1440/390, by two agents whose definitions require exactly that
