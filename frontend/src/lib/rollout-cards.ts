@@ -539,7 +539,15 @@ export function heldCauseText(story: BlockingStory): string | null {
 			hour: 'numeric',
 			minute: '2-digit'
 		});
-		return `deploy window reopens ${time}`;
+		// ⛔ "ON ITS OWN" IS LOAD-BEARING, NOT DECORATION. (2026-09-03,
+		// coordinator relay, operator-walk item) The Held section's own
+		// header said EVERY held card "will not move on their own" — true of
+		// a gate contract, false of a closed deploy window, which clears
+		// itself the moment the clock does. The header dropped the blanket
+		// claim (see `ControlCenter.svelte`); this line is where the
+		// self-clearing fact actually belongs, on the one card it is true
+		// of.
+		return `reopens ${time} on its own`;
 	}
 	// A cross-service contract or an upstream promotion: name the PROVIDER
 	// and, where the payload carries it, the required range — `waiting on

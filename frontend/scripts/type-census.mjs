@@ -74,6 +74,48 @@ function declaredRole(classes) {
 }
 
 /**
+ * ⭐ INHERITED ROLES, WALKED AND VERIFIED. (2026-09-03, type-lane finding 7a)
+ *
+ * The census's own philosophy, stated above `DECLARED_ROLES`, is that
+ * declared-ness is a CLASS-NAME question: an element must wear the literal
+ * `t-*` token to count. That is right for two elements that happen to match
+ * a role's NUMBERS by coincidence — `.chip`'s old hand-spelled 10px/600/mono
+ * before `t-chip` existed is the example on record. It is WRONG for a
+ * text-bearing LEAF whose type role is set on its own PARENT and inherited —
+ * `Chip.svelte`'s label span (`<span class="min-w-0 truncate">`) sits inside
+ * `<span class="chip t-chip {tone}">`, and font-family/size/weight are
+ * inherited properties, so the leaf's computed style is not a coincidental
+ * match, it is the SAME declaration reaching it through the cascade. The
+ * census counted 297 of these (`10px/600/mono`, the `t-chip` triad exactly)
+ * as an anonymous bucket instead of as 297 uses of a role that is declared,
+ * once, on their own parent.
+ *
+ * The fix walks up from the leaf looking for the NEAREST ancestor carrying a
+ * `t-*` class, and credits its role to the leaf ONLY IF the leaf's own
+ * computed font-size/weight/family still match that role's declared metrics
+ * — so a genuine override sitting between the ancestor and the leaf (a
+ * `text-sm` utility, a nested component with its own role) is NOT masked:
+ * it falls through to the undeclared bucket under its own computed style,
+ * exactly as before. This is deliberately narrower than "any ancestor has a
+ * `t-*` class": it stops at the FIRST one found, matching or not, because
+ * that is the boundary the cascade actually respects — a role two levels up
+ * is irrelevant if a nearer ancestor already re-declared the type.
+ */
+const ROLE_CLASS_RE = /^t-[a-z-]+$/;
+
+function nearestAncestorRole(ancestorClassChain) {
+	for (const classes of ancestorClassChain || []) {
+		const tokens = (classes || '').split(/\s+/);
+		for (const t of tokens) {
+			if (ROLE_CLASS_RE.test(t) && Object.prototype.hasOwnProperty.call(DECLARED_ROLES, t)) {
+				return t;
+			}
+		}
+	}
+	return null;
+}
+
+/**
  * Build the declared/undeclared histogram across every route's census.
  * "File path" in this product means the DOM census's own `path` (a CSS
  * selector) plus the ROUTE it was found on — a browser-side census has no
@@ -82,17 +124,34 @@ function declaredRole(classes) {
  * the next pass needs to go find the call site.
  */
 function summarize(allResults) {
-	const declared = {}; // role -> { count, routes: Set }
+	const declared = {}; // role -> { count, routes: Set, inherited: number }
 	const undeclared = {}; // "size/weight/family" -> { count, routes: Set, samples: [{route, path, text}] }
 
 	for (const [routeName, result] of Object.entries(allResults)) {
 		if (!result.elements) continue;
 		for (const el of result.elements) {
-			const role = declaredRole(el.classes);
+			let role = declaredRole(el.classes);
+			let viaAncestor = false;
+			if (!role) {
+				const ancestorRole = nearestAncestorRole(el.ancestorClasses);
+				if (ancestorRole) {
+					const spec = DECLARED_ROLES[ancestorRole];
+					const family = familyShort(el.fontFamily);
+					if (
+						spec.fontSize === el.fontSize &&
+						spec.fontWeight === el.fontWeight &&
+						spec.family === family
+					) {
+						role = ancestorRole;
+						viaAncestor = true;
+					}
+				}
+			}
 			if (role) {
-				declared[role] ??= { count: 0, routes: new Set() };
+				declared[role] ??= { count: 0, routes: new Set(), inherited: 0 };
 				declared[role].count++;
 				declared[role].routes.add(routeName);
+				if (viaAncestor) declared[role].inherited++;
 				continue;
 			}
 			const family = familyShort(el.fontFamily);
@@ -112,7 +171,8 @@ function printSummary({ declared, undeclared }) {
 	console.error('\n── DECLARED ROLES ──────────────────────────────────────');
 	const declaredRows = Object.entries(declared).sort((a, b) => b[1].count - a[1].count);
 	for (const [role, v] of declaredRows) {
-		console.error(`  ${role.padEnd(16)} x${v.count} on ${v.routes.size} routes`);
+		const inherited = v.inherited ? ` (${v.inherited} via inherited ancestor role)` : '';
+		console.error(`  ${role.padEnd(16)} x${v.count} on ${v.routes.size} routes${inherited}`);
 	}
 	const totalDeclared = declaredRows.reduce((s, [, v]) => s + v.count, 0);
 
@@ -217,6 +277,24 @@ function censusPage() {
 		return parts.join(' > ');
 	}
 
+	// The class strings of this element's ancestors, nearest first, up to a
+	// fixed depth — walked on the NODE side against `DECLARED_ROLES` so an
+	// inherited type role (e.g. a chip's leaf `<span>` inside a `.t-chip`
+	// wrapper) can be credited to the element that actually declares it. See
+	// `nearestAncestorRole` for why this stops at the first `t-*`-bearing
+	// ancestor rather than scanning every ancestor to the document root.
+	function ancestorClassChain(el, maxDepth = 8) {
+		const chain = [];
+		let node = el.parentElement;
+		let depth = 0;
+		while (node && depth < maxDepth) {
+			chain.push(node.className && typeof node.className === 'string' ? node.className : '');
+			node = node.parentElement;
+			depth++;
+		}
+		return chain;
+	}
+
 	// Walk all elements; for each, look at its OWN direct text (non-whitespace)
 	// via child text nodes, so we report the element that actually paints
 	// the text (not every ancestor).
@@ -241,6 +319,7 @@ function censusPage() {
 			path: cssPath(el),
 			tag: el.tagName.toLowerCase(),
 			classes: el.className && typeof el.className === 'string' ? el.className : '',
+			ancestorClasses: ancestorClassChain(el),
 			text,
 			fontSize: style.fontSize,
 			fontWeight: style.fontWeight,
@@ -325,7 +404,7 @@ async function run() {
 				declared: Object.fromEntries(
 					Object.entries(summary.declared).map(([k, v]) => [
 						k,
-						{ count: v.count, routes: [...v.routes] }
+						{ count: v.count, routes: [...v.routes], inherited: v.inherited ?? 0 }
 					])
 				),
 				undeclared: Object.fromEntries(

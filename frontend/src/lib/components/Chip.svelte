@@ -1222,6 +1222,19 @@
 {/snippet}
 
 {#snippet valueHalf(solo: boolean)}
+	<!-- ⭐ `t-code-sm` NOW ON `.chip-value` ITSELF. (2026-09-03, type-lane
+	     finding 7c) `.chip-value`'s own rule (app.css, "THE CHIP" block)
+	     hand-spells `font-family: mono; font-size: 11.5px; font-weight: 400`
+	     — the exact triad `t-code-sm` declares — because the role did not
+	     exist yet when this rule was written. The census counted every sha
+	     rendered here (89 across 9 routes) as an anonymous `11.5px/400/mono`
+	     bucket instead of as a use of a declared role. `t-code-sm` is
+	     UNLAYERED (same as `t-chip`), so it outranks `.chip-value`'s
+	     `@layer components` declaration regardless of source order — adding
+	     the class changes nothing about the computed style, only whether the
+	     census can name it. `.chip-value`'s own font properties are left in
+	     place: that rule lives outside the t-* role block this lane owns,
+	     and the two are byte-identical anyway. -->
 	<!-- `solo` also takes the `class` prop, because in the identifier-only form
 	     this element IS the chip — the same place `class` lands in the lone
 	     form. In the joined form it lands on the `.chip-joined` wrapper and
@@ -1259,7 +1272,7 @@
 		     names the solo form, so it is left byte-identical. -->
 		<span class="chip-value-wrap hit-32">
 			<a
-				class="chip-value {valueDim ? 'chip-value--dim' : ''}"
+				class="chip-value t-code-sm {valueDim ? 'chip-value--dim' : ''}"
 				href={valueHref}
 				title={valueTitle ?? value}
 			>
@@ -1268,7 +1281,7 @@
 		</span>
 	{:else if valueHref}
 		<a
-			class="chip-value {solo ? `chip-value--solo ${className}` : ''} {valueDim
+			class="chip-value t-code-sm {solo ? `chip-value--solo ${className}` : ''} {valueDim
 				? 'chip-value--dim'
 				: ''}"
 			href={valueHref}
@@ -1278,7 +1291,7 @@
 		</a>
 	{:else}
 		<span
-			class="chip-value {solo ? `chip-value--solo ${className}` : ''} {valueDim
+			class="chip-value t-code-sm {solo ? `chip-value--solo ${className}` : ''} {valueDim
 				? 'chip-value--dim'
 				: ''}"
 			title={valueTitle ?? value}

@@ -458,7 +458,12 @@ describe('heldCauseText', () => {
 			short: 'Outside the Business Hours Only deploy window'
 		});
 		const text = heldCauseText(story([g]));
-		expect(text).toMatch(/^deploy window reopens /);
+		// ⛔ "ON ITS OWN" IS THE POINT (2026-09-03, coordinator relay,
+		// operator-walk item): a closed window clears itself, unlike the
+		// other held causes tested above — the Held section header used to
+		// claim every held card "will not move on their own", which was
+		// false of exactly this one.
+		expect(text).toMatch(/^reopens .* on its own$/);
 	});
 
 	it('falls back to `short` when there is no second party to draw', () => {

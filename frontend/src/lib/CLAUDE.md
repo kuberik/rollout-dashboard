@@ -140,6 +140,7 @@
 - **THE SAME APP IN N ENVIRONMENTS IS ONE SUBJECT.** (2026-09-02.) `/dependencies`' banner mapped every held node through `nodeLabel` and joined, so one app held down one chain printed *"hello-frontend-app in dev, hello-frontend-app in staging, hello-frontend-app in prod"*. `heldSubjects` in `dependency-graph.ts` groups by app — the grouping is a property of the SENTENCE BUILDER, not of the banner, so nothing that says the same thing can drift from it. ⚠️ **A list whose items contain commas is separated by semicolons**: with `and` at both levels, `… staging and prod and hello-api-app in dev` reads as if `hello-api-app` were a fourth environment. The semicolon appears only in the mixed case. ⚠️ Order is the graph's and never alphabetical — the caller passes promotion order and that order is the story.
 - **The spacing scale is `2/4/6/8/10/12/16/24`.** (2026-09-03, F4 third re-check, NIT: "off-scale spacing 6px/10px is systematic — 68 on `/rollouts`".) `6px` and `10px` were flagged as off-scale by a census that had no written scale to check against; both are legal steps. Measure a spacing value against this list before calling it off-scale.
 - **ONE VERB PER ACTION, ACROSS TRIGGER, TITLE AND CONFIRM.** (2026-09-03, P9, operator walk.) Clearing a version pin had FOUR spellings on one path: `Release the hold` (app pages) → dialog titled `Remove the pin on … in DEV?` → confirm button `Clear Pin` → rollout detail's own trigger `Clear pin`. A reader who sees a different verb at each step cannot tell it is one act until they've already pressed something. `Clear pin` (sentence case) is now the one surviving spelling, canonicalised in `lib/components/pin-copy.ts` (`CLEAR_PIN_LABEL` + `clearPinDialogTitle`) — every trigger, dialog title and confirm button for this action imports from there rather than retyping the words. **The rule generalises: before naming a control that opens a dialog, check what the dialog's own title and confirm button already say, and match them — don't invent a fourth phrasing.**
+- **A HEADER CLAIM MUST BE TRUE OF EVERY CARD IT SITS ABOVE, NOT JUST MOST OF THEM.** (2026-09-03, operator-walk item, relayed to the type lane.) `/`'s Held section header read `Held N · blocked by a rule, will not move on their own` over every held card — but a card held by a closed deploy window clears itself the moment the window reopens, which is the opposite of "will not move on their own". The header now states only what is true of all of them (`blocked by a rule`); the self-clearing exception is named per-card, where it is actually true — `heldCauseText`'s clock branch (`rollout-cards.ts`) reads `reopens ${time} on its own` instead of `deploy window reopens ${time}`, so the ONE held card that clears itself says so on its own second line instead of the header making a blanket claim about all of them.
 - When you discover a design constraint from user feedback, add it here immediately without waiting to be asked.
 
 ## Rollout list visual treatment
@@ -331,8 +332,23 @@ y=72   THE FIRST CONTENT ELEMENT, on every page.
 Only genuine CONTENT may push a page below y=72 — a banner, a filter bar, a definition
 sentence long enough to wrap. Chrome may not. Before this rule the first content element
 ranged **62 → 98** at 1440 on pages with nothing above it; it is 72 on all of them now.
-`/` is the one page with no head band at all (standing constraint: it does not change
-visually) — its first ink is still at y=24.
+
+⛔ **`/` HAD THE ONE EXCEPTION AND IT IS RETIRED.** (2026-09-03, type-lane finding 13)
+`/` used to be the one page in the product with no head band at all, standing on a
+"does not change visually" constraint. That made it the only list-shaped page with no
+24px figure — `/apps`, `/rollouts`, `/versions` and `/activity` all open on one, and `/`
+opened on a `sr-only` `h1` and nothing else, max font 16px in `main`. `ControlCenter.svelte`
+now opens the same way: `{cards.length}` at `t-display` (`cards.length` is
+`rollouts.length` exactly — `buildRolloutCards` is a 1:1 map), then a `t-dense` sentence
+naming the two counts that ARE a clean partition of `healthy` — `N held · N steady` — with
+`N need you` leading when non-zero, same order as `/apps`' own head band (exception first).
+The five fleet buckets (`needsYou`/`inMotion`/`held`/`trailing`/`steady`) are declared NOT
+a partition in `fleet-groups.ts` (a stuck rollout can be both `needsYou` and `inMotion`), so
+the sentence deliberately does not try to sum all five — `held` and `steady` are the two
+that are actually disjoint. Verified: max font 24px in `main`, head row top 24px relative
+to `main`, row height 27.6px, `mb-5` lands the first group at y≈72 — identical rhythm to
+every other list page. The `h1` stays `sr-only` unconditionally (loading/error/empty
+included); the visible figure only renders in the loaded, non-empty, non-error branch.
 
 At 390 the head row WRAPS, so its height is set by the rollup's own length. That is content,
 not chrome: the 24px above it and the 20px below it are identical at every width.

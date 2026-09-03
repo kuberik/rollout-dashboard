@@ -303,11 +303,14 @@
 		title, and `routes/page.svelte.test.ts`'s `should render h1` has been red
 		since the scaffold.
 
-		IT IS `sr-only` AND MUST STAY `sr-only`. The human's standing constraint
-		is that `/` does not change visually; `sr-only` is a 1px clip, so this
-		adds zero pixels. Home is deliberately the one page with no printed
-		title — the navbar wordmark and the Home tab already name it, and the
-		four section headings are the page's real structure.
+		`h1` STAYS `sr-only` UNCONDITIONALLY (loading/error/empty included — the
+		heading-order test and the skip link need it whatever the query state
+		is). ⛔ THE "does not change visually" STANDING CONSTRAINT THIS COMMENT
+		USED TO CITE IS SUPERSEDED (2026-09-03, type-lane finding 13): `/` was
+		the only list-shaped page with no 24px figure at all — `/apps`,
+		`/rollouts`, `/versions` and `/activity` all open on one — and a
+		fifth-re-check finding asked for parity. The visible figure below is
+		NEW ink, not a relabelling of this `sr-only` line; see its own comment.
 	-->
 	<h1 class="sr-only">Home</h1>
 
@@ -364,6 +367,46 @@
 			</p>
 		</div>
 	{:else}
+		<!--
+			⭐ THE HEAD BAND, MATCHING EVERY OTHER LIST PAGE. (2026-09-03,
+			type-lane finding 13) `/apps`, `/rollouts`, `/versions` and
+			`/activity` all open on a `t-display` (24px) figure with the rest
+			of the sentence on its baseline at `t-dense`; `/` was the one page
+			in that family with a max font of 16px in `main` and no figure at
+			all. `cards.length` is `rollouts.length` exactly — `buildRolloutCards`
+			is a 1:1 `.map` over the fetched rollouts (see `rollout-cards.ts`) —
+			so this is the same "N rollouts" a reader gets on `/rollouts`.
+
+			`held` and `steady` are the two sub-counts named, not the full
+			five-bucket partition `needsYou`/`inMotion`/`trailing` also carry:
+			the buckets are declared NOT a partition (`fleet-groups.ts`'s own
+			note — a stuck rollout can be in `needsYou` AND `inMotion` at once),
+			so summing all five here would not equal `cards.length` and would
+			print a number that does not add up. `held` and `steady` are the
+			two that ARE disjoint members of a clean split (`held` is a
+			refinement of `trailing`; `trailing`/`steady` partition `healthy`),
+			which is what the example in the finding itself uses. `needsYou`
+			leads the sentence, ahead of the two steady-state numbers, the same
+			order `/apps`' own head band uses (exception first, reassurance
+			last) — but only when it is non-zero, so a clean fleet does not
+			print "0 need you".
+		-->
+		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+			<span class="t-display text-gray-900 tabular-nums dark:text-white">{cards.length}</span>
+			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+				rollout{cards.length === 1 ? '' : 's'}
+				{#if needsYou.length > 0}
+					· <span class="font-medium text-gray-700 dark:text-gray-200"
+						>{needsYou.length} need{needsYou.length === 1 ? 's' : ''} you</span
+					>
+				{/if}
+				{#if held.length > 0}
+					· {held.length} held
+				{/if}
+				· {steadyAll.length} steady
+			</p>
+		</div>
+
 		<!--
 			══ TWO COLUMNS, AND A REAL RIGHT RAIL ══════════════════════════════
 			`COMPOSITION-GRAMMAR.md` §7. This page was a flat grid of fifteen
@@ -724,9 +767,15 @@
 					<span class="h-[5px] w-[5px] shrink-0 rounded bg-orange-500"></span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Held</h2>
 					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{held.length}</span>
-					<span class="text-xs text-gray-500 dark:text-gray-400"
-						>blocked by a rule, will not move on their own</span
-					>
+					<!-- ⛔ "WILL NOT MOVE ON THEIR OWN" WAS FALSE OF ONE OF THE FOUR.
+					     (2026-09-03, coordinator relay, operator-walk item) A card held
+					     by a closed deploy window clears itself the moment the window
+					     reopens — `heldCause`'s own clock branch says so, in words, on
+					     that card's second line. The header used to claim EVERY held
+					     card needed a person; now it names only the shared fact
+					     (a rule, not a person, decided this), and the self-clearing
+					     exception is stated per-card where it is true. -->
+					<span class="text-xs text-gray-500 dark:text-gray-400">blocked by a rule</span>
 				</div>
 				<div
 					class="grid gap-2 {held.length === 1
