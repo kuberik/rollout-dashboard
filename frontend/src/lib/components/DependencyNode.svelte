@@ -108,6 +108,22 @@
 		upstream: ExclamationCircleOutline,
 		unknown: QuestionCircleOutline
 	} as const;
+
+	/**
+	 * ⭐ WRAP AT A TOKEN, NEVER THROUGH ONE. (2026-09-03, design pass 7,
+	 * finding #14.) The stacked (`TB`, 92–132px) box wraps the name across
+	 * two or more lines rather than truncating it — there is no ellipsis
+	 * short enough to still tell `hello-frontend-app` and `hello-api-app`
+	 * apart at this width. `break-words` (Tailwind's `overflow-wrap:
+	 * break-word`) drew that wrap MID-WORD — `hello-fronte` / `nd-app` on
+	 * the live graph. `.ident` (`app.css`) refuses that, so the only real
+	 * break points left are the ones this function inserts: a `<wbr>` after
+	 * each `-`, the same joint `FactList.handleParts` already wraps a k8s
+	 * handle at.
+	 */
+	function identParts(name: string): string[] {
+		return name.split(/(?<=-)/);
+	}
 </script>
 
 <!--
@@ -155,8 +171,9 @@
 		     nothing the border/fill colour does not already say. -->
 		<Chip role="env" label={data.envLabel} />
 		<span
-			class="min-w-0 text-wrap break-words text-[12px] leading-tight font-semibold text-gray-900 dark:text-white"
-			>{data.name}</span
+			class="ident min-w-0 text-wrap text-[12px] leading-tight font-semibold text-gray-900 dark:text-white"
+			>{#each identParts(data.name) as part, pi (pi)}{part}{#if pi < identParts(data.name).length - 1}<wbr
+					/>{/if}{/each}</span
 		>
 	{:else}
 		<span class="flex min-w-0 items-center gap-1.5">

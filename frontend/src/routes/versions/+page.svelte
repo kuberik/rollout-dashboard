@@ -823,7 +823,7 @@
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
 												<a
-													class="rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
+													class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
 													href={revisionPath(repo.repoKey, row.revision)}
 													title={row.revision}>{row.short}</a
 												>
@@ -915,7 +915,7 @@
 										     over, which is the furniture the good pages never draw. -->
 										<div class="rev-quiet-body">
 											<a
-												class="rev-sha tap-link t-code shrink-0 text-gray-700 hover:underline dark:text-gray-200"
+												class="ident rev-sha tap-link t-code shrink-0 text-gray-700 hover:underline dark:text-gray-200"
 												href={revisionPath(repo.repoKey, row.revision)}
 												title={row.revision}>{row.short}</a
 											>

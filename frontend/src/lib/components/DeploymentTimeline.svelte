@@ -164,6 +164,25 @@
 
 	const now = new Date();
 
+	/**
+	 * ⭐ A LONE POINT NO LONGER STRETCHES THE AXIS TO "NOW". (2026-09-03,
+	 * design pass 7, finding #17.) `all` used to mean "earliest event to
+	 * `now`, plus 5%" unconditionally — right for a rollout with a steady
+	 * cadence, and wrong for one whose retained history is a single old
+	 * entry: measured on the History tab, a 1,140×60 chart drew ONE dot at
+	 * x=396 and left ~1,000px of empty grid between it and the "now" line,
+	 * because the entry itself was hours old and `now` kept pulling the
+	 * right edge away from it.
+	 *
+	 * Under 3 points the window fits the DATA'S OWN SPAN instead — earliest
+	 * to latest, padded — which is the only window that is honest about
+	 * what is actually being plotted. Anchoring on `now.getTime()` remains
+	 * the behaviour once there are enough points that a window anchored on
+	 * "now" is a legible chart rather than a single stranded mark, and it
+	 * stays the *only* behaviour for every fixed preset (`1h`…`30d`): a
+	 * reader who asked for "the last day" gets the last day, not a window
+	 * stretched to whatever the data happens to cover.
+	 */
 	function computeBounds(tr: TimeRange): { startMs: number; endMs: number } {
 		const nowMs = now.getTime();
 		if (!isPreset(tr)) return { startMs: tr.start, endMs: tr.end };
@@ -178,11 +197,23 @@
 		const ms = msMap[tr];
 		if (ms !== null) return { startMs: nowMs - ms, endMs: nowMs };
 		let earliest = nowMs;
+		let latest = -Infinity;
+		let count = 0;
 		for (const svc of services) {
 			for (const e of svc.history) {
 				const t = new Date(e.timestamp).getTime();
 				if (t < earliest) earliest = t;
+				if (t > latest) latest = t;
+				count++;
 			}
+		}
+		if (count === 0) return { startMs: nowMs - 86_400_000, endMs: nowMs };
+		if (count < 3) {
+			// A single point has no span to pad — floor it at an hour so the
+			// axis still draws a legible tick scale either side of the mark.
+			const span = Math.max(latest - earliest, 3_600_000);
+			const pad = span * 0.15;
+			return { startMs: earliest - pad, endMs: latest + pad };
 		}
 		return { startMs: earliest - (nowMs - earliest) * 0.05, endMs: nowMs };
 	}
@@ -190,6 +221,12 @@
 	const bounds = $derived(computeBounds(timeRange));
 	const startMs = $derived(bounds.startMs);
 	const endMs = $derived(bounds.endMs);
+	/** The "now" marker is a claim about the right edge; only draw it when
+	    the right edge actually IS now (within a second's rounding). A
+	    data-fit window's right edge is the latest event plus padding, which
+	    is very often NOT now, and labelling it so would be a lie the axis
+	    tells about its own scale. */
+	const showsNow = $derived(Math.abs(endMs - now.getTime()) < 1000);
 	/**
 	 * ⚠️ THE GUTTER IS A CEILING, NOT A CONSTANT. At 390 the whole chart is
 	 * ~310px and a 130px lane-name gutter took 42% of it, so the plot — i.e.
@@ -804,7 +841,19 @@
 					{@const cy = rowCY(i)}
 					{@const cursor = cursorFor(svc.id, order)}
 
-					<!-- Label -->
+					<!-- Label.
+					     ⛔ THE CURRENT LANE USED TO BE BLUE-700 MONO. (2026-09-03,
+					     design pass 7, finding #17.) On the History tab this is
+					     the rollout whose page you are ON, and blue is the
+					     product's one reserved hue for `Deploying` — it has no
+					     other legitimate meaning anywhere in the app (see
+					     `src/lib/CLAUDE.md`'s colour rulings). Naming "this is the
+					     subject" with a status hue reads as if the lane were mid-
+					     deploy. `gray-900`/`white` is what every other rollout
+					     name on this page prints; the lane stays visually
+					     distinguished from its siblings by WEIGHT (darker than the
+					     muted `gray-500` non-current rows), not by borrowing a
+					     colour that already means something else. -->
 					<text
 						x={LABEL_W - 10}
 						y={cy + 4}
@@ -812,7 +861,7 @@
 						font-size="11"
 						font-family="ui-monospace, 'Cascadia Code', Menlo, monospace"
 						class={svc.isCurrent
-							? 'fill-blue-700 dark:fill-blue-400'
+							? 'fill-gray-900 dark:fill-white'
 							: 'fill-gray-500 dark:fill-gray-400'}
 					>
 						{truncate(svc.name, LABEL_CHARS)}
@@ -892,16 +941,27 @@
 								/>
 							{/if}
 
+							<!-- ⭐ A ≥32px TRANSPARENT HIT CIRCLE, SEPARATE FROM THE 10px
+							     VISIBLE MARK. (2026-09-03, design pass 7, finding #6.)
+							     Measured at 390: the drawn dot is 10px (5px radius) —
+							     a third of the 32px floor every other small control on
+							     this pass was widened to. All the interactive wiring
+							     (the `data-dot` the keyboard handler queries, the
+							     accessible name, the tab stop, every pointer/focus
+							     handler) moves to this invisible circle; the visible
+							     one below becomes purely cosmetic. Radius 16 (a 32px
+							     circle) is not conditioned on `pointer: coarse` — a
+							     bigger click target costs a mouse user nothing, and a
+							     conditional radius on an SVG attribute has no clean
+							     media-query hook the way a CSS `::before` does. -->
 							<circle
 								cx={x}
 								cy={dy}
-								{r}
+								r={16}
+								fill="transparent"
 								data-dot=""
-								stroke-width={active ? 2 : 1}
 								pointer-events="all"
-								class="cursor-pointer {merged
-									? 'fill-transparent stroke-transparent'
-									: `stroke-white dark:stroke-gray-800 ${statusFill(e.bakeStatus)}`}"
+								class="cursor-pointer"
 								role="button"
 								aria-label={dotLabel(svc, e)}
 								tabindex={pos === cursor ? 0 : -1}
@@ -932,6 +992,17 @@
 								onclick={() => onEntryClick?.(svc.id, origIdx)}
 								onkeydown={(ev) =>
 									onDotKey(ev, svc.id, pos, order, () => onEntryClick?.(svc.id, origIdx))}
+							/>
+							<circle
+								cx={x}
+								cy={dy}
+								{r}
+								stroke-width={active ? 2 : 1}
+								pointer-events="none"
+								aria-hidden="true"
+								class={merged
+									? 'fill-transparent stroke-transparent'
+									: `stroke-white dark:stroke-gray-800 ${statusFill(e.bakeStatus)}`}
 							/>
 						{/each}
 
@@ -1026,28 +1097,39 @@
 					</text>
 				{/each}
 
-				<!-- "Now" marker -->
-				<line
-					x1={containerWidth - PAD_R}
-					y1={PAD_T}
-					x2={containerWidth - PAD_R}
-					y2={PAD_T + services.length * ROW_H}
-					stroke-width={1.5}
-					stroke-dasharray="4 2"
-					class="stroke-gray-500 dark:stroke-gray-400"
-				/>
-				<!-- Was 9px — under the product's 10px floor, and the only other
-				     offender in this chart besides the cluster-bubble numeral
-				     above. (2026-09-02) -->
-				<text
-					x={containerWidth - PAD_R - 4}
-					y={PAD_T + 10}
-					text-anchor="end"
-					font-size="11"
-					class="fill-gray-500 dark:fill-gray-400"
-				>
-					now
-				</text>
+				<!-- "Now" marker.
+				     ⭐ ONLY WHEN THE RIGHT EDGE ACTUALLY IS NOW. (2026-09-03,
+				     design pass 7, finding #17.) The sparse-data branch of
+				     `computeBounds` anchors the right edge on the LATEST EVENT
+				     plus padding, not on the clock — a chart with one old dot
+				     used to draw a dashed line at the plot's right edge
+				     labelled `now` when the data stopped hours or days
+				     earlier. `showsNow` is the same test in reverse: draw the
+				     marker only when `endMs` is (within a second of) the
+				     actual current time. -->
+				{#if showsNow}
+					<line
+						x1={containerWidth - PAD_R}
+						y1={PAD_T}
+						x2={containerWidth - PAD_R}
+						y2={PAD_T + services.length * ROW_H}
+						stroke-width={1.5}
+						stroke-dasharray="4 2"
+						class="stroke-gray-500 dark:stroke-gray-400"
+					/>
+					<!-- Was 9px — under the product's 10px floor, and the only other
+					     offender in this chart besides the cluster-bubble numeral
+					     above. (2026-09-02) -->
+					<text
+						x={containerWidth - PAD_R - 4}
+						y={PAD_T + 10}
+						text-anchor="end"
+						font-size="11"
+						class="fill-gray-500 dark:fill-gray-400"
+					>
+						now
+					</text>
+				{/if}
 
 				<!-- Brush overlay (drag-to-zoom) -->
 				{#if brushStartX !== null && brushEndX !== null}

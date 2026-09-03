@@ -1259,7 +1259,7 @@
 															entry.revision,
 															entry.version
 														)}
-														class="t-code-sm text-gray-700 hover:underline dark:text-gray-200"
+														class="ident rev-sha t-code-sm text-gray-700 hover:underline dark:text-gray-200"
 														>{entry.version}</a
 													>
 												{/if}

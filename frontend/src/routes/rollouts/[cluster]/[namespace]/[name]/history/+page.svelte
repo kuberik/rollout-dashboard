@@ -226,6 +226,22 @@
 		return rows;
 	});
 
+	/**
+	 * ⭐ THE LANE LABEL TRACK SIZES TO ITS OWN LONGEST NAME, UP TO ~220px.
+	 * (2026-09-03, design pass 7, finding #17.) `DeploymentTimeline`'s
+	 * default gutter (130px) truncated `hello-frontend-app (dev)` to
+	 * `hello-frontend-a…` while the chart's own plot sat mostly empty beside
+	 * it — an ellipsis drawn next to whitespace it could have used. Same
+	 * `16 + chars * 6.7` estimate `/activity` derives its own
+	 * `chartLabelWidth` from (that file's own note has the per-glyph
+	 * measurement), ceilinged higher here (220 vs 168) because this page's
+	 * lane names carry a parenthesised environment suffix `/activity`'s
+	 * bare environment names never do.
+	 */
+	const chartLabelWidth = $derived(
+		Math.min(220, Math.max(72, 16 + chartServices.reduce((m, s) => Math.max(m, s.name.length), 0) * 6.7))
+	);
+
 	// Filter history list by selected time range
 	const filteredHistory = $derived.by(() => {
 		const history = rollout?.status?.history ?? [];
@@ -710,7 +726,7 @@
 						</span>
 						{#if hasOtherEnvs}
 							<button
-								class="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors {showEnvironments
+								class="hit-32 flex items-center gap-1.5 rounded border px-3 py-[1px] text-xs font-medium transition-colors {showEnvironments
 									? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 									: 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}"
 								onclick={() => {
@@ -723,7 +739,7 @@
 							</button>
 						{/if}
 						<button
-							class="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors {showComparison
+							class="hit-32 flex items-center gap-1.5 rounded border px-3 py-[1px] text-xs font-medium transition-colors {showComparison
 								? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 								: 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}"
 							onclick={() => {
@@ -745,6 +761,7 @@
 						bind:timeRange
 						{selectedEntry}
 						fanOverlaps
+						labelWidth={chartLabelWidth}
 						onEntryClick={handleChartEntryClick}
 					/>
 				</div>

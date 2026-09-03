@@ -37,8 +37,18 @@
 	 * lands on 4.46), so the ladder there is carried by SIZE and CASE — and
 	 * `t-label` is 10px/600 uppercase at 0.16em against `t-micro`'s 11px
 	 * sentence case, which is a wider gap than any tint would have bought.
+	 *
+	 * `alert` is a THIRD tone, not a replacement for `banner`: `ChangeVersion
+	 * Modal`'s override list sits inside a flowbite `Alert` — a flat tint, not
+	 * a gradient — where a neutral value clears contrast easily. (F10, design
+	 * pass 2 re-check) With `banner`, the label, the value AND the prose
+	 * above them were all one undifferentiated red — "four inks at equal
+	 * emphasis". Here only the LABEL stays in the alert's own ink (still
+	 * `currentColor`, so it moves with `red`/`yellow`); the value takes the
+	 * `card` tone's neutral ink, so the record reads as a record rather than
+	 * as more of the same red sentence.
 	 */
-	type Tone = 'card' | 'banner';
+	type Tone = 'card' | 'banner' | 'alert';
 
 	const TONES: Record<Tone, { label: string; value: string; handle: string }> = {
 		card: {
@@ -46,7 +56,12 @@
 			value: 'text-gray-900 dark:text-white',
 			handle: 'text-gray-500 dark:text-gray-400'
 		},
-		banner: { label: '', value: '', handle: '' }
+		banner: { label: '', value: '', handle: '' },
+		alert: {
+			label: '',
+			value: 'text-gray-700 dark:text-gray-300',
+			handle: 'text-gray-700 dark:text-gray-300'
+		}
 	};
 </script>
 
@@ -88,11 +103,13 @@
 	 * `dependenc / y-hello-f / rontend-n / eeds-api`. (F17, 2026-09-03,
 	 * `/envs/prod` at 390.) A generated k8s name is a run of short tokens
 	 * joined by `-` and `/`; the reader can follow a wrap at one of those
-	 * joints and cannot follow one mid-word. `overflow-wrap: normal` in the
-	 * markup below refuses to break anywhere else, and this only offers the
-	 * boundaries that already mean something — the delimiter stays attached
-	 * to the chunk it ends, so a `<wbr>` between chunks is a wrap
-	 * opportunity, never a mid-character split.
+	 * joints and cannot follow one mid-word. `.ident` (`app.css`,
+	 * `overflow-wrap: normal; word-break: keep-all; hyphens: none` —
+	 * generalised design pass 7, finding #14, for every identifier renderer
+	 * in the product) on the `<dd>` below refuses to break anywhere else,
+	 * and this only offers the boundaries that already mean something — the
+	 * delimiter stays attached to the chunk it ends, so a `<wbr>` between
+	 * chunks is a wrap opportunity, never a mid-character split.
 	 */
 	function handleParts(value: string): string[] {
 		return value.split(/(?<=[-/])/);
@@ -154,7 +171,7 @@
 					<!-- A HANDLE IS DRESSED AS ONE: mono, and wrapped only at its own
 					     `-`/`/` joints (see `handleParts` above) so a name wider than
 					     the column wraps AT A TOKEN, not through one. -->
-					<dd class="t-code-sm min-w-0 [overflow-wrap:normal] [word-break:normal] {ink.handle}">
+					<dd class="ident t-code-sm min-w-0 {ink.handle}">
 						{#each handleParts(f.value) as part, pi (pi)}{part}{#if pi < handleParts(f.value).length - 1}<wbr
 								/>{/if}{/each}
 					</dd>

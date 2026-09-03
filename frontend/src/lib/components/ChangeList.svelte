@@ -276,7 +276,7 @@
 									href={c.url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="t-code-sm shrink-0 text-blue-700 hover:underline dark:text-blue-400"
+									class="ident t-code-sm shrink-0 text-blue-700 hover:underline dark:text-blue-400"
 									>{(c.sha ?? '').slice(0, 7)}</a
 								>
 								<span class="t-micro min-w-0 flex-1 truncate text-gray-700 dark:text-gray-200"
