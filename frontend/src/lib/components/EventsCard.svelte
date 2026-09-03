@@ -46,7 +46,7 @@
 	no `min-h` and measured 45px. Small, single-slot body: the cleanest of
 	the four to migrate outright rather than patch a floor onto.
 -->
-<Card icon={CalendarWeekSolid} title="Recent Events" padded={false}>
+<Card icon={CalendarWeekSolid} title="Recent events" padded={false}>
 	<!--
 		⛔ AN EMPTY ROLLUP SLOT WAS A BLANK WHERE ITS THREE SIBLINGS PRINT AN
 		ANSWER. (F11, 2026-09-03) `Health Checks` says `1/1 healthy`,

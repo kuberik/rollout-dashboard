@@ -105,7 +105,7 @@
 </script>
 
 {#if healthChecks.length > 0}
-	<Card icon={HeaderIcon} iconClass={headerIconClass} title="Health Checks" padded={false}>
+	<Card icon={HeaderIcon} iconClass={headerIconClass} title="Health checks" padded={false}>
 		{#snippet rollup()}
 			{#if failedChecks.length > 0}
 				<span class="text-xs font-semibold text-red-600 dark:text-red-400"

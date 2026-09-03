@@ -767,7 +767,7 @@
 									</span>
 									{#if retryCount > 0}
 										<span
-											class="inline-flex items-center gap-0.5 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-medium text-gray-500 tabular-nums dark:bg-gray-700 dark:text-gray-400"
+											class="chip t-chip gap-0.5 border-gray-200 text-gray-500 tabular-nums dark:border-gray-700 dark:text-gray-400"
 											title="{retryCount} retr{retryCount === 1 ? 'y' : 'ies'}"
 										>
 											<RefreshOutline class="h-2.5 w-2.5" />
@@ -1182,7 +1182,7 @@
 			{:else}
 				<CodePullRequestSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
 			{/if}
-			<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Deployment Pipeline</h2>
+			<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Deployment pipeline</h2>
 		</div>
 		<div class="flex items-center gap-3">
 			{#if !isAutoSelected}

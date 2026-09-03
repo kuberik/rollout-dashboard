@@ -2720,7 +2720,7 @@
 							>
 								<CodeOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 								<span class="text-sm font-semibold text-gray-900 dark:text-white"
-									>Available Version Upgrades</span
+									>Newer builds</span
 								>
 								<!--
 									⭐ THE ROLLUP IS NOT CONDITIONAL ON HAVING SOMETHING TO SAY.
