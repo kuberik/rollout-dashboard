@@ -406,6 +406,70 @@
 	}
 
 	/**
+	 * ⭐ THE 32px HIT CIRCLE'S OWN RADIUS IS A LIE WHEN TWO OF THEM OVERLAP.
+	 * (2026-09-03, touch lane, F5 fifth re-check.) The invisible `r={16}`
+	 * circle above assumes it owns 32px of clear space around its centre;
+	 * on `/activity`'s 7-day scale that is false MOST of the time — several
+	 * deploys minutes apart land within a fraction of a pixel of each other
+	 * (`fanOverlaps` is correctly declined here, so nothing separates them
+	 * on y either), and two full-size hit circles centred a few pixels
+	 * apart overlap almost entirely. SVG paints later DOM siblings on top,
+	 * so `elementFromPoint` anywhere in the overlap — INCLUDING A
+	 * NEIGHBOUR'S OWN CENTRE — resolved to whichever mark happened to be
+	 * last in `entries`' array order, not to "the mark under the cursor".
+	 * Measured live: two adjacent marks on the `dev` lane reached only
+	 * 20×33 and 17×33 of their 32×32 box, the shortfall entirely on the
+	 * axis the neighbour sits on.
+	 *
+	 * The fix is the same idea `app.css`'s `.pill-btn` note already applies
+	 * to a row of filter chips: when two targets must share less than 32px
+	 * of gap, each gets HALF the gap instead of the fixed size that would
+	 * overlap it — so any tap between two marks resolves to whichever is
+	 * NEARER, which is what the merged-bubble comment above already claims
+	 * happens ("a pointer moving across the bubble resolves it into the
+	 * individual deploy under the cursor"). This is what makes that claim
+	 * true instead of true-by-accident-of-DOM-order.
+	 *
+	 * ⚠️ ONLY WHEN `!fanOverlaps`. A fanned lane has already separated its
+	 * collisions on y (`spreadOverlaps`, above), so two marks close in x sit
+	 * far apart in y and a bare x-distance check would shrink a radius that
+	 * has no real overlap to avoid — verified byte-identical on the History
+	 * tab, which passes `fanOverlaps`.
+	 *
+	 * ⚠️ RESIDUE, STATED HONESTLY: two deploys at (functionally) the same x
+	 * still partition to a near-zero radius — you cannot give two
+	 * visually-coincident points both a comfortable, unambiguous pointer
+	 * target, and no CSS or geometry trick changes that. Keyboard access
+	 * (the roving tabindex, unaffected by any of this) is what reaches
+	 * those; this fix is for the common case, not that degenerate one.
+	 */
+	function hitRadii(xs: number[], fan: boolean): number[] {
+		const n = xs.length;
+		if (fan || n < 2) return xs.map(() => 16);
+		const order = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
+		const rs = new Array(n).fill(16);
+		for (let k = 0; k < order.length; k++) {
+			const i = order[k];
+			const leftGap = k > 0 ? xs[i] - xs[order[k - 1]] : Infinity;
+			const rightGap = k < order.length - 1 ? xs[order[k + 1]] - xs[i] : Infinity;
+			// ⚠️ FLOORED AT `R_NORMAL`, NOT 0. On the live 7-day fixture several
+			// deploys land within a FRACTION OF A PIXEL of each other — the true
+			// half-gap partition above rounds to ~0 there, which would leave the
+			// whole cluster's visible bubble sitting over a set of zero-radius
+			// circles: not merely unfairly small, but a DEAD CONTROL a tap on
+			// the bubble itself resolves to nothing. Overlapping slightly in
+			// that one degenerate case is the lesser defect — it restores "a
+			// tap on the cluster hits SOMETHING", at the cost of which member
+			// is honest, unfair-but-alive rather than fair-but-dead. `R_NORMAL`
+			// (the mark's own pre-32px-pass radius) is the floor because it is
+			// never a regression below what this chart clicked like before the
+			// touch-floor pass existed at all.
+			rs[i] = Math.max(R_NORMAL, Math.min(16, leftGap / 2, rightGap / 2));
+		}
+		return rs;
+	}
+
+	/**
 	 * ⭐ AND WHERE THE FAN IS REFUSED, THE CLUSTER IS DRAWN AS ONE MARK THAT
 	 * SAYS HOW MANY. (2026-09-02.)
 	 *
@@ -513,6 +577,7 @@
 				order,
 				xs,
 				dys: fanOverlaps ? spreadOverlaps(xs, order) : xs.map(() => 0),
+				hitRs: hitRadii(xs, fanOverlaps),
 				clusterOf: clusters.of,
 				clusters: clusters.list
 			};
@@ -853,7 +918,7 @@
 				{/each}
 
 				<!-- Per-service swimlanes -->
-				{#each lanes as { svc, entries, order, xs, dys, clusterOf, clusters }, i}
+				{#each lanes as { svc, entries, order, xs, dys, hitRs, clusterOf, clusters }, i}
 					{@const cy = rowCY(i)}
 					{@const cursor = cursorFor(svc.id, order)}
 
@@ -969,11 +1034,18 @@
 							     circle) is not conditioned on `pointer: coarse` — a
 							     bigger click target costs a mouse user nothing, and a
 							     conditional radius on an SVG attribute has no clean
-							     media-query hook the way a CSS `::before` does. -->
+							     media-query hook the way a CSS `::before` does.
+
+							     ⭐ THE RADIUS IS `hitRs[pos]`, NOT A BARE 16, WHEN A
+							     NEIGHBOUR IS CLOSER THAN 32px. See `hitRadii` above —
+							     16 is still what every isolated mark gets; this only
+							     narrows it where a fixed 16 would have overlapped the
+							     next mark and handed the loser's whole reach to
+							     whichever sibling paints on top. -->
 							<circle
 								cx={x}
 								cy={dy}
-								r={16}
+								r={hitRs[pos]}
 								fill="transparent"
 								data-dot=""
 								pointer-events="all"

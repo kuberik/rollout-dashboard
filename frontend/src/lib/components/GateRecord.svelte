@@ -126,8 +126,32 @@
 
 	function factsFor(g: ClassifiedGate): Fact[] {
 		const facts: Fact[] = [{ label: 'Kind', value: gateKindWord(g) }];
-		const clears = clearsFor(g);
-		if (clears) facts.push({ label: 'Clears', value: clears });
+		// ⛔ THIS USED TO BE LABELLED `Clears`, AND IT WAS THE STATE, NOT THE
+		// REMEDY. (2026-09-03, operator walk, P4) `clearsFor(g)` — despite its
+		// name — returns `g.short`, the row's own CURRENT-STATE sentence
+		// (`Outside the Business Hours Only deploy window`), passed in only
+		// when the host page did not already draw it (see the callers' own
+		// notes). Filed under `Clears` that sentence reads as its own inverse:
+		// a reader sees "Clears: outside the window" and has to work out that
+		// it means the opposite. `Now` is the state; `Clears` (below) is the
+		// remedy, and the two must never share a label again.
+		const state = clearsFor(g);
+		if (state) facts.push({ label: 'Now', value: state });
+		// THE REMEDY, FROM THE GATE ITSELF — no caller has to supply it.
+		// `g.clause` is `blocking-story.ts`'s own noun-clause form (`the
+		// deploy window reopens`, `someone approves it`, `dev has to deploy
+		// it first`), the exact fragment the banner's own "Nothing promotes
+		// itself until …" sentence is built from one level up — so this can
+		// never say something the banner disagrees with.
+		//
+		// ⛔ CARD SCALE ONLY. At banner scale `story.consequence` (this
+		// component's `foot` prop there) is printed text that already
+		// concatenates EVERY gate's `clause` — that is the whole reason
+		// `clearsFor` returns null unconditionally for `BlockingStoryPanel`.
+		// Adding this fact at banner scale too would print the identical
+		// remedy twice on one screen, the exact defect this whole record
+		// exists to close.
+		if (tone === 'card') facts.push({ label: 'Clears', value: g.clause });
 		if (g.clearsAt) {
 			// ⚠️ NOT A NESTED TEMPLATE LITERAL. `lib/messages/scan.ts` reads string
 			// literals with a regex and a backtick inside a `${}` inside a

@@ -227,7 +227,12 @@ describe('BlockingStoryLines: the popover holds a RECORD, and it is in the DOM c
 		const dl = container.querySelector('dl');
 		expect(dl).not.toBeNull();
 		const terms = Array.from(dl!.querySelectorAll('dt')).map((t) => t.textContent?.trim());
-		expect(terms).toEqual(['Kind', 'Clears', 'Rule']);
+		// ⛔ `Clears` USED TO BE THE ONLY ONE OF THE TWO, AND IT HELD THE STATE
+		// SENTENCE — the bug this pass fixes (2026-09-03, operator walk, P4).
+		// `Now` (the state, `g.short`) and `Clears` (the remedy, `g.clause`)
+		// are separate facts now; this dependency gate draws its clause on the
+		// row itself, so `clearsFor` still supplies `g.short` for `Now`.
+		expect(terms).toEqual(['Kind', 'Now', 'Clears', 'Rule']);
 		expect(dl!.textContent).toContain('service contract');
 	});
 

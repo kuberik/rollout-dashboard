@@ -1131,10 +1131,10 @@
 										title={svc.diverged
 											? 'On no environment’s release list — promotion does not arrive at it'
 											: chip.role === 'held'
-												? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy — not running anywhere yet`
+												? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy — not running anywhere yet`
 												: chip.role === 'newest'
-													? `The newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`
-													: `${chip.label} the newest of the ${rank.of.replace('of ', '')} builds ${svc.appName} can deploy`}
+													? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`
+													: `${chip.label} the newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`}
 										value={svc.label}
 										valueTitle={svc.label}
 										wide

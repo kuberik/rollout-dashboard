@@ -70,6 +70,7 @@
 		FetchCommitsError,
 		type CommitInfo
 	} from '$lib/api/github';
+	import { isSystemDefaultNote, systemNoteDescription } from '$lib/history-marks';
 
 	let {
 		namespace,
@@ -78,6 +79,9 @@
 		base = null,
 		head = null,
 		source = null,
+		note = undefined,
+		actor = null,
+		actorKind = null,
 		class: className = ''
 	}: {
 		namespace: string;
@@ -89,6 +93,26 @@
 		head?: string | null;
 		/** `rollout.status.source` — the repo URL, in any of its spellings. */
 		source?: string | null;
+		/**
+		 * ⭐ THE DEPLOY'S OWN RECORDED NOTE. (2026-09-03, operator walk, P5)
+		 * `undefined` (the default) means the caller has nothing to say about
+		 * it and this whole block is skipped — the one existing caller
+		 * (`/activity`) always has an answer, `null` included, because every
+		 * history entry either carries a message or does not.
+		 *
+		 * `isSystemDefaultNote`/`systemNoteDescription` are the SAME functions
+		 * the History tab classifies with — a blank reason field on a rollback
+		 * writes the controller's own boilerplate (`Pinned version`), and
+		 * printing that verbatim under `Recorded note` reads exactly like a
+		 * colleague typed it. One shared helper, so a fix to that classifier
+		 * reaches both surfaces instead of only the one that inspired it.
+		 */
+		note?: string | null;
+		/** The deploy's actor — shown here even when the row itself only
+		    prints it for `User` (see the caller), so a `System` deploy's
+		    disclosure is never silent about who/what triggered it. */
+		actor?: string | null;
+		actorKind?: 'User' | 'System' | null;
 		class?: string;
 	} = $props();
 
@@ -246,6 +270,44 @@
 				id={panelId}
 				class="relative z-[1] mt-2 w-full basis-full rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40"
 			>
+				<!-- ⭐ THE DEPLOY'S OWN RECORD, ABOVE THE COMMIT BLOCK — the two
+				     facts belong to THIS deploy, not to the GitHub range, so they
+				     render whatever the query below does (loading, erroring, or a
+				     real commit list). (2026-09-03, operator walk, P5) -->
+				{#if note !== undefined || actor}
+					<div
+						class="mb-2 flex flex-col gap-1 border-b border-gray-200 pb-2 dark:border-gray-700"
+					>
+						{#if note !== undefined}
+							{#if note && !isSystemDefaultNote(note)}
+								<div class="flex items-baseline gap-1.5 text-xs">
+									<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Recorded note</span>
+									<span class="text-gray-600 dark:text-gray-200">{note}</span>
+								</div>
+							{:else}
+								<div class="flex items-baseline gap-1.5 text-xs">
+									<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Recorded note</span>
+									<span class="text-gray-400 italic dark:text-gray-500">no note recorded</span>
+								</div>
+								{#if note && isSystemDefaultNote(note)}
+									<div class="flex items-baseline gap-1.5 text-xs">
+										<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">System</span>
+										<span class="text-gray-600 dark:text-gray-200">{systemNoteDescription(note)}</span
+										>
+									</div>
+								{/if}
+							{/if}
+						{/if}
+						{#if actor}
+							<div class="flex items-baseline gap-1.5 text-xs">
+								<span class="flex-shrink-0 text-gray-500 dark:text-gray-400"
+									>{actorKind === 'System' ? 'Triggered by' : 'By'}</span
+								>
+								<span class="text-gray-600 dark:text-gray-200">{actor}</span>
+							</div>
+						{/if}
+					</div>
+				{/if}
 				{#if query.isLoading}
 					<span
 						class="inline-block h-3 w-40 max-w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"

@@ -1363,6 +1363,34 @@ textarea {
 	.env-row {
 		row-gap: 16px;
 	}
+
+	/* ⭐ `AlertPanel`'S DISCLOSURE ROW AND ITS ACTIONS ROW: THE SAME
+	   CONTENTION, ONE LEVEL UP. (2026-09-03, touch lane, F5 fifth re-check.)
+	   Below `.ap-cq`'s own 700px container threshold, `.ap-actions-cell`
+	   drops out of its `sm`+ rail and onto its own row directly under
+	   `.ap-disclosure-cell` — see both cells' markup notes in
+	   `AlertPanel.svelte`. `.ap-grid` sets no `row-gap` at all there; the
+	   only separation is `.ap-disclosure-cell`'s `mt-1` (0) against
+	   `.ap-actions-cell`'s own `mt-1` (4px) — a single 4px margin, not a
+	   gap shared by two raised edges. Measured live on `/envs/prod`'s
+	   `› 2 rules` disclosure: a `summary`'s downward slop wants 8px and
+	   got 5, the same 3px the actions row's own raised content ate back,
+	   the identical failure mode `.env-row` above already names ("two
+	   independently-raised touch floors contending over the gap between
+	   them"). `margin-block-start: 12px` on the actions cell — the same
+	   figure this file already spends on `.env-row`'s pairing, chosen for
+	   the same reason (an 8px-each-side summary plus whatever the actions
+	   row's own leading control needs clears at 12, same as it did at 16
+	   for the pricier chip pairing) — is the fix; it lands on the cell
+	   itself so it applies exactly where the mobile stacked shape puts the
+	   two rows atop one another and is inert at `sm`+, where
+	   `AlertPanel.svelte`'s own container query already sets
+	   `margin-top: 0` and moves `.ap-actions-cell` into its `sm`+ rail,
+	   nowhere near this row. Unlayered, like the rest of this block, so it
+	   is not itself out-cascaded by `.ap-actions-cell`'s `mt-1` utility. */
+	.ap-actions-cell {
+		margin-block-start: 12px;
+	}
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

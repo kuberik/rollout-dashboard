@@ -156,6 +156,18 @@
 		href: string;
 		actor: string;
 		actorKind: 'User' | 'System';
+		/**
+		 * ⭐ THE OPERATOR'S OWN RECORDED NOTE. (2026-09-03, operator walk, P5)
+		 * `h.message` — the controller's `Message *string`, "human-readable
+		 * information about the deployment context" — was read for `deployActs`'
+		 * system-default classification but dropped from the row itself, so
+		 * `/activity`'s "What changed" disclosure expanded to a GitHub commit
+		 * list and nothing else, while the History tab's identical entry showed
+		 * a `Recorded note`. Passed straight through to `ChangeList`, which
+		 * applies the SAME `isSystemDefaultNote` classification History does —
+		 * one helper, not a second copy that can drift from it.
+		 */
+		note: string | null;
 		// Commit range this deploy introduced (previous → this), for the lazy
 		// on-click changelist. null when there's no prior revision to compare.
 		revision: string | null;
@@ -275,6 +287,7 @@
 					),
 					actor: h.triggeredBy?.name || 'system',
 					actorKind: h.triggeredBy?.kind ?? 'System',
+					note: h.message ?? null,
 					revision: h.version?.revision ?? null,
 					previousRevision,
 					source: rollout.status?.source ?? null,
@@ -1386,6 +1399,9 @@
 												base={entry.previousRevision}
 												head={entry.revision}
 												source={entry.source}
+												note={entry.note}
+												actor={entry.actor}
+												actorKind={entry.actorKind}
 											/>
 										{/if}
 									</span>
