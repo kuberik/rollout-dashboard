@@ -4,6 +4,14 @@
 	// the accessible name of every in-flight dot on `/activity`.
 	import { BAKE_WORD } from '$lib/bake-status';
 	import { formatTimeAgoCompact } from '$lib/utils';
+	import {
+		brushRange,
+		clusterActivation,
+		clusterRuns as clusterRunsCalc,
+		hitBoxes as hitBoxesCalc,
+		spreadOverlaps as spreadOverlapsCalc,
+		type MarkCluster
+	} from '$lib/deployment-timeline-logic';
 
 	type HistoryEntry = {
 		timestamp: string;
@@ -407,30 +415,12 @@
 	 */
 	const MIN_SEP = 2 * R_NORMAL + 2;
 
+	// ⚙️ Math moved to `deployment-timeline-logic.ts` (2026-09-04) so it has a
+	// unit test independent of a mounted chart — see that file's own header.
+	// Behaviour unchanged: same run-detection, same step formula.
 	function spreadOverlaps(xs: number[], order: number[]): number[] {
-		const dys = new Array(xs.length).fill(0);
-		if (order.length < 2) return dys;
 		const maxOffset = Math.max(0, ROW_H / 2 - R_ACTIVE - 3);
-		if (maxOffset <= 1) return dys;
-		let cluster: number[] = [];
-		const flush = () => {
-			const n = cluster.length;
-			if (n > 1) {
-				const step = Math.min(MIN_SEP, (2 * maxOffset) / (n - 1));
-				for (let k = 0; k < n; k++) dys[cluster[k]] = (k - (n - 1) / 2) * step;
-			}
-			cluster = [];
-		};
-		for (const pos of order) {
-			const prev = cluster[cluster.length - 1];
-			if (prev === undefined || Math.abs(xs[pos] - xs[prev]) < MIN_SEP) cluster.push(pos);
-			else {
-				flush();
-				cluster.push(pos);
-			}
-		}
-		flush();
-		return dys;
+		return spreadOverlapsCalc(xs, order, MIN_SEP, maxOffset);
 	}
 
 	/**
@@ -497,33 +487,10 @@
 	 * dropped to match `reachH` even though nothing ever competed for the
 	 * y-axis inside one lane.
 	 */
+	// ⚙️ Math moved to `deployment-timeline-logic.ts` (2026-09-04) — same
+	// floor, same halving. See that file's header for why.
 	function hitBoxes(xs: number[], fan: boolean): HitBox[] {
-		const n = xs.length;
-		if (fan || n < 2) return xs.map(() => ({ left: 16, right: 16 }));
-		const order = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
-		const boxes: HitBox[] = xs.map(() => ({ left: 16, right: 16 }));
-		for (let k = 0; k < order.length; k++) {
-			const i = order[k];
-			const leftGap = k > 0 ? xs[i] - xs[order[k - 1]] : Infinity;
-			const rightGap = k < order.length - 1 ? xs[order[k + 1]] - xs[i] : Infinity;
-			// ⚠️ FLOORED AT `R_NORMAL` A SIDE, NOT 0. On the live 7-day fixture
-			// several deploys land within a FRACTION OF A PIXEL of each other —
-			// the true half-gap partition rounds to ~0 there, which would leave
-			// the whole cluster's visible bubble sitting over a set of
-			// zero-width targets: not merely unfairly small, but a DEAD CONTROL
-			// a tap on the bubble itself resolves to nothing. Overlapping
-			// slightly in that one degenerate case is the lesser defect — it
-			// restores "a tap on the cluster hits SOMETHING", at the cost of
-			// which member is honest, unfair-but-alive rather than fair-but-
-			// dead. `R_NORMAL` (the mark's own pre-32px-pass radius) is the
-			// floor because it is never a regression below what this chart
-			// clicked like before the touch-floor pass existed at all.
-			boxes[i] = {
-				left: Math.max(R_NORMAL, Math.min(16, leftGap / 2)),
-				right: Math.max(R_NORMAL, Math.min(16, rightGap / 2))
-			};
-		}
-		return boxes;
+		return hitBoxesCalc(xs, fan, R_NORMAL);
 	}
 
 	/**
@@ -566,48 +533,16 @@
 	// its own label; it may not shrink the label to fit the bubble.
 	const R_CLUSTER = 8;
 
-	/** Failed outranks in-flight outranks settled — a merged mark may never
-	    hide the worst thing inside it. */
-	function worstStatus(list: (string | undefined)[]): string | undefined {
-		const rank = (s?: string) => (s === 'Failed' ? 3 : s === 'InProgress' ? 2 : s === 'Deploying' ? 1 : 0);
-		return list.reduce((worst, s) => (rank(s) > rank(worst) ? s : worst), undefined as string | undefined);
-	}
-
-	type MarkCluster = { cx: number; count: number; status?: string };
-
+	// ⚙️ Math moved to `deployment-timeline-logic.ts` (2026-09-04). `runs` is
+	// new: the member POSITIONS behind each cluster, in list order — needed
+	// so the bubble's own click/Enter handler can compute the run's time span
+	// (`clusterActivation`, below) instead of only its pixel centroid.
 	function clusterRuns(
 		xs: number[],
 		order: number[],
 		statusAt: (pos: number) => string | undefined
-	): { of: number[]; list: MarkCluster[] } {
-		const of: number[] = new Array(xs.length).fill(-1);
-		const list: MarkCluster[] = [];
-		if (order.length < 2) return { of, list };
-		let run: number[] = [];
-		const flush = () => {
-			if (run.length > 1) {
-				const idx = list.length;
-				for (const p of run) of[p] = idx;
-				list.push({
-					cx: run.reduce((sum, p) => sum + xs[p], 0) / run.length,
-					count: run.length,
-					status: worstStatus(run.map(statusAt))
-				});
-			}
-			run = [];
-		};
-		// The SAME run detection `spreadOverlaps` uses, so the two treatments
-		// never disagree about what counts as a collision.
-		for (const pos of order) {
-			const prev = run[run.length - 1];
-			if (prev === undefined || Math.abs(xs[pos] - xs[prev]) < MIN_SEP) run.push(pos);
-			else {
-				flush();
-				run.push(pos);
-			}
-		}
-		flush();
-		return { of, list };
+	): { of: number[]; list: MarkCluster[]; runs: number[][] } {
+		return clusterRunsCalc(xs, order, MIN_SEP, statusAt);
 	}
 
 	const lanes = $derived(
@@ -625,7 +560,7 @@
 			// separated its collisions on the y-axis, so merging them back into
 			// one disc would undo the caller's own choice.
 			const clusters = fanOverlaps
-				? { of: xs.map(() => -1), list: [] as MarkCluster[] }
+				? { of: xs.map(() => -1), list: [] as MarkCluster[], runs: [] as number[][] }
 				: clusterRuns(xs, order, (pos) => entries[pos].e.bakeStatus);
 			return {
 				svc,
@@ -636,7 +571,8 @@
 				dys: fanOverlaps ? spreadOverlaps(xs, order) : xs.map(() => 0),
 				hitBoxes: hitBoxes(xs, fanOverlaps),
 				clusterOf: clusters.of,
-				clusters: clusters.list
+				clusters: clusters.list,
+				clusterRuns: clusters.runs
 			};
 		})
 	);
@@ -654,6 +590,37 @@
 		return count === 1
 			? `${name} — 1 deploy`
 			: `${name} — ${count} deploys, left and right arrows to move between them`;
+	}
+
+	/**
+	 * ⭐ THE BUBBLE ITSELF IS NOW A CONTROL, NOT JUST A PICTURE. (2026-09-04,
+	 * fixing the report "clicking on parts where there's an indication of
+	 * multiple deployments … doesn't do anything.") The bubble's drawn circle
+	 * has always been `pointer-events: none` so a pointer aiming precisely at
+	 * one member resolves to that member — correct, and unchanged below. But
+	 * nothing gave a click/tap that DOESN'T land on any one member's own
+	 * small hit target anywhere to go, so the common case — tapping the
+	 * middle of the visible bubble, which several tightly-packed members'
+	 * own hit rects usually don't fully cover — was a dead zone that fell
+	 * through to the row background.
+	 *
+	 * `activateCluster` is what the new hit layer below calls: zoom to the
+	 * cluster's own span (so its members separate and stay reachable
+	 * individually, same as any two marks with room between them), or — for
+	 * a cluster too tight in time for a window to help — select the newest
+	 * member, exactly what clicking that single mark already does.
+	 */
+	function activateCluster(svcId: string, entries: { e: HistoryEntry; i: number }[], run: number[]) {
+		const members = run.map((pos) => ({ e: entries[pos].e, i: entries[pos].i }));
+		const action = clusterActivation(
+			members.map((m) => ({ ms: new Date(m.e.timestamp).getTime(), origIdx: m.i }))
+		);
+		if (action.kind === 'zoom') pickRange({ start: action.start, end: action.end });
+		else onEntryClick?.(svcId, action.origIdx);
+	}
+
+	function clusterLabel(svcName: string, count: number): string {
+		return `${count} deploys close together on ${svcName} — activate to zoom in and see them separately`;
 	}
 
 	function onDotKey(
@@ -731,17 +698,28 @@
 	let brushStartX = $state<number | null>(null);
 	let brushEndX = $state<number | null>(null);
 
-	function pixelToMs(x: number): number {
-		const ratio = (x - LABEL_W) / plotW;
-		return startMs + ratio * (endMs - startMs);
+	/**
+	 * ⛔ THE DRAG NEVER STARTED. (2026-09-04, fixing the report "drag zooming
+	 * … doesn't do anything".) `target.tagName === 'rect'` was meant to
+	 * exempt exactly one thing — a mark's own `data-dot` hit target, a
+	 * `<rect>` since the independent-left/right-reach pass above — but every
+	 * ROW BACKGROUND is *also* a `<rect>` (see "Row backgrounds" at the draw
+	 * site), painted under the marks and covering the entire lane. A
+	 * pointerdown anywhere in a lane that isn't precisely on a mark's small
+	 * hit target lands on that background rect, so this check bailed out of
+	 * starting a brush on almost every press — the SVG never saw a brush
+	 * begin. Scoped to the attribute the hit targets actually carry
+	 * (`data-dot` on a mark, `data-cluster` on a merged bubble's own hit
+	 * target — see below), a press anywhere else in the plot correctly
+	 * starts the drag.
+	 */
+	function isInteractiveMark(target: Element): boolean {
+		return target.closest('[data-dot], [data-cluster]') !== null;
 	}
 
 	function onPointerDown(ev: PointerEvent) {
 		const target = ev.target as Element;
-		// `data-dot`'s hit target is a `<rect>` now (see `hitBoxes`, above) —
-		// was a `<circle>` before this pass gave each mark independent
-		// left/right reach, which a `<circle>`'s one radius cannot express.
-		if (target.tagName === 'rect') return;
+		if (isInteractiveMark(target)) return;
 		if (!containerEl || !chartWrapperEl) return;
 		const rect = chartWrapperEl.getBoundingClientRect();
 		const x = ev.clientX - rect.left;
@@ -765,12 +743,12 @@
 		const svgEl = ev.currentTarget as SVGElement;
 		if (svgEl.hasPointerCapture(ev.pointerId)) svgEl.releasePointerCapture(ev.pointerId);
 		if (brushStartX === null || brushEndX === null) return;
-		const a = Math.min(brushStartX, brushEndX);
-		const b = Math.max(brushStartX, brushEndX);
+		const a = brushStartX;
+		const b = brushEndX;
 		brushStartX = null;
 		brushEndX = null;
-		if (b - a < 6) return;
-		pickRange({ start: pixelToMs(a), end: pixelToMs(b) });
+		const range = brushRange(a, b, LABEL_W, plotW, startMs, endMs);
+		if (range) pickRange(range);
 	}
 
 	// Axis ticks — auto-pick interval based on range size
@@ -998,7 +976,7 @@
 				{/each}
 
 				<!-- Per-service swimlanes -->
-				{#each lanes as { svc, entries, order, xs, dys, hitBoxes: laneHitBoxes, clusterOf, clusters }, i}
+				{#each lanes as { svc, entries, order, xs, dys, hitBoxes: laneHitBoxes, clusterOf, clusters, clusterRuns: laneClusterRuns }, i}
 					{@const cy = rowCY(i)}
 					{@const cursor = cursorFor(svc.id, order)}
 
@@ -1179,11 +1157,37 @@
 							/>
 						{/each}
 
-						<!-- ⭐ THE COUNT BUBBLE. One per collided run, painted after the
-						     marks it stands for and `aria-hidden` — the marks are still
-						     in the DOM, still named, still in the tab order; this is
-						     their picture. `pointer-events: none` so the member under
-						     the cursor keeps the hover it always had. -->
+						<!-- ⭐ THE COUNT BUBBLE — AND, AS OF 2026-09-04, A REAL CONTROL.
+						     One per collided run, painted after the marks it stands for,
+						     so it wins SVG's paint-order hit-testing across its own
+						     visible footprint the same way the halo/rollback ring above
+						     already do. The marks are still in the DOM, still named,
+						     still in the tab order — this is their picture, not a
+						     replacement for them.
+						     ⛔ WHY THE HIT TARGET SITS ON TOP INSTEAD OF LETTING CLICKS
+						     FALL THROUGH TO A MEMBER (the original design, and what the
+						     `pointer-events: none` on the cosmetic circle+text below
+						     still claims for MOUSE HOVER). Measured live on the real
+						     7-day fixture: `hitBoxes`' half-gap floor (`R_NORMAL`, so a
+						     member never partitions to a dead zero-width target) means a
+						     run of 7-10 members packed inside `MIN_SEP`=12px produces
+						     hit rects that mutually OVERLAP almost entirely — there is
+						     no gap in the middle of the bubble for a "falls through"
+						     layer to catch, and paint order (members iterate NEWEST
+						     FIRST, so the OLDEST is drawn last) meant every pixel across
+						     the whole bubble already resolved to that one oldest member
+						     regardless of where you clicked. A "resolves to whichever
+						     member is nearest" story was never true for a cluster this
+						     dense; it only holds for two members with real room between
+						     them. Landing the bubble's own hit target on top makes the
+						     whole visible glyph reliably ONE control — the one thing the
+						     drawing actually promises — and is a strict improvement over
+						     a click that silently always hit the same hidden member.
+						     Individual members stay reachable exactly as before: by
+						     keyboard (`←`/`→` walk every position regardless of visual
+						     merging, unaffected by any of this) and, once zoomed in via
+						     this control, by mouse again — clustering is a function of
+						     the CURRENT window, not a permanent fact about the data. -->
 						{#each clusters as c, ci (ci)}
 							{@const openHere = entries.some(
 								(en, pos) =>
@@ -1199,6 +1203,7 @@
 								     bubble was solving the wrong side of the equation.
 								     `R_CLUSTER` grew by 0.5 instead. -->
 								{@const cr = c.count > 9 ? R_CLUSTER + 2 : R_CLUSTER}
+								{@const run = laneClusterRuns[ci]}
 								<circle
 									cx={c.cx}
 									cy={cy}
@@ -1220,6 +1225,36 @@
 								>
 									{c.count}
 								</text>
+								<!-- ⭐ THE BUBBLE'S OWN HIT TARGET. A `<circle>` bigger than
+								     the drawn glyph — `cr` is 8-10px, this reaches `cr + 6`,
+								     never past 16 (the same 32px-diameter floor every other
+								     control on this chart earns) — but deliberately NOT
+								     enlarged all the way to 16 regardless of `cr`: a full
+								     16px reach centred on a tight cluster risks swallowing a
+								     genuinely separate NEIGHBOURING mark's own small hit
+								     rect (clusters are only guaranteed `MIN_SEP`=12px from
+								     whatever sits next to them, not 32). `pointer-events:
+								     all` on a `fill: transparent` shape — `visiblePainted`'s
+								     default would otherwise skip an unpainted fill. -->
+								<circle
+									cx={c.cx}
+									cy={cy}
+									r={Math.min(16, cr + 6)}
+									fill="transparent"
+									data-cluster=""
+									pointer-events="all"
+									class="cursor-pointer"
+									role="button"
+									aria-label={clusterLabel(svc.name, c.count)}
+									tabindex={0}
+									onclick={() => activateCluster(svc.id, entries, run)}
+									onkeydown={(ev) => {
+										if (ev.key === 'Enter' || ev.key === ' ') {
+											ev.preventDefault();
+											activateCluster(svc.id, entries, run);
+										}
+									}}
+								/>
 							{/if}
 						{/each}
 					</g>
