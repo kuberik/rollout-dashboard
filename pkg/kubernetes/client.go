@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -18,10 +19,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	k8sptr "k8s.io/utils/ptr"
-	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	imagereflectorv1beta2 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
@@ -50,88 +51,71 @@ func (c *Client) GetClientset() *kubernetes.Clientset {
 	return c.clientset
 }
 
-// NewClient creates a Kubernetes client using service account credentials (in-cluster) or kubeconfig
-func NewClient() (*Client, error) {
-	return NewClientWithToken("")
-}
-
-// NewClientWithToken creates a Kubernetes client using the provided OIDC token
-// If token is empty, falls back to service account credentials (in-cluster) or kubeconfig
-func NewClientWithToken(token string) (*Client, error) {
-	var config *rest.Config
-	var err error
-
-	// If token is provided, use it for authentication
-	if token != "" {
-		// First try in-cluster config to get the API server URL and CA
-		inClusterConfig, err := rest.InClusterConfig()
-		if err != nil {
-			// If in-cluster config fails, try local kubeconfig
-			var kubeconfig string
-			if home := homedir.HomeDir(); home != "" {
-				kubeconfig = filepath.Join(home, ".kube", "config")
-			} else {
-				kubeconfig = os.Getenv("KUBECONFIG")
-			}
-
-			inClusterConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
-			}
-		}
-
-		// Create config with OIDC token
-		config = &rest.Config{
-			Host:            inClusterConfig.Host,
-			APIPath:         inClusterConfig.APIPath,
-			ContentConfig:   inClusterConfig.ContentConfig,
-			BearerToken:     token,
-			BearerTokenFile: "", // Clear BearerTokenFile when using BearerToken
-			TLSClientConfig: inClusterConfig.TLSClientConfig,
-			UserAgent:       inClusterConfig.UserAgent,
-			QPS:             inClusterConfig.QPS,
-			Burst:           inClusterConfig.Burst,
-			Timeout:         inClusterConfig.Timeout,
-		}
-	} else {
-		// No token provided, use default authentication (service account or kubeconfig)
-		// First try in-cluster config
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			// If in-cluster config fails, try local kubeconfig
-			var kubeconfig string
-			if home := homedir.HomeDir(); home != "" {
-				kubeconfig = filepath.Join(home, ".kube", "config")
-			} else {
-				kubeconfig = os.Getenv("KUBECONFIG")
-			}
-
-			config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
-			}
-		}
+// baseRestConfig returns the ambient REST config for this pod: in-cluster
+// service-account config first, falling back to a local kubeconfig (dev only).
+// This never carries a per-user bearer token — see restConfigWithToken.
+func baseRestConfig() (*rest.Config, error) {
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		return config, nil
 	}
 
+	var kubeconfig string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = filepath.Join(home, ".kube", "config")
+	} else {
+		kubeconfig = os.Getenv("KUBECONFIG")
+	}
+
+	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
+	}
+	return config, nil
+}
+
+// restConfigWithToken returns baseRestConfig with the bearer token swapped for
+// the given OIDC token (host/CA/timeouts otherwise unchanged). Empty token
+// returns the base config unmodified (service-account/default auth).
+func restConfigWithToken(token string) (*rest.Config, error) {
+	base, err := baseRestConfig()
+	if err != nil {
+		return nil, err
+	}
+	if token == "" {
+		return base, nil
+	}
+	return &rest.Config{
+		Host:            base.Host,
+		APIPath:         base.APIPath,
+		ContentConfig:   base.ContentConfig,
+		BearerToken:     token,
+		BearerTokenFile: "", // Clear BearerTokenFile when using BearerToken
+		TLSClientConfig: base.TLSClientConfig,
+		UserAgent:       base.UserAgent,
+		QPS:             base.QPS,
+		Burst:           base.Burst,
+		Timeout:         base.Timeout,
+	}, nil
+}
+
+// buildScheme registers every group this dashboard reads or writes. Called
+// once — see sharedSchemeAndMapper.
+func buildScheme() (*runtime.Scheme, error) {
 	scheme := runtime.NewScheme()
 
-	// Add core Kubernetes scheme (includes v1.Secret, v1.Pod, etc.)
 	if err := corev1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add core scheme: %w", err)
 	}
-
 	if err := appsv1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add apps scheme: %w", err)
 	}
-
 	if err := envv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add environment scheme: %w", err)
 	}
-
 	if err := openkruisev1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add openkruise scheme: %w", err)
 	}
-
 	if err := rolloutv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add scheme: %w", err)
 	}
@@ -148,7 +132,81 @@ func NewClientWithToken(token string) (*Client, error) {
 		return nil, fmt.Errorf("failed to add kruise rollout scheme: %w", err)
 	}
 
-	cl, err := client.New(config, client.Options{Scheme: scheme})
+	return scheme, nil
+}
+
+var (
+	schemeMapperOnce sync.Once
+	sharedScheme     *runtime.Scheme
+	sharedMapper     meta.RESTMapper
+	schemeMapperErr  error
+)
+
+// sharedSchemeAndMapper builds (once, for the process lifetime) the Scheme and
+// dynamic RESTMapper every client — read or write, any identity — reuses.
+//
+// This is the fix for PERF-2026-09-04 finding #2: building a client.Client
+// without an explicit Mapper makes controller-runtime run full API discovery
+// to build a fresh dynamic RESTMapper on every call, which used to happen on
+// every authenticated HTTP request (one per signed-in user per request). The
+// RESTMapper only describes GVK<->GVR shape for this cluster's installed
+// APIs — it carries no per-user identity or authorization — so it is safe and
+// correct to share across every client this process builds, including
+// per-request, per-user write clients. Discovery is done once, under the
+// dashboard's own service-account config (guaranteed discovery access),
+// regardless of which identity asks for it first.
+func sharedSchemeAndMapper() (*runtime.Scheme, meta.RESTMapper, error) {
+	schemeMapperOnce.Do(func() {
+		sharedScheme, schemeMapperErr = buildScheme()
+		if schemeMapperErr != nil {
+			return
+		}
+		cfg, err := baseRestConfig()
+		if err != nil {
+			schemeMapperErr = fmt.Errorf("failed to build base rest config for discovery: %w", err)
+			return
+		}
+		httpClient, err := rest.HTTPClientFor(cfg)
+		if err != nil {
+			schemeMapperErr = fmt.Errorf("failed to build discovery http client: %w", err)
+			return
+		}
+		sharedMapper, err = apiutil.NewDynamicRESTMapper(cfg, httpClient)
+		if err != nil {
+			schemeMapperErr = fmt.Errorf("failed to build dynamic RESTMapper: %w", err)
+			return
+		}
+	})
+	return sharedScheme, sharedMapper, schemeMapperErr
+}
+
+// NewClient creates a Kubernetes client using service account credentials (in-cluster) or kubeconfig
+func NewClient() (*Client, error) {
+	return NewClientWithToken("")
+}
+
+// NewClientWithToken creates a Kubernetes client using the provided OIDC token.
+// If token is empty, falls back to service account credentials (in-cluster) or
+// kubeconfig.
+//
+// Cheap to call per request: the Scheme and RESTMapper are built once
+// (sharedSchemeAndMapper) and reused here, so this only builds a fresh
+// rest.Config (cheap — no network call) plus a client.New/clientset
+// construction that does no discovery of its own. Callers needing a
+// long-lived, cache-backed reader should prefer GetReadClient/GetDefaultClient
+// instead of calling this directly — see context.go for the read/write split.
+func NewClientWithToken(token string) (*Client, error) {
+	config, err := restConfigWithToken(token)
+	if err != nil {
+		return nil, err
+	}
+
+	scheme, mapper, err := sharedSchemeAndMapper()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build shared scheme/mapper: %w", err)
+	}
+
+	cl, err := client.New(config, client.Options{Scheme: scheme, Mapper: mapper})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
@@ -1735,4 +1793,3 @@ func (c *Client) GetClusterRolloutSchedulesByRollout(ctx context.Context, namesp
 
 	return matchingSchedules, nil
 }
-

@@ -82,6 +82,38 @@ POST /api/rollouts/:namespace/:name/pin        # Pin version to rollout
 POST /api/rollouts/:namespace/:name/bypass-gates  # Add bypass-gates annotation
 ```
 
+## Kubernetes client: reads vs. writes, and per-user visibility
+
+(PERF-2026-09-04 slices 1-2, `.agents-context/PERF-2026-09-04.md`.)
+
+Two different Kubernetes clients back this API, and picking the wrong one for
+a new handler is the mistake to avoid:
+
+- **Reads** (every LIST/GET behind the JSON routes) use `kubernetes.GetReadClient`
+  (`getK8sReadClient` in `main_helper.go`) — ONE long-lived client for the
+  process lifetime, authenticated as the dashboard's own service account,
+  backed by an informer cache for the hub-local CRDs the dashboard reads (see
+  `pkg/kubernetes/cache.go` for the exact resource set). It ignores the
+  caller's own OIDC token entirely.
+- **Writes** (pin, clear pin, change-version, force-deploy, bypass-gates,
+  retry, mark-successful, unblock-failed, reconcile, continue) and every
+  SelfSubjectAccessReview (`/permissions`, `/permissions/all`) use
+  `kubernetes.GetWriteClient` (`getK8sWriteClient`) — a per-request client
+  authenticated as the actual signed-in operator's OIDC bearer token. **Never
+  downgrade a mutating call to the shared service-account read client.**
+
+Because the read client bypasses the viewing user's own RBAC, every
+namespaced object it returns to an OIDC-authenticated request must first pass
+`kubernetes.CanListRolloutsInNamespace` / `requireRolloutVisibility`
+(`main_visibility.go`) — a SelfSubjectAccessReview for "list rollouts" in that
+namespace, run under the caller's own token, cached 5 minutes. Cluster-wide
+routes (`/api/rollouts`) filter their namespaced items to what the caller may
+see; a `:namespace/:name`-scoped route 403s outright on a denial. No OIDC
+token on the request (service-account mode) skips the check entirely — that
+caller already is the trusted identity. See the doc comments on
+`pkg/kubernetes/context.go` and `pkg/kubernetes/visibility.go` for the full
+rule.
+
 ## Kustomization Association
 
 Kustomizations are associated with rollouts using annotations:

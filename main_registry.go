@@ -108,7 +108,7 @@ func resolveClusterURL(c *gin.Context, name string) (baseURL string, isLocal boo
 		return u, false, nil
 	}
 
-	k8sClient, err := kubernetes.GetClientFromContext(c)
+	k8sClient, err := kubernetes.GetReadClient(c)
 	if err != nil {
 		return "", false, err
 	}

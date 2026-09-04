@@ -1,0 +1,138 @@
+package kubernetes
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"sync"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/kuberik/rollout-dashboard/pkg/auth"
+	"golang.org/x/sync/errgroup"
+)
+
+// Per-user read visibility — see the boundary doc comment in context.go.
+//
+// GetReadClient reads as the dashboard's own service account, which typically
+// has broad read access. CanListRolloutsInNamespace is the check every
+// namespaced object read through that client must pass, per-namespace, before
+// it is allowed into a response for an OIDC-authenticated request: can the
+// signed-in operator themselves `list rollouts` in that namespace? That's a
+// SelfSubjectAccessReview run under the operator's own bearer token (never the
+// shared client's identity), cached for visibilityTTL so a page that touches
+// N objects in the same namespace doesn't cost N SelfSubjectAccessReview round
+// trips.
+//
+// No token on the request (service-account mode: unauthenticated curl, a
+// spoke's own default-client fan-out leg) means every namespace is allowed —
+// identical to the pre-existing behavior, and correct: that caller already is
+// the trusted identity, not a viewer whose RBAC needs re-checking.
+
+const visibilityTTL = 5 * time.Minute
+
+type visibilityEntry struct {
+	allowed bool
+	expires time.Time
+}
+
+var (
+	visibilityMu    sync.Mutex
+	visibilityCache = map[string]visibilityEntry{}
+)
+
+// visibilityCacheKey never retains the raw bearer token — only its hash — so a
+// leak of process memory (a heap dump, a debug endpoint) can't recover live
+// credentials from this cache.
+func visibilityCacheKey(token, namespace string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:]) + "/" + namespace
+}
+
+// checkListRolloutsPermission is the real SelfSubjectAccessReview call,
+// factored out as a package var so tests can substitute a fake and exercise
+// CanListRolloutsInNamespace's caching/no-token logic without a live cluster.
+var checkListRolloutsPermission = func(c *gin.Context, ns string) (bool, error) {
+	writeClient, err := GetWriteClient(c)
+	if err != nil {
+		return false, err
+	}
+	return writeClient.CheckRolloutPermission(c.Request.Context(), "list", ns, "")
+}
+
+// CanListRolloutsInNamespace answers whether the caller behind c may list
+// Rollouts in namespace ns, per SelfSubjectAccessReview under their own OIDC
+// token, cached per (token, namespace) for 5 minutes. Always true when no
+// token is present on the request (service-account mode).
+func CanListRolloutsInNamespace(c *gin.Context, ns string) (bool, error) {
+	token := auth.GetTokenFromContext(c)
+	if token == "" {
+		return true, nil
+	}
+
+	key := visibilityCacheKey(token, ns)
+
+	visibilityMu.Lock()
+	if entry, ok := visibilityCache[key]; ok && time.Now().Before(entry.expires) {
+		visibilityMu.Unlock()
+		return entry.allowed, nil
+	}
+	visibilityMu.Unlock()
+
+	allowed, err := checkListRolloutsPermission(c, ns)
+	if err != nil {
+		return false, err
+	}
+
+	visibilityMu.Lock()
+	visibilityCache[key] = visibilityEntry{allowed: allowed, expires: time.Now().Add(visibilityTTL)}
+	visibilityMu.Unlock()
+
+	return allowed, nil
+}
+
+// AllowedNamespaces evaluates CanListRolloutsInNamespace for each of the given
+// namespaces (deduplicated) and returns the subset that are allowed, as a set.
+// Used by cluster-wide read routes (e.g. /api/rollouts) to filter an
+// already-fetched, shared-client-read result down to what the caller may see.
+// Checks run concurrently (bounded by errgroup's default unlimited — namespace
+// counts here are small, and repeat calls hit the cache) so N distinct
+// namespaces cost one round trip each, not N sequential ones.
+func AllowedNamespaces(c *gin.Context, namespaces []string) (map[string]bool, error) {
+	dedup := make(map[string]bool, len(namespaces))
+	for _, ns := range namespaces {
+		dedup[ns] = false
+	}
+
+	var mu sync.Mutex
+	g, _ := errgroup.WithContext(c.Request.Context())
+	for ns := range dedup {
+		ns := ns
+		g.Go(func() error {
+			allowed, err := CanListRolloutsInNamespace(c, ns)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			dedup[ns] = allowed
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return dedup, nil
+}
+
+// FilterByNamespace returns the subset of items whose namespace (per
+// namespaceOf) is present and true in allowed. Used to trim an
+// already-fetched typed list down to the namespaces a viewer may see.
+func FilterByNamespace[T any](items []T, namespaceOf func(T) string, allowed map[string]bool) []T {
+	out := make([]T, 0, len(items))
+	for _, item := range items {
+		if allowed[namespaceOf(item)] {
+			out = append(out, item)
+		}
+	}
+	return out
+}

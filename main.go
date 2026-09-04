@@ -28,6 +28,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-github/v88/github"
+	envv1alpha1 "github.com/kuberik/environment-controller/api/v1alpha1"
 	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
@@ -36,6 +37,7 @@ import (
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
 	"github.com/kuberik/rollout-dashboard/pkg/logs"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
+	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,6 +63,14 @@ func (k *dockerConfigKeychain) Resolve(resource authn.Resource) (authn.Authentic
 }
 
 func main() {
+	// Build the shared read-side informer cache in the background (PERF-2026-09-04
+	// slice 2) — non-blocking so the server below starts accepting connections
+	// immediately; read routes 503 (kubernetes.ErrCacheWarming) until the initial
+	// sync completes or this timeout elapses, whichever is first. See
+	// pkg/kubernetes/cache.go for the exact resource set and the missing-CRD
+	// degradation story.
+	go kubernetes.InitReadCache(context.Background(), 15*time.Second)
+
 	r := gin.Default()
 
 	// Compress JSON responses. Excludes the SSE pod-logs stream (and, by the
@@ -193,7 +203,7 @@ func main() {
 		// {name,url} pairs. Powers the frontend cluster switcher and warms the
 		// name→url registry used by the proxy.
 		api.GET("/clusters", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
@@ -215,7 +225,7 @@ func main() {
 		})
 
 		api.GET("/rollouts", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
@@ -224,11 +234,11 @@ func main() {
 			allNamespaces := namespace == "all" || namespace == "*" || namespace == ""
 
 			var (
-				rollouts            interface{}
-				kustomizations      interface{}
-				environments        interface{}
-				kruiseRollouts      interface{}
-				rolloutDependencies interface{}
+				rollouts            *rolloutv1alpha1.RolloutList
+				kustomizations      *kustomizev1.KustomizationList
+				environments        *envv1alpha1.EnvironmentList
+				kruiseRollouts      *kruiserolloutv1beta1.RolloutList
+				rolloutDependencies *rolloutv1alpha1.RolloutDependencyList
 				rolloutsErr         error
 			)
 
@@ -316,6 +326,68 @@ func main() {
 				return
 			}
 
+			// Per-user visibility: everything above was read through the shared
+			// read client (the dashboard's own service-account identity), which
+			// sees every namespace. Trim the results down to the namespaces the
+			// signed-in operator may themselves `list rollouts` in — a no-op when
+			// the request carries no OIDC token (service-account mode, or this
+			// being the leg of a fan-out call the hub already gated). See
+			// pkg/kubernetes/context.go and visibility.go for the RBAC boundary.
+			{
+				nsSet := map[string]struct{}{}
+				for _, r := range rollouts.Items {
+					nsSet[r.Namespace] = struct{}{}
+				}
+				if kustomizations != nil {
+					for _, k := range kustomizations.Items {
+						nsSet[k.Namespace] = struct{}{}
+					}
+				}
+				if environments != nil {
+					for _, e := range environments.Items {
+						nsSet[e.Namespace] = struct{}{}
+					}
+				}
+				if kruiseRollouts != nil {
+					for _, kr := range kruiseRollouts.Items {
+						nsSet[kr.Namespace] = struct{}{}
+					}
+				}
+				if rolloutDependencies != nil {
+					for _, d := range rolloutDependencies.Items {
+						nsSet[d.Namespace] = struct{}{}
+					}
+				}
+				namespaces := make([]string, 0, len(nsSet))
+				for ns := range nsSet {
+					namespaces = append(namespaces, ns)
+				}
+
+				allowedNS, err := kubernetes.AllowedNamespaces(c, namespaces)
+				if err != nil {
+					log.Printf("Error checking namespace visibility: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error":   "Failed to check namespace visibility",
+						"details": err.Error(),
+					})
+					return
+				}
+
+				rollouts.Items = kubernetes.FilterByNamespace(rollouts.Items, func(r rolloutv1alpha1.Rollout) string { return r.Namespace }, allowedNS)
+				if kustomizations != nil {
+					kustomizations.Items = kubernetes.FilterByNamespace(kustomizations.Items, func(k kustomizev1.Kustomization) string { return k.Namespace }, allowedNS)
+				}
+				if environments != nil {
+					environments.Items = kubernetes.FilterByNamespace(environments.Items, func(e envv1alpha1.Environment) string { return e.Namespace }, allowedNS)
+				}
+				if kruiseRollouts != nil {
+					kruiseRollouts.Items = kubernetes.FilterByNamespace(kruiseRollouts.Items, func(kr kruiserolloutv1beta1.Rollout) string { return kr.Namespace }, allowedNS)
+				}
+				if rolloutDependencies != nil {
+					rolloutDependencies.Items = kubernetes.FilterByNamespace(rolloutDependencies.Items, func(d rolloutv1alpha1.RolloutDependency) string { return d.Namespace }, allowedNS)
+				}
+			}
+
 			// If we're already serving a fan-out leg (header set by the calling hub),
 			// return local data only — fanning out again would create a cycle.
 			if c.GetHeader(fanoutHeader) != "" {
@@ -354,16 +426,19 @@ func main() {
 			if len(clusterErrors) > 0 {
 				response["clusterErrors"] = clusterErrors
 			}
-			c.JSON(http.StatusOK, response)
+			writeJSONWithETag(c, http.StatusOK, response)
 		})
 
 		api.GET("/rollouts/:namespace/:name", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			var (
@@ -484,7 +559,7 @@ func main() {
 				kustomizations = kubernetes.FilterKustomizationsByRolloutAnnotation(kustomizationsRaw, oci, name)
 			}
 
-			c.JSON(http.StatusOK, gin.H{
+			writeJSONWithETag(c, http.StatusOK, gin.H{
 				"rollout":           rollout,
 				"kustomizations":    kustomizations,
 				"ociRepositories":   ociRepositories,
@@ -497,12 +572,15 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name/environments", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 
 			// Get all Environments in the namespace
 			environments, err := k8sClient.GetEnvironments(context.Background(), namespace)
@@ -522,12 +600,15 @@ func main() {
 
 		// Get RolloutTests for a KruiseRollout
 		api.GET("/rollouts/:namespace/:name/rollout-tests", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			// Get RolloutTests that reference this KruiseRollout
@@ -559,7 +640,7 @@ func main() {
 		})
 
 		api.POST("/rollouts/:namespace/:name/pin", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -607,7 +688,7 @@ func main() {
 
 		// Add force-deploy annotation to rollout
 		api.POST("/rollouts/:namespace/:name/force-deploy", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -651,7 +732,7 @@ func main() {
 
 		// Add bypass-gates annotation to rollout
 		api.POST("/rollouts/:namespace/:name/bypass-gates", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -688,7 +769,7 @@ func main() {
 
 		// Change version (pin or unpin + force-deploy) atomically
 		api.POST("/rollouts/:namespace/:name/change-version", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -736,7 +817,7 @@ func main() {
 
 		// Add unblock-failed annotation to rollout
 		api.POST("/rollouts/:namespace/:name/unblock-failed", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -762,7 +843,7 @@ func main() {
 
 		// Mark deployment as successful
 		api.POST("/rollouts/:namespace/:name/mark-successful", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -799,7 +880,7 @@ func main() {
 
 		// Reconcile all associated Flux resources for a rollout
 		api.POST("/rollouts/:namespace/:name/reconcile", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -826,7 +907,7 @@ func main() {
 
 		// Continue OpenKruise rollout
 		api.POST("/rollouts/:namespace/:name/continue", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -893,7 +974,7 @@ func main() {
 		// The controllers handle the cascade — no direct Kruise patching needed.
 		// kruiseRolloutName in the body is legacy and ignored.
 		api.POST("/rollouts/:namespace/:name/retry", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -923,12 +1004,15 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name/manifest/:version", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 			version := c.Param("version")
 
@@ -1034,12 +1118,15 @@ func main() {
 		// than no cache. `private` throughout: this response is scoped to the
 		// viewing user's GitHub access and must never land in a shared cache.
 		api.GET("/rollouts/:namespace/:name/commits", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 			base := c.Query("base")
 			head := c.Query("head")
@@ -1196,12 +1283,15 @@ func main() {
 
 		// New endpoint to fetch the media type for a given version
 		api.GET("/rollouts/:namespace/:name/mediatype/:version", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 			version := c.Param("version")
 
@@ -1262,12 +1352,15 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name/annotations/:version", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 			version := c.Param("version")
 
@@ -1331,12 +1424,15 @@ func main() {
 
 		// New endpoint to fetch all available tags from a repository
 		api.GET("/rollouts/:namespace/:name/tags", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			// Get Rollout to get the image policy reference
@@ -1399,12 +1495,15 @@ func main() {
 		})
 
 		api.GET("/kustomizations/:namespace/:name/managed-resources", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			// Get managed resources for the Kustomization. This used to be
@@ -1448,12 +1547,15 @@ func main() {
 		})
 
 		api.GET("/kustomizations/:namespace/:name/test", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			// Get the Kustomization
@@ -1475,12 +1577,15 @@ func main() {
 
 		// Get child resources (ReplicaSets + Pods) for a Deployment
 		api.GET("/namespaces/:namespace/deployments/:name/children", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 			ctx := context.Background()
 			clientset := k8sClient.GetClientset()
@@ -1673,7 +1778,7 @@ func main() {
 		// New endpoint to fetch health checks for a rollout
 		// Check permissions for a rollout action
 		api.GET("/rollouts/:namespace/:name/permissions", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -1706,7 +1811,7 @@ func main() {
 
 		// Check permissions for all common rollout actions
 		api.GET("/rollouts/:namespace/:name/permissions/all", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
 				return
 			}
@@ -1743,12 +1848,15 @@ func main() {
 		})
 
 		api.GET("/rollouts/:namespace/:name/health-checks", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			// Get Rollout to get the health check selector
@@ -1796,11 +1904,14 @@ func main() {
 
 		// Get events for a specific rollout
 		api.GET("/rollouts/:namespace/:name/events", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			events, err := k8sClient.GetEventsForRollout(context.Background(), namespace, name)
@@ -1814,12 +1925,15 @@ func main() {
 
 		// Get schedules for a specific rollout
 		api.GET("/rollouts/:namespace/:name/schedules", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 
 			// Get the rollout to get its labels
@@ -1864,19 +1978,23 @@ func main() {
 
 		// Get all schedules in a namespace
 		api.GET("/schedules", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.DefaultQuery("namespace", "all")
+			allNamespaces := namespace == "all" || namespace == "*" || namespace == ""
 
 			var rolloutSchedules *rolloutv1alpha1.RolloutScheduleList
 			var err error
 
-			if namespace == "all" || namespace == "*" || namespace == "" {
+			if allNamespaces {
 				rolloutSchedules, err = k8sClient.GetRolloutSchedulesAllNamespaces(context.Background())
 			} else {
+				if !requireRolloutVisibility(c, namespace) {
+					return
+				}
 				rolloutSchedules, err = k8sClient.GetRolloutSchedules(context.Background(), namespace)
 			}
 
@@ -1887,6 +2005,31 @@ func main() {
 					"details": err.Error(),
 				})
 				return
+			}
+
+			// Cluster-wide response, same per-user visibility rule as GET
+			// /api/rollouts — trim to namespaces the caller may list rollouts in.
+			// No-op for the single-namespace branch above (already gated by
+			// requireRolloutVisibility) and for service-account requests.
+			if allNamespaces {
+				nsSet := map[string]struct{}{}
+				for _, s := range rolloutSchedules.Items {
+					nsSet[s.Namespace] = struct{}{}
+				}
+				namespaces := make([]string, 0, len(nsSet))
+				for ns := range nsSet {
+					namespaces = append(namespaces, ns)
+				}
+				allowedNS, visErr := kubernetes.AllowedNamespaces(c, namespaces)
+				if visErr != nil {
+					log.Printf("Error checking namespace visibility: %v", visErr)
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error":   "Failed to check namespace visibility",
+						"details": visErr.Error(),
+					})
+					return
+				}
+				rolloutSchedules.Items = kubernetes.FilterByNamespace(rolloutSchedules.Items, func(s rolloutv1alpha1.RolloutSchedule) string { return s.Namespace }, allowedNS)
 			}
 
 			// Always get cluster schedules (they're cluster-scoped)
@@ -1903,12 +2046,15 @@ func main() {
 
 		// Stream pod logs using Server-Sent Events
 		api.GET("/rollouts/:namespace/:name/pods/logs", func(c *gin.Context) {
-			k8sClient, ok := getK8sClient(c)
+			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
 				return
 			}
 
 			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
 			name := c.Param("name")
 			filterType := c.DefaultQuery("type", "")
 			podName := c.Query("pod")
