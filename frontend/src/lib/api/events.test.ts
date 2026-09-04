@@ -1,6 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
-import { applyChangeEvents, _resetThrottleForTests, type ChangeEvent } from './events';
+import {
+	applyChangeEvents,
+	_resetThrottleForTests,
+	type ChangeEvent,
+	type ChangeEventDerived
+} from './events';
+import type { DeploymentChildrenResponse } from './rollouts';
+import type { ManagedResourceStatus } from '../../types';
 
 // `cluster` defaults to the hub's own name — every fixture below that doesn't
 // say otherwise is a hub-local event, matching the contract ("hub-local
@@ -474,5 +481,243 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 			ev({ kind: 'ReplicaSet', namespace: 'team-a', name: 'orphan-rs', cluster: 'hub' })
 		]);
 		expect(invalidated('depChildrenDep1SpokeA')).toBe(false);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// DERIVED PUSH — PERF-2026-09-04 "Workloads on the stream" follow-up.
+//
+// `ChangeEvent.derived` lets a Deployment/ReplicaSet event carry the
+// backend's OWN precomputed `deployment-children`/`managed-resources`
+// response instead of just enough identity to invalidate. These tests seed
+// realistically-shaped caches (not the `{ seeded: true }` stand-in the suite
+// above uses, which the identity-matching logic below would reject as
+// malformed) and assert the cache is PATCHED — content changed, no fetch
+// triggered — rather than merely marked stale.
+// ─────────────────────────────────────────────────────────────────────────
+describe('applyChangeEvents — derived push (Deployment/ReplicaSet `derived.children`/`derived.managedResource`)', () => {
+	beforeEach(() => {
+		_resetThrottleForTests();
+	});
+
+	function childrenResponse(overrides: Partial<DeploymentChildrenResponse> = {}): DeploymentChildrenResponse {
+		return {
+			replicaSets: [
+				{ name: 'dep-1-aaa', desiredReplicas: 2, readyReplicas: 2, replicas: 2, isCurrentRS: true }
+			],
+			...overrides
+		};
+	}
+
+	function managedResource(overrides: Partial<ManagedResourceStatus> = {}): ManagedResourceStatus {
+		return {
+			groupVersionKind: 'apps/v1/Deployment',
+			name: 'dep-1',
+			namespace: 'team-a',
+			status: 'Current',
+			message: 'Deployment is available.',
+			lastModified: '2026-09-04T00:00:00Z',
+			...overrides
+		};
+	}
+
+	function deployment(derived?: ChangeEventDerived): ChangeEvent {
+		return ev({ kind: 'Deployment', namespace: 'team-a', name: 'dep-1', derived });
+	}
+
+	function replicaSet(derived?: ChangeEventDerived, overrides: Partial<ChangeEvent> = {}): ChangeEvent {
+		return ev({
+			kind: 'ReplicaSet',
+			namespace: 'team-a',
+			name: 'dep-1-aaa',
+			derived,
+			...overrides
+		});
+	}
+
+	// ── `deployment-children` ──
+
+	it('Deployment event with `derived.children` sets the EXACT cache entry with no fetch, and does not invalidate it', () => {
+		const qc = new QueryClient();
+		const key = ['deployment-children', 'hub', 'team-a', 'dep-1'];
+		qc.setQueryData(key, childrenResponse({ replicaSets: [] })); // stale — the row was expanded before this update
+		const fetchSpy = vi.spyOn(qc, 'fetchQuery');
+
+		const pushed = childrenResponse();
+		// `derived.managedResource` provided too — a real Deployment event
+		// always carries both (see `ChangeEvent.derived`'s own doc comment) —
+		// so this isolates the CHILDREN assertion from the SEPARATE
+		// managed-resources fallback a children-only event would legitimately
+		// still trigger.
+		applyChangeEvents(qc, [deployment({ children: pushed, managedResource: managedResource() })]);
+
+		expect(qc.getQueryData(key)).toEqual(pushed);
+		expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('Deployment event with `derived.children` does NOT create a cache entry for a collapsed row', () => {
+		const qc = new QueryClient();
+		// No `setQueryData` — this row was never expanded, so there is no
+		// cache entry to begin with.
+		applyChangeEvents(qc, [deployment({ children: childrenResponse() })]);
+		const key = ['deployment-children', 'hub', 'team-a', 'dep-1'];
+		expect(qc.getQueryState(key)).toBeUndefined();
+	});
+
+	it('ReplicaSet event with `derived.children` + `derived.ownerDeployment` sets the OWNER\'s exact cache entry with no fetch', () => {
+		const qc = new QueryClient();
+		const key = ['deployment-children', 'hub', 'team-a', 'dep-1'];
+		qc.setQueryData(key, childrenResponse({ replicaSets: [] }));
+		const fetchSpy = vi.spyOn(qc, 'fetchQuery');
+		const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+
+		const pushed = childrenResponse();
+		applyChangeEvents(qc, [
+			replicaSet({ ownerDeployment: { namespace: 'team-a', name: 'dep-1' }, children: pushed })
+		]);
+
+		expect(qc.getQueryData(key)).toEqual(pushed);
+		expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(invalidateSpy).not.toHaveBeenCalled();
+	});
+
+	it('a ReplicaSet delete with `derived.children` applies it (the RS is gone from the pushed list) with no invalidate', () => {
+		const qc = new QueryClient();
+		const key = ['deployment-children', 'hub', 'team-a', 'dep-1'];
+		qc.setQueryData(key, childrenResponse()); // has dep-1-aaa
+		const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+
+		const afterDelete = childrenResponse({ replicaSets: [] }); // backend already excludes it
+		applyChangeEvents(qc, [
+			replicaSet(
+				{ ownerDeployment: { namespace: 'team-a', name: 'dep-1' }, children: afterDelete },
+				{ type: 'delete' }
+			)
+		]);
+
+		expect(qc.getQueryData(key)).toEqual(afterDelete);
+		expect(invalidateSpy).not.toHaveBeenCalled();
+	});
+
+	it('ReplicaSet fast-path count patch still runs alongside `derived` (no regression to the pre-`derived` behavior)', () => {
+		const qc = new QueryClient();
+		const key = ['deployment-children', 'hub', 'team-a', 'dep-1'];
+		qc.setQueryData(key, childrenResponse({ replicaSets: [{ name: 'dep-1-aaa', desiredReplicas: 2, readyReplicas: 1, replicas: 1 }] }));
+		applyChangeEvents(qc, [
+			ev({
+				kind: 'ReplicaSet',
+				namespace: 'team-a',
+				name: 'dep-1-aaa',
+				object: {
+					metadata: {
+						name: 'dep-1-aaa',
+						namespace: 'team-a',
+						ownerReferences: [{ kind: 'Deployment', name: 'dep-1' }]
+					},
+					status: { replicas: 2, readyReplicas: 2 },
+					spec: { replicas: 2 }
+				}
+				// no `derived` — the fast-path count patch is the ONLY thing
+				// that should fire here, same as before `derived` existed.
+			})
+		]);
+		const data = qc.getQueryData<DeploymentChildrenResponse>(key);
+		expect(data?.replicaSets[0].readyReplicas).toBe(2);
+	});
+
+	it('a Deployment event with `derived.children` for cluster A does not touch cluster B\'s cache entry for the same namespace/name', () => {
+		const qc = new QueryClient();
+		const keyHub = ['deployment-children', 'hub', 'team-a', 'dep-1'];
+		const keySpoke = ['deployment-children', 'spoke-a', 'team-a', 'dep-1'];
+		qc.setQueryData(keyHub, childrenResponse({ replicaSets: [] }));
+		qc.setQueryData(keySpoke, childrenResponse({ replicaSets: [] }));
+
+		applyChangeEvents(qc, [
+			ev({
+				kind: 'Deployment',
+				namespace: 'team-a',
+				name: 'dep-1',
+				cluster: 'hub',
+				derived: { children: childrenResponse() }
+			})
+		]);
+
+		expect(qc.getQueryData(keyHub)).toEqual(childrenResponse());
+		expect(qc.getQueryData(keySpoke)).toEqual(childrenResponse({ replicaSets: [] }));
+	});
+
+	it('Deployment event with NO `derived` falls back to the throttled invalidate (unchanged pre-`derived` behavior)', () => {
+		const qc = new QueryClient();
+		const key = ['deployment-children', 'hub', 'team-a', 'dep-1'];
+		qc.setQueryData(key, childrenResponse());
+		applyChangeEvents(qc, [deployment()]);
+		expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+	});
+
+	// ── `managed-resources` ──
+
+	it('Deployment event with `derived.managedResource` replaces the matching entry in place, other entries untouched, no invalidate', () => {
+		const qc = new QueryClient();
+		const key = ['managed-resources', 'team-a', 'rollout-1', 'hub', ['kust-a']];
+		const otherDeployment = managedResource({ name: 'dep-2' });
+		qc.setQueryData(key, {
+			'kust-a': [managedResource({ status: 'InProgress', message: 'Rolling out' }), otherDeployment]
+		});
+		const fetchSpy = vi.spyOn(qc, 'fetchQuery');
+
+		const pushed = managedResource({ status: 'Current', message: 'Deployment is available.' });
+		// `derived.children` provided too, matching a real Deployment event's
+		// shape — isolates this assertion from the SEPARATE
+		// deployment-children fallback a managedResource-only event would
+		// legitimately still trigger (no children cache seeded here at all).
+		applyChangeEvents(qc, [deployment({ managedResource: pushed, children: childrenResponse() })]);
+
+		const data = qc.getQueryData<Record<string, ManagedResourceStatus[]>>(key);
+		expect(data?.['kust-a']).toEqual([pushed, otherDeployment]); // dep-1 replaced, dep-2 untouched
+		expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('Deployment event with `derived.managedResource` leaves a DIFFERENT namespace/cluster\'s cache entry byte-identical', () => {
+		const qc = new QueryClient();
+		const otherNsKey = ['managed-resources', 'team-b', 'rollout-1', 'hub', ['kust-a']];
+		const spokeKey = ['managed-resources', 'team-a', 'rollout-1', 'spoke-a', ['kust-a']];
+		const otherNsData = { 'kust-a': [managedResource({ namespace: 'team-b' })] };
+		const spokeData = { 'kust-a': [managedResource()] };
+		qc.setQueryData(otherNsKey, otherNsData);
+		qc.setQueryData(spokeKey, spokeData);
+
+		applyChangeEvents(qc, [deployment({ managedResource: managedResource({ status: 'Current' }) })]);
+
+		expect(qc.getQueryData(otherNsKey)).toBe(otherNsData); // same reference — untouched
+		expect(qc.getQueryData(spokeKey)).toBe(spokeData); // different cluster — untouched
+	});
+
+	it('a Deployment delete removes the managed-resources entry by identity, with no `derived` needed', () => {
+		const qc = new QueryClient();
+		const key = ['managed-resources', 'team-a', 'rollout-1', 'hub', ['kust-a']];
+		const otherDeployment = managedResource({ name: 'dep-2' });
+		qc.setQueryData(key, { 'kust-a': [managedResource(), otherDeployment] });
+
+		applyChangeEvents(qc, [
+			ev({ kind: 'Deployment', namespace: 'team-a', name: 'dep-1', type: 'delete' })
+		]);
+
+		const data = qc.getQueryData<Record<string, ManagedResourceStatus[]>>(key);
+		expect(data?.['kust-a']).toEqual([otherDeployment]);
+		// A delete carries no `derived.managedResource` (there is no live
+		// object to compute a status FROM) — identity alone is enough to
+		// remove it, so this cache entry is patched, not merely invalidated.
+		expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+	});
+
+	it('Deployment event with NO `derived` falls back to the throttled invalidate for managed-resources (unchanged pre-`derived` behavior)', () => {
+		const qc = new QueryClient();
+		const key = ['managed-resources', 'team-a', 'rollout-1', 'hub', ['kust-a']];
+		qc.setQueryData(key, { 'kust-a': [managedResource()] });
+		applyChangeEvents(qc, [deployment()]);
+		expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
 	});
 });

@@ -44,7 +44,9 @@
 import { createEventSource, type EventSourceClient } from 'eventsource-client';
 import type { QueryClient } from '@tanstack/svelte-query';
 import type { RolloutsListResponse, RolloutResponse, DeploymentChildrenResponse } from './rollouts';
+import { deploymentChildrenQueryKey } from './rollouts';
 import { SOURCE_CLUSTER_ANNOTATION, sourceClusterName } from '../source-dashboard';
+import type { ManagedResourceStatus } from '../../types';
 
 /**
  * One coalesced change, verbatim from the backend's ChangeEvent.
@@ -76,6 +78,36 @@ export type ChangeEvent = {
 	 * (which forces a refetch) — see "PATCH, NOT INVALIDATE" below.
 	 */
 	object?: Record<string, unknown>;
+	/**
+	 * ⭐ DERIVED PUSH, PERF-2026-09-04 "Workloads on the stream" follow-up —
+	 * backend-precomputed values for `Deployment`/`ReplicaSet` events, so
+	 * `applyChangeEvents` can patch `deployment-children`/`managed-resources`
+	 * caches directly instead of falling back to `throttledInvalidate`.
+	 * Absent whenever the backend couldn't compute it (payload over 96 KiB,
+	 * unknown owner, or an error computing it) — every consumer below falls
+	 * back to today's throttled-invalidate behavior in that case, the same
+	 * posture this file already has for `object` being absent. Can be present
+	 * on a `delete` event (unlike `object`, which never is) — the backend can
+	 * still resolve a deleted ReplicaSet's owner and hand back the owner's
+	 * `/children` response with that ReplicaSet already excluded.
+	 */
+	derived?: ChangeEventDerived;
+};
+
+/** See `ChangeEvent.derived`'s own doc comment for when each field is present. */
+export type ChangeEventDerived = {
+	/** `Deployment` events only — the exact managed-resources entry for this
+	 * Deployment, matched into cache by `groupVersionKind` + `namespace` +
+	 * `name` (see `patchManagedResourceCaches`). */
+	managedResource?: ManagedResourceStatus;
+	/** `Deployment` events: the exact `/children` response for this
+	 * Deployment. `ReplicaSet` events: the exact `/children` response for
+	 * its OWNER Deployment (named by `ownerDeployment` below), already
+	 * reflecting this event (including a delete). */
+	children?: DeploymentChildrenResponse;
+	/** `ReplicaSet` events only — which Deployment `children` above belongs
+	 * to, since a ReplicaSet event names only itself. */
+	ownerDeployment?: { namespace: string; name: string };
 };
 
 /**
@@ -240,15 +272,21 @@ const EVENT_TAG_KINDS = new Set(['Event']);
  *   ReplicaSet object at all, and no single Deployment/ReplicaSet object can
  *   be folded into the server-side aggregate `{replicaSets: [...]}` shape
  *   anyway) — those still need the throttled invalidate below to catch up.
- * - **`managed-resources` (a Deployment event) is NOT patched.**
- *   `ManagedResourceStatus.Status`/`.Message` are `status.Compute(obj)`
- *   output (`managedResourceStatusFromObject`, client.go) — kstatus
- *   evaluated server-side, not a field copy. There is no sound way to
- *   recompute that client-side from the raw object, and patching `.Object`
- *   alone while leaving `.Status`/`.Message` stale would show an updated
- *   replica count next to a status word that no longer agrees with it. So
- *   this stays invalidate-only, on purpose — see `managedResourcesNamespaces`
- *   below.
+ * - **`managed-resources` (a Deployment event) was NOT soundly patchable
+ *   from `object` alone, and still isn't.** `ManagedResourceStatus.Status`/
+ *   `.Message` are `status.Compute(obj)` output (`managedResourceStatusFromObject`,
+ *   client.go) — kstatus evaluated server-side, not a field copy. There is
+ *   no sound way to recompute that client-side from the raw object, and
+ *   patching `.Object` alone while leaving `.Status`/`.Message` stale would
+ *   show an updated replica count next to a status word that no longer
+ *   agrees with it. **This is exactly what `ChangeEvent.derived` (below) now
+ *   exists to close**: the backend computes `ManagedResourceStatus` itself
+ *   (it already has to, to serve `/managed-resources`) and hands the FINISHED
+ *   value back on the event, so `patchManagedResourceCaches` only ever places
+ *   a value the backend computed — never recomputes kstatus itself. Without
+ *   `derived.managedResource` (older backend, oversized payload, or an
+ *   error), this stays invalidate-only, same as always — see
+ *   `managedResourcesNamespaces` below.
  *
  * Both are still capable of firing once per ReplicaSet status write during a
  * rollout, so both now go through `throttledInvalidate` (the trailing-edge
@@ -635,6 +673,107 @@ function patchReplicaSetChildrenCaches(
 	);
 }
 
+/**
+ * ⭐ DERIVED PUSH, PERF-2026-09-04 "Workloads on the stream" follow-up.
+ *
+ * Overwrites the EXACT `deployment-children` cache entry for `(cluster,
+ * namespace, deploymentName)` with a backend-precomputed response —
+ * `ChangeEvent.derived.children`. Unlike every other `setQueriesData` call
+ * in this file, this deliberately does NOT create a cache entry that isn't
+ * already there: `deploymentChildrenQueryOptions` (`rollouts.ts`) is only
+ * ever mounted while a row is expanded (`DeploymentChildren.svelte`), so a
+ * cache miss here means a COLLAPSED row — seeding one just because an event
+ * arrived would make this module responsible for fetching pods nobody asked
+ * to see. `getQueryState` (not `getQueryData`) is the right guard: an
+ * expanded row whose fetch is still in flight has STATE but no DATA yet, and
+ * that row should still receive the push once it lands rather than being
+ * treated as absent.
+ */
+function setDeploymentChildrenExact(
+	queryClient: QueryClient,
+	cluster: string,
+	namespace: string,
+	name: string,
+	children: DeploymentChildrenResponse
+): void {
+	const key = deploymentChildrenQueryKey(namespace, name, cluster);
+	if (queryClient.getQueryState(key) === undefined) return;
+	queryClient.setQueryData(key, children);
+}
+
+/** Every `Deployment` is `apps/v1` — fixed, unlike a Kustomization's other
+ * managed resources, which can be any GVK — so a Deployment DELETE (which
+ * carries neither `object` nor `derived.managedResource`; there is no live
+ * object left to compute a status FOR) can still be found and removed from
+ * a cached managed-resources entry by IDENTITY alone, with no push needed. */
+const DEPLOYMENT_GVK = 'apps/v1/Deployment';
+
+/** The managed-resources query's own cache shape — `Record<kustomizationName,
+ * ManagedResourceStatus[]>`, built by the `queryFn` in rollout detail's
+ * `+page.svelte`. There is no dedicated exported type for it in `rollouts.ts`
+ * (that query is not owned by this file), so it is structurally typed here. */
+type ManagedResourcesCacheEntry = Record<string, ManagedResourceStatus[]>;
+
+function sameManagedResourceIdentity(
+	r: ManagedResourceStatus,
+	target: { groupVersionKind: string; namespace: string; name: string }
+): boolean {
+	return (
+		r.groupVersionKind === target.groupVersionKind &&
+		r.namespace === target.namespace &&
+		r.name === target.name
+	);
+}
+
+/**
+ * Replaces (`resource` given) or removes (`resource === null`, a delete) ONE
+ * managed-resource entry — matched by `groupVersionKind` + `namespace` +
+ * `name`, NOT by array position, since the same entry can move between
+ * kustomizations' arrays only in the sense that it's always looked up fresh
+ * — in every cached `['managed-resources', ns, rolloutName, cluster,
+ * kustomizationNames[]]` response in the event's own namespace + cluster.
+ * A response this identity isn't present in is left byte-identical, same
+ * reasoning as `patchFleetListResponse` above: `setQueriesData` should never
+ * bump `dataUpdatedAt` on a cache entry the change is unrelated to.
+ */
+function patchManagedResourceCaches(
+	queryClient: QueryClient,
+	ev: ChangeEvent,
+	target: { groupVersionKind: string; namespace: string; name: string },
+	resource: ManagedResourceStatus | null
+): void {
+	queryClient.setQueriesData<ManagedResourcesCacheEntry>(
+		{
+			predicate: (query) => {
+				const key = query.queryKey;
+				// ['managed-resources', rolloutNamespace, rolloutName, cluster, kustomizationNames[]]
+				if (key.length < 4 || key[0] !== 'managed-resources') return false;
+				const ns = key[1] as string;
+				const cluster = (key[3] as string | undefined) ?? '';
+				return ns === ev.namespace && cluster === ev.cluster;
+			}
+		},
+		(old) => {
+			if (!old) return old;
+			let changed = false;
+			const next: ManagedResourcesCacheEntry = {};
+			for (const [kustName, items] of Object.entries(old)) {
+				const idx = items.findIndex((r) => sameManagedResourceIdentity(r, target));
+				if (idx === -1) {
+					next[kustName] = items;
+					continue;
+				}
+				changed = true;
+				const copy = items.slice();
+				if (resource === null) copy.splice(idx, 1);
+				else copy[idx] = resource;
+				next[kustName] = copy;
+			}
+			return changed ? next : old;
+		}
+	);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // THROTTLED INVALIDATE — PERF-2026-09-04 §C.7 churn follow-up.
 //
@@ -798,34 +937,84 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 			if (patchable) patchRolloutCompositeCaches(queryClient, ev);
 		}
 
-		// ⭐ DEPLOYMENT-CHILDREN / MANAGED-RESOURCES — see the
-		// `DEPLOYMENT_KINDS`/`REPLICASET_KINDS` doc comment above for why a
-		// Deployment event stays invalidate-only for BOTH (kstatus can't be
-		// recomputed client-side) while a ReplicaSet event's counts are
-		// patched directly, below.
+		// ⭐ DEPLOYMENT-CHILDREN / MANAGED-RESOURCES — DERIVED PUSH FIRST,
+		// THROTTLED INVALIDATE AS THE FALLBACK. `derived` (see `ChangeEvent`'s
+		// own doc) is what makes a Deployment event patchable at all — kstatus
+		// can't be recomputed client-side, so before `derived` existed this
+		// stayed invalidate-only for BOTH `deployment-children` and
+		// `managed-resources`; now the backend hands back the already-computed
+		// shapes and this module just has to place them.
 		if (DEPLOYMENT_KINDS.has(ev.kind) && ev.namespace && ev.name) {
-			deploymentChildrenTargets.add(`${ev.cluster}|${ev.namespace}|${ev.name}`);
-			// A Deployment is one of the resources `managed-resources` lists —
-			// the event names the Deployment, not the rollout/Kustomization
-			// that owns it, so this falls back to every `managed-resources`
-			// entry in the same namespace+cluster (same shape as
-			// `ROLLOUT_NAMESPACE_KINDS`'s own namespace fallback above).
-			managedResourcesNamespaces.add(`${ev.cluster}|${ev.namespace}`);
+			if (ev.derived?.children) {
+				setDeploymentChildrenExact(queryClient, ev.cluster, ev.namespace, ev.name, ev.derived.children);
+			} else {
+				deploymentChildrenTargets.add(`${ev.cluster}|${ev.namespace}|${ev.name}`);
+			}
+
+			if (ev.derived?.managedResource) {
+				patchManagedResourceCaches(
+					queryClient,
+					ev,
+					{ groupVersionKind: DEPLOYMENT_GVK, namespace: ev.namespace, name: ev.name },
+					ev.derived.managedResource
+				);
+			} else if (ev.type === 'delete') {
+				// No live object left to compute a status FROM, but identity
+				// alone (fixed `apps/v1` GVK + this event's own name/namespace)
+				// is enough to find and remove the entry — see `DEPLOYMENT_GVK`'s
+				// own doc comment.
+				patchManagedResourceCaches(
+					queryClient,
+					ev,
+					{ groupVersionKind: DEPLOYMENT_GVK, namespace: ev.namespace, name: ev.name },
+					null
+				);
+			} else {
+				// A Deployment is one of the resources `managed-resources` lists —
+				// the event names the Deployment, not the rollout/Kustomization
+				// that owns it, so this falls back to every `managed-resources`
+				// entry in the same namespace+cluster when there's nothing to
+				// patch WITH (same shape as `ROLLOUT_NAMESPACE_KINDS`'s own
+				// namespace fallback above).
+				managedResourcesNamespaces.add(`${ev.cluster}|${ev.namespace}`);
+			}
 		}
 		if (REPLICASET_KINDS.has(ev.kind) && ev.namespace) {
-			const ownerName = replicaSetOwnerDeployment(ev.object as K8sObject | undefined);
+			// `derived.ownerDeployment` (when present) is preferred over the
+			// raw object's own `ownerReferences` — it's the same information,
+			// resolved server-side, and is present even on a delete (which
+			// never carries `object` at all).
+			const ownerName =
+				ev.derived?.ownerDeployment?.name ??
+				replicaSetOwnerDeployment(ev.object as K8sObject | undefined);
 			if (ownerName) {
 				// Counts patched in place right away — see
 				// `patchReplicaSetChildrenCaches`'s own doc comment for exactly
-				// which fields and why. The throttled invalidate below is what
-				// still catches the pods list and any brand-new ReplicaSet this
-				// cache doesn't know about yet.
+				// which fields and why. Kept as a FAST PATH even once `derived`
+				// lands below: harmless to run twice (the full overwrite just
+				// supersedes it when both are present), and it's still what
+				// carries a ReplicaSet's counts on any event `derived` doesn't
+				// cover.
 				patchReplicaSetChildrenCaches(queryClient, ev, ownerName);
+			}
+			if (ev.derived?.children && ev.derived.ownerDeployment) {
+				setDeploymentChildrenExact(
+					queryClient,
+					ev.cluster,
+					ev.derived.ownerDeployment.namespace,
+					ev.derived.ownerDeployment.name,
+					ev.derived.children
+				);
+			} else if (ownerName) {
+				// The throttled invalidate below is what still catches the pods
+				// list and any brand-new ReplicaSet this cache doesn't know about
+				// yet.
 				deploymentChildrenTargets.add(`${ev.cluster}|${ev.namespace}|${ownerName}`);
 			} else {
-				// No object (delete, or dropped for size) — can't name the
-				// owner, so invalidate every deployment's children in this
-				// namespace+cluster rather than silently doing nothing.
+				// No object and no `derived` (delete, or dropped for size) —
+				// can't name the owner, so invalidate every deployment's
+				// children in this namespace+cluster rather than silently doing
+				// nothing.
 				deploymentChildrenNamespaces.add(`${ev.cluster}|${ev.namespace}`);
 			}
 		}
