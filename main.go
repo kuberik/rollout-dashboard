@@ -533,10 +533,7 @@ func main() {
 
 			if rolloutErr != nil {
 				log.Printf("Error fetching rollout: %v", rolloutErr)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch rollout",
-					"details": rolloutErr.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch rollout", rolloutErr)
 				return
 			}
 
@@ -1244,7 +1241,7 @@ func main() {
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch rollout"})
+				writeUpstreamError(c, "Failed to fetch rollout", err)
 				return
 			}
 
@@ -1314,7 +1311,7 @@ func main() {
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch rollout"})
+				writeUpstreamError(c, "Failed to fetch rollout", err)
 				return
 			}
 
@@ -1385,7 +1382,7 @@ func main() {
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch rollout"})
+				writeUpstreamError(c, "Failed to fetch rollout", err)
 				return
 			}
 
