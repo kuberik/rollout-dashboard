@@ -29,6 +29,8 @@
  *    See `isRetryable` — retrying a 404 or a 401 cannot change the answer.
  */
 
+import { isEventStreamHealthy } from './events';
+
 /** What the Go API returns on failure: `{"error": "...", "details": "..."}`. */
 type ApiErrorBody = { error?: string; details?: string };
 
@@ -145,14 +147,39 @@ export function queryRetryDelay(attemptIndex: number): number {
  * - errored, retryable (5xx, offline) → back off to `RECOVERY_POLL_MS`, so a
  *   backend that comes back heals the page without a reload, but a backend that
  *   stays down costs one request every 30s instead of six.
+ *
+ * ⭐ PERF-2026-09-04 §C.6/C.7 — STREAM-AWARE CADENCE. `./events`'
+ * `isEventStreamHealthy()` reports whether the SSE change stream
+ * (`/api/events/stream`) is currently connected. When a caller passes
+ * `streamedMs`, a HEALTHY query additionally checks the stream: connected →
+ * `streamedMs` (the slow safety-net interval, since push is doing the real
+ * work); disconnected → `ms`, unchanged, i.e. today's cadence. Callers that
+ * don't pass `streamedMs` (most per-page overrides — see `+layout.svelte`'s
+ * own call for the one that does) keep their exact prior behavior: this is
+ * additive, never a silent change to an existing call site's polling rate.
  */
 export const RECOVERY_POLL_MS = 30000;
 
-export function pollWhenHealthy(ms: number) {
+export function pollWhenHealthy(ms: number, streamedMs?: number) {
 	return (query: { state: { status: string; error: unknown } }): number | false => {
-		if (query.state.status !== 'error') return ms;
+		if (query.state.status !== 'error') {
+			if (streamedMs !== undefined && isEventStreamHealthy()) return streamedMs;
+			return ms;
+		}
 		return isRetryable(query.state.error) ? RECOVERY_POLL_MS : false;
 	};
+}
+
+/**
+ * `staleTime`'s stream-aware counterpart to `pollWhenHealthy` — same
+ * signature shape (fallback first, stream-healthy value second), same
+ * "additive, not a behavior change unless you opt in" rule. TanStack Query
+ * accepts a function for `staleTime`, re-evaluated per read, so this reacts
+ * to the stream going up/down exactly like `pollWhenHealthy` does for
+ * `refetchInterval` — no separate subscription needed.
+ */
+export function staleTimeWhenHealthy(ms: number, streamedMs: number) {
+	return (): number => (isEventStreamHealthy() ? streamedMs : ms);
 }
 
 /**

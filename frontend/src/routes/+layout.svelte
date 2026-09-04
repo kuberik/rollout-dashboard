@@ -5,7 +5,8 @@
 	import MobileTabBar from '../lib/MobileTabBar.svelte';
 	import LiveRegion from '$lib/components/LiveRegion.svelte';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-	import { queryRetry, queryRetryDelay, pollWhenHealthy } from '$lib/api/errors';
+	import { queryRetry, queryRetryDelay, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
+	import { startEventStream } from '$lib/api/events';
 	import { afterNavigate } from '$app/navigation';
 
 	/**
@@ -90,17 +91,42 @@
 	 * 401 is never retried; a 5xx is retried twice and then polled slowly** so
 	 * a controller restart still heals the page on its own.
 	 */
+	/**
+	 * ⭐ PERF-2026-09-04 §C.6/C.7 — REFETCH ON CHANGE, NOT ON A TIMER. The
+	 * backend now pushes one small SSE event per informer add/update/delete
+	 * (`GET /api/events/stream`, `$lib/api/events`), coalesced every 250ms —
+	 * it knows the instant anything changes, so a query no longer has to poll
+	 * blind to find out. `staleTimeWhenHealthy`/`pollWhenHealthy`'s second
+	 * argument make BOTH numbers below conditional on `$lib/api/events`'
+	 * `isEventStreamHealthy()`, checked fresh on every read:
+	 *
+	 * - stream connected → `staleTime: 30_000`, `refetchInterval: 60_000` —
+	 *   push does the real work; polling is only the safety net.
+	 * - stream down (still connecting, dropped, tab hidden >60s) → the exact
+	 *   prior numbers (`1000` / `5000`), so a stream outage is invisible to
+	 *   the reader: the page just goes back to how it always worked.
+	 *
+	 * This is the ONLY thing that changed here — `refetchOnWindowFocus`,
+	 * `retry` and `retryDelay` are untouched, and per-page overrides that
+	 * call `pollWhenHealthy`/set their own `staleTime` keep polling at
+	 * exactly their prior fixed rate (they don't pass a `streamedMs`, so
+	 * `pollWhenHealthy` falls through to its old one-argument behavior).
+	 */
 	const queryClient = new QueryClient({
 		defaultOptions: {
 			queries: {
-				staleTime: 1000,
-				refetchInterval: pollWhenHealthy(5000),
+				staleTime: staleTimeWhenHealthy(1000, 30000),
+				refetchInterval: pollWhenHealthy(5000, 60000),
 				refetchOnWindowFocus: false,
 				retry: queryRetry,
 				retryDelay: queryRetryDelay
 			}
 		}
 	});
+	// Starts the one SSE change-stream client for this tab and wires it to
+	// invalidate the query keys above — see $lib/api/events' own doc comment
+	// for the reconnect/hidden-tab/backpressure story. No-ops under SSR.
+	startEventStream(queryClient);
 </script>
 
 <QueryClientProvider client={queryClient}>

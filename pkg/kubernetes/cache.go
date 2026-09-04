@@ -13,6 +13,8 @@ import (
 	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
+	toolscache "k8s.io/client-go/tools/cache"
+
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,6 +61,63 @@ func cachedByObject() map[client.Object]cache.ByObject {
 		&kustomizev1.Kustomization{}:              {},
 		&sourcev1.OCIRepository{}:                 {},
 	}
+}
+
+// kindOf names the object type for ChangeEvent.Kind. A plain type switch over
+// the same set cachedByObject() lists — kept in sync with it by inspection,
+// same as the doc comment above cachedByObject already promises to be kept in
+// sync with the handlers in main.go.
+func kindOf(obj client.Object) string {
+	switch obj.(type) {
+	case *rolloutv1alpha1.Rollout:
+		return "Rollout"
+	case *rolloutv1alpha1.RolloutDependency:
+		return "RolloutDependency"
+	case *rolloutv1alpha1.RolloutGate:
+		return "RolloutGate"
+	case *rolloutv1alpha1.RolloutSchedule:
+		return "RolloutSchedule"
+	case *rolloutv1alpha1.ClusterRolloutSchedule:
+		return "ClusterRolloutSchedule"
+	case *rolloutv1alpha1.HealthCheck:
+		return "HealthCheck"
+	case *openkruisev1alpha1.RolloutTest:
+		return "RolloutTest"
+	case *envv1alpha1.Environment:
+		return "Environment"
+	case *kruiserolloutv1beta1.Rollout:
+		return "KruiseRollout"
+	case *kustomizev1.Kustomization:
+		return "Kustomization"
+	case *sourcev1.OCIRepository:
+		return "OCIRepository"
+	default:
+		return fmt.Sprintf("%T", obj)
+	}
+}
+
+// publishChange converts one raw informer callback value into a ChangeEvent
+// and publishes it to hub. obj is normally the typed object itself
+// (client.Object); a delete callback firing after a watch resync/relist can
+// instead hand back a toolscache.DeletedFinalStateUnknown wrapping the last
+// known object, which is unwrapped here so deletes still carry a real
+// name/namespace instead of being silently dropped.
+func publishChange(hub *EventHub, changeType, kind string, obj interface{}) {
+	if d, ok := obj.(toolscache.DeletedFinalStateUnknown); ok {
+		obj = d.Obj
+	}
+	co, ok := obj.(client.Object)
+	if !ok || co == nil {
+		return
+	}
+	hub.Publish(ChangeEvent{
+		Type:            changeType,
+		Kind:            kind,
+		Namespace:       co.GetNamespace(),
+		Name:            co.GetName(),
+		ResourceVersion: co.GetResourceVersion(),
+		Ts:              time.Now().UnixMilli(),
+	})
 }
 
 // ErrCacheWarming is returned by GetReadClient while InitReadCache's initial
@@ -120,10 +179,25 @@ func InitReadCache(ctx context.Context, syncTimeout time.Duration) {
 	// Eagerly create an informer per type so WaitForCacheSync below actually
 	// waits on something — GetInformer registers+starts, it does not block for
 	// sync itself. Logged per-type (not fatal) so one bad CRD doesn't hide the
-	// others' failures.
+	// others' failures. Also registers the add/update/delete handler that
+	// feeds Hub (eventhub.go) — PERF-2026-09-04 §C.6: the informer cache
+	// already knows the instant anything changes, so this is the one place
+	// that turns a watch event into a ChangeEvent for /api/events/stream.
 	for obj := range cachedByObject() {
-		if _, err := c.GetInformer(ctx, obj); err != nil {
+		informer, err := c.GetInformer(ctx, obj)
+		if err != nil {
 			log.Printf("[read-cache] failed to start informer for %T (resync/list failures for this type will be visible on read, not here): %v", obj, err)
+			continue
+		}
+		kind := kindOf(obj)
+		if _, err := informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
+			AddFunc: func(o interface{}) { publishChange(Hub, "add", kind, o) },
+			UpdateFunc: func(_, newObj interface{}) {
+				publishChange(Hub, "update", kind, newObj)
+			},
+			DeleteFunc: func(o interface{}) { publishChange(Hub, "delete", kind, o) },
+		}); err != nil {
+			log.Printf("[read-cache] failed to register change-stream handler for %s: %v", kind, err)
 		}
 	}
 

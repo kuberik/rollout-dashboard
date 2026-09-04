@@ -1,9 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const isEventStreamHealthy = vi.fn(() => false);
+vi.mock('./events', () => ({ isEventStreamHealthy: () => isEventStreamHealthy() }));
+
 import {
 	ApiError,
 	isRetryable,
 	queryRetry,
 	pollWhenHealthy,
+	staleTimeWhenHealthy,
 	errorHeadline,
 	errorConsequence,
 	errorFacts,
@@ -84,6 +89,54 @@ describe('pollWhenHealthy — a dead URL must stop costing requests', () => {
 
 	it('backs off instead of stopping when the failure might heal', () => {
 		expect(poll({ state: { status: 'error', error: err(503) } })).toBe(RECOVERY_POLL_MS);
+	});
+});
+
+describe('pollWhenHealthy(ms, streamedMs) — PERF-2026-09-04 §C.6/C.7 stream-aware cadence', () => {
+	beforeEach(() => {
+		isEventStreamHealthy.mockReset();
+	});
+
+	it('one-argument callers are byte-identical to before: the stream is never consulted', () => {
+		isEventStreamHealthy.mockReturnValue(true);
+		const poll = pollWhenHealthy(5000);
+		expect(poll({ state: { status: 'success', error: null } })).toBe(5000);
+		expect(isEventStreamHealthy).not.toHaveBeenCalled();
+	});
+
+	it('with a healthy stream, returns the slower streamedMs instead of the fallback', () => {
+		isEventStreamHealthy.mockReturnValue(true);
+		const poll = pollWhenHealthy(5000, 60000);
+		expect(poll({ state: { status: 'success', error: null } })).toBe(60000);
+	});
+
+	it('with the stream down, returns exactly the old fallback cadence', () => {
+		isEventStreamHealthy.mockReturnValue(false);
+		const poll = pollWhenHealthy(5000, 60000);
+		expect(poll({ state: { status: 'success', error: null } })).toBe(5000);
+	});
+
+	it('an error still wins over stream health — never polls fast into a 404', () => {
+		isEventStreamHealthy.mockReturnValue(true);
+		const poll = pollWhenHealthy(5000, 60000);
+		expect(poll({ state: { status: 'error', error: err(404) } })).toBe(false);
+		expect(poll({ state: { status: 'error', error: err(503) } })).toBe(RECOVERY_POLL_MS);
+	});
+});
+
+describe('staleTimeWhenHealthy — the staleTime half of the same rule', () => {
+	beforeEach(() => {
+		isEventStreamHealthy.mockReset();
+	});
+
+	it('healthy stream → the slower streamed staleTime', () => {
+		isEventStreamHealthy.mockReturnValue(true);
+		expect(staleTimeWhenHealthy(1000, 30000)()).toBe(30000);
+	});
+
+	it('stream down → today’s staleTime, unchanged', () => {
+		isEventStreamHealthy.mockReturnValue(false);
+		expect(staleTimeWhenHealthy(1000, 30000)()).toBe(1000);
 	});
 });
 

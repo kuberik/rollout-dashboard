@@ -73,11 +73,11 @@ func main() {
 
 	r := gin.Default()
 
-	// Compress JSON responses. Excludes the SSE pod-logs stream (and, by the
-	// same regex, any future .../pods/logs route) — gzip buffers/wraps the
-	// ResponseWriter, which would break the SSE handler's per-line
-	// sse.Encode+Flush streaming.
-	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{`/pods/logs$`})))
+	// Compress JSON responses. Excludes the SSE pod-logs stream and the
+	// change-events stream (PERF-2026-09-04 §C.6, /api/events/stream) — gzip
+	// buffers/wraps the ResponseWriter, which would break either handler's
+	// per-message sse.Encode+Flush streaming.
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{`/pods/logs$`, `/events/stream$`})))
 
 	// Apply token extraction middleware to all routes
 	r.Use(auth.ExtractTokenMiddleware())
@@ -2042,6 +2042,68 @@ func main() {
 				"rolloutSchedules":        rolloutSchedules,
 				"clusterRolloutSchedules": clusterSchedules,
 			})
+		})
+
+		// Stream fleet change events (add/update/delete on the informer
+		// cache's cached types — pkg/kubernetes/cache.go's cachedByObject)
+		// using Server-Sent Events. PERF-2026-09-04 §C.6/C.7: lets the
+		// frontend invalidate its TanStack queries the instant something
+		// changes instead of polling on a timer. Same SSE plumbing as the
+		// pod-logs stream below (gin-contrib/sse, manual flush, excluded
+		// from gzip above) — this route only reads (kubernetes.Hub), so
+		// unlike every mutating route in this file it never touches
+		// getK8sWriteClient.
+		api.GET("/events/stream", func(c *gin.Context) {
+			id, ch := kubernetes.Hub.Register(32)
+			defer kubernetes.Hub.Unregister(id)
+
+			c.Header("Content-Type", sse.ContentType)
+			c.Header("Cache-Control", "no-cache")
+			c.Header("Connection", "keep-alive")
+			c.Header("X-Accel-Buffering", "no")
+
+			flush := func() {
+				if f, ok := c.Writer.(http.Flusher); ok {
+					f.Flush()
+				}
+			}
+			flush() // establish the connection immediately
+
+			ctx := c.Request.Context()
+			heartbeat := time.NewTicker(30 * time.Second)
+			defer heartbeat.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case batch, ok := <-ch:
+					if !ok {
+						// Hub dropped us for backpressure — our buffer was
+						// full, meaning we weren't draining fast enough
+						// (dead tab, slow network). `retry:` tells the
+						// browser's EventSource how long to wait before it
+						// reconnects on its own; a fresh connection gets a
+						// clean buffer rather than this one growing forever.
+						c.Writer.Write([]byte("retry: 5000\n\n"))
+						flush()
+						return
+					}
+					visible := kubernetes.FilterEventsByVisibility(c, batch)
+					if len(visible) == 0 {
+						continue
+					}
+					data, err := json.Marshal(visible)
+					if err != nil {
+						continue
+					}
+					sse.Encode(c.Writer, sse.Event{Event: "changes", Data: string(data)})
+					flush()
+				case <-heartbeat.C:
+					sse.Encode(c.Writer, sse.Event{Event: "heartbeat", Data: "{}"})
+					flush()
+				}
+			}
 		})
 
 		// Stream pod logs using Server-Sent Events

@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
 	"sync"
 	"time"
 
@@ -122,6 +123,34 @@ func AllowedNamespaces(c *gin.Context, namespaces []string) (map[string]bool, er
 		return nil, err
 	}
 	return dedup, nil
+}
+
+// FilterEventsByVisibility trims a coalesced batch of change events (from
+// EventHub, see eventhub.go) down to the ones the caller behind c may see,
+// using the same "list rollouts in this namespace" SelfSubjectAccessReview as
+// every other namespaced read (CanListRolloutsInNamespace) — the change
+// stream must not leak the existence of an object in a namespace the caller
+// couldn't otherwise list. No-op when the request carries no OIDC token
+// (service-account mode streams every event, matching every other read
+// path's no-token behavior). A single denied/erroring namespace only drops
+// that namespace's events, never the whole batch.
+func FilterEventsByVisibility(c *gin.Context, events []ChangeEvent) []ChangeEvent {
+	token := auth.GetTokenFromContext(c)
+	if token == "" {
+		return events
+	}
+	out := make([]ChangeEvent, 0, len(events))
+	for _, ev := range events {
+		allowed, err := CanListRolloutsInNamespace(c, ev.Namespace)
+		if err != nil {
+			log.Printf("Error checking event-stream visibility for namespace %q: %v", ev.Namespace, err)
+			continue
+		}
+		if allowed {
+			out = append(out, ev)
+		}
+	}
+	return out
 }
 
 // FilterByNamespace returns the subset of items whose namespace (per
