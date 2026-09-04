@@ -190,6 +190,10 @@ lib/components/DependencyNode.svelte	text	never deployed
 lib/components/DependencyNode.svelte	text	not in this dashboard
 lib/components/DeployHistoryTicks.svelte	title	…{t.timestamp ? ` — $…` : ''}{t.version ?.tag ? ` — $…` : ''}
 lib/components/DeployHistoryTicks.svelte	aria-label	Last … deploy… here: …
+lib/components/DeploymentChildren.svelte	text	Failed to load
+lib/components/DeploymentChildren.svelte	text	No active ReplicaSets
+lib/components/DeploymentChildren.svelte	text	No pods
+lib/components/DeploymentChildren.svelte	code	Not Ready
 lib/components/DeploymentPipelineCard.svelte	text	… / … done
 lib/components/DeploymentPipelineCard.svelte	text	… / … done · active
 lib/components/DeploymentPipelineCard.svelte	text	… failed · … / … done
@@ -383,13 +387,8 @@ lib/components/ResourcesCard.svelte	text	… / … ready
 lib/components/ResourcesCard.svelte	text	… failed …
 lib/components/ResourcesCard.svelte	text	… not ready
 lib/components/ResourcesCard.svelte	title	…/… pods
-lib/components/ResourcesCard.svelte	code	Failed to fetch children
-lib/components/ResourcesCard.svelte	code	Failed to load
 lib/components/ResourcesCard.svelte	text	Flux reports issues
-lib/components/ResourcesCard.svelte	text	No active ReplicaSets
-lib/components/ResourcesCard.svelte	text	No pods
 lib/components/ResourcesCard.svelte	code	Not found
-lib/components/ResourcesCard.svelte	code	Not Ready
 lib/components/RetryConfirmModal.svelte	text	This starts a new deployment attempt.
 lib/components/RetryConfirmModal.svelte	text	to confirm
 lib/components/RetryTestsModal.svelte	text	… × retried

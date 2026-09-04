@@ -650,7 +650,10 @@
 			></span>
 
 			<!-- Circle -->
-			<div class="relative flex-shrink-0">
+			<!-- `isolate`: the disc's z-10 only has to beat its own ping ring and
+			     connector; without a stacking context here it also beat the sticky
+			     tab strip (z-10 too) and rode over it while scrolling (2026-09-04). -->
+			<div class="relative isolate flex-shrink-0">
 				{#if node.isActive && node.status !== 'failed'}
 					<span
 						aria-hidden="true"
@@ -1302,7 +1305,10 @@
 							class="absolute inset-y-0 left-0 w-0.5 {leftEdgeAccent(node.status, isSelected)}"
 						></span>
 
-						<div class="relative flex-shrink-0">
+						<!-- `isolate`: the disc's z-10 only has to beat its own ping ring and
+			     connector; without a stacking context here it also beat the sticky
+			     tab strip (z-10 too) and rode over it while scrolling (2026-09-04). -->
+			<div class="relative isolate flex-shrink-0">
 							{#if node.isActive && node.status !== 'failed'}
 								<span
 									aria-hidden="true"

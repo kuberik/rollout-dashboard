@@ -4,6 +4,7 @@
 	import type { Kustomization, OCIRepository, ManagedResourceStatus } from '../../types';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import Card from './Card.svelte';
+	import DeploymentChildren from './DeploymentChildren.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -13,7 +14,6 @@
 		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
 	import { getResourceStatus, getLastTransitionTime } from '$lib/utils';
-	import { apiPath } from '$lib/api/urls';
 
 	let {
 		kustomizations,
@@ -24,8 +24,9 @@
 		kustomizations: Kustomization[];
 		ociRepositories: OCIRepository[];
 		filteredManagedResources: Record<string, ManagedResourceStatus[]>;
-		// Spoke URL when this rollout lives on a remote cluster — appended as
-		// ?cluster=<name> so the hub proxies deployment-children lookups too.
+		// Spoke URL when this rollout lives on a remote cluster — passed through
+		// to `DeploymentChildren`, which is what actually fetches per-deployment
+		// children now (see that component's own doc comment).
 		cluster?: string;
 	} = $props();
 
@@ -82,12 +83,14 @@
 
 	// Track which deployments are expanded to show children
 	let expandedDeployments = $state<Set<string>>(new Set());
-	// Cache of fetched children per deployment key
-	let deploymentChildren = $state<Record<string, { replicaSets: any[]; loading: boolean; error?: string }>>({});
 	// Track which deployments were auto-expanded (to avoid re-expanding after manual collapse)
 	let autoExpandedKeys = $state<Set<string>>(new Set());
 
-	// Auto-expand not-ready deployments once when they first appear not-ready
+	// Auto-expand not-ready deployments once when they first appear not-ready.
+	// ⭐ PERF-2026-09-04 — no fetch here any more. `expandedDeployments` only
+	// decides whether `DeploymentChildren` is mounted (see the template
+	// below); that component owns its own query now, so expanding a row
+	// (auto or manual) no longer means this component reaches for `fetch`.
 	$effect(() => {
 		for (const resource of deploymentResources) {
 			const isReady = ['Ready', 'Healthy', 'Succeeded', 'Current'].includes(resource.status || '');
@@ -95,17 +98,6 @@
 			if (!isReady && !autoExpandedKeys.has(key)) {
 				autoExpandedKeys = new Set([...autoExpandedKeys, key]);
 				expandedDeployments = new Set([...expandedDeployments, key]);
-				if (!deploymentChildren[key]) {
-					deploymentChildren = { ...deploymentChildren, [key]: { replicaSets: [], loading: true } };
-					fetch(apiPath(cluster, `/namespaces/${resource.namespace}/deployments/${resource.name}/children`))
-						.then((r) => r.json())
-						.then((data) => {
-							deploymentChildren = { ...deploymentChildren, [key]: { replicaSets: data.replicaSets || [], loading: false } };
-						})
-						.catch(() => {
-							deploymentChildren = { ...deploymentChildren, [key]: { replicaSets: [], loading: false, error: 'Failed to load' } };
-						});
-				}
 			}
 		}
 	});
@@ -134,65 +126,17 @@
 		return hostnames.map((h) => `https://${h}`);
 	}
 
-	async function toggleDeploymentChildren(resource: any) {
+	// ⭐ PERF-2026-09-04 — a plain toggle. `DeploymentChildren` (mounted only
+	// while `isExpanded`, see the template) owns fetching its own children
+	// now, so this function no longer touches `fetch` or a cache at all.
+	function toggleDeploymentChildren(resource: any) {
 		const key = getDeploymentKey(resource);
 		if (expandedDeployments.has(key)) {
 			expandedDeployments = new Set([...expandedDeployments].filter((k) => k !== key));
-			return;
-		}
-
-		expandedDeployments = new Set([...expandedDeployments, key]);
-
-		if (deploymentChildren[key]) return; // already loaded
-
-		deploymentChildren = {
-			...deploymentChildren,
-			[key]: { replicaSets: [], loading: true }
-		};
-
-		try {
-			const res = await fetch(
-				apiPath(cluster, `/namespaces/${resource.namespace}/deployments/${resource.name}/children`)
-			);
-			if (!res.ok) throw new Error('Failed to fetch children');
-			const data = await res.json();
-			deploymentChildren = {
-				...deploymentChildren,
-				[key]: { replicaSets: data.replicaSets || [], loading: false }
-			};
-		} catch (e) {
-			deploymentChildren = {
-				...deploymentChildren,
-				[key]: { replicaSets: [], loading: false, error: 'Failed to load' }
-			};
+		} else {
+			expandedDeployments = new Set([...expandedDeployments, key]);
 		}
 	}
-
-	// Auto-refresh expanded deployments every 5 seconds
-	$effect(() => {
-		const expanded = [...expandedDeployments];
-		if (expanded.length === 0) return;
-
-		const refresh = async () => {
-			for (const key of expanded) {
-				const slashIdx = key.indexOf('/');
-				const ns = key.substring(0, slashIdx);
-				const depName = key.substring(slashIdx + 1);
-				try {
-					const res = await fetch(apiPath(cluster, `/namespaces/${ns}/deployments/${depName}/children`));
-					if (!res.ok) continue;
-					const data = await res.json();
-					deploymentChildren = {
-						...deploymentChildren,
-						[key]: { replicaSets: data.replicaSets || [], loading: false }
-					};
-				} catch {}
-			}
-		};
-
-		const interval = setInterval(refresh, 5000);
-		return () => clearInterval(interval);
-	});
 
 	/**
 	 * ⭐ NOW USES `Card`. (defect #4, design re-check, coordinator follow-up)
@@ -251,22 +195,8 @@
 				: 'text-green-700 dark:text-green-400'
 	);
 
-	function getPodStatusColor(phase: string, ready: boolean, terminating: boolean): string {
-		if (terminating) return 'text-orange-500 dark:text-orange-400';
-		if (phase === 'Running' && ready) return 'text-green-700 dark:text-green-400';
-		if (phase === 'Running' && !ready) return 'text-yellow-700 dark:text-yellow-400';
-		if (phase === 'Pending') return 'text-yellow-700 dark:text-yellow-400';
-		if (phase === 'Failed') return 'text-red-600 dark:text-red-400';
-		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
-		return 'text-gray-500 dark:text-gray-400';
-	}
-
-	function getPodStatusLabel(phase: string, ready: boolean, terminating: boolean): string {
-		if (terminating) return 'Terminating';
-		if (phase === 'Running' && ready) return 'Ready';
-		if (phase === 'Running' && !ready) return 'Not Ready';
-		return phase;
-	}
+	// getPodStatusColor/getPodStatusLabel moved into DeploymentChildren.svelte
+	// with the rest of the expanded-children rendering they served.
 </script>
 
 {#if show}
@@ -303,7 +233,6 @@
 				{@const replicas = getDeploymentReplicas(resource)}
 				{@const depKey = getDeploymentKey(resource)}
 				{@const isExpanded = expandedDeployments.has(depKey)}
-				{@const childData = deploymentChildren[depKey]}
 
 				<div class="{isFailing ? 'bg-red-50 dark:bg-red-950/10' : isReconciling ? 'bg-yellow-50/50 dark:bg-yellow-950/5' : ''}">
 					<!-- Deployment row -->
@@ -381,89 +310,12 @@
 						</button>
 					</div>
 
-					<!-- Expanded children -->
+					<!-- Expanded children — own query, own cadence. See
+					     `DeploymentChildren.svelte`'s own doc comment: mounted only
+					     while `isExpanded`, which is what makes this "enabled only
+					     while expanded" rather than a flag to remember to flip. -->
 					{#if isExpanded}
-						<div class="border-t border-gray-100 bg-gray-50/50 pb-1 dark:border-gray-700/50 dark:bg-gray-800/50">
-							{#if childData?.loading}
-								<div class="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
-									<StatusSpinner size="4" color="gray" /> Loading...
-								</div>
-							{:else if childData?.error}
-								<p class="px-4 py-2 text-xs text-red-600 dark:text-red-400">{childData.error}</p>
-							{:else if childData}
-								{#each childData.replicaSets.filter((rs: any) => rs.desiredReplicas > 0) as rs}
-									<!-- ReplicaSet row -->
-									<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
-										<div class="flex h-4 w-4 shrink-0 items-center justify-center">
-											{#if rs.readyReplicas === rs.desiredReplicas}
-												<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
-											{:else}
-												<StatusSpinner size="3" color="yellow" />
-											{/if}
-										</div>
-										<div class="min-w-0 flex-1">
-											<div class="flex items-center gap-1">
-												<span class="truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{rs.name}</span>
-												<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">ReplicaSet</span>
-												{#if rs.isCurrentRS}
-													<span class="shrink-0 rounded bg-blue-100 px-1 py-0.5 t-micro text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">current</span>
-												{/if}
-											</div>
-										</div>
-										<span class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'}">
-											{rs.readyReplicas}/{rs.desiredReplicas} <span class="t-micro text-gray-500 dark:text-gray-400">pods</span>
-										</span>
-									</div>
-
-									<!-- Pod rows -->
-									{#each (rs.pods || []) as pod}
-										<div class="flex items-start gap-2 py-1 pl-14 pr-4">
-											<div class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-												{#if pod.terminating}
-													<StatusSpinner size="3" color="orange" />
-												{:else if pod.phase === 'Running' && pod.ready}
-													<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
-												{:else if pod.phase === 'Pending' || (pod.phase === 'Running' && !pod.ready)}
-													<StatusSpinner size="3" color="yellow" />
-												{:else if pod.phase === 'Failed'}
-													<ExclamationCircleSolid class="h-3 w-3 text-red-500 dark:text-red-400" />
-												{:else}
-													<div class="h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-gray-600"></div>
-												{/if}
-											</div>
-											<div class="min-w-0 flex-1">
-												<div class="flex items-center gap-1">
-													<span class="truncate text-[11px] text-gray-600 dark:text-gray-400">{pod.name}</span>
-													<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">Pod</span>
-												</div>
-												{#if pod.message}
-													<span class="block break-words t-micro text-gray-500 dark:text-gray-400">{pod.message}</span>
-												{/if}
-											</div>
-											{#if pod.restarts > 0}
-												<span class="shrink-0 rounded bg-orange-100 px-1 py-0.5 t-micro text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-													{pod.restarts}r
-												</span>
-											{/if}
-											{#if pod.age}
-												<span class="shrink-0 t-micro text-gray-500 dark:text-gray-400">{pod.age}</span>
-											{/if}
-											<span class="t-label shrink-0 {getPodStatusColor(pod.phase, pod.ready, pod.terminating)}">
-												{getPodStatusLabel(pod.phase, pod.ready, pod.terminating)}
-											</span>
-										</div>
-									{/each}
-
-									{#if (rs.pods?.length ?? 0) === 0}
-										<p class="pb-1 pl-14 pr-4 t-micro text-gray-500 dark:text-gray-400">No pods</p>
-									{/if}
-								{/each}
-
-								{#if childData.replicaSets.filter((rs: any) => rs.desiredReplicas > 0).length === 0}
-									<p class="px-9 py-2 text-xs text-gray-500 dark:text-gray-400">No active ReplicaSets</p>
-								{/if}
-							{/if}
-						</div>
+						<DeploymentChildren namespace={resource.namespace} name={resource.name} {cluster} />
 					{/if}
 				</div>
 			{/each}

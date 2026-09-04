@@ -238,3 +238,79 @@ export function rolloutTestsQueryOptions({
         ...options
     };
 }
+
+/**
+ * ⭐ PERF-2026-09-04 — DEPLOYMENT CHILDREN, PUSH NOT POLL.
+ *
+ * `ResourcesCard.svelte` used to run its own `setInterval(refresh, 5000)`
+ * per expanded deployment, with a hand-rolled `Record<key, {replicaSets,
+ * loading, error}>` cache — its own `fetch`, outside TanStack Query, so it
+ * ignored the SSE change stream entirely and never slowed down even when the
+ * stream was healthy. This is that lookup as a real query, so it gets the
+ * same push-not-poll treatment (`applyChangeEvents`' `Deployment`/
+ * `ReplicaSet` handling in `./events`) and the same stream-aware cadence
+ * every other rollout-scoped query has.
+ */
+export type ReplicaSetPod = {
+    name: string;
+    phase: string;
+    ready: boolean;
+    terminating?: boolean;
+    message?: string;
+    restarts?: number;
+    age?: string;
+};
+
+export type DeploymentReplicaSet = {
+    name: string;
+    desiredReplicas: number;
+    readyReplicas: number;
+    isCurrentRS?: boolean;
+    pods?: ReplicaSetPod[];
+};
+
+export type DeploymentChildrenResponse = {
+    replicaSets: DeploymentReplicaSet[];
+};
+
+export async function fetchDeploymentChildren(
+    namespace: string,
+    name: string,
+    cluster?: string
+): Promise<DeploymentChildrenResponse> {
+    return apiJson<DeploymentChildrenResponse>(
+        apiPath(cluster, `/namespaces/${namespace}/deployments/${name}/children`)
+    );
+}
+
+// ⭐ `cluster` sits BEFORE namespace/name (unlike `rolloutQueryKey` and its
+// siblings, which put it last) so it lines up with `applyChangeEvents`'
+// `deployment-children` predicate in `./events` — see that predicate's own
+// comment for why the position matters there. Normalised to `''` here (not
+// left `undefined`) so the key is stable for TanStack's own equality check
+// and so the invalidation predicate's `key[1] ?? ''` always finds a real
+// string to compare against `ev.cluster`.
+export const deploymentChildrenQueryKey = (namespace: string, name: string, cluster?: string) =>
+    ['deployment-children', cluster ?? '', namespace, name] as const;
+
+export function deploymentChildrenQueryOptions({
+    namespace,
+    name,
+    cluster,
+    enabled,
+    options
+}: {
+    namespace: string;
+    name: string;
+    cluster?: string;
+    /** Only fetch/poll while the deployment's children are actually shown. */
+    enabled?: boolean;
+    options?: QueryOverrides<DeploymentChildrenResponse>;
+}) {
+    return {
+        queryKey: deploymentChildrenQueryKey(namespace, name, cluster),
+        queryFn: () => fetchDeploymentChildren(namespace, name, cluster),
+        enabled,
+        ...options
+    };
+}

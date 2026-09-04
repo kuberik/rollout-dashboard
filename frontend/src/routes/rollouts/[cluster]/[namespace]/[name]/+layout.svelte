@@ -32,7 +32,11 @@
 			options: {
 				// ⭐ CLUSTER-AWARE — this rollout's own cluster, not the fleet-wide
 				// "every cluster up" gate. See +page.svelte's identical comment.
-				refetchInterval: pollWhenHealthy(5000, 60000, cluster)
+				// ⭐ PERF-2026-09-04 — lifted from the old 60s healthy ceiling to
+				// the app-wide 300s default (see `+layout.svelte`'s root
+				// `QueryClient`); this override existed to name the CLUSTER, not
+				// to poll faster than the rest of the app once the stream is up.
+				refetchInterval: pollWhenHealthy(5000, 300_000, cluster)
 			}
 		})
 	);
@@ -55,8 +59,9 @@
 	 * instance, and that instance has its own tab.
 	 */
 	// ⭐ STREAM-AWARE (see RolloutGrid.svelte's identical comment).
+	// ⭐ PERF-2026-09-04 — lifted to the app-wide 300s healthy ceiling.
 	const listQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 60000) } })
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 300_000) } })
 	);
 
 	const environment = $derived(rolloutQuery.data?.environment);
@@ -256,7 +261,7 @@
 		there is one content box and one centre.
 	-->
 	<nav
-		class="sticky top-0 z-10 shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+		class="sticky top-0 z-20 shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 		aria-label="Rollout sections"
 	>
 		<!--

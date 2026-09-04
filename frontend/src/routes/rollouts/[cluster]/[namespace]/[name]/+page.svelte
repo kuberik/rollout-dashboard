@@ -173,14 +173,18 @@
 	// (the `[cluster]` route segment) rather than inheriting the app-wide
 	// default's fleet-wide "every cluster must be up" gate. A sibling spoke
 	// being down must not slow this page down when ITS cluster is healthy.
+	// ⭐ PERF-2026-09-04 — lifted from the old 60s/30s healthy ceilings to the
+	// app-wide 300s/120s defaults (see root `+layout.svelte`'s `QueryClient`);
+	// `cluster` still rides both so this stays scoped to THIS rollout's own
+	// spoke rather than the fleet-wide "every cluster up" gate.
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
 			name,
 			cluster,
 			options: {
-				refetchInterval: pollWhenHealthy(5000, 60000, cluster),
-				staleTime: staleTimeWhenHealthy(1000, 30000, cluster)
+				refetchInterval: pollWhenHealthy(5000, 300_000, cluster),
+				staleTime: staleTimeWhenHealthy(1000, 120_000, cluster)
 			}
 		})
 	);
@@ -203,8 +207,9 @@
 	 * a list page this is a cache read and costs one render, not one request.
 	 */
 	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
+	// Lifted to the app-wide 300s healthy ceiling.
 	const listQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 60000) } })
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 300_000) } })
 	);
 
 	// Query for permissions - checks if user can update/patch rollouts
@@ -635,7 +640,8 @@
 		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `managed-resources` is in
 		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` scopes the cadence to this
 		// rollout's own cluster (see the rolloutQuery comment above).
-		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
+		// ⭐ PERF-2026-09-04 — lifted to the app-wide 300s healthy ceiling.
+		refetchInterval: pollWhenHealthy(5000, 300_000, cluster)
 	}));
 	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
 		managedResourcesQuery.data ?? {}
@@ -669,6 +675,17 @@
 		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `health-checks` is in
 		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` rides the key (see
 		// `managed-resources` above) and scopes the poll cadence.
+		// ⛔ DELIBERATELY STILL 60s, NOT LIFTED TO 300s WITH ITS SIBLINGS.
+		// (PERF-2026-09-04) `events.ts`'s `patchHealthCheckCaches` can only
+		// patch/remove a HealthCheck this cache ALREADY CONTAINS — the backend
+		// filters the list server-side by the rollout's own
+		// `healthCheckSelector`, information this module doesn't have, so an
+		// incoming HealthCheck not yet in the list might be "not selected" or
+		// might be "newly relevant" and there is no way to tell from the
+		// object alone. This 60s poll is the safety net for exactly that one
+		// case (see that function's own doc comment) — it is not the same
+		// override as the others and lifting it to 300s would widen the gap a
+		// newly-relevant HealthCheck can hide in.
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
@@ -714,7 +731,8 @@
 		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `events` is in
 		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` rides the key (see
 		// `managed-resources` above) and scopes the poll cadence.
-		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
+		// ⭐ PERF-2026-09-04 — lifted to the app-wide 300s healthy ceiling.
+		refetchInterval: pollWhenHealthy(5000, 300_000, cluster)
 	}));
 	const events = $derived(eventsQuery.data?.events ?? []);
 	/**

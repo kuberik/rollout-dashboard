@@ -86,7 +86,14 @@ export type ChangeEvent = {
  * off it is present on every Kubernetes object regardless of kind.
  */
 type K8sObject = {
-	metadata?: { name?: string; namespace?: string; annotations?: Record<string, string> | null };
+	metadata?: {
+		name?: string;
+		namespace?: string;
+		annotations?: Record<string, string> | null;
+		// ⭐ DEPLOYMENT-CHILDREN, PERF-2026-09-04 — a ReplicaSet's `object` carries
+		// this so its owning Deployment can be resolved without a second fetch.
+		ownerReferences?: { kind?: string; name?: string }[] | null;
+	};
 	[key: string]: unknown;
 };
 
@@ -201,6 +208,44 @@ const KUSTOMIZATION_KINDS = new Set(['Kustomization']);
 const EVENT_TAG_KINDS = new Set(['Event']);
 
 /**
+ * ⭐ PERF-2026-09-04 — DEPLOYMENT CHILDREN. `ResourcesCard.svelte`'s
+ * expanded-pods panel (`DeploymentChildren.svelte`) used to run its own
+ * `setInterval` outside TanStack Query entirely; it is a real
+ * `['deployment-children', cluster, namespace, name]` query now (see
+ * `rollouts.ts`'s `deploymentChildrenQueryKey` — note `cluster` sits at
+ * index 1, not last, unlike every other key tag in this file, which is what
+ * the predicates below key off).
+ *
+ * ⭐ THE CONTRACT IS NEWER THAN THIS FILE'S TOP COMMENT. As of the backend
+ * change this module is being built against, `Deployment` and `ReplicaSet`
+ * `ChangeEvent`s also carry `object` (≤ 64 KiB, same as the other 8 kinds)
+ * — the top-of-file "8 kinds" list predates it. Neither is added to the
+ * "PATCH, NOT INVALIDATE" machinery above, though: `deployment-children`'s
+ * cached shape is a SERVER-SIDE AGGREGATE (`{replicaSets: [...]}`, each
+ * ReplicaSet carrying ITS OWN pod list) that no single Deployment or
+ * ReplicaSet object can be folded into — there is no sound way to turn "one
+ * ReplicaSet changed" into "here is the new aggregate" without the other
+ * ReplicaSets' data this module was never given. Both stay invalidate-only;
+ * `object` is read for exactly one thing — a ReplicaSet's owner reference —
+ * not for patching.
+ */
+const DEPLOYMENT_KINDS = new Set(['Deployment']);
+const REPLICASET_KINDS = new Set(['ReplicaSet']);
+
+/**
+ * A `ReplicaSet` event names only the ReplicaSet itself; its owning
+ * Deployment comes from `metadata.ownerReferences` (the contract above).
+ * `undefined` when `object` is absent (delete, or an update the 64 KiB cap
+ * dropped) or carries no Deployment owner — the caller falls back to
+ * invalidating every `deployment-children` entry in the event's namespace
+ * rather than doing nothing, since a real ReplicaSet change happened and
+ * this module just can't name which deployment it belongs to.
+ */
+function replicaSetOwnerDeployment(obj: K8sObject | undefined): string | undefined {
+	return obj?.metadata?.ownerReferences?.find((o) => o.kind === 'Deployment')?.name ?? undefined;
+}
+
+/**
  * ⭐ PERF-2026-09-04 §C.7 FOLLOW-UP — SCHEDULES ARE CLUSTER-WIDE, NOT
  * NAMESPACE-SCOPED, AND ONE OF THEM CARRIES NO NAMESPACE AT ALL.
  *
@@ -235,7 +280,9 @@ const KNOWN_KINDS = new Set([
 	'Environment',
 	'KruiseRollout',
 	'Kustomization',
-	'OCIRepository'
+	'OCIRepository',
+	'Deployment',
+	'ReplicaSet'
 	// 'Event' deliberately excluded — see EVENT_TAG_KINDS' own comment. Add
 	// it here the same day the backend starts streaming core Events.
 ]);
@@ -504,6 +551,17 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 	const rolloutTestTargets = new Set<string>(); // "cluster|namespace"
 	const eventsTargets = new Set<string>(); // "cluster|namespace"
 	const kustomizationTargets: { cluster: string; namespace: string; name: string }[] = [];
+	// "cluster|namespace|deploymentName" — a `deployment-children` entry this
+	// module can name exactly.
+	const deploymentChildrenTargets = new Set<string>();
+	// "cluster|namespace" — every `deployment-children` entry in the
+	// namespace, for a ReplicaSet event that can't be traced to one owner.
+	const deploymentChildrenNamespaces = new Set<string>();
+	// "cluster|namespace" — a Deployment event also affects the rollout's
+	// `managed-resources` entry (it is one of the resources that list
+	// inventories), matched by namespace+cluster only since the event names
+	// the Deployment, not the rollout that owns the Kustomization.
+	const managedResourcesNamespaces = new Set<string>();
 	let scheduleChanged = false;
 
 	for (const ev of events) {
@@ -570,6 +628,30 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 			// change nothing when it isn't.
 			if (patchable) patchRolloutCompositeCaches(queryClient, ev);
 		}
+
+		// ⭐ DEPLOYMENT-CHILDREN — see this constant block's own doc comment
+		// above for why both stay invalidate-only despite carrying `object`.
+		if (DEPLOYMENT_KINDS.has(ev.kind) && ev.namespace && ev.name) {
+			deploymentChildrenTargets.add(`${ev.cluster}|${ev.namespace}|${ev.name}`);
+			// A Deployment is one of the resources `managed-resources` lists —
+			// the event names the Deployment, not the rollout/Kustomization
+			// that owns it, so this falls back to every `managed-resources`
+			// entry in the same namespace+cluster (same shape as
+			// `ROLLOUT_NAMESPACE_KINDS`'s own namespace fallback above).
+			managedResourcesNamespaces.add(`${ev.cluster}|${ev.namespace}`);
+		}
+		if (REPLICASET_KINDS.has(ev.kind) && ev.namespace) {
+			const ownerName = replicaSetOwnerDeployment(ev.object as K8sObject | undefined);
+			if (ownerName) {
+				deploymentChildrenTargets.add(`${ev.cluster}|${ev.namespace}|${ownerName}`);
+			} else {
+				// No object (delete, or dropped for size) — can't name the
+				// owner, so invalidate every deployment's children in this
+				// namespace+cluster rather than silently doing nothing.
+				deploymentChildrenNamespaces.add(`${ev.cluster}|${ev.namespace}`);
+			}
+		}
+
 		// ⚠️ SCHEDULES STAY INVALIDATE-ONLY — NOT AN OVERSIGHT.
 		// `rollout-schedule-window` caches a REDUCTION (`{blocked,
 		// nextTransition, names}`), not the raw schedule list a single
@@ -677,6 +759,39 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 				return kustomizationTargets.some(
 					(t) => t.namespace === ns && t.cluster === cluster && names.includes(t.name)
 				);
+			}
+		});
+	}
+
+	if (deploymentChildrenTargets.size > 0 || deploymentChildrenNamespaces.size > 0) {
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey;
+				// ['deployment-children', cluster, namespace, name] — cluster at
+				// index 1, not last (see `deploymentChildrenQueryKey`'s own doc
+				// in rollouts.ts for why the position differs from every other
+				// key tag in this file).
+				if (key.length < 4 || key[0] !== 'deployment-children') return false;
+				const cluster = (key[1] as string | undefined) ?? '';
+				const ns = key[2] as string;
+				const depName = key[3] as string;
+				return (
+					deploymentChildrenTargets.has(`${cluster}|${ns}|${depName}`) ||
+					deploymentChildrenNamespaces.has(`${cluster}|${ns}`)
+				);
+			}
+		});
+	}
+
+	if (managedResourcesNamespaces.size > 0) {
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey;
+				// ['managed-resources', rolloutNamespace, rolloutName, cluster, kustomizationNames[]]
+				if (key.length < 4 || key[0] !== 'managed-resources') return false;
+				const ns = key[1] as string;
+				const cluster = (key[3] as string | undefined) ?? '';
+				return managedResourcesNamespaces.has(`${cluster}|${ns}`);
 			}
 		});
 	}

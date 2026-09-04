@@ -51,7 +51,13 @@ function seededClient() {
 		managedResourcesOtherNs: ['managed-resources', 'team-b', 'app-1', 'hub', ['kust-a']],
 		managedResourcesKustASpokeA: ['managed-resources', 'team-a', 'app-1', 'spoke-a', ['kust-a']],
 		networkSchedules: ['network-schedules', ['', 'spoke-a']],
-		clusterInfo: ['cluster-info']
+		clusterInfo: ['cluster-info'],
+		// ⭐ `deployment-children` — cluster sits at index 1, not last (see
+		// `deploymentChildrenQueryKey` in rollouts.ts).
+		depChildrenDep1: ['deployment-children', 'hub', 'team-a', 'dep-1'],
+		depChildrenDep2: ['deployment-children', 'hub', 'team-a', 'dep-2'], // same ns/cluster, different deployment
+		depChildrenDep1OtherNs: ['deployment-children', 'hub', 'team-b', 'dep-1'], // different namespace
+		depChildrenDep1SpokeA: ['deployment-children', 'spoke-a', 'team-a', 'dep-1'] // different cluster
 	};
 	for (const key of Object.values(keys)) qc.setQueryData(key, { seeded: true });
 	function invalidated(label: keyof typeof keys): boolean {
@@ -81,7 +87,11 @@ type Label =
 	| 'managedResourcesOtherNs'
 	| 'managedResourcesKustASpokeA'
 	| 'networkSchedules'
-	| 'clusterInfo';
+	| 'clusterInfo'
+	| 'depChildrenDep1'
+	| 'depChildrenDep2'
+	| 'depChildrenDep1OtherNs'
+	| 'depChildrenDep1SpokeA';
 const ALL_LABELS: Label[] = [
 	'fleetAll',
 	'fleetNsA',
@@ -102,7 +112,11 @@ const ALL_LABELS: Label[] = [
 	'managedResourcesOtherNs',
 	'managedResourcesKustASpokeA',
 	'networkSchedules',
-	'clusterInfo'
+	'clusterInfo',
+	'depChildrenDep1',
+	'depChildrenDep2',
+	'depChildrenDep1OtherNs',
+	'depChildrenDep1SpokeA'
 ];
 
 function assertOnly(invalidated: (l: Label) => boolean, expectedTrue: Label[]) {
@@ -266,7 +280,9 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 			'Environment',
 			'KruiseRollout',
 			'Kustomization',
-			'OCIRepository'
+			'OCIRepository',
+			'Deployment',
+			'ReplicaSet'
 		];
 		applyChangeEvents(
 			qc,
@@ -292,7 +308,9 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 			'Environment',
 			'KruiseRollout',
 			'Kustomization',
-			'OCIRepository'
+			'OCIRepository',
+			'Deployment',
+			'ReplicaSet'
 		];
 		applyChangeEvents(
 			qc,
@@ -348,7 +366,9 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 			'Environment',
 			'KruiseRollout',
 			'Kustomization',
-			'OCIRepository'
+			'OCIRepository',
+			'Deployment',
+			'ReplicaSet'
 		];
 		applyChangeEvents(
 			qc,
@@ -364,5 +384,82 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 			ev({ kind: 'Kustomization', namespace: 'team-a', name: 'kust-b' })
 		]);
 		assertOnly(invalidated, ['healthChecksA1', 'fleetAll', 'fleetNsA', 'managedResourcesKustB']);
+	});
+
+	// ── Deployment / ReplicaSet: `deployment-children` (ResourcesCard's
+	// expanded-pods panel), replacing that component's own hand-rolled
+	// `setInterval` poll. Neither touches the fleet list or the exact
+	// `rollout` entry — a Deployment/ReplicaSet event names a workload, not
+	// the kuberik Rollout that owns its Kustomization. ──
+	it('Deployment invalidates its own deployment-children entry and every managed-resources entry in its namespace+cluster', () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [ev({ kind: 'Deployment', namespace: 'team-a', name: 'dep-1' })]);
+		assertOnly(invalidated, ['depChildrenDep1', 'managedResourcesKustA', 'managedResourcesKustB']);
+	});
+
+	it("a Deployment event does not touch a DIFFERENT deployment's children, a different namespace, or a different cluster", () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({ kind: 'Deployment', namespace: 'team-a', name: 'dep-1', cluster: 'hub' })
+		]);
+		expect(invalidated('depChildrenDep2')).toBe(false);
+		expect(invalidated('depChildrenDep1OtherNs')).toBe(false);
+		expect(invalidated('depChildrenDep1SpokeA')).toBe(false);
+		expect(invalidated('managedResourcesOtherNs')).toBe(false);
+		expect(invalidated('managedResourcesKustASpokeA')).toBe(false);
+	});
+
+	it('ReplicaSet with an ownerReferences Deployment invalidates ONLY that owner’s children — not managed-resources, not a sibling deployment', () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({
+				kind: 'ReplicaSet',
+				namespace: 'team-a',
+				name: 'dep-1-7c9f8b',
+				object: {
+					metadata: {
+						name: 'dep-1-7c9f8b',
+						namespace: 'team-a',
+						ownerReferences: [{ kind: 'Deployment', name: 'dep-1' }]
+					}
+				}
+			})
+		]);
+		assertOnly(invalidated, ['depChildrenDep1']);
+	});
+
+	it('ReplicaSet with NO object (delete, or dropped for size) falls back to every deployment-children entry in its namespace+cluster', () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({ type: 'delete', kind: 'ReplicaSet', namespace: 'team-a', name: 'dep-1-7c9f8b' })
+		]);
+		assertOnly(invalidated, ['depChildrenDep1', 'depChildrenDep2']);
+	});
+
+	it('ReplicaSet with an object that names no Deployment owner ALSO falls back to the namespace (not silently ignored)', () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({
+				kind: 'ReplicaSet',
+				namespace: 'team-a',
+				name: 'orphan-rs',
+				object: {
+					metadata: {
+						name: 'orphan-rs',
+						namespace: 'team-a',
+						ownerReferences: [{ kind: 'StatefulSet', name: 'not-a-deployment' }]
+					}
+				}
+			})
+		]);
+		assertOnly(invalidated, ['depChildrenDep1', 'depChildrenDep2']);
+	});
+
+	it("the ReplicaSet fallback stays scoped to its OWN cluster — a hub-local orphan ReplicaSet does not touch a spoke's deployment-children", () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({ kind: 'ReplicaSet', namespace: 'team-a', name: 'orphan-rs', cluster: 'hub' })
+		]);
+		expect(invalidated('depChildrenDep1SpokeA')).toBe(false);
 	});
 });
