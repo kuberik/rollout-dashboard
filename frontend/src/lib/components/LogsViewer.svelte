@@ -1144,18 +1144,26 @@
 >
 	<!-- Header with controls -->
 	<div class="mb-3 flex flex-shrink-0 flex-col gap-2 border-b border-gray-200 pb-3 dark:border-gray-700 sm:mb-4 sm:gap-3">
-		<!-- Status indicators -->
+		<!-- Status indicators.
+
+		     ⭐ THE "CONNECTING" CAPTION MOVED INTO THE PANE. (coordinator
+		     follow-on to LOAD-STATE-AUDIT-2026-09-04 finding 14, 2026-09-04)
+		     This row used to carry its OWN spinner + "Connecting to
+		     pods…"/"Connecting to test runs…" text, and collapsed to 0px the
+		     instant the stream connected — the toolbar below it (Source /
+		     Containers / Log Levels / Columns) rode that collapse down 16px,
+		     the "row" half of finding 14's measurement. The information was
+		     already duplicated: the pane immediately below renders its own
+		     centred `Spinner` for the exact same `isConnecting` state (see
+		     the `Card` body below). Rather than reserve a slot here for a
+		     row that would then sit empty for the entire life of a healthy
+		     stream, the caption joins the pane's spinner — ONE loading
+		     vocabulary for one object, and the toolbar's height no longer
+		     depends on the connection state at all. `error` stays here
+		     (unaffected by this finding; a compact ambient badge is still
+		     useful next to the controls even though the pane's own error
+		     panel is louder). -->
 		<div class="flex items-center gap-2">
-			<!-- ONE PLACE SAYS THE STREAM IS LIVE, AND IT IS THE FOOTER. This row
-			     now draws only while there is genuinely nothing yet, so the header
-			     no longer contradicts the lines below it, and it does not repeat the
-			     `Streaming ●` mark the footer has always carried. -->
-			{#if isConnecting}
-				<Spinner size="4" color="gray" />
-				<span class="text-xs text-gray-500 dark:text-gray-400"
-					>{filterType === 'test' ? 'Connecting to test runs…' : 'Connecting to pods…'}</span
-				>
-			{/if}
 			{#if error}
 				<Badge color="red" class="text-xs">Error loading logs</Badge>
 			{/if}
@@ -1558,8 +1566,9 @@
 					{errorCount} error{errorCount === 1 ? '' : 's'}
 				</button>
 			{/if}
-			<!-- ⛔ NOT WHILE `connecting` — the status row above (the spinner
-			     + "Connecting to pods…"/"Connecting to test runs…") already
+			<!-- ⛔ NOT WHILE `connecting` — the pane's own centred spinner +
+			     "Connecting to pods…"/"Connecting to test runs…" caption
+			     (moved there 2026-09-04, see the header's own note) already
 			     says exactly this, louder, in the one state that has no
 			     rows to answer for yet. A second copy of the same sentence
 			     in the card header is the defect this note exists to close,
@@ -1574,8 +1583,11 @@
 			{/if}
 		{/snippet}
 		{#if isConnecting}
-			<div class="flex flex-1 items-center justify-center">
+			<div class="flex flex-1 flex-col items-center justify-center gap-2">
 				<Spinner size="6" color="gray" />
+				<span class="text-xs text-gray-500 dark:text-gray-400"
+					>{filterType === 'test' ? 'Connecting to test runs…' : 'Connecting to pods…'}</span
+				>
 			</div>
 		{:else if error}
 			<div class="flex flex-1 items-center justify-center p-6">
