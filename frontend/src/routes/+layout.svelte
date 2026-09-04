@@ -47,6 +47,7 @@
 	 * specifically) — verified over repeated runs against the synchronous
 	 * version, which landed on `<body>` roughly one time in three.
 	 */
+	let { children }: { children?: import('svelte').Snippet } = $props();
 	let mainEl: HTMLElement | undefined = $state();
 	afterNavigate((nav) => {
 		// From `sm` up `<main>` is the scroller, and SvelteKit only resets the
@@ -179,7 +180,7 @@
 				class="min-w-0 flex-1 focus:outline-none sm:overflow-y-auto sm:[overscroll-behavior:contain] sm:[scrollbar-gutter:stable]"
 			>
 				<div class="relative min-w-0 sm:min-h-full">
-					<slot />
+					{@render children?.()}
 				</div>
 			</main>
 		</div>
