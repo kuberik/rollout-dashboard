@@ -43,7 +43,7 @@
 
 import { createEventSource, type EventSourceClient } from 'eventsource-client';
 import type { QueryClient } from '@tanstack/svelte-query';
-import type { RolloutsListResponse, RolloutResponse } from './rollouts';
+import type { RolloutsListResponse, RolloutResponse, DeploymentChildrenResponse } from './rollouts';
 import { SOURCE_CLUSTER_ANNOTATION, sourceClusterName } from '../source-dashboard';
 
 /**
@@ -219,18 +219,55 @@ const EVENT_TAG_KINDS = new Set(['Event']);
  * ⭐ THE CONTRACT IS NEWER THAN THIS FILE'S TOP COMMENT. As of the backend
  * change this module is being built against, `Deployment` and `ReplicaSet`
  * `ChangeEvent`s also carry `object` (≤ 64 KiB, same as the other 8 kinds)
- * — the top-of-file "8 kinds" list predates it. Neither is added to the
- * "PATCH, NOT INVALIDATE" machinery above, though: `deployment-children`'s
- * cached shape is a SERVER-SIDE AGGREGATE (`{replicaSets: [...]}`, each
- * ReplicaSet carrying ITS OWN pod list) that no single Deployment or
- * ReplicaSet object can be folded into — there is no sound way to turn "one
- * ReplicaSet changed" into "here is the new aggregate" without the other
- * ReplicaSets' data this module was never given. Both stay invalidate-only;
- * `object` is read for exactly one thing — a ReplicaSet's owner reference —
- * not for patching.
+ * — the top-of-file "8 kinds" list predates it.
+ *
+ * ⭐ CHURN FOLLOW-UP (§C.7 second pass) — REPLICASET COUNTS ARE PATCHED NOW;
+ * MANAGED-RESOURCES AND `deployment-children`'S OWN POD LIST STAY
+ * INVALIDATE-ONLY, BOTH NOW THROTTLED. A rolling update writes several
+ * ReplicaSet statuses a second; every one of those used to fire an immediate
+ * `deployment-children`/`managed-resources` refetch. Two different fixes for
+ * two different reasons:
+ *
+ * - **`deployment-children`'s summary counts ARE soundly patchable.**
+ *   `patchReplicaSetChildrenCaches` below updates ONLY the fields `RSInfo`
+ *   (main.go's children handler) puts on the wire unmodified from the raw
+ *   ReplicaSet — `replicas`/`readyReplicas` (`status`) and `desiredReplicas`
+ *   (`spec.replicas`) — none of them server-COMPUTED, so copying them from
+ *   the event's own `object` is exactly what a refetch would return. It does
+ *   NOT touch `isCurrentRS` (derived server-side by comparing THIS
+ *   ReplicaSet's revision annotation against the owning DEPLOYMENT's current
+ *   one — information this event doesn't carry) or the pods list (never on a
+ *   ReplicaSet object at all, and no single Deployment/ReplicaSet object can
+ *   be folded into the server-side aggregate `{replicaSets: [...]}` shape
+ *   anyway) — those still need the throttled invalidate below to catch up.
+ * - **`managed-resources` (a Deployment event) is NOT patched.**
+ *   `ManagedResourceStatus.Status`/`.Message` are `status.Compute(obj)`
+ *   output (`managedResourceStatusFromObject`, client.go) — kstatus
+ *   evaluated server-side, not a field copy. There is no sound way to
+ *   recompute that client-side from the raw object, and patching `.Object`
+ *   alone while leaving `.Status`/`.Message` stale would show an updated
+ *   replica count next to a status word that no longer agrees with it. So
+ *   this stays invalidate-only, on purpose — see `managedResourcesNamespaces`
+ *   below.
+ *
+ * Both are still capable of firing once per ReplicaSet status write during a
+ * rollout, so both now go through `throttledInvalidate` (the trailing-edge
+ * throttle defined further down) instead of invalidating immediately on
+ * every batch — see that function's own doc comment.
  */
 const DEPLOYMENT_KINDS = new Set(['Deployment']);
 const REPLICASET_KINDS = new Set(['ReplicaSet']);
+
+/**
+ * A rolling update's ReplicaSet/Deployment status writes can arrive several
+ * times a second; `deployment-children` and `managed-resources` invalidation
+ * is throttled to at most one refetch per this many ms per query (leading +
+ * one trailing) — see `throttledInvalidate`. Every OTHER kind in this file
+ * keeps its immediate (0ms) invalidate — a Rollout/HealthCheck/etc. event is
+ * comparatively rare, and the whole point of the push model is to react to
+ * it at once.
+ */
+const CHURN_THROTTLE_MS = 2_000;
 
 /**
  * A `ReplicaSet` event names only the ReplicaSet itself; its owning
@@ -534,6 +571,138 @@ function patchHealthCheckCaches(queryClient: QueryClient, ev: ChangeEvent): bool
 	return !needsInvalidate;
 }
 
+/** The subset of a raw ReplicaSet object this module copies into a cached
+ * `DeploymentReplicaSet` row — see `patchReplicaSetChildrenCaches`'s own doc
+ * comment for exactly which fields, and why not more. */
+type ReplicaSetObject = K8sObject & {
+	status?: { replicas?: number; readyReplicas?: number };
+	spec?: { replicas?: number };
+};
+
+/**
+ * Patches ONE ReplicaSet's summary counts into every cached
+ * `deployment-children` entry owned by `ownerDeploymentName`, matched by the
+ * ReplicaSet's own NAME inside that entry's `replicaSets` array. Only
+ * `replicas`/`readyReplicas`/`desiredReplicas` move — see the
+ * `DEPLOYMENT_KINDS`/`REPLICASET_KINDS` doc comment above for why
+ * `isCurrentRS` and the pods list are deliberately left alone.
+ *
+ * A ReplicaSet this cache doesn't already contain (idx === -1 — a brand-new
+ * revision the reader hasn't expanded yet, or simply never fetched) is left
+ * untouched here: there's no existing row to patch, and the throttled
+ * invalidate the caller also schedules (`deploymentChildrenTargets`) is what
+ * discovers it on the next refetch.
+ */
+function patchReplicaSetChildrenCaches(
+	queryClient: QueryClient,
+	ev: ChangeEvent,
+	ownerDeploymentName: string
+): void {
+	const obj = ev.object as ReplicaSetObject | undefined;
+	queryClient.setQueriesData<DeploymentChildrenResponse>(
+		{
+			predicate: (query) => {
+				const key = query.queryKey;
+				// ['deployment-children', cluster, namespace, name] — see this
+				// key tag's own doc comment in rollouts.ts for the index order.
+				if (key.length < 4 || key[0] !== 'deployment-children') return false;
+				const cluster = (key[1] as string | undefined) ?? '';
+				const ns = key[2] as string;
+				const depName = key[3] as string;
+				return cluster === ev.cluster && ns === ev.namespace && depName === ownerDeploymentName;
+			}
+		},
+		(old) => {
+			if (!old?.replicaSets) return old;
+			const idx = old.replicaSets.findIndex((rs) => rs.name === ev.name);
+			if (idx === -1) return old; // unknown RS — the throttled invalidate discovers it
+			if (ev.type === 'delete') {
+				const next = old.replicaSets.slice();
+				next.splice(idx, 1);
+				return { ...old, replicaSets: next };
+			}
+			if (!obj) return old;
+			const current = old.replicaSets[idx];
+			const next = old.replicaSets.slice();
+			next[idx] = {
+				...current,
+				replicas: obj.status?.replicas ?? current.replicas,
+				readyReplicas: obj.status?.readyReplicas ?? current.readyReplicas,
+				desiredReplicas: obj.spec?.replicas ?? current.desiredReplicas
+			};
+			return { ...old, replicaSets: next };
+		}
+	);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// THROTTLED INVALIDATE — PERF-2026-09-04 §C.7 churn follow-up.
+//
+// A leading + trailing throttle, keyed by an arbitrary caller-chosen string
+// (NOT necessarily a literal TanStack query key — see the call sites below,
+// which key by "cluster|namespace[|name]" target rather than a full key
+// tuple). The first call for a given key runs immediately; any further call
+// for the SAME key before `ms` has elapsed collapses into exactly one
+// trailing run at the end of the window, so a burst of N events produces at
+// most 2 runs (leading + trailing), never N. A key that goes quiet for a
+// full window resumes firing on its own next call's leading edge — spacing
+// is not accumulated across idle periods.
+// ─────────────────────────────────────────────────────────────────────────
+
+type ThrottleState = { timer: ReturnType<typeof setTimeout> | null; lastRun: number };
+const throttleStates = new Map<string, ThrottleState>();
+
+export function throttledInvalidate(
+	queryClient: QueryClient,
+	key: string,
+	ms: number,
+	invalidate: () => void
+): void {
+	if (ms <= 0) {
+		invalidate();
+		return;
+	}
+	let state = throttleStates.get(key);
+	if (!state) {
+		state = { timer: null, lastRun: 0 };
+		throttleStates.set(key, state);
+	}
+	const now = Date.now();
+	if (state.timer === null && now - state.lastRun >= ms) {
+		// Leading edge — nothing pending, and the last run (if any) was a full
+		// window ago or more.
+		state.lastRun = now;
+		invalidate();
+		return;
+	}
+	if (state.timer === null) {
+		// Trailing edge — inside the window with nothing scheduled yet.
+		// Exactly one trailing run fires at the window's own end, however many
+		// more calls for this key arrive before then.
+		const remaining = ms - (now - state.lastRun);
+		state.timer = setTimeout(
+			() => {
+				state!.timer = null;
+				state!.lastRun = Date.now();
+				invalidate();
+			},
+			Math.max(remaining, 0)
+		);
+	}
+	// else: a trailing run is already scheduled for this key — nothing to do.
+}
+
+/** Test-only: clears every pending throttle timer and its state, so one
+ * test's churn on a given key can't bleed into the next test's use of the
+ * SAME key (`deployment-children|hub|team-a|dep-1` etc. are reused across
+ * many fixtures in events.test.ts). */
+export function _resetThrottleForTests(): void {
+	for (const state of throttleStates.values()) {
+		if (state.timer !== null) clearTimeout(state.timer);
+	}
+	throttleStates.clear();
+}
+
 /**
  * Maps one batch of change events to TanStack invalidations and applies
  * them, PER KIND. Exported (rather than folded into the EventSource wiring
@@ -629,8 +798,11 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 			if (patchable) patchRolloutCompositeCaches(queryClient, ev);
 		}
 
-		// ⭐ DEPLOYMENT-CHILDREN — see this constant block's own doc comment
-		// above for why both stay invalidate-only despite carrying `object`.
+		// ⭐ DEPLOYMENT-CHILDREN / MANAGED-RESOURCES — see the
+		// `DEPLOYMENT_KINDS`/`REPLICASET_KINDS` doc comment above for why a
+		// Deployment event stays invalidate-only for BOTH (kstatus can't be
+		// recomputed client-side) while a ReplicaSet event's counts are
+		// patched directly, below.
 		if (DEPLOYMENT_KINDS.has(ev.kind) && ev.namespace && ev.name) {
 			deploymentChildrenTargets.add(`${ev.cluster}|${ev.namespace}|${ev.name}`);
 			// A Deployment is one of the resources `managed-resources` lists —
@@ -643,6 +815,12 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 		if (REPLICASET_KINDS.has(ev.kind) && ev.namespace) {
 			const ownerName = replicaSetOwnerDeployment(ev.object as K8sObject | undefined);
 			if (ownerName) {
+				// Counts patched in place right away — see
+				// `patchReplicaSetChildrenCaches`'s own doc comment for exactly
+				// which fields and why. The throttled invalidate below is what
+				// still catches the pods list and any brand-new ReplicaSet this
+				// cache doesn't know about yet.
+				patchReplicaSetChildrenCaches(queryClient, ev, ownerName);
 				deploymentChildrenTargets.add(`${ev.cluster}|${ev.namespace}|${ownerName}`);
 			} else {
 				// No object (delete, or dropped for size) — can't name the
@@ -763,36 +941,55 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 		});
 	}
 
-	if (deploymentChildrenTargets.size > 0 || deploymentChildrenNamespaces.size > 0) {
-		queryClient.invalidateQueries({
-			predicate: (query) => {
-				const key = query.queryKey;
-				// ['deployment-children', cluster, namespace, name] — cluster at
-				// index 1, not last (see `deploymentChildrenQueryKey`'s own doc
-				// in rollouts.ts for why the position differs from every other
-				// key tag in this file).
-				if (key.length < 4 || key[0] !== 'deployment-children') return false;
-				const cluster = (key[1] as string | undefined) ?? '';
-				const ns = key[2] as string;
-				const depName = key[3] as string;
-				return (
-					deploymentChildrenTargets.has(`${cluster}|${ns}|${depName}`) ||
-					deploymentChildrenNamespaces.has(`${cluster}|${ns}`)
-				);
-			}
+	// ⭐ THROTTLED, PER TARGET — not one batched `invalidateQueries` call for
+	// the whole Set. `throttledInvalidate` collapses a burst of events for
+	// the SAME target into one trailing refetch, but two DIFFERENT targets
+	// (two unrelated deployments, say) must not throttle each other — each
+	// gets its own key and its own independent leading/trailing timer.
+	for (const target of deploymentChildrenTargets) {
+		throttledInvalidate(queryClient, `deployment-children|${target}`, CHURN_THROTTLE_MS, () => {
+			queryClient.invalidateQueries({
+				predicate: (query) => {
+					const key = query.queryKey;
+					// ['deployment-children', cluster, namespace, name] — cluster at
+					// index 1, not last (see `deploymentChildrenQueryKey`'s own doc
+					// in rollouts.ts for why the position differs from every other
+					// key tag in this file).
+					if (key.length < 4 || key[0] !== 'deployment-children') return false;
+					const cluster = (key[1] as string | undefined) ?? '';
+					const ns = key[2] as string;
+					const depName = key[3] as string;
+					return `${cluster}|${ns}|${depName}` === target;
+				}
+			});
+		});
+	}
+	for (const target of deploymentChildrenNamespaces) {
+		throttledInvalidate(queryClient, `deployment-children-ns|${target}`, CHURN_THROTTLE_MS, () => {
+			queryClient.invalidateQueries({
+				predicate: (query) => {
+					const key = query.queryKey;
+					if (key.length < 4 || key[0] !== 'deployment-children') return false;
+					const cluster = (key[1] as string | undefined) ?? '';
+					const ns = key[2] as string;
+					return `${cluster}|${ns}` === target;
+				}
+			});
 		});
 	}
 
-	if (managedResourcesNamespaces.size > 0) {
-		queryClient.invalidateQueries({
-			predicate: (query) => {
-				const key = query.queryKey;
-				// ['managed-resources', rolloutNamespace, rolloutName, cluster, kustomizationNames[]]
-				if (key.length < 4 || key[0] !== 'managed-resources') return false;
-				const ns = key[1] as string;
-				const cluster = (key[3] as string | undefined) ?? '';
-				return managedResourcesNamespaces.has(`${cluster}|${ns}`);
-			}
+	for (const target of managedResourcesNamespaces) {
+		throttledInvalidate(queryClient, `managed-resources|${target}`, CHURN_THROTTLE_MS, () => {
+			queryClient.invalidateQueries({
+				predicate: (query) => {
+					const key = query.queryKey;
+					// ['managed-resources', rolloutNamespace, rolloutName, cluster, kustomizationNames[]]
+					if (key.length < 4 || key[0] !== 'managed-resources') return false;
+					const ns = key[1] as string;
+					const cluster = (key[3] as string | undefined) ?? '';
+					return `${cluster}|${ns}` === target;
+				}
+			});
 		});
 	}
 
@@ -1008,4 +1205,8 @@ export function _resetEventStreamForTests(): void {
 	hiddenTimer = null;
 	if (watchdog) clearInterval(watchdog);
 	watchdog = null;
+	// `deployment-children`/`managed-resources` throttle state is module-level
+	// too (see `throttledInvalidate`) — reset it here so one test's churn on
+	// a target string doesn't bleed into the next test that reuses it.
+	_resetThrottleForTests();
 }

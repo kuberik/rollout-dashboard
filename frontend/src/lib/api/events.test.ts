@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
-import { applyChangeEvents, type ChangeEvent } from './events';
+import { applyChangeEvents, _resetThrottleForTests, type ChangeEvent } from './events';
 
 // `cluster` defaults to the hub's own name — every fixture below that doesn't
 // say otherwise is a hub-local event, matching the contract ("hub-local
@@ -128,6 +128,19 @@ function assertOnly(invalidated: (l: Label) => boolean, expectedTrue: Label[]) {
 }
 
 describe('applyChangeEvents — mapping SSE change events to TanStack invalidations, PER KIND', () => {
+	// ⭐ `deployment-children`/`managed-resources` invalidation is throttled
+	// per TARGET STRING now (`throttledInvalidate`, keyed e.g.
+	// `deployment-children|hub|team-a|dep-1`), and that state is module-level
+	// — several `it()`s below reuse the SAME target (same namespace/cluster/
+	// deployment fixtures throughout this file), so without a reset the
+	// SECOND test to touch a given target would land inside the first test's
+	// still-open throttle window and get a scheduled trailing timer instead
+	// of the synchronous leading-edge invalidate every assertion here
+	// expects. Reset before every test, not just once.
+	beforeEach(() => {
+		_resetThrottleForTests();
+	});
+
 	it('an empty batch invalidates nothing', () => {
 		const { qc, invalidated } = seededClient();
 		applyChangeEvents(qc, []);

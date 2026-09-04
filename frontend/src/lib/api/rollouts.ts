@@ -265,6 +265,13 @@ export type DeploymentReplicaSet = {
     name: string;
     desiredReplicas: number;
     readyReplicas: number;
+    // ⭐ PERF-2026-09-04 §C.7 churn follow-up — `main.go`'s children handler
+    // has always put `replicas` (the RS's OWN `status.replicas`, distinct
+    // from `desiredReplicas`/`spec.replicas`) on the wire; this type just
+    // never declared it. Optional because it's genuinely new to callers that
+    // built a `DeploymentReplicaSet` by hand before this field existed (none
+    // currently do, but nothing should require it either).
+    replicas?: number;
     isCurrentRS?: boolean;
     pods?: ReplicaSetPod[];
 };
