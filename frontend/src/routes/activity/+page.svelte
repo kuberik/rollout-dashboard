@@ -115,6 +115,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { Environment } from '../../types';
+	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 
 	const rolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({
@@ -582,6 +583,119 @@
 		return groups;
 	});
 
+	/**
+	 * ⭐ THE REMEMBERED SHAPE. (2026-09-04, load-state audit finding 3 +
+	 * "Deliver" section: "activity: day-group count and rows per group".)
+	 * `groupedByDay`'s own count and average entries-per-day are unknowable
+	 * before the feed answers even once — `SHAPE_KEY` remembers this
+	 * fleet's own last-known shape so a later visit's skeleton draws N day
+	 * cards at their real average row count instead of the fixed `[3, 5]`
+	 * guess a first-ever visit still uses.
+	 *
+	 * `controlStripHMobile`/`controlStripHDesktop` covers a SEPARATE part
+	 * of the same finding: the "ONE CONTROL STRIP" row below (`Today`'s own
+	 * +96px drop) is unconditionally rendered — not gated on
+	 * `rolloutsQuery.isLoading` — but its OWN height still grows once
+	 * `knownEnvs` populates and the env-chip group inserts, so reserving it
+	 * at its last-measured height (via the same CSS-custom-property
+	 * pattern `BannerSkeleton` uses, never a class override) keeps that
+	 * insertion from moving the day groups under it.
+	 */
+	const SHAPE_KEY = 'activity';
+	type ActivityShape = {
+		dayGroups: number;
+		/**
+		 * ⭐ PER-DAY ROW COUNTS, NOT ONE AVERAGE. (2026-09-04, re-check via
+		 * `pairtwice.mjs`'s own second-visit measurement) `In the last
+		 * hour`/`Today` hold a handful of deploys and `Saturday` can hold
+		 * dozens — a single averaged `rowsPerGroup` applied to EVERY day
+		 * over-reserves the light days and under-reserves the heavy ones,
+		 * and because the days stack top to bottom the error COMPOUNDS:
+		 * measured, the first real day (152px) against an averaged 9-row
+		 * skeleton (545px) alone pushed every day below it hundreds of
+		 * pixels out of place. `ShapeValue` only allows number/boolean/
+		 * string — no arrays — so per-day counts are serialised as a
+		 * comma-joined string, in the SAME newest-first day order
+		 * `groupedByDay` itself produces, and parsed back on read.
+		 */
+		groupRowCounts: string;
+		controlStripHMobile: number;
+		controlStripHDesktop: number;
+	};
+	const shapeHint = recallShape<ActivityShape>(SHAPE_KEY);
+	// Capped generously — only bounds a next-visit SKELETON's size, never the real page.
+	const skelDayRowCounts: number[] = (shapeHint?.groupRowCounts ?? '')
+		.split(',')
+		.map((s) => Math.max(1, Math.min(20, parseInt(s, 10) || 1)))
+		.filter((n) => Number.isFinite(n))
+		.slice(0, 10);
+	const skelDayGroups: Array<{ key: number; rows: number }> =
+		skelDayRowCounts.length > 0
+			? skelDayRowCounts.map((rows, gi) => ({ key: gi, rows }))
+			: [
+					{ key: 0, rows: 3 },
+					{ key: 1, rows: 5 }
+				];
+
+	/**
+	 * ⭐ THE ROW HEIGHT IS RESPONSIVE TOO. (re-check via `pairtwice.mjs`'s
+	 * second-visit measurement) `48` was measured live at desktop width —
+	 * at 390 a real row wraps to a second line (env chip + relative time
+	 * below the version, not beside it), measured 63–128px per row on the
+	 * live feed. A day with many rows compounds a 48px-vs-~100px gap by
+	 * its own row count, which is what still pushed `Saturday` (26 rows)
+	 * hundreds of pixels out of place even with the per-day COUNT fixed.
+	 * `$state`, not a media query, because `rowHeight` is a `CardSkeleton`
+	 * NUMBER prop, not a class Tailwind's `sm:` breakpoint can toggle.
+	 */
+	let skelRowHeight = $state(48);
+	$effect(() => {
+		const update = () => {
+			skelRowHeight = window.innerWidth < 640 ? 100 : 48;
+		};
+		update();
+		window.addEventListener('resize', update);
+		return () => window.removeEventListener('resize', update);
+	});
+
+	let controlStripEl = $state<HTMLDivElement | null>(null);
+
+	$effect(() => {
+		if (rolloutsQuery.isLoading || rolloutsQuery.isError) return;
+		const prior = recallShape<ActivityShape>(SHAPE_KEY);
+		rememberShape(SHAPE_KEY, {
+			dayGroups: groupedByDay.length,
+			groupRowCounts: groupedByDay.map((g) => g.entries.length).join(','),
+			controlStripHMobile: prior?.controlStripHMobile ?? 0,
+			controlStripHDesktop: prior?.controlStripHDesktop ?? 0
+		});
+	});
+
+	// The control strip's OWN rendered height, measured live — see
+	// `SHAPE_KEY`'s note. Runs in the browser only (`$effect` never runs
+	// during SSR), independent of `rolloutsQuery.isLoading` since the strip
+	// itself always renders.
+	$effect(() => {
+		if (!controlStripEl) return;
+		const el = controlStripEl;
+		const measure = () => {
+			const h = Math.round(el.getBoundingClientRect().height);
+			if (h <= 0) return;
+			const mobile = window.innerWidth < 640;
+			const prior = recallShape<ActivityShape>(SHAPE_KEY);
+			rememberShape(SHAPE_KEY, {
+				dayGroups: prior?.dayGroups ?? 2,
+				groupRowCounts: prior?.groupRowCounts ?? '3,5',
+				controlStripHMobile: mobile ? h : (prior?.controlStripHMobile ?? 0),
+				controlStripHDesktop: mobile ? (prior?.controlStripHDesktop ?? 0) : h
+			});
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
 	function isFailed(e: ActivityEntry) {
 		return e.bakeStatus === 'Failed';
 	}
@@ -949,8 +1063,28 @@
 	     pill an invisible 32px hit box on coarse pointers (`.pill-btn` in
 	     `app.css`) — at the old 8px gap that box overlaps the next line's by
 	     4px (6px of slop each side, 8 - 6 - 6 < 0). 12px leaves the two
-	     expanded boxes exactly touching, never overlapping. -->
-	<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3">
+	     expanded boxes exactly touching, never overlapping.
+
+	     ⭐ `bind:this={controlStripEl}` + `--activity-strip-min-h*`. (load-
+	     state audit finding 3, remembered shape) This row is NOT gated on
+	     `rolloutsQuery.isLoading` — it always renders — but its OWN height
+	     still grows once `knownEnvs` populates and the env-chip group
+	     inserts, which is the actual cause of the day groups' +96px drop
+	     the audit measured (the chart card's own reservation already
+	     matches). `SHAPE_KEY`'s `$effect` above measures this element live
+	     and remembers it per width; the inline custom properties plus the
+	     scoped style rule below apply it — an inline `min-height`
+	     directly would win at every width, not just its own, the same
+	     reason `BannerSkeleton` stopped taking a class override. Zero
+	     (no reservation) on a first-ever visit, when nothing is
+	     remembered yet. -->
+	<div
+		bind:this={controlStripEl}
+		class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3"
+		style="--activity-strip-min-h: {shapeHint?.controlStripHMobile ?? 0}px; --activity-strip-min-h-sm: {shapeHint?.controlStripHDesktop ??
+			0}px"
+		data-activity-strip
+	>
 		<!-- ⛔ THIS ROW AND THE CHART'S `1H 6H 1D 7D 30D ALL` ROW WERE TWO
 		     ALMOST-IDENTICAL PILLS ONE TYPE SIZE APART. (2026-09-02) This one
 		     is `t-label` (10px/600); `DeploymentTimeline`'s presets are an ad
@@ -1105,10 +1239,18 @@
 		     the feed answers (some days have one deploy, some have thirty) —
 		     per the same rule the blocking banner follows, that is content,
 		     not chrome, so it is approximated, never asserted as a real
-		     rollup. -->
+		     rollup. `skelDayGroups` is this feed's own PER-DAY remembered row
+		     counts, not the fixed `[3, 5]` guess or one averaged count applied
+		     to every day. -->
 		<div class="flex flex-col gap-4">
-			{#each [3, 5] as rows (rows)}
-				<CardSkeleton titleWidth="w-28" rollupWidth="w-40" {rows} rowHeight={48} padded={false} />
+			{#each skelDayGroups as g (g.key)}
+				<CardSkeleton
+					titleWidth="w-28"
+					rollupWidth="w-40"
+					rows={g.rows}
+					rowHeight={skelRowHeight}
+					padded={false}
+				/>
 			{/each}
 		</div>
 	{:else if rolloutsQuery.isError}
@@ -1482,3 +1624,20 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* ⭐ THE CONTROL STRIP'S REMEMBERED MIN-HEIGHT. (2026-09-04, load-state
+	   audit finding 3.) Same reason `BannerSkeleton`/`RolloutGrid`'s chip
+	   block moved off a `!important` class override: an inline `style`
+	   attribute sets the two custom properties (this row's own last real
+	   measurement, or 0 on a first-ever visit) and this component-scoped
+	   rule applies them per breakpoint. */
+	[data-activity-strip] {
+		min-height: var(--activity-strip-min-h);
+	}
+	@media (min-width: 640px) {
+		[data-activity-strip] {
+			min-height: var(--activity-strip-min-h-sm);
+		}
+	}
+</style>

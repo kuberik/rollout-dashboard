@@ -178,6 +178,34 @@ export type FleetGroups = {
 };
 
 /**
+ * ⭐ THE FINAL TIEBREAK — every fleet-grouped list ends here, so its render
+ * order is a PURE FUNCTION OF THE DATA. (2026-09-04, coordinator finding:
+ * "the home cards reshuffle between loads (4 distinct orders in 5 reloads)
+ * because the sort has ties and the API's list order varies.")
+ *
+ * `buildRolloutCards` maps `rollouts` in the order `/api/rollouts` returned
+ * them, with no sort of its own — and every bucket below used to be a bare
+ * `.filter()` with no sort at all, so two cards tied on every meaningful key
+ * (or a bucket with no primary key at all) rendered in whatever order that
+ * one HTTP response happened to list them, which measurably varies between
+ * polls. The backend is being made deterministic too, but the frontend must
+ * not depend on that: `Array.prototype.sort` is stable, so chaining this
+ * comparator AFTER a caller's own primary key only breaks ties that key
+ * left open, and a caller with no primary key at all (`inMotion`, `held`,
+ * `trailing`, `steady`, `pending`) can pass this comparator directly.
+ *
+ * Cluster, then namespace, then name — the same three-part identity
+ * `RolloutGrid.svelte`'s own namespace grouping already keys on
+ * (`clusterLabelForCard`/`ns`), so a card's position here agrees with its
+ * position there.
+ */
+export function fleetTiebreak(a: RolloutCard, b: RolloutCard): number {
+	const clusterA = a.sourceCluster || a.sourceURL || '';
+	const clusterB = b.sourceCluster || b.sourceURL || '';
+	return clusterA.localeCompare(clusterB) || a.ns.localeCompare(b.ns) || a.name.localeCompare(b.name);
+}
+
+/**
  * Every bucket at once, for a page that needs all six counts.
  *
  * ⛔ `held`/`trailing` READ `isHeld` NOW, NOT THE RAW `c.held` FIELD.
@@ -186,15 +214,17 @@ export type FleetGroups = {
  * have quietly reopened the exact drift this function exists to prevent —
  * a pinned-only rollout counted under `held` by `isHeld` callers but still
  * landing in `trailing` here.
+ *
+ * Every bucket is sorted by `fleetTiebreak` — see its own note.
  */
 export function fleetGroups(cards: RolloutCard[]): FleetGroups {
 	const trailingAll = cards.filter(isTrailing);
 	return {
-		needsYou: cards.filter(isNeedsYou),
-		inMotion: cards.filter(isInMotion),
-		held: trailingAll.filter(isHeld),
-		trailing: trailingAll.filter((c) => !isHeld(c)),
-		steady: cards.filter(isSteady),
-		pending: cards.filter(isPending)
+		needsYou: cards.filter(isNeedsYou).sort(fleetTiebreak),
+		inMotion: cards.filter(isInMotion).sort(fleetTiebreak),
+		held: trailingAll.filter(isHeld).sort(fleetTiebreak),
+		trailing: trailingAll.filter((c) => !isHeld(c)).sort(fleetTiebreak),
+		steady: cards.filter(isSteady).sort(fleetTiebreak),
+		pending: cards.filter(isPending).sort(fleetTiebreak)
 	};
 }

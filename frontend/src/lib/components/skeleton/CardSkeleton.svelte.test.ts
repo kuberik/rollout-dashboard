@@ -110,10 +110,27 @@ describe('BannerSkeleton: the 142px blocking banner', () => {
 		expect(BANNER_HEIGHT).toBe(142);
 	});
 
-	test('renders at min-h-[142px]', () => {
+	// ⭐ NOT A CLASS ASSERTION ANY MORE. (2026-09-04, load-state audit finding
+	// 2) `min-h-[142px]` used to be a literal Tailwind class on this
+	// element; a caller overriding it with a second `!important` class
+	// raced the primitive's own on CASCADE ORDER and both lost (measured:
+	// `/environments` rendered 40px at BOTH widths). The height is now two
+	// CSS custom properties set via inline `style`, applied by a
+	// component-scoped rule — see the component's own note.
+	test('defaults to 142px at every width via the mobile/desktop custom properties', () => {
 		const { container } = render(BannerSkeleton);
-		const banner = container.querySelector('[data-skel-banner]');
-		expect(banner!.className).toContain('min-h-[142px]');
+		const banner = container.querySelector('[data-skel-banner]') as HTMLElement;
+		expect(banner.style.getPropertyValue('--skel-banner-min-h')).toBe('142px');
+		expect(banner.style.getPropertyValue('--skel-banner-min-h-sm')).toBe('142px');
+	});
+
+	test('minHeight/minHeightMobile set the two custom properties independently', () => {
+		const { container } = render(BannerSkeleton, {
+			props: { minHeight: 142, minHeightMobile: 239 }
+		});
+		const banner = container.querySelector('[data-skel-banner]') as HTMLElement;
+		expect(banner.style.getPropertyValue('--skel-banner-min-h')).toBe('239px');
+		expect(banner.style.getPropertyValue('--skel-banner-min-h-sm')).toBe('142px');
 	});
 });
 

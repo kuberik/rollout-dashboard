@@ -222,6 +222,7 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
+	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 
 	const appName = $derived(page.params.name as string);
 
@@ -2155,6 +2156,39 @@
 	);
 
 	/**
+	 * ⭐ THE REMEMBERED SHAPE. (2026-09-04, load-state audit finding 1: the
+	 * skeleton's `Source`/`Recent activity` cards span the main column
+	 * instead of the rail.) The skeleton below already reuses the loaded
+	 * page's OWN `.ab-wrap`/`.ab-grid` named-area grid — the fix the finding
+	 * asks for — but it always drew all four areas (`act`/`pipe`/`state`/
+	 * `hist`), while the loaded grid conditionally drops `act`
+	 * (`ab-grid--noact`, when `hasAct` is false) and the whole rail
+	 * (`ab-grid--norail`, when `hasRail` is false). `hasAct`/`hasRail` are
+	 * data — unknowable before this app's own tasks/exposure have
+	 * answered — which is exactly what put an extra `ab-act` card in the
+	 * DOM ahead of `state`/`hist` on `hello-world-app` (no act column) and
+	 * shifted everything below it, matching every card to the WRONG area.
+	 * Keyed per app: two apps on the same fleet can have different shapes
+	 * (one with tasks needing a decision, one without).
+	 */
+	const SHAPE_KEY = $derived(`apps/${appName}`);
+	type AppShape = { hasAct: boolean; hasRail: boolean };
+	const shapeHint = $derived(recallShape<AppShape>(SHAPE_KEY));
+	// Defaults to `true`/`true` (today's fixed 4-area skeleton) on a
+	// first-ever visit to this app, when nothing is remembered yet.
+	const skelHasAct = $derived(shapeHint ? shapeHint.hasAct : true);
+	const skelHasRail = $derived(shapeHint ? shapeHint.hasRail : true);
+
+	$effect(() => {
+		// Wait for BOTH queries `hasRail` reads from — `podsQuery.isLoading`
+		// is one of `hasRail`'s own disjuncts, so remembering while it is
+		// still true would always record `hasRail: true` regardless of the
+		// eventual answer.
+		if (query.isLoading || query.isError || podsQuery.isLoading) return;
+		rememberShape(SHAPE_KEY, { hasAct, hasRail });
+	});
+
+	/**
 	 * ⛔ THERE IS NO VERDICT LEDE UNDER THE `h1` ANY MORE (2026-08-27).
 	 *
 	 * From the human: *"Environment and app detail I generally don't like this
@@ -2744,6 +2778,19 @@
 			query's own data lands, so on a cold load its insertion above the
 			grid is the one thing this composition still allows to move
 			(principle 7's "otherwise" branch, same reasoning as `/apps`).
+
+			⭐ `ab-grid--noact`/`ab-grid--norail`, FROM THE REMEMBERED SHAPE.
+			(load-state audit finding 1) `hasAct`/`hasRail` are data — this app
+			might have no act column and/or no rail at all, which the LOADED
+			grid already handles with these two modifier classes. Applying
+			them here too (from `skelHasAct`/`skelHasRail`, this app's own
+			last-known answer) is what keeps `Source`/`Recent activity`
+			landing in the SAME area as the loaded page: without it, a
+			`hello-world-app`-shaped app (no act column) always drew an extra
+			`ab-act` card ahead of `state`/`hist`, which does not merely add a
+			card — since `.ab-grid`'s area layout is a fixed 3-row/4-row
+			template, one DOM slot in the wrong ROW remaps every area after
+			it, which is the +537px width swing the audit measured.
 		-->
 		<section class="mb-5" aria-hidden="true">
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2752,18 +2799,22 @@
 			</div>
 		</section>
 		<div class="ab-wrap">
-			<div class="ab-grid">
-				<div class="ab-act">
-					<CardSkeleton titleWidth="w-24" rollupWidth="w-32" rows={2} rowHeight={28} />
-				</div>
+			<div class="ab-grid {skelHasAct ? '' : 'ab-grid--noact'} {skelHasRail ? '' : 'ab-grid--norail'}">
+				{#if skelHasAct}
+					<div class="ab-act">
+						<CardSkeleton titleWidth="w-24" rollupWidth="w-32" rows={2} rowHeight={28} />
+					</div>
+				{/if}
 				<div class="ab-pipe">
 					<CardSkeleton titleWidth="w-32" rollupWidth="w-24" bodyHeight={239} />
 				</div>
-				<div class="ab-state flex flex-col gap-4">
-					<CardSkeleton titleWidth="w-16" rows={1} rowHeight={20} />
-					<CardSkeleton titleWidth="w-24" rollupWidth="w-16" rows={3} rowHeight={25} />
-					<CardSkeleton titleWidth="w-40" rows={1} rowHeight={10} />
-				</div>
+				{#if skelHasRail}
+					<div class="ab-state flex flex-col gap-4">
+						<CardSkeleton titleWidth="w-16" rows={1} rowHeight={20} />
+						<CardSkeleton titleWidth="w-24" rollupWidth="w-16" rows={3} rowHeight={25} />
+						<CardSkeleton titleWidth="w-40" rows={1} rowHeight={10} />
+					</div>
+				{/if}
 				<div class="ab-hist">
 					<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={6} rowHeight={54} />
 				</div>

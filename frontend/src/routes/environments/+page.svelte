@@ -161,6 +161,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 
 	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
 	const query = createQuery(() =>
@@ -940,6 +941,29 @@
 		return null;
 	});
 
+	/**
+	 * ⭐ THE REMEMBERED SHAPE. (2026-09-04, load-state audit's "Deliver"
+	 * section — environments: "card count and whether the banner is
+	 * present and its measured height".) `envTiers.length` decides how
+	 * many `.env-stack` placeholders to draw and `!!banner` decides whether
+	 * a `BannerSkeleton` renders AT ALL during the loading phase — before
+	 * this page's own `query` (the one request both depend on) has
+	 * resolved even once, neither is knowable, so a first-ever visit keeps
+	 * today's fixed 3-card / always-shown guess and every later visit uses
+	 * this fleet's own last-known shape instead.
+	 */
+	const SHAPE_KEY = 'environments';
+	type EnvironmentsShape = { cards: number; bannerPresent: boolean };
+	const shapeHint = recallShape<EnvironmentsShape>(SHAPE_KEY);
+	// Capped generously — only bounds a next-visit SKELETON's size, never the real page.
+	const skelEnvCards = Array.from({ length: Math.min(shapeHint?.cards ?? 3, 10) }, (_, i) => i);
+	const skelBannerPresent = shapeHint ? shapeHint.bannerPresent : true;
+
+	$effect(() => {
+		if (query.isLoading || query.isError) return;
+		rememberShape(SHAPE_KEY, { cards: envTiers.length, bannerPresent: !!banner });
+	});
+
 	// ───────────────────────── Progressive disclosure ──────────────────────
 	/**
 	 * THE FOLD IS ABOUT THE TAIL, NOT THE TOTAL.
@@ -1620,22 +1644,37 @@
 		     own doc calls this out by name (its measurements are THIS
 		     page's and `/apps`'). `mb-4` matches `BlockingStoryPanel`'s own
 		     default margin, byte-identical to the object it stands in for.
-		     `!min-h-[…]` overrides the primitive's own fixed 142px floor —
-		     measured live, the real `AlertPanel` stacks to 239px at 390
+		     `minHeight`/`minHeightMobile` — NOT a class override (see
+		     `BannerSkeleton`'s own note: two `!important` `min-height`
+		     classes race on CASCADE ORDER, not caller intent, which is why
+		     `!min-h-[239px] sm:!min-h-[142px]` rendered 40px at BOTH widths).
+		     Measured live, the real `AlertPanel` stacks to 239px at 390
 		     (icon+text column above the action row) and is 142px from `sm`
 		     up; the primitive's single number can only be right at one
-		     width, same shape as the chart card fix on `/activity`. -->
-		<BannerSkeleton class="mb-4 !min-h-[239px] sm:!min-h-[142px]" />
+		     width, same shape as the chart card fix on `/activity`.
+
+		     ⭐ GATED ON `skelBannerPresent`, NOT ALWAYS SHOWN. (remembered
+		     shape) Whether ANY banner renders is unknowable before this same
+		     `query` resolves once — on a fleet that never has a blocking
+		     banner, always reserving one here was itself a "the skeleton
+		     inserted something the loaded page never had" jump. Defaults to
+		     `true` on a first-ever visit (today's behaviour, unchanged) and
+		     follows this fleet's own last-known answer after that. -->
+		{#if skelBannerPresent}
+			<BannerSkeleton minHeight={142} minHeightMobile={239} class="mb-4" />
+		{/if}
 		<!-- THE SKELETON IS THE SAME GRID. It was a separate `md:/xl:` grid, so
 		     the placeholders sat in different columns from the cards that
 		     replaced them and the page jumped on load. 378px measured live
 		     at 1440 (the audit's own figure, not the old 256px guess); a
 		     card's own badges wrap more at 390 (single `.env-stack` column,
-		     narrower cards), measured 492px there. -->
+		     narrower cards), measured 492px there. `skelEnvCards` is this
+		     fleet's own remembered environment count (load-state audit
+		     "Deliver" section), not a fixed 3. -->
 		<div class="env-stack">
-			<div class="h-[492px] animate-pulse rounded-lg bg-gray-200 sm:h-[378px] dark:bg-gray-700"></div>
-			<div class="h-[492px] animate-pulse rounded-lg bg-gray-200 sm:h-[378px] dark:bg-gray-700"></div>
-			<div class="h-[492px] animate-pulse rounded-lg bg-gray-200 sm:h-[378px] dark:bg-gray-700"></div>
+			{#each skelEnvCards as n (n)}
+				<div class="h-[492px] animate-pulse rounded-lg bg-gray-200 sm:h-[378px] dark:bg-gray-700"></div>
+			{/each}
 		</div>
 	{:else if query.isError}
 		<!--

@@ -28,12 +28,37 @@
 	 * Neutral gray, deliberately: `warning` (amber) vs `info` (blue) is
 	 * itself part of what is not yet known, and a placeholder that guesses
 	 * a colour is the exact "confident wrong answer" the truth rules ban.
+	 *
+	 * ⭐ `minHeight`/`minHeightMobile`, NOT a class override. (load-state
+	 * audit finding 2: `/environments` passed
+	 * `!min-h-[239px] sm:!min-h-[142px]` and it rendered 40px at BOTH
+	 * widths.) Two `!important` `min-height` declarations for the same
+	 * property compete on CASCADE ORDER, not on which one a caller "meant"
+	 * — this primitive's own `min-h-[142px]` and the caller's override are
+	 * both `!important`, so whichever one Tailwind happens to emit LATER in
+	 * the compiled stylesheet wins, regardless of source order in this
+	 * file. An inline `style` attribute has no such ambiguity: it always
+	 * wins over any non-`!important` stylesheet rule, so the RESPONSIVE
+	 * part is done with a component-scoped style block (below) reading a
+	 * custom property this element's own inline style sets — never with a
+	 * second `!important` class a caller has to out-cascade.
 	 */
-	let { class: className = '' }: { class?: string } = $props();
+	let {
+		minHeight = BANNER_HEIGHT,
+		minHeightMobile = null,
+		class: className = ''
+	}: {
+		/** min-height in px from `sm` (640px) up. Defaults to `BANNER_HEIGHT`. */
+		minHeight?: number;
+		/** min-height in px below `sm`. `null` (the default) reuses `minHeight` at every width. */
+		minHeightMobile?: number | null;
+		class?: string;
+	} = $props();
 </script>
 
 <div
-	class="flex min-h-[142px] flex-col gap-4 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5 dark:border-gray-700 dark:bg-gray-800/60 {className}"
+	class="flex flex-col gap-4 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5 dark:border-gray-700 dark:bg-gray-800/60 {className}"
+	style="--skel-banner-min-h: {minHeightMobile ?? minHeight}px; --skel-banner-min-h-sm: {minHeight}px"
 	aria-hidden="true"
 	data-skel-banner
 >
@@ -45,3 +70,14 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	[data-skel-banner] {
+		min-height: var(--skel-banner-min-h);
+	}
+	@media (min-width: 640px) {
+		[data-skel-banner] {
+			min-height: var(--skel-banner-min-h-sm);
+		}
+	}
+</style>

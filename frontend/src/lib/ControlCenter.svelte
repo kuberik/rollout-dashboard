@@ -19,7 +19,8 @@
 		isTrailing,
 		isHeld,
 		isSteady,
-		isPending
+		isPending,
+		fleetTiebreak
 	} from '$lib/view-models/fleet-groups';
 	import { checkFailureTitle } from '$lib/view-models/health-witness';
 	import { buildGateContext, blockingStory, type GateContext } from '$lib/view-models/blocking-story';
@@ -57,6 +58,7 @@
 	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
+	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 
 	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE. See RolloutGrid.svelte's
 	// identical comment: `['rollouts', 'all']` is invalidated by the change
@@ -93,12 +95,19 @@
 	// one module, both pages import it.
 	const needsYou = $derived.by<RolloutCard[]>(() => {
 		const out = cards.filter(isNeedsYou);
-		return out.sort(
-			(a, b) => (a.statusKey === 'failed' ? 0 : 1) - (b.statusKey === 'failed' ? 0 : 1)
-		);
+		// ⭐ `fleetTiebreak` AFTER THE PRIMARY KEY, NOT INSTEAD OF IT. (2026-09-04,
+		// coordinator finding: the home cards reshuffled between loads because
+		// this sort had ties — two non-failed cards, say — and the input order
+		// (`/api/rollouts`'s own list order) varies between polls. `Array.sort`
+		// is stable, so chaining the tiebreak in only decides what the primary
+		// key left open; it never overrides "failed first".
+		return out.sort((a, b) => {
+			const primary = (a.statusKey === 'failed' ? 0 : 1) - (b.statusKey === 'failed' ? 0 : 1);
+			return primary !== 0 ? primary : fleetTiebreak(a, b);
+		});
 	});
 
-	const inMotion = $derived.by<RolloutCard[]>(() => cards.filter(isInMotion));
+	const inMotion = $derived.by<RolloutCard[]>(() => cards.filter(isInMotion).sort(fleetTiebreak));
 
 	// Healthy = succeeded and not stuck. Split into those at the head of their
 	// own release list (Steady) and those with newer builds they could still
@@ -120,7 +129,7 @@
 	// had no equivalent split and counted these same rollouts under its own
 	// `Trailing` pill, so the same four rollouts read `Held 4` here and
 	// `Trailing 4` there. Both pages import the shared predicate now.
-	const held = $derived.by<RolloutCard[]>(() => cards.filter(isHeld));
+	const held = $derived.by<RolloutCard[]>(() => cards.filter(isHeld).sort(fleetTiebreak));
 
 	/**
 	 * ⭐ THE GATE JOIN TABLE, WITH SCHEDULES, FOR THE HELD SECTION'S OWN
@@ -194,14 +203,132 @@
 	 * `story.kindPending` before choosing whether to trust `cause`.
 	 */
 
-	const trailing = $derived.by<RolloutCard[]>(() => cards.filter((c) => isTrailing(c) && !isHeld(c)));
-	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady));
-	const pendingCards = $derived.by<RolloutCard[]>(() => cards.filter(isPending));
+	const trailing = $derived.by<RolloutCard[]>(() =>
+		cards.filter((c) => isTrailing(c) && !isHeld(c)).sort(fleetTiebreak)
+	);
+	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady).sort(fleetTiebreak));
+	const pendingCards = $derived.by<RolloutCard[]>(() => cards.filter(isPending).sort(fleetTiebreak));
 	const pendingCount = $derived(pendingCards.length);
 	// Steady section grid also surfaces pending rollouts (no deploy yet) so
 	// they aren't invisible — they're counted separately in the header but
 	// still need a chip so the user knows which app is waiting.
 	const steadySectionAll = $derived<RolloutCard[]>([...steadyAll, ...pendingCards]);
+
+	/**
+	 * ⭐ THE REMEMBERED SHAPE. (2026-09-04, load-state audit finding 5: "`/`
+	 * at 390 reserves fewer cards than the fleet has (15), so `Steady`
+	 * moves +214 and the rail +795".) The skeleton used to draw exactly
+	 * TWO sections (`Held` then `Steady`), unconditionally — but the real
+	 * page draws up to FIVE, each present only when its own count is
+	 * nonzero (`Needs you now` → `In motion` → `Held` → `Trailing` →
+	 * `Steady`, in that document order). On a fleet whose first nonzero
+	 * section is `In motion`, not `Held` (this cluster, most of the time),
+	 * the old 2-section skeleton put a HELD-shaped placeholder where the
+	 * loaded page puts an IN-MOTION-shaped one — same card count, wrong
+	 * section identity, wrong height. `SHAPE_KEY` remembers all five
+	 * counts (and whether the rail renders) so a later visit's skeleton
+	 * matches this fleet's own last-known section composition, not a
+	 * fixed guess.
+	 */
+	const SHAPE_KEY = 'home';
+	type HomeShape = {
+		needsYou: number;
+		inMotion: number;
+		held: number;
+		trailing: number;
+		steady: number;
+		showRail: boolean;
+		/** `HomeRail`'s own last-measured total height, bucketed at the
+		 * SAME 1440px breakpoint the layout itself uses (`min-[1440px]`) —
+		 * below it the rail stacks under the groups at full width; at/above
+		 * it the rail sits in a fixed 320px column beside them. */
+		railHBelow1440: number;
+		railHAt1440: number;
+	};
+	const shapeHint = recallShape<HomeShape>(SHAPE_KEY);
+	/**
+	 * One entry per section that would render on the LOADED page, in the
+	 * page's own document order, each carrying the section's remembered
+	 * card count (capped generously — this only bounds a next-visit
+	 * SKELETON's size, never the real page) and whether its cards carry a
+	 * second "cause" line (`Needs you now`/`In motion`/`Held` do;
+	 * `Trailing`/`Steady` do not — the same `withCause` split
+	 * `skelMiniCard` already took a boolean for). A section with a
+	 * remembered count of 0 is omitted entirely, matching the loaded
+	 * page's own `{#if x.length > 0}` gates. On a first-ever visit
+	 * (`shapeHint` null) this falls back to today's fixed shape: one
+	 * `Held`-shaped section of 2, one `Steady`-shaped section of 4.
+	 */
+	const skelSections = $derived(
+		shapeHint
+			? (
+					[
+						['needsYou', shapeHint.needsYou, true],
+						['inMotion', shapeHint.inMotion, true],
+						['held', shapeHint.held, true],
+						['trailing', shapeHint.trailing, false],
+						['steady', shapeHint.steady, false]
+					] as const
+				)
+					.filter(([, count]) => count > 0)
+					.map(([key, count, withCause]) => ({
+						key,
+						withCause,
+						cards: Array.from({ length: Math.min(count, 24) }, (_, i) => i)
+					}))
+			: [
+					{ key: 'held', withCause: true, cards: Array.from({ length: 2 }, (_, i) => i) },
+					{ key: 'steady', withCause: false, cards: Array.from({ length: 4 }, (_, i) => i) }
+				]
+	);
+	const skelShowRail = shapeHint ? shapeHint.showRail : true;
+
+	$effect(() => {
+		if (query.isLoading || query.isError) return;
+		const prior = recallShape<HomeShape>(SHAPE_KEY);
+		rememberShape(SHAPE_KEY, {
+			needsYou: needsYou.length,
+			inMotion: inMotion.length,
+			held: held.length,
+			trailing: trailing.length,
+			steady: steadySectionAll.length,
+			showRail: cards.length > 0,
+			railHBelow1440: prior?.railHBelow1440 ?? 0,
+			railHAt1440: prior?.railHAt1440 ?? 0
+		});
+	});
+
+	// `HomeRail`'s OWN rendered height, measured live — its two cards'
+	// content (deploy counts, lead time, exposure) is not a fixed shape the
+	// way a card HEADER is, so a guessed `rows`/`rowHeight` on the rail's
+	// skeleton can only ever be approximate. Runs in the browser only
+	// (`$effect` never runs during SSR), independent of `query.isLoading`
+	// since the real rail only exists once loading is false anyway.
+	let railEl = $state<HTMLDivElement | null>(null);
+	$effect(() => {
+		if (!railEl) return;
+		const el = railEl;
+		const measure = () => {
+			const h = Math.round(el.getBoundingClientRect().height);
+			if (h <= 0) return;
+			const below1440 = window.innerWidth < 1440;
+			const prior = recallShape<HomeShape>(SHAPE_KEY);
+			rememberShape(SHAPE_KEY, {
+				needsYou: prior?.needsYou ?? 0,
+				inMotion: prior?.inMotion ?? 0,
+				held: prior?.held ?? 2,
+				trailing: prior?.trailing ?? 0,
+				steady: prior?.steady ?? 4,
+				showRail: prior?.showRail ?? true,
+				railHBelow1440: below1440 ? h : (prior?.railHBelow1440 ?? 0),
+				railHAt1440: below1440 ? (prior?.railHAt1440 ?? 0) : h
+			});
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 	// ⛔ THE CAP USED TO FIRE AT 8 REGARDLESS OF WHETHER THE PAGE HAD ROOM.
 	// (2026-09-02) At 1440×900 with the rail beside it, the left column ended
 	// at y=468 while the rail ran to y=924 — 450×857px of empty page under a
@@ -440,34 +567,43 @@
 			two measured heights — never the old undifferentiated 112px square.
 		-->
 		<HeadBandSkeleton leadWidth="w-6" rollupWidth="w-64" class="mb-5" />
-		<div
-			class="min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_320px] min-[1440px]:items-start min-[1440px]:gap-6"
-		>
+		<div class="cc-wrap">
+			<div class="cc-grid">
 			<div class="min-w-0">
-				<section class="mb-8">
-					{@render skelSectionHeader()}
-					<div
-						class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
-					>
-						{#each [0, 1] as n (n)}
-							{@render skelMiniCard(true)}
-						{/each}
-					</div>
-				</section>
-				<section>
-					{@render skelSectionHeader()}
-					<div
-						class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
-					>
-						{#each [0, 1, 2, 3] as n (n)}
-							{@render skelMiniCard(false)}
-						{/each}
-					</div>
-				</section>
+				{#each skelSections as s, i (s.key)}
+					<section class={i < skelSections.length - 1 ? 'mb-8' : ''}>
+						{@render skelSectionHeader()}
+						<div
+							class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+						>
+							{#each s.cards as n (n)}
+								{@render skelMiniCard(s.withCause)}
+							{/each}
+						</div>
+					</section>
+				{/each}
 			</div>
-			<div class="mt-8 min-w-0 space-y-4 min-[1440px]:mt-0">
-				<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={3} rowHeight={20} />
-				<CardSkeleton titleWidth="w-28" rows={4} rowHeight={28} padded={false} />
+			{#if skelShowRail}
+				<!-- ⭐ THE REMEMBERED HEIGHT, NOT A GUESSED `rows`/`rowHeight`.
+				     `HomeRail`'s two cards hold genuinely variable content
+				     (deploy counts, lead time, exposure segments), so a fixed
+				     row count can only approximate their real height — the
+				     `min-height` below (this rail's own last-measured height,
+				     bucketed at the SAME 1440px breakpoint the layout uses)
+				     is what keeps the sections below it from moving once the
+				     real rail replaces this skeleton. Same inline
+				     custom-property pattern as `BannerSkeleton`, never a
+				     class override. -->
+				<div
+					class="cc-rail min-w-0 space-y-4"
+					style="--cc-rail-min-h: {shapeHint?.railHBelow1440 ?? 0}px; --cc-rail-min-h-1440: {shapeHint?.railHAt1440 ??
+						0}px"
+					data-cc-rail-skel
+				>
+					<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={3} rowHeight={20} />
+					<CardSkeleton titleWidth="w-28" rows={4} rowHeight={28} padded={false} />
+				</div>
+			{/if}
 			</div>
 		</div>
 	{:else if query.isError}
@@ -569,9 +705,8 @@
 			do. Re-derive this pair if the container or the 24rem floor moves; do
 			not nudge it.
 		-->
-		<div
-			class="min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_320px] min-[1440px]:items-start min-[1440px]:gap-6"
-		>
+		<div class="cc-wrap">
+			<div class="cc-grid">
 		<div class="min-w-0">
 
 		<!-- Needs you now -->
@@ -1435,17 +1570,65 @@
 
 			<!-- ══ THE RAIL ═══════════════════════════════════════════════════
 			     `mt-8` matches the `mb-8` every section above it carries, so
-			     stacked under the groups below 1440 the rail sits on the page's
-			     own rhythm rather than on a gap of its own invention. At 1440 and
-			     up the grid's `gap-6` owns the space and the margin goes. -->
-			<div class="mt-8 min-w-0 min-[1440px]:mt-0">
+			     stacked under the groups below the container-query breakpoint
+			     the rail sits on the page's own rhythm rather than on a gap of
+			     its own invention. At and above it the grid's `gap-6` owns the
+			     space and the margin goes. -->
+			<div class="cc-rail min-w-0" bind:this={railEl}>
 				<HomeRail {cards} {rollouts} {environments} {localClusterName} />
+			</div>
 			</div>
 		</div>
 	{/if}
 </div>
 
 <style>
+	/*
+	 * ⭐ THE RAIL GOES BESIDE AT THE SAME CONTAINER WIDTH `/apps/<name>`'s
+	 * OWN RAIL DOES, NOT AT A DIFFERENT VIEWPORT BREAKPOINT. (2026-09-04,
+	 * from the human: "home puts the rail beside only from 1440; /apps/
+	 * <name> and /namespaces/<name> from ~1180.") This was a VIEWPORT media
+	 * query (`min-[1440px]`), so home kept its two groups stacked full-width
+	 * for 260px of viewport where `/apps/<name>`'s `.ab-wrap`/`.ab-grid`
+	 * (that file's own `@container (min-width: 860px)`) had already put its
+	 * rail beside the main column — the SAME content box, reading its own
+	 * width two different ways on two pages the "rail is part of the
+	 * layout" rule is supposed to make consistent.
+	 *
+	 * `.cc-wrap`/`.cc-grid`/`.cc-rail` are `.ab-wrap`/`.ab-grid`'s own
+	 * pattern, copied rather than re-derived: `container-type: inline-size`
+	 * on the wrapper, the identical `860px` container threshold, the
+	 * identical `320px` rail track and `24px` gap. Applied to BOTH the
+	 * loaded grid and its skeleton, so the flip test holds at every width —
+	 * a skeleton that switches layout at a different width than the page it
+	 * stands in for is the exact defect this file's own loading-state notes
+	 * exist to catch.
+	 */
+	.cc-wrap {
+		container-type: inline-size;
+	}
+
+	.cc-grid {
+		display: block;
+	}
+
+	.cc-rail {
+		margin-top: 2rem; /* mt-8 */
+	}
+
+	@container (min-width: 860px) {
+		.cc-grid {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) 320px;
+			align-items: start;
+			gap: 24px; /* gap-6 */
+		}
+
+		.cc-rail {
+			margin-top: 0;
+		}
+	}
+
 	/*
 	 * ⭐ F9: A SOLO SECTION LEAVES A THIRD TO HALF OF THE BAND EMPTY, THE SAME
 	 * DEFECT `.rg-solo` CLOSED ON `/rollouts`. (2026-09-03, fourth re-check)
@@ -1490,5 +1673,21 @@
 
 	.cc-grid-solo {
 		grid-template-columns: minmax(min(24rem, 100%), 460px);
+	}
+
+	/* ⭐ THE RAIL SKELETON'S REMEMBERED MIN-HEIGHT. (2026-09-04, load-state
+	   audit finding 5.) Same reason `BannerSkeleton`/`RolloutGrid`'s chip
+	   block moved off a `!important` class override: an inline `style`
+	   attribute sets the two custom properties (this rail's own last real
+	   measurement, or 0 on a first-ever visit) and this component-scoped
+	   rule applies them at the SAME `min-[1440px]` breakpoint the rail's
+	   own layout uses. */
+	[data-cc-rail-skel] {
+		min-height: var(--cc-rail-min-h);
+	}
+	@media (min-width: 1440px) {
+		[data-cc-rail-skel] {
+			min-height: var(--cc-rail-min-h-1440);
+		}
 	}
 </style>

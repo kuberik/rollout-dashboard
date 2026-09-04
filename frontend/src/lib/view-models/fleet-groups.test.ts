@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Rollout, Environment } from '$lib/../types';
 import { buildRolloutCards } from '$lib/rollout-cards';
+import type { RolloutCard } from '$lib/rollout-cards';
 import {
 	isNeedsYou,
 	isInMotion,
@@ -8,7 +9,8 @@ import {
 	isSteady,
 	isPending,
 	isHealthy,
-	fleetGroups
+	fleetGroups,
+	fleetTiebreak
 } from './fleet-groups';
 
 /**
@@ -260,5 +262,74 @@ describe('a failing health check promotes a rollout into Attention', () => {
 		expect(c.checkFailure).toBeNull();
 		expect(isNeedsYou(c)).toBe(false);
 		expect(isTrailing(c)).toBe(true);
+	});
+});
+
+/**
+ * ⭐ THE FLEET'S RENDER ORDER MUST BE A PURE FUNCTION OF THE DATA. (2026-09-04,
+ * coordinator finding: "the home cards reshuffle between loads (4 distinct
+ * orders in 5 reloads) because the sort has ties and the API's list order
+ * varies.") `buildRolloutCards` maps `rollouts` in whatever order the API
+ * response listed them, with no sort of its own — so a bucket with no
+ * primary key (or one whose primary key ties) used to render in that same
+ * unstable order. The backend is being made deterministic too, but these
+ * tests pin the FRONTEND'S OWN guarantee: `fleetGroups`/`fleetTiebreak` must
+ * produce the identical order no matter what order `/api/rollouts` returned
+ * things in.
+ */
+describe('fleetTiebreak: render order does not depend on API list order', () => {
+	// Five rollouts of the SAME app across five namespaces, all healthy and at
+	// the head of their own release ladder — they tie on every bucket
+	// predicate, so without a tiebreak their order is whatever `ROLLOUTS_*`
+	// below happens to be ordered in.
+	const TIERS = ['echo', 'charlie', 'alpha', 'delta', 'bravo'];
+	const steadyRollouts = TIERS.map((tier) => rollout({ tier, current: 'rel-9' }));
+	const steadyEnvironments = TIERS.map(environment);
+
+	/** A handful of distinct permutations of the same five rollouts. */
+	function permutations(): Rollout[][] {
+		const out: Rollout[][] = [steadyRollouts, [...steadyRollouts].reverse()];
+		for (let seed = 1; seed < steadyRollouts.length; seed++) {
+			out.push([...steadyRollouts.slice(seed), ...steadyRollouts.slice(0, seed)]);
+		}
+		return out;
+	}
+
+	it('the Steady bucket lands in the same (namespace-sorted) order for every permutation of the API response', () => {
+		const orders = permutations().map((perm) => {
+			const cards = buildRolloutCards(perm, steadyEnvironments, NOW);
+			return fleetGroups(cards).steady.map((c) => `${c.ns}/${c.name}`);
+		});
+
+		expect(orders[0]).toHaveLength(5);
+		for (const order of orders) {
+			expect(order).toEqual(orders[0]);
+		}
+		// Not an accident of the fixture already being sorted — `TIERS` above
+		// is deliberately NOT alphabetical, so this pins the actual tiebreak
+		// (cluster, then namespace, then name), not input order surviving by
+		// chance.
+		expect(orders[0]).toEqual(
+			['alpha', 'bravo', 'charlie', 'delta', 'echo'].map((tier) => `${APP}-${tier}/${APP}`)
+		);
+	});
+
+	it('fleetTiebreak alone sorts a shuffled card list into (cluster, namespace, name) order', () => {
+		const cards = buildRolloutCards(steadyRollouts, steadyEnvironments, NOW);
+		const shuffled = [...cards].reverse().sort(fleetTiebreak);
+		expect(shuffled.map((c) => c.ns)).toEqual([...cards].map((c) => c.ns).sort());
+	});
+
+	it('is a stable final tiebreak: ties are broken, a real primary key still wins', () => {
+		// Two cards tied on namespace/name/cluster but not on a caller's own
+		// primary key (e.g. `needsYou`'s failed-first sort) must still resolve
+		// by that primary key first.
+		const a: RolloutCard = { ns: 'z', name: 'z', sourceCluster: '', sourceURL: '' } as RolloutCard;
+		const b: RolloutCard = { ns: 'a', name: 'a', sourceCluster: '', sourceURL: '' } as RolloutCard;
+		const byPrimaryThenTiebreak = (x: RolloutCard, y: RolloutCard) => {
+			const primary = 0; // tied on the caller's own key
+			return primary !== 0 ? primary : fleetTiebreak(x, y);
+		};
+		expect([a, b].sort(byPrimaryThenTiebreak)).toEqual([b, a]);
 	});
 });

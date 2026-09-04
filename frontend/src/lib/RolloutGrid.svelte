@@ -38,6 +38,7 @@
 	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
 	import SkeletonChip from '$lib/components/skeleton/SkeletonChip.svelte';
 	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
+	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 
@@ -386,6 +387,104 @@
 	});
 
 	/**
+	 * ⭐ THE REMEMBERED SHAPE. (2026-09-04, load-state audit findings 4/5:
+	 * "the chip block reservation (205px) is 52px more than the real block
+	 * (153px)" at 390, and "`/rollouts` reserves fewer group/card counts
+	 * than the fleet has".) The skeleton below can only guess at the
+	 * FILTERED-DATA-DEPENDENT numbers — how many namespace groups, how many
+	 * cards in them, and how tall the chip row wraps to at THIS width —
+	 * because none of them are known before `/api/rollouts` answers even
+	 * once. `SHAPE_KEY` remembers the unfiltered fleet's own shape (not the
+	 * currently-filtered one — a search box emptied on the next visit must
+	 * not shrink the skeleton) and the filter row's real rendered height,
+	 * separately for the two widths that give it a different wrap count, so
+	 * the NEXT visit's skeleton matches this one's last-known composition
+	 * instead of a fixed guess.
+	 */
+	const SHAPE_KEY = 'rollouts';
+	type RolloutsShape = {
+		groups: number;
+		/**
+		 * ⭐ PER-GROUP COUNTS, NOT ONE AVERAGE. (2026-09-04, re-check via
+		 * `pairtwice.mjs`'s own second-visit measurement) A single averaged
+		 * `cardsPerGroup` applied to EVERY group compounds: a fleet whose
+		 * namespaces hold 1, 2, 1, 2, 2, 1, 2, 2, 2 rollouts (this cluster)
+		 * skeletons all nine at "2", so the fifth-plus group's cumulative
+		 * position error reached 256px at 390 before this fix. `ShapeValue`
+		 * only allows number/boolean/string — no arrays — so the per-group
+		 * counts are serialised as a comma-joined string, in the SAME
+		 * namespace-sort order `grouped` itself produces, and parsed back
+		 * on read. Still "counts, not data": no namespace/app name is
+		 * stored, only how many cards each group in sort order held.
+		 */
+		groupSizes: string;
+		chipBlockHMobile: number;
+		chipBlockHDesktop: number;
+	};
+	const shapeHint = recallShape<RolloutsShape>(SHAPE_KEY);
+
+	// Capped generously — this only bounds how large a SKELETON can get on a
+	// huge fleet's next visit, never the real grid.
+	const skelGroupSizes: number[] = (shapeHint?.groupSizes ?? '')
+		.split(',')
+		.map((s) => Math.max(1, Math.min(6, parseInt(s, 10) || 1)))
+		.filter((n) => Number.isFinite(n))
+		.slice(0, 12);
+	const skelGroups: Array<{ key: number; cards: number[] }> =
+		skelGroupSizes.length > 0
+			? skelGroupSizes.map((n, gi) => ({ key: gi, cards: Array.from({ length: n }, (_, i) => i) }))
+			: [
+					{ key: 0, cards: [0, 1] },
+					{ key: 1, cards: [0, 1] }
+				];
+
+	let filterBarEl = $state<HTMLDivElement | null>(null);
+
+	$effect(() => {
+		// Read reactively so the effect re-runs when the fleet's own grouping
+		// changes shape (not on every filter/search keystroke — `grouped` and
+		// `cards` are keyed off the UNFILTERED `cards` list's own namespace
+		// spread, `filtered`/`grouped` narrow by SEARCH too, so use `cards`
+		// directly for the count that should survive a cleared search box).
+		if (query.isLoading || cards.length === 0) return;
+		const byNs = new Map<string, number>();
+		for (const c of cards) byNs.set(c.ns, (byNs.get(c.ns) ?? 0) + 1);
+		const sizes = [...byNs.keys()].sort().map((ns) => byNs.get(ns)!);
+		const prior = recallShape<RolloutsShape>(SHAPE_KEY);
+		rememberShape(SHAPE_KEY, {
+			groups: sizes.length,
+			groupSizes: sizes.join(','),
+			chipBlockHMobile: prior?.chipBlockHMobile ?? 205,
+			chipBlockHDesktop: prior?.chipBlockHDesktop ?? 71
+		});
+	});
+
+	// The filter row's OWN rendered height, measured live rather than
+	// guessed — see `SHAPE_KEY`'s note. Runs only once the real filter bar
+	// (not its skeleton) is on the page, and only in the browser (`$effect`
+	// never runs during SSR).
+	$effect(() => {
+		if (!filterBarEl || query.isLoading || cards.length === 0) return;
+		const el = filterBarEl;
+		const measure = () => {
+			const h = Math.round(el.getBoundingClientRect().height);
+			if (h <= 0) return;
+			const mobile = window.innerWidth < 640;
+			const prior = recallShape<RolloutsShape>(SHAPE_KEY);
+			rememberShape(SHAPE_KEY, {
+				groups: prior?.groups ?? 2,
+				groupSizes: prior?.groupSizes ?? '2,2',
+				chipBlockHMobile: mobile ? h : (prior?.chipBlockHMobile ?? 205),
+				chipBlockHDesktop: mobile ? (prior?.chipBlockHDesktop ?? 71) : h
+			});
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	/**
 	 * ⭐ THE GRID MUST FILL ITS ROW — SUPERSEDES THE 2026-09-02 460px CAP
 	 * BELOW, THE SAME DAY. (design re-check, 1440 light + 390 dark)
 	 *
@@ -683,13 +782,21 @@
 		     bordered-list skeleton's guessed geometry. -->
 		<!-- ⭐ AN EXPLICIT MIN-HEIGHT, NOT A HOPE THAT THE PLACEHOLDER CHIPS
 		     WRAP THE SAME WAY THE REAL ELEVEN DO. (measured live via
-		     `pair.mjs`: 71px at 1440, 205px at 390 — this row's own content
-		     is genuinely data-dependent, so a placeholder's own flex-wrap
-		     cannot be trusted to land on the same row count as real chip
-		     TEXT at real WIDTHS; the min-height is what keeps the first
-		     card group from landing 34px+ low regardless.) -->
+		     `pair.mjs`: 71px at 1440, a GUESSED 205px at 390 against the real
+		     153px — this row's own content is genuinely data-dependent, so a
+		     placeholder's own flex-wrap cannot be trusted to land on the same
+		     row count as real chip TEXT at real WIDTHS. `shapeHint`'s
+		     `chipBlockHMobile`/`chipBlockHDesktop` are this page's OWN last
+		     real measurement (see the `$effect` above `filterBarEl`'s
+		     binding), read via inline CSS custom properties rather than a
+		     second `!important` class — the same reason `BannerSkeleton`
+		     stopped taking a class override. Falls back to the old guess only
+		     on a first-ever visit, when nothing is remembered yet. -->
 		<div
-			class="mb-4 flex min-h-[205px] flex-wrap items-center gap-x-3 gap-y-2 sm:min-h-[71px]"
+			class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
+			style="--rg-chip-block-min-h: {shapeHint?.chipBlockHMobile ?? 205}px; --rg-chip-block-min-h-sm: {shapeHint?.chipBlockHDesktop ??
+				71}px"
+			data-rg-chip-skel
 			aria-hidden="true"
 		>
 			<div class="relative w-full sm:w-80 sm:flex-none">
@@ -709,7 +816,7 @@
 			</div>
 		</div>
 	{:else if cards.length > 0}
-		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2" bind:this={filterBarEl}>
 			<!-- ⛔ A FIXED WIDTH, NOT `flex-1`. (2026-09-03, from the human: "search is
 			     visually broken on rollout list.") As `min-w-0 flex-1` beside a
 			     filter group whose max-content is ~1195px, this box got whatever
@@ -917,9 +1024,19 @@
 			1440 and the 1-column stack at 390 fall out of the SAME CSS the
 			loaded page uses, and the first card lands where its placeholder
 			was instead of the +115 (1440) / +249 (390) the audit measured.
+
+			⭐ `skelGroups`, NOT A FIXED `[0, 1]`. (load-state audit finding 5:
+			"reserves fewer cards than the fleet has"; re-check via
+			`pairtwice.mjs`: a single AVERAGED card count applied to every
+			group compounded to a 256px drift by the last group on a fleet
+			whose namespaces hold different counts.) Sized from `shapeHint`
+			— this page's own PER-NAMESPACE counts, remembered after the
+			previous visit's data settled — so a fleet of 15 rollouts across
+			9 namespaces of 1-2 each reserves 9 groups of THEIR OWN sizes,
+			not 2 groups of a fleet-wide average.
 		-->
 		<div class="space-y-6">
-			{#each [0, 1] as g (g)}
+			{#each skelGroups as g (g.key)}
 				<section class="rg-cq">
 					<div>
 						<div
@@ -934,7 +1051,7 @@
 							</div>
 						</div>
 						<div class="rg-grid grid gap-2 rg-grid-multi">
-							{#each [0, 1] as c (c)}
+							{#each g.cards as c (c)}
 								<div
 									class="flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800"
 									style="height: 100px"
@@ -1470,6 +1587,22 @@
 		.rg-grid-multi,
 		.rg-grid-solo {
 			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+
+	/* ⭐ THE CHIP-BLOCK SKELETON'S REMEMBERED MIN-HEIGHT. (2026-09-04,
+	   load-state audit finding 4.) Same reason `BannerSkeleton` moved off a
+	   `!important` class override: an inline `style` attribute sets the two
+	   custom properties (`shapeHint`'s last real measurement, or the old
+	   guess on a first-ever visit) and this component-scoped rule is what
+	   actually applies them per breakpoint, so a caller/skeleton never has
+	   to out-cascade a second `!important` declaration. */
+	[data-rg-chip-skel] {
+		min-height: var(--rg-chip-block-min-h);
+	}
+	@media (min-width: 640px) {
+		[data-rg-chip-skel] {
+			min-height: var(--rg-chip-block-min-h-sm);
 		}
 	}
 </style>
