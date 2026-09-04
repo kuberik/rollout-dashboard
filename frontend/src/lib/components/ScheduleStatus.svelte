@@ -10,7 +10,9 @@
 	import AlertPanel from './AlertPanel.svelte';
 	import type { BlockingStory } from '$lib/view-models/blocking-story';
 	import { iconForStory } from './BlockingStoryPanel.svelte';
-	import { formatAbsoluteReopen } from '$lib/api/schedules';
+	import { formatAbsoluteReopen, scheduleWindowQueryKey } from '$lib/api/schedules';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { apiJson, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 
 	type RolloutSchedule = {
 		metadata: { name: string; namespace: string };
@@ -97,9 +99,84 @@
 		onMeta?: (text: string | null) => void;
 	} = $props();
 
-	let allSchedules = $state<Array<RolloutSchedule | ClusterRolloutSchedule>>([]);
-	let loading = $state(true);
-	let error = $state('');
+	/**
+	 * ⭐ PERF-2026-09-04 §C.7 THIRD FOLLOW-UP — ON THE QUERY CLIENT, NOT A
+	 * HAND-ROLLED `setInterval`.
+	 *
+	 * This used to be its own `fetch` + `$effect` + `setInterval(run, 30000)`,
+	 * entirely outside TanStack: it never saw the change stream, never
+	 * consulted `pollWhenHealthy`, and never got invalidated by a
+	 * RolloutSchedule/ClusterRolloutSchedule event — one `/schedules` request
+	 * every 30s, forever, stream healthy or not. Measured on the Overview
+	 * with a schedule gate: 1 request/30s regardless of anything the stream
+	 * already knew about.
+	 *
+	 * ⛔ KEEP THE SINGLE-PRIMITIVE-KEY LESSON. The ORIGINAL version of this
+	 * effect read `rollout.metadata.namespace`/`.name` directly inside the
+	 * effect body, so Svelte 5 tracked every property read on the whole
+	 * reactive `rollout` object graph as a dependency — measured 153
+	 * identical `/schedules` requests in 15 seconds (~10/s) on the one app
+	 * with a schedule gate. The fix was `scheduleKey`, ONE derived string
+	 * primitive as the effect's only tracked dependency. `createQuery`'s own
+	 * `queryKey` is exactly that discipline, done the TanStack way:
+	 * `scheduleWindowQueryKey` returns an array of PRIMITIVES (namespace,
+	 * name, cluster — never the `rollout` object itself), so the query only
+	 * re-subscribes when the rollout's IDENTITY changes, never when a poll
+	 * or an unrelated field replaces the object.
+	 *
+	 * ⭐ ONE KEY, RECONCILED. `rollout-schedule-window` was already a
+	 * recognized tag in `events.ts`'s per-kind invalidation map (added
+	 * ahead of this component's own move, for `revisions`' on-demand
+	 * `fetchScheduleWindow` calls) and a RolloutSchedule/ClusterRolloutSchedule
+	 * event already invalidates it there — so wiring this component onto the
+	 * SAME key needed no further change to the invalidation map, only to
+	 * this component.
+	 */
+	const scheduleNamespace = $derived(rollout?.metadata?.namespace ?? '');
+	const scheduleName = $derived(rollout?.metadata?.name ?? '');
+
+	async function fetchAllSchedules(
+		namespace: string,
+		name: string,
+		clusterName?: string
+	): Promise<Array<RolloutSchedule | ClusterRolloutSchedule>> {
+		const clusterParam = clusterName ? `?cluster=${encodeURIComponent(clusterName)}` : '';
+		const data = await apiJson<{
+			rolloutSchedules?: { items?: RolloutSchedule[] };
+			clusterRolloutSchedules?: { items?: ClusterRolloutSchedule[] };
+		}>(`/api/rollouts/${namespace}/${name}/schedules${clusterParam}`);
+		return [...(data.rolloutSchedules?.items ?? []), ...(data.clusterRolloutSchedules?.items ?? [])];
+	}
+
+	const schedulesQuery = createQuery(() => ({
+		queryKey: scheduleWindowQueryKey(scheduleNamespace, scheduleName, cluster),
+		queryFn: () => fetchAllSchedules(scheduleNamespace, scheduleName, cluster),
+		enabled: !!scheduleNamespace && !!scheduleName,
+		staleTime: staleTimeWhenHealthy(15000, 30000),
+		refetchInterval: pollWhenHealthy(30000, 60000)
+	}));
+
+	let allSchedules = $derived(schedulesQuery.data ?? []);
+	// `isPending` (no data yet, still on the FIRST fetch) — not `isLoading`
+	// (`isPending && isFetching`), which would flip back to true on every
+	// background poll and make the popover/banner flicker away and back on a
+	// 30-60s cadence forever. See `$lib/api/errors`'s own doc comment on why
+	// `isLoading` is the wrong primitive for this.
+	let loading = $derived(schedulesQuery.isPending);
+	let error = $derived(
+		schedulesQuery.isError
+			? schedulesQuery.error instanceof Error
+				? schedulesQuery.error.message
+				: 'Failed to load schedules'
+			: ''
+	);
+	// `onSchedules` hands the fetched objects UP to the parent — same
+	// semantics as the old callback at the end of the old `fetchSchedules`,
+	// now firing off the query's own data instead of a local `$state` write.
+	$effect(() => {
+		if (schedulesQuery.data) onSchedules?.(schedulesQuery.data);
+	});
+
 	let dismissedWarnings = $state<Set<string>>(new Set());
 
 	// Derived state for UI
@@ -348,56 +425,6 @@
 		} catch (e) {
 			// Ignore localStorage errors
 		}
-	});
-
-	// Takes its identifiers as ARGUMENTS. It used to read `rollout.metadata.*`
-	// and `cluster` off reactive state, and it was called from inside an
-	// `$effect` — so every one of those reads was a tracked dependency and the
-	// effect re-subscribed continuously. Measured on the one app that has a
-	// schedule gate: 153 identical `/schedules` requests in 15 seconds, ~10/s,
-	// while an app WITHOUT a schedule gate sat at 9 total. Same class of defect
-	// as the `/commits` storm, in a different mechanism: this one is a Svelte 5
-	// effect-dependency bug, not a query-config bug.
-	async function fetchSchedules(namespace: string, name: string, clusterName?: string) {
-		try {
-			const clusterParam = clusterName ? `?cluster=${encodeURIComponent(clusterName)}` : '';
-			const response = await fetch(
-				`/api/rollouts/${namespace}/${name}/schedules${clusterParam}`
-			);
-			if (!response.ok) throw new Error('Failed to fetch schedules');
-
-			const data = await response.json();
-			const rolloutSchedules = data.rolloutSchedules?.items || [];
-			const clusterSchedules = data.clusterRolloutSchedules?.items || [];
-			allSchedules = [...rolloutSchedules, ...clusterSchedules];
-			onSchedules?.(allSchedules);
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load schedules';
-		} finally {
-			loading = false;
-		}
-	}
-
-	// One primitive key is the effect's ONLY tracked dependency, so it
-	// re-subscribes when the rollout identity genuinely changes and never
-	// because a poll replaced an object.
-	const scheduleKey = $derived(
-		`${rollout?.metadata?.namespace ?? ''}/${rollout?.metadata?.name ?? ''}/${cluster ?? ''}`
-	);
-
-	$effect(() => {
-		const [ns, name, clusterName] = scheduleKey.split('/');
-		if (!ns || !name) return;
-		let cancelled = false;
-		const run = () => {
-			if (!cancelled) void fetchSchedules(ns, name, clusterName || undefined);
-		};
-		run();
-		const interval = setInterval(run, 30000);
-		return () => {
-			cancelled = true;
-			clearInterval(interval);
-		};
 	});
 
 	function formatTimeUntil(isoString: string): string {

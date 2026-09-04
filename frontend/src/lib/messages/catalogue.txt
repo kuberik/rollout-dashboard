@@ -391,7 +391,6 @@ lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	Deploys pause outside business hours
 lib/components/ScheduleStatus.svelte	code	Deploys pause outside business hours · reopens …
-lib/components/ScheduleStatus.svelte	code	Failed to fetch schedules
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
 lib/components/SourceViewer.svelte	code	Failed to fetch files
