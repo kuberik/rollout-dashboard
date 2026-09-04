@@ -36,3 +36,26 @@ Clean: command palette (populated at 18–20 ms), in-app navigation swaps to the
 
 ## Left unmeasured
 Dark at 1440 for most routes; a production build over a real network (dev server module loading swamps CDP throttling); error/empty branches; the mobile tab bar height during load; `/namespaces/<name>` and `?deploy=` / `?release=` deep links that scroll after data.
+
+## Outcome (same day, commits 45912bf … 452cf92)
+One primitive (`lib/components/skeleton/`), every page's skeleton authored from its own container/grid/rail, chrome arity-stable (navbar GitHub slot reserved at the remembered shape, Logs toolbar, tab strip reserved only while unknown), rollups and gate kinds withheld until known (`blockingStory.kindPending`; pages that never load schedules opt out), and skeletons that remember each page's last composition (`lib/skeleton-hints.ts`). Measured with `tools/loadaudit/pair.mjs` on a quiet checkout:
+
+| finding | before | after |
+|---|---|---|
+| 1 rollout Overview rail | Recent events +492 / +716 px | 0 px; hero 28 px (description unknowable) |
+| 2 /activity pill row | +373 / +441 | ≈2 / ≈16 (390 rows wrap by content, ~96 on second visit) |
+| 3 tab strip | Logs +147, 390 tabs re-width | 0 while unknown; removed once known (sweep regression fixed) |
+| 4 wrong gate kind | printed until /schedules | bar until known, on every surface |
+| 5 navbar Search | −166 / −113 | 0 / 0 (first visit reserves the not-connected shape) |
+| 6 /rollouts | +115 / +249 | 0 at 1440; 390 rows wrap by content (52–128) |
+| 7 /environments | +220 | ≈8 / ≈34 (banner text wraps) |
+| 8 / | −52 / −48 | 0 / 0; list length remembered |
+| 9 /revisions | +427 | ≈17 |
+| 10 /apps | 336 px width error | ≈8 |
+| 11 spinners | lone spinner | skeleton compositions |
+| 12 dialog step 2 | prose + raw id | reserved geometry, bars; Pin row 64 → 1 px |
+| 13 /envs/prod | +48, 134 px tall | ≈18 |
+| 14 Logs toolbar | Source −115, row −16 | 0 / 0 |
+| 15 dialog width step | 512 → 896 | kept (documented ruling) |
+
+Residue accepted: text that wraps by content at 390 (rollouts, activity, environments), a rollout's description line before its payload, list lengths on a first-ever visit. The sweep that verified this also found the lists reshuffling between loads (fixed in the backend, e7170b6) and a scanner blind spot hiding 90 strings from the census (1c05d6f).
