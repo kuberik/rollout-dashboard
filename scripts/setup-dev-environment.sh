@@ -58,6 +58,18 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   --set prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues=false \
   --wait
 
+# Install metrics-server (`kubectl top`, HPA). Kind's kubelet serving certs
+# aren't signed for metrics-server's default TLS verification, so it needs
+# the kind-recommended --kubelet-insecure-tls patch. `kubectl apply` is
+# idempotent; the args patch is only applied if the flag isn't already
+# present so re-running this script doesn't pile up duplicate args.
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+if ! kubectl get deployment metrics-server -n kube-system -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -q -- '--kubelet-insecure-tls'; then
+  kubectl patch deployment metrics-server -n kube-system --type=json \
+    -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+fi
+kubectl wait --for=condition=Available --timeout=300s deployment/metrics-server -n kube-system
+
 kubectl create ns envoy-gateway-system -o yaml --dry-run=client | kubectl apply -f -
 kubectl apply --server-side --force-conflicts -f https://github.com/envoyproxy/gateway/releases/download/v1.6.0/install.yaml
 kubectl wait --for=condition=Available --timeout=300s deployment/envoy-gateway -n envoy-gateway-system
