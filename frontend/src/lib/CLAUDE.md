@@ -891,3 +891,28 @@ scrolling. it should be fixed in place."*
 
 `sm` is the seam because it is where the sidebar appears and the tab bar leaves. Do not add a
 third model; if a component needs "the scroller", ask `getComputedStyle(main).overflowY`.
+
+## Loading states (2026-09-04, `.agents-context/LOAD-STATE-AUDIT-2026-09-04.md`)
+
+`lib/components/skeleton/` (`CardSkeleton`, `SkeletonBar`, `SkeletonChip`, `HeadBandSkeleton`,
+`BannerSkeleton`) is the one primitive every loading branch is authored FROM, not a bare
+`animate-pulse` div of a guessed height. The rules the audit's 15 findings all reduce to:
+
+- **The flip test.** Screenshot the skeleton, screenshot the loaded page, diff them: nothing may
+  move. A skeleton that merely "looks loading" but has different geometry is the defect, not a
+  cosmetic gap.
+- **Reserve fixed chrome first** — head band (28px), search/filter bars, section labels, card
+  headers (47px), tab strips, the blocking banner when its existence is already known. It's free
+  (no request needed) and it's where the tap targets are.
+- **Chrome is arity-stable.** No tab, rail card, or action-row member may appear or disappear
+  after first paint — a conditional member renders its slot (disabled, fixed width) from frame
+  one. `flex-1` tab strips are the worst case: a late-inserted tab re-widens every sibling.
+- **Never print an uncomputed rollup or an unknown gate kind.** `2/2 done` before the 5th stage
+  is known, or `A check is not passing` before `/schedules` has answered whether it's actually a
+  clock gate, are finished sentences that are wrong. Render `SkeletonBar` instead — sized to the
+  final text's width class — until the value is real.
+- **A card's placeholder is the card, header included.** `CardSkeleton` always draws the 47px
+  header (icon square, title bar, optional rollup bar); a card with a body but no header-shaped
+  skeleton is a different composition from the one that replaces it.
+- **The rail is part of the layout.** A two-column page whose skeleton is one column (or three)
+  is a different design, not a simplification.

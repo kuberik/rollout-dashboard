@@ -175,8 +175,23 @@
 	// `onSchedules` hands the fetched objects UP to the parent — same
 	// semantics as the old callback at the end of the old `fetchSchedules`,
 	// now firing off the query's own data instead of a local `$state` write.
+	//
+	// ⭐ FIRES ONCE THE QUERY HAS SETTLED, NOT ONLY WHEN `data` IS TRUTHY.
+	// (2026-09-04, load-state audit finding 4) The old guard —
+	// `if (schedulesQuery.data)` — never fired while pending, which is
+	// correct, but it ALSO never fired on a genuine "resolved, nothing to
+	// report" (an empty array is falsy-ish only in the sense that the
+	// parent's own `$state` default was already `[]`, so the two looked
+	// identical). A parent building a `GateContext` from that state could
+	// not tell "schedules not asked for yet" from "asked, and there are
+	// none" — exactly the ambiguity `GateContext.schedulesLoaded` exists to
+	// remove (see `blocking-story.ts`). `!isPending` fires on success AND
+	// on a genuine failure — a request that will not succeed must not hold
+	// every gate it might have explained in `pending` forever — and always
+	// hands over a real array (`data ?? []`), never leaving the parent to
+	// guess.
 	$effect(() => {
-		if (schedulesQuery.data) onSchedules?.(schedulesQuery.data);
+		if (!schedulesQuery.isPending) onSchedules?.(schedulesQuery.data ?? []);
 	});
 
 	let dismissedWarnings = $state<Set<string>>(new Set());

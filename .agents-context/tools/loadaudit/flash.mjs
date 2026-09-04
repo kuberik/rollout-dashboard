@@ -11,7 +11,7 @@ let last='';
 const end=Date.now()+22000;
 const episodes=[];
 while(Date.now()<end){
-  let s=null; try{s=await p.evaluate(()=>({p:document.querySelectorAll('.animate-pulse').length,h:document.documentElement.scrollHeight,t:(document.querySelector('main')||document.body).innerText.replace(/\s+/g,' ').trim().length}));}catch{}
+  let s=null; try{s=await p.evaluate(()=>({p:document.querySelectorAll('.animate-pulse, .skel-block').length,h:document.documentElement.scrollHeight,t:(document.querySelector('main')||document.body).innerText.replace(/\s+/g,' ').trim().length}));}catch{}
   if(s){const k=s.p+'|'+s.h+'|'+s.t; if(k!==last){console.log((Date.now()-t0+'').padStart(6),'STATE pulses='+s.p,'scrollH='+s.h,'textlen='+s.t); last=k;}}
   await new Promise(r=>setTimeout(r,100));
 }

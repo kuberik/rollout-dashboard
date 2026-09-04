@@ -66,6 +66,22 @@
 	);
 
 	/**
+	 * ⭐ HAS THE EVIDENCE FOR `hasEnvironment`/`hasDependencies` ITSELF
+	 * ARRIVED YET? (2026-09-04, load-state audit finding 3: "Three tabs then
+	 * four: `Logs` moves +147px at 1440; at 390 the `flex-1` tabs re-width
+	 * 114→86 so `History` moves −42px and a finger over it lands on
+	 * `Dependencies`.") `hasEnvironment` rides `rolloutQuery` and
+	 * `hasDependencies` rides `listQuery` — two different requests that do
+	 * not resolve in the same frame, so the strip painted 3 tabs, then
+	 * silently became 4 once the slower one landed. `depsKnown` is `true`
+	 * only once BOTH have answered, which is what `tabs` below reads to
+	 * decide whether the Dependencies tab is `pending` (reserve the slot,
+	 * disabled), `active` (a real fourth tab) or `hidden` (this rollout
+	 * genuinely has neither — the pre-existing, correct final state).
+	 */
+	const depsKnown = $derived(rolloutQuery.data !== undefined && listQuery.data !== undefined);
+
+	/**
 	 * ⭐ A `RolloutDependency` IS AN EDGE AND IT HAS TWO ENDS. THIS USED TO
 	 * MATCH ONE.
 	 *
@@ -90,9 +106,23 @@
 		)
 	);
 
+	/**
+	 * ⭐ ARITY-STABLE: ALWAYS FOUR ENTRIES, NEVER THREE-THEN-FOUR.
+	 * (2026-09-04, load-state audit finding 3) The Dependencies tab used to
+	 * be filtered OUT of this array entirely until `show` resolved true,
+	 * which is what let the strip's own `flex-1` siblings re-width mid-
+	 * visit. It is always in the array now; `state` says how to RENDER it —
+	 * `'pending'` reserves the exact slot a real fourth tab would take
+	 * (disabled, muted) while `depsKnown` is false, `'active'` is the
+	 * unchanged final "yes" state, and `'hidden'` is the unchanged final
+	 * "no" state — rendered `invisible` (not removed), so even a rollout
+	 * that genuinely has neither an `Environment` nor a `RolloutDependency`
+	 * keeps the OTHER three tabs at the exact width four tabs would give
+	 * them. See the template below for how each `state` renders.
+	 */
 	const tabs = $derived([
-		{ label: 'Overview', href: base, icon: ObjectsColumnSolid, show: true },
-		{ label: 'History', href: `${base}/history`, icon: ClockArrowOutline, show: true },
+		{ label: 'Overview', href: base, icon: ObjectsColumnSolid, state: 'active' as const },
+		{ label: 'History', href: `${base}/history`, icon: ClockArrowOutline, state: 'active' as const },
 		// ⛔ THE ICON IS A GRAPH, NOT A STACK. `LayersSolid` was chosen when this
 		// tab was called `Environments` — stacked layers read as stacked
 		// environments — and it survived the rename. For a relation BETWEEN two
@@ -105,9 +135,12 @@
 			label: 'Dependencies',
 			href: `${base}/dependencies`,
 			icon: ShareNodesSolid,
-			show: hasEnvironment || hasDependencies
+			state: (!depsKnown ? 'pending' : hasEnvironment || hasDependencies ? 'active' : 'hidden') as
+				| 'pending'
+				| 'active'
+				| 'hidden'
 		},
-		{ label: 'Logs', href: `${base}/logs`, icon: TerminalOutline, show: true }
+		{ label: 'Logs', href: `${base}/logs`, icon: TerminalOutline, state: 'active' as const }
 	]);
 
 	const isActive = (href: string) => {
@@ -125,16 +158,23 @@
 	   width above ~460px shows all four) purely because it is not dead
 	   centre, which reads as the page fighting the reader's own scroll.
 
-	   ⚠️ `void activeUrl` ALONE MISSES THE CASE THAT ACTUALLY OVERFLOWS.
-	   `tabs`' `Dependencies` entry is gated on `hasEnvironment || hasDependencies`,
-	   both read off async queries — on first paint the strip can be THREE
-	   tabs (fits in 449px) and only becomes FOUR (488px, the overflowing
-	   case) once a query resolves, a render the effect has to see to react
-	   to. Depending on `tabs` itself (not just `activeUrl`) makes Svelte
-	   re-run this the moment that tab is inserted, which a `ResizeObserver`
-	   on the strip does not catch — `overflow-x-auto` means the strip's OWN
-	   box never changes size when a child is added, only its `scrollWidth`
-	   does, and a `ResizeObserver` reports box size, not scroll size. */
+	   ⚠️ `void activeUrl` ALONE USED TO MISS THE CASE THAT ACTUALLY
+	   OVERFLOWS, BEFORE THE TAB STRIP BECAME ARITY-STABLE. (2026-09-04,
+	   load-state audit finding 3) `tabs`' `Dependencies` entry used to be
+	   FILTERED OUT of the array while `hasEnvironment || hasDependencies`
+	   was still resolving, so the strip could paint THREE tabs (fits in
+	   449px) and silently become FOUR (488px, the overflowing case) once a
+	   query resolved — a `scrollWidth` change with no `activeUrl` change to
+	   trigger this effect. All four entries render on every paint now (see
+	   `tabs`' own comment); the `Dependencies` slot's WIDTH never changes,
+	   only its `state` (`pending` → `active`/`hidden`) — `hidden` is
+	   `invisible`, not removed, so it still occupies its flex-1 share and
+	   `scrollWidth` is constant across every state transition. Depending on
+	   `tabs` itself (not just `activeUrl`) is kept anyway: a direct load of
+	   `/dependencies` while its tab is still `pending` needs this effect to
+	   re-run the moment `state` flips to `active` and `aria-current` lands
+	   on it, which a `ResizeObserver` (box size, not scroll position) would
+	   not catch either. */
 	let tabStripEl = $state<HTMLDivElement | null>(null);
 
 	$effect(() => {
@@ -251,13 +291,37 @@
 		     its parent — keeps every tab reachable without widening the page. -->
 		<div bind:this={tabStripEl}
 			class="mx-auto flex w-full max-w-7xl items-stretch overflow-x-auto px-4 no-scrollbar sm:justify-start sm:gap-0 sm:px-6">
-			{#each tabs.filter((t) => t.show) as t (t.href)}
-				{@const active = isActive(t.href)}
+			<!--
+				⭐ NO `.filter()` HERE ANY MORE — SEE `tabs`' OWN COMMENT. All four
+				entries render on every paint; `state` decides the TREATMENT, not
+				presence:
+				  'active'  — the unchanged tab, a real `<a href>`.
+				  'pending' — the slot is reserved (same box, same flex-1 share)
+				              but the tab is not yet a destination: no `href` (an
+				              anchor with none is neither focusable nor a link),
+				              `aria-disabled`, muted ink.
+				  'hidden'  — this rollout has neither an `Environment` nor a
+				              `RolloutDependency`, so this tab is never a real
+				              destination — `invisible` (NOT `display:none` /
+				              removed) keeps its flex-1 share reserved so `Logs`
+				              and the other siblings do not re-width the moment
+				              this resolves, `aria-hidden` + `tabindex="-1"` keeps
+				              it out of the a11y tree and the tab order.
+			-->
+			{#each tabs as t (t.href)}
+				{@const active = t.state === 'active' && isActive(t.href)}
+				{@const pending = t.state === 'pending'}
+				{@const hidden = t.state === 'hidden'}
 				<a
-					href={t.href}
+					href={t.state === 'active' ? t.href : undefined}
 					aria-current={active ? 'page' : undefined}
+					aria-disabled={pending ? 'true' : undefined}
+					aria-hidden={hidden ? 'true' : undefined}
+					tabindex={t.state === 'active' ? undefined : -1}
 					title={t.label}
 					class="group flex flex-1 flex-col items-center justify-center gap-0.5 border-b-2 px-1 py-2 text-[10px] font-medium transition-colors sm:flex-initial sm:shrink-0 sm:flex-row sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm
+						{hidden ? 'invisible' : ''}
+						{pending ? 'cursor-default opacity-40' : ''}
 						{active
 							? 'border-gray-900 text-gray-900 dark:border-white dark:text-white'
 							: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"

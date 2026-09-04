@@ -154,7 +154,20 @@ export type StoryIconKind =
 	| 'dependency'
 	| 'promotion'
 	| 'clock'
-	| 'check';
+	| 'check'
+	/**
+	 * ⭐ THE STORY'S KIND IS NOT KNOWN YET, NOT THAT IT IS UNKNOWABLE.
+	 * (2026-09-04) Picked only when the icon would otherwise have been
+	 * `check` on the strength of a gate that is itself `pending` (see
+	 * `ClassifiedGate.pending`) — i.e. the ONLY evidence for "check" is the
+	 * absence of a schedule join that has not been asked for yet. A glyph
+	 * is a claim about KIND (`../../CLAUDE.md`: "a mark that is not true of
+	 * its kind is worse than no mark"), and `check`'s shield glyph is a
+	 * claim this gate might not deserve once `/schedules` answers. A
+	 * renderer that sees `'pending'` should skeleton the icon slot, not
+	 * print a glyph for it.
+	 */
+	| 'pending';
 
 export type ClassifiedGate = {
 	/** The Kubernetes object name. A HANDLE — never a headline, never a label. */
@@ -252,6 +265,28 @@ export type ClassifiedGate = {
 	 * than the reader's own zone, which is at least a NAMED zone.
 	 */
 	timezone: string | null;
+	/**
+	 * ⭐ TRUE ONLY FOR ONE SHAPE: a gate that fell to the `check` fallback
+	 * (not passing, no window in `GateContext.schedule`) BEFORE
+	 * `schedulesLoaded` was true. (2026-09-04, load-state audit finding 4)
+	 *
+	 * It is not a permanent classification like `unknown` — `unknown` means
+	 * "we asked every source and none of them can attribute this gate";
+	 * `pending` means "we have not asked the one source that would settle
+	 * whether this is really a `check` or actually a `clock` gate yet". A
+	 * caller that prints `short`/`clause`/`label` for a gate with
+	 * `pending: true` is printing a confident claim the model itself does
+	 * not yet believe — render a `SkeletonBar` in its place instead (see
+	 * `../../CLAUDE.md`'s "Loading states" section) until `blockingStory` is
+	 * recomputed with a `GateContext` where `schedulesLoaded` is `true`, at
+	 * which point this same gate reclassifies to either a genuine `clock`
+	 * gate (with its real window and reopen time) or a genuine `check`
+	 * (`pending: false`) — never both across two renders.
+	 *
+	 * `undefined`/absent on every other branch — this is the ONE place in
+	 * `classifyGate` that can produce it.
+	 */
+	pending?: boolean;
 };
 
 /** The five drawing fields, off. Spread by every branch that draws no object. */
@@ -314,6 +349,29 @@ export type GateContext = {
 	 * rather than silently re-opening "needs a person" for its gates.
 	 */
 	sources: { environments: boolean; dependencies: boolean };
+	/**
+	 * ⭐ WAS `/schedules` EVER CONSULTED FOR THIS JOIN? (2026-09-04,
+	 * load-state audit finding 4: "Wrong gate kind until `/schedules`
+	 * arrives.") `schedule` above answers "which gate does a window own" —
+	 * an EMPTY map is genuinely ambiguous between "this rollout has no
+	 * schedule gates" and "the `/schedules` request has not resolved yet".
+	 * `classifyGate`'s fallback branch (not passing, no window in `schedule`)
+	 * used to treat both the same way and print a CONFIDENT `A check is not
+	 * passing` in both cases — true of the first, a guess dressed as a fact
+	 * in the second, because the gate in question is very often a schedule
+	 * gate whose join simply has not landed yet.
+	 *
+	 * Deliberately NOT folded into `sources` above: `sources` tracks
+	 * ATTRIBUTION evidence (does an empty map mean "no data" or "not
+	 * fetched"), or's the safe answer when `false`. This tracks LOADEDNESS
+	 * of a request that lands strictly after `buildGateContext`'s own
+	 * payload — see `withSchedules`, the only place this ever flips to
+	 * `true`. `false` by default so a caller that never calls `withSchedules`
+	 * (most `blocking-story.test.ts` fixtures, any surface that has not
+	 * wired schedules up yet) gets the OLD, honest-when-genuinely-unknown
+	 * behaviour unchanged.
+	 */
+	schedulesLoaded: boolean;
 };
 
 export const EMPTY_GATE_CONTEXT: GateContext = {
@@ -321,7 +379,8 @@ export const EMPTY_GATE_CONTEXT: GateContext = {
 	dependency: new Map(),
 	schedule: new Map(),
 	owners: new Map(),
-	sources: { environments: false, dependencies: false }
+	sources: { environments: false, dependencies: false },
+	schedulesLoaded: false
 };
 
 const key = (namespace: string | undefined, gate: string) => `${namespace ?? ''}/${gate}`;
@@ -360,7 +419,11 @@ export function buildGateContext(payload: {
 		sources: {
 			environments: payload?.environments != null,
 			dependencies: payload?.rolloutDependencies != null
-		}
+		},
+		// Schedules are never part of THIS payload — they land through
+		// `withSchedules`, a separate, later request. See that field's own
+		// doc comment on `GateContext`.
+		schedulesLoaded: false
 	};
 
 	for (const gate of payload?.rolloutGates?.items ?? []) {
@@ -417,6 +480,17 @@ export function buildGateContext(payload: {
  * sentence here has to be renderable before that request lands. A gate with no
  * schedule join is a `check`, which is true and useful; it gains the window and
  * the clock when the answer arrives.
+ *
+ * ⭐ CALL THIS ONLY ONCE THE REQUEST HAS ACTUALLY SETTLED — including with an
+ * EMPTY array on success-with-nothing or on a genuine failure. It is the sole
+ * place `schedulesLoaded` flips to `true`, and it flips regardless of whether
+ * `schedules` turns out to be empty: an empty array from a query that has not
+ * run yet and an empty array from a query that ran and found nothing must not
+ * look the same to `classifyGate`'s fallback branch, and this is the only
+ * signal that tells them apart. A caller that calls this with `[]` before the
+ * request has resolved (a `$state` initialised to `[]` instead of `null`, say)
+ * defeats the whole point — see rollout detail's own `scheduleObjects` for the
+ * fix that keeps the two states distinguishable.
  */
 export function withSchedules(
 	ctx: GateContext,
@@ -432,7 +506,8 @@ export function withSchedules(
 		dependency: ctx.dependency,
 		schedule: new Map(ctx.schedule),
 		owners: ctx.owners,
-		sources: ctx.sources
+		sources: ctx.sources,
+		schedulesLoaded: true
 	};
 	for (const s of schedules ?? []) {
 		// Only a schedule that is currently REFUSING explains a closed gate.
@@ -570,7 +645,14 @@ export function classifyGate(
 				predicate: sched.nextTransition ? 'reopens in' : null
 			};
 		}
-		// Not passing, nothing published a window. TRUE and unschedulable.
+		// Not passing, nothing published a window — genuinely TRUE and
+		// unschedulable ONLY once `/schedules` has actually been consulted.
+		// Before that, this gate might still turn out to be a `clock` gate
+		// whose join simply has not landed (`pending`, see that field's own
+		// comment) — the CLASSIFICATION below is unchanged (still `check`,
+		// still nothing to draw) because reclassifying speculatively would be
+		// a second guess on top of the first; `pending` is what tells a
+		// renderer not to print `short`/`clause` yet.
 		return {
 			id,
 			kind: 'check',
@@ -584,7 +666,8 @@ export function classifyGate(
 			// second party; the only concrete thing it carries is the gate's
 			// generated id, which belongs in the disclosed tier. The row prints
 			// `short`.
-			...NOTHING_TO_DRAW
+			...NOTHING_TO_DRAW,
+			pending: !ctx.schedulesLoaded
 		};
 	}
 
@@ -765,6 +848,22 @@ export type BlockingStory = {
 	severity: 'warning' | 'info';
 	/** Which glyph this story earns. See `StoryIconKind`'s own note. */
 	iconKind: StoryIconKind;
+	/**
+	 * ⭐ TRUE WHEN THE STORY'S CLAIM MAY STILL CHANGE SHAPE, NOT JUST VALUE.
+	 * (2026-09-04, load-state audit finding 4) `true` exactly when at least
+	 * one of `checks` is `pending` (see `ClassifiedGate.pending`) — this
+	 * rollout is held by a gate that is CURRENTLY classified `check` only
+	 * because `/schedules` has not answered, and might reclassify to
+	 * `clock` (with a real window and reopen time) the moment it does.
+	 *
+	 * A caller rendering the hero banner reads this BEFORE trusting
+	 * `headline`/`consequence`/`iconKind`: while `true`, print a
+	 * `SkeletonBar` for the reason line instead of the confident-but-
+	 * possibly-wrong sentence. `false` — including every `NOT_BLOCKED` and
+	 * pinned story, where a schedule's exact kind is irrelevant to the
+	 * claim being made — means the claim is final for the data given.
+	 */
+	kindPending: boolean;
 };
 
 export const NOT_BLOCKED: BlockingStory = {
@@ -788,7 +887,8 @@ export const NOT_BLOCKED: BlockingStory = {
 	// Never rendered — nothing is blocked, so no banner reads this — but a
 	// concrete value beats leaving the one non-optional field on the type
 	// without one where `NOT_BLOCKED` is spread as a base.
-	iconKind: 'check'
+	iconKind: 'check',
+	kindPending: false
 };
 
 const COUNT_WORD = ['no', 'One', 'Two', 'Three', 'Four', 'Five', 'Six'];
@@ -1343,7 +1443,7 @@ export function blockingStory(
 	// glyph over "we cannot tell what clears this" is the same picture-scale
 	// lie an unattributed gate would tell with `person`'s icon, so `unknown`
 	// still outranks `upstream` here exactly as it does in every clause above.
-	const iconKind: StoryIconKind =
+	let iconKind: StoryIconKind =
 		person.length > 0
 			? 'person'
 			: unknown.length > 0
@@ -1355,6 +1455,16 @@ export function blockingStory(
 					: clock.length > 0
 						? 'clock'
 						: 'check';
+
+	// ⭐ THE HERO CLAIM'S OWN "IS THIS EVEN THE RIGHT KIND" FLAG. (2026-09-04,
+	// load-state audit finding 4) `checks.some(pending)` — a gate the model
+	// currently calls `check` purely because `/schedules` has not answered
+	// yet. Only overrides the glyph when `check` is what's ACTUALLY driving
+	// it: a genuine `clock`/`person`/`unknown`/`upstream` gate elsewhere in
+	// the same story already outranks `check` above, so its glyph is real
+	// regardless of what a co-occurring pending check might turn out to be.
+	const kindPending = checks.some((g) => g.pending);
+	if (iconKind === 'check' && kindPending) iconKind = 'pending';
 
 	return {
 		blocked: true,
@@ -1380,7 +1490,8 @@ export function blockingStory(
 		// person", a different question this field no longer conflates with
 		// colour.
 		severity: 'warning',
-		iconKind
+		iconKind,
+		kindPending
 	};
 }
 

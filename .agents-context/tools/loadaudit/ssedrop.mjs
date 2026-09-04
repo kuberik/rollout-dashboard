@@ -14,7 +14,7 @@ await p.route(u=>{try{const q=new URL(u); return q.pathname.startsWith('/api/');
 p.on('request', r=>{const u=r.url(); if(/127.0.0.1:5173\/api\//.test(u)) console.log((Date.now()-t0+'').padStart(6),'REQ ',u.replace('https://127.0.0.1:5173',''));});
 await p.goto(url,{waitUntil:'load',timeout:60000});
 await p.waitForTimeout(3000);
-const before = await p.evaluate(()=>({p:document.querySelectorAll('.animate-pulse').length,t:(document.querySelector('main')).innerText.length}));
+const before = await p.evaluate(()=>({p:document.querySelectorAll('.animate-pulse, .skel-block').length,t:(document.querySelector('main')).innerText.length}));
 console.log('BEFORE', JSON.stringify(before));
 dropped=true;
 // kill the live SSE connection from inside the page
@@ -28,7 +28,7 @@ let worst=0, log=[];
 const end=Date.now()+14000;
 let last='';
 while(Date.now()<end){
-  let s=null; try{s=await p.evaluate(()=>({p:document.querySelectorAll('.animate-pulse').length,h:document.documentElement.scrollHeight,t:document.querySelector('main').innerText.replace(/\s+/g,' ').trim().length}));}catch{}
+  let s=null; try{s=await p.evaluate(()=>({p:document.querySelectorAll('.animate-pulse, .skel-block').length,h:document.documentElement.scrollHeight,t:document.querySelector('main').innerText.replace(/\s+/g,' ').trim().length}));}catch{}
   if(s){ const k=s.p+'|'+s.h+'|'+s.t; if(k!==last){console.log((Date.now()-t0+'').padStart(6),'STATE pulses='+s.p,'scrollH='+s.h,'textlen='+s.t); last=k;} worst=Math.max(worst,s.p);}
   await new Promise(r=>setTimeout(r,100));
 }

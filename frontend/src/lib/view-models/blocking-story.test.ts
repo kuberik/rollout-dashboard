@@ -356,6 +356,53 @@ describe('classifyGate', () => {
 	});
 });
 
+// ── `pending` / `schedulesLoaded`: THE LOAD-STATE FIX (2026-09-04, audit
+// finding 4 — "Wrong gate kind until `/schedules` arrives"). ────────────────
+
+describe('classifyGate — a `check` fallback is PENDING until /schedules has answered', () => {
+	it('is pending against a context that has never called withSchedules', () => {
+		const g = classifyGate({ name: 'x', passing: false }, 'ns', EMPTY_GATE_CONTEXT);
+		expect(g.clears).toBe('check');
+		expect(g.pending).toBe(true);
+	});
+
+	it('is pending against buildGateContext alone, before any withSchedules call', () => {
+		const g = classifyGate({ name: 'x', passing: false }, 'hello-world-prod', ctx);
+		expect(g.clears).toBe('check');
+		expect(g.pending).toBe(true);
+	});
+
+	it('stops being pending once withSchedules has been called — even with an empty list', () => {
+		// An empty array is what a genuinely-resolved query with nothing to
+		// report looks like — see `withNetworkSchedules`'s own note on why it
+		// must call `withSchedules` even when it has nothing to add.
+		const loaded = withSchedules(ctx, 'hello-world-prod', []);
+		const g = classifyGate({ name: 'x', passing: false }, 'hello-world-prod', loaded);
+		expect(g.clears).toBe('check');
+		expect(g.pending).toBe(false);
+	});
+
+	it('a gate that IS a real schedule join is never pending — it is just a clock gate', () => {
+		const loaded = withSchedules(ctx, 'hello-world-staging', SCHEDULES_STAGING);
+		const g = classifyGate(
+			{ name: 'schedule-gate-nwm62', passing: false },
+			'hello-world-staging',
+			loaded
+		);
+		expect(g.clears).toBe('clock');
+		expect(g.pending).toBeUndefined();
+	});
+
+	it('every other classification branch leaves pending unset', () => {
+		const approval = classifyGate(
+			{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] },
+			'hello-world-prod',
+			ctx
+		);
+		expect(approval.pending).toBeUndefined();
+	});
+});
+
 // ── THE STORY: ONE ANSWER, EVERY GATE ───────────────────────────────────────
 
 describe('blockingStory — the defect the critic filed', () => {
@@ -551,6 +598,83 @@ describe('blockingStory — the defect the critic filed', () => {
 			{ now: NOW }
 		);
 		expect(s.headline).toBe('this service is waiting on an approval');
+	});
+});
+
+describe('blockingStory — kindPending, the hero-banner load-state fix (2026-09-04, audit finding 4)', () => {
+	const NOW = new Date('2026-08-30T23:26:00Z');
+
+	it('a check-only block is kindPending, and its glyph is neutral, before schedules load', () => {
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'check-gate-unattributed', passing: false }]),
+			ctx, // buildGateContext alone — schedulesLoaded is false
+			{ place: 'prod', now: NOW }
+		);
+		expect(s.blocked).toBe(true);
+		expect(s.checks).toHaveLength(1);
+		expect(s.kindPending).toBe(true);
+		// The would-be `check` glyph is withheld — the model itself does not
+		// yet trust the classification driving it.
+		expect(s.iconKind).toBe('pending');
+	});
+
+	it('the same block stops being kindPending once schedules load and confirm it really is a check', () => {
+		const loaded = withSchedules(ctx, 'hello-world-prod', []);
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'check-gate-unattributed', passing: false }]),
+			loaded,
+			{ place: 'prod', now: NOW }
+		);
+		expect(s.kindPending).toBe(false);
+		expect(s.iconKind).toBe('check');
+	});
+
+	it('a genuine clock gate never reports kindPending, loaded or not', () => {
+		const loaded = withSchedules(ctx, 'hello-world-staging', SCHEDULES_STAGING);
+		const s = blockingStory(
+			rolloutWith('hello-world-staging', [
+				{ name: 'schedule-gate-nwm62', passing: false, allowedVersions: null }
+			]),
+			loaded,
+			{ place: 'staging', now: NOW }
+		);
+		expect(s.clock).toHaveLength(1);
+		expect(s.kindPending).toBe(false);
+		expect(s.iconKind).toBe('clock');
+	});
+
+	it('a pending check alongside a higher-priority gate does not steal the glyph', () => {
+		// The person gate already outranks `check` in the worst-first order,
+		// so the glyph must stay `person` regardless of the pending check
+		// riding along in the same story.
+		const s = blockingStory(
+			rolloutWith('hello-world-prod', [
+				{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] },
+				{ name: 'check-gate-unattributed', passing: false }
+			]),
+			ctx,
+			{ place: 'prod', now: NOW }
+		);
+		expect(s.iconKind).toBe('person');
+		// The story-level flag still reports the truth — the reason line's
+		// consequence text still names this pending check by a claim that
+		// might change — even though the glyph itself was not stolen.
+		expect(s.kindPending).toBe(true);
+	});
+
+	it('NOT_BLOCKED and a pinned story are never kindPending', () => {
+		expect(blockingStory(rolloutWith('hello-world-prod', []), ctx, { now: NOW }).kindPending).toBe(
+			false
+		);
+		const pinned = blockingStory(
+			rolloutWith('hello-world-prod', [{ name: 'ghd-xm669', passing: false }], {
+				wantedVersion: 'tag-a'
+			}),
+			ctx,
+			{ now: NOW }
+		);
+		expect(pinned.pinnedTo).toBeTruthy();
+		expect(pinned.kindPending).toBe(false);
 	});
 });
 

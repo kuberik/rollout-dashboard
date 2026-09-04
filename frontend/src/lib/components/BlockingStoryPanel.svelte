@@ -36,6 +36,16 @@
 	import type { BlockingStory as Story, StoryIconKind } from '$lib/view-models/blocking-story';
 
 	/**
+	 * ⭐ `'pending'` GETS THE SAME GLYPH AS `unknown` AND FOR THE SAME REASON
+	 * A QUESTION MARK IS TRUE OF BOTH: neither claims a kind. `unknown` means
+	 * "we asked every source and none can attribute this"; `pending` means
+	 * "we have not asked /schedules yet, so this might not even be a
+	 * `check`". Reusing the glyph is not a coincidence to fix — a hourglass
+	 * or a spinner here would be a THIRD claim ("time will fix this") this
+	 * gate has not earned either. See `StoryIconKind`'s own doc comment.
+	 */
+
+	/**
 	 * ⛔ A PERSON GLYPH OVER "we cannot tell what clears this" IS THE SAME
 	 * PICTURE-SCALE LIE AS THE CALENDAR THIS MAP WAS WRITTEN TO KILL — see
 	 * `unknown` below. And NOT AN HOURGLASS for `check`: an hourglass means
@@ -57,7 +67,8 @@
 		dependency: ShareNodesSolid,
 		promotion: ChevronDoubleRightOutline,
 		clock: CalendarWeekSolid,
-		check: ShieldCheckSolid
+		check: ShieldCheckSolid,
+		pending: QuestionCircleSolid
 	};
 
 	export function iconForKind(kind: StoryIconKind) {
@@ -91,6 +102,7 @@
 	 */
 	import AlertPanel from './AlertPanel.svelte';
 	import GateRecord from './GateRecord.svelte';
+	import SkeletonBar from './skeleton/SkeletonBar.svelte';
 	import { type BlockingStory } from '$lib/view-models/blocking-story';
 	import type { Snippet } from 'svelte';
 
@@ -197,7 +209,18 @@
 	     a content one: `FactList` reads `currentColor` off `AlertPanel`'s
 	     footnote class, so the record speaks in the severity's voice exactly
 	     like the summary above it and the `.nav-link` beside it. -->
-	<GateRecord {gates} foot={story.resolution} tone="banner" />
+	<GateRecord {gates} foot={story.kindPending ? null : story.resolution} tone="banner" />
+	{#if story.kindPending}
+		<!-- ⭐ THE VERDICT SENTENCE ITSELF IS WITHHELD TOO. (2026-09-04, load-
+		     state audit finding 4) `story.resolution` says "This clears on its
+		     own once the check passes." — true of a genuine `check`, and a
+		     naming of the wrong mechanism if this gate turns out to be a
+		     `clock` gate once `/schedules` answers. `GateRecord`'s own
+		     `factsFor` already withholds the per-gate `Kind`/`Clears` facts for
+		     a `pending` gate (see that file); this is the record's LAST line,
+		     same rule. -->
+		<SkeletonBar width="w-56" height="h-3" class="mt-2" />
+	{/if}
 {/snippet}
 
 {#snippet consequenceWithSecondaryFact()}
@@ -210,6 +233,22 @@
 	<p class="mt-1 opacity-80">{secondaryFact}</p>
 {/snippet}
 
+{#snippet consequencePending()}
+	<!-- ⭐ THE REASON LINE, WITHHELD. (2026-09-04, load-state audit finding
+	     4, this page's own hero gate claim) `story.consequence` for a
+	     `kindPending` story reads "Nothing promotes itself until a check
+	     starts passing." — the exact "A check is not passing" shape the
+	     audit measured, and the same claim this gate might not deserve once
+	     `/schedules` answers (it could be "…until the deploy window
+	     reopens in 6h 4m — 09:00 America/New_York"). Width approximates
+	     that longer, real sentence rather than the shorter wrong one, so
+	     the flip does not shrink-then-grow. -->
+	<SkeletonBar width="w-72" height="h-3.5" />
+	{#if hasSecondaryFact}
+		<p class="mt-1 opacity-80">{secondaryFact}</p>
+	{/if}
+{/snippet}
+
 {#if story.pinnedTo || story.blocked}
 	<!-- ⚠️ THE SNIPPET IS PASSED CONDITIONALLY, NOT GUARDED INSIDE ITSELF. A
 	     snippet reference is always truthy, so handing one over unconditionally
@@ -220,8 +259,12 @@
 	<AlertPanel
 		severity={story.severity}
 		title={story.headline}
-		message={hasSecondaryFact ? undefined : story.consequence}
-		messageBody={hasSecondaryFact ? consequenceWithSecondaryFact : undefined}
+		message={story.kindPending || hasSecondaryFact ? undefined : story.consequence}
+		messageBody={story.kindPending
+			? consequencePending
+			: hasSecondaryFact
+				? consequenceWithSecondaryFact
+				: undefined}
 		footnote={gates.length === 0 ? story.resolution : undefined}
 		footnoteBody={gates.length === 0 ? undefined : gateBody}
 		footnoteCount={gates.length === 0 ? undefined : gates.length}

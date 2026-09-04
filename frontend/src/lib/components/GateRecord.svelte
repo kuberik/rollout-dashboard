@@ -31,7 +31,15 @@
 	} from 'flowbite-svelte-icons';
 	import type { ClassifiedGate } from '$lib/view-models/blocking-story';
 
-	export function gateMark(g: Pick<ClassifiedGate, 'kind' | 'clears'>) {
+	export function gateMark(g: Pick<ClassifiedGate, 'kind' | 'clears' | 'pending'>) {
+		// ⭐ PENDING OUTRANKS EVERY OTHER READ. (2026-09-04, load-state audit
+		// finding 4) A `pending` gate's `kind`/`clears` are `check`/`check` by
+		// construction — the fallback classification `classifyGate` makes
+		// before `/schedules` has answered — and a shield-check glyph over a
+		// gate that might turn out to be a `clock` gate is the exact "mark
+		// that is not true of its kind" `../../CLAUDE.md` bans. Same question
+		// mark `unknown` uses, for the same reason: neither claims a kind.
+		if (g.pending) return QuestionCircleSolid;
 		// A CONTRACT WITH ANOTHER SERVICE. `contractBlockReason` and the
 		// `/dependencies` graph already spend this mark on this object.
 		if (g.kind === 'dependency') return ShareNodesSolid;
@@ -50,7 +58,9 @@
 	}
 
 	/** What kind of object the rule is, for the record. A NOUN, never a remedy. */
-	export function gateKindWord(g: Pick<ClassifiedGate, 'kind'>): string {
+	export function gateKindWord(g: Pick<ClassifiedGate, 'kind' | 'pending'>): string {
+		// See `gateMark`'s own note — `pending` outranks `kind` here too.
+		if (g.pending) return 'not yet known';
 		if (g.kind === 'schedule') return 'deploy window';
 		if (g.kind === 'check') return 'check';
 		if (g.kind === 'promotion') return 'promotion order';
@@ -151,7 +161,10 @@
 		// Adding this fact at banner scale too would print the identical
 		// remedy twice on one screen, the exact defect this whole record
 		// exists to close.
-		if (tone === 'card') facts.push({ label: 'Clears', value: g.clause });
+		// ⛔ NOT WHEN PENDING. `g.clause` ("a check starts passing") is the
+		// same possibly-wrong claim `gateKindWord`/`gateMark` already
+		// withhold above — see `ClassifiedGate.pending`'s own comment.
+		if (tone === 'card' && !g.pending) facts.push({ label: 'Clears', value: g.clause });
 		if (g.clearsAt) {
 			// ⚠️ NOT A NESTED TEMPLATE LITERAL. `lib/messages/scan.ts` reads string
 			// literals with a regex and a backtick inside a `${}` inside a

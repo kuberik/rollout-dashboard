@@ -1980,3 +1980,27 @@ textarea {
 		padding-bottom: 0;
 	}
 }
+
+/* ── THE ONE SKELETON PULSE. (loading-state pass, 2026-09-04)
+   `lib/components/skeleton/*.svelte` is the load-state primitive every
+   other lane imports — see that folder's own `CardSkeleton.svelte` and
+   `src/lib/CLAUDE.md`'s "Loading states" section. Every placeholder block
+   in it wears this ONE class for colour + motion; only width/height/radius
+   are per-instance, because the component that renders a placeholder is
+   the one that knows the real geometry it stands in for.
+
+   Colour matches the loading blocks this product has already shipped
+   ad hoc (`bg-gray-200 dark:bg-gray-700`, e.g. rollout detail's own
+   pre-primitive loading branch) — zero new values. `animate-pulse` and
+   `rounded` are Tailwind's own utilities (v4 ships the `pulse` keyframe
+   already), not hand-rolled here, so the timing curve cannot drift from
+   every other `animate-pulse` use in the product. `rounded` (4px) is a
+   deliberate default: it is `.chip`'s own radius one rule up, which is
+   what makes `SkeletonChip` need no radius override at all. MUST live in
+   `@layer components` for the same reason `.chip` does — an unlayered rule
+   would silently outrank a call site's own Tailwind override. */
+@layer components {
+	.skel-block {
+		@apply animate-pulse rounded bg-gray-200 dark:bg-gray-700;
+	}
+}

@@ -29,7 +29,7 @@ fs.mkdirSync(OUT, { recursive: true });
 // but says the same thing is still the "same" landmark.
 const PROBE = `(() => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, 48);
-  const sel = 'h1,h2,h3,button,a,[class*="card"],[class*="chip"],[class*="badge"],table,svg,dl,dt,dd,li,p,section,article,header,input,summary,[role="status"],[role="alert"],[aria-busy],[class*="skeleton"],[class*="animate-pulse"]';
+  const sel = 'h1,h2,h3,button,a,[class*="card"],[class*="chip"],[class*="badge"],table,svg,dl,dt,dd,li,p,section,article,header,input,summary,[role="status"],[role="alert"],[aria-busy],[class*="skeleton"],[class*="animate-pulse"], .skel-block';
   const out = [];
   const seen = new Map();
   for (const el of document.querySelectorAll(sel)) {

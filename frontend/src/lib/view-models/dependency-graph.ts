@@ -301,7 +301,19 @@ export function withNetworkSchedules(
 			byNs.get(ns)!.push(s);
 		}
 		for (const [ns, list] of byNs) {
-			if (list.length === 0) continue;
+			// ⭐ NO LONGER SKIPPED WHEN `list` IS EMPTY. (2026-09-04, load-state
+			// audit finding 4) `withSchedules` is the only place
+			// `GateContext.schedulesLoaded` flips to `true`, and it is what
+			// tells `classifyGate`'s `check` fallback apart from a gate whose
+			// schedule join simply has not been asked for yet (see that
+			// field's own doc comment). A namespace with genuinely ZERO
+			// `RolloutSchedule`/`ClusterRolloutSchedule` objects still needs
+			// that flip — this loop had already resolved the query and knows
+			// the true answer is "none" for this namespace, which is exactly
+			// the fact `schedulesLoaded` exists to carry. Skipping the call
+			// here was a no-op for `ctx.schedule` (an empty list adds no
+			// entries either way) but silently left every `check`-classified
+			// gate in that namespace `pending` forever.
 			ctx = withSchedules(ctx, ns, list);
 		}
 	}

@@ -109,6 +109,9 @@
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
+	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
+	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
@@ -224,6 +227,20 @@
 	const canPatch = $derived(permissionsQuery.data?.permissions?.patch ?? false);
 	// Most actions require update permission, but some (like force-deploy, bypass-gates) use patch
 	const canModify = $derived(canUpdate || canPatch);
+	/**
+	 * ⭐ "NOT YET KNOWN" IS A THIRD STATE, DISTINCT FROM `canModify`'S
+	 * DEFAULT-FALSE. (2026-09-04, load-state audit finding 1: "action row
+	 * gains `Change Version` + `Rollback` when permissions arrive.")
+	 * `canModify`'s `?? false` default made "waiting on `/permissions`" and
+	 * "confirmed: no permission" render identically — zero action buttons —
+	 * so the row went from `View on GitHub` alone to `View on GitHub, Change
+	 * Version, Rollback to X` the instant permissions resolved true, for the
+	 * (common) case of an operator who DOES have permission. The action row
+	 * below reads this to render Change Version/Rollback/Clear pin as
+	 * DISABLED placeholders while `true`, so `View on GitHub` never stands
+	 * alone only to grow siblings a moment later.
+	 */
+	const permissionsKnown = $derived(!permissionsQuery.isPending);
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
@@ -373,8 +390,25 @@
 	 *   · `rolloutDependencies` — from the list payload (see `listQuery`).
 	 *   · the schedules `ScheduleStatus` is already fetching, handed back rather
 	 *     than requested a second time.
+	 *
+	 * ⭐ `null` UNTIL `/schedules` HAS ACTUALLY ANSWERED — NOT `[]`.
+	 * (2026-09-04, load-state audit finding 4: "Wrong gate kind until
+	 * `/schedules` arrives.") This used to start at `[]` and `withSchedules`
+	 * was called with it on every render, including the very first one —
+	 * so a rollout held by a genuine schedule gate rendered `A check is not
+	 * passing` for the ~100-300ms until `ScheduleStatus`'s own query
+	 * resolved, then silently swapped to the true `Outside the Business
+	 * Hours Only deploy window — reopens 1:00 PM`. `null` means "not asked
+	 * yet"; `ScheduleStatus`'s `onSchedules` now only fires once its own
+	 * query has settled (success OR error — see that component's own
+	 * comment), always with a real array, so `null` here can only ever mean
+	 * "still waiting". `gateContext` below reads that distinction directly:
+	 * `withSchedules` is not called at all while `null`, which is what keeps
+	 * `GateContext.schedulesLoaded` `false` and `classifyGate`'s `check`
+	 * fallback `pending` — see `BlockingStoryPanel`'s own handling of
+	 * `story.kindPending` for the render-side half of this fix.
 	 */
-	let scheduleObjects = $state<any[]>([]);
+	let scheduleObjects = $state<any[] | null>(null);
 	const gateContext = $derived.by(() => {
 		const listData = listQuery.data;
 		const envItems = [...(listData?.environments?.items ?? [])];
@@ -387,7 +421,9 @@
 			rolloutDependencies: listData?.rolloutDependencies ?? null,
 			rolloutGates: rolloutQuery.data?.rolloutGates ?? null
 		});
-		return withSchedules(base, rollout?.metadata?.namespace, scheduleObjects);
+		return scheduleObjects !== null
+			? withSchedules(base, rollout?.metadata?.namespace, scheduleObjects)
+			: base;
 	});
 	const blockStory = $derived(
 		blockingStory(rollout, gateContext, {
@@ -611,6 +647,22 @@
 		managedResourcesQuery.data ?? {}
 	);
 
+	/**
+	 * ⭐ HAS MANAGED-RESOURCES SETTLED — SUCCESS, ERROR, OR GENUINELY NEVER
+	 * GOING TO RUN? (2026-09-04, load-state audit findings 1 & 12) Three
+	 * things on this page wait on this ONE fact: the Pipeline card's stage
+	 * rows and rollup (its `nodes` are built from `pipelineValidRollouts`,
+	 * which reads `managedResources`), the Resources rail card, and whether
+	 * `datadogServiceInfo` — and therefore the External Links card — exists
+	 * at all. `kustomizations.length === 0` is its own resolved state: the
+	 * query is `enabled: false` in that case and would sit at `isPending`
+	 * forever, which is NOT the same as "still waiting" — there is nothing
+	 * to fetch, so the answer (no managed resources) is already final.
+	 */
+	const managedResourcesKnown = $derived(
+		kustomizations.length === 0 || managedResourcesQuery.isSuccess || managedResourcesQuery.isError
+	);
+
 	// Query for health checks
 	const healthChecksQuery = createQuery(() => ({
 		queryKey: ['health-checks', namespace, name, cluster],
@@ -626,6 +678,10 @@
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
+	/** Same shape as `managedResourcesKnown` — see that field's own comment. */
+	const healthChecksKnown = $derived(
+		!rollout?.spec?.healthCheckSelector || healthChecksQuery.isSuccess || healthChecksQuery.isError
+	);
 
 	const errorCutoff = $derived<Date | null>(
 		rollout?.status?.history?.[0]?.timestamp
@@ -667,6 +723,14 @@
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const events = $derived(eventsQuery.data?.events ?? []);
+	/**
+	 * Same shape as `managedResourcesKnown` — no `enabled` gate on this one,
+	 * so it is simply "has the request returned at all". `Recent events`
+	 * measured the audit's single biggest jump (+492 / +716px) rendering
+	 * empty-then-populated inside an already-visible `Card`; skeletoning it
+	 * until this is true is what stops that jump.
+	 */
+	const eventsKnown = $derived(eventsQuery.isSuccess || eventsQuery.isError);
 
 	/**
 	 * ⭐ THE ROLLUP DOES NOT GO SILENT WHEN GITHUB DOES. (P11, operator-walk
@@ -1674,14 +1738,62 @@
 
 <div class="min-h-full dark:bg-gray-900">
 	{#if loading}
-		<div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-6 pb-10 sm:px-6">
+		<!--
+			⭐ THE SAME COMPOSITION THE LOADED PAGE USES, NOT A GUESSED STACK OF
+			BOXES. (2026-09-04, load-state audit finding 1) The old skeleton was
+			five `animate-pulse` divs of hand-picked heights (10/48, 28/full,
+			64/full, two 44s side by side) with no relationship to the two-column
+			`.ov-split` layout, the pipeline card, or the rail's four cards below
+			it — the flip from this to the loaded page moved almost every
+			landmark on the page. This one reuses `.ov-split`/`.ov-split-cq`
+			(this component's own `<style>` block, unchanged) and `CardSkeleton`
+			for every card that IS one, so the two states share their grid and
+			their card geometry; only the hero status card and the page header
+			(neither is a `Card`) are hand-drawn, matching their own real markup
+			below (`rounded-2xl` hero, the header's `t-display-id` name).
+		-->
+		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
 			<StillTryingNotice failureCount={rolloutQuery.failureCount} />
-			<div class="h-10 w-48 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
-			<div class="h-28 w-full animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
-			<div class="h-64 w-full animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
-			<div class="grid grid-cols-2 gap-4">
-				<div class="h-44 animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
-				<div class="h-44 animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
+			<div class="mb-4 flex flex-wrap items-baseline gap-3" aria-hidden="true">
+				<span class="skel-block h-6 w-48"></span>
+				<span class="skel-block h-5 w-16"></span>
+			</div>
+			<div class="ov-split-cq">
+				<div class="ov-split flex flex-col gap-4">
+					<div class="flex flex-col gap-4">
+						<!-- The hero status card — `rounded-2xl`, not `Card`'s
+						     `rounded-lg`: see the real markup a few hundred lines
+						     below for why this one is the deliberate exception. -->
+						<div
+							class="flex flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+							aria-hidden="true"
+						>
+							<span class="skel-block h-5 w-72"></span>
+							<span class="skel-block h-3.5 w-48"></span>
+							<div class="flex flex-wrap gap-2 pt-1">
+								<span class="skel-block h-9 w-32 rounded-md"></span>
+								<span class="skel-block h-9 w-32 rounded-md"></span>
+								<span class="skel-block h-9 w-40 rounded-md"></span>
+							</div>
+						</div>
+						<!-- Pipeline card — see `managedResourcesKnown`'s own note
+						     below on why the real card never draws a rollup before
+						     its stage count is known. -->
+						<CardSkeleton titleWidth="w-40" rollupWidth="w-16" rows={4} rowHeight={32} />
+						<!-- "Newer builds" — hand-rolled in the real page too, same
+						     47px header floor `CardSkeleton` reserves. -->
+						<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={1} rowHeight={20} />
+					</div>
+					<!-- The right rail — four cards, final order, see the identical
+					     block in the loaded branch below for the per-card sizing
+					     rationale. -->
+					<div class="flex flex-col gap-4">
+						<CardSkeleton titleWidth="w-28" rows={1} rowHeight={36} />
+						<CardSkeleton titleWidth="w-24" rows={2} rowHeight={28} />
+						<CardSkeleton titleWidth="w-20" rows={3} rowHeight={28} />
+						<CardSkeleton titleWidth="w-24" rows={4} rowHeight={36} />
+					</div>
+				</div>
 			</div>
 		</div>
 	{:else if error}
@@ -2623,8 +2735,23 @@
 									</div>
 								</div>
 							</div>
-							<!-- Actions footer -->
-							{#if canModify || rollout?.status?.source || rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
+							<!--
+								⭐ ACTIONS FOOTER — `Change Version`/`Rollback` RESERVE THEIR
+								SLOTS WHILE `/permissions` IS PENDING. (2026-09-04, load-state
+								audit finding 1: "action row gains `Change Version` + `Rollback`
+								when permissions arrive.") `canModify`'s own `?? false` default
+								made "waiting to hear back" and "confirmed: no permission" look
+								identical — no buttons — so a viewer who DOES have permission
+								watched `View on GitHub` render alone and then grow two siblings.
+								`permissionsKnown` (declared beside `canModify` above) is read
+								below wherever `canModify` alone used to gate visibility;
+								VISIBILITY of Clear pin/Change Version/Rollback was already
+								decided purely by `rollout` data (`wantedVersion`, `rollbackNow`)
+								with no permission dependency of its own, so the only thing that
+								needed reserving was this outer gate and each button's own
+								`disabled` state.
+							-->
+							{#if canModify || !permissionsKnown || rollout?.status?.source || rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
 								<div
 									class="flex flex-col gap-2 border-t border-gray-100 px-5 py-3 sm:flex-row sm:flex-wrap sm:items-center dark:border-gray-700"
 								>
@@ -2649,13 +2776,15 @@
 											View on GitHub
 										</Button>
 									{/if}
-									{#if canModify}
+									{#if canModify || !permissionsKnown}
 										{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
 											<Button
 												size="sm"
 												color="light"
 												class="w-full justify-center sm:w-auto"
-												disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+												disabled={!permissionsKnown ||
+													!isDashboardManagingWantedVersion ||
+													!!pendingAction}
 												onclick={() => {
 													showClearPinModal = true;
 												}}
@@ -2668,7 +2797,9 @@
 											size="sm"
 											color="light"
 											class="w-full justify-center sm:w-auto"
-											disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+											disabled={!permissionsKnown ||
+												!isDashboardManagingWantedVersion ||
+												!!pendingAction}
 											onclick={() => {
 												if (isDashboardManagingWantedVersion) {
 													isPinVersionMode = false;
@@ -2700,7 +2831,9 @@
 												size="sm"
 												color="light"
 												class="w-full justify-center sm:w-auto"
-												disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+												disabled={!permissionsKnown ||
+													!isDashboardManagingWantedVersion ||
+													!!pendingAction}
 												title={rollbackNow.basis === 'ran-here'
 													? `Go back to ${rollbackDisplay}, the last older version this environment ran${
 															rollbackSkipped.length > 0
@@ -2743,19 +2876,47 @@
 							{/if}
 						</div>
 
-						<!-- PIPELINE CARD -->
-						<DeploymentPipelineCard
-							{rollout}
-							{latestEntry}
-							{pipelineValidRollouts}
-							{pipelineValidTests}
-							healthChecks={visibleHealthChecks}
-							{canUpdate}
-							{namespace}
-							{name}
-							{cluster}
-							onContinue={continueRollout}
-						/>
+						<!--
+							⭐ PIPELINE CARD — RESERVES ITS OWN GEOMETRY, NEVER PRINTS AN
+							UNCOMPUTED ROLLUP. (2026-09-04, load-state audit finding 1:
+							"Pipeline card grows 184→285 (390: 225→357) when
+							managed-resources arrive... The rollup prints `2/2 done` then
+							`5/5 done` — a finished sentence that is false.")
+
+							`DeploymentPipelineCard`'s own `nodes` (and therefore
+							`summary.done`/`summary.total`, the `N/N done` rollup) are
+							built from `pipelineValidRollouts` — sourced from
+							`managedResources`, a request that resolves strictly AFTER
+							`rollout` itself. Rendering the real card the moment `rollout`
+							loads means it briefly counts ONLY the always-present `bake`
+							node (`1/1 done` or similar) before jumping to the true stage
+							count — a finished-looking fraction that was never the whole
+							pipeline. `managedResourcesKnown` (declared beside that query
+							above) is the same "settled, not just present" signal the
+							right rail's `ResourcesCard`/External Links slot already read;
+							until it is true this renders a `CardSkeleton` instead of the
+							real card, so no rollup is ever drawn before the stage count
+							it is a fraction OF is actually known. `rows`/`rowHeight`
+							approximate a typical canary pipeline's stage list; the exact
+							count cannot be known before `managedResourcesKnown` without
+							defeating the point of waiting for it.
+						-->
+						{#if !managedResourcesKnown}
+							<CardSkeleton titleWidth="w-40" rollupWidth="w-16" rows={4} rowHeight={32} />
+						{:else}
+							<DeploymentPipelineCard
+								{rollout}
+								{latestEntry}
+								{pipelineValidRollouts}
+								{pipelineValidTests}
+								healthChecks={visibleHealthChecks}
+								{canUpdate}
+								{namespace}
+								{name}
+								{cluster}
+								onContinue={continueRollout}
+							/>
+						{/if}
 
 						<!-- Available Upgrades card (full width) -->
 						<!-- ⭐ 8px, NOT 12px. (F10, 2026-09-03 re-check) This was the
@@ -3233,8 +3394,36 @@
 							-->
 						</div>
 					</div>
+					<!--
+						⭐ THE RAIL'S FOUR CARDS RENDER IN THEIR FINAL ORDER FROM FIRST
+						PAINT, EACH ITS OWN `CardSkeleton` UNTIL ITS OWN SOURCE HAS
+						SETTLED. (2026-09-04, load-state audit finding 1: "The right
+						rail assembles top-down... Recent events starts at y=186 (1440)
+						/ 947 (390) and ends at 678 / 1663 (+492 / +716 px).") Every
+						card here used to render EMPTY (an unconditional `Card` around
+						a `[]`/`{}` prop, or — for External Links — not at all) the
+						moment `rollout` first loaded, then grow or pop in once its own
+						LATER query resolved. `managedResourcesKnown` / `healthChecksKnown`
+						/ `eventsKnown` (declared beside their queries above) are each
+						"has this card's own source settled, success or error" — a
+						`CardSkeleton` stands in exactly where the real `Card` will sit,
+						header included, until that flips.
+
+						⚠️ EXTERNAL LINKS IS THE ONE CARD WHOSE EXISTENCE ITSELF — not
+						just its content — is unknown until `managedResourcesKnown`:
+						`datadogServiceInfo` is DERIVED from managed resources, not
+						carried on the rollout payload, so unlike the other three there
+						is no "arity-stable, always renders" version of this one to
+						reach for. It reserves its slot while unknown and, once known,
+						either becomes the real card or renders nothing at all — the
+						SAME shape `hasEnvironment || hasDependencies` resolves to on
+						the tab strip one layer up, and for the identical reason: it can
+						only be answered once, not narrowed while waiting.
+					-->
 					<div class="flex flex-col gap-4">
-						{#if datadogServiceInfo}
+						{#if !managedResourcesKnown}
+							<CardSkeleton titleWidth="w-28" rows={1} rowHeight={36} />
+						{:else if datadogServiceInfo}
 							<div
 								class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 							>
@@ -3288,14 +3477,26 @@
 							panel cannot hide a failure on one rule and forget a recovery on
 							another.
 						-->
-						<HealthChecksCard healthChecks={visibleHealthChecks} windowStart={errorCutoff} />
-						<ResourcesCard
-							{kustomizations}
-							{ociRepositories}
-							{filteredManagedResources}
-							{cluster}
-						/>
-						<EventsCard {events} deployedAt={errorCutoff} />
+						{#if !healthChecksKnown}
+							<CardSkeleton titleWidth="w-24" rows={2} rowHeight={28} />
+						{:else}
+							<HealthChecksCard healthChecks={visibleHealthChecks} windowStart={errorCutoff} />
+						{/if}
+						{#if !managedResourcesKnown}
+							<CardSkeleton titleWidth="w-20" rows={3} rowHeight={28} />
+						{:else}
+							<ResourcesCard
+								{kustomizations}
+								{ociRepositories}
+								{filteredManagedResources}
+								{cluster}
+							/>
+						{/if}
+						{#if !eventsKnown}
+							<CardSkeleton titleWidth="w-24" rows={4} rowHeight={36} />
+						{:else}
+							<EventsCard {events} deployedAt={errorCutoff} />
+						{/if}
 					</div>
 				</div>
 				</div>
