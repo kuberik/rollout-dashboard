@@ -1969,12 +1969,40 @@ func main() {
 		// frontend invalidate its TanStack queries the instant something
 		// changes instead of polling on a timer. Same SSE plumbing as the
 		// pod-logs stream below (gin-contrib/sse, manual flush, excluded
-		// from gzip above) — this route only reads (kubernetes.Hub), so
-		// unlike every mutating route in this file it never touches
-		// getK8sWriteClient.
+		// from gzip above).
+		//
+		// MULTI-CLUSTER: every hub-facing connection also subscribes to
+		// each known spoke's own GET /api/events/stream and merges those
+		// events in, tagged by cluster — so a spoke-hosted rollout refreshes
+		// live instead of only at the 60s safety-net poll. The actual
+		// merge/reconnect/tagging engine is pkg/kubernetes/multistream.go's
+		// RunMultiStream (unit-tested there with an httptest SSE spoke);
+		// this handler only does discovery (same as GET /api/clusters) and
+		// turns RunMultiStream's callbacks into SSE bytes.
+		//
+		// If this request already carries the fan-out header, it IS a
+		// spoke leg (the hub calling us) — skip spoke discovery entirely so
+		// hub↔spoke subscriptions can't cycle; this instance then streams
+		// local-only, exactly as every dashboard did before this feature.
 		api.GET("/events/stream", func(c *gin.Context) {
-			id, ch := kubernetes.Hub.Register(32)
-			defer kubernetes.Hub.Unregister(id)
+			token := auth.GetTokenFromContext(c)
+			localName := localClusterName(c)
+
+			var spokes []kubernetes.ClusterSpec
+			if c.GetHeader(fanoutHeader) == "" {
+				if k8sClient, err := kubernetes.GetReadClient(c); err != nil {
+					log.Printf("events/stream: read client unavailable, streaming local-only: %v", err)
+				} else if envs, err := k8sClient.GetEnvironmentsAllNamespaces(c.Request.Context()); err != nil {
+					log.Printf("events/stream: spoke discovery failed, streaming local-only: %v", err)
+				} else {
+					discovered := discoverClusters(c.Request.Context(), marshalToRaw(envs), localDashboardURL(c), token)
+					registry.put(discovered)
+					spokes = make([]kubernetes.ClusterSpec, len(discovered))
+					for i, d := range discovered {
+						spokes[i] = kubernetes.ClusterSpec{Name: d.Name, URL: d.URL}
+					}
+				}
+			}
 
 			c.Header("Content-Type", sse.ContentType)
 			c.Header("Cache-Control", "no-cache")
@@ -1995,41 +2023,48 @@ func main() {
 			c.Writer.Write([]byte("retry: 5000\n: connected\n\n"))
 			flush() // establish the connection immediately
 
-			ctx := c.Request.Context()
-			heartbeat := time.NewTicker(30 * time.Second)
-			defer heartbeat.Stop()
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case batch, ok := <-ch:
-					if !ok {
-						// Hub dropped us for backpressure — our buffer was
-						// full, meaning we weren't draining fast enough
-						// (dead tab, slow network). `retry:` tells the
-						// browser's EventSource how long to wait before it
-						// reconnects on its own; a fresh connection gets a
-						// clean buffer rather than this one growing forever.
-						c.Writer.Write([]byte("retry: 5000\n\n"))
-						flush()
-						return
-					}
-					visible := kubernetes.FilterEventsByVisibility(c, batch)
-					if len(visible) == 0 {
-						continue
-					}
-					data, err := json.Marshal(visible)
+			kubernetes.RunMultiStream(c.Request.Context(), kubernetes.MultiStreamOptions{
+				LocalName:         localName,
+				Spokes:            spokes,
+				Token:             token,
+				FanoutHeader:      fanoutHeader,
+				HTTPClient:        &http.Client{Transport: fanoutTransport},
+				HeartbeatInterval: 30 * time.Second,
+				Filter: func(events []kubernetes.ChangeEvent) []kubernetes.ChangeEvent {
+					return kubernetes.FilterEventsByVisibility(c, events)
+				},
+			}, kubernetes.MultiStreamHandlers{
+				OnChanges: func(events []kubernetes.ChangeEvent) {
+					data, err := json.Marshal(events)
 					if err != nil {
-						continue
+						return
 					}
 					sse.Encode(c.Writer, sse.Event{Event: "changes", Data: string(data)})
 					flush()
-				case <-heartbeat.C:
+				},
+				OnClusters: func(clusters map[string]bool) {
+					data, err := json.Marshal(clusters)
+					if err != nil {
+						return
+					}
+					sse.Encode(c.Writer, sse.Event{Event: "clusters", Data: string(data)})
+					flush()
+				},
+				OnHeartbeat: func() {
 					sse.Encode(c.Writer, sse.Event{Event: "heartbeat", Data: "{}"})
 					flush()
-				}
-			}
+				},
+				OnLocalDropped: func() {
+					// Local hub dropped us for backpressure — our buffer was
+					// full, meaning we weren't draining fast enough (dead
+					// tab, slow network). `retry:` tells the browser's
+					// EventSource how long to wait before it reconnects on
+					// its own; a fresh connection gets a clean buffer rather
+					// than this one growing forever.
+					c.Writer.Write([]byte("retry: 5000\n\n"))
+					flush()
+				},
+			})
 		})
 
 		// Stream pod logs using Server-Sent Events

@@ -10,11 +10,25 @@ import (
 // (main.go's GET /api/events/stream) so the frontend can invalidate its
 // TanStack queries the instant something changes instead of polling on a
 // timer. See PERF-2026-09-04 §C.6/C.7.
+//
+// Cluster is the display name of the cluster this event happened on — the
+// same name the frontend already sees from /api/clusters and the [cluster]
+// route segment. cache.go's publishChange (the only in-process producer)
+// never sets it; it is always empty when an event first lands in this
+// EventHub, because a bare EventHub has no notion of "which cluster am I."
+// It is filled in one layer up, by whichever code turns a Hub batch into an
+// outbound SSE message: main.go's /api/events/stream handler (via
+// RunMultiStream, multistream.go) stamps every local batch with this
+// process's own cluster name before it ever reaches a client. A spoke's own
+// events therefore arrive at the hub already carrying the spoke's name (the
+// spoke's own handler stamped them the same way), so the hub forwards spoke
+// batches verbatim rather than re-tagging them.
 type ChangeEvent struct {
 	Type            string `json:"type"` // "add" | "update" | "delete"
 	Kind            string `json:"kind"`
 	Namespace       string `json:"namespace"`
 	Name            string `json:"name"`
+	Cluster         string `json:"cluster"`
 	ResourceVersion string `json:"resourceVersion"`
 	Ts              int64  `json:"ts"` // unix millis
 }
