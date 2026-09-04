@@ -1986,6 +1986,13 @@ func main() {
 					f.Flush()
 				}
 			}
+			// Put bytes on the wire before the first event: a proxy in front of
+			// this process (the Envoy gateway, vite's dev proxy) holds a
+			// headers-only chunked response until the first body byte, which on
+			// a quiet cluster meant the browser saw no "open" for up to 30 s and
+			// kept polling at the stream-down cadence meanwhile. A comment line
+			// is invisible to EventSource but is a body byte to every proxy.
+			c.Writer.Write([]byte("retry: 5000\n: connected\n\n"))
 			flush() // establish the connection immediately
 
 			ctx := c.Request.Context()
