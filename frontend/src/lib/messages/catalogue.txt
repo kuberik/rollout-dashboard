@@ -103,36 +103,58 @@ lib/components/ChangeList.svelte	text	See the diff on GitHub
 lib/components/ChangeList.svelte	text	See the full diff on GitHub
 lib/components/ChangeList.svelte	code	Your GitHub account cannot read this repository.
 lib/components/ChangeVersionModal.svelte	code	… — … has not shipped it
+lib/components/ChangeVersionModal.svelte	text	… … . You can still proceed.
+lib/components/ChangeVersionModal.svelte	text	… … … … Connect your GitHub account to see which commits will … .
 lib/components/ChangeVersionModal.svelte	code	… back
 lib/components/ChangeVersionModal.svelte	code	… has not taken this build
 lib/components/ChangeVersionModal.svelte	code	… newer
+lib/components/ChangeVersionModal.svelte	text	… will be pinned to … .
+lib/components/ChangeVersionModal.svelte	text	… You can still proceed.
 lib/components/ChangeVersionModal.svelte	code	…, … serves …
+lib/components/ChangeVersionModal.svelte	text	) — only the release changed. No code moves.
 lib/components/ChangeVersionModal.svelte	text	&larr; Back
 lib/components/ChangeVersionModal.svelte	code	a contract
 lib/components/ChangeVersionModal.svelte	code	a rule
 lib/components/ChangeVersionModal.svelte	code	after …
 lib/components/ChangeVersionModal.svelte	code	after its upstream environment
+lib/components/ChangeVersionModal.svelte	text	Already deployed
 lib/components/ChangeVersionModal.svelte	code	another service
+lib/components/ChangeVersionModal.svelte	text	Automatic promotion is held right now — … .
+lib/components/ChangeVersionModal.svelte	aria-label	Available versions
 lib/components/ChangeVersionModal.svelte	code	Built …
 lib/components/ChangeVersionModal.svelte	code	Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system.
 lib/components/ChangeVersionModal.svelte	text	Change Version
+lib/components/ChangeVersionModal.svelte	text	Connect GitHub
+lib/components/ChangeVersionModal.svelte	text	Connect GitHub from the navbar first, then reopen this dialog.
 lib/components/ChangeVersionModal.svelte	code	currently does not allow this build
 lib/components/ChangeVersionModal.svelte	code	dashboard is not managing the wantedVersion field
+lib/components/ChangeVersionModal.svelte	text	Deploy … &nbsp;— ships … commit … …
 lib/components/ChangeVersionModal.svelte	code	Deployed …
 lib/components/ChangeVersionModal.svelte	code	Failed to change version
 lib/components/ChangeVersionModal.svelte	code	Failed to deploy version
+lib/components/ChangeVersionModal.svelte	text	Force deploy already set. Only version pinning available.
 lib/components/ChangeVersionModal.svelte	code	Force deploy initiated, version rolling out soon
 lib/components/ChangeVersionModal.svelte	code	its upstream environment has not taken this build
 lib/components/ChangeVersionModal.svelte	code	needs … …
 lib/components/ChangeVersionModal.svelte	code	needs a newer …
+lib/components/ChangeVersionModal.svelte	text	No commit revision known for this version — changelist unavailable.
+lib/components/ChangeVersionModal.svelte	text	No source repository linked — commit changelist unavailable.
+lib/components/ChangeVersionModal.svelte	text	No versions available
 lib/components/ChangeVersionModal.svelte	code	Pin … to …
+lib/components/ChangeVersionModal.svelte	text	Pin Version
+lib/components/ChangeVersionModal.svelte	text	Rollback … &nbsp;— reverts … commit … …
 lib/components/ChangeVersionModal.svelte	code	Rolling back…
+lib/components/ChangeVersionModal.svelte	text	Same commit as the running build (
 lib/components/ChangeVersionModal.svelte	placeholder	Search versions...
 lib/components/ChangeVersionModal.svelte	text	Show all repo tags
 lib/components/ChangeVersionModal.svelte	code	Successfully pinned and deployed version
+lib/components/ChangeVersionModal.svelte	text	The note is required here — it is recorded with the deploy.
+lib/components/ChangeVersionModal.svelte	text	to confirm
+lib/components/ChangeVersionModal.svelte	text	View file diff
 lib/components/ChangeVersionModal.svelte	code	Why are you deploying this version?
 lib/components/ChangeVersionModal.svelte	code	Why are you overriding the rules?
 lib/components/ChangeVersionModal.svelte	code	Why are you rolling back?
+lib/components/ChangeVersionModal.svelte	text	You don't have access to this repository on GitHub. You can still proceed.
 lib/components/Chip.svelte	code	— see the note above
 lib/components/Chip.svelte	code	, 14). This one will truncate. Either shorten the ' + 'word or pass
 lib/components/Chip.svelte	code	, not on the chip half, so it ' + 'silently does nothing. Use the
@@ -858,24 +880,32 @@ routes/apps/[name]/+page.svelte	code	window closed
 routes/apps/+page.svelte	code	: ''}… available, and none will deploy until the pin is cleared${ otherHold ?
 routes/apps/+page.svelte	code	… — … is stuck
 routes/apps/+page.svelte	code	… — …’s last deploy failed
+routes/apps/+page.svelte	title	… — a newer build exists here, but no rule lets it through yet
 routes/apps/+page.svelte	code	… … … newer build… held
 routes/apps/+page.svelte	text	… … · … deploying now …
 routes/apps/+page.svelte	text	… · … on the newest … ·
 routes/apps/+page.svelte	code	… ago · …
 routes/apps/+page.svelte	code	… can still take … newer build…
+routes/apps/+page.svelte	text	… deploy …
+routes/apps/+page.svelte	text	… deploy … in 7d … …
 routes/apps/+page.svelte	code	… different builds live
 routes/apps/+page.svelte	code	… environments
 routes/apps/+page.svelte	text	… held
 routes/apps/+page.svelte	code	… in …
 routes/apps/+page.svelte	code	… is pinned on …
+routes/apps/+page.svelte	title	… is stuck
 routes/apps/+page.svelte	text	… need … attention
 routes/apps/+page.svelte	code	… never deployed
 routes/apps/+page.svelte	code	… of … running the newest build
 routes/apps/+page.svelte	code	… of this app are failing. No newer build gets past them until a deploy succeeds.
+routes/apps/+page.svelte	aria-label	… on … in …
 routes/apps/+page.svelte	code	… rolling out
 routes/apps/+page.svelte	text	… rollout … without an Environment record
 routes/apps/+page.svelte	code	… running a build nobody released
 routes/apps/+page.svelte	code	… whose build could not be placed
+routes/apps/+page.svelte	title	…’s last deploy failed
+routes/apps/+page.svelte	title	…{cell.version ? ` · $…` : ''} · …
+routes/apps/+page.svelte	text	+ … more
 routes/apps/+page.svelte	code	${pin ?
 routes/apps/+page.svelte	code	a newer build exists and a person has to pick it
 routes/apps/+page.svelte	code	a newer build is allowed here and nobody has deployed it
@@ -892,15 +922,22 @@ routes/apps/+page.svelte	code	never deployed anywhere
 routes/apps/+page.svelte	code	newer builds are on hold until a check or time window passes
 routes/apps/+page.svelte	text	No apps yet
 routes/apps/+page.svelte	code	no environments
+routes/apps/+page.svelte	text	no full trip yet
 routes/apps/+page.svelte	code	No newer build gets past … until a deploy there succeeds.
 routes/apps/+page.svelte	code	No progress for … and nothing is holding it on purpose.
 routes/apps/+page.svelte	code	No progress for long enough that it will not clear on its own.
+routes/apps/+page.svelte	title	No version has gone all the way from the first environment to production inside the deploy history kept for this app
 routes/apps/+page.svelte	text	Open …
 routes/apps/+page.svelte	code	open this app
 routes/apps/+page.svelte	title	Recent activity
 routes/apps/+page.svelte	text	resource. Apps consolidate the same rollout across all environments.
+routes/apps/+page.svelte	title	Running a version that is on no environment’s release list
 routes/apps/+page.svelte	code	someone pinned a version here, so nothing newer can deploy
 routes/apps/+page.svelte	code	the version running here is worse than the one before it
+routes/apps/+page.svelte	text	To prod
+routes/apps/+page.svelte	title	Typical time a version takes to get from … to …, measured over … version… that made the whole trip
+routes/apps/+page.svelte	text	View all activity
+routes/apps/+page.svelte	aria-label	View all deploy activity
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
 routes/dependencies/+page.svelte	text	… holding
@@ -969,6 +1006,7 @@ routes/environments/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	title	… — the newest version this app has
 routes/envs/[name]/+page.svelte	title	… — this page
 routes/envs/[name]/+page.svelte	code	… · … pinned
+routes/envs/[name]/+page.svelte	text	… deploy …
 routes/envs/[name]/+page.svelte	code	… deploys have failed here
 routes/envs/[name]/+page.svelte	code	… failed to deploy here
 routes/envs/[name]/+page.svelte	code	… failing · …/… running
@@ -1003,9 +1041,11 @@ routes/envs/[name]/+page.svelte	title	Running a version that is on no environmen
 routes/envs/[name]/+page.svelte	title	Running now
 routes/envs/[name]/+page.svelte	code	The last deploy did not complete. Nothing newer will promote past it.
 routes/envs/[name]/+page.svelte	title	This app has never deployed here
+routes/envs/[name]/+page.svelte	text	View all activity
 routes/envs/[name]/+page.svelte	code	waiting for … to ship … … — it is on …
 routes/namespaces/[name]/+page.svelte	title	… — this page
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …
+routes/namespaces/[name]/+page.svelte	text	… deploy …
 routes/namespaces/[name]/+page.svelte	code	… deploying now
 routes/namespaces/[name]/+page.svelte	text	… failing
 routes/namespaces/[name]/+page.svelte	code	… of … failing
@@ -1020,6 +1060,7 @@ routes/namespaces/[name]/+page.svelte	text	No rollouts in namespace
 routes/namespaces/[name]/+page.svelte	title	Recent activity
 routes/namespaces/[name]/+page.svelte	text	Show … more rollouts ›
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
+routes/namespaces/[name]/+page.svelte	text	View all activity
 routes/revisions/[...slug]/+page.svelte	text	— on an older release of it
 routes/revisions/[...slug]/+page.svelte	text	. This page covers every commit on a service's release ladder, deployed or not.
 routes/revisions/[...slug]/+page.svelte	code	… … held in ….
@@ -1101,21 +1142,42 @@ routes/revisions/+page.svelte	text	View commit
 routes/revisions/+page.svelte	text	View repository
 routes/revisions/+page.svelte	code	Your services can deploy these commits. None of them has yet.
 routes/rollouts/[cluster]/[namespace]/[name]/+layout.svelte	aria-label	Rollout sections
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … newer · held by the pin … … … available …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	… new versions found!
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… Nothing promotes this version automatically while it is held. Pressing
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… Refresh
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… release candidate … available
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	…${e.requiredVersion ?
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	&nbsp;· running …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	1 new version found!
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a check
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a deploy window
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	A deploy you start by hand still applies immediately.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a new version
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a rule we cannot attribute
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	across envs
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	an approval
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	another deploy
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	APM service
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	applies it immediately — rules only hold back automatic promotion.
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Are you sure you want to mark the deployment for
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	as successful?
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Automatic deploys paused — this rollout is pinned to a version.
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Back to all rollouts
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	by … rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	by a rule
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Change Version
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Checking for new versions...
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Clear pin
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin is what lets this deploy automatically — the rules below may also still apply.
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Commit message and author need GitHub. …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Current version is custom
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Custom version
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deploy requested — starting
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Deployment marked as successful
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Deployment retry initiated
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	External Links
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to check for new versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout: …
@@ -1123,17 +1185,45 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to mark de
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to retry deployment
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to retry: …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Held by rules
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Holding … rollout … — … … … .
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	kuberik | …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Mark as Successful:
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Mark Deployment as Successful
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Mark Successful
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Message (Optional)
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Newer builds
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No deploys yet
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	No new versions available
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No newer build to deploy right now. New builds appear here as the registry publishes them.
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	on the newest
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	pinned to …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Pinned to …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	placeholder	Provide additional details about why you're marking this deployment as successful...
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Recovery mode
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	aria-label	Refresh available versions
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Refresh available versions
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rollback to …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rolled back … ago … .
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	See Dependencies
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	See this app across all environments
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Status: …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Successfully continued rollout …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	The currently deployed version is not in the available releases list. This means it's a custom version that was manually deployed. To change to a different version, you need to manually deploy another version.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on its own once the check passes.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on its own.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This dashboard cannot tell what clears this — it may or may not need a person.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This rollout
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	This rollout does not exist
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	This will mark the failed deployment as successful and update the deployment history.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This will not clear on its own.
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	This will update the deployment history to show the deployment as succeeded and end the check window now.
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Try again
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Version management disabled: This rollout's wantedVersion field is managed by another controller or external system. The dashboard cannot pin it to prevent conflicts.
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	View all apps in …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	View on GitHub
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Waiting on …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	You can also deploy a different version to fix the deployment issue instead of marking this one as successful.
 routes/rollouts/[cluster]/[namespace]/[name]/dependencies/+page.svelte	text	, from
 routes/rollouts/[cluster]/[namespace]/[name]/dependencies/+page.svelte	text	… , and its places ask different things of … … , and what it needs of … could not be read … … Has deployed nothing here yet … …
 routes/rollouts/[cluster]/[namespace]/[name]/dependencies/+page.svelte	text	… , which needs …

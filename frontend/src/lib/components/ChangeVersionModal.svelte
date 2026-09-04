@@ -1749,7 +1749,7 @@
 										: ''}
 									{#if gateWhy}
 										<span class="mt-1 block opacity-90"
-											>Automatic promotion is paused right now — {gateWhy}.</span
+											>Automatic promotion is held right now — {gateWhy}.</span
 										>
 									{/if}
 									<!-- ⭐ THE RULES IT OVERRIDES, NAMED — the prod force-deploy

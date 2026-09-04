@@ -260,10 +260,14 @@ const ATTRS = new Set(['title', 'aria-label', 'alt', 'placeholder', 'aria-descri
  */
 /** Exported for `scan.test.ts` -- direct unit coverage of the markup walker, without going through the `import.meta.glob` census over real files. */
 export function scanMarkup(src: string, file: string, out: Literal[]): void {
+	// Comments go FIRST, and the block tags must open a line: on 2026-09-04 a
+	// doc comment that mentioned `<style>` was taken for the real tag, the
+	// non-greedy match ran to the file's closing </style>, and ten empty-state
+	// strings vanished from the census while the suite stayed green.
 	const markup = src
-		.replace(/<script[\s\S]*?<\/script>/g, ' ')
-		.replace(/<style[\s\S]*?<\/style>/g, ' ')
-		.replace(/<!--[\s\S]*?-->/g, ' ');
+		.replace(/<!--[\s\S]*?-->/g, ' ')
+		.replace(/^[ \t]*<script(\s[^>]*)?>[\s\S]*?<\/script>/gm, ' ')
+		.replace(/^[ \t]*<style(\s[^>]*)?>[\s\S]*?<\/style>/gm, ' ');
 
 	let i = 0;
 	let text = '';

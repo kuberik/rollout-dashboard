@@ -13,6 +13,41 @@ function texts(src: string): string[] {
 
 describe('scanMarkup', () => {
 	/**
+	 * THE SECOND REGRESSION (2026-09-04). A doc comment in `activity/+page.svelte`
+	 * mentioned `<style>` in backticks. Comments were stripped AFTER the block
+	 * tags, so the mention was taken for the real opening tag, the non-greedy
+	 * match ran to the file's real `</style>` at the bottom, and ten empty-state
+	 * strings vanished from the census while the suite stayed green.
+	 */
+	test('a <style> or <script> mention inside an HTML comment does not swallow the markup after it', () => {
+		const src = `
+			<div>
+				<!-- The control strip. Its geometry lives in the \`<style>\` block below;
+				     the \`<script>\` above owns the filter state. -->
+				<p>Nothing has deployed yet</p>
+				<button>Clear all filters</button>
+			</div>
+			<style>
+				.x { color: red; }
+			</style>
+		`;
+		expect(texts(src)).toEqual(['Nothing has deployed yet', 'Clear all filters']);
+	});
+
+	test('real script and style blocks are still stripped', () => {
+		const src = `
+			<script lang="ts">
+				const label = 'This sentence is not a message.';
+			</script>
+			<p>This sentence is shown to the reader.</p>
+			<style>
+				p { content: 'This sentence is not a message either.'; }
+			</style>
+		`;
+		expect(texts(src)).toEqual(['This sentence is shown to the reader.']);
+	});
+
+	/**
 	 * THE REGRESSION. `LogsViewer.svelte` lost its entire tail to this: a
 	 * `// Don't allow ...` line comment inside a `DropdownItem`'s
 	 * `onclick={...}` attribute. `skipExpr` tracked quotes without knowing
