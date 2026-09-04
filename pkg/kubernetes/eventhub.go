@@ -57,6 +57,25 @@ type ChangeEvent struct {
 	// them; the hub forwards an already-hydrated spoke batch unchanged, the
 	// same way it already forwards a spoke batch's Cluster tag unchanged.
 	Object json.RawMessage `json:"object,omitempty"`
+
+	// Derived carries the server-computed response bodies the frontend would
+	// otherwise fetch separately on seeing this event — DERIVED-2026-09-04.
+	// See attachDerived's doc comment for the exact per-Kind contract, the
+	// once-per-batch computation point, and the debounce/size-guard rules.
+	// A spoke computes this for its own local events the same way it
+	// computes Object; the hub forwards an already-derived spoke batch
+	// unchanged.
+	Derived json.RawMessage `json:"derived,omitempty"`
+
+	// ownerDeployment is the owning Deployment's name for a ReplicaSet
+	// event, read off the object's own OwnerReferences at publish time
+	// (cache.go's publishChange) rather than re-Get at flush time — see
+	// publishChange's doc comment for why (a delete event's object is
+	// already gone from the cache by the time flush() runs). Unexported: an
+	// internal input to attachDerived, not part of the wire contract — the
+	// wire shape is Derived.ownerDeployment (DerivedData.OwnerDeployment,
+	// namespace+name), computed from this plus ev.Namespace.
+	ownerDeployment string
 }
 
 // EventHub coalesces informer events into small batches (one flush per
@@ -87,6 +106,12 @@ type EventHub struct {
 	pendingMu sync.Mutex
 	pending   map[string]ChangeEvent
 
+	// derived memoises attachDerived's expensive work (BuildDeploymentChildren's
+	// live Pods LIST, mainly) per deployment — DERIVED-2026-09-04. One per
+	// hub, so it lives exactly as long as the hub's own local event history
+	// does; there is nothing to reset it on Stop, same as h.pending.
+	derived *derivedCache
+
 	window   time.Duration
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -102,6 +127,7 @@ func NewEventHub(window time.Duration) *EventHub {
 		identityOf: make(map[uint64]string),
 		byIdentity: make(map[string][]uint64),
 		pending:    make(map[string]ChangeEvent),
+		derived:    newDerivedCache(),
 		window:     window,
 		stop:       make(chan struct{}),
 	}
@@ -149,6 +175,19 @@ func (h *EventHub) flush() {
 	}
 	h.pending = make(map[string]ChangeEvent)
 	h.pendingMu.Unlock()
+
+	// Derived-data computation (DERIVED-2026-09-04) happens here — after
+	// releasing pendingMu, before ever taking h.mu — for the same reason
+	// this type's own doc comment gives for why per-user visibility
+	// filtering happens a layer up instead of inside flush(): this can do a
+	// live Pods LIST (attachDerived -> BuildDeploymentChildren), and doing
+	// that while holding h.mu would stall Register/Unregister and delivery
+	// to every other client for as long as that LIST takes. Doing it here,
+	// once per flush, before the fan-out loop below, is what makes it "once
+	// per coalesced batch" rather than "once per subscriber" — every client
+	// below receives the SAME batch slice, already enriched, exactly the
+	// way every client already receives the same slice unenriched today.
+	batch = attachDerived(context.Background(), readCacheClient, batch, h.derived)
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -436,6 +475,184 @@ func AttachObjects(ctx context.Context, k8sClient *Client, events []ChangeEvent)
 			continue
 		}
 		out[i].Object = data
+	}
+	return out
+}
+
+// derivedDebounceWindow bounds how often attachDerived recomputes one
+// deployment's derived data (BuildDeploymentChildren's live Pods LIST is the
+// expensive part) — DERIVED-2026-09-04's cost-control requirement. During a
+// dense rollout a single Deployment can produce a ReplicaSet event on every
+// one of EventHub's 250ms coalescing ticks for several seconds running;
+// recomputing on every tick would mean a Pods LIST up to 4x/second for that
+// one deployment. Reusing the last computed value for any deployment whose
+// derived data was computed less recently than this caps that at 2x/second
+// worst case (one tick computes, the next reuses), while keeping every event
+// no more than half a second stale — well inside what "the frontend falls
+// back to fetching on a missing/omitted derived field" already tolerates.
+const derivedDebounceWindow = 500 * time.Millisecond
+
+// maxDerivedBytes is the size guard from the derived-data contract:
+// ChangeEvent.Derived is dropped (the event ships without it, same fallback
+// as maxEventObjectBytes for Object) when its marshaled JSON would exceed
+// this.
+const maxDerivedBytes = 96 * 1024
+
+// DerivedData is the JSON shape of ChangeEvent.Derived, decoded from the
+// json.RawMessage that field actually carries on the wire (marshalDerived
+// below stores the marshaled bytes directly, the same way AttachObjects
+// stores Object's marshaled bytes directly, rather than a struct that gets
+// remarshaled a second time when the whole batch is encoded for SSE).
+//
+//   - On a Deployment add/update event: ManagedResource is the exact
+//     ManagedResourceStatus entry GET .../managed-resources would return for
+//     that Deployment (client.go's managedResourceStatusFromObject, via
+//     ManagedResourceStatusForDeployment), and Children is the exact GET
+//     .../children response for that same Deployment — a Deployment status
+//     write usually precedes the RS/Pod changes it caused, so shipping
+//     Children here too saves the frontend a second refetch a beat later.
+//     OwnerDeployment is unset.
+//   - On a ReplicaSet add/update/delete event: OwnerDeployment names the
+//     Deployment that owns it (from the ReplicaSet's own OwnerReferences,
+//     captured at publish time — cache.go's publishChange), and Children is
+//     that owner Deployment's exact GET .../children response.
+//     ManagedResource is unset.
+//
+// Every field is a pointer so an unset one is simply absent from the JSON
+// (`omitempty`) rather than present-but-zero — the frontend's existing
+// invalidate-and-refetch fallback is what fills in anything left out here,
+// exactly as it already does for a nil Object.
+type DerivedData struct {
+	ManagedResource *ManagedResourceStatus `json:"managedResource,omitempty"`
+	OwnerDeployment *OwnerDeploymentRef    `json:"ownerDeployment,omitempty"`
+	Children        *DeploymentChildren    `json:"children,omitempty"`
+}
+
+// OwnerDeploymentRef identifies the Deployment that owns a ReplicaSet event.
+type OwnerDeploymentRef struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
+// derivedComputed is the expensive part of one deployment's derived data —
+// the part derivedCache memoises. Kept separate from DerivedData because the
+// wire shape differs by the triggering event's Kind (a Deployment event
+// wants ManagedResource, a ReplicaSet event wants OwnerDeployment instead)
+// while both share the same Children.
+type derivedComputed struct {
+	managedResource *ManagedResourceStatus
+	children        *DeploymentChildren
+}
+
+// derivedCache memoises derivedComputed per (namespace, deployment name),
+// debounced by derivedDebounceWindow — see that const's doc comment. One
+// instance lives on the EventHub for its whole process lifetime (NewEventHub
+// constructs it); flush() is this cache's only writer, called from a single
+// goroutine (EventHub.loop), but the mutex stays because a future caller
+// (e.g. a test computing derived data directly, off the flush() path) should
+// not have to know that invariant to use it safely.
+type derivedCache struct {
+	mu      sync.Mutex
+	entries map[string]derivedCacheEntry
+}
+
+type derivedCacheEntry struct {
+	at   time.Time
+	data derivedComputed
+}
+
+func newDerivedCache() *derivedCache {
+	return &derivedCache{entries: make(map[string]derivedCacheEntry)}
+}
+
+// get returns namespace/deploymentName's derivedComputed, reusing a value
+// computed less than derivedDebounceWindow ago instead of recomputing.
+// ctx and k8sClient are used only on a cache miss.
+func (dc *derivedCache) get(ctx context.Context, k8sClient *Client, namespace, deploymentName string) derivedComputed {
+	key := namespace + "/" + deploymentName
+
+	dc.mu.Lock()
+	if e, ok := dc.entries[key]; ok && time.Since(e.at) < derivedDebounceWindow {
+		dc.mu.Unlock()
+		return e.data
+	}
+	dc.mu.Unlock()
+
+	var computed derivedComputed
+	if mr, err := k8sClient.ManagedResourceStatusForDeployment(ctx, namespace, deploymentName); err == nil {
+		computed.managedResource = mr
+	}
+	if children, err := BuildDeploymentChildren(ctx, k8sClient, namespace, deploymentName); err == nil {
+		computed.children = children
+	}
+
+	dc.mu.Lock()
+	dc.entries[key] = derivedCacheEntry{at: time.Now(), data: computed}
+	dc.mu.Unlock()
+
+	return computed
+}
+
+// marshalDerived JSON-encodes d and applies the maxDerivedBytes size guard,
+// returning nil (dropping the field) on either a marshal error or an
+// oversized result — never a partial/truncated payload.
+func marshalDerived(d DerivedData) json.RawMessage {
+	data, err := json.Marshal(d)
+	if err != nil || len(data) > maxDerivedBytes {
+		return nil
+	}
+	return data
+}
+
+// attachDerived fills in ChangeEvent.Derived for Deployment and ReplicaSet
+// events — DERIVED-2026-09-04, the streamed counterpart to
+// GET /namespaces/:ns/deployments/:name/children and
+// GET /kustomizations/:ns/:name/managed-resources: during a rolling update
+// the frontend used to answer every one of those events with its own GET of
+// both endpoints (PERF-2026-09-04's "Workloads on the stream" follow-up — 12
+// children + 10 managed-resources requests measured in two minutes on one
+// rollout). This computes the same response bodies server-side instead, from
+// the same cached reads those handlers already use, and ships them on the
+// event.
+//
+// Called from flush() BEFORE the per-client fan-out loop (see flush()'s own
+// comment for why) — cache memoises the expensive part
+// (BuildDeploymentChildren's live Pods LIST) once per coalesced batch,
+// reused by every subscriber's copy of that same batch, not recomputed once
+// per subscriber. A hundred concurrently-registered clients therefore still
+// cost at most one Pods LIST per (namespace, deployment) per
+// derivedDebounceWindow, not a hundred.
+//
+// Like AttachObjects, returns a NEW slice; events itself is never mutated —
+// batch is the same slice flush() is about to hand to every client channel.
+//
+// k8sClient may be nil (InitReadCache's cache still warming up, or a test
+// hub with no read client wired) — attachDerived then returns events
+// unchanged, the same fallback AttachObjects uses for a nil client.
+func attachDerived(ctx context.Context, k8sClient *Client, events []ChangeEvent, cache *derivedCache) []ChangeEvent {
+	if k8sClient == nil || len(events) == 0 {
+		return events
+	}
+	out := make([]ChangeEvent, len(events))
+	for i, ev := range events {
+		out[i] = ev
+		switch {
+		case ev.Kind == "Deployment" && ev.Type != "delete":
+			computed := cache.get(ctx, k8sClient, ev.Namespace, ev.Name)
+			if computed.managedResource == nil && computed.children == nil {
+				continue
+			}
+			out[i].Derived = marshalDerived(DerivedData{
+				ManagedResource: computed.managedResource,
+				Children:        computed.children,
+			})
+		case ev.Kind == "ReplicaSet" && ev.ownerDeployment != "":
+			computed := cache.get(ctx, k8sClient, ev.Namespace, ev.ownerDeployment)
+			out[i].Derived = marshalDerived(DerivedData{
+				OwnerDeployment: &OwnerDeploymentRef{Namespace: ev.Namespace, Name: ev.ownerDeployment},
+				Children:        computed.children,
+			})
+		}
 	}
 	return out
 }

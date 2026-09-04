@@ -1,6 +1,9 @@
 package kubernetes
 
 import (
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -27,4 +30,32 @@ func NewTestClient(objs ...client.Object) (*Client, error) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 	return &Client{client: cl}, nil
+}
+
+// NewTestClientWithPods is NewTestClient plus a client-go fake clientset
+// (k8s.io/client-go/kubernetes/fake) preloaded with pods, wired in as
+// c.clientset — DERIVED-2026-09-04. BuildDeploymentChildren's Pods LIST goes
+// through GetClientset() rather than the controller-runtime client (see that
+// function's doc comment for why: Pods are deliberately not part of
+// InitReadCache's informer cache), which is exactly what NewTestClient's own
+// doc comment says is out of scope for it. Client.clientset is typed as the
+// kubernetes.Interface a *kubernetes.Clientset implements rather than that
+// concrete type specifically so a fake clientset can stand in here.
+//
+// Returns the fake Clientset itself (not just *Client) so a test can attach
+// its own Fake.PrependReactor to count LIST calls — used to verify
+// derived-data computation happens once per coalesced batch rather than once
+// per subscriber (eventhub_derived_test.go).
+func NewTestClientWithPods(objs []client.Object, pods ...corev1.Pod) (*Client, *k8sfake.Clientset, error) {
+	c, err := NewTestClient(objs...)
+	if err != nil {
+		return nil, nil, err
+	}
+	podRuntimeObjs := make([]runtime.Object, 0, len(pods))
+	for i := range pods {
+		podRuntimeObjs = append(podRuntimeObjs, &pods[i])
+	}
+	fakeClientset := k8sfake.NewSimpleClientset(podRuntimeObjs...)
+	c.clientset = fakeClientset
+	return c, fakeClientset, nil
 }

@@ -1560,207 +1560,25 @@ func setupRouter() *gin.Engine {
 			name := c.Param("name")
 			ctx := context.Background()
 
-			// Get the Deployment to get its UID and selector. Served from the
-			// informer cache (cache.go's cachedByObject now includes apps/v1
-			// Deployment) rather than a live apiserver GET, which is what
-			// makes the refetch the frontend does on a Deployment/ReplicaSet
-			// stream event cheap.
-			deployment, err := k8sClient.GetDeployment(ctx, namespace, name)
+			// All the Deployment/ReplicaSet/Pod assembly logic lives in
+			// pkg/kubernetes/children.go's BuildDeploymentChildren now
+			// (DERIVED-2026-09-04) — shared with the /api/events/stream
+			// derived-data path (eventhub.go's attachDerived) so both
+			// produce byte-identical JSON for the same deployment from the
+			// same cached reads.
+			children, err := kubernetes.BuildDeploymentChildren(ctx, k8sClient, namespace, name)
 			if err != nil {
-				log.Printf("Error fetching deployment %s/%s: %v", namespace, name, err)
-				c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
+				if errors.Is(err, kubernetes.ErrDeploymentNotFound) {
+					log.Printf("Error fetching deployment %s/%s: %v", namespace, name, err)
+					c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
+					return
+				}
+				log.Printf("Error building children for deployment %s/%s: %v", namespace, name, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to build deployment children"})
 				return
 			}
 
-			deploymentUID := string(deployment.UID)
-
-			// Narrow LIST scope: deployment selector matches all RS + Pods belonging to this deployment.
-			// (RS adds pod-template-hash on top, but base labels still match.)
-			labelSelector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
-			if err != nil {
-				log.Printf("Error parsing selector for deployment %s/%s: %v", namespace, name, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse deployment selector"})
-				return
-			}
-
-			// ReplicaSets — same cache-backed read as the Deployment above.
-			allRS, err := k8sClient.GetReplicaSetsBySelector(ctx, namespace, labelSelector)
-			if err != nil {
-				log.Printf("Error listing replicasets for deployment %s/%s: %v", namespace, name, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list ReplicaSets"})
-				return
-			}
-
-			// Pods stay a live, namespaced LIST with the same selector as
-			// before — cluster-wide Pods are deliberately excluded from the
-			// informer cache (cache.go's cachedByObject doc comment: too
-			// heavy, and nothing else here needs them).
-			clientset := k8sClient.GetClientset()
-			listOpts := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector)}
-			allPods, err := clientset.CoreV1().Pods(namespace).List(ctx, listOpts)
-			if err != nil {
-				log.Printf("Error listing pods for deployment %s/%s: %v", namespace, name, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list Pods"})
-				return
-			}
-
-			type PodInfo struct {
-				Name        string   `json:"name"`
-				Namespace   string   `json:"namespace"`
-				Phase       string   `json:"phase"`
-				Ready       bool     `json:"ready"`
-				Terminating bool     `json:"terminating"`
-				Restarts    int32    `json:"restarts"`
-				Node        string   `json:"node"`
-				Age         string   `json:"age"`
-				Images      []string `json:"images"`
-				Message     string   `json:"message,omitempty"`
-			}
-			type RSInfo struct {
-				Name            string    `json:"name"`
-				Namespace       string    `json:"namespace"`
-				Replicas        int32     `json:"replicas"`
-				ReadyReplicas   int32     `json:"readyReplicas"`
-				DesiredReplicas int32     `json:"desiredReplicas"`
-				IsCurrentRS     bool      `json:"isCurrentRS"`
-				Pods            []PodInfo `json:"pods"`
-			}
-
-			var replicaSets []RSInfo
-			currentRSRevision := deployment.Annotations["deployment.kubernetes.io/revision"]
-
-			for _, rs := range allRS.Items {
-				owned := false
-				for _, ownerRef := range rs.OwnerReferences {
-					if string(ownerRef.UID) == deploymentUID {
-						owned = true
-						break
-					}
-				}
-				if !owned {
-					continue
-				}
-
-				rsUID := string(rs.UID)
-				isCurrent := rs.Annotations["deployment.kubernetes.io/revision"] == currentRSRevision
-
-				pods := []PodInfo{}
-				for _, pod := range allPods.Items {
-					isPodOwned := false
-					for _, ownerRef := range pod.OwnerReferences {
-						if string(ownerRef.UID) == rsUID {
-							isPodOwned = true
-							break
-						}
-					}
-					if !isPodOwned {
-						continue
-					}
-
-					// Count restarts and check readiness
-					var totalRestarts int32
-					isReady := false
-					for _, cs := range pod.Status.ContainerStatuses {
-						totalRestarts += cs.RestartCount
-					}
-					for _, cond := range pod.Status.Conditions {
-						if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
-							isReady = true
-							break
-						}
-					}
-
-					// Collect first meaningful message from container states or conditions
-					podMessage := ""
-					for _, cs := range pod.Status.ContainerStatuses {
-						if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
-							podMessage = cs.State.Waiting.Reason
-							if cs.State.Waiting.Message != "" {
-								podMessage += ": " + cs.State.Waiting.Message
-							}
-							break
-						}
-						if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" && cs.State.Terminated.Reason != "Completed" {
-							podMessage = cs.State.Terminated.Reason
-							if cs.State.Terminated.Message != "" {
-								podMessage += ": " + cs.State.Terminated.Message
-							}
-							break
-						}
-					}
-					if podMessage == "" {
-						for _, cond := range pod.Status.Conditions {
-							if cond.Status != corev1.ConditionTrue && cond.Message != "" {
-								podMessage = cond.Message
-								break
-							}
-						}
-					}
-
-					var images []string
-					for _, c := range pod.Spec.Containers {
-						images = append(images, c.Image)
-					}
-
-					age := ""
-					if !pod.CreationTimestamp.IsZero() {
-						dur := time.Since(pod.CreationTimestamp.Time)
-						if dur < time.Minute {
-							age = fmt.Sprintf("%ds", int(dur.Seconds()))
-						} else if dur < time.Hour {
-							age = fmt.Sprintf("%dm", int(dur.Minutes()))
-						} else if dur < 24*time.Hour {
-							age = fmt.Sprintf("%dh", int(dur.Hours()))
-						} else {
-							age = fmt.Sprintf("%dd", int(dur.Hours()/24))
-						}
-					}
-
-					pods = append(pods, PodInfo{
-						Name:        pod.Name,
-						Namespace:   pod.Namespace,
-						Phase:       string(pod.Status.Phase),
-						Ready:       isReady,
-						Terminating: pod.DeletionTimestamp != nil,
-						Restarts:    totalRestarts,
-						Node:        pod.Spec.NodeName,
-						Age:         age,
-						Images:      images,
-						Message:     podMessage,
-					})
-				}
-
-				desiredReplicas := int32(1)
-				if rs.Spec.Replicas != nil {
-					desiredReplicas = *rs.Spec.Replicas
-				}
-
-				replicaSets = append(replicaSets, RSInfo{
-					Name:            rs.Name,
-					Namespace:       rs.Namespace,
-					Replicas:        rs.Status.Replicas,
-					ReadyReplicas:   rs.Status.ReadyReplicas,
-					DesiredReplicas: desiredReplicas,
-					IsCurrentRS:     isCurrent,
-					Pods:            pods,
-				})
-			}
-
-			if replicaSets == nil {
-				replicaSets = []RSInfo{}
-			}
-
-			c.JSON(http.StatusOK, gin.H{
-				"replicaSets": replicaSets,
-				"deployment": map[string]interface{}{
-					"name":              deployment.Name,
-					"namespace":         deployment.Namespace,
-					"replicas":          deployment.Status.Replicas,
-					"readyReplicas":     deployment.Status.ReadyReplicas,
-					"updatedReplicas":   deployment.Status.UpdatedReplicas,
-					"availableReplicas": deployment.Status.AvailableReplicas,
-				},
-			})
+			c.JSON(http.StatusOK, children)
 		})
 
 		// New endpoint to fetch health checks for a rollout

@@ -43,11 +43,19 @@ import (
 type Client struct {
 	client    client.Client
 	config    *rest.Config // Store REST config for SelfSubjectAccessReview
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 }
 
-// GetClientset returns the Kubernetes clientset for direct API access
-func (c *Client) GetClientset() *kubernetes.Clientset {
+// GetClientset returns the Kubernetes clientset for direct API access.
+//
+// Typed as the kubernetes.Interface the real *kubernetes.Clientset
+// implements, not the concrete type — DERIVED-2026-09-04: this is what lets
+// a test build a *Client around client-go's fake.NewSimpleClientset instead
+// of the real thing, so BuildDeploymentChildren's live Pods LIST (the one
+// call this package's read cache deliberately does not serve — see cache.go's
+// cachedByObject doc comment) can be exercised, and counted, without a real
+// apiserver.
+func (c *Client) GetClientset() kubernetes.Interface {
 	return c.clientset
 }
 
@@ -987,6 +995,32 @@ func managedResourceStatusFromObject(obj *unstructured.Unstructured, gvkStr, nam
 		LastModified:     lastModified,
 		Object:           obj,
 	}
+}
+
+// ManagedResourceStatusForDeployment computes the exact ManagedResourceStatus
+// entry GetKustomizationManagedResources would return for one Deployment —
+// same GVK string ("apps/v1/Deployment"), same conversion
+// (toUnstructuredWithGVK), same status.Compute call via
+// managedResourceStatusFromObject — without needing to know which
+// Kustomization owns it. Used by eventhub.go's derived-data computation
+// (DERIVED-2026-09-04) so a Deployment ChangeEvent can carry the same status
+// word the managed-resources endpoint would compute, from the same cached
+// object, without the frontend making a second round trip.
+//
+// dep is fetched via c.GetDeployment — an informer-cache hit for the
+// InitReadCache-backed client this is always called against in production —
+// so this costs one cache lookup, not a live apiserver GET.
+func (c *Client) ManagedResourceStatusForDeployment(ctx context.Context, namespace, name string) (*ManagedResourceStatus, error) {
+	dep, err := c.GetDeployment(ctx, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	u, err := toUnstructuredWithGVK(dep, "apps/v1", "Deployment")
+	if err != nil {
+		return nil, err
+	}
+	status := managedResourceStatusFromObject(&u, "apps/v1/Deployment", name, namespace)
+	return &status, nil
 }
 
 // inventoryEntry is a parsed, valid inventory entry, indexed back into the

@@ -2,9 +2,12 @@ package kubernetes
 
 import (
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	toolscache "k8s.io/client-go/tools/cache"
 	k8sptr "k8s.io/utils/ptr"
 )
 
@@ -176,5 +179,110 @@ func TestShouldPublishUpdate_ReplicaSet_NilSpecReplicasHandledSafely(t *testing.
 	newRS2.Spec.Replicas = k8sptr.To(int32(3))
 	if !shouldPublishUpdate("ReplicaSet", oldRS, newRS2) {
 		t.Fatalf("expected nil -> set spec.Replicas to be published")
+	}
+}
+
+// DERIVED-2026-09-04: publishChange reads a ReplicaSet's owning Deployment
+// name off its own OwnerReferences at publish time, storing it on
+// ChangeEvent.ownerDeployment for eventhub.go's attachDerived to use later —
+// captured now specifically because a delete event's object is already gone
+// from the informer cache by the time flush() runs, so a later re-Get to
+// find the owner wouldn't work.
+
+func replicaSetOwnedByDeployment(name string) *appsv1.ReplicaSet {
+	return &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "team-a",
+			Name:      "web-abc123",
+			OwnerReferences: []metav1.OwnerReference{
+				{APIVersion: "apps/v1", Kind: "Deployment", Name: name, UID: types.UID("dep-uid-1")},
+			},
+		},
+	}
+}
+
+func TestPublishChange_ReplicaSetAdd_CapturesOwnerDeployment(t *testing.T) {
+	h := NewEventHub(20 * time.Millisecond)
+	defer h.Stop()
+	_, ch := h.Register(4)
+
+	publishChange(h, "add", "ReplicaSet", replicaSetOwnedByDeployment("web"))
+
+	select {
+	case batch := <-ch:
+		if len(batch) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(batch))
+		}
+		if batch[0].ownerDeployment != "web" {
+			t.Fatalf("expected ownerDeployment to be captured from OwnerReferences, got %q", batch[0].ownerDeployment)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for the published event")
+	}
+}
+
+func TestPublishChange_ReplicaSetDelete_CapturesOwnerFromDeletedFinalStateUnknown(t *testing.T) {
+	h := NewEventHub(20 * time.Millisecond)
+	defer h.Stop()
+	_, ch := h.Register(4)
+
+	// A delete callback firing after a watch resync/relist hands back
+	// DeletedFinalStateUnknown instead of the typed object directly — the
+	// same unwrap publishChange already does for Namespace/Name. The owner
+	// must still resolve from the wrapped object.
+	wrapped := toolscache.DeletedFinalStateUnknown{
+		Key: "team-a/web-abc123",
+		Obj: replicaSetOwnedByDeployment("web"),
+	}
+	publishChange(h, "delete", "ReplicaSet", wrapped)
+
+	select {
+	case batch := <-ch:
+		if len(batch) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(batch))
+		}
+		if batch[0].ownerDeployment != "web" {
+			t.Fatalf("expected ownerDeployment to survive a DeletedFinalStateUnknown delete, got %q", batch[0].ownerDeployment)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for the published event")
+	}
+}
+
+func TestPublishChange_ReplicaSetWithNoDeploymentOwner_LeavesOwnerDeploymentEmpty(t *testing.T) {
+	h := NewEventHub(20 * time.Millisecond)
+	defer h.Stop()
+	_, ch := h.Register(4)
+
+	orphan := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "web-abc123"},
+	}
+	publishChange(h, "add", "ReplicaSet", orphan)
+
+	select {
+	case batch := <-ch:
+		if batch[0].ownerDeployment != "" {
+			t.Fatalf("expected no owner for a ReplicaSet with no Deployment OwnerReference, got %q", batch[0].ownerDeployment)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for the published event")
+	}
+}
+
+func TestPublishChange_NonReplicaSetKind_NeverSetsOwnerDeployment(t *testing.T) {
+	h := NewEventHub(20 * time.Millisecond)
+	defer h.Stop()
+	_, ch := h.Register(4)
+
+	deployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "web"}}
+	publishChange(h, "add", "Deployment", deployment)
+
+	select {
+	case batch := <-ch:
+		if batch[0].ownerDeployment != "" {
+			t.Fatalf("expected ownerDeployment to stay unset for a non-ReplicaSet kind, got %q", batch[0].ownerDeployment)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for the published event")
 	}
 }

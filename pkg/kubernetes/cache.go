@@ -127,6 +127,17 @@ func kindOf(obj client.Object) string {
 // instead hand back a toolscache.DeletedFinalStateUnknown wrapping the last
 // known object, which is unwrapped here so deletes still carry a real
 // name/namespace instead of being silently dropped.
+//
+// For a ReplicaSet, also reads its owner Deployment's name off co's own
+// OwnerReferences right here — DERIVED-2026-09-04 — rather than leaving
+// eventhub.go's derived-data step to re-Get the ReplicaSet later. That later
+// Get would fail for a delete event (the object is gone from the cache by
+// the time flush() runs), so capturing it now, while co is still the actual
+// (possibly since-deleted) object the informer handed us, is what lets a
+// ReplicaSet delete event still carry derived.ownerDeployment. Reading
+// OwnerReferences is a pure in-memory field access — no informer/apiserver
+// cost — so doing it unconditionally here, even for kinds that never end up
+// wanting it, is free.
 func publishChange(hub *EventHub, changeType, kind string, obj interface{}) {
 	if d, ok := obj.(toolscache.DeletedFinalStateUnknown); ok {
 		obj = d.Obj
@@ -135,14 +146,23 @@ func publishChange(hub *EventHub, changeType, kind string, obj interface{}) {
 	if !ok || co == nil {
 		return
 	}
-	hub.Publish(ChangeEvent{
+	ev := ChangeEvent{
 		Type:            changeType,
 		Kind:            kind,
 		Namespace:       co.GetNamespace(),
 		Name:            co.GetName(),
 		ResourceVersion: co.GetResourceVersion(),
 		Ts:              time.Now().UnixMilli(),
-	})
+	}
+	if kind == "ReplicaSet" {
+		for _, owner := range co.GetOwnerReferences() {
+			if owner.Kind == "Deployment" {
+				ev.ownerDeployment = owner.Name
+				break
+			}
+		}
+	}
+	hub.Publish(ev)
 }
 
 // shouldPublishUpdate gates an informer UpdateFunc callback before it
