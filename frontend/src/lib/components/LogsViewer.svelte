@@ -1092,12 +1092,24 @@
 		if (typeof window === 'undefined' || !paneRootEl) return;
 		const el = paneRootEl;
 		function recompute() {
+			const BOTTOM_GUTTER = 16;
+			// From `sm` up `<main>` is the scroller (root layout, 2026-09-04): the
+			// room left is measured inside IT, not the viewport, and its own
+			// scrollTop stands in for `window.scrollY`.
+			const main = el.closest('#main-content') as HTMLElement | null;
+			if (main && getComputedStyle(main).overflowY === 'auto') {
+				const mainRect = main.getBoundingClientRect();
+				const topInMain = el.getBoundingClientRect().top - mainRect.top + main.scrollTop;
+				// 24, not 16: measured 8px of leftover scroll in <main> at 16 — the
+				// rollout layout's own bottom rhythm below this pane.
+				paneMaxHeight = Math.max(240, mainRect.height - topInMain - BOTTOM_GUTTER - 8);
+				return;
+			}
 			const docTop = el.getBoundingClientRect().top + window.scrollY;
 			const tabbarH =
 				parseFloat(
 					getComputedStyle(document.documentElement).getPropertyValue('--tabbar-h')
 				) || 0;
-			const BOTTOM_GUTTER = 16;
 			paneMaxHeight = Math.max(240, window.innerHeight - docTop - tabbarH - BOTTOM_GUTTER);
 		}
 		recompute();

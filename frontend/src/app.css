@@ -80,8 +80,16 @@ html.dark {
    `html` makes every page's content box one width regardless of whether
    THAT page's content happens to overflow — it is the same fix, moved to
    where the scrolling now actually happens. */
-html {
-	scrollbar-gutter: stable;
+/* ⛔ AMENDED 2026-09-04: THE DOCUMENT SCROLLS BELOW `sm` ONLY. From `sm` up
+   the shell is the viewport again and `<main>` is the one scroller (see the
+   root layout) — the human: "navbar / sidebar bounces on chrome scrolling.
+   it should be fixed in place." The gutter reservation follows the
+   scroller: `html` below `sm`, `<main>` above (its own class). A stable
+   gutter on a document that never scrolls would reserve a bar for nothing. */
+@media (max-width: 639.98px) {
+	html {
+		scrollbar-gutter: stable;
+	}
 }
 
 html,
@@ -106,6 +114,13 @@ body {
    this engages. */
 html.scroll-locked {
 	overflow: hidden;
+}
+
+/* From `sm` up the scroller is `<main>`, so the lock lands there too. */
+@media (min-width: 640px) {
+	html.scroll-locked #main-content {
+		overflow: hidden;
+	}
 }
 
 @layer base {

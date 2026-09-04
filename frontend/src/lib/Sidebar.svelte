@@ -52,6 +52,10 @@
      `aside` was publishing a second landmark named "Sections" wrapping a nav of
      the same name. The `nav` below is the landmark; this is just its box.
 
+     ⛔ SUPERSEDED 2026-09-04 — the sidebar only exists from `sm` up, where the shell
+     is the viewport again and this column is stretched to it by flex; `sticky`,
+     `top-16` and the `max-height` are gone (see the root layout). What follows
+     is the document-scroller reasoning it replaced.
      ⭐ `sticky top-16` + ITS OWN `max-height` + ITS OWN `overflow-y-auto`.
      (2026-09-03, scroll model rewrite) This used to lean on the OLD model's
      `h-screen` shell for its height — the content row was exactly the
@@ -66,7 +70,7 @@
      the flex row from stretching this to `<main>`'s (now unbounded) height
      before the cap even applies. -->
 <div
-	class="hidden shrink-0 flex-col self-start overflow-y-auto border-r border-gray-200 bg-white py-3 transition-[width] duration-150 sticky top-16 max-h-[calc(100dvh-4rem)] dark:border-gray-700 dark:bg-gray-800 sm:flex {collapsed ? 'w-12' : 'w-44'}"
+	class="hidden shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-white py-3 transition-[width] duration-150 [overscroll-behavior:contain] dark:border-gray-700 dark:bg-gray-800 sm:flex {collapsed ? 'w-12' : 'w-44'}"
 >
 	<nav id="sidebar-sections" class="flex flex-1 flex-col gap-0.5 px-2" aria-label="Sections">
 		{#each NAV as n (n.key)}

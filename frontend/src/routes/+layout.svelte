@@ -46,7 +46,14 @@
 	 * specifically) — verified over repeated runs against the synchronous
 	 * version, which landed on `<body>` roughly one time in three.
 	 */
+	let mainEl: HTMLElement | undefined = $state();
 	afterNavigate((nav) => {
+		// From `sm` up `<main>` is the scroller, and SvelteKit only resets the
+		// DOCUMENT's offset on a fresh navigation — leave Back/Forward to the
+		// browser, put every other arrival at the top of the new page.
+		if (nav.type !== 'popstate' && mainEl && getComputedStyle(mainEl).overflowY === 'auto') {
+			mainEl.scrollTop = 0;
+		}
 		if (nav.type === 'enter') return;
 		if (!nav.to) return;
 		if (nav.from?.route?.id === nav.to.route?.id) return;
@@ -97,7 +104,19 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-	<div class="flex flex-col bg-white dark:bg-gray-900">
+	<!-- ⭐ TWO SCROLL MODELS, ONE BREAKPOINT. (2026-09-04, from the human: "we
+	     broke how desktop looks like when we recently changed scrolling
+	     behaviour … navbar / sidebar bounces on chrome scrolling. it should be
+	     fixed in place.") Below `sm` the DOCUMENT scrolls — the phone model
+	     d7248c4 introduced, with the tab bar fixed and every native scroll
+	     behaviour live. From `sm` up the shell is exactly the viewport again
+	     (`h-dvh overflow-hidden`), the navbar and the full-height sidebar are
+	     static chrome, and `<main>` is the ONE scroller with
+	     `overscroll-behavior: contain` — so Chrome's rubber-band never moves
+	     the chrome, and the sidebar spans the viewport instead of ending at
+	     its last link. `sm` is the breakpoint because it is where the sidebar
+	     appears and the tab bar leaves: one width, one model each side. -->
+	<div class="flex flex-col bg-white sm:h-dvh sm:overflow-hidden dark:bg-gray-900">
 		<!-- ⭐ SKIP LINK. Measured before it existed: EVERY page cost a keyboard
 		     user 10 identical tab stops (logo, breadcrumb, theme, six sidebar
 		     links, collapse) before the first thing on the page. On `/activity`
@@ -112,7 +131,7 @@
 			Skip to main content
 		</a>
 		<Navbar />
-		<div class="flex min-w-0 flex-row">
+		<div class="flex min-w-0 flex-row sm:min-h-0 sm:flex-1">
 			<Sidebar />
 			<!--
 				⭐ `<main>` IS A PLAIN BLOCK NOW — THE DOCUMENT IS THE SCROLLER.
@@ -127,8 +146,13 @@
 				content box is still one width whether or not the page scrolls —
 				same fix, same reasoning, moved to where the scrolling happens.
 			-->
-			<main id="main-content" tabindex="-1" class="min-w-0 flex-1 focus:outline-none">
-				<div class="relative min-w-0">
+			<main
+				id="main-content"
+				tabindex="-1"
+				bind:this={mainEl}
+				class="min-w-0 flex-1 focus:outline-none sm:overflow-y-auto sm:[overscroll-behavior:contain] sm:[scrollbar-gutter:stable]"
+			>
+				<div class="relative min-w-0 sm:min-h-full">
 					<slot />
 				</div>
 			</main>

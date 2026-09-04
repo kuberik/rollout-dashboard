@@ -873,3 +873,21 @@ live. The denylist itself lives in `src/lib/messages/vocabulary.test.ts`, one ru
 concept above; a retired spelling reappearing fails that suite by name, not by a generic
 diff, and the fix for a real new exception is one allowlisted `file\tkind\ttext` line with
 a reason, never a widened regex.
+
+## The scroll model has two sides of one breakpoint (2026-09-04)
+
+Amends the "THE DOCUMENT SCROLLS" rule from d7248c4. From the human: *"we broke how desktop
+looks like when we recently changed scrolling behaviour … navbar / sidebar bounces on chrome
+scrolling. it should be fixed in place."*
+
+- **Below `sm` (phone):** the document scrolls. Tab bar `fixed`, navbar `sticky`, every native
+  scroll behaviour live. Unchanged from d7248c4.
+- **From `sm` up:** the shell is the viewport (`sm:h-dvh sm:overflow-hidden` on the root),
+  navbar and the full-height sidebar are static chrome, and `<main>` is the ONE scroller with
+  `overscroll-behavior: contain` and its own `scrollbar-gutter: stable`. The root layout resets
+  `main.scrollTop` on every non-popstate navigation (SvelteKit only resets the document).
+  `html.scroll-locked` also locks `#main-content` there. `LogsViewer` measures its pane
+  against `<main>` when `<main>` is the scroller, against the viewport otherwise.
+
+`sm` is the seam because it is where the sidebar appears and the tab bar leaves. Do not add a
+third model; if a component needs "the scroller", ask `getComputedStyle(main).overflowY`.
