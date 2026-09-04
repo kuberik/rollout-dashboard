@@ -161,6 +161,7 @@ lib/components/CopyButton.svelte	code	Copy … — failed, clipboard blocked
 lib/components/CopyButton.svelte	code	Could not copy …. The browser blocked clipboard access — select the text and copy it manually.
 lib/components/DependencyNetwork.svelte	code	… — no Rollout of this name is visible to this dashboard
 lib/components/DependencyNetwork.svelte	code	… newer build… available
+lib/components/DependencyNetwork.svelte	code	Checking a rule…
 lib/components/DependencyNetwork.svelte	code	running …
 lib/components/DependencyNetwork.svelte	text	services in one environment
 lib/components/DependencyNode.svelte	text	never deployed

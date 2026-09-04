@@ -1069,6 +1069,13 @@ describe('withNetworkSchedules — the graph-wide schedule join (2026-09-03, ope
 		expect(dev?.holds).toEqual([
 			expect.objectContaining({ gate: SCHEDULE_GATE, clears: 'check', short: 'A check is not passing' })
 		]);
+		// ⭐ AND THE NODE KNOWS ITS OWN CLAIM IS SPECULATIVE. (2026-09-04,
+		// load-state audit finding 4) `NodeHold.pending` is what tells
+		// `DependencyNode` not to draw `short` yet — a renderer that only
+		// checked `clears === 'check'` cannot tell this apart from a gate
+		// that will NEVER get a schedule join, which is a genuine, final
+		// `check` gate and must print immediately.
+		expect(dev?.holds[0].pending).toBe(true);
 	});
 
 	it('with the join, the same gate names its window instead', () => {
@@ -1115,6 +1122,8 @@ describe('withNetworkSchedules — the graph-wide schedule join (2026-09-03, ope
 				clearsAt: '2026-09-03T13:00:00Z'
 			})
 		]);
+		// The claim is final now — `DependencyNode` may draw `short`.
+		expect(dev?.holds[0].pending).toBeFalsy();
 	});
 
 	it("does not leak one cluster's schedules onto a namespace another cluster owns", () => {

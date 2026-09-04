@@ -29,7 +29,22 @@ export type DependencyNodeData = {
 	/** Held by something that does not clear itself. The RED predicate. */
 	blocked: boolean;
 	/** Gates holding it that have no second rollout on the far end. */
-	holds: { gate: string; clears: GateClears; short: string }[];
+	holds: {
+		gate: string;
+		clears: GateClears;
+		short: string;
+		/**
+		 * ⭐ TRUE WHILE THIS HOLD'S KIND IS STILL A GUESS. (2026-09-04,
+		 * load-state audit finding 4) Carried straight off
+		 * `NodeHold.pending` / `ClassifiedGate.pending` — `short` is the
+		 * `check` fallback's claim ("A check is not passing") until
+		 * `/schedules` has actually been consulted, and might turn out to
+		 * be a `clock` gate with real window text instead. `DependencyNode`
+		 * renders a `SkeletonBar` for the reason line and the `pending`
+		 * glyph, never `short` or the `check` mark, while this is true.
+		 */
+		pending?: boolean;
+	}[];
 	href: string | null;
 	focused: boolean;
 	title: string;

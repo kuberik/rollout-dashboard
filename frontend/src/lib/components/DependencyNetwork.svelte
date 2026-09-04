@@ -205,7 +205,12 @@
 		if (n.candidateCount > 0)
 			lines.push(`${n.candidateCount} newer build${n.candidateCount === 1 ? '' : 's'} available`);
 		for (const e of inbound.get(n.id) ?? []) lines.push(edgeSentence(e, nodeById));
-		for (const h of n.holds) lines.push(h.short);
+		// ⛔ NOT `h.short` WHILE PENDING. (2026-09-04, load-state audit
+		// finding 4) `short` is the `check` fallback's claim until
+		// `/schedules` answers, and the native tooltip is as much a printed
+		// claim as the node's own text — see `DependencyNode.svelte`'s same
+		// guard on the drawn reason line.
+		for (const h of n.holds) lines.push(h.pending ? 'Checking a rule…' : h.short);
 		return lines.join('\n');
 	}
 
@@ -220,7 +225,12 @@
 				build: n.build,
 				unresolved: n.unresolved,
 				blocked: n.blocked,
-				holds: n.holds.map((h) => ({ gate: h.gate, clears: h.clears, short: h.short })),
+				holds: n.holds.map((h) => ({
+					gate: h.gate,
+					clears: h.clears,
+					short: h.short,
+					pending: h.pending
+				})),
 				href: n.unresolved ? null : hrefOf(n),
 				focused: n.id === focus,
 				title: nodeTitle(n)

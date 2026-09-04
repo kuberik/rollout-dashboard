@@ -117,6 +117,18 @@ export type NodeHold = {
 	short: string;
 	/** ISO instant it reopens, when `clears === 'clock'`. */
 	clearsAt: string | null;
+	/**
+	 * ⭐ CARRIED STRAIGHT OFF `ClassifiedGate.pending`. (2026-09-04,
+	 * load-state audit finding 4) `true` means `short` above is the `check`
+	 * fallback's claim ("A check is not passing") printed BEFORE
+	 * `/schedules` has been consulted — it might reclassify to a genuine
+	 * `clock` gate, with real window text, the moment that request lands.
+	 * `undefined`/`false` on every other hold, including the synthetic pin
+	 * hold below, which is never speculative. A renderer that draws `short`
+	 * while this is `true` is printing the same confident-but-possibly-wrong
+	 * sentence the audit's principle 4 bans — see `DependencyNode.svelte`.
+	 */
+	pending?: boolean;
 };
 
 /** ONE ROLLOUT — a (service, environment). */
@@ -521,7 +533,13 @@ export function buildRolloutGraph(args: {
 		const drawn = inboundGates.get(n.id) ?? new Set<string>();
 		n.holds = story.gates
 			.filter((g) => !drawn.has(g.id))
-			.map((g) => ({ gate: g.id, clears: g.clears, short: g.short, clearsAt: g.clearsAt }));
+			.map((g) => ({
+				gate: g.id,
+				clears: g.clears,
+				short: g.short,
+				clearsAt: g.clearsAt,
+				pending: g.pending
+			}));
 		// A PIN IS NOT A GATE AND IT OUTRANKS EVERY GATE. `blockingStory`
 		// short-circuits on `spec.wantedVersion` and returns no gates at all, so
 		// without this the node would render red with nothing on it saying why.

@@ -76,6 +76,7 @@
 		ExclamationCircleOutline
 	} from 'flowbite-svelte-icons';
 	import Chip from '$lib/components/Chip.svelte';
+	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import type { DependencyNodeData } from '$lib/components/dependency-node-data';
 
 	let { data }: { data: DependencyNodeData } = $props();
@@ -130,7 +131,20 @@
 		person: UserOutline,
 		check: ExclamationCircleOutline,
 		upstream: ExclamationCircleOutline,
-		unknown: QuestionCircleOutline
+		unknown: QuestionCircleOutline,
+		/**
+		 * ⭐ THE SAME MARK `unknown` USES, AND FOR THE SAME REASON.
+		 * (2026-09-04, load-state audit finding 4) `BlockingStoryPanel`'s own
+		 * `iconForKind` and `GateRecord`'s `gateMark` both give a `pending`
+		 * gate the question mark, never the kind it might turn out NOT to be
+		 * — `unknown` means "we asked every source and none can attribute
+		 * this," `pending` means "we have not asked yet," and neither is a
+		 * claim about the gate's actual kind. A hold whose `clears` still
+		 * reads `check` while `pending` is true must NOT get `check`'s
+		 * shield glyph here — see the `{#each}` below, which reads
+		 * `hold.pending` before `hold.clears`.
+		 */
+		pending: QuestionCircleOutline
 	} as const;
 
 	/**
@@ -285,7 +299,7 @@
 		kind earns — a clock is not a person and must never look like one.
 	-->
 	{#each data.holds as hold (hold.gate + hold.short)}
-		{@const Icon = HOLD_ICON[hold.clears] ?? QuestionCircleOutline}
+		{@const Icon = hold.pending ? HOLD_ICON.pending : (HOLD_ICON[hold.clears] ?? QuestionCircleOutline)}
 		<!-- ⛔ F6 (2026-09-03, design pass 9 re-check): `truncate` CLIPPED THE
 		     GATE'S OWN SENTENCE TO 94px OF 266 AT EVERY WIDTH FROM 390 TO
 		     1024 — `Outside the Business Hours Only deploy window` is prose,
@@ -299,15 +313,45 @@
 		     across both. -->
 		<span class="flex min-w-0 items-start gap-1.5">
 			<Icon
-				class="mt-px h-3.5 w-3.5 shrink-0 {hold.clears === 'person' || hold.clears === 'unknown'
+				class="mt-px h-3.5 w-3.5 shrink-0 {!hold.pending &&
+				(hold.clears === 'person' || hold.clears === 'unknown')
 					? 'text-red-500 dark:text-red-400'
 					: 'text-gray-400 dark:text-gray-500'}"
 			/>
-			<span
-				class="t-micro min-w-0 text-wrap {hold.clears === 'person' || hold.clears === 'unknown'
-					? 'text-red-700 dark:text-red-400'
-					: 'text-gray-500 dark:text-gray-400'}">{hold.short}</span
-			>
+			{#if hold.pending}
+				<!-- ⭐ LINES RESERVED FOR THE WORST REALISTIC SENTENCE, NOT
+				     `short`. (2026-09-04, load-state audit finding 4: +14px
+				     on `/dependencies`, +24px on the compact rollout-tab
+				     graph.) `short` here is the `check` fallback's claim
+				     ("A check is not passing") — ONE line — printed before
+				     `/schedules` has been consulted. Once it answers, this
+				     hold very often turns out to be a `clock` gate whose
+				     real sentence ("Outside the Business Hours Only deploy
+				     window", 46 characters) wraps — that extra height is
+				     exactly the growth the audit measured.
+				     ⭐ THE LINE COUNT IS NOT ONE NUMBER: it depends on the
+				     BOX, and the box's own width halves under `stacked`
+				     (92-132px vs 176-280px — see this component's own note
+				     up top on why the box shrinks under `TB`). Measured
+				     live with that exact sentence: 2 lines at the
+				     unstacked width, 4 at the stacked one. Reserving the
+				     SAME two lines at both would have traded the audit's
+				     +14/+24px growth for a new +30px growth at 390 — this
+				     reserves per orientation instead, at `t-micro`'s own
+				     line height (15.4px), so the flip to the real sentence
+				     moves nothing at either width. -->
+				<SkeletonBar
+					width="w-full"
+					height={stacked ? 'h-[62px]' : 'h-[28px]'}
+					class="min-w-0 flex-1"
+				/>
+			{:else}
+				<span
+					class="t-micro min-w-0 text-wrap {hold.clears === 'person' || hold.clears === 'unknown'
+						? 'text-red-700 dark:text-red-400'
+						: 'text-gray-500 dark:text-gray-400'}">{hold.short}</span
+				>
+			{/if}
 		</span>
 	{/each}
 </svelte:element>

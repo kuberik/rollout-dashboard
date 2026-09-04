@@ -1791,7 +1791,7 @@
 						<CardSkeleton titleWidth="w-28" rows={1} rowHeight={36} />
 						<CardSkeleton titleWidth="w-24" rows={2} rowHeight={28} />
 						<CardSkeleton titleWidth="w-20" rows={3} rowHeight={28} />
-						<CardSkeleton titleWidth="w-24" rows={4} rowHeight={36} />
+						<CardSkeleton titleWidth="w-24" rows={1} rowHeight={36} />
 					</div>
 				</div>
 			</div>
@@ -3493,7 +3493,7 @@
 							/>
 						{/if}
 						{#if !eventsKnown}
-							<CardSkeleton titleWidth="w-24" rows={4} rowHeight={36} />
+							<CardSkeleton titleWidth="w-24" rows={1} rowHeight={36} />
 						{:else}
 							<EventsCard {events} deployedAt={errorCutoff} />
 						{/if}

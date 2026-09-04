@@ -48,6 +48,7 @@
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import { announce } from '$lib/stores/announce.svelte';
 	import FactList, { type Fact } from './FactList.svelte';
+	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
 
 	interface Props {
@@ -383,8 +384,24 @@
 	let overrideEnvironments = $state<Environment[]>([]);
 	let overrideDependencies = $state<RolloutDependency[]>([]);
 	let overrideContextLoadedFor = $state<string | null>(null);
+	/**
+	 * ⭐ THE JOIN'S OWN LOADEDNESS, SEPARATE FROM `overrideContextLoadedFor`.
+	 * (2026-09-04, load-state audit finding 12) `overrideContextLoadedFor` is
+	 * a de-dupe guard — it is set the instant the fetch STARTS, so it was
+	 * being read as "the data is here" when it only meant "we asked". Before
+	 * the response lands, `overrideFact` had nothing to join against and fell
+	 * to its own last-resort branch — the gate's raw generated id
+	 * (`GHD-XM669`), exactly the "finished sentence that is wrong" the
+	 * audit's principle 4 bans. `overrideContextReady` flips true once the
+	 * fetch has actually resolved (success OR failure — a failed join still
+	 * means "no more join data is coming", not "still pending") for the
+	 * namespace it was asked about, so a caller can withhold the row until
+	 * then instead of printing a guess.
+	 */
+	let overrideContextReady = $state(false);
 
 	async function loadOverrideContext(namespace: string) {
+		overrideContextReady = false;
 		try {
 			const response = await fetch(
 				apiUrl(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`)
@@ -397,6 +414,8 @@
 			// Best-effort: the notice sentence above the list already states the
 			// consequence on its own, so a failed join just leaves the list empty
 			// rather than blocking the dialog.
+		} finally {
+			overrideContextReady = true;
 		}
 	}
 
@@ -884,6 +903,24 @@
 		const namespace = rollout.metadata?.namespace;
 		return overriddenGates.map((g) => overrideFact(g.name, selectedVersion as string, namespace));
 	});
+
+	/**
+	 * ⭐ TRUE WHILE THE OVERRIDE LIST WOULD OTHERWISE PRINT A RAW GATE ID.
+	 * (2026-09-04, load-state audit finding 12) `overrideFacts` above is
+	 * computed the instant `overriddenGates` is known — off `rollout.status
+	 * .gates` alone — but `overrideFact`'s LABEL for each row needs the join
+	 * data `loadOverrideContext` is still fetching. Read this BEFORE trusting
+	 * `overrideFacts`: while `true`, the row's kind is not known yet — render
+	 * a `SkeletonBar` in its place (below), never the id.
+	 */
+	const overrideContextPending = $derived(
+		level === 'typed' &&
+			!intent.custom &&
+			!!selectedVersion &&
+			!!rollout &&
+			overriddenGates.length > 0 &&
+			(overrideContextLoadedFor !== rollout.metadata?.namespace || !overrideContextReady)
+	);
 
 	const mustPin = $derived(isPinVersionMode || direction === 'rollback' || intent.custom);
 	const pinVersionToggleComputed = $derived(mustPin || rollout?.spec?.wantedVersion !== undefined);
@@ -1429,7 +1466,59 @@
 										No commit revision known for this version — changelist unavailable.
 									</p>
 								{:else if commitsQuery.isLoading}
-									<p class="text-sm text-gray-500 dark:text-gray-400">Loading commits…</p>
+									<!-- ⭐ THE COMMITS REGION RESERVES ITS GEOMETRY NOW, NOT A
+									     BARE SENTENCE. (2026-09-04, load-state audit finding
+									     12) `Loading commits…` was literal prose with nothing
+									     reserved under it — the flip to the real list (or the
+									     "GitHub is not connected" branch) moved the deploy
+									     footer below it by however tall that content turned
+									     out to be. Which shape to reserve is decided from the
+									     status this dialog ALREADY HAS: `githubStatusQuery`
+									     answers, in practice, before the fixed-sha commits
+									     fetch does, so when it already says GitHub is not
+									     connected, this is heading for that branch's two-line
+									     sentence, not a list. -->
+									{#if githubStatusQuery.data && !githubStatusQuery.data.connected}
+										<!-- ⭐ THE MESSAGE, AND — WHEN IT WILL DRAW ONE —
+										     THE BUTTON UNDER IT. (2026-09-04, live-verified
+										     with `dlg3.mjs`: reserving the message alone
+										     still moved the deploy footer 48px once
+										     `Connect GitHub` popped in below it.) The
+										     `not_connected` branch's own `configured` /
+										     `isMobileConnectContext()` checks below are
+										     read here too — `githubStatusQuery` already
+										     answers both, so whether a button renders is
+										     knowable before `commitsQuery` even settles,
+										     same as the message shape itself. -->
+										<div class="flex flex-col items-start gap-2" aria-hidden="true">
+											<SkeletonBar width="w-full" height="h-[40px]" />
+											{#if githubStatusQuery.data.configured && !isMobileConnectContext()}
+												<SkeletonBar width="w-32" height="h-[34px]" />
+											{/if}
+										</div>
+									{:else}
+										<!-- Two rows shaped exactly like the real `<li>` below —
+										     same dot, same two text lines — so the per-row height
+										     cannot move when real commits replace them. The ROW
+										     COUNT is the one thing that cannot be reserved: how
+										     many commits sit in this range is genuinely unknown
+										     until GitHub answers. -->
+										<ul class="space-y-3" aria-hidden="true">
+											{#each Array.from({ length: 2 }) as _, i (i)}
+												<li class="flex gap-2.5">
+													<span
+														class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700"
+													></span>
+													<div class="min-w-0 flex-1">
+														<SkeletonBar width="w-3/4" height="h-3.5" />
+														<div class="mt-0.5">
+															<SkeletonBar width="w-32" height="h-3" />
+														</div>
+													</div>
+												</li>
+											{/each}
+										</ul>
+									{/if}
 								{:else if commitsError === 'not_connected'}
 									<!-- ⛔ NEVER OFFER THE BUTTON UNTIL WE KNOW IT WORKS, AND NEVER
 									     NAVIGATE AWAY FROM AN OPEN DIALOG. (operator walk,
@@ -1676,7 +1765,33 @@
 									     flat tint, not a gradient, so the value can afford to be
 									     the same neutral ink the `card` record uses — the label
 									     stays in the alert's own ink via `tone="alert"`. -->
-									{#if overrideFacts.length > 0}
+									{#if overrideContextPending}
+										<!-- ⭐ THE ROW WITHHOLDS THE GATE'S NAME AND KIND WHILE
+										     PENDING, NEVER THE RAW ID. (2026-09-04, load-state
+										     audit finding 12) `overrideFact`'s own last-resort
+										     branch prints the gate's generated id
+										     (`GHD-XM669`) when no join claims it — true once the
+										     join genuinely has no match, a GUESS while
+										     `loadOverrideContext` is still in flight. The row
+										     COUNT is real (`overriddenGates` comes straight off
+										     `rollout.status.gates`); only each row's NAME and
+										     KIND are pending, so one skeleton row per gate, sized
+										     to `FactList`'s own two-column row geometry
+										     (`t-label`/`t-micro`, `gap-x-3`), replaces the record
+										     until the join resolves — never a second guess dressed
+										     as a fact. -->
+										<div
+											class="mt-2 flex flex-col gap-1 border-t border-current/15 pt-2"
+											aria-hidden="true"
+										>
+											{#each overriddenGates as g (g.name)}
+												<div class="flex items-center gap-3">
+													<SkeletonBar width="w-16" height="h-[15px]" />
+													<SkeletonBar width="flex-1" height="h-[15px]" />
+												</div>
+											{/each}
+										</div>
+									{:else if overrideFacts.length > 0}
 										<FactList
 											facts={overrideFacts}
 											tone="alert"
