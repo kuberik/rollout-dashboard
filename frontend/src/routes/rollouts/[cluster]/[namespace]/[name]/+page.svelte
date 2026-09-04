@@ -781,9 +781,6 @@
 	let showRollbackModal = $state(false);
 	let rollbackVersion = $state<string | null>(null);
 
-	let showMarkSuccessfulModal = $state(false);
-	let markSuccessfulMessage = $state('');
-
 	let showClearPinModal = $state(false);
 
 	/**
@@ -1456,50 +1453,6 @@
 	// Helper function to get revision information from version object or annotations
 	function getRevisionInfo(versionInfo: { revision?: string; tag: string }): string | undefined {
 		return versionInfo.revision;
-	}
-
-	async function markDeploymentSuccessful(message: string) {
-		if (!rollout) return;
-
-		try {
-			const response = await fetch(
-				apiUrl(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/mark-successful`
-				),
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({ message })
-				}
-			);
-
-			if (!response.ok) {
-				throw new Error('Failed to mark deployment as successful');
-			}
-
-			await rolloutQuery.refetch();
-			showToast = true;
-			toastMessage = 'Deployment marked as successful';
-			toastType = 'success';
-			showMarkSuccessfulModal = false;
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		} catch (e) {
-			console.error('Failed to mark deployment as successful:', e);
-			showToast = true;
-			toastMessage = e instanceof Error ? e.message : 'Failed to mark deployment as successful';
-			toastType = 'error';
-
-			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
-		}
 	}
 
 	async function reconcileFluxResources() {
@@ -2609,14 +2562,14 @@
 															{:else}
 																{rollout.status.releaseCandidates.length}
 																{rollout.status.releaseCandidates.length === 1
-																	? 'upgrade'
-																	: 'upgrades'} available
+																	? 'newer build'
+																	: 'newer builds'}
 															{/if}
 														</span>
 													{/if}
 													{#if isCurrentVersionCustom}
 														<span class="font-medium text-yellow-700 dark:text-yellow-400"
-															>Custom version</span
+															>Custom build</span
 														>
 													{/if}
 													{#if getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
@@ -2866,9 +2819,8 @@
 												transition={blur}
 												transitionParams={{ duration: 300 }}
 											>
-												Version management disabled: This rollout's wantedVersion field is managed
-												by another controller or external system. The dashboard cannot pin it to
-												prevent conflicts.
+												Another controller owns this rollout's wanted version, so the dashboard
+												cannot pin it.
 											</Tooltip>
 										{/if}
 									{/if}
@@ -2992,7 +2944,7 @@
 									id="refresh-versions-btn"
 									onclick={reconcileFluxResources}
 									disabled={isReconciling}
-									aria-label="Refresh available versions"
+									aria-label="Refresh the build list"
 									class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
 								>
 									{#if isReconciling}
@@ -3003,7 +2955,7 @@
 									Refresh
 								</button>
 								<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
-									Refresh available versions
+									Refresh the build list
 								</Tooltip>
 								</div>
 							</div>
@@ -3047,7 +2999,8 @@
 								>
 									<PauseSolid class="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
 									<p class="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
-										Automatic deploys paused — this rollout is pinned to a version.
+										Pinned to {blockStory.pinnedToDisplay ?? rollout.spec.wantedVersion} — automatic
+										deploys are paused until the pin is cleared.
 									</p>
 									{#if canModify}
 										<Button
@@ -3137,11 +3090,8 @@
 														<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
 															<div class="space-y-2 p-1">
 																<p class="text-xs text-gray-600 dark:text-gray-300">
-																	{heldClears(held)} Nothing promotes this version automatically while
-																	it is held. Pressing
-																	<span class="font-medium text-gray-900 dark:text-white"
-																		>Deploy</span
-																	> applies it immediately — rules only hold back automatic promotion.
+																	{heldClears(held)} Nothing promotes this build automatically while
+																	it is held. A deploy you start by hand still applies immediately.
 																</p>
 																{#each blockingGates as gate}
 																	<!-- WHAT CLEARS THIS ONE, from the same join
@@ -3352,12 +3302,11 @@
 									>
 										<div class="flex items-center gap-3">
 											<InfoCircleSolid class="h-5 w-5" />
-											<span class="text-lg font-medium">Current version is custom</span>
+											<span class="text-lg font-medium">Custom build</span>
 										</div>
 										<p class="mt-2 mb-4 text-sm">
-											The currently deployed version is not in the available releases list. This
-											means it's a custom version that was manually deployed. To change to a
-											different version, you need to manually deploy another version.
+											The running build is not in this rollout's release list, so no rule here
+											vouches for it.
 										</p>
 										<div class="flex gap-2">
 											<Button
@@ -3522,10 +3471,10 @@
 								<div
 									class="t-label text-left text-gray-500 dark:text-gray-400"
 								>
-									{rollout.status?.releaseCandidates?.length} release candidate{rollout.status
+									{rollout.status?.releaseCandidates?.length} newer build{rollout.status
 										?.releaseCandidates?.length === 1
 										? ''
-										: 's'} available
+										: 's'}
 								</div>
 								<ul
 									class="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700/60 dark:border-gray-700"
@@ -3551,69 +3500,6 @@
 		</div>
 	{/if}
 </div>
-
-<Modal bind:open={showMarkSuccessfulModal} title="Mark Deployment as Successful">
-	<div class="space-y-4">
-		<Alert color="green" class="mb-4">
-			<div class="flex items-center">
-				<CheckCircleSolid class="mr-2 h-4 w-4" />
-				<p>
-					<span class="font-medium">Mark as Successful:</span> This will mark the failed deployment as
-					successful and update the deployment history.
-				</p>
-			</div>
-		</Alert>
-		<p class="text-sm text-gray-600 dark:text-gray-400">
-			Are you sure you want to mark the deployment for <b>{rollout?.metadata?.name}</b> as successful?
-		</p>
-		<p class="text-xs text-gray-500 dark:text-gray-400">
-			This will update the deployment history to show the deployment as succeeded and end the check
-			window now.
-		</p>
-		<Alert color="blue" class="mt-3">
-			<div class="flex items-center">
-				<InfoCircleSolid class="mr-2 h-4 w-4" />
-				<p class="text-sm">
-					<span class="font-medium">Alternative:</span> You can also deploy a different version to fix
-					the deployment issue instead of marking this one as successful.
-				</p>
-			</div>
-		</Alert>
-
-		<!-- Message field -->
-		<div>
-			<label
-				for="mark-successful-message"
-				class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-			>
-				Message (Optional)
-			</label>
-			<textarea
-				id="mark-successful-message"
-				bind:value={markSuccessfulMessage}
-				placeholder="Provide additional details about why you're marking this deployment as successful..."
-				class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500 dark:focus:ring-blue-500"
-				rows="3"
-			></textarea>
-		</div>
-
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					showMarkSuccessfulModal = false;
-					markSuccessfulMessage = '';
-				}}
-			>
-				Cancel
-			</Button>
-			<Button color="green" onclick={() => markDeploymentSuccessful(markSuccessfulMessage)}>
-				<CheckCircleSolid class="mr-1 h-3 w-3" />
-				Mark Successful
-			</Button>
-		</div>
-	</div>
-</Modal>
 
 <!--
 	⛔ THIS PROMISED SOMETHING IT COULD NOT KEEP. It said "Automated upgrades

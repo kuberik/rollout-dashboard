@@ -1026,7 +1026,7 @@
 			const activeFree = active.filter((c) => !boxed.has(c.tier));
 			let lede: string;
 			if (activeFree.length > 0) {
-				lede = `${activeFree[0].envLabel.toUpperCase()} rolling out`;
+				lede = `${activeFree[0].envLabel.toUpperCase()} ${STATUS_WORD[activeFree[0].state]}`;
 			} else {
 				// The deepest lag that is not already boxed. `mrow.worstLag` is
 				// the row's own worst, so it is only usable when the cell that
@@ -1883,6 +1883,21 @@
 		     the page's own content box now: rail beside the list once the box
 		     is ≥ 720 (the list's own desktop query) + 16 (gap) + 320 (rail) =
 		     1056px, whatever the sidebar is doing. See `.apps-split` below. -->
+		<!-- ⛔ SUPERSEDED AGAIN, 2026-09-04 (twelve-finding pass, finding 13,
+		     the rail-breakpoint alignment). 1056px was internally consistent
+		     but disagreed with its own siblings: with the sidebar open, this
+		     page and `/envs/<name>` put the rail beside the content only from
+		     ~1366 viewport, while `/apps/<name>`'s `.ab-grid` does it from
+		     ~1180 — the same "How it's going" rail, three different moments to
+		     appear on three pages a reader moves between constantly. `/apps/
+		     <name>`'s own number is the one this pass matched EXACTLY (860px,
+		     read off its `.ab-grid`'s `@container (min-width: 860px)` rule)
+		     rather than re-deriving a fourth figure. Below 1056 the list
+		     column is narrower than its own 720px per-row query, so rows in
+		     the 860–1056px band render their compact stacked form beside the
+		     rail instead of full-width — the same trade `/apps/<name>`'s own
+		     task rows already make at its equivalent width, not a new defect.
+		     See `.apps-split` below. -->
 		<div class="apps-split">
 			<div class="apps-split-main mb-4 flex min-w-0 flex-col gap-4">
 				<!-- ══ NEEDS ATTENTION ════════════════════════════════════════════
@@ -2067,7 +2082,11 @@
 						     `@container (min-width: 640px)` number `Card.svelte` itself
 						     uses, riding its `.card-cq` ancestor). -->
 						<div class="rail-activity-rollup flex shrink-0 items-center gap-1.5">
-							<a href="/activity" class="nav-link ra-narrow" aria-label="View all deploy activity">
+							<a
+								href="/activity"
+								class="nav-link ra-narrow"
+								aria-label="{n} deploy{n === 1 ? '' : 's'} — view all activity in the fleet"
+							>
 								{n} deploy{n === 1 ? '' : 's'}
 								<ChevronRightOutline class="h-3.5 w-3.5" />
 							</a>
@@ -2077,7 +2096,11 @@
 							<span class="ra-wide t-code-sm text-gray-500 dark:text-gray-400" aria-hidden="true"
 								>·</span
 							>
-							<a href="/activity" class="nav-link ra-wide" aria-label="View all deploy activity">
+							<a
+								href="/activity"
+								class="nav-link ra-wide"
+								aria-label="{n} deploy{n === 1 ? '' : 's'} — view all activity in the fleet"
+							>
 								View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
 							</a>
 						</div>
@@ -2248,7 +2271,7 @@
 								<Chip
 									role="diverged"
 									label="unreleased"
-									title="Running a version that is on no environment’s release list"
+									title="Running a build that is on no environment’s release list"
 									wide
 								/>
 							{:else if cell.state === 'fail'}
@@ -2420,11 +2443,13 @@
 					value is a bare figure (`11m`) that needs a word in front of
 					it to say what it is.
 				-->
-				<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400">To prod</span>
+				<span class="apps-inline-label t-label text-gray-500 dark:text-gray-400"
+					>To {app.lead.toLabel}</span
+				>
 				<span
 					class="apps-mark flex items-center gap-1.5"
-					title="Typical time a version takes to get from {app.lead.fromLabel} to {app.lead
-						.toLabel}, measured over {app.lead.samples} version{app.lead.samples === 1
+					title="Typical time a build takes to get from {app.lead.fromLabel} to {app.lead
+						.toLabel}, measured over {app.lead.samples} build{app.lead.samples === 1
 						? ''
 						: 's'} that made the whole trip"
 				>
@@ -2439,7 +2464,7 @@
 			{:else}
 				<span
 					class="apps-mark flex items-center gap-1.5"
-					title="No version has gone all the way from the first environment to production inside the deploy history kept for this app"
+					title="No build has gone all the way from the first environment to production inside the deploy history kept for this app"
 				>
 					<ClockSolid class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
 					<span class="t-body text-gray-500 dark:text-gray-400">—</span>
@@ -2856,17 +2881,19 @@
 		}
 	}
 
-	/* ── THE RAIL SPLIT, BY CONTAINER (2026-09-03) ────────────────────────
+	/* ── THE RAIL SPLIT, BY CONTAINER (2026-09-04, matched to `/apps/<name>`'s
+	   `.ab-grid` threshold — finding 13 of the twelve-finding pass) ────────
 	   `.apps-cq` is the page's content container; `.apps-split` puts the
-	   320px rail beside the list once that container is ≥ 1056px — the
-	   list's own 720px desktop query, plus a 16px gap, plus the rail. Same
-	   device as `/envs/<name>`'s `.env-split` at 1050. Below it the rail
+	   320px rail beside the list once that container is ≥ 860px — the exact
+	   number `/apps/<name>`'s own `@container (min-width: 860px)` rule uses,
+	   so the same rail appears at the same moment on both pages instead of
+	   three different figures across three siblings. Below it the rail
 	   stacks under the list at full width, unchanged. */
 	.apps-cq {
 		container-type: inline-size;
 	}
 
-	@container (min-width: 1056px) {
+	@container (min-width: 860px) {
 		.apps-split {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) 320px;

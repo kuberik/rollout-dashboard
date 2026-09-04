@@ -313,8 +313,8 @@ describe('defect 5 — rollback direction copy (locked)', () => {
 		// Changelist heading.
 		expect(screen.getByText('Commits to revert')).toBeInTheDocument();
 
-		// Pin Version: stated as a fact, not offered as a switch.
-		expect(screen.getByText('Pin Version')).toBeInTheDocument();
+		// Pin build: stated as a fact, not offered as a switch.
+		expect(screen.getByText('Pin build')).toBeInTheDocument();
 		expect(screen.getByText(/Production will be pinned to 0afab6f\./)).toBeInTheDocument();
 		const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
 		expect(checkboxes.find((cb) => cb.disabled && cb.checked)).toBeUndefined();

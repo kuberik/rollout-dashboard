@@ -1268,6 +1268,21 @@
 			container query and not a bigger viewport number is the fix this
 			time.) Between one column and two, the rail moves BELOW the list
 			at full width instead — it loses nothing but its adjacency.
+
+			⛔ SUPERSEDED AGAIN, 2026-09-04 (twelve-finding pass, finding 13,
+			the rail-breakpoint alignment). 1050px was its own careful
+			derivation but still disagreed with its sibling: with the sidebar
+			open, this page and `/apps` put the "How it's going" rail beside
+			the content only from ~1366 viewport, while `/apps/<name>`'s
+			`.ab-grid` does it from ~1180 — the same rail, three different
+			moments to appear across three pages a reader moves between
+			constantly. `/apps/<name>`'s own number is the one this pass
+			matched EXACTLY (860px, read off its `.ab-grid`'s `@container
+			(min-width: 860px)` rule) rather than re-deriving a fifth figure.
+			Below 1050 the main column is narrower than its own measured
+			700px floor, so the 860–1050px band renders the same denser form
+			`/apps/<name>`'s own rows already make at its equivalent width —
+			not a new defect, the cost of one shared number.
 		-->
 		<div class="env-split">
 			<div class="env-split-main min-w-0">
@@ -1869,7 +1884,7 @@
 								<a
 									href={`/activity?env=${encodeURIComponent(envName)}`}
 									class="nav-link ra-narrow"
-									aria-label={`View all activity in ${envName}`}
+									aria-label={`${n} deploy${n === 1 ? '' : 's'} — view all activity in ${envName}`}
 								>
 									{n} deploy{n === 1 ? '' : 's'}
 									<ChevronRightOutline class="h-3.5 w-3.5" />
@@ -1884,7 +1899,7 @@
 								<a
 									href={`/activity?env=${encodeURIComponent(envName)}`}
 									class="nav-link ra-wide"
-									aria-label={`View all activity in ${envName}`}
+									aria-label={`${n} deploy${n === 1 ? '' : 's'} — view all activity in ${envName}`}
 								>
 									View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
 								</a>
@@ -1919,11 +1934,17 @@
 	/*
 	 * ⭐ F5: THE RAIL FLIPS ON A CONTAINER QUERY. See the doc comment on
 	 * `.env-split` in the markup for the measurement and the derivation of
-	 * the 1050px threshold. `.env-cq` (on the page's own content container)
-	 * is the query subject; `.env-split` / `.env-split-main` are the grid
-	 * that used to be `xl:grid xl:grid-cols-[minmax(0,1fr)_320px]
+	 * the original 1050px threshold. `.env-cq` (on the page's own content
+	 * container) is the query subject; `.env-split` / `.env-split-main` are
+	 * the grid that used to be `xl:grid xl:grid-cols-[minmax(0,1fr)_320px]
 	 * xl:items-start xl:gap-6` / `xl:mb-0`, byte-identical below the
 	 * threshold and above it.
+	 *
+	 * ⛔ SUPERSEDED 2026-09-04 (twelve-finding pass, finding 13): 860px now,
+	 * matched exactly to `/apps/<name>`'s `.ab-grid` `@container (min-width:
+	 * 860px)` rule so the same rail card appears at the same container width
+	 * on all three pages instead of three separate derivations. See the
+	 * markup comment above `.env-split` for the full account.
 	 */
 	.env-cq {
 		container-type: inline-size;
@@ -1933,7 +1954,7 @@
 		margin-bottom: 1.5rem;
 	}
 
-	@container (min-width: 1050px) {
+	@container (min-width: 860px) {
 		.env-split {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) 320px;

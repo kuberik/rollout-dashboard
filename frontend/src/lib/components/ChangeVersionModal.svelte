@@ -980,7 +980,7 @@
 					errorData.details?.includes('dashboard is not managing the wantedVersion field')
 				) {
 					throw new Error(
-						"Cannot pin version: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
+						"Another controller owns this rollout's wanted version, so the dashboard cannot pin it."
 					);
 				}
 				throw new Error('Failed to change version');
@@ -988,7 +988,7 @@
 			notifySuccess(
 				pinVersionToggle
 					? 'Successfully pinned and deployed version'
-					: 'Force deploy initiated, version rolling out soon'
+					: `Deploy requested for ${getDisplaySelectedVersion()}.`
 			);
 			announce(
 				`${pinVersionToggle ? 'Pinned and deployed' : 'Deploy requested for'} ${getDisplaySelectedVersion()}.`
@@ -1446,24 +1446,23 @@
 										{direction === 'rollback' ? 'Commits to revert' : 'Commits to deploy'}
 									</span>
 									{#if supportsManifestDiff}
-										<Button
-											size="xs"
-											color="light"
+										<a
 											href={`/rollouts/${cluster}/${rollout?.metadata?.namespace}/${rollout?.metadata?.name}/diff/${selectedVersion}`}
+											class="nav-link"
 										>
-											<CodePullRequestSolid class="mr-1 h-3 w-3" />
-											View file diff
-										</Button>
+											<CodePullRequestSolid class="mr-1 h-3 w-3" aria-hidden="true" />
+											See the diff
+										</a>
 									{/if}
 								</div>
 
 								{#if !rollout?.status?.source}
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										No source repository linked — commit changelist unavailable.
+										No source repository linked — the commit list is unavailable.
 									</p>
 								{:else if !selectedRevision}
 									<p class="text-sm text-gray-500 dark:text-gray-400">
-										No commit revision known for this version — changelist unavailable.
+										No commit revision known for this build — the commit list is unavailable.
 									</p>
 								{:else if commitsQuery.isLoading}
 									<!-- ⭐ THE COMMITS REGION RESERVES ITS GEOMETRY NOW, NOT A
@@ -1601,10 +1600,21 @@
 										{githubStatusQuery.data && !githubStatusQuery.data.connected
 											? githubAbsenceSentence(githubStatusQuery.data)
 											: githubAbsenceSentence(undefined, { unreachable: true })}
-										{commitsQuery.error instanceof Error
-											? commitsQuery.error.message
-											: 'unknown error'}. You can still proceed.
+										You can still proceed.
 									</p>
+									<FactList
+										facts={[
+											{
+												label: 'Server said',
+												value:
+													commitsQuery.error instanceof Error
+														? commitsQuery.error.message
+														: 'unknown error'
+											}
+										]}
+										tone="card"
+										class="mt-2"
+									/>
 								{:else if commitsQuery.isSuccess && commitsQuery.data.commits.length > 0}
 									<ul
 										class="space-y-3"
@@ -1704,7 +1714,7 @@
 						{#if rollout && hasForceDeployAnnotation(rollout)}
 							<Alert color="blue" class="flex items-start text-xs">
 								<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
-								Force deploy already set. Only version pinning available.
+								A force deploy is already set on this rollout; this deploy replaces its target.
 							</Alert>
 						{/if}
 
@@ -1807,7 +1817,7 @@
 								class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800"
 							>
 								<div>
-									<div class="text-sm font-medium text-gray-900 dark:text-white">Pin Version</div>
+									<div class="text-sm font-medium text-gray-900 dark:text-white">Pin build</div>
 									<!-- ⛔ THIS CAPTION SAID `Required for rollback` ON A MODAL
 									     HEADED `Deploy 51b976a → aa17645` — a roll-FORWARD. It
 									     was reading the CALLER'S intent flag instead of what the
@@ -1815,10 +1825,10 @@
 									     so it can no longer contradict the header above it. -->
 									<p class="text-xs text-gray-500 dark:text-gray-400">
 										{direction === 'rollback'
-											? 'Going back pins the version'
+											? 'Going back pins the build'
 											: intent.custom
-												? 'Required for a version outside the release list'
-												: 'Lock to this version'}
+												? 'Required for a build outside the release list'
+												: 'Keep this build until the pin is cleared'}
 									</p>
 								</div>
 								<!-- ⛔ A LOCKED SETTING IS A SENTENCE NOW, NOT A DISABLED

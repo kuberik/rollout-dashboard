@@ -916,3 +916,81 @@ third model; if a component needs "the scroller", ask `getComputedStyle(main).ov
   skeleton is a different composition from the one that replaces it.
 - **The rail is part of the layout.** A two-column page whose skeleton is one column (or three)
   is a different design, not a simplification.
+
+## Twelve-finding pass (2026-09-04): dead markup, converged vocabulary, one rail breakpoint
+
+- **`Mark Deployment as Successful` has no entry point today.** (finding 1) `showMarkSuccessfulModal`
+  was `$state(false)` and never set `true` anywhere in rollout detail — the dialog, its state
+  (`markSuccessfulMessage`) and its handler (`markDeploymentSuccessful`) were pure dead markup,
+  deleted. The backend POST `/api/rollouts/:namespace/:name/mark-successful` is untouched and still
+  live. **If this control comes back, it needs designing, not restoring**: a tiered-ceremony flow
+  (this mutates deploy history, the same class of action `deploy-risk.ts`'s `confirmLevel` gates
+  everything else by) and one verb across trigger/title/confirm, per the "ONE VERB PER ACTION" rule
+  above — not a re-paste of the markup this entry deleted.
+- **The build-count vocabulary converges on `N newer` / `N newer build(s)`.** Five spellings on one
+  rollout detail page (`N upgrade(s) available`, chip `N newer`, `N release candidate(s) available`,
+  plus `Refresh available versions` as both aria-label and tooltip on the control that reloads the
+  list) are now `N newer` (the `Chip`) / `N newer build(s)` (prose) and `Refresh the build list`.
+  The pinned consequence sentence is ONE spelling everywhere it appears, including rollout detail's
+  own compact amber banner, which had drifted to `Automatic deploys paused — this rollout is pinned
+  to a version.`: it is now `Pinned to {version} — automatic deploys are paused until the pin is
+  cleared.`, and `vocabulary.test.ts`'s allowlist entry for this file is fixed to match (it had
+  claimed the two were "the SAME sentence" while carrying different text — an allowlist entry is
+  only honest if the quoted text is what actually renders).
+- **`roll(ing) out` is retired as a verb for this rollout deploying**, same family as `go out` /
+  `ship` (CLAUDE.md vocabulary decision (d)) — added to `vocabulary.test.ts`'s DENY list.
+  `ChangeVersionModal`'s force-deploy toast and `/apps`' fleet lede both said it; both now use the
+  state's own word (`Deploy requested for {build}.`, `STATUS_WORD[state]` — `deploying`/`checking`,
+  not a bespoke third spelling). `lib/components/RolloutStepper.svelte`'s `N rolling out` is the
+  same defect, flagged in the DENY rule's own `allow` list with a reason rather than fixed here —
+  outside this pass's owned files.
+- **A sentence must be true of the code path it describes, not a plausible-sounding guess.**
+  (finding 5, 8) `Current version is custom` / `Custom version` are one spelling now (`Custom
+  build`), and the guess under it (*"you need to manually deploy another version"*) is replaced
+  with what `isCurrentVersionCustom` actually checks: `The running build is not in this rollout's
+  release list, so no rule here vouches for it.` `ChangeVersionModal`'s `Force deploy already set.
+  Only version pinning available.` was worse than a guess — it was backwards: the Pin section it
+  claims is "the only thing available" is gated `{#if !hasForceDeployAnnotation(rollout)}`, i.e. it
+  never renders while this alert is showing. `ChangeVersion`'s server-side apply (`client.go`)
+  overwrites the annotation's target on a merge patch regardless, so the true sentence is `A force
+  deploy is already set on this rollout; this deploy replaces its target.` The `wantedVersion`-owned-
+  by-another-controller case (rollout detail's disabled-button tooltip AND `ChangeVersionModal`'s
+  own pin-failure toast) no longer names the CRD field or guesses the owner: `Another controller
+  owns this rollout's wanted version, so the dashboard cannot pin it.` — one spelling, two call
+  sites, verified against `pkg/kubernetes/client.go`'s actual patch behaviour before wording it, not
+  assumed from the old string.
+- **`View file diff` was a `.btn` for a control that only navigates.** (finding 9, the "action-styled
+  navigation" rule above) It opens `/rollouts/.../diff/<version>`, changes nothing; it is `.nav-link`
+  now, named like its sibling `See the diff on GitHub` (`ChangeList.svelte`) — `See the diff`.
+- **Pin copy converges on `build`.** (finding 10) `Pin Version` / `Lock to this version` →
+  `Pin build` / `Keep this build until the pin is cleared`, and the sibling captions in the same
+  ternary (`Going back pins the …`, `Required for a … outside the release list`) moved to `build`
+  too rather than leaving one branch of three saying `version` — a ternary is one sentence with
+  three endings, and it should not switch vocabulary mid-sentence depending on which branch fires.
+- **A raw `Error#message` concatenated into a sentence is the same defect `errorFacts`/`FactList`
+  already fixed for `ErrorState`.** (finding 11) `ChangeVersionModal`'s GitHub-unreachable branch
+  spliced `commitsQuery.error.message` into prose (`"…did not answer. {raw message}. You can still
+  proceed."`). The prose sentence now stays a sentence (`githubAbsenceSentence(...)` + `You can
+  still proceed.`) and the raw message moves into a one-row `FactList` (`tone="card"`, label
+  `Server said` — the same label `errorFacts` uses), reusing the import this file already had for
+  the force-deploy override list two hundred lines down.
+- **`{n} deploys ›` aria-labels on `/apps`, `/namespaces/<name>` and `/envs/<name>` threw away the
+  count and disagreed with each other** (`View all deploy activity` vs `View all activity for X` vs
+  `View all activity in X`). (finding 12) Composed the same way everywhere now: `{n} deploys — view
+  all activity in {scope}` — `the fleet` for `/apps` (unscoped, every app on the page), the
+  namespace name for `/namespaces/<name>`, the environment name for `/envs/<name>` (already had
+  `in {env}`, just missing the count).
+- **The `How it's going` rail's beside-vs-under breakpoint is now ONE number, not three.**
+  (Part 2 of this pass) `/apps` (`.apps-split`, was `@container (min-width: 1056px)`) and
+  `/envs/<name>` (`.env-split`, was `1050px`) each had their own careful derivation
+  (`list's own per-row query + gap + rail width`), and both were internally consistent — but they
+  disagreed with `/apps/<name>`'s `.ab-grid` (`860px`), so the same rail card appeared beside the
+  content at three different container widths across three pages a reader moves between constantly
+  (~1366 viewport for the first two, ~1180 for the third, sidebar open). All three now read
+  `@container (min-width: 860px)`, matched exactly to `/apps/<name>`'s own number rather than
+  re-deriving a fourth or fifth. **The cost, stated honestly**: below the OLD threshold (1050–1056px)
+  the list/main column is narrower than its own per-row desktop query, so rows in that band render
+  their denser stacked form beside the rail instead of full-width — the same trade `/apps/<name>`'s
+  own task rows already make at the identical container width, not a new defect introduced by this
+  pass. Both pages' skeletons share the same `.apps-split`/`.env-split` classes as their loaded
+  state, so they moved in step with no separate edit.

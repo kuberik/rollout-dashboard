@@ -105,7 +105,7 @@ const DENY: Array<{
 			// fresh spelling per surface.
 			'lib/ControlCenter.svelte\ttitle\tPinned to … — automatic deploys are paused until the pin is cleared.',
 			'routes/environments/+page.svelte\ttitle\tPinned to … — automatic deploys are paused until the pin is cleared.',
-			'routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte\ttext\tAutomatic deploys paused — this rollout is pinned to a version.',
+			'routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte\ttext\tPinned to … — automatic deploys are paused until the pin is cleared.',
 			'routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte\ttitle\tAutomatic deploys are paused until this pin is cleared.'
 		]
 	},
@@ -159,6 +159,21 @@ const DENY: Array<{
 		concept: 'object',
 		re: /\bgo(es)? out\b/i,
 		why: '"go out" is retired as a synonym for the verb `deploy`. See CLAUDE.md (d).'
+	},
+	{
+		id: 'roll(ing) out (verb)',
+		concept: 'object',
+		re: /\broll(s|ing)?\s+out\b/i,
+		why: '"roll out"/"rolling out" is retired as a synonym for the verb `deploy`. See CLAUDE.md (d).',
+		allow: [
+			// Not this pass's file (component lane, not the rollout-detail /
+			// ChangeVersionModal / apps lane this rule was added from) --
+			// flagged, not fixed here. Same defect as the two instances this
+			// rule's own sweep did fix (ChangeVersionModal's toast, `/apps`'
+			// lede): `N rolling out` names the same in-flight deploy state as
+			// `STATUS_WORD`'s `deploying`/`checking` elsewhere on this page.
+			'lib/components/RolloutStepper.svelte\tcode\t… rolling out'
+		]
 	}
 ];
 

@@ -808,7 +808,7 @@
 							<a
 								href={`/activity?ns=${encodeURIComponent(namespace)}`}
 								class="nav-link ra-narrow"
-								aria-label={`View all activity for ${namespace}`}
+								aria-label={`${totalDeployCount} deploy${totalDeployCount === 1 ? '' : 's'} — view all activity in ${namespace}`}
 							>
 								{totalDeployCount} deploy{totalDeployCount === 1 ? '' : 's'}
 								<ChevronRightOutline class="h-3.5 w-3.5" />
@@ -823,7 +823,7 @@
 							<a
 								href={`/activity?ns=${encodeURIComponent(namespace)}`}
 								class="nav-link ra-wide"
-								aria-label={`View all activity for ${namespace}`}
+								aria-label={`${totalDeployCount} deploy${totalDeployCount === 1 ? '' : 's'} — view all activity in ${namespace}`}
 							>
 								View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
 							</a>
