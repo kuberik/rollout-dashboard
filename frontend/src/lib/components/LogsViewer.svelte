@@ -1301,16 +1301,35 @@
 				<!-- Container filter dropdown. ⛔ "Cont." ABBREVIATED IN THE SAME ROW
 				     "Columns" WAS JUST UN-ABBREVIATED IN. Same defect, same fix: spelled
 				     out at every width, wraps onto its own line at 390 like the other
-				     filter buttons already do rather than clip a word that has room. -->
-				{#if uniqueContainers.length > 0}
-					<div class="relative">
-						<Button size="xs" color="light" id={containersDropdownId} class="text-xs">
-							Containers
-							{#if selectedContainers.size > 0}
-								<Badge color="blue" class="ml-1 text-xs">{selectedContainers.size}</Badge>
-							{/if}
-							<ChevronDownOutline class="ml-1 h-3 w-3" />
-						</Button>
+				     filter buttons already do rather than clip a word that has room.
+
+				     ⭐ THE BUTTON IS ARITY-STABLE NOW; ONLY THE DROPDOWN WAS CONDITIONAL.
+				     (LOAD-STATE-AUDIT-2026-09-04, finding 14) `uniqueContainers` derives
+				     from `logs`, so it is empty until the first log line streams in —
+				     `{#if uniqueContainers.length > 0}` used to wrap the whole control,
+				     so `Containers` inserted itself into this `justify-between` filter
+				     row once logs arrived, and because it is the LAST child of a group
+				     whose right edge is pinned, its neighbours to the left (`Source`)
+				     shifted −115px to make room, with the row itself moving −16px.
+				     The button now always renders, `disabled` (same size — flowbite's
+				     disabled state is opacity/cursor only) until there is at least one
+				     container to filter by; only the `Dropdown` menu itself — which has
+				     nothing to show yet — stays conditional. -->
+				<div class="relative">
+					<Button
+						size="xs"
+						color="light"
+						id={containersDropdownId}
+						class="text-xs"
+						disabled={uniqueContainers.length === 0}
+					>
+						Containers
+						{#if selectedContainers.size > 0}
+							<Badge color="blue" class="ml-1 text-xs">{selectedContainers.size}</Badge>
+						{/if}
+						<ChevronDownOutline class="ml-1 h-3 w-3" />
+					</Button>
+					{#if uniqueContainers.length > 0}
 						<Dropdown
 							simple
 							placement="bottom-start"
@@ -1356,8 +1375,8 @@
 								</DropdownItem>
 							{/each}
 						</Dropdown>
-					</div>
-				{/if}
+					{/if}
+				</div>
 				<!-- Log level filter dropdown -->
 				<div class="relative">
 					<Button size="xs" color="light" id={logLevelsDropdownId} class="text-xs">
