@@ -18,7 +18,7 @@ const PROBE=`(() => {
     for(const ch of el.children){ const r=ch.getBoundingClientRect();
       if(r.height>0&&r.width>0) blocks.push({k:p+'/'+i+':'+ch.tagName.toLowerCase(),x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),cls:String(ch.className&&ch.className.baseVal!==undefined?ch.className.baseVal:ch.className||'').slice(0,70),txt:norm(ch.textContent).slice(0,40)});
       walk(ch,p+'/'+i+':'+ch.tagName.toLowerCase(),d+1); i++; } })(main,'',0);
-  const pulses=[...document.querySelectorAll('.animate-pulse,[class*="skeleton"]')].map(e=>{const r=e.getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),cls:String(e.className).slice(0,80)};});
+  const pulses=[...document.querySelectorAll('.animate-pulse,.skel-block,[class*="skeleton"]')].map(e=>{const r=e.getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),cls:String(e.className).slice(0,80)};});
   const cards=[...document.querySelectorAll('main [class*="rounded-xl"],main [class*="rounded-lg"],main section,main article')].map(e=>{const r=e.getBoundingClientRect();return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),t:norm(e.textContent).slice(0,34)};}).filter(c=>c.h>24&&c.w>60);
   return {blocks,pulses,cards,mainRect:(()=>{const r=main.getBoundingClientRect();return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)};})(),
     scrollH:document.documentElement.scrollHeight, txt:norm(main.innerText).length,
