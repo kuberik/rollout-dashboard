@@ -182,6 +182,10 @@ func InitReadCache(ctx context.Context, syncTimeout time.Duration) {
 		Scheme:   scheme,
 		Mapper:   mapper,
 		ByObject: cachedByObject(),
+		// managedFields are the largest part of most objects and nothing in
+		// the dashboard reads them; dropping them at the informer shrinks the
+		// cache and every list response built from it (PERF C.9).
+		DefaultTransform: cache.TransformStripManagedFields(),
 	})
 	if err != nil {
 		log.Printf("[read-cache] failed to build informer cache, reads stay uncached: %v", err)
