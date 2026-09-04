@@ -37,35 +37,114 @@ export type ChangeEvent = {
 };
 
 /**
- * Every per-rollout query key in this app follows the same shape:
- * `[kindTag, namespace, name, ...rest]` — see `rolloutQueryKey`,
- * `rolloutPermissionsQueryKey`, `rolloutTestsQueryKey`,
- * `scheduleWindowQueryKey`, plus the inline keys on rollout detail
- * (`health-checks`, `events`, `managed-resources`). That consistency is what
- * makes a namespace-scoped invalidation possible without this module having
- * to know which specific rollout a gate, schedule or health check object
- * belongs to — the change stream's event only carries the CHANGED OBJECT's
- * own namespace/name, not the rollout's, for every kind except Rollout
- * itself.
+ * ⭐ PERF-2026-09-04 §C.7 SECOND FOLLOW-UP — INVALIDATE BY KIND, NOT BY A
+ * NAMESPACE BLANKET.
+ *
+ * The first cut of this module invalidated every `ROLLOUT_SCOPED_KEY_TAGS`
+ * key in an event's namespace for ANY known kind — correct in that nothing
+ * went stale, wrong in how much it cost. Measured live on the hub (90s,
+ * stream healthy): 9 batches / 14 events — Rollout update x4, HealthCheck
+ * (probe status writes) x6, Kustomization x2 — drove `rollout`,
+ * `permissions/all`, `health-checks`, `events` and `managed-resources` to
+ * ALL refetch on EVERY batch regardless of kind, because a HealthCheck probe
+ * write (routine, frequent) invalidated the per-user SSAR `permissions/all`
+ * just as hard as an actual Rollout change. `permissions/all` in particular
+ * has NO business being invalidated by a HealthCheck at all — it is a
+ * SelfSubjectAccessReview keyed on the viewer's own token, not on anything
+ * that changed in the cluster.
+ *
+ * The fix is to know, PER KIND, exactly which response shapes embed that
+ * kind's data — grepped from the actual types, not guessed:
+ *
+ * - `RolloutResponse` (the `rollout` key: `rolloutQueryKey`) embeds
+ *   `rollout`, `kustomizations`, `ociRepositories`, `rolloutGates`,
+ *   `environment`, `kruiseRollout`, `rolloutTests`. So Rollout, RolloutGate,
+ *   OCIRepository, Environment, KruiseRollout can all affect it — but of
+ *   those, only a Rollout EVENT carries enough (namespace AND name) to
+ *   match ONE cached entry; the rest only carry the CHANGED OBJECT's own
+ *   namespace/name (a gate's own name, not the rollout it gates), so they
+ *   fall back to "every `rollout` entry in that namespace".
+ * - `RolloutsListResponse` (`rollouts/all`, `rollouts/namespace/<ns>`)
+ *   embeds `rollouts`, `environments`, `kustomizations`, `kruiseRollouts`,
+ *   `rolloutDependencies` — NOT `rolloutGates`, NOT `ociRepositories`. So
+ *   RolloutGate and OCIRepository changes do NOT touch the fleet list; only
+ *   Rollout, Kustomization, Environment, KruiseRollout, RolloutDependency do.
+ * - `health-checks`, `rollout-tests`, `managed-resources` are each their
+ *   OWN endpoint with their own dedicated kind (HealthCheck, RolloutTest,
+ *   Kustomization respectively) — nothing else should touch them.
+ * - `rollout-permissions` is a SelfSubjectAccessReview: per-USER, per-TOKEN,
+ *   not per-object. NOTHING in the informer cache can make it stale, so it
+ *   is invalidated by NOTHING here — it lives entirely on its own poll.
+ * - the bare `events` key (`/api/rollouts/<ns>/<name>/events`, Kubernetes
+ *   CORE `v1.Event` objects) is NOT one of `cachedByObject`'s cached types
+ *   (`pkg/kubernetes/cache.go`) — the backend never streams a `"Event"`
+ *   `ChangeEvent.Kind` today, so this key is not reachable via the stream
+ *   at all yet and falls back to its own `pollWhenHealthy` ceiling. The
+ *   mapping below is written as if it could arrive (`EVENT_TAG_KINDS`) so
+ *   wiring the backend up later needs no frontend change — but it is
+ *   currently dead code, and the tests say so.
  */
-const ROLLOUT_SCOPED_KEY_TAGS = new Set([
-	'rollout',
-	'rollout-permissions',
-	'rollout-tests',
-	'rollout-schedule-window',
-	'health-checks',
-	'events',
-	'managed-resources'
+
+/** `RolloutResponse`'s embedded kinds whose OWN event carries the ROLLOUT's
+ * exact namespace+name — currently only the Rollout object itself. */
+const ROLLOUT_EXACT_KINDS = new Set(['Rollout']);
+
+/** `RolloutResponse`'s embedded kinds whose event carries only the CHANGED
+ * OBJECT's own namespace/name, not the rollout's — every `rollout` entry in
+ * that namespace is invalidated rather than one exact entry. */
+const ROLLOUT_NAMESPACE_KINDS = new Set([
+	'RolloutGate',
+	'OCIRepository',
+	'Environment',
+	'KruiseRollout',
+	'RolloutDependency'
 ]);
 
+/** `RolloutsListResponse`'s embedded kinds — these (and ONLY these) touch
+ * the fleet list (`rollouts/all` + `rollouts/namespace/<ns>`). Confirmed
+ * against the type: `rollouts, environments, kustomizations, kruiseRollouts,
+ * rolloutDependencies` — RolloutGate and OCIRepository are NOT in it. */
+const FLEET_LIST_KINDS = new Set([
+	'Rollout',
+	'Kustomization',
+	'Environment',
+	'KruiseRollout',
+	'RolloutDependency'
+]);
+
+/** Each has its OWN endpoint/key and nothing else should invalidate it. */
+const HEALTH_CHECK_KINDS = new Set(['HealthCheck']);
+const ROLLOUT_TEST_KINDS = new Set(['RolloutTest']);
+const KUSTOMIZATION_KINDS = new Set(['Kustomization']);
+/** Not a real backend kind yet — see the big comment above. Kept as its own
+ * set (rather than reusing `KNOWN_KINDS`) so adding it is a one-line change
+ * whenever the backend starts streaming core `Event`s. */
+const EVENT_TAG_KINDS = new Set(['Event']);
+
 /**
- * True for every kind the backend's informer cache streams
- * (`pkg/kubernetes/cache.go`'s `cachedByObject`) — a change to any of them
- * can change what a rollout page or the fleet list shows. Kept as an
- * allowlist (rather than "invalidate on anything") so a future cached type
- * this module hasn't been told about yet fails LOUD in a test instead of
- * silently over-invalidating or, worse, silently doing nothing.
+ * ⭐ PERF-2026-09-04 §C.7 FOLLOW-UP — SCHEDULES ARE CLUSTER-WIDE, NOT
+ * NAMESPACE-SCOPED, AND ONE OF THEM CARRIES NO NAMESPACE AT ALL.
+ *
+ * `ControlCenter`/`/dependencies`/the rollout Dependencies tab all share one
+ * `['network-schedules', clusterNames]` query (`fetchNetworkSchedules`) — a
+ * SINGLE request per page covering every cluster, keyed by the cluster list,
+ * not by namespace. `revisions`/`revisions/[...slug]` separately read
+ * `scheduleWindowQueryKey` (`['rollout-schedule-window', ns, name, cluster]`)
+ * for one rollout's own deploy-window state. Both are schedule-shaped, not
+ * rollout-shaped, so both key tags are driven by schedule KIND alone.
+ *
+ * `ClusterRolloutSchedule` is cluster-scoped BY DEFINITION
+ * (`pkg/kubernetes/client.go`'s own doc comment) — its `metadata.namespace`
+ * is always `""`, so `publishChange` (`pkg/kubernetes/cache.go`) publishes
+ * `ChangeEvent{Namespace: ""}` for it, which is why both schedule tags are
+ * matched on KIND ALONE rather than namespace: a cluster-wide schedule has
+ * no namespace to narrow by, and could affect any rollout's window.
  */
+const SCHEDULE_KINDS = new Set(['RolloutSchedule', 'ClusterRolloutSchedule']);
+
+/** Every kind this module recognizes at all — the union of every set above,
+ * checked FIRST so a cached type nobody has mapped yet fails LOUD (silently
+ * doing nothing) instead of silently over- or under-invalidating. */
 const KNOWN_KINDS = new Set([
 	'Rollout',
 	'RolloutDependency',
@@ -78,85 +157,114 @@ const KNOWN_KINDS = new Set([
 	'KruiseRollout',
 	'Kustomization',
 	'OCIRepository'
+	// 'Event' deliberately excluded — see EVENT_TAG_KINDS' own comment. Add
+	// it here the same day the backend starts streaming core Events.
 ]);
 
 /**
- * ⭐ PERF-2026-09-04 §C.7 FOLLOW-UP — SCHEDULES ARE CLUSTER-WIDE, NOT
- * NAMESPACE-SCOPED, AND ONE OF THEM CARRIES NO NAMESPACE AT ALL.
- *
- * `ControlCenter`/`/dependencies`/the rollout Dependencies tab all share one
- * `['network-schedules', clusterNames]` query (`fetchNetworkSchedules`) — a
- * SINGLE request per page covering every cluster, keyed by the cluster list,
- * not by namespace. `ROLLOUT_SCOPED_KEY_TAGS`'s predicate matches
- * `key[1] === namespace`, so this key can never match it (`key[1]` here is
- * an array of cluster names, not a namespace string) even when its tag were
- * added to that set.
- *
- * Worse: `ClusterRolloutSchedule` is cluster-scoped BY DEFINITION
- * (`pkg/kubernetes/client.go`'s own doc comment) — its `metadata.namespace`
- * is always `""`, so `publishChange` (`pkg/kubernetes/cache.go`) publishes
- * `ChangeEvent{Namespace: ""}` for it. Before this fix that emptied
- * `ev.namespace`, which is falsy, so the ORIGINAL loop below dropped
- * ClusterRolloutSchedule events on the floor entirely — a schedule window
- * opening or closing never invalidated anything, cluster-wide fleet list
- * included, because the very first `if (... && ev.namespace)` filtered it
- * out before it could contribute to `namespaces`.
- *
- * `RolloutSchedule` (namespaced) still feeds `namespaces` normally — this
- * set additionally, unconditionally, invalidates `network-schedules` for
- * either schedule kind, keyed only on KIND, since there is no namespace or
- * cluster-name join available to narrow it further.
- */
-const SCHEDULE_KINDS = new Set(['RolloutSchedule', 'ClusterRolloutSchedule']);
-
-/**
  * Maps one batch of change events to TanStack invalidations and applies
- * them. Exported (rather than folded into the EventSource wiring below) so
- * the mapping can be unit-tested with a fake `QueryClient` and no network at
- * all.
+ * them, PER KIND. Exported (rather than folded into the EventSource wiring
+ * below) so the mapping can be unit-tested with a fake `QueryClient` and no
+ * network at all.
  *
- * For every event whose kind this module recognizes: invalidate the
- * cluster-wide fleet list (`['rollouts', 'all']`), the per-namespace list
- * (`['rollouts', 'namespace', ns]`), and every currently-cached per-rollout
- * query in that namespace (`ROLLOUT_SCOPED_KEY_TAGS`, matched by namespace
- * since the event doesn't name which rollout a gate/schedule/health-check
- * object belongs to — see the doc comment above). An event for a kind this
- * module has never heard of is ignored, not treated as "invalidate
- * everything" — see KNOWN_KINDS. A `RolloutSchedule`/`ClusterRolloutSchedule`
- * event ALSO invalidates `network-schedules` (see `SCHEDULE_KINDS`'s own
- * comment) — independently of whether it carried a namespace.
+ * An event for a kind this module has never heard of is ignored, not
+ * treated as "invalidate everything" — see `KNOWN_KINDS`.
  */
 export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[]): void {
-	const namespaces = new Set<string>();
+	const fleetNamespaces = new Set<string>();
+	const rolloutExact = new Set<string>(); // "namespace|name"
+	const rolloutNamespaces = new Set<string>();
+	const healthCheckNamespaces = new Set<string>();
+	const rolloutTestNamespaces = new Set<string>();
+	const eventsNamespaces = new Set<string>();
+	const kustomizationTargets: { namespace: string; name: string }[] = [];
 	let scheduleChanged = false;
+
 	for (const ev of events) {
-		if (!KNOWN_KINDS.has(ev.kind)) continue;
-		if (ev.namespace) namespaces.add(ev.namespace);
+		if (!KNOWN_KINDS.has(ev.kind) && !EVENT_TAG_KINDS.has(ev.kind)) continue;
+
+		if (FLEET_LIST_KINDS.has(ev.kind) && ev.namespace) fleetNamespaces.add(ev.namespace);
+
+		if (ROLLOUT_EXACT_KINDS.has(ev.kind) && ev.namespace && ev.name) {
+			rolloutExact.add(`${ev.namespace}|${ev.name}`);
+		}
+		if (ROLLOUT_NAMESPACE_KINDS.has(ev.kind) && ev.namespace) {
+			rolloutNamespaces.add(ev.namespace);
+		}
+
+		if (HEALTH_CHECK_KINDS.has(ev.kind) && ev.namespace) healthCheckNamespaces.add(ev.namespace);
+		if (ROLLOUT_TEST_KINDS.has(ev.kind) && ev.namespace) rolloutTestNamespaces.add(ev.namespace);
+		if (EVENT_TAG_KINDS.has(ev.kind) && ev.namespace) eventsNamespaces.add(ev.namespace);
+		if (KUSTOMIZATION_KINDS.has(ev.kind) && ev.namespace && ev.name) {
+			kustomizationTargets.push({ namespace: ev.namespace, name: ev.name });
+		}
 		if (SCHEDULE_KINDS.has(ev.kind)) scheduleChanged = true;
 	}
-	if (namespaces.size === 0 && !scheduleChanged) return;
 
-	if (namespaces.size > 0) {
+	if (fleetNamespaces.size > 0) {
 		queryClient.invalidateQueries({ queryKey: ['rollouts', 'all'] });
-		for (const ns of namespaces) {
+		for (const ns of fleetNamespaces) {
 			queryClient.invalidateQueries({ queryKey: ['rollouts', 'namespace', ns] });
 		}
+	}
+
+	if (rolloutExact.size > 0 || rolloutNamespaces.size > 0) {
 		queryClient.invalidateQueries({
 			predicate: (query) => {
 				const key = query.queryKey;
-				return (
-					key.length >= 2 &&
-					typeof key[0] === 'string' &&
-					ROLLOUT_SCOPED_KEY_TAGS.has(key[0]) &&
-					namespaces.has(key[1] as string)
-				);
+				if (key.length < 3 || key[0] !== 'rollout') return false;
+				const ns = key[1] as string;
+				const name = key[2] as string;
+				return rolloutExact.has(`${ns}|${name}`) || rolloutNamespaces.has(ns);
+			}
+		});
+	}
+
+	if (healthCheckNamespaces.size > 0) {
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey;
+				return key.length >= 2 && key[0] === 'health-checks' && healthCheckNamespaces.has(key[1] as string);
+			}
+		});
+	}
+
+	if (rolloutTestNamespaces.size > 0) {
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey;
+				return key.length >= 2 && key[0] === 'rollout-tests' && rolloutTestNamespaces.has(key[1] as string);
+			}
+		});
+	}
+
+	if (eventsNamespaces.size > 0) {
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey;
+				return key.length >= 2 && key[0] === 'events' && eventsNamespaces.has(key[1] as string);
+			}
+		});
+	}
+
+	if (kustomizationTargets.length > 0) {
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey;
+				// ['managed-resources', rolloutNamespace, rolloutName, kustomizationNames[]]
+				if (key.length < 4 || key[0] !== 'managed-resources') return false;
+				const ns = key[1] as string;
+				const names = key[3];
+				if (!Array.isArray(names)) return false;
+				return kustomizationTargets.some((t) => t.namespace === ns && names.includes(t.name));
 			}
 		});
 	}
 
 	if (scheduleChanged) {
 		queryClient.invalidateQueries({
-			predicate: (query) => query.queryKey[0] === 'network-schedules'
+			predicate: (query) =>
+				query.queryKey[0] === 'network-schedules' || query.queryKey[0] === 'rollout-schedule-window'
 		});
 	}
 }
