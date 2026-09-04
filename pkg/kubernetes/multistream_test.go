@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -457,5 +458,66 @@ func TestRunMultiStream_DoesNotMutateSharedHubBatch(t *testing.T) {
 	raw := waitForValue(t, plainCh, time.Second)
 	if len(raw) != 1 || raw[0].Cluster != "" {
 		t.Fatalf("RunMultiStream must not mutate the shared batch other Hub clients read — got %+v", raw)
+	}
+}
+
+// TestRunMultiStream_ForwardsSpokeObjectIntact is EVENTS-2026-09-04 Part 2's
+// multistream contract: a spoke attaches ChangeEvent.Object to its own local
+// events before ever sending them over its SSE stream (the same way the hub
+// attaches objects to ITS OWN local events, in main.go's Filter closure —
+// this package only forwards). RunMultiStream must relay a spoke's batch
+// verbatim, Object included, exactly as it already does for the spoke's
+// Cluster tag (TestRunMultiStream_MergesAndTagsLocalAndSpokeEvents).
+func TestRunMultiStream_ForwardsSpokeObjectIntact(t *testing.T) {
+	gate := make(chan struct{})
+	spoke := newGatedSSESpoke(t, gate, []string{
+		`[{"type":"update","kind":"Rollout","namespace":"team-a","name":"spoke-app","cluster":"dev","resourceVersion":"9",` +
+			`"object":{"metadata":{"namespace":"team-a","name":"spoke-app"},"spec":{"version":"v2"}}}]`,
+	})
+	defer spoke.Close()
+	close(gate)
+
+	hub := NewEventHub(5 * time.Millisecond)
+	defer hub.Stop()
+
+	changesCh := make(chan []ChangeEvent, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go RunMultiStream(ctx, MultiStreamOptions{
+		LocalHub:   hub,
+		LocalName:  "prod",
+		Spokes:     []ClusterSpec{{Name: "dev", URL: spoke.URL}},
+		HTTPClient: spoke.Client(),
+	}, MultiStreamHandlers{
+		OnChanges: func(e []ChangeEvent) { changesCh <- e },
+	})
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case batch := <-changesCh:
+			for _, ev := range batch {
+				if ev.Name != "spoke-app" {
+					continue
+				}
+				if ev.Object == nil {
+					t.Fatalf("expected the spoke's Object to be forwarded, got nil")
+				}
+				var decoded struct {
+					Metadata struct{ Name string }    `json:"metadata"`
+					Spec     struct{ Version string } `json:"spec"`
+				}
+				if err := json.Unmarshal(ev.Object, &decoded); err != nil {
+					t.Fatalf("forwarded Object is not valid JSON: %v (%s)", err, ev.Object)
+				}
+				if decoded.Metadata.Name != "spoke-app" || decoded.Spec.Version != "v2" {
+					t.Fatalf("forwarded Object was altered in transit, got %+v", decoded)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for the spoke's object-carrying event")
+		}
 	}
 }

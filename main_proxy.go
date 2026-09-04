@@ -1,8 +1,10 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
@@ -118,4 +120,102 @@ func proxyToRemote(c *gin.Context, spokeBase string) {
 			return
 		}
 	}
+}
+
+// clusterPathPrefix is the URL prefix for the path form of every
+// cluster-scoped API route: GET|POST /api/clusters/<cluster>/<rest> behaves
+// exactly like /api/<rest>?cluster=<cluster> — see ClusterPathRewriteHandler.
+const clusterPathPrefix = "/api/clusters/"
+
+// deprecatedClusterQueryAliasOnce makes the "?cluster= is deprecated" log
+// line fire once per process, not once per request — otherwise every
+// request still using the old query form after the path form shipped would
+// flood the log at whatever the caller's polling cadence is.
+var deprecatedClusterQueryAliasOnce sync.Once
+
+// ClusterPathRewriteHandler wraps the gin engine with the path form of every
+// cluster-scoped API route. GET|POST /api/clusters/:cluster/<rest> is
+// rewritten, before gin's router ever sees the request, into
+// /api/<rest>?cluster=:cluster — i.e. exactly the request SpokeProxyMiddleware
+// already knows how to route correctly today (hub-local cluster name →
+// served locally; spoke name → proxied with the caller's own token; unknown
+// → the same "unknown or unreachable cluster" error).
+//
+// This is implemented once, ahead of gin's own routing, rather than as a gin
+// route registered per-handler or via gin's HandleContext: HandleContext
+// re-runs the FULL middleware chain gin already baked into the matched
+// route (gzip, auth token extraction, SpokeProxyMiddleware, ...) a second
+// time, which would gzip-encode the response twice. Rewriting the raw
+// request before gin's single dispatch avoids that entirely — gin routes
+// the rewritten request exactly once, same as any other request.
+//
+// The one route this deliberately does NOT offer a path form for is
+// /api/clusters/:cluster/events/stream — rejected with 404 rather than
+// rewritten. The hub's own GET /api/events/stream already aggregates every
+// cluster's events (see main.go's multi-cluster fan-out via
+// pkg/kubernetes/multistream.go's RunMultiStream); a single-cluster
+// path-form stream would just be a second, redundant way to reach the same
+// data, and not offering it means nobody can come to depend on it.
+//
+// The old ?cluster= query form keeps working unchanged — SpokeProxyMiddleware
+// still reads it directly, this handler only adds the path form on top. The
+// first request in the process's lifetime that arrives with a genuine
+// ?cluster= query parameter (i.e. one the caller set, not one this handler
+// just added while rewriting a path-form request) logs one deprecation line;
+// every later one is silent.
+func ClusterPathRewriteHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Query().Get("cluster") != "" {
+			deprecatedClusterQueryAliasOnce.Do(func() {
+				log.Printf("api: request used the deprecated ?cluster= query parameter (first seen: %s %s) — prefer /api/clusters/:cluster/... instead", req.Method, req.URL.Path)
+			})
+		}
+
+		rest, cluster, ok := splitClusterPath(req.URL.Path)
+		if !ok {
+			next.ServeHTTP(w, req)
+			return
+		}
+		if rest == "/events/stream" || strings.HasPrefix(rest, "/events/stream/") {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"path form not supported for events/stream — GET /api/events/stream already carries every cluster's events"}`))
+			return
+		}
+
+		q := req.URL.Query()
+		q.Set("cluster", cluster)
+		req.URL.Path = "/api" + rest
+		// The path changed — drop the stale escaped form so gin re-derives
+		// EscapedPath()/RawPath from the new Path rather than routing on the
+		// pre-rewrite bytes.
+		req.URL.RawPath = ""
+		req.URL.RawQuery = q.Encode()
+		next.ServeHTTP(w, req)
+	})
+}
+
+// splitClusterPath splits "/api/clusters/<cluster>/<rest...>" into
+// ("/<rest...>", "<cluster>", true) — rest always keeps its leading slash,
+// cluster is exactly one path segment (a cluster name never itself contains
+// a slash). Returns ok=false for anything not matching that shape —
+// /api/clusters with no trailing segment, /api/clusters/<cluster> with
+// nothing after it, or a path outside /api/clusters/ entirely — all of which
+// fall through to the existing router unchanged (a bare /api/clusters/<x>
+// 404s exactly as it always has, since no such route exists).
+func splitClusterPath(path string) (rest, cluster string, ok bool) {
+	if !strings.HasPrefix(path, clusterPathPrefix) {
+		return "", "", false
+	}
+	remainder := path[len(clusterPathPrefix):]
+	slash := strings.IndexByte(remainder, '/')
+	if slash <= 0 {
+		return "", "", false
+	}
+	cluster = remainder[:slash]
+	rest = remainder[slash:]
+	if rest == "" || rest == "/" {
+		return "", "", false
+	}
+	return rest, cluster, true
 }

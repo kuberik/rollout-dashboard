@@ -79,7 +79,13 @@ func main() {
 	if port := os.Getenv("PORT"); port != "" {
 		addr = ":" + port
 	}
-	if err := r.Run(addr); err != nil {
+	// Wrap with ClusterPathRewriteHandler (main_proxy.go) rather than
+	// r.Run(addr) directly: it rewrites the path form of cluster-scoped
+	// routes (/api/clusters/:cluster/<rest>) into the query form gin already
+	// routes correctly, ahead of gin's own single dispatch — see its doc
+	// comment for why that has to happen outside gin's router rather than
+	// via a registered route or gin.Context.HandleContext.
+	if err := http.ListenAndServe(addr, ClusterPathRewriteHandler(r)); err != nil {
 		log.Printf("Failed to start server: %v", err)
 		os.Exit(1)
 	}
@@ -2027,11 +2033,24 @@ func setupRouter() *gin.Engine {
 				return
 			}
 
+			// Read client for both spoke discovery (below) and hydrating
+			// ChangeEvent.Object on this process's own local events
+			// (EVENTS-2026-09-04 Part 2, kubernetes.AttachObjects) — fetched
+			// unconditionally, including on a fan-out leg, because a spoke
+			// must attach objects to its OWN local events before the hub
+			// ever sees them (the hub only forwards a spoke's batch
+			// unchanged, it never re-hydrates it). A failure here is
+			// best-effort, same as before this field existed: the stream
+			// still runs, just local-only and without embedded objects —
+			// AttachObjects itself treats a nil client as a no-op.
+			localReadClient, readClientErr := kubernetes.GetReadClient(c)
+			if readClientErr != nil {
+				log.Printf("events/stream: read client unavailable, streaming local-only without embedded objects: %v", readClientErr)
+			}
+
 			var spokes []kubernetes.ClusterSpec
-			if c.GetHeader(fanoutHeader) == "" {
-				if k8sClient, err := kubernetes.GetReadClient(c); err != nil {
-					log.Printf("events/stream: read client unavailable, streaming local-only: %v", err)
-				} else if envs, err := k8sClient.GetEnvironmentsAllNamespaces(c.Request.Context()); err != nil {
+			if c.GetHeader(fanoutHeader) == "" && readClientErr == nil {
+				if envs, err := localReadClient.GetEnvironmentsAllNamespaces(c.Request.Context()); err != nil {
 					log.Printf("events/stream: spoke discovery failed, streaming local-only: %v", err)
 				} else {
 					discovered := discoverClusters(c.Request.Context(), marshalToRaw(envs), localDashboardURL(c), token)
@@ -2072,6 +2091,13 @@ func setupRouter() *gin.Engine {
 				HTTPClient:        &http.Client{Transport: fanoutTransport},
 				HeartbeatInterval: 30 * time.Second,
 				Filter: func(events []kubernetes.ChangeEvent) []kubernetes.ChangeEvent {
+					// Object attach runs BEFORE the visibility filter so an
+					// event the caller may not see is dropped object and
+					// all — the filter drops the whole ChangeEvent either
+					// way, but doing the (cheap, cache-backed) Get first
+					// keeps the two concerns in the same order the doc
+					// comments on both functions already describe them.
+					events = kubernetes.AttachObjects(c.Request.Context(), localReadClient, events)
 					return kubernetes.FilterEventsByVisibility(c, events)
 				},
 			}, kubernetes.MultiStreamHandlers{
