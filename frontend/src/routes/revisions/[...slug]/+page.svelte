@@ -85,6 +85,7 @@
 	import { repoTitle, repoTitleFull } from '../repo-title';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 
 	/**
 	 * ONE REVISION — RELEASE COVERAGE.
@@ -951,7 +952,28 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} class="mt-4 mb-0" />
-		<div class="flex items-center justify-center py-20"><Spinner size="6" /></div>
+		<!--
+			⭐ THE BACK LINK + `h1` + THE SAME `.rev-buckets` 2-COLUMN GRID THE
+			LOADED PAGE USES, NOT A LONE CENTRED SPINNER. (2026-09-04,
+			load-state audit finding 11) The back link above this branch is
+			already unconditional, so it never moved; the head row and the
+			2×2 grid (`This build` / `What each service calls it` in row 1,
+			measured 593×341 and 593×242, two more bucket cards in row 2) had
+			no placeholder at all. `.rev-buckets` is this file's own scoped
+			class, so the identical 640px container query that reflows the
+			real grid reflows this one too.
+		-->
+		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1" aria-hidden="true">
+			<span class="skel-block h-6 w-24"></span>
+			<span class="skel-block h-7 w-8"></span>
+			<span class="skel-block h-3.5 w-56"></span>
+		</div>
+		<div class="rev-buckets mt-4">
+			<CardSkeleton titleWidth="w-24" rollupWidth="w-20" rows={6} rowHeight={37} />
+			<CardSkeleton titleWidth="w-44" rollupWidth="w-16" rows={6} rowHeight={37} />
+			<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={4} rowHeight={35} />
+			<CardSkeleton titleWidth="w-24" rollupWidth="w-16" rows={4} rowHeight={35} />
+		</div>
 	{:else if query.isError}
 		<!--
 			⛔ WAS `Failed to load: <status code>` IN A ONE-LINE RED BOX. With

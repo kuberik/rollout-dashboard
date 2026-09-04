@@ -81,6 +81,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import type { PromotionBlock } from '$lib/view-models/promotion';
 	import { buildRolloutCards, cardStateMark } from '$lib/rollout-cards';
 	import type { StatusKey, CardStateMark } from '$lib/rollout-cards';
@@ -1055,10 +1056,67 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
-		<div class="space-y-6">
-			<div class="h-8 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
-			<div class="h-56 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+		<!--
+			⭐ THE SAME `.env-split` / `.env-split-main` GRID AND THE SAME `Card`
+			HEADER GEOMETRY THE LOADED PAGE USES. (2026-09-04, load-state audit
+			finding 13) The old skeleton was a `h-8` name bar over a bare
+			`h-64` box and a bare `h-56` box — a 560px placeholder band for a
+			card that renders 122px tall, origin 48px too low, and no rail at
+			all. This reserves the head row at the real `h1`'s own height, then
+			the two-column split with a titled main card (divided rows, same
+			row height the loaded page measures) and the same two rail cards
+			`/apps`'s loading branch reserves.
+
+			⛔ NO BANNER SKELETON. `banner` is derived entirely from this one
+			query's own data, so on a cold load the block state is not
+			knowable yet — its insertion between the head row and the split
+			is the one thing this composition still allows to move (principle
+			7's "otherwise" branch, same reasoning as `/apps`).
+		-->
+		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1" aria-hidden="true">
+			<span class="skel-block h-7 w-40"></span>
+			<span class="skel-block h-3.5 w-56"></span>
+		</div>
+		<div class="env-split">
+			<div class="env-split-main min-w-0">
+				<section
+					class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+					aria-hidden="true"
+				>
+					<header
+						class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+					>
+						<div class="flex min-w-0 items-center gap-2.5">
+							<span class="skel-block h-4 w-4 shrink-0"></span>
+							<span class="skel-block h-3.5 w-24"></span>
+						</div>
+						<span class="skel-block h-3 w-20 shrink-0"></span>
+					</header>
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each Array(4) as _, i (i)}
+							<li
+								class="grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 lg:items-center"
+							>
+								<span class="skel-block h-7 w-7 shrink-0 rounded-full"></span>
+								<span class="flex min-w-0 flex-col gap-1.5">
+									<span class="skel-block h-3.5 w-40"></span>
+									<span class="skel-block h-2.5 w-56"></span>
+									{#if i === 0}
+										<span class="skel-block h-2.5 w-64"></span>
+									{/if}
+								</span>
+								<span class="flex items-center gap-1.5 justify-self-end">
+									<span class="skel-block h-3.5 w-16"></span>
+								</span>
+							</li>
+						{/each}
+					</ul>
+				</section>
+			</div>
+			<div class="min-w-0 space-y-4">
+				<CardSkeleton titleWidth="w-28" rollupWidth="w-24" rows={3} rowHeight={20} />
+				<CardSkeleton titleWidth="w-32" rollupWidth="w-16" rows={4} rowHeight={36} />
+			</div>
 		</div>
 	{:else if query.isError}
 		<!-- WAS A BARE `AlertPanel` CARRYING THE RAW `Error.message`. See

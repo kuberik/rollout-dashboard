@@ -64,6 +64,7 @@
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import FactList from '$lib/components/FactList.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -624,8 +625,26 @@
 
 <div class="h-full w-full dark:bg-gray-900">
 	{#if loading}
-		<div class="flex h-full items-center justify-center">
-			<Spinner size="8" />
+		<!--
+			⭐ THE SAME SKELETON VOCABULARY AS THE SIBLING OVERVIEW TAB, NOT A
+			LONE CENTRED SPINNER. (2026-09-04, load-state audit finding 11)
+			This tab and Overview share one object (the rollout) one tab
+			apart, and a reader who switches tabs mid-load saw two different
+			loading languages for it — a full composition on one, a bare
+			`<Spinner>` on the other. This reserves the header row, then
+			`Deployment Timeline` (measured 1201×253) and `Deployments`
+			(1201×373, divided rows at the real ~65px row height) in the
+			product's own `CardSkeleton` vocabulary.
+		-->
+		<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+			<div class="mb-5 flex flex-wrap items-start justify-between gap-4" aria-hidden="true">
+				<div class="flex flex-col gap-2">
+					<span class="skel-block h-6 w-48"></span>
+					<span class="skel-block h-3.5 w-64"></span>
+				</div>
+			</div>
+			<CardSkeleton titleWidth="w-40" rollupWidth="w-24" bodyHeight={174} class="mb-5" />
+			<CardSkeleton titleWidth="w-28" rollupWidth="w-32" rows={5} rowHeight={58} padded={false} />
 		</div>
 	{:else if error}
 		<div class="p-4">

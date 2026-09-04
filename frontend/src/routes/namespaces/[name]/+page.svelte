@@ -55,6 +55,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
@@ -418,14 +419,26 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
-		<div class="space-y-6">
-			<div class="space-y-2">
-				<div class="h-8 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-				<div class="h-4 w-1/3 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
-			</div>
-			<div class="grid gap-6 lg:grid-cols-[1fr_320px]">
-				<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
-				<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+		<!--
+			⭐ ONE HEAD ROW, THEN THE SAME `gap-4 lg:grid-cols-[1fr_320px]`
+			SPLIT AND THE SAME TWO-CARD RAIL THE LOADED PAGE USES.
+			(2026-09-04, load-state audit — apply the same rules elsewhere.)
+			The old skeleton spent TWO stacked bars (`h-8`/`h-4`, 56px) on a
+			head band that is one `mb-5` row everywhere else in the product,
+			used `gap-6` where the real grid below is `gap-4` (865 vs 857 wide
+			main column), and reserved the rail as ONE box where the loaded
+			page stacks two independent cards (`How it's going` +
+			`Recent activity`) in it.
+		-->
+		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1" aria-hidden="true">
+			<span class="skel-block h-7 w-40"></span>
+			<span class="skel-block h-3.5 w-56"></span>
+		</div>
+		<div class="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
+			<CardSkeleton titleWidth="w-24" rollupWidth="w-32" rows={3} rowHeight={32} padded={false} />
+			<div class="flex flex-col gap-4">
+				<CardSkeleton titleWidth="w-28" rollupWidth="w-24" rows={3} rowHeight={20} />
+				<CardSkeleton titleWidth="w-32" rollupWidth="w-16" rows={3} rowHeight={36} />
 			</div>
 		</div>
 	{:else if query.isError}

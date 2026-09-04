@@ -221,6 +221,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 
 	const appName = $derived(page.params.name as string);
 
@@ -2728,18 +2729,44 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
-		<!-- The skeleton mirrors the real shape: verdict line, then act | state. -->
-		<div class="space-y-6">
-			<div class="space-y-2">
-				<div class="h-6 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-				<div class="h-4 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+		<!--
+			⭐ THE SAME `.ab-wrap`/`.ab-grid` NAMED-AREA GRID THE LOADED PAGE
+			USES, NOT A `lg:grid-cols-[minmax(0,1fr)_320px]` UTILITY GRID THAT
+			MATCHES NOTHING IN THE MARKUP BELOW. (2026-09-04, load-state audit
+			— apply the same rules the ranked findings fixed elsewhere.) The
+			real split is a container query on `.ab-wrap` with named areas
+			(`act`/`pipe`/`state`/`hist`), scoped to this file; reusing those
+			classes here means the identical 860px threshold that reflows the
+			real page reflows this skeleton too, instead of a second grid
+			definition that can silently drift from it.
+
+			⛔ NO BANNER SKELETON. `pageBlocker` is not resolvable before this
+			query's own data lands, so on a cold load its insertion above the
+			grid is the one thing this composition still allows to move
+			(principle 7's "otherwise" branch, same reasoning as `/apps`).
+		-->
+		<section class="mb-5" aria-hidden="true">
+			<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+				<span class="skel-block h-7 w-48"></span>
+				<span class="skel-block h-3.5 w-28"></span>
 			</div>
-			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-				<div class="space-y-6">
-					<div class="h-40 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
-					<div class="h-64 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+		</section>
+		<div class="ab-wrap">
+			<div class="ab-grid">
+				<div class="ab-act">
+					<CardSkeleton titleWidth="w-24" rollupWidth="w-32" rows={2} rowHeight={28} />
 				</div>
-				<div class="h-80 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+				<div class="ab-pipe">
+					<CardSkeleton titleWidth="w-32" rollupWidth="w-24" bodyHeight={239} />
+				</div>
+				<div class="ab-state flex flex-col gap-4">
+					<CardSkeleton titleWidth="w-16" rows={1} rowHeight={20} />
+					<CardSkeleton titleWidth="w-24" rollupWidth="w-16" rows={3} rowHeight={25} />
+					<CardSkeleton titleWidth="w-40" rows={1} rowHeight={10} />
+				</div>
+				<div class="ab-hist">
+					<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={6} rowHeight={54} />
+				</div>
 			</div>
 		</div>
 	{:else if query.isError}

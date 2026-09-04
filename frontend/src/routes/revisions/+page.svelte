@@ -59,6 +59,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 
 	/**
 	 * `/versions` — THE REVISION LEDGER.
@@ -516,7 +517,12 @@
 	     the page, it is just no longer a second band of chrome. -->
 	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 		<h1 class="sr-only">Revisions</h1>
-		{#if scope}
+		{#if query.isLoading}
+			<!-- ⭐ THE HEAD BAND, RESERVED FIRST — same row, same `t-display`
+			     height, as the real rollup below. (load-state audit finding 9) -->
+			<span class="skel-block h-7 w-8" aria-hidden="true"></span>
+			<span class="skel-block h-3.5 w-56" aria-hidden="true"></span>
+		{:else if scope}
 			<span class="t-display text-gray-900 tabular-nums dark:text-white">{scope.deployed}</span>
 		{/if}
 		<!--
@@ -564,23 +570,118 @@
 	/>
 
 	{#if query.isLoading}
-		<StillTryingNotice failureCount={query.failureCount} class="mt-6 mb-0" />
-		<div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-			<div
-				class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+		<StillTryingNotice failureCount={query.failureCount} class="mt-0 mb-0" />
+		<!--
+			⭐ THE HERO FIRST, THEN THE SAME `.rev-cols` GRID THE LOADED PAGE
+			USES — NOT A PHANTOM SIDEBAR RIGHT UNDER THE HEAD BAND.
+			(2026-09-04, load-state audit finding 9) The old skeleton opened
+			with a `lg:grid-cols-[minmax(0,1fr)_340px]` row of a 47px bar over
+			six list rows beside a bare `h-48` box, landing at y=101 — but the
+			real page's ONE two-column region (`.rev-cols`, the same
+			`minmax(0,1fr) 340px` tracks, `@media (min-width:1024px)`, this
+			file's own scoped rule) starts at y=529, BELOW a full-width
+			1201×388 hero (`Newest build in use` / `RevisionLead`) that had no
+			placeholder at all. This reserves the hero, then reuses
+			`.rev-cols`/`.rev-row`/`.rev-row--quiet`/`.rev-mark`/`.rev-roll`/
+			`.rev-go` — scoped to this component, so the identical `lg` and
+			390 breakpoints that reflow a real row reflow this one too.
+
+			⛔ NO BANNER SKELETON. `blockage` is derived entirely from this
+			one query's own data, so on a cold load it is not knowable yet —
+			its insertion above the hero is the one thing this composition
+			still allows to move (principle 7's "otherwise" branch).
+		-->
+		<div
+			class="mt-5 flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+			aria-hidden="true"
+		>
+			<header
+				class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 			>
-				<div class="h-[47px] animate-pulse bg-gray-50 dark:bg-gray-700/40"></div>
-				{#each Array(6) as _}
-					<div class="flex items-center gap-3 px-4 py-3">
-						<div class="h-4 w-4 shrink-0 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-						<div class="h-3 w-20 shrink-0 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-						<div class="h-3 flex-1 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-					</div>
-				{/each}
+				<div class="flex min-w-0 items-center gap-2.5">
+					<span class="skel-block h-4 w-4 shrink-0"></span>
+					<span class="skel-block h-3.5 w-40"></span>
+				</div>
+				<span class="skel-block h-3 w-20 shrink-0"></span>
+			</header>
+			<div class="flex flex-col gap-4 p-4">
+				<span class="skel-block h-3 w-32"></span>
+				<span class="skel-block h-6 w-44"></span>
+				<span class="skel-block h-[26px] w-full"></span>
+				<span class="skel-block h-3.5 w-full"></span>
+				<span class="skel-block h-3.5 w-3/4"></span>
+				<span class="skel-block mt-2 h-3.5 w-56"></span>
+				<span class="skel-block h-3.5 w-64"></span>
+				<span class="skel-block h-3.5 w-48"></span>
+				<span class="skel-block mt-2 h-3.5 w-28"></span>
 			</div>
-			<div
-				class="h-48 animate-pulse rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-			></div>
+		</div>
+
+		<div class="rev-cols mt-4">
+			<div class="flex min-w-0 flex-col gap-4">
+				<div
+					class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+					aria-hidden="true"
+				>
+					<header
+						class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+					>
+						<div class="flex min-w-0 items-center gap-2.5">
+							<span class="skel-block h-4 w-4 shrink-0"></span>
+							<span class="skel-block h-3.5 w-32"></span>
+						</div>
+						<span class="skel-block h-3 w-16 shrink-0"></span>
+					</header>
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each Array(2) as _, i (i)}
+							<li class="rev-row">
+								<span class="rev-mark">
+									<span class="skel-block h-4 w-4 rounded-full"></span>
+								</span>
+								<div class="flex min-w-0 flex-col gap-1">
+									<span class="skel-block h-3.5 w-24"></span>
+									<span class="skel-block h-3 w-40"></span>
+								</div>
+								<div class="rev-roll flex flex-col gap-1.5">
+									<span class="skel-block ml-auto h-3.5 w-32"></span>
+									<span class="skel-block h-2 w-full"></span>
+									<span class="skel-block ml-auto h-2.5 w-16"></span>
+								</div>
+								<span class="rev-go"><span class="skel-block h-4 w-4"></span></span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+				<div
+					class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+					aria-hidden="true"
+				>
+					<header
+						class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+					>
+						<div class="flex min-w-0 items-center gap-2.5">
+							<span class="skel-block h-4 w-4 shrink-0"></span>
+							<span class="skel-block h-3.5 w-44"></span>
+						</div>
+						<span class="skel-block h-3 w-16 shrink-0"></span>
+					</header>
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each Array(4) as _, i (i)}
+							<li class="rev-row rev-row--quiet">
+								<div class="rev-quiet-body min-w-0">
+									<span class="skel-block h-3.5 w-24"></span>
+									<span class="skel-block h-3 w-40"></span>
+								</div>
+								<span class="skel-block h-3 w-12 justify-self-end"></span>
+								<span class="rev-go"><span class="skel-block h-4 w-4"></span></span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			</div>
+			<div class="min-w-0">
+				<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={4} rowHeight={28} />
+			</div>
 		</div>
 	{:else if query.isError}
 		<!--
