@@ -13,6 +13,7 @@ import (
 	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
+	appsv1 "k8s.io/api/apps/v1"
 	toolscache "k8s.io/client-go/tools/cache"
 
 	"k8s.io/client-go/kubernetes"
@@ -42,11 +43,29 @@ import (
 // and every handler in main.go): Rollout, RolloutDependency, RolloutGate,
 // RolloutSchedule, ClusterRolloutSchedule, HealthCheck (all kuberik.com),
 // RolloutTest (openkruise-controller), Environment (environment-controller),
-// KruiseRollout (rollouts.kruise.io), Kustomization and OCIRepository (Flux).
-// Arbitrary/unstructured reads (GetKustomizationManagedResources' per-inventory
-// GETs, which cover whatever GVKs happen to be in a Kustomization's inventory)
-// are intentionally NOT cached here — client.CacheOptions.Unstructured
-// defaults to false, so those stay live lookups, unchanged from before.
+// KruiseRollout (rollouts.kruise.io), Kustomization and OCIRepository (Flux),
+// plus apps/v1 Deployment and ReplicaSet (CHILDREN-2026-09-04: the
+// /namespaces/:namespace/deployments/:name/children and
+// /kustomizations/:namespace/:name/managed-resources read paths — see
+// client.go's GetDeployment/GetReplicaSetsBySelector and
+// listInventoryGroup/listInventoryGroupCached). Both are cluster-wide, same
+// as every other entry here — this dashboard has no per-namespace cache
+// scoping today.
+//
+// Deliberately NOT Pod: cluster-wide Pods are heavy (every namespace, every
+// replica, every restart) and nothing else in this cache needs them — the
+// children/managed-resources handlers keep doing a namespaced, selector-
+// scoped live LIST for Pods, same as before this change. One consequence:
+// a pod restart that doesn't change its ReplicaSet's status counters
+// (readyReplicas/availableReplicas/replicas) produces no event on the
+// stream — the frontend's existing polling safety net, not this push path,
+// is what eventually shows it.
+//
+// Arbitrary/unstructured reads (GetKustomizationManagedResources' per-item
+// GET fallback, which covers whatever GVKs happen to be in a Kustomization's
+// inventory beyond Deployment/ReplicaSet) are intentionally NOT cached here —
+// client.CacheOptions.Unstructured defaults to false, so those stay live
+// lookups, unchanged from before.
 func cachedByObject() map[client.Object]cache.ByObject {
 	return map[client.Object]cache.ByObject{
 		&rolloutv1alpha1.Rollout{}:                {},
@@ -60,6 +79,8 @@ func cachedByObject() map[client.Object]cache.ByObject {
 		&kruiserolloutv1beta1.Rollout{}:           {},
 		&kustomizev1.Kustomization{}:              {},
 		&sourcev1.OCIRepository{}:                 {},
+		&appsv1.Deployment{}:                      {},
+		&appsv1.ReplicaSet{}:                      {},
 	}
 }
 
@@ -91,6 +112,10 @@ func kindOf(obj client.Object) string {
 		return "Kustomization"
 	case *sourcev1.OCIRepository:
 		return "OCIRepository"
+	case *appsv1.Deployment:
+		return "Deployment"
+	case *appsv1.ReplicaSet:
+		return "ReplicaSet"
 	default:
 		return fmt.Sprintf("%T", obj)
 	}
@@ -118,6 +143,68 @@ func publishChange(hub *EventHub, changeType, kind string, obj interface{}) {
 		ResourceVersion: co.GetResourceVersion(),
 		Ts:              time.Now().UnixMilli(),
 	})
+}
+
+// shouldPublishUpdate gates an informer UpdateFunc callback before it
+// reaches publishChange. Every kind not special-cased below returns true
+// unconditionally — unchanged behavior, every update is published.
+//
+// ReplicaSet is special-cased because its controller rewrites
+// status.observedGeneration and other bookkeeping fields on nearly every
+// reconcile even when nothing a viewer cares about changed, which would
+// otherwise flood the 250ms-coalesced event stream (EventHub.window) with
+// updates that just cause an identical refetch. Comparing the fields the
+// children/managed-resources responses actually surface — replica counts and
+// the pod-template-hash label that changes when a new revision's ReplicaSet
+// takes over — keeps every update that could change what a client sees,
+// while dropping the pure-bookkeeping churn in between.
+func shouldPublishUpdate(kind string, oldObj, newObj interface{}) bool {
+	switch kind {
+	case "ReplicaSet":
+		return replicaSetMeaningfullyChanged(oldObj, newObj)
+	default:
+		return true
+	}
+}
+
+const podTemplateHashLabel = "pod-template-hash"
+
+// replicaSetMeaningfullyChanged reports whether newObj differs from oldObj in
+// any field this dashboard's read paths (client.go's GetReplicaSetsBySelector
+// / GetKustomizationManagedResources) actually expose to a client: replica
+// counts (desired, current, ready, available) and the pod-template-hash
+// label identifying which revision this ReplicaSet is for. Returns true
+// (i.e. "publish it") whenever either object isn't a *appsv1.ReplicaSet —
+// the safe default is to over-publish, never to silently drop a real change.
+func replicaSetMeaningfullyChanged(oldObj, newObj interface{}) bool {
+	oldRS, ok := oldObj.(*appsv1.ReplicaSet)
+	if !ok {
+		return true
+	}
+	newRS, ok := newObj.(*appsv1.ReplicaSet)
+	if !ok {
+		return true
+	}
+
+	if oldRS.Status.Replicas != newRS.Status.Replicas ||
+		oldRS.Status.ReadyReplicas != newRS.Status.ReadyReplicas ||
+		oldRS.Status.AvailableReplicas != newRS.Status.AvailableReplicas {
+		return true
+	}
+	if !int32PtrEqual(oldRS.Spec.Replicas, newRS.Spec.Replicas) {
+		return true
+	}
+	if oldRS.Labels[podTemplateHashLabel] != newRS.Labels[podTemplateHashLabel] {
+		return true
+	}
+	return false
+}
+
+func int32PtrEqual(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // ErrCacheWarming is returned by GetReadClient while InitReadCache's initial
@@ -216,7 +303,10 @@ func InitReadCache(ctx context.Context, syncTimeout time.Duration) {
 		kind := kindOf(obj)
 		if _, err := informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
 			AddFunc: func(o interface{}) { publishChange(Hub, "add", kind, o) },
-			UpdateFunc: func(_, newObj interface{}) {
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				if !shouldPublishUpdate(kind, oldObj, newObj) {
+					return
+				}
 				publishChange(Hub, "update", kind, newObj)
 			},
 			DeleteFunc: func(o interface{}) { publishChange(Hub, "delete", kind, o) },

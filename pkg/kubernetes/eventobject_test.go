@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -50,6 +51,49 @@ func TestAttachObjects_PopulatesObjectForKnownKind(t *testing.T) {
 	}
 	if decoded.Metadata.Namespace != "team-a" || decoded.Metadata.Name != "app-1" {
 		t.Fatalf("Object does not describe the expected rollout, got %+v", decoded)
+	}
+}
+
+// TestAttachObjects_PopulatesObjectForDeploymentAndReplicaSet covers
+// CHILDREN-2026-09-04: Deployment and ReplicaSet joined objectCarryingKinds
+// alongside cache.go's cachedByObject, so a children/managed-resources
+// stream event carries the object the same way every other pushed kind
+// already does.
+func TestAttachObjects_PopulatesObjectForDeploymentAndReplicaSet(t *testing.T) {
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "web", ResourceVersion: "9"},
+	}
+	replicaSet := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "web-abc123", ResourceVersion: "10"},
+	}
+	fakeClient, err := NewTestClient(deployment, replicaSet)
+	if err != nil {
+		t.Fatalf("NewTestClient: %v", err)
+	}
+
+	events := []ChangeEvent{
+		{Type: "update", Kind: "Deployment", Namespace: "team-a", Name: "web"},
+		{Type: "update", Kind: "ReplicaSet", Namespace: "team-a", Name: "web-abc123"},
+	}
+	out := AttachObjects(context.Background(), fakeClient, events)
+
+	for i, ev := range events {
+		if out[i].Object == nil {
+			t.Fatalf("expected Object to be populated for kind %s, got nil", ev.Kind)
+		}
+		var decoded struct {
+			Kind     string `json:"kind"`
+			Metadata struct {
+				Namespace string `json:"namespace"`
+				Name      string `json:"name"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal(out[i].Object, &decoded); err != nil {
+			t.Fatalf("Object for %s is not valid JSON: %v (%s)", ev.Kind, err, out[i].Object)
+		}
+		if decoded.Metadata.Namespace != ev.Namespace || decoded.Metadata.Name != ev.Name {
+			t.Fatalf("Object for %s does not describe the expected object, got %+v", ev.Kind, decoded)
+		}
 	}
 }
 

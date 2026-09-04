@@ -467,6 +467,37 @@ func TestFilterEventsByVisibility_FiltersToAllowedNamespaces(t *testing.T) {
 	}
 }
 
+// TestFilterEventsByVisibility_AppliesToDeploymentAndReplicaSetKinds covers
+// CHILDREN-2026-09-04: FilterEventsByVisibility filters purely on
+// ChangeEvent.Namespace, with no per-Kind special-casing, so newly-cached
+// Deployment/ReplicaSet events get the same "can this caller list rollouts
+// in this namespace" visibility check as every other kind — a namespace a
+// caller can't see must not leak an object's existence just because its
+// Kind is new.
+func TestFilterEventsByVisibility_AppliesToDeploymentAndReplicaSetKinds(t *testing.T) {
+	resetVisibilityCache()
+	withFakeChecker(t, func(c *gin.Context, ns string) (bool, error) {
+		return ns == "team-a", nil
+	})
+
+	c := newTestGinContext(t, "user-token")
+	events := []ChangeEvent{
+		{Kind: "Deployment", Namespace: "team-a", Name: "web"},
+		{Kind: "Deployment", Namespace: "team-b", Name: "worker"},
+		{Kind: "ReplicaSet", Namespace: "team-a", Name: "web-abc123"},
+		{Kind: "ReplicaSet", Namespace: "team-b", Name: "worker-def456"},
+	}
+	out := FilterEventsByVisibility(c, events)
+	if len(out) != 2 {
+		t.Fatalf("expected only team-a's 2 events to pass, got %d: %+v", len(out), out)
+	}
+	for _, ev := range out {
+		if ev.Namespace != "team-a" {
+			t.Fatalf("leaked a Deployment/ReplicaSet event from a namespace the caller may not list: %+v", ev)
+		}
+	}
+}
+
 func TestFilterEventsByVisibility_CheckerErrorDropsThatNamespaceOnly(t *testing.T) {
 	resetVisibilityCache()
 	withFakeChecker(t, func(c *gin.Context, ns string) (bool, error) {

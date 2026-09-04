@@ -13,6 +13,7 @@ import (
 	envv1alpha1 "github.com/kuberik/environment-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
+	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -47,7 +48,7 @@ type ChangeEvent struct {
 	// already stripped by the informer cache's own DefaultTransform —
 	// cache.go's cache.TransformStripManagedFields() — and the
 	// kubectl.kubernetes.io/last-applied-configuration annotation stripped
-	// by AttachObjects below), for the 8 kinds AttachObjects knows how to
+	// by AttachObjects below), for the 10 kinds AttachObjects knows how to
 	// hydrate. Omitted (nil) on delete events, for any other Kind, when the
 	// object could not be re-fetched, and when its marshaled JSON exceeds
 	// maxEventObjectBytes — see AttachObjects's doc comment for the exact
@@ -335,6 +336,13 @@ var Hub = NewEventHub(250 * time.Millisecond)
 // map. Every kind that IS listed here is also in cachedByObject(), so
 // k8sClient.Get for any of these is an in-memory informer-cache hit, never a
 // live apiserver round trip.
+//
+// Deployment and ReplicaSet (CHILDREN-2026-09-04) are included so a
+// child-resources or managed-resources event carries the object the same way
+// every other pushed kind does — the frontend refetch these events trigger
+// then only needs the cheap cache-backed reads client.go's
+// GetDeployment/GetReplicaSetsBySelector/listInventoryGroupCached already
+// serve, not a second live apiserver round trip on top of the event itself.
 var objectCarryingKinds = map[string]func() client.Object{
 	"Rollout":                func() client.Object { return &rolloutv1alpha1.Rollout{} },
 	"HealthCheck":            func() client.Object { return &rolloutv1alpha1.HealthCheck{} },
@@ -344,6 +352,8 @@ var objectCarryingKinds = map[string]func() client.Object{
 	"RolloutDependency":      func() client.Object { return &rolloutv1alpha1.RolloutDependency{} },
 	"RolloutSchedule":        func() client.Object { return &rolloutv1alpha1.RolloutSchedule{} },
 	"ClusterRolloutSchedule": func() client.Object { return &rolloutv1alpha1.ClusterRolloutSchedule{} },
+	"Deployment":             func() client.Object { return &appsv1.Deployment{} },
+	"ReplicaSet":             func() client.Object { return &appsv1.ReplicaSet{} },
 }
 
 // maxEventObjectBytes is the size guard from the events-carry-object

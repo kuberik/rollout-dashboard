@@ -949,6 +949,20 @@ func managedResourceStatusFromObject(obj *unstructured.Unstructured, gvkStr, nam
 				lastModified = field.Time.Time
 			}
 		}
+	} else if created := obj.GetCreationTimestamp(); !created.IsZero() {
+		// No managedFields to derive a real "last modified" time from — most
+		// commonly (CHILDREN-2026-09-04) an apps/v1 Deployment or ReplicaSet
+		// served from the informer cache, whose DefaultTransform strips
+		// managedFields to shrink memory (cache.go's
+		// cache.TransformStripManagedFields()). Falling back to creation
+		// time is still wrong for an object updated since it was created,
+		// but it is a real, monotonically-increasing Kubernetes timestamp —
+		// unlike leaving the Go zero value, which encoding/json renders as
+		// "0001-01-01T00:00:00Z" and the frontend's formatTimeAgo
+		// (frontend/src/lib/utils.ts, no guard against an implausible date)
+		// would turn into a nonsense multi-thousand-year "ago" string for
+		// every single cached Deployment/ReplicaSet shown here.
+		lastModified = created.Time
 	}
 
 	result, err := status.Compute(obj)
@@ -990,6 +1004,109 @@ type inventoryGroupKey struct {
 	Version   string
 	Kind      string
 	Namespace string
+}
+
+// appsV1CachedKind reports whether (group, version, kind) is one of the two
+// GVKs a Kustomization inventory can name that this dashboard's informer
+// cache also holds (cache.go's cachedByObject: apps/v1 Deployment and
+// ReplicaSet). Every other inventory GVK (arbitrary CRDs, HTTPRoutes, plain
+// ConfigMaps, ...) is out of scope here — client.CacheOptions.Unstructured
+// stays false, so those keep going through the generic unstructured List in
+// listInventoryGroup, unchanged from before this function existed.
+func appsV1CachedKind(group, version, kind string) bool {
+	return group == "apps" && version == "v1" && (kind == "Deployment" || kind == "ReplicaSet")
+}
+
+// toUnstructuredWithGVK converts a typed object to unstructured.Unstructured
+// and stamps apiVersion/kind onto it. Needed because a typed Get/List
+// (unlike an unstructured one) never populates TypeMeta — the same gotcha
+// eventhub.go's AttachObjects already works around via
+// client.Scheme().ObjectKinds — so without this, an object plucked from
+// listInventoryGroupCached would silently have empty "apiVersion"/"kind"
+// fields in the JSON this handler sends the frontend.
+func toUnstructuredWithGVK(obj runtime.Object, apiVersion, kind string) (unstructured.Unstructured, error) {
+	m, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+	if err != nil {
+		return unstructured.Unstructured{}, fmt.Errorf("failed to convert %s to unstructured: %w", kind, err)
+	}
+	u := unstructured.Unstructured{Object: m}
+	u.SetAPIVersion(apiVersion)
+	u.SetKind(kind)
+	return u, nil
+}
+
+// listInventoryGroupCached lists one inventory group through the typed,
+// cache-backed client for the subset of kinds appsV1CachedKind names,
+// returning it in the same unstructured.UnstructuredList shape
+// listInventoryGroup's generic path returns, so the caller (and everything
+// downstream of it — managedResourceStatusFromObject, the byName lookup in
+// GetKustomizationManagedResources) doesn't need a second code path. ok is
+// false for any key appsV1CachedKind doesn't recognize, telling the caller
+// to fall back to the generic unstructured List instead.
+func (c *Client) listInventoryGroupCached(ctx context.Context, key inventoryGroupKey) (list *unstructured.UnstructuredList, ok bool, err error) {
+	if !appsV1CachedKind(key.Group, key.Version, key.Kind) {
+		return nil, false, nil
+	}
+
+	var opts []client.ListOption
+	if key.Namespace != "" {
+		opts = append(opts, client.InNamespace(key.Namespace))
+	}
+	apiVersion := key.Group + "/" + key.Version
+
+	items := make([]unstructured.Unstructured, 0)
+	switch key.Kind {
+	case "Deployment":
+		typedList := &appsv1.DeploymentList{}
+		if err := c.client.List(ctx, typedList, opts...); err != nil {
+			return nil, true, err
+		}
+		for i := range typedList.Items {
+			u, convErr := toUnstructuredWithGVK(&typedList.Items[i], apiVersion, key.Kind)
+			if convErr != nil {
+				return nil, true, convErr
+			}
+			items = append(items, u)
+		}
+	case "ReplicaSet":
+		typedList := &appsv1.ReplicaSetList{}
+		if err := c.client.List(ctx, typedList, opts...); err != nil {
+			return nil, true, err
+		}
+		for i := range typedList.Items {
+			u, convErr := toUnstructuredWithGVK(&typedList.Items[i], apiVersion, key.Kind)
+			if convErr != nil {
+				return nil, true, convErr
+			}
+			items = append(items, u)
+		}
+	}
+
+	result := &unstructured.UnstructuredList{Items: items}
+	result.SetGroupVersionKind(schema.GroupVersionKind{Group: key.Group, Version: key.Version, Kind: key.Kind + "List"})
+	return result, true, nil
+}
+
+// listInventoryGroup lists one inventory group's objects — through the
+// typed, cache-backed client for Deployment/ReplicaSet
+// (listInventoryGroupCached), or the generic unstructured List for every
+// other GVK an inventory can name, exactly as GetKustomizationManagedResources
+// did before this function was factored out.
+func (c *Client) listInventoryGroup(ctx context.Context, key inventoryGroupKey) (*unstructured.UnstructuredList, error) {
+	if cached, ok, err := c.listInventoryGroupCached(ctx, key); ok {
+		return cached, err
+	}
+
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(schema.GroupVersionKind{Group: key.Group, Version: key.Version, Kind: key.Kind + "List"})
+	var listOpts []client.ListOption
+	if key.Namespace != "" {
+		listOpts = append(listOpts, client.InNamespace(key.Namespace))
+	}
+	if err := c.client.List(ctx, list, listOpts...); err != nil {
+		return nil, err
+	}
+	return list, nil
 }
 
 func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace, name string) ([]ManagedResourceStatus, error) {
@@ -1042,17 +1159,11 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 		g.Go(func() error {
 			gvkStr := fmt.Sprintf("%s/%s/%s", key.Group, key.Version, key.Kind)
 
-			list := &unstructured.UnstructuredList{}
-			list.SetGroupVersionKind(schema.GroupVersionKind{Group: key.Group, Version: key.Version, Kind: key.Kind + "List"})
-			var listOpts []client.ListOption
-			if key.Namespace != "" {
-				listOpts = append(listOpts, client.InNamespace(key.Namespace))
-			}
-
-			if err := c.client.List(gctx, list, listOpts...); err != nil {
-				// Fall back to a GET per entry in this group only — covers CRDs
-				// or RBAC setups that support get but not list for this kind.
-				fmt.Printf("Failed to list %s in namespace %s: %v, falling back to per-item GET\n", gvkStr, key.Namespace, err)
+			list, listErr := c.listInventoryGroup(gctx, key)
+			if listErr != nil {
+				// Fall back to a GET per entry in this group only (covers CRDs
+				// or RBAC setups that support get but not list for this kind).
+				fmt.Printf("Failed to list %s in namespace %s: %v, falling back to per-item GET\n", gvkStr, key.Namespace, listErr)
 				for _, entry := range group {
 					obj := &unstructured.Unstructured{}
 					obj.SetGroupVersionKind(schema.GroupVersionKind{Group: key.Group, Version: key.Version, Kind: key.Kind})
@@ -1584,6 +1695,34 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, podName, containerNa
 func (c *Client) GetReplicaSets(ctx context.Context, namespace string) (*appsv1.ReplicaSetList, error) {
 	replicaSets := &appsv1.ReplicaSetList{}
 	if err := c.client.List(ctx, replicaSets, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list replicasets: %w", err)
+	}
+	return replicaSets, nil
+}
+
+// GetDeployment fetches a single Deployment by namespace/name, for the
+// GET .../deployments/:name/children handler (main.go). Goes through c's
+// controller-runtime client — when c is the shared read client
+// (GetReadClient), that's an in-memory informer-cache hit (cache.go's
+// cachedByObject now includes apps/v1 Deployment), not a live apiserver
+// round trip, which is what makes the refetch the frontend does on a
+// Deployment/ReplicaSet stream event cheap.
+func (c *Client) GetDeployment(ctx context.Context, namespace, name string) (*appsv1.Deployment, error) {
+	deployment := &appsv1.Deployment{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, deployment); err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	return deployment, nil
+}
+
+// GetReplicaSetsBySelector lists ReplicaSets in namespace matching selector,
+// for the same children handler as GetDeployment — cache-backed the same
+// way when c is the shared read client. Pods stay a separate, uncached, live
+// LIST in the handler (cache.go's cachedByObject deliberately excludes Pod;
+// see its doc comment).
+func (c *Client) GetReplicaSetsBySelector(ctx context.Context, namespace string, selector labels.Selector) (*appsv1.ReplicaSetList, error) {
+	replicaSets := &appsv1.ReplicaSetList{}
+	if err := c.client.List(ctx, replicaSets, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
 		return nil, fmt.Errorf("failed to list replicasets: %w", err)
 	}
 	return replicaSets, nil

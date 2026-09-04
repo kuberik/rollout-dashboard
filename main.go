@@ -1559,11 +1559,15 @@ func setupRouter() *gin.Engine {
 			}
 			name := c.Param("name")
 			ctx := context.Background()
-			clientset := k8sClient.GetClientset()
 
-			// Get the Deployment to get its UID and selector
-			deployment, err := clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+			// Get the Deployment to get its UID and selector. Served from the
+			// informer cache (cache.go's cachedByObject now includes apps/v1
+			// Deployment) rather than a live apiserver GET, which is what
+			// makes the refetch the frontend does on a Deployment/ReplicaSet
+			// stream event cheap.
+			deployment, err := k8sClient.GetDeployment(ctx, namespace, name)
 			if err != nil {
+				log.Printf("Error fetching deployment %s/%s: %v", namespace, name, err)
 				c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
 				return
 			}
@@ -1572,17 +1576,30 @@ func setupRouter() *gin.Engine {
 
 			// Narrow LIST scope: deployment selector matches all RS + Pods belonging to this deployment.
 			// (RS adds pod-template-hash on top, but base labels still match.)
-			selectorStr := metav1.FormatLabelSelector(deployment.Spec.Selector)
-			listOpts := metav1.ListOptions{LabelSelector: selectorStr}
-
-			// Get RS and Pods once — filter by ownerRef in-memory below to avoid N+1.
-			allRS, err := clientset.AppsV1().ReplicaSets(namespace).List(ctx, listOpts)
+			labelSelector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
 			if err != nil {
+				log.Printf("Error parsing selector for deployment %s/%s: %v", namespace, name, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse deployment selector"})
+				return
+			}
+
+			// ReplicaSets — same cache-backed read as the Deployment above.
+			allRS, err := k8sClient.GetReplicaSetsBySelector(ctx, namespace, labelSelector)
+			if err != nil {
+				log.Printf("Error listing replicasets for deployment %s/%s: %v", namespace, name, err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list ReplicaSets"})
 				return
 			}
+
+			// Pods stay a live, namespaced LIST with the same selector as
+			// before — cluster-wide Pods are deliberately excluded from the
+			// informer cache (cache.go's cachedByObject doc comment: too
+			// heavy, and nothing else here needs them).
+			clientset := k8sClient.GetClientset()
+			listOpts := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector)}
 			allPods, err := clientset.CoreV1().Pods(namespace).List(ctx, listOpts)
 			if err != nil {
+				log.Printf("Error listing pods for deployment %s/%s: %v", namespace, name, err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list Pods"})
 				return
 			}
