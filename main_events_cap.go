@@ -19,7 +19,7 @@ import (
 // Kubernetes client's rate limiter and crashed the pod). See
 // pkg/kubernetes/eventhub.go's RegisterWithCap for the eviction mechanics.
 const (
-	defaultEventStreamMaxPerClient = 8
+	defaultEventStreamMaxPerClient = 32
 	defaultEventStreamMaxTotal     = 512
 
 	// eventStreamLocalBufSize is the buffer size this handler registers its
@@ -31,7 +31,7 @@ const (
 )
 
 // eventStreamMaxPerClient returns the per-identity concurrent-subscriber cap
-// — env EVENT_STREAM_MAX_PER_CLIENT, default 8.
+// — env EVENT_STREAM_MAX_PER_CLIENT, default 32.
 func eventStreamMaxPerClient() int {
 	return envIntOrDefault("EVENT_STREAM_MAX_PER_CLIENT", defaultEventStreamMaxPerClient)
 }
