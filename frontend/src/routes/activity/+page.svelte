@@ -97,6 +97,14 @@
 		UndoOutline
 	} from 'flowbite-svelte-icons';
 	import { deployActs, type DeployAct } from '$lib/history-marks';
+	import {
+		ACTIVITY_DEPLOY_PARAM,
+		activityAnnouncement,
+		entryKey,
+		findEntryIndex
+	} from '$lib/activity-deeplink';
+	import { announce } from '$lib/stores/announce.svelte';
+	import { tick } from 'svelte';
 
 	/** The one member of `DeployAct` this page ever attaches to a row. */
 	type RollbackAct = Extract<DeployAct, { kind: 'rollback' }>;
@@ -466,6 +474,18 @@
 					subject?: string;
 					triggeredBy?: { kind: 'User' | 'System'; name: string };
 					mark?: 'rollback';
+					// ⭐ THE FEED-CORRELATION KEY'S TWO HALVES. (2026-09-04) A chart
+					// click hands `onEntryClick` a lane id and an index into THIS
+					// array — the lane is the ENVIRONMENT (`key` below), not the
+					// rollout, and several rollouts share one lane. Without these
+					// two fields there is nothing in a chart history entry that
+					// names WHICH rollout a mark belongs to, so the click handler
+					// could not build `entryKey` (`activity-deeplink.ts`) to find
+					// the matching feed row. Not part of `DeploymentTimeline`'s own
+					// `HistoryEntry` type — it only draws with what it declares —
+					// but structurally compatible (extra fields on a wider object).
+					rolloutNamespace: string;
+					rolloutName: string;
 				}[];
 				isCurrent: boolean;
 			}
@@ -490,7 +510,9 @@
 				// list now — see the colour note on `statusFill` for why the
 				// list's green disc stays (a dated, quoted human ruling), and
 				// `BakeStatusIcon`'s own rollback glyph swap below.
-				mark: e.rollbackAct ? ('rollback' as const) : undefined
+				mark: e.rollbackAct ? ('rollback' as const) : undefined,
+				rolloutNamespace: e.rolloutNamespace,
+				rolloutName: e.rolloutName
 			});
 		}
 		return [...lanes.values()].sort((a, b) => compareEnvironmentNames(a.name, b.name));
@@ -509,6 +531,167 @@
 		)
 	);
 	const chartRowHeight = $derived(chartServices.length > 6 ? 26 : 52);
+
+	// ── SELECTION: A CHART MARK AND A FEED ROW ARE THE SAME OBJECT ─────────
+	// `entryKey`/`findEntryIndex` (`$lib/activity-deeplink`) are the shared
+	// correlation key — see that file's header for why it is rollout identity
+	// + timestamp and not the revision `history-deeplink.ts` uses on the
+	// single-rollout History tab.
+
+	/** Element refs for scroll-to-entry, keyed by the SAME string `?deploy=`
+	    and a chart click both resolve against. */
+	const listEntryEls = new Map<string, HTMLElement>();
+	function registerEntry(node: HTMLElement, key: string) {
+		listEntryEls.set(key, node);
+		return {
+			update(newKey: string) {
+				listEntryEls.set(newKey, node);
+			},
+			destroy() {
+				listEntryEls.delete(key);
+			}
+		};
+	}
+
+	let selectedKey = $state<string | null>(null);
+
+	/** `selectedKey` translated into `DeploymentTimeline`'s own `{serviceId,
+	    index}` shape — its lane id is the ENVIRONMENT (`chartServices[i].id`),
+	    not the rollout, so this has to search rather than parse the key. */
+	const chartSelectedEntry = $derived.by(() => {
+		if (!selectedKey) return null;
+		for (const lane of chartServices) {
+			const index = lane.history.findIndex((h) => entryKey(h) === selectedKey);
+			if (index !== -1) return { serviceId: lane.id, index };
+		}
+		return null;
+	});
+
+	/** Smallest preset that contains an event this old — `autoRange`'s own
+	    formula, reused so revealing a row outside the CURRENT window widens
+	    it to the smallest one that actually shows the row, rather than
+	    selecting a row nothing on screen can scroll to. */
+	function presetContaining(ageMs: number): PresetRange {
+		return RANGE_ORDER.find((k) => RANGE_MS[k] >= ageMs) ?? 'all';
+	}
+
+	/**
+	 * ⭐ ONE WAY TO REVEAL A ROW, TWO THINGS THAT CALL IT — the same shape as
+	 * rollout detail's `revealEntry` (`history/+page.svelte`), ported to a
+	 * feed spanning many rollouts instead of one.
+	 *
+	 * `focus` is the same deliberate split that page's version makes: a
+	 * `?deploy=` ARRIVAL moves focus onto the row, since nothing else on the
+	 * page has the reader's attention yet; a CHART CLICK leaves focus in the
+	 * chart, where the reader is still working — pulling it into the list
+	 * would break arrow-key traversal of the control they're using.
+	 */
+	function revealFeedEntry(key: string, opts: { focus?: boolean } = {}) {
+		const idx = findEntryIndex(scoped, key);
+		if (idx < 0) return;
+		const entry = scoped[idx];
+		const wasAlreadySelected = selectedKey === key;
+		selectedKey = key;
+
+		// ⚠️ THE ROW MAY SIT OUTSIDE THE CURRENT TIME WINDOW. `chartServices`
+		// (and so any mark a click can name) is filter-scoped but NOT
+		// time-windowed; `feed`/`groupedByDay` are both. A merged bubble's
+		// "select the newest member" fallback (`DeploymentTimeline`'s own
+		// `clusterActivation`, under its zoom-span floor) fires without
+		// moving `timeRange` — only a ZOOM does that — so its target can
+		// legitimately be just outside the window the reader is looking at.
+		// Widen to the smallest preset that includes it rather than leaving
+		// `selectedKey` pointed at a row nothing rendered.
+		if (!windowed.some((e) => entryKey(e) === key)) {
+			rangeTouched = true;
+			timelineRange = presetContaining(Date.now() - new Date(entry.timestamp).getTime());
+		}
+
+		// Polite, not assertive — the reader's own action landing, not an
+		// alarm. The sentence itself lives in `activity-deeplink.ts` so the
+		// words have a test rather than only a render.
+		announce(
+			activityAnnouncement({
+				version: entry.version,
+				subject: entry.displayName,
+				envLabel: entry.envLabel || entry.envKey || null,
+				timestamp: entry.timestamp,
+				wasAlreadySelected
+			})
+		);
+
+		// ⚠️ THE ROW MAY NOT BE MOUNTED YET — widening the window above (or a
+		// direct load still waiting on the query) means it may not exist in
+		// the DOM this tick. `tick()` flushes the pending re-render; the frame
+		// after it is when `registerEntry` has the element — the same
+		// two-step `history/+page.svelte`'s version uses.
+		tick().then(() => {
+			const el = listEntryEls.get(key);
+			if (!el) return;
+			requestAnimationFrame(() => {
+				// Same arrival rules as the History tab (`lib/CLAUDE.md`,
+				// "Arriving is not the same interaction as clicking"): `start`
+				// on a deliberate arrival, so a row already just inside the
+				// viewport still gets pulled fully into view instead of
+				// `nearest` moving nothing and the fold slicing it; `nearest`
+				// for a chart click, where the reader can already see the whole
+				// page around the mark they clicked and hauling the list under
+				// it is disorienting. Not animated on arrival, for the same
+				// reason as that page's version — the reader never saw the
+				// position being animated away from.
+				el.scrollIntoView({
+					behavior: opts.focus ? 'auto' : 'smooth',
+					block: opts.focus ? 'start' : 'nearest'
+				});
+				if (opts.focus) {
+					el.querySelector<HTMLElement>('.tap-link')?.focus();
+				}
+			});
+		});
+	}
+
+	function handleChartEntryClick(serviceId: string, index: number) {
+		const lane = chartServices.find((s) => s.id === serviceId);
+		const entry = lane?.history[index];
+		if (!entry) return;
+		const key = entryKey(entry);
+		revealFeedEntry(key);
+		// Keeps the URL in step so a reload lands on the same row — the same
+		// idiom `setParam` already gives `?env=`/`?app=`/`?ns=`/`?kind=`.
+		setParam(ACTIVITY_DEPLOY_PARAM, key);
+		// ⚠️ PRE-LATCHED, NOT LEFT FOR THE DEEP-LINK EFFECT BELOW TO DISCOVER.
+		// That effect also watches `page.url`, and `setParam`'s `goto` changes
+		// it — without this it would see a NEW `?deploy=` value next tick and
+		// fire a SECOND `revealFeedEntry(key, { focus: true })`, yanking focus
+		// out of the chart the reader is still using (the exact thing `focus`
+		// exists to keep a plain chart click from doing). Same key, so the
+		// effect's own `deepLinkHandled === key` guard reads this as already
+		// handled and does nothing.
+		deepLinkHandled = `${page.url.pathname}?${key}`;
+	}
+
+	/**
+	 * ⭐ THE DEEP LINK, AND IT HAS TO SURVIVE A DIRECT LOAD — same shape as
+	 * `history/+page.svelte`'s own effect. `deepLinkHandled` latches on the
+	 * URL value, not a boolean, so following a second link (or the same one
+	 * again after clearing the selection) fires again, while this page's 15s
+	 * rollout poll re-running the effect does not re-steal focus from a
+	 * reader who has since clicked elsewhere.
+	 */
+	let deepLinkHandled = $state<string | null>(null);
+	$effect(() => {
+		const want = page.url.searchParams.get(ACTIVITY_DEPLOY_PARAM);
+		if (!want) return;
+		if (allEntries.length === 0) return;
+		const key = `${page.url.pathname}?${want}`;
+		if (deepLinkHandled === key) return;
+		// ⛔ NOT LATCHED BEFORE THIS CHECK. A key that names nothing in `scoped`
+		// right now may resolve once the next poll lands, or once a filter
+		// clears — same guard as `history/+page.svelte`.
+		if (findEntryIndex(scoped, want) < 0) return;
+		deepLinkHandled = key;
+		revealFeedEntry(want, { focus: true });
+	});
 
 	// ── THE ENV CONTROL STRIP ──────────────────────────────────────────────
 	// Built from the EVENTS, not from the `Environment` list — same reason the
@@ -1047,6 +1230,8 @@
 				labelWidth={chartLabelWidth}
 				rowHeight={chartRowHeight}
 				labelEmptyLanes
+				onEntryClick={handleChartEntryClick}
+				selectedEntry={chartSelectedEntry}
 			/>
 		</Card>
 	{/if}
@@ -1374,15 +1559,26 @@
 					padded={false}
 				>
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each dayGroup.entries as entry (`${entry.rolloutNamespace}/${entry.rolloutName}/${entry.timestamp}`)}
+						{#each dayGroup.entries as entry (entryKey(entry))}
 							<!-- ⚠️ `?? STATE_WORD.None` WOULD BE WRONG HERE. `Succeeded` maps
 							     to `null` ON PURPOSE — the norm says nothing — and `??`
 							     only falls through on null, so every succeeded row printed
 							     `no result yet`. The table is looked up by KEY. -->
 							{@const word =
 								entry.bakeStatus in STATE_WORD ? STATE_WORD[entry.bakeStatus] : STATE_WORD.None}
+							<!-- ⭐ THE SAME KEY THE CHART AND `?deploy=` RESOLVE AGAINST —
+							     see `activity-deeplink.ts`. `registerEntry` is this page's
+							     own copy of `history/+page.svelte`'s element registry, and
+							     `isSelected` reuses that page's exact highlight
+							     (`bg-blue-50/50 dark:bg-blue-900/20`) rather than inventing
+							     a second "you are looking at this" idiom. -->
+							{@const key = entryKey(entry)}
+							{@const isSelected = selectedKey === key}
 							<li
-								class="environment-theme-scope"
+								use:registerEntry={key}
+								class="environment-theme-scope scroll-mt-20 transition-colors {isSelected
+									? 'bg-blue-50/50 dark:bg-blue-900/20'
+									: ''}"
 								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
 							>
 								<!-- ⭐ `.tap-zone` ON THE ROW, NOT ON THE `<li>`. (2026-09-01)

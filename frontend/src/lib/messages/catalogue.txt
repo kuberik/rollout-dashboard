@@ -1,3 +1,4 @@
+lib/activity-deeplink.ts	code	… … on ……, ….
 lib/api/errors.ts	code	… The dashboard tried … times, and keeps checking every …s, so the page fills itself in when the server answers again.
 lib/api/errors.ts	code	… Trying again will not change the answer until something on the server side changes.
 lib/api/errors.ts	code	…… does not exist
