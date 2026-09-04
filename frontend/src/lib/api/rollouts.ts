@@ -1,5 +1,6 @@
 import type { QueryKey, QueryObserverOptions } from '@tanstack/svelte-query';
 import { apiJson } from './errors';
+import { apiPath } from './urls';
 import type {
     Rollout,
     Kustomization,
@@ -81,8 +82,7 @@ export async function fetchRollout(
     name: string,
     cluster?: string
 ): Promise<RolloutResponse> {
-    const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
-    return apiJson<RolloutResponse>(`/api/rollouts/${namespace}/${name}${params}`);
+    return apiJson<RolloutResponse>(apiPath(cluster, `/rollouts/${namespace}/${name}`));
 }
 
 export async function fetchRolloutsList(): Promise<RolloutsListResponse> {
@@ -173,9 +173,8 @@ export async function fetchRolloutPermissions(
     name: string,
     cluster?: string
 ): Promise<PermissionsResponse> {
-    const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
     return apiJson<PermissionsResponse>(
-        `/api/rollouts/${namespace}/${name}/permissions/all${params}`
+        apiPath(cluster, `/rollouts/${namespace}/${name}/permissions/all`)
     );
 }
 
@@ -210,8 +209,9 @@ export async function fetchRolloutTests(
     name: string,
     cluster?: string
 ): Promise<RolloutTestsResponse> {
-    const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
-    return apiJson<RolloutTestsResponse>(`/api/rollouts/${namespace}/${name}/rollout-tests${params}`);
+    return apiJson<RolloutTestsResponse>(
+        apiPath(cluster, `/rollouts/${namespace}/${name}/rollout-tests`)
+    );
 }
 
 // `cluster` rides the key (matching `rolloutQueryKey`'s own shape) so a

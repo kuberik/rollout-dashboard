@@ -1,4 +1,5 @@
 import { ApiError, apiJson } from './errors';
+import { apiPath } from './urls';
 
 export type CommitInfo = {
 	sha: string;
@@ -103,8 +104,7 @@ export async function fetchCommits(
 	cluster?: string
 ): Promise<CommitsResponse> {
 	const params = new URLSearchParams({ base, head });
-	if (cluster) params.set('cluster', cluster);
-	const url = `/api/rollouts/${namespace}/${name}/commits?${params}`;
+	const url = `${apiPath(cluster, `/rollouts/${namespace}/${name}/commits`)}?${params}`;
 	const res = await fetch(url).catch(() => null);
 	if (!res) {
 		throw new FetchCommitsError('error', 'No response from the server', 0, '', url);

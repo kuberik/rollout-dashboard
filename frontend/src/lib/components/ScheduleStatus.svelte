@@ -13,6 +13,7 @@
 	import { formatAbsoluteReopen, scheduleWindowQueryKey } from '$lib/api/schedules';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { apiJson, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
+	import { apiPath } from '$lib/api/urls';
 
 	type RolloutSchedule = {
 		metadata: { name: string; namespace: string };
@@ -140,11 +141,10 @@
 		name: string,
 		clusterName?: string
 	): Promise<Array<RolloutSchedule | ClusterRolloutSchedule>> {
-		const clusterParam = clusterName ? `?cluster=${encodeURIComponent(clusterName)}` : '';
 		const data = await apiJson<{
 			rolloutSchedules?: { items?: RolloutSchedule[] };
 			clusterRolloutSchedules?: { items?: ClusterRolloutSchedule[] };
-		}>(`/api/rollouts/${namespace}/${name}/schedules${clusterParam}`);
+		}>(apiPath(clusterName, `/rollouts/${namespace}/${name}/schedules`));
 		return [...(data.rolloutSchedules?.items ?? []), ...(data.clusterRolloutSchedules?.items ?? [])];
 	}
 

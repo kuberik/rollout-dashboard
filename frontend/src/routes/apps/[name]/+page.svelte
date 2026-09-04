@@ -218,6 +218,7 @@
 	import type { Rollout, RolloutGate, Environment, Kustomization } from '../../../types';
 	import type { ManagedResourceStatus } from '../../../types/managed-resource';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
+	import { apiPath } from '$lib/api/urls';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
@@ -651,8 +652,7 @@
 						// second consumer instead of invented.
 						let total = 0;
 						for (const r of t.refs!) {
-							const sep = '?';
-							const url = `/api/kustomizations/${r.ns}/${r.name}/managed-resources${t.cluster ? `${sep}cluster=${encodeURIComponent(t.cluster)}` : ''}`;
+							const url = apiPath(t.cluster, `/kustomizations/${r.ns}/${r.name}/managed-resources`);
 							const res = await fetch(url);
 							if (!res.ok) return; // leave this environment UNKNOWN
 							const data = (await res.json()) as { managedResources?: ManagedResourceStatus[] };

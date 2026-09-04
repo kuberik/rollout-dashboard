@@ -33,6 +33,7 @@
 		buildDatadogLogsUrl
 	} from '$lib/utils';
 	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
+	import { apiPath } from '$lib/api/urls';
 	/**
 	 * ⛔ THE DEPLOY-STATE WORDS AND THEIR COLOUR ARE NOT THIS PAGE'S TO SPELL.
 	 * (2026-09-01) The badge printed `entry.bakeStatus` RAW — `InProgress`,
@@ -172,9 +173,8 @@
 					const ksName = ks.metadata!.name as string;
 					const ksNamespace = ks.metadata?.namespace || namespace;
 					try {
-						const clusterParam = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 						const res = await fetch(
-							`/api/kustomizations/${ksNamespace}/${ksName}/managed-resources${clusterParam}`
+							apiPath(cluster, `/kustomizations/${ksNamespace}/${ksName}/managed-resources`)
 						);
 						if (res.ok) {
 							const data = await res.json();

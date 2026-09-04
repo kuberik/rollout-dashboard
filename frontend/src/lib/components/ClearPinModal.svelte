@@ -37,6 +37,7 @@
 	import { isFieldManagedByManager, isFieldManagedByOtherManager } from '$lib/utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
+	import { apiPath } from '$lib/api/urls';
 
 	interface Props {
 		open: boolean;
@@ -140,18 +141,12 @@
 
 	let busy = $state(false);
 
-	function apiUrl(path: string): string {
-		if (!cluster) return path;
-		const sep = path.includes('?') ? '&' : '?';
-		return `${path}${sep}cluster=${encodeURIComponent(cluster)}`;
-	}
-
 	async function clearPin() {
 		if (!rollout || busy) return;
 		busy = true;
 		try {
 			const response = await fetch(
-				apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
+				apiPath(cluster, `/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/pin`),
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },

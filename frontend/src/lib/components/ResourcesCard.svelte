@@ -13,6 +13,7 @@
 		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
 	import { getResourceStatus, getLastTransitionTime } from '$lib/utils';
+	import { apiPath } from '$lib/api/urls';
 
 	let {
 		kustomizations,
@@ -28,7 +29,6 @@
 		cluster?: string;
 	} = $props();
 
-	const clusterParam = $derived(cluster ? `?cluster=${encodeURIComponent(cluster)}` : '');
 
 	// All managed resources (for status summary + "other" section)
 	const allManagedResources = $derived(
@@ -97,7 +97,7 @@
 				expandedDeployments = new Set([...expandedDeployments, key]);
 				if (!deploymentChildren[key]) {
 					deploymentChildren = { ...deploymentChildren, [key]: { replicaSets: [], loading: true } };
-					fetch(`/api/namespaces/${resource.namespace}/deployments/${resource.name}/children${clusterParam}`)
+					fetch(apiPath(cluster, `/namespaces/${resource.namespace}/deployments/${resource.name}/children`))
 						.then((r) => r.json())
 						.then((data) => {
 							deploymentChildren = { ...deploymentChildren, [key]: { replicaSets: data.replicaSets || [], loading: false } };
@@ -152,7 +152,7 @@
 
 		try {
 			const res = await fetch(
-				`/api/namespaces/${resource.namespace}/deployments/${resource.name}/children${clusterParam}`
+				apiPath(cluster, `/namespaces/${resource.namespace}/deployments/${resource.name}/children`)
 			);
 			if (!res.ok) throw new Error('Failed to fetch children');
 			const data = await res.json();
@@ -179,7 +179,7 @@
 				const ns = key.substring(0, slashIdx);
 				const depName = key.substring(slashIdx + 1);
 				try {
-					const res = await fetch(`/api/namespaces/${ns}/deployments/${depName}/children${clusterParam}`);
+					const res = await fetch(apiPath(cluster, `/namespaces/${ns}/deployments/${depName}/children`));
 					if (!res.ok) continue;
 					const data = await res.json();
 					deploymentChildren = {

@@ -5,10 +5,18 @@
  * backend's SSE fan-out over its informer cache — see
  * `pkg/kubernetes/eventhub.go` and the route in `main.go`). Every `changes`
  * message is a coalesced batch of `{type, kind, namespace, name, cluster,
- * resourceVersion, ts}` — this module's whole job is turning that into the
- * RIGHT TanStack Query invalidations, so a page updates within about a
- * second of the cluster changing instead of waiting out a 5-15s poll.
+ * resourceVersion, ts, object?}` — this module's whole job is turning that
+ * into the RIGHT TanStack Query invalidations, so a page updates within about
+ * a second of the cluster changing instead of waiting out a 5-15s poll.
  *
+ * ⭐ 33601e1 — WHEN `object` IS PRESENT, THIS MODULE PATCHES THE CACHE
+ * DIRECTLY INSTEAD OF INVALIDATING IT. Invalidating an ACTIVE query fires a
+ * real refetch; an event that already carries the changed object makes that
+ * refetch redundant. See the "PATCH, NOT INVALIDATE" block right before
+ * `applyChangeEvents` for the full per-kind story and its two deliberate
+ * exceptions (`rollout-schedule-window`, `network-schedules`).
+ *
+
  * ⭐ MULTI-CLUSTER — the hub's stream now fans in every spoke, not just its
  * own informer cache. `cluster` on each `ChangeEvent` is what makes an event
  * for one cluster's Rollout not clobber another cluster's same-named one
@@ -35,6 +43,8 @@
 
 import { createEventSource, type EventSourceClient } from 'eventsource-client';
 import type { QueryClient } from '@tanstack/svelte-query';
+import type { RolloutsListResponse, RolloutResponse } from './rollouts';
+import { SOURCE_CLUSTER_ANNOTATION, sourceClusterName } from '../source-dashboard';
 
 /**
  * One coalesced change, verbatim from the backend's ChangeEvent.
@@ -54,7 +64,56 @@ export type ChangeEvent = {
 	cluster: string;
 	resourceVersion: string;
 	ts: number; // unix millis
+	/**
+	 * ⭐ PATCH-FROM-EVENT, 33601e1 — the object as the API would serve it
+	 * (managedFields and last-applied stripped server-side), for 8 kinds:
+	 * Rollout, HealthCheck, Kustomization, Environment, KruiseRollout,
+	 * RolloutDependency, RolloutSchedule, ClusterRolloutSchedule. Absent on
+	 * every `delete` event (nothing to embed), for any OTHER kind, and when
+	 * the marshaled object exceeds 64 KiB — see `pkg/kubernetes/eventhub.go`'s
+	 * `AttachObjects` for the exact contract. `applyChangeEvents` below uses
+	 * this to PATCH the affected caches directly instead of invalidating them
+	 * (which forces a refetch) — see "PATCH, NOT INVALIDATE" below.
+	 */
+	object?: Record<string, unknown>;
 };
+
+/**
+ * The minimal shape every embedded/listed object in this module cares about
+ * — enough to find it by identity and to stamp the cluster it came from.
+ * Deliberately NOT the generated `Rollout`/`Kustomization`/... types: an
+ * event's `object` is untyped wire JSON, and every field this module reads
+ * off it is present on every Kubernetes object regardless of kind.
+ */
+type K8sObject = {
+	metadata?: { name?: string; namespace?: string; annotations?: Record<string, string> | null };
+	[key: string]: unknown;
+};
+
+/**
+ * ⭐ THE FAN-OUT STAMPS `SOURCE_CLUSTER_ANNOTATION` AT LIST-BUILD TIME, NOT ON
+ * THE EVENT'S OWN OBJECT. `main_fanout.go`'s `annotateItemsWithSource` only
+ * runs when the hub assembles a `RolloutsListResponse` from each cluster's
+ * raw list — `pkg/kubernetes/eventhub.go`'s `AttachObjects` (which produces
+ * `ChangeEvent.Object`) re-Gets the object from the informer cache and never
+ * touches this annotation. So an object lifted straight from an event and
+ * pushed into a fleet-list cache would be MISSING the one annotation every
+ * other item in that list carries — `sourceClusterName()` would read `''`
+ * for it while its siblings read the real cluster name, which is exactly the
+ * cross-cluster collision `rolloutMatchesEnvironment` and this module's own
+ * cluster-scoped predicates exist to prevent. `ChangeEvent.cluster` is
+ * authoritative (the backend stamps it from the connection the event came
+ * in on — see this file's own top comment), so every object patched into a
+ * fleet-list cache is re-stamped with it here before insertion.
+ */
+function stampSourceCluster(obj: K8sObject, cluster: string): K8sObject {
+	const annotations = { ...(obj.metadata?.annotations ?? {}), [SOURCE_CLUSTER_ANNOTATION]: cluster };
+	return { ...obj, metadata: { ...obj.metadata, annotations } };
+}
+
+function sameIdentity(obj: K8sObject | null | undefined, ev: ChangeEvent): boolean {
+	return obj?.metadata?.name === ev.name && obj?.metadata?.namespace === ev.namespace;
+}
 
 /**
  * ⭐ PERF-2026-09-04 §C.7 SECOND FOLLOW-UP — INVALIDATE BY KIND, NOT BY A
@@ -181,6 +240,253 @@ const KNOWN_KINDS = new Set([
 	// it here the same day the backend starts streaming core Events.
 ]);
 
+// ─────────────────────────────────────────────────────────────────────────
+// PATCH, NOT INVALIDATE — PERF-2026-09-04 §C.7, event-object follow-up.
+//
+// `invalidateQueries` marks a cache entry stale and — for every ACTIVE query
+// — fires a real network refetch. That was the whole cost this file existed
+// to cut down on, and once an event carries the changed object, refetching
+// is redundant: the object already tells the cache what the next fetch
+// would return. Every function below therefore calls `setQueriesData`
+// (patch the cache in place, bump `dataUpdatedAt`, no request) and the
+// per-kind invalidate sets further down are now the FALLBACK path — used
+// only when there is no `object` to patch with (delete-of-a->64KiB-object
+// never happens, but an update can still omit it) or, for two cases
+// documented at their own call sites, when patching still isn't SOUND with
+// the data this module has.
+//
+// A delete event never carries `object` (see `ChangeEvent.object`'s own
+// doc), but it always carries `namespace`/`name`/`kind` — enough to find and
+// remove the matching entry by IDENTITY without needing the object body. So
+// "patchable" means "delete, or update/add with an object", not "has an
+// object" — every function below takes that as its precondition.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** `RolloutsListResponse`'s embedded-array field for each `FLEET_LIST_KINDS` member. */
+const FLEET_LIST_FIELD: Partial<Record<string, keyof RolloutsListResponse>> = {
+	Rollout: 'rollouts',
+	Kustomization: 'kustomizations',
+	Environment: 'environments',
+	KruiseRollout: 'kruiseRollouts',
+	RolloutDependency: 'rolloutDependencies'
+};
+
+/**
+ * Upsert/remove one object in one `RolloutsListResponse`'s matching array,
+ * matched by (namespace, name, source cluster) so a same-named object on a
+ * DIFFERENT cluster is never overwritten (see `stampSourceCluster`'s doc).
+ * Returns the SAME reference when there is nothing to do, so `setQueriesData`
+ * below leaves an unrelated cache entry untouched rather than bumping its
+ * `dataUpdatedAt` for no reason.
+ */
+function patchFleetListResponse(resp: RolloutsListResponse, ev: ChangeEvent): RolloutsListResponse {
+	const field = FLEET_LIST_FIELD[ev.kind];
+	if (!field) return resp;
+	const container = (resp as Record<string, unknown>)[field] as
+		| { items?: K8sObject[] }
+		| null
+		| undefined;
+	const items = container?.items ?? [];
+	const idx = items.findIndex(
+		(it) => sameIdentity(it, ev) && sourceClusterName(it) === ev.cluster
+	);
+	if (ev.type === 'delete') {
+		if (idx === -1) return resp;
+		const next = items.slice();
+		next.splice(idx, 1);
+		return { ...resp, [field]: { ...container, items: next } };
+	}
+	if (!ev.object) return resp;
+	const stamped = stampSourceCluster(ev.object as K8sObject, ev.cluster);
+	const next = items.slice();
+	if (idx === -1) next.push(stamped);
+	else next[idx] = stamped;
+	return { ...resp, [field]: { ...container, items: next } };
+}
+
+/**
+ * Patches `['rollouts','all']` and every `['rollouts','namespace',<ns>]`
+ * cache entry whose namespace matches the event (a namespace-scoped fleet
+ * list only ever contains that one namespace's items, so a DIFFERENT
+ * namespace's cached list is correctly left alone — unlike `fleetNamespaces`
+ * below, which invalidates by namespace for the same reason).
+ */
+function patchFleetListCaches(queryClient: QueryClient, ev: ChangeEvent): void {
+	queryClient.setQueriesData<RolloutsListResponse>(
+		{
+			predicate: (query) => {
+				const key = query.queryKey;
+				if (key[0] !== 'rollouts') return false;
+				if (key[1] === 'all') return true;
+				return key[1] === 'namespace' && key[2] === ev.namespace;
+			}
+		},
+		(old) => (old ? patchFleetListResponse(old, ev) : old)
+	);
+}
+
+/**
+ * The exact `['rollout', ns, name, cluster]` entry for a Rollout event that
+ * carries its object — replaces `.rollout` in place. Never called for a
+ * delete (there is no sensible "patched" state for a rollout that no longer
+ * exists; that case stays on the `rolloutExact` invalidate set below so the
+ * page refetches into its own 404/error state).
+ */
+function patchRolloutExactCache(queryClient: QueryClient, ev: ChangeEvent): void {
+	queryClient.setQueriesData<RolloutResponse>(
+		{
+			predicate: (query) => {
+				const key = query.queryKey;
+				if (key.length < 4 || key[0] !== 'rollout') return false;
+				return (
+					key[1] === ev.namespace &&
+					key[2] === ev.name &&
+					((key[3] as string | undefined) ?? '') === ev.cluster
+				);
+			}
+		},
+		(old) => (old ? { ...old, rollout: ev.object as unknown as RolloutResponse['rollout'] } : old)
+	);
+}
+
+/**
+ * `RolloutResponse` fields `patchRolloutComposite` knows how to update in
+ * place, driven off `ROLLOUT_NAMESPACE_KINDS` — i.e. only the kinds that
+ * ALSO fall back to the namespace-wide invalidate when they can't be
+ * patched. `Kustomization` is deliberately absent: it has never been a
+ * member of `ROLLOUT_NAMESPACE_KINDS` (see that constant's own doc —
+ * `RolloutResponse.kustomizations` was left to its own polling ceiling
+ * rather than paying for a namespace-wide invalidate on every Kustomization
+ * reconcile). It gets its own dedicated branch below instead, so an object
+ * that CAN be patched now is a pure improvement on top of that trade —
+ * and the object-absent case still falls to NOTHING for `Kustomization`,
+ * exactly as it always has, rather than newly acquiring the invalidate this
+ * set drives for its members.
+ */
+const EMBEDDABLE_IN_ROLLOUT_DETAIL = new Set(['Environment', 'KruiseRollout']);
+
+/**
+ * One `RolloutResponse`'s embedded Kustomization/Environment/KruiseRollout,
+ * IF this particular composite actually references the changed object.
+ * Returns `null` — "leave this entry alone" — both when the composite
+ * doesn't carry that field yet (nothing to check membership against) and
+ * when it does but names something else: a Kustomization event whose name
+ * isn't in this rollout's `kustomizations.items` is simply not this
+ * rollout's Kustomization, and unlike the namespace-wide invalidate this
+ * replaces, patching can tell the difference and do nothing instead of
+ * refetching a page the change can't possibly affect.
+ *
+ * `RolloutDependency` is deliberately absent — `RolloutResponse` (see
+ * `rollouts.ts`) has no field for it, so there is nothing here to patch and
+ * it stays on the `rolloutNamespaces` invalidate path unconditionally (see
+ * the main loop below).
+ */
+function patchRolloutComposite(resp: RolloutResponse, ev: ChangeEvent): RolloutResponse | null {
+	if (ev.kind === 'Kustomization') {
+		const items = resp.kustomizations?.items as K8sObject[] | undefined;
+		if (!items) return null;
+		const idx = items.findIndex((k) => sameIdentity(k, ev));
+		if (idx === -1) return null;
+		const next = items.slice();
+		if (ev.type === 'delete') next.splice(idx, 1);
+		else if (ev.object) next[idx] = ev.object as K8sObject;
+		else return null;
+		return {
+			...resp,
+			kustomizations: { items: next } as unknown as RolloutResponse['kustomizations']
+		};
+	}
+	if (ev.kind === 'Environment') {
+		const cur = resp.environment as K8sObject | undefined;
+		if (!sameIdentity(cur, ev)) return null;
+		if (ev.type === 'delete') return { ...resp, environment: undefined };
+		if (!ev.object) return null;
+		return { ...resp, environment: ev.object as unknown as RolloutResponse['environment'] };
+	}
+	if (ev.kind === 'KruiseRollout') {
+		const cur = resp.kruiseRollout as K8sObject | null | undefined;
+		if (!sameIdentity(cur, ev)) return null;
+		if (ev.type === 'delete') return { ...resp, kruiseRollout: null };
+		if (!ev.object) return null;
+		return { ...resp, kruiseRollout: ev.object as unknown as RolloutResponse['kruiseRollout'] };
+	}
+	return null;
+}
+
+/**
+ * Tries `patchRolloutComposite` against every `rollout` cache entry in the
+ * event's namespace+cluster (the event names the changed object, not which
+ * rollout embeds it — same information gap `ROLLOUT_NAMESPACE_KINDS`
+ * documents above). Entries `patchRolloutComposite` returns `null` for are
+ * left byte-identical, so `setQueriesData` here never touches a rollout
+ * detail page the change is unrelated to.
+ */
+function patchRolloutCompositeCaches(queryClient: QueryClient, ev: ChangeEvent): void {
+	queryClient.setQueriesData<RolloutResponse>(
+		{
+			predicate: (query) => {
+				const key = query.queryKey;
+				if (key.length < 4 || key[0] !== 'rollout') return false;
+				return (
+					key[1] === ev.namespace && ((key[3] as string | undefined) ?? '') === ev.cluster
+				);
+			}
+		},
+		(old) => (old ? (patchRolloutComposite(old, ev) ?? old) : old)
+	);
+}
+
+/**
+ * Upserts/removes a `HealthCheck` inside `['health-checks', ns, rolloutName,
+ * cluster]`'s `{ healthChecks: [...] }` array. The backend filters that list
+ * server-side by the ROLLOUT's `healthCheckSelector` — information this
+ * module doesn't have — so an incoming HealthCheck this rollout's cache does
+ * NOT already contain could be either "not selected" or "newly relevant",
+ * and there's no way to tell which from the object alone. The predicate that
+ * IS sound either way is presence: a HealthCheck already in the list is
+ * unambiguously this rollout's, so updating or removing it in place is
+ * always correct; one that ISN'T there is left alone (this page's own
+ * `pollWhenHealthy(5000, 60000, cluster)` override — unchanged by this pass
+ * — is the safety net for that one case, not the 300s fleet-wide default).
+ *
+ * Returns `false` when at least one matching cache entry is KNOWN to have
+ * changed (the item is present) but has no `object` to apply — the one case
+ * that still needs a real invalidate, since presence confirms relevance but
+ * there is no new content to patch in with.
+ */
+function patchHealthCheckCaches(queryClient: QueryClient, ev: ChangeEvent): boolean {
+	let needsInvalidate = false;
+	queryClient.setQueriesData<{ healthChecks?: K8sObject[] }>(
+		{
+			predicate: (query) => {
+				const key = query.queryKey;
+				if (key.length < 4 || key[0] !== 'health-checks') return false;
+				return key[1] === ev.namespace && ((key[3] as string | undefined) ?? '') === ev.cluster;
+			}
+		},
+		(old) => {
+			if (!old?.healthChecks) return old;
+			const items = old.healthChecks;
+			const idx = items.findIndex((h) => sameIdentity(h, ev));
+			if (ev.type === 'delete') {
+				if (idx === -1) return old;
+				const next = items.slice();
+				next.splice(idx, 1);
+				return { ...old, healthChecks: next };
+			}
+			if (idx === -1) return old; // not (yet) known to be this rollout's — see doc comment
+			if (!ev.object) {
+				needsInvalidate = true;
+				return old;
+			}
+			const next = items.slice();
+			next[idx] = ev.object as K8sObject;
+			return { ...old, healthChecks: next };
+		}
+	);
+	return !needsInvalidate;
+}
+
 /**
  * Maps one batch of change events to TanStack invalidations and applies
  * them, PER KIND. Exported (rather than folded into the EventSource wiring
@@ -203,21 +509,51 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 	for (const ev of events) {
 		if (!KNOWN_KINDS.has(ev.kind) && !EVENT_TAG_KINDS.has(ev.kind)) continue;
 
+		// "Patchable" = a delete (identity alone is enough to remove an
+		// entry) or an add/update that actually carries the changed object.
+		// Everything else falls through to the exact invalidate behavior
+		// this module had before objects existed — see the "PATCH, NOT
+		// INVALIDATE" block above.
+		const patchable = ev.type === 'delete' || !!ev.object;
+
 		// ⭐ FLEET LIST — deliberately NOT cluster-scoped. `['rollouts','all']`
 		// and the per-namespace fleet lists aggregate every cluster in one
 		// response, so ANY cluster's Rollout/Kustomization/Environment/
-		// KruiseRollout/RolloutDependency event must invalidate them.
-		if (FLEET_LIST_KINDS.has(ev.kind) && ev.namespace) fleetNamespaces.add(ev.namespace);
+		// KruiseRollout/RolloutDependency event must reach them.
+		if (FLEET_LIST_KINDS.has(ev.kind) && ev.namespace) {
+			if (patchable) patchFleetListCaches(queryClient, ev);
+			else fleetNamespaces.add(ev.namespace);
+		}
 
 		if (ROLLOUT_EXACT_KINDS.has(ev.kind) && ev.namespace && ev.name) {
-			rolloutExact.add(`${ev.cluster}|${ev.namespace}|${ev.name}`);
+			// A Rollout delete has nothing to patch WITH (see
+			// `patchRolloutExactCache`'s own doc) — it stays on the
+			// invalidate set even though `patchable` is true for deletes
+			// everywhere else in this function.
+			if (ev.type !== 'delete' && ev.object) patchRolloutExactCache(queryClient, ev);
+			else rolloutExact.add(`${ev.cluster}|${ev.namespace}|${ev.name}`);
 		}
 		if (ROLLOUT_NAMESPACE_KINDS.has(ev.kind) && ev.namespace) {
-			rolloutNamespaces.add(`${ev.cluster}|${ev.namespace}`);
+			// Only Kustomization/Environment/KruiseRollout are embedded in
+			// `RolloutResponse` (`EMBEDDABLE_IN_ROLLOUT_DETAIL`) —
+			// RolloutDependency isn't, so it always falls to the namespace
+			// invalidate below, patchable or not (see
+			// `patchRolloutComposite`'s own doc).
+			if (patchable && EMBEDDABLE_IN_ROLLOUT_DETAIL.has(ev.kind)) {
+				patchRolloutCompositeCaches(queryClient, ev);
+			} else {
+				rolloutNamespaces.add(`${ev.cluster}|${ev.namespace}`);
+			}
 		}
 
 		if (HEALTH_CHECK_KINDS.has(ev.kind) && ev.namespace) {
-			healthCheckTargets.add(`${ev.cluster}|${ev.namespace}`);
+			if (patchable) {
+				if (!patchHealthCheckCaches(queryClient, ev)) {
+					healthCheckTargets.add(`${ev.cluster}|${ev.namespace}`);
+				}
+			} else {
+				healthCheckTargets.add(`${ev.cluster}|${ev.namespace}`);
+			}
 		}
 		if (ROLLOUT_TEST_KINDS.has(ev.kind) && ev.namespace) {
 			rolloutTestTargets.add(`${ev.cluster}|${ev.namespace}`);
@@ -227,7 +563,34 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 		}
 		if (KUSTOMIZATION_KINDS.has(ev.kind) && ev.namespace && ev.name) {
 			kustomizationTargets.push({ cluster: ev.cluster, namespace: ev.namespace, name: ev.name });
+			// ⭐ NEW — `RolloutResponse.kustomizations` was never on the
+			// namespace-invalidate fallback (see `EMBEDDABLE_IN_ROLLOUT_DETAIL`'s
+			// doc), so there is no existing behavior to preserve here: only
+			// ADD the patch when it's free (object present or a delete), and
+			// change nothing when it isn't.
+			if (patchable) patchRolloutCompositeCaches(queryClient, ev);
 		}
+		// ⚠️ SCHEDULES STAY INVALIDATE-ONLY — NOT AN OVERSIGHT.
+		// `rollout-schedule-window` caches a REDUCTION (`{blocked,
+		// nextTransition, names}`), not the raw schedule list a single
+		// event's object could be folded into — a schedule flipping from
+		// blocking to non-blocking can't be applied without knowing
+		// whether some OTHER schedule for the same rollout is still
+		// blocking, which this module was never told. `network-schedules`
+		// DOES cache the raw per-cluster lists `fetchNetworkSchedules`
+		// returns, but its Map is keyed by the string each CALLER passed
+		// in (`''` for the hub-local cluster — see `schedules.ts`'s own
+		// doc comment), while `ChangeEvent.cluster` is always the hub's
+		// REAL display name for a hub-local event, never `''` (this
+		// file's own top comment). There is no oracle here for "is this
+		// event's cluster the same one as the Map's `''` entry" without
+		// guessing — and guessing wrong would patch one cluster's list
+		// with another cluster's schedule, the exact cross-cluster
+		// corruption this module's cluster-scoped predicates exist to
+		// prevent everywhere else. Schedules change far less often than
+		// Rollout/HealthCheck status (a business-hours toggle, not a
+		// 30s probe write), so the safety net this leaves in place costs
+		// little.
 		if (SCHEDULE_KINDS.has(ev.kind)) scheduleChanged = true;
 	}
 

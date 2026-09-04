@@ -57,6 +57,17 @@ async function mount(Comp: unknown, params: Record<string, string>, fetcher?: an
 	return r;
 }
 
+/**
+ * Matches the single-rollout endpoint in EITHER URL form `apiPath` can
+ * produce: the deprecated `?cluster=` shape (bare `/api/rollouts/<ns>/<name>`,
+ * `cluster` undefined) and the path form
+ * `/api/clusters/<cluster>/rollouts/<ns>/<name>` — every route under
+ * `/rollouts/[cluster]/...` always has a `cluster` param, so the fixture must
+ * recognize the prefixed shape or every mocked fetch here falls through to
+ * the list mock and the page 404s.
+ */
+const ROLLOUT_DETAIL_URL = /\/api\/(?:clusters\/[^/]+\/)?rollouts\/[^/]+\/[^/]+(\?|$)/;
+
 /** The single-rollout endpoint answers with one rollout; everything else is the list. */
 function detailFetch(shape?: (app: string, tier: string) => Shape) {
 	const payload = shape ? fleet(shape) : fleet();
@@ -65,7 +76,7 @@ function detailFetch(shape?: (app: string, tier: string) => Shape) {
 	const list = respond(payload) as any;
 	return async (input: any) => {
 		const url = String(typeof input === 'string' ? input : (input?.url ?? input));
-		if (/\/api\/rollouts\/[^/]+\/[^/]+(\?|$)/.test(url)) {
+		if (ROLLOUT_DETAIL_URL.test(url)) {
 			return new Response(
 				JSON.stringify({ rollout: one, environment: env, rolloutGates: { items: [] } }),
 				{ status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -93,7 +104,7 @@ function freshDetailFetch(shape?: (app: string, tier: string) => Shape) {
 	return async (input: any) => {
 		const res = await fetcher(input);
 		const url = String(typeof input === 'string' ? input : (input?.url ?? input));
-		if (/\/api\/rollouts\/[^/]+\/[^/]+(\?|$)/.test(url)) {
+		if (ROLLOUT_DETAIL_URL.test(url)) {
 			const body = await res.json();
 			if (body?.rollout?.status?.history?.[0]) {
 				body.rollout.status.history[0].timestamp = new Date().toISOString();

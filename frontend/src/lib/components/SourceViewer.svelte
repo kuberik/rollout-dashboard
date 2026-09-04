@@ -8,6 +8,7 @@
 	import githubLight from 'svelte-highlight/styles/github';
 	import { theme } from '$lib/stores/theme';
 	import { CodeOutline } from 'flowbite-svelte-icons';
+	import { apiPath } from '$lib/api/urls';
 	export let namespace: string;
 	export let name: string;
 	export let version: string;
@@ -33,9 +34,8 @@
 		loading = true;
 		error = null;
 		try {
-			const clusterParam = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 			const response = await fetch(
-				`/api/rollouts/${namespace}/${name}/manifest/${version}${clusterParam}`
+				apiPath(cluster, `/rollouts/${namespace}/${name}/manifest/${version}`)
 			);
 			if (!response.ok) {
 				throw new Error(`Failed to fetch files: ${response.statusText}`);

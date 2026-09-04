@@ -50,6 +50,7 @@
 	import FactList, { type Fact } from './FactList.svelte';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { apiPath } from '$lib/api/urls';
 
 	interface Props {
 		open: boolean;
@@ -149,12 +150,6 @@
 			if (w.__scrollLockCount === 0) document.documentElement.classList.remove('scroll-locked');
 		};
 	});
-
-	function apiUrl(path: string): string {
-		if (!cluster) return path;
-		const sep = path.includes('?') ? '&' : '?';
-		return `${path}${sep}cluster=${encodeURIComponent(cluster)}`;
-	}
 
 	// --- Picker state ---------------------------------------------------
 	let selectedVersion = $state<string | null>(null);
@@ -404,7 +399,7 @@
 		overrideContextReady = false;
 		try {
 			const response = await fetch(
-				apiUrl(`/api/rollouts?namespace=${encodeURIComponent(namespace)}`)
+				apiPath(cluster, `/rollouts?namespace=${encodeURIComponent(namespace)}`)
 			);
 			if (!response.ok) return;
 			const data = await response.json();
@@ -520,8 +515,9 @@
 		loadingAnnotations = { ...loadingAnnotations };
 		try {
 			const response = await fetch(
-				apiUrl(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`
+				apiPath(
+					cluster,
+					`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/annotations/${version}`
 				)
 			);
 			annotations[version] = response.ok ? (await response.json()).annotations || {} : {};
@@ -547,7 +543,7 @@
 		loadingAllTags = true;
 		try {
 			const response = await fetch(
-				apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/tags`)
+				apiPath(cluster, `/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/tags`)
 			);
 			allRepositoryTags = response.ok ? (await response.json()).tags || [] : [];
 		} catch {
@@ -959,8 +955,9 @@
 		onDeployStart();
 		try {
 			const response = await fetch(
-				apiUrl(
-					`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/change-version`
+				apiPath(
+					cluster,
+					`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/change-version`
 				),
 				{
 					method: 'POST',

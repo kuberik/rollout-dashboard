@@ -157,6 +157,7 @@
 		rolloutPermissionsQueryOptions
 	} from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
+	import { apiPath } from '$lib/api/urls';
 
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
@@ -166,13 +167,6 @@
 	// that cluster, so the UI behaves identically regardless of source.
 	const cluster = $derived(page.params.cluster as string);
 
-	// Append ?cluster=<name> to an API path so the hub's proxy forwards it to the
-	// right cluster (a no-op for the local cluster, resolved server-side).
-	function apiUrl(path: string): string {
-		if (!cluster) return path;
-		const sep = path.includes('?') ? '&' : '?';
-		return `${path}${sep}cluster=${encodeURIComponent(cluster)}`;
-	}
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
 	// ⭐ CLUSTER-AWARE — this page's OWN rollout, so it passes `cluster`
@@ -627,7 +621,7 @@
 						const kName = k.metadata!.name as string;
 						const kNamespace = k.metadata?.namespace || namespace;
 						const res = await fetch(
-							apiUrl(`/api/kustomizations/${kNamespace}/${kName}/managed-resources`)
+							apiPath(cluster, `/kustomizations/${kNamespace}/${kName}/managed-resources`)
 						);
 						if (res.ok) {
 							const data = await res.json();
@@ -667,7 +661,7 @@
 	const healthChecksQuery = createQuery(() => ({
 		queryKey: ['health-checks', namespace, name, cluster],
 		queryFn: async () => {
-			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/health-checks`));
+			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`));
 			if (!res.ok) return { healthChecks: [] };
 			return res.json();
 		},
@@ -713,7 +707,7 @@
 	const eventsQuery = createQuery(() => ({
 		queryKey: ['events', namespace, name, cluster],
 		queryFn: async () => {
-			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/events`));
+			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/events`));
 			if (!res.ok) return { events: [] };
 			return res.json();
 		},
@@ -1471,7 +1465,7 @@
 
 		try {
 			const response = await fetch(
-				apiUrl(`/api/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`),
+				apiPath(cluster, `/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`),
 				{
 					method: 'POST',
 					headers: {
@@ -1609,7 +1603,7 @@
 	) {
 		try {
 			const response = await fetch(
-				apiUrl(`/api/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`),
+				apiPath(cluster, `/rollouts/${kruiseRolloutNamespace}/${kruiseRolloutName}/continue`),
 				{
 					method: 'POST',
 					headers: {
@@ -1652,7 +1646,7 @@
 
 	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
 		try {
-			const response = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/retry`), {
+			const response = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/retry`), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ kruiseRolloutName: kruiseRolloutName || '', testAction })

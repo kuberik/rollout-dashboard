@@ -23,6 +23,7 @@
  */
 
 import { apiJson } from './errors';
+import { apiPath } from './urls';
 
 type ScheduleLike = {
 	metadata?: { name?: string; annotations?: Record<string, string> };
@@ -66,11 +67,10 @@ export async function fetchScheduleWindow(
 	name: string,
 	cluster?: string
 ): Promise<ScheduleWindow> {
-	const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 	const data = await apiJson<{
 		rolloutSchedules?: { items?: ScheduleLike[] };
 		clusterRolloutSchedules?: { items?: ScheduleLike[] };
-	}>(`/api/rollouts/${namespace}/${name}/schedules${params}`);
+	}>(apiPath(cluster, `/rollouts/${namespace}/${name}/schedules`));
 	const all: ScheduleLike[] = [
 		...(data?.rolloutSchedules?.items ?? []),
 		...(data?.clusterRolloutSchedules?.items ?? [])
@@ -188,11 +188,10 @@ export async function fetchScheduleObjects(
 	name: string,
 	cluster?: string
 ): Promise<ScheduleObject[]> {
-	const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 	const data = await apiJson<{
 		rolloutSchedules?: { items?: ScheduleObject[] };
 		clusterRolloutSchedules?: { items?: ScheduleObject[] };
-	}>(`/api/rollouts/${namespace}/${name}/schedules${params}`);
+	}>(apiPath(cluster, `/rollouts/${namespace}/${name}/schedules`));
 	return [...(data?.rolloutSchedules?.items ?? []), ...(data?.clusterRolloutSchedules?.items ?? [])];
 }
 
@@ -228,9 +227,10 @@ export type NetworkSchedules = {
 };
 
 /**
- * One request per cluster name given (`''` = the local/hub cluster, matching
- * every other `?cluster=` call site in this product). Failures degrade to an
- * empty result for that cluster rather than rejecting the whole call — a
+ * One request per cluster name given (`''` = the local/hub cluster — `apiPath`
+ * treats a falsy cluster the same as every other call site in this product).
+ * Failures degrade to an empty result for that cluster rather than rejecting
+ * the whole call — a
  * spoke that cannot be reached should not blank out every OTHER cluster's
  * schedule join, and `classifyGate` already has an honest `unknown`/`check`
  * fallback for gates it ends up with no schedule join for.
@@ -241,9 +241,8 @@ export async function fetchNetworkSchedules(
 	const names = [...new Set(clusters)];
 	const results = await Promise.all(
 		names.map(async (cluster) => {
-			const params = cluster ? `?namespace=all&cluster=${encodeURIComponent(cluster)}` : '?namespace=all';
 			try {
-				return await apiJson<NetworkSchedules>(`/api/schedules${params}`);
+				return await apiJson<NetworkSchedules>(apiPath(cluster, '/schedules?namespace=all'));
 			} catch {
 				return { rolloutSchedules: { items: [] }, clusterRolloutSchedules: { items: [] } };
 			}

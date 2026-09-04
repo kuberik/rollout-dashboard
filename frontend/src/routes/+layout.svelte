@@ -101,11 +101,21 @@
 	 * argument make BOTH numbers below conditional on `$lib/api/events`'
 	 * `isEventStreamHealthy()`, checked fresh on every read:
 	 *
-	 * - stream connected → `staleTime: 30_000`, `refetchInterval: 60_000` —
+	 * - stream connected → `staleTime: 120_000`, `refetchInterval: 300_000` —
 	 *   push does the real work; polling is only the safety net.
 	 * - stream down (still connecting, dropped, tab hidden >60s) → the exact
 	 *   prior numbers (`1000` / `5000`), so a stream outage is invisible to
 	 *   the reader: the page just goes back to how it always worked.
+	 *
+	 * ⭐ PERF-2026-09-04 §C.7 EVENT-OBJECT FOLLOW-UP — the safety net widened
+	 * again, 60s/30s → 300s/120s, now that `./events`' `applyChangeEvents`
+	 * PATCHES caches straight from the event's own `object` (fleet lists,
+	 * rollout detail, health-checks, schedules) instead of only invalidating
+	 * them. A patched cache is already exactly what a refetch would produce,
+	 * so the 60s poll it used to lean on was pure waste; the 300s number is a
+	 * true safety net for the cases patching still falls back to invalidating
+	 * (no `object` — oversized or an unknown kind) or for drift this module
+	 * hasn't accounted for.
 	 *
 	 * This is the ONLY thing that changed here — `refetchOnWindowFocus`,
 	 * `retry` and `retryDelay` are untouched, and per-page overrides that
@@ -116,8 +126,8 @@
 	const queryClient = new QueryClient({
 		defaultOptions: {
 			queries: {
-				staleTime: staleTimeWhenHealthy(1000, 30000),
-				refetchInterval: pollWhenHealthy(5000, 60000),
+				staleTime: staleTimeWhenHealthy(1000, 120000),
+				refetchInterval: pollWhenHealthy(5000, 300000),
 				refetchOnWindowFocus: false,
 				retry: queryRetry,
 				retryDelay: queryRetryDelay

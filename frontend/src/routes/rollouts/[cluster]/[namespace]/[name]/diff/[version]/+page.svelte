@@ -10,6 +10,7 @@
 	import { ColorSchemeType } from 'diff2html/lib/types';
 	import 'diff2html/bundles/css/diff2html.min.css';
 	import { fetchRollout } from '$lib/api/rollouts';
+	import { apiPath } from '$lib/api/urls';
 
 	let rollout: Rollout | null = null;
 	let loading = true;
@@ -20,7 +21,6 @@
 	let patches: Record<string, string> = {};
 
 	const { cluster, namespace, name, version } = $page.params;
-	const clusterParam = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
 
 	theme.subscribe((value) => {
 		currentTheme = value;
@@ -68,9 +68,11 @@
 
 			// Fetch manifests for both versions
 			const [currentManifest, previousManifest] = await Promise.all([
-				fetch(`/api/rollouts/${namespace}/${name}/manifest/${version}${clusterParam}`).then((r) => r.json()),
-				fetch(`/api/rollouts/${namespace}/${name}/manifest/${previousVersion}${clusterParam}`).then((r) =>
+				fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/manifest/${version}`)).then((r) =>
 					r.json()
+				),
+				fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/manifest/${previousVersion}`)).then(
+					(r) => r.json()
 				)
 			]);
 

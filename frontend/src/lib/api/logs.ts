@@ -3,6 +3,7 @@ import type { QueryFunctionContext } from '@tanstack/svelte-query';
 import { experimental_streamedQuery as streamedQuery } from '@tanstack/svelte-query';
 import { createEventSource } from 'eventsource-client';
 import LogParserWorker from '../workers/logParser.worker?worker';
+import { apiPath } from './urls';
 
 // Log streaming API types and utilities
 export interface LogLine {
@@ -26,8 +27,8 @@ export interface LogsStreamData {
 }
 
 // Create EventSource URL for logs streaming.
-// Adds ?cluster=<name> when set so the hub's spoke-proxy forwards the SSE stream
-// to the right cluster.
+// `apiPath` routes it to /api/clusters/<name>/... when set, so the hub's
+// spoke-proxy forwards the SSE stream to the right cluster.
 export function createLogsStreamUrl(
 	namespace: string,
 	name: string,
@@ -42,10 +43,7 @@ export function createLogsStreamUrl(
 	if (since) {
 		params.set('since', since.toString());
 	}
-	if (cluster) {
-		params.set('cluster', cluster);
-	}
-	return `/api/rollouts/${namespace}/${name}/pods/logs?${params.toString()}`;
+	return `${apiPath(cluster, `/rollouts/${namespace}/${name}/pods/logs`)}?${params.toString()}`;
 }
 
 // Create an async iterable that yields log lines from EventSource
