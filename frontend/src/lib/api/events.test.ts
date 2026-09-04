@@ -122,4 +122,43 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 			expect(qc.calls).toContainEqual({ queryKey: ['rollouts', 'all'] });
 		}
 	});
+
+	// `network-schedules` (`ControlCenter`, `/dependencies`, the rollout
+	// Dependencies tab's `fetchNetworkSchedules`) is keyed
+	// `['network-schedules', clusterNames]` — cluster-wide, no namespace slot,
+	// so it can never be reached by the namespace predicate above. See
+	// `SCHEDULE_KINDS`'s own comment in `events.ts`.
+	function matchesNetworkSchedules(qc: ReturnType<typeof fakeQueryClient>): boolean {
+		return qc.calls.some((c) => {
+			const predicate = (c as { predicate?: (q: { queryKey: unknown[] }) => boolean })?.predicate;
+			return typeof predicate === 'function' && predicate({ queryKey: ['network-schedules', ['', 'spoke-a']] });
+		});
+	}
+
+	it('a RolloutSchedule event (namespaced) invalidates network-schedules in addition to the namespace-scoped keys', () => {
+		const qc = fakeQueryClient();
+		applyChangeEvents(qc as never, [ev({ kind: 'RolloutSchedule', namespace: 'team-a' })]);
+		expect(qc.calls).toContainEqual({ queryKey: ['rollouts', 'all'] });
+		expect(matchesNetworkSchedules(qc)).toBe(true);
+	});
+
+	// ⛔ THE REGRESSION THIS GUARDS: a ClusterRolloutSchedule is cluster-scoped
+	// BY DEFINITION, so its own ChangeEvent always carries `namespace: ""` —
+	// the ORIGINAL loop's `ev.namespace` truthiness check silently dropped
+	// these events entirely, and a schedule window opening/closing on a
+	// cluster-wide schedule never invalidated anything.
+	it('a ClusterRolloutSchedule event with an EMPTY namespace (cluster-scoped) still invalidates network-schedules', () => {
+		const qc = fakeQueryClient();
+		applyChangeEvents(qc as never, [ev({ kind: 'ClusterRolloutSchedule', namespace: '' })]);
+		expect(matchesNetworkSchedules(qc)).toBe(true);
+		// No namespace was carried, so the namespace-keyed invalidations must
+		// not fire — there is nothing to key them on.
+		expect(qc.calls).not.toContainEqual({ queryKey: ['rollouts', 'all'] });
+	});
+
+	it('a non-schedule event does not invalidate network-schedules', () => {
+		const qc = fakeQueryClient();
+		applyChangeEvents(qc as never, [ev({ kind: 'Rollout', namespace: 'team-a' })]);
+		expect(matchesNetworkSchedules(qc)).toBe(false);
+	});
 });

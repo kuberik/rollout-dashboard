@@ -51,7 +51,7 @@
 	 */
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
@@ -107,7 +107,11 @@
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({
-			options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) }
+			// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
+			options: {
+				staleTime: staleTimeWhenHealthy(10000, 30000),
+				refetchInterval: pollWhenHealthy(10000, 60000)
+			}
 		})
 	);
 

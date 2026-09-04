@@ -155,13 +155,19 @@
 		ClockOutline
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment } from '../../types';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) } })
+		rolloutsListQueryOptions({
+			options: {
+				staleTime: staleTimeWhenHealthy(15000, 30000),
+				refetchInterval: pollWhenHealthy(15000, 60000)
+			}
+		})
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');

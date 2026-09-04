@@ -81,6 +81,35 @@ const KNOWN_KINDS = new Set([
 ]);
 
 /**
+ * ⭐ PERF-2026-09-04 §C.7 FOLLOW-UP — SCHEDULES ARE CLUSTER-WIDE, NOT
+ * NAMESPACE-SCOPED, AND ONE OF THEM CARRIES NO NAMESPACE AT ALL.
+ *
+ * `ControlCenter`/`/dependencies`/the rollout Dependencies tab all share one
+ * `['network-schedules', clusterNames]` query (`fetchNetworkSchedules`) — a
+ * SINGLE request per page covering every cluster, keyed by the cluster list,
+ * not by namespace. `ROLLOUT_SCOPED_KEY_TAGS`'s predicate matches
+ * `key[1] === namespace`, so this key can never match it (`key[1]` here is
+ * an array of cluster names, not a namespace string) even when its tag were
+ * added to that set.
+ *
+ * Worse: `ClusterRolloutSchedule` is cluster-scoped BY DEFINITION
+ * (`pkg/kubernetes/client.go`'s own doc comment) — its `metadata.namespace`
+ * is always `""`, so `publishChange` (`pkg/kubernetes/cache.go`) publishes
+ * `ChangeEvent{Namespace: ""}` for it. Before this fix that emptied
+ * `ev.namespace`, which is falsy, so the ORIGINAL loop below dropped
+ * ClusterRolloutSchedule events on the floor entirely — a schedule window
+ * opening or closing never invalidated anything, cluster-wide fleet list
+ * included, because the very first `if (... && ev.namespace)` filtered it
+ * out before it could contribute to `namespaces`.
+ *
+ * `RolloutSchedule` (namespaced) still feeds `namespaces` normally — this
+ * set additionally, unconditionally, invalidates `network-schedules` for
+ * either schedule kind, keyed only on KIND, since there is no namespace or
+ * cluster-name join available to narrow it further.
+ */
+const SCHEDULE_KINDS = new Set(['RolloutSchedule', 'ClusterRolloutSchedule']);
+
+/**
  * Maps one batch of change events to TanStack invalidations and applies
  * them. Exported (rather than folded into the EventSource wiring below) so
  * the mapping can be unit-tested with a fake `QueryClient` and no network at
@@ -93,32 +122,43 @@ const KNOWN_KINDS = new Set([
  * since the event doesn't name which rollout a gate/schedule/health-check
  * object belongs to — see the doc comment above). An event for a kind this
  * module has never heard of is ignored, not treated as "invalidate
- * everything" — see KNOWN_KINDS.
+ * everything" — see KNOWN_KINDS. A `RolloutSchedule`/`ClusterRolloutSchedule`
+ * event ALSO invalidates `network-schedules` (see `SCHEDULE_KINDS`'s own
+ * comment) — independently of whether it carried a namespace.
  */
 export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[]): void {
 	const namespaces = new Set<string>();
+	let scheduleChanged = false;
 	for (const ev of events) {
-		if (KNOWN_KINDS.has(ev.kind) && ev.namespace) {
-			namespaces.add(ev.namespace);
-		}
+		if (!KNOWN_KINDS.has(ev.kind)) continue;
+		if (ev.namespace) namespaces.add(ev.namespace);
+		if (SCHEDULE_KINDS.has(ev.kind)) scheduleChanged = true;
 	}
-	if (namespaces.size === 0) return;
+	if (namespaces.size === 0 && !scheduleChanged) return;
 
-	queryClient.invalidateQueries({ queryKey: ['rollouts', 'all'] });
-	for (const ns of namespaces) {
-		queryClient.invalidateQueries({ queryKey: ['rollouts', 'namespace', ns] });
-	}
-	queryClient.invalidateQueries({
-		predicate: (query) => {
-			const key = query.queryKey;
-			return (
-				key.length >= 2 &&
-				typeof key[0] === 'string' &&
-				ROLLOUT_SCOPED_KEY_TAGS.has(key[0]) &&
-				namespaces.has(key[1] as string)
-			);
+	if (namespaces.size > 0) {
+		queryClient.invalidateQueries({ queryKey: ['rollouts', 'all'] });
+		for (const ns of namespaces) {
+			queryClient.invalidateQueries({ queryKey: ['rollouts', 'namespace', ns] });
 		}
-	});
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey;
+				return (
+					key.length >= 2 &&
+					typeof key[0] === 'string' &&
+					ROLLOUT_SCOPED_KEY_TAGS.has(key[0]) &&
+					namespaces.has(key[1] as string)
+				);
+			}
+		});
+	}
+
+	if (scheduleChanged) {
+		queryClient.invalidateQueries({
+			predicate: (query) => query.queryKey[0] === 'network-schedules'
+		});
+	}
 }
 
 // --- Stream health, read by `./errors`' pollWhenHealthy/staleTimeWhenHealthy ---

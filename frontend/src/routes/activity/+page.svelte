@@ -69,7 +69,7 @@
 	 * norm, and the banner.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
 	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
@@ -116,7 +116,11 @@
 
 	const rolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({
-			options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) }
+			// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
+			options: {
+				staleTime: staleTimeWhenHealthy(15000, 30000),
+				refetchInterval: pollWhenHealthy(15000, 60000)
+			}
 		})
 	);
 

@@ -50,13 +50,21 @@
 		ExclamationCircleSolid
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, Environment, Kustomization, KruiseRollout } from '../types';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE. See RolloutGrid.svelte's
+	// identical comment: `['rollouts', 'all']` is invalidated by the change
+	// stream, so healthy-stream polling backs off to once a minute.
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
+		rolloutsListQueryOptions({
+			options: {
+				staleTime: staleTimeWhenHealthy(10000, 30000),
+				refetchInterval: pollWhenHealthy(10000, 60000)
+			}
+		})
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 
@@ -124,11 +132,14 @@
 	 * cluster the hub knows about.
 	 */
 	const clusterNames = $derived(['', ...(query.data?.clusters ?? []).map((cl) => cl.name)]);
+	// ⭐ STREAM-AWARE. `RolloutSchedule`/`ClusterRolloutSchedule` events now
+	// invalidate `network-schedules` by key-tag (see `events.ts`'
+	// `SCHEDULE_KINDS`), so this backs off the same way the fleet list does.
 	const schedulesQuery = createQuery(() => ({
 		queryKey: ['network-schedules', clusterNames],
 		queryFn: () => fetchNetworkSchedules(clusterNames),
-		staleTime: 15000,
-		refetchInterval: pollWhenHealthy(30000),
+		staleTime: staleTimeWhenHealthy(15000, 30000),
+		refetchInterval: pollWhenHealthy(30000, 60000),
 		enabled: clusterNames.length > 0
 	}));
 	const gateContext = $derived<GateContext>(

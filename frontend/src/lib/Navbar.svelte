@@ -17,7 +17,7 @@
 	import GithubConnectButton from '$lib/components/GithubConnectButton.svelte';
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import type { Environment } from '../types';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 	let switcherOpen = $state(false);
@@ -79,22 +79,29 @@
 	const namespace = $derived(page.params.namespace as string | undefined);
 	const name = $derived(page.params.name as string | undefined);
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE. `['rollout', ns, name,
+	// cluster]` is invalidated by the change stream (Rollout events, plus any
+	// gate/schedule/health-check event in the same namespace) — see
+	// `events.ts`'s `ROLLOUT_SCOPED_KEY_TAGS`.
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace: namespace || '',
 			name: name || '',
 			cluster,
 			options: {
-				refetchInterval: pollWhenHealthy(5000),
+				refetchInterval: pollWhenHealthy(5000, 60000),
 				enabled: isRolloutPage && !!namespace && !!name
 			}
 		})
 	);
 
+	// `['rollouts', 'all']` is invalidated the same way; no `refetchInterval`
+	// override here means it already inherits the app-wide stream-aware
+	// default (`+layout.svelte`), so only `staleTime` needed converting.
 	const allRolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({
 			options: {
-				staleTime: 30000
+				staleTime: staleTimeWhenHealthy(30000, 30000)
 			}
 		})
 	);

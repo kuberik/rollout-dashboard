@@ -90,7 +90,7 @@
 		buildDatadogLogsUrl,
 		detectStuck
 	} from '$lib/utils';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
 	import { detectRollback } from '$lib/rollout-cards';
@@ -197,8 +197,9 @@
 	 * shares `rolloutsListQueryKey` with `/rollouts`, so on any navigation from
 	 * a list page this is a cache read and costs one render, not one request.
 	 */
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
 	const listQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000) } })
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 60000) } })
 	);
 
 	// Query for permissions - checks if user can update/patch rollouts
@@ -582,7 +583,8 @@
 			return result;
 		},
 		enabled: kustomizations.length > 0,
-		refetchInterval: pollWhenHealthy(5000)
+		// ⭐ STREAM-AWARE — `managed-resources` is in `ROLLOUT_SCOPED_KEY_TAGS`.
+		refetchInterval: pollWhenHealthy(5000, 60000)
 	}));
 	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
 		managedResourcesQuery.data ?? {}
@@ -597,7 +599,8 @@
 			return res.json();
 		},
 		enabled: Boolean(rollout?.spec?.healthCheckSelector),
-		refetchInterval: pollWhenHealthy(5000)
+		// ⭐ STREAM-AWARE — `health-checks` is in `ROLLOUT_SCOPED_KEY_TAGS`.
+		refetchInterval: pollWhenHealthy(5000, 60000)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
 
@@ -635,7 +638,8 @@
 			if (!res.ok) return { events: [] };
 			return res.json();
 		},
-		refetchInterval: pollWhenHealthy(5000)
+		// ⭐ STREAM-AWARE — `events` is in `ROLLOUT_SCOPED_KEY_TAGS`.
+		refetchInterval: pollWhenHealthy(5000, 60000)
 	}));
 	const events = $derived(eventsQuery.data?.events ?? []);
 
@@ -652,10 +656,16 @@
 	 * — the connection state does not change mid-visit) so the two surfaces
 	 * cannot disagree about whether GitHub is reachable.
 	 */
+	// ⚠️ NOT COVERED BY THE CHANGE STREAM (GitHub connection state isn't an
+	// informer-cached kind). Explicit `refetchInterval: false` so this stops
+	// silently inheriting the app-wide default's 5s-while-unhealthy poll —
+	// see `revisions/[...slug]/+page.svelte`'s identical fix, matching this
+	// same query's other 3 call sites.
 	const githubStatus = createQuery(() => ({
 		queryKey: githubStatusQueryKey,
 		queryFn: fetchGithubStatus,
-		staleTime: 300_000
+		staleTime: 300_000,
+		refetchInterval: false as const
 	}));
 	const githubConnected = $derived(githubStatus.data?.connected ?? false);
 

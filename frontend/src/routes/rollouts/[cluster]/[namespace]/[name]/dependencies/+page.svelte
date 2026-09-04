@@ -154,7 +154,7 @@
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { groupRolloutsByApp } from '$lib/version-utils';
 	import type { Rollout, Environment, RolloutDependency } from '../../../../../../types';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import {
@@ -200,12 +200,13 @@
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see Navbar.svelte).
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
 			name,
 			cluster,
-			options: { refetchInterval: pollWhenHealthy(5000) }
+			options: { refetchInterval: pollWhenHealthy(5000, 60000) }
 		})
 	);
 
@@ -225,8 +226,9 @@
 	 * The key is shared with `/rollouts`, so this is a cache read on any
 	 * navigation from a list page rather than a second request.
 	 */
+	// ⭐ STREAM-AWARE (see RolloutGrid.svelte).
 	const listQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000) } })
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 60000) } })
 	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
@@ -1011,11 +1013,12 @@
 		'',
 		...(listQuery.data?.clusters ?? []).map((c) => c.name)
 	]);
+	// ⭐ STREAM-AWARE — see ControlCenter.svelte's identical comment.
 	const networkSchedulesQuery = createQuery(() => ({
 		queryKey: ['network-schedules', networkClusterNames],
 		queryFn: () => fetchNetworkSchedules(networkClusterNames),
-		staleTime: 15000,
-		refetchInterval: pollWhenHealthy(30000),
+		staleTime: staleTimeWhenHealthy(15000, 30000),
+		refetchInterval: pollWhenHealthy(30000, 60000),
 		enabled: networkClusterNames.length > 0
 	}));
 

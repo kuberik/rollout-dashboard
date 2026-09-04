@@ -79,7 +79,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import CoverageBar from '$lib/components/CoverageBar.svelte';
 	import type { Rollout, Environment } from '../../../types';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	// THE REPO, NOT THE URL IT IS FETCHED FROM — one spelling with `/versions`.
 	import { repoTitle, repoTitleFull } from '../repo-title';
@@ -170,7 +170,11 @@
 
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({
-			options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) }
+			// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
+			options: {
+				staleTime: staleTimeWhenHealthy(10000, 30000),
+				refetchInterval: pollWhenHealthy(10000, 60000)
+			}
 		})
 	);
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
@@ -211,10 +215,20 @@
 		if (page.url.pathname !== canonical) replaceState(canonical, page.state);
 	});
 
+	// ⚠️ NOT COVERED BY THE CHANGE STREAM — GitHub connection state isn't an
+	// informer-cached kind (`KNOWN_KINDS`), so nothing ever invalidates
+	// `github-status`. It had no `refetchInterval` here, which meant it
+	// silently inherited the app-wide default (`+layout.svelte`'s
+	// `pollWhenHealthy(5000, 60000)`) — a 5s poll while the stream is down,
+	// for a fact this page's own comment already calls session-scoped ("the
+	// connection state does not change mid-visit"). `refetchInterval: false`
+	// matches the other 3 call sites of this exact query
+	// (`apps/[name]/+page.svelte`, `ChangeList.svelte`, `CommitSummary.svelte`).
 	const githubStatus = createQuery(() => ({
 		queryKey: githubStatusQueryKey,
 		queryFn: fetchGithubStatus,
-		staleTime: 300_000
+		staleTime: 300_000,
+		refetchInterval: false as const
 	}));
 	const githubConnected = $derived(githubStatus.data?.connected ?? false);
 

@@ -60,7 +60,7 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import { getEnvironmentThemeStyle, type EnvironmentTheme } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
@@ -79,9 +79,13 @@
 	} from '$lib/view-models/dependency-graph';
 	import { fetchNetworkSchedules } from '$lib/api/schedules';
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({
-			options: { staleTime: 15000, refetchInterval: pollWhenHealthy(15000) }
+			options: {
+				staleTime: staleTimeWhenHealthy(15000, 30000),
+				refetchInterval: pollWhenHealthy(15000, 60000)
+			}
 		})
 	);
 
@@ -96,11 +100,12 @@
 	 * `?cluster=` call site; `clusters` lists only the discovered SPOKES.
 	 */
 	const clusterNames = $derived(['', ...(query.data?.clusters ?? []).map((c) => c.name)]);
+	// ⭐ STREAM-AWARE — see ControlCenter.svelte's identical comment.
 	const schedulesQuery = createQuery(() => ({
 		queryKey: ['network-schedules', clusterNames],
 		queryFn: () => fetchNetworkSchedules(clusterNames),
-		staleTime: 15000,
-		refetchInterval: pollWhenHealthy(30000),
+		staleTime: staleTimeWhenHealthy(15000, 30000),
+		refetchInterval: pollWhenHealthy(30000, 60000),
 		enabled: clusterNames.length > 0
 	}));
 

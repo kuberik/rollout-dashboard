@@ -217,15 +217,21 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout, RolloutGate, Environment, Kustomization } from '../../../types';
 	import type { ManagedResourceStatus } from '../../../types/managed-resource';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
 	const appName = $derived(page.params.name as string);
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see RolloutGrid.svelte).
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
+		rolloutsListQueryOptions({
+			options: {
+				staleTime: staleTimeWhenHealthy(10000, 30000),
+				refetchInterval: pollWhenHealthy(10000, 60000)
+			}
+		})
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
@@ -662,6 +668,15 @@
 			);
 			return out;
 		},
+		// ⚠️ NOT MADE STREAM-AWARE. `app-ready-pods` reads pod replica counts off
+		// `/api/kustomizations/.../managed-resources` per attributable
+		// kustomization, keyed `['app-ready-pods', appName, podQueryKey]` — no
+		// tag in `ROLLOUT_SCOPED_KEY_TAGS`, and `key[1]` is the APP name, not a
+		// namespace, so `applyChangeEvents`' namespace predicate could never
+		// match it even if the tag were added. A Deployment/StatefulSet replica
+		// count also isn't one of the informer-cached kinds the stream knows
+		// about at all (`KNOWN_KINDS`) — pod status isn't in `cache.go`'s
+		// `cachedByObject`. Left on its existing 30s poll, unaccelerated.
 		enabled: podTargets.some((t) => t.refs !== null && t.refs.length > 0),
 		staleTime: 30_000,
 		refetchInterval: pollWhenHealthy(30_000)

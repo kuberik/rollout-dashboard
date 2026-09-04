@@ -11,7 +11,7 @@
 	import { type Snippet } from 'svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -22,13 +22,15 @@
 	// Base path (cluster embedded) shared by every tab.
 	const base = $derived(`/rollouts/${cluster}/${namespace}/${name}`);
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see Navbar.svelte's
+	// identical comment on the same key tag).
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
 			name,
 			cluster,
 			options: {
-				refetchInterval: pollWhenHealthy(5000)
+				refetchInterval: pollWhenHealthy(5000, 60000)
 			}
 		})
 	);
@@ -50,8 +52,9 @@
 	 * A gate in a sibling environment's namespace gates a different rollout
 	 * instance, and that instance has its own tab.
 	 */
+	// ⭐ STREAM-AWARE (see RolloutGrid.svelte's identical comment).
 	const listQuery = createQuery(() =>
-		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000) } })
+		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 60000) } })
 	);
 
 	const environment = $derived(rolloutQuery.data?.environment);

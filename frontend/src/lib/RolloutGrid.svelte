@@ -30,7 +30,7 @@
 	import type { Rollout, Environment } from '../types';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { versionPathForRollout } from '$lib/version-utils';
-	import { pollWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
@@ -67,8 +67,18 @@
 		clearPinOpen = true;
 	}
 
+	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE. `['rollouts', 'all']` is
+	// invalidated on every Rollout/Environment/... event ($lib/api/events'
+	// `applyChangeEvents`), so while the change stream is healthy this is a
+	// pure safety net and need not poll faster than once a minute; the prior
+	// 10s cadence returns automatically the moment the stream drops.
 	const query = createQuery(() =>
-		rolloutsListQueryOptions({ options: { staleTime: 10000, refetchInterval: pollWhenHealthy(10000) } })
+		rolloutsListQueryOptions({
+			options: {
+				staleTime: staleTimeWhenHealthy(10000, 30000),
+				refetchInterval: pollWhenHealthy(10000, 60000)
+			}
+		})
 	);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
