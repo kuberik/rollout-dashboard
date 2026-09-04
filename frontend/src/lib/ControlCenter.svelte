@@ -54,6 +54,9 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
+	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
+	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 
 	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE. See RolloutGrid.svelte's
 	// identical comment: `['rollouts', 'all']` is invalidated by the change
@@ -163,23 +166,33 @@
 	 * composes the line from `blockingStory`'s own classification — the same
 	 * object every gate banner in the product reads — so this line cannot
 	 * name a cause `/apps/<name>` or the rollout's own page disagrees with.
+	 *
+	 * ⭐ EXPOSES THE STORY, NOT JUST THE TEXT. (2026-09-04, load-state audit
+	 * finding 4) `story.kindPending` is true while this card's cause is
+	 * classified `check` — "A check is not passing" — only because
+	 * `gateContext.schedulesLoaded` is still false; it might reclassify to a
+	 * `clock` gate the instant `schedulesQuery` answers. The template reads
+	 * this BEFORE trusting `heldCauseText`'s string, same rule
+	 * `BlockingStoryPanel` already applies to the banner scale of this exact
+	 * object — see that component's own handling of `story.kindPending`.
 	 */
-	function heldCause(c: RolloutCard): string | null {
-		return heldCauseText(blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now }));
+	function cardStory(c: RolloutCard) {
+		return blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now });
 	}
 
 	/**
 	 * ⭐ THE CAUSE LINE, PICKING PIN OVER RULE. (2026-09-03, UX-walk iteration
 	 * 2, finding 1) `blockingStory`'s own precedence is "a pin outranks every
 	 * gate" (see that function's note) — while a pin is set, none of the
-	 * gates is the reason, so `heldCause` would print nothing (or, worse, a
-	 * rule sentence that is not why this card is stuck). Reading `pinned`
+	 * gates is the reason, so `heldCauseText` would print nothing (or, worse,
+	 * a rule sentence that is not why this card is stuck). Reading `pinned`
 	 * first keeps this card's second line honest with the SAME precedence
-	 * every other pin sentence in the product already uses.
+	 * every other pin sentence in the product already uses. A pinned card's
+	 * cause never goes through `blockingStory`'s gate classification at all,
+	 * so it has no `kindPending` to withhold — the held card's own
+	 * `{@const}`s inline this same precedence so the template can read
+	 * `story.kindPending` before choosing whether to trust `cause`.
 	 */
-	function cardCause(c: RolloutCard): string | null {
-		return c.pinnedVersion ? pinnedCauseText(c) : heldCause(c);
-	}
 
 	const trailing = $derived.by<RolloutCard[]>(() => cards.filter((c) => isTrailing(c) && !isHeld(c)));
 	const steadyAll = $derived.by<RolloutCard[]>(() => cards.filter(isSteady));
@@ -359,14 +372,102 @@
 		isRetrying={query.isFetching}
 	/>
 
+	{#snippet skelSectionHeader()}
+		<!-- ⭐ THE SECTION-HEADER SHAPE, GENERIC. (finding 8: "no `Held 4`
+		     section header placeholder") Same `mb-3 flex items-center gap-2`
+		     row every real section (`Needs you now`, `Held`, `Steady`) opens
+		     on — a dot, a title bar, a count bar — never the section's actual
+		     name or count, which are not known yet. -->
+		<div class="mb-3 flex items-center gap-2">
+			<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-200 dark:bg-gray-700"></span>
+			<SkeletonBar width="w-16" height="h-3.5" />
+			<SkeletonBar width="w-4" height="h-3" />
+		</div>
+	{/snippet}
+
+	{#snippet skelMiniCard(withCause: boolean)}
+		<!-- ⭐ THE MINI ROLLOUT CARD'S OWN BOX, AT ITS OWN MEASURED HEIGHT —
+		     95px held-shaped (disc+name, chip row, cause line), 72px
+		     steady-shaped (no cause line) — the audit's own two figures,
+		     never the old undifferentiated 112px square. Same
+		     `rounded-xl border … px-3 py-2` box the real `<a>` card below
+		     draws, so the border/radius/fill do not change shape when the
+		     real card replaces this. -->
+		<div
+			class="flex flex-col rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
+			style="height: {withCause ? 95 : 72}px"
+			aria-hidden="true"
+		>
+			<div class="flex items-center gap-1.5">
+				<span class="skel-block h-7 w-7 shrink-0 rounded-full"></span>
+				<span class="skel-block h-3.5 w-32"></span>
+			</div>
+			<div class="mt-1.5 flex items-center gap-1.5 pl-[34px]">
+				<span class="skel-block h-5 w-14"></span>
+				<span class="skel-block h-5 w-20"></span>
+			</div>
+			{#if withCause}
+				<span class="skel-block mt-1.5 ml-[34px] h-3 w-40"></span>
+			{/if}
+		</div>
+	{/snippet}
+
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
-		<div class="space-y-6">
-			<div class="h-28 w-full animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-				{#each [0, 1, 2] as n (n)}
-					<div class="h-28 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
-				{/each}
+		<!--
+			⭐ AUTHORED FROM THE LOADED PAGE'S OWN COMPOSITION, NOT A GUESSED
+			HEIGHT. (2026-09-04, load-state audit finding 8) The old skeleton
+			was a 112px bar over three 392-wide squares — a texture, not this
+			page's shape. This page's real shape is: a 28px head band
+			(`HeadBandSkeleton`, `mb-5` — byte-identical to the loaded head row
+			47 lines below), then the SAME two-column split
+			(`min-[1440px]:grid-cols-[minmax(0,1fr)_320px]`) and the SAME card
+			grid (`[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]`,
+			`gap-2`) the loaded sections use — so the first placeholder card
+			lands at the same 425×95 (1440) / 343×95 (390) box the first real
+			card lands in, measured `pair.mjs`-verified at y=125 both widths.
+			The rail's two cards are `CardSkeleton` at the rail's own real
+			320px width, not omitted (audit: "a 318px right rail with no
+			placeholder at all").
+
+			⛔ NOT A CLAIM ABOUT WHICH SECTIONS EXIST. Whether this fleet has
+			any `Held` rollouts at all is unknowable before `/api/rollouts`
+			answers — unlike the fixed chrome above it, a section's PRESENCE is
+			data, not layout, so it is not "reserved" the way the head band is.
+			What IS knowable and IS reserved: if a first section exists, its
+			cards are 95px tall in the held shape (disc + name, chip row, cause
+			line) or 72px in the steady shape (no cause line) — the audit's own
+			two measured heights — never the old undifferentiated 112px square.
+		-->
+		<HeadBandSkeleton leadWidth="w-6" rollupWidth="w-64" class="mb-5" />
+		<div
+			class="min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_320px] min-[1440px]:items-start min-[1440px]:gap-6"
+		>
+			<div class="min-w-0">
+				<section class="mb-8">
+					{@render skelSectionHeader()}
+					<div
+						class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+					>
+						{#each [0, 1] as n (n)}
+							{@render skelMiniCard(true)}
+						{/each}
+					</div>
+				</section>
+				<section>
+					{@render skelSectionHeader()}
+					<div
+						class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+					>
+						{#each [0, 1, 2, 3] as n (n)}
+							{@render skelMiniCard(false)}
+						{/each}
+					</div>
+				</section>
+			</div>
+			<div class="mt-8 min-w-0 space-y-4 min-[1440px]:mt-0">
+				<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={3} rowHeight={20} />
+				<CardSkeleton titleWidth="w-28" rows={4} rowHeight={28} padded={false} />
 			</div>
 		</div>
 	{:else if query.isError}
@@ -813,7 +914,7 @@
 					     of a card whose only reason is a person's pin, so the header
 					     claim narrows to what every card in the section actually
 					     shares: it will not move on its own. A card's own second line
-					     (`cardCause`) says WHICH of the two this one is. -->
+					     (below, `cause`) says WHICH of the two this one is. -->
 					{#if held.every((c) => c.held)}
 						<span class="text-xs text-gray-500 dark:text-gray-400">held by a rule</span>
 					{/if}
@@ -830,17 +931,18 @@
 							rankTitle(c.rank, c.envDisplay || c.name)
 						)}
 						{@const mark = cardStateMark(c)}
-						<!-- ⭐ THE CAUSE, ONE LINE, PER CARD — see `heldCause`'s own
+						<!-- ⭐ THE CAUSE, ONE LINE, PER CARD — see `cardStory`'s own
 						     comment. (2026-09-03, operator-walk finding P6) Four held
 						     cards used to be the SAME card repeated four times (name +
 						     a `held` chip, nothing else); this is what tells
 						     `hello-frontend-app` (waiting on a service) apart from a
 						     card held by a clock that clears itself this afternoon.
-						     `cardCause` (2026-09-03, UX-walk iteration 2, finding 1)
-						     reads `pinned` first — see its own comment — so a pinned
-						     card says WHO pinned WHAT, never a rule sentence that is
-						     not the reason it is stuck. -->
-						{@const cause = cardCause(c)}
+						     Pin is read first (2026-09-03, UX-walk iteration 2, finding
+						     1) — see `cardStory`'s comment — so a pinned card says WHO
+						     pinned WHAT, never a rule sentence that is not the reason
+						     it is stuck. -->
+						{@const story = c.pinnedVersion ? null : cardStory(c)}
+						{@const cause = story ? heldCauseText(story) : pinnedCauseText(c)}
 						<a
 							href={href(c)}
 							class="environment-theme-scope flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
@@ -920,8 +1022,25 @@
 							</div>
 							<!-- Lines up under the name, same `pl-[34px]` indent as the
 							     chips row above it. Silent (renders nothing) when the
-							     story has no gate to name — see `heldCauseText`. -->
-							{#if cause}
+							     story has no gate to name — see `heldCauseText`.
+
+							     ⭐ AND WITHHELD, NOT WRONG, WHILE THE GATE'S KIND IS
+							     STILL PENDING. (2026-09-04, load-state audit finding 4)
+							     `story?.kindPending` is true exactly when this card's
+							     cause is currently classified `check` — "A check is not
+							     passing" — only because `/schedules` has not answered
+							     yet, and might reclassify to a `clock` gate (a real
+							     reopen time) the moment it does. Same rule
+							     `BlockingStoryPanel` already applies to this identical
+							     object at banner scale: a `SkeletonBar` here, sized to
+							     approximate the final sentence's width, rather than a
+							     finished sentence that might be wrong for the ~100-300ms
+							     `schedulesQuery` is still in flight. No geometry change:
+							     this line's height was already reserved by the card's
+							     own `gap-1.5` stack. -->
+							{#if story?.kindPending}
+								<SkeletonBar width="w-40" height="h-[11px]" class="ml-[34px]" />
+							{:else if cause}
 								<p class="truncate pl-[34px] text-[11px] text-gray-500 dark:text-gray-400">
 									{cause}
 								</p>

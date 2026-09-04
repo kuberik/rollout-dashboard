@@ -120,6 +120,8 @@
 	import { withPinScheduleClause } from '$lib/view-models/pin-schedule-clause';
 	import { fetchScheduleObjects, type ScheduleObject } from '$lib/api/schedules';
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
+	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
+	import BannerSkeleton from '$lib/components/skeleton/BannerSkeleton.svelte';
 	import { regionLabel } from '$lib/view-models/regions';
 	import { getEnvironmentRank, sortEnvironmentNames } from '$lib/env-order';
 	import { buildRolloutCards, cardStateMark, detectRollback } from '$lib/rollout-cards';
@@ -1571,7 +1573,13 @@
 	     28px + `mb-5`, so the banner below still starts at y=72. -->
 	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 		<h1 class="sr-only">Environments</h1>
-		{#if envTiers.length > 0}
+		{#if query.isLoading}
+			<!-- ⭐ RESERVED. (2026-09-04, load-state audit finding 7) This
+			     rollup was gated on `envTiers.length > 0`, so it rendered
+			     nothing at all until the fleet answered — part of the y
+			     97→317 jump the audit measured. -->
+			<HeadBandSkeleton leadWidth="w-6" rollupWidth="w-48" />
+		{:else if envTiers.length > 0}
 			<span class="t-display text-gray-900 tabular-nums dark:text-white">{envTiers.length}</span>
 			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 				{envTiers.length === 1 ? 'environment' : 'environments'} · {appCount}
@@ -1603,13 +1611,31 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
+		<!-- ⭐ THE BANNER, RESERVED. (2026-09-04, load-state audit finding 7)
+		     `/api/rollouts` already carries every rollout's own
+		     `DeploymentBlocked` condition — the SAME response this page's
+		     `query` fetches, not a second round trip — so whether SOME
+		     banner will render is knowable the instant this one request
+		     resolves; only its exact wording/hue is not. `BannerSkeleton`'s
+		     own doc calls this out by name (its measurements are THIS
+		     page's and `/apps`'). `mb-4` matches `BlockingStoryPanel`'s own
+		     default margin, byte-identical to the object it stands in for.
+		     `!min-h-[…]` overrides the primitive's own fixed 142px floor —
+		     measured live, the real `AlertPanel` stacks to 239px at 390
+		     (icon+text column above the action row) and is 142px from `sm`
+		     up; the primitive's single number can only be right at one
+		     width, same shape as the chart card fix on `/activity`. -->
+		<BannerSkeleton class="mb-4 !min-h-[239px] sm:!min-h-[142px]" />
 		<!-- THE SKELETON IS THE SAME GRID. It was a separate `md:/xl:` grid, so
 		     the placeholders sat in different columns from the cards that
-		     replaced them and the page jumped on load. -->
+		     replaced them and the page jumped on load. 378px measured live
+		     at 1440 (the audit's own figure, not the old 256px guess); a
+		     card's own badges wrap more at 390 (single `.env-stack` column,
+		     narrower cards), measured 492px there. -->
 		<div class="env-stack">
-			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
-			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
-			<div class="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+			<div class="h-[492px] animate-pulse rounded-lg bg-gray-200 sm:h-[378px] dark:bg-gray-700"></div>
+			<div class="h-[492px] animate-pulse rounded-lg bg-gray-200 sm:h-[378px] dark:bg-gray-700"></div>
+			<div class="h-[492px] animate-pulse rounded-lg bg-gray-200 sm:h-[378px] dark:bg-gray-700"></div>
 		</div>
 	{:else if query.isError}
 		<!--

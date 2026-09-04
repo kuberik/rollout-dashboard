@@ -110,6 +110,8 @@
 	import Card from '$lib/components/Card.svelte';
 	import NextStep from '$lib/components/NextStep.svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { Environment } from '../../types';
@@ -790,7 +792,16 @@
 	     that one is not a duplicate. -->
 	<h1 class="sr-only">Activity</h1>
 	<div class="mb-5 min-w-0">
-		{#if !rolloutsQuery.isLoading && !rolloutsQuery.isError}
+		{#if rolloutsQuery.isLoading}
+			<!-- ⭐ RESERVED, NOT OMITTED. (2026-09-04, load-state audit finding
+			     2: "the pill row must not move (today +373/+441 px): reserve
+			     the head band and the 325px chart card.") The status-pill row
+			     20 lines below already renders unconditionally — its own move
+			     was never ITS gate, it was everything above it (this head
+			     band, the chart card) skipping straight to nothing until data
+			     arrived. -->
+			<HeadBandSkeleton leadWidth="w-8" rollupWidth="w-64" />
+		{:else if !rolloutsQuery.isError}
 			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
 				<span class="t-display text-gray-900 tabular-nums dark:text-white">{feed.length}</span>
 				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
@@ -884,7 +895,29 @@
 	     history at all — is the only real precondition for a window control
 	     to mean anything. A cluster with zero deploys ever is the one case
 	     that still hides it, because there is no window to set. -->
-	{#if allEntries.length > 0}
+	{#if rolloutsQuery.isLoading}
+		<!-- ⭐ THE CHART CARD, RESERVED, AT ITS OWN MEASURED HEIGHT PER WIDTH.
+		     (2026-09-04, load-state audit finding 2) `allEntries.length > 0`
+		     — this card's real gate — is unknowable before the fleet's
+		     history has answered, so `main` dropped straight from the head
+		     band to the pill row with no placeholder at all: chrome the
+		     audit measured as part of the +373/+441px the pill row jumped.
+		     `CardSkeleton`'s own 47px header plus one `bodyHeight` block
+		     reproduces this card's shape — but `DeploymentTimeline`'s own
+		     range-pill row wraps at narrow widths (measured live: 325px
+		     total ≥640, 375px at 390), so ONE fixed `bodyHeight` undershoots
+		     on a phone by the same 50px the pill row was still off by.
+		     Two instances, CSS-toggled at the SAME `sm` breakpoint the real
+		     card's own row uses, rather than a single number that can only
+		     be right at one width. -->
+		<CardSkeleton
+			titleWidth="w-40"
+			rollupWidth="w-32"
+			bodyHeight={246}
+			class="mb-5 hidden sm:block"
+		/>
+		<CardSkeleton titleWidth="w-40" rollupWidth="w-32" bodyHeight={296} class="mb-5 sm:hidden" />
+	{:else if allEntries.length > 0}
 		<Card
 			icon={ChartLineUpOutline}
 			title="When deploys happened"
@@ -1064,9 +1097,18 @@
 
 	{#if rolloutsQuery.isLoading}
 		<StillTryingNotice failureCount={rolloutsQuery.failureCount} />
-		<div class="space-y-3">
-			{#each Array(8) as _, i (i)}
-				<div class="h-[3.25rem] w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+		<!-- ⭐ THE SAME `Card` SHAPE THE DAY GROUPS DRAW — 47px header, rows at
+		     their REAL 48px (measured live; the audit's own "~40px" is this
+		     row, not the old 52px `h-[3.25rem]` guess), `padded={false}` so
+		     rows sit flush exactly like the loaded `<ul class="divide-y">`
+		     does. Card COUNT and each card's ROW COUNT are unknowable before
+		     the feed answers (some days have one deploy, some have thirty) —
+		     per the same rule the blocking banner follows, that is content,
+		     not chrome, so it is approximated, never asserted as a real
+		     rollup. -->
+		<div class="flex flex-col gap-4">
+			{#each [3, 5] as rows (rows)}
+				<CardSkeleton titleWidth="w-28" rollupWidth="w-40" {rows} rowHeight={48} padded={false} />
 			{/each}
 		</div>
 	{:else if rolloutsQuery.isError}

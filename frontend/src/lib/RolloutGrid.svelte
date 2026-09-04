@@ -35,6 +35,8 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
+	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
+	import SkeletonChip from '$lib/components/skeleton/SkeletonChip.svelte';
 	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -603,7 +605,15 @@
 	     free to wrap. Everything below y=72 on this page is byte-identical. -->
 	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 		<h1 class="sr-only">Rollouts</h1>
-		{#if cards.length > 0}
+		{#if query.isLoading}
+			<!-- ⭐ RESERVED, NOT OMITTED. (2026-09-04, load-state audit finding
+			     6) This row used to render NOTHING until `cards.length > 0` —
+			     the same free 28px chrome every other list page's head band
+			     already reserves during load, gone here specifically because
+			     the rollup itself is gated on data. `HeadBandSkeleton` is the
+			     one primitive; this is chrome, not a guess. -->
+			<HeadBandSkeleton leadWidth="w-6" rollupWidth="w-56" />
+		{:else if cards.length > 0}
 			<!--
 				⛔ THE HEAD BAND SAID `15 rollouts in 9 namespaces` OVER A GRID
 				THAT HAD JUST FILTERED ITSELF TO ZERO. (2026-09-03, operator-walk,
@@ -656,7 +666,49 @@
 	/>
 
 	<!-- Filter bar: search + compact env filter pills + cluster filter pills (per design). -->
-	{#if cards.length > 0}
+	{#if query.isLoading}
+		<!-- ⭐ THE SEARCH INPUT AND THE CHIP BLOCK, RESERVED. (2026-09-04,
+		     load-state audit finding 6: "Skeleton omits the 44px search input
+		     and the chip block (4 wrapped rows ≈130px at 390); first card
+		     lands +115 (1440) / +249 (390).") SAME wrapper classes as the real
+		     filter bar below (`mb-4 flex flex-wrap items-center gap-x-3
+		     gap-y-2`), so wrapping behaviour — 1 row at 1440, up to 4 at
+		     390 — falls out of the SAME CSS rather than a second, hand-typed
+		     breakpoint. The 5 status pills are FIXED chrome (`statusPills`'
+		     own set of 5 buckets never changes, only their counts, which
+		     this never prints) and are reserved by name; the cluster/env
+		     pills that follow them are genuinely data-dependent (how many
+		     clusters, how many environments) so a representative handful
+		     stands in, at their own width class rather than the old
+		     bordered-list skeleton's guessed geometry. -->
+		<!-- ⭐ AN EXPLICIT MIN-HEIGHT, NOT A HOPE THAT THE PLACEHOLDER CHIPS
+		     WRAP THE SAME WAY THE REAL ELEVEN DO. (measured live via
+		     `pair.mjs`: 71px at 1440, 205px at 390 — this row's own content
+		     is genuinely data-dependent, so a placeholder's own flex-wrap
+		     cannot be trusted to land on the same row count as real chip
+		     TEXT at real WIDTHS; the min-height is what keeps the first
+		     card group from landing 34px+ low regardless.) -->
+		<div
+			class="mb-4 flex min-h-[205px] flex-wrap items-center gap-x-3 gap-y-2 sm:min-h-[71px]"
+			aria-hidden="true"
+		>
+			<div class="relative w-full sm:w-80 sm:flex-none">
+				<span class="skel-block block h-[37px] w-full rounded"></span>
+			</div>
+			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+				<div class="flex flex-wrap items-center gap-1.5">
+					{#each [0, 1, 2, 3, 4] as n (n)}
+						<SkeletonChip width="w-20" class="!h-[26px]" />
+					{/each}
+				</div>
+				<div class="flex flex-wrap items-center gap-1.5">
+					{#each [0, 1, 2] as n (n)}
+						<SkeletonChip width="w-16" class="!h-[26px]" />
+					{/each}
+				</div>
+			</div>
+		</div>
+	{:else if cards.length > 0}
 		<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
 			<!-- ⛔ A FIXED WIDTH, NOT `flex-1`. (2026-09-03, from the human: "search is
 			     visually broken on rollout list.") As `min-w-0 flex-1` beside a
@@ -853,29 +905,55 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
+		<!--
+			⭐ THE SAME GROUP SHAPE THE LOADED GRID DRAWS, NOT A BORDERED LIST
+			THE 390 PAGE NEVER HAS. (2026-09-04, load-state audit finding 6)
+			The old skeleton was a `divide-y` bordered list — a table row
+			shape this page's own "no table view" rule bans on the loaded
+			page — so the flip from skeleton to loaded page changed COMPOSITION,
+			not just content. Each group below reuses the real group's own
+			classes verbatim (`rg-cq` / the `groupHeader` snippet's border-b
+			row / `rg-grid rg-grid-multi`), so the 2-column 395-wide cards at
+			1440 and the 1-column stack at 390 fall out of the SAME CSS the
+			loaded page uses, and the first card lands where its placeholder
+			was instead of the +115 (1440) / +249 (390) the audit measured.
+		-->
 		<div class="space-y-6">
-			{#each Array(2) as _}
-				<div>
-					<div class="mb-3 flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-700/60">
-						<div class="h-3 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-						<div class="h-3 w-4 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
-					</div>
-					<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#each Array(3) as _}
-								<li class="flex items-center gap-4 px-5 py-4">
-									<div class="h-7 w-7 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
-									<div class="flex flex-1 flex-col gap-1.5">
-										<div class="h-3.5 w-44 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-										<div class="h-2.5 w-24 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+			{#each [0, 1] as g (g)}
+				<section class="rg-cq">
+					<div>
+						<div
+							class="mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-2 dark:border-gray-700/60"
+							aria-hidden="true"
+						>
+							<div class="flex min-w-0 items-center gap-2">
+								<span class="skel-block h-3.5 w-32"></span>
+							</div>
+							<div class="flex shrink-0 items-center gap-2">
+								<span class="skel-block h-3 w-16"></span>
+							</div>
+						</div>
+						<div class="rg-grid grid gap-2 rg-grid-multi">
+							{#each [0, 1] as c (c)}
+								<div
+									class="flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+									style="height: 100px"
+									aria-hidden="true"
+								>
+									<div class="flex items-center gap-2.5">
+										<span class="skel-block h-7 w-7 shrink-0 rounded-full"></span>
+										<span class="skel-block h-3.5 w-32"></span>
 									</div>
-									<div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-									<div class="h-4 w-12 animate-pulse rounded-full bg-gray-200/70 dark:bg-gray-700/60"></div>
-								</li>
+									<div class="flex flex-wrap items-center gap-1.5 pl-[38px]">
+										<span class="skel-block h-5 w-14"></span>
+										<span class="skel-block h-5 w-20"></span>
+									</div>
+									<span class="skel-block ml-[38px] h-2.5 w-20"></span>
+								</div>
 							{/each}
-						</ul>
+						</div>
 					</div>
-				</div>
+				</section>
 			{/each}
 		</div>
 	{:else if query.isError}
