@@ -57,7 +57,7 @@ func (c *Client) GetClientset() *kubernetes.Clientset {
 func baseRestConfig() (*rest.Config, error) {
 	config, err := rest.InClusterConfig()
 	if err == nil {
-		return config, nil
+		return tuneRestConfig(config), nil
 	}
 
 	var kubeconfig string
@@ -71,7 +71,23 @@ func baseRestConfig() (*rest.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
 	}
-	return config, nil
+	return tuneRestConfig(config), nil
+}
+
+// tuneRestConfig raises client-go's default rate limit (5 QPS, burst 10),
+// which is sized for a single controller, not a dashboard that lists a dozen
+// uncached kinds per managed-resources request on behalf of many readers.
+// Under load the limiter's queue grew until request contexts cancelled inside
+// it ("client rate limiter Wait returned an error: context canceled",
+// 2026-09-04). Cached kinds never touch the limiter; this is for the rest.
+func tuneRestConfig(config *rest.Config) *rest.Config {
+	if config.QPS == 0 {
+		config.QPS = 50
+	}
+	if config.Burst == 0 {
+		config.Burst = 100
+	}
+	return config
 }
 
 // restConfigWithToken returns baseRestConfig with the bearer token swapped for
@@ -1612,7 +1628,7 @@ func (c *Client) GetEventsForRollout(ctx context.Context, namespace, rolloutName
 				return nil
 			}
 			for _, resource := range resources {
-				if !strings.Contains(resource.GroupVersionKind, "apps/v1/Deployment") {
+				if !strings.Contains(resource.GroupVersionKind, "apps/v1/Deployment") || resource.Object == nil {
 					continue
 				}
 				addRef(resource.Namespace, objRef{kind: "Deployment", namespace: resource.Namespace, name: resource.Name})

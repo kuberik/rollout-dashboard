@@ -95,6 +95,14 @@ func (pd *PodDiscovery) discoverDeployments(ctx context.Context) ([]LogTarget, e
 			if !strings.Contains(resource.GroupVersionKind, "apps/v1/Deployment") {
 				continue
 			}
+			// An inventory entry whose object could not be fetched (a cancelled
+			// context, a rate-limited list, RBAC) carries no Object. Dereferencing
+			// it took the whole process down on 2026-09-04 under ~1000 leaked
+			// stream subscribers; skip it and let the next discovery pass retry.
+			if resource.Object == nil {
+				fmt.Printf("Skipping %s: object not fetched\n", resource.Name)
+				continue
+			}
 
 			// Parse Deployment
 			var deployment appsv1.Deployment
