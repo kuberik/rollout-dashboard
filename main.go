@@ -19,6 +19,9 @@ import (
 
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/config/configfile"
+	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
+	sourcev1 "github.com/fluxcd/source-controller/api/v1"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sse"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
@@ -30,6 +33,7 @@ import (
 	"github.com/kuberik/rollout-dashboard/pkg/auth"
 	"github.com/kuberik/rollout-dashboard/pkg/githubapp"
 	"github.com/kuberik/rollout-dashboard/pkg/githubcache"
+	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
 	"github.com/kuberik/rollout-dashboard/pkg/logs"
 	"github.com/kuberik/rollout-dashboard/pkg/oci"
 	"golang.org/x/sync/errgroup"
@@ -58,6 +62,12 @@ func (k *dockerConfigKeychain) Resolve(resource authn.Resource) (authn.Authentic
 
 func main() {
 	r := gin.Default()
+
+	// Compress JSON responses. Excludes the SSE pod-logs stream (and, by the
+	// same regex, any future .../pods/logs route) — gzip buffers/wraps the
+	// ResponseWriter, which would break the SSE handler's per-line
+	// sse.Encode+Flush streaming.
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{`/pods/logs$`})))
 
 	// Apply token extraction middleware to all routes
 	r.Use(auth.ExtractTokenMiddleware())
@@ -215,18 +225,21 @@ func main() {
 
 			var (
 				rollouts            interface{}
-				imagePolicies       interface{}
-				imageRepositories   interface{}
 				kustomizations      interface{}
-				ociRepositories     interface{}
 				environments        interface{}
 				kruiseRollouts      interface{}
 				rolloutDependencies interface{}
 				rolloutsErr         error
 			)
 
-			// Fan out the 8 cluster LISTs in parallel. Only rollouts is fatal —
+			// Fan out the 5 cluster LISTs in parallel. Only rollouts is fatal —
 			// the rest log on failure and return partial data (matches prior behavior).
+			//
+			// ImagePolicies, ImageRepositories, and OCIRepositories used to be
+			// fetched here too (8 LISTs total), but RolloutsListResponse in
+			// frontend/src/lib/api/rollouts.ts never declares those fields — the
+			// frontend silently dropped them. Dropped from this handler entirely;
+			// nothing else in this closure reads them.
 			g, gctx := errgroup.WithContext(c.Request.Context())
 			g.Go(func() error {
 				var err error
@@ -243,48 +256,12 @@ func main() {
 			g.Go(func() error {
 				var err error
 				if allNamespaces {
-					imagePolicies, err = k8sClient.GetImagePoliciesAllNamespaces(gctx)
-				} else {
-					imagePolicies, err = k8sClient.GetImagePolicies(gctx, namespace)
-				}
-				if err != nil {
-					log.Printf("Error fetching image policies: %v", err)
-				}
-				return nil
-			})
-			g.Go(func() error {
-				var err error
-				if allNamespaces {
-					imageRepositories, err = k8sClient.GetImageRepositoriesAllNamespaces(gctx)
-				} else {
-					imageRepositories, err = k8sClient.GetImageRepositories(gctx, namespace)
-				}
-				if err != nil {
-					log.Printf("Error fetching image repositories: %v", err)
-				}
-				return nil
-			})
-			g.Go(func() error {
-				var err error
-				if allNamespaces {
 					kustomizations, err = k8sClient.GetKustomizationsAllNamespaces(gctx)
 				} else {
 					kustomizations, err = k8sClient.GetKustomizations(gctx, namespace)
 				}
 				if err != nil {
 					log.Printf("Error fetching kustomizations: %v", err)
-				}
-				return nil
-			})
-			g.Go(func() error {
-				var err error
-				if allNamespaces {
-					ociRepositories, err = k8sClient.GetOCIRepositoriesAllNamespaces(gctx)
-				} else {
-					ociRepositories, err = k8sClient.GetOCIRepositories(gctx, namespace)
-				}
-				if err != nil {
-					log.Printf("Error fetching OCI repositories: %v", err)
 				}
 				return nil
 			})
@@ -344,10 +321,7 @@ func main() {
 			if c.GetHeader(fanoutHeader) != "" {
 				c.JSON(http.StatusOK, gin.H{
 					"rollouts":            rollouts,
-					"imagePolicies":       imagePolicies,
-					"imageRepositories":   imageRepositories,
 					"kustomizations":      kustomizations,
-					"ociRepositories":     ociRepositories,
 					"environments":        environments,
 					"kruiseRollouts":      kruiseRollouts,
 					"rolloutDependencies": rolloutDependencies,
@@ -369,10 +343,7 @@ func main() {
 
 			response := gin.H{
 				"rollouts":            merged["rollouts"],
-				"imagePolicies":       imagePolicies,
-				"imageRepositories":   imageRepositories,
 				"kustomizations":      merged["kustomizations"],
-				"ociRepositories":     ociRepositories,
 				"environments":        merged["environments"],
 				"kruiseRollouts":      merged["kruiseRollouts"],
 				"rolloutDependencies": merged["rolloutDependencies"],
@@ -398,8 +369,9 @@ func main() {
 			var (
 				rollout           *rolloutv1alpha1.Rollout
 				rolloutErr        error
+				kustomizationsRaw *kustomizev1.KustomizationList
+				ociRepositories   *sourcev1.OCIRepositoryList
 				kustomizations    interface{}
-				ociRepositories   interface{}
 				rolloutGates      interface{}
 				environment       interface{}
 				kruiseRollout     interface{}
@@ -432,12 +404,12 @@ func main() {
 				return nil
 			})
 			g.Go(func() error {
-				res, err := k8sClient.GetKustomizationsByRolloutAnnotation(gctx, namespace, name)
+				res, err := k8sClient.GetKustomizations(gctx, namespace)
 				if err != nil {
 					log.Printf("Error fetching kustomizations: %v", err)
 					return nil
 				}
-				kustomizations = res
+				kustomizationsRaw = res
 				return nil
 			})
 			g.Go(func() error {
@@ -494,6 +466,22 @@ func main() {
 					"details": rolloutErr.Error(),
 				})
 				return
+			}
+
+			// Filter the raw Kustomization list against the OCIRepositories list
+			// fetched above — one namespace-scoped OCIRepositories LIST feeds both
+			// the "ociRepositories" response field and this filter, instead of the
+			// previous two independent LISTs of the same resource (one nested
+			// inside GetKustomizationsByRolloutAnnotation, one standalone).
+			if kustomizationsRaw != nil {
+				oci := ociRepositories
+				if oci == nil {
+					// OCIRepositories fetch failed independently; still filter by
+					// the direct rollout-substitute annotation so the page degrades
+					// gracefully instead of losing kustomizations entirely.
+					oci = &sourcev1.OCIRepositoryList{}
+				}
+				kustomizations = kubernetes.FilterKustomizationsByRolloutAnnotation(kustomizationsRaw, oci, name)
 			}
 
 			c.JSON(http.StatusOK, gin.H{
@@ -1419,18 +1407,15 @@ func main() {
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
-			// Get the Kustomization first to check its inventory
-			kustomization, err := k8sClient.GetKustomization(context.Background(), namespace, name)
-			if err != nil {
-				log.Printf("Error fetching kustomization: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch kustomization",
-					"details": err.Error(),
-				})
-				return
-			}
-
-			// Get managed resources for the Kustomization
+			// Get managed resources for the Kustomization. This used to be
+			// preceded by its own k8sClient.GetKustomization call, made only to
+			// build a "debug" response block (dropped below — the frontend never
+			// reads it) — GetKustomizationManagedResources already does its own
+			// Get of the same Kustomization internally, so that first call was a
+			// second GET of the identical object on every request. Its "does the
+			// kustomization exist" error case is still covered:
+			// GetKustomizationManagedResources returns the same
+			// "failed to get kustomization: %w" error, surfaced below.
 			managedResources, err := k8sClient.GetKustomizationManagedResources(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching managed resources: %v", err)
@@ -1441,22 +1426,22 @@ func main() {
 				return
 			}
 
-			// Add debug information
+			// The "object" field on each ManagedResourceStatus IS the full
+			// unstructured manifest, and IS read by the frontend — not just for
+			// display fields but cast whole (`resource.object as KruiseRollout`,
+			// `resource.object as RolloutTest` in
+			// frontend/src/routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte
+			// and .../history/+page.svelte, plus `.status.readyReplicas`/
+			// `.status.replicas` for Deployments and `.spec.hostnames` for
+			// HTTPRoutes). Per this task's own instruction, it stays.
+			//
+			// The "debug" block (hasInventory + every inventory entry ID) is
+			// different: grepped every consumer of this endpoint
+			// (ResourcesCard.svelte's callers in rollout detail, the history tab,
+			// and apps/[name]) and none reads response.debug — only
+			// response.managedResources. Dropped; managedResources is untouched.
 			response := gin.H{
 				"managedResources": managedResources,
-				"debug": gin.H{
-					"hasInventory": kustomization.Status.Inventory != nil,
-					"inventoryEntries": func() []string {
-						if kustomization.Status.Inventory == nil {
-							return []string{}
-						}
-						entries := make([]string, len(kustomization.Status.Inventory.Entries))
-						for i, entry := range kustomization.Status.Inventory.Entries {
-							entries[i] = entry.ID
-						}
-						return entries
-					}(),
-				},
 			}
 
 			c.JSON(http.StatusOK, response)

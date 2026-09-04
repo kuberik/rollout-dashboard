@@ -34,6 +34,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -759,6 +760,20 @@ func (c *Client) GetKustomizationsByRolloutAnnotation(ctx context.Context, names
 		return nil, fmt.Errorf("failed to get OCI repositories: %w", err)
 	}
 
+	return FilterKustomizationsByRolloutAnnotation(kustomizations, ociRepositories, rolloutName), nil
+}
+
+// FilterKustomizationsByRolloutAnnotation filters an already-fetched
+// KustomizationList down to the kustomizations that reference rolloutName,
+// either directly via a rollout.kuberik.com/substitute.<var>.from annotation
+// or indirectly via an OCIRepository sourceRef that itself carries the
+// rollout annotation (ociRepositories must already be filtered to that set,
+// e.g. by GetOCIRepositoriesByRolloutAnnotation).
+//
+// Split out from GetKustomizationsByRolloutAnnotation so callers that need
+// both the Kustomization and OCIRepository lists (main.go's rollout-detail
+// handler) can share one OCIRepositories LIST instead of issuing it twice.
+func FilterKustomizationsByRolloutAnnotation(kustomizations *kustomizev1.KustomizationList, ociRepositories *sourcev1.OCIRepositoryList, rolloutName string) *kustomizev1.KustomizationList {
 	// Create a map of OCI repository names for quick lookup
 	ociRepoNames := make(map[string]bool)
 	for _, ociRepo := range ociRepositories.Items {
@@ -789,7 +804,7 @@ func (c *Client) GetKustomizationsByRolloutAnnotation(ctx context.Context, names
 		}
 	}
 
-	return filteredKustomizations, nil
+	return filteredKustomizations
 }
 
 func (c *Client) GetOCIRepositoriesByRolloutAnnotation(ctx context.Context, namespace, rolloutName string) (*sourcev1.OCIRepositoryList, error) {
@@ -836,6 +851,60 @@ type ManagedResourceStatus struct {
 	Object           *unstructured.Unstructured `json:"object"`
 }
 
+// managedResourceStatusFromObject computes the ManagedResourceStatus fields
+// (LastModified, kstatus Status/Message) shared by both the batched-LIST path
+// and the per-item GET fallback in GetKustomizationManagedResources.
+func managedResourceStatusFromObject(obj *unstructured.Unstructured, gvkStr, name, namespace string) ManagedResourceStatus {
+	lastModified := time.Time{}
+	if managedFields := obj.GetManagedFields(); len(managedFields) > 0 {
+		for _, field := range managedFields {
+			if field.Time != nil && field.Time.Time.After(lastModified) {
+				lastModified = field.Time.Time
+			}
+		}
+	}
+
+	result, err := status.Compute(obj)
+	if err != nil {
+		return ManagedResourceStatus{
+			GroupVersionKind: gvkStr,
+			Name:             name,
+			Namespace:        namespace,
+			Status:           "Error",
+			Message:          fmt.Sprintf("Error computing status: %v", err),
+			LastModified:     lastModified,
+			Object:           obj,
+		}
+	}
+
+	return ManagedResourceStatus{
+		GroupVersionKind: gvkStr,
+		Name:             name,
+		Namespace:        namespace,
+		Status:           string(result.Status),
+		Message:          result.Message,
+		LastModified:     lastModified,
+		Object:           obj,
+	}
+}
+
+// inventoryEntry is a parsed, valid inventory entry, indexed back into the
+// caller's results slice so goroutines can write their slot without a mutex.
+type inventoryEntry struct {
+	idx     int
+	objMeta object.ObjMetadata
+	version string
+}
+
+// inventoryGroupKey batches inventory entries that can be fetched with a
+// single LIST: same GVK, same namespace (or both cluster-scoped).
+type inventoryGroupKey struct {
+	Group     string
+	Version   string
+	Kind      string
+	Namespace string
+}
+
 func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace, name string) ([]ManagedResourceStatus, error) {
 	// Get the Kustomization
 	kustomization := &kustomizev1.Kustomization{}
@@ -849,77 +918,96 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 		return []ManagedResourceStatus{}, nil
 	}
 
-	fmt.Printf("Kustomization %s/%s inventory has %d entries\n", namespace, name, len(kustomization.Status.Inventory.Entries))
-
 	entries := kustomization.Status.Inventory.Entries
+	fmt.Printf("Kustomization %s/%s inventory has %d entries\n", namespace, name, len(entries))
+
 	// Fixed-size slot per entry — each goroutine writes its own index, no mutex needed.
 	// nil slot means parse failed and entry was skipped.
 	results := make([]*ManagedResourceStatus, len(entries))
 
+	// Group entries by (Group, Version, Kind, Namespace) so resources of the
+	// same kind in the same namespace are fetched with one LIST instead of
+	// one GET each — this is the common case (a kustomization's inventory is
+	// frequently several instances of the same Kind, e.g. multiple
+	// ConfigMaps/Jobs/Deployments). Distinct kinds still cost one LIST each,
+	// same as one GET each would have — this never does *more* round trips
+	// than the old per-entry GET loop, and often does far fewer.
+	groups := make(map[inventoryGroupKey][]inventoryEntry)
+	for i, entry := range entries {
+		objMetadata, err := object.ParseObjMetadata(entry.ID)
+		if err != nil {
+			fmt.Printf("Failed to parse inventory entry %s: %v\n", entry.ID, err)
+			continue
+		}
+		key := inventoryGroupKey{
+			Group:     objMetadata.GroupKind.Group,
+			Version:   entry.Version,
+			Kind:      objMetadata.GroupKind.Kind,
+			Namespace: objMetadata.Namespace,
+		}
+		groups[key] = append(groups[key], inventoryEntry{idx: i, objMeta: objMetadata, version: entry.Version})
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(8)
-	for i, entry := range entries {
-		i, entry := i, entry
+	for key, group := range groups {
+		key, group := key, group
 		g.Go(func() error {
-			objMetadata, err := object.ParseObjMetadata(entry.ID)
-			if err != nil {
-				fmt.Printf("Failed to parse inventory entry %s: %v\n", entry.ID, err)
-				return nil
+			gvkStr := fmt.Sprintf("%s/%s/%s", key.Group, key.Version, key.Kind)
+
+			list := &unstructured.UnstructuredList{}
+			list.SetGroupVersionKind(schema.GroupVersionKind{Group: key.Group, Version: key.Version, Kind: key.Kind + "List"})
+			var listOpts []client.ListOption
+			if key.Namespace != "" {
+				listOpts = append(listOpts, client.InNamespace(key.Namespace))
 			}
 
-			gvkStr := fmt.Sprintf("%s/%s/%s", objMetadata.GroupKind.Group, entry.Version, objMetadata.GroupKind.Kind)
-			obj := &unstructured.Unstructured{}
-			obj.SetGroupVersionKind(schema.GroupVersionKind{
-				Group:   objMetadata.GroupKind.Group,
-				Version: entry.Version,
-				Kind:    objMetadata.GroupKind.Kind,
-			})
-
-			if err := c.client.Get(gctx, client.ObjectKey{Namespace: objMetadata.Namespace, Name: objMetadata.Name}, obj); err != nil {
-				fmt.Printf("Failed to get resource %s/%s: %v\n", objMetadata.Namespace, objMetadata.Name, err)
-				results[i] = &ManagedResourceStatus{
-					GroupVersionKind: gvkStr,
-					Name:             objMetadata.Name,
-					Namespace:        objMetadata.Namespace,
-					Status:           "NotFound",
-					Message:          fmt.Sprintf("Resource not found: %v", err),
-					LastModified:     time.Time{},
-					Object:           nil,
-				}
-				return nil
-			}
-
-			lastModified := time.Time{}
-			if managedFields := obj.GetManagedFields(); len(managedFields) > 0 {
-				for _, field := range managedFields {
-					if field.Time != nil && field.Time.Time.After(lastModified) {
-						lastModified = field.Time.Time
+			if err := c.client.List(gctx, list, listOpts...); err != nil {
+				// Fall back to a GET per entry in this group only — covers CRDs
+				// or RBAC setups that support get but not list for this kind.
+				fmt.Printf("Failed to list %s in namespace %s: %v, falling back to per-item GET\n", gvkStr, key.Namespace, err)
+				for _, entry := range group {
+					obj := &unstructured.Unstructured{}
+					obj.SetGroupVersionKind(schema.GroupVersionKind{Group: key.Group, Version: key.Version, Kind: key.Kind})
+					if getErr := c.client.Get(gctx, client.ObjectKey{Namespace: entry.objMeta.Namespace, Name: entry.objMeta.Name}, obj); getErr != nil {
+						results[entry.idx] = &ManagedResourceStatus{
+							GroupVersionKind: gvkStr,
+							Name:             entry.objMeta.Name,
+							Namespace:        entry.objMeta.Namespace,
+							Status:           "NotFound",
+							Message:          fmt.Sprintf("Resource not found: %v", getErr),
+							LastModified:     time.Time{},
+							Object:           nil,
+						}
+						continue
 					}
-				}
-			}
-
-			result, err := status.Compute(obj)
-			if err != nil {
-				results[i] = &ManagedResourceStatus{
-					GroupVersionKind: gvkStr,
-					Name:             objMetadata.Name,
-					Namespace:        objMetadata.Namespace,
-					Status:           "Error",
-					Message:          fmt.Sprintf("Error computing status: %v", err),
-					LastModified:     lastModified,
-					Object:           obj,
+					rs := managedResourceStatusFromObject(obj, gvkStr, entry.objMeta.Name, entry.objMeta.Namespace)
+					results[entry.idx] = &rs
 				}
 				return nil
 			}
 
-			results[i] = &ManagedResourceStatus{
-				GroupVersionKind: gvkStr,
-				Name:             objMetadata.Name,
-				Namespace:        objMetadata.Namespace,
-				Status:           string(result.Status),
-				Message:          result.Message,
-				LastModified:     lastModified,
-				Object:           obj,
+			byName := make(map[string]*unstructured.Unstructured, len(list.Items))
+			for i := range list.Items {
+				byName[list.Items[i].GetName()] = &list.Items[i]
+			}
+
+			for _, entry := range group {
+				obj, found := byName[entry.objMeta.Name]
+				if !found {
+					results[entry.idx] = &ManagedResourceStatus{
+						GroupVersionKind: gvkStr,
+						Name:             entry.objMeta.Name,
+						Namespace:        entry.objMeta.Namespace,
+						Status:           "NotFound",
+						Message:          "Resource not found",
+						LastModified:     time.Time{},
+						Object:           nil,
+					}
+					continue
+				}
+				rs := managedResourceStatusFromObject(obj, gvkStr, entry.objMeta.Name, entry.objMeta.Namespace)
+				results[entry.idx] = &rs
 			}
 			return nil
 		})
@@ -985,46 +1073,36 @@ func (c *Client) GetHealthChecksBySelector(ctx context.Context, namespace string
 		namespaces = []string{namespace}
 	}
 
+	// selector.Selector is a plain metav1.LabelSelector matched against each
+	// HealthCheck's own labels — that's exactly what a List label selector
+	// evaluates server-side, so push it down instead of listing every
+	// HealthCheck in the namespace and matching labels in Go.
+	var labelSelector labels.Selector
+	if selector.Selector != nil {
+		sel, err := metav1.LabelSelectorAsSelector(selector.Selector)
+		if err != nil {
+			fmt.Printf("Failed to parse label selector: %v\n", err)
+			return healthChecks, nil
+		}
+		labelSelector = sel
+	}
+
 	// Search in each namespace
 	for _, ns := range namespaces {
 		healthCheckList := &rolloutv1alpha1.HealthCheckList{}
-		if err := c.client.List(ctx, healthCheckList, client.InNamespace(ns)); err != nil {
+		listOpts := []client.ListOption{client.InNamespace(ns)}
+		if labelSelector != nil {
+			listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: labelSelector})
+		}
+		if err := c.client.List(ctx, healthCheckList, listOpts...); err != nil {
 			fmt.Printf("Failed to list health checks in namespace %s: %v\n", ns, err)
 			continue // Skip this namespace if there's an error
 		}
 
-		// Filter health checks based on the selector
-		for _, hc := range healthCheckList.Items {
-			if matchesSelector(&hc, selector) {
-				healthChecks = append(healthChecks, hc)
-			}
-		}
+		healthChecks = append(healthChecks, healthCheckList.Items...)
 	}
 
 	return healthChecks, nil
-}
-
-// matchesSelector checks if a health check matches the given selector
-func matchesSelector(hc *rolloutv1alpha1.HealthCheck, selector *rolloutv1alpha1.HealthCheckSelectorConfig) bool {
-	if selector.Selector == nil {
-		return true // No selector means match all
-	}
-
-	// Convert the selector to a usable selector
-	sel, err := metav1.LabelSelectorAsSelector(selector.Selector)
-	if err != nil {
-		// If we can't parse the selector, log the error and return false
-		fmt.Printf("Failed to parse label selector: %v\n", err)
-		return false
-	}
-
-	// Handle nil labels case
-	if hc.Labels == nil {
-		hc.Labels = make(map[string]string)
-	}
-
-	// Check if the health check labels match the selector
-	return sel.Matches(labels.Set(hc.Labels))
 }
 
 // ReconcileKustomization adds the reconcile annotation to trigger a reconciliation
@@ -1142,7 +1220,16 @@ func (c *Client) ReconcileAllFluxResources(ctx context.Context, namespace, rollo
 	return previousScanTime, nil
 }
 
-// GetRolloutGatesByRolloutReference fetches RolloutGates that reference a specific rollout
+// GetRolloutGatesByRolloutReference fetches RolloutGates that reference a specific rollout.
+//
+// Left as list-then-filter-in-Go rather than a label selector: the
+// rolloutschedule and rolloutdependency controllers both stamp
+// gate.kuberik.com/rollout-name on the gates they create, but that's an
+// implementation detail of those two controllers, not a guarantee on the
+// RolloutGate CRD — a hand-authored or third-party-controller-created gate
+// can set spec.rolloutRef.Name without the label. Selecting on the label
+// would silently drop any such gate from this list even though it correctly
+// targets the rollout. Namespace-scoped LIST + filter keeps that correct.
 func (c *Client) GetRolloutGatesByRolloutReference(ctx context.Context, namespace, rolloutName string) (*rolloutv1alpha1.RolloutGateList, error) {
 	rolloutGates := &rolloutv1alpha1.RolloutGateList{}
 
@@ -1205,7 +1292,13 @@ func (c *Client) GetAllRolloutTests(ctx context.Context, namespace string) (*ope
 	return rolloutTests, nil
 }
 
-// GetRolloutTestsByRolloutName fetches RolloutTests that reference a specific KruiseRollout by name
+// GetRolloutTestsByRolloutName fetches RolloutTests that reference a specific KruiseRollout by name.
+//
+// Left as list-then-filter: RolloutTest carries spec.rolloutName as a plain
+// string field, not a label — openkruise-controller never stamps a
+// corresponding label on the object (checked against the vendored
+// openkruise-controller source), so there's nothing to select on server-side
+// without the controller changing first.
 func (c *Client) GetRolloutTestsByRolloutName(ctx context.Context, namespace, rolloutName string) (*openkruisev1alpha1.RolloutTestList, error) {
 	rolloutTests := &openkruisev1alpha1.RolloutTestList{}
 
@@ -1226,7 +1319,12 @@ func (c *Client) GetRolloutTestsByRolloutName(ctx context.Context, namespace, ro
 	return rolloutTests, nil
 }
 
-// GetEnvironmentByRolloutReference fetches Environment that references a specific rollout
+// GetEnvironmentByRolloutReference fetches Environment that references a specific rollout.
+//
+// Left as list-then-filter: Environment carries spec.rolloutRef.Name as a
+// plain object reference, not a label — environment-controller never stamps
+// a corresponding label on the object (checked against the vendored
+// environment-controller source), so there's no selector to push down.
 func (c *Client) GetEnvironmentByRolloutReference(ctx context.Context, namespace, rolloutName string) (*envv1alpha1.Environment, error) {
 	// List all Environments in the namespace
 	environments := &envv1alpha1.EnvironmentList{}
@@ -1494,37 +1592,48 @@ func (c *Client) GetEventsForRollout(ctx context.Context, namespace, rolloutName
 		return []corev1.Event{}, nil
 	}
 
-	// Phase 2 — one Events LIST per involved namespace, filter in-memory.
-	// Replaces 2N field-selector calls (one per Deployment + one per RS) with N (=namespaces).
+	// Phase 2 — one Events LIST per (namespace, involved object) via a field
+	// selector on involvedObject.{kind,name,namespace}, so the apiserver does
+	// the filtering instead of the dashboard pulling every event in the
+	// namespace over the wire and matching it in Go. Bounded concurrency;
+	// refs-per-namespace is small in practice (one Deployment plus a handful
+	// of ReplicaSets per rollout), so this trades "N namespace-wide LISTs" for
+	// "a few dozen tightly-filtered LISTs" rather than growing round-trip
+	// count in the cases that matter.
 	var allEvents []corev1.Event
 	var allEventsMu sync.Mutex
 	eg, egctx := errgroup.WithContext(ctx)
-	eg.SetLimit(4)
+	eg.SetLimit(8)
 	for ns, refs := range byNS {
 		ns, refs := ns, refs
-		eg.Go(func() error {
-			evList, err := c.clientset.CoreV1().Events(ns).List(egctx, metav1.ListOptions{})
-			if err != nil {
-				fmt.Printf("Warning: failed to list events in %s: %v\n", ns, err)
-				return nil
-			}
-			matched := make([]corev1.Event, 0)
-			for _, ev := range evList.Items {
-				if !ev.LastTimestamp.After(cutoff) {
-					continue
+		for ref := range refs {
+			ref := ref
+			eg.Go(func() error {
+				selector := fields.SelectorFromSet(fields.Set{
+					"involvedObject.kind":      ref.kind,
+					"involvedObject.name":      ref.name,
+					"involvedObject.namespace": ref.namespace,
+				})
+				evList, err := c.clientset.CoreV1().Events(ns).List(egctx, metav1.ListOptions{FieldSelector: selector.String()})
+				if err != nil {
+					fmt.Printf("Warning: failed to list events for %s/%s in %s: %v\n", ref.kind, ref.name, ns, err)
+					return nil
 				}
-				key := objRef{kind: ev.InvolvedObject.Kind, namespace: ev.InvolvedObject.Namespace, name: ev.InvolvedObject.Name}
-				if _, ok := refs[key]; ok {
+				matched := make([]corev1.Event, 0, len(evList.Items))
+				for _, ev := range evList.Items {
+					if !ev.LastTimestamp.After(cutoff) {
+						continue
+					}
 					matched = append(matched, ev)
 				}
-			}
-			if len(matched) > 0 {
-				allEventsMu.Lock()
-				allEvents = append(allEvents, matched...)
-				allEventsMu.Unlock()
-			}
-			return nil
-		})
+				if len(matched) > 0 {
+					allEventsMu.Lock()
+					allEvents = append(allEvents, matched...)
+					allEventsMu.Unlock()
+				}
+				return nil
+			})
+		}
 	}
 	_ = eg.Wait()
 
@@ -1554,7 +1663,15 @@ func (c *Client) GetEventsForRollout(ctx context.Context, namespace, rolloutName
 	return deduped, nil
 }
 
-// GetRolloutSchedulesByRollout gets RolloutSchedules that match a specific rollout
+// GetRolloutSchedulesByRollout gets RolloutSchedules that match a specific rollout.
+//
+// Left as list-then-filter, and can't be pushed to a label selector: the
+// direction is inverted from the usual "object has a label, filter on it"
+// case. Here each RolloutSchedule carries its own spec.rolloutSelector, and
+// whether it matches is a function of the *rollout's* labels, not any label
+// on the RolloutSchedule itself — there's no server-side query for "list
+// objects whose embedded selector matches this label set." Already
+// namespace-scoped, which is the LIST-narrowing that is available here.
 func (c *Client) GetRolloutSchedulesByRollout(ctx context.Context, namespace, rolloutName string, rolloutLabels map[string]string) (*rolloutv1alpha1.RolloutScheduleList, error) {
 	schedules := &rolloutv1alpha1.RolloutScheduleList{}
 	if err := c.client.List(ctx, schedules, client.InNamespace(namespace)); err != nil {
@@ -1576,7 +1693,14 @@ func (c *Client) GetRolloutSchedulesByRollout(ctx context.Context, namespace, ro
 	return matchingSchedules, nil
 }
 
-// GetClusterRolloutSchedulesByRollout gets ClusterRolloutSchedules that match a specific rollout
+// GetClusterRolloutSchedulesByRollout gets ClusterRolloutSchedules that match a specific rollout.
+//
+// Same inverted-selector situation as GetRolloutSchedulesByRollout — the
+// match is evaluated against this rollout's (and its namespace's) labels
+// using each schedule's own embedded selector, which has no server-side
+// query equivalent. ClusterRolloutSchedule is cluster-scoped by definition,
+// so there's no namespace to narrow the LIST by either; this is already the
+// minimum round trip for this resource.
 func (c *Client) GetClusterRolloutSchedulesByRollout(ctx context.Context, namespace, rolloutName string, rolloutLabels, namespaceLabels map[string]string) (*rolloutv1alpha1.ClusterRolloutScheduleList, error) {
 	schedules := &rolloutv1alpha1.ClusterRolloutScheduleList{}
 	if err := c.client.List(ctx, schedules); err != nil {
