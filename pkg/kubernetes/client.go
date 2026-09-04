@@ -241,6 +241,7 @@ func (c *Client) GetRollouts(ctx context.Context, namespace string) (*rolloutv1a
 	if err := c.client.List(ctx, rollouts, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list rollouts: %w", err)
 	}
+	SortByNamespaceName(rollouts.Items)
 	return rollouts, nil
 }
 
@@ -250,6 +251,7 @@ func (c *Client) GetRolloutsAllNamespaces(ctx context.Context) (*rolloutv1alpha1
 	if err := c.client.List(ctx, rollouts); err != nil {
 		return nil, fmt.Errorf("failed to list rollouts across all namespaces: %w", err)
 	}
+	SortByNamespaceName(rollouts.Items)
 	return rollouts, nil
 }
 
@@ -743,6 +745,7 @@ func (c *Client) GetImagePolicies(ctx context.Context, namespace string) (*image
 	if err := c.client.List(ctx, imagePolicies, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list image policies: %w", err)
 	}
+	SortByNamespaceName(imagePolicies.Items)
 	return imagePolicies, nil
 }
 
@@ -752,6 +755,7 @@ func (c *Client) GetImagePoliciesAllNamespaces(ctx context.Context) (*imagerefle
 	if err := c.client.List(ctx, imagePolicies); err != nil {
 		return nil, fmt.Errorf("failed to list image policies across all namespaces: %w", err)
 	}
+	SortByNamespaceName(imagePolicies.Items)
 	return imagePolicies, nil
 }
 
@@ -760,6 +764,7 @@ func (c *Client) GetImageRepositories(ctx context.Context, namespace string) (*i
 	if err := c.client.List(ctx, imageRepositories, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list image repositories: %w", err)
 	}
+	SortByNamespaceName(imageRepositories.Items)
 	return imageRepositories, nil
 }
 
@@ -769,6 +774,7 @@ func (c *Client) GetImageRepositoriesAllNamespaces(ctx context.Context) (*imager
 	if err := c.client.List(ctx, imageRepositories); err != nil {
 		return nil, fmt.Errorf("failed to list image repositories across all namespaces: %w", err)
 	}
+	SortByNamespaceName(imageRepositories.Items)
 	return imageRepositories, nil
 }
 
@@ -777,6 +783,7 @@ func (c *Client) GetKustomizations(ctx context.Context, namespace string) (*kust
 	if err := c.client.List(ctx, kustomizations, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list kustomizations: %w", err)
 	}
+	SortByNamespaceName(kustomizations.Items)
 	return kustomizations, nil
 }
 
@@ -786,6 +793,7 @@ func (c *Client) GetKustomizationsAllNamespaces(ctx context.Context) (*kustomize
 	if err := c.client.List(ctx, kustomizations); err != nil {
 		return nil, fmt.Errorf("failed to list kustomizations across all namespaces: %w", err)
 	}
+	SortByNamespaceName(kustomizations.Items)
 	return kustomizations, nil
 }
 
@@ -794,6 +802,7 @@ func (c *Client) GetOCIRepositories(ctx context.Context, namespace string) (*sou
 	if err := c.client.List(ctx, ociRepositories, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list OCI repositories: %w", err)
 	}
+	SortByNamespaceName(ociRepositories.Items)
 	return ociRepositories, nil
 }
 
@@ -803,6 +812,7 @@ func (c *Client) GetOCIRepositoriesAllNamespaces(ctx context.Context) (*sourcev1
 	if err := c.client.List(ctx, ociRepositories); err != nil {
 		return nil, fmt.Errorf("failed to list OCI repositories across all namespaces: %w", err)
 	}
+	SortByNamespaceName(ociRepositories.Items)
 	return ociRepositories, nil
 }
 
@@ -827,6 +837,7 @@ func (c *Client) GetKustomizationsByRolloutAnnotation(ctx context.Context, names
 	if err := c.client.List(ctx, kustomizations, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list kustomizations: %w", err)
 	}
+	SortByNamespaceName(kustomizations.Items)
 
 	// Get OCIRepositories that reference this rollout
 	ociRepositories, err := c.GetOCIRepositoriesByRolloutAnnotation(ctx, namespace, rolloutName)
@@ -886,6 +897,7 @@ func (c *Client) GetOCIRepositoriesByRolloutAnnotation(ctx context.Context, name
 	if err := c.client.List(ctx, ociRepositories, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list OCI repositories: %w", err)
 	}
+	SortByNamespaceName(ociRepositories.Items)
 
 	// Filter OCI repositories that reference the rollout through annotations
 	filteredOCIRepositories := &sourcev1.OCIRepositoryList{}
@@ -904,6 +916,7 @@ func (c *Client) GetRolloutTests(ctx context.Context, namespace string) (*openkr
 	if err := c.client.List(ctx, rolloutTests, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list RolloutTests: %w", err)
 	}
+	SortByNamespaceName(rolloutTests.Items)
 	return rolloutTests, nil
 }
 
@@ -1095,9 +1108,26 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 		}
 	}
 
-	// Sort managed resources by LastModified time (most recent first)
+	// Sort managed resources by LastModified time (most recent first,
+	// unchanged product intent), tie-broken by (kind, namespace, name) —
+	// PERF-2026-09-04 §D. LastModified ties are common (several resources
+	// applied in the same reconcile share a timestamp; a resource with no
+	// managedFields yet has the zero value), and comparing only LastModified
+	// left those ties broken however sort.Slice's pivot choice happened to
+	// land, which is not a documented guarantee. (kind, namespace, name)
+	// makes this a genuine total order.
 	sort.Slice(managedResources, func(i, j int) bool {
-		return managedResources[i].LastModified.After(managedResources[j].LastModified)
+		a, b := managedResources[i], managedResources[j]
+		if !a.LastModified.Equal(b.LastModified) {
+			return a.LastModified.After(b.LastModified)
+		}
+		if a.GroupVersionKind != b.GroupVersionKind {
+			return a.GroupVersionKind < b.GroupVersionKind
+		}
+		if a.Namespace != b.Namespace {
+			return a.Namespace < b.Namespace
+		}
+		return a.Name < b.Name
 	})
 
 	return managedResources, nil
@@ -1172,9 +1202,18 @@ func (c *Client) GetHealthChecksBySelector(ctx context.Context, namespace string
 			fmt.Printf("Failed to list health checks in namespace %s: %v\n", ns, err)
 			continue // Skip this namespace if there's an error
 		}
+		SortByNamespaceName(healthCheckList.Items)
 
 		healthChecks = append(healthChecks, healthCheckList.Items...)
 	}
+
+	// namespaces itself can come from an uncached, unsorted NamespaceList walk
+	// (the NamespaceSelector branch above) — per-namespace sorting alone
+	// doesn't make the concatenation across namespaces deterministic if the
+	// namespace search order varies between calls, so sort the aggregate too.
+	// This is the health-checks card on the rollout Overview page named in the
+	// PERF-2026-09-04 §D sweep as reshuffling on reload.
+	SortByNamespaceName(healthChecks)
 
 	return healthChecks, nil
 }
@@ -1311,6 +1350,7 @@ func (c *Client) GetRolloutGatesByRolloutReference(ctx context.Context, namespac
 	if err := c.client.List(ctx, rolloutGates, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list rollout gates: %w", err)
 	}
+	SortByNamespaceName(rolloutGates.Items)
 
 	// Filter gates that reference the specific rollout
 	var filteredGates []rolloutv1alpha1.RolloutGate
@@ -1342,6 +1382,7 @@ func (c *Client) GetKruiseRolloutsAllNamespaces(ctx context.Context) (*kruiserol
 	if err := c.client.List(ctx, rollouts); err != nil {
 		return nil, fmt.Errorf("failed to list kruise rollouts across all namespaces: %w", err)
 	}
+	SortByNamespaceName(rollouts.Items)
 	return rollouts, nil
 }
 
@@ -1351,6 +1392,7 @@ func (c *Client) GetKruiseRollouts(ctx context.Context, namespace string) (*krui
 	if err := c.client.List(ctx, rollouts, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list kruise rollouts: %w", err)
 	}
+	SortByNamespaceName(rollouts.Items)
 	return rollouts, nil
 }
 
@@ -1362,6 +1404,7 @@ func (c *Client) GetAllRolloutTests(ctx context.Context, namespace string) (*ope
 	if err := c.client.List(ctx, rolloutTests, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list rollout tests: %w", err)
 	}
+	SortByNamespaceName(rolloutTests.Items)
 
 	return rolloutTests, nil
 }
@@ -1380,6 +1423,7 @@ func (c *Client) GetRolloutTestsByRolloutName(ctx context.Context, namespace, ro
 	if err := c.client.List(ctx, rolloutTests, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list rollout tests: %w", err)
 	}
+	SortByNamespaceName(rolloutTests.Items)
 
 	// Filter tests that reference the specific rollout
 	var filteredTests []openkruisev1alpha1.RolloutTest
@@ -1406,6 +1450,7 @@ func (c *Client) GetEnvironmentByRolloutReference(ctx context.Context, namespace
 	if err := c.client.List(ctx, environments, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list environments: %w", err)
 	}
+	SortByNamespaceName(environments.Items)
 
 	// Filter environments that reference the specific rollout
 	for _, environment := range environments.Items {
@@ -1426,6 +1471,7 @@ func (c *Client) GetEnvironments(ctx context.Context, namespace string) (*envv1a
 	if err := c.client.List(ctx, environments, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list environments: %w", err)
 	}
+	SortByNamespaceName(environments.Items)
 
 	return environments, nil
 }
@@ -1436,6 +1482,7 @@ func (c *Client) GetEnvironmentsAllNamespaces(ctx context.Context) (*envv1alpha1
 	if err := c.client.List(ctx, environments); err != nil {
 		return nil, fmt.Errorf("failed to list environments across all namespaces: %w", err)
 	}
+	SortByNamespaceName(environments.Items)
 	return environments, nil
 }
 
@@ -1548,6 +1595,7 @@ func (c *Client) GetRolloutSchedules(ctx context.Context, namespace string) (*ro
 	if err := c.client.List(ctx, schedules, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list rollout schedules: %w", err)
 	}
+	SortByNamespaceName(schedules.Items)
 	return schedules, nil
 }
 
@@ -1557,6 +1605,7 @@ func (c *Client) GetRolloutSchedulesAllNamespaces(ctx context.Context) (*rollout
 	if err := c.client.List(ctx, schedules); err != nil {
 		return nil, fmt.Errorf("failed to list rollout schedules: %w", err)
 	}
+	SortByNamespaceName(schedules.Items)
 	return schedules, nil
 }
 
@@ -1575,6 +1624,7 @@ func (c *Client) GetClusterRolloutSchedules(ctx context.Context) (*rolloutv1alph
 	if err := c.client.List(ctx, schedules); err != nil {
 		return nil, fmt.Errorf("failed to list cluster rollout schedules: %w", err)
 	}
+	SortByNamespaceName(schedules.Items)
 	return schedules, nil
 }
 
@@ -1727,9 +1777,7 @@ func (c *Client) GetEventsForRollout(ctx context.Context, namespace, rolloutName
 		}
 	}
 
-	sort.Slice(deduped, func(i, j int) bool {
-		return deduped[i].LastTimestamp.After(deduped[j].LastTimestamp.Time)
-	})
+	sortEventsByTimestampThenName(deduped)
 
 	if len(deduped) > 50 {
 		deduped = deduped[:50]
@@ -1751,6 +1799,7 @@ func (c *Client) GetRolloutSchedulesByRollout(ctx context.Context, namespace, ro
 	if err := c.client.List(ctx, schedules, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list rollout schedules: %w", err)
 	}
+	SortByNamespaceName(schedules.Items)
 
 	// Filter schedules that match the rollout
 	matchingSchedules := &rolloutv1alpha1.RolloutScheduleList{}
@@ -1780,6 +1829,7 @@ func (c *Client) GetClusterRolloutSchedulesByRollout(ctx context.Context, namesp
 	if err := c.client.List(ctx, schedules); err != nil {
 		return nil, fmt.Errorf("failed to list cluster rollout schedules: %w", err)
 	}
+	SortByNamespaceName(schedules.Items)
 
 	// Filter schedules that match the rollout
 	matchingSchedules := &rolloutv1alpha1.ClusterRolloutScheduleList{}

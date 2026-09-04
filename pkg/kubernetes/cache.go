@@ -132,6 +132,26 @@ var (
 	readCacheReady  atomic.Bool
 )
 
+// SetReadClientForTest overrides GetReadClient's result for the duration of a
+// test, bypassing InitReadCache (and therefore any real apiserver/kubeconfig)
+// entirely. Returns a restore func that puts back whatever GetReadClient
+// would have returned before the override — call it via `defer`.
+//
+// Exists for handler-level tests (main_list_order_test.go) that need
+// getK8sReadClient (main_helper.go) to hand back a client backed by a fake
+// controller-runtime client loaded with fixture objects, so the test
+// exercises the real production handler in main.go rather than a
+// reimplementation of it.
+func SetReadClientForTest(c *Client) func() {
+	prevClient, prevReady := readCacheClient, readCacheReady.Load()
+	readCacheClient = c
+	readCacheReady.Store(true)
+	return func() {
+		readCacheClient = prevClient
+		readCacheReady.Store(prevReady)
+	}
+}
+
 // InitReadCache builds the informer cache and its cache-backed read client,
 // starts the cache, eagerly registers an informer for every type in
 // cachedByObject (GetInformer — without this, informers are created lazily on

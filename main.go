@@ -71,6 +71,27 @@ func main() {
 	// degradation story.
 	go kubernetes.InitReadCache(context.Background(), 15*time.Second)
 
+	r := setupRouter()
+
+	// Start server. PORT overrides the default so the binary can be run locally
+	// against a kubeconfig context while the dev cluster already holds :8080.
+	addr := ":8080"
+	if port := os.Getenv("PORT"); port != "" {
+		addr = ":" + port
+	}
+	if err := r.Run(addr); err != nil {
+		log.Printf("Failed to start server: %v", err)
+		os.Exit(1)
+	}
+}
+
+// setupRouter builds the full route table (every handler under /api, plus
+// static frontend serving) without starting the HTTP server or the informer
+// cache — split out from main() (PERF-2026-09-04 §D) so handler-level tests
+// (main_list_order_test.go) can exercise the real production route/handler
+// wiring end-to-end against a fake Kubernetes client, instead of a
+// reimplementation of the routes that could drift from what actually ships.
+func setupRouter() *gin.Engine {
 	r := gin.Default()
 
 	// Compress JSON responses. Excludes the SSE pod-logs stream and the
@@ -312,6 +333,13 @@ func main() {
 					// for kind" error, and must still be able to serve its rollouts.
 					log.Printf("Error fetching rollout dependencies: %v", err)
 					rolloutDependencies = nil
+				} else {
+					// GetRolloutDependencies/AllNamespaces live in
+					// pkg/kubernetes/rolloutdependency.go, which doesn't sort its own
+					// List result — sort here instead of there so every list this
+					// handler assembles ends up in the same deterministic
+					// (namespace, name) order (PERF-2026-09-04 §D).
+					kubernetes.SortByNamespaceName(rolloutDependencies.Items)
 				}
 				return nil
 			})
@@ -2307,14 +2335,5 @@ func main() {
 		c.File(filepath.Join(os.Getenv("KO_DATA_PATH"), "index.html"))
 	})
 
-	// Start server. PORT overrides the default so the binary can be run locally
-	// against a kubeconfig context while the dev cluster already holds :8080.
-	addr := ":8080"
-	if port := os.Getenv("PORT"); port != "" {
-		addr = ":" + port
-	}
-	if err := r.Run(addr); err != nil {
-		log.Printf("Failed to start server: %v", err)
-		os.Exit(1)
-	}
+	return r
 }
