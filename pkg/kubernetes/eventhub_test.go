@@ -30,6 +30,34 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
 	}
 }
 
+// waitForGoroutineCountNear polls runtime.NumGoroutine() (GC'ing before each
+// read) until it settles at or below want+tolerance, or the deadline
+// passes — returning whatever the last reading was either way. A single
+// GC+read snapshot right after a batch of goroutines exit is flaky under
+// -race and even under the plain race-free runtime: net/http's Transport
+// owns readLoop/writeLoop goroutines per pooled connection that exit
+// asynchronously a beat after the request context that closed them, so
+// "the goroutines this test spawned have all returned" (asserted
+// separately, deterministically, via each handler's done channel) doesn't
+// imply "NumGoroutine has already caught up" at the exact instant of the
+// next GC. Polling gives that trailing cleanup a bounded window to finish
+// without silently widening the leak-detection tolerance itself.
+func waitForGoroutineCountNear(want, tolerance int, timeout time.Duration) int {
+	deadline := time.Now().Add(timeout)
+	var got int
+	for {
+		runtime.GC()
+		got = runtime.NumGoroutine()
+		if got <= want+tolerance {
+			return got
+		}
+		if time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestEventHub_CoalescesRepeatedUpdatesToOneBatch(t *testing.T) {
 	h := NewEventHub(20 * time.Millisecond)
 	defer h.Stop()
@@ -226,6 +254,172 @@ func TestEventHub_LoadTwentyClientsTwoHundredEvents(t *testing.T) {
 	if after > before+5 {
 		t.Fatalf("goroutine count grew from %d to %d after %d clients / %d events — possible leak", before, after, numClients, numEvents)
 	}
+}
+
+// TestEventHub_RegisterWithCap_EvictsOldestOfSameIdentity is the core
+// eviction-order assertion from the 2026-09-04 incident fix: opening a 9th
+// concurrent stream under one identity with a cap of 8 must close the
+// OLDEST of that identity's own subscriptions, never a newer one and never
+// another identity's.
+func TestEventHub_RegisterWithCap_EvictsOldestOfSameIdentity(t *testing.T) {
+	h := NewEventHub(5 * time.Millisecond)
+	defer h.Stop()
+
+	limits := IdentityLimits{MaxPerClient: 8}
+
+	type sub struct {
+		id uint64
+		ch <-chan []ChangeEvent
+	}
+	var subs []sub
+	for i := 0; i < 8; i++ {
+		id, ch, _, ok := h.RegisterWithCap("alice", 4, limits)
+		if !ok {
+			t.Fatalf("registration %d should not have been refused (no MaxTotal set)", i)
+		}
+		subs = append(subs, sub{id, ch})
+	}
+	if h.ClientCount() != 8 {
+		t.Fatalf("expected 8 registered clients, got %d", h.ClientCount())
+	}
+
+	// A second identity registering concurrently must be unaffected by
+	// alice's cap.
+	bobID, bobCh, _, ok := h.RegisterWithCap("bob", 4, limits)
+	if !ok {
+		t.Fatalf("bob's first registration should not be refused")
+	}
+	if h.ClientCount() != 9 {
+		t.Fatalf("expected 9 total clients after bob's registration, got %d", h.ClientCount())
+	}
+
+	// Alice's 9th subscription must evict her 1st (oldest), not her 2nd..8th,
+	// and must not touch bob's.
+	newID, newCh, total, ok := h.RegisterWithCap("alice", 4, limits)
+	if !ok {
+		t.Fatalf("alice's 9th registration should succeed (it's the one causing the eviction, not the one refused)")
+	}
+	if total != 9 {
+		t.Fatalf("expected total to stay at 9 (8 alice + 1 bob) after evicting alice's oldest, got %d", total)
+	}
+
+	select {
+	case _, open := <-subs[0].ch:
+		if open {
+			t.Fatalf("expected alice's oldest (1st) subscription to be evicted (channel closed)")
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for alice's oldest subscription's channel to close")
+	}
+
+	for i := 1; i < len(subs); i++ {
+		select {
+		case _, open := <-subs[i].ch:
+			if !open {
+				t.Fatalf("alice's subscription %d (not the oldest) must not have been evicted", i)
+			}
+		default:
+			// still open and empty — expected
+		}
+	}
+	select {
+	case _, open := <-bobCh:
+		if !open {
+			t.Fatalf("bob's subscription must never be evicted by alice exceeding her own cap")
+		}
+	default:
+		// still open — expected
+	}
+	select {
+	case _, open := <-newCh:
+		if !open {
+			t.Fatalf("alice's newest subscription (the one that triggered eviction) must itself survive")
+		}
+	default:
+		// still open — expected
+	}
+
+	h.Unregister(newID)
+	h.Unregister(bobID)
+	for i := 1; i < len(subs); i++ {
+		h.Unregister(subs[i].id)
+	}
+}
+
+// TestEventHub_RegisterWithCap_GlobalCapRefusesWithoutRegistering asserts
+// the global cap's refusal semantics: once the hub is at MaxTotal, a new
+// registration is refused outright (ok=false, zero id/channel) rather than
+// being registered and then evicted — a flood must never even transiently
+// grow the client count past the ceiling.
+func TestEventHub_RegisterWithCap_GlobalCapRefusesWithoutRegistering(t *testing.T) {
+	h := NewEventHub(5 * time.Millisecond)
+	defer h.Stop()
+
+	limits := IdentityLimits{MaxTotal: 3}
+	for i := 0; i < 3; i++ {
+		identity := fmt.Sprintf("client-%d", i)
+		_, _, total, ok := h.RegisterWithCap(identity, 4, limits)
+		if !ok {
+			t.Fatalf("registration %d should succeed (at the cap, not over it yet)", i)
+		}
+		if total != i+1 {
+			t.Fatalf("expected total %d after registration %d, got %d", i+1, i, total)
+		}
+	}
+	if h.ClientCount() != 3 {
+		t.Fatalf("expected 3 registered clients, got %d", h.ClientCount())
+	}
+
+	id, ch, total, ok := h.RegisterWithCap("client-3", 4, limits)
+	if ok {
+		t.Fatalf("expected registration to be refused once MaxTotal is reached")
+	}
+	if id != 0 || ch != nil {
+		t.Fatalf("expected a refused registration to return a zero id and nil channel, got id=%d ch=%v", id, ch)
+	}
+	if total != 3 {
+		t.Fatalf("expected reported total to be the pre-refusal count 3, got %d", total)
+	}
+	if h.ClientCount() != 3 {
+		t.Fatalf("a refused registration must never have touched the hub's client count, got %d", h.ClientCount())
+	}
+}
+
+// TestEventHub_RegisterWithCap_UnregisterClearsIdentityBookkeeping ensures a
+// normal (non-evicted) disconnect removes the client from its identity's
+// eviction-order list too — otherwise a long-running identity that opens
+// and closes many streams over time would leak stale ids into byIdentity
+// forever, and Unregister-after-eviction (already covered by the
+// backpressure test) would double-remove on close.
+func TestEventHub_RegisterWithCap_UnregisterClearsIdentityBookkeeping(t *testing.T) {
+	h := NewEventHub(5 * time.Millisecond)
+	defer h.Stop()
+
+	limits := IdentityLimits{MaxPerClient: 2}
+
+	id1, _, _, _ := h.RegisterWithCap("carol", 4, limits)
+	h.Unregister(id1)
+
+	id2, ch2, _, ok := h.RegisterWithCap("carol", 4, limits)
+	if !ok {
+		t.Fatalf("expected registration to succeed")
+	}
+	id3, _, _, ok := h.RegisterWithCap("carol", 4, limits)
+	if !ok {
+		t.Fatalf("expected registration to succeed")
+	}
+	// If id1's unregister had NOT cleared carol's identity bookkeeping,
+	// carol would already have 3 entries here (id1, id2, id3) and this 3rd
+	// registration would incorrectly evict id2.
+	select {
+	case _, open := <-ch2:
+		if !open {
+			t.Fatalf("id2 must not have been evicted — carol should be at 2/2, not over cap, if id1's unregister cleaned up correctly")
+		}
+	default:
+	}
+	h.Unregister(id2)
+	h.Unregister(id3)
 }
 
 func TestFilterEventsByVisibility_NoToken_StreamsEverything(t *testing.T) {

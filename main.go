@@ -1988,6 +1988,17 @@ func main() {
 			token := auth.GetTokenFromContext(c)
 			localName := localClusterName(c)
 
+			// Concurrent-subscriber caps (2026-09-04 incident — see
+			// eventStreamIdentity's doc comment): register with the hub,
+			// and possibly evict this identity's own oldest stream or
+			// refuse outright, BEFORE writing a single SSE byte. That
+			// ordering matters — once the 200 + SSE headers below are on
+			// the wire there is no way to turn this into a 503 anymore.
+			localID, localCh, ok := eventStreamTryRegister(c, kubernetes.Hub, eventStreamIdentity(c, token))
+			if !ok {
+				return
+			}
+
 			var spokes []kubernetes.ClusterSpec
 			if c.GetHeader(fanoutHeader) == "" {
 				if k8sClient, err := kubernetes.GetReadClient(c); err != nil {
@@ -2025,6 +2036,8 @@ func main() {
 
 			kubernetes.RunMultiStream(c.Request.Context(), kubernetes.MultiStreamOptions{
 				LocalName:         localName,
+				LocalClientID:     localID,
+				LocalClientCh:     localCh,
 				Spokes:            spokes,
 				Token:             token,
 				FanoutHeader:      fanoutHeader,

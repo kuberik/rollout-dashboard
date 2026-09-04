@@ -70,8 +70,26 @@ type MultiStreamOptions struct {
 	HeartbeatInterval time.Duration
 
 	// LocalBufSize is the buffer size passed to LocalHub.Register. Defaults
-	// to 32.
+	// to 32. Ignored when LocalClientCh is set (see below) — the caller
+	// already chose a buffer size when it registered.
 	LocalBufSize int
+
+	// LocalClientID/LocalClientCh, when LocalClientCh is non-nil, are an
+	// already-registered local hub subscription — e.g. from
+	// EventHub.RegisterWithCap — that Run uses instead of calling
+	// hub.Register itself. This is what lets a caller (main.go's stream
+	// handler) apply the concurrent-subscriber cap and decide whether to
+	// respond at all (503 on refusal) BEFORE writing any SSE bytes, while
+	// still letting Run own the client's lifecycle exactly as it would for
+	// a self-registered one: LocalClientID must be the id that came back
+	// alongside LocalClientCh, since Run's own deferred hub.Unregister
+	// uses it symmetrically, and a closed LocalClientCh (whether from
+	// backpressure or a RegisterWithCap eviction) is handled identically
+	// to a self-registered client hitting OnLocalDropped. When
+	// LocalClientCh is nil, Run registers its own client exactly as
+	// before.
+	LocalClientID uint64
+	LocalClientCh <-chan []ChangeEvent
 
 	// SpokeOutBufSize sizes the channel every spoke subscription's parsed
 	// batches land on before Run forwards them. Defaults to 64. A full
@@ -159,7 +177,10 @@ func RunMultiStream(ctx context.Context, opts MultiStreamOptions, handlers Multi
 		httpClient = http.DefaultClient
 	}
 
-	id, localCh := hub.Register(localBufSize)
+	id, localCh := opts.LocalClientID, opts.LocalClientCh
+	if localCh == nil {
+		id, localCh = hub.Register(localBufSize)
+	}
 	defer hub.Unregister(id)
 
 	subCtx, cancel := context.WithCancel(ctx)

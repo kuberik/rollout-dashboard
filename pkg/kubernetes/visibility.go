@@ -99,14 +99,24 @@ func CanListRolloutsInNamespace(c *gin.Context, ns string) (bool, error) {
 // counts here are small, and repeat calls hit the cache) so N distinct
 // namespaces cost one round trip each, not N sequential ones.
 func AllowedNamespaces(c *gin.Context, namespaces []string) (map[string]bool, error) {
-	dedup := make(map[string]bool, len(namespaces))
+	// Distinct namespaces as a slice: the goroutines below must not write into
+	// the map this loop is still iterating (a real race, caught by -race on
+	// 2026-09-04), so the keys are fixed first and the answers go into a
+	// separate map under the mutex.
+	seen := make(map[string]struct{}, len(namespaces))
+	keys := make([]string, 0, len(namespaces))
 	for _, ns := range namespaces {
-		dedup[ns] = false
+		if _, dup := seen[ns]; dup {
+			continue
+		}
+		seen[ns] = struct{}{}
+		keys = append(keys, ns)
 	}
 
+	allowedByNS := make(map[string]bool, len(keys))
 	var mu sync.Mutex
 	g, _ := errgroup.WithContext(c.Request.Context())
-	for ns := range dedup {
+	for _, ns := range keys {
 		ns := ns
 		g.Go(func() error {
 			allowed, err := CanListRolloutsInNamespace(c, ns)
@@ -114,7 +124,7 @@ func AllowedNamespaces(c *gin.Context, namespaces []string) (map[string]bool, er
 				return err
 			}
 			mu.Lock()
-			dedup[ns] = allowed
+			allowedByNS[ns] = allowed
 			mu.Unlock()
 			return nil
 		})
@@ -122,7 +132,7 @@ func AllowedNamespaces(c *gin.Context, namespaces []string) (map[string]bool, er
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	return dedup, nil
+	return allowedByNS, nil
 }
 
 // FilterEventsByVisibility trims a coalesced batch of change events (from

@@ -284,6 +284,143 @@ func TestRunMultiStream_ClientDisconnectClosesUpstreamSubscriptionsNoLeak(t *tes
 	}
 }
 
+// TestRunMultiStream_EvictedHandlersDoNotLeakGoroutines is the goroutine-
+// count assertion the 2026-09-04 incident fix calls for directly: open 20
+// concurrent /api/events/stream-shaped handlers under ONE identity with a
+// per-identity cap of 8 (each one owning a real spoke-subscription
+// goroutine, exactly like the production handler does), and confirm (a)
+// only 8 remain registered on the hub, and (b) once the 12 evicted
+// handlers' RunMultiStream calls have actually returned, the goroutine
+// count is back down to what 8 live handlers alone cost — proving eviction
+// tears down everything an evicted request owned (its EventHub
+// registration, its spoke subscription goroutine, its heartbeat ticker)
+// rather than leaking any of it.
+func TestRunMultiStream_EvictedHandlersDoNotLeakGoroutines(t *testing.T) {
+	spoke := newGatedSSESpoke(t, nil, nil) // connects immediately, then blocks until ctx done
+	defer spoke.Close()
+
+	hub := NewEventHub(5 * time.Millisecond)
+	defer hub.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runtime.GC()
+	trueBefore := runtime.NumGoroutine()
+
+	limits := IdentityLimits{MaxPerClient: 8}
+
+	// startHandler mirrors main.go's stream handler: register with the
+	// cap, then hand the pre-registered id/channel to RunMultiStream
+	// (which itself owns a heartbeat ticker and a goroutine per spoke) —
+	// running RunMultiStream in its own goroutine, the same way one HTTP
+	// request's own goroutine would.
+	startHandler := func() (done <-chan struct{}) {
+		d := make(chan struct{})
+		id, ch, _, ok := hub.RegisterWithCap("flooded-identity", 4, limits)
+		if !ok {
+			t.Fatalf("registration should not be refused — no MaxTotal set")
+		}
+		go func() {
+			RunMultiStream(ctx, MultiStreamOptions{
+				LocalHub:          hub,
+				LocalName:         "prod",
+				LocalClientID:     id,
+				LocalClientCh:     ch,
+				Spokes:            []ClusterSpec{{Name: "dev", URL: spoke.URL}},
+				HTTPClient:        spoke.Client(),
+				HeartbeatInterval: 10 * time.Millisecond,
+			}, MultiStreamHandlers{})
+			close(d)
+		}()
+		return d
+	}
+
+	// First 8: fill the identity's cap exactly, no evictions yet.
+	handlerDone := make([]<-chan struct{}, 20)
+	for i := 0; i < 8; i++ {
+		handlerDone[i] = startHandler()
+	}
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 8 })
+	// Let the 8 spoke-subscription goroutines actually dial and settle
+	// into steady state before using this moment as the "8 live handlers"
+	// goroutine baseline to compare the post-eviction count against.
+	time.Sleep(150 * time.Millisecond)
+	runtime.GC()
+	steadyStateEight := runtime.NumGoroutine()
+	// Let any trailing connection-setup goroutines from the initial dial
+	// settle before locking in the baseline — a second read a moment later
+	// that's no higher just confirms it's really steady, not still rising.
+	steadyStateEight = waitForGoroutineCountNear(steadyStateEight, 0, 300*time.Millisecond)
+
+	// 12 more under the SAME identity. Each crosses the cap and evicts the
+	// oldest still-registered subscription for "flooded-identity" — with
+	// registrations serialized here, that works out to handlerDone[0..11]
+	// being evicted (oldest-first) and handlerDone[12..19] surviving; see
+	// RegisterWithCap's doc comment for the eviction order this asserts.
+	for i := 8; i < 20; i++ {
+		handlerDone[i] = startHandler()
+	}
+
+	if got := hub.ClientCount(); got != 8 {
+		t.Fatalf("expected exactly 8 subscriptions to remain registered under the shared identity's cap of 8, got %d", got)
+	}
+
+	for i := 0; i < 12; i++ {
+		select {
+		case <-handlerDone[i]:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("evicted handler %d did not exit within 2s of eviction", i)
+		}
+	}
+
+	// The two checks above (ClientCount()==8, and every evicted handler's
+	// done channel actually closing) are already the exact, deterministic
+	// proof that no application-owned goroutine leaked: RunMultiStream's
+	// own contract is that it has joined every goroutine IT spawned (each
+	// spoke's subscribeSpoke) before returning, and done closing only
+	// happens after that join. What's left to check here is coarser: the
+	// PROCESS's total goroutine count, which also includes net/http
+	// Transport/Server connection-teardown goroutines (persistConn
+	// readLoop/writeLoop, the server's per-connection goroutine) that
+	// close asynchronously a beat after the request context that
+	// triggered them — confirmed via goroutine-profile inspection to
+	// settle at a small, BOUNDED (not growing with iteration count)
+	// overshoot under -race, never tied to RunMultiStream/subscribeSpoke
+	// stacks themselves. The wider tolerance here absorbs that std-lib
+	// noise without being wide enough to hide a real per-handler leak
+	// (which would show up as a multiple of one handler's ~6-goroutine
+	// footprint, not a fixed handful).
+	const netHTTPTeardownSlack = 20
+	afterEvictions := waitForGoroutineCountNear(steadyStateEight, netHTTPTeardownSlack, 3*time.Second)
+	if afterEvictions > steadyStateEight+netHTTPTeardownSlack {
+		t.Fatalf("goroutine count after 12 evictions (%d) did not return near the 8-live-handler baseline (%d, ±%d) — an evicted handler leaked its spoke goroutine, heartbeat ticker, or hub registration", afterEvictions, steadyStateEight, netHTTPTeardownSlack)
+	}
+
+	// Full cleanup: end the 8 survivors too and confirm the whole
+	// 20-registration/12-eviction cycle leaves nothing behind, against the
+	// real pre-test baseline captured before any handler started.
+	cancel()
+	for i := 12; i < 20; i++ {
+		select {
+		case <-handlerDone[i]:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("surviving handler %d did not exit within 2s of ctx cancellation", i)
+		}
+	}
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 0 })
+
+	// Same net/http-teardown-noise reasoning as netHTTPTeardownSlack above
+	// applies here too, now against the real pre-test baseline — the
+	// ClientCount()==0 wait and every handler's done channel (all 20, by
+	// this point) already gave the deterministic, exact proof that no
+	// application goroutine is still running.
+	after := waitForGoroutineCountNear(trueBefore, netHTTPTeardownSlack, 3*time.Second)
+	if after > trueBefore+netHTTPTeardownSlack {
+		t.Fatalf("goroutine count grew from %d to %d after the full 20-registration/12-eviction/8-cancel cycle — possible leak", trueBefore, after)
+	}
+}
+
 // TestRunMultiStream_DoesNotMutateSharedHubBatch guards the bug this file's
 // tagging step could easily reintroduce: EventHub.flush sends the SAME
 // batch slice to every registered client (see eventhub.go), so tagging a
