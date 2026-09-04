@@ -221,7 +221,9 @@
 	const gateContext = $derived.by<GateContext>(() =>
 		buildGateContext({
 			environments: query.data?.environments ?? null,
-			rolloutDependencies: query.data?.rolloutDependencies ?? null
+			rolloutDependencies: query.data?.rolloutDependencies ?? null,
+			// This page never loads schedules, so a check gate is its final answer, not pending.
+			schedulesExpected: false
 		})
 	);
 

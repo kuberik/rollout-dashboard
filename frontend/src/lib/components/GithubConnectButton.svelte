@@ -33,10 +33,14 @@
 	type Shape = 'account' | 'connect' | 'unconfigured';
 	const SHAPE_KEY = 'kuberik.github-shape';
 
-	function readHint(): Shape | null {
-		if (typeof localStorage === 'undefined') return null;
+	// A browser that has never been here cannot be signed in yet, so the
+	// first-ever visit reserves the "Connect GitHub" shape: the not-configured
+	// button is within 16 px of it, and the signed-in avatar only ever follows
+	// a visit that already remembered its shape.
+	function readHint(): Shape {
+		if (typeof localStorage === 'undefined') return 'connect';
 		const v = localStorage.getItem(SHAPE_KEY);
-		return v === 'account' || v === 'connect' || v === 'unconfigured' ? v : null;
+		return v === 'account' || v === 'connect' || v === 'unconfigured' ? v : 'connect';
 	}
 
 	const shape = $derived.by((): Shape | null => {

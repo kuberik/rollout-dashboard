@@ -372,6 +372,9 @@ export type GateContext = {
 	 * behaviour unchanged.
 	 */
 	schedulesLoaded: boolean;
+	/** False on a page that never asks for schedules: a `check` gate there is
+	 *  not `pending`, it is the page's honest best answer. Default true. */
+	schedulesExpected: boolean;
 };
 
 export const EMPTY_GATE_CONTEXT: GateContext = {
@@ -380,7 +383,8 @@ export const EMPTY_GATE_CONTEXT: GateContext = {
 	schedule: new Map(),
 	owners: new Map(),
 	sources: { environments: false, dependencies: false },
-	schedulesLoaded: false
+	schedulesLoaded: false,
+	schedulesExpected: true
 };
 
 const key = (namespace: string | undefined, gate: string) => `${namespace ?? ''}/${gate}`;
@@ -397,6 +401,8 @@ export function prettyNameOf(meta?: { annotations?: Record<string, string> }): s
  * rather than to a confident wrong answer.
  */
 export function buildGateContext(payload: {
+	/** See GateContext.schedulesExpected. */
+	schedulesExpected?: boolean;
 	environments?: { items?: Environment[] } | null;
 	rolloutDependencies?: { items?: RolloutDependency[] } | null;
 	/**
@@ -423,7 +429,8 @@ export function buildGateContext(payload: {
 		// Schedules are never part of THIS payload — they land through
 		// `withSchedules`, a separate, later request. See that field's own
 		// doc comment on `GateContext`.
-		schedulesLoaded: false
+		schedulesLoaded: false,
+		schedulesExpected: payload.schedulesExpected ?? true
 	};
 
 	for (const gate of payload?.rolloutGates?.items ?? []) {
@@ -506,6 +513,7 @@ export function withSchedules(
 		dependency: ctx.dependency,
 		schedule: new Map(ctx.schedule),
 		owners: ctx.owners,
+		schedulesExpected: ctx.schedulesExpected,
 		sources: ctx.sources,
 		schedulesLoaded: true
 	};
@@ -667,7 +675,7 @@ export function classifyGate(
 			// generated id, which belongs in the disclosed tier. The row prints
 			// `short`.
 			...NOTHING_TO_DRAW,
-			pending: !ctx.schedulesLoaded
+			pending: ctx.schedulesExpected && !ctx.schedulesLoaded
 		};
 	}
 

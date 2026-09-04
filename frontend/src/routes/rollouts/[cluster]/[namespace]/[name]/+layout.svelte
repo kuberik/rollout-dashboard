@@ -308,10 +308,19 @@
 				              this resolves, `aria-hidden` + `tabindex="-1"` keeps
 				              it out of the a11y tree and the tab order.
 			-->
-			{#each tabs as t (t.href)}
+			<!--
+				⛔ `hidden` IS REMOVED, NOT `invisible`. (2026-09-04, regression sweep:
+				"a 148 px hole between History and Logs at 1440, a blank quarter of
+				the strip at 390, on every rollout that has no dependencies, forever".)
+				Arity-stability is about the LOAD transition: the slot is reserved
+				while `pending` (unknown), and the strip re-flows exactly once when
+				the answer resolves to "no such tab" — a one-time 148 px move on
+				those rollouts is the honest cost; a permanent dead slot is not.
+			-->
+			{#each tabs.filter((t) => t.state !== 'hidden') as t (t.href)}
 				{@const active = t.state === 'active' && isActive(t.href)}
 				{@const pending = t.state === 'pending'}
-				{@const hidden = t.state === 'hidden'}
+				{@const hidden = false}
 				<a
 					href={t.state === 'active' ? t.href : undefined}
 					aria-current={active ? 'page' : undefined}
