@@ -34,6 +34,20 @@ export default defineConfig({
 					target: 'https://kuberik.192.168.1.102.nip.io:8080',
 					changeOrigin: true,
 					secure: false,
+					// http-proxy does not end the upstream request when the browser goes
+					// away. With a long-lived response (/api/events/stream, pod logs) that
+					// leaves the hub serving a subscriber nobody reads: measured 1038
+					// leaked streams on one dev server after a day of tabs (2026-09-04),
+					// with the hub restarting under them. Tear the upstream down when the
+					// client closes, in both directions.
+					configure(proxy) {
+						proxy.on('proxyReq', (proxyReq, req) => {
+							req.on('close', () => proxyReq.destroy());
+						});
+						proxy.on('proxyRes', (proxyRes, _req, res) => {
+							res.on('close', () => proxyRes.destroy());
+						});
+					}
 				},
 				'/oauth2': {
 					target: 'https://kuberik.192.168.1.102.nip.io:8080',

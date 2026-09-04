@@ -40,6 +40,7 @@
 	aria-hidden="true"
 	data-skel-headband
 >
-	<span class="skel-block h-6 {leadWidth}"></span>
+	<!-- `t-display` is 24px at line-height 1.15, a 28px box: the bar matches the box. -->
+	<span class="skel-block h-7 {leadWidth}"></span>
 	<span class="skel-block h-3.5 {rollupWidth}"></span>
 </div>
