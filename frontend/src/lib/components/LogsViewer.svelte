@@ -269,7 +269,7 @@
 	 * Pods view never fires this request.
 	 */
 	const rolloutTestsQuery = createQuery(() => ({
-		...rolloutTestsQueryOptions({ namespace, name }),
+		...rolloutTestsQueryOptions({ namespace, name, cluster }),
 		enabled: filterType === 'test'
 	}));
 

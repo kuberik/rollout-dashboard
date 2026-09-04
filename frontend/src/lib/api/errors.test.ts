@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const isEventStreamHealthy = vi.fn(() => false);
-vi.mock('./events', () => ({ isEventStreamHealthy: () => isEventStreamHealthy() }));
+const areAllClustersHealthy = vi.fn(() => false);
+const isClusterStreamHealthy = vi.fn((_cluster: string) => false);
+vi.mock('./events', () => ({
+	areAllClustersHealthy: () => areAllClustersHealthy(),
+	isClusterStreamHealthy: (cluster: string) => isClusterStreamHealthy(cluster)
+}));
 
 import {
 	ApiError,
@@ -94,49 +98,87 @@ describe('pollWhenHealthy — a dead URL must stop costing requests', () => {
 
 describe('pollWhenHealthy(ms, streamedMs) — PERF-2026-09-04 §C.6/C.7 stream-aware cadence', () => {
 	beforeEach(() => {
-		isEventStreamHealthy.mockReset();
+		areAllClustersHealthy.mockReset();
+		isClusterStreamHealthy.mockReset();
 	});
 
 	it('one-argument callers are byte-identical to before: the stream is never consulted', () => {
-		isEventStreamHealthy.mockReturnValue(true);
+		areAllClustersHealthy.mockReturnValue(true);
 		const poll = pollWhenHealthy(5000);
 		expect(poll({ state: { status: 'success', error: null } })).toBe(5000);
-		expect(isEventStreamHealthy).not.toHaveBeenCalled();
+		expect(areAllClustersHealthy).not.toHaveBeenCalled();
 	});
 
 	it('with a healthy stream, returns the slower streamedMs instead of the fallback', () => {
-		isEventStreamHealthy.mockReturnValue(true);
+		areAllClustersHealthy.mockReturnValue(true);
 		const poll = pollWhenHealthy(5000, 60000);
 		expect(poll({ state: { status: 'success', error: null } })).toBe(60000);
 	});
 
 	it('with the stream down, returns exactly the old fallback cadence', () => {
-		isEventStreamHealthy.mockReturnValue(false);
+		areAllClustersHealthy.mockReturnValue(false);
 		const poll = pollWhenHealthy(5000, 60000);
 		expect(poll({ state: { status: 'success', error: null } })).toBe(5000);
 	});
 
 	it('an error still wins over stream health — never polls fast into a 404', () => {
-		isEventStreamHealthy.mockReturnValue(true);
+		areAllClustersHealthy.mockReturnValue(true);
 		const poll = pollWhenHealthy(5000, 60000);
 		expect(poll({ state: { status: 'error', error: err(404) } })).toBe(false);
 		expect(poll({ state: { status: 'error', error: err(503) } })).toBe(RECOVERY_POLL_MS);
+	});
+
+	/**
+	 * ⭐ MULTI-CLUSTER — a THIRD argument switches the check from "every known
+	 * cluster is up" to "this ONE cluster is up". This is what lets a rollout
+	 * on a healthy spoke keep its 60s ceiling while a SIBLING spoke is down —
+	 * the fleet-wide gate (no cluster) would wrongly slow it down too.
+	 */
+	it('with a cluster given, consults THAT cluster only — not the fleet-wide gate', () => {
+		isClusterStreamHealthy.mockReturnValue(true);
+		areAllClustersHealthy.mockReturnValue(false); // a sibling spoke is down
+		const poll = pollWhenHealthy(5000, 60000, 'dev-spoke');
+		expect(poll({ state: { status: 'success', error: null } })).toBe(60000);
+		expect(isClusterStreamHealthy).toHaveBeenCalledWith('dev-spoke');
+		expect(areAllClustersHealthy).not.toHaveBeenCalled();
+	});
+
+	it('a down cluster falls back to `ms` even while every OTHER cluster is healthy', () => {
+		isClusterStreamHealthy.mockReturnValue(false);
+		areAllClustersHealthy.mockReturnValue(true); // every other cluster is fine
+		const poll = pollWhenHealthy(5000, 60000, 'dev-spoke');
+		expect(poll({ state: { status: 'success', error: null } })).toBe(5000);
+	});
+
+	it('no cluster given → the fleet-wide "every known cluster up" gate', () => {
+		areAllClustersHealthy.mockReturnValue(false);
+		const poll = pollWhenHealthy(5000, 60000);
+		expect(poll({ state: { status: 'success', error: null } })).toBe(5000);
+		expect(isClusterStreamHealthy).not.toHaveBeenCalled();
 	});
 });
 
 describe('staleTimeWhenHealthy — the staleTime half of the same rule', () => {
 	beforeEach(() => {
-		isEventStreamHealthy.mockReset();
+		areAllClustersHealthy.mockReset();
+		isClusterStreamHealthy.mockReset();
 	});
 
 	it('healthy stream → the slower streamed staleTime', () => {
-		isEventStreamHealthy.mockReturnValue(true);
+		areAllClustersHealthy.mockReturnValue(true);
 		expect(staleTimeWhenHealthy(1000, 30000)()).toBe(30000);
 	});
 
 	it('stream down → today’s staleTime, unchanged', () => {
-		isEventStreamHealthy.mockReturnValue(false);
+		areAllClustersHealthy.mockReturnValue(false);
 		expect(staleTimeWhenHealthy(1000, 30000)()).toBe(1000);
+	});
+
+	it('with a cluster given, uses that cluster\'s own health', () => {
+		isClusterStreamHealthy.mockReturnValue(true);
+		areAllClustersHealthy.mockReturnValue(false);
+		expect(staleTimeWhenHealthy(1000, 30000, 'dev-spoke')()).toBe(30000);
+		expect(isClusterStreamHealthy).toHaveBeenCalledWith('dev-spoke');
 	});
 });
 

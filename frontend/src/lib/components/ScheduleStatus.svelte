@@ -152,8 +152,10 @@
 		queryKey: scheduleWindowQueryKey(scheduleNamespace, scheduleName, cluster),
 		queryFn: () => fetchAllSchedules(scheduleNamespace, scheduleName, cluster),
 		enabled: !!scheduleNamespace && !!scheduleName,
-		staleTime: staleTimeWhenHealthy(15000, 30000),
-		refetchInterval: pollWhenHealthy(30000, 60000)
+		// ⭐ CLUSTER-AWARE — this rollout's own cluster, not the fleet-wide
+		// "every cluster up" gate. See rollout detail's identical comment.
+		staleTime: staleTimeWhenHealthy(15000, 30000, cluster),
+		refetchInterval: pollWhenHealthy(30000, 60000, cluster)
 	}));
 
 	let allSchedules = $derived(schedulesQuery.data ?? []);

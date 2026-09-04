@@ -107,12 +107,105 @@ describe('startEventStream — connection lifecycle', () => {
 		fakeSource.push({
 			event: 'changes',
 			data: JSON.stringify([
-				{ type: 'update', kind: 'Rollout', namespace: 'team-a', name: 'app-1', resourceVersion: '1', ts: 1 }
+				{
+					type: 'update',
+					kind: 'Rollout',
+					namespace: 'team-a',
+					name: 'app-1',
+					cluster: 'hub',
+					resourceVersion: '1',
+					ts: 1
+				}
 			])
 		});
 		// Let the pump's microtask/await chain run.
 		await new Promise((r) => setTimeout(r, 0));
 		expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['rollouts', 'all'] });
+	});
+});
+
+/**
+ * ⭐ MULTI-CLUSTER — `event: clusters` feeds `isClusterStreamHealthy`/
+ * `areAllClustersHealthy`, which `./errors`' `pollWhenHealthy`/
+ * `staleTimeWhenHealthy` consult when a caller passes a `cluster`. Covered
+ * here (not `events.test.ts`) because it needs the same fake EventSource
+ * harness as the "changes" message above — this is stream WIRING, not the
+ * pure per-kind mapping.
+ */
+describe('startEventStream — the `clusters` event and per-cluster health', () => {
+	let startEventStream: typeof import('./events').startEventStream;
+	let _resetEventStreamForTests: typeof import('./events')._resetEventStreamForTests;
+	let isClusterStreamHealthy: typeof import('./events').isClusterStreamHealthy;
+	let areAllClustersHealthy: typeof import('./events').areAllClustersHealthy;
+	let isEventStreamHealthy: typeof import('./events').isEventStreamHealthy;
+
+	beforeEach(async () => {
+		vi.resetModules();
+		capturedOptions = null;
+		createEventSourceMock.mockClear();
+		const mod = await import('./events');
+		startEventStream = mod.startEventStream;
+		_resetEventStreamForTests = mod._resetEventStreamForTests;
+		isClusterStreamHealthy = mod.isClusterStreamHealthy;
+		areAllClustersHealthy = mod.areAllClustersHealthy;
+		isEventStreamHealthy = mod.isEventStreamHealthy;
+	});
+
+	afterEach(() => {
+		_resetEventStreamForTests();
+		vi.useRealTimers();
+	});
+
+	it('before the first `clusters` event, both fall back to the whole-stream signal — connection open = healthy', () => {
+		const qc = fakeQueryClient();
+		startEventStream(qc as never);
+		capturedOptions!.onConnect!();
+		expect(isEventStreamHealthy()).toBe(true);
+		expect(isClusterStreamHealthy('dev-spoke')).toBe(true);
+		expect(areAllClustersHealthy()).toBe(true);
+	});
+
+	it('a `clusters` event with one spoke down: that spoke reports unhealthy, a healthy sibling does not, and the fleet-wide check is false', async () => {
+		const qc = fakeQueryClient();
+		startEventStream(qc as never);
+		capturedOptions!.onConnect!();
+		fakeSource.push({
+			event: 'clusters',
+			data: JSON.stringify({ hub: true, 'dev-spoke': false, 'staging-spoke': true })
+		});
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(isClusterStreamHealthy('dev-spoke')).toBe(false);
+		expect(isClusterStreamHealthy('hub')).toBe(true);
+		expect(isClusterStreamHealthy('staging-spoke')).toBe(true);
+		// ⭐ one spoke down → the fleet-wide gate is false, even though the
+		// whole EventSource connection is still up.
+		expect(areAllClustersHealthy()).toBe(false);
+	});
+
+	it('an UNKNOWN cluster name (not in the last `clusters` event) falls back to the whole-stream signal, not to a hardcoded default', async () => {
+		const qc = fakeQueryClient();
+		startEventStream(qc as never);
+		capturedOptions!.onConnect!();
+		fakeSource.push({ event: 'clusters', data: JSON.stringify({ hub: true }) });
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(isClusterStreamHealthy('never-heard-of-this-cluster')).toBe(isEventStreamHealthy());
+	});
+
+	it('a full disconnect discards the last snapshot — every cluster (and the fleet gate) reports unhealthy until a fresh `clusters` event arrives', async () => {
+		const qc = fakeQueryClient();
+		startEventStream(qc as never);
+		capturedOptions!.onConnect!();
+		fakeSource.push({ event: 'clusters', data: JSON.stringify({ hub: true, 'dev-spoke': true }) });
+		await new Promise((r) => setTimeout(r, 0));
+		expect(isClusterStreamHealthy('dev-spoke')).toBe(true);
+
+		capturedOptions!.onDisconnect!();
+
+		expect(isEventStreamHealthy()).toBe(false);
+		expect(isClusterStreamHealthy('dev-spoke')).toBe(false);
+		expect(areAllClustersHealthy()).toBe(false);
 	});
 });
 

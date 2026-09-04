@@ -3,19 +3,29 @@
  *
  * One `EventSource` per tab, connected to `GET /api/events/stream` (the Go
  * backend's SSE fan-out over its informer cache — see
- * `pkg/kubernetes/eventhub.go` and the route in `main.go`). Every message is
- * a coalesced batch of `{type, kind, namespace, name, resourceVersion, ts}`
- * — this module's whole job is turning that into the RIGHT TanStack Query
- * invalidations, so a page updates within about a second of the cluster
- * changing instead of waiting out a 5-15s poll.
+ * `pkg/kubernetes/eventhub.go` and the route in `main.go`). Every `changes`
+ * message is a coalesced batch of `{type, kind, namespace, name, cluster,
+ * resourceVersion, ts}` — this module's whole job is turning that into the
+ * RIGHT TanStack Query invalidations, so a page updates within about a
+ * second of the cluster changing instead of waiting out a 5-15s poll.
+ *
+ * ⭐ MULTI-CLUSTER — the hub's stream now fans in every spoke, not just its
+ * own informer cache. `cluster` on each `ChangeEvent` is what makes an event
+ * for one cluster's Rollout not clobber another cluster's same-named one
+ * (see `applyChangeEvents`' per-kind predicates), and the separate
+ * `event: clusters` message (`{"<name>": true|false, ...}` for every known
+ * cluster, hub included) is what feeds `isClusterStreamHealthy`/
+ * `areAllClustersHealthy` below — a spoke going dark falls that ONE
+ * cluster's rollouts back to polling without slowing down every other
+ * cluster's.
  *
  * ⛔ THIS IS ADDITIVE, NOT A REPLACEMENT FOR POLLING. The stream can drop
  * (proxy restart, a laptop sleeping, the backend rolling) and must fail
  * OPEN, not silent: `isEventStreamHealthy()` goes false the moment the
  * connection is lost, and `pollWhenHealthy`/`staleTimeWhenHealthy` in
- * `./errors` read it on every check, so the existing 5s/10-15s polling
- * cadence resumes automatically — no separate "is push broken" UI state to
- * get wrong.
+ * `./errors` read it (and the per-cluster/fleet-wide variants above) on
+ * every check, so the existing 5s/10-15s polling cadence resumes
+ * automatically — no separate "is push broken" UI state to get wrong.
  *
  * Reconnect logic (backoff, `retry:` header support) is `eventsource-client`
  * itself — the same package `logs.ts` already uses for the pod-logs stream —
@@ -26,12 +36,22 @@
 import { createEventSource, type EventSourceClient } from 'eventsource-client';
 import type { QueryClient } from '@tanstack/svelte-query';
 
-/** One coalesced change, verbatim from the backend's ChangeEvent. */
+/**
+ * One coalesced change, verbatim from the backend's ChangeEvent.
+ *
+ * ⭐ MULTI-CLUSTER FAN-IN — `cluster` is the display name exactly as it
+ * appears in `/api/clusters` and in the `[cluster]` route segment;
+ * hub-local events carry the HUB's own name (never `''`), matching every
+ * other `?cluster=`/route-param call site in this product. See the
+ * `event: clusters` handling below for the companion per-cluster
+ * connection-state event.
+ */
 export type ChangeEvent = {
 	type: string; // "add" | "update" | "delete"
 	kind: string; // "Rollout" | "Environment" | "RolloutGate" | ...
 	namespace: string;
 	name: string;
+	cluster: string;
 	resourceVersion: string;
 	ts: number; // unix millis
 };
@@ -172,31 +192,41 @@ const KNOWN_KINDS = new Set([
  */
 export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[]): void {
 	const fleetNamespaces = new Set<string>();
-	const rolloutExact = new Set<string>(); // "namespace|name"
-	const rolloutNamespaces = new Set<string>();
-	const healthCheckNamespaces = new Set<string>();
-	const rolloutTestNamespaces = new Set<string>();
-	const eventsNamespaces = new Set<string>();
-	const kustomizationTargets: { namespace: string; name: string }[] = [];
+	const rolloutExact = new Set<string>(); // "cluster|namespace|name"
+	const rolloutNamespaces = new Set<string>(); // "cluster|namespace"
+	const healthCheckTargets = new Set<string>(); // "cluster|namespace"
+	const rolloutTestTargets = new Set<string>(); // "cluster|namespace"
+	const eventsTargets = new Set<string>(); // "cluster|namespace"
+	const kustomizationTargets: { cluster: string; namespace: string; name: string }[] = [];
 	let scheduleChanged = false;
 
 	for (const ev of events) {
 		if (!KNOWN_KINDS.has(ev.kind) && !EVENT_TAG_KINDS.has(ev.kind)) continue;
 
+		// ⭐ FLEET LIST — deliberately NOT cluster-scoped. `['rollouts','all']`
+		// and the per-namespace fleet lists aggregate every cluster in one
+		// response, so ANY cluster's Rollout/Kustomization/Environment/
+		// KruiseRollout/RolloutDependency event must invalidate them.
 		if (FLEET_LIST_KINDS.has(ev.kind) && ev.namespace) fleetNamespaces.add(ev.namespace);
 
 		if (ROLLOUT_EXACT_KINDS.has(ev.kind) && ev.namespace && ev.name) {
-			rolloutExact.add(`${ev.namespace}|${ev.name}`);
+			rolloutExact.add(`${ev.cluster}|${ev.namespace}|${ev.name}`);
 		}
 		if (ROLLOUT_NAMESPACE_KINDS.has(ev.kind) && ev.namespace) {
-			rolloutNamespaces.add(ev.namespace);
+			rolloutNamespaces.add(`${ev.cluster}|${ev.namespace}`);
 		}
 
-		if (HEALTH_CHECK_KINDS.has(ev.kind) && ev.namespace) healthCheckNamespaces.add(ev.namespace);
-		if (ROLLOUT_TEST_KINDS.has(ev.kind) && ev.namespace) rolloutTestNamespaces.add(ev.namespace);
-		if (EVENT_TAG_KINDS.has(ev.kind) && ev.namespace) eventsNamespaces.add(ev.namespace);
+		if (HEALTH_CHECK_KINDS.has(ev.kind) && ev.namespace) {
+			healthCheckTargets.add(`${ev.cluster}|${ev.namespace}`);
+		}
+		if (ROLLOUT_TEST_KINDS.has(ev.kind) && ev.namespace) {
+			rolloutTestTargets.add(`${ev.cluster}|${ev.namespace}`);
+		}
+		if (EVENT_TAG_KINDS.has(ev.kind) && ev.namespace) {
+			eventsTargets.add(`${ev.cluster}|${ev.namespace}`);
+		}
 		if (KUSTOMIZATION_KINDS.has(ev.kind) && ev.namespace && ev.name) {
-			kustomizationTargets.push({ namespace: ev.namespace, name: ev.name });
+			kustomizationTargets.push({ cluster: ev.cluster, namespace: ev.namespace, name: ev.name });
 		}
 		if (SCHEDULE_KINDS.has(ev.kind)) scheduleChanged = true;
 	}
@@ -208,41 +238,65 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 		}
 	}
 
+	// ⭐ CLUSTER-SCOPED MATCHING — every predicate below reads the key's OWN
+	// cluster element (never the event's alone) so an event for cluster A can
+	// never invalidate cluster B's cache entry for the same namespace/name.
+	// `key[N] ?? ''` normalises a key built without a cluster (shouldn't
+	// happen for any current call site, but fails toward "doesn't match"
+	// rather than a crash) against `ev.cluster`, which the backend contract
+	// guarantees is always a real, non-empty name (hub-local events carry the
+	// hub's own name).
+
 	if (rolloutExact.size > 0 || rolloutNamespaces.size > 0) {
 		queryClient.invalidateQueries({
 			predicate: (query) => {
 				const key = query.queryKey;
-				if (key.length < 3 || key[0] !== 'rollout') return false;
+				if (key.length < 4 || key[0] !== 'rollout') return false;
 				const ns = key[1] as string;
 				const name = key[2] as string;
-				return rolloutExact.has(`${ns}|${name}`) || rolloutNamespaces.has(ns);
+				const cluster = (key[3] as string | undefined) ?? '';
+				return (
+					rolloutExact.has(`${cluster}|${ns}|${name}`) || rolloutNamespaces.has(`${cluster}|${ns}`)
+				);
 			}
 		});
 	}
 
-	if (healthCheckNamespaces.size > 0) {
+	if (healthCheckTargets.size > 0) {
 		queryClient.invalidateQueries({
 			predicate: (query) => {
 				const key = query.queryKey;
-				return key.length >= 2 && key[0] === 'health-checks' && healthCheckNamespaces.has(key[1] as string);
+				// ['health-checks', rolloutNamespace, rolloutName, cluster]
+				if (key.length < 4 || key[0] !== 'health-checks') return false;
+				const ns = key[1] as string;
+				const cluster = (key[3] as string | undefined) ?? '';
+				return healthCheckTargets.has(`${cluster}|${ns}`);
 			}
 		});
 	}
 
-	if (rolloutTestNamespaces.size > 0) {
+	if (rolloutTestTargets.size > 0) {
 		queryClient.invalidateQueries({
 			predicate: (query) => {
 				const key = query.queryKey;
-				return key.length >= 2 && key[0] === 'rollout-tests' && rolloutTestNamespaces.has(key[1] as string);
+				// ['rollout-tests', rolloutNamespace, rolloutName, cluster]
+				if (key.length < 4 || key[0] !== 'rollout-tests') return false;
+				const ns = key[1] as string;
+				const cluster = (key[3] as string | undefined) ?? '';
+				return rolloutTestTargets.has(`${cluster}|${ns}`);
 			}
 		});
 	}
 
-	if (eventsNamespaces.size > 0) {
+	if (eventsTargets.size > 0) {
 		queryClient.invalidateQueries({
 			predicate: (query) => {
 				const key = query.queryKey;
-				return key.length >= 2 && key[0] === 'events' && eventsNamespaces.has(key[1] as string);
+				// ['events', rolloutNamespace, rolloutName, cluster]
+				if (key.length < 4 || key[0] !== 'events') return false;
+				const ns = key[1] as string;
+				const cluster = (key[3] as string | undefined) ?? '';
+				return eventsTargets.has(`${cluster}|${ns}`);
 			}
 		});
 	}
@@ -251,12 +305,15 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 		queryClient.invalidateQueries({
 			predicate: (query) => {
 				const key = query.queryKey;
-				// ['managed-resources', rolloutNamespace, rolloutName, kustomizationNames[]]
-				if (key.length < 4 || key[0] !== 'managed-resources') return false;
+				// ['managed-resources', rolloutNamespace, rolloutName, cluster, kustomizationNames[]]
+				if (key.length < 5 || key[0] !== 'managed-resources') return false;
 				const ns = key[1] as string;
-				const names = key[3];
+				const cluster = (key[3] as string | undefined) ?? '';
+				const names = key[4];
 				if (!Array.isArray(names)) return false;
-				return kustomizationTargets.some((t) => t.namespace === ns && names.includes(t.name));
+				return kustomizationTargets.some(
+					(t) => t.namespace === ns && t.cluster === cluster && names.includes(t.name)
+				);
 			}
 		});
 	}
@@ -282,6 +339,59 @@ let healthy = false;
  */
 export function isEventStreamHealthy(): boolean {
 	return healthy;
+}
+
+// --- Per-cluster health, fed by `event: clusters` ---
+
+/**
+ * `{"<clusterName>": true|false, ...}` for every known cluster (including
+ * the hub), sent at connect and on every change of any cluster's connection
+ * state. `null` until the FIRST such event arrives this session — the state
+ * `isClusterStreamHealthy`/`areAllClustersHealthy` both fall back out of,
+ * onto the whole-stream signal above, per the contract: "before the first
+ * `clusters` event, treat the stream as before (connection open = healthy)".
+ */
+let clusterHealth: Map<string, boolean> | null = null;
+
+function applyClusterHealth(update: Record<string, boolean>): void {
+	clusterHealth = new Map(Object.entries(update));
+}
+
+/**
+ * Whether ONE specific cluster's stream is currently connected. Rollout-
+ * scoped queries (the rollout itself, health-checks, events,
+ * managed-resources, rollout-tests, schedules) pass their own `[cluster]`
+ * route segment here so a spoke going down only slows THAT spoke's rollouts
+ * back to polling — a healthy hub or a healthy sibling spoke keeps its own
+ * 60s ceiling.
+ *
+ * Unknown cluster name (not present in the last `clusters` event) falls back
+ * to the whole-stream signal rather than assuming either state — the same
+ * "fail toward polling, not toward silence" posture `isEventStreamHealthy`
+ * already has.
+ */
+export function isClusterStreamHealthy(cluster: string): boolean {
+	if (clusterHealth === null) return isEventStreamHealthy();
+	const known = clusterHealth.get(cluster);
+	return known ?? isEventStreamHealthy();
+}
+
+/**
+ * Whether EVERY known cluster (including the hub) is connected. Fleet-wide
+ * queries — anything that reads across the whole cluster set rather than one
+ * rollout's own cluster (`['rollouts','all']` and its namespace variants,
+ * `/environments`, `/activity`, `/apps`, `/versions`, the dependency graph,
+ * and every OTHER call site that does not pass a specific cluster) use this:
+ * one spoke going down must not speed up a query that reads every cluster,
+ * but it also must not slow down a rollout ON A DIFFERENT, healthy cluster —
+ * that per-rollout case is `isClusterStreamHealthy`'s job, not this one's.
+ */
+export function areAllClustersHealthy(): boolean {
+	if (clusterHealth === null) return isEventStreamHealthy();
+	for (const up of clusterHealth.values()) {
+		if (!up) return false;
+	}
+	return true;
 }
 
 // --- Wiring: one EventSource per tab, hidden-tab suspend, reconnect-invalidates-once ---
@@ -313,6 +423,12 @@ async function pump(queryClient: QueryClient, source: EventSourceClient) {
 					applyChangeEvents(queryClient, events);
 				} catch (e) {
 					console.error('[event-stream] failed to parse changes payload:', e);
+				}
+			} else if (msg.event === 'clusters' && msg.data) {
+				try {
+					applyClusterHealth(JSON.parse(msg.data) as Record<string, boolean>);
+				} catch (e) {
+					console.error('[event-stream] failed to parse clusters payload:', e);
 				}
 			}
 			// "heartbeat" and anything else just refresh lastMessageAt above —
@@ -352,6 +468,14 @@ export function startEventStream(queryClient: QueryClient): void {
 		},
 		onDisconnect: () => {
 			healthy = false;
+			// The last `clusters` snapshot can no longer be trusted once the
+			// stream itself is down — a spoke's true state may have changed
+			// with no way for us to hear about it. Discarding it (rather than
+			// leaving stale `true`s behind) makes both `isClusterStreamHealthy`
+			// and `areAllClustersHealthy` fall back to the (now false) whole-
+			// stream signal until a fresh `clusters` event repopulates it,
+			// which the backend sends again "at connect".
+			clusterHealth = null;
 		}
 	});
 	pump(queryClient, client);
@@ -359,6 +483,7 @@ export function startEventStream(queryClient: QueryClient): void {
 	watchdog = setInterval(() => {
 		if (healthy && lastMessageAt && Date.now() - lastMessageAt > WATCHDOG_MS) {
 			healthy = false;
+			clusterHealth = null;
 			client?.close();
 			client?.connect();
 		}
@@ -400,6 +525,7 @@ export function _resetEventStreamForTests(): void {
 	connectedOnce = false;
 	healthy = false;
 	lastMessageAt = 0;
+	clusterHealth = null;
 	if (hiddenTimer) clearTimeout(hiddenTimer);
 	hiddenTimer = null;
 	if (watchdog) clearInterval(watchdog);

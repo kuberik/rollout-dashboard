@@ -71,12 +71,26 @@
 	import { get } from 'svelte/store';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsInNamespaceQueryOptions } from '$lib/api/rollouts';
+	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 
 	const cluster = $derived(get(page).params.cluster as string);
 	const namespace = $derived(get(page).params.namespace as string);
 	const name = $derived(get(page).params.name as string);
 
-	const rolloutQuery = createQuery(() => rolloutQueryOptions({ namespace, name, cluster }));
+	// ⭐ CLUSTER-AWARE — this rollout's own cluster, not the app-wide default's
+	// fleet-wide "every cluster up" gate (this used to inherit that default
+	// silently). See rollout detail Overview's identical comment.
+	const rolloutQuery = createQuery(() =>
+		rolloutQueryOptions({
+			namespace,
+			name,
+			cluster,
+			options: {
+				refetchInterval: pollWhenHealthy(5000, 60000, cluster),
+				staleTime: staleTimeWhenHealthy(1000, 30000, cluster)
+			}
+		})
+	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const kustomizations = $derived(

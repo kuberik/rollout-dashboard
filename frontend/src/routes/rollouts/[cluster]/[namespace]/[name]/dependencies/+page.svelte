@@ -206,7 +206,9 @@
 			namespace,
 			name,
 			cluster,
-			options: { refetchInterval: pollWhenHealthy(5000, 60000) }
+			// ⭐ CLUSTER-AWARE — this rollout's own cluster, not the fleet-wide
+			// "every cluster up" gate. See rollout detail's identical comment.
+			options: { refetchInterval: pollWhenHealthy(5000, 60000, cluster) }
 		})
 	);
 

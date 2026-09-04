@@ -207,26 +207,34 @@ export type RolloutTestsResponse = {
 
 export async function fetchRolloutTests(
     namespace: string,
-    name: string
+    name: string,
+    cluster?: string
 ): Promise<RolloutTestsResponse> {
-    return apiJson<RolloutTestsResponse>(`/api/rollouts/${namespace}/${name}/rollout-tests`);
+    const params = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
+    return apiJson<RolloutTestsResponse>(`/api/rollouts/${namespace}/${name}/rollout-tests${params}`);
 }
 
-export const rolloutTestsQueryKey = (namespace: string, name: string) =>
-    ['rollout-tests', namespace, name] as const;
+// `cluster` rides the key (matching `rolloutQueryKey`'s own shape) so a
+// RolloutTest event's `applyChangeEvents` predicate — namespace AND cluster —
+// can't invalidate the wrong cluster's same-named entry, and so a rollout
+// detail visit on one cluster doesn't serve another cluster's cached tests.
+export const rolloutTestsQueryKey = (namespace: string, name: string, cluster?: string) =>
+    ['rollout-tests', namespace, name, cluster] as const;
 
 export function rolloutTestsQueryOptions({
     namespace,
     name,
+    cluster,
     options
 }: {
     namespace: string;
     name: string;
+    cluster?: string;
     options?: QueryOverrides<RolloutTestsResponse>;
 }) {
     return {
-        queryKey: rolloutTestsQueryKey(namespace, name),
-        queryFn: () => fetchRolloutTests(namespace, name),
+        queryKey: rolloutTestsQueryKey(namespace, name, cluster),
+        queryFn: () => fetchRolloutTests(namespace, name, cluster),
         ...options
     };
 }

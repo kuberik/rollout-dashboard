@@ -172,11 +172,19 @@
 	}
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
+	// ⭐ CLUSTER-AWARE — this page's OWN rollout, so it passes `cluster`
+	// (the `[cluster]` route segment) rather than inheriting the app-wide
+	// default's fleet-wide "every cluster must be up" gate. A sibling spoke
+	// being down must not slow this page down when ITS cluster is healthy.
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
 			name,
-			cluster
+			cluster,
+			options: {
+				refetchInterval: pollWhenHealthy(5000, 60000, cluster),
+				staleTime: staleTimeWhenHealthy(1000, 30000, cluster)
+			}
 		})
 	);
 
@@ -561,8 +569,19 @@
 	});
 
 	// Query for managed resources — one combined fetch across all kustomizations
+	// ⭐ CLUSTER IN THE KEY — `cluster` sits before the kustomization-name list
+	// so a Kustomization event's `applyChangeEvents` predicate can match on
+	// (namespace, cluster, name) instead of namespace alone, and so this page
+	// never serves another cluster's cached managed-resources for a
+	// same-named rollout.
 	const managedResourcesQuery = createQuery(() => ({
-		queryKey: ['managed-resources', namespace, name, kustomizations.map((k) => k.metadata?.name)],
+		queryKey: [
+			'managed-resources',
+			namespace,
+			name,
+			cluster,
+			kustomizations.map((k) => k.metadata?.name)
+		],
 		queryFn: async () => {
 			const result: Record<string, ManagedResourceStatus[]> = {};
 			await Promise.all(
@@ -583,8 +602,10 @@
 			return result;
 		},
 		enabled: kustomizations.length > 0,
-		// ⭐ STREAM-AWARE — `managed-resources` is in `ROLLOUT_SCOPED_KEY_TAGS`.
-		refetchInterval: pollWhenHealthy(5000, 60000)
+		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `managed-resources` is in
+		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` scopes the cadence to this
+		// rollout's own cluster (see the rolloutQuery comment above).
+		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
 		managedResourcesQuery.data ?? {}
@@ -592,15 +613,17 @@
 
 	// Query for health checks
 	const healthChecksQuery = createQuery(() => ({
-		queryKey: ['health-checks', namespace, name],
+		queryKey: ['health-checks', namespace, name, cluster],
 		queryFn: async () => {
 			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/health-checks`));
 			if (!res.ok) return { healthChecks: [] };
 			return res.json();
 		},
 		enabled: Boolean(rollout?.spec?.healthCheckSelector),
-		// ⭐ STREAM-AWARE — `health-checks` is in `ROLLOUT_SCOPED_KEY_TAGS`.
-		refetchInterval: pollWhenHealthy(5000, 60000)
+		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `health-checks` is in
+		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` rides the key (see
+		// `managed-resources` above) and scopes the poll cadence.
+		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
 
@@ -632,14 +655,16 @@
 
 	// Query for events
 	const eventsQuery = createQuery(() => ({
-		queryKey: ['events', namespace, name],
+		queryKey: ['events', namespace, name, cluster],
 		queryFn: async () => {
 			const res = await fetch(apiUrl(`/api/rollouts/${namespace}/${name}/events`));
 			if (!res.ok) return { events: [] };
 			return res.json();
 		},
-		// ⭐ STREAM-AWARE — `events` is in `ROLLOUT_SCOPED_KEY_TAGS`.
-		refetchInterval: pollWhenHealthy(5000, 60000)
+		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `events` is in
+		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` rides the key (see
+		// `managed-resources` above) and scopes the poll cadence.
+		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const events = $derived(eventsQuery.data?.events ?? []);
 

@@ -2,11 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
 import { applyChangeEvents, type ChangeEvent } from './events';
 
+// `cluster` defaults to the hub's own name — every fixture below that doesn't
+// say otherwise is a hub-local event, matching the contract ("hub-local
+// events carry the hub's name").
 const ev = (overrides: Partial<ChangeEvent>): ChangeEvent => ({
 	type: 'update',
 	kind: 'Rollout',
 	namespace: 'team-a',
 	name: 'app-1',
+	cluster: 'hub',
 	resourceVersion: '123',
 	ts: 1,
 	...overrides
@@ -27,17 +31,25 @@ function seededClient() {
 		fleetAll: ['rollouts', 'all'],
 		fleetNsA: ['rollouts', 'namespace', 'team-a'],
 		fleetNsB: ['rollouts', 'namespace', 'team-b'],
-		rolloutA1: ['rollout', 'team-a', 'app-1', undefined],
-		rolloutA2: ['rollout', 'team-a', 'app-2', undefined], // same ns, different rollout
-		rolloutB1: ['rollout', 'team-b', 'app-1', undefined], // different ns, same name
-		permissionsA1: ['rollout-permissions', 'team-a', 'app-1', undefined],
-		testsA1: ['rollout-tests', 'team-a', 'app-1'],
+		rolloutA1: ['rollout', 'team-a', 'app-1', 'hub'],
+		rolloutA2: ['rollout', 'team-a', 'app-2', 'hub'], // same ns/cluster, different rollout
+		rolloutB1: ['rollout', 'team-b', 'app-1', 'hub'], // different ns, same name
+		// ⭐ SAME namespace/name as rolloutA1, DIFFERENT cluster — the exact
+		// collision the multi-cluster fan-in must not confuse. A hub-local
+		// `Rollout` event for team-a/app-1 must invalidate rolloutA1 and must
+		// NOT invalidate this one, and vice versa.
+		rolloutA1SpokeA: ['rollout', 'team-a', 'app-1', 'spoke-a'],
+		permissionsA1: ['rollout-permissions', 'team-a', 'app-1', 'hub'],
+		testsA1: ['rollout-tests', 'team-a', 'app-1', 'hub'],
+		testsA1SpokeA: ['rollout-tests', 'team-a', 'app-1', 'spoke-a'],
 		scheduleWindowA1: ['rollout-schedule-window', 'team-a', 'app-1', ''],
-		healthChecksA1: ['health-checks', 'team-a', 'app-1'],
-		eventsA1: ['events', 'team-a', 'app-1'],
-		managedResourcesKustA: ['managed-resources', 'team-a', 'app-1', ['kust-a']],
-		managedResourcesKustB: ['managed-resources', 'team-a', 'app-1', ['kust-b']],
-		managedResourcesOtherNs: ['managed-resources', 'team-b', 'app-1', ['kust-a']],
+		healthChecksA1: ['health-checks', 'team-a', 'app-1', 'hub'],
+		healthChecksA1SpokeA: ['health-checks', 'team-a', 'app-1', 'spoke-a'],
+		eventsA1: ['events', 'team-a', 'app-1', 'hub'],
+		managedResourcesKustA: ['managed-resources', 'team-a', 'app-1', 'hub', ['kust-a']],
+		managedResourcesKustB: ['managed-resources', 'team-a', 'app-1', 'hub', ['kust-b']],
+		managedResourcesOtherNs: ['managed-resources', 'team-b', 'app-1', 'hub', ['kust-a']],
+		managedResourcesKustASpokeA: ['managed-resources', 'team-a', 'app-1', 'spoke-a', ['kust-a']],
 		networkSchedules: ['network-schedules', ['', 'spoke-a']],
 		clusterInfo: ['cluster-info']
 	};
@@ -56,14 +68,18 @@ type Label =
 	| 'rolloutA1'
 	| 'rolloutA2'
 	| 'rolloutB1'
+	| 'rolloutA1SpokeA'
 	| 'permissionsA1'
 	| 'testsA1'
+	| 'testsA1SpokeA'
 	| 'scheduleWindowA1'
 	| 'healthChecksA1'
+	| 'healthChecksA1SpokeA'
 	| 'eventsA1'
 	| 'managedResourcesKustA'
 	| 'managedResourcesKustB'
 	| 'managedResourcesOtherNs'
+	| 'managedResourcesKustASpokeA'
 	| 'networkSchedules'
 	| 'clusterInfo';
 const ALL_LABELS: Label[] = [
@@ -73,14 +89,18 @@ const ALL_LABELS: Label[] = [
 	'rolloutA1',
 	'rolloutA2',
 	'rolloutB1',
+	'rolloutA1SpokeA',
 	'permissionsA1',
 	'testsA1',
+	'testsA1SpokeA',
 	'scheduleWindowA1',
 	'healthChecksA1',
+	'healthChecksA1SpokeA',
 	'eventsA1',
 	'managedResourcesKustA',
 	'managedResourcesKustB',
 	'managedResourcesOtherNs',
+	'managedResourcesKustASpokeA',
 	'networkSchedules',
 	'clusterInfo'
 ];
@@ -115,6 +135,27 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 		assertOnly(invalidated, ['fleetAll', 'fleetNsA', 'rolloutA1']);
 	});
 
+	// ── ⭐ MULTI-CLUSTER — the collision case. Two clusters can each host a
+	// Rollout named team-a/app-1 (a spoke-hosted rollout and a hub-local one
+	// of the same name), and their caches must not cross-invalidate. The
+	// fleet list is the one exception: it aggregates every cluster, so it
+	// still flips for a spoke's own event. ──
+	it("a hub-local Rollout event does not invalidate a SPOKE's rollout of the same namespace/name", () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [ev({ kind: 'Rollout', namespace: 'team-a', name: 'app-1', cluster: 'hub' })]);
+		assertOnly(invalidated, ['fleetAll', 'fleetNsA', 'rolloutA1']);
+		expect(invalidated('rolloutA1SpokeA')).toBe(false);
+	});
+
+	it("a SPOKE's Rollout event invalidates only that spoke's entry, not the hub's same-named one", () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({ kind: 'Rollout', namespace: 'team-a', name: 'app-1', cluster: 'spoke-a' })
+		]);
+		assertOnly(invalidated, ['fleetAll', 'fleetNsA', 'rolloutA1SpokeA']);
+		expect(invalidated('rolloutA1')).toBe(false);
+	});
+
 	// ── HealthCheck: health-checks in that namespace ONLY. Not the fleet
 	// list, not permissions, not the rollout query, not events. This is the
 	// residue the coordinator measured: probe-status writes must not touch
@@ -123,6 +164,24 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 		const { qc, invalidated } = seededClient();
 		applyChangeEvents(qc, [ev({ kind: 'HealthCheck', namespace: 'team-a', name: 'hello-probe' })]);
 		assertOnly(invalidated, ['healthChecksA1']);
+	});
+
+	it("a HealthCheck event on one cluster does not invalidate a DIFFERENT cluster's health-checks entry", () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({ kind: 'HealthCheck', namespace: 'team-a', name: 'hello-probe', cluster: 'spoke-a' })
+		]);
+		assertOnly(invalidated, ['healthChecksA1SpokeA']);
+		expect(invalidated('healthChecksA1')).toBe(false);
+	});
+
+	it("a RolloutTest event on one cluster does not invalidate a DIFFERENT cluster's rollout-tests entry", () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({ kind: 'RolloutTest', namespace: 'team-a', name: 'some-test', cluster: 'spoke-a' })
+		]);
+		assertOnly(invalidated, ['testsA1SpokeA']);
+		expect(invalidated('testsA1')).toBe(false);
 	});
 
 	// ── Kustomization: managed-resources for THAT kustomization (matched by
@@ -141,6 +200,15 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 		applyChangeEvents(qc, [ev({ kind: 'Kustomization', namespace: 'team-a', name: 'kust-a' })]);
 		expect(invalidated('managedResourcesKustB')).toBe(false);
 		expect(invalidated('managedResourcesOtherNs')).toBe(false);
+	});
+
+	it("a hub-local Kustomization event does not touch a SPOKE's managed-resources entry for the same kustomization name", () => {
+		const { qc, invalidated } = seededClient();
+		applyChangeEvents(qc, [
+			ev({ kind: 'Kustomization', namespace: 'team-a', name: 'kust-a', cluster: 'hub' })
+		]);
+		expect(invalidated('managedResourcesKustA')).toBe(true);
+		expect(invalidated('managedResourcesKustASpokeA')).toBe(false);
 	});
 
 	// ── Environment / KruiseRollout / RolloutDependency: fleet list (all

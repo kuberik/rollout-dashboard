@@ -29,7 +29,7 @@
  *    See `isRetryable` — retrying a 404 or a 401 cannot change the answer.
  */
 
-import { isEventStreamHealthy } from './events';
+import { isClusterStreamHealthy, areAllClustersHealthy } from './events';
 
 /** What the Go API returns on failure: `{"error": "...", "details": "..."}`. */
 type ApiErrorBody = { error?: string; details?: string };
@@ -157,13 +157,34 @@ export function queryRetryDelay(attemptIndex: number): number {
  * don't pass `streamedMs` (most per-page overrides — see `+layout.svelte`'s
  * own call for the one that does) keep their exact prior behavior: this is
  * additive, never a silent change to an existing call site's polling rate.
+ *
+ * ⭐ MULTI-CLUSTER FOLLOW-UP — a third, optional `cluster` argument. "Healthy"
+ * used to mean only "is the one EventSource connected"; now that the stream
+ * fans in every cluster, that single boolean is too coarse for a rollout
+ * living on one spoke while a SIBLING spoke is down. When `cluster` is given,
+ * the check is `./events`' `isClusterStreamHealthy(cluster)` — that one
+ * cluster's own connection state. When it is omitted, the check is
+ * `areAllClustersHealthy()` — every known cluster (hub included) must be up,
+ * which is the right bar for a query that reads across the whole fleet
+ * (`['rollouts','all']`, `/environments`, `/activity`, `/apps`, `/versions`,
+ * the dependency graph, and every other call site that has no one cluster to
+ * name). **Rollout-scoped queries (the rollout itself, health-checks,
+ * events, managed-resources, rollout-tests, schedules) pass their own
+ * `[cluster]` route segment; everything else keeps passing nothing**, which
+ * is a real (intentional) tightening of the old default — see
+ * `areAllClustersHealthy`'s own doc comment for why "one spoke down still
+ * lets the fleet list poll at its old cadence" is correct.
  */
 export const RECOVERY_POLL_MS = 30000;
 
-export function pollWhenHealthy(ms: number, streamedMs?: number) {
+function streamIsHealthyFor(cluster: string | undefined): boolean {
+	return cluster !== undefined ? isClusterStreamHealthy(cluster) : areAllClustersHealthy();
+}
+
+export function pollWhenHealthy(ms: number, streamedMs?: number, cluster?: string) {
 	return (query: { state: { status: string; error: unknown } }): number | false => {
 		if (query.state.status !== 'error') {
-			if (streamedMs !== undefined && isEventStreamHealthy()) return streamedMs;
+			if (streamedMs !== undefined && streamIsHealthyFor(cluster)) return streamedMs;
 			return ms;
 		}
 		return isRetryable(query.state.error) ? RECOVERY_POLL_MS : false;
@@ -172,14 +193,15 @@ export function pollWhenHealthy(ms: number, streamedMs?: number) {
 
 /**
  * `staleTime`'s stream-aware counterpart to `pollWhenHealthy` — same
- * signature shape (fallback first, stream-healthy value second), same
- * "additive, not a behavior change unless you opt in" rule. TanStack Query
- * accepts a function for `staleTime`, re-evaluated per read, so this reacts
- * to the stream going up/down exactly like `pollWhenHealthy` does for
- * `refetchInterval` — no separate subscription needed.
+ * signature shape (fallback first, stream-healthy value second, optional
+ * cluster third), same "additive, not a behavior change unless you opt in"
+ * rule for the first two arguments. TanStack Query accepts a function for
+ * `staleTime`, re-evaluated per read, so this reacts to the stream going
+ * up/down exactly like `pollWhenHealthy` does for `refetchInterval` — no
+ * separate subscription needed.
  */
-export function staleTimeWhenHealthy(ms: number, streamedMs: number) {
-	return (): number => (isEventStreamHealthy() ? streamedMs : ms);
+export function staleTimeWhenHealthy(ms: number, streamedMs: number, cluster?: string) {
+	return (): number => (streamIsHealthyFor(cluster) ? streamedMs : ms);
 }
 
 /**
