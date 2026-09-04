@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // getK8sReadClient is the handler-side helper for the shared, long-lived read
@@ -112,4 +113,25 @@ func redirectToHubMiddleware(hubURL string) gin.HandlerFunc {
 		c.Redirect(http.StatusFound, hubBase+c.Request.URL.RequestURI())
 		c.Abort()
 	}
+}
+
+// writeUpstreamError answers a failed upstream call (apiserver, OCI, GitHub) with the HTTP status the
+// frontend keys its wording on. An apiserver Forbidden is the
+// operator's own RBAC saying no (403, "You don't have access to this"), a
+// NotFound is a stale page (404), a Conflict is a lost update race (409);
+// only a genuinely unexpected failure stays a 500. The body shape is the
+// one every handler already used: {"error": message, "details": err}.
+func writeUpstreamError(c *gin.Context, message string, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case apierrors.IsUnauthorized(err):
+		status = http.StatusUnauthorized
+	case apierrors.IsForbidden(err):
+		status = http.StatusForbidden
+	case apierrors.IsNotFound(err):
+		status = http.StatusNotFound
+	case apierrors.IsConflict(err):
+		status = http.StatusConflict
+	}
+	c.JSON(status, gin.H{"error": message, "details": err.Error()})
 }

@@ -366,10 +366,7 @@ func main() {
 				allowedNS, err := kubernetes.AllowedNamespaces(c, namespaces)
 				if err != nil {
 					log.Printf("Error checking namespace visibility: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{
-						"error":   "Failed to check namespace visibility",
-						"details": err.Error(),
-					})
+					writeUpstreamError(c, "Failed to check namespace visibility", err)
 					return
 				}
 
@@ -586,10 +583,7 @@ func main() {
 			environments, err := k8sClient.GetEnvironments(context.Background(), namespace)
 			if err != nil {
 				log.Printf("Error fetching environments: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch environments",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch environments", err)
 				return
 			}
 
@@ -615,10 +609,7 @@ func main() {
 			rolloutTests, err := k8sClient.GetRolloutTestsByRolloutName(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout tests: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch rollout tests",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch rollout tests", err)
 				return
 			}
 
@@ -674,10 +665,7 @@ func main() {
 			updatedRollout, err := k8sClient.UpdateRolloutVersion(c.Request.Context(), namespace, name, pinRequest.Version, explanation)
 			if err != nil {
 				log.Printf("Error updating rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to update rollout version",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to update rollout version", err)
 				return
 			}
 
@@ -718,10 +706,7 @@ func main() {
 			updatedRollout, err := k8sClient.AddForceDeployAnnotation(c.Request.Context(), namespace, name, forceDeployRequest.Version, message)
 			if err != nil {
 				log.Printf("Error adding force-deploy annotation: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to add force-deploy annotation",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to add force-deploy annotation", err)
 				return
 			}
 
@@ -755,10 +740,7 @@ func main() {
 			updatedRollout, err := k8sClient.AddBypassGatesAnnotation(context.Background(), namespace, name, bypassRequest.Version)
 			if err != nil {
 				log.Printf("Error adding bypass-gates annotation: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to add bypass-gates annotation",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to add bypass-gates annotation", err)
 				return
 			}
 
@@ -803,10 +785,7 @@ func main() {
 			updatedRollout, err := k8sClient.ChangeVersion(c.Request.Context(), namespace, name, req.Version, req.Pin, message)
 			if err != nil {
 				log.Printf("Error changing version: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to change version",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to change version", err)
 				return
 			}
 
@@ -829,10 +808,7 @@ func main() {
 			updatedRollout, err := k8sClient.AddUnblockFailedAnnotation(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error adding unblock-failed annotation: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to add unblock-failed annotation",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to add unblock-failed annotation", err)
 				return
 			}
 
@@ -866,10 +842,7 @@ func main() {
 			updatedRollout, err := k8sClient.MarkDeploymentSuccessful(context.Background(), namespace, name, markSuccessfulRequest.Message)
 			if err != nil {
 				log.Printf("Error marking deployment as successful: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to mark deployment as successful",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to mark deployment as successful", err)
 				return
 			}
 
@@ -892,10 +865,7 @@ func main() {
 			previousScanTime, err := k8sClient.ReconcileAllFluxResources(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error reconciling Flux resources: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to reconcile Flux resources",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to reconcile Flux resources", err)
 				return
 			}
 
@@ -933,20 +903,14 @@ func main() {
 				_, err := k8sClient.ResetBakeStatusToDeploying(context.Background(), namespace, req.KuberikRolloutName)
 				if err != nil {
 					log.Printf("Error resetting bake status: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{
-						"error":   "Failed to reset bake status",
-						"details": err.Error(),
-					})
+					writeUpstreamError(c, "Failed to reset bake status", err)
 					return
 				}
 
 				// Reset health checks to Pending
 				if err := k8sClient.ResetHealthChecksToPending(context.Background(), namespace, req.KuberikRolloutName); err != nil {
 					log.Printf("Error resetting health checks: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{
-						"error":   "Failed to reset health checks",
-						"details": err.Error(),
-					})
+					writeUpstreamError(c, "Failed to reset health checks", err)
 					return
 				}
 			}
@@ -955,10 +919,7 @@ func main() {
 			updatedRollout, err := k8sClient.ContinueKruiseRollout(context.Background(), namespace, kruiseRolloutName)
 			if err != nil {
 				log.Printf("Error continuing kruise rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to continue kruise rollout",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to continue kruise rollout", err)
 				return
 			}
 
@@ -997,7 +958,7 @@ func main() {
 			}
 
 			if err := k8sClient.SetRetryAnnotation(context.Background(), namespace, kuberikRolloutName, mode); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger retry", "details": err.Error()})
+				writeUpstreamError(c, "Failed to trigger retry", err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": "ok", "action": mode})
@@ -1020,10 +981,7 @@ func main() {
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch rollout",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch rollout", err)
 				return
 			}
 
@@ -1032,10 +990,7 @@ func main() {
 			imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, imagePolicyName)
 			if err != nil {
 				log.Printf("Error fetching image policy: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch image policy",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch image policy", err)
 				return
 			}
 
@@ -1044,10 +999,7 @@ func main() {
 			imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imageRepoName)
 			if err != nil {
 				log.Printf("Error fetching image repository: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch image repository",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch image repository", err)
 				return
 			}
 
@@ -1085,10 +1037,7 @@ func main() {
 			)
 			if err != nil {
 				log.Printf("Error fetching image contents: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch image contents",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch image contents", err)
 				return
 			}
 
@@ -1138,10 +1087,7 @@ func main() {
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch rollout",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch rollout", err)
 				return
 			}
 
@@ -1181,7 +1127,7 @@ func main() {
 			}
 			ghClient, err := githubapp.UserClient(token)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to build GitHub client", "details": err.Error()})
+				writeUpstreamError(c, "Failed to build GitHub client", err)
 				return
 			}
 
@@ -1518,10 +1464,7 @@ func main() {
 			managedResources, err := k8sClient.GetKustomizationManagedResources(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching managed resources: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch managed resources",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch managed resources", err)
 				return
 			}
 
@@ -1561,10 +1504,7 @@ func main() {
 			// Get the Kustomization
 			kustomization, err := k8sClient.GetKustomization(context.Background(), namespace, name)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch kustomization",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch kustomization", err)
 				return
 			}
 
@@ -1790,10 +1730,7 @@ func main() {
 			allowed, err := k8sClient.CheckRolloutPermission(context.Background(), verb, namespace, name)
 			if err != nil {
 				log.Printf("Error checking permission: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to check permission",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to check permission", err)
 				return
 			}
 
@@ -1863,10 +1800,7 @@ func main() {
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch rollout",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch rollout", err)
 				return
 			}
 
@@ -1874,10 +1808,7 @@ func main() {
 			healthChecks, err := k8sClient.GetHealthChecksBySelector(context.Background(), namespace, rollout.Spec.HealthCheckSelector)
 			if err != nil {
 				log.Printf("Error fetching health checks: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch health checks",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch health checks", err)
 				return
 			}
 
@@ -1917,7 +1848,7 @@ func main() {
 			events, err := k8sClient.GetEventsForRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching events: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events", "details": err.Error()})
+				writeUpstreamError(c, "Failed to fetch events", err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"events": events})
@@ -1940,10 +1871,7 @@ func main() {
 			rollout, err := k8sClient.GetRollout(context.Background(), namespace, name)
 			if err != nil {
 				log.Printf("Error fetching rollout: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch rollout",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch rollout", err)
 				return
 			}
 
@@ -1951,10 +1879,7 @@ func main() {
 			namespaceObj, err := k8sClient.GetClientset().CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{})
 			if err != nil {
 				log.Printf("Error fetching namespace: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch namespace",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch namespace", err)
 				return
 			}
 
@@ -2000,10 +1925,7 @@ func main() {
 
 			if err != nil {
 				log.Printf("Error fetching rollout schedules: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "Failed to fetch rollout schedules",
-					"details": err.Error(),
-				})
+				writeUpstreamError(c, "Failed to fetch rollout schedules", err)
 				return
 			}
 
