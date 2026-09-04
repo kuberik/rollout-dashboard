@@ -1,0 +1,23 @@
+import { chromium } from '/home/luka/.claude/skills/gstack/node_modules/playwright-core/index.mjs';
+import fs from 'node:fs';
+const W=+(process.argv[2]||1440);
+const b=await chromium.launch({headless:true});
+const c=await b.newContext({ignoreHTTPSErrors:true,viewport:{width:W,height:W<500?844:900}});
+const p=await c.newPage();
+await p.addInitScript(()=>{const OW=window.WebSocket;window.WebSocket=function(u,pr){const a=Array.isArray(pr)?pr:(pr?[pr]:[]);if(a.includes('vite-hmr')||String(u).includes('vite'))return{readyState:3,close(){},send(){},addEventListener(){},removeEventListener(){}};return new OW(u,pr);};window.WebSocket.prototype=OW.prototype;});
+let on=true;
+await p.route(u=>{try{const s=new URL(u).pathname; return /managed-resources|health-checks|\/events$|permissions/.test(s);}catch{return false}}, async r=>{ if(on) await new Promise(x=>setTimeout(x,4000)); return r.continue(); });
+await p.goto('https://127.0.0.1:5173/rollouts/prod/hello-world-prod/hello-world-app',{waitUntil:'commit'});
+await p.waitForTimeout(2500);
+const probe=()=>{const m=document.querySelector('main');const o=[];
+ for(const e of m.querySelectorAll('section,[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-lg"]')){const r=e.getBoundingClientRect(); if(r.height>30&&r.width>120) o.push({y:Math.round(r.y),h:Math.round(r.height),x:Math.round(r.x),w:Math.round(r.width),t:(e.textContent||'').replace(/\s+/g,' ').trim().slice(0,32)});}
+ return {cards:o, sh:Math.round(m.scrollHeight)};};
+const A=await p.evaluate(probe);
+fs.writeFileSync('/tmp/claude-1000/loadaudit/rd-early.png', await p.screenshot());
+on=false; await p.waitForTimeout(5000);
+const B=await p.evaluate(probe);
+fs.writeFileSync('/tmp/claude-1000/loadaudit/rd-late.png', await p.screenshot());
+console.log('mainScrollH '+A.sh+' -> '+B.sh);
+console.log('-- EARLY cards --'); A.cards.forEach(c=>console.log('  '+String(c.x).padStart(5)+','+String(c.y).padStart(5)+' '+String(c.w).padStart(4)+'x'+String(c.h).padStart(4)+'  '+c.t));
+console.log('-- LATE cards --'); B.cards.forEach(c=>console.log('  '+String(c.x).padStart(5)+','+String(c.y).padStart(5)+' '+String(c.w).padStart(4)+'x'+String(c.h).padStart(4)+'  '+c.t));
+await b.close();

@@ -1,0 +1,12 @@
+import { chromium } from '/home/luka/.claude/skills/gstack/node_modules/playwright-core/index.mjs';
+const url = process.argv[2], W = +(process.argv[3]||1440);
+const b = await chromium.launch({headless:true});
+const c = await b.newContext({ignoreHTTPSErrors:true, viewport:{width:W,height:900}});
+const p = await c.newPage();
+const t0 = Date.now(); const rows=[];
+p.on('request', r => { if (/\/api\//.test(r.url())) rows.push({u:r.url().replace('https://127.0.0.1:5173',''), start:Date.now()-t0, end:null}); });
+p.on('response', async r => { const row = rows.find(x=>x.u===r.url().replace('https://127.0.0.1:5173','') && x.end===null); if(row){ row.end=Date.now()-t0; try{ row.bytes=(await r.body()).length; }catch{} } });
+await p.goto(url, {waitUntil:'load', timeout:60000});
+await p.waitForTimeout(6000);
+for (const r of rows) console.log(String(r.start).padStart(6), '->', String(r.end).padStart(6), String(r.bytes||'').padStart(8), r.u);
+await b.close();

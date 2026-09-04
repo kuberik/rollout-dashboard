@@ -1,0 +1,22 @@
+import { chromium } from '/home/luka/.claude/skills/gstack/node_modules/playwright-core/index.mjs';
+import fs from 'node:fs';
+const b=await chromium.launch({headless:true});
+const c=await b.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:900}});
+const p=await c.newPage();
+await p.addInitScript(()=>{const OW=window.WebSocket;window.WebSocket=function(u,pr){const a=Array.isArray(pr)?pr:(pr?[pr]:[]);if(a.includes('vite-hmr')||String(u).includes('vite'))return{readyState:3,close(){},send(){},addEventListener(){},removeEventListener(){}};return new OW(u,pr);};window.WebSocket.prototype=OW.prototype;});
+let on=false;
+await p.route(u=>{try{const q=new URL(u);return q.pathname.startsWith('/api/')&&!q.pathname.startsWith('/api/events/stream');}catch{return false}}, async r=>{ if(on) await new Promise(x=>setTimeout(x,3000)); return r.continue(); });
+p.on('request',r=>{const u=r.url(); if(on&&/127.0.0.1:5173\/api\//.test(u)) console.log('   REQ '+u.replace('https://127.0.0.1:5173',''));});
+await p.goto('https://127.0.0.1:5173/rollouts/prod/hello-world-prod/hello-world-app',{waitUntil:'load'});
+await p.waitForTimeout(2500);
+await p.click('button:has-text("Change Version")'); await p.waitForTimeout(600);
+on=true;
+await p.click('[role="dialog"] button:has-text("0afab6f")');
+await p.waitForTimeout(900);
+fs.writeFileSync('/tmp/claude-1000/loadaudit/dlg-step2-early.png', await p.screenshot({clip:{x:272,y:60,width:900,height:780}}));
+on=false; await p.waitForTimeout(4000);
+fs.writeFileSync('/tmp/claude-1000/loadaudit/dlg-step2-late.png', await p.screenshot({clip:{x:272,y:60,width:900,height:780}}));
+// geometry of right pane blocks
+const g=await p.evaluate(()=>[...document.querySelectorAll('[role="dialog"] *')].filter(e=>e.getBoundingClientRect().width>200&&e.getBoundingClientRect().height>30).slice(0,14).map(e=>{const r=e.getBoundingClientRect();return Math.round(r.x)+','+Math.round(r.y)+' '+Math.round(r.width)+'x'+Math.round(r.height)+' '+(e.textContent||'').replace(/\s+/g,' ').trim().slice(0,36);}));
+console.log(g.join('\n'));
+await b.close();

@@ -1,0 +1,11 @@
+import { chromium } from '/home/luka/.claude/skills/gstack/node_modules/playwright-core/index.mjs';
+const b = await chromium.launch({headless:true});
+const c = await b.newContext({ignoreHTTPSErrors:true, viewport:{width:1440,height:900}});
+const p = await c.newPage(); const t0=Date.now();
+p.on('framenavigated', f=>{ if(f===p.mainFrame()) console.log((Date.now()-t0+'').padStart(6),'NAV', f.url()); });
+p.on('load', ()=>console.log((Date.now()-t0+'').padStart(6),'LOAD'));
+p.on('console', m=>{ const t=m.text(); if(/vite|hmr|reload/i.test(t)) console.log((Date.now()-t0+'').padStart(6),'CONSOLE', t.slice(0,120)); });
+p.on('request', r=>{ if (r.isNavigationRequest() && r.frame()===p.mainFrame()) console.log((Date.now()-t0+'').padStart(6),'DOCREQ', r.url()); });
+await p.goto('https://127.0.0.1:5173/',{waitUntil:'load'});
+await p.waitForTimeout(40000);
+await b.close();

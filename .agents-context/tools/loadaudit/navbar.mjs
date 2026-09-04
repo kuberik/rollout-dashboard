@@ -1,0 +1,21 @@
+import { chromium } from '/home/luka/.claude/skills/gstack/node_modules/playwright-core/index.mjs';
+const W=+(process.argv[2]||1440);
+const b=await chromium.launch({headless:true});
+const c=await b.newContext({ignoreHTTPSErrors:true,viewport:{width:W,height:900}});
+const p=await c.newPage();
+await p.addInitScript(()=>{const OW=window.WebSocket;window.WebSocket=function(u,pr){const a=Array.isArray(pr)?pr:(pr?[pr]:[]);if(a.includes('vite-hmr')||String(u).includes('vite'))return{readyState:3,close(){},send(){},addEventListener(){},removeEventListener(){}};return new OW(u,pr);};window.WebSocket.prototype=OW.prototype;});
+let delayOn=true;
+await p.route(u=>{try{return new URL(u).pathname.startsWith('/api/auth/github');}catch{return false}}, async r=>{ if(delayOn) await new Promise(x=>setTimeout(x,2500)); return r.continue(); });
+const PROBE=`(()=>{const nav=document.querySelector('header,nav'); const out=[];
+ for(const e of document.querySelectorAll('header button, header a, nav button, nav a')){const r=e.getBoundingClientRect(); if(r.height>0) out.push({t:(e.textContent||e.getAttribute('aria-label')||'').replace(/\\s+/g,' ').trim().slice(0,26),x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)});}
+ return out;})()`;
+p.goto('https://127.0.0.1:5173/',{waitUntil:'commit'}).catch(()=>{});
+await p.waitForTimeout(1200);
+const A=await p.evaluate(PROBE);
+delayOn=false;
+await p.waitForTimeout(4000);
+const B=await p.evaluate(PROBE);
+console.log('=== navbar @'+W);
+console.log('-- before github status --'); A.forEach(e=>console.log('   x='+String(e.x).padStart(5)+' w='+String(e.w).padStart(4)+' h='+String(e.h).padStart(3)+'  '+e.t));
+console.log('-- after --'); B.forEach(e=>console.log('   x='+String(e.x).padStart(5)+' w='+String(e.w).padStart(4)+' h='+String(e.h).padStart(3)+'  '+e.t));
+await b.close();

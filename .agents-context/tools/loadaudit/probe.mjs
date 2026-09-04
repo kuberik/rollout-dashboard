@@ -1,0 +1,13 @@
+import { chromium } from '/home/luka/.claude/skills/gstack/node_modules/playwright-core/index.mjs';
+const b = await chromium.launch({headless:true});
+const c = await b.newContext({ignoreHTTPSErrors:true, viewport:{width:1440,height:900}});
+const p = await c.newPage();
+p.on('console', m => { if(m.type()==='error') console.log('CONSOLE', m.text().slice(0,120)); });
+p.on('framenavigated', f => { if(f===p.mainFrame()) console.log('NAV ->', f.url()); });
+await p.goto('https://127.0.0.1:5173/', {waitUntil:'load', timeout:60000});
+await p.waitForTimeout(3000);
+console.log('final url', p.url());
+console.log('title', await p.title());
+const t = await p.evaluate(()=>document.body.innerText.slice(0,400));
+console.log('TEXT:', t);
+await b.close();
