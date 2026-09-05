@@ -71,9 +71,18 @@ func proxyToRemote(c *gin.Context, spokeBase string) {
 		return
 	}
 
-	// Forward request headers (minus hop-by-hop).
+	// Forward request headers (minus hop-by-hop, minus Accept-Encoding).
+	//
+	// ⛔ NEVER FORWARD Accept-Encoding. (2026-09-05, from the human on a phone:
+	// a spoke rollout's JSON rendered as gzip garbage.) With the browser's
+	// Accept-Encoding forwarded, the spoke gzipped its answer, and the hub's
+	// own gzip middleware compressed it AGAIN and appended a second
+	// `Content-Encoding: gzip`. Chrome silently decodes both layers; Safari
+	// decodes one and shows the rest as bytes. Without the header Go's
+	// transport negotiates gzip with the spoke itself and transparently
+	// decompresses, so the hub's middleware compresses exactly once.
 	for k, vs := range c.Request.Header {
-		if hopByHopHeaders[strings.ToLower(k)] {
+		if hopByHopHeaders[strings.ToLower(k)] || strings.EqualFold(k, "Accept-Encoding") {
 			continue
 		}
 		for _, v := range vs {
@@ -92,9 +101,11 @@ func proxyToRemote(c *gin.Context, spokeBase string) {
 	}
 	defer resp.Body.Close()
 
-	// Forward response headers (minus hop-by-hop).
+	// Forward response headers (minus hop-by-hop, minus any encoding the spoke
+	// applied: the transport has already decoded it, and the hub's middleware
+	// decides the encoding the client gets).
 	for k, vs := range resp.Header {
-		if hopByHopHeaders[strings.ToLower(k)] {
+		if hopByHopHeaders[strings.ToLower(k)] || strings.EqualFold(k, "Content-Encoding") || strings.EqualFold(k, "Content-Length") {
 			continue
 		}
 		for _, v := range vs {
