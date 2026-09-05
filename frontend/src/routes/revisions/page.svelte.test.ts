@@ -1,4 +1,13 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+// The page remembers its last shape (repository count) in localStorage via
+// `skeleton-hints`; another test file in the same worker can leave a value
+// behind, which once made the two-repo test fail only when run alongside
+// `src/lib/messages`. Start every test from a clean store.
+beforeEach(() => {
+	localStorage.clear();
+	sessionStorage.clear();
+});
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
