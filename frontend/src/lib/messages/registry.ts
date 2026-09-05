@@ -207,7 +207,17 @@ export const SURFACES: readonly Surface[] = [
 		// both the app and the environment axes by construction. Recorded
 		// rather than reworded: this encodes the status quo, and the status
 		// quo is that two different sentences are spelled identically.
-		{ 'up-to-date headline': ['app', 'environment'] }
+		//
+		// ⭐ ADDED REVISIONS-2026-09-05 — THE SERVICE LEDGER'S RANK CHIP.
+		// `rankTitle`'s "behind" sentence (`"{app} can still take N newer
+		// builds"`) is a fact about a (service, build) pair on that
+		// service's OWN ladder — true of every environment currently
+		// running that build, which the row states as a RUN OF ENV CHIPS
+		// beside the chip, not as one fixed environment. Demanding it name
+		// one environment would be demanding a different, narrower claim
+		// than the row actually makes; `aggregates` is exactly the escape
+		// hatch `card rollup`/`up-to-date headline` already use for this.
+		{ 'up-to-date headline': ['app', 'environment'], 'rank title': ['environment'] }
 	),
 	// ── ADDED 2026-08-31, AFTER `/apps`'s BANNER SHIPPED THE DEFECT THIS
 	//    SUITE WAS WRITTEN FOR. The previous report named these surfaces as

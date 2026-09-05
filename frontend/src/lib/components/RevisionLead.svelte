@@ -40,10 +40,12 @@
 	import CoverageBar from '$lib/components/CoverageBar.svelte';
 	import BuildStateMark from '$lib/components/BuildStateMark.svelte';
 	import FleetSpread from '$lib/components/FleetSpread.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import {
 		coverageSegments,
 		buildState,
 		releaseSplit,
+		type CoverageSegment,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 
@@ -54,7 +56,16 @@
 		coverage,
 		spread = true,
 		meta,
-		children
+		children,
+		// ⭐ ADDITIVE, REVISIONS-2026-09-05 §2 — `/revisions` (the list) is the
+		// only caller that passes these; every existing call site (the detail
+		// page's own hero) keeps computing `segments`/the held text exactly as
+		// before. Kept as opt-in props rather than a rewrite of this
+		// component's default behaviour because this object is shared with
+		// `/revisions/[...slug]`, a route this pass does not own.
+		barSegments = undefined,
+		hideBar = false,
+		showHeldChip = false
 	}: {
 		/** The build's short sha — the object's name, at 24px mono. */
 		short: string;
@@ -65,17 +76,33 @@
 		    heading can be nothing but the identifier. */
 		eyebrow: string;
 		coverage: RevisionCoverage;
-		/** `false` on the detail page: there the bucket CARDS are the spread, at
-		    full size and carrying the actions. Drawing both would print the same
-		    environments twice on one screen. */
+		/** `false` on the detail page (the bucket CARDS are the spread there,
+		    at full size and carrying the actions) and on `/revisions`' own
+		    hero (REVISIONS-2026-09-05, Removed §6: the per-service LEDGER
+		    above the hero is now the one statement of "who runs it and
+		    where" — repeating it as a service→env spread inside the hero
+		    would print the same fact twice on one screen). */
 		spread?: boolean;
 		/** A second line under the identifier — repo, commit summary, scope. */
 		meta?: Snippet;
 		/** Buttons and any page-specific note, under the spread. */
 		children?: Snippet;
+		/**
+		 * ⭐ §2's "one fill" bar. When set, replaces the bucketed
+		 * `coverageSegments(coverage)` the bar would otherwise draw — the
+		 * caller is expected to pass a single `live`-only segment.
+		 */
+		barSegments?: CoverageSegment[];
+		/** §2: "the bar draws only when it measures a shortfall". */
+		hideBar?: boolean;
+		/**
+		 * §2: a held build states its count as a chip under the figure instead
+		 * of the inline `· N held on …` clause in the count's caption line.
+		 */
+		showHeldChip?: boolean;
 	} = $props();
 
-	const segments = $derived(coverageSegments(coverage));
+	const segments = $derived(barSegments ?? coverageSegments(coverage));
 	const state = $derived(buildState(coverage));
 
 	const barLabel = $derived(
@@ -166,10 +193,32 @@
 					single space — and it rendered `RUNNING IT·2 HELD…` with none.
 					A literal space here is unambiguous at any indentation.
 				-->
-				running it{#if heldTotal > 0}<span class="text-orange-950 dark:text-orange-300">
+				running it{#if heldTotal > 0 && !showHeldChip}<span
+						class="text-orange-950 dark:text-orange-300"
+					>
 						&nbsp;· {heldTotal} held on {heldLabel ?? 'a newer release'}</span
 					>{/if}
 			</div>
+			<!--
+				⭐ §2's "3 HELD" CHIP, UNDER THE FIGURE. (REVISIONS-2026-09-05) The
+				list page hides the bar entirely at full coverage, so the held fact
+				can no longer ride the caption line above a segment that visibly
+				proves it — a bare `running it` with no bar and no mark reads as
+				"done". `alarm` is the product's held-and-needs-a-look chip; the
+				release-split sentence below still names WHICH release and WHERE.
+			-->
+			{#if showHeldChip && heldTotal > 0}
+				<div class="mt-1 flex w-full justify-end">
+					<Chip
+						role="alarm"
+						label="{heldTotal} held"
+						wide
+						title="{heldTotal} place{heldTotal === 1
+							? ''
+							: 's'} run this on an older release, and a newer one is held by a rule"
+					/>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -188,7 +237,9 @@
 		{/if}
 	</div>
 
-	<CoverageBar {segments} label={barLabel} class="mt-3" />
+	{#if !hideBar}
+		<CoverageBar {segments} label={barLabel} class="mt-3" />
+	{/if}
 
 	<!-- ⛔ THE TWO-SWATCH LEGEND IS GONE. (2026-09-03, direct from the human,
 	     overriding the note this comment used to carry.) It explained a bar

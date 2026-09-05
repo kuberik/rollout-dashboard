@@ -4,7 +4,8 @@ import {
 	groupServicesByLabel,
 	rankSentence,
 	resolveRevision,
-	rowNamesBuild
+	rowNamesBuild,
+	serviceLedger
 } from './revision-ledger';
 import type { Environment, Rollout } from '../../types';
 
@@ -364,5 +365,60 @@ describe('resolveRevision', () => {
 		const [repo] = buildRevisionLedger(rollouts, environments);
 		expect(resolveRevision(repo, 'deadbee')).toBeNull();
 		expect(resolveRevision(null, 'aaaaaaa')).toBeNull();
+	});
+});
+
+describe('a repo with zero deployed builds still appears (REVISIONS-2026-09-05)', () => {
+	it('keeps a repo whose services have never deployed anything, as long as it is KNOWN', () => {
+		const A = [rel('aaaaaaa', '1.3.0', 10), rel('bbbbbbb', '1.2.0', 120)];
+		// A rollout that PUBLISHES a release list but has no `history` at all —
+		// the shape of a brand-new app nobody has promoted yet.
+		const rollouts = [rollout('api', 'api-dev', A, [])];
+		const environments = [environment('api', 'api-dev', 'dev')];
+		const ledgers = buildRevisionLedger(rollouts, environments);
+		expect(ledgers).toHaveLength(1);
+		expect(ledgers[0].rows).toHaveLength(0);
+		expect(ledgers[0].knownRevisions).toBe(2);
+		expect(ledgers[0].pending).toHaveLength(2);
+	});
+
+	it('still drops a repo with nothing known at all', () => {
+		// Belt and braces: `groupRolloutsByApp` should never hand back a group
+		// whose ladder is entirely empty, but the ledger builder does not rely
+		// on that alone.
+		expect(buildRevisionLedger([], [])).toHaveLength(0);
+	});
+});
+
+describe('serviceLedger', () => {
+	it('gives every service one line per build it is actually live on', () => {
+		const { rollouts, environments } = fixture();
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		const groups = serviceLedger(repo);
+		expect(groups.map((g) => g.appName)).toEqual(['api', 'web']);
+		// `api` is fully converged on the head everywhere — one line.
+		const api = groups.find((g) => g.appName === 'api')!;
+		expect(api.lines).toHaveLength(1);
+		expect(api.lines[0].rank).toBe(0);
+		expect(api.lines[0].slots.map((s) => s.envName)).toEqual(['dev', 'prod']);
+		// `web` is on the head in dev but two builds behind in prod — TWO
+		// lines, one per build it is actually running, not one row that tries
+		// to state both ranks at once.
+		const web = groups.find((g) => g.appName === 'web')!;
+		expect(web.lines).toHaveLength(2);
+		expect(web.lines.map((l) => l.rank)).toEqual([0, 2]);
+		expect(web.lines.find((l) => l.rank === 0)!.slots.map((s) => s.envName)).toEqual(['dev']);
+		expect(web.lines.find((l) => l.rank === 2)!.slots.map((s) => s.envName)).toEqual(['prod']);
+	});
+
+	it('gives a service that has never deployed an empty group, not a missing one', () => {
+		const A = [rel('aaaaaaa', '1.3.0', 10)];
+		const rollouts = [rollout('api', 'api-dev', A, [])];
+		const environments = [environment('api', 'api-dev', 'dev')];
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		const groups = serviceLedger(repo);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].appName).toBe('api');
+		expect(groups[0].lines).toHaveLength(0);
 	});
 });

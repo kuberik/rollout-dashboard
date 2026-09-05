@@ -654,7 +654,18 @@ export function buildRevisionLedger(
 			// because "row position is the rank" must not let the two disagree.
 			.sort(byRecency);
 
-		if (rows.length === 0) continue;
+		// ⭐ A REPO WITH ZERO DEPLOYS IS STILL A REPO. (REVISIONS-2026-09-05,
+		// "repo with no deployed build") This used to be `rows.length === 0`,
+		// so a repo none of whose services had EVER deployed anything was
+		// dropped from `ledgers` entirely — not merely hero-less, unreachable:
+		// no card, no row, no detail page for any of its `known` builds. The
+		// per-service ledger (`serviceLedger`, below) is built to answer
+		// "Not deployed" for exactly this repo, and the rail's `Never
+		// deployed` card already renders from `pending` alone — both need the
+		// repo to still be IN `ledgers`. Only a repo with nothing known at
+		// all (no rollout has ever named it on a release list) has truly
+		// nothing to show.
+		if (rows.length === 0 && known.size === 0) continue;
 
 		// THE OTHER SIDE OF THE SCOPE LINE, MADE REACHABLE. See `pending` on
 		// `RepoLedger`: these are the ladder's builds that no service has ever
@@ -739,4 +750,75 @@ export function findRow(ledger: RepoLedger | null, revision: string | null): Rev
 		ledger.pending.find((r) => r.revision === revision) ??
 		null
 	);
+}
+
+/**
+ * ONE LINE PER (SERVICE, BUILD) THE SERVICE IS ACTUALLY LIVE ON.
+ *
+ * `REVISIONS-2026-09-05.md` §7 — the answer to *"what is `hello-api-app`
+ * running everywhere"*, which the ledger of `RepoLedger.rows` cannot give
+ * directly: a `RevisionRow` is keyed by BUILD, so a service that runs one
+ * build in DEV/STAGING and an older one in PROD (a promotion in flight) has
+ * its story split across two rows. This re-indexes the other way, BY
+ * SERVICE, walking every deployed row once.
+ *
+ * A service can own more than one line — `hello-multi-app` above — because
+ * a promotion in flight is exactly two builds live at once on one service's
+ * own ladder. A service that has never carried a live slot on any deployed
+ * row gets a group with an EMPTY `lines` array, which the page renders as
+ * one `Not deployed` row; that is the reason `names` is walked across BOTH
+ * `repo.rows` and `repo.pending` — a service that has only ever appeared on
+ * a pending (never-deployed) build must still get its own "Not deployed"
+ * line rather than being missing from the ledger altogether.
+ */
+export type ServiceLedgerLine = {
+	appName: string;
+	revision: string;
+	short: string;
+	/** Rank on THIS service's own ladder; null when unplaceable. Never a guess. */
+	rank: number | null;
+	ladderLength: number;
+	/** Live slots for this (service, build) pair, in `compareEnvironmentNames` order. */
+	slots: RevisionSlot[];
+};
+
+export type ServiceLedgerGroup = {
+	appName: string;
+	/** Empty means this service has never deployed anything. */
+	lines: ServiceLedgerLine[];
+};
+
+export function serviceLedger(repo: Pick<RepoLedger, 'rows' | 'pending'>): ServiceLedgerGroup[] {
+	const names = new Set<string>();
+	for (const r of repo.rows) for (const s of r.services) names.add(s.appName);
+	for (const r of repo.pending) for (const s of r.services) names.add(s.appName);
+
+	const byApp = new Map<string, ServiceLedgerLine[]>();
+	for (const n of names) byApp.set(n, []);
+
+	for (const row of repo.rows) {
+		for (const service of row.services) {
+			if (service.liveSlots === 0) continue;
+			const slots = service.slots.filter((s) => s.onIt);
+			if (slots.length === 0) continue;
+			byApp.get(service.appName)!.push({
+				appName: service.appName,
+				revision: row.revision,
+				short: row.short,
+				rank: service.rank,
+				ladderLength: service.ladderLength,
+				slots
+			});
+		}
+	}
+
+	return [...names].sort((a, b) => a.localeCompare(b)).map((appName) => ({
+		appName,
+		// Newest first, the same convention as every other list on the page —
+		// a service running two builds at once shows the one it is MOSTLY on
+		// (or, on a tie, the newer one) first.
+		lines: (byApp.get(appName) ?? []).sort(
+			(a, b) => (a.rank ?? Number.POSITIVE_INFINITY) - (b.rank ?? Number.POSITIVE_INFINITY)
+		)
+	}));
 }
