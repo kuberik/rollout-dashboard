@@ -770,6 +770,7 @@ routes/+error.svelte	code	Nothing in the dashboard answers to this address. It m
 routes/+error.svelte	code	The dashboard hit an error rendering this page. It is not a problem with your cluster.
 routes/+error.svelte	code	This address does not exist
 routes/+error.svelte	code	This page could not be loaded
+routes/+layout.svelte	code	(min-width: 640px)
 routes/+layout.svelte	text	Skip to main content
 routes/activity/+page.svelte	text	… … · … still going … … · … rolled back …
 routes/activity/+page.svelte	code	… · … failed

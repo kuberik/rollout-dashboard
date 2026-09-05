@@ -288,17 +288,20 @@
 	inside. What aligns is the thing that draws a line: the active tab's
 	`border-b-2` is now a segment of the container's own left edge.
 
-	⭐ NOW THAT THE STRIP IS A SIBLING OF `Navbar`, NOT OF `<main>`'S
-	CONTENT, THE ALIGNMENT IS `--sidebar-w`'S JOB, NOT `max-w-7xl`'S ALONE.
-	(2026-09-05) `<main>`'s own content box already excludes the sidebar's
-	width; a plain `mx-auto max-w-7xl` sibling of `Navbar` would centre in
-	the FULL shell width instead and land the strip's left edge under the
-	sidebar. The root layout wraps this snippet's render site in
-	`sm:pl-[var(--sidebar-w,0px)]` — measured live off `Sidebar.svelte`,
-	since its width isn't a constant (`w-12` collapsed vs `w-44` expanded,
-	and it animates between them) — so `mx-auto max-w-7xl` below still
-	centres in a box the same width and position `<main>`'s content box is,
-	byte-for-byte, whether the sidebar is collapsed or not.
+	⭐ WHICH COLUMN THIS SNIPPET RENDERS INTO IS THE ROOT LAYOUT'S CALL,
+	NOT THIS FILE'S. (2026-09-05, regression fix) An earlier version of
+	this rule put the strip in `.header-group`, a sibling of `Navbar`
+	spanning the FULL shell width, and used a `--sidebar-w` CSS variable
+	to inset it back under the sidebar's width — which put the SIDEBAR's
+	own row one strip-height too low (an empty band above it) the moment
+	any rollout page was open, since `.header-group` sat above the
+	`Sidebar + <main>` row entirely. The root layout now renders this
+	snippet in one of TWO sites depending on `isDesktop`: `.header-group`
+	only below `sm` (no sidebar to misalign with), or a plain sibling of
+	`<main>` inside `Sidebar`'s own row at `sm`+ — so it only ever spans
+	the width `<main>` spans, with no separate offset variable needed,
+	and the sidebar's top edge is always exactly the navbar's bottom
+	edge. See the root layout's own comments at both render sites.
 -->
 {#snippet tabStripSnippet()}
 	<nav

@@ -101,6 +101,33 @@
 		};
 	});
 
+	// ⭐ WHICH COLUMN THE TAB STRIP RENDERS IN. (2026-09-05, regression fix —
+	// from the human, with a screenshot: "the strip spans the FULL width
+	// above the sidebar, so the sidebar starts below it with an empty dark
+	// band at its top... at sm+ the strip must occupy only the main
+	// column... while the sidebar keeps starting directly under the
+	// navbar.") Below `sm` there is no sidebar, so the strip belongs in
+	// `.header-group` with `Navbar` (see above) — one fixed auto-hiding
+	// unit. At `sm`+ the strip must NOT be a child of anything that spans
+	// the sidebar's column, or the sidebar's own row starts one strip-height
+	// too low. `isDesktop` picks which of the two render sites below is
+	// live; only one is ever mounted; `shellChrome.tabStrip` itself doesn't
+	// change; only WHERE it's rendered does.
+	let isDesktop = $state(
+		typeof window !== 'undefined' ? window.matchMedia('(min-width: 640px)').matches : false
+	);
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const mql = window.matchMedia('(min-width: 640px)');
+		function update() {
+			isDesktop = mql.matches;
+		}
+		update();
+		mql.addEventListener('change', update);
+		return () => mql.removeEventListener('change', update);
+	});
+
 	afterNavigate((nav) => {
 		// A real navigation always lands with the header shown, whichever way
 		// the reader was scrolling on the page they left. Seeded from the
@@ -226,22 +253,23 @@
 		>
 			Skip to main content
 		</a>
-		<!-- ⭐ THE HEADER GROUP. (2026-09-05) `Navbar` and a route's own secondary
-		     tab strip (published via `shellChrome.tabStrip`, see
-		     `shell-chrome.svelte.ts`) render here as ordinary siblings — never
-		     inside `<main>`, so there is no scroller between them to
-		     desynchronize on Chrome's rubber-band bounce. `.header-group` in
-		     `app.css` is a no-op from `sm` up (`position: static`); below `sm`
-		     it is the auto-hiding unit, `position: fixed` and translated by
-		     `headerScroll.hidden`. `sm:pl-[var(--sidebar-w,0px)]` on the tab
-		     strip's own wrapper (NOT on `Navbar`, which has never aligned with
-		     the sidebar-offset content below it) keeps the strip's tab BOX
-		     aligned with the content edge exactly as it was when it lived
-		     inside `<main>` — see `Sidebar.svelte`'s `--sidebar-w`. -->
+		<!-- ⭐ THE HEADER GROUP: `Navbar` ONLY AT `sm`+, `Navbar` + THE TAB
+		     STRIP BELOW IT. (2026-09-05, regression fix) The strip used to
+		     render in here at every width, which put it ABOVE the
+		     `Sidebar + <main>` row and made it span the FULL shell width —
+		     the sidebar's own row then started one strip-height too low,
+		     with an empty band above it and the strip's padded content
+		     sitting over nothing. Below `sm` there is no sidebar, so
+		     spanning the full width is correct and this is still where the
+		     strip belongs, jointly auto-hiding with `Navbar` as one
+		     `position: fixed` unit (`.header-group` in `app.css`). At `sm`+
+		     the strip moves to the main column below (`isDesktop`) — this
+		     div is `Navbar`-only there, so the sidebar's top edge is always
+		     exactly the navbar's bottom edge, tab strip or not. -->
 		<div bind:this={headerGroupEl} class="header-group" data-hidden={headerScroll.hidden}>
 			<Navbar />
-			{#if shellChrome.tabStrip}
-				<div class="shrink-0 sm:pl-[var(--sidebar-w,0px)]">
+			{#if shellChrome.tabStrip && !isDesktop}
+				<div class="shrink-0">
 					{@render shellChrome.tabStrip()}
 				</div>
 			{/if}
@@ -261,16 +289,33 @@
 				content box is still one width whether or not the page scrolls —
 				same fix, same reasoning, moved to where the scrolling happens.
 			-->
-			<main
-				id="main-content"
-				tabindex="-1"
-				bind:this={mainEl}
-				class="min-w-0 flex-1 focus:outline-none sm:overflow-y-auto sm:[overscroll-behavior:contain] sm:[scrollbar-gutter:stable]"
-			>
-				<div class="relative min-w-0 sm:min-h-full">
-					{@render children?.()}
-				</div>
-			</main>
+			<!-- ⭐ THIS COLUMN, NOT `.header-group`, IS WHERE THE TAB STRIP
+			     LIVES AT `sm`+. (2026-09-05, regression fix) It is a sibling
+			     of `<main>` inside `Sidebar`'s OWN row, so it only ever
+			     occupies the width `<main>` occupies — never the sidebar's
+			     column, never the full shell width — with no separate
+			     `--sidebar-w` offset math needed: whatever pushes `<main>`
+			     right of the sidebar pushes this the same amount, because
+			     they share this flex column. Below `sm` the strip renders in
+			     `.header-group` instead (`isDesktop` above), so this
+			     `{#if}` is simply empty there. -->
+			<div class="flex min-w-0 flex-1 flex-col sm:min-h-0">
+				{#if shellChrome.tabStrip && isDesktop}
+					<div class="shrink-0">
+						{@render shellChrome.tabStrip()}
+					</div>
+				{/if}
+				<main
+					id="main-content"
+					tabindex="-1"
+					bind:this={mainEl}
+					class="min-w-0 flex-1 focus:outline-none sm:overflow-y-auto sm:[overscroll-behavior:contain] sm:[scrollbar-gutter:stable]"
+				>
+					<div class="relative min-w-0 sm:min-h-full">
+						{@render children?.()}
+					</div>
+				</main>
+			</div>
 		</div>
 		<MobileTabBar />
 		<LiveRegion />

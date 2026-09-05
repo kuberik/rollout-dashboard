@@ -47,30 +47,6 @@
 		return path === href || path.startsWith(href + '/');
 	}
 
-	/**
-	 * ⭐ PUBLISHES `--sidebar-w`, THE SAME IDIOM `MobileTabBar.svelte` USES FOR
-	 * `--tabbar-h`. (2026-09-05) The header group's own tab-strip slot (root
-	 * layout) needs to inset its content by exactly this sidebar's rendered
-	 * width to keep the tab BOX aligned with the page content beside it —
-	 * that width isn't a constant (`w-12` collapsed vs `w-44` expanded, and
-	 * it animates between them), so it's measured live rather than guessed.
-	 * `hidden sm:flex` below `sm` means the rect is zero-size there, so the
-	 * var is 0 with no media query of its own needed, exactly like
-	 * `--tabbar-h`'s own zero-below-`sm` trick.
-	 */
-	let sidebarEl: HTMLElement | undefined = $state();
-
-	$effect(() => {
-		if (typeof document === 'undefined' || !sidebarEl) return;
-		const el = sidebarEl;
-		function measure() {
-			document.documentElement.style.setProperty('--sidebar-w', `${el.getBoundingClientRect().width}px`);
-		}
-		measure();
-		const ro = new ResizeObserver(measure);
-		ro.observe(el);
-		return () => ro.disconnect();
-	});
 </script>
 
 <!-- `div`, not `aside`: a section rail is not complementary content, and the
@@ -95,7 +71,6 @@
      the flex row from stretching this to `<main>`'s (now unbounded) height
      before the cap even applies. -->
 <div
-	bind:this={sidebarEl}
 	class="hidden shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-white py-3 transition-[width] duration-150 [overscroll-behavior:contain] dark:border-gray-700 dark:bg-gray-800 sm:flex {collapsed ? 'w-12' : 'w-44'}"
 >
 	<nav id="sidebar-sections" class="flex flex-1 flex-col gap-0.5 px-2" aria-label="Sections">
