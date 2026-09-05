@@ -7,15 +7,20 @@
 	import { revisionPath } from '$lib/version-utils';
 	import {
 		buildRevisionLedger,
+		repoDeviation,
 		rowNamesBuild,
 		serviceLedger,
+		sortByDeviation,
 		type RevisionRow,
+		type RevisionSlot,
 		type RepoLedger,
-		type ServiceLedgerGroup
+		type ServiceLedgerGroup,
+		type ServiceLedgerLine
 	} from '$lib/view-models/revision-ledger';
 	import {
 		revisionCoverage,
 		releaseSplit,
+		type CoverageSlotVM,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 	import { joinClauses } from '$lib/view-models/blocking-story';
@@ -119,6 +124,37 @@
 	const ledgers = $derived(buildRevisionLedger(rollouts, environments));
 
 	/**
+	 * ⭐ EACH REPO'S OWN HEAD COVERAGE, COMPUTED ONCE. Feeds both the
+	 * deviation ranking below (craft review item 3) and the hero itself —
+	 * the SAME object, never a second opinion recomputed a few lines apart.
+	 */
+	const repoHeadCoverage = $derived.by(() => {
+		const m = new Map<string, RevisionCoverage | null>();
+		for (const repo of ledgers) {
+			const head = repo.rows[0];
+			m.set(repo.repoKey, head ? revisionCoverage(head, coarse) : null);
+		}
+		return m;
+	});
+
+	/**
+	 * ⭐ CRAFT REVIEW ITEM 3 — LEAD WITH THE DEVIATION. `ledgers` itself stays
+	 * sorted by recency (`buildRevisionLedger`'s own, unowned-elsewhere
+	 * contract); this is the page's OWN presentational order — the repo
+	 * with something to say (failing, held, or meaningfully behind) leads,
+	 * backlog breaks a tie, recency last. Index 0 of THIS array is what
+	 * `openMap`'s default `{0: true}` opens.
+	 */
+	const orderedLedgers = $derived(
+		sortByDeviation(
+			ledgers.map((repo) => ({
+				repo,
+				deviation: repoDeviation(repo, repoHeadCoverage.get(repo.repoKey) ?? null)
+			}))
+		).map((item) => item.repo)
+	);
+
+	/**
 	 * ⭐ THE PAGE'S ROLLUP. `null` while there is nothing to state — a `0 of
 	 * 0` above a skeleton is a reading of the cluster that has not happened
 	 * yet.
@@ -186,9 +222,9 @@
 	$effect(() => {
 		if (query.isLoading || query.isError) return;
 		rememberShape(SHAPE_KEY, {
-			repos: ledgers.length,
+			repos: orderedLedgers.length,
 			open: openIndicesString(),
-			services: ledgers.map((r) => serviceLedger(r).length).join(',')
+			services: orderedLedgers.map((r) => serviceLedger(r).length).join(',')
 		});
 	});
 
@@ -204,12 +240,16 @@
 		return () => clearInterval(id);
 	});
 
-	/** revision → coverage, for every row that has a live place. */
+	/**
+	 * revision → coverage, for EVERY deployed row — not only the live ones.
+	 * (Craft review item 6: a retired row's `.bld-mark` needs its own last
+	 * build-state glyph, which reads off this same coverage.)
+	 */
 	const coverageByRevision = $derived.by(() => {
 		const m = new Map<string, RevisionCoverage>();
 		for (const repo of ledgers) {
 			for (const row of repo.rows) {
-				if (row.liveSlots > 0) m.set(row.revision, revisionCoverage(row, coarse));
+				m.set(row.revision, revisionCoverage(row, coarse));
 			}
 		}
 		return m;
@@ -277,6 +317,108 @@
 	/** Everything still running that is NOT the lead — the quiet path. */
 	function restRows(repo: RepoLedger, lead: RevisionRow | null): RevisionRow[] {
 		return liveRows(repo).filter((r) => r.revision !== lead?.revision);
+	}
+
+	/**
+	 * ⭐ CRAFT REVIEW ITEM 5 — THE HERO MUST OBEY THE SERVICE FILTER TOO.
+	 * `lead` is the repo's own overall newest build; a filtered reader asking
+	 * "what is `hello-api-app` running" does not care that a DIFFERENT
+	 * service reached a newer commit. If any selected service is actually
+	 * live on `lead`, nothing changes — it is still the honest answer. If
+	 * none is, and exactly ONE service is selected, its own current build
+	 * (the ledger's own `lines[0]`, already rank-sorted) is the unambiguous
+	 * substitute. Two-plus selected services with no build in common have no
+	 * single "newest" left to state, so the hero hides rather than guess —
+	 * `filteredLeadRow` returns `null` and the caller renders nothing.
+	 */
+	function filteredLeadRow(
+		repo: RepoLedger,
+		lead: RevisionRow | null,
+		serviceGroups: ServiceLedgerGroup[]
+	): RevisionRow | null {
+		const selected = selectedApps[repo.repoKey];
+		if (!selected || selected.length === 0) return lead;
+		if (lead && lead.services.some((s) => selected.includes(s.appName) && s.liveSlots > 0)) {
+			return lead;
+		}
+		if (selected.length !== 1) return null;
+		const line: ServiceLedgerLine | undefined = serviceGroups.find(
+			(g) => g.appName === selected[0]
+		)?.lines[0];
+		if (!line) return null;
+		return repo.rows.find((r) => r.revision === line.revision) ?? null;
+	}
+
+	/** §2 — the bar's exact width, `1 of 9` → 11%, never a cell-flex guess. */
+	function livePercent(live: number, total: number): number {
+		return total > 0 ? Math.round((live / total) * 100) : 0;
+	}
+
+	/**
+	 * ⭐ CRAFT REVIEW ITEM 7 — WHERE A STILL-RUNNING BUILD ACTUALLY RUNS.
+	 * One slot per distinct environment (first service to claim it wins the
+	 * theme lookup — identical envs across services in one repo share a
+	 * theme anyway), so a five-service row does not print the same five
+	 * env chips.
+	 */
+	function liveEnvSlots(row: RevisionRow): RevisionSlot[] {
+		const seen = new Set<string>();
+		const out: RevisionSlot[] = [];
+		for (const service of row.services) {
+			for (const slot of service.slots) {
+				if (!slot.onIt) continue;
+				// ⛔ DEDUPE BY THE DISPLAYED LABEL, NOT THE RAW `envName`.
+				// Measured live: two services' cells can carry different
+				// internal `envName`s (per-namespace) for the SAME tier, so
+				// keying on `envName` alone printed `STAGING` twice, `PROD`
+				// twice, `DEV` twice on one row — a visual duplicate of a
+				// chip that reads identically to the one beside it.
+				const key = shortEnvLabel(slot.cell.theme) || slot.envName;
+				if (seen.has(key)) continue;
+				seen.add(key);
+				out.push(slot);
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * ⭐ CRAFT REVIEW ITEM 6 — THE LEDGER'S OWN STATE DISC. "The deploy state
+	 * of that service's live build" — read off the SAME `revisionCoverage`
+	 * bucketing the rest of the page already trusts (never a second
+	 * classifier), for the specific (service, env) slots this ledger LINE
+	 * is actually about. A line's slots can disagree across environments
+	 * (DEV healthy, PROD failing); the worst one wins, because a disc that
+	 * hid a failure to show a healthy sibling would be a mark untrue of its
+	 * own kind. Returns `null` when the line's revision cannot be resolved
+	 * to a deployed row at all (should not happen — `serviceLedger` builds
+	 * lines only from `repo.rows` — but a glyph with nothing to point at is
+	 * refused rather than guessed).
+	 */
+	const DOT_SEVERITY: [needle: string, weight: number][] = [
+		['bg-red-', 4],
+		['bg-amber-', 3],
+		['bg-blue-', 2],
+		['bg-yellow-', 2],
+		['bg-gray-5', 1],
+		['bg-gray-4', 1]
+	];
+	function dotSeverity(cls: string): number {
+		for (const [needle, weight] of DOT_SEVERITY) if (cls.includes(needle)) return weight;
+		return 0;
+	}
+	function lineDot(appName: string, line: ServiceLedgerLine): CoverageSlotVM | null {
+		const row = coverageByRevision.get(line.revision);
+		if (!row) return null;
+		let best: CoverageSlotVM | null = null;
+		for (const bucket of row.buckets) {
+			for (const slot of bucket.slots) {
+				if (slot.appName !== appName) continue;
+				if (!line.slots.some((ls) => ls.envName === slot.envName)) continue;
+				if (!best || dotSeverity(slot.dotClass) > dotSeverity(best.dotClass)) best = slot;
+			}
+		}
+		return best;
 	}
 
 	function commitUrlFor(repoKey: string, revision: string): string | null {
@@ -537,7 +679,7 @@
 		<StillTryingNotice failureCount={query.failureCount} class="mt-0 mb-0" />
 
 		<!-- ⭐ THE SEARCH FIELD, RESERVED FIRST — real geometry, disabled. -->
-		<div class="relative mt-1 w-full sm:max-w-sm" aria-hidden="true">
+		<div class="relative mt-1 w-full md:max-w-sm" aria-hidden="true">
 			<SearchOutline
 				class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
 			/>
@@ -558,15 +700,26 @@
 		{#each Array(skelRepoCount) as _, sectionIndex (sectionIndex)}
 			{@const svcCount = skelServiceCounts[sectionIndex] ?? 3}
 			{@const open = skelOpenIndices.has(sectionIndex)}
-			<!-- THE REPOSITORY CARD SKELETON. -->
+			<!--
+				⭐ THE REPOSITORY CARD SKELETON — ITEM 2's NESTING, MATCHED.
+				`pair.mjs`'s warm-visit flip test caught a real drift here:
+				this used to be a SIBLING of the hero+cols block, and craft
+				review item 2 nested the real one INSIDE the repository card
+				(a `.repo-card` now contains its own disclosed content on a
+				tinted ground). A skeleton with the old sibling shape put the
+				hero+cols placeholder at the wrong DOM depth and the wrong Y
+				entirely once the real card's height — now ledger PLUS
+				nested content — came in hundreds of pixels taller than a
+				bare ledger guess.
+			-->
 			<div
 				class="{sectionIndex === 0
 					? 'mt-5'
-					: 'mt-10'} flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+					: 'mt-6'} flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 				aria-hidden="true"
 			>
 				<div
-					class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+					class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/60"
 				>
 					<div class="flex min-w-0 items-center gap-2.5">
 						<span class="skel-block h-4 w-4 shrink-0"></span>
@@ -603,28 +756,24 @@
 					<span class="skel-block h-3 w-64"></span>
 					<span class="skel-block h-3 w-24 shrink-0"></span>
 				</div>
-			</div>
 
-			{#if open}
-				<!-- THE HERO + `.rev-cols` BLOCK — unchanged shape from the
-				     round that reserved it, reused per open section. -->
-				<div
-					class="mt-3 flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
-					aria-hidden="true"
-				>
-					<span class="skel-block h-3 w-32"></span>
-					<span class="skel-block h-6 w-44"></span>
-					<span class="skel-block h-[26px] w-full"></span>
-					<span class="skel-block h-3.5 w-full"></span>
-					<span class="skel-block h-3.5 w-3/4"></span>
-					<span class="skel-block mt-2 h-3.5 w-56"></span>
-					<span class="skel-block h-3.5 w-64"></span>
-					<span class="skel-block h-3.5 w-48"></span>
-					<span class="skel-block mt-2 h-3.5 w-28"></span>
-				</div>
-
-				<div class="rev-cols mt-4">
-					<div class="flex min-w-0 flex-col gap-4">
+				{#if open}
+					<!--
+						⭐ THE HERO + `.rev-cols` BLOCK, NESTED — item 2's own
+						ground (`bg-gray-50`/`dark:bg-black/20`, 16px inset)
+						repeated here so the skeleton's own tint matches.
+						The hero itself is COMPACT now (item 7): one row for
+						id+state+figure, an optional thin bar, a caption
+						line, `View commit` — not the old two-line, 218px
+						card.
+					-->
+					<div class="border-t border-gray-100 bg-gray-50 p-4 dark:border-gray-700/60 dark:bg-black/20">
+						<!--
+							⭐ THE HERO'S OWN `Card` HEADER, 47px — measured miss:
+							this skeleton left it out entirely, undershooting the
+							real nested block by ~118px. Same header shape every
+							other card skeleton on this page already draws.
+						-->
 						<div
 							class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 							aria-hidden="true"
@@ -638,61 +787,91 @@
 								</div>
 								<span class="skel-block h-3 w-16 shrink-0"></span>
 							</div>
-							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-								{#each Array(2) as _, i (i)}
-									<li class="bld-row">
-										<span class="bld-mark">
-											<span class="skel-block h-4 w-4 rounded-full"></span>
-										</span>
-										<div class="flex min-w-0 flex-col gap-1">
-											<span class="skel-block h-3.5 w-24"></span>
-											<span class="skel-block h-3 w-40"></span>
-										</div>
-										<div class="bld-roll flex flex-col gap-1.5">
-											<span class="skel-block ml-auto h-3.5 w-32"></span>
-											<span class="skel-block h-2 w-full"></span>
-											<span class="skel-block ml-auto h-2.5 w-16"></span>
-										</div>
-										<span class="bld-go"><span class="skel-block h-4 w-4"></span></span>
-									</li>
-								{/each}
-							</ul>
-						</div>
-						<div
-							class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-							aria-hidden="true"
-						>
-							<div
-								class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
-							>
-								<div class="flex min-w-0 items-center gap-2.5">
-									<span class="skel-block h-4 w-4 shrink-0"></span>
-									<span class="skel-block h-3.5 w-44"></span>
+							<div class="flex flex-col gap-2 p-4">
+								<span class="skel-block h-3 w-32"></span>
+								<div class="flex items-baseline justify-between gap-3">
+									<span class="skel-block h-6 w-28"></span>
+									<span class="skel-block h-4 w-16"></span>
 								</div>
-								<span class="skel-block h-3 w-16 shrink-0"></span>
+								<span class="skel-block h-1.5 w-full"></span>
+								<span class="skel-block mt-1 h-3.5 w-full"></span>
+								<span class="skel-block h-3.5 w-24"></span>
 							</div>
-							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-								{#each Array(4) as _, i (i)}
-									<li class="bld-row">
-										<span class="bld-mark"></span>
-										<div class="flex min-w-0 flex-col gap-1">
-											<span class="skel-block h-3.5 w-24"></span>
-											<span class="skel-block h-3 w-40"></span>
+						</div>
+
+						<div class="rev-cols mt-4">
+							<div class="flex min-w-0 flex-col gap-4">
+								<div
+									class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+									aria-hidden="true"
+								>
+									<div
+										class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+									>
+										<div class="flex min-w-0 items-center gap-2.5">
+											<span class="skel-block h-4 w-4 shrink-0"></span>
+											<span class="skel-block h-3.5 w-32"></span>
 										</div>
-										<div class="bld-roll flex flex-col gap-1.5">
-											<span class="skel-block ml-auto h-3 w-16"></span>
+										<span class="skel-block h-3 w-16 shrink-0"></span>
+									</div>
+									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+										{#each Array(2) as _, i (i)}
+											<li class="bld-row">
+												<span class="bld-mark">
+													<span class="skel-block h-4 w-4 rounded-full"></span>
+												</span>
+												<div class="flex min-w-0 flex-col gap-1">
+													<span class="skel-block h-3.5 w-24"></span>
+													<span class="skel-block h-3 w-40"></span>
+													<span class="skel-block h-3 w-20"></span>
+												</div>
+												<div class="bld-roll flex flex-col gap-1.5">
+													<span class="skel-block ml-auto h-3.5 w-32"></span>
+													<span class="skel-block h-1.5 w-full"></span>
+													<span class="skel-block ml-auto h-2.5 w-16"></span>
+												</div>
+												<span class="bld-go"><span class="skel-block h-4 w-4"></span></span>
+											</li>
+										{/each}
+									</ul>
+								</div>
+								<div
+									class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+									aria-hidden="true"
+								>
+									<div
+										class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+									>
+										<div class="flex min-w-0 items-center gap-2.5">
+											<span class="skel-block h-4 w-4 shrink-0"></span>
+											<span class="skel-block h-3.5 w-44"></span>
 										</div>
-										<span class="bld-go"><span class="skel-block h-4 w-4"></span></span>
-									</li>
-								{/each}
-							</ul>
+										<span class="skel-block h-3 w-16 shrink-0"></span>
+									</div>
+									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+										{#each Array(4) as _, i (i)}
+											<li class="bld-row">
+												<span class="bld-mark"><span class="skel-block h-4 w-4"></span></span>
+												<div class="flex min-w-0 flex-col gap-1">
+													<span class="skel-block h-3.5 w-24"></span>
+													<span class="skel-block h-3 w-40"></span>
+												</div>
+												<div class="bld-roll flex flex-col gap-1.5">
+													<span class="skel-block ml-auto h-3 w-16"></span>
+												</div>
+												<span class="bld-go"><span class="skel-block h-4 w-4"></span></span>
+											</li>
+										{/each}
+									</ul>
+								</div>
+							</div>
+							<div class="min-w-0">
+								<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={4} rowHeight={28} />
+							</div>
 						</div>
 					</div>
-					<div class="min-w-0">
-						<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={4} rowHeight={28} />
-					</div>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		{/each}
 	{:else if query.isError}
 		<ErrorState
@@ -718,7 +897,7 @@
 			`w-full` at 390, `max-w-sm` from `sm`. The unlayered iOS
 			input-zoom fix (`app.css`) already covers this input untouched.
 		-->
-		<div class="relative mt-1 w-full sm:max-w-sm">
+		<div class="relative mt-1 w-full md:max-w-sm">
 			<SearchOutline
 				class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
 			/>
@@ -785,17 +964,20 @@
 			</AlertPanel>
 		{/if}
 
-		{#each ledgers as repo, i (repo.repoKey)}
+		{#each orderedLedgers as repo, i (repo.repoKey)}
 			{@const serviceGroups = serviceLedger(repo)}
 			{@const visibleGroups = visibleLedgerGroups(serviceGroups)}
 			{@const shownGroups = expandLedger[repo.repoKey] ? visibleGroups : visibleGroups.slice(0, FOLD)}
 			{@const headCreated = repo.rows[0]?.createdMs ?? 0}
 			{@const newer = headCreated > 0 ? repo.pending.filter((p) => p.createdMs > headCreated).length : 0}
 			{@const distanceVerdict = newer > 0 ? `${newer} newer build${newer === 1 ? '' : 's'}` : 'Newest build deployed'}
+			{@const headCov = repoHeadCoverage.get(repo.repoKey) ?? null}
+			{@const deviation = repoDeviation(repo, headCov)}
 			{@const url = repoUrl(repo.repoKey)}
 			{@const open = effectiveOpen(i, repo.repoKey)}
-			{@const lead = leadRow(repo)}
-			{@const leadCov = lead ? revisionCoverage(lead, coarse) : null}
+			{@const rawLead = leadRow(repo)}
+			{@const lead = filteredLeadRow(repo, rawLead, serviceGroups)}
+			{@const leadCov = lead ? (lead === rawLead ? headCov : revisionCoverage(lead, coarse)) : null}
 			{@const liveAll = restRows(repo, lead)}
 			{@const pastAll = pastRows(repo).filter((r) => r.revision !== lead?.revision)}
 			{@const liveVisible = liveAll.filter((r) => visibleInList(r, repo.repoKey))}
@@ -806,21 +988,52 @@
 			{@const noMatchText = searchActive
 				? `No build matches “${searchQuery.trim()}”.`
 				: 'No build matches this filter.'}
+			<!--
+				⭐ CRAFT REVIEW ITEM 5 — A REPO-WIDE SEARCH MISS COLLAPSES TO ONE
+				SENTENCE. Three cards each independently printing `No build
+				matches "x".` (or worse, three headers each reading `0 of N
+				builds`) is the same fact stated three times. Scoped to SEARCH
+				only (`searchActive`) — the service-chip filter keeps its
+				per-card `noMatchText` branches, since a chip miss on one list
+				while another still has rows is a real, useful distinction.
+			-->
+			{@const repoSearchMiss =
+				searchActive && liveVisible.length === 0 && pastVisible.length === 0 && pendingVisible.length === 0}
 
 			<!--
 				⭐ THE REPOSITORY CARD — §1. Always drawn, and its own
 				disclosure: the header toggles the hero/list cards BELOW it,
 				never the ledger, which stays visible collapsed or not — the
 				collapsed state IS the page's most useful answer.
+
+				⛔ CRAFT REVIEW ITEM 2 — CONTAINS ITS OWN DISCLOSURE NOW. With
+				the hero/list block as a SIBLING, two open repos printed two
+				"Newest build in use" titles at the same x, same width, same
+				radius, with nothing saying which repo owned which — the
+				repository card and its own disclosed content read as
+				unrelated objects. The `{#if open}` block is nested INSIDE
+				this card's own body now, on a tinted ground with a 16px
+				inset, so it reads as CONTENTS of a container, not a peer of
+				it. Radius steps up to 12 (`rounded-xl`) so the outer
+				boundary is visibly one size larger than the 8px cards it
+				contains.
 			-->
 			<div
 				class="repo-card {i === 0
 					? 'mt-5'
-					: 'mt-10'} flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+					: 'mt-6'} flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 			>
+				<!--
+					⭐ CRAFT REVIEW ITEM 8 — A DISCLOSURE HEADER READS AS ONE AT
+					REST. `bg-gray-50`/`dark:bg-gray-800/60` is now the header's
+					RESTING ground, not only its hover state — the chevron alone
+					was not enough of a signal that this 47px bar is a control
+					and not a static card title (every static `Card` header on
+					this page stays plain white/gray-800, unchanged).
+				-->
 				<button
 					type="button"
-					class="flex min-h-[47px] w-full flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-b border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40"
+					class="flex min-h-[47px] w-full cursor-pointer flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/60 dark:hover:bg-gray-700/60"
 					aria-expanded={open}
 					aria-controls={`repo-${i}-extra`}
 					onclick={() => toggleRepo(i)}
@@ -854,12 +1067,31 @@
 						⭐ §6 — THE HEADER LEADS WITH DISTANCE: how far the deployed
 						frontier is behind the build frontier, never a per-service
 						claim (`repo ≠ release line`).
+
+						⭐ CRAFT REVIEW ITEM 3 — THE DEVIATION RIDES BESIDE IT. The
+						fleet's only adverse fact used to sit two screens down,
+						10px tall, on a card the collapsed header gives no hint
+						exists. `deviation.chip` is null on a repo with nothing to
+						say, so this adds no ink to the common case.
 					-->
-					<span
-						class="t-card-rollup shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400"
-						title="Builds newer than the newest one any service here is running. None of them has been deployed anywhere."
-						>{distanceVerdict}</span
-					>
+					<span class="flex shrink-0 items-center gap-2">
+						{#if deviation.chip}
+							<Chip
+								role={deviation.chip.role}
+								label={deviation.chip.label}
+								title={deviation.chip.role === 'failing'
+									? 'The newest build is deployed somewhere the deploy is not healthy'
+									: deviation.chip.role === 'alarm'
+										? 'Places running this build on an older release, with a newer one held by a rule'
+										: 'Services with something not yet on the newest build any of them has reached'}
+							/>
+						{/if}
+						<span
+							class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400"
+							title="Builds newer than the newest one any service here is running. None of them has been deployed anywhere."
+							>{distanceVerdict}</span
+						>
+					</span>
 				</button>
 
 				<!-- ⭐ THE SERVICE LEDGER — §7(a). One group per service, one
@@ -873,26 +1105,46 @@
 					<div class="svc-ledger py-1">
 						{#each shownGroups as group (group.appName)}
 						{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
+							{@const dot = line ? lineDot(group.appName, line) : null}
 							<div class="svc-line">
+								<!--
+									⭐ CRAFT REVIEW ITEM 6 — THE LEDGER'S OWN STATE
+									DISC. Every OTHER row on this page reserves a
+									16px glyph cell; the ledger alone had none, so
+									a service's own deploy health was invisible
+									until the reader opened the whole section. Only
+									on the first line — a continuation line shares
+									the same service and, per `lineDot`'s own
+									worst-wins rule, a second disc would either
+									repeat the first or silently contradict it.
+								-->
+								<span class="svc-mark" aria-hidden="true">
+									{#if idx === 0 && dot}
+										<span
+											class="inline-block h-2 w-2 shrink-0 rounded-full {dot.dotClass}"
+											title="{group.appName}: {dot.statusWord}"
+										></span>
+									{/if}
+								</span>
 								{#if idx === 0}
 									{@const selected = isAppSelected(repo.repoKey, group.appName)}
 									<!--
 										⭐ THE FILTER IS THE NAME CELL NOW — coordinator
-										follow-up 2. The separate `.pill-btn` strip
-										repeated every service the ledger already names,
-										12px below, in a tracked-uppercase treatment the
-										human has rejected before. One control, one
-										place: the name IS the toggle, `t-code` (lowercase,
-										no tracking) so it reads as an identifier, not a
-										shouted label, and the pressed fill is the
-										product's one selected-toggle treatment.
+										follow-up 2, typography fixed per craft-review
+										items 10 and 11. `t-body` sans (not `t-code`
+										mono — mono stays reserved for the sha beside
+										it, §7a), and the pressed fill is INSET within
+										the row's own padding rather than reaching past
+										it with a negative margin (which pushed the
+										fill 5px outside the card's own edge and had it
+										clipped by `overflow-hidden`).
 									-->
 									<button
 										type="button"
 										onclick={() => toggleAppFilter(repo.repoKey, group.appName)}
 										aria-pressed={selected}
 										aria-label={`Show only ${group.appName}`}
-										class="svc-name svc-name-btn hit-32 t-code min-w-0 -mx-1.5 -my-0.5 rounded px-1.5 py-0.5 text-left transition-colors
+										class="svc-name svc-name-btn hit-32 t-body rounded text-left transition-colors
 											{selected
 											? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
 											: 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700/60'}"
@@ -970,233 +1222,310 @@
 						</a>
 					{/if}
 				</div>
-			</div>
 
-			{#if open}
-				<div id={`repo-${i}-extra`} class="rev-shell">
+				<!--
+					⭐ CRAFT REVIEW ITEM 2, CONTINUED — THE DISCLOSED BLOCK NESTS
+					HERE NOW, on a tinted ground (`bg-gray-50/60` /
+					`dark:bg-gray-800/40`) with a 16px inset, so its own 8px
+					cards read as CONTENTS of the 12px repository card rather
+					than siblings of it.
+				-->
+				{#if open}
 					<!--
-						⭐ THE HERO. `barSegments`/`hideBar`/`showHeldChip` are the
-						additive props `RevisionLead.svelte` gained for this pass —
-						see that component's own header comment. The detail page's
-						call site is untouched and keeps its old bucketed bar.
+						⛔ DARK GROUND DEVIATES FROM THE COORDINATOR'S LITERAL
+						`dark:bg-gray-800/40`: this element's PARENT (`.repo-card`)
+						is already `dark:bg-gray-800` SOLID, and alpha-blending
+						`gray-800` at 40% over an opaque `gray-800` base composites
+						to exactly `gray-800` again — zero visible difference,
+						measured live. `bg-black/20` is a real translucent
+						darkening over that same base, which is what "a visibly
+						different surface" requires; light mode's `bg-gray-50` is
+						unchanged (its parent is `bg-white`, where the tint IS
+						visible as specified).
 					-->
-					{#if lead && leadCov}
-						<Card
-							icon={RocketSolid}
-							title="Newest build in use"
-							verdict="{lead.services.length} service{lead.services.length === 1 ? '' : 's'}"
-							verdictTitle={scopeRecord(lead.services.length)}
-							class="mt-3"
-						>
-							<RevisionLead
-								short={lead.short}
-								href={revisionPath(repo.repoKey, lead.revision)}
-								eyebrow="Newest build"
-								coverage={leadCov}
-								barSegments={[{ key: 'live', count: leadCov.liveCount, title: 'Running it now', reachable: true }]}
-								hideBar={leadCov.liveCount === leadCov.totalCount}
-								showHeldChip
-								spread={false}
-							>
-								{#if rowNamesBuild(lead)}
-									{#snippet meta()}
-										{@render names(lead, true)}
-									{/snippet}
-								{/if}
-								{#if releaseSplitSentence(leadCov)}
-									<p class="t-body basis-full text-gray-500 dark:text-gray-400">
-										{releaseSplitSentence(leadCov)}
-									</p>
-								{/if}
-								{#if commitUrlFor(repo.repoKey, lead.revision)}
-									<a
-										class="nav-link"
-										href={commitUrlFor(repo.repoKey, lead.revision)}
-										target="_blank"
-										rel="noopener noreferrer"
-										aria-label={`View the commit for ${lead.short} on GitHub — opens in a new tab`}
-									>
-										View commit
-										<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-									</a>
-								{/if}
-							</RevisionLead>
-						</Card>
-					{/if}
-
-					<div class="rev-cols mt-4">
-						<div class="flex min-w-0 flex-col gap-4">
-							<!-- CARD 1 — THE QUIET PATH. -->
+					<div
+						id={`repo-${i}-extra`}
+						class="rev-shell border-t border-gray-100 bg-gray-50 p-4 dark:border-gray-700/60 dark:bg-black/20"
+					>
+						<!--
+							⭐ THE HERO, COMPACT NOW (craft review item 7). `barPercent`/
+							`hideBar`/`showHeldChip`/`compact` are the additive props
+							`RevisionLead.svelte` gained for this pass — see that
+							component's own header comment. The detail page's call
+							site is untouched and keeps its old two-line layout and
+							bucketed bar.
+						-->
+						{#if lead && leadCov}
 							<Card
-								icon={CheckCircleSolid}
-								title={lead ? 'Also still running' : 'Still running'}
-								verdict={rollupLabel(liveVisible.length, liveAll.length, 'build')}
-								verdictTitle="Older builds that some service is still running"
-								padded={false}
+								icon={RocketSolid}
+								title="Newest build in use"
+								verdict="{lead.services.length} service{lead.services.length === 1 ? '' : 's'}"
+								verdictTitle={scopeRecord(lead.services.length)}
 							>
-								{#if liveAll.length === 0}
-									<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
-										{lead
-											? 'Nothing older is still running — every place is on the build above.'
-											: 'Nothing this repo has deployed is still running. Every place has moved on.'}
-									</p>
-								{:else if liveVisible.length === 0}
-									<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
-								{:else}
-									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-										{#each liveVisible as row (row.revision)}
-											{@const cov = coverageByRevision.get(row.revision)}
-											<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
-												<span class="bld-mark">
-													{#if cov}
-														<BuildStateMark coverage={cov} showWord={false} />
-													{/if}
-												</span>
-
-												<div class="min-w-0">
-													<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-														<a
-															class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
-															href={revisionPath(repo.repoKey, row.revision)}
-															title={row.revision}>{row.short}</a
-														>
-													</div>
-													{@render names(row, namedLive)}
-												</div>
-
-												<div class="bld-roll">
-													<span class="t-dense text-gray-700 dark:text-gray-200">
-														Running in {row.liveSlots} of {row.totalSlots}
-														<span class="text-gray-500 dark:text-gray-400">places</span>
-													</span>
-													{#if cov && cov.liveCount < cov.totalCount}
-														<CoverageBar
-															segments={[{ key: 'live', count: cov.liveCount, title: 'Running it now', reachable: true }]}
-															compact
-															class="mt-1.5"
-															label="running in {cov.liveCount} of {cov.totalCount} places"
-														/>
-													{/if}
-													<span class="t-micro mt-1 block text-gray-500 dark:text-gray-400" title={ageTitle(row, 'live')}
-														>{ageOf(row, 'live')}</span
-													>
-												</div>
-
-												<span class="bld-go" aria-hidden="true">
-													<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-												</span>
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							</Card>
-
-							<!-- CARD 2 — HISTORY. -->
-							{#if pastAll.length > 0}
-								<Card
-									icon={ArchiveSolid}
-									title="No longer running anywhere"
-									verdict={rollupLabel(pastVisible.length, pastAll.length, 'build')}
-									verdictTitle="Deployed at least once; every place that ran them has since moved on"
-									padded={false}
+								<RevisionLead
+									short={lead.short}
+									href={revisionPath(repo.repoKey, lead.revision)}
+									eyebrow="Newest build"
+									coverage={leadCov}
+									barPercent={livePercent(leadCov.liveCount, leadCov.totalCount)}
+									hideBar={leadCov.liveCount === leadCov.totalCount}
+									showHeldChip
+									spread={false}
+									compact
 								>
-									{#if pastVisible.length === 0}
-										<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
-									{:else}
-										<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-											{#each expandPast[repo.repoKey] ? pastVisible : pastVisible.slice(0, FOLD) as row (row.revision)}
-												<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
-													<span class="bld-mark" aria-hidden="true"></span>
-													<div class="min-w-0">
+									{#if rowNamesBuild(lead)}
+										{#snippet meta()}
+											{@render names(lead, true)}
+										{/snippet}
+									{/if}
+									{#if releaseSplitSentence(leadCov)}
+										<p class="t-body basis-full text-gray-500 dark:text-gray-400">
+											{releaseSplitSentence(leadCov)}
+										</p>
+									{/if}
+									{#if commitUrlFor(repo.repoKey, lead.revision)}
+										<a
+											class="nav-link"
+											href={commitUrlFor(repo.repoKey, lead.revision)}
+											target="_blank"
+											rel="noopener noreferrer"
+											aria-label={`View the commit for ${lead.short} on GitHub — opens in a new tab`}
+										>
+											View commit
+											<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
+										</a>
+									{/if}
+								</RevisionLead>
+							</Card>
+						{/if}
+
+						{#if repoSearchMiss}
+							<p class="t-body mt-4 px-4 py-10 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+						{:else}
+							<div class="rev-cols mt-4">
+								<div class="flex min-w-0 flex-col gap-4">
+									<!-- CARD 1 — THE QUIET PATH. -->
+									<Card
+										icon={CheckCircleSolid}
+										title={lead ? 'Also still running' : 'Still running'}
+										verdict={rollupLabel(liveVisible.length, liveAll.length, 'build')}
+										verdictTitle="Older builds that some service is still running"
+										padded={false}
+									>
+										{#if liveAll.length === 0}
+											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+												{lead
+													? 'Nothing older is still running — every place is on the build above.'
+													: 'Nothing this repo has deployed is still running. Every place has moved on.'}
+											</p>
+										{:else if liveVisible.length === 0}
+											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+										{:else}
+											<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+												{#each liveVisible as row (row.revision)}
+													{@const cov = coverageByRevision.get(row.revision)}
+													{@const envSlots = liveEnvSlots(row)}
+													<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
+														<span class="bld-mark">
+															{#if cov}
+																<BuildStateMark coverage={cov} showWord={false} />
+															{/if}
+														</span>
+
+														<div class="min-w-0">
+															<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+																<a
+																	class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
+																	href={revisionPath(repo.repoKey, row.revision)}
+																	title={row.revision}>{row.short}</a
+																>
+															</div>
+															{@render names(row, namedLive)}
+															<!--
+																⭐ CRAFT REVIEW ITEM 7 — CELL 2 CARRIES WHERE
+																TOO, not only who. The env chips this row runs
+																on used to appear nowhere outside the ledger;
+																cell 3 stays the count/bar/age rollup.
+															-->
+															{#if envSlots.length > 0}
+																<div class="bld-envs">
+																	{#each envSlots as slot (slot.envName)}
+																		{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
+																		<Chip
+																			role="env"
+																			theme={slot.cell.theme}
+																			label={envDisplay}
+																			wide
+																			title="Running in {envDisplay.toUpperCase()}"
+																		/>
+																	{/each}
+																</div>
+															{/if}
+														</div>
+
+														<div class="bld-roll">
+															<span class="t-dense text-gray-700 dark:text-gray-200">
+																Running in {row.liveSlots} of {row.totalSlots}
+																<span class="text-gray-500 dark:text-gray-400">places</span>
+															</span>
+															{#if cov && cov.liveCount < cov.totalCount}
+																<div
+																	class="bld-fill-track"
+																	role="img"
+																	aria-label="running in {cov.liveCount} of {cov.totalCount} places"
+																	title="running in {cov.liveCount} of {cov.totalCount} places"
+																>
+																	<div
+																		class="bld-fill"
+																		style="width: {livePercent(cov.liveCount, cov.totalCount)}%"
+																	></div>
+																</div>
+															{/if}
+															<span class="t-micro mt-1 block text-gray-500 dark:text-gray-400" title={ageTitle(row, 'live')}
+																>{ageOf(row, 'live')}</span
+															>
+														</div>
+
+														<span class="bld-go" aria-hidden="true">
+															<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+														</span>
+													</li>
+												{/each}
+											</ul>
+										{/if}
+									</Card>
+
+									<!-- CARD 2 — HISTORY. -->
+									{#if pastAll.length > 0}
+										<Card
+											icon={ArchiveSolid}
+											title="No longer running anywhere"
+											verdict={rollupLabel(pastVisible.length, pastAll.length, 'build')}
+											verdictTitle="Deployed at least once; every place that ran them has since moved on"
+											padded={false}
+										>
+											{#if pastVisible.length === 0}
+												<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+											{:else}
+												<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+													{#each expandPast[repo.repoKey] ? pastVisible : pastVisible.slice(0, FOLD) as row (row.revision)}
+														{@const pastCov = coverageByRevision.get(row.revision)}
+														<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
+															<!--
+																⭐ CRAFT REVIEW ITEM 6 — A RETIRED ROW GETS ITS
+																LAST BUILD-STATE MARK, not an empty 16px cell.
+																Reads off the SAME coverage the live list uses
+																— `coverageByRevision` now covers every
+																deployed row, not only the live ones.
+															-->
+															<span class="bld-mark">
+																{#if pastCov}
+																	<BuildStateMark coverage={pastCov} showWord={false} />
+																{/if}
+															</span>
+															<div class="min-w-0">
+																<a
+																	class="ident rev-sha tap-link t-code text-gray-700 hover:underline dark:text-gray-200"
+																	href={revisionPath(repo.repoKey, row.revision)}
+																	title={row.revision}>{row.short}</a
+																>
+																{@render names(row, namedPast)}
+															</div>
+															<div class="bld-roll">
+																<span
+																	class="t-micro block text-gray-500 dark:text-gray-400"
+																	title={ageTitle(row, 'past')}>{ageOf(row, 'past')}</span
+																>
+															</div>
+															<span class="bld-go" aria-hidden="true">
+																<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+															</span>
+														</li>
+													{/each}
+												</ul>
+												{#if pastVisible.length > FOLD}
+													{@render more(
+														() => (expandPast = { ...expandPast, [repo.repoKey]: !expandPast[repo.repoKey] }),
+														expandPast[repo.repoKey],
+														`${pastVisible.length - FOLD} older build${pastVisible.length - FOLD === 1 ? '' : 's'}`
+													)}
+												{/if}
+											{/if}
+										</Card>
+									{/if}
+								</div>
+
+								<div class="flex min-w-0 flex-col gap-4">
+									<!-- THE RAIL — builds nobody has taken. Part of the
+									     layout: renders even at zero (§ "States"). -->
+									<Card
+										icon={HourglassOutline}
+										title="Never deployed"
+										verdict={rollupLabel(pendingVisible.length, repo.pending.length, 'build')}
+										verdictTitle={PENDING_RECORD}
+										padded={false}
+									>
+										{#if repo.pending.length === 0}
+											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+												Every build your services can deploy has run somewhere.
+											</p>
+										{:else if pendingVisible.length === 0}
+											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+										{:else}
+											<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+												{#each expandPending[repo.repoKey] ? pendingVisible : pendingVisible.slice(0, FOLD) as row (row.revision)}
+													<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
+														<!--
+															⭐ CRAFT REVIEW ITEM 6 — NEVER DEPLOYED GETS THE
+															HOURGLASS, the card's own icon: "built, still
+															waiting" is true of every row in this list, not a
+															per-row guess.
+														-->
+														<span class="bld-mark">
+															<HourglassOutline
+																class="h-4 w-4 text-gray-400 dark:text-gray-500"
+																aria-hidden="true"
+															/>
+														</span>
 														<a
-															class="ident rev-sha tap-link t-code text-gray-700 hover:underline dark:text-gray-200"
+															class="ident rev-sha tap-link t-code min-w-0 text-gray-700 hover:underline dark:text-gray-200"
 															href={revisionPath(repo.repoKey, row.revision)}
 															title={row.revision}>{row.short}</a
 														>
-														{@render names(row, namedPast)}
-													</div>
-													<div class="bld-roll">
-														<span
-															class="t-micro block text-gray-500 dark:text-gray-400"
-															title={ageTitle(row, 'past')}>{ageOf(row, 'past')}</span
-														>
-													</div>
-													<span class="bld-go" aria-hidden="true">
-														<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-													</span>
-												</li>
-											{/each}
-										</ul>
-										{#if pastVisible.length > FOLD}
-											{@render more(
-												() => (expandPast = { ...expandPast, [repo.repoKey]: !expandPast[repo.repoKey] }),
-												expandPast[repo.repoKey],
-												`${pastVisible.length - FOLD} older build${pastVisible.length - FOLD === 1 ? '' : 's'}`
-											)}
+														<div class="bld-roll">
+															<span class="t-dense block text-gray-700 dark:text-gray-200">
+																{row.services.length} service{row.services.length === 1 ? '' : 's'}
+															</span>
+															<span
+																class="t-micro block text-gray-500 dark:text-gray-400"
+																title={ageTitle(row, 'pending')}>{ageOf(row, 'pending')}</span
+															>
+														</div>
+														<span class="bld-go" aria-hidden="true">
+															<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+														</span>
+													</li>
+												{/each}
+											</ul>
+											{#if pendingVisible.length > FOLD}
+												{@render more(
+													() =>
+														(expandPending = {
+															...expandPending,
+															[repo.repoKey]: !expandPending[repo.repoKey]
+														}),
+													expandPending[repo.repoKey],
+													`${pendingVisible.length - FOLD} more build${pendingVisible.length - FOLD === 1 ? '' : 's'}`
+												)}
+											{/if}
 										{/if}
-									{/if}
-								</Card>
-							{/if}
-						</div>
-
-						<div class="flex min-w-0 flex-col gap-4">
-							<!-- THE RAIL — builds nobody has taken. Part of the
-							     layout: renders even at zero (§ "States"). -->
-							<Card
-								icon={HourglassOutline}
-								title="Never deployed"
-								verdict={rollupLabel(pendingVisible.length, repo.pending.length, 'build')}
-								verdictTitle={PENDING_RECORD}
-								padded={false}
-							>
-								{#if repo.pending.length === 0}
-									<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
-										Every build your services can deploy has run somewhere.
-									</p>
-								{:else if pendingVisible.length === 0}
-									<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
-								{:else}
-									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-										{#each expandPending[repo.repoKey] ? pendingVisible : pendingVisible.slice(0, FOLD) as row (row.revision)}
-											<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
-												<span class="bld-mark" aria-hidden="true"></span>
-												<a
-													class="ident rev-sha tap-link t-code min-w-0 text-gray-700 hover:underline dark:text-gray-200"
-													href={revisionPath(repo.repoKey, row.revision)}
-													title={row.revision}>{row.short}</a
-												>
-												<div class="bld-roll">
-													<span class="t-dense block text-gray-700 dark:text-gray-200">
-														{row.services.length} service{row.services.length === 1 ? '' : 's'}
-													</span>
-													<span
-														class="t-micro block text-gray-500 dark:text-gray-400"
-														title={ageTitle(row, 'pending')}>{ageOf(row, 'pending')}</span
-													>
-												</div>
-												<span class="bld-go" aria-hidden="true">
-													<ChevronRightOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-												</span>
-											</li>
-										{/each}
-									</ul>
-									{#if pendingVisible.length > FOLD}
-										{@render more(
-											() =>
-												(expandPending = {
-													...expandPending,
-													[repo.repoKey]: !expandPending[repo.repoKey]
-												}),
-											expandPending[repo.repoKey],
-											`${pendingVisible.length - FOLD} more build${pendingVisible.length - FOLD === 1 ? '' : 's'}`
-										)}
-									{/if}
-								{/if}
-							</Card>
-						</div>
+									</Card>
+								</div>
+							</div>
+						{/if}
 					</div>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		{/each}
 	{/if}
 </div>
@@ -1272,28 +1601,61 @@
 
 	/*
 	 * ⭐ THE SERVICE LEDGER — §7(a). ONE SHARED GRID for every line in every
-	 * group in this repo, so `minmax(140px,200px)` resolves to the SAME
+	 * group in this repo, so `minmax(120px,180px)` resolves to the SAME
 	 * pixel width down the whole ledger — the same problem, and the same
 	 * fix, `FleetSpread.svelte`'s own `.fs-runs`/`display:contents` already
 	 * solved: CSS Grid tracks are scoped to one grid CONTAINER, so a grid
 	 * per LINE would size its name column from that line's own content
 	 * alone and land at a different x than its neighbours.
+	 *
+	 * ⭐ CRAFT REVIEW ITEM 9 — RANK IS A FIXED 90px, NOT `auto`. `auto`
+	 * sized this track to the WIDEST rank chip in THIS repo's own ledger —
+	 * two repos on the same page therefore computed two different
+	 * pixel widths (measured live: 580px vs 593px to the env column),
+	 * because each `.svc-ledger` is its own independent grid instance. A
+	 * fixed width sized to the vocabulary's own widest legal member
+	 * (`24 BEHIND`, comfortably under 90px at this chip's type scale)
+	 * makes every repo's env column start at the SAME x regardless of
+	 * which rank words happen to appear in it.
+	 *
+	 * ⭐ CRAFT REVIEW ITEM 6 — A 16px GLYPH CELL LEADS THE ROW, matching
+	 * `.bld-row`'s own grammar: every row-shaped list on this page reserves
+	 * one, and the ledger was the one exception.
 	 */
 	.svc-ledger {
 		display: grid;
-		grid-template-columns: minmax(140px, 200px) 88px auto minmax(0, 1fr);
+		grid-template-columns: 16px minmax(120px, 180px) 88px 90px minmax(0, 1fr);
 		column-gap: 12px;
 		row-gap: 0;
+		/*
+		 * ⭐ THE 16px INSET LIVES ON THE GRID CONTAINER, NOT ON A TRACK.
+		 * `.svc-mark`'s own track is a fixed, exact 16px — the glyph's own
+		 * width — so giving that SAME element 16px of padding-left would
+		 * need 32px total, which either overflows the fixed track or (via a
+		 * grid item's implicit `min-width: auto`) silently grows it past
+		 * 16px, throwing off every column after it. Padding the CONTAINER
+		 * insets the whole grid uniformly without touching any track's own
+		 * width — the same reasoning `.bld-row`'s 16px side padding already
+		 * uses one level up.
+		 */
+		padding-inline: 16px;
 	}
 
 	.svc-line {
 		display: contents;
 	}
 
-	.svc-name {
+	.svc-mark {
 		grid-column: 1;
 		padding-block: 6px;
-		padding-left: 16px;
+		display: flex;
+		align-items: center;
+		height: 20px;
+	}
+
+	.svc-name {
+		grid-column: 2;
+		padding-block: 6px;
 		min-width: 0;
 	}
 
@@ -1334,29 +1696,43 @@
 	 * declare nothing at all and let the conditional `bg-gray-900` /
 	 * `dark:bg-white` utility classes be the only thing that ever sets it.
 	 */
+	/*
+	 * ⭐ CRAFT REVIEW ITEM 11 — INSET, NOT FULL-BLEED. This used to be
+	 * `display: block; width: 100%` (fill the whole grid cell) PLUS a
+	 * `-mx-1.5`/`-my-0.5` Tailwind negative margin meant to cancel padding
+	 * back to the bare text's position — and the margin reached far enough
+	 * left that the pressed fill's own edge measured outside the card's
+	 * border, clipped by `overflow-hidden`. There is no other element
+	 * sharing this cell (a continuation line's `.svc-name` is an empty
+	 * span, not a second copy of this button), so nothing needs the button
+	 * to fill the full column width. Sized to its own content instead, with
+	 * a small CSS-only inset — never a Tailwind utility here, so this
+	 * cannot re-fight `bg-gray-900` the way the geometry properties did.
+	 */
 	.svc-name-btn {
-		display: block;
-		width: 100%;
+		display: inline-block;
+		max-width: 100%;
+		padding: 2px 6px;
+		margin-left: -6px;
 		border: none;
 		cursor: pointer;
 	}
 
 	.svc-sha {
-		grid-column: 2;
+		grid-column: 3;
 		padding-block: 6px;
 	}
 
 	.svc-rank {
-		grid-column: 3;
+		grid-column: 4;
 		padding-block: 6px;
 		display: flex;
 		align-items: center;
 	}
 
 	.svc-envs {
-		grid-column: 4;
+		grid-column: 5;
 		padding-block: 6px;
-		padding-right: 16px;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -1367,9 +1743,8 @@
 	/* NO LIVE SLOT — one line: the name, then the fact, spanning the rest of
 	   the row so it never pretends to be a build id. */
 	.svc-empty {
-		grid-column: 2 / -1;
+		grid-column: 3 / -1;
 		padding-block: 6px;
-		padding-right: 16px;
 	}
 
 	/*
@@ -1378,35 +1753,32 @@
 	 * rank chip right-aligned), line 2 is the env chips. This STAYS the one
 	 * shared grid (`.svc-line` stays `display: contents` — never reverts to
 	 * its own per-line grid the way it did in the first mobile draft) with
-	 * fewer, narrower columns: `minmax(0,1fr)` for the name, `auto` for sha
-	 * and rank. That is what makes "sub-lines of a multi-build service start
-	 * at line 1's sha column" true for free — every line's sha lands in the
-	 * SAME shared column regardless of whether that line has a name.
+	 * fewer, narrower columns: `minmax(0,1fr)` for the name, fixed widths
+	 * for the mark/sha/rank. That is what makes "sub-lines of a multi-build
+	 * service start at line 1's sha column" true for free — every line's
+	 * sha lands in the SAME shared column regardless of whether that line
+	 * has a name.
 	 */
 	@container (max-width: 560px) {
 		.svc-ledger {
-			grid-template-columns: minmax(0, 1fr) auto auto;
+			grid-template-columns: 16px minmax(0, 1fr) 64px 90px;
 			column-gap: 8px;
 			row-gap: 2px;
 		}
 
-		.svc-name {
-			padding-right: 0;
-		}
-
-		.svc-rank {
-			padding-right: 16px;
-		}
-
-		/* Its own full-width line under name/sha/rank. */
+		/* Its own full-width line under name/sha/rank. Container padding
+		   already gives it a right inset; no per-cell override needed. */
 		.svc-envs {
 			grid-column: 1 / -1;
 			padding-top: 0;
 		}
 
-		.svc-empty {
-			grid-column: 2 / -1;
-		}
+		/* ⛔ NO OVERRIDE NEEDED — the base rule's `grid-column: 3 / -1` spans
+		   "everything after the name" at any track count: sha+rank+envs on
+		   the 5-column desktop grid, sha+rank on this 4-column one. An
+		   earlier `2 / -1` here overlapped the FIRST line's own name cell
+		   (column 2) with this message in the exact case both render at
+		   once (a "Not deployed" line's own idx-0 name). */
 
 		/*
 		 * ⭐ COORDINATOR FOLLOW-UP 5 — THE META LINE WRAPS, THE LINK DROPS.
@@ -1485,6 +1857,53 @@
 	}
 
 	/*
+	 * ⭐ CRAFT REVIEW ITEM 7 — CELL 2 CARRIES WHERE, NOT ONLY WHO. Measured
+	 * live: `.bld-row`'s cell 2 was 543px wide with ~130px of actual ink
+	 * (the sha + names) — the rest was empty because the one other fact a
+	 * reader wants here, WHICH PLACES this build runs, was nowhere on the
+	 * row at all. `flex-wrap` so a build running in many places wraps
+	 * inside this cell rather than pushing the row wider.
+	 */
+	.bld-envs {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+	}
+
+	/*
+	 * ⭐ CRAFT REVIEW ITEM 1 — THE SAME PAINTED-TRACK FILL AS THE HERO'S
+	 * `.single-bar` (`RevisionLead.svelte`), sized to THIS row's own
+	 * geometry (it sits in a 200px `.bld-roll` column at rest, full width
+	 * once the container query below folds it under the count). One
+	 * spelling for "one fill, exact width" product-wide on this page —
+	 * never `<CoverageBar>`'s `flex:1` cells again, which drew "1 of 9"
+	 * and "8 of 9" as the identical fully-filled bar.
+	 */
+	.bld-fill-track {
+		height: 6px;
+		border-radius: 4px;
+		overflow: hidden;
+		background-color: var(--color-gray-200);
+		margin-top: 6px;
+	}
+
+	:global(.dark) .bld-fill-track {
+		background-color: var(--color-gray-700);
+	}
+
+	.bld-fill {
+		height: 100%;
+		border-radius: inherit;
+		background-color: var(--color-green-700);
+	}
+
+	:global(.dark) .bld-fill {
+		background-color: var(--color-green-600);
+	}
+
+	/*
 	 * ⭐ REFLOW IS BY CONTAINER, NOT VIEWPORT — §3. The rail Card is 340px at
 	 * every viewport (it sits in `.rev-cols`' fixed second track), so it
 	 * needs this same two-band form AT 1440, not only below 640: a media
@@ -1505,7 +1924,7 @@
 			gap: 4px 12px;
 		}
 
-		.bld-roll :global(.cov) {
+		.bld-fill-track {
 			width: 100%;
 			margin-top: 0;
 		}
@@ -1576,5 +1995,46 @@
 		min-width: 0;
 		white-space: normal;
 		overflow-wrap: normal;
+	}
+
+	/*
+	 * ⭐ CRAFT REVIEW ITEM 13 — THE LEDGER'S SHA GETS AN UNCONDITIONAL 32px
+	 * HIT BOX. `app.css`'s own `.rev-sha` slop only fires under `(pointer:
+	 * coarse), (max-width: 639px)` — correct as the GENERAL rule (a mouse
+	 * on a wide desktop window is deliberately excluded there) — but
+	 * measured live `.svc-sha` renders 15px tall, one grid cell from a rank
+	 * chip and env chips, with no `.tap-zone` around the row to fall back
+	 * on (`.svc-line` is a plain grid row, not a tap zone — the row itself
+	 * is not a single destination, since the ledger's OWN destination is
+	 * the sha, the rank chip's title, and the pressable name, three
+	 * different things).
+	 *
+	 * ⛔ SCOPED TO `.svc-sha`, NOT THE SHARED `.rev-sha` CLASS. `app.css`'s
+	 * own `.tap-zone .tap-link::after` mechanism deliberately keeps
+	 * `.tap-link` itself UNPOSITIONED ("giving it a z-index would make it
+	 * a stacking context and drag its own `::after` up with it, at which
+	 * point the overlay covers its siblings again" — that file's own
+	 * comment). Every OTHER `.rev-sha` on this page (the three `.bld-row`
+	 * lists) also carries `.tap-link` INSIDE an actual `.tap-zone`
+	 * ancestor (`.bld-row.tap-zone`), where the whole row is already the
+	 * click target; giving THOSE elements `position: relative` here would
+	 * make each one its own containing block and collapse `.tap-link`'s
+	 * `::after` down to the sha's own 15px box — the exact regression the
+	 * shared rule's comment warns against. `.svc-sha` has no enclosing
+	 * `.tap-zone` at all (`.tap-link` is inert there — the governing
+	 * selector never matches), so this is the one sha on the page where a
+	 * dedicated hit-slop is both needed and safe.
+	 */
+	.svc-sha {
+		position: relative;
+	}
+
+	.svc-sha::before {
+		content: '';
+		position: absolute;
+		inset: 50%;
+		width: max(100% + 12px, 32px);
+		height: max(100% + 12px, 32px);
+		transform: translate(-50%, -50%);
 	}
 </style>

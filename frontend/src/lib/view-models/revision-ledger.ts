@@ -11,6 +11,10 @@ import { buildLadder, divergedFromLine, type BuildLadder } from './build-ladder'
 import { isDeployable } from './promotion';
 import { rankVerdicts, rankBehindBy, type RankVerdict } from './env-rank';
 import { compareEnvironmentNames } from '$lib/env-order';
+// TYPE-ONLY — see `repoDeviation`'s own doc comment for why this does not
+// create an import cycle with `revision-coverage.ts` (which itself only
+// type-imports FROM this file).
+import type { RevisionCoverage } from './revision-coverage';
 
 /**
  * THE REVISION LEDGER — `/versions`, keyed by the commit rather than by the label.
@@ -821,4 +825,86 @@ export function serviceLedger(repo: Pick<RepoLedger, 'rows' | 'pending'>): Servi
 			(a, b) => (a.rank ?? Number.POSITIVE_INFINITY) - (b.rank ?? Number.POSITIVE_INFINITY)
 		)
 	}));
+}
+
+/**
+ * ⭐ WHICH REPO HAS SOMETHING TO SAY — craft-review follow-up 3
+ * (REVISIONS-2026-09-05). `buildRevisionLedger`'s own order (most-recently-
+ * deployed first) is left UNTOUCHED here — this module's contract for
+ * `/revisions/[...slug]`, a route this pass does not own, does not change.
+ * `/revisions` (the list) reorders its OWN rendering with this pure,
+ * separately-tested function instead: the repo an operator would actually
+ * open first — something failing, held, or meaningfully behind — should
+ * lead the page and default open, not whichever repo happened to deploy
+ * most recently.
+ *
+ * `headCoverage` is the CALLER's own `revisionCoverage(repo.rows[0], now)` —
+ * this module takes only its TYPE (erased at compile time), never a runtime
+ * import of `revision-coverage.ts`'s functions, so the two files do not form
+ * an import cycle (that file already type-imports FROM this one).
+ */
+export type RepoDeviationChip = {
+	/** Matches `Chip.svelte`'s own `role` prop — kept as a plain string here
+	    so this file does not import a `.svelte` component's internal type. */
+	role: 'failing' | 'alarm' | 'rank';
+	label: string;
+};
+
+export type RepoDeviation = {
+	/** Higher sorts first: 3 failing, 2 held, 1 behind, 0 none. */
+	severity: 0 | 1 | 2 | 3;
+	/** What the collapsed header prints beside the distance rollup, or `null`. */
+	chip: RepoDeviationChip | null;
+	/** Tiebreak after severity: the size of the never-deployed backlog. */
+	backlog: number;
+};
+
+export function repoDeviation(
+	repo: Pick<RepoLedger, 'pending'>,
+	headCoverage: RevisionCoverage | null
+): RepoDeviation {
+	const backlog = repo.pending.length;
+	if (!headCoverage) return { severity: 0, chip: null, backlog };
+
+	const failing = headCoverage.buckets.find((b) => b.key === 'failing')?.slots.length ?? 0;
+	if (failing > 0) {
+		return { severity: 3, chip: { role: 'failing', label: 'failing' }, backlog };
+	}
+
+	// HELD — a live slot that is not on its own release (the same predicate
+	// the hero's own "N held" chip uses, see `RevisionLead`'s `heldTotal`).
+	const live = headCoverage.buckets.find((b) => b.key === 'live')?.slots ?? [];
+	const held = live.filter((s) => !s.onOwnRelease).length;
+	if (held > 0) {
+		return { severity: 2, chip: { role: 'alarm', label: `${held} held` }, backlog };
+	}
+
+	// BEHIND — distinct services with something not yet on the newest build
+	// any of them has reached. Counts SERVICES, not places: five environments
+	// on one lagging service is one fact, not five.
+	const notYetServices = new Set(
+		(headCoverage.buckets.find((b) => b.key === 'notYet')?.slots ?? []).map((s) => s.appName)
+	).size;
+	if (notYetServices > 0) {
+		return { severity: 1, chip: { role: 'rank', label: `${notYetServices} behind` }, backlog };
+	}
+
+	return { severity: 0, chip: null, backlog };
+}
+
+/**
+ * Deviation first (failing > held > behind > none), the never-deployed
+ * backlog second, recency last. `T` is generic so the caller can sort
+ * whatever pairing of repo+deviation it already computed rather than this
+ * function recomputing coverage itself.
+ */
+export function sortByDeviation<T extends { repo: RepoLedger; deviation: RepoDeviation }>(
+	items: T[]
+): T[] {
+	return [...items].sort(
+		(a, b) =>
+			b.deviation.severity - a.deviation.severity ||
+			b.deviation.backlog - a.deviation.backlog ||
+			b.repo.lastDeployMs - a.repo.lastDeployMs
+	);
 }

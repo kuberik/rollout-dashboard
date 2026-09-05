@@ -45,7 +45,6 @@
 		coverageSegments,
 		buildState,
 		releaseSplit,
-		type CoverageSegment,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 
@@ -57,15 +56,17 @@
 		spread = true,
 		meta,
 		children,
-		// ⭐ ADDITIVE, REVISIONS-2026-09-05 §2 — `/revisions` (the list) is the
-		// only caller that passes these; every existing call site (the detail
-		// page's own hero) keeps computing `segments`/the held text exactly as
+		// ⭐ ADDITIVE, REVISIONS-2026-09-05 §2, revised per craft-review item 1
+		// — `/revisions` (the list) is the only caller that passes these;
+		// every existing call site (the detail page's own hero) keeps
+		// computing `segments` and rendering `<CoverageBar>` exactly as
 		// before. Kept as opt-in props rather than a rewrite of this
 		// component's default behaviour because this object is shared with
 		// `/revisions/[...slug]`, a route this pass does not own.
-		barSegments = undefined,
+		barPercent = undefined,
 		hideBar = false,
-		showHeldChip = false
+		showHeldChip = false,
+		compact = false
 	}: {
 		/** The build's short sha — the object's name, at 24px mono. */
 		short: string;
@@ -88,11 +89,17 @@
 		/** Buttons and any page-specific note, under the spread. */
 		children?: Snippet;
 		/**
-		 * ⭐ §2's "one fill" bar. When set, replaces the bucketed
-		 * `coverageSegments(coverage)` the bar would otherwise draw — the
-		 * caller is expected to pass a single `live`-only segment.
+		 * ⛔ CRAFT REVIEW ITEM 1 — THE BAR LIED. `CoverageBar`'s cells are
+		 * `flex: 1`, sized to fill its track whatever the count — one cell
+		 * (`1 of 9`) drew exactly as wide as nine (`9 of 9`, or `8 of 9`).
+		 * That component is right for its OWN job (comparing revisions by
+		 * shape, `/revisions`' bucketed bars), but wrong for a bar whose
+		 * whole point is a literal WIDTH = live/total. `barPercent`
+		 * (0-100, pre-rounded by the caller) switches this component off
+		 * `<CoverageBar>` entirely and onto a plain painted-track fill —
+		 * see the markup below.
 		 */
-		barSegments?: CoverageSegment[];
+		barPercent?: number;
 		/** §2: "the bar draws only when it measures a shortfall". */
 		hideBar?: boolean;
 		/**
@@ -100,9 +107,21 @@
 		 * of the inline `· N held on …` clause in the count's caption line.
 		 */
 		showHeldChip?: boolean;
+		/**
+		 * ⭐ CRAFT REVIEW ITEM 7 — `/revisions`' own hero. With the
+		 * service→env spread gone (`spread={false}`), the old two-column
+		 * `.lead-top` (eyebrow+id stacked left, a 24px count stacked right)
+		 * cost 218px for two lines of actual information. `compact`
+		 * collapses id + state + figure onto ONE row (id left, state
+		 * word beside it, figure right) and drops the eyebrow label — the
+		 * card's own header ("Newest build in use") already supplies the
+		 * noun `eyebrow` existed to restate. The detail page's own hero
+		 * (this prop's default, `false`) is untouched.
+		 */
+		compact?: boolean;
 	} = $props();
 
-	const segments = $derived(barSegments ?? coverageSegments(coverage));
+	const segments = $derived(coverageSegments(coverage));
 	const state = $derived(buildState(coverage));
 
 	const barLabel = $derived(
@@ -137,108 +156,155 @@
 </script>
 
 <div class="lead">
-	<div class="lead-top">
-		<div class="lead-id">
-			<div class="t-label text-gray-500 dark:text-gray-400">{eyebrow}</div>
-			<div class="lead-name">
+	{#if compact}
+		<!--
+			⭐ CRAFT REVIEW ITEM 7 — THE COMPACT LEAD BAND. `/revisions`' own
+			hero: id, state and figure on ONE row (the eyebrow label is gone —
+			the host `Card`'s own header, "Newest build in use", already
+			supplies that noun), the bar directly under it only when it has
+			something to say. Same header, same card; the two-line, 218px
+			`.lead-top` this branch replaces is still what the detail page
+			renders (`compact` defaults `false`).
+		-->
+		<div class="lead-compact">
+			<div class="lead-compact-id min-w-0">
 				{#if href}
-					<!-- ⭐ `.hit-32` — THE LINK'S OWN 27.6px BOX IS UNDER THE 32px TOUCH
-					     FLOOR. (2026-09-03, touch lane hand-off) Same general-purpose
-					     slop `app.css` already gives `.rev-sha`/other raised controls;
-					     `.lead-name`'s `margin-top: 10px` (see the style block below)
-					     is what keeps its expanded reach clear of the eyebrow above. -->
 					<a class="t-display-id hit-32 text-gray-900 hover:underline dark:text-white" {href}
 						>{short}</a
 					>
 				{:else}
 					<h1 class="t-display-id text-gray-900 dark:text-white">{short}</h1>
 				{/if}
+				<BuildStateMark {coverage} size="row" />
+			</div>
+			<div class="lead-compact-figure" title={state.title}>
+				<span class="t-dense text-gray-900 dark:text-white">{coverage.liveCount}</span>
+				<span class="t-micro text-gray-500 dark:text-gray-400">of {coverage.totalCount}</span>
+			</div>
+		</div>
+	{:else}
+		<div class="lead-top">
+			<div class="lead-id">
+				<div class="t-label text-gray-500 dark:text-gray-400">{eyebrow}</div>
+				<div class="lead-name">
+					{#if href}
+						<!-- ⭐ `.hit-32` — THE LINK'S OWN 27.6px BOX IS UNDER THE 32px TOUCH
+						     FLOOR. (2026-09-03, touch lane hand-off) Same general-purpose
+						     slop `app.css` already gives `.rev-sha`/other raised controls;
+						     `.lead-name`'s `margin-top: 10px` (see the style block below)
+						     is what keeps its expanded reach clear of the eyebrow above. -->
+						<a class="t-display-id hit-32 text-gray-900 hover:underline dark:text-white" {href}
+							>{short}</a
+						>
+					{:else}
+						<h1 class="t-display-id text-gray-900 dark:text-white">{short}</h1>
+					{/if}
+				</div>
+			</div>
+
+			<!--
+				THE MEASUREMENT, AT THE SAME SIZE AS THE IDENTIFIER AND ON ITS
+				BASELINE. Concept 07's hero anatomy, and the reason the page has a type
+				range of 24 -> 10 rather than the 10-13px cluster every rejected page
+				ran at.
+			-->
+			<div class="lead-count" title={state.title}>
+				<span class="t-display text-gray-900 dark:text-white">{coverage.liveCount}</span>
+				<span class="t-body text-gray-500 dark:text-gray-400">of {coverage.totalCount}</span>
+				<!--
+					⭐ THE DEFINITION IS ON THE TERM, NOT UNDER IT. (2026-09-02, from the
+					human: three lines of caption prose on this card, of which this was
+					one — *"A place is one service in one environment."* printed at
+					`t-micro` 120px below the number it defines.) The word `places` still
+					cannot be deleted: `/api/rollouts` carries no pod counts (confirmed
+					three times), so a (service, environment) slot is the honest unit and
+					inventing a pod ratio would be worse. So the sentence stays, ON the
+					noun, where a reader who does not know the word can ask and a reader
+					who does is not made to read it on every visit.
+
+					⛔ IT IS A `title`, WHICH THE MESSAGE CENSUS READS. `scan.ts` scans
+					`title` / `aria-label` / `alt` / `placeholder` as operator-visible
+					literals, so the fact stays pinned by `drift.test.ts` — moving prose
+					into an attribute hides it from the page, never from the suite.
+				-->
+				<div
+					class="t-label text-gray-500 dark:text-gray-400"
+					title="A place is one service in one environment."
+				>
+					<!--
+						⭐ THE SPACE BEFORE THE DOT IS EXPLICIT, NOT WHITESPACE-COLLAPSED.
+						(coordinator sweep, finding 7) `running it{#if …}` sat directly
+						against the `{#if}` block with nothing between them, so the join
+						relied on the span's own leading newline/tabs collapsing to a
+						single space — and it rendered `RUNNING IT·2 HELD…` with none.
+						A literal space here is unambiguous at any indentation.
+					-->
+					running it{#if heldTotal > 0 && !showHeldChip}<span
+							class="text-orange-950 dark:text-orange-300"
+						>
+							&nbsp;· {heldTotal} held on {heldLabel ?? 'a newer release'}</span
+						>{/if}
+				</div>
 			</div>
 		</div>
 
 		<!--
-			THE MEASUREMENT, AT THE SAME SIZE AS THE IDENTIFIER AND ON ITS
-			BASELINE. Concept 07's hero anatomy, and the reason the page has a type
-			range of 24 -> 10 rather than the 10-13px cluster every rejected page
-			ran at.
+			THE STATE SENTENCE IS THE IDENTIFIER'S SUBTITLE AND TAKES THE FULL WIDTH.
+			Inline beside the sha it shared a column with the 24px count, which at 390
+			left it ~180px and broke `3 places still to go` across two lines under an
+			orphaned glyph. Full width it is one line at every width tested, and the
+			reading order — what this is, then what is happening to it, then how far it
+			got — is the same at 390 and at 1440.
 		-->
-		<div class="lead-count" title={state.title}>
-			<span class="t-display text-gray-900 dark:text-white">{coverage.liveCount}</span>
-			<span class="t-body text-gray-500 dark:text-gray-400">of {coverage.totalCount}</span>
-			<!--
-				⭐ THE DEFINITION IS ON THE TERM, NOT UNDER IT. (2026-09-02, from the
-				human: three lines of caption prose on this card, of which this was
-				one — *"A place is one service in one environment."* printed at
-				`t-micro` 120px below the number it defines.) The word `places` still
-				cannot be deleted: `/api/rollouts` carries no pod counts (confirmed
-				three times), so a (service, environment) slot is the honest unit and
-				inventing a pod ratio would be worse. So the sentence stays, ON the
-				noun, where a reader who does not know the word can ask and a reader
-				who does is not made to read it on every visit.
-
-				⛔ IT IS A `title`, WHICH THE MESSAGE CENSUS READS. `scan.ts` scans
-				`title` / `aria-label` / `alt` / `placeholder` as operator-visible
-				literals, so the fact stays pinned by `drift.test.ts` — moving prose
-				into an attribute hides it from the page, never from the suite.
-			-->
-			<div
-				class="t-label text-gray-500 dark:text-gray-400"
-				title="A place is one service in one environment."
-			>
-				<!--
-					⭐ THE SPACE BEFORE THE DOT IS EXPLICIT, NOT WHITESPACE-COLLAPSED.
-					(coordinator sweep, finding 7) `running it{#if …}` sat directly
-					against the `{#if}` block with nothing between them, so the join
-					relied on the span's own leading newline/tabs collapsing to a
-					single space — and it rendered `RUNNING IT·2 HELD…` with none.
-					A literal space here is unambiguous at any indentation.
-				-->
-				running it{#if heldTotal > 0 && !showHeldChip}<span
-						class="text-orange-950 dark:text-orange-300"
-					>
-						&nbsp;· {heldTotal} held on {heldLabel ?? 'a newer release'}</span
-					>{/if}
-			</div>
-			<!--
-				⭐ §2's "3 HELD" CHIP, UNDER THE FIGURE. (REVISIONS-2026-09-05) The
-				list page hides the bar entirely at full coverage, so the held fact
-				can no longer ride the caption line above a segment that visibly
-				proves it — a bare `running it` with no bar and no mark reads as
-				"done". `alarm` is the product's held-and-needs-a-look chip; the
-				release-split sentence below still names WHICH release and WHERE.
-			-->
-			{#if showHeldChip && heldTotal > 0}
-				<div class="mt-1 flex w-full justify-end">
-					<Chip
-						role="alarm"
-						label="{heldTotal} held"
-						wide
-						title="{heldTotal} place{heldTotal === 1
-							? ''
-							: 's'} run this on an older release, and a newer one is held by a rule"
-					/>
-				</div>
+		<div class="lead-sub">
+			<BuildStateMark {coverage} size="lead" />
+			{#if meta}
+				<div class="lead-meta">{@render meta()}</div>
 			{/if}
 		</div>
-	</div>
+	{/if}
 
 	<!--
-		THE STATE SENTENCE IS THE IDENTIFIER'S SUBTITLE AND TAKES THE FULL WIDTH.
-		Inline beside the sha it shared a column with the 24px count, which at 390
-		left it ~180px and broke `3 places still to go` across two lines under an
-		orphaned glyph. Full width it is one line at every width tested, and the
-		reading order — what this is, then what is happening to it, then how far it
-		got — is the same at 390 and at 1440.
+		⭐ §2's "3 HELD" CHIP, UNDER THE FIGURE — SHARED BY BOTH LAYOUTS NOW.
+		(REVISIONS-2026-09-05, craft review) The list page hides the bar
+		entirely at full coverage, so the held fact can no longer ride the
+		caption line above a segment that visibly proves it — a bare
+		"running it" with no bar and no mark reads as "done". `alarm` is the
+		product's held-and-needs-a-look chip; the release-split sentence
+		below still names WHICH release and WHERE.
 	-->
-	<div class="lead-sub">
-		<BuildStateMark {coverage} size="lead" />
-		{#if meta}
-			<div class="lead-meta">{@render meta()}</div>
-		{/if}
-	</div>
+	{#if showHeldChip && heldTotal > 0}
+		<div class="mt-1 flex w-full justify-end">
+			<Chip
+				role="alarm"
+				label="{heldTotal} held"
+				wide
+				title="{heldTotal} place{heldTotal === 1
+					? ''
+					: 's'} run this on an older release, and a newer one is held by a rule"
+			/>
+		</div>
+	{/if}
 
 	{#if !hideBar}
-		<CoverageBar {segments} label={barLabel} class="mt-3" />
+		{#if barPercent !== undefined}
+			<!--
+				⛔ CRAFT REVIEW ITEM 1 — NO MORE `<CoverageBar>` HERE, ONLY WHEN A
+				CALLER PASSES `barPercent`. Its cells are `flex: 1`, so `n`
+				cells always fill the track regardless of count: measured
+				live, "1 of 9" and "8 of 9" both drew a fully-filled 200px
+				bar. This is a plain painted track with a WIDTH, which is
+				what "one fill, width = live/total" (§2) actually requires —
+				the exact geometry `/revisions`' own list rows share (see
+				that file's CSS for the one spelling). The detail page's own
+				call site never passes `barPercent`, so it is untouched below.
+			-->
+			<div class="single-bar mt-3" role="img" aria-label={barLabel} title={barLabel}>
+				<div class="single-bar-fill" style="width: {barPercent}%"></div>
+			</div>
+		{:else}
+			<CoverageBar {segments} label={barLabel} class="mt-3" />
+		{/if}
 	{/if}
 
 	<!-- ⛔ THE TWO-SWATCH LEGEND IS GONE. (2026-09-03, direct from the human,
@@ -346,5 +412,64 @@
 		flex-wrap: wrap;
 		gap: 16px;
 		margin-top: 8px;
+	}
+
+	/*
+	 * ⭐ CRAFT REVIEW ITEM 7 — THE COMPACT LEAD BAND. id + state on the left,
+	 * baseline-aligned so the 20px glyph+word sits on the 24px sha's own
+	 * line rather than floating above or below it; the figure right,
+	 * `flex-wrap` so a narrow container (the rail width `/revisions` never
+	 * actually puts this in, but cheap insurance) stacks rather than clips.
+	 */
+	.lead-compact {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px 16px;
+	}
+
+	.lead-compact-id {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 4px 10px;
+		min-width: 0;
+	}
+
+	.lead-compact-figure {
+		display: flex;
+		align-items: baseline;
+		gap: 4px;
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
+
+	/*
+	 * ⭐ CRAFT REVIEW ITEM 1 — THE PAINTED TRACK, ONE FILL, EXACT WIDTH.
+	 * Height 6 / radius 4 per spec §2 — half `.cov`'s 8px-compact height,
+	 * because a bar in a 96px compact band has no room for the bucketed
+	 * bar's own scale. `overflow: hidden` is what lets the fill's own
+	 * square end clip to the track's rounded one.
+	 */
+	.single-bar {
+		height: 6px;
+		border-radius: 4px;
+		overflow: hidden;
+		background-color: var(--color-gray-200);
+	}
+
+	:global(.dark) .single-bar {
+		background-color: var(--color-gray-700);
+	}
+
+	.single-bar-fill {
+		height: 100%;
+		border-radius: inherit;
+		background-color: var(--color-green-700);
+	}
+
+	:global(.dark) .single-bar-fill {
+		background-color: var(--color-green-600);
 	}
 </style>

@@ -716,6 +716,7 @@ lib/view-models/revision-coverage.ts	code	These have already deployed a newer bu
 lib/view-models/revision-coverage.ts	code	This build has not been deployed here yet.
 lib/view-models/revision-coverage.ts	code	This build is deployed here, and the deploy is not healthy.
 lib/view-models/revision-ledger.ts	code	… behind
+lib/view-models/revision-ledger.ts	code	… held
 lib/view-models/revision-ledger.ts	code	of … build…
 lib/view-models/stage-advance.ts	code	… of check time is left on stage … and will be skipped.
 lib/view-models/stage-advance.ts	code	… of replicas
@@ -1154,7 +1155,10 @@ routes/revisions/+page.svelte	text	Not deployed
 routes/revisions/+page.svelte	code	Not passing
 routes/revisions/+page.svelte	text	Nothing built yet
 routes/revisions/+page.svelte	title	One commit, one build. Here is every build your services can deploy, and how far each one has got.
+routes/revisions/+page.svelte	title	Running in …
 routes/revisions/+page.svelte	text	Running in … of …
+routes/revisions/+page.svelte	aria-label	running in … of … places
+routes/revisions/+page.svelte	title	running in … of … places
 routes/revisions/+page.svelte	text	See what’s blocking it
 routes/revisions/+page.svelte	text	Show … …
 routes/revisions/+page.svelte	text	View commit

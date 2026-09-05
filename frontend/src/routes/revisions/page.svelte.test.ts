@@ -125,6 +125,25 @@ function fullCoverageFixture() {
 }
 
 /**
+ * ONE SERVICE, NINE PLACES, ONLY ONE ON THE HEAD BUILD — the exact "1 of 9"
+ * shape the craft review's bar-width regression test needs. `CoverageBar`'s
+ * cells (`flex: 1`) drew this identically to "8 of 9": a fully-filled
+ * 200px track either way.
+ */
+function nineSlotFixture() {
+	const newest = rel('n1111111', 10);
+	const older = rel('n0000000', 500);
+	const envNames = Array.from({ length: 9 }, (_, i) => `env${i}`);
+	const rollouts = envNames.map((ns, i) =>
+		rollout('web', ns, 'https://github.com/acme/nine.git', [newest, older], [
+			{ r: i === 0 ? newest : older, minutesAgo: i === 0 ? 10 : 500 }
+		])
+	);
+	const environments = envNames.map((ns) => environment('web', ns, ns));
+	return { rollouts, environments };
+}
+
+/**
  * A BUILD NEWER THAN THE DEPLOYED FRONTIER, NEVER DEPLOYED — for §6's
  * "N newer builds" half. `newerRel` is created more recently (5 minutes ago)
  * than the deployed head `headRel` (100 minutes ago) but nobody has run it.
@@ -320,7 +339,7 @@ describe('/revisions — the coverage bar is single-fill and only draws a shortf
 		const fleet = fullCoverageFixture();
 		stubFetch(fleet.rollouts, fleet.environments);
 		await renderRevisions();
-		expect(document.querySelector('.cov')).toBeNull();
+		expect(document.querySelector('.single-bar')).toBeNull();
 	});
 
 	test('the bar renders below full coverage', async () => {
@@ -329,7 +348,19 @@ describe('/revisions — the coverage bar is single-fill and only draws a shortf
 		await renderRevisions();
 		// `api` has not yet taken the hero build `r1`, so the hero is below
 		// full coverage (1 of 2 places).
-		expect(document.querySelector('.cov')).not.toBeNull();
+		expect(document.querySelector('.single-bar')).not.toBeNull();
+	});
+
+	test('craft review item 1 — the fill is an exact WIDTH, "1 of 9" draws 11%, never a full track', async () => {
+		const fleet = nineSlotFixture();
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		const fill = document.querySelector('.single-bar-fill') as HTMLElement | null;
+		expect(fill).not.toBeNull();
+		// `CoverageBar`'s cells are `flex: 1`, so both "1 of 9" and "8 of 9"
+		// used to draw a fully-filled track — this is the regression test
+		// for that: 1/9 rounds to 11%, not 100%.
+		expect(fill!.style.width).toBe('11%');
 	});
 });
 
@@ -418,15 +449,31 @@ describe('/revisions — search finds a build (§7b)', () => {
 		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(1));
 	});
 
-	test('a repo with no match keeps its card and prints the no-match sentence', async () => {
+	test('a repo with no match keeps its repository card and prints the no-match sentence', async () => {
 		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
 		const search = await setup(fleet);
 		await fireEvent.input(search, { target: { value: 'zzz-nothing-here' } });
 		await waitFor(() =>
 			expect(screen.getAllByText('No build matches “zzz-nothing-here”.').length).toBeGreaterThan(0)
 		);
-		// The card itself — its header and rollup — is still there.
-		expect(screen.getByText('Also still running')).toBeInTheDocument();
+		// The repository card itself — its header and distance rollup — is
+		// still there; only its body collapses to the sentence.
+		expect(screen.getByText('repo-a')).toBeInTheDocument();
+	});
+
+	test('craft review item 5 — a repo-wide miss collapses to ONE sentence, never three empty cards', async () => {
+		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
+		const search = await setup(fleet);
+		await fireEvent.input(search, { target: { value: 'zzz-nothing-here' } });
+		await waitFor(() =>
+			expect(screen.getAllByText('No build matches “zzz-nothing-here”.').length).toBeGreaterThan(0)
+		);
+		// The three build-list cards do not render at all in this state —
+		// their headers, and the "0 of N builds" rollup each would have
+		// printed, are gone rather than repeated per card.
+		expect(screen.queryByText('Also still running')).toBeNull();
+		expect(screen.queryByText('No longer running anywhere')).toBeNull();
+		expect(screen.queryByText('Never deployed')).toBeNull();
 	});
 });
 
@@ -448,15 +495,17 @@ describe('/revisions — the per-service filter is folded into the ledger (coord
 		expect(webChip.closest('.svc-ledger')).not.toBeNull();
 	});
 
-	test('the name-button is lowercase mono, never the tracked-uppercase pill treatment', async () => {
+	test('craft review item 10 — the name is plain t-body sans, mono stays reserved for the sha', async () => {
 		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
 		stubFetch(fleet.rollouts, fleet.environments);
 		await renderRevisions();
 		const webChip = screen.getByRole('button', { name: 'Show only a-web' });
-		// `t-code` is the identifier typography (mono, no transform, no
-		// tracking) — never `t-label`/`pill-btn`, the uppercase-tracked
-		// treatment the human rejected for this exact control.
-		expect(webChip.className).toMatch(/\bt-code\b/);
+		// §7a: the service name is `t-body`, never `t-code` — mono is
+		// reserved for the sha beside it. Never `t-label`/`pill-btn`
+		// either, the uppercase-tracked treatment the human rejected for
+		// this exact control.
+		expect(webChip.className).toMatch(/\bt-body\b/);
+		expect(webChip.className).not.toMatch(/\bt-code\b/);
 		expect(webChip.className).not.toMatch(/\bt-label\b/);
 		expect(webChip.className).not.toMatch(/\bpill-btn\b/);
 		expect(webChip.textContent?.trim()).toBe('a-web');

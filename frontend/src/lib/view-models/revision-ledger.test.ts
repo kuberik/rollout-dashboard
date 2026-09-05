@@ -3,10 +3,14 @@ import {
 	buildRevisionLedger,
 	groupServicesByLabel,
 	rankSentence,
+	repoDeviation,
 	resolveRevision,
 	rowNamesBuild,
-	serviceLedger
+	serviceLedger,
+	sortByDeviation,
+	type RepoLedger
 } from './revision-ledger';
+import type { RevisionCoverage } from './revision-coverage';
 import type { Environment, Rollout } from '../../types';
 
 /**
@@ -420,5 +424,93 @@ describe('serviceLedger', () => {
 		expect(groups).toHaveLength(1);
 		expect(groups[0].appName).toBe('api');
 		expect(groups[0].lines).toHaveLength(0);
+	});
+});
+
+/** Just enough of `RevisionCoverage`'s shape for `repoDeviation` to read. */
+function coverage(
+	buckets: { key: string; slots: { appName: string; onOwnRelease?: boolean }[] }[]
+): RevisionCoverage {
+	return { liveCount: 0, totalCount: 0, reachable: true, buckets } as unknown as RevisionCoverage;
+}
+
+describe('repoDeviation — craft review item 3 (lead with the deviation)', () => {
+	it('ranks a failing head above everything else', () => {
+		const cov = coverage([{ key: 'failing', slots: [{ appName: 'api' }] }]);
+		expect(repoDeviation({ pending: [] }, cov)).toEqual({
+			severity: 3,
+			chip: { role: 'failing', label: 'failing' },
+			backlog: 0
+		});
+	});
+
+	it('ranks a held build (live but not on its own release) as severity 2', () => {
+		const cov = coverage([
+			{
+				key: 'live',
+				slots: [
+					{ appName: 'api', onOwnRelease: false },
+					{ appName: 'web', onOwnRelease: true }
+				]
+			}
+		]);
+		expect(repoDeviation({ pending: [] }, cov)).toEqual({
+			severity: 2,
+			chip: { role: 'alarm', label: '1 held' },
+			backlog: 0
+		});
+	});
+
+	it('counts distinct SERVICES behind, not places', () => {
+		const cov = coverage([
+			{
+				key: 'notYet',
+				slots: [{ appName: 'api' }, { appName: 'api' }, { appName: 'web' }]
+			}
+		]);
+		expect(repoDeviation({ pending: [] }, cov)).toEqual({
+			severity: 1,
+			chip: { role: 'rank', label: '2 behind' },
+			backlog: 0
+		});
+	});
+
+	it('is severity 0 with no chip when nothing deviates', () => {
+		const cov = coverage([{ key: 'live', slots: [{ appName: 'api', onOwnRelease: true }] }]);
+		expect(repoDeviation({ pending: [] }, cov)).toEqual({ severity: 0, chip: null, backlog: 0 });
+	});
+
+	it('is severity 0 with the pending backlog counted, when there is no head at all', () => {
+		expect(repoDeviation({ pending: [{} as never, {} as never] }, null)).toEqual({
+			severity: 0,
+			chip: null,
+			backlog: 2
+		});
+	});
+});
+
+describe('sortByDeviation', () => {
+	function mk(lastDeployMs: number): RepoLedger {
+		return { lastDeployMs } as unknown as RepoLedger;
+	}
+
+	it('sorts failing > held > behind > none', () => {
+		const items = [
+			{ repo: mk(300), deviation: { severity: 0 as const, chip: null, backlog: 5 } },
+			{ repo: mk(200), deviation: { severity: 3 as const, chip: null, backlog: 0 } },
+			{ repo: mk(100), deviation: { severity: 1 as const, chip: null, backlog: 0 } }
+		];
+		expect(sortByDeviation(items).map((i) => i.deviation.severity)).toEqual([3, 1, 0]);
+	});
+
+	it('breaks a severity tie on backlog, then on recency', () => {
+		const items = [
+			{ repo: mk(100), deviation: { severity: 0 as const, chip: null, backlog: 1 } },
+			{ repo: mk(200), deviation: { severity: 0 as const, chip: null, backlog: 1 } },
+			{ repo: mk(999), deviation: { severity: 0 as const, chip: null, backlog: 0 } }
+		];
+		// Both backlog:1 repos outrank the backlog:0 one despite its later
+		// deploy; between the tied pair, the more recently deployed leads.
+		expect(sortByDeviation(items).map((i) => i.repo.lastDeployMs)).toEqual([200, 100, 999]);
 	});
 });
