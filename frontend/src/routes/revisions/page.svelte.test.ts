@@ -1,16 +1,47 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+/**
+ * ⭐ ROUND 3 §2 — THE SEARCH QUERY LIVES IN THE URL. The page reads
+ * `page.url.searchParams.get('q')` on load and calls `goto` to keep it in
+ * sync as the operator types; `vi.mock` is hoisted per file, so the mock
+ * lives here rather than mutating the real `$app/navigation` module. Same
+ * pattern as `lib/messages/subject-detail.svelte.test.ts`.
+ */
+const state = vi.hoisted(() => ({
+	page: {
+		params: {} as Record<string, string>,
+		url: new URL('http://localhost/revisions'),
+		route: { id: null as string | null },
+		status: 200,
+		error: null,
+		data: {},
+		form: null
+	}
+}));
+vi.mock('$app/state', () => state);
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(),
+	invalidateAll: vi.fn(),
+	pushState: vi.fn(),
+	replaceState: vi.fn(),
+	beforeNavigate: vi.fn(),
+	afterNavigate: vi.fn()
+}));
+
 // The page remembers its last shape (repository count, open sections, ledger
 // sizes) in localStorage via `skeleton-hints`; another test file in the same
 // worker can leave a value behind, which once made the two-repo test fail
 // only when run alongside `src/lib/messages`. Start every test from a clean
-// store.
+// store — and a clean URL/mock-call state for the search-sync tests below.
 beforeEach(() => {
 	localStorage.clear();
 	sessionStorage.clear();
+	state.page.url = new URL('http://localhost/revisions');
+	vi.mocked(goto).mockClear();
 });
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
+import { goto } from '$app/navigation';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import Page from './+page.svelte';
 import type { Environment, Rollout } from '../../types';
@@ -398,6 +429,82 @@ describe('/revisions — the repo header leads with distance (§6)', () => {
 	});
 });
 
+/**
+ * ⭐ ROUND 3 §1 — A REPOSITORY IS NOT ONE RELEASE LINE. Two services (`web`/
+ * `web2`) share one newest build; a third (`jobs`) has never shipped a
+ * commit either of them has — the exact `kuberik-testing` shape measured on
+ * the live fleet (two services on `9f10e49`, three on an unrelated
+ * `064b655`), miniaturised to one line of two and one line of one.
+ */
+function twoLineRepoFixture(prefix: string) {
+	const source = `https://github.com/acme/${prefix}-twoline.git`;
+	const l1 = rel(`${prefix}l1111111`, 5); // web + web2's own newest
+	const l2 = rel(`${prefix}l2222222`, 50); // jobs' own, unrelated newest
+	const web = rollout(`${prefix}-web`, 'team', source, [l1], [{ r: l1, minutesAgo: 5 }]);
+	const web2 = rollout(`${prefix}-web2`, 'team', source, [l1], [{ r: l1, minutesAgo: 5 }]);
+	const jobs = rollout(`${prefix}-jobs`, 'team', source, [l2], [{ r: l2, minutesAgo: 50 }]);
+	return {
+		rollouts: [web, web2, jobs],
+		environments: [
+			environment(`${prefix}-web`, 'team', 'prod'),
+			environment(`${prefix}-web2`, 'team', 'prod'),
+			environment(`${prefix}-jobs`, 'team', 'prod')
+		],
+		l1,
+		l2
+	};
+}
+
+describe('/revisions — round 3 §1 (a repository is not one release line)', () => {
+	test('a repo with two independent release lines gets one hero PER LINE, each naming its own services', async () => {
+		const fleet = twoLineRepoFixture('m');
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		// One repo, one card — but TWO "Newest build in use" bands, because
+		// `m-jobs`'s own current build is not older than anything on ITS OWN
+		// line; it is only not the repo-wide newest by creation time.
+		expect(screen.getAllByText('Newest build in use')).toHaveLength(2);
+		// Printed twice each — the hero's own `Card` verdict AND the ledger's
+		// per-line caption (addendum H) — never a bare repo-wide count.
+		expect(screen.getAllByText('m-web · m-web2').length).toBeGreaterThan(0);
+		expect(screen.getAllByText('m-jobs').length).toBeGreaterThan(0);
+	});
+
+	test('the header states "N release lines" rather than a single distance figure that would lie', async () => {
+		const fleet = twoLineRepoFixture('m');
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		expect(screen.getByText('2 release lines')).toBeInTheDocument();
+		expect(screen.getByText(/·\s*across\s*2\s*release lines/)).toBeInTheDocument();
+	});
+
+	test("m-jobs's own current build is never filed under Also still running", async () => {
+		const fleet = twoLineRepoFixture('m');
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		// Before this round, only ONE repo-wide "newest" row got a hero and
+		// everything else — including a DIFFERENT line's own current build —
+		// was filed as "older". `l2` is `m-jobs`'s own head, so it must never
+		// also appear as a `.bld-row` (the shared row grammar every OTHER
+		// build-list row uses — "Also still running", "No longer running",
+		// "Never deployed") — only the hero and the ledger, neither of which
+		// is a `.bld-row`.
+		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(2));
+		expect(document.querySelectorAll(`.bld-row [title="${fleet.l2.revision}"]`)).toHaveLength(0);
+	});
+});
+
+describe('/revisions — round 3 §3 (state in words, right kind, right hue)', () => {
+	test('a pinned rollout draws the PINNED word in the ledger, never amber', async () => {
+		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
+		// `web`'s history[0] is r1, the hero build — pin it.
+		fleet.rollouts[0].spec = { wantedVersion: fleet.r1.tag } as unknown as Rollout['spec'];
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		await waitFor(() => expect(screen.getByText('pinned')).toBeInTheDocument());
+	});
+});
+
 describe('/revisions — search finds a build (§7b)', () => {
 	async function setup(fleet: ReturnType<typeof repoFixture>) {
 		stubFetch(fleet.rollouts, fleet.environments);
@@ -440,13 +547,18 @@ describe('/revisions — search finds a build (§7b)', () => {
 		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
 
 		const search = screen.getByPlaceholderText('Find a build or service') as HTMLInputElement;
-		// A query that matches only repo-a's own build still opens repo-b —
-		// the rule is "searching", not "this repo happens to match".
+		// A query that matches only repo-a's own build still OPENS repo-b's
+		// disclosure — the rule is "searching", not "this repo happens to
+		// match" — but repo-b's own body has nothing to show, so it collapses
+		// to the round-3 §2 one-sentence form rather than an empty hero.
 		await fireEvent.input(search, { target: { value: a.r1.revision.slice(0, 8) } });
-		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(2));
+		await waitFor(() => expect(repoHeaderButton('repo-b')).toHaveAttribute('aria-expanded', 'true'));
+		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
+		expect(screen.getAllByText(new RegExp(`No build matches`)).length).toBeGreaterThan(0);
 
 		await fireEvent.input(search, { target: { value: '' } });
-		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(1));
+		await waitFor(() => expect(repoHeaderButton('repo-b')).toHaveAttribute('aria-expanded', 'false'));
+		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
 	});
 
 	test('a repo with no match keeps its repository card and prints the no-match sentence', async () => {
@@ -477,82 +589,75 @@ describe('/revisions — search finds a build (§7b)', () => {
 	});
 });
 
-describe('/revisions — the per-service filter is folded into the ledger (coordinator follow-up 2)', () => {
-	test('the service name IS the filter button — no separate chip strip exists', async () => {
+describe('/revisions — round 3 §2: search is the ONE filter; the service name is a link', () => {
+	test('the service name is a plain link to /apps/<name> — no filter chip, no aria-pressed control', async () => {
 		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
 		stubFetch(fleet.rollouts, fleet.environments);
 		await renderRevisions();
-		// Exactly ONE accessible control per service — `getByRole` throws on
-		// more than one match, so this alone proves there is no second,
-		// separate strip repeating the same name.
-		const webChip = screen.getByRole('button', { name: 'Show only a-web' });
-		const apiChip = screen.getByRole('button', { name: 'Show only a-api' });
-		expect(webChip).toHaveTextContent('a-web');
-		expect(webChip).toHaveAttribute('aria-pressed', 'false');
-		expect(apiChip).toHaveAttribute('aria-pressed', 'false');
-		// And the button lives INSIDE the ledger grid, not in a trailing
-		// strip below it.
-		expect(webChip.closest('.svc-ledger')).not.toBeNull();
+		const webLink = screen.getByRole('link', { name: 'a-web' });
+		expect(webLink).toHaveAttribute('href', '/apps/a-web');
+		expect(webLink.closest('.svc-ledger')).not.toBeNull();
+		// The per-repo chip strip this replaces is gone entirely.
+		expect(screen.queryByRole('button', { name: /Show only/ })).toBeNull();
+		expect(document.querySelector('[aria-pressed]')).toBeNull();
 	});
 
-	test('craft review item 10 — the name is plain t-body sans, mono stays reserved for the sha', async () => {
+	test('the name is plain t-body sans, mono stays reserved for the sha', async () => {
 		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
 		stubFetch(fleet.rollouts, fleet.environments);
 		await renderRevisions();
-		const webChip = screen.getByRole('button', { name: 'Show only a-web' });
-		// §7a: the service name is `t-body`, never `t-code` — mono is
-		// reserved for the sha beside it. Never `t-label`/`pill-btn`
-		// either, the uppercase-tracked treatment the human rejected for
-		// this exact control.
-		expect(webChip.className).toMatch(/\bt-body\b/);
-		expect(webChip.className).not.toMatch(/\bt-code\b/);
-		expect(webChip.className).not.toMatch(/\bt-label\b/);
-		expect(webChip.className).not.toMatch(/\bpill-btn\b/);
-		expect(webChip.textContent?.trim()).toBe('a-web');
+		const webLink = screen.getByRole('link', { name: 'a-web' });
+		expect(webLink.className).toMatch(/\bt-body\b/);
+		expect(webLink.className).not.toMatch(/\bt-code\b/);
+		expect(webLink.className).not.toMatch(/\bt-label\b/);
 	});
 
-	test('a multi-build service group has ONE button, on its first line only', async () => {
-		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
-		stubFetch(fleet.rollouts, fleet.environments);
+	test('a multi-build service group has ONE link on its first line; continuation lines carry no link', async () => {
+		const a = filterFixture('a');
+		stubFetch(a.rollouts, a.environments);
 		await renderRevisions();
-		// `hello-multi-app` doesn't exist in `repoFixture`; use the shared
-		// two-line fixture instead (`a-web` is single-line there). Assert
-		// the general invariant on a service that DOES have two lines:
-		// exactly one `aria-pressed` control per service, however many
-		// build-lines it renders.
-		const buttons = screen
-			.getAllByRole('button')
-			.filter((b) => b.getAttribute('aria-label')?.startsWith('Show only '));
-		const names = buttons.map((b) => b.getAttribute('aria-label'));
+		// `filterFixture` gives each service exactly one line in the ledger
+		// (disjoint release lists), so this asserts the general invariant:
+		// exactly one `/apps/<name>` link per distinct service name.
+		const links = screen
+			.getAllByRole('link')
+			.filter((l) => l.getAttribute('href')?.startsWith('/apps/'));
+		const names = links.map((l) => l.getAttribute('href'));
 		expect(new Set(names).size).toBe(names.length);
 	});
 
-	test('pressing a chip filters the build lists to rows that service ships, and expands the section', async () => {
-		const a = filterFixture('a');
-		const b = filterFixture('b');
-		stubFetch([...a.rollouts, ...b.rollouts], [...a.environments, ...b.environments]);
+	test('the query lives in the URL as ?q=, deep-linkable and read on load', async () => {
+		state.page.url = new URL('http://localhost/revisions?q=a-api');
+		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
+		stubFetch(fleet.rollouts, fleet.environments);
 		await renderRevisions();
-		// repo-b starts closed.
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
+		const search = screen.getByPlaceholderText('Find a build or service') as HTMLInputElement;
+		expect(search.value).toBe('a-api');
+		// `a-api`'s own live build (r2) survives the filter that was already
+		// active on arrival — no keystroke needed.
+		await waitFor(() => expect(screen.getAllByTitle(fleet.r2.revision).length).toBeGreaterThan(0));
+	});
 
-		const apiChip = screen.getByRole('button', { name: 'Show only b-api' });
-		await fireEvent.click(apiChip);
-		expect(apiChip).toHaveAttribute('aria-pressed', 'true');
+	test('typing into the search field pushes ?q= into the URL, without spamming history', async () => {
+		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
+		const search = await (async () => {
+			stubFetch(fleet.rollouts, fleet.environments);
+			await renderRevisions();
+			return screen.getByPlaceholderText('Find a build or service') as HTMLInputElement;
+		})();
+		await fireEvent.input(search, { target: { value: 'a-api' } });
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('?q=a-api', expect.objectContaining({ replaceState: true })));
+	});
 
-		// Pressing the chip expanded repo-b's section with no header click.
-		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(2));
-
-		// "No longer running anywhere" holds `b-web`'s w2 and `b-api`'s a2;
-		// filtered to `b-api` only a2 survives.
-		await waitFor(() => expect(screen.getByText('1 of 2 builds')).toBeInTheDocument());
-		expect(screen.queryByTitle(b.w2.revision)).toBeNull();
-		expect(screen.getByTitle(b.a2.revision)).toBeInTheDocument();
-
-		// Pressing again clears the pressed state. (The section itself may
-		// fall back to closed once the filter that was holding it open
-		// clears — see `effectiveOpen` — which is expected, not asserted here.)
-		await fireEvent.click(apiChip);
-		expect(apiChip).toHaveAttribute('aria-pressed', 'false');
+	test('Escape clears the field and the URL param', async () => {
+		state.page.url = new URL('http://localhost/revisions?q=a-api');
+		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		const search = screen.getByPlaceholderText('Find a build or service') as HTMLInputElement;
+		expect(search.value).toBe('a-api');
+		await fireEvent.keyDown(search, { key: 'Escape' });
+		expect(search.value).toBe('');
 	});
 });
 

@@ -2,25 +2,29 @@
 
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { isEventStreamHealthy } from '$lib/api/events';
 	import { formatTimeAgoCompact, formatDate } from '$lib/utils';
 	import { revisionPath } from '$lib/version-utils';
 	import {
 		buildRevisionLedger,
+		lineState,
+		releaseLines,
 		repoDeviation,
 		rowNamesBuild,
 		serviceLedger,
 		sortByDeviation,
+		type ReleaseLine,
 		type RevisionRow,
 		type RevisionSlot,
 		type RepoLedger,
-		type ServiceLedgerGroup,
-		type ServiceLedgerLine
+		type ServiceLedgerGroup
 	} from '$lib/view-models/revision-ledger';
 	import {
 		revisionCoverage,
 		releaseSplit,
-		type CoverageSlotVM,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 	import { joinClauses } from '$lib/view-models/blocking-story';
@@ -241,6 +245,20 @@
 	});
 
 	/**
+	 * ⭐ ROUND 3 §10 — STALENESS. `isEventStreamHealthy()` has no reactive
+	 * signal of its own (it reflects module-level state `$lib/api/events`
+	 * mutates from an SSE callback), so this re-reads it every time the data
+	 * ACTUALLY changes (`query.dataUpdatedAt` — a fetch or an SSE-patched
+	 * cache write both bump it) and on the coarse clock's own tick, so a
+	 * stream drop with no new data is still noticed within 30s.
+	 */
+	const streamHealthy = $derived.by(() => {
+		void query.dataUpdatedAt;
+		void coarse;
+		return isEventStreamHealthy();
+	});
+
+	/**
 	 * revision → coverage, for EVERY deployed row — not only the live ones.
 	 * (Craft review item 6: a retired row's `.bld-mark` needs its own last
 	 * build-state glyph, which reads off this same coverage.)
@@ -259,8 +277,8 @@
 	function liveRows(repo: RepoLedger): RevisionRow[] {
 		return repo.rows.filter((r) => r.liveSlots > 0);
 	}
-	function pastRows(repo: RepoLedger): RevisionRow[] {
-		return repo.rows.filter((r) => r.liveSlots === 0);
+	function pastRows(repo: RepoLedger, headRevisions: Set<string>): RevisionRow[] {
+		return repo.rows.filter((r) => r.liveSlots === 0 && !headRevisions.has(r.revision));
 	}
 
 	/**
@@ -307,46 +325,84 @@
 	}
 
 	/**
-	 * ⭐ THE REPO'S ENTRY POINT — the newest build anything is running.
-	 * Chosen by RANK, a stable structural property — never by health.
+	 * ⭐ ROUND 3 — A RELATIVE AGE NEEDS ITS ABSOLUTE VALUE REACHABLE. `<time
+	 * datetime>` is what lets a phone's own long-press/"copy" surface the
+	 * real timestamp behind `Deployed 1d ago`, the same fact `ageTitle`
+	 * already gives a mouse via `title` — a `<span>` has no such mechanism.
 	 */
-	function leadRow(repo: RepoLedger): RevisionRow | null {
-		return repo.rows[0] ?? null;
-	}
-
-	/** Everything still running that is NOT the lead — the quiet path. */
-	function restRows(repo: RepoLedger, lead: RevisionRow | null): RevisionRow[] {
-		return liveRows(repo).filter((r) => r.revision !== lead?.revision);
+	function ageIso(row: RevisionRow, kind: 'live' | 'past' | 'pending'): string | undefined {
+		const ms = kind === 'pending' ? row.createdMs : row.lastDeployMs || row.createdMs;
+		return ms ? new Date(ms).toISOString() : undefined;
 	}
 
 	/**
-	 * ⭐ CRAFT REVIEW ITEM 5 — THE HERO MUST OBEY THE SERVICE FILTER TOO.
-	 * `lead` is the repo's own overall newest build; a filtered reader asking
-	 * "what is `hello-api-app` running" does not care that a DIFFERENT
-	 * service reached a newer commit. If any selected service is actually
-	 * live on `lead`, nothing changes — it is still the honest answer. If
-	 * none is, and exactly ONE service is selected, its own current build
-	 * (the ledger's own `lines[0]`, already rank-sorted) is the unambiguous
-	 * substitute. Two-plus selected services with no build in common have no
-	 * single "newest" left to state, so the hero hides rather than guess —
-	 * `filteredLeadRow` returns `null` and the caller renders nothing.
+	 * ⭐ ROUND 3 §1 — A REPOSITORY IS NOT ONE RELEASE LINE. Replaces the old
+	 * single `leadRow`/`restRows`/`filteredLeadRow` trio, which picked ONE
+	 * repo-wide "newest" row and filed every OTHER line's own current build
+	 * under "Also still running" as if it were merely older — measured on
+	 * the live cluster, `hello-multi-app`/`hello-world-app`'s own current
+	 * build (`064b655`) is not older than anything on ITS OWN line; it just
+	 * is not the newest build in a DIFFERENT line (`hello-api-app`/
+	 * `hello-frontend-app`'s `9f10e49`) that happens to sort first.
+	 *
+	 * One hero PER LINE whose own head has actually been deployed — a line
+	 * whose newest known build has never been deployed anywhere has nothing
+	 * to lead with (it belongs to the "Never deployed" list instead, per
+	 * `releaseLines`' own `headRevision` doc comment).
 	 */
-	function filteredLeadRow(
-		repo: RepoLedger,
-		lead: RevisionRow | null,
-		serviceGroups: ServiceLedgerGroup[]
-	): RevisionRow | null {
-		const selected = selectedApps[repo.repoKey];
-		if (!selected || selected.length === 0) return lead;
-		if (lead && lead.services.some((s) => selected.includes(s.appName) && s.liveSlots > 0)) {
-			return lead;
+	function leadRowsFor(repo: RepoLedger, lines: ReleaseLine[]): RevisionRow[] {
+		const out: RevisionRow[] = [];
+		for (const line of lines) {
+			// ⚠️ NOT `line.headRevision` — that is the ladder's rank-0 build,
+			// which (exactly like the old single-line page) can itself be
+			// undeployed while an OLDER build from the same line is the one
+			// actually in use (`newerPendingFixture`'s own shape: a newer
+			// build exists but nobody has run it yet). The hero states what
+			// is DEPLOYED, so it is this line's own newest row within
+			// `repo.rows` — already sorted newest-first by
+			// `buildRevisionLedger`'s own contract — not the line's absolute
+			// ladder head.
+			const deployed = repo.rows.find((r) => r.services.some((s) => line.services.includes(s.appName)));
+			if (deployed) out.push(deployed);
 		}
-		if (selected.length !== 1) return null;
-		const line: ServiceLedgerLine | undefined = serviceGroups.find(
-			(g) => g.appName === selected[0]
-		)?.lines[0];
-		if (!line) return null;
-		return repo.rows.find((r) => r.revision === line.revision) ?? null;
+		return out;
+	}
+
+	/**
+	 * §2 of round 3 — "each line's lead … is hidden when none of its
+	 * services match" a live search. Search is the ONE filter now (the
+	 * per-service chip strip is retired — see the ledger's own name cell,
+	 * now a plain link to `/apps/<name>`), so this is just `passesSearch`
+	 * applied to each line's own head row.
+	 */
+	function visibleLeadRows(rows: RevisionRow[]): RevisionRow[] {
+		return rows.filter((r) => !searchActive || passesSearch(r));
+	}
+
+	/**
+	 * ⭐ THE HERO NAMES ITS OWN LINE'S SERVICES — round 3 §1, "each naming
+	 * its services (hello-api-app · hello-frontend-app)" — but `Card`'s
+	 * `verdict` slot is `whitespace-nowrap` and the card itself is
+	 * `overflow-hidden` (it has no ellipsis of its own; it is sized for
+	 * short counts like `6/6 done`). Measured live: three long names
+	 * ("hello-multi-app · hello-world-app · hello-world-manifests", 58
+	 * characters) clipped mid-word at 390px instead of wrapping — `Card`'s
+	 * own `flex-wrap` only decides whether the ENTIRE verdict drops to its
+	 * own line, not whether that line itself fits. A character budget keeps
+	 * the exact two-service example the round names intact while falling
+	 * back to the honest count for a line too long to state safely; the
+	 * ledger's own per-line caption (§H) already names every service
+	 * regardless, so nothing is lost, only guarded against clipping.
+	 */
+	function heroServicesLabel(row: RevisionRow): string {
+		const joined = row.services.map((s) => s.appName).join(' · ');
+		if (joined.length <= 40) return joined;
+		return `${row.services.length} service${row.services.length === 1 ? '' : 's'}`;
+	}
+
+	/** Everything still running that is NOT one of the lines' own heads. */
+	function restRows(repo: RepoLedger, headRevisions: Set<string>): RevisionRow[] {
+		return liveRows(repo).filter((r) => !headRevisions.has(r.revision));
 	}
 
 	/** §2 — the bar's exact width, `1 of 9` → 11%, never a cell-flex guess. */
@@ -382,44 +438,14 @@
 		return out;
 	}
 
-	/**
-	 * ⭐ CRAFT REVIEW ITEM 6 — THE LEDGER'S OWN STATE DISC. "The deploy state
-	 * of that service's live build" — read off the SAME `revisionCoverage`
-	 * bucketing the rest of the page already trusts (never a second
-	 * classifier), for the specific (service, env) slots this ledger LINE
-	 * is actually about. A line's slots can disagree across environments
-	 * (DEV healthy, PROD failing); the worst one wins, because a disc that
-	 * hid a failure to show a healthy sibling would be a mark untrue of its
-	 * own kind. Returns `null` when the line's revision cannot be resolved
-	 * to a deployed row at all (should not happen — `serviceLedger` builds
-	 * lines only from `repo.rows` — but a glyph with nothing to point at is
-	 * refused rather than guessed).
+	/*
+	 * ⛔ THE LEDGER'S OWN STATE DISC IS GONE (round 3 addendum I). It read
+	 * `dotClass`'s borrowed `gray-500` for "deploy succeeded" — a value
+	 * `revision-coverage.ts` itself records as wrong — and a coloured dot
+	 * with no word needed a `title` to mean anything. `lineState`
+	 * (`revision-ledger.ts`) replaces it: nothing drawn for the steady norm,
+	 * a `Chip` in words for the one case that needs a look (§3).
 	 */
-	const DOT_SEVERITY: [needle: string, weight: number][] = [
-		['bg-red-', 4],
-		['bg-amber-', 3],
-		['bg-blue-', 2],
-		['bg-yellow-', 2],
-		['bg-gray-5', 1],
-		['bg-gray-4', 1]
-	];
-	function dotSeverity(cls: string): number {
-		for (const [needle, weight] of DOT_SEVERITY) if (cls.includes(needle)) return weight;
-		return 0;
-	}
-	function lineDot(appName: string, line: ServiceLedgerLine): CoverageSlotVM | null {
-		const row = coverageByRevision.get(line.revision);
-		if (!row) return null;
-		let best: CoverageSlotVM | null = null;
-		for (const bucket of row.buckets) {
-			for (const slot of bucket.slots) {
-				if (slot.appName !== appName) continue;
-				if (!line.slots.some((ls) => ls.envName === slot.envName)) continue;
-				if (!best || dotSeverity(slot.dotClass) > dotSeverity(best.dotClass)) best = slot;
-			}
-		}
-		return best;
-	}
 
 	function commitUrlFor(repoKey: string, revision: string): string | null {
 		const base = repoUrl(repoKey);
@@ -538,18 +564,32 @@
 
 	/* ── §7 — FIND A BUILD; FILTER TO ONE SERVICE ───────────────────────────
 	 *
-	 * TWO SEPARATE MECHANISMS, DELIBERATELY NOT SHARED. Search is global
-	 * (one field, every repo) and matches a BUILD (sha / short sha / service
-	 * / label). The per-service filter is PER REPO — pressing a chip asks
-	 * "what does this one service run" and only ever narrows THAT repo's own
-	 * three build lists, never its ledger (the ledger already answers the
-	 * per-service question directly; filtering it by its own chips would be
-	 * circular).
+	 * ⭐ ROUND 3 §2 — ONE FILTER. The per-repo `.pill-btn` chip strip
+	 * (`selectedApps`/`toggleAppFilter`) is RETIRED: search is now the only
+	 * mechanism that narrows a build list, and the ledger's own service name
+	 * is a plain link to `/apps/<name>` instead of a second, competing
+	 * filter control — the two-hop path (find the row here, then go look up
+	 * the app) becomes one hop straight to the app page.
+	 *
+	 * THE QUERY LIVES IN THE URL, so a filtered view is deep-linkable and
+	 * survives Back/refresh — the same `?x=` pattern `/activity` already
+	 * uses for its own chips. Read once on load; every further keystroke
+	 * replaces the current history entry (never pushes one per character).
 	 */
 
-	let searchQuery = $state('');
+	let searchQuery = $state(page.url.searchParams.get('q') ?? '');
 	const searchActive = $derived(searchQuery.trim().length > 0);
 	const searchNeedle = $derived(searchQuery.trim().toLowerCase());
+
+	$effect(() => {
+		const trimmed = searchQuery.trim();
+		if ((page.url.searchParams.get('q') ?? '') === trimmed) return;
+		const params = new URLSearchParams(page.url.searchParams);
+		if (trimmed) params.set('q', trimmed);
+		else params.delete('q');
+		const qs = params.toString();
+		goto(qs ? `?${qs}` : '?', { replaceState: true, noScroll: true, keepFocus: true });
+	});
 
 	function passesSearch(row: RevisionRow): boolean {
 		if (!searchActive) return true;
@@ -562,38 +602,9 @@
 		);
 	}
 
-	/**
-	 * ⭐ THE PER-SERVICE FILTER IS A CHIP STRIP, NOT A ROW TOGGLE.
-	 * (Coordinator amendment to REVISIONS-2026-09-05 §7(a): the spec's own
-	 * ledger-row-as-`aria-pressed`-toggle draft is NOT implemented — a whole
-	 * list row turning gray-900 reads as SELECTION, not FILTERING. This is
-	 * the spec's own named fallback: a multi-select `.pill-btn` strip under
-	 * the ledger, the exact mechanism `RolloutGrid.svelte`'s cluster filter
-	 * already uses — `aria-pressed`, gray-900 pressed treatment on the CHIP.)
-	 */
-	let selectedApps = $state<Record<string, string[]>>({});
-	function isAppSelected(repoKey: string, appName: string): boolean {
-		return (selectedApps[repoKey] ?? []).includes(appName);
-	}
-	function toggleAppFilter(repoKey: string, appName: string) {
-		const cur = selectedApps[repoKey] ?? [];
-		selectedApps = {
-			...selectedApps,
-			[repoKey]: cur.includes(appName) ? cur.filter((a) => a !== appName) : [...cur, appName]
-		};
-	}
-	function passesAppFilter(row: RevisionRow, repoKey: string): boolean {
-		const apps = selectedApps[repoKey];
-		return !apps || apps.length === 0 || row.services.some((s) => apps.includes(s.appName));
-	}
-	/** Search AND the chip filter both narrow the three build lists. */
-	function visibleInList(row: RevisionRow, repoKey: string): boolean {
-		return passesSearch(row) && passesAppFilter(row, repoKey);
-	}
-
-	/** While searching OR filtering, the section that answers it must be open. */
-	function effectiveOpen(i: number, repoKey: string): boolean {
-		return isOpen(i) || searchActive || (selectedApps[repoKey]?.length ?? 0) > 0;
+	/** While searching, every section that might answer it must be open. */
+	function effectiveOpen(i: number): boolean {
+		return isOpen(i) || searchActive;
 	}
 
 	function lineMatchesSearch(line: { revision: string; short: string }): boolean {
@@ -607,7 +618,6 @@
 	 * name matches keeps every line (the whole service matched); otherwise
 	 * only the lines whose build matches survive, and a service with none
 	 * left drops out of the ledger entirely for the duration of the search.
-	 * Never affected by the chip filter — see the note above `selectedApps`.
 	 */
 	function visibleLedgerGroups(groups: ServiceLedgerGroup[]): ServiceLedgerGroup[] {
 		if (!searchActive) return groups;
@@ -664,7 +674,27 @@
 		>
 			{#if scope}of {scope.known} builds deployed · {ledgers.length} repositor{ledgers.length === 1
 					? 'y'
-					: 'ies'}{/if}
+					: 'ies'}
+				<!--
+					⭐ ROUND 3 §10 — STALENESS. `· live` when the push channel is
+					healthy (the poll interval is the safety net, not the truth);
+					otherwise the exact time of the last successful read, so a
+					reader can judge for themselves whether the page might be
+					behind — never a silent, ageless "of N builds deployed" that
+					looks current whether or not it still is.
+				-->
+				{#if streamHealthy}
+					· live
+				{:else if query.dataUpdatedAt}
+					· updated
+					<time datetime={new Date(query.dataUpdatedAt).toISOString()}
+						>{new Date(query.dataUpdatedAt).toLocaleTimeString([], {
+							hour: '2-digit',
+							minute: '2-digit'
+						})}</time
+					>, stream down
+				{/if}
+			{/if}
 		</p>
 	</div>
 
@@ -679,7 +709,7 @@
 		<StillTryingNotice failureCount={query.failureCount} class="mt-0 mb-0" />
 
 		<!-- ⭐ THE SEARCH FIELD, RESERVED FIRST — real geometry, disabled. -->
-		<div class="relative mt-1 w-full md:max-w-sm" aria-hidden="true">
+		<div class="relative mt-1 w-full sm:max-w-sm" aria-hidden="true">
 			<SearchOutline
 				class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
 			/>
@@ -897,7 +927,7 @@
 			`w-full` at 390, `max-w-sm` from `sm`. The unlayered iOS
 			input-zoom fix (`app.css`) already covers this input untouched.
 		-->
-		<div class="relative mt-1 w-full md:max-w-sm">
+		<div class="relative mt-1 w-full sm:max-w-sm">
 			<SearchOutline
 				class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
 			/>
@@ -916,7 +946,7 @@
 					type="button"
 					aria-label="Clear the search"
 					onclick={() => (searchQuery = '')}
-					class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200"
+					class="hit-32 absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200"
 				>
 					<CloseOutline class="h-4 w-4" aria-hidden="true" />
 				</button>
@@ -967,38 +997,82 @@
 		{#each orderedLedgers as repo, i (repo.repoKey)}
 			{@const serviceGroups = serviceLedger(repo)}
 			{@const visibleGroups = visibleLedgerGroups(serviceGroups)}
-			{@const shownGroups = expandLedger[repo.repoKey] ? visibleGroups : visibleGroups.slice(0, FOLD)}
+			<!--
+				⭐ ROUND 3 §1 — A REPOSITORY IS NOT ONE RELEASE LINE. `lines` groups
+				this repo's services by the build their OWN ladder currently
+				heads with. `leadHeads` is the set of revisions that are SOME
+				line's own head — excluded from "Also still running"/"No longer
+				running" so a line's own current build is never filed as if it
+				were merely older than a DIFFERENT line's more recent one.
+			-->
+			{@const lines = releaseLines(repo)}
+			{@const multiLine = lines.length > 1}
+			{@const leadRows = leadRowsFor(repo, lines)}
+			{@const visibleLeads = visibleLeadRows(leadRows)}
+			{@const leadHeads = new Set(leadRows.map((r) => r.revision))}
+			<!--
+				⭐ ROUND 3 ADDENDUM C — LEDGER ORDER. Within each release line
+				(and across the whole ledger on a single-line repo), the
+				deviating service — held, pinned, stuck or failing on any build
+				it is live on — leads; the rest stay alphabetical. `serviceLineIndex`
+				only matters when `multiLine`; a single-line repo sorts on
+				deviation alone.
+			-->
+			{@const serviceLineIndex = new Map(lines.flatMap((l, li) => l.services.map((s) => [s, li] as const)))}
+			{@const orderedGroups = [...visibleGroups].sort((a, b) => {
+				if (multiLine) {
+					const la = serviceLineIndex.get(a.appName) ?? 0;
+					const lb = serviceLineIndex.get(b.appName) ?? 0;
+					if (la !== lb) return la - lb;
+				}
+				const da = a.lines.some((ln) => lineState(ln, coarse)) ? 0 : 1;
+				const db = b.lines.some((ln) => lineState(ln, coarse)) ? 0 : 1;
+				if (da !== db) return da - db;
+				return a.appName.localeCompare(b.appName);
+			})}
+			{@const shownGroups = expandLedger[repo.repoKey] ? orderedGroups : orderedGroups.slice(0, FOLD)}
 			{@const headCreated = repo.rows[0]?.createdMs ?? 0}
 			{@const newer = headCreated > 0 ? repo.pending.filter((p) => p.createdMs > headCreated).length : 0}
-			{@const distanceVerdict = newer > 0 ? `${newer} newer build${newer === 1 ? '' : 's'}` : 'Newest build deployed'}
+			<!--
+				⭐ ROUND 3 §1/§4 — A SINGLE NUMBER WOULD LIE ACROSS MORE THAN ONE
+				LINE (it is only ever true of the line `repo.rows[0]` happens to
+				belong to). Multi-line repos state the fact they DO know — how
+				many independent lines exist — and leave "how far behind" to
+				each line's own hero band below.
+			-->
+			{@const distanceVerdict = multiLine
+				? `${lines.length} release lines`
+				: newer > 0
+					? `${newer} newer build${newer === 1 ? '' : 's'}`
+					: 'Newest build deployed'}
+			{@const distanceVerdictTitle = multiLine
+				? 'This repository has more than one independent release line — each one has its own newest build, shown below.'
+				: 'Builds newer than the newest one any service here is running. None of them has been deployed anywhere.'}
 			{@const headCov = repoHeadCoverage.get(repo.repoKey) ?? null}
 			{@const deviation = repoDeviation(repo, headCov)}
 			{@const url = repoUrl(repo.repoKey)}
-			{@const open = effectiveOpen(i, repo.repoKey)}
-			{@const rawLead = leadRow(repo)}
-			{@const lead = filteredLeadRow(repo, rawLead, serviceGroups)}
-			{@const leadCov = lead ? (lead === rawLead ? headCov : revisionCoverage(lead, coarse)) : null}
-			{@const liveAll = restRows(repo, lead)}
-			{@const pastAll = pastRows(repo).filter((r) => r.revision !== lead?.revision)}
-			{@const liveVisible = liveAll.filter((r) => visibleInList(r, repo.repoKey))}
-			{@const pastVisible = pastAll.filter((r) => visibleInList(r, repo.repoKey))}
-			{@const pendingVisible = repo.pending.filter((r) => visibleInList(r, repo.repoKey))}
+			{@const open = effectiveOpen(i)}
+			{@const liveAll = restRows(repo, leadHeads)}
+			{@const pastAll = pastRows(repo, leadHeads)}
+			{@const liveVisible = liveAll.filter(passesSearch)}
+			{@const pastVisible = pastAll.filter(passesSearch)}
+			{@const pendingVisible = repo.pending.filter(passesSearch)}
 			{@const namedLive = repoNamesBuilds(liveVisible)}
 			{@const namedPast = repoNamesBuilds(pastVisible)}
-			{@const noMatchText = searchActive
-				? `No build matches “${searchQuery.trim()}”.`
-				: 'No build matches this filter.'}
+			{@const noMatchText = `No build matches “${searchQuery.trim()}”.`}
 			<!--
-				⭐ CRAFT REVIEW ITEM 5 — A REPO-WIDE SEARCH MISS COLLAPSES TO ONE
-				SENTENCE. Three cards each independently printing `No build
-				matches "x".` (or worse, three headers each reading `0 of N
-				builds`) is the same fact stated three times. Scoped to SEARCH
-				only (`searchActive`) — the service-chip filter keeps its
-				per-card `noMatchText` branches, since a chip miss on one list
-				while another still has rows is a real, useful distinction.
+				⭐ ROUND 3 §2/ADDENDUM J — A REPOSITORY WITH NO MATCH COLLAPSES TO
+				ONE SENTENCE, not four (the ledger's own miss text, plus one per
+				build-list card). `repoNoMatch` covers EVERY section this card can
+				show; when true, the card prints its header and exactly one line
+				underneath and nothing else.
 			-->
-			{@const repoSearchMiss =
-				searchActive && liveVisible.length === 0 && pastVisible.length === 0 && pendingVisible.length === 0}
+			{@const repoNoMatch =
+				searchActive &&
+				visibleGroups.length === 0 &&
+				liveVisible.length === 0 &&
+				pastVisible.length === 0 &&
+				pendingVisible.length === 0}
 
 			<!--
 				⭐ THE REPOSITORY CARD — §1. Always drawn, and its own
@@ -1081,14 +1155,14 @@
 								label={deviation.chip.label}
 								title={deviation.chip.role === 'failing'
 									? 'The newest build is deployed somewhere the deploy is not healthy'
-									: deviation.chip.role === 'alarm'
+									: deviation.chip.role === 'held'
 										? 'Places running this build on an older release, with a newer one held by a rule'
 										: 'Services with something not yet on the newest build any of them has reached'}
 							/>
 						{/if}
 						<span
 							class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400"
-							title="Builds newer than the newest one any service here is running. None of them has been deployed anywhere."
+							title={distanceVerdictTitle}
 							>{distanceVerdict}</span
 						>
 					</span>
@@ -1096,99 +1170,120 @@
 
 				<!-- ⭐ THE SERVICE LEDGER — §7(a). One group per service, one
 				     line per build that service is actually live on. -->
-				{#if searchActive && visibleGroups.length === 0}
-					<!-- Every service's own name AND every build it ships were
-					     ruled out by the search — an empty grid here would read
-					     as a rendering gap, not as an answer. -->
-					<p class="t-body px-4 py-3 text-gray-500 dark:text-gray-400">{noMatchText}</p>
+				{#if repoNoMatch}
+					<!-- ⭐ ROUND 3 §2/ADDENDUM J — ONE SENTENCE FOR THE WHOLE CARD. -->
+					<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
 				{:else}
 					<div class="svc-ledger py-1">
-						{#each shownGroups as group (group.appName)}
-						{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
-							{@const dot = line ? lineDot(group.appName, line) : null}
-							<div class="svc-line">
+						{#each shownGroups as group, gi (group.appName)}
+							{@const li = serviceLineIndex.get(group.appName) ?? 0}
+							{@const prevLi = gi > 0 ? (serviceLineIndex.get(shownGroups[gi - 1].appName) ?? 0) : null}
+							{#if multiLine && li !== prevLi}
 								<!--
-									⭐ CRAFT REVIEW ITEM 6 — THE LEDGER'S OWN STATE
-									DISC. Every OTHER row on this page reserves a
-									16px glyph cell; the ledger alone had none, so
-									a service's own deploy health was invisible
-									until the reader opened the whole section. Only
-									on the first line — a continuation line shares
-									the same service and, per `lineDot`'s own
-									worst-wins rule, a second disc would either
-									repeat the first or silently contradict it.
+									⭐ ROUND 3 ADDENDUM H — TWO `NEWEST` SHAS IN ONE
+									COLUMN READ AS A CONTRADICTION UNLESS THE LINES
+									ARE LABELLED. One caption per release line, naming
+									the services that share it, so `NEWEST` beside
+									`9f10e49` and `NEWEST` beside `064b655` are legibly
+									two different ladders, not one row disagreeing
+									with itself.
 								-->
-								<span class="svc-mark" aria-hidden="true">
-									{#if idx === 0 && dot}
+								<div class="svc-line-caption t-label text-gray-500 dark:text-gray-400">
+									{lines[li].services.length <= 3
+										? lines[li].services.join(' · ')
+										: `${lines[li].services.length} services`}
+								</div>
+							{/if}
+							{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
+								{@const state = line ? lineState(line, coarse) : null}
+								<div class="svc-line">
+									{#if idx === 0}
+										<!--
+											⭐ ROUND 3 §2 — ONE FILTER. The name is a plain
+											link to the app page now, never a second
+											filter control competing with the search field
+											above — `.tap-link` outside any `.tap-zone`
+											picks up `app.css`'s own 32px hit-slop
+											automatically.
+										-->
+										<a
+											href={`/apps/${encodeURIComponent(group.appName)}`}
+											aria-label={group.appName}
+											class="svc-name tap-link t-body text-gray-700 hover:underline dark:text-gray-200"
+										>
+											<!--
+												⭐ `aria-label` NAMES THE WHOLE WORD. `<wbr>` between
+												`identParts`' pieces is a visual break point only,
+												but the accessible-name algorithm treats sibling
+												text nodes split by an element as needing a joining
+												space — "a-web" was announced (and matched by role
+												queries) as "a- web". The label states the fact the
+												markup's own soft-wrap would otherwise mis-state.
+											-->
+											{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
+												/>{/if}{/each}
+										</a>
+									{:else}
+										<!--
+											⭐ ROUND 3 ITEM 7/ADDENDUM E — THE CONTINUATION
+											LINE KEEPS ITS NAME AT 390. Always rendered
+											(muted); the `@container` rule below hides it
+											again above 560px, where the sha's own column
+											already lines every line up under line 1's name.
+										-->
 										<span
-											class="inline-block h-2 w-2 shrink-0 rounded-full {dot.dotClass}"
-											title="{group.appName}: {dot.statusWord}"
-										></span>
+											class="svc-name svc-name-continuation t-body text-gray-400 dark:text-gray-500"
+											aria-hidden="true"
+										>
+											{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
+												/>{/if}{/each}
+										</span>
 									{/if}
-								</span>
-								{#if idx === 0}
-									{@const selected = isAppSelected(repo.repoKey, group.appName)}
-									<!--
-										⭐ THE FILTER IS THE NAME CELL NOW — coordinator
-										follow-up 2, typography fixed per craft-review
-										items 10 and 11. `t-body` sans (not `t-code`
-										mono — mono stays reserved for the sha beside
-										it, §7a), and the pressed fill is INSET within
-										the row's own padding rather than reaching past
-										it with a negative margin (which pushed the
-										fill 5px outside the card's own edge and had it
-										clipped by `overflow-hidden`).
-									-->
-									<button
-										type="button"
-										onclick={() => toggleAppFilter(repo.repoKey, group.appName)}
-										aria-pressed={selected}
-										aria-label={`Show only ${group.appName}`}
-										class="svc-name svc-name-btn hit-32 t-body rounded text-left transition-colors
-											{selected
-											? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-											: 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700/60'}"
-									>
-										{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
-											/>{/if}{/each}
-									</button>
-								{:else}
-									<span class="svc-name" aria-hidden="true"></span>
-								{/if}
-								{#if line}
-									<a
-										class="svc-sha rev-sha ident tap-link t-code text-gray-900 hover:underline dark:text-white"
-										href={revisionPath(repo.repoKey, line.revision)}
-										title={line.revision}>{line.short}</a
-									>
-									<span class="svc-rank">
-										{#if line.rank !== null}
-											{@const verdict = rankVerdictFor(line.rank)}
-											<Chip
-												role={rankRole(verdict)}
-												label={rankLabel(verdict)}
-												title={rankTitle(verdict, group.appName)}
-											/>
-										{/if}
-									</span>
-									<span class="svc-envs">
-										{#each line.slots as slot (slot.envName)}
-											{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
-											<Chip
-												role="env"
-												theme={slot.cell.theme}
-												label={envDisplay}
-												wide
-												title="{group.appName} in {envDisplay.toUpperCase()}"
-											/>
-										{/each}
-									</span>
-								{:else}
-									<span class="svc-empty t-micro text-gray-500 dark:text-gray-400">Not deployed</span>
-								{/if}
-							</div>
+									{#if line}
+										<a
+											class="svc-sha rev-sha ident tap-link t-code text-gray-900 hover:underline dark:text-white"
+											href={revisionPath(repo.repoKey, line.revision)}
+											title={line.revision}>{line.short}</a
+										>
+										<span class="svc-rank">
+											{#if line.rank !== null}
+												{@const verdict = rankVerdictFor(line.rank)}
+												<Chip
+													role={rankRole(verdict)}
+													label={rankLabel(verdict)}
+													title={rankTitle(verdict, group.appName)}
+												/>
+											{/if}
+										</span>
+										<span class="svc-envs">
+											{#each line.slots as slot (slot.envName)}
+												{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
+												<Chip
+													role="env"
+													theme={slot.cell.theme}
+													label={envDisplay}
+													wide
+													title="{group.appName} in {envDisplay.toUpperCase()}"
+												/>
+											{/each}
+											<!--
+												⭐ ROUND 3 §3/ADDENDUM I — STATE IN WORDS, ONLY
+												FOR THE DEVIATION. Nothing draws for the
+												steady norm; `lineState` already reads the
+												SAME primitives the home cards do, so this
+												word cannot disagree with `/`'s for the same
+												rollout.
+											-->
+											{#if state}
+												<Chip role={state.role} label={state.label} title={state.title} wide />
+											{/if}
+										</span>
+									{:else}
+										<span class="svc-empty t-micro text-gray-500 dark:text-gray-400">Not deployed</span>
+									{/if}
+								</div>
+							{/each}
 						{/each}
-					{/each}
 				</div>
 			{/if}
 				{#if visibleGroups.length > FOLD}
@@ -1213,7 +1308,9 @@
 						title="A place is one service in one environment."
 					>
 						{repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'} · {repo.rows.length} deployed
-						at least once · {repo.slotCount} place{repo.slotCount === 1 ? '' : 's'} to deploy to
+						at least once · {repo.slotCount} place{repo.slotCount === 1 ? '' : 's'} to deploy to{multiLine
+							? ` · across ${lines.length} release lines`
+							: ''}
 					</span>
 					{#if url}
 						<a class="nav-link shrink-0" href={url} target="_blank" rel="noopener noreferrer" title={repo.repoLabel}>
@@ -1230,7 +1327,7 @@
 					cards read as CONTENTS of the 12px repository card rather
 					than siblings of it.
 				-->
-				{#if open}
+				{#if open && !repoNoMatch}
 					<!--
 						⛔ DARK GROUND DEVIATES FROM THE COORDINATOR'S LITERAL
 						`dark:bg-gray-800/40`: this element's PARENT (`.repo-card`)
@@ -1248,74 +1345,89 @@
 						class="rev-shell border-t border-gray-100 bg-gray-50 p-4 dark:border-gray-700/60 dark:bg-black/20"
 					>
 						<!--
-							⭐ THE HERO, COMPACT NOW (craft review item 7). `barPercent`/
-							`hideBar`/`showHeldChip`/`compact` are the additive props
-							`RevisionLead.svelte` gained for this pass — see that
-							component's own header comment. The detail page's call
-							site is untouched and keeps its old two-line layout and
-							bucketed bar.
+							⭐ ROUND 3 §1 — ONE HERO PER RELEASE LINE. `barPercent`/
+							`hideBar`/`compact` are the additive props `RevisionLead.svelte`
+							gained for the previous pass; `showHeldChip` is deliberately
+							NOT passed any more (addendum B) — the collapsed header's own
+							`N held` chip already states it, in the shared `held` spelling,
+							and the hero's own `BuildStateMark` already says "held in N
+							places" in words, so a second chip here was the same fact
+							twice, 399px apart. The detail page's own call site is
+							untouched.
 						-->
-						{#if lead && leadCov}
-							<Card
-								icon={RocketSolid}
-								title="Newest build in use"
-								verdict="{lead.services.length} service{lead.services.length === 1 ? '' : 's'}"
-								verdictTitle={scopeRecord(lead.services.length)}
-							>
-								<RevisionLead
-									short={lead.short}
-									href={revisionPath(repo.repoKey, lead.revision)}
-									eyebrow="Newest build"
-									coverage={leadCov}
-									barPercent={livePercent(leadCov.liveCount, leadCov.totalCount)}
-									hideBar={leadCov.liveCount === leadCov.totalCount}
-									showHeldChip
-									spread={false}
-									compact
+						{#each visibleLeads as leadRow (leadRow.revision)}
+							{@const leadCov =
+								leadRow.revision === (repo.rows[0]?.revision ?? '')
+									? headCov
+									: revisionCoverage(leadRow, coarse)}
+							{#if leadCov}
+								<Card
+									icon={RocketSolid}
+									title="Newest build in use"
+									verdict={heroServicesLabel(leadRow)}
+									verdictTitle={scopeRecord(leadRow.services.length)}
+									class={multiLine ? 'mb-4' : ''}
 								>
-									{#if rowNamesBuild(lead)}
-										{#snippet meta()}
-											{@render names(lead, true)}
-										{/snippet}
-									{/if}
-									{#if releaseSplitSentence(leadCov)}
-										<p class="t-body basis-full text-gray-500 dark:text-gray-400">
-											{releaseSplitSentence(leadCov)}
-										</p>
-									{/if}
-									{#if commitUrlFor(repo.repoKey, lead.revision)}
-										<a
-											class="nav-link"
-											href={commitUrlFor(repo.repoKey, lead.revision)}
-											target="_blank"
-											rel="noopener noreferrer"
-											aria-label={`View the commit for ${lead.short} on GitHub — opens in a new tab`}
-										>
-											View commit
-											<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-										</a>
-									{/if}
-								</RevisionLead>
-							</Card>
-						{/if}
+									<RevisionLead
+										short={leadRow.short}
+										href={revisionPath(repo.repoKey, leadRow.revision)}
+										eyebrow="Newest build"
+										coverage={leadCov}
+										barPercent={livePercent(leadCov.liveCount, leadCov.totalCount)}
+										hideBar={leadCov.liveCount === leadCov.totalCount}
+										spread={false}
+										compact
+									>
+										{#if rowNamesBuild(leadRow)}
+											{#snippet meta()}
+												{@render names(leadRow, true)}
+											{/snippet}
+										{/if}
+										{#if releaseSplitSentence(leadCov)}
+											<p class="t-body basis-full text-gray-500 dark:text-gray-400">
+												{releaseSplitSentence(leadCov)}
+											</p>
+										{/if}
+										{#if commitUrlFor(repo.repoKey, leadRow.revision)}
+											<a
+												class="nav-link"
+												href={commitUrlFor(repo.repoKey, leadRow.revision)}
+												target="_blank"
+												rel="noopener noreferrer"
+												aria-label={`View the commit for ${leadRow.short} on GitHub — opens in a new tab`}
+											>
+												View commit
+												<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
+											</a>
+										{/if}
+									</RevisionLead>
+								</Card>
+							{/if}
+						{/each}
 
-						{#if repoSearchMiss}
-							<p class="t-body mt-4 px-4 py-10 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
-						{:else}
-							<div class="rev-cols mt-4">
-								<div class="flex min-w-0 flex-col gap-4">
-									<!-- CARD 1 — THE QUIET PATH. -->
-									<Card
+						<div class="rev-cols mt-4">
+							<div class="flex min-w-0 flex-col gap-4">
+								<!-- CARD 1 — THE QUIET PATH. -->
+								<Card
 										icon={CheckCircleSolid}
-										title={lead ? 'Also still running' : 'Still running'}
+										title={visibleLeads.length > 0 ? 'Also still running' : 'Still running'}
 										verdict={rollupLabel(liveVisible.length, liveAll.length, 'build')}
 										verdictTitle="Older builds that some service is still running"
 										padded={false}
 									>
-										{#if liveAll.length === 0}
+										<!--
+											⭐ ROUND 3 §2 — NO FLEET SENTENCE WHILE A QUERY IS
+											ACTIVE. `liveAll.length === 0` is true of the whole
+											repo regardless of the search box; stating it while
+											a search is narrowing the page reads as "there is
+											nothing here" when the honest fact is "nothing here
+											matches your search" — the branch below already says
+											that.
+										-->
+										{#if liveAll.length === 0 && !searchActive}
 											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
-												{lead
-													? 'Nothing older is still running — every place is on the build above.'
+												{visibleLeads.length > 0
+													? 'Nothing older is still running — every place is on a build above.'
 													: 'Nothing this repo has deployed is still running. Every place has moved on.'}
 											</p>
 										{:else if liveVisible.length === 0}
@@ -1381,8 +1493,10 @@
 																	></div>
 																</div>
 															{/if}
-															<span class="t-micro mt-1 block text-gray-500 dark:text-gray-400" title={ageTitle(row, 'live')}
-																>{ageOf(row, 'live')}</span
+															<time
+																class="t-micro mt-1 block text-gray-500 dark:text-gray-400"
+																datetime={ageIso(row, 'live')}
+																title={ageTitle(row, 'live')}>{ageOf(row, 'live')}</time
 															>
 														</div>
 
@@ -1432,9 +1546,10 @@
 																{@render names(row, namedPast)}
 															</div>
 															<div class="bld-roll">
-																<span
+																<time
 																	class="t-micro block text-gray-500 dark:text-gray-400"
-																	title={ageTitle(row, 'past')}>{ageOf(row, 'past')}</span
+																	datetime={ageIso(row, 'past')}
+																	title={ageTitle(row, 'past')}>{ageOf(row, 'past')}</time
 																>
 															</div>
 															<span class="bld-go" aria-hidden="true">
@@ -1496,9 +1611,10 @@
 															<span class="t-dense block text-gray-700 dark:text-gray-200">
 																{row.services.length} service{row.services.length === 1 ? '' : 's'}
 															</span>
-															<span
+															<time
 																class="t-micro block text-gray-500 dark:text-gray-400"
-																title={ageTitle(row, 'pending')}>{ageOf(row, 'pending')}</span
+																datetime={ageIso(row, 'pending')}
+																title={ageTitle(row, 'pending')}>{ageOf(row, 'pending')}</time
 															>
 														</div>
 														<span class="bld-go" aria-hidden="true">
@@ -1522,7 +1638,6 @@
 									</Card>
 								</div>
 							</div>
-						{/if}
 					</div>
 				{/if}
 			</div>
@@ -1618,26 +1733,17 @@
 	 * makes every repo's env column start at the SAME x regardless of
 	 * which rank words happen to appear in it.
 	 *
-	 * ⭐ CRAFT REVIEW ITEM 6 — A 16px GLYPH CELL LEADS THE ROW, matching
-	 * `.bld-row`'s own grammar: every row-shaped list on this page reserves
-	 * one, and the ledger was the one exception.
+	 * ⛔ THE 16px GLYPH CELL IS GONE (round 3 addendum I). The old per-row
+	 * status dot moved to a `Chip` beside the env chips, drawn only for a
+	 * deviation (§3) — there is nothing to reserve a leading column FOR any
+	 * more, and addendum D's own complaint (49% ink at 1440) is one column
+	 * lighter for it.
 	 */
 	.svc-ledger {
 		display: grid;
-		grid-template-columns: 16px minmax(120px, 180px) 88px 90px minmax(0, 1fr);
+		grid-template-columns: minmax(120px, 180px) 88px 90px minmax(0, 1fr);
 		column-gap: 12px;
 		row-gap: 0;
-		/*
-		 * ⭐ THE 16px INSET LIVES ON THE GRID CONTAINER, NOT ON A TRACK.
-		 * `.svc-mark`'s own track is a fixed, exact 16px — the glyph's own
-		 * width — so giving that SAME element 16px of padding-left would
-		 * need 32px total, which either overflows the fixed track or (via a
-		 * grid item's implicit `min-width: auto`) silently grows it past
-		 * 16px, throwing off every column after it. Padding the CONTAINER
-		 * insets the whole grid uniformly without touching any track's own
-		 * width — the same reasoning `.bld-row`'s 16px side padding already
-		 * uses one level up.
-		 */
 		padding-inline: 16px;
 	}
 
@@ -1645,93 +1751,47 @@
 		display: contents;
 	}
 
-	.svc-mark {
-		grid-column: 1;
-		padding-block: 6px;
-		display: flex;
-		align-items: center;
-		height: 20px;
-	}
-
 	.svc-name {
-		grid-column: 2;
+		grid-column: 1;
 		padding-block: 6px;
 		min-width: 0;
 	}
 
 	/*
-	 * ⭐ THE NAME CELL IS THE FILTER — coordinator follow-up 2. Button resets
-	 * only; the pressed/unpressed COLOUR is inline (it is state, not
-	 * geometry). `display: block` because `.svc-name` is a `display:
-	 * contents` grid child's sibling cell and a `<button>`'s UA default
-	 * (`inline-block`) would let it shrink to its own text instead of
-	 * filling the grid cell the way the plain `<span>` on every other line
-	 * does — which is what kept the column's left edge lining up before
-	 * this control existed.
+	 * ⭐ ROUND 3 §2 — THE NAME IS A LINK NOW, NOT A FILTER. The per-repo chip
+	 * strip this cell used to double as is retired (search is the one
+	 * filter); `.tap-link` alone (outside any `.tap-zone`) is what gives it
+	 * `app.css`'s standalone 32px hit-slop, so no bespoke button geometry is
+	 * needed here any more.
 	 */
+	.svc-name-continuation {
+		display: none;
+	}
+
 	/*
-	 * ⛔ `:where()`, NOT A BARE SELECTOR — same fight, twice. Svelte's own
-	 * scoping hash gets appended INSIDE the `:where()` too, but `:where()`
-	 * always contributes ZERO specificity, so this UA-reset rule can no
-	 * longer outrank the CONDITIONAL utility classes the markup adds for
-	 * pressed/unpressed (`bg-gray-900`, `text-white`, …) or `.t-code`'s own
-	 * font declarations. Measured live: written as plain `.svc-name-btn {
-	 * background: transparent }`, the scoping hash made it MORE specific
-	 * than `.bg-gray-900` and the pressed fill silently never painted —
-	 * `aria-pressed="true"` with a fully transparent background. Same root
-	 * cause as the `font: inherit` note this replaced.
+	 * ⭐ ROUND 3 ADDENDUM H — ONE CAPTION PER RELEASE LINE, spanning the
+	 * whole grid so it reads as a section label over the services it names,
+	 * never as a value in the name column.
 	 */
-	/*
-	 * ⛔ NO `background` HERE, EVEN AT ZERO SPECIFICITY. (Second round of the
-	 * same bug — see the `font: inherit` note this rule used to carry.)
-	 * `app.css`'s own layering note is the one to reread: a Svelte-scoped
-	 * rule is UNLAYERED, and an unlayered rule beats a LAYERED one — e.g.
-	 * Tailwind's own utilities layer — regardless of specificity. `:where()`
-	 * only wins specificity fights; it cannot lose a layer fight on
-	 * purpose. Declaring `background: transparent` here pinned the button
-	 * transparent through `aria-pressed="true"` no matter what utility
-	 * class the markup added. Tailwind's own preflight (`@layer base`)
-	 * already resets a bare `<button>` to a transparent background, which
-	 * is exactly the UNSELECTED state this control wants — so the fix is to
-	 * declare nothing at all and let the conditional `bg-gray-900` /
-	 * `dark:bg-white` utility classes be the only thing that ever sets it.
-	 */
-	/*
-	 * ⭐ CRAFT REVIEW ITEM 11 — INSET, NOT FULL-BLEED. This used to be
-	 * `display: block; width: 100%` (fill the whole grid cell) PLUS a
-	 * `-mx-1.5`/`-my-0.5` Tailwind negative margin meant to cancel padding
-	 * back to the bare text's position — and the margin reached far enough
-	 * left that the pressed fill's own edge measured outside the card's
-	 * border, clipped by `overflow-hidden`. There is no other element
-	 * sharing this cell (a continuation line's `.svc-name` is an empty
-	 * span, not a second copy of this button), so nothing needs the button
-	 * to fill the full column width. Sized to its own content instead, with
-	 * a small CSS-only inset — never a Tailwind utility here, so this
-	 * cannot re-fight `bg-gray-900` the way the geometry properties did.
-	 */
-	.svc-name-btn {
-		display: inline-block;
-		max-width: 100%;
-		padding: 2px 6px;
-		margin-left: -6px;
-		border: none;
-		cursor: pointer;
+	.svc-line-caption {
+		grid-column: 1 / -1;
+		padding: 10px 0 2px;
 	}
 
 	.svc-sha {
-		grid-column: 3;
+		grid-column: 2;
 		padding-block: 6px;
 	}
 
 	.svc-rank {
-		grid-column: 4;
+		grid-column: 3;
 		padding-block: 6px;
 		display: flex;
 		align-items: center;
 	}
 
 	.svc-envs {
-		grid-column: 5;
+		grid-column: 4;
 		padding-block: 6px;
 		display: flex;
 		flex-wrap: wrap;
@@ -1743,42 +1803,52 @@
 	/* NO LIVE SLOT — one line: the name, then the fact, spanning the rest of
 	   the row so it never pretends to be a build id. */
 	.svc-empty {
-		grid-column: 3 / -1;
+		grid-column: 2 / -1;
 		padding-block: 6px;
 	}
 
 	/*
-	 * ⭐ THE LEDGER ROW'S OWN REFLOW — coordinator follow-up 3. TWO LINES,
-	 * not three or four: line 1 is `name …… sha  RANK` (name left, sha +
-	 * rank chip right-aligned), line 2 is the env chips. This STAYS the one
-	 * shared grid (`.svc-line` stays `display: contents` — never reverts to
-	 * its own per-line grid the way it did in the first mobile draft) with
-	 * fewer, narrower columns: `minmax(0,1fr)` for the name, fixed widths
-	 * for the mark/sha/rank. That is what makes "sub-lines of a multi-build
-	 * service start at line 1's sha column" true for free — every line's
-	 * sha lands in the SAME shared column regardless of whether that line
-	 * has a name.
+	 * ⭐ ROUND 3 ADDENDUM E — THE LEDGER ACTUALLY STACKS BELOW 560px NOW.
+	 * The previous four-column reflow kept the grid four columns wide
+	 * (`16px 115px 64px 90px`) — names still wrapped onto two lines on most
+	 * services and the env chips outdented 18px from the name because
+	 * `.svc-envs`'s `grid-column: 1 / -1` measured from the WRONG column 1
+	 * (the leading 16px mark track, since deleted). THREE full-width rows
+	 * now, one left edge: name (its own row), sha + rank chip side by side
+	 * (the one place two facts still share a row), then env chips — the
+	 * exact stack the addendum asked for, and it is what makes "the
+	 * continuation-line name" (item 7) sit flush under line 1's name
+	 * instead of orphaned under a bare chip.
 	 */
 	@container (max-width: 560px) {
 		.svc-ledger {
-			grid-template-columns: 16px minmax(0, 1fr) 64px 90px;
+			grid-template-columns: minmax(0, 1fr) auto;
 			column-gap: 8px;
 			row-gap: 2px;
 		}
 
-		/* Its own full-width line under name/sha/rank. Container padding
-		   already gives it a right inset; no per-cell override needed. */
-		.svc-envs {
+		.svc-name,
+		.svc-name-continuation {
+			grid-column: 1 / -1;
+		}
+
+		.svc-name-continuation {
+			display: block;
+		}
+
+		.svc-sha {
+			grid-column: 1;
+		}
+
+		.svc-rank {
+			grid-column: 2;
+		}
+
+		.svc-envs,
+		.svc-empty {
 			grid-column: 1 / -1;
 			padding-top: 0;
 		}
-
-		/* ⛔ NO OVERRIDE NEEDED — the base rule's `grid-column: 3 / -1` spans
-		   "everything after the name" at any track count: sha+rank+envs on
-		   the 5-column desktop grid, sha+rank on this 4-column one. An
-		   earlier `2 / -1` here overlapped the FIRST line's own name cell
-		   (column 2) with this message in the exact case both render at
-		   once (a "Not deployed" line's own idx-0 name). */
 
 		/*
 		 * ⭐ COORDINATOR FOLLOW-UP 5 — THE META LINE WRAPS, THE LINK DROPS.
@@ -1847,6 +1917,20 @@
 		min-width: 0;
 	}
 
+	/*
+	 * ⭐ ROUND 3 ADDENDUM A / ITEM 8 — THE CHEVRON WAS DEAD. Both this glyph
+	 * and `.tap-zone .tap-link::after` (`app.css`) are `position: absolute`
+	 * with `z-index: auto`, so CSS's own painting order falls back to DOM
+	 * order among them — and `.bld-go` is the LAST child of the row, after
+	 * the `.tap-link` it is meant to sit visually beside, so it painted (and
+	 * hit-tested) ON TOP of the overlay that is supposed to make the whole
+	 * row clickable. `elementFromPoint` at the glyph returned the bare `path`
+	 * with no anchor ancestor — a click there hit a decorative, aria-hidden
+	 * `<span>` with no handler and went nowhere. It is purely decorative
+	 * (`aria-hidden="true"`, no click handler of its own), so it must never
+	 * intercept a pointer event; `.tap-link`'s overlay underneath is what
+	 * actually owns the click.
+	 */
 	.bld-go {
 		position: absolute;
 		right: 16px;
@@ -1854,6 +1938,7 @@
 		transform: translateY(-50%);
 		display: flex;
 		align-items: center;
+		pointer-events: none;
 	}
 
 	/*

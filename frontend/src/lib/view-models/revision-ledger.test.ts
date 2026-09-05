@@ -2,13 +2,18 @@ import { describe, it, expect } from 'vitest';
 import {
 	buildRevisionLedger,
 	groupServicesByLabel,
+	lineState,
 	rankSentence,
+	releaseLines,
 	repoDeviation,
 	resolveRevision,
 	rowNamesBuild,
 	serviceLedger,
 	sortByDeviation,
-	type RepoLedger
+	type RepoLedger,
+	type RevisionRow,
+	type RevisionSlot,
+	type ServiceLedgerLine
 } from './revision-ledger';
 import type { RevisionCoverage } from './revision-coverage';
 import type { Environment, Rollout } from '../../types';
@@ -444,7 +449,10 @@ describe('repoDeviation — craft review item 3 (lead with the deviation)', () =
 		});
 	});
 
-	it('ranks a held build (live but not on its own release) as severity 2', () => {
+	it('ranks a held build (live but not on its own release) as severity 2, spelled `held` not `alarm`', () => {
+		// round-3 addendum B: `held` is not an alarm — `/rollouts` already
+		// spells this fact `Chip role="held"`, the quiet TRAILING-orange
+		// outline chip, never the amber `alarm` FILL reserved for `stuck`.
 		const cov = coverage([
 			{
 				key: 'live',
@@ -456,7 +464,7 @@ describe('repoDeviation — craft review item 3 (lead with the deviation)', () =
 		]);
 		expect(repoDeviation({ pending: [] }, cov)).toEqual({
 			severity: 2,
-			chip: { role: 'alarm', label: '1 held' },
+			chip: { role: 'held', label: '1 held' },
 			backlog: 0
 		});
 	});
@@ -512,5 +520,191 @@ describe('sortByDeviation', () => {
 		// Both backlog:1 repos outrank the backlog:0 one despite its later
 		// deploy; between the tied pair, the more recently deployed leads.
 		expect(sortByDeviation(items).map((i) => i.repo.lastDeployMs)).toEqual([200, 100, 999]);
+	});
+});
+
+/**
+ * ⭐ A REPOSITORY IS NOT ONE RELEASE LINE — round 3 §1. Measured on the live
+ * fleet: `kuberik-testing` holds 5 services, and `9f10e49` is the newest
+ * build only for `hello-api-app`/`hello-frontend-app`; the other three share
+ * an entirely different stream. `releaseLines` is a pure function over
+ * `RevisionRow.services[].rank`, so these fixtures build the minimal shape
+ * it reads rather than a full ledger.
+ */
+describe('releaseLines — round 3 §1 (a repository is not one release line)', () => {
+	function row(
+		revision: string,
+		createdMs: number,
+		services: { appName: string; rank: number | null }[]
+	): RevisionRow {
+		return { revision, createdMs, services } as unknown as RevisionRow;
+	}
+
+	it('groups services by the build their OWN ladder currently heads with, not by repo', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [
+				row('fffffff', 100, [
+					{ appName: 'hello-api-app', rank: 0 },
+					{ appName: 'hello-frontend-app', rank: 0 },
+					// A third service also carries this revision, but it is NOT
+					// this service's own newest — must not join the line on that
+					// alone.
+					{ appName: 'hello-multi-app', rank: 1 }
+				]),
+				row('9999999', 40, [{ appName: 'hello-multi-app', rank: 0 }])
+			],
+			pending: []
+		};
+		const lines = releaseLines(repo);
+		expect(lines).toHaveLength(2);
+		const byHead = new Map(lines.map((l) => [l.headRevision, l.services]));
+		expect(byHead.get('fffffff')).toEqual(['hello-api-app', 'hello-frontend-app']);
+		expect(byHead.get('9999999')).toEqual(['hello-multi-app']);
+	});
+
+	it('gives a service with no placeable rank anywhere its own line, never a guessed merge', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [
+				row('fffffff', 100, [
+					{ appName: 'api', rank: 0 },
+					{ appName: 'orphan', rank: null }
+				])
+			],
+			pending: []
+		};
+		const lines = releaseLines(repo);
+		expect(lines).toHaveLength(2);
+		const orphanLine = lines.find((l) => l.services.includes('orphan'));
+		expect(orphanLine?.headRevision).toBeNull();
+		expect(orphanLine?.services).toEqual(['orphan']);
+	});
+
+	it('two unranked services never merge into one line by coincidence', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [
+				row('fffffff', 100, [
+					{ appName: 'orphan-a', rank: null },
+					{ appName: 'orphan-b', rank: null }
+				])
+			],
+			pending: []
+		};
+		expect(releaseLines(repo)).toHaveLength(2);
+	});
+
+	it('orders lines by their own head build’s creation time, newest first', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [
+				row('older', 100, [{ appName: 'a', rank: 0 }]),
+				row('newer', 500, [{ appName: 'b', rank: 0 }])
+			],
+			pending: []
+		};
+		expect(releaseLines(repo).map((l) => l.headRevision)).toEqual(['newer', 'older']);
+	});
+
+	it('reads pending (never-deployed) rows too, so an undeployed line head is still found', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [],
+			pending: [row('fffffff', 100, [{ appName: 'api', rank: 0 }])]
+		};
+		const lines = releaseLines(repo);
+		expect(lines).toEqual([{ headRevision: 'fffffff', services: ['api'] }]);
+	});
+
+	it('end to end: buildRevisionLedger’s own two-line fixture partitions correctly', () => {
+		// Line 1 — api + web share revision `fffffff` as their own newest.
+		const L1 = [rel('fffffff', '9.9.0', 5)];
+		// Line 2 — jobs shares a completely different newest, `9999999`.
+		const L2 = [rel('9999999', '3.3.0', 50)];
+		const rollouts = [
+			rollout('api', 'api-dev', L1, [{ r: L1[0], minutesAgo: 5 }]),
+			rollout('web', 'web-dev', L1, [{ r: L1[0], minutesAgo: 5 }]),
+			rollout('jobs', 'jobs-dev', L2, [{ r: L2[0], minutesAgo: 5 }])
+		];
+		const environments = [
+			environment('api', 'api-dev', 'dev'),
+			environment('web', 'web-dev', 'dev'),
+			environment('jobs', 'jobs-dev', 'dev')
+		];
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		const lines = releaseLines(repo);
+		expect(lines.map((l) => l.services)).toEqual([
+			['api', 'web'],
+			['jobs']
+		]);
+	});
+});
+
+/**
+ * ⭐ STATE IN WORDS, THE RIGHT KIND, THE RIGHT HUE — round 3 §3. Read off the
+ * SAME primitives `rollout-cards.ts` (the home cards) reads, so this page's
+ * word cannot disagree with `/`'s for one rollout.
+ */
+describe('lineState — round 3 §3 (state in words, right kind, right hue)', () => {
+	const now = new Date('2026-01-01T00:00:00Z');
+	function slot(rollout: unknown): RevisionSlot {
+		return { cell: { rollout } } as unknown as RevisionSlot;
+	}
+	function line(slots: RevisionSlot[]): Pick<ServiceLedgerLine, 'slots'> {
+		return { slots };
+	}
+
+	it('draws nothing for the steady norm', () => {
+		const r = {
+			status: { history: [{ bakeStatus: 'Succeeded', version: { tag: 'v1', version: '1.0.0' } }] }
+		};
+		expect(lineState(line([slot(r)]), now)).toBeNull();
+	});
+
+	it('draws FAILING (red) above everything else', () => {
+		const r = {
+			status: { history: [{ bakeStatus: 'Failed', version: { tag: 'v1', version: '1.0.0' } }] },
+			spec: { wantedVersion: '1.2.3' } // also pinned — failing still wins
+		};
+		expect(lineState(line([slot(r)]), now)?.role).toBe('failing');
+	});
+
+	it('draws STUCK (amber alarm) before HELD', () => {
+		const r = {
+			status: {
+				history: [
+					{
+						bakeStatus: 'InProgress',
+						version: { tag: 'v1', version: '1.0.0' },
+						timestamp: new Date(now.getTime() - 2 * 3600_000).toISOString()
+					}
+				],
+				releaseCandidates: [{ tag: 'v2', version: '2.0.0' }],
+				gates: [{ name: 'g', passing: true, allowedVersions: [] }]
+			}
+		};
+		expect(lineState(line([slot(r)]), now)?.role).toBe('alarm');
+	});
+
+	it('draws HELD (the quiet orange, `role: held`) when a rule refuses every candidate', () => {
+		const r = {
+			status: {
+				history: [{ bakeStatus: 'Succeeded', version: { tag: 'v1', version: '1.0.0' } }],
+				releaseCandidates: [{ tag: 'v2', version: '2.0.0' }],
+				gates: [{ name: 'g', passing: true, allowedVersions: [] }]
+			}
+		};
+		const state = lineState(line([slot(r)]), now);
+		expect(state?.role).toBe('held');
+		expect(state?.label).toBe('held');
+	});
+
+	it('draws PINNED (neutral `unranked`) — a person’s choice, never amber', () => {
+		const r = {
+			status: { history: [{ bakeStatus: 'Succeeded', version: { tag: 'v1', version: '1.0.0' } }] },
+			spec: { wantedVersion: '1.2.3' }
+		};
+		const state = lineState(line([slot(r)]), now);
+		expect(state).toEqual({
+			role: 'unranked',
+			label: 'pinned',
+			title: 'Pinned to 1.2.3 — automatic deploys are paused until the pin is cleared.'
+		});
 	});
 });

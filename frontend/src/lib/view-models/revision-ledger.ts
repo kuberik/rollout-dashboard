@@ -6,9 +6,9 @@ import {
 	type AppCell,
 	type AppGroup
 } from '$lib/version-utils';
-import { getDisplayVersion } from '$lib/utils';
+import { getDisplayVersion, detectStuck } from '$lib/utils';
 import { buildLadder, divergedFromLine, type BuildLadder } from './build-ladder';
-import { isDeployable } from './promotion';
+import { isDeployable, promotionBlock } from './promotion';
 import { rankVerdicts, rankBehindBy, type RankVerdict } from './env-rank';
 import { compareEnvironmentNames } from '$lib/env-order';
 // TYPE-ONLY — see `repoDeviation`'s own doc comment for why this does not
@@ -846,7 +846,7 @@ export function serviceLedger(repo: Pick<RepoLedger, 'rows' | 'pending'>): Servi
 export type RepoDeviationChip = {
 	/** Matches `Chip.svelte`'s own `role` prop — kept as a plain string here
 	    so this file does not import a `.svelte` component's internal type. */
-	role: 'failing' | 'alarm' | 'rank';
+	role: 'failing' | 'held' | 'rank';
 	label: string;
 };
 
@@ -873,10 +873,19 @@ export function repoDeviation(
 
 	// HELD — a live slot that is not on its own release (the same predicate
 	// the hero's own "N held" chip uses, see `RevisionLead`'s `heldTotal`).
+	//
+	// ⭐ ROLE IS `held`, NOT `alarm`. (round-3 addendum B) `held` is not an
+	// alarm — CLAUDE.md's own ruling: "a gate correctly refusing a candidate
+	// is not a stoppage". `/rollouts` (`RolloutGrid.svelte`) already spells
+	// this exact fact `Chip role="held" label="held"`, the quiet TRAILING
+	// orange outline chip; this repeated it as the amber `alarm` FILL — the
+	// loudest mark in the system, reserved for `stuck`/`unhealthy` — 4.9x
+	// louder than the shared spelling. Same role here, so the two pages
+	// agree on what "held" looks like as well as what it means.
 	const live = headCoverage.buckets.find((b) => b.key === 'live')?.slots ?? [];
 	const held = live.filter((s) => !s.onOwnRelease).length;
 	if (held > 0) {
-		return { severity: 2, chip: { role: 'alarm', label: `${held} held` }, backlog };
+		return { severity: 2, chip: { role: 'held', label: `${held} held` }, backlog };
 	}
 
 	// BEHIND — distinct services with something not yet on the newest build
@@ -907,4 +916,138 @@ export function sortByDeviation<T extends { repo: RepoLedger; deviation: RepoDev
 			b.deviation.backlog - a.deviation.backlog ||
 			b.repo.lastDeployMs - a.repo.lastDeployMs
 	);
+}
+
+/**
+ * ⭐ A REPOSITORY IS NOT ONE RELEASE LINE. (REVISIONS-2026-09-05 round 3, §1)
+ *
+ * Measured on the live fleet: `kuberik-testing` holds five services, and
+ * `9f10e49` is the newest build only for `hello-api-app` and
+ * `hello-frontend-app` — `hello-multi-app`, `hello-world-app` and
+ * `hello-world-manifests` share an entirely different stream whose newest is
+ * `064b655`. The page used to pick ONE repo-wide "newest" row
+ * (`repo.rows[0]`) and file everything else under "Also still running",
+ * which put a service's own CURRENT build in the "legacy" bucket for no
+ * reason other than a different service in the same repo happening to have
+ * shipped more recently.
+ *
+ * A LINE is the set of services that share one newest known build — "release
+ * tag sets coincide" resolved operationally as *"whose own head is the same
+ * revision"*, which is what a monorepo's independently-versioned services
+ * actually partition into, and is derivable from data this module already
+ * computes (`RevisionService.rank`) rather than a second opinion about
+ * commit ancestry this product has no access to.
+ *
+ * A service with no placeable rank (never deployed, no ladder) forms a line
+ * of its own — grouping it into an arbitrary line by absence of evidence
+ * would be exactly the kind of unresolvable-comparison-as-a-claim
+ * `divergedFromLine`'s own doc comment already refuses.
+ */
+export type ReleaseLine = {
+	/** The revision every member service's own ladder currently heads with,
+	    or `null` when the service has no placeable rank at all. */
+	headRevision: string | null;
+	/** App names in this line, alphabetical. */
+	services: string[];
+};
+
+export function releaseLines(repo: Pick<RepoLedger, 'rows' | 'pending'>): ReleaseLine[] {
+	const allRows = [...repo.rows, ...repo.pending];
+	const headByService = new Map<string, string>();
+	const allServices = new Set<string>();
+	for (const row of allRows) {
+		for (const s of row.services) {
+			allServices.add(s.appName);
+			if (s.rank === 0 && !headByService.has(s.appName)) headByService.set(s.appName, row.revision);
+		}
+	}
+
+	const createdMs = new Map<string, number>();
+	for (const row of allRows) createdMs.set(row.revision, row.createdMs);
+
+	const byHead = new Map<string, string[]>();
+	for (const appName of allServices) {
+		// A service with no rank-0 row anywhere (never deployed, no ladder)
+		// gets its OWN line, keyed uniquely so it never merges with another
+		// unrankable service by coincidence.
+		const key = headByService.get(appName) ?? `unranked:${appName}`;
+		if (!byHead.has(key)) byHead.set(key, []);
+		byHead.get(key)!.push(appName);
+	}
+
+	return [...byHead.entries()]
+		.map(([key, services]) => ({
+			headRevision: key.startsWith('unranked:') ? null : key,
+			services: services.sort((a, b) => a.localeCompare(b))
+		}))
+		.sort(
+			(a, b) =>
+				(createdMs.get(b.headRevision ?? '') ?? 0) - (createdMs.get(a.headRevision ?? '') ?? 0) ||
+				a.services[0].localeCompare(b.services[0])
+		);
+}
+
+/**
+ * ⭐ THE LEDGER LINE'S OWN STATE — HELD/PINNED/STUCK/FAILING, IN WORDS, THE
+ * RIGHT HUE. (round 3, §3) Read off the SAME view-models `buildRolloutCards`
+ * (`rollout-cards.ts`, the home cards) reads for exactly these four facts —
+ * `detectStuck`, `promotionBlock(...).blocked`, `spec.wantedVersion`, and the
+ * latest history entry's `bakeStatus` — so the word on this page cannot
+ * disagree with the word on `/` or `/rollouts` for the same rollout. `null`
+ * means steady: nothing is drawn for the norm (round-3 addendum I).
+ *
+ * Worst wins across the line's own live slots, in the order a person would
+ * want to know about them: a broken deploy outranks a wedged one, which
+ * outranks a rule's refusal, which outranks a person's own deliberate pin.
+ */
+export type LineStateChip = {
+	/** Matches `Chip.svelte`'s own `role` prop. */
+	role: 'failing' | 'alarm' | 'held' | 'unranked';
+	label: string;
+	title: string;
+};
+
+export function lineState(
+	line: Pick<ServiceLedgerLine, 'slots'>,
+	now: Date
+): LineStateChip | null {
+	let failing = false;
+	let stuck = false;
+	let held = false;
+	let pinnedVersion: string | null = null;
+	for (const slot of line.slots) {
+		const rollout = slot.cell?.rollout;
+		if (!rollout) continue;
+		if (rollout.status?.history?.[0]?.bakeStatus === 'Failed') failing = true;
+		if (detectStuck(rollout, { now })) stuck = true;
+		if (promotionBlock(rollout).blocked) held = true;
+		if (rollout.spec?.wantedVersion && pinnedVersion === null) {
+			pinnedVersion = rollout.spec.wantedVersion;
+		}
+	}
+	if (failing) {
+		return {
+			role: 'failing',
+			label: 'failing',
+			title: 'Deployed here, but the deploy is not healthy.'
+		};
+	}
+	if (stuck) {
+		return { role: 'alarm', label: 'stuck', title: 'Stuck — this deploy has not moved.' };
+	}
+	if (held) {
+		return {
+			role: 'held',
+			label: 'held',
+			title: 'Held: a newer build exists, but no rule lets it through yet.'
+		};
+	}
+	if (pinnedVersion !== null) {
+		return {
+			role: 'unranked',
+			label: 'pinned',
+			title: `Pinned to ${pinnedVersion} — automatic deploys are paused until the pin is cleared.`
+		};
+	}
+	return null;
 }
