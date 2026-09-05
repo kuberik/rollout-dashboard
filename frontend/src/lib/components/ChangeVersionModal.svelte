@@ -771,7 +771,27 @@
 	 * rollback that `confirmLevel` alone would not catch (it is `notice`, not
 	 * `typed`, there).
 	 */
-	const deployNoteRequired = $derived(intent.production || direction === 'rollback');
+	// ⛔ SUPERSEDED IN PART, 2026-09-05, FROM THE HUMAN ON A DEV ROLLBACK: "selecting an
+	// older version and typing the correct version doesn't enable the button — it
+	// remains disabled." The note was required on every rollback (P5, an agent
+	// walk); the human's own ruling (B3) reserves the ceremony for PRODUCTION
+	// and keeps a non-production rollback the fast recovery path. The note is
+	// required for a production change in either direction and optional
+	// elsewhere — and whatever still blocks the confirm is now SAID under the
+	// button (`confirmBlocker`), never left as a dead control.
+	const deployNoteRequired = $derived(intent.production);
+	/** The one thing still keeping the confirm disabled, in words, or null. */
+	const confirmBlocker = $derived.by((): string | null => {
+		if (deploying) return null;
+		// One line at 390 (≤ 48 characters): the footer must not change height.
+		if (needsTypedConfirmation && deployConfirmationVersion !== getDisplaySelectedVersion())
+			return `Type ${getDisplaySelectedVersion()} above to confirm.`;
+		if (deployNoteRequired && deployExplanation.trim() === '')
+			return 'Add a note — required for a production change.';
+		if (direction === 'same' && !pinVersionToggle)
+			return 'Already running — turn on Pin build to keep it.';
+		return null;
+	});
 	// The suffix states the rule, not a hope: the note IS required for a
 	// rollback and for production (`deployNoteRequired`), and the button
 	// stays dead until it is written. "(recommended)" was a lie of omission.
@@ -1954,6 +1974,15 @@
 								{/if}
 							</Button>
 						</div>
+						<!-- A disabled confirm always says why, right where the thumb is:
+						     the note field can be a screen above at 390. -->
+						<p
+							class="t-dense mt-2 min-h-[1.25rem] truncate text-gray-500 dark:text-gray-400"
+							aria-live="polite"
+							data-confirm-blocker={confirmBlocker ? '' : undefined}
+						>
+							{confirmBlocker ?? ' '}
+						</p>
 					</div>
 				</div>
 			{/if}

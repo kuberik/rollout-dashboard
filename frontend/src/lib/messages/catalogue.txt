@@ -116,9 +116,11 @@ lib/components/ChangeVersionModal.svelte	text	&larr; Back
 lib/components/ChangeVersionModal.svelte	code	a contract
 lib/components/ChangeVersionModal.svelte	text	A force deploy is already set on this rollout; this deploy replaces its target.
 lib/components/ChangeVersionModal.svelte	code	a rule
+lib/components/ChangeVersionModal.svelte	code	Add a note — required for a production change.
 lib/components/ChangeVersionModal.svelte	code	after …
 lib/components/ChangeVersionModal.svelte	code	after its upstream environment
 lib/components/ChangeVersionModal.svelte	text	Already deployed
+lib/components/ChangeVersionModal.svelte	code	Already running — turn on Pin build to keep it.
 lib/components/ChangeVersionModal.svelte	code	Another controller owns this rollout's wanted version, so the dashboard cannot pin it.
 lib/components/ChangeVersionModal.svelte	code	another service
 lib/components/ChangeVersionModal.svelte	text	Automatic promotion is held right now — … .
@@ -151,6 +153,7 @@ lib/components/ChangeVersionModal.svelte	text	Show all repo tags
 lib/components/ChangeVersionModal.svelte	code	Successfully pinned and deployed version
 lib/components/ChangeVersionModal.svelte	text	The note is required here — it is recorded with the deploy.
 lib/components/ChangeVersionModal.svelte	text	to confirm
+lib/components/ChangeVersionModal.svelte	code	Type … above to confirm.
 lib/components/ChangeVersionModal.svelte	code	Why are you deploying this version?
 lib/components/ChangeVersionModal.svelte	code	Why are you overriding the rules?
 lib/components/ChangeVersionModal.svelte	code	Why are you rolling back?

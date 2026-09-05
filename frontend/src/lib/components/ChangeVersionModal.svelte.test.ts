@@ -525,20 +525,30 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		});
 	}
 
-	const NOTE_PLACEHOLDER = 'Why are you rolling back? (required)';
+	const NOTE_PLACEHOLDER = 'Why are you rolling back? (optional)';
 
-	test('P5 — the note is required for a rollback and gates the confirm until filled', async () => {
+	test('2026-09-05 — a non-production rollback needs the typed build only; the note is optional', async () => {
 		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
 		const confirmBtn = await screen.findByRole('button', { name: /Roll back dev/i });
 		expect(confirmBtn).toBeDisabled();
-		const note = screen.getByPlaceholderText(NOTE_PLACEHOLDER);
-		expect(note).toBeInTheDocument();
-
-		await fireEvent.input(note, { target: { value: 'testing a recovery path' } });
-		// The note alone no longer arms it: every version change is typed too.
-		expect(confirmBtn).toBeDisabled();
+		expect(screen.getByPlaceholderText(NOTE_PLACEHOLDER)).toBeInTheDocument();
+		// While disabled, the reason is printed under the button.
+		expect(screen.getByText(/Type .* above to confirm\./)).toBeInTheDocument();
 		await typeConfirmVersion();
 		expect(confirmBtn).not.toBeDisabled();
+		expect(screen.queryByText(/above to confirm\./)).toBeNull();
+	});
+
+	test('P5 kept for production — the note is required and the blocker names it once the build is typed', async () => {
+		renderModal({ rollout: rolloutFixture(), initialSelectedVersion: 'rel-67' });
+		const confirmBtn = await screen.findByRole('button', { name: /Deploy to production/i });
+		await typeConfirmVersion();
+		expect(confirmBtn).toBeDisabled();
+		expect(screen.getByText(/Add a note — required for a production change\./)).toBeInTheDocument();
+		const note = screen.getByPlaceholderText('Why are you overriding the rules? (required)');
+		await fireEvent.input(note, { target: { value: 'hotfix for the outage' } });
+		expect(confirmBtn).not.toBeDisabled();
+		expect(screen.queryByText(/Add a note/)).toBeNull();
 	});
 
 	test('P5 — a typed-confirm forward deploy asks "why are you overriding the rules", not "(optional)"', async () => {

@@ -994,3 +994,16 @@ third model; if a component needs "the scroller", ask `getComputedStyle(main).ov
   own task rows already make at the identical container width, not a new defect introduced by this
   pass. Both pages' skeletons share the same `.apps-split`/`.env-split` classes as their loaded
   state, so they moved in step with no separate edit.
+
+## A disabled confirm says why, and a non-production rollback needs no note (2026-09-05)
+
+From the human, on a dev rollback: *"selecting an older version and typing the correct version
+doesn't enable the button — it remains disabled."* The note was required on every rollback (P5, an
+agent walk), the only hint sat above the field, and at 390 that is a screen away from the thumb.
+Two rules:
+- **A disabled primary action prints the one thing still missing, directly under the button**
+  (`confirmBlocker` in `ChangeVersionModal`: the typed build, the production note, or the pin
+  toggle on a same-build change). A dead control with its reason elsewhere is the defect.
+- **The note is required only for a production change** (either direction, B3's ceiling). A
+  non-production rollback is the fast recovery path: typed build, red outlined confirm, note
+  optional. Do not widen the requirement again on the strength of a critic's walk alone.
