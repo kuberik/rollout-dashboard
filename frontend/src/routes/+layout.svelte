@@ -7,9 +7,11 @@
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { queryRetry, queryRetryDelay, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { startEventStream } from '$lib/api/events';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { tick } from 'svelte';
 	import { provideShellChrome } from '$lib/shell-chrome.svelte';
 	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
+	import { scrollMemoryKey, saveScrollPosition, getScrollPosition } from '$lib/scroll-memory';
 
 	/**
 	 * ⛔ P12 — FOCUS RESET TO BODY ON EVERY NAVIGATION. (2026-09-03,
@@ -128,6 +130,44 @@
 		return () => mql.removeEventListener('change', update);
 	});
 
+	// ⭐ `<main>`'S SCROLL OFFSET ACROSS BACK/FORWARD. (2026-09-05, operator
+	// walk — see `scroll-memory.ts`'s own doc comment for the full defect.)
+	// `beforeNavigate` is the only moment the OUTGOING page's `<main>` and
+	// the OUTGOING url are both still live — by the time `afterNavigate`
+	// runs, `nav.from` is all that is left of the page we came from, and its
+	// scroll offset is gone. Gated to `sm`+ (`overflowY === 'auto'`): below
+	// `sm` the document scrolls and the browser's native history restoration
+	// already does the right thing, so this store is never written there —
+	// writing a phone-width 0 for every route would just poison the sm+
+	// entry the next time the SAME url is visited above `sm` in one tab.
+	beforeNavigate((nav) => {
+		if (!mainEl || getComputedStyle(mainEl).overflowY !== 'auto') return;
+		if (!nav.from?.url) return;
+		saveScrollPosition(scrollMemoryKey(nav.from.url), mainEl.scrollTop);
+	});
+
+	/**
+	 * Retries `main.scrollTop = target` across frames for up to ~500ms. A
+	 * `popstate` arrival can land here before the new page's own data has
+	 * loaded — its skeleton is shorter than the real content, so the browser
+	 * clamps `scrollTop` below `target` because there is nothing yet to
+	 * scroll that far into. Re-asserting on the next frame gives the page's
+	 * `$effect`/query resolution a chance to grow the content first; once
+	 * `target` sticks (or the deadline passes) this gives up silently —
+	 * never falls back to forcing 0, which would fight a slow-but-eventually
+	 * successful restore.
+	 */
+	function restoreMainScroll(main: HTMLElement, target: number): void {
+		const deadline = performance.now() + 500;
+		function attempt() {
+			main.scrollTop = target;
+			if (main.scrollTop >= target - 1) return;
+			if (performance.now() >= deadline) return;
+			requestAnimationFrame(attempt);
+		}
+		attempt();
+	}
+
 	afterNavigate((nav) => {
 		// A real navigation always lands with the header shown, whichever way
 		// the reader was scrolling on the page they left. Seeded from the
@@ -136,11 +176,21 @@
 		// plain reload, and a stale 0 baseline there mis-reads the next real
 		// scroll's direction.
 		headerScroll.reset(typeof window !== 'undefined' ? window.scrollY : 0);
-		// From `sm` up `<main>` is the scroller, and SvelteKit only resets the
-		// DOCUMENT's offset on a fresh navigation — leave Back/Forward to the
-		// browser, put every other arrival at the top of the new page.
-		if (nav.type !== 'popstate' && mainEl && getComputedStyle(mainEl).overflowY === 'auto') {
-			mainEl.scrollTop = 0;
+		// From `sm` up `<main>` is the scroller. A `popstate` arrival (Back or
+		// Forward) restores whatever `beforeNavigate` saved for the URL it is
+		// landing ON, if anything was ever saved for it; every other arrival —
+		// and a `popstate` landing on a URL with no saved entry — goes to the
+		// top of the new page, same as always.
+		if (mainEl && getComputedStyle(mainEl).overflowY === 'auto') {
+			const main = mainEl;
+			const saved = nav.type === 'popstate' && nav.to?.url
+				? getScrollPosition(scrollMemoryKey(nav.to.url))
+				: undefined;
+			if (saved !== undefined) {
+				tick().then(() => restoreMainScroll(main, saved));
+			} else {
+				main.scrollTop = 0;
+			}
 		}
 		if (nav.type === 'enter') return;
 		if (!nav.to) return;
