@@ -1237,7 +1237,21 @@
 						in the product for it — `0 of N places live`, and the whole `Not
 						yet` bucket naming the gates that are the reason.
 					-->
-					{#if repo.pending.length > 0}
+					<!--
+						⭐ THE CARD RENDERS EVEN AT ZERO, ON A MULTI-REPO FLEET. (second
+						repo residue, 2026-09-05) `kuberik-testing-second` has never left
+						a build undeployed, so this card used to not render for it at
+						all — leaving its rail column empty beside "Also still running"
+						and "No longer running anywhere", one column shorter than
+						`kuberik-testing`'s beside it. `src/lib/CLAUDE.md`'s rail rule is
+						that the rail is part of the layout, not a conditional scrap; an
+						orphaned column is the single-column skeleton mistake made live.
+						A single-repo fleet has no sibling section to look uneven next
+						to — its rail always carries the identity card below this one —
+						so `repo.pending.length > 0` alone still gates it there,
+						unchanged, and the pinned single-repo landmark test stays green.
+					-->
+					{#if repo.pending.length > 0 || ledgers.length > 1}
 						<Card
 							icon={HourglassOutline}
 							title="Never deployed"
@@ -1245,45 +1259,55 @@
 							verdictTitle={PENDING_RECORD}
 							padded={false}
 						>
-							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-								{#each expandPending[repo.repoKey] ? repo.pending : repo.pending.slice(0, FOLD) as row (row.revision)}
-									<!-- ⭐ THE SAME TAP ZONE AS EVERY OTHER ROW ON THE PAGE.
-									     These rows had a hover fill, a chevron and 300px of dead
-									     space: the row read as a door and only the seven
-									     characters of the sha opened it. `src/lib/CLAUDE.md`:
-									     *"A region that reads as a destination must BE one."* -->
-									<li
-										class="tap-zone flex items-baseline gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40"
-									>
-										<a
-											class="tap-link t-code min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
-											href={revisionPath(repo.repoKey, row.revision)}
-											title={row.revision}>{row.short}</a
+							{#if repo.pending.length === 0}
+								<!-- THE HONEST EMPTY STATE — the same shape as "Also still
+								     running"'s own zero-count message: a centred sentence,
+								     not a hidden card. It states the fact this repo's zero
+								     actually is, not a generic "nothing here". -->
+								<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+									Every build your services can deploy has run somewhere.
+								</p>
+							{:else}
+								<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+									{#each expandPending[repo.repoKey] ? repo.pending : repo.pending.slice(0, FOLD) as row (row.revision)}
+										<!-- ⭐ THE SAME TAP ZONE AS EVERY OTHER ROW ON THE PAGE.
+										     These rows had a hover fill, a chevron and 300px of dead
+										     space: the row read as a door and only the seven
+										     characters of the sha opened it. `src/lib/CLAUDE.md`:
+										     *"A region that reads as a destination must BE one."* -->
+										<li
+											class="tap-zone flex items-baseline gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40"
 										>
-										<span class="t-micro ml-auto shrink-0 text-gray-500 dark:text-gray-400">
-											{row.services.length} service{row.services.length === 1 ? '' : 's'}
-										</span>
-										<span
-											class="t-micro w-14 shrink-0 text-right text-gray-500 dark:text-gray-400"
-											title={ageTitle(row)}>{ageOf(row)}</span
-										>
-										<ChevronRightOutline
-											class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-											aria-hidden="true"
-										/>
-									</li>
-								{/each}
-							</ul>
-							{#if repo.pending.length > FOLD}
-								{@render more(
-									() =>
-										(expandPending = {
-											...expandPending,
-											[repo.repoKey]: !expandPending[repo.repoKey]
-										}),
-									expandPending[repo.repoKey],
-									`${repo.pending.length - FOLD} more build${repo.pending.length - FOLD === 1 ? '' : 's'}`
-								)}
+											<a
+												class="tap-link t-code min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
+												href={revisionPath(repo.repoKey, row.revision)}
+												title={row.revision}>{row.short}</a
+											>
+											<span class="t-micro ml-auto shrink-0 text-gray-500 dark:text-gray-400">
+												{row.services.length} service{row.services.length === 1 ? '' : 's'}
+											</span>
+											<span
+												class="t-micro w-14 shrink-0 text-right text-gray-500 dark:text-gray-400"
+												title={ageTitle(row)}>{ageOf(row)}</span
+											>
+											<ChevronRightOutline
+												class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+												aria-hidden="true"
+											/>
+										</li>
+									{/each}
+								</ul>
+								{#if repo.pending.length > FOLD}
+									{@render more(
+										() =>
+											(expandPending = {
+												...expandPending,
+												[repo.repoKey]: !expandPending[repo.repoKey]
+											}),
+										expandPending[repo.repoKey],
+										`${repo.pending.length - FOLD} more build${repo.pending.length - FOLD === 1 ? '' : 's'}`
+									)}
+								{/if}
 							{/if}
 						<!-- ⛔ A FOOTER `<p>` PRINTED THE CARD'S OWN `verdictTitle`.
 						     (2026-09-02, from the human: this was the third of three
