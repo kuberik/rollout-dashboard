@@ -106,7 +106,14 @@ const DENY: Array<{
 			'lib/ControlCenter.svelte\ttitle\tPinned to … — automatic deploys are paused until the pin is cleared.',
 			'routes/environments/+page.svelte\ttitle\tPinned to … — automatic deploys are paused until the pin is cleared.',
 			'routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte\ttext\tPinned to … — automatic deploys are paused until the pin is cleared.',
-			'routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte\ttitle\tAutomatic deploys are paused until this pin is cleared.'
+			'routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte\ttitle\tAutomatic deploys are paused until this pin is cleared.',
+			// Same one consequence sentence, now also on the revision detail page's
+			// per-place "Not yet" row (operator-walk finding 1: a pin outranks every
+			// gate here too, same precedence `blocking-story.ts`'s own `blockingStory()`
+			// already uses) and on the revision ledger view-model that feeds the list
+			// page's own pinned rows -- not a fresh spelling per surface.
+			"routes/revisions/[...slug]/+page.svelte\tcode\tPinned to … — automatic deploys are paused until the pin is cleared.",
+			'lib/view-models/revision-ledger.ts\tcode\tPinned to … — automatic deploys are paused until the pin is cleared.'
 		]
 	},
 	{

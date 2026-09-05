@@ -46,7 +46,15 @@
 	// finding 4).
 	import GateRecord, { gateMark } from '$lib/components/GateRecord.svelte';
 	import { countLabel } from '$lib/disclosure';
-	import { formatTimeAgo } from '$lib/utils';
+	import { formatTimeAgo, detectStuck, detectStuckBehind } from '$lib/utils';
+	// ⭐ THE SAME THREE-STEP STUCK DERIVATION `/apps/<name>` USES (operator-walk
+	// finding 3) — see `stuckFor` below for why `CoverageSlotVM.stuck` alone is
+	// not trustworthy for the badge this page draws.
+	import { detectStuckPromotion } from '$lib/view-models/promotion';
+	// ⭐ "ABSENCE IS NOT EVIDENCE" — `status.history` is capped at
+	// `spec.versionHistoryLimit`, so a build not found there may simply have
+	// aged out. See `historyLimitNote` below (operator-walk finding 2).
+	import { historyAtLimit } from '$lib/history-marks';
 	import { now } from '$lib/stores/time';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import type { EnvironmentTheme } from '$lib/environment-theme';
@@ -630,9 +638,9 @@
 	 * question the bare chip row could not: how long has EACH place actually
 	 * had it, not just the row's own single `last deployed N ago`.
 	 */
-	function slotDeployedAgo(s: CoverageSlotVM): string | null {
+	function slotDeployedAgo(s: CoverageSlotVM): { ago: string; iso: string } | null {
 		const ts = s.slot.cell.rollout?.status?.history?.[0]?.timestamp;
-		return ts ? formatTimeAgo(ts, $now) : null;
+		return ts ? { ago: formatTimeAgo(ts, $now), iso: ts } : null;
 	}
 
 	/**
@@ -652,6 +660,52 @@
 		return svc.slots
 			.filter((s) => s.cell.rollout?.spec?.wantedVersion)
 			.map((s) => s.envName.toUpperCase());
+	}
+
+	/**
+	 * ⭐ "WHERE DID THIS BUILD RUN BEFORE?" HAD NO ANSWER. (operator-walk
+	 * finding 2) `status.history[0]` is the environment's CURRENT deploy;
+	 * everything after it is a real, timestamped record of what this exact
+	 * place ran previously, and this page never read past index 0. A place
+	 * that has since moved on (or been rolled further back) still carries the
+	 * evidence that this revision was here — `history[i].version.revision` is
+	 * the same key `resolveRevision`/`onIt` use to decide identity everywhere
+	 * else on this page, so this cannot name a match the rest of the page
+	 * would disagree with.
+	 *
+	 * Skips a slot's own CURRENT deploy (`onIt`) — that place is not "before,"
+	 * it is now, and already has its own row in `Running it now`.
+	 */
+	function ranBeforeOf(svc: RevisionService): { envLabel: string; timestamp: string }[] {
+		if (!revision) return [];
+		const out: { envLabel: string; timestamp: string }[] = [];
+		for (const s of svc.slots) {
+			if (s.onIt) continue;
+			const history = s.cell.rollout?.status?.history ?? [];
+			// index 0 is the CURRENT deploy, already excluded by `!s.onIt` above
+			// when it matches — start the search one entry back regardless, so a
+			// stale `onIt` never double-counts the running deploy as "before."
+			const match = history.slice(1).find((h) => h.version?.revision === revision);
+			if (match?.timestamp) out.push({ envLabel: s.envName.toUpperCase(), timestamp: match.timestamp });
+		}
+		return out;
+	}
+
+	/**
+	 * ⭐ ABSENCE FROM `status.history` IS NOT EVIDENCE IT NEVER RAN THERE.
+	 * (operator-walk finding 2) `spec.versionHistoryLimit` bounds the array
+	 * this page just searched — `historyAtLimit` (`lib/history-marks.ts`,
+	 * already the product's one definition of "this array may have been
+	 * truncated") is true once a rollout has deployed at least that many
+	 * times, and past that point the oldest entry is evicted on every new
+	 * deploy. Shown once per service, only when it is actually possible for
+	 * that truncation to be hiding a match — never a blanket disclaimer.
+	 */
+	function historyLimitNote(svc: RevisionService): string | null {
+		const limited = svc.slots.find((s) => !s.onIt && historyAtLimit(s.cell.rollout));
+		if (!limited) return null;
+		const limit = limited.cell.rollout?.spec?.versionHistoryLimit ?? 10;
+		return `History keeps the last ${limit} deploys per service, so a place not listed here may simply be outside that window.`;
 	}
 
 	/**
@@ -677,6 +731,52 @@
 	}
 
 	/**
+	 * ⭐ ONE STUCK DERIVATION, THE SAME ONE `/apps/<name>` USES. (operator-walk
+	 * finding 3) `CoverageSlotVM.stuck` (`revision-coverage.ts`) runs
+	 * `detectStuckBehind` with no `GateContext`, so a promotion/dependency gate
+	 * CORRECTLY refusing a candidate has no way to classify as anything but
+	 * `unknown` — and `unknown` still counts as stuck. Measured live:
+	 * `hello-multi-app` read `STAGING [STUCK] PROD [STUCK]` on this page while
+	 * both rollouts sat at rank 0, `Ready`, every gate `passing: true` — the
+	 * exact defect `lib/CLAUDE.md`'s "a gate correctly refusing a candidate is
+	 * not a stoppage" rule exists to kill, just not closed here yet.
+	 *
+	 * This page already builds `gateContext` for the banner above, so the fix
+	 * is to feed it through the same three-step derivation `/apps/<name>`'s own
+	 * `stuckFor` uses — own bake timeout, then a classified promotion stuck,
+	 * then peer staleness guarded by `refusedNotStalled` — not a sixth,
+	 * page-local spelling of "stuck." `CoverageSlotVM.stuck` itself is left
+	 * alone (`revision-coverage.ts` is another lane's file); this page just
+	 * stops trusting it for the badge it draws.
+	 */
+	function refusedNotStalled(story: BlockingStory): boolean {
+		return story.blocked && story.person.length === 0 && story.unknown.length === 0;
+	}
+
+	function stuckFor(s: CoverageSlotVM) {
+		const rollout = s.slot.cell.rollout;
+		const own = detectStuck(rollout, { now: $now });
+		if (own) return own;
+		const promo = detectStuckPromotion(rollout, { now: $now, gateContext });
+		if (promo) return promo;
+		const story = blockingStory(rollout, gateContext, { place: s.envLabel, now: $now });
+		if (refusedNotStalled(story)) return null;
+		const peers = (row?.services.find((sv) => sv.appName === s.appName)?.slots ?? []).filter(
+			(p) => p.envName !== s.envName
+		);
+		for (const peer of peers) {
+			const r = detectStuckBehind(rollout, peer.cell.rollout, peer.envName, { now: $now });
+			if (r) return r;
+		}
+		return null;
+	}
+
+	/** The one predicate the chip-mark row actually renders. */
+	function isStuck(s: CoverageSlotVM): boolean {
+		return !!stuckFor(s);
+	}
+
+	/**
 	 * WHY IT HAS NOT ARRIVED — NAMED ONLY FROM THE FIELD THAT ESTABLISHED IT.
 	 *
 	 * `blockingGates` is non-empty only when `promotionBlock` found real gates
@@ -692,9 +792,57 @@
 	 * changes that; a gate with no allow-list that is simply not passing is
 	 * time- or condition-bounded and clears on its own.
 	 */
-	type Reason = { icon: typeof HourglassOutline; tone: string; text: string; gates: string[] };
+	type Reason = {
+		icon: typeof HourglassOutline;
+		tone: string;
+		/** Overrides the row's default gray text -- pin state prints blue, per the banner hue rule. */
+		textTone?: string;
+		text: string;
+		gates: string[];
+	};
 
 	function reasonsFor(s: CoverageSlotVM): Reason[] {
+		/**
+		 * ⭐ A PIN OUTRANKS EVERY GATE, HERE TOO. (operator-walk finding 1)
+		 * `blocking-story.ts`'s own `blockingStory()` short-circuits on
+		 * `spec.wantedVersion` before it looks at a single gate — "a gate holds
+		 * the NEXT build; a pin refuses all of them" — but `promotionBlock()`
+		 * (what `s.blockingGates`/`s.notPassingGates`/`s.awaitingApprovalGates`
+		 * are built from) never sees the pin at all, because a pin is not a
+		 * gate. Measured live: `hello-multi-app` DEV read `Pinned in DEV —
+		 * automatic updates are off there` in the rail above and, 200px below,
+		 * `[2 BEHIND] — Ready to deploy — still on 6f9524e` with a bare
+		 * `Promote to dev` button — no gate anywhere, so this branch never ran
+		 * and the "ready to deploy" fallback below spoke instead, contradicting
+		 * the rail's own sentence about the same place. The pin is checked
+		 * FIRST, unconditionally, and wins outright — same precedence
+		 * `blockingStory()` itself uses, and the same canonical sentence
+		 * `rollout-cards.ts`/`RolloutGrid.svelte`/`/environments`/rollout detail
+		 * already ship everywhere a pin is named (`vocabulary.test.ts`'s
+		 * `allow` list carries this file's own line for it now).
+		 */
+		const pinnedTo = s.slot.cell.rollout?.spec?.wantedVersion;
+		if (pinnedTo) {
+			return [
+				{
+					icon: LockSolid,
+					// BLUE, NOT AMBER — "a STATE A PERSON CHOSE (pinned, rolled back)
+					// is blue (`info`)." (the banner hue rule, `lib/CLAUDE.md`.) The
+					// three `tone-*` classes above this function are glyph-only and
+					// product-wide (`app.css`); a plain Tailwind pair is the same
+					// mechanism the rest of the codebase reaches for when nothing in
+					// that fixed set is the right hue (`AlertPanel`'s own `info`
+					// severity resolves to this identical pair). Both the icon AND
+					// the sentence carry it -- a blue icon over a gray sentence is
+					// the SAME defect this file's `t-body text-gray-600` default
+					// exists to avoid for every OTHER row, just on the other channel.
+					tone: 'text-blue-700 dark:text-blue-300',
+					textTone: 'text-blue-700 dark:text-blue-300',
+					text: `Pinned to ${pinnedTo} — automatic deploys are paused until the pin is cleared.`,
+					gates: []
+				}
+			];
+		}
 		const out: Reason[] = [];
 		if (s.notPassingGates.length > 0) {
 			const w = windows[slotKey(s)];
@@ -1314,7 +1462,11 @@
 								aria-hidden="true"
 							/>
 							<span class="t-body text-gray-700 dark:text-gray-200">
-								built {formatTimeAgo(new Date(row.createdMs).toISOString(), $now)}
+								built <time
+									datetime={new Date(row.createdMs).toISOString()}
+									title={new Date(row.createdMs).toLocaleString()}
+									>{formatTimeAgo(new Date(row.createdMs).toISOString(), $now)}</time
+								>
 							</span>
 						</li>
 					{/if}
@@ -1325,7 +1477,11 @@
 						/>
 						<span class="t-body text-gray-700 dark:text-gray-200">
 							{#if row.lastDeployMs}
-								last deployed {formatTimeAgo(new Date(row.lastDeployMs).toISOString(), $now)}
+								last deployed <time
+									datetime={new Date(row.lastDeployMs).toISOString()}
+									title={new Date(row.lastDeployMs).toLocaleString()}
+									>{formatTimeAgo(new Date(row.lastDeployMs).toISOString(), $now)}</time
+								>
 							{:else}
 								never deployed
 							{/if}
@@ -1385,6 +1541,8 @@
 						{@const rank = rankSentence(svc)}
 						{@const chip = rankChipFor(svc)}
 						{@const pinned = pinnedEnvsOf(svc)}
+						{@const ranBefore = ranBeforeOf(svc)}
+						{@const historyNote = historyLimitNote(svc)}
 						<!--
 							ONE INK FOR A SERVICE NAME, ON BOTH REVISION PAGES. A service is
 							never the subject of either page — the revision is — so it takes
@@ -1474,6 +1632,30 @@
 											: 'in those environments'}</span
 									>
 								</div>
+							{/if}
+							{#if ranBefore.length > 0}
+								<!-- ⭐ "WHERE DID THIS BUILD RUN BEFORE?" (operator-walk finding 2)
+								     `status.history[i > 0]` on this exact place, matched by the same
+								     revision key `onIt`/`resolveRevision` use everywhere else on this
+								     page — never a second opinion about identity. -->
+								<div
+									class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+								>
+									<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+									<span>
+										Ran before in
+										{#each ranBefore as rb, i (rb.envLabel)}
+											{rb.envLabel} (<time
+												datetime={rb.timestamp}
+												title={new Date(rb.timestamp).toLocaleString()}
+												>{formatTimeAgo(rb.timestamp, $now)}</time
+											>){i < ranBefore.length - 1 ? ', ' : ''}
+										{/each}
+									</span>
+								</div>
+							{/if}
+							{#if historyNote}
+								<div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{historyNote}</div>
 							{/if}
 						</li>
 					{/each}
@@ -1585,7 +1767,7 @@
 															title="{s.envLabel.toUpperCase()} — {s.statusWord}"
 														/>
 													{/if}
-													{#if s.stuck}
+													{#if isStuck(s)}
 														<Chip
 															role="alarm"
 															label="stuck"
@@ -1613,7 +1795,7 @@
 														     generated identifier whole. The names are evidence, so
 														     they go under the claim they support and wrap among
 														     themselves. -->
-														<div class="t-body text-gray-600 dark:text-gray-300">{r.text}</div>
+														<div class="t-body {r.textTone ?? 'text-gray-600 dark:text-gray-300'}">{r.text}</div>
 														{#if r.gates.length > 0}
 															<div class="mt-0.5 flex flex-wrap gap-x-2">
 																{#each r.gates as gate (gate)}
@@ -1629,26 +1811,46 @@
 											{/each}
 										</div>
 
-										{#if solo?.promoteTag}
-											<!-- `secondary`, never `primary`: the loudest control on a
-											     deploy surface must not be the one that changes
-											     production. The label names the environment, because two
-											     buttons reading `Promote` eight pixels apart have a
-											     target the reader has to infer from position. And a
-											     place with an action never shares a row, so this button
-											     always has exactly one target. -->
-											<div class="mt-2.5">
-												<button
-													type="button"
-													class="btn btn-secondary"
-													onclick={() => openPromote(solo.slot, solo.promoteTag!)}
-													title={`Deploy ${row.short} to ${solo.appName} in ${solo.envName}`}
-												>
-													<ArrowRightOutline class="h-4 w-4" />
-													Promote to {solo.envLabel}
-												</button>
-											</div>
-										{/if}
+									{#if solo?.promoteTag}
+										{@const soloPinnedTo = solo.slot.cell.rollout?.spec?.wantedVersion}
+										<!-- `secondary`, never `primary`: the loudest control on a
+										     deploy surface must not be the one that changes
+										     production. The label names the environment, because two
+										     buttons reading `Promote` eight pixels apart have a
+										     target the reader has to infer from position. And a
+										     place with an action never shares a row, so this button
+										     always has exactly one target.
+										
+										     ⭐ `Promote` → `Deploy … to …` WHEN THE PLACE IS PINNED.
+										     (operator-walk finding 1) `Promote to dev` on a pinned
+										     environment reads as the ordinary, automatic advance — it
+										     is not: the pin already refuses every candidate, and this
+										     button's own `title` has said `Deploy …` the whole time (a
+										     one-verb-per-action mismatch between the visible label and
+										     its own accessible name). `deploy` is the right verb here
+										     regardless — `promote` is reserved for the AUTOMATIC
+										     advance (`lib/CLAUDE.md` vocabulary (d)) and this has
+										     always been a person clicking a button. The click still
+										     opens the same `ChangeVersionModal` ceremony as every other
+										     deploy on this product (typed build, a production note
+										     where `deploy-risk.ts` requires one) — never a one-click
+										     mutation — and that modal's own pin toggle (pre-checked
+										     here — `pinVersionToggleComputed` in `ChangeVersionModal`)
+										     is what decides whether the pin follows the new build or
+										     is cleared. This label does not guess which, because the
+										     operator has not chosen yet. -->
+										<div class="mt-2.5">
+											<button
+												type="button"
+												class="btn btn-secondary"
+												onclick={() => openPromote(solo.slot, solo.promoteTag!)}
+												title={`Deploy ${row.short} to ${solo.appName} in ${solo.envName}`}
+											>
+												<ArrowRightOutline class="h-4 w-4" />
+												{soloPinnedTo ? `Deploy ${row.short} to ${solo.envLabel}` : `Promote to ${solo.envLabel}`}
+											</button>
+										</div>
+									{/if}
 									</li>
 								{/each}
 							</ul>
@@ -1687,7 +1889,7 @@
 															wide
 															title="{s.envLabel.toUpperCase()} — {s.statusWord}"
 														/>
-														{#if s.stuck}
+														{#if isStuck(s)}
 															<Chip
 																role="alarm"
 																label="stuck"
@@ -1709,7 +1911,9 @@
 														{@const age = slotDeployedAgo(s)}
 														{#if age}
 															<span class="t-micro text-gray-500 dark:text-gray-400"
-																>deployed {age}</span
+																>deployed <time datetime={age.iso} title={new Date(age.iso).toLocaleString()}
+																	>{age.ago}</time
+																></span
 															>
 														{/if}
 													{/if}
