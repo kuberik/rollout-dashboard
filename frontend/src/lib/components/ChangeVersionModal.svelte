@@ -1144,41 +1144,50 @@
 					</span>
 				{/if}
 			</div>
-			<!-- ⭐ 44px TOUCH TARGET AT < sm, THE VISIBLE BOX, NOT ONLY THE SLOP.
-			     (2026-09-05, from the human: "back and cancel buttons are too
-			     small.") Measured live at 390: this control's rendered box was
-			     69×20 — `.hit-32`'s own pseudo-element floors the TOTAL reach at
-			     32px, which is short of the 44px a primary way-out control needs
-			     on a full-screen phone sheet. This is a text button that can
-			     honestly fill its row, so the fix enlarges the visible box
-			     instead of stacking more invisible slop on top of a 20px chip:
-			     `max-sm:self-stretch max-sm:-my-3` cancels the header row's own
-			     `py-3` for this one flex child, so the button's border-box
-			     spans the row's FULL rendered height (>=47px, the header's own
-			     `min-h-[47px]`) rather than sitting centred inside it.
-			     `max-sm:px-4` widens the horizontal box to match; `max-sm:py-0`
-			     hands vertical centring to the button's own `items-center`
-			     instead of fighting the forced height with leftover padding.
-			     `sm:` and up are untouched — same 66×20 chip, byte-identical. -->
+			<!-- ⭐ 44px CAP, NOT A STRETCH TO THE ROW — AND STAYS INSET.
+			     (2026-09-05, second round, from the human: "cancel / back
+			     buttons are now too big — they run all the way up to the
+			     edge.") The first fix (`self-stretch` + `-my-3`, superseded)
+			     cancelled the header's own `py-3` outright, so the button's
+			     border-box grew to the row's FULL height (76-80px on a
+			     two-line crumb) and touched the sheet's top edge — the same
+			     defect from the other direction. `max-sm:h-11` CAPS the
+			     visible box at exactly 44px instead of stretching to fill
+			     whatever the row happens to be; with the negative margin
+			     gone, the header's own `py-3` (12px) is left standing as real
+			     margin around the button on every side, same as any other
+			     child in this `items-center` row. `max-sm:px-4` keeps the
+			     horizontal box generous. `sm:` and up are untouched. -->
 			{#if selectedVersion}
 				<button
 					type="button"
-					class="hit-32 flex shrink-0 items-center gap-1.5 rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 md:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 max-sm:self-stretch max-sm:-my-3 max-sm:px-4 max-sm:py-0"
+					class="hit-32 flex shrink-0 items-center gap-1.5 rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 md:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 max-sm:h-11 max-sm:px-4"
 					onclick={() => (selectedVersion = null)}
 				>
 					&larr; Back
 				</button>
 			{:else}
-				<!-- Same 44px-at-<sm treatment as `Back` above: this is the
-				     identical header slot, step one's version of it. -->
-				<button
-					type="button"
-					class="hit-32 flex shrink-0 items-center rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 max-sm:self-stretch max-sm:-my-3 max-sm:px-4 max-sm:py-0"
+				<!-- ⭐ DESKTOP: THE SAME `size="sm"` BUTTON AS EVERY OTHER
+				     CONTROL IN THIS DIALOG, NOT A 20px TEXT CHIP. (2026-09-05,
+				     second round, from the human: "cancel on the first dialog
+				     of the modal on desktop is also weirdly small.") This was
+				     the one control in the dialog still hand-rolled as a
+				     `text-xs`/`py-[1px]` chip while the footer's `Cancel` and
+				     every confirm button use flowbite's `Button size="sm"`
+				     (38px, this file's own `.btn` height). Swapped to the same
+				     component so it matches by construction, not by
+				     coincidence. Mobile keeps the identical 44px-cap-not-stretch
+				     treatment as `Back` above (`max-sm:h-11`), inset by the
+				     header's own `py-3` the same way. -->
+				<Button
+					size="sm"
+					color="light"
+					class="shrink-0 max-sm:h-11"
 					disabled={deploying}
 					onclick={() => (open = false)}
 				>
 					Cancel
-				</button>
+				</Button>
 			{/if}
 		</div>
 

@@ -915,31 +915,53 @@ behaviour."* Two independent defects, one per side of the `sm` breakpoint above:
 **The fix, both sides at once:** a route that owns a secondary tab strip (today: rollout
 detail's four tabs) no longer renders it in its own template. It publishes a `Snippet` into
 `$lib/shell-chrome.svelte.ts`'s `ShellChrome` context (`provideShellChrome()` in the root
-layout, `getShellChrome()` in the route layout), and the root layout renders that snippet as
-a plain DOM **sibling of `Navbar`**, wrapped with it in one `.header-group` div — never inside
-`<main>`. A route that publishes nothing leaves the slot empty; `.header-group` then has one
-child (`Navbar`) and no reserved height for a strip that isn't there.
+layout, `getShellChrome()` in the route layout) — the same snippet reference either way, only
+WHERE the root layout renders it changes.
 
-- **`sm`+:** `.header-group` is `position: static` (`app.css`). Both children sit in normal
-  flow above the `Sidebar + <main>` row, exactly like any other static chrome — there is no
-  scroller between the navbar and the strip left to desynchronize them, which is the whole
-  fix. The strip's own `mx-auto max-w-7xl` alignment with the page content below it (a
-  hard-won rule two passes earlier — see "THE TWO DEFECTS THAT SURVIVED THE FIRST PASS" above)
-  survives being moved out from behind the sidebar: `Sidebar.svelte` publishes `--sidebar-w`
-  live (`ResizeObserver`, same idiom as `MobileTabBar`'s `--tabbar-h`, since the width isn't a
-  constant — `w-12` collapsed vs `w-44` expanded, and it animates between them), and the root
-  layout's tab-strip wrapper carries `sm:pl-[var(--sidebar-w,0px)]` so the inner `mx-auto`
-  centres in a box the same width and position as `<main>`'s own content box, pixel for pixel.
-- **Below `sm`:** `.header-group` is `position: fixed` at the top of the viewport and
-  translates as ONE rigid block — `scroll-direction.svelte.ts`'s `ScrollDirectionTracker`
+⛔ **FIRST SPELLING, SAME DAY, WRONG: a permanent sibling of `Navbar`.** The first cut rendered
+the snippet inside `.header-group` (wrapped with `Navbar`) AT EVERY WIDTH, with a
+`--sidebar-w`-based `padding-left` (published by `Sidebar.svelte`, `ResizeObserver`) to keep
+its content visually offset back under the sidebar. That fixed the two defects above but broke
+a THIRD thing not yet visible in either repro: `.header-group` sits ABOVE the
+`Sidebar + <main>` row entirely, so making it taller (navbar + strip) pushed the SIDEBAR's own
+row down by the strip's height too — an empty dark band above the sidebar, with the strip's
+padded content floating over nothing to its left. Reported by the human with a screenshot at
+desktop width. **`--sidebar-w` is gone; do not reintroduce it for this purpose.**
+
+**The fix that measures clean:** the root layout picks between TWO render sites for the same
+snippet via `isDesktop` (a `matchMedia('(min-width: 640px)')` `$state`, kept live by a
+`change` listener) — only one is ever mounted at a time:
+
+- **`sm`+ (`isDesktop`):** the snippet renders as a plain sibling of `<main>`, inside a new
+  flex-column wrapper that also holds `<main>` — i.e. INSIDE `Sidebar`'s own row, in the same
+  column `<main>` occupies. `.header-group` is `Navbar`-only here, so the sidebar's top edge is
+  ALWAYS exactly the navbar's bottom edge, tab strip or not — the defect above is now
+  structurally impossible, not just visually patched. The strip's own `mx-auto max-w-7xl`
+  alignment with the page content below it (a hard-won rule two passes earlier — see "THE TWO
+  DEFECTS THAT SURVIVED THE FIRST PASS" above) needs no offset variable at all: whatever
+  pushes `<main>` right of the sidebar (the sidebar's own rendered width, `w-12` collapsed vs
+  `w-44` expanded) pushes this the same amount for free, because they are literally the same
+  flex column.
+- **Below `sm` (`!isDesktop`):** unchanged from the first cut — the snippet renders inside
+  `.header-group`, a sibling of `Navbar`, spanning the full width (there is no sidebar to
+  misalign with below `sm`). `.header-group` is `position: fixed` at the top of the viewport
+  and translates as ONE rigid block — `scroll-direction.svelte.ts`'s `ScrollDirectionTracker`
   decides `hidden`, fed by the root layout's one passive `scroll` listener; `app.css` only
   renders `data-hidden` as `translateY(-100%)`/`translateY(0)` with a 180ms ease. `body`'s
   `padding-top: var(--header-h, 0px)` (measured live off `.header-group`, same `ResizeObserver`
-  idiom again) reserves the group's height UNCONDITIONALLY on the hidden/shown state — hiding
-  the header must never change how much room the page below it has, or content would jump
-  every time the header slides; it slides over/off a constant reserved band instead. Both
-  media queries are gated to `max-width: 639.98px` — a no-op at `sm`+, where an extra `body`
-  padding would just push the `h-dvh` shell partly off-screen for nothing.
+  idiom as `MobileTabBar`'s `--tabbar-h`) reserves the group's height UNCONDITIONALLY on the
+  hidden/shown state — hiding the header must never change how much room the page below it
+  has, or content would jump every time the header slides; it slides over/off a constant
+  reserved band instead. Both media queries are gated to `max-width: 639.98px` — a no-op at
+  `sm`+, where an extra `body` padding would just push the `h-dvh` shell partly off-screen for
+  nothing.
+
+**Verified after the second fix, live at 1440:** `Sidebar`'s top edge, the tab strip's top
+edge and `Navbar`'s bottom edge are all the same y-coordinate, with or without a published tab
+strip; the strip's left edge equals `<main>`'s left edge at both the expanded (176px) and
+collapsed (48px) sidebar widths; the bounce test still holds (shrinking the viewport to force
+`<main>` to actually scroll moved only `<main>`'s content — `Navbar`, the strip and `Sidebar`
+never moved). 390 unchanged from the first fix.
 
 **`ScrollDirectionTracker`'s rule** (unit-tested in `scroll-direction.svelte.test.ts`, no DOM):
 below a small threshold (24px) from the top, ALWAYS shown; past it, any downward movement
@@ -1086,13 +1108,29 @@ slot) rendered a 69×20 chip; `.hit-32`'s own `::before` floors the TOTAL reach 
 175×38) — the 38px was `.btn`'s own page height, not a mismatch between the two.
 
 - **Enlarge the visible box where the control can honestly be bigger; reach for hit-slop only
-  where it must stay visually small.** `Back`/step-one `Cancel` are text buttons sitting alone
-  in a 47px+ header row — `max-sm:self-stretch max-sm:-my-3` cancels the header's own `py-3`
-  for that one flex child so the button's border-box spans the row's FULL rendered height
-  instead of a 20px chip centred inside it, `max-sm:px-4` widens it to match. The footer
-  `Cancel`/confirm pair get `max-sm:min-h-11` (44px) on both buttons AND the row — the buttons
-  get taller, not the row wider, so the footer stays one line. `sm:` and up are untouched in
-  all cases: same 66×20 chip, same 38px `.btn` height, verified byte-identical at 1440.
+  where it must stay visually small.** The footer `Cancel`/confirm pair get `max-sm:min-h-11`
+  (44px) on both buttons AND the row — the buttons get taller, not the row wider, so the
+  footer stays one line. `sm:` and up are untouched: same 38px `.btn` height, verified
+  byte-identical at 1440.
+  - ⛔ **SUPERSEDED THE SAME DAY for `Back`/step-one `Cancel`, second round.** The first
+    spelling here — `max-sm:self-stretch max-sm:-my-3` — cancelled the header's own `py-3`
+    outright, so the button's border-box grew to the ROW's full height (76-80px on a
+    two-line crumb) and touched the sheet's top edge. From the human: *"cancel / back
+    buttons are now too big — they run all the way up to the edge."* **A 44px floor is a
+    CAP, not a stretch-to-fill.** `max-sm:h-11` (fixed 44px) with the negative margin
+    removed is the fix: the header's own `py-3` (12px) is left standing as real margin
+    around the button on every side, same as any other `items-center` child in that row.
+    `max-sm:px-4` still widens the horizontal box. Measured live: box 44 tall, top inset
+    16px from the sheet's own top edge (not 0) — capped AND inset, not one or the other.
+  - ⛔ **Step-one `Cancel` was ALSO wrong on DESKTOP, a second defect the first pass never
+    touched.** From the human: *"cancel on the first dialog of the modal on desktop is
+    also weirdly small."* It was still the hand-rolled `text-xs`/`py-[1px]` chip (66×20)
+    at every width, including `sm:` and up, while the footer's `Cancel` and every confirm
+    button are flowbite's `Button size="sm"` (38px). Converted to the same `<Button
+    size="sm" color="light">` component outright — not a class tweak, the WRONG PRIMITIVE
+    was the bug — with `max-sm:h-11` layered on for the mobile cap. Measured live: 81×38 at
+    1440 (matches the footer's own `size="sm"` height), 81×44 at 390, inset 16px from the
+    sheet's top edge in both themes.
 - **`.hit-32`'s 32px floor is still correct for controls that must stay visually small** — pills,
   chevrons, chip links. It is not a substitute for a real 44px box on the two or three controls
   a reader is most likely to reach for at the end of a destructive flow.
