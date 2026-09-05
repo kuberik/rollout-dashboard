@@ -11,6 +11,7 @@
 	import {
 		buildRevisionLedger,
 		lineState,
+		orderServiceGroups,
 		releaseLines,
 		repoDeviation,
 		rowNamesBuild,
@@ -20,14 +21,20 @@
 		type RevisionRow,
 		type RevisionSlot,
 		type RepoLedger,
-		type ServiceLedgerGroup
+		type ServiceLedgerGroup,
+		type ServiceLedgerLine
 	} from '$lib/view-models/revision-ledger';
 	import {
 		revisionCoverage,
 		releaseSplit,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
-	import { joinClauses } from '$lib/view-models/blocking-story';
+	import {
+		joinClauses,
+		buildGateContext,
+		blockingStory,
+		type GateContext
+	} from '$lib/view-models/blocking-story';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	// THE RAIL CARD'S TITLE IS THE REPO, NOT THE URL. See `repo-title.ts`.
 	import { repoTitle } from './repo-title';
@@ -53,6 +60,7 @@
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import FactList, { type Fact } from '$lib/components/FactList.svelte';
+	import BlockReason, { blockReason, contractBlockReason } from '$lib/components/BlockReason.svelte';
 	import BuildStateMark from '$lib/components/BuildStateMark.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -65,6 +73,8 @@
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { rememberShape, recallShape } from '$lib/skeleton-hints';
+	import { historyAtLimit } from '$lib/history-marks';
+	import { countLabel } from '$lib/disclosure';
 
 	/**
 	 * `/revisions` — REPOSITORY SECTIONS, ONE ROW GRAMMAR, A FINDABLE BUILD.
@@ -128,6 +138,83 @@
 	const ledgers = $derived(buildRevisionLedger(rollouts, environments));
 
 	/**
+	 * ⭐ THE GATE JOIN TABLE — ROUND SIX §1. Built once from the same
+	 * `/api/rollouts` payload every other surface reads (`environments`,
+	 * `rolloutDependencies`), so a line's own "held in N places" can name
+	 * the ACTUAL cause (`hello-api-app`, `^1.67.0`, `1.66.0`) through the
+	 * product's one classifier instead of leaving the word unexplained. This
+	 * page never loads `/schedules`, so a `check` gate is its final answer,
+	 * not `pending` — same choice the revision detail page's own
+	 * `gateContext` makes.
+	 */
+	const gateContext = $derived.by<GateContext>(() =>
+		buildGateContext({
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null,
+			schedulesExpected: false
+		})
+	);
+
+	/**
+	 * ⭐ THE REASON BEHIND ONE LINE'S "held in N places" — ROUND SIX §1.
+	 *
+	 * `buildState()`'s `held` word is deliberately silent on WHY: it is read
+	 * off the bare `live` bucket's `onOwnRelease`/`blockingGates` flags, not
+	 * off a classified gate. This asks the SAME question `blockingStory`
+	 * already answers for every other surface — picking the first held slot
+	 * with gate evidence and classifying its rollout's own blocking gates —
+	 * so the sentence drawn here can never disagree with `/apps`,
+	 * `/environments` or the rollout's own page for the identical fact.
+	 *
+	 * ⛔ ONE SLOT, NOT EVERY SLOT. A line held in three places by the SAME
+	 * rule needs the rule named once — `BlockReason`'s own `N rules`
+	 * disclosure is what counts the rest, exactly as it does everywhere else
+	 * this component is used.
+	 */
+	function heldGateReason(
+		coverage: RevisionCoverage
+	): { reason: NonNullable<ReturnType<typeof blockReason>>; appHref: string | null } | null {
+		const live = coverage.buckets.find((b) => b.key === 'live');
+		const slot = (live?.slots ?? []).find((s) => !s.onOwnRelease && s.blockingGates.length > 0);
+		if (!slot) return null;
+		const story = blockingStory(slot.slot.cell.rollout, gateContext, {
+			subject: slot.appName,
+			now: coarse
+		});
+		if (story.pinnedTo) {
+			// `blockReason` only returns `null` when none of its three
+			// branches fire; `pinnedTo` here is checked truthy, so the pinned
+			// branch always fires.
+			return { reason: blockReason({ pinnedTo: story.pinnedToDisplay })!, appHref: null };
+		}
+		// THE CONTRACT, WHEN THERE IS ONE TO NAME — the shape this item exists
+		// to draw: a provider, a required range, and the version it serves.
+		const dep = story.gates.find((g) => g.kind === 'dependency');
+		if (dep) {
+			return {
+				reason: contractBlockReason({
+					provider: dep.subject ?? 'another service',
+					contract: dep.contract ?? 'dependency',
+					requiredVersion: dep.need,
+					providedVersion: dep.have,
+					gateName: dep.id
+				}),
+				appHref: dep.subject ? `/apps/${encodeURIComponent(dep.subject)}` : null
+			};
+		}
+		// No contract to draw — fall back to `blockReason`'s own two structural
+		// buckets, same predicate `promotionBlock`/`BlockingStoryPanel` use:
+		// `person`/`unknown`/a promotion-order gate all publish an allow-list
+		// (`awaiting`); `check`/`clock` clear themselves (`notPassing`).
+		const awaiting = [...story.person, ...story.unknown, ...story.upstream]
+			.filter((g) => g.kind !== 'dependency')
+			.map((g) => g.id);
+		const notPassing = [...story.checks, ...story.clock].map((g) => g.id);
+		const reason = blockReason({ awaiting, notPassing });
+		return reason ? { reason, appHref: null } : null;
+	}
+
+	/**
 	 * ⭐ EACH REPO'S OWN HEAD COVERAGE, COMPUTED ONCE. Feeds both the
 	 * deviation ranking below (craft review item 3) and the hero itself —
 	 * the SAME object, never a second opinion recomputed a few lines apart.
@@ -175,11 +262,64 @@
 	});
 
 	/**
+	 * ⭐ ROUND SIX §2 — "NEVER DEPLOYED" IS BOUNDED BY `versionHistoryLimit`,
+	 * AND THE PAGE MUST SAY SO. Every rollout keeps `spec.history` to that
+	 * many entries; once a service has deployed that many times, an OLDER
+	 * build it also deployed can no longer be told apart from one it never
+	 * ran at all — both are simply absent from `status.history`. `pending`
+	 * (`RepoLedger`'s "nobody has taken this" list) reads exactly that
+	 * absence, so a repo at its cap is guaranteed to overstate its own
+	 * backlog: some of those "never deployed" builds were deployed, and
+	 * evicted, long before this page ever asked.
+	 *
+	 * `historyAtLimit` (`lib/history-marks.ts`) is the product's one test for
+	 * "this rollout's history may already be truncated" — the same test the
+	 * History tab uses to print `Unknown` instead of a false "first deploy".
+	 * Reused here rather than re-deriving it, so the two pages cannot
+	 * disagree about which rollouts are at their cap.
+	 */
+	function repoHistoryLimit(repo: Pick<RepoLedger, 'rows' | 'pending'>): {
+		atLimit: boolean;
+		limit: number;
+	} {
+		for (const row of [...repo.rows, ...repo.pending]) {
+			for (const s of row.services) {
+				for (const slot of s.slots) {
+					if (historyAtLimit(slot.cell.rollout)) {
+						return { atLimit: true, limit: slot.cell.rollout?.spec?.versionHistoryLimit ?? 10 };
+					}
+				}
+			}
+		}
+		return { atLimit: false, limit: 10 };
+	}
+
+	/** The same test, over the WHOLE fleet — feeds the page's own head band. */
+	const fleetHistoryLimit = $derived.by(() => {
+		for (const r of rollouts) {
+			if (historyAtLimit(r)) return r.spec?.versionHistoryLimit ?? 10;
+		}
+		return null;
+	});
+
+	const HISTORY_LIMIT_NOTE = (n: number) =>
+		`History keeps the last ${n} deploys per service; a build deployed earlier is not recorded.`;
+
+	/**
 	 * ⭐ THE SKELETON REMEMBERS THREE THINGS NOW: how many repo sections to
-	 * draw, WHICH of them were open, and how many service rows each one's
-	 * ledger holds. (REVISIONS-2026-09-05 §1, "Loading".) All three are
-	 * SHAPE — counts and a comma-joined list of indices — never fleet data;
-	 * `skeleton-hints.ts` enforces that at the storage layer.
+	 * draw, WHICH of them were open, and how many ledger ROWS each one
+	 * holds. (REVISIONS-2026-09-05 §1, "Loading"; ROUND SIX §4 corrects the
+	 * unit.) All three are SHAPE — counts and a comma-joined list of
+	 * indices — never fleet data; `skeleton-hints.ts` enforces that at the
+	 * storage layer.
+	 *
+	 * ⛔ THE STORED COUNT IS LEDGER LINES, NOT SERVICES. `serviceLedger()`'s
+	 * own contract is that a service can own TWO lines — a promotion in
+	 * flight is exactly two builds live at once on one service's own
+	 * ladder (`hello-multi-app`, live on the fleet). Counting groups
+	 * undershot the real card's height by one row per service caught
+	 * mid-rollout; the field kept its old name (`services`) so an older
+	 * remembered hint still parses, only what it counts changed.
 	 */
 	const SHAPE_KEY = 'revisions';
 	type RevisionsShape = { repos: number; open: string; services: string };
@@ -188,7 +328,7 @@
 	const skelRepoCount = Math.min(Math.max(shapeHint?.repos ?? 1, 1), 6);
 	const skelServiceCounts = (shapeHint?.services ?? '').split(',').map((raw) => {
 		const n = parseInt(raw, 10);
-		return Number.isFinite(n) && n > 0 ? Math.min(n, 8) : 3;
+		return Number.isFinite(n) && n > 0 ? Math.min(n, 12) : 3;
 	});
 	const skelOpenIndices = new Set(
 		(shapeHint?.open ?? '0')
@@ -228,7 +368,9 @@
 		rememberShape(SHAPE_KEY, {
 			repos: orderedLedgers.length,
 			open: openIndicesString(),
-			services: orderedLedgers.map((r) => serviceLedger(r).length).join(',')
+			services: orderedLedgers
+				.map((r) => serviceLedger(r).reduce((n, g) => n + Math.max(g.lines.length, 1), 0))
+				.join(',')
 		});
 	});
 
@@ -336,6 +478,45 @@
 	}
 
 	/**
+	 * ⭐ ROUND SIX §3 — THE LEDGER'S OWN DEAD SPACE. Measured at 1440: the
+	 * env-chip column is `minmax(0, 1fr)` and a two- or three-chip line fills
+	 * maybe half of it, so ink stopped at x≈788 of a 1199px card with nothing
+	 * printed in the remaining 400px. `RevisionRow.lastDeployMs` is the wrong
+	 * fact to fill it with — it is the MAX across every service and
+	 * environment that ships the revision, not THIS service's own. A line's
+	 * own latest deploy is the newest `history[0].timestamp` among the
+	 * environments where it is actually onIt right now — the same slots the
+	 * env chips beside it are drawn from, so the two facts can never name
+	 * different places.
+	 */
+	function lineDeployedMs(line: Pick<ServiceLedgerLine, 'slots'>): number | null {
+		let best = 0;
+		for (const slot of line.slots) {
+			const ts = slot.cell?.rollout?.status?.history?.[0]?.timestamp;
+			if (!ts) continue;
+			const t = new Date(ts).getTime();
+			if (Number.isFinite(t) && t > best) best = t;
+		}
+		return best > 0 ? best : null;
+	}
+
+	function lineAge(line: Pick<ServiceLedgerLine, 'slots'>): string {
+		const ms = lineDeployedMs(line);
+		if (!ms) return '';
+		return `Deployed ${formatTimeAgoCompact(new Date(ms).toISOString(), $now)} ago`;
+	}
+
+	function lineAgeTitle(line: Pick<ServiceLedgerLine, 'slots'>): string {
+		const ms = lineDeployedMs(line);
+		return ms ? formatDate(new Date(ms).toISOString()) : '';
+	}
+
+	function lineAgeIso(line: Pick<ServiceLedgerLine, 'slots'>): string | undefined {
+		const ms = lineDeployedMs(line);
+		return ms ? new Date(ms).toISOString() : undefined;
+	}
+
+	/**
 	 * ⭐ ROUND 3 §1 — A REPOSITORY IS NOT ONE RELEASE LINE. Replaces the old
 	 * single `leadRow`/`restRows`/`filteredLeadRow` trio, which picked ONE
 	 * repo-wide "newest" row and filed every OTHER line's own current build
@@ -386,18 +567,28 @@
 	 * `overflow-hidden` (it has no ellipsis of its own; it is sized for
 	 * short counts like `6/6 done`). Measured live: three long names
 	 * ("hello-multi-app · hello-world-app · hello-world-manifests", 58
-	 * characters) clipped mid-word at 390px instead of wrapping — `Card`'s
-	 * own `flex-wrap` only decides whether the ENTIRE verdict drops to its
-	 * own line, not whether that line itself fits. A character budget keeps
-	 * the exact two-service example the round names intact while falling
-	 * back to the honest count for a line too long to state safely; the
-	 * ledger's own per-line caption (§H) already names every service
-	 * regardless, so nothing is lost, only guarded against clipping.
+	 * characters) clipped mid-word at 390px instead of wrapping.
+	 *
+	 * ⛔ ROUND SIX §8 — THE CHARACTER-BUDGET FALLBACK MADE TWO HERO CARDS ON
+	 * ONE REPO DISAGREE ABOUT WHAT THEY ARE. A multi-line repo renders one
+	 * of these cards per line, and the OLD rule picked its spelling from
+	 * STRING LENGTH alone: the first line's two short names fit under 40
+	 * characters and printed `hello-api-app · hello-frontend-app`; the
+	 * second line's three names did not and fell back to the bare count
+	 * `3 services` — the exact defect this item names, one card naming
+	 * itself and the other refusing to. The budget is now a COUNT (three
+	 * names, the same cap the ledger's own line caption already applies),
+	 * never a character length, so both cards use the same rule regardless
+	 * of how long any one name happens to be — clipping is `Card`'s own
+	 * `overflow-hidden` to guard against, not a reason to stop naming
+	 * things. `Card`'s `whitespace-nowrap` verdict still cannot wrap, so a
+	 * name past the third is folded into `+N more` rather than joined in
+	 * full, which is what keeps the line short at any name length.
 	 */
 	function heroServicesLabel(row: RevisionRow): string {
-		const joined = row.services.map((s) => s.appName).join(' · ');
-		if (joined.length <= 40) return joined;
-		return `${row.services.length} service${row.services.length === 1 ? '' : 's'}`;
+		const names = row.services.map((s) => s.appName);
+		if (names.length <= 3) return names.join(' · ');
+		return `${names.slice(0, 3).join(' · ')} +${names.length - 3} more`;
 	}
 
 	/** Everything still running that is NOT one of the lines' own heads. */
@@ -672,7 +863,10 @@
 			class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400"
 			title="One commit, one build. Here is every build your services can deploy, and how far each one has got."
 		>
-			{#if scope}of {scope.known} builds deployed · {ledgers.length} repositor{ledgers.length === 1
+			{#if scope}of {scope.known} builds deployed{#if fleetHistoryLimit !== null}&nbsp;<span
+							class="cursor-help underline decoration-dotted"
+							title={HISTORY_LIMIT_NOTE(fleetHistoryLimit)}>· recorded history</span
+						>{/if} · {ledgers.length} repositor{ledgers.length === 1
 					? 'y'
 					: 'ies'}
 				<!--
@@ -743,7 +937,7 @@
 				bare ledger guess.
 			-->
 			<div
-				class="{sectionIndex === 0
+				class="repo-card {sectionIndex === 0
 					? 'mt-5'
 					: 'mt-6'} flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 				aria-hidden="true"
@@ -759,21 +953,33 @@
 					<span class="skel-block h-3 w-24 shrink-0"></span>
 				</div>
 				<!--
-					⭐ ROW HEIGHT MEASURED OFF THE REAL LEDGER, NOT THE SPEC'S
-					OWN "26px" GUESS. A `.svc-line` renders name + sha + rank
-					chip + env chips at `py-3` container padding — measured
-					live at 1440, 74px for 2 lines and 205px for 6, i.e. ~34-
-					37px per line. `py-2`/`gap-2`/`h-3` (the spec's literal
-					figure) undershot that by roughly 25px per row, which is
-					exactly the kind of slot-height drift `pair.mjs`'s flip
-					test exists to catch.
+					⭐ ROUND SIX §4 — THE SKELETON DRAWS `.svc-ledger`'S OWN GRID,
+					NOT A BESPOKE FLEX ROW. It used to be a plain `flex flex-col`
+					stack at every width, so the warm-visit flip — the moment
+					this placeholder is replaced by the real, container-queried
+					ledger — reflowed the second repo card by ~1500px the
+					instant the real DOM below 560px container width folded
+					four columns into a three-row stack. Reusing `.svc-ledger` /
+					`.svc-line` / `.svc-name` / `.svc-sha` / `.svc-rank` /
+					`.svc-envs` means the SAME `@container` rule
+					(`revisions/+page.svelte`'s own style block) folds this
+					placeholder exactly like the real content, at every width,
+					so nothing moves when the fetch resolves. `svcCount` is now
+					a count of LEDGER LINES, not services — `serviceLedger()`'s
+					own contract says a service can own two (a promotion in
+					flight), and underestimating that undershot the real
+					card's height by one row per service currently mid-rollout.
 				-->
-				<div class="flex flex-col gap-3 px-4 py-3">
+				<div class="svc-ledger py-1">
 					{#each Array(svcCount) as _, r (r)}
-						<div class="flex items-center gap-3">
-							<span class="skel-block h-4 w-32"></span>
-							<span class="skel-block h-4 w-16"></span>
-							<span class="skel-block h-4 w-56 flex-1"></span>
+						<div class="svc-line">
+							<span class="svc-name"><span class="skel-block h-4 w-28"></span></span>
+							<span class="svc-sha"><span class="skel-block h-4 w-16"></span></span>
+							<span class="svc-rank"><span class="skel-block h-4 w-14"></span></span>
+							<span class="svc-envs">
+								<span class="skel-block h-[22px] w-14"></span>
+								<span class="skel-block h-[22px] w-14"></span>
+							</span>
 						</div>
 					{/each}
 				</div>
@@ -1014,21 +1220,19 @@
 				⭐ ROUND 3 ADDENDUM C — LEDGER ORDER. Within each release line
 				(and across the whole ledger on a single-line repo), the
 				deviating service — held, pinned, stuck or failing on any build
-				it is live on — leads; the rest stay alphabetical. `serviceLineIndex`
-				only matters when `multiLine`; a single-line repo sorts on
-				deviation alone.
+				it is live on — leads; the rest stay alphabetical.
+				`serviceLineIndex` only matters when `multiLine`; a single-line
+				repo sorts on deviation alone.
+
+				⭐ ROUND SIX §6 — EXTRACTED TO `orderServiceGroups`
+				(`revision-ledger.ts`), so the comparator has a unit test with a
+				fixture where alphabetical and deviation order actually
+				disagree — a `.sort()` inline in a template has none.
 			-->
 			{@const serviceLineIndex = new Map(lines.flatMap((l, li) => l.services.map((s) => [s, li] as const)))}
-			{@const orderedGroups = [...visibleGroups].sort((a, b) => {
-				if (multiLine) {
-					const la = serviceLineIndex.get(a.appName) ?? 0;
-					const lb = serviceLineIndex.get(b.appName) ?? 0;
-					if (la !== lb) return la - lb;
-				}
-				const da = a.lines.some((ln) => lineState(ln, coarse)) ? 0 : 1;
-				const db = b.lines.some((ln) => lineState(ln, coarse)) ? 0 : 1;
-				if (da !== db) return da - db;
-				return a.appName.localeCompare(b.appName);
+			{@const orderedGroups = orderServiceGroups(visibleGroups, {
+				lineIndexOf: multiLine ? (appName) => serviceLineIndex.get(appName) ?? 0 : undefined,
+				now: coarse
 			})}
 			{@const shownGroups = expandLedger[repo.repoKey] ? orderedGroups : orderedGroups.slice(0, FOLD)}
 			{@const headCreated = repo.rows[0]?.createdMs ?? 0}
@@ -1050,6 +1254,7 @@
 				: 'Builds newer than the newest one any service here is running. None of them has been deployed anywhere.'}
 			{@const headCov = repoHeadCoverage.get(repo.repoKey) ?? null}
 			{@const deviation = repoDeviation(repo, headCov)}
+			{@const historyLimit = repoHistoryLimit(repo)}
 			{@const url = repoUrl(repo.repoKey)}
 			{@const open = effectiveOpen(i)}
 			{@const liveAll = restRows(repo, leadHeads)}
@@ -1098,19 +1303,24 @@
 					: 'mt-6'} flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 			>
 				<!--
-					⭐ CRAFT REVIEW ITEM 8 — A DISCLOSURE HEADER READS AS ONE AT
-					REST. `bg-gray-50`/`dark:bg-gray-800/60` is now the header's
-					RESTING ground, not only its hover state — the chevron alone
-					was not enough of a signal that this 47px bar is a control
-					and not a static card title (every static `Card` header on
-					this page stays plain white/gray-800, unchanged).
+					⭐ ROUND SIX §5 — THE TITLE IS NOT A BUTTON; THE DISCLOSURE
+					SAYS WHAT IT COLLAPSES. (Supersedes CRAFT REVIEW ITEM 8.)
+					The whole 47px bar used to be one `<button>` — a repo's own
+					NAME, at `t-card-title`, rendered as a control with no word
+					on it saying what pressing it does. `lib/CLAUDE.md`'s own
+					rule (*"a control that only changes what you are looking at
+					… must look like navigation [or disclosure]"*) and its
+					trigger grammar (`lib/disclosure.ts`: *"a SET you can count
+					→ N noun"*) both apply here and neither was followed: the
+					header read as a static heading OR a mystery button
+					depending on which half a reader looked at. The title is a
+					plain `<h2>` now; the ONE control is the pill on the
+					right, and it names its own count (`36 builds`) — the same
+					figure the meta line already prints, so the label is never
+					a fact invented for the control alone.
 				-->
-				<button
-					type="button"
-					class="flex min-h-[47px] w-full cursor-pointer flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/60 dark:hover:bg-gray-700/60"
-					aria-expanded={open}
-					aria-controls={`repo-${i}-extra`}
-					onclick={() => toggleRepo(i)}
+				<div
+					class="flex min-h-[47px] w-full flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/60"
 				>
 					<!--
 						⭐ COORDINATOR FOLLOW-UP 4 — THE NAME NEVER TRUNCATES, THE
@@ -1126,12 +1336,6 @@
 						`justify-between` sits flush LEFT, not floating right.
 					-->
 					<span class="flex min-w-0 items-center gap-2.5">
-						<ChevronRightOutline
-							class="h-4 w-4 shrink-0 text-gray-500 transition-transform duration-150 dark:text-gray-400 {open
-								? 'rotate-90'
-								: ''}"
-							aria-hidden="true"
-						/>
 						<CodeBranchOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
 						<h2 class="t-card-title min-w-0 break-words text-gray-900 dark:text-white">
 							{repoTitle(repo.repoLabel)}
@@ -1165,8 +1369,37 @@
 							title={distanceVerdictTitle}
 							>{distanceVerdict}</span
 						>
+						<!--
+							⭐ ROUND SIX §5 — THE ONE CONTROL, AND ITS LABEL NAMES
+							WHAT IT COLLAPSES. `countLabel` is the same "N noun"
+							form every other disclosure on the product uses; the
+							ledger below stays visible either way (§1's own rule,
+							unchanged) — this toggles the hero + build-list block
+							alone.
+						-->
+						<!--
+							⛔ NOT `.nav-link`. This changes LOCAL VIEW STATE (what
+							is expanded), not what page or object is on screen —
+							`lib/CLAUDE.md`'s own rule files that under "legitimately
+							keeps button chrome", the same family the `more` snippet
+							below already uses.
+						-->
+						<button
+							type="button"
+							class="hit-32 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-700/70"
+							aria-expanded={open}
+							aria-controls={`repo-${i}-extra`}
+							onclick={() => toggleRepo(i)}
+						>
+							{countLabel(repo.knownRevisions, 'build')}
+							{#if open}
+								<ChevronDownOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+							{:else}
+								<ChevronRightOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+							{/if}
+						</button>
 					</span>
-				</button>
+				</div>
 
 				<!-- ⭐ THE SERVICE LEDGER — §7(a). One group per service, one
 				     line per build that service is actually live on. -->
@@ -1187,8 +1420,24 @@
 									`9f10e49` and `NEWEST` beside `064b655` are legibly
 									two different ladders, not one row disagreeing
 									with itself.
+
+									⛔ ROUND SIX §7 — NOT `t-label`. Tracked uppercase
+									is the pill typography the human has rejected on
+									this product; a caption printing
+									`HELLO-API-APP · HELLO-FRONTEND-APP` read as one
+									whether or not that was the intent. `t-micro`,
+									sentence case, no letter-spacing — the ledger's
+									own service names two columns over are already
+									lower-case `t-body`, so this caption now reads as
+									the SAME kind of text as the names it groups,
+									not as a section header shouting over them.
+									Kept (not dropped, unlike item 8's hero rollup):
+									this is the ONLY place a COLLAPSED repo card
+									names which services share a ladder — the hero
+									cards item 8 also fixed only render once the
+									card is expanded.
 								-->
-								<div class="svc-line-caption t-label text-gray-500 dark:text-gray-400">
+								<div class="svc-line-caption t-micro text-gray-500 dark:text-gray-400">
 									{lines[li].services.length <= 3
 										? lines[li].services.join(' · ')
 										: `${lines[li].services.length} services`}
@@ -1277,7 +1526,39 @@
 											{#if state}
 												<Chip role={state.role} label={state.label} title={state.title} wide />
 											{/if}
+											<!--
+												⭐ ROUND SIX §3 — AT <560 THE AGE JOINS THE CHIPS'
+												OWN LINE, RIGHT-ALIGNED, rather than opening a
+												row of its own. Rendered TWICE, one hidden by
+												CSS at each width — the same idiom
+												`.svc-name-continuation` already uses on this
+												page, so the warm-visit skeleton never has to
+												guess which copy is live.
+											-->
+											{#if lineAge(line)}
+												<time
+													class="svc-age-inline t-micro text-gray-500 dark:text-gray-400"
+													datetime={lineAgeIso(line)}
+													title={lineAgeTitle(line)}>{lineAge(line)}</time
+												>
+											{/if}
 										</span>
+										<!--
+											⭐ ROUND SIX §3 — THE LEDGER'S DEAD SPACE, NAMED.
+											A right-aligned fifth column, verb-led
+											(`Deployed 1d ago`) — the same verb and the same
+											`<time datetime>` mechanism the three build lists
+											already use (`ageOf`/`ageIso`), scoped to just
+											this line's own live slots rather than the row's
+											repo-wide `lastDeployMs`.
+										-->
+										{#if lineAge(line)}
+											<time
+												class="svc-age t-micro text-gray-500 dark:text-gray-400"
+												datetime={lineAgeIso(line)}
+												title={lineAgeTitle(line)}>{lineAge(line)}</time
+											>
+										{/if}
 									{:else}
 										<span class="svc-empty t-micro text-gray-500 dark:text-gray-400">Not deployed</span>
 									{/if}
@@ -1360,6 +1641,7 @@
 								leadRow.revision === (repo.rows[0]?.revision ?? '')
 									? headCov
 									: revisionCoverage(leadRow, coarse)}
+							{@const heldGate = leadCov ? heldGateReason(leadCov) : null}
 							{#if leadCov}
 								<Card
 									icon={RocketSolid}
@@ -1387,6 +1669,26 @@
 											<p class="t-body basis-full text-gray-500 dark:text-gray-400">
 												{releaseSplitSentence(leadCov)}
 											</p>
+										{/if}
+										{#if heldGate}
+											<!--
+												⭐ ROUND SIX §1 — NAME THE RULE. `BuildStateMark`'s
+												own "held in N places" says THAT a rule is holding
+												this line; nothing on the page said WHICH one until
+												now. Same clause `blockingStory` → `BlockReason`
+												draws everywhere else this fact appears (the
+												dependencies tab's "Waiting on other services"
+												card) — never a second sentence invented here. The
+												provider is a real link, so the reader can go
+												straight to the service that has to ship rather
+												than typing its name into the search box above.
+											-->
+											<div class="basis-full">
+												<BlockReason
+													reason={heldGate.reason}
+													subjectHref={heldGate.appHref}
+												/>
+											</div>
 										{/if}
 										{#if commitUrlFor(repo.repoKey, leadRow.revision)}
 											<a
@@ -1576,10 +1878,29 @@
 									<Card
 										icon={HourglassOutline}
 										title="Never deployed"
-										verdict={rollupLabel(pendingVisible.length, repo.pending.length, 'build')}
-										verdictTitle={PENDING_RECORD}
+										verdict={historyLimit.atLimit
+											? `${rollupLabel(pendingVisible.length, repo.pending.length, 'build')} · beyond the last ${historyLimit.limit} deploys`
+											: rollupLabel(pendingVisible.length, repo.pending.length, 'build')}
+										verdictTitle={historyLimit.atLimit
+											? HISTORY_LIMIT_NOTE(historyLimit.limit)
+											: PENDING_RECORD}
 										padded={false}
 									>
+										<!--
+											⭐ ROUND SIX §2 — "NEVER DEPLOYED" IS BOUNDED BY
+											RETENTION. At least one service here has already
+											evicted an older deploy from its own history, so
+											this list's count is a floor, not a fact: some of
+											these builds may have run once, before this page
+											could see it.
+										-->
+										{#if historyLimit.atLimit}
+											<p
+												class="t-micro border-b border-gray-100 px-4 py-2 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
+											>
+												{HISTORY_LIMIT_NOTE(historyLimit.limit)}
+											</p>
+										{/if}
 										{#if repo.pending.length === 0}
 											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
 												Every build your services can deploy has run somewhere.
@@ -1741,10 +2062,25 @@
 	 */
 	.svc-ledger {
 		display: grid;
-		grid-template-columns: minmax(120px, 180px) 88px 90px minmax(0, 1fr);
+		grid-template-columns: minmax(120px, 180px) 88px 90px minmax(0, 1fr) auto;
 		column-gap: 12px;
 		row-gap: 0;
 		padding-inline: 16px;
+	}
+
+	/*
+	 * ⭐ ROUND SIX §3 — CAP THE LEDGER'S OWN MEASURE, DELIBERATELY, PAST 1800.
+	 * The env-chip column is `minmax(0, 1fr)` and stretches with the
+	 * viewport; a fifth column (below) fills SOME of the dead space this
+	 * item names, but an ultrawide monitor still opens a gap no chip run is
+	 * ever going to fill. `max-width` on the grid itself, not on `.repo-card`
+	 * — the card's header and meta rows stay full width, only the ledger's
+	 * own columns stop growing.
+	 */
+	@media (min-width: 1800px) {
+		.svc-ledger {
+			max-width: 1200px;
+		}
 	}
 
 	.svc-line {
@@ -1800,6 +2136,25 @@
 		min-width: 0;
 	}
 
+	/*
+	 * ⭐ ROUND SIX §3 — THE FIFTH COLUMN. Right-aligned, `nowrap` (`Deployed
+	 * 1d ago` is short and this is the one cell in the row that should never
+	 * wrap onto a second line and disturb every sibling line's own height).
+	 * `.svc-age-inline` is the SAME fact, rendered a second time for the
+	 * <560 container query below, hidden here so nothing prints twice.
+	 */
+	.svc-age {
+		grid-column: 5;
+		padding-block: 6px;
+		padding-left: 12px;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.svc-age-inline {
+		display: none;
+	}
+
 	/* NO LIVE SLOT — one line: the name, then the fact, spanning the rest of
 	   the row so it never pretends to be a build id. */
 	.svc-empty {
@@ -1848,6 +2203,25 @@
 		.svc-empty {
 			grid-column: 1 / -1;
 			padding-top: 0;
+		}
+
+		/*
+		 * ⭐ ROUND SIX §3 — AT <560 THE AGE JOINS THE CHIPS' OWN LINE. The
+		 * standalone fifth column has nowhere to sit once the grid folds to
+		 * two tracks (it would either open a fourth stacked row or clip
+		 * against the container edge), so it is hidden here and the inline
+		 * copy — always rendered inside `.svc-envs`, invisible above this
+		 * width — takes over. `margin-left: auto` on a `flex-wrap` row
+		 * pushes it to the row's own right edge without a dedicated column.
+		 */
+		.svc-age {
+			display: none;
+		}
+
+		.svc-age-inline {
+			display: inline;
+			margin-left: auto;
+			padding-left: 8px;
 		}
 
 		/*

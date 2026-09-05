@@ -828,6 +828,40 @@ export function serviceLedger(repo: Pick<RepoLedger, 'rows' | 'pending'>): Servi
 }
 
 /**
+ * ⭐ DEVIATION-FIRST ORDERING WITHIN A LINE — round 3 addendum C, extracted
+ * out of `/revisions`' own template so it is testable without mounting the
+ * page. A group whose own line has something to say — `lineState`'s own
+ * held/pinned/stuck/failing classification, the SAME primitives the home
+ * cards read — sorts BEFORE a steady one; ties break alphabetically, which
+ * is what makes this ordering worth a fixture at all: alphabetical order and
+ * deviation order have to actually DISAGREE for a naive `localeCompare`
+ * regression to be visible.
+ *
+ * `lineIndexOf`, when given, is asked FIRST — a multi-line repo's own
+ * RELEASE LINE order takes priority over any one service's deviation, so a
+ * service's own trouble never jumps it ahead of a service on an earlier
+ * line, only ahead of its line-mates. Omitted entirely on a single-line
+ * repo, where there is only one line to sort within.
+ */
+export function orderServiceGroups(
+	groups: ServiceLedgerGroup[],
+	options: { lineIndexOf?: (appName: string) => number; now: Date }
+): ServiceLedgerGroup[] {
+	const { lineIndexOf, now } = options;
+	return [...groups].sort((a, b) => {
+		if (lineIndexOf) {
+			const la = lineIndexOf(a.appName);
+			const lb = lineIndexOf(b.appName);
+			if (la !== lb) return la - lb;
+		}
+		const da = a.lines.some((ln) => lineState(ln, now)) ? 0 : 1;
+		const db = b.lines.some((ln) => lineState(ln, now)) ? 0 : 1;
+		if (da !== db) return da - db;
+		return a.appName.localeCompare(b.appName);
+	});
+}
+
+/**
  * ⭐ WHICH REPO HAS SOMETHING TO SAY — craft-review follow-up 3
  * (REVISIONS-2026-09-05). `buildRevisionLedger`'s own order (most-recently-
  * deployed first) is left UNTOUCHED here — this module's contract for

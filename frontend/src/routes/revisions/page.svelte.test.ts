@@ -40,7 +40,13 @@ beforeEach(() => {
 	vi.mocked(goto).mockClear();
 });
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte';
+import { configure } from '@testing-library/svelte';
+
+// The full suite runs this page's tests under CPU load from 70 other files; a
+// render after opening a repository can exceed the library's default 1 s wait
+// (seen once in three runs as "Unable to find … Newest build in use").
+configure({ asyncUtilTimeout: 5000 });
 import { goto } from '$app/navigation';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import Page from './+page.svelte';
@@ -260,11 +266,25 @@ function headingTexts(): string[] {
 	return screen.getAllByRole('heading').map((h) => h.textContent?.trim() ?? '');
 }
 
+/**
+ * ⭐ ROUND SIX §5 — THE TITLE IS NOT THE BUTTON ANY MORE. The disclosure
+ * used to be the whole 47px header (`aria-expanded` on the SAME element
+ * that rendered the repo's name), so finding it by name and by role were
+ * the same query. Now the name is a plain `<h2>` and the control is a
+ * separate `36 builds ⌄` pill beside it — find the heading first, then the
+ * one `aria-expanded` button inside its `.repo-card` ancestor.
+ */
 function repoHeaderButton(name: string): HTMLElement {
-	const btn = screen
+	const heading = screen
+		.getAllByRole('heading', { level: 2 })
+		.find((h) => h.textContent?.includes(name));
+	if (!heading) throw new Error(`no repository heading contains "${name}"`);
+	const card = heading.closest('.repo-card');
+	if (!card) throw new Error(`heading "${name}" has no .repo-card ancestor`);
+	const btn = within(card as HTMLElement)
 		.getAllByRole('button')
-		.find((b) => b.getAttribute('aria-expanded') !== null && b.textContent?.includes(name));
-	if (!btn) throw new Error(`no repository disclosure button contains "${name}"`);
+		.find((b) => b.getAttribute('aria-expanded') !== null);
+	if (!btn) throw new Error(`no repository disclosure button inside the repo-card for "${name}"`);
 	return btn;
 }
 
@@ -305,15 +325,17 @@ describe('/revisions — one consistent block per repository', () => {
 
 		// §1's default open state: index 0 (repo-a, more recently active)
 		// open, repo-b closed — so only repo-a's hero/list cards render yet.
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
+		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(1));
 
 		// Opening repo-b's own disclosure reaches the defect this round
 		// closes: only `ledgers[0]` used to reach these cards at all.
 		await fireEvent.click(repoHeaderButton('repo-b'));
 		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(2));
-		expect(screen.getAllByText('Also still running')).toHaveLength(2);
-		expect(screen.getAllByText('No longer running anywhere')).toHaveLength(2);
-		expect(screen.getAllByText('Never deployed')).toHaveLength(2);
+		await waitFor(() => {
+			expect(screen.getAllByText('Also still running')).toHaveLength(2);
+			expect(screen.getAllByText('No longer running anywhere')).toHaveLength(2);
+			expect(screen.getAllByText('Never deployed')).toHaveLength(2);
+		});
 
 		// Each section names itself exactly once, and `repo-a` still leads
 		// `repo-b` — `ledgers` is sorted most-recently-active first.

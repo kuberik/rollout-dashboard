@@ -332,7 +332,8 @@
 		notPassing = [],
 		pinnedTo = null,
 		reason: given = null,
-		class: className = ''
+		class: className = '',
+		subjectHref = null
 	}: {
 		/**
 		 * `PromotionBlock.awaitingApprovalGates`. Rules with an opinion, whose
@@ -361,6 +362,17 @@
 		 */
 		reason?: BlockReason | null;
 		class?: string;
+		/**
+		 * ⭐ ADDITIVE — REVISIONS ROUND SIX §1. Links the drawn PROVIDER (the
+		 * `contract` branch's `reason.subject`) to its own app page, so a
+		 * reader who has just been told *"hello-api-app is on 1.66.0"* can go
+		 * straight to the object rather than typing the name into the search
+		 * box themselves. `undefined` on every other caller — the plain
+		 * `<span>` this component has always drawn is unchanged for them.
+		 * Ignored outside the `drawsVersions` branch: a subject with no
+		 * relation drawn has no destination to offer here either.
+		 */
+		subjectHref?: string | null;
 	} = $props();
 
 	const reason = $derived(given ?? blockReason({ awaiting, notPassing, pinnedTo }));
@@ -501,7 +513,16 @@
 		<span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 			<span class="flex min-w-0 items-center gap-1.5">
 				<Icon class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-				{#if drawsVersions && reason.subject}
+				{#if drawsVersions && reason.subject && subjectHref}
+					<!-- THE PROVIDER, LINKED. Same ink as the bare span below —
+					     `.tap-link` outside a `.tap-zone` picks up `app.css`'s own
+					     32px hit-slop, so no bespoke geometry is needed here. -->
+					<a
+						href={subjectHref}
+						class="t-code-sm tap-link min-w-0 truncate text-gray-900 hover:underline dark:text-white"
+						>{reason.subject}</a
+					>
+				{:else if drawsVersions && reason.subject}
 					<!-- THE PROVIDER, AT FULL INK. It was the fifth word of a gray
 					     sentence; it is the object somebody has to go and ship. -->
 					<span class="t-code-sm min-w-0 truncate text-gray-900 dark:text-white"

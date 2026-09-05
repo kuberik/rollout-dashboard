@@ -3,6 +3,7 @@ import {
 	buildRevisionLedger,
 	groupServicesByLabel,
 	lineState,
+	orderServiceGroups,
 	rankSentence,
 	releaseLines,
 	repoDeviation,
@@ -13,6 +14,7 @@ import {
 	type RepoLedger,
 	type RevisionRow,
 	type RevisionSlot,
+	type ServiceLedgerGroup,
 	type ServiceLedgerLine
 } from './revision-ledger';
 import type { RevisionCoverage } from './revision-coverage';
@@ -706,5 +708,82 @@ describe('lineState — round 3 §3 (state in words, right kind, right hue)', ()
 			label: 'pinned',
 			title: 'Pinned to 1.2.3 — automatic deploys are paused until the pin is cleared.'
 		});
+	});
+});
+
+/**
+ * ⭐ DEVIATION-FIRST ORDERING — ROUND SIX §6. Extracted out of `/revisions`'
+ * own template so the comparator can be tested without mounting the page.
+ * The fixture below is chosen so alphabetical order and deviation order
+ * DISAGREE — `aaa-app` sorts first alphabetically and `zzz-app` sorts first
+ * on deviation (it is pinned) — which is the only shape that can catch a
+ * regression to a bare `localeCompare`.
+ */
+describe('orderServiceGroups — round 3 addendum C, extracted (round six §6)', () => {
+	const now = new Date('2026-01-01T00:00:00Z');
+
+	function slot(rollout: unknown): RevisionSlot {
+		return { cell: { rollout } } as unknown as RevisionSlot;
+	}
+	function line(slots: RevisionSlot[]): ServiceLedgerLine {
+		return {
+			appName: 'x',
+			revision: 'aaaaaaa',
+			short: 'aaaaaaa',
+			rank: 0,
+			ladderLength: 1,
+			slots
+		};
+	}
+	function group(appName: string, lines: ServiceLedgerLine[]): ServiceLedgerGroup {
+		return { appName, lines };
+	}
+
+	const steadyRollout = {
+		status: { history: [{ bakeStatus: 'Succeeded', version: { tag: 'v1', version: '1.0.0' } }] }
+	};
+	const pinnedRollout = {
+		status: { history: [{ bakeStatus: 'Succeeded', version: { tag: 'v1', version: '1.0.0' } }] },
+		spec: { wantedVersion: '1.2.3' }
+	};
+
+	it('puts the deviating service first even though it sorts LAST alphabetically', () => {
+		const groups = [
+			group('aaa-app', [line([slot(steadyRollout)])]),
+			group('zzz-app', [line([slot(pinnedRollout)])])
+		];
+		const ordered = orderServiceGroups(groups, { now });
+		expect(ordered.map((g) => g.appName)).toEqual(['zzz-app', 'aaa-app']);
+	});
+
+	it('two steady services fall back to alphabetical order', () => {
+		const groups = [
+			group('zzz-app', [line([slot(steadyRollout)])]),
+			group('aaa-app', [line([slot(steadyRollout)])])
+		];
+		const ordered = orderServiceGroups(groups, { now });
+		expect(ordered.map((g) => g.appName)).toEqual(['aaa-app', 'zzz-app']);
+	});
+
+	it('a service with no lines at all (never deployed) is steady, not deviating', () => {
+		const groups = [group('zzz-app', []), group('aaa-app', [line([slot(pinnedRollout)])])];
+		const ordered = orderServiceGroups(groups, { now });
+		expect(ordered.map((g) => g.appName)).toEqual(['aaa-app', 'zzz-app']);
+	});
+
+	it('on a multi-line repo, a service’s own deviation cannot jump it ahead of an earlier line', () => {
+		// `zzz-app` is on line 0 and steady; `aaa-app` is on line 1 and pinned.
+		// Alphabetical order alone would put `aaa-app` first; deviation order
+		// alone would too — but the RELEASE LINE takes priority over both, so
+		// line 0's `zzz-app` still leads.
+		const groups = [
+			group('aaa-app', [line([slot(pinnedRollout)])]),
+			group('zzz-app', [line([slot(steadyRollout)])])
+		];
+		const ordered = orderServiceGroups(groups, {
+			now,
+			lineIndexOf: (appName) => (appName === 'zzz-app' ? 0 : 1)
+		});
+		expect(ordered.map((g) => g.appName)).toEqual(['zzz-app', 'aaa-app']);
 	});
 });
