@@ -1,0 +1,85 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-second-script
+data:
+  app.py: |
+    import os
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    VERSION = os.environ.get("VERSION", "unknown")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(f"Hello, Second App!\nVersion: {VERSION}\n".encode())
+
+    if __name__ == "__main__":
+        port = int(os.environ.get("PORT", 8080))
+        server = HTTPServer(("", port), Handler)
+        print(f"Serving on port {port}")
+        server.serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-second-py
+  labels:
+    app: hello-second-py
+spec:
+  minReadySeconds: 5
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-second-py
+  template:
+    metadata:
+      labels:
+        app: hello-second-py
+    spec:
+      containers:
+        - name: python-server
+          image: ghcr.io/littlechimera/hello-second/app:${HELLO_SECOND_VERSION}
+          command: ["python", "/app/app.py"]
+          env:
+            - name: VERSION
+              value: ${HELLO_SECOND_VERSION}
+            - name: PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: app-script
+              mountPath: /app/app.py
+              subPath: app.py
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 1
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 3
+      volumes:
+        - name: app-script
+          configMap:
+            name: hello-second-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-second-py
+  labels:
+    app: hello-second-py
+spec:
+  selector:
+    app: hello-second-py
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

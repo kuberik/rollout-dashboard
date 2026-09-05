@@ -12,8 +12,9 @@ kind delete cluster --name rollout-dev
 # Stop the socat container
 docker compose -f "${PROJECT_ROOT}/docker-compose.socat.yaml" down
 
-# delete the test repository
+# delete the test repositories
 gh repo delete LittleChimera/kuberik-testing --yes || true
+gh repo delete LittleChimera/kuberik-testing-second --yes || true
 
 docker stop dex-server || true
 docker rm dex-server || true

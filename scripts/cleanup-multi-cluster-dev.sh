@@ -17,8 +17,9 @@ kind delete cluster --name rollout-dev
 docker compose -f "${PROJECT_ROOT}/docker-compose.sni-proxy.yaml" down
 rm -f /tmp/kuberik-haproxy.cfg
 
-# delete the test repository
+# delete the test repositories
 gh repo delete LittleChimera/kuberik-testing --yes || true
+gh repo delete LittleChimera/kuberik-testing-second --yes || true
 
 docker stop dex-server || true
 docker rm dex-server || true

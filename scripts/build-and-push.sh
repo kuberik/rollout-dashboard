@@ -5,6 +5,13 @@ set -eEuo pipefail
 set -x
 
 count=${1:-5}
+# REPO_SUFFIX selects which source repo (and which example app) this run
+# publishes to. Default is unchanged: "kuberik-testing" publishes hello-world
+# + hello-multi + hello-dep, exactly as before. Any other value publishes a
+# single app named after the suffix's own example dir under example/ — today
+# that's "kuberik-testing-second", which publishes example/hello-second, so
+# the Revisions page has a second, distinct source repo to group by.
+REPO_SUFFIX=${2:-kuberik-testing}
 
 # Set custom Docker config path
 SCRIPT_DIR=$(realpath $(dirname "$0"))
@@ -26,7 +33,7 @@ ENVIRONMENTS="dev staging prod"
 
 # Get GitHub username and set up repository
 GITHUB_USER=$(gh api user --jq .login | tr '[:upper:]' '[:lower:]')
-REPO_NAME="${GITHUB_USER}/kuberik-testing"
+REPO_NAME="${GITHUB_USER}/${REPO_SUFFIX}"
 REGISTRY="ghcr.io/${GITHUB_USER}"
 
 # Authenticate Docker with GitHub Container Registry
@@ -159,18 +166,47 @@ trap "rm -rf $temp_dir" EXIT
 (
     cd $temp_dir
     gh repo clone $REPO_NAME .
-    cp -r $PROJECT_ROOT/example/hello-world/* .
-    # Second example (multi KruiseRollouts) is copied under its own subdir
-    # so its paths don't collide with hello-world.
-    mkdir -p multi
-    cp -r $PROJECT_ROOT/example/hello-multi/* multi/
-    # Third example (dependency-gated rollouts) likewise gets its own subdir.
-    mkdir -p dep
-    cp -r $PROJECT_ROOT/example/hello-dep/* dep/
+
+    if [ "$REPO_SUFFIX" = "kuberik-testing" ]; then
+        cp -r $PROJECT_ROOT/example/hello-world/* .
+        # Second example (multi KruiseRollouts) is copied under its own subdir
+        # so its paths don't collide with hello-world.
+        mkdir -p multi
+        cp -r $PROJECT_ROOT/example/hello-multi/* multi/
+        # Third example (dependency-gated rollouts) likewise gets its own subdir.
+        mkdir -p dep
+        cp -r $PROJECT_ROOT/example/hello-dep/* dep/
+    else
+        # Any other REPO_SUFFIX publishes a single, standalone example named
+        # after itself (minus the "kuberik-testing-" prefix), so a second
+        # source repo exists to exercise multi-repo views on the Revisions
+        # page — see example/hello-second.
+        app_dir_name=${REPO_SUFFIX#kuberik-testing-}
+        cp -r "$PROJECT_ROOT/example/hello-${app_dir_name}/"* .
+        if [ ! -f README.md ]; then
+            cat > README.md <<EOF
+# kuberik-testing-second
+
+This repo exists to exercise multi-repo views in the rollout-dashboard's
+Revisions page. It is a standalone twin of \`kuberik-testing\`'s hello-world
+example, deliberately kept in its own repository so a build published from
+here carries a different \`org.opencontainers.image.source\` than anything
+published from \`kuberik-testing\`.
+
+Nothing here is meant to be run outside the kuberik dev clusters. See
+\`example/hello-second\` in the \`rollout-dashboard\` repo for the source of
+the app and Kubernetes manifests this repo's history is built from, and
+\`scripts/build-and-push.sh\` for how commits here turn into published builds.
+EOF
+        fi
+    fi
+
     git add .
     git commit -m "Initial commit"
 
-    push_dep_manifests
+    if [ "$REPO_SUFFIX" = "kuberik-testing" ]; then
+        push_dep_manifests
+    fi
 
     # NOTE: brace expansion happens before parameter expansion, so `{1..$count}`
     # expands to the literal string "{1..5}" and iterates exactly once. Use seq.
@@ -191,6 +227,16 @@ trap "rm -rf $temp_dir" EXIT
         version_short=$(git rev-parse --short HEAD)
         tag="main-$(git log --format=%ct -1 )-${version}"
 
+        if [ "$REPO_SUFFIX" = "kuberik-testing" ]; then
+            artifact_name="$OCI_ARTIFACT_NAME"
+            artifact_title="Hello World app"
+            artifact_description="This app is a simple hello world app. It is used to test the rollout controller. It is not meant to be used in production. Have fun!"
+        else
+            artifact_name="hello-${app_dir_name}"
+            artifact_title="Hello Second app"
+            artifact_description="Standalone twin of hello-world, published from its own repository (${REPO_NAME}) so the Revisions page has a second source repo to group by."
+        fi
+
         # Use crane to annotate the image with the desired annotations
         for t in $tag $version; do
           docker buildx build --push \
@@ -200,24 +246,29 @@ trap "rm -rf $temp_dir" EXIT
             --annotation "index:org.opencontainers.image.source=https://github.com/${REPO_NAME}" \
             --annotation "index:org.opencontainers.image.revision=${version}" \
             --annotation "index:org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --annotation "index:org.opencontainers.image.title=Hello World app" \
-            --annotation "index:org.opencontainers.image.description=This app is a simple hello world app. It is used to test the rollout controller. It is not meant to be used in production. Have fun!" \
+            --annotation "index:org.opencontainers.image.title=${artifact_title}" \
+            --annotation "index:org.opencontainers.image.description=${artifact_description}" \
             --annotation "index:org.opencontainers.image.licenses=MIT" \
             --annotation "index:org.opencontainers.image.authors=Kuberik" \
             --annotation "index:org.opencontainers.image.vendor=Kuberik" \
             --annotation "index:org.opencontainers.image.url=https://kuberik.com" \
-            -t "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}" \
+            -t "${REGISTRY}/${artifact_name}/app:${t}" \
             .
 
-          kind load docker-image "${REGISTRY}/${OCI_ARTIFACT_NAME}/app:${t}" --name "${KIND_CLUSTER_NAME:-rollout-dev}"
+          kind load docker-image "${REGISTRY}/${artifact_name}/app:${t}" --name "${KIND_CLUSTER_NAME:-rollout-dev}"
         done
 
+        if [ "$REPO_SUFFIX" = "kuberik-testing" ]; then
+            for env in $ENVIRONMENTS; do
+                build_and_push "$env" "app/deployments/${env}" "hello-world" "Hello World"
+                build_and_push "$env" "multi/app/deployments/${env}" "hello-multi" "Hello Multi"
+            done
 
-        for env in $ENVIRONMENTS; do
-            build_and_push "$env" "app/deployments/${env}" "hello-world" "Hello World"
-            build_and_push "$env" "multi/app/deployments/${env}" "hello-multi" "Hello Multi"
-        done
-
-        publish_dep_releases "${version}"
+            publish_dep_releases "${version}"
+        else
+            for env in $ENVIRONMENTS; do
+                build_and_push "$env" "app/deployments/${env}" "${artifact_name}" "Hello Second"
+            done
+        fi
     done
 )

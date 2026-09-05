@@ -1,0 +1,138 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-second
+---
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-second-manifests
+  annotations:
+    dashboard.rollout.kuberik.com/description: "Hello Second manifests / __ENVIRONMENT__"
+    dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
+spec:
+  releasesImagePolicy:
+    name: hello-second-manifests
+  versionHistoryLimit: 5
+  bakeTime: 15s
+  healthCheckSelector:
+    selector:
+      matchLabels:
+        app: hello-second
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: hello-second-manifests
+spec:
+  image: ghcr.io/littlechimera/hello-second/__ENVIRONMENT__/manifests
+  interval: 60s
+  secretRef:
+    name: github-registry-credentials
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: hello-second-manifests
+spec:
+  imageRepositoryRef:
+    name: hello-second-manifests
+  filterTags:
+    pattern: "^main-(?P<timestamp>[0-9]+)-[a-f0-9]+$"
+    extract: "$timestamp"
+  policy:
+    alphabetical:
+      order: asc
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: hello-second
+  annotations:
+    rollout.kuberik.com/rollout: hello-second-manifests
+spec:
+  interval: 60s
+  url: oci://ghcr.io/littlechimera/hello-second/__ENVIRONMENT__/manifests
+  secretRef:
+    name: github-registry-credentials
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hello-second
+  annotations:
+    rollout.kuberik.com/substitute.HELLO_SECOND_VERSION.from: "hello-second-app"
+spec:
+  interval: 5m
+  prune: true
+  sourceRef:
+    kind: OCIRepository
+    name: hello-second
+---
+apiVersion: kuberik.com/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-second-app
+  annotations:
+    dashboard.rollout.kuberik.com/description: "Hello Second app / __ENVIRONMENT__"
+    dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
+spec:
+  releasesImagePolicy:
+    name: hello-second-app
+  versionHistoryLimit: 5
+  bakeTime: 15s
+  healthCheckSelector:
+    selector:
+      matchLabels:
+        app: hello-second
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: hello-second-app
+spec:
+  image: ghcr.io/littlechimera/hello-second/app
+  interval: 60s
+  secretRef:
+    name: github-registry-credentials
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: hello-second-app
+spec:
+  imageRepositoryRef:
+    name: hello-second-app
+  filterTags:
+    pattern: "^main-(?P<timestamp>[0-9]+)-[a-f0-9]+$"
+    extract: "$timestamp"
+  policy:
+    alphabetical:
+      order: asc
+---
+apiVersion: kuberik.com/v1alpha1
+kind: HealthCheck
+metadata:
+  name: hello-second-kustomization-health-check
+  labels:
+    app: hello-second
+  annotations:
+    healthcheck.kuberik.com/kustomization: "hello-second"
+    kuberik.com/display-name: "Flux Deployment"
+spec:
+  class: "kustomization"
+---
+apiVersion: environments.kuberik.com/v1alpha1
+kind: Environment
+metadata:
+  name: hello-second-app
+spec:
+  # Reference to the Rollout that this Deployment manages
+  rolloutRef:
+    name: hello-second-app
+  backend:
+    type: github
+    project: "LittleChimera/kuberik-testing-second"
+    secret: "github-token"
+  name: "hello-second-app"
