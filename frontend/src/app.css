@@ -107,6 +107,83 @@ body {
 	padding-bottom: var(--tabbar-h, 0px);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   THE HEADER GROUP: NAVBAR + A ROUTE'S OWN TAB STRIP, AUTO-HIDING BELOW
+   `sm` ONLY. (2026-09-05, from the human: *"tabs are not fixed, so it looks
+   weird when scrolling up in Chrome; they can get separated from the main
+   navbar. On mobile the same tabs are fixed to the top so we don't see them
+   when scrolling down — that's fine to give the user more space, but they
+   need to show again as soon as the user starts scrolling up."*)
+   ═══════════════════════════════════════════════════════════════════════
+
+   `.header-group` wraps `Navbar` and, when a route publishes one (rollout
+   detail, via `shell-chrome.svelte.ts`), its secondary tab strip — see the
+   root layout. FROM `sm` UP THIS IS A NO-OP: `position: static`, both
+   children sit in normal flow above the `Sidebar + <main>` row exactly like
+   any other static chrome, and nothing here ever transforms them. That is
+   the fix for the desktop half of the report — the strip used to be
+   `sticky top-0` INSIDE `<main>`, the one scroller from `sm` up, so
+   Chrome's rubber-band bounce at the top of its scroll range visibly
+   detached it from the navbar one level up. It is a plain sibling of
+   `Navbar` now, outside `<main>` entirely, so there is no scroller left
+   between them to desynchronize — `overscroll-behavior: contain` on
+   `<main>` was never going to fix this half; it stops the bounce from
+   CHAINING to the document, not from moving `<main>`'s own sticky
+   children.
+
+   BELOW `sm` THE DOCUMENT IS THE SCROLLER (see "THE DOCUMENT SCROLLS"
+   above) and `.header-group` becomes the auto-hiding unit instead: `position:
+   fixed` at the top of the viewport, translated fully off-screen on
+   scroll-down past a small threshold and back on ANY scroll-up.
+   `scroll-direction.svelte.ts`'s `ScrollDirectionTracker` owns that
+   decision (unit-tested there, fed by the root layout's one `scroll`
+   listener); this rule only renders `data-hidden`. Both children move as
+   ONE rigid block — there is no separate transform math for the tab strip's
+   own offset, because sliding the whole group by its own total height keeps
+   them stacked in lockstep regardless of whether a tab strip is present. */
+@media (max-width: 639.98px) {
+	body {
+		/* `--header-h` is `.header-group`'s own measured height (root layout,
+		   same `ResizeObserver` idiom as `--tabbar-h` above) — reserved
+		   UNCONDITIONALLY on the hidden/shown state. Hiding the header must
+		   never change how much room the page below it has, or the content
+		   would jump every time the header slides; the header instead slides
+		   over/off this constant reserved band. Gated to below `sm` only:
+		   above it `.header-group` is `position: static` (normal flow inside
+		   the non-scrolling shell), so an extra `body` padding would just push
+		   the whole `h-dvh` shell partly off-screen for nothing. */
+		padding-top: var(--header-h, 0px);
+	}
+
+	.header-group {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 50;
+		transform: translateY(0);
+		transition: transform 180ms ease;
+		will-change: transform;
+	}
+
+	.header-group[data-hidden='true'] {
+		transform: translateY(-100%);
+	}
+
+	/* Keyboard focus anywhere inside a hidden header reveals it — a Tab
+	   press must never land on an invisible control. Same specificity as
+	   the rule above; this comes later in the sheet, so it wins. */
+	.header-group:focus-within {
+		transform: translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.header-group {
+		transition: none;
+	}
+}
+
 /* Locks the document scroll while a dialog or the command palette is open
    (`ChangeVersionModal.svelte`, `CommandPalette.svelte`). Unlayered so a
    Tailwind utility can never accidentally beat it; `scrollbar-gutter:

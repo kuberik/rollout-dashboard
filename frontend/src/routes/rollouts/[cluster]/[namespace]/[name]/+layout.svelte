@@ -12,6 +12,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
+	import { getShellChrome } from '$lib/shell-chrome.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -189,6 +190,26 @@
 			?.querySelector('[aria-current="page"]')
 			?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
 	});
+
+	/**
+	 * ⭐ PUBLISHED INTO THE SHELL, NOT RENDERED HERE. (2026-09-05) See
+	 * `shell-chrome.svelte.ts`'s doc comment: this strip used to be `sticky
+	 * top-0` inside `<main>`, which is what let Chrome's rubber-band bounce
+	 * visibly detach it from the navbar above. `tabStripSnippet` is declared
+	 * in the template below and handed to the root layout's `shellChrome`,
+	 * which renders it as a sibling of `Navbar` — a scroller no longer sits
+	 * between them. Cleared on destroy so leaving a rollout page (to
+	 * anywhere that isn't another rollout page) empties the slot rather than
+	 * leaving a stale strip pointing at a route no longer mounted.
+	 */
+	const shellChrome = getShellChrome();
+
+	$effect(() => {
+		shellChrome.tabStrip = tabStripSnippet;
+		return () => {
+			if (shellChrome.tabStrip === tabStripSnippet) shellChrome.tabStrip = null;
+		};
+	});
 </script>
 
 <!--
@@ -213,55 +234,75 @@
 	strip and leaving the extra scroller in place would have moved the defect
 	rather than removed it.
 
-	Now `<main>` scrolls this page like every other page, `sticky top-0` on the
-	strip below pins against `<main>` exactly as it pinned against the inner
-	pane, and `min-h-full` + `flex flex-col` keeps the Logs tab able to claim the
-	viewport's remaining height without a second scrollbar.
+	Now `<main>` scrolls this page like every other page, and `min-h-full` +
+	`flex flex-col` keeps the Logs tab able to claim the viewport's remaining
+	height without a second scrollbar. The tab strip itself no longer lives in
+	this flow at all — see `tabStripSnippet` below and `shell-chrome.svelte.ts`.
 -->
 <div class="flex min-h-full flex-col pb-16 md:pb-0">
-	<!--
-		══ THE TAB STRIP IS NO LONGER FULL-BLEED ═══════════════════════════
+	{@render children()}
+</div>
 
-		⛔ THE ONE DOCUMENTED EXCEPTION TO THE PAGE CONTAINER WAS THE DEFECT
-		THE HUMAN WAS POINTING AT. (2026-09-02: *"rollout detail and
-		environment list still have larger margin than the rest of the
-		pages."* — "still", one commit after the container was unified and
-		this strip was written down as a deliberate exception.)
+<!--
+	══ THE TAB STRIP RENDERS IN THE SHELL, NOT HERE ═════════════════════════
 
-		The strip's BACKGROUND and its bottom hairline are chrome for the
-		whole pane and stay full-bleed. Its TABS were full-bleed too, at
-		`px-2 sm:px-4`, so the first tab's box sat 16px from the pane edge
-		while the content below it sat in the product's container. Measured
-		on the running page, first tab box → content left edge:
+	⛔ IT USED TO BE `sticky top-0` INSIDE `<main>`, AND THAT WAS THE DEFECT.
+	(2026-09-05, from the human: *"tabs are not fixed, so it looks weird when
+	scrolling up in Chrome; they can get separated from the main navbar."*)
+	`<main>` is the one scroller from `sm` up, and Chrome's rubber-band bounce
+	at the top of its scroll range visibly detached a `sticky` strip from the
+	static navbar one level up — `overscroll-behavior: contain` on `<main>`
+	stops the bounce from CHAINING to the document, it does not stop the
+	bounce itself from moving `<main>`'s own sticky children. This snippet is
+	handed to the root layout's `shellChrome` (see the `$effect` above) and
+	rendered as a sibling of `Navbar`, outside `<main>` entirely — there is no
+	scroller left between them to desynchronize.
 
-		    1280 →   8px      1440 →   8px      1680 → 120px
-		    1800 → 180px      2560 → 560px
+	⛔ THE ONE DOCUMENTED EXCEPTION TO THE PAGE CONTAINER WAS THE DEFECT
+	THE HUMAN WAS POINTING AT, ONE PASS EARLIER. (2026-09-02: *"rollout detail
+	and environment list still have larger margin than the rest of the
+	pages."* — "still", one commit after the container was unified and this
+	strip was written down as a deliberate exception.)
 
-		Every other route's topmost element IS the container's left edge, so
-		rollout detail is the ONE page in the product that draws a reference
-		line at the pane edge and then insets its content from it by a
-		quarter of the viewport. That step is what reads as "a larger
-		margin", and no census of container edges can see it — the container
-		was correct the whole time. Same shape as the Dependencies tab's
-		`max-w-[64rem]` one commit ago: the outer wrapper is uniform and
-		something inner is not.
+	The strip's BACKGROUND and its bottom hairline are chrome for the
+	whole pane and stay full-bleed. Its TABS were full-bleed too, at
+	`px-2 sm:px-4`, so the first tab's box sat 16px from the pane edge
+	while the content below it sat in the product's container. Measured
+	on the running page, first tab box → content left edge:
 
-		⭐ THE TAB *BOX* ALIGNS WITH THE CONTENT EDGE, NOT THE TAB *LABEL*.
-		The tab carries `px-3`, so its label lands 12px in — exactly the way
-		a `Card`'s border sits at the block edge and its title sits 16px
-		inside. What aligns is the thing that draws a line: the active tab's
-		`border-b-2` is now a segment of the container's own left edge.
+	    1280 →   8px      1440 →   8px      1680 → 120px
+	    1800 → 180px      2560 → 560px
 
-		⭐ AND IT HAD TO SHARE THE CONTENT'S SCROLL BOX, NOT JUST ITS WIDTH
-		CLASS. The strip used to be a SIBLING of the scrolling pane, so it
-		was centred in a box one scrollbar wider than the box the page was
-		centred in. Putting the same `max-w-7xl` on both would have left them
-		half a scrollbar apart — the jitter this rule exists to remove,
-		reintroduced by the fix for it. Both are children of `<main>` now, so
-		there is one content box and one centre.
-	-->
+	Every other route's topmost element IS the container's left edge, so
+	rollout detail is the ONE page in the product that draws a reference
+	line at the pane edge and then insets its content from it by a
+	quarter of the viewport. That step is what reads as "a larger
+	margin", and no census of container edges can see it — the container
+	was correct the whole time. Same shape as the Dependencies tab's
+	`max-w-[64rem]` one commit ago: the outer wrapper is uniform and
+	something inner is not.
+
+	⭐ THE TAB *BOX* ALIGNS WITH THE CONTENT EDGE, NOT THE TAB *LABEL*.
+	The tab carries `px-3`, so its label lands 12px in — exactly the way
+	a `Card`'s border sits at the block edge and its title sits 16px
+	inside. What aligns is the thing that draws a line: the active tab's
+	`border-b-2` is now a segment of the container's own left edge.
+
+	⭐ NOW THAT THE STRIP IS A SIBLING OF `Navbar`, NOT OF `<main>`'S
+	CONTENT, THE ALIGNMENT IS `--sidebar-w`'S JOB, NOT `max-w-7xl`'S ALONE.
+	(2026-09-05) `<main>`'s own content box already excludes the sidebar's
+	width; a plain `mx-auto max-w-7xl` sibling of `Navbar` would centre in
+	the FULL shell width instead and land the strip's left edge under the
+	sidebar. The root layout wraps this snippet's render site in
+	`sm:pl-[var(--sidebar-w,0px)]` — measured live off `Sidebar.svelte`,
+	since its width isn't a constant (`w-12` collapsed vs `w-44` expanded,
+	and it animates between them) — so `mx-auto max-w-7xl` below still
+	centres in a box the same width and position `<main>`'s content box is,
+	byte-for-byte, whether the sidebar is collapsed or not.
+-->
+{#snippet tabStripSnippet()}
 	<nav
-		class="sticky top-0 z-20 shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+		class="shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
 		aria-label="Rollout sections"
 	>
 		<!--
@@ -346,6 +387,4 @@
 			{/each}
 		</div>
 	</nav>
-
-	{@render children()}
-</div>
+{/snippet}

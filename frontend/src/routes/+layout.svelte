@@ -8,6 +8,8 @@
 	import { queryRetry, queryRetryDelay, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { startEventStream } from '$lib/api/events';
 	import { afterNavigate } from '$app/navigation';
+	import { provideShellChrome } from '$lib/shell-chrome.svelte';
+	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
 
 	/**
 	 * ⛔ P12 — FOCUS RESET TO BODY ON EVERY NAVIGATION. (2026-09-03,
@@ -49,7 +51,64 @@
 	 */
 	let { children }: { children?: import('svelte').Snippet } = $props();
 	let mainEl: HTMLElement | undefined = $state();
+
+	// ⭐ THE SHELL SLOT A ROUTE'S SECONDARY NAV RENDERS INTO. See
+	// `shell-chrome.svelte.ts`'s own doc comment for why this exists at all
+	// (Chrome's rubber-band bounce visibly detaching the rollout tab strip
+	// from the navbar) — this root layout is the ONE place that provides it.
+	const shellChrome = provideShellChrome();
+
+	// ⭐ THE MOBILE HEADER'S AUTO-HIDE DECISION. (2026-09-05) Below `sm` the
+	// DOCUMENT is the scroller (see app.css's "THE DOCUMENT SCROLLS"), so a
+	// plain `window`/document `scroll` listener is exactly the right signal
+	// — at `sm`+ the document never scrolls (the shell is `h-dvh
+	// overflow-hidden`), so `window.scrollY` stays 0 and this tracker never
+	// reports hidden there; `.header-group`'s own media query is still what
+	// makes that state inert, this is just cheap to leave running unguarded.
+	const headerScroll = new ScrollDirectionTracker(24);
+	let headerGroupEl: HTMLElement | undefined = $state();
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		function onScroll() {
+			headerScroll.update(window.scrollY);
+		}
+		window.addEventListener('scroll', onScroll, { passive: true });
+		return () => window.removeEventListener('scroll', onScroll);
+	});
+
+	// ⭐ PUBLISHES `--header-h`, THE SAME IDIOM `MobileTabBar.svelte` USES FOR
+	// `--tabbar-h`. Below `sm` the header group is `position: fixed` (see
+	// app.css), so nothing else reserves the room it used to take in normal
+	// flow — `body`'s `padding-top` reads this var UNCONDITIONALLY on the
+	// hidden/shown state (only gated by breakpoint) so hiding the header
+	// never changes how much room the page below it has. Measures the whole
+	// group (navbar + the rollout tab strip when one is published), so a
+	// route with no tab strip gets a shorter reservation automatically.
+	$effect(() => {
+		if (typeof document === 'undefined' || !headerGroupEl) return;
+		const el = headerGroupEl;
+		function measure() {
+			document.documentElement.style.setProperty('--header-h', `${el.getBoundingClientRect().height}px`);
+		}
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		window.addEventListener('resize', measure);
+		return () => {
+			ro.disconnect();
+			window.removeEventListener('resize', measure);
+		};
+	});
+
 	afterNavigate((nav) => {
+		// A real navigation always lands with the header shown, whichever way
+		// the reader was scrolling on the page they left. Seeded from the
+		// ACTUAL scroll offset (see `ScrollDirectionTracker.reset`'s own
+		// comment) — usually 0, but Chrome restores a prior offset on a
+		// plain reload, and a stale 0 baseline there mis-reads the next real
+		// scroll's direction.
+		headerScroll.reset(typeof window !== 'undefined' ? window.scrollY : 0);
 		// From `sm` up `<main>` is the scroller, and SvelteKit only resets the
 		// DOCUMENT's offset on a fresh navigation — leave Back/Forward to the
 		// browser, put every other arrival at the top of the new page.
@@ -167,7 +226,26 @@
 		>
 			Skip to main content
 		</a>
-		<Navbar />
+		<!-- ⭐ THE HEADER GROUP. (2026-09-05) `Navbar` and a route's own secondary
+		     tab strip (published via `shellChrome.tabStrip`, see
+		     `shell-chrome.svelte.ts`) render here as ordinary siblings — never
+		     inside `<main>`, so there is no scroller between them to
+		     desynchronize on Chrome's rubber-band bounce. `.header-group` in
+		     `app.css` is a no-op from `sm` up (`position: static`); below `sm`
+		     it is the auto-hiding unit, `position: fixed` and translated by
+		     `headerScroll.hidden`. `sm:pl-[var(--sidebar-w,0px)]` on the tab
+		     strip's own wrapper (NOT on `Navbar`, which has never aligned with
+		     the sidebar-offset content below it) keeps the strip's tab BOX
+		     aligned with the content edge exactly as it was when it lived
+		     inside `<main>` — see `Sidebar.svelte`'s `--sidebar-w`. -->
+		<div bind:this={headerGroupEl} class="header-group" data-hidden={headerScroll.hidden}>
+			<Navbar />
+			{#if shellChrome.tabStrip}
+				<div class="shrink-0 sm:pl-[var(--sidebar-w,0px)]">
+					{@render shellChrome.tabStrip()}
+				</div>
+			{/if}
+		</div>
 		<div class="flex min-w-0 flex-row sm:min-h-0 sm:flex-1">
 			<Sidebar />
 			<!--

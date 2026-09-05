@@ -881,7 +881,9 @@ looks like when we recently changed scrolling behaviour … navbar / sidebar bou
 scrolling. it should be fixed in place."*
 
 - **Below `sm` (phone):** the document scrolls. Tab bar `fixed`, navbar `sticky`, every native
-  scroll behaviour live. Unchanged from d7248c4.
+  scroll behaviour live. Unchanged from d7248c4. ⛔ **SUPERSEDED IN PART, 2026-09-05 — see
+  "THE HEADER GROUP" below: the navbar's own `sticky` no longer does the work; it and a
+  route's tab strip now move together as one `position: fixed` unit that auto-hides.**
 - **From `sm` up:** the shell is the viewport (`sm:h-dvh sm:overflow-hidden` on the root),
   navbar and the full-height sidebar are static chrome, and `<main>` is the ONE scroller with
   `overscroll-behavior: contain` and its own `scrollbar-gutter: stable`. The root layout resets
@@ -891,6 +893,71 @@ scrolling. it should be fixed in place."*
 
 `sm` is the seam because it is where the sidebar appears and the tab bar leaves. Do not add a
 third model; if a component needs "the scroller", ask `getComputedStyle(main).overflowY`.
+
+## THE HEADER GROUP: a route's tab strip is shell chrome, not `<main>` content (2026-09-05)
+
+From the human: *"On the rollout page, tabs are not fixed, so it looks weird when scrolling up
+in Chrome; they can get separated from the main navbar. On mobile the same tabs are fixed to
+the top so we don't see them when scrolling down — that's fine to give the user more space,
+but they need to show again as soon as the user starts scrolling up. It's common UX
+behaviour."* Two independent defects, one per side of the `sm` breakpoint above:
+
+- **`sm`+:** rollout detail's tab strip used to be `sticky top-0` INSIDE `<main>`, the one
+  scroller from `sm` up. Chrome's rubber-band bounce at the top of `<main>`'s own scroll range
+  moves `sticky` descendants with it, so the strip visibly detached from the static navbar one
+  level up — `overscroll-behavior: contain` stops the bounce from CHAINING to the document, it
+  does nothing about `<main>`'s own children bouncing. **The fix is structural, not a CSS
+  property**: the strip no longer lives inside `<main>` at all.
+- **Below `sm`:** the strip was ALSO `sticky top-0`, which put it BEHIND the sticky navbar in
+  z-order once both had scrolled past their resting position — "the tabs hide behind the
+  navbar", not the intended "swipe up to browse, the tabs give you the room back".
+
+**The fix, both sides at once:** a route that owns a secondary tab strip (today: rollout
+detail's four tabs) no longer renders it in its own template. It publishes a `Snippet` into
+`$lib/shell-chrome.svelte.ts`'s `ShellChrome` context (`provideShellChrome()` in the root
+layout, `getShellChrome()` in the route layout), and the root layout renders that snippet as
+a plain DOM **sibling of `Navbar`**, wrapped with it in one `.header-group` div — never inside
+`<main>`. A route that publishes nothing leaves the slot empty; `.header-group` then has one
+child (`Navbar`) and no reserved height for a strip that isn't there.
+
+- **`sm`+:** `.header-group` is `position: static` (`app.css`). Both children sit in normal
+  flow above the `Sidebar + <main>` row, exactly like any other static chrome — there is no
+  scroller between the navbar and the strip left to desynchronize them, which is the whole
+  fix. The strip's own `mx-auto max-w-7xl` alignment with the page content below it (a
+  hard-won rule two passes earlier — see "THE TWO DEFECTS THAT SURVIVED THE FIRST PASS" above)
+  survives being moved out from behind the sidebar: `Sidebar.svelte` publishes `--sidebar-w`
+  live (`ResizeObserver`, same idiom as `MobileTabBar`'s `--tabbar-h`, since the width isn't a
+  constant — `w-12` collapsed vs `w-44` expanded, and it animates between them), and the root
+  layout's tab-strip wrapper carries `sm:pl-[var(--sidebar-w,0px)]` so the inner `mx-auto`
+  centres in a box the same width and position as `<main>`'s own content box, pixel for pixel.
+- **Below `sm`:** `.header-group` is `position: fixed` at the top of the viewport and
+  translates as ONE rigid block — `scroll-direction.svelte.ts`'s `ScrollDirectionTracker`
+  decides `hidden`, fed by the root layout's one passive `scroll` listener; `app.css` only
+  renders `data-hidden` as `translateY(-100%)`/`translateY(0)` with a 180ms ease. `body`'s
+  `padding-top: var(--header-h, 0px)` (measured live off `.header-group`, same `ResizeObserver`
+  idiom again) reserves the group's height UNCONDITIONALLY on the hidden/shown state — hiding
+  the header must never change how much room the page below it has, or content would jump
+  every time the header slides; it slides over/off a constant reserved band instead. Both
+  media queries are gated to `max-width: 639.98px` — a no-op at `sm`+, where an extra `body`
+  padding would just push the `h-dvh` shell partly off-screen for nothing.
+
+**`ScrollDirectionTracker`'s rule** (unit-tested in `scroll-direction.svelte.test.ts`, no DOM):
+below a small threshold (24px) from the top, ALWAYS shown; past it, any downward movement
+hides, ANY upward movement — one pixel is enough — reveals, no movement leaves it alone.
+`reset(y)` is called from the root layout's `afterNavigate` on every navigation, seeded from
+the REAL current `window.scrollY`, not a hardcoded 0 — Chrome can restore a prior scroll
+offset on a plain reload, and a stale 0 baseline mis-reads the very next real scroll's
+direction as a huge false jump. A genuine SPA route change lands at `scrollY` 0 already (verified
+live: navigating away and back while the header was hidden left it shown), so this only
+matters for the reload case.
+
+**Two CSS escape hatches, both in `app.css`:** `.header-group:focus-within` forces
+`translateY(0)` regardless of `data-hidden` — a Tab press must never land on an invisible
+control — and `@media (prefers-reduced-motion: reduce)` drops the transition to instant.
+Both verified live at 390 in both themes: header fully off-screen at scrollY 600 with no
+visible remnant, fully restored at 570 (a 30px upward scroll), no gap or overlap in either
+state, `:focus-within` measured to flip the COMPUTED transform to `matrix(1,0,0,1,0,0)`
+without touching `data-hidden` itself.
 
 ## Loading states (2026-09-04, `.agents-context/LOAD-STATE-AUDIT-2026-09-04.md`)
 
