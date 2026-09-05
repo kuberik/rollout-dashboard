@@ -117,6 +117,17 @@ describe('gatesAllow — would the controller have shipped this on its own?', ()
 		expect(gatesAllow(devRollout(), OLDEST)).toBe(false);
 	});
 
+	it('is true for a passing gate that publishes no allow-list (a schedule gate) — it vouches by passing', () => {
+		// hello-multi-dev, live 2026-09-05: `ghd-5h4bw passing, allowedVersions: null`.
+		const r = rollout({
+			status: {
+				...(rollout().status as object),
+				gates: [{ name: 'ghd-5h4bw', passing: true, allowedVersions: null }]
+			}
+		});
+		expect(gatesAllow(r, NEWEST)).toBe(true);
+	});
+
 	it('is true when the rollout publishes no gates at all', () => {
 		const r = rollout({ status: { ...(rollout().status as object), gates: [] } });
 		expect(gatesAllow(r, NEWEST)).toBe(true);

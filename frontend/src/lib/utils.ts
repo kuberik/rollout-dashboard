@@ -71,6 +71,21 @@ export function compareRollouts(
     if (!myV || !otherV) return null;
     if (myV === otherV) return { kind: 'same' };
 
+    // ⛔ RELEASE ORDER FIRST, HISTORY CONTAINMENT ONLY AS THE FALLBACK.
+    // (2026-09-05, operator walk on /revisions) `hello-multi-dev` was rolled
+    // back through the UI to `6f9524e`, a build prod never ran. Prod's own
+    // build (`064b655`) then sat in dev's PAST, prod's history held nothing
+    // of dev's, and the containment test below read prod as `behind` dev by
+    // four — so two environments on the newest release drew STUCK for a day.
+    // History says where a build has BEEN, never which build is newer; the
+    // rollout's own oldest-first `status.availableReleases` says that. When
+    // either rollout's list places both versions, that order is the answer
+    // and the number is the release distance (same denominator as
+    // `env-rank.ts`'s `N behind`). Containment survives only for rollouts
+    // that publish no list, or whose versions aged out of it.
+    const byRelease = compareByReleaseOrder(myRollout, otherRollout, myV, otherV);
+    if (byRelease) return byRelease;
+
     const myVInOtherPast = otherH.slice(1).some((h) => getDisplayVersion(h.version) === myV);
     const otherVInMyPast = myH.slice(1).some((h) => getDisplayVersion(h.version) === otherV);
 
@@ -95,6 +110,29 @@ export function compareRollouts(
         return { kind: 'ahead', otherVersion: otherV, by: idx >= 0 ? idx : null };
     }
     return { kind: 'divergent', otherVersion: otherV };
+}
+
+// Order two running versions by a rollout's own oldest-first release list.
+// Tries `my` list first (the subject's own upgrade path), then the peer's.
+// Returns null when neither list holds both versions.
+function compareByReleaseOrder(
+    myRollout: Rollout,
+    otherRollout: Rollout,
+    myV: string,
+    otherV: string
+): RolloutRelation | null {
+    for (const r of [myRollout, otherRollout]) {
+        const releases = r.status?.availableReleases;
+        if (!Array.isArray(releases) || releases.length === 0) continue;
+        const myIdx = releases.findIndex((rel) => getDisplayVersion(rel) === myV);
+        const otherIdx = releases.findIndex((rel) => getDisplayVersion(rel) === otherV);
+        if (myIdx === -1 || otherIdx === -1) continue;
+        if (myIdx === otherIdx) return { kind: 'same' };
+        return myIdx < otherIdx
+            ? { kind: 'behind', otherVersion: otherV, by: otherIdx - myIdx }
+            : { kind: 'ahead', otherVersion: otherV, by: myIdx - otherIdx };
+    }
+    return null;
 }
 
 // 'Stuck' = a rollout that should be progressing but isn't. Two cases:

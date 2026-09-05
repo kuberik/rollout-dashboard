@@ -79,6 +79,7 @@
  * and the tests all read one answer.
  */
 
+import { gateAllows } from './promotion';
 import type { Rollout } from '../../types';
 import { getEnvironmentRank } from '$lib/env-order';
 import {
@@ -154,9 +155,16 @@ export function gatesAllow(rollout: Rollout | null | undefined, tag: string | nu
 	if (!tag) return false;
 	const gates = rollout?.status?.gates ?? [];
 	if (gates.length === 0) return true;
-	return gates.every(
-		(g) => g.passing !== false && Array.isArray(g.allowedVersions) && g.allowedVersions.includes(tag)
-	);
+	// ⛔ A GATE WITH NO ALLOW-LIST VOUCHES BY PASSING. (2026-09-05, operator
+	// walk) `hello-multi-dev`'s only gate is a passing schedule gate with
+	// `allowedVersions: null`; this used to demand a list from every gate, so
+	// a deploy the controller itself would make read *"overrides the rules
+	// holding dev, which do not currently allow this build"* — a false first
+	// sentence in a type-to-confirm dialog whose real blocker was the pin.
+	// `promotion.ts`'s `gateAllows` already answers "does this gate allow this
+	// tag" for the rest of the product: a published list decides by
+	// membership, no list decides by `passing`. Same rule here.
+	return gates.every((g) => g.passing !== false && gateAllows(g, tag));
 }
 
 /** Oldest-first index of a tag in this rollout's own release list. `-1` if absent. */

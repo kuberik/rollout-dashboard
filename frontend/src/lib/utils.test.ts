@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, formatTimeAgoCompact, formatDuration, plainMessage, detectStuckBehind } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, formatTimeAgoCompact, formatDuration, plainMessage, detectStuckBehind, compareRollouts } from './utils';
 import {
     ENVIRONMENT_THEME_ANNOTATION,
     ENVIRONMENT_THEME_COLOR_ANNOTATION,
@@ -1049,5 +1049,52 @@ describe('detectStuckBehind — gates take precedence over peer staleness', () =
         const reason = detectStuckBehind(myRollout, farAheadPeer('0afab6f'), 'staging', { now: NOW });
         expect(reason).not.toBeNull();
         expect(reason?.kind).toBe('behind');
+    });
+});
+
+describe('compareRollouts — release order beats history containment', () => {
+    // Live shape, 2026-09-05: dev rolled back to 6f9524e (a build prod never
+    // ran), prod on 064b655 (the newest). Dev's PAST holds 064b655; prod's
+    // past holds nothing of dev's — containment alone read prod as BEHIND.
+    const releases = ['aa17645', '56d1725', '6f9524e', '0afab6f', '064b655'].map((v, i) => ({
+        version: v,
+        tag: v,
+        created: `2026-08-2${i}T00:00:00Z`
+    }));
+    function rollout(current: string, past: string[], withReleases = true): any {
+        const history = [current, ...past].map((v) => ({
+            version: { version: v },
+            timestamp: '2026-09-01T00:00:00Z',
+            bakeStatus: 'Succeeded'
+        }));
+        return { metadata: {}, spec: {}, status: { history, ...(withReleases ? { availableReleases: releases } : {}) } };
+    }
+
+    it('prod on the newest release is AHEAD of a dev rolled back past it, even though dev ran prod\'s build', () => {
+        const prod = rollout('064b655', ['0afab6f', 'aa17645']);
+        const dev = rollout('6f9524e', ['56d1725', '064b655']);
+        expect(compareRollouts(prod, dev)).toEqual({ kind: 'ahead', otherVersion: '6f9524e', by: 2 });
+        expect(compareRollouts(dev, prod)).toEqual({ kind: 'behind', otherVersion: '064b655', by: 2 });
+    });
+
+    it('so detectStuckBehind no longer calls the environment on the newest build stuck', () => {
+        const prod = rollout('064b655', ['0afab6f']);
+        const dev = rollout('6f9524e', ['56d1725', '064b655']);
+        expect(detectStuckBehind(prod, dev, 'dev', { now: new Date('2026-09-05T12:00:00Z') })).toBeNull();
+    });
+
+    it('uses the peer\'s list when the subject publishes none', () => {
+        const prod = rollout('064b655', [], false);
+        const dev = rollout('6f9524e', ['064b655']);
+        expect(compareRollouts(prod, dev)?.kind).toBe('ahead');
+    });
+
+    it('falls back to history containment when no list places both versions', () => {
+        // No release list anywhere: the only witness is history, and a peer
+        // whose PAST holds my version has moved past me.
+        const ahead = rollout('new', ['old'], false);
+        const behind = rollout('old', [], false);
+        expect(compareRollouts(behind, ahead)).toEqual({ kind: 'behind', otherVersion: 'new', by: 1 });
+        expect(compareRollouts(ahead, behind)).toEqual({ kind: 'ahead', otherVersion: 'old', by: 1 });
     });
 });
