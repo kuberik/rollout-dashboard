@@ -60,6 +60,7 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
+	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 
 	/**
 	 * `/versions` — THE REVISION LEDGER.
@@ -186,6 +187,26 @@
 			known += repo.knownRevisions;
 		}
 		return known > 0 ? { deployed, known } : null;
+	});
+
+	/**
+	 * ⭐ THE SKELETON REMEMBERS HOW MANY REPO SECTIONS TO DRAW. (second repo,
+	 * 2026-09-05) The page is now a LIST of repository sections rather than one
+	 * fixed composition, so a cold-load skeleton that always guesses "one
+	 * section" is a different shape from a two-repo fleet's real page — the
+	 * flip test this file's loading branch otherwise satisfies. `recallShape`
+	 * is `null` on a first-ever visit, which is exactly when the OLD fixed
+	 * one-section guess is still the right fallback.
+	 */
+	const SHAPE_KEY = 'revisions';
+	type RevisionsShape = { repos: number };
+	const shapeHint = recallShape<RevisionsShape>(SHAPE_KEY);
+	// Capped generously — only bounds a next-visit SKELETON's size, never the real page.
+	const skelRepoCount = Math.min(Math.max(shapeHint?.repos ?? 1, 1), 6);
+
+	$effect(() => {
+		if (query.isLoading || query.isError) return;
+		rememberShape(SHAPE_KEY, { repos: ledgers.length });
 	});
 
 	/**
@@ -551,7 +572,10 @@
 			class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400"
 			title="One commit, one build. Here is every build your services can deploy, and how far each one has got."
 		>
-			{#if scope}of {scope.known} revisions deployed{/if}
+			{#if scope}of {scope.known} revisions deployed · {ledgers.length} repositor{ledgers.length ===
+				1
+					? 'y'
+					: 'ies'}{/if}
 		</p>
 	</div>
 
@@ -590,99 +614,126 @@
 			one query's own data, so on a cold load it is not knowable yet —
 			its insertion above the hero is the one thing this composition
 			still allows to move (principle 7's "otherwise" branch).
-		-->
-		<div
-			class="mt-5 flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-			aria-hidden="true"
-		>
-			<header
-				class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
-			>
-				<div class="flex min-w-0 items-center gap-2.5">
-					<span class="skel-block h-4 w-4 shrink-0"></span>
-					<span class="skel-block h-3.5 w-40"></span>
-				</div>
-				<span class="skel-block h-3 w-20 shrink-0"></span>
-			</header>
-			<div class="flex flex-col gap-4 p-4">
-				<span class="skel-block h-3 w-32"></span>
-				<span class="skel-block h-6 w-44"></span>
-				<span class="skel-block h-[26px] w-full"></span>
-				<span class="skel-block h-3.5 w-full"></span>
-				<span class="skel-block h-3.5 w-3/4"></span>
-				<span class="skel-block mt-2 h-3.5 w-56"></span>
-				<span class="skel-block h-3.5 w-64"></span>
-				<span class="skel-block h-3.5 w-48"></span>
-				<span class="skel-block mt-2 h-3.5 w-28"></span>
-			</div>
-		</div>
 
-		<div class="rev-cols mt-4">
-			<div class="flex min-w-0 flex-col gap-4">
+			⭐ ONE SECTION PER REMEMBERED REPO (second repo, 2026-09-05).
+			`skelRepoCount` is 1 on a first-ever visit — the identical single
+			section this branch always drew — and the fleet's own last-known
+			repo count on every later visit, so a two-repo fleet's cold load
+			reserves two hero-plus-`.rev-cols` blocks instead of one. The
+			per-section header skeleton only appears past one section, the
+			same gate the loaded page's own header row uses.
+		-->
+		{#each Array(skelRepoCount) as _, sectionIndex (sectionIndex)}
+			{#if skelRepoCount > 1}
 				<div
-					class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+					class="{sectionIndex === 0
+						? 'mt-5'
+						: 'mt-10'} flex items-baseline justify-between gap-3"
 					aria-hidden="true"
 				>
-					<header
-						class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
-					>
-						<div class="flex min-w-0 items-center gap-2.5">
-							<span class="skel-block h-4 w-4 shrink-0"></span>
-							<span class="skel-block h-3.5 w-32"></span>
-						</div>
-						<span class="skel-block h-3 w-16 shrink-0"></span>
-					</header>
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each Array(2) as _, i (i)}
-							<li class="rev-row">
-								<span class="rev-mark">
-									<span class="skel-block h-4 w-4 rounded-full"></span>
-								</span>
-								<div class="flex min-w-0 flex-col gap-1">
-									<span class="skel-block h-3.5 w-24"></span>
-									<span class="skel-block h-3 w-40"></span>
-								</div>
-								<div class="rev-roll flex flex-col gap-1.5">
-									<span class="skel-block ml-auto h-3.5 w-32"></span>
-									<span class="skel-block h-2 w-full"></span>
-									<span class="skel-block ml-auto h-2.5 w-16"></span>
-								</div>
-								<span class="rev-go"><span class="skel-block h-4 w-4"></span></span>
-							</li>
-						{/each}
-					</ul>
+					<div class="flex min-w-0 items-center gap-2.5">
+						<span class="skel-block h-3.5 w-32"></span>
+						<span class="skel-block h-3 w-20"></span>
+					</div>
+					<span class="skel-block h-3 w-24 shrink-0"></span>
 				</div>
-				<div
-					class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-					aria-hidden="true"
+				<span class="skel-block mt-1.5 h-3 w-64" aria-hidden="true"></span>
+			{/if}
+			<div
+				class="{skelRepoCount > 1
+					? 'mt-3'
+					: 'mt-5'} flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+				aria-hidden="true"
+			>
+				<header
+					class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
 				>
-					<header
-						class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
-					>
-						<div class="flex min-w-0 items-center gap-2.5">
-							<span class="skel-block h-4 w-4 shrink-0"></span>
-							<span class="skel-block h-3.5 w-44"></span>
-						</div>
-						<span class="skel-block h-3 w-16 shrink-0"></span>
-					</header>
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each Array(4) as _, i (i)}
-							<li class="rev-row rev-row--quiet">
-								<div class="rev-quiet-body min-w-0">
-									<span class="skel-block h-3.5 w-24"></span>
-									<span class="skel-block h-3 w-40"></span>
-								</div>
-								<span class="skel-block h-3 w-12 justify-self-end"></span>
-								<span class="rev-go"><span class="skel-block h-4 w-4"></span></span>
-							</li>
-						{/each}
-					</ul>
+					<div class="flex min-w-0 items-center gap-2.5">
+						<span class="skel-block h-4 w-4 shrink-0"></span>
+						<span class="skel-block h-3.5 w-40"></span>
+					</div>
+					<span class="skel-block h-3 w-20 shrink-0"></span>
+				</header>
+				<div class="flex flex-col gap-4 p-4">
+					<span class="skel-block h-3 w-32"></span>
+					<span class="skel-block h-6 w-44"></span>
+					<span class="skel-block h-[26px] w-full"></span>
+					<span class="skel-block h-3.5 w-full"></span>
+					<span class="skel-block h-3.5 w-3/4"></span>
+					<span class="skel-block mt-2 h-3.5 w-56"></span>
+					<span class="skel-block h-3.5 w-64"></span>
+					<span class="skel-block h-3.5 w-48"></span>
+					<span class="skel-block mt-2 h-3.5 w-28"></span>
 				</div>
 			</div>
-			<div class="min-w-0">
-				<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={4} rowHeight={28} />
+
+			<div class="rev-cols mt-4">
+				<div class="flex min-w-0 flex-col gap-4">
+					<div
+						class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+						aria-hidden="true"
+					>
+						<header
+							class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+						>
+							<div class="flex min-w-0 items-center gap-2.5">
+								<span class="skel-block h-4 w-4 shrink-0"></span>
+								<span class="skel-block h-3.5 w-32"></span>
+							</div>
+							<span class="skel-block h-3 w-16 shrink-0"></span>
+						</header>
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each Array(2) as _, i (i)}
+								<li class="rev-row">
+									<span class="rev-mark">
+										<span class="skel-block h-4 w-4 rounded-full"></span>
+									</span>
+									<div class="flex min-w-0 flex-col gap-1">
+										<span class="skel-block h-3.5 w-24"></span>
+										<span class="skel-block h-3 w-40"></span>
+									</div>
+									<div class="rev-roll flex flex-col gap-1.5">
+										<span class="skel-block ml-auto h-3.5 w-32"></span>
+										<span class="skel-block h-2 w-full"></span>
+										<span class="skel-block ml-auto h-2.5 w-16"></span>
+									</div>
+									<span class="rev-go"><span class="skel-block h-4 w-4"></span></span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+					<div
+						class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+						aria-hidden="true"
+					>
+						<header
+							class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+						>
+							<div class="flex min-w-0 items-center gap-2.5">
+								<span class="skel-block h-4 w-4 shrink-0"></span>
+								<span class="skel-block h-3.5 w-44"></span>
+							</div>
+							<span class="skel-block h-3 w-16 shrink-0"></span>
+						</header>
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each Array(4) as _, i (i)}
+								<li class="rev-row rev-row--quiet">
+									<div class="rev-quiet-body min-w-0">
+										<span class="skel-block h-3.5 w-24"></span>
+										<span class="skel-block h-3 w-40"></span>
+									</div>
+									<span class="skel-block h-3 w-12 justify-self-end"></span>
+									<span class="rev-go"><span class="skel-block h-4 w-4"></span></span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				</div>
+				<div class="min-w-0">
+					<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={4} rowHeight={28} />
+				</div>
 			</div>
-		</div>
+		{/each}
 	{:else if query.isError}
 		<!--
 			⛔ WAS `Failed to load: <status code>` IN A ONE-LINE RED BOX. With
@@ -772,16 +823,25 @@
 
 		{#each ledgers as repo (repo.repoKey)}
 			<!--
-				⭐ ONE LEAD ON THE PAGE, NOT ONE PER REPO. *"A page with three banners
-				has no banner"* is the same arithmetic for an entry point: on the mock
-				cluster there are SEVEN source repos, and a lead panel per repo drew
-				seven 24px identifiers down one page, which is a list of headlines and
-				therefore no headline. `ledgers` is sorted by most recent deploy, so
-				the first repo is the one something happened to most recently — and it
-				is the same repo the banner above picks its blocking fact from, so the
-				two objects at the top of the page are about one build.
+				⭐ ONE CONSISTENT BLOCK PER REPOSITORY. (second repo, 2026-09-05)
+				A second source repo appeared on the live fleet and this loop used
+				to give ONLY `ledgers[0]` a lead — every other repo's newest build
+				was demoted into a plain "Still running" row with no hero, while
+				the FIRST repo alone got "Newest build in use" + "Also still
+				running". Two repos, two different structures, and a reader had no
+				way to tell that was a rendering accident rather than a fact about
+				one repo being different from another.
+
+				`ledgers` is still sorted by most recent deploy, so the loop ORDER
+				keeps the most-recently-active repo first — the banner above still
+				describes that same repo's blocking fact — but every repo now gets
+				the identical sequence: its own hero, its own "Also still running",
+				its own "No longer running anywhere", its own rail. "A page with
+				three banners has no banner" argued for exactly one PAGE-LEVEL
+				lead; it never argued a repo's own newest build should render as a
+				lesser object than another repo's.
 			-->
-			{@const lead = repo === ledgers[0] ? leadRow(repo) : null}
+			{@const lead = leadRow(repo)}
 			{@const leadCov = lead ? revisionCoverage(lead, coarse) : null}
 			{@const live = restRows(repo, lead)}
 			{@const past = pastRows(repo).filter((r) => r.revision !== lead?.revision)}
@@ -794,6 +854,69 @@
 			{@const namedLive = repoNamesBuilds(live)}
 			{@const namedPast = repoNamesBuilds(past)}
 			{@const url = repoUrl(repo.repoKey)}
+
+			<!--
+				⭐ THE SECTION HEADER — ONLY WHEN THERE IS MORE THAN ONE REPO.
+				(second repo, 2026-09-05) With one repo, this identity (name,
+				service count, the three figures, `View repository`) already has a
+				home: the rail card at the foot of this section, unchanged since
+				the round that added it. That card is not duplicated up here for a
+				single-repo fleet — doing so would print the repo's own name twice,
+				and the single-repo page must render byte-identical to before this
+				round except the head band's own repository count.
+
+				With MORE than one repo the rail card is not enough on its own: it
+				used to "float in the rail beside an unrelated list, below the
+				repo's own hero", and `Never deployed` sat in the rail with no
+				indication of which repo it belonged to. This header answers "which
+				repository is this section about" BEFORE any of its content, in the
+				head-band idiom this page already uses at the top: a title on the
+				object, then its own rollup — here the object is the repo, so the
+				title is its name at `t-card-title` weight (the same weight `Card`'s
+				own `<h2>` uses, since this row stands in for the card header that
+				used to open a repo-scoped region), the rollup is its service
+				count, and `View repository` keeps its `.nav-link` form from the
+				rail card it supersedes for a multi-repo fleet.
+			-->
+			{#if ledgers.length > 1}
+				<div
+					class="{repo === ledgers[0]
+						? 'mt-5'
+						: 'mt-10'} flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+				>
+					<div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+						<h2 class="t-card-title min-w-0 break-words text-gray-900 dark:text-white">
+							{repoTitle(repo.repoLabel)}
+						</h2>
+						<span class="t-dense text-gray-500 dark:text-gray-400">
+							{repo.serviceCount} service{repo.serviceCount === 1 ? '' : 's'}
+						</span>
+					</div>
+					{#if url}
+						<a
+							class="nav-link shrink-0"
+							href={url}
+							target="_blank"
+							rel="noopener noreferrer"
+							title={repo.repoLabel}
+						>
+							View repository
+							<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
+						</a>
+					{/if}
+				</div>
+				<!-- THE THREE FIGURES, AS A COMPACT META ROW — the same three the
+				     single-repo rail card's `<dl>` states (`Commits your services
+				     can deploy`, `Deployed at least once`, `Places to deploy to`),
+				     one line instead of three, because a section header is read at
+				     a glance and a three-row `<dl>` is not a glance. -->
+				<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+					{repo.knownRevisions} commit{repo.knownRevisions === 1 ? '' : 's'} your services can deploy
+					· {repo.rows.length} deployed at least once · {repo.slotCount} place{repo.slotCount === 1
+						? ''
+						: 's'} to deploy to
+				</p>
+			{/if}
 
 			<!--
 				⭐ THE ENTRY POINT. THE ONE BUILD SOMEONE OPENED THIS PAGE ABOUT.
@@ -846,7 +969,7 @@
 					title="Newest build in use"
 					verdict="{lead.services.length} service{lead.services.length === 1 ? '' : 's'}"
 					verdictTitle={scopeRecord(lead.services.length)}
-					class="mt-5"
+					class={ledgers.length > 1 ? 'mt-3' : 'mt-5'}
 				>
 					<RevisionLead
 						short={lead.short}
@@ -1178,72 +1301,83 @@
 						names as what keeps getting rejected. It states both halves of the
 						boundary (`DESIGN.md` forbids silently dropping builds off a list)
 						and both halves are now reachable.
+
+						⛔ ONLY ON A SINGLE-REPO FLEET NOW. (second repo, 2026-09-05) With
+						more than one repo, this exact identity — name, service count, the
+						three figures, `View repository` — now opens the SECTION, above
+						the hero, so a reader knows which repository the whole block below
+						is about before reading any of it. Rendering it a second time down
+						here, still unlabelled as to which repo it is relative to its
+						neighbours, was the defect this round closes: `kuberik-testing`'s
+						own card sitting at the bottom of the rail, beside `Never deployed`
+						for a DIFFERENT repo. On exactly one repo the section header does
+						not render (see the `{ledgers.length > 1}` gate above it) and this
+						card is the only place the identity is stated — unchanged from
+						every prior round, so the single-repo page stays byte-identical.
 					-->
-					<Card
-						icon={CodeBranchOutline}
-						title={repoTitle(repo.repoLabel)}
-						verdict="{repo.serviceCount} service{repo.serviceCount === 1 ? '' : 's'}"
-						padded={false}
-					>
-						<!--
-							⛔ THIS CARD USED TO RESTATE THE WHOLE PAGE IN FOUR ROWS.
-							(2026-09-02, from the human, about quantities said twice.)
-							Measured at 1440 with this cluster's single repo, every one of
-							its four facts was already on screen:
+					{#if ledgers.length === 1}
+						<Card
+							icon={CodeBranchOutline}
+							title={repoTitle(repo.repoLabel)}
+							verdict="{repo.serviceCount} service{repo.serviceCount === 1 ? '' : 's'}"
+							padded={false}
+						>
+							<!--
+								⛔ THIS CARD USED TO RESTATE THE WHOLE PAGE IN FOUR ROWS.
+								(2026-09-02, from the human, about quantities said twice.)
+								Measured at 1440 with this cluster's single repo, every one of
+								its four facts was already on screen:
 
-							  · `Commits your services can deploy 36` — the head band says
-							    `14 of 36 revisions deployed`, 24px from the top.
-							  · `Deployed at least once 14` — the same head band, the same
-							    sentence, the leading numeral of it.
-							  · `Still running somewhere 2` — the two cards in the column
-							    beside it ARE that partition: the lead panel is one build
-							    and `Also still running` carries `1 build` as its rollup.
-							  · `A place is one service in one environment — 5 services…` —
-							    `RevisionLead`'s unit note prints that sentence verbatim
-							    500px above, under the number it defines.
+								  · `Commits your services can deploy 36` — the head band says
+								    `14 of 36 revisions deployed`, 24px from the top.
+								  · `Deployed at least once 14` — the same head band, the same
+								    sentence, the leading numeral of it.
+								  · `Still running somewhere 2` — the two cards in the column
+								    beside it ARE that partition: the lead panel is one build
+								    and `Also still running` carries `1 build` as its rollup.
+								  · `A place is one service in one environment — 5 services…` —
+								    `RevisionLead`'s unit note prints that sentence verbatim
+								    500px above, under the number it defines.
 
-							WHAT SURVIVES IS THE ONE NUMBER NOTHING ELSE ON THE PAGE
-							STATES: the denominator every coverage bar is drawn against.
-							The two ledger totals come back when there is MORE THAN ONE
-							REPO, because the head band aggregates across repos and is then
-							no longer this repo's own scope — the rule is duplication, not
-							position.
-						-->
-						<dl class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#if ledgers.length > 1}
-								{@render fact('Commits your services can deploy', String(repo.knownRevisions))}
-								{@render fact('Deployed at least once', String(repo.rows.length))}
+								WHAT SURVIVES IS THE ONE NUMBER NOTHING ELSE ON THE PAGE
+								STATES: the denominator every coverage bar is drawn against.
+								The two ledger totals used to come back here for a multi-repo
+								fleet; now that case has its own section header above with
+								the identical three figures, so this branch is reached only
+								on exactly one repo and never needs them.
+							-->
+							<dl class="divide-y divide-gray-100 dark:divide-gray-700/60">
+								{@render fact('Places to deploy to', String(repo.slotCount))}
+							</dl>
+							<!--
+								⛔ THE THIRD NAVIGATION CONTROL WEARING BUTTON CHROME ON THIS
+								ROUTE. (2026-09-02, same sweep as the lead card's two.) It
+								changes no cluster state — it opens someone else's website —
+								so it is `.nav-link` with the external glyph, the rule's stated
+								answer for an outbound link.
+
+								⭐ IT ALSO CARRIES THE HOST THE CARD TITLE STOPPED PRINTING.
+								The title is `littlechimera/kuberik-testing` now (see
+								`repo-title.ts`); `title={repo.repoLabel}` on this link is where
+								`github.com/…` remains readable, on the one control that resolves
+								to it.
+							-->
+							{#if url}
+								<div class="px-4 py-1.5">
+									<a
+										class="nav-link"
+										href={url}
+										target="_blank"
+										rel="noopener noreferrer"
+										title={repo.repoLabel}
+									>
+										View repository
+										<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
+									</a>
+								</div>
 							{/if}
-							{@render fact('Places to deploy to', String(repo.slotCount))}
-						</dl>
-						<!--
-							⛔ THE THIRD NAVIGATION CONTROL WEARING BUTTON CHROME ON THIS
-							ROUTE. (2026-09-02, same sweep as the lead card's two.) It
-							changes no cluster state — it opens someone else's website —
-							so it is `.nav-link` with the external glyph, the rule's stated
-							answer for an outbound link.
-
-							⭐ IT ALSO CARRIES THE HOST THE CARD TITLE STOPPED PRINTING.
-							The title is `littlechimera/kuberik-testing` now (see
-							`repo-title.ts`); `title={repo.repoLabel}` on this link is where
-							`github.com/…` remains readable, on the one control that resolves
-							to it.
-						-->
-						{#if url}
-							<div class="px-4 py-1.5">
-								<a
-									class="nav-link"
-									href={url}
-									target="_blank"
-									rel="noopener noreferrer"
-									title={repo.repoLabel}
-								>
-									View repository
-									<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-								</a>
-							</div>
-						{/if}
-					</Card>
+						</Card>
+					{/if}
 				</div>
 			</div>
 		{/each}
