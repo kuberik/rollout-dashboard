@@ -1007,3 +1007,30 @@ Two rules:
 - **The note is required only for a production change** (either direction, B3's ceiling). A
   non-production rollback is the fast recovery path: typed build, red outlined confirm, note
   optional. Do not widen the requirement again on the strength of a critic's walk alone.
+
+## The 32px hit-slop floor is not always a 44px visible box (2026-09-05)
+
+From the human, on the Change Version dialog at 390: *"back and cancel buttons are too small."*
+Measured live: the step-two header's `← Back` (and step one's header `Cancel`, the identical
+slot) rendered a 69×20 chip; `.hit-32`'s own `::before` floors the TOTAL reach at 32px
+(`max(100% + 12px, 32px)`), which is the product's general small-control floor but short of the
+44px a PRIMARY way-out control on a full-screen phone sheet needs. The footer's `Cancel` /
+`Roll back dev` pair was already the same `size` as each other (both `size="sm"`, `flex-1`,
+175×38) — the 38px was `.btn`'s own page height, not a mismatch between the two.
+
+- **Enlarge the visible box where the control can honestly be bigger; reach for hit-slop only
+  where it must stay visually small.** `Back`/step-one `Cancel` are text buttons sitting alone
+  in a 47px+ header row — `max-sm:self-stretch max-sm:-my-3` cancels the header's own `py-3`
+  for that one flex child so the button's border-box spans the row's FULL rendered height
+  instead of a 20px chip centred inside it, `max-sm:px-4` widens it to match. The footer
+  `Cancel`/confirm pair get `max-sm:min-h-11` (44px) on both buttons AND the row — the buttons
+  get taller, not the row wider, so the footer stays one line. `sm:` and up are untouched in
+  all cases: same 66×20 chip, same 38px `.btn` height, verified byte-identical at 1440.
+- **`.hit-32`'s 32px floor is still correct for controls that must stay visually small** — pills,
+  chevrons, chip links. It is not a substitute for a real 44px box on the two or three controls
+  a reader is most likely to reach for at the end of a destructive flow.
+- **A search input or version row is a different case**: `max-sm:min-h-11` (or an already-tall
+  row, like the 59px version-picker rows) closes the gap without a self-stretch trick, because
+  there is no sibling row height to steal — the element's own box is the whole story.
+- `ClearPinModal` was checked and does not share this shape (a plain flowbite `Modal`, no
+  step header, no `Back`) — nothing there needed the same fix.

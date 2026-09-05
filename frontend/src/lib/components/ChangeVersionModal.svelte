@@ -1144,18 +1144,36 @@
 					</span>
 				{/if}
 			</div>
+			<!-- ⭐ 44px TOUCH TARGET AT < sm, THE VISIBLE BOX, NOT ONLY THE SLOP.
+			     (2026-09-05, from the human: "back and cancel buttons are too
+			     small.") Measured live at 390: this control's rendered box was
+			     69×20 — `.hit-32`'s own pseudo-element floors the TOTAL reach at
+			     32px, which is short of the 44px a primary way-out control needs
+			     on a full-screen phone sheet. This is a text button that can
+			     honestly fill its row, so the fix enlarges the visible box
+			     instead of stacking more invisible slop on top of a 20px chip:
+			     `max-sm:self-stretch max-sm:-my-3` cancels the header row's own
+			     `py-3` for this one flex child, so the button's border-box
+			     spans the row's FULL rendered height (>=47px, the header's own
+			     `min-h-[47px]`) rather than sitting centred inside it.
+			     `max-sm:px-4` widens the horizontal box to match; `max-sm:py-0`
+			     hands vertical centring to the button's own `items-center`
+			     instead of fighting the forced height with leftover padding.
+			     `sm:` and up are untouched — same 66×20 chip, byte-identical. -->
 			{#if selectedVersion}
 				<button
 					type="button"
-					class="hit-32 flex shrink-0 items-center gap-1.5 rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 md:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+					class="hit-32 flex shrink-0 items-center gap-1.5 rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 md:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 max-sm:self-stretch max-sm:-my-3 max-sm:px-4 max-sm:py-0"
 					onclick={() => (selectedVersion = null)}
 				>
 					&larr; Back
 				</button>
 			{:else}
+				<!-- Same 44px-at-<sm treatment as `Back` above: this is the
+				     identical header slot, step one's version of it. -->
 				<button
 					type="button"
-					class="hit-32 flex shrink-0 items-center rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+					class="hit-32 flex shrink-0 items-center rounded border border-gray-200 bg-white px-3 py-[1px] text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 max-sm:self-stretch max-sm:-my-3 max-sm:px-4 max-sm:py-0"
 					disabled={deploying}
 					onclick={() => (open = false)}
 				>
@@ -1202,11 +1220,16 @@
 					: 'flex'}"
 			>
 				<div bind:this={leftHeaderEl} class="shrink-0 space-y-3 p-4">
+					<!-- ⭐ 44px AT < sm. (2026-09-05, touch-target pass) Measured
+					     live at 390: 358×40.8, 3px short of the floor. `max-sm:
+					     min-h-11` (44px) closes the gap without touching the
+					     `sm:` box; `py-2` still centres the text inside it via
+					     the input's own default vertical centring. -->
 					<input
 						type="text"
 						placeholder="Search versions..."
 						bind:value={searchQuery}
-						class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+						class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none max-sm:min-h-11 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 					/>
 					<div class="flex items-center justify-between">
 						<!-- The `span` was decoration: measured, the checkbox behind this
@@ -1917,9 +1940,24 @@
 							</div>
 						{/if}
 
-						<div class="flex gap-2">
-							<Button size="sm" color="light" class="flex-1" disabled={deploying} onclick={() => (open = false)}
-								>Cancel</Button
+						<!-- ⭐ 44px AT < sm, BOTH BUTTONS THE SAME `size`. (2026-09-05,
+						     from the human: "back and cancel buttons are too small.")
+						     Measured live at 390: 175×38 each — already the same size
+						     as each other (`size="sm"`, `flex-1`), but 38px is the
+						     PAGE's `.btn` height, 6px short of the 44px a footer
+						     confirm/cancel pair needs on a phone. `max-sm:min-h-11`
+						     on the row raises BOTH children (flowbite's own `Button`
+						     is a flex box, so the label stays centred) without
+						     growing the row past one line — the buttons get taller,
+						     not the row wider. `sm:` and up keep the exact 38px
+						     `.btn` height. -->
+						<div class="flex gap-2 max-sm:min-h-11">
+							<Button
+								size="sm"
+								color="light"
+								class="flex-1 max-sm:min-h-11"
+								disabled={deploying}
+								onclick={() => (open = false)}>Cancel</Button
 							>
 							<!-- THE BUTTON SAYS WHERE IT LANDS. `Deploy Now` named the
 							     act and hid the target; `Deploy to production` is the
@@ -1949,7 +1987,7 @@
 								size="sm"
 								color={confirmColor}
 								outline={confirmOutline}
-								class="flex-1"
+								class="flex-1 max-sm:min-h-11"
 								disabled={(needsTypedConfirmation &&
 									deployConfirmationVersion !== getDisplaySelectedVersion()) ||
 									(direction === 'same' && !pinVersionToggle) ||
