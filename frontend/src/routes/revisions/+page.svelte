@@ -60,7 +60,7 @@
 	} from 'flowbite-svelte-icons';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import FactList, { type Fact } from '$lib/components/FactList.svelte';
-	import BlockReason, { blockReason, contractBlockReason } from '$lib/components/BlockReason.svelte';
+	import { blockReason, contractBlockReason } from '$lib/components/BlockReason.svelte';
 	import BuildStateMark from '$lib/components/BuildStateMark.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -294,14 +294,6 @@
 		return { atLimit: false, limit: 10 };
 	}
 
-	/** The same test, over the WHOLE fleet — feeds the page's own head band. */
-	const fleetHistoryLimit = $derived.by(() => {
-		for (const r of rollouts) {
-			if (historyAtLimit(r)) return r.spec?.versionHistoryLimit ?? 10;
-		}
-		return null;
-	});
-
 	const HISTORY_LIMIT_NOTE = (n: number) =>
 		`History keeps the last ${n} deploys per service; a build deployed earlier is not recorded.`;
 
@@ -489,31 +481,72 @@
 	 * env chips beside it are drawn from, so the two facts can never name
 	 * different places.
 	 */
-	function lineDeployedMs(line: Pick<ServiceLedgerLine, 'slots'>): number | null {
-		let best = 0;
-		for (const slot of line.slots) {
+	/**
+	 * ⭐ OPERATOR-WALK ITEM C — ONE AGE PER ROW MUST NOT SILENTLY MEAN "THE
+	 * NEWEST ENVIRONMENT'S DEPLOY". `hello-world-app 064b655 [DEV][STAGING]
+	 * [PROD] Deployed 1d ago` read as one fact when it was three: dev deployed
+	 * a day ago, staging and prod five days ago — and the row printed the
+	 * NEWEST of the three, which is the least useful one to lead with (the
+	 * laggard is the one an operator has to act on, if anything).
+	 *
+	 * `slotAgeInfo` returns the OLDEST (laggard) deploy among the given live
+	 * slots, with the environment it belongs to, so a divergent row states the
+	 * fact that actually needs a look; `slotAgeTitle` lists every distinct
+	 * environment's own date for the hover/long-press case. Shared by the
+	 * ledger's own per-line age (`lineAge`) and the "Still running" list's
+	 * per-row age (`rowLiveAge`) below — one derivation, so the two cannot
+	 * disagree about which environment is the laggard for the same slots.
+	 */
+	function slotAgeInfo(slots: Pick<RevisionSlot, 'cell' | 'envName'>[]): {
+		ms: number;
+		envLabel: string;
+	} | null {
+		let worst: { ms: number; envLabel: string } | null = null;
+		for (const slot of slots) {
 			const ts = slot.cell?.rollout?.status?.history?.[0]?.timestamp;
 			if (!ts) continue;
 			const t = new Date(ts).getTime();
-			if (Number.isFinite(t) && t > best) best = t;
+			if (!Number.isFinite(t)) continue;
+			const envLabel = shortEnvLabel(slot.cell.theme) || slot.envName;
+			if (!worst || t < worst.ms) worst = { ms: t, envLabel };
 		}
-		return best > 0 ? best : null;
+		return worst;
+	}
+
+	/** Every distinct environment's own deploy date, for the tooltip. */
+	function slotAgeTitle(slots: Pick<RevisionSlot, 'cell' | 'envName'>[]): string {
+		const seen = new Set<string>();
+		const parts: string[] = [];
+		for (const slot of slots) {
+			const ts = slot.cell?.rollout?.status?.history?.[0]?.timestamp;
+			if (!ts) continue;
+			const envLabel = (shortEnvLabel(slot.cell.theme) || slot.envName).toUpperCase();
+			if (seen.has(envLabel)) continue;
+			seen.add(envLabel);
+			parts.push(`${envLabel} ${formatDate(ts)}`);
+		}
+		return parts.join(' · ');
 	}
 
 	function lineAge(line: Pick<ServiceLedgerLine, 'slots'>): string {
-		const ms = lineDeployedMs(line);
-		if (!ms) return '';
-		return `Deployed ${formatTimeAgoCompact(new Date(ms).toISOString(), $now)} ago`;
+		const info = slotAgeInfo(line.slots);
+		if (!info) return '';
+		// Name the environment only when the row could otherwise mean any of
+		// several — a single-environment line already says so 8px to its left
+		// via the env chip, and repeating it here would be the same fact twice.
+		const envPart = line.slots.length > 1 ? ` · ${info.envLabel.toUpperCase()}` : '';
+		return `Deployed ${formatTimeAgoCompact(new Date(info.ms).toISOString(), $now)} ago${envPart}`;
 	}
 
 	function lineAgeTitle(line: Pick<ServiceLedgerLine, 'slots'>): string {
-		const ms = lineDeployedMs(line);
-		return ms ? formatDate(new Date(ms).toISOString()) : '';
+		if (line.slots.length > 1) return slotAgeTitle(line.slots);
+		const info = slotAgeInfo(line.slots);
+		return info ? formatDate(new Date(info.ms).toISOString()) : '';
 	}
 
 	function lineAgeIso(line: Pick<ServiceLedgerLine, 'slots'>): string | undefined {
-		const ms = lineDeployedMs(line);
-		return ms ? new Date(ms).toISOString() : undefined;
+		const info = slotAgeInfo(line.slots);
+		return info ? new Date(info.ms).toISOString() : undefined;
 	}
 
 	/**
@@ -793,6 +826,30 @@
 		);
 	}
 
+	/**
+	 * ⭐ OPERATOR-WALK ITEM B — UNDER A FILTER, EVERY COUNT FOLLOWS IT.
+	 *
+	 * The head band used to print the fleet's TOTAL counts
+	 * (`19 of 41 builds deployed · 2 repositories`) unchanged while a search
+	 * was narrowing every card below it to a handful of rows — a claim about
+	 * the cluster sitting above a page that was, at that moment, about
+	 * something much smaller. While searching, the band states what the
+	 * search itself found: how many builds matched, across how many
+	 * repositories. `null` while there is no active search, so the caller
+	 * falls back to the fleet-wide sentence unchanged.
+	 */
+	const searchSummary = $derived.by(() => {
+		if (!searchActive) return null;
+		let matches = 0;
+		let repos = 0;
+		for (const repo of ledgers) {
+			const n = repo.rows.filter(passesSearch).length + repo.pending.filter(passesSearch).length;
+			if (n > 0) repos++;
+			matches += n;
+		}
+		return { matches, repos };
+	});
+
 	/** While searching, every section that might answer it must be open. */
 	function effectiveOpen(i: number): boolean {
 		return isOpen(i) || searchActive;
@@ -863,10 +920,32 @@
 			class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400"
 			title="One commit, one build. Here is every build your services can deploy, and how far each one has got."
 		>
-			{#if scope}of {scope.known} builds deployed{#if fleetHistoryLimit !== null}&nbsp;<span
-							class="cursor-help underline decoration-dotted"
-							title={HISTORY_LIMIT_NOTE(fleetHistoryLimit)}>· recorded history</span
-						>{/if} · {ledgers.length} repositor{ledgers.length === 1
+			<!--
+				⭐ ROUND 4, ITEM 6 — THE RECORDED-HISTORY CAVEAT IS SAID ONCE NOW,
+				NOT THREE TIMES. It used to sit here as a `· recorded history`
+				tooltip fragment, again as the "Never deployed" rail's own
+				rollup title, and a third time drawn as the rail's own `t-micro`
+				line — one fact, three renderings, 90px apart. The rail's drawn
+				line (below, `HISTORY_LIMIT_NOTE`) is the one that survives: it
+				is the only one that is actually READ without a hover, so it is
+				the honest single source. This head band goes back to one
+				sentence.
+
+				⭐ ROUND 4, ITEM B — UNDER AN ACTIVE SEARCH THIS STATES WHAT THE
+				SEARCH FOUND, not the fleet's unfiltered totals — a search for
+				one repo's builds must not sit under a headline still quoting
+				the OTHER repo's numbers.
+			-->
+			{#if searchActive && searchSummary}
+				{searchSummary.matches} build{searchSummary.matches === 1 ? '' : 's'} match “{searchQuery.trim()}”
+				{#if searchSummary.repos > 0}
+					in {searchSummary.repos} repositor{searchSummary.repos === 1 ? 'y' : 'ies'}
+				{/if}
+			{:else if scope}
+				<!-- ⭐ ROUND 4, ITEM 6 — a non-breaking space between the figure
+				     and its noun: `&nbsp;` so "2 repositories" cannot orphan the
+				     bare "2" onto its own line at 390. -->
+				of {scope.known} builds deployed · {ledgers.length}&nbsp;repositor{ledgers.length === 1
 					? 'y'
 					: 'ies'}
 				<!--
@@ -881,7 +960,11 @@
 					· live
 				{:else if query.dataUpdatedAt}
 					· updated
-					<time datetime={new Date(query.dataUpdatedAt).toISOString()}
+					<time
+						datetime={new Date(query.dataUpdatedAt).toISOString()}
+						title="Change stream disconnected; showing data fetched at {new Date(
+							query.dataUpdatedAt
+						).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"
 						>{new Date(query.dataUpdatedAt).toLocaleTimeString([], {
 							hour: '2-digit',
 							minute: '2-digit'
@@ -960,22 +1043,26 @@
 					ledger — reflowed the second repo card by ~1500px the
 					instant the real DOM below 560px container width folded
 					four columns into a three-row stack. Reusing `.svc-ledger` /
-					`.svc-line` / `.svc-name` / `.svc-sha` / `.svc-rank` /
-					`.svc-envs` means the SAME `@container` rule
-					(`revisions/+page.svelte`'s own style block) folds this
-					placeholder exactly like the real content, at every width,
-					so nothing moves when the fetch resolves. `svcCount` is now
-					a count of LEDGER LINES, not services — `serviceLedger()`'s
-					own contract says a service can own two (a promotion in
-					flight), and underestimating that undershot the real
-					card's height by one row per service currently mid-rollout.
+					`.svc-line` / `.svc-name` / `.svc-sha` / `.svc-envs` means the
+					SAME `@container` rule (`revisions/+page.svelte`'s own style
+					block) folds this placeholder exactly like the real content,
+					at every width, so nothing moves when the fetch resolves.
+					`svcCount` is now a count of LEDGER LINES, not services —
+					`serviceLedger()`'s own contract says a service can own two
+					(a promotion in flight), and underestimating that undershot
+					the real card's height by one row per service currently
+					mid-rollout.
+
+					⭐ ROUND 4, ITEM 4 — ONE `.svc-sha` PLACEHOLDER, NOT TWO. The
+					real row's rank chip and sha joined into one cell; the
+					skeleton follows so its own grid has the same four columns
+					the real content resolves to, not five.
 				-->
 				<div class="svc-ledger py-1">
 					{#each Array(svcCount) as _, r (r)}
 						<div class="svc-line">
 							<span class="svc-name"><span class="skel-block h-4 w-28"></span></span>
-							<span class="svc-sha"><span class="skel-block h-4 w-16"></span></span>
-							<span class="svc-rank"><span class="skel-block h-4 w-14"></span></span>
+							<span class="svc-sha"><span class="skel-block h-4 w-24"></span></span>
 							<span class="svc-envs">
 								<span class="skel-block h-[22px] w-14"></span>
 								<span class="skel-block h-[22px] w-14"></span>
@@ -1235,23 +1322,30 @@
 				now: coarse
 			})}
 			{@const shownGroups = expandLedger[repo.repoKey] ? orderedGroups : orderedGroups.slice(0, FOLD)}
+			<!--
+				⭐ ROUND 4, ITEM 11 — ONE GRAMMAR, NOT TWO. This used to print
+				`N release lines` on a multi-line repo and a distance verdict
+				(`N newer builds` / `Newest build deployed`) on a single-line
+				one — the same header slot answering two different QUESTIONS
+				depending on which repo it sat on, so `[3 HELD] 2 release
+				lines 36 builds ⌄` and `Newest build deployed 5 builds ›` read
+				as two grammars in one column. The distance question — how
+				many known builds are newer than anything deployed here — is
+				answerable for BOTH shapes: `repo.rows[0]` is the most
+				recently CREATED deployed build across every line (`rows` is
+				sorted newest-first by creation, repo-wide), so `newer` is
+				exactly the old single-line calculation, just no longer
+				gated on `multiLine`. `N release lines` moves to the meta
+				line below (it already lived there too, doubly stated).
+			-->
 			{@const headCreated = repo.rows[0]?.createdMs ?? 0}
 			{@const newer = headCreated > 0 ? repo.pending.filter((p) => p.createdMs > headCreated).length : 0}
-			<!--
-				⭐ ROUND 3 §1/§4 — A SINGLE NUMBER WOULD LIE ACROSS MORE THAN ONE
-				LINE (it is only ever true of the line `repo.rows[0]` happens to
-				belong to). Multi-line repos state the fact they DO know — how
-				many independent lines exist — and leave "how far behind" to
-				each line's own hero band below.
-			-->
-			{@const distanceVerdict = multiLine
-				? `${lines.length} release lines`
-				: newer > 0
-					? `${newer} newer build${newer === 1 ? '' : 's'}`
-					: 'Newest build deployed'}
-			{@const distanceVerdictTitle = multiLine
-				? 'This repository has more than one independent release line — each one has its own newest build, shown below.'
-				: 'Builds newer than the newest one any service here is running. None of them has been deployed anywhere.'}
+			{@const distanceVerdict =
+				newer > 0 ? `${newer} newer build${newer === 1 ? '' : 's'}` : 'Newest build deployed'}
+			{@const distanceVerdictTitle =
+				newer > 0
+					? 'Builds newer than the newest one any service here is running. None of them has been deployed anywhere.'
+					: 'Every known build newer than what is running here has already been deployed somewhere.'}
 			{@const headCov = repoHeadCoverage.get(repo.repoKey) ?? null}
 			{@const deviation = repoDeviation(repo, headCov)}
 			{@const historyLimit = repoHistoryLimit(repo)}
@@ -1342,63 +1436,93 @@
 						</h2>
 					</span>
 					<!--
-						⭐ §6 — THE HEADER LEADS WITH DISTANCE: how far the deployed
-						frontier is behind the build frontier, never a per-service
-						claim (`repo ≠ release line`).
-
-						⭐ CRAFT REVIEW ITEM 3 — THE DEVIATION RIDES BESIDE IT. The
-						fleet's only adverse fact used to sit two screens down,
-						10px tall, on a card the collapsed header gives no hint
-						exists. `deviation.chip` is null on a repo with nothing to
-						say, so this adds no ink to the common case.
+						⭐ ROUND 4, ITEM B — A REPOSITORY WITH ZERO MATCHES COLLAPSES
+						ITS WHOLE HEADER TO ONE WORD, NOT JUST ITS BODY. This used to
+						keep printing its full, UNFILTERED stats — `[3 HELD] 2 release
+						lines 36 builds ⌄` — directly above a body that said "No build
+						matches", so the loudest object on the card contradicted the
+						sentence under it. When nothing here matched the search there
+						is nothing left to roll up: no deviation chip (it describes
+						builds this view isn't showing), no distance verdict, no
+						disclosure — there is nothing behind it to disclose.
 					-->
-					<span class="flex shrink-0 items-center gap-2">
-						{#if deviation.chip}
-							<Chip
-								role={deviation.chip.role}
-								label={deviation.chip.label}
-								title={deviation.chip.role === 'failing'
-									? 'The newest build is deployed somewhere the deploy is not healthy'
-									: deviation.chip.role === 'held'
-										? 'Places running this build on an older release, with a newer one held by a rule'
-										: 'Services with something not yet on the newest build any of them has reached'}
-							/>
-						{/if}
-						<span
-							class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400"
-							title={distanceVerdictTitle}
-							>{distanceVerdict}</span
+					{#if repoNoMatch}
+						<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400"
+							>no match</span
 						>
+					{:else}
 						<!--
-							⭐ ROUND SIX §5 — THE ONE CONTROL, AND ITS LABEL NAMES
-							WHAT IT COLLAPSES. `countLabel` is the same "N noun"
-							form every other disclosure on the product uses; the
-							ledger below stays visible either way (§1's own rule,
-							unchanged) — this toggles the hero + build-list block
-							alone.
+							⭐ §6 — THE HEADER LEADS WITH DISTANCE: how far the deployed
+							frontier is behind the build frontier, never a per-service
+							claim (`repo ≠ release line`).
+
+							⭐ CRAFT REVIEW ITEM 3 — THE DEVIATION RIDES BESIDE IT. The
+							fleet's only adverse fact used to sit two screens down,
+							10px tall, on a card the collapsed header gives no hint
+							exists. `deviation.chip` is null on a repo with nothing to
+							say, so this adds no ink to the common case.
 						-->
-						<!--
-							⛔ NOT `.nav-link`. This changes LOCAL VIEW STATE (what
-							is expanded), not what page or object is on screen —
-							`lib/CLAUDE.md`'s own rule files that under "legitimately
-							keeps button chrome", the same family the `more` snippet
-							below already uses.
-						-->
-						<button
-							type="button"
-							class="hit-32 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-700/70"
-							aria-expanded={open}
-							aria-controls={`repo-${i}-extra`}
-							onclick={() => toggleRepo(i)}
-						>
-							{countLabel(repo.knownRevisions, 'build')}
-							{#if open}
-								<ChevronDownOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-							{:else}
-								<ChevronRightOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+						<span class="flex shrink-0 items-center gap-2">
+							{#if deviation.chip}
+								<Chip
+									role={deviation.chip.role}
+									label={deviation.chip.label}
+									title={deviation.chip.role === 'failing'
+										? 'The newest build is deployed somewhere the deploy is not healthy'
+										: deviation.chip.role === 'held'
+											? `${countLabel(deviation.chip.count, 'place')} ${deviation.chip.count === 1 ? 'is' : 'are'} held by a rule`
+											: 'Services with something not yet on the newest build any of them has reached'}
+								/>
 							{/if}
-						</button>
-					</span>
+							<span
+								class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400"
+								title={distanceVerdictTitle}
+								>{distanceVerdict}</span
+							>
+							<!--
+								⭐ ROUND SIX §5 — THE ONE CONTROL, AND ITS LABEL NAMES
+								WHAT IT COLLAPSES. `countLabel` is the same "N noun"
+								form every other disclosure on the product uses; the
+								ledger below stays visible either way (§1's own rule,
+								unchanged) — this toggles the hero + build-list block
+								alone.
+							-->
+							<!--
+								⛔ NOT `.nav-link`. This changes LOCAL VIEW STATE (what
+								is expanded), not what page or object is on screen —
+								`lib/CLAUDE.md`'s own rule files that under "legitimately
+								keeps button chrome", the same family the `more` snippet
+								below already uses.
+
+								⭐ ROUND 4, ITEM 12 — RADIUS 8, A 44px EFFECTIVE TAP
+								TARGET AT 390, AND A REST AFFORDANCE THAT DOES NOT
+								DEPEND ON HOVER. `rounded-md` (6px) was off the
+								product's 4/8/12/pill budget; `.hit-32`'s 32px floor
+								fell short of the 44px this control's own real-estate
+								can afford; and with no fill or ring at rest it read
+								as plain text until a mouse found it — no affordance
+								at all on a touch device. `.repo-disclose` (this
+								file's own `<style>` block) is the 44px variant of the
+								same `::before` slop `.hit-32` uses elsewhere, and the
+								filled `gray-100` ground is the rest state.
+							-->
+							<button
+								type="button"
+								class="repo-disclose flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200/80 dark:bg-gray-700/50 dark:text-gray-300 dark:hover:bg-gray-700/80"
+								aria-expanded={open}
+								aria-controls={`repo-${i}-extra`}
+								aria-label={open ? 'Hide build analysis' : 'Show build analysis'}
+								onclick={() => toggleRepo(i)}
+							>
+								{countLabel(repo.knownRevisions, 'build')}
+								{#if open}
+									<ChevronDownOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+								{:else}
+									<ChevronRightOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+								{/if}
+							</button>
+						</span>
+					{/if}
 				</div>
 
 				<!-- ⭐ THE SERVICE LEDGER — §7(a). One group per service, one
@@ -1437,7 +1561,16 @@
 									cards item 8 also fixed only render once the
 									card is expanded.
 								-->
-								<div class="svc-line-caption t-micro text-gray-500 dark:text-gray-400">
+								<!--
+									⭐ ROUND 4, ITEM 9 — THE FOLDED FORM CARRIES ITS OWN
+									NAMES AS A `title`. `N services` was a dead end once
+									it printed — the full set it folded away had nowhere
+									left to be read.
+								-->
+								<div
+									class="svc-line-caption t-micro text-gray-500 dark:text-gray-400"
+									title={lines[li].services.length > 3 ? lines[li].services.join(', ') : undefined}
+								>
 									{lines[li].services.length <= 3
 										? lines[li].services.join(' · ')
 										: `${lines[li].services.length} services`}
@@ -1480,8 +1613,16 @@
 											again above 560px, where the sha's own column
 											already lines every line up under line 1's name.
 										-->
+										<!--
+											⭐ ROUND 4, ITEM 8 — SAME INK AS LINE 1, NOT A GHOST
+											COPY. `text-gray-400` measured 2.60:1 against the
+											page ground — a continuation line is still this
+											service's own name, not a lesser fact, so it prints
+											at the identical ink `.svc-name`'s link uses two
+											lines up.
+										-->
 										<span
-											class="svc-name svc-name-continuation t-body text-gray-400 dark:text-gray-500"
+											class="svc-name svc-name-continuation t-body text-gray-700 dark:text-gray-200"
 											aria-hidden="true"
 										>
 											{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
@@ -1489,21 +1630,43 @@
 										</span>
 									{/if}
 									{#if line}
-										<a
-											class="svc-sha rev-sha ident tap-link t-code text-gray-900 hover:underline dark:text-white"
-											href={revisionPath(repo.repoKey, line.revision)}
-											title={line.revision}>{line.short}</a
-										>
-										<span class="svc-rank">
-											{#if line.rank !== null}
-												{@const verdict = rankVerdictFor(line.rank)}
+										{#if line.rank !== null}
+											{@const verdict = rankVerdictFor(line.rank)}
+											<!--
+												⭐ ROUND 4, ITEM 4 — THE RANK CHIP CARRIES THE
+												SAME GLYPH `/rollouts` DRAWS. `Chip.svelte`'s tag
+												(`◇`) only renders in the JOINED form
+												(`hasGlyph = joined && …`) — `/rollouts` earns it
+												by pairing the rank chip with the build's own sha
+												as `value`. This ledger drew them as TWO separate
+												cells (a rank chip, then the sha 90px away), so
+												the chip never joined and never drew the glyph —
+												exactly the "prop the list page forgot" this item
+												named. Joining them here also removes a column: the
+												sha's own link becomes the chip's value half
+												(still a real link, via `valueHref`), so the fact
+												is drawn once instead of a rank chip sitting beside
+												an unrelated-looking identifier.
+											-->
+											<span class="svc-build">
 												<Chip
 													role={rankRole(verdict)}
 													label={rankLabel(verdict)}
-													title={rankTitle(verdict, group.appName)}
+													title="{rankTitle(verdict, group.appName)} — {line.slots
+														.map((s) => (shortEnvLabel(s.cell.theme) || s.envName).toUpperCase())
+														.join(', ')}"
+													value={line.short}
+													valueHref={revisionPath(repo.repoKey, line.revision)}
+													valueTitle={line.revision}
 												/>
-											{/if}
-										</span>
+											</span>
+										{:else}
+											<a
+												class="svc-sha rev-sha ident tap-link t-code text-gray-900 hover:underline dark:text-white"
+												href={revisionPath(repo.repoKey, line.revision)}
+												title={line.revision}>{line.short}</a
+											>
+										{/if}
 										<span class="svc-envs">
 											{#each line.slots as slot (slot.envName)}
 												{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
@@ -1536,6 +1699,15 @@
 												guess which copy is live.
 											-->
 											{#if lineAge(line)}
+												<!--
+													⭐ ROUND 4, ITEM E — this copy and `.svc-age` below are the
+													SAME fact; `display: none` already excludes whichever one is
+													not showing from the accessibility tree at that width (a real
+													screen reader never sees both). NOT `aria-hidden`, deliberately
+													— at <560 THIS copy is the only one CSS shows, and hiding it
+													too would leave the row with no accessible age at all on a
+													phone.
+												-->
 												<time
 													class="svc-age-inline t-micro text-gray-500 dark:text-gray-400"
 													datetime={lineAgeIso(line)}
@@ -1580,26 +1752,34 @@
 					here. Coordinator follow-up 5: at <560 the text wraps
 					(never truncates against the link) and `View repository`
 					drops to its own line below, flush left.
+
+					⭐ ROUND 4, ITEM B — SUPPRESSED ON A ZERO-MATCH REPO. Its own
+					counts (`36 builds · 14 deployed at least once · 15 places`)
+					are unfiltered fleet stats, exactly the ones the header just
+					stopped stating for the same reason — a repo with nothing
+					matching the search has no footer to roll up either.
 				-->
-				<div
-					class="repo-meta flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 dark:border-gray-700/60"
-				>
-					<span
-						class="repo-meta-text t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
-						title="A place is one service in one environment."
+				{#if !repoNoMatch}
+					<div
+						class="repo-meta flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 dark:border-gray-700/60"
 					>
-						{repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'} · {repo.rows.length} deployed
-						at least once · {repo.slotCount} place{repo.slotCount === 1 ? '' : 's'} to deploy to{multiLine
-							? ` · across ${lines.length} release lines`
-							: ''}
-					</span>
-					{#if url}
-						<a class="nav-link shrink-0" href={url} target="_blank" rel="noopener noreferrer" title={repo.repoLabel}>
-							View repository
-							<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-						</a>
-					{/if}
-				</div>
+						<span
+							class="repo-meta-text t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
+							title="A place is one service in one environment."
+						>
+							{repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'} · {repo.rows.length} deployed
+							at least once · {repo.slotCount} place{repo.slotCount === 1 ? '' : 's'} to deploy to{multiLine
+								? ` · across ${lines.length} release lines`
+								: ''}
+						</span>
+						{#if url}
+							<a class="nav-link shrink-0" href={url} target="_blank" rel="noopener noreferrer" title={repo.repoLabel}>
+								View repository
+								<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
+							</a>
+						{/if}
+					</div>
+				{/if}
 
 				<!--
 					⭐ CRAFT REVIEW ITEM 2, CONTINUED — THE DISCLOSED BLOCK NESTS
@@ -1642,11 +1822,74 @@
 									? headCov
 									: revisionCoverage(leadRow, coarse)}
 							{@const heldGate = leadCov ? heldGateReason(leadCov) : null}
+							{@const heldPlaces = leadCov
+								? releaseSplit(leadCov).reduce((n, l) => n + (l.held ? l.count : 0), 0)
+								: 0}
+							<!--
+								⭐ ROUND 4, ITEM 2 — THE TITLE NAMES THE OBJECT, THE
+								ROLLUP CARRIES THE VERDICT. This card used to title
+								itself "Newest build in use" (a caption true of every
+								hero on the page) and put the actual object — the
+								services this line covers — in the `verdict` slot,
+								which is `whitespace-nowrap`: measured live at 390 a
+								three-name line clipped mid-word (`scrollWidth 353 /
+								clientWidth 307`). The title WRAPS (`Card`'s own
+								`break-words`), so the long, informative half belongs
+								there; the rollup keeps the short, count-shaped half
+								it was built for.
+							-->
+							{@const heroTitle = `Newest build · ${heroServicesLabel(leadRow)}`}
+							{@const heroVerdict = leadCov
+								? heldPlaces > 0
+									? `held in ${heldPlaces}`
+									: `${leadCov.liveCount} of ${leadCov.totalCount} place${leadCov.totalCount === 1 ? '' : 's'}`
+								: ''}
 							{#if leadCov}
+								<!--
+									⭐ ROUND 4, ITEM 3 — THE HELD STATE EARNS THE PRODUCT'S
+									FILLED BANNER. `COMPOSITION-GRAMMAR.md` §4: the
+									blocking fact gets a FILLED treatment, not a 55px pale
+									chip out-inked 22× by the coverage bar's own fill two
+									lines below it. `AlertPanel` is that object everywhere
+									else this fact appears (`/apps`, `/environments`,
+									rollout detail); it was the one surface still narrating
+									the same fact as quiet prose (the release-split
+									sentence) plus a muted-gray `BlockReason` row. Both move
+									here: the sentence becomes the banner's `message`, and
+									the contract clause becomes its `footnoteBody`, behind
+									`1 rule` — never `<BlockReason>`'s own markup, which is
+									deliberately `gray-500` prose for a WHITE card and would
+									be wrong twice inside a filled one (see that component's
+									own header comment). The header's `N held` chip is
+									untouched — it stays the collapsed-state summary; this
+									is the disclosed state's own filled fact.
+								-->
+								{#if heldGate}
+									{@const HeldIcon = heldGate.reason.icon}
+									{#snippet heldFootnote()}
+										<p class="min-w-0">{heldGate?.reason.line}</p>
+										{#if heldGate?.appHref}
+											<a class="nav-link mt-1 inline-flex" href={heldGate.appHref}>
+												Open {heldGate.reason.subject ?? 'the service'}
+												<ArrowRightOutline class="h-3.5 w-3.5" aria-hidden="true" />
+											</a>
+										{/if}
+									{/snippet}
+									<AlertPanel
+										severity="warning"
+										icon={HeldIcon}
+										title="{leadRow.short} is held"
+										message={releaseSplitSentence(leadCov)}
+										footnoteBody={heldFootnote}
+										footnoteCount={1}
+										footnoteNoun="rule"
+										class="mb-4"
+									/>
+								{/if}
 								<Card
 									icon={RocketSolid}
-									title="Newest build in use"
-									verdict={heroServicesLabel(leadRow)}
+									title={heroTitle}
+									verdict={heroVerdict}
 									verdictTitle={scopeRecord(leadRow.services.length)}
 									class={multiLine ? 'mb-4' : ''}
 								>
@@ -1664,31 +1907,6 @@
 											{#snippet meta()}
 												{@render names(leadRow, true)}
 											{/snippet}
-										{/if}
-										{#if releaseSplitSentence(leadCov)}
-											<p class="t-body basis-full text-gray-500 dark:text-gray-400">
-												{releaseSplitSentence(leadCov)}
-											</p>
-										{/if}
-										{#if heldGate}
-											<!--
-												⭐ ROUND SIX §1 — NAME THE RULE. `BuildStateMark`'s
-												own "held in N places" says THAT a rule is holding
-												this line; nothing on the page said WHICH one until
-												now. Same clause `blockingStory` → `BlockReason`
-												draws everywhere else this fact appears (the
-												dependencies tab's "Waiting on other services"
-												card) — never a second sentence invented here. The
-												provider is a real link, so the reader can go
-												straight to the service that has to ship rather
-												than typing its name into the search box above.
-											-->
-											<div class="basis-full">
-												<BlockReason
-													reason={heldGate.reason}
-													subjectHref={heldGate.appHref}
-												/>
-											</div>
 										{/if}
 										{#if commitUrlFor(repo.repoKey, leadRow.revision)}
 											<a
@@ -1726,19 +1944,41 @@
 											matches your search" — the branch below already says
 											that.
 										-->
-										{#if liveAll.length === 0 && !searchActive}
-											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
-												{visibleLeads.length > 0
-													? 'Nothing older is still running — every place is on a build above.'
-													: 'Nothing this repo has deployed is still running. Every place has moved on.'}
-											</p>
+										{#if liveAll.length === 0}
+											<!--
+												⭐ ROUND 4, ITEM B — A GENUINELY EMPTY LIST IS NEVER "EXPLAINED"
+												BY THE SEARCH. This used to fall through to `noMatchText` while a
+												search was active, telling the reader their query found nothing
+												when the honest fact is there was never anything here to find at
+												all. Say the real reason when not searching; say nothing while
+												searching — the rollup already reads `0 builds`.
+											-->
+											{#if !searchActive}
+												<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+													{visibleLeads.length > 0
+														? 'Nothing older is still running — every place is on a build above.'
+														: 'Nothing this repo has deployed is still running. Every place has moved on.'}
+												</p>
+											{/if}
 										{:else if liveVisible.length === 0}
-											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+											<!--
+												⭐ ROUND 4, ITEM 1 — A CARD WITH ZERO MATCHES INSIDE A REPO THAT
+												HAS A MATCH ELSEWHERE COLLAPSES TO ITS ROLLUP AND PRINTS NOTHING
+												ELSE. `repoNoMatch` is guaranteed false here (it gates the whole
+												disclosed block above), so some other section of this repo DID
+												match — the repo-wide "no build matches" sentence belongs to the
+												repository, once, not to every empty card inside it.
+											-->
 										{:else}
 											<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 												{#each liveVisible as row (row.revision)}
 													{@const cov = coverageByRevision.get(row.revision)}
 													{@const envSlots = liveEnvSlots(row)}
+													<!-- ⭐ OPERATOR-WALK ITEM C — the laggard slot for this
+													     row, computed once per row alongside its siblings
+													     above; `{@const}` must sit directly under the
+													     `{#each}`, not inside a plain element further down. -->
+													{@const liveAge = slotAgeInfo(envSlots)}
 													<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
 														<span class="bld-mark">
 															{#if cov}
@@ -1795,10 +2035,32 @@
 																	></div>
 																</div>
 															{/if}
+															<!--
+																⭐ OPERATOR-WALK ITEM C — THE LAGGARD, NOT THE
+																NEWEST ENVIRONMENT'S DATE. `ageOf(row, 'live')`
+																read `row.lastDeployMs` — the MAX across every
+																env this build is live on — so a row spanning
+																dev (1d ago) and staging/prod (5d ago) printed
+																only dev's date under all three env chips,
+																which is the environment that needs the LEAST
+																attention. `slotAgeInfo` (computed above,
+																alongside `envSlots`) picks the OLDEST instead,
+																named, and `slotAgeTitle` lists every
+																environment's own date for the hover/long-press.
+															-->
 															<time
 																class="t-micro mt-1 block text-gray-500 dark:text-gray-400"
-																datetime={ageIso(row, 'live')}
-																title={ageTitle(row, 'live')}>{ageOf(row, 'live')}</time
+																datetime={liveAge ? new Date(liveAge.ms).toISOString() : ageIso(row, 'live')}
+																title={envSlots.length > 1
+																	? slotAgeTitle(envSlots)
+																	: ageTitle(row, 'live')}
+																>{#if liveAge}Deployed {formatTimeAgoCompact(
+																		new Date(liveAge.ms).toISOString(),
+																		$now
+																	)} ago{envSlots.length > 1 ? ` · ${liveAge.envLabel.toUpperCase()}` : ''}{:else}{ageOf(
+																		row,
+																		'live'
+																	)}{/if}</time
 															>
 														</div>
 
@@ -1821,7 +2083,10 @@
 											padded={false}
 										>
 											{#if pastVisible.length === 0}
-												<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+												<!-- ⭐ ROUND 4, ITEM 1 — see the "Still running" card above: this
+												     branch only fires when a search hid every row, and the repo
+												     has a match elsewhere. Nothing prints; the rollup already
+												     reads `0 of N`. -->
 											{:else}
 												<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 													{#each expandPast[repo.repoKey] ? pastVisible : pastVisible.slice(0, FOLD) as row (row.revision)}
@@ -1881,9 +2146,7 @@
 										verdict={historyLimit.atLimit
 											? `${rollupLabel(pendingVisible.length, repo.pending.length, 'build')} · beyond the last ${historyLimit.limit} deploys`
 											: rollupLabel(pendingVisible.length, repo.pending.length, 'build')}
-										verdictTitle={historyLimit.atLimit
-											? HISTORY_LIMIT_NOTE(historyLimit.limit)
-											: PENDING_RECORD}
+										verdictTitle={PENDING_RECORD}
 										padded={false}
 									>
 										<!--
@@ -1906,7 +2169,9 @@
 												Every build your services can deploy has run somewhere.
 											</p>
 										{:else if pendingVisible.length === 0}
-											<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+											<!-- ⭐ ROUND 4, ITEM 1 — see the "Still running" card: a search hid
+											     every row here while the repo matched elsewhere. Nothing
+											     prints; the rollup already reads `0 of N`. -->
 										{:else}
 											<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 												{#each expandPending[repo.repoKey] ? pendingVisible : pendingVisible.slice(0, FOLD) as row (row.revision)}
@@ -2044,15 +2309,25 @@
 	 * per LINE would size its name column from that line's own content
 	 * alone and land at a different x than its neighbours.
 	 *
-	 * ⭐ CRAFT REVIEW ITEM 9 — RANK IS A FIXED 90px, NOT `auto`. `auto`
-	 * sized this track to the WIDEST rank chip in THIS repo's own ledger —
-	 * two repos on the same page therefore computed two different
-	 * pixel widths (measured live: 580px vs 593px to the env column),
-	 * because each `.svc-ledger` is its own independent grid instance. A
-	 * fixed width sized to the vocabulary's own widest legal member
-	 * (`24 BEHIND`, comfortably under 90px at this chip's type scale)
-	 * makes every repo's env column start at the SAME x regardless of
-	 * which rank words happen to appear in it.
+	 * ⭐ ROUND 4, ITEM 4 — RANK AND SHA ARE ONE COLUMN NOW, NOT TWO. The
+	 * fixed-90px rank track this comment used to defend is gone along with
+	 * `.svc-rank`: joining the rank chip to the build's own sha as `Chip`'s
+	 * `value` (so the product's rank glyph actually draws — see the
+	 * markup) also means the two facts are ONE cell, `minmax(150px,
+	 * max-content)` — wide enough for the joined chip's own widest legal
+	 * member plus a seven-character sha, sized ONCE per grid the same way
+	 * the old fixed 90px was, for the same reason: two repos on the same
+	 * page must not compute two different pixel widths for the same kind
+	 * of cell.
+	 *
+	 * ⭐ ROUND 4, ITEMS 7/9 — THE ENV TRACK IS `max-content`, NOT `1fr`.
+	 * Measured live: `1fr` let this track stretch to whatever the page's
+	 * own width happened to be — 655px with 182px of actual chip ink (28%)
+	 * — leaving a hole in the MIDDLE of the row, before the age cell ever
+	 * got a chance to use the space. Sized to its own content, any slack
+	 * moves to the LAST column instead (`.svc-age`, below), which is a
+	 * right-aligned, already-blank margin rather than a gap between two
+	 * facts.
 	 *
 	 * ⛔ THE 16px GLYPH CELL IS GONE (round 3 addendum I). The old per-row
 	 * status dot moved to a `Chip` beside the env chips, drawn only for a
@@ -2062,7 +2337,7 @@
 	 */
 	.svc-ledger {
 		display: grid;
-		grid-template-columns: minmax(120px, 180px) 88px 90px minmax(0, 1fr) auto;
+		grid-template-columns: minmax(120px, 180px) minmax(150px, max-content) max-content minmax(0, 1fr);
 		column-gap: 12px;
 		row-gap: 0;
 		padding-inline: 16px;
@@ -2070,12 +2345,10 @@
 
 	/*
 	 * ⭐ ROUND SIX §3 — CAP THE LEDGER'S OWN MEASURE, DELIBERATELY, PAST 1800.
-	 * The env-chip column is `minmax(0, 1fr)` and stretches with the
-	 * viewport; a fifth column (below) fills SOME of the dead space this
-	 * item names, but an ultrawide monitor still opens a gap no chip run is
-	 * ever going to fill. `max-width` on the grid itself, not on `.repo-card`
-	 * — the card's header and meta rows stay full width, only the ledger's
-	 * own columns stop growing.
+	 * ⭐ ROUND 4, ITEMS 7/9 — the env column no longer stretches (see the
+	 * grid definition above), so THIS cap now bounds only the trailing age
+	 * column's own slack on an ultrawide monitor — the same reason it
+	 * existed originally, one column over.
 	 */
 	@media (min-width: 1800px) {
 		.svc-ledger {
@@ -2114,20 +2387,27 @@
 		padding: 10px 0 2px;
 	}
 
+	/*
+	 * ⭐ ROUND 4, ITEM 4 — `.svc-build` IS THE JOINED-CHIP CELL, `.svc-sha`
+	 * SURVIVES ONLY FOR THE PLAIN-LINK FALLBACK (`line.rank === null`). Both
+	 * share column 2, one row apart, mutually exclusive per line — see the
+	 * markup's own note on why they may not share ONE class: `.svc-sha`
+	 * carries a `position: relative` + `::before` hit-slop below, generated
+	 * on the ANCHOR itself, which is the one shape that technique works on.
+	 */
+	.svc-build,
 	.svc-sha {
 		grid-column: 2;
 		padding-block: 6px;
 	}
 
-	.svc-rank {
-		grid-column: 3;
-		padding-block: 6px;
+	.svc-build {
 		display: flex;
 		align-items: center;
 	}
 
 	.svc-envs {
-		grid-column: 4;
+		grid-column: 3;
 		padding-block: 6px;
 		display: flex;
 		flex-wrap: wrap;
@@ -2137,20 +2417,37 @@
 	}
 
 	/*
-	 * ⭐ ROUND SIX §3 — THE FIFTH COLUMN. Right-aligned, `nowrap` (`Deployed
+	 * ⭐ ROUND SIX §3 — THE FOURTH COLUMN. Right-aligned, `nowrap` (`Deployed
 	 * 1d ago` is short and this is the one cell in the row that should never
 	 * wrap onto a second line and disturb every sibling line's own height).
 	 * `.svc-age-inline` is the SAME fact, rendered a second time for the
 	 * <560 container query below, hidden here so nothing prints twice.
+	 *
+	 * ⭐ ROUND 4, ITEMS 7/9 — THIS COLUMN NOW TAKES THE SLACK the env track
+	 * used to (`minmax(0, 1fr)` moved here from `.svc-envs`), so a row with
+	 * few env chips gets extra BLANK MARGIN after its own timestamp — at the
+	 * row's true right edge — instead of a hole in the middle of the row
+	 * before the timestamp is ever reached.
 	 */
 	.svc-age {
-		grid-column: 5;
+		grid-column: 4;
 		padding-block: 6px;
 		padding-left: 12px;
 		text-align: right;
 		white-space: nowrap;
 	}
 
+	/*
+	 * ⭐ ROUND 4, ITEM E — TWO NODES, ONE FACT, DELIBERATELY NOT MERGED INTO
+	 * ONE. A width-based duplicate-text report reads both `.svc-age` and
+	 * `.svc-age-inline`'s `textContent` regardless of `display`, but a real
+	 * screen reader (and `innerText`) already sees only the one CSS shows —
+	 * `display: none` removes an element from the accessibility tree, so
+	 * there is no ACTUAL duplicate announcement at any one width. Collapsing
+	 * this to a single node would need it to relocate between a dedicated
+	 * grid column and a spot inside `.svc-envs`' own flex-wrap flow, which a
+	 * single DOM position cannot do — see the markup's own note.
+	 */
 	.svc-age-inline {
 		display: none;
 	}
@@ -2191,12 +2488,12 @@
 			display: block;
 		}
 
+		/* ⭐ ROUND 4, ITEM 4 — `.svc-build` folds beside `.svc-sha` here: the
+		   joined-chip cell and the plain-link fallback are mutually exclusive
+		   per line and share the same fold position. */
+		.svc-build,
 		.svc-sha {
 			grid-column: 1;
-		}
-
-		.svc-rank {
-			grid-column: 2;
 		}
 
 		.svc-envs,
@@ -2495,5 +2792,31 @@
 		width: max(100% + 12px, 32px);
 		height: max(100% + 12px, 32px);
 		transform: translate(-50%, -50%);
+	}
+
+	/*
+	 * ⭐ ROUND 4, ITEM 12 — THE REPO HEADER'S DISCLOSURE. `app.css`'s shared
+	 * `.hit-32` floors a control at 32px; this one's own real estate (a full
+	 * 47px header bar, nothing else competing for the space to its right)
+	 * can afford the full 44px floor most mobile HIGs actually ask for, so it
+	 * gets its own `::before` at that size rather than borrowing the shared
+	 * 32px one. `position: relative` is set unconditionally — the generated
+	 * box needs a positioned ancestor at every width, even though the
+	 * `::before` itself only PAINTS (and hit-tests) under the touch/narrow
+	 * condition below, same guard `app.css`'s own touch-floor section uses.
+	 */
+	.repo-disclose {
+		position: relative;
+	}
+
+	@media (pointer: coarse), (max-width: 639px) {
+		.repo-disclose::before {
+			content: '';
+			position: absolute;
+			inset: 50%;
+			width: max(100%, 44px);
+			height: max(100%, 44px);
+			transform: translate(-50%, -50%);
+		}
 	}
 </style>

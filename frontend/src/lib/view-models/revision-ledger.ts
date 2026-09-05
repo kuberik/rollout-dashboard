@@ -882,6 +882,16 @@ export type RepoDeviationChip = {
 	    so this file does not import a `.svelte` component's internal type. */
 	role: 'failing' | 'held' | 'rank';
 	label: string;
+	/**
+	 * ⭐ ROUND 4, ITEM 13 — THE ANTECEDENT. `label` already carries the count
+	 * (`"3 held"`), but the page's own tooltip for this chip used to be a
+	 * static sentence with no number in it ("Places running this build on an
+	 * older release…") — a plural noun with nothing upstream telling the
+	 * reader HOW MANY. Exposing the raw count lets the call site build a
+	 * tooltip that names it directly ("3 places are held by a rule") instead
+	 * of parsing it back out of the label string.
+	 */
+	count: number;
 };
 
 export type RepoDeviation = {
@@ -902,7 +912,7 @@ export function repoDeviation(
 
 	const failing = headCoverage.buckets.find((b) => b.key === 'failing')?.slots.length ?? 0;
 	if (failing > 0) {
-		return { severity: 3, chip: { role: 'failing', label: 'failing' }, backlog };
+		return { severity: 3, chip: { role: 'failing', label: 'failing', count: failing }, backlog };
 	}
 
 	// HELD — a live slot that is not on its own release (the same predicate
@@ -919,7 +929,7 @@ export function repoDeviation(
 	const live = headCoverage.buckets.find((b) => b.key === 'live')?.slots ?? [];
 	const held = live.filter((s) => !s.onOwnRelease).length;
 	if (held > 0) {
-		return { severity: 2, chip: { role: 'held', label: `${held} held` }, backlog };
+		return { severity: 2, chip: { role: 'held', label: `${held} held`, count: held }, backlog };
 	}
 
 	// BEHIND — distinct services with something not yet on the newest build
@@ -929,7 +939,11 @@ export function repoDeviation(
 		(headCoverage.buckets.find((b) => b.key === 'notYet')?.slots ?? []).map((s) => s.appName)
 	).size;
 	if (notYetServices > 0) {
-		return { severity: 1, chip: { role: 'rank', label: `${notYetServices} behind` }, backlog };
+		return {
+			severity: 1,
+			chip: { role: 'rank', label: `${notYetServices} behind`, count: notYetServices },
+			backlog
+		};
 	}
 
 	return { severity: 0, chip: null, backlog };

@@ -655,6 +655,11 @@ export function buildState(coverage: RevisionCoverage): BuildState {
 	const n = (key: CoverageKey) =>
 		coverage.buckets.find((b) => b.key === key)?.slots.length ?? 0;
 	const plural = (c: number) => (c === 1 ? '' : 's');
+	// ⛔ `${n} place${plural(n)} have not deployed…` READ "1 place have not
+	// deployed" AT n === 1. (round-4 craft review, item 8) The noun already
+	// carries the count via `plural`; the verb has to agree with it
+	// separately — `plural(1) === ''` and `has`/`have` do not share a suffix.
+	const verb = (c: number) => (c === 1 ? 'has' : 'have');
 
 	const failing = n('failing');
 	if (failing > 0)
@@ -681,14 +686,14 @@ export function buildState(coverage: RevisionCoverage): BuildState {
 		return {
 			key: 'notYet',
 			word: `${notYet} place${plural(notYet)} still to go`,
-			title: `${notYet} place${plural(notYet)} have not deployed this build yet`
+			title: `${notYet} place${plural(notYet)} ${verb(notYet)} not deployed this build yet`
 		};
 
 	if (ahead > 0 && coverage.liveCount > 0)
 		return {
 			key: 'ahead',
 			word: `${ahead} place${plural(ahead)} moved on`,
-			title: `${ahead} place${plural(ahead)} have already deployed a newer build`
+			title: `${ahead} place${plural(ahead)} ${verb(ahead)} already deployed a newer build`
 		};
 
 	if (coverage.liveCount === 0)

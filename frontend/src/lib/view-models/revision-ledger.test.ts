@@ -446,7 +446,7 @@ describe('repoDeviation — craft review item 3 (lead with the deviation)', () =
 		const cov = coverage([{ key: 'failing', slots: [{ appName: 'api' }] }]);
 		expect(repoDeviation({ pending: [] }, cov)).toEqual({
 			severity: 3,
-			chip: { role: 'failing', label: 'failing' },
+			chip: { role: 'failing', label: 'failing', count: 1 },
 			backlog: 0
 		});
 	});
@@ -466,7 +466,7 @@ describe('repoDeviation — craft review item 3 (lead with the deviation)', () =
 		]);
 		expect(repoDeviation({ pending: [] }, cov)).toEqual({
 			severity: 2,
-			chip: { role: 'held', label: '1 held' },
+			chip: { role: 'held', label: '1 held', count: 1 },
 			backlog: 0
 		});
 	});
@@ -480,7 +480,7 @@ describe('repoDeviation — craft review item 3 (lead with the deviation)', () =
 		]);
 		expect(repoDeviation({ pending: [] }, cov)).toEqual({
 			severity: 1,
-			chip: { role: 'rank', label: '2 behind' },
+			chip: { role: 'rank', label: '2 behind', count: 2 },
 			backlog: 0
 		});
 	});

@@ -2,12 +2,13 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
+	import { replaceState, afterNavigate } from '$app/navigation';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
-	import { repoBody, revisionPath } from '$lib/version-utils';
+	import { repoBody, revisionPath, displayVersionForTag } from '$lib/version-utils';
+	import { getDisplayVersion } from '$lib/utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
 	// words — `unreleased` — and it takes it from here rather than spelling it.
@@ -25,7 +26,6 @@
 	import {
 		revisionCoverage,
 		coverageSwatch,
-		coverageSegments,
 		releaseSplit,
 		type CoverageKey,
 		type CoverageSlotVM
@@ -57,7 +57,7 @@
 	import { historyAtLimit } from '$lib/history-marks';
 	import { now } from '$lib/stores/time';
 	import { compareEnvironmentNames } from '$lib/env-order';
-	import type { EnvironmentTheme } from '$lib/environment-theme';
+	import { shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
@@ -72,6 +72,7 @@
 		FolderOutline,
 		HourglassOutline,
 		LayersOutline,
+		LockOpenOutline,
 		LockSolid,
 		QuestionCircleOutline,
 		RocketOutline,
@@ -84,8 +85,9 @@
 	import Card from '$lib/components/Card.svelte';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
+	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
 	import Chip from '$lib/components/Chip.svelte';
-	import CoverageBar from '$lib/components/CoverageBar.svelte';
 	import type { Rollout, Environment } from '../../../types';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -156,6 +158,27 @@
 	 * sha: both recorded as measured-failed. The bar's segments are BUCKETS,
 	 * four status hues the budget already owns, not ranks.
 	 */
+
+	/**
+	 * ⭐ OPERATOR-WALK ROUND 4, ITEM B — "← All revisions" GOES BACK, WHEN
+	 * BACK IS WHERE IT LEADS.
+	 *
+	 * `scroll-memory.ts` (root layout, 2026-09-05) already restores `<main>`'s
+	 * scroll offset on a `popstate` arrival — Back/Forward — but a bare
+	 * `<a href="/revisions">` is a forward, `pushState`-shaped navigation, so
+	 * clicking this breadcrumb after scrolling `/revisions` 900px deep landed
+	 * back at the top every time. `afterNavigate`'s `from` is the one moment
+	 * this page can tell whether the PREVIOUS entry actually was the list
+	 * (a client-side navigation FROM it) — a direct load, a refresh, or an
+	 * arrival from anywhere else has no such entry, and `history.back()`
+	 * there would leave the product entirely. `cameFromList` gates the two
+	 * behaviours: `history.back()` when it is true (a real `popstate`, so
+	 * `scroll-memory` fires), a plain link otherwise.
+	 */
+	let cameFromList = $state(false);
+	afterNavigate((nav) => {
+		cameFromList = nav.from?.route?.id === '/revisions';
+	});
 
 	// The route is /versions/[...slug]; the slug is "<repo path>/<key>" where
 	// the repo path is real path segments and the key is the final one. The key
@@ -575,12 +598,100 @@
 		modalOpen = true;
 	}
 
+	// ⭐ ROUND-4 CRAFT REVIEW, ITEM C — CLEARING THE PIN IS THE OTHER MUTATING
+	// CONTROL ON THIS PAGE, WIRED THE SAME WAY. `ClearPinModal` is the one
+	// component the product already uses for this act (rollout detail,
+	// `/apps`, `/environments`, `RolloutGrid`) — its own doc comment records
+	// that duplicating the markup a second time is exactly how the product
+	// lost the copy once already, so this page opens THAT component rather
+	// than re-deriving a dialog.
+	let clearPinOpen = $state(false);
+	let clearPinRollout = $state<Rollout | null>(null);
+	let clearPinCluster = $state<string | undefined>(undefined);
+	let clearPinEnvLabel = $state<string | null>(null);
+
+	function openClearPin(slot: RevisionSlot, envLabel: string) {
+		clearPinRollout = slot.cell.rollout;
+		clearPinCluster = slot.cell.sourceCluster || undefined;
+		clearPinEnvLabel = envLabel;
+		clearPinOpen = true;
+	}
+
+	/**
+	 * ⭐ ROUND-4 CRAFT REVIEW, ITEM 5 — `.btn-primary` IS ASSERTED BY
+	 * CAPABILITY, NOT HARD-CODED TO SECONDARY.
+	 *
+	 * The button below has carried `.btn-secondary` since it shipped, with a
+	 * reasoned comment: *"the loudest control on a deploy surface must not be
+	 * the one that changes production … a place with an action never shares a
+	 * row, so this button always has exactly one target."* That reasoning is
+	 * about ONE ROW never holding two targets — true, and unchanged here — not
+	 * about how many such rows the PAGE can have; `notYetGroups` keys any
+	 * slot with a `promoteTag` to its own solo row precisely so several can
+	 * coexist (one per environment with a live candidate and no gate).
+	 * `lib/CLAUDE.md`'s own rule is "`.btn-primary` … at most one per page,"
+	 * so a page with three such rows may not fill all three — but the one
+	 * this branch was reviewed against genuinely has ONE: `Deploy 064b655 to
+	 * dev` was the page's only control that changes what is running, wearing
+	 * the same secondary chrome as `Cancel`. Counted here, the same way
+	 * `/apps/<name>`'s own primary was re-derived "by CAPABILITY … not
+	 * position" when its topmost row stopped being a reliable proxy for it.
+	 */
+	const deployableGroups = $derived.by<NotYetGroup[]>(() => {
+		if (!coverage) return [];
+		const bucket = coverage.buckets.find((b) => b.key === 'notYet');
+		if (!bucket) return [];
+		return notYetGroups(bucket.slots).filter((g) => g.slots.length === 1 && g.slots[0].promoteTag);
+	});
+	const singleDeployAction = $derived(deployableGroups.length === 1 ? deployableGroups[0] : null);
+
 	const commitUrl = $derived.by<string | null>(() => {
 		if (!ledger || !revision) return null;
 		if (!ledger.repoKey.startsWith('repo:')) return null;
 		const body = repoBody(ledger.repoKey);
 		if (!body.includes('/')) return null;
 		return `https://${body}/commit/${revision}`;
+	});
+
+	type BuildRelease = { label: string; createdMs: number };
+
+	/**
+	 * ⭐ ROUND-4 CRAFT REVIEW, ITEM E — PER-RELEASE `built`, WHEN A REVISION HAS
+	 * MORE THAN ONE.
+	 *
+	 * `row.createdMs` (`revision-ledger.ts`) is the MAX `createdMs` across
+	 * every release sharing this revision — right for sorting rows newest
+	 * first, wrong for naming a single build time: `9f10e49` has two releases
+	 * (`2.66.0-66` built 07-29, `2.67.0-67` built 08-31), and the bare `built 5
+	 * days ago` this used to print is true of the newer one and silently
+	 * false of the other, with no release named to tell them apart.
+	 * `revision-ledger.ts` is another lane's file, so this reads the raw
+	 * `availableReleases` directly rather than asking that module to expose
+	 * the breakdown — the same array `displayVersionForTag` above already
+	 * walks, on the same rollouts this row already carries.
+	 */
+	const buildReleases = $derived.by<BuildRelease[]>(() => {
+		if (!row) return [];
+		const byTag = new Map<string, BuildRelease>();
+		for (const svc of row.services) {
+			for (const slot of svc.slots) {
+				for (const rel of slot.cell.rollout?.status?.availableReleases ?? []) {
+					if (rel.revision !== row.revision || !rel.created || byTag.has(rel.tag)) continue;
+					const createdMs = new Date(rel.created).getTime();
+					if (Number.isNaN(createdMs)) continue;
+					byTag.set(rel.tag, { label: getDisplayVersion(rel), createdMs });
+				}
+			}
+		}
+		// Two tags can share one label + timestamp — the same release recorded
+		// on two rollouts' own `availableReleases` — so dedupe by the pair
+		// actually printed, not by the generated tag nobody sees.
+		const seen = new Map<string, BuildRelease>();
+		for (const r of byTag.values()) {
+			const key = `${r.label} ${r.createdMs}`;
+			if (!seen.has(key)) seen.set(key, r);
+		}
+		return [...seen.values()].sort((a, b) => a.createdMs - b.createdMs);
 	});
 
 	/**
@@ -659,7 +770,13 @@
 	function pinnedEnvsOf(svc: RevisionService): string[] {
 		return svc.slots
 			.filter((s) => s.cell.rollout?.spec?.wantedVersion)
-			.map((s) => s.envName.toUpperCase());
+			// ⭐ ROUND-4 CRAFT REVIEW, ITEM D — THE ENVIRONMENT'S OWN LABEL, NOT
+			// ITS RAW `envName`. `RevisionSlot.envName` is the rollout's own name
+			// (`hello-world-staging`), not the environment tier every chip on
+			// this page prints (`STAGING`) — `shortEnvLabel` off the slot's own
+			// theme is the same lookup `envSlots`/`Chip`'s `label={s.envLabel}`
+			// resolve through elsewhere on this page.
+			.map((s) => (shortEnvLabel(s.cell.theme) || s.envName).toUpperCase());
 	}
 
 	/**
@@ -686,7 +803,14 @@
 			// when it matches — start the search one entry back regardless, so a
 			// stale `onIt` never double-counts the running deploy as "before."
 			const match = history.slice(1).find((h) => h.version?.revision === revision);
-			if (match?.timestamp) out.push({ envLabel: s.envName.toUpperCase(), timestamp: match.timestamp });
+			// ⭐ ROUND-4 CRAFT REVIEW, ITEM D — SEE `pinnedEnvsOf`'s OWN NOTE, THE
+			// IDENTICAL DEFECT: `s.envName` printed `HELLO-WORLD-STAGING`, not
+			// `STAGING`, the label every other chip on this page prints.
+			if (match?.timestamp)
+				out.push({
+					envLabel: (shortEnvLabel(s.cell.theme) || s.envName).toUpperCase(),
+					timestamp: match.timestamp
+				});
 		}
 		return out;
 	}
@@ -705,7 +829,13 @@
 		const limited = svc.slots.find((s) => !s.onIt && historyAtLimit(s.cell.rollout));
 		if (!limited) return null;
 		const limit = limited.cell.rollout?.spec?.versionHistoryLimit ?? 10;
-		return `History keeps the last ${limit} deploys per service, so a place not listed here may simply be outside that window.`;
+		// ⭐ ROUND-4 CRAFT REVIEW, ITEM 6 — THE LIST PAGE'S OWN WORDING, NOT A
+		// SECOND SPELLING OF IT. `/revisions`' `HISTORY_LIMIT_NOTE` says this
+		// once, product-wide; this file cannot import it (`revision-ledger.ts`'s
+		// lane owns the list route this constant lives in), so the words are
+		// copied verbatim rather than re-authored — a second wording of the
+		// same caveat is exactly the sprawl the vocabulary passes exist to cut.
+		return `History keeps the last ${limit} deploys per service; a build deployed earlier is not recorded.`;
 	}
 
 	/**
@@ -795,10 +925,20 @@
 	type Reason = {
 		icon: typeof HourglassOutline;
 		tone: string;
-		/** Overrides the row's default gray text -- pin state prints blue, per the banner hue rule. */
-		textTone?: string;
 		text: string;
 		gates: string[];
+		/**
+		 * ⭐ ROUND-4 CRAFT REVIEW, ITEM 3 — A RAW, UNBREAKABLE IDENTIFIER GOES
+		 * HERE, NEVER INTO `text`. The pin branch below used to interpolate the
+		 * FULL OCI tag (`main-1788002339-6f9524e…`, 56 characters with no break
+		 * opportunity) straight into the sentence; under this row's `overflow:
+		 * hidden`/`min-w-0` it clipped 59px short with no ellipsis at 390.
+		 * `record` is rendered the same way `gates` already is two lines
+		 * down — mono, `break-all`, its own row under the claim — so a long
+		 * identifier can wrap instead of vanishing.
+		 */
+		record?: string;
+		recordTitle?: string;
 	};
 
 	function reasonsFor(s: CoverageSlotVM): Reason[] {
@@ -823,23 +963,40 @@
 		 */
 		const pinnedTo = s.slot.cell.rollout?.spec?.wantedVersion;
 		if (pinnedTo) {
+			/**
+			 * ⭐ ROUND-4 CRAFT REVIEW, ITEM 3 — TWO DEFECTS IN ONE ROW, BOTH FROM
+			 * PRINTING THE RAW TAG INLINE.
+			 *
+			 * ⛔ BLUE WAS RIGHT IN GENERAL AND WRONG HERE, SPECIFICALLY BECAUSE OF
+			 * WHAT SITS ABOVE IT. The banner hue rule ("a state a person chose is
+			 * blue") still holds everywhere this sentence is the ONLY statement of
+			 * the fact — `AlertPanel`, `RolloutGrid`, rollout detail. On THIS card,
+			 * measured live, `What each service calls it` already prints `Pinned in
+			 * DEV — automatic updates are off there` in the row's own gray, 200px
+			 * above this one — so the louder blue ink here read as a SECOND, more
+			 * urgent claim about the identical fact, not as elaboration. Dropped to
+			 * `tone-mute`, the row's own default ink, matching the sentence it was
+			 * duplicating rather than out-shouting it.
+			 *
+			 * ⛔ THE TAG ITSELF WAS THE UNBREAKABLE STRING. `pinnedTo` is the raw
+			 * OCI tag (`main-1788002339-6f9524e…`, 56 characters, no hyphenatable
+			 * break the CSS line-breaker will use inside a `min-w-0` column) —
+			 * printed inline it clipped 59px short with no ellipsis at 390.
+			 * `displayVersionForTag` is the ONE lookup the product already uses to
+			 * turn a raw tag into the short name every other surface calls this
+			 * build (`blocking-story.ts`'s own `pinnedToDisplay`, established
+			 * there); the raw tag itself does not disappear, it moves to `record`
+			 * — its own truncated-mono row, `break-all`, never inline prose.
+			 */
+			const pinnedToDisplay = displayVersionForTag(s.slot.cell.rollout, pinnedTo) || pinnedTo;
 			return [
 				{
 					icon: LockSolid,
-					// BLUE, NOT AMBER — "a STATE A PERSON CHOSE (pinned, rolled back)
-					// is blue (`info`)." (the banner hue rule, `lib/CLAUDE.md`.) The
-					// three `tone-*` classes above this function are glyph-only and
-					// product-wide (`app.css`); a plain Tailwind pair is the same
-					// mechanism the rest of the codebase reaches for when nothing in
-					// that fixed set is the right hue (`AlertPanel`'s own `info`
-					// severity resolves to this identical pair). Both the icon AND
-					// the sentence carry it -- a blue icon over a gray sentence is
-					// the SAME defect this file's `t-body text-gray-600` default
-					// exists to avoid for every OTHER row, just on the other channel.
-					tone: 'text-blue-700 dark:text-blue-300',
-					textTone: 'text-blue-700 dark:text-blue-300',
-					text: `Pinned to ${pinnedTo} — automatic deploys are paused until the pin is cleared.`,
-					gates: []
+					tone: 'tone-mute',
+					text: `Pinned to ${pinnedToDisplay} — automatic deploys are paused until the pin is cleared.`,
+					gates: [],
+					record: pinnedTo,
+					recordTitle: `The pinned tag: ${pinnedTo}`
 				}
 			];
 		}
@@ -1079,12 +1236,26 @@
 </svelte:head>
 
 <div class="rev-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
-	<a
-		href="/revisions"
-		class="t-micro mb-4 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-	>
-		<ArrowLeftOutline class="h-3 w-3" /> All revisions
-	</a>
+	<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM B — see `cameFromList`'s own comment
+	     above. `<button>`, not `<a>`, in the `history.back()` branch: it is
+	     not a URL, the same reasoning `+error.svelte`'s own `Go back`
+	     control already uses. -->
+	{#if cameFromList}
+		<button
+			type="button"
+			class="t-micro mb-4 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+			onclick={() => history.back()}
+		>
+			<ArrowLeftOutline class="h-3 w-3" /> All revisions
+		</button>
+	{:else}
+		<a
+			href="/revisions"
+			class="t-micro mb-4 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+		>
+			<ArrowLeftOutline class="h-3 w-3" /> All revisions
+		</a>
+	{/if}
 
 	<!--
 		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
@@ -1223,7 +1394,17 @@
 		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 			<h1 class="sr-only">Tracking build {row.short} in {repoTitle(ledger.repoLabel)}</h1>
 			<span class="t-display-id text-gray-900 dark:text-white">{row.short}</span>
-			<span class="t-display text-gray-900 tabular-nums dark:text-white"
+			<!--
+				⭐ ROUND-4 CRAFT REVIEW, ITEM 4 — THE FIGURE IS BOUND TO ITS OWN
+				CAPTION, NOT TO THE ID BESIDE IT. The row's `gap-x-2` (8px) put an
+				equal 8px between id→figure and figure→caption, so `064b655` and `8`
+				— both 24px mono/tabular-nums, no visual difference between them but
+				size — read as one token with the caption trailing behind. `ml-4`
+				widens id→figure to 24px (8 + 16) while figure→caption stays the
+				row's own 8, so the figure visibly belongs to the sentence it leads,
+				not to the sha it happens to sit next to.
+			-->
+			<span class="t-display text-gray-900 tabular-nums dark:text-white ml-4"
 				>{coverage.liveCount}</span
 			>
 			<span
@@ -1360,8 +1541,9 @@
 				head band already states in words 60px up, which is the accepted
 				shape here (`/apps`' head band and its `All apps` card both name
 				`2 of 4 blocked` too). The bar itself did not vanish: it moves into
-				the body, at FULL scale, as its own row — the one place on this
-				page a reader could see the segmented shape at all.
+				the body, as its own row — see round-4 craft review item 1, below,
+				for what it draws now (a single painted-track fill, not the
+				segmented cell strip this comment used to describe).
 			-->
 			<div bind:clientHeight={buildCardHeight} class={heightsClose ? '' : 'rev-pair-natural'}>
 			<Card
@@ -1373,13 +1555,42 @@
 			>
 				<ul class="space-y-3">
 					<li class="flex items-start gap-2.5">
-						<CoverageBar
-							segments={coverageSegments(coverage)}
-							class="w-full"
-							label="{coverage.liveCount} of {coverage.totalCount} places running {row.short} · {coverage.buckets
-								.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
-								.join(' · ')}"
-						/>
+						<!--
+							⭐ ROUND-4 CRAFT REVIEW, ITEM 1 — ONE FILL, WIDTH = LIVE/TOTAL,
+							NOT `<CoverageBar>`'S CELL STRIP. `coverageSegments()` almost
+							always resolves to exactly one non-empty bucket (`live`), so the
+							cells this component draws are `flex: 1` and fill the track
+							whatever the count — measured live, "8 of 9" drew the identical
+							fully-painted 9-cell strip a "9 of 9" row would. That is
+							`RevisionLead`'s own "THE BAR LIED" defect (craft review item 1,
+							`RevisionLead.svelte`), fixed there with a plain painted-track fill
+							sized to a literal percentage; this card is the one call site that
+							fix explicitly left untouched ("the detail page's own hero is gone
+							from THIS page … keeps computing `segments` and rendering
+							`<CoverageBar>` exactly as before") because this route was another
+							lane's at the time. It is this lane's now, so the same geometry
+							lands here — `.rev-build-bar`/`.rev-build-bar-fill` below are
+							`RevisionLead`'s `.single-bar`/`.single-bar-fill` byte-for-byte
+							(height 6, radius 4, painted neutral track), and the fill is
+							omitted outright at 100% live, same as the list's `.bld-fill-track`
+							(`/revisions`' own row geometry) — a fully-arrived build has no
+							shortfall to draw.
+						-->
+						{#if coverage.liveCount < coverage.totalCount}
+							<div
+								class="rev-build-bar w-full"
+								role="img"
+								aria-label="{coverage.liveCount} of {coverage.totalCount} places running {row.short} · {coverage.buckets
+									.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`)
+									.join(' · ')}"
+								title="{coverage.liveCount} of {coverage.totalCount} places running {row.short}"
+							>
+								<div
+									class="rev-build-bar-fill"
+									style="width: {(coverage.liveCount / coverage.totalCount) * 100}%"
+								></div>
+							</div>
+						{/if}
 					</li>
 					<!--
 						THE COMMIT — DEGRADES HONESTLY. Concept 07 puts the commit message
@@ -1455,7 +1666,28 @@
 						minute — the ordinary case for a build deployed the moment it
 						was pushed.
 					-->
-					{#if row.createdMs && Math.abs(row.createdMs - row.lastDeployMs) > 60_000}
+					{#if buildReleases.length > 1}
+						<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM E — ONE `built` PER RELEASE. See
+						     `buildReleases`'s own comment: a bare, unnamed `built N ago`
+						     is a claim about ONE of this revision's releases stated as
+						     if it were about all of them. -->
+						<li class="flex items-start gap-2.5">
+							<CalendarMonthSolid
+								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+								aria-hidden="true"
+							/>
+							<span class="t-body flex flex-wrap items-baseline gap-x-1.5 text-gray-700 dark:text-gray-200">
+								{#each buildReleases as rel, i (rel.label + rel.createdMs)}
+									<span>{i > 0 ? '· ' : ''}<span class="t-code-sm">{rel.label}</span> built <time
+											datetime={new Date(rel.createdMs).toISOString()}
+											title={new Date(rel.createdMs).toLocaleString()}
+											>{formatTimeAgo(new Date(rel.createdMs).toISOString(), $now)}</time
+										>
+									</span>
+								{/each}
+							</span>
+						</li>
+					{:else if row.createdMs && Math.abs(row.createdMs - row.lastDeployMs) > 60_000}
 						<li class="flex items-start gap-2.5">
 							<CalendarMonthSolid
 								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
@@ -1655,7 +1887,12 @@
 								</div>
 							{/if}
 							{#if historyNote}
-								<div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{historyNote}</div>
+								<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM 6 — `text-gray-400` MEASURED
+								     2.60:1, THE ONLY CONTRAST FAILURE ON EITHER REVISION PAGE.
+								     `text-gray-500` is this page's own established secondary-ink
+								     step (`ranBefore`'s row two lines up, the `of N` denominator
+								     definitions) and clears the 4.5:1 floor in both themes. -->
+								<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{historyNote}</div>
 							{/if}
 						</li>
 					{/each}
@@ -1734,8 +1971,24 @@
 												<!-- `[ENV][−N]` and nothing more, with `STUCK` loose 4px
 												     beside it in the same `.chip-mark` group — the form
 												     `StuckBadge` already ships on `/`, `/rollouts` and the
-												     rollout detail page. -->
-												<span class="chip-mark">
+												     rollout detail page.
+
+												     ⭐ OPERATOR-WALK ROUND 4, ITEM A — THE GROUP IS ITS OWN
+												     LINK NOW. The row's one chevron (above) points at
+												     `g.slots[0]` — the environment this row's own action, if
+												     any, targets — so every OTHER environment sharing this
+												     row's reason was unreachable: `hello-multi-app
+												     [STAGING][STUCK] [PROD][STUCK]` linked to staging only.
+												     `.chip-mark` becomes the `<a>` itself (`.hit-32` for the
+												     touch floor, same escape hatch `/envs/<name>`'s own
+												     env-chain chip links use) so every environment in the
+												     row opens its own rollout, chevron or not. -->
+												<a
+													href={placeHref(s)}
+													class="chip-mark hit-32"
+													aria-label="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
+													title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
+												>
 													{#if s.currentRank !== null && s.currentRank > 0}
 														<span class="chip-joined">
 															<Chip
@@ -1748,10 +2001,25 @@
 															<!-- ⛔ `−N` → `N behind`. (2026-08-30) The last
 															     `−N` in the product. Same `rank` role, same
 															     joined box; a signed integer beside a build id
-															     reads as a diff and names no unit. -->
+															     reads as a diff and names no unit.
+
+															     ⭐ ROUND-4 CRAFT REVIEW, ITEM 7 — JOINED WITH A
+															     BUILD, LIKE `/rollouts`. `NEWEST` in `What each
+															     service calls it` carries the tag glyph because it
+															     is joined with `svc.label` (`value={svc.label}`);
+															     this chip named no value at all, so `hasGlyph`
+															     (`Chip.svelte`) never fired for it — 250px away,
+															     the same rank vocabulary carrying its glyph on one
+															     side and not the other. `/rollouts` pairs EVERY
+															     rank chip with the build the environment actually
+															     runs (`RolloutGrid.svelte`'s `value={c.version}`);
+															     `s.runs` is that same fact here, so the two chips
+															     converge on one spelling instead of one only. -->
 															<Chip
 																role="rank"
 																label={`${s.currentRank} behind`}
+																value={s.runs}
+																valueTitle={s.runs ?? undefined}
 																title="{s.envLabel.toUpperCase()} can still take {s.currentRank} newer version{s.currentRank ===
 																1
 																	? ''
@@ -1774,7 +2042,7 @@
 															title="{s.envLabel.toUpperCase()} is stuck"
 														/>
 													{/if}
-												</span>
+												</a>
 											{/each}
 										</div>
 
@@ -1795,7 +2063,7 @@
 														     generated identifier whole. The names are evidence, so
 														     they go under the claim they support and wrap among
 														     themselves. -->
-														<div class="t-body {r.textTone ?? 'text-gray-600 dark:text-gray-300'}">{r.text}</div>
+														<div class="t-body text-gray-600 dark:text-gray-300">{r.text}</div>
 														{#if r.gates.length > 0}
 															<div class="mt-0.5 flex flex-wrap gap-x-2">
 																{#each r.gates as gate (gate)}
@@ -1805,6 +2073,20 @@
 																	>
 																{/each}
 															</div>
+														{:else if r.record}
+															<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM 3 — THE RAW TAG AS A
+															     RECORD ROW, NEVER INLINE PROSE. Same treatment as
+															     `r.gates` above (mono, its own row under the claim),
+															     plus `break-all`: a gate id is short and hyphenated
+															     and wraps on its own; an OCI tag is one 56-character
+															     unbroken run and needs the harder break rule to avoid
+															     the silent `overflow: hidden` clip this replaces. -->
+															<div class="mt-0.5">
+																<span
+																	class="t-code-sm text-gray-500 dark:text-gray-400 break-all"
+																	title={r.recordTitle ?? r.record}>{r.record}</span
+																>
+															</div>
 														{/if}
 													</div>
 												</div>
@@ -1813,36 +2095,68 @@
 
 									{#if solo?.promoteTag}
 										{@const soloPinnedTo = solo.slot.cell.rollout?.spec?.wantedVersion}
-										<!-- `secondary`, never `primary`: the loudest control on a
-										     deploy surface must not be the one that changes
-										     production. The label names the environment, because two
-										     buttons reading `Promote` eight pixels apart have a
-										     target the reader has to infer from position. And a
-										     place with an action never shares a row, so this button
-										     always has exactly one target.
-										
-										     ⭐ `Promote` → `Deploy … to …` WHEN THE PLACE IS PINNED.
-										     (operator-walk finding 1) `Promote to dev` on a pinned
-										     environment reads as the ordinary, automatic advance — it
-										     is not: the pin already refuses every candidate, and this
-										     button's own `title` has said `Deploy …` the whole time (a
-										     one-verb-per-action mismatch between the visible label and
-										     its own accessible name). `deploy` is the right verb here
-										     regardless — `promote` is reserved for the AUTOMATIC
-										     advance (`lib/CLAUDE.md` vocabulary (d)) and this has
-										     always been a person clicking a button. The click still
-										     opens the same `ChangeVersionModal` ceremony as every other
-										     deploy on this product (typed build, a production note
-										     where `deploy-risk.ts` requires one) — never a one-click
-										     mutation — and that modal's own pin toggle (pre-checked
-										     here — `pinVersionToggleComputed` in `ChangeVersionModal`)
-										     is what decides whether the pin follows the new build or
-										     is cleared. This label does not guess which, because the
-										     operator has not chosen yet. -->
-										<div class="mt-2.5">
+										{@const isOnlyAction = singleDeployAction?.key === g.key}
+										<!--
+											⭐ ROUND-4 CRAFT REVIEW, ITEMS 5 + C.
+
+											PRIMARY IS ASSERTED BY CAPABILITY (item 5, see the
+											`deployableGroups`/`singleDeployAction` comment in the
+											script block): `.btn-secondary` stays the default — the
+											reasoned rule that a deploy surface's loudest control must
+											not be the one that changes production still holds when
+											several such rows coexist — and steps up to `.btn-primary`
+											only when this is the ONE row on the page with a live
+											candidate and no gate, which is what this build actually
+											measured.
+
+											CLEAR PIN LEADS WHEN THERE IS ONE TO CLEAR (item C, from
+											the operator walk: *"When the blocker is a pin, the
+											primary remedy is clearing it."*) A pinned environment's
+											real remedy is removing the pin, not re-pinning it to a
+											different build — `ClearPinModal` is the SAME component
+											rollout detail, `/apps` and `RolloutGrid` already open, so
+											there is one clear-pin flow and one confirmation dialog,
+											not a second one authored here. When it renders, it takes
+											the row's primary weight and `Deploy … to …` (which
+											re-pins, per its own modal's pre-checked toggle) drops to
+											secondary regardless of `isOnlyAction` — clearing the
+											block is the leading remedy, deploying a specific build
+											over it is the fallback.
+
+											⭐ `Promote` → `Deploy … to …` WHEN THE PLACE IS PINNED.
+											(operator-walk finding 1) `Promote to dev` on a pinned
+											environment reads as the ordinary, automatic advance — it
+											is not: the pin already refuses every candidate, and this
+											button's own `title` has said `Deploy …` the whole time (a
+											one-verb-per-action mismatch between the visible label and
+											its own accessible name). `deploy` is the right verb here
+											regardless — `promote` is reserved for the AUTOMATIC
+											advance (`lib/CLAUDE.md` vocabulary (d)) and this has
+											always been a person clicking a button. The click still
+											opens the same `ChangeVersionModal` ceremony as every other
+											deploy on this product (typed build, a production note
+											where `deploy-risk.ts` requires one) — never a one-click
+											mutation — and that modal's own pin toggle (pre-checked
+											here — `pinVersionToggleComputed` in `ChangeVersionModal`)
+											is what decides whether the pin follows the new build or
+											is cleared. This label does not guess which, because the
+											operator has not chosen yet.
+										-->
+										<div class="mt-2.5 flex flex-wrap items-center gap-2">
+											{#if soloPinnedTo}
+												<button
+													type="button"
+													class="btn {isOnlyAction ? 'btn-primary' : 'btn-secondary'}"
+													onclick={() => openClearPin(solo.slot, solo.envLabel)}
+													title={`Clear the pin on ${solo.appName} in ${solo.envLabel}`}
+												>
+													<LockOpenOutline class="h-4 w-4" />
+													{CLEAR_PIN_LABEL}
+												</button>
+											{/if}
 											<button
 												type="button"
-												class="btn btn-secondary"
+												class="btn {soloPinnedTo || !isOnlyAction ? 'btn-secondary' : 'btn-primary'}"
 												onclick={() => openPromote(solo.slot, solo.promoteTag!)}
 												title={`Deploy ${row.short} to ${solo.appName} in ${solo.envName}`}
 											>
@@ -1857,7 +2171,7 @@
 						{:else}
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each groupSlots(bucket.slots) as g (g.appName)}
-									<li class="px-4 py-3">
+									<li class="rev-place-row px-4 py-3">
 										{#each g.runs as rg, gi (rg.runs ?? '—')}
 											<div class="flex flex-wrap items-center gap-x-4 gap-y-2" class:mt-2={gi > 0}>
 												<a
@@ -1871,6 +2185,7 @@
 													/></a
 												>
 												{#each rg.slots as s (s.envName)}
+													{@const age = bucket.key === 'live' ? slotDeployedAgo(s) : null}
 													<!--
 														`/apps`'s unit, character for character: the
 														environment's badge, and nothing beside it unless the
@@ -1880,35 +2195,61 @@
 														`prod-ap-south`, `prod-us-east` and `prod-us-west` all
 														ellipsise to the same eight characters, the exact defect
 														that killed the `/apps` convergence bar.
+
+														⭐ OPERATOR-WALK ROUND 4, ITEMS 2 + A — ONE NON-WRAPPING
+														ATOM, AND THE ATOM IS THE LINK.
+
+														ITEM 2: the chip and its own age used to be SIBLING flex
+														children of the row (`flex flex-wrap`), so the wrap
+														could land BETWEEN a chip and the age that names it —
+														measured live at 1440, a `5 days ago` sitting 84px left
+														of the `PROD` chip it looked like it was labelling, and
+														at 390 wrong on every row. `.rev-env-atom` is
+														`display: inline-flex` with its own `flex-wrap: nowrap`,
+														so the pair can only ever wrap as ONE unit between
+														atoms, never inside one; the container query below
+														forces one atom per line under 560px, chip first.
+
+														ITEM A: every environment chip elsewhere on this page
+														was inert — only the row's own appName link (above)
+														went anywhere, so `hello-multi-app [STAGING] [PROD]`
+														here could only ever open staging. The atom becomes the
+														`<a>` itself (`.hit-32` for the touch floor), so each
+														place opens its own rollout regardless of which one the
+														row's own chevron happens to point at.
 													-->
-													<span class="chip-mark">
-														<Chip
-															role="env"
-															theme={s.slot.cell.theme}
-															label={s.envLabel}
-															wide
-															title="{s.envLabel.toUpperCase()} — {s.statusWord}"
-														/>
-														{#if isStuck(s)}
+													<a
+														href={placeHref(s)}
+														class="rev-env-atom hit-32"
+														aria-label="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
+														title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
+													>
+														<span class="chip-mark">
 															<Chip
-																role="alarm"
-																label="stuck"
-																title="{s.envLabel.toUpperCase()} is stuck"
+																role="env"
+																theme={s.slot.cell.theme}
+																label={s.envLabel}
+																wide
+																title="{s.envLabel.toUpperCase()} — {s.statusWord}"
 															/>
-														{/if}
-													</span>
-													<!-- ⭐ PER-PLACE AGE — `live` ONLY. (F13, 2026-09-03) See
-													     `slotDeployedAgo`'s own note: three environments
-													     running one build rarely arrived together, and this
-													     is the one card on the page that can say when EACH
-													     place actually got it, from data already read to
-													     decide the place belongs in this bucket at all.
-													     ⛔ `{age}` PRINTED BARE — the same "4h ago" a `built`
-													     time on `This build` could just as easily be — and an
-													     operator walk read them as the same clock. The verb
-													     is always in front of the number now. -->
-													{#if bucket.key === 'live'}
-														{@const age = slotDeployedAgo(s)}
+															{#if isStuck(s)}
+																<Chip
+																	role="alarm"
+																	label="stuck"
+																	title="{s.envLabel.toUpperCase()} is stuck"
+																/>
+															{/if}
+														</span>
+														<!-- ⭐ PER-PLACE AGE — `live` ONLY. (F13, 2026-09-03) See
+														     `slotDeployedAgo`'s own note: three environments
+														     running one build rarely arrived together, and this
+														     is the one card on the page that can say when EACH
+														     place actually got it, from data already read to
+														     decide the place belongs in this bucket at all.
+														     ⛔ `{age}` PRINTED BARE — the same "4h ago" a `built`
+														     time on `This build` could just as easily be — and an
+														     operator walk read them as the same clock. The verb
+														     is always in front of the number now. -->
 														{#if age}
 															<span class="t-micro text-gray-500 dark:text-gray-400"
 																>deployed <time datetime={age.iso} title={new Date(age.iso).toLocaleString()}
@@ -1916,7 +2257,7 @@
 																></span
 															>
 														{/if}
-													{/if}
+													</a>
 												{/each}
 												<!-- WHAT TOOK ITS PLACE — once per (service, build), not
 												     once per environment. -->
@@ -1978,6 +2319,12 @@
 		rollout={modalRollout}
 		initialSelectedVersion={modalVersion}
 		cluster={modalCluster}
+	/>
+	<ClearPinModal
+		bind:open={clearPinOpen}
+		rollout={clearPinRollout}
+		cluster={clearPinCluster}
+		environmentName={clearPinEnvLabel}
 	/>
 </div>
 
@@ -2045,6 +2392,35 @@
 		container-type: inline-size;
 	}
 
+	/*
+	 * ⭐ ROUND-4 CRAFT REVIEW, ITEM 1 — `RevisionLead.svelte`'s
+	 * `.single-bar`/`.single-bar-fill` AND `/revisions`' own
+	 * `.bld-fill-track`/`.bld-fill`, BYTE-IDENTICAL GEOMETRY, THIRD SPELLING.
+	 * Height 6 / radius 4 is the product's one "single fill, exact width"
+	 * bar now, product-wide across both revision pages; `overflow: hidden`
+	 * is what clips the fill's square end to the track's rounded one.
+	 */
+	.rev-build-bar {
+		height: 6px;
+		border-radius: 4px;
+		overflow: hidden;
+		background-color: var(--color-gray-200);
+	}
+
+	:global(.dark) .rev-build-bar {
+		background-color: var(--color-gray-700);
+	}
+
+	.rev-build-bar-fill {
+		height: 100%;
+		border-radius: inherit;
+		background-color: var(--color-green-700);
+	}
+
+	:global(.dark) .rev-build-bar-fill {
+		background-color: var(--color-green-600);
+	}
+
 	.rev-buckets {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -2055,6 +2431,47 @@
 	@container (min-width: 640px) {
 		.rev-buckets {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	/*
+	 * ⭐ OPERATOR-WALK ROUND 4, ITEM 2 — THE ENV+AGE ATOM, AND ITS OWN
+	 * CONTAINER. `.rev-buckets` puts these rows in a 2-column grid at 640px+,
+	 * so a card's own rendered width is narrower than the PAGE at every width
+	 * between 640 and roughly 1200 — keying the "one atom per line" rule off
+	 * `.rev-cq` (the page-level container two rules up) would miss exactly
+	 * the tablet-ish range where a card column is under 560px but the page
+	 * is not. `.rev-place-row` is its own nested container, sized to what
+	 * this row actually renders at, whatever grid track it landed in.
+	 */
+	.rev-place-row {
+		container-type: inline-size;
+	}
+
+	/*
+	 * `display: inline-flex` with the container's default `flex-wrap: nowrap`
+	 * — an atom has exactly two children (the chip, and its own age) and they
+	 * may never wrap apart from each other. The OUTER row (`flex flex-wrap`,
+	 * inline above) is what wraps BETWEEN atoms; this rule only stops the
+	 * line break from landing inside one.
+	 */
+	.rev-env-atom {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	/*
+	 * Below 560px (this row's own rendered width, via `.rev-place-row`
+	 * above), one atom per line, chip first — `flex-basis: 100%` inside a
+	 * `flex-wrap` parent is the standard "one item per row" idiom: each atom
+	 * claims the row's full width, so the next one is pushed to its own line
+	 * without a media query re-deriving the row's own layout.
+	 */
+	@container (max-width: 560px) {
+		.rev-env-atom {
+			flex-basis: 100%;
 		}
 	}
 

@@ -258,7 +258,7 @@ async function renderRevisions() {
 	// settles — waiting on it clears the loading branch for every assertion
 	// below.
 	await waitFor(() =>
-		expect(screen.getAllByText('Newest build in use').length).toBeGreaterThan(0)
+		expect(screen.getAllByText(/^Newest build ·/).length).toBeGreaterThan(0)
 	);
 }
 
@@ -304,7 +304,7 @@ describe('/revisions — one consistent block per repository', () => {
 		expect(headingTexts()).toEqual([
 			'Revisions',
 			'repo-a',
-			'Newest build in use',
+			expect.stringMatching(/^Newest build ·/),
 			'Also still running',
 			'No longer running anywhere',
 			'Never deployed'
@@ -325,12 +325,12 @@ describe('/revisions — one consistent block per repository', () => {
 
 		// §1's default open state: index 0 (repo-a, more recently active)
 		// open, repo-b closed — so only repo-a's hero/list cards render yet.
-		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(1));
+		await waitFor(() => expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(1));
 
 		// Opening repo-b's own disclosure reaches the defect this round
 		// closes: only `ledgers[0]` used to reach these cards at all.
 		await fireEvent.click(repoHeaderButton('repo-b'));
-		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(2));
+		await waitFor(() => expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(2));
 		await waitFor(() => {
 			expect(screen.getAllByText('Also still running')).toHaveLength(2);
 			expect(screen.getAllByText('No longer running anywhere')).toHaveLength(2);
@@ -360,7 +360,7 @@ describe('/revisions — default open state and the remembered open set (REVISIO
 		// The ledger itself is NOT gated by the disclosure — collapsed still
 		// carries the page's most useful answer.
 		expect(screen.getByText('repo-b')).toBeInTheDocument();
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
+		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(1);
 	});
 
 	test('opening a second section is remembered across a remount', async () => {
@@ -370,20 +370,20 @@ describe('/revisions — default open state and the remembered open set (REVISIO
 
 		const first = render(WithQueryClient, { props: { component: Page as any } });
 		await waitFor(() =>
-			expect(screen.getAllByText('Newest build in use').length).toBeGreaterThan(0)
+			expect(screen.getAllByText(/^Newest build ·/).length).toBeGreaterThan(0)
 		);
 		await fireEvent.click(repoHeaderButton('repo-b'));
-		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(2));
+		await waitFor(() => expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(2));
 		first.unmount();
 
 		// A fresh mount of the SAME page — no interaction — must remember that
 		// repo-b (index 1) was left open.
 		render(WithQueryClient, { props: { component: Page as any } });
 		await waitFor(() =>
-			expect(screen.getAllByText('Newest build in use').length).toBeGreaterThan(0)
+			expect(screen.getAllByText(/^Newest build ·/).length).toBeGreaterThan(0)
 		);
 		expect(repoHeaderButton('repo-b')).toHaveAttribute('aria-expanded', 'true');
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(2);
+		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(2);
 	});
 });
 
@@ -485,18 +485,24 @@ describe('/revisions — round 3 §1 (a repository is not one release line)', ()
 		// One repo, one card — but TWO "Newest build in use" bands, because
 		// `m-jobs`'s own current build is not older than anything on ITS OWN
 		// line; it is only not the repo-wide newest by creation time.
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(2);
+		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(2);
 		// Printed twice each — the hero's own `Card` verdict AND the ledger's
 		// per-line caption (addendum H) — never a bare repo-wide count.
 		expect(screen.getAllByText('m-web · m-web2').length).toBeGreaterThan(0);
 		expect(screen.getAllByText('m-jobs').length).toBeGreaterThan(0);
 	});
 
-	test('the header states "N release lines" rather than a single distance figure that would lie', async () => {
+	test('the header states one grammar with everyone else (round 4, item 11); "N release lines" moves to the meta line', async () => {
 		const fleet = twoLineRepoFixture('m');
 		stubFetch(fleet.rollouts, fleet.environments);
 		await renderRevisions();
-		expect(screen.getByText('2 release lines')).toBeInTheDocument();
+		// ⭐ ROUND 4, ITEM 11 — a multi-line repo used to print `N release
+		// lines` where a single-line repo printed a distance verdict (`N
+		// newer builds` / `Newest build deployed`) — one header slot, two
+		// grammars. This fixture has nothing pending on either line, so both
+		// shapes now agree on `Newest build deployed`; the release-line COUNT
+		// survives only on the meta line below.
+		expect(screen.getByText('Newest build deployed')).toBeInTheDocument();
 		expect(screen.getByText(/·\s*across\s*2\s*release lines/)).toBeInTheDocument();
 	});
 
@@ -511,7 +517,7 @@ describe('/revisions — round 3 §1 (a repository is not one release line)', ()
 		// build-list row uses — "Also still running", "No longer running",
 		// "Never deployed") — only the hero and the ledger, neither of which
 		// is a `.bld-row`.
-		await waitFor(() => expect(screen.getAllByText('Newest build in use')).toHaveLength(2));
+		await waitFor(() => expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(2));
 		expect(document.querySelectorAll(`.bld-row [title="${fleet.l2.revision}"]`)).toHaveLength(0);
 	});
 });
@@ -547,10 +553,12 @@ describe('/revisions — search finds a build (§7b)', () => {
 		const short = fleet.r2.revision.slice(0, 7);
 		await fireEvent.input(search, { target: { value: short } });
 		await waitFor(() => expect(screen.getAllByTitle(fleet.r2.revision).length).toBeGreaterThan(0));
-		// The other build lists narrow to the no-match sentence.
-		await waitFor(() =>
-			expect(screen.getAllByText(`No build matches “${short}”.`).length).toBeGreaterThan(0)
-		);
+		// ⭐ ROUND 4, ITEM 1 — the OTHER build lists narrow to NOTHING, not to
+		// a repeated no-match sentence: the repo itself has a match (r2), so
+		// `repoNoMatch` is false and every empty card here collapses to its
+		// own `0 of N` rollup instead of printing "No build matches" a
+		// second (third, fourth…) time.
+		expect(screen.queryByText(new RegExp('No build matches'))).toBeNull();
 	});
 
 	test('matches a service name', async () => {
@@ -566,21 +574,25 @@ describe('/revisions — search finds a build (§7b)', () => {
 		const b = repoFixture('https://github.com/acme/repo-b.git', 'b');
 		stubFetch([...a.rollouts, ...b.rollouts], [...a.environments, ...b.environments]);
 		await renderRevisions();
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
+		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(1);
 
 		const search = screen.getByPlaceholderText('Find a build or service') as HTMLInputElement;
-		// A query that matches only repo-a's own build still OPENS repo-b's
-		// disclosure — the rule is "searching", not "this repo happens to
-		// match" — but repo-b's own body has nothing to show, so it collapses
-		// to the round-3 §2 one-sentence form rather than an empty hero.
+		// A query that matches only repo-a's own build still counts repo-b as
+		// SEARCHED — the rule is "searching", not "this repo happens to
+		// match" — but repo-b has nothing at all to show, so per ROUND 4,
+		// ITEM B its whole header collapses to `repo-b · no match`: no
+		// stats, no distance verdict, and (nothing left to disclose) no
+		// button — `repoHeaderButton` would find none, which is the point.
 		await fireEvent.input(search, { target: { value: a.r1.revision.slice(0, 8) } });
-		await waitFor(() => expect(repoHeaderButton('repo-b')).toHaveAttribute('aria-expanded', 'true'));
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
-		expect(screen.getAllByText(new RegExp(`No build matches`)).length).toBeGreaterThan(0);
+		const repoBHeading = await screen.findByRole('heading', { level: 2, name: 'repo-b' });
+		const repoBCard = repoBHeading.closest('.repo-card') as HTMLElement;
+		await waitFor(() => expect(within(repoBCard).getByText('no match')).toBeInTheDocument());
+		expect(within(repoBCard).queryByRole('button')).toBeNull();
+		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(1);
 
 		await fireEvent.input(search, { target: { value: '' } });
 		await waitFor(() => expect(repoHeaderButton('repo-b')).toHaveAttribute('aria-expanded', 'false'));
-		expect(screen.getAllByText('Newest build in use')).toHaveLength(1);
+		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(1);
 	});
 
 	test('a repo with no match keeps its repository card and prints the no-match sentence', async () => {
