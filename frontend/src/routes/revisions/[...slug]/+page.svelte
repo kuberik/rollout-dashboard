@@ -7,7 +7,7 @@
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
-	import { repoBody, revisionPath, displayVersionForTag } from '$lib/version-utils';
+	import { repoBody, revisionPath, displayVersionForTag, shortRevision } from '$lib/version-utils';
 	import { getDisplayVersion } from '$lib/utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
@@ -36,7 +36,8 @@
 	// verb table (`Deploying` → `deploying`, `InProgress` → `checking` — the
 	// file's own header comment records why `baking` was retired from every
 	// user-facing surface in 2026-08-30; this row must not reinvent it).
-	import { bakeWord } from '$lib/bake-status';
+	import { bakeWord, bakeTitle } from '$lib/bake-status';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import {
 		joinClauses,
 		buildGateContext,
@@ -53,7 +54,13 @@
 	// finding 4).
 	import GateRecord, { gateMark } from '$lib/components/GateRecord.svelte';
 	import { countLabel } from '$lib/disclosure';
-	import { formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind } from '$lib/utils';
+	import {
+		formatTimeAgo,
+		formatTimeAgoCompact,
+		formatDate,
+		detectStuck,
+		detectStuckBehind
+	} from '$lib/utils';
 	// ⭐ THE SAME THREE-STEP STUCK DERIVATION `/apps/<name>` USES (operator-walk
 	// finding 3) — see `stuckFor` below for why `CoverageSlotVM.stuck` alone is
 	// not trustworthy for the badge this page draws.
@@ -501,18 +508,6 @@
 		coverage?.buckets.find((b) => b.key === 'deploying')?.slots.length ?? 0
 	);
 
-	function releaseSplitSentence(): string {
-		return releaseSplitLines
-			.map((l) => {
-				const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
-				const clause = l.held
-					? `${l.aheadLabel} is held in ${envs}`
-					: `${l.aheadLabel} has not reached ${envs} yet`;
-				return `${l.count} of them on ${l.behindLabel}; ${clause}.`;
-			})
-			.join(' ');
-	}
-
 	$effect(() => {
 		for (const s of blockedSlots) {
 			if (s.notPassingGates.length === 0 || !s.rolloutRef) continue;
@@ -598,6 +593,88 @@
 		}
 		return [...byEnv.values()].sort((a, b) => compareEnvironmentNames(a.envLabel, b.envLabel));
 	});
+
+	/**
+	 * ⭐ ITEM 1 (2026-09-06 round-7 critique) — THE BLOCKING CAUSE, DRAWN
+	 * ONCE, LEADING THE DISCLOSURE. Measured live on `9f10e494d560`: the
+	 * head-band's `2 rules in prod · 2 in staging · 1 in dev` disclosure
+	 * expanded to FIVE equal `GateRecord` entries (`KIND service contract /
+	 * RULE dependency-hello-frontend-needs-api`, `KIND promotion order /
+	 * RULE ghd-9qcnj`, …) with zero links — a dependency contract and a
+	 * promotion-order gate that clears itself once the contract does,
+	 * printed as if they were the same kind of fact. The list page's own
+	 * banner (`heldGateReason` there) already draws this correctly: the
+	 * contract leads, in prose, with an `Open <service>` action. This is
+	 * the same shape, reused rather than re-derived — `slotStories` already
+	 * carries every classified gate this page needs; a dependency gate
+	 * with a full provider/contract/have/need relation IS the current
+	 * blocker (nobody clicks anything to clear it — a person has to ship
+	 * the other service), so it is the first one found, across every
+	 * blocked place, deduped by its own id.
+	 */
+	const primaryHold = $derived.by<{
+		reason: NonNullable<ReturnType<typeof contractBlockReason>>;
+		appHref: string | null;
+		gateId: string;
+	} | null>(() => {
+		for (const { story } of slotStories) {
+			const dep = story.gates.find(
+				(g) => g.kind === 'dependency' && g.subject && g.contract && g.have && g.need
+			);
+			if (dep) {
+				return {
+					reason: contractBlockReason({
+						provider: dep.subject!,
+						contract: dep.contract!,
+						requiredVersion: dep.need,
+						providedVersion: dep.have,
+						gateName: dep.id
+					}),
+					appHref: `/apps/${encodeURIComponent(dep.subject!)}`,
+					gateId: dep.id
+				};
+			}
+		}
+		return null;
+	});
+
+	/**
+	 * ⭐ EVERYTHING ELSE HOLDING A PLACE, ONCE THE PRIMARY CAUSE IS DRAWN
+	 * ABOVE. A promotion-order gate (`ghd-9qcnj`) that only refuses because
+	 * the environment controller has not observed the contract's own fix
+	 * yet CLEARS once the contract does — it is real, and it still holds
+	 * the place today, but it is not what an operator should act on first.
+	 * Filtered per-section (not a bare `bannerRuleCount`-style total) so a
+	 * section left with nothing after removing the primary gate does not
+	 * render an empty record.
+	 */
+	const secondaryEnvSections = $derived(
+		bannerEnvSections
+			.map((section) => ({
+				...section,
+				classifiedGates: section.classifiedGates.filter((g) => g.id !== primaryHold?.gateId)
+			}))
+			.filter((section) => section.classifiedGates.length > 0 || section.windowGateNames.length > 0)
+	);
+
+	/**
+	 * ⭐ ITEM 2 (2026-09-06 round-7 critique) — THE HEADLINE NAMES THE
+	 * RELEASE AND THE SERVICE WHEN THE SHA CARRIES SEVERAL. `9f10e49 is
+	 * held` was true and unhelpful the moment the sha resolved to two
+	 * releases (`2.66.0-66`, running everywhere; `2.67.0-67`, held
+	 * everywhere) — the bare sha does not say WHICH release is the one
+	 * actually stuck. `releaseSplitLines`' own `held` line already carries
+	 * the answer (`aheadLabel`), the same evidence the (now-removed)
+	 * page-level sentence read — reused here rather than a second lookup.
+	 */
+	const bannerSubject = $derived.by(() => {
+		const apps = [...new Set(blockedSlots.map((s) => s.appName))];
+		return apps.length === 1 ? apps[0] : `${apps.length} services`;
+	});
+	const heldReleaseLabel = $derived(releaseSplitLines.find((l) => l.held)?.aheadLabel ?? null);
+	const bannerTitle = $derived(
+		heldReleaseLabel ? `${bannerSubject} ${heldReleaseLabel} is held` : `${row?.short} is held`
+	);
 
 	/** The SET the trigger counts: gate handles, both buckets, never the clock. */
 	const bannerRuleCount = $derived(
@@ -842,42 +919,14 @@
 	);
 
 	/**
-	 * ⭐ F9: HEIGHT-MATCH `This build` / `What each service calls it` ONLY
-	 * WHEN THEY ARE CLOSE — NOT UNCONDITIONALLY. (2026-09-03, fourth re-check;
-	 * re-grounded 2026-09-06, item 1 — `.rev-buckets` is `align-items: start`
-	 * by default now, not `stretch`.) `This build` runs 5-6 fixed rows (bar,
-	 * commit, repo, service count, last deployed, the outbound link) while
-	 * `What each service calls it` is one row per service — on a repo with
-	 * one or two services stretching it to match measured 52% fill, nothing
-	 * to say in the other 48%. That pairing predates the grid-wide default
-	 * flipping to `start`; this measurement is what still lets the pair OPT
-	 * IN to matching when they are genuinely close, which `start` alone
-	 * would not do.
-	 *
-	 * A grid item's OWN height cannot be read while it is stretched — a
-	 * stretched item's height IS the row's height, not its content's — so
-	 * this measures the wrapper BEFORE opting in: `rev-pair-natural` (below)
-	 * holds `align-self: start`, which is what lets `bind:clientHeight` see
-	 * each card's true, un-stretched content height. Only once BOTH are
-	 * known and the shorter is within 25% of the taller does the wrapper
-	 * switch to `.rev-pair-match` (`align-self: stretch`) — which, once
-	 * applied, re-measures as the (now equal) row height and the comparison
-	 * stays true. A large gap never opts in, and the pair just sits at its
-	 * own two different heights, which reads as two cards of different KINDS
-	 * rather than one card mostly empty.
-	 *
-	 * Scoped to exactly these two cards (the grid's first two children) —
-	 * the bucket cards after them are unaffected and keep the grid's own
-	 * `align-items: start`, because nothing has measured THEM as a pair that
-	 * should match at all.
+	 * ⛔ THE HEIGHT-MATCH OPT-IN IS GONE (ITEM 3, 2026-09-06 round-7
+	 * critique). F9's 25%-gap heuristic still stretched `What each service
+	 * calls it` to match `This build` on `9f10e494d560` — measured live,
+	 * 593×315 with ~92px of dead body below the last service row. `start` is
+	 * the grid's own default for every OTHER pair on this page (the bucket
+	 * cards); this top pair now gets the same honest rule — its own content
+	 * height, never a neighbour's.
 	 */
-	let buildCardHeight = $state(0);
-	let svcCardHeight = $state(0);
-	const heightsClose = $derived(
-		buildCardHeight > 0 && svcCardHeight > 0
-			? Math.min(buildCardHeight, svcCardHeight) >= Math.max(buildCardHeight, svcCardHeight) * 0.75
-			: false
-	);
 
 	/**
 	 * ⭐ PER-PLACE AGE, FOR THE `live` BUCKET ONLY. (F13, 2026-09-03)
@@ -907,29 +956,42 @@
 	}
 
 	/**
-	 * ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 1 (blocking, IN-FLIGHT DETAIL) —
-	 * THE `deploying` ROW STATES THE IN-FLIGHT FACT, NEVER "now on". Measured
-	 * live mid-canary: this bucket's own row fell through to the `ahead`
-	 * bucket's sentence (`now on <sha>` — "these have already moved on to
-	 * something else"), which is false of a place taking this row's own build
-	 * right now. `history[0]` IS the in-flight deploy for an `onIt` slot (the
-	 * same read `slotDeployedAgo` already makes), so the start time is not a
-	 * new fetch — only a new label on a timestamp already read.
-	 *
-	 * The verb is `bake-status.ts`'s own `bakeWord()` — never a re-spelling —
-	 * capitalised for the row's leading position. `Deploying` names the build
-	 * going out, so it carries THIS row's own sha (that build IS what is
-	 * deploying); `InProgress` ("checking") names no build, because the new
-	 * version is already serving and the wait is the health watch, not the
-	 * rollout — the sha would be a stale claim there.
+	 * ⭐ ITEM 7 (2026-09-06 round-7 critique) — "WHAT DID THIS PLACE RUN
+	 * BEFORE THIS?" HAD NO ANSWER ON AN ENV CHIP ANYWHERE ON THIS PAGE.
+	 * `history[0]` is the place's CURRENT deploy (whatever this row already
+	 * reads it as — live, held, ahead, deploying); `history[1]` is the one
+	 * immediately before it, a real timestamped record regardless of
+	 * whether it matches this row's own revision. Distinct from
+	 * `ranBeforeOf` (which searches the WHOLE history for a match to THIS
+	 * row's revision, for the service-ledger card) — this is the simpler,
+	 * always-available fact an operator asks of any single chip: what was
+	 * here immediately before what's here now, and until when.
 	 */
-	function deployingCaption(s: CoverageSlotVM, sha: string): string {
-		const bs = slotBakeStatus(s.slot);
-		const word = bakeWord(bs);
-		const verb = bs === 'InProgress' ? word : `${word} ${sha}`;
-		const Verb = verb.charAt(0).toUpperCase() + verb.slice(1);
+	function wasOnClause(s: CoverageSlotVM): string {
+		const prev = s.slot.cell.rollout?.status?.history?.[1];
+		const prevRevision = prev?.version?.revision;
+		if (!prevRevision || !prev?.timestamp) return '';
+		return ` · was on ${shortRevision(prevRevision)} until ${formatDate(prev.timestamp)}`;
+	}
+
+	/**
+	 * ⛔ SUPERSEDED — ITEM 5 (2026-09-06 round-7 critique), measured on a
+	 * real canary (Clear pin on `hello-multi-dev`, 2m45s): this caption
+	 * printed `Deploying 064b655 · started 32s ago` under a card titled
+	 * `Deploying`, on a page whose own `h1` is already `064b655` — the sha
+	 * said three times in one screenful for no new information. Round-7
+	 * ruling 4: "In flight is one mark per row … no inserted word, no
+	 * second chip." The env chip now carries `bakeWord()` itself, inside
+	 * its own box (`BakeStatusIcon` — see the call site), so this caption
+	 * is left with exactly the one fact the chip cannot carry: since when.
+	 */
+	function deployingCaption(s: CoverageSlotVM): string {
 		const started = slotDeployedAgo(s);
-		return started ? `${Verb} · started ${started.ago} ago` : Verb;
+		if (started) return `started ${started.ago} ago`;
+		// Defensive fallback only — every `deploying`-bucket slot has a
+		// `history[0]` timestamp in practice (it is what put it in this
+		// bucket at all). Stay honest rather than print nothing if it does not.
+		return bakeTitle(slotBakeStatus(s.slot));
 	}
 
 	/**
@@ -1818,17 +1880,16 @@
 		</div>
 
 		<!--
-			⭐ THE RELEASE-LINE CLAUSE. (2026-09-03, operator-walk BLOCKING item)
-			`6 of 6 places running it` is true and, on its own, misleading the
-			moment two releases share this revision: it does not say that three
-			of them are on an OLDER release than the one this row is named for.
-			Rendered ONLY when `releaseSplitLines` is non-empty — the ordinary
-			case (everyone live is on the row's own release) has nothing to add
-			here and stays exactly the single count line above.
+			⛔ THE RELEASE-LINE PARAGRAPH IS GONE (ITEM 2, 2026-09-06 round-7
+			critique). `3 of them on 2.66.0-66; 2.67.0-67 is held in dev,
+			staging and prod.` restated two facts the page already states
+			elsewhere: how many are held is the head band's own
+			`headBandHeldCount` sentence 12px up, and WHICH release is held
+			and WHERE is now the banner's own headline (`bannerTitle`, named
+			below) and its `message` (`held in dev, staging and prod` — see
+			`bannerMessage`'s own comment). One fact, once, named by the
+			banner's subject rather than restated in prose above it.
 		-->
-		{#if releaseSplitLines.length > 0}
-			<p class="t-body -mt-2 mb-5 text-gray-500 dark:text-gray-400">{releaseSplitSentence()}</p>
-		{/if}
 
 		<!--
 			THE ONE BLOCKING FACT, AS A FILLED FIELD. `AlertPanel` IS the object
@@ -1837,49 +1898,78 @@
 			ONE banner: a page with three has none.
 		-->
 		{#if blockedSlots.length > 0}
-			<!-- ⭐ THE RECORD, GROUPED BY ENVIRONMENT. Each section leads with
-			     that environment's own chip, so a reader never has to hold
-			     `ghd-p2fld` in their head while scrolling to find out whose
-			     rule it is — the row IS the answer. `GateRecord` reads
-			     `currentColor` off the banner's own footnote ink at
-			     `tone="banner"`, same as `BlockingStoryPanel`'s call. -->
+			<!--
+				⭐ ITEM 1 (2026-09-06 round-7 critique) — THE BLOCKING CAUSE
+				LEADS, DRAWN ONCE, WITH ITS OWN ACTION. See `primaryHold`'s own
+				comment: this used to render every classified gate through
+				`GateRecord`, grouped only by environment, so a dependency
+				contract (the actual, current blocker — someone has to ship
+				`hello-api-app`) and a promotion-order gate (which clears BY
+				ITSELF once the contract does) printed as five equal `KIND` /
+				`RULE` records with no link anywhere. `primaryHold.reason.line`
+				is the exact sentence the list page's own banner already draws
+				for this fact (`Needs api ^1.67.0 from hello-api-app, which is
+				on 1.66.0 …`), plus the `Open <service>` action; everything
+				else that still holds a place (`secondaryEnvSections`) follows,
+				demoted and labelled as clearing once the lead cause does.
+			-->
 			{#snippet gateFacts()}
 				<div class="flex min-w-0 flex-col gap-3">
-					{#each bannerEnvSections as section (section.envLabel)}
+					{#if primaryHold}
 						<div class="flex min-w-0 flex-col gap-1.5">
-							<Chip role="env" theme={section.theme} label={section.envLabel} wide />
-							{#if section.classifiedGates.length > 0}
-								<GateRecord gates={section.classifiedGates} tone="banner" />
-							{/if}
-							{#if section.windowGateNames.length > 0}
-								<FactList
-									tone="banner"
-									facts={[
-										...(section.opensAt
-											? [
-													{
-														label: 'Opens',
-														value: `in ${formatTimeUntil(section.opensAt, $now)} · ${new Date(section.opensAt).toLocaleString()}`
-													}
-												]
-											: []),
-										...section.windowGateNames.map((name) => ({
-											label: 'Not passing',
-											value: name,
-											handle: true
-										}))
-									]}
-								/>
+							<p class="t-body min-w-0">{primaryHold.reason.line}</p>
+							{#if primaryHold.appHref}
+								<a class="nav-link mt-1 inline-flex" href={primaryHold.appHref}>
+									Open {primaryHold.reason.subject ?? 'the service'}
+									<ArrowRightOutline class="h-3.5 w-3.5" aria-hidden="true" />
+								</a>
 							{/if}
 						</div>
-					{/each}
+					{/if}
+					{#if secondaryEnvSections.length > 0}
+						<div class="flex min-w-0 flex-col gap-3">
+							<p class="t-micro min-w-0" style="opacity: 0.75">
+								{primaryHold
+									? 'Also in the way once that clears, by environment:'
+									: 'By environment:'}
+							</p>
+							{#each secondaryEnvSections as section (section.envLabel)}
+								<div class="flex min-w-0 flex-col gap-1.5">
+									<Chip role="env" theme={section.theme} label={section.envLabel} wide />
+									{#if section.classifiedGates.length > 0}
+										<GateRecord gates={section.classifiedGates} tone="banner" />
+									{/if}
+									{#if section.windowGateNames.length > 0}
+										<FactList
+											tone="banner"
+											facts={[
+												...(section.opensAt
+													? [
+															{
+																label: 'Opens',
+																value: `in ${formatTimeUntil(section.opensAt, $now)} · ${new Date(section.opensAt).toLocaleString()}`
+															}
+														]
+													: []),
+												...section.windowGateNames.map((name) => ({
+													label: 'Not passing',
+													value: name,
+													handle: true
+												}))
+											]}
+										/>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/snippet}
 
 			<AlertPanel
 				severity="warning"
 				icon={bannerIcon}
-				title="{row.short} is held"
+				title={bannerTitle}
 				message={bannerMessage}
 				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
 				footnoteLabel={bannerRuleCount > 0 ? ruleCountBreakdown : undefined}
@@ -1913,10 +2003,10 @@
 			⛔ THE STRETCH ITSELF IS GONE, ITEM 1 (2026-09-06 critique). It
 			traded ragged bottoms for the opposite defect: `Running it now`
 			ran 417px beside a 161px `Not here yet`, 61% empty. `.rev-buckets`
-			is `align-items: start` now (see its own CSS comment) — each
-			bucket card is its own height, and the ONE pair that still wants
-			to match (`This build` / `What each service calls it`, when
-			`heightsClose`) opts in via `.rev-pair-match`.
+			is `align-items: start` now (see its own CSS comment) — every card
+			on the grid, including `This build` / `What each service calls
+			it`, is its own height now (round-7 item 3 removed the pair's own
+			height-match opt-in too — see the CSS comment on `.rev-buckets`).
 
 			AND `auto-fit` GAVE WAY TO A FIXED 2 COLUMNS, because a THIRD track
 			at 1440 is exactly what stranded the fourth card alone. `What each
@@ -1937,29 +2027,17 @@
 				for anyone who cannot see the segments.
 			-->
 			<!--
-				⭐ THE HEADER SLOT TAKES A ROLLUP, NEVER A BARE GRAPHIC WITH NO WORDS
-				OF ITS OWN. (2026-09-03, F12) This was a `compact` `CoverageBar`
-				alone in the slot — a 20px-wide unlabelled green/gray strip, legible
-				only via its `aria-label` (a graphic wearing an accessible name is
-				not the same as a rollup a sighted reader can take at a glance, and
-				every OTHER card header on this page answers in TEXT). The slot is
-				now `verdict`, the plain string form every other card on the
-				product uses (`3/3 healthy`, `10/10 ready`) — the same fact the
-				head band already states in words 60px up, which is the accepted
-				shape here (`/apps`' head band and its `All apps` card both name
-				`2 of 4 blocked` too). The bar itself did not vanish: it moves into
-				the body, as its own row — see round-4 craft review item 1, below,
-				for what it draws now (a single painted-track fill, not the
-				segmented cell strip this comment used to describe).
+				⛔ THE HEADER ROLLUP IS GONE (ITEM 2, 2026-09-06 round-7 critique).
+				`{coverage.liveCount} of {coverage.totalCount} places` here was the
+				head band's own `9 of 9 places run this build`, repeated 45px below
+				it — the same fact this pass's own "ONE FACT ONCE" rule elsewhere on
+				this page argues against. The bar in the body below still draws the
+				shortfall when there is one (round-4 craft review item 1); the card
+				header now carries no rollup of its own, same as a card with nothing
+				to summarise beyond its title.
 			-->
-			<div bind:clientHeight={buildCardHeight} class={heightsClose ? 'rev-pair-match' : 'rev-pair-natural'}>
-			<Card
-				icon={RocketOutline}
-				title="This build"
-				verdict="{coverage.liveCount} of {coverage.totalCount} places"
-				verdictTitle="{coverage.liveCount} of {coverage.totalCount} places running {row.short}"
-				class={heightsClose ? 'h-full' : ''}
-			>
+			<div>
+			<Card icon={RocketOutline} title="This build">
 				<ul class="space-y-3">
 					<li class="flex items-start gap-2.5">
 						<!--
@@ -1982,8 +2060,16 @@
 							omitted outright at 100% live, same as the list's `.bld-fill-track`
 							(`/revisions`' own row geometry) — a fully-arrived build has no
 							shortfall to draw.
+
+							⭐ ITEM 4 / ROUND-7 RULING 11 (2026-09-06 critique) — AND NONE AT
+							0% EITHER. `c1ecfe553070` drew a 559×6 all-gray track when nothing
+							has arrived yet — a bar with no fill paints exactly the same pixels
+							as no bar at all, so it is pure ink for zero information; the count
+							above it already says `0 of N`. `coverage.liveCount > 0` is the
+							other half of the same "no shortfall to draw" rule: at 100% there
+							is nothing BEHIND to show, at 0% there is nothing ARRIVED to show.
 						-->
-						{#if coverage.liveCount < coverage.totalCount}
+						{#if coverage.liveCount > 0 && coverage.liveCount < coverage.totalCount}
 							<div
 								class="rev-build-bar w-full"
 								role="img"
@@ -2029,18 +2115,6 @@
 								showAvatars
 							/>
 						</li>
-					{:else}
-						<li class="flex items-start gap-2.5">
-							<CodeBranchOutline
-								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-								aria-hidden="true"
-							/>
-							<span class="t-body text-gray-500 dark:text-gray-400">
-								Commit message and author need GitHub. {githubAbsenceSentence(
-									githubStatus.data
-								)}
-							</span>
-						</li>
 					{/if}
 					<li class="flex items-start gap-2.5">
 						<FolderOutline
@@ -2080,15 +2154,26 @@
 						<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM E — ONE `built` PER RELEASE. See
 						     `buildReleases`'s own comment: a bare, unnamed `built N ago`
 						     is a claim about ONE of this revision's releases stated as
-						     if it were about all of them. -->
+						     if it were about all of them.
+
+						     ⭐ ITEM 6 (2026-09-06 round-7 critique) — A LIST, NOT A
+						     WRAPPING SENTENCE. `flex flex-wrap` alternated mono (the
+						     release label) and sans (`built … ago`) six times for a
+						     three-release commit, and at 390 wrapped mid-sentence with a
+						     leading `·` orphaned at the start of a line — the same "no
+						     separator at a line start" defect the env-age atom was
+						     already fixed for, two cards up. Each release is its own
+						     row now (`flex flex-col`), so there is nothing to wrap
+						     mid-clause and no join character to strand. -->
 						<li class="flex items-start gap-2.5">
 							<CalendarMonthSolid
 								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
 								aria-hidden="true"
 							/>
-							<span class="t-body flex flex-wrap items-baseline gap-x-1.5 text-gray-700 dark:text-gray-200">
-								{#each buildReleases as rel, i (rel.label + rel.createdMs)}
-									<span>{i > 0 ? '· ' : ''}<span class="t-code-sm">{rel.label}</span> built <time
+							<span class="flex min-w-0 flex-col gap-1">
+								{#each buildReleases as rel (rel.label + rel.createdMs)}
+									<span class="t-body flex flex-wrap items-baseline gap-x-1.5 text-gray-700 dark:text-gray-200">
+										<span class="t-code-sm">{rel.label}</span> built <time
 											datetime={new Date(rel.createdMs).toISOString()}
 											title={new Date(rel.createdMs).toLocaleString()}
 											>{formatTimeAgoCompact(new Date(rel.createdMs).toISOString(), $now)}</time
@@ -2122,16 +2207,34 @@
 							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
 							aria-hidden="true"
 						/>
+						<!--
+							⭐ ITEM 5 / 6 (2026-09-06 round-7 critique) —
+							`last deployed` LEADS THE LINE THE SAME WAY `Built` DOES (only
+							an icon precedes it), so it takes the same title case — ONE
+							CASE across every fact in this list (`Built`, this, `Never
+							deployed`), not this the one lowercase holdout. And while the
+							row's own newest deploy is still in flight (`headBandDeployingCount`
+							— the same `deploying` bucket the head band and the bar already
+							read), the clock is not settled yet: `last deployed 32s ago`
+							read as a completed fact about a deploy that was, measured live,
+							32 seconds into a 2m45s canary. `Last deployed` is reserved for a
+							SETTLED deploy now; an in-flight one reads `Deploying since`.
+						-->
 						<span class="t-body text-gray-700 dark:text-gray-200">
 							{#if row.lastDeployMs}
-								last deployed <time
+								{#if headBandDeployingCount > 0}
+									Deploying since
+								{:else}
+									Last deployed
+								{/if}
+								<time
 									datetime={new Date(row.lastDeployMs).toISOString()}
 									title={new Date(row.lastDeployMs).toLocaleString()}
 									>{formatTimeAgoCompact(new Date(row.lastDeployMs).toISOString(), $now)}</time
 								>
 								ago
 							{:else}
-								never deployed
+								Never deployed
 							{/if}
 						</span>
 					</li>
@@ -2161,6 +2264,31 @@
 							</a>
 						</li>
 					{/if}
+					<!--
+						⭐ ITEM 6 (2026-09-06 round-7 critique) — DEMOTED TO THE END OF
+						THE FACT LIST, AT `t-micro`. The absence sentence used to sit
+						second in this list, at `t-body` — the first and largest line a
+						reader hit on the card the moment coverage reached 100% and the
+						bar above it stopped drawing, which is the SHIPPED state on this
+						cluster (GitHub is not connected here). An apology for a fact
+						this card cannot show is not the card's leading fact; it moves
+						after every fact the card CAN state, in the same gray micro-copy
+						`historyLimitNote`'s own card-footer caveat uses elsewhere on
+						this page.
+					-->
+					{#if !(githubConnected && rep && prev)}
+						<li class="flex items-start gap-2.5">
+							<CodeBranchOutline
+								class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+								aria-hidden="true"
+							/>
+							<span class="t-micro text-gray-500 dark:text-gray-400">
+								Commit message and author need GitHub. {githubAbsenceSentence(
+									githubStatus.data
+								)}
+							</span>
+						</li>
+					{/if}
 				</ul>
 			</Card>
 			</div>
@@ -2175,14 +2303,13 @@
 					restate the buckets: the buckets say WHERE, this says WHAT EACH
 					SERVICE CALLS IT and how far down its own ladder it now sits.
 				-->
-				<div bind:clientHeight={svcCardHeight} class={heightsClose ? 'rev-pair-match' : 'rev-pair-natural'}>
+				<div>
 				<Card
 					icon={TagSolid}
 					title="What each service calls it"
 					verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
 					verdictTitle="One commit, one row per service — each service names and ranks it on its own"
 					padded={false}
-					class={heightsClose ? 'h-full' : ''}
 				>
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 					{#each row.services as svc (svc.appName)}
@@ -2443,7 +2570,7 @@
 																theme={s.slot.cell.theme}
 																label={s.envLabel}
 																wide
-																title="{s.envLabel.toUpperCase()} — {s.statusWord}"
+																title="{s.envLabel.toUpperCase()} — {s.statusWord}{wasOnClause(s)}"
 															/>
 															<!-- ⛔ `−N` → `N behind`. (2026-08-30) The last
 															     `−N` in the product. Same `rank` role, same
@@ -2479,7 +2606,7 @@
 															theme={s.slot.cell.theme}
 															label={s.envLabel}
 															wide
-															title="{s.envLabel.toUpperCase()} — {s.statusWord}"
+															title="{s.envLabel.toUpperCase()} — {s.statusWord}{wasOnClause(s)}"
 														/>
 													{/if}
 													{#if isStuck(s)}
@@ -2650,10 +2777,29 @@
 									<li class="rev-place-row px-4 py-3">
 										{#each g.runs as rg, gi (rg.runs ?? '—')}
 											{@const sharedAge = sharedAgeFor(bucket.key, rg.slots)}
-											<div class="flex flex-wrap items-center gap-x-4 gap-y-2" class:mt-2={gi > 0}>
+											<!--
+												⭐ ITEM 3 (2026-09-06 round-7 critique) — THE LEDGER'S
+												OWN TRACKS (name / chips / age), NOT A FREE-FLOWING
+												FLEX ROW. Measured live on `c1ecfe553070`'s "Already
+												moved on": the chip run started wherever the app
+												name's own width happened to end, a 45px spread
+												between rows with `hello-multi-app` and
+												`hello-world-manifests` as their names. `.rev-group-row`
+												is a fixed-first-column grid — same fix `.rev-svc-row`'s
+												neighbour applies for the identical reason — so the
+												chips column starts at the same x on every row in this
+												card regardless of name length. `max-width: 46rem`
+												caps the row's own reading measure so the trailing
+												`now on <sha>` (below) sits close to the chips it is
+												about rather than at the far edge of however wide the
+												card happens to be (745px away, measured on the same
+												row, before the odd-card full-span rule above was
+												also removed).
+											-->
+											<div class="rev-group-row" class:mt-2={gi > 0}>
 												<a
 													href={placeHref(rg.slots[0])}
-													class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
+													class="rev-group-name t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
 													aria-label="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 													title="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 													><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
@@ -2661,6 +2807,7 @@
 														aria-hidden="true"
 													/></a
 												>
+												<div class="rev-group-chips">
 												{#each rg.slots as s (s.envName)}
 													{@const age = bucket.key === 'live' ? slotDeployedAgo(s) : null}
 													{@const pinTitle = pinnedChipTitle(s)}
@@ -2703,13 +2850,43 @@
 														title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
 													>
 														<span class="chip-mark">
-															<Chip
-																role="env"
-																theme={s.slot.cell.theme}
-																label={s.envLabel}
-																wide
-																title="{s.envLabel.toUpperCase()} — {s.statusWord}"
-															/>
+															<!--
+																⭐ ITEM 5 / ROUND-7 RULING 4 (2026-09-06 critique) —
+																THE BAKE STATE IS ONE MARK, INSIDE THE CHIP'S OWN
+																BOX, NEVER AN INSERTED WORD. Mirrors the list
+																page's `inFlightGlyph` byte for byte: the spinner
+																replaces the chip's glyph slot at the same width
+																the tag glyph already reserves, in the bake's own
+																hue — the chip's identity colour (the environment's
+																own theme) is untouched. The trailing caption below
+																(`deployingCaption`) no longer repeats the verb or
+																the sha; this icon plus `title` is where that fact
+																now lives.
+															-->
+															{#if bucket.key === 'deploying'}
+																{@const bs = slotBakeStatus(s.slot)}
+																{#snippet inFlightGlyph()}
+																	<span class="mr-[3px] inline-flex shrink-0 items-center">
+																		<BakeStatusIcon bakeStatus={bs} size="small" decorative />
+																	</span>
+																{/snippet}
+																<Chip
+																	role="env"
+																	theme={s.slot.cell.theme}
+																	label={s.envLabel}
+																	wide
+																	icon={inFlightGlyph}
+																	title="{s.envLabel.toUpperCase()} — {bakeTitle(bs)}{wasOnClause(s)}"
+																/>
+															{:else}
+																<Chip
+																	role="env"
+																	theme={s.slot.cell.theme}
+																	label={s.envLabel}
+																	wide
+																	title="{s.envLabel.toUpperCase()} — {s.statusWord}{wasOnClause(s)}"
+																/>
+															{/if}
 															{#if pinTitle}
 																<!-- ⭐ ROUND-4B REVIEW, ITEM 1 — SEE
 																     `pinnedChipTitle`'s OWN NOTE. Same mark the
@@ -2755,11 +2932,22 @@
 														     in flight) still prints once. -->
 														{#if bucket.key === 'deploying'}
 															<span class="t-micro text-gray-500 dark:text-gray-400"
-																>{deployingCaption(s, row.short)}</span
+																>{deployingCaption(s)}</span
 															>
 														{/if}
 													</a>
 												{/each}
+												</div>
+												<!-- ⭐ ITEM 3 (2026-09-06 round-7 critique) — THE TRAILING
+												     FACT IS ITS OWN GRID COLUMN NOW, `justify-self: end`
+												     INSTEAD OF `ml-auto`. `ml-auto` pushed to the far edge
+												     of whatever the row happened to measure — 745px from
+												     the chips when the card behind it was full-width (see
+												     the removed odd-card span rule, above). Capped by
+												     `.rev-group-row`'s own `max-width: 46rem` and anchored
+												     to column 3, it now sits at a fixed, close distance
+												     from the chips it is about. -->
+												<div class="rev-group-trail">
 												<!-- ⭐ ITEM 2 (2026-09-06 critique) — THE AGE, HOISTED ONCE.
 												     `sharedAgeFor` only returns non-null when EVERY slot in
 												     this row printed the identical `formatTimeAgoCompact`
@@ -2789,7 +2977,7 @@
 												     that "took its place" — see `deployingCaption`, drawn
 												     per atom above instead. -->
 												{#if bucket.key !== 'live' && bucket.key !== 'failing' && bucket.key !== 'deploying' && rg.runs}
-													<span class="t-micro ml-auto text-gray-500 dark:text-gray-400"
+													<span class="t-micro text-gray-500 dark:text-gray-400"
 														>now on <span class="t-code-sm">{rg.runs}</span></span
 													>
 												{:else if bucket.key === 'live' && rg.slots.some((s) => !s.onOwnRelease)}
@@ -2807,7 +2995,7 @@
 														as before.
 													-->
 													<span
-														class="t-micro ml-auto flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+														class="t-micro flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
 													>
 														on <span class="t-code-sm">{rg.runs}</span>
 														{#if rg.slots.some((s) => s.blockingGates.length > 0)}
@@ -2821,6 +3009,7 @@
 														{/if}
 													</span>
 												{/if}
+											</div>
 											</div>
 										{/each}
 									</li>
@@ -2882,10 +3071,11 @@
 	 * 2026-09-06 critique). It made every card sharing a ROW share that
 	 * row's height, and measured live that put `Running it now` at 417px
 	 * beside a 161px `Not here yet` — 61% empty, 85% on the one-place state.
-	 * `Card.svelte`'s `flex flex-col` root and `grow` body still exist for
-	 * the ONE pair that opts back in (`.rev-pair-match`, below); the grid's
-	 * own default is `align-items: start` now, so every OTHER card answers
-	 * to its own content and nothing else.
+	 * `Card.svelte`'s `flex flex-col` root and `grow` body are unused for
+	 * height-matching now — round-7 item 3 removed the `This build` / `What
+	 * each service calls it` opt-in too, so `align-items: start` is the
+	 * grid's ONLY rule and every card, with no exception, answers to its own
+	 * content and nothing else.
 	 *
 	 * ⛔ AND `auto-fit` IS GONE TOO — A RESIDUE OF THE FIRST FIX. (2026-09-02,
 	 * design re-check: *"`This build | Running it now | Not here yet` on row
@@ -2924,26 +3114,28 @@
 	}
 
 	/*
-	 * ⭐ ITEM 4 (2026-09-06 critique) — THE HEAD-BAND FIGURE BREAKS ONTO ITS
-	 * OWN LINE UNDER 560px, INSIDE `.rev-cq`'s OWN CONTAINMENT. See the
-	 * markup comment on the head band for the defect (`9f10e49  3` reading
-	 * as one token at 390). `.rev-head-break` is an empty, zero-height flex
-	 * child; `flex-basis: 100%` inside a `flex-wrap` row is the standard
-	 * "everything after this starts a new line" idiom, so it costs no visible
-	 * pixels of its own.
+	 * ⛔ SUPERSEDED, ITEM 6 (2026-09-06 round-7 critique). The prior fix
+	 * (item 4) forced the figure onto its OWN line under 560px, still at
+	 * `t-display` (24px) — which orphaned a lone large numeral below its
+	 * caption instead of solving the crowding it was meant to fix. The
+	 * actual defect was never the LINE, it was the SIZE: a 24px figure
+	 * competing with `row.short`'s own 24px mono id is what read as one
+	 * token. Under 560 the figure now matches `t-body` (14px/400) and
+	 * flows INLINE in the sentence — `6 of 6 places run this build` reads
+	 * as one sentence, no numeral break, `.rev-head-break` is inert (no
+	 * rule targets it below 559 any more, so it costs nothing either way).
 	 */
 	.rev-head-figure {
 		margin-left: 1rem;
 	}
 
 	@container (max-width: 559px) {
-		.rev-head-break {
-			flex-basis: 100%;
-			height: 0;
-		}
-
 		.rev-head-figure {
 			margin-left: 0;
+			font-size: 14px;
+			font-weight: 400;
+			line-height: 1.5;
+			letter-spacing: normal;
 		}
 	}
 
@@ -2986,8 +3178,9 @@
 	 * sharing a row, which is the ordinary case once a build has both a
 	 * `live` and a `notYet` bucket. A card's height is its own content's now;
 	 * ragged bottoms are the honest shape of two different amounts of fact.
-	 * `.rev-pair-match` (below) is the opt-in for the ONE pair that still
-	 * wants the old behaviour.
+	 * `This build` / `What each service calls it` no longer opt back into
+	 * matching either (round-7 item 3) — `start` is now the grid's one and
+	 * only rule, for every card on the page.
 	 */
 	.rev-buckets {
 		display: grid;
@@ -3057,43 +3250,87 @@
 	}
 
 	/*
-	 * ⭐ F9, RE-GROUNDED FOR ITEM 1 — THE GRID'S DEFAULT IS `start` NOW, SO
-	 * THIS CLASS IS A NO-OP LEFT FOR CLARITY AT THE CALL SITE (2026-09-06).
-	 * `heightsClose` (script block) still measures `This build` and `What
-	 * each service calls it` unstretched to compare their content heights;
-	 * this class is what let that measurement happen when the grid itself
-	 * defaulted to `stretch`. `.rev-pair-match` (below) is the new opt-IN —
-	 * the pair only stretches to match when they were already close.
+	 * ⭐ ITEM 3 (2026-09-06 round-7 critique) — `Running it now`/`Already
+	 * moved on`'s OWN ROW GETS THE LEDGER'S TRACKS: a fixed name column, a
+	 * chips column that starts at the same x on every row regardless of the
+	 * app name's length, and a trail column for the row's one trailing fact
+	 * (`now on <sha>`, the shared age, or the release clause). See the
+	 * markup comment at the call site for the 45px/745px measurements this
+	 * replaces. `max-width` is the reading-measure cap the same item asks
+	 * for, independent of how wide the card itself happens to be.
 	 */
-	.rev-pair-natural {
-		align-self: start;
+	.rev-group-row {
+		display: grid;
+		grid-template-columns: 160px minmax(0, 1fr) auto;
+		column-gap: 12px;
+		row-gap: 4px;
+		align-items: baseline;
+		max-width: 46rem;
+	}
+
+	.rev-group-chips {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 16px;
+		min-width: 0;
+	}
+
+	.rev-group-trail {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: flex-end;
+		justify-self: end;
+		text-align: right;
+		gap: 4px;
 	}
 
 	/*
-	 * ⭐ ITEM 1's COUNTERPART — THE ONE PAIR THAT STILL WANTS TO MATCH
-	 * HEIGHTS. `heightsClose` (script block) opts `This build` and `What each
-	 * service calls it` INTO this only once both are measured and the
-	 * shorter is within 25% of the taller — everywhere else on the grid
-	 * (the bucket cards after them) keeps its own, honest content height.
+	 * Below 560px (the row's own rendered width — `.rev-place-row`, the
+	 * `<li>` two levels up, is the container this measures) the fixed
+	 * name column is what the phone ledger form already rejects (`lib/CLAUDE.md`'s
+	 * "the service ledger" note): one column, name first, chips beneath,
+	 * trail beneath that, each full width.
 	 */
-	.rev-pair-match {
-		align-self: stretch;
+	@container (max-width: 560px) {
+		.rev-group-row {
+			grid-template-columns: minmax(0, 1fr);
+			max-width: none;
+		}
+
+		.rev-group-trail {
+			justify-self: start;
+			justify-content: flex-start;
+			text-align: left;
+		}
 	}
 
 	/*
-	 * ⭐ AN ODD CARD OUT SPANS BOTH TRACKS RATHER THAN SITTING ALONE BESIDE AN
-	 * EMPTY ONE. The bucket count varies (1–3 non-empty buckets), so `This
-	 * build` + the rank card + N buckets is not always a multiple of 2 — a
-	 * THIRD or FIFTH card would otherwise strand itself in the last row with
-	 * one empty track beside it, the exact defect this fix exists to remove,
-	 * just smaller. `:last-child:nth-child(odd)` is true only when the total
-	 * count is odd AND this is the final one, so it fires on exactly the card
-	 * that would otherwise be alone, at any bucket count, with no JS needed
-	 * to count cards.
+	 * ⛔ `.rev-pair-natural`/`.rev-pair-match` ARE GONE (ITEM 3, 2026-09-06
+	 * round-7 critique). F9's height-match opt-in still stretched `What each
+	 * service calls it` on `9f10e494d560` — 593×315 with ~92px of dead body
+	 * below its last row. The grid's own default, `align-items: start`, now
+	 * applies uniformly to `This build`/`What each service calls it` AND the
+	 * bucket cards after them: every card on this page answers to its own
+	 * content height, never a neighbour's.
 	 */
-	.rev-buckets > :global(:last-child:nth-child(odd)) {
-		grid-column: 1 / -1;
-	}
+
+	/*
+	 * ⛔ THE ODD-CARD FULL-SPAN RULE IS GONE (ITEM 3, 2026-09-06 round-7
+	 * critique). It fired on `Running it now` whenever a build's bucket set
+	 * held exactly one non-empty bucket — the ordinary "held" and "moved on"
+	 * shape — stretching a 340-ish px card to the full ~1200px row and
+	 * dragging every `ml-auto` trailer inside it out to the far edge (a
+	 * measured 745px gap between the chips and `now on 064b655` on
+	 * `c1ecfe553070`). `Running it now`/`Already moved on` is about PLACES,
+	 * the same subject as `This build`'s own row, and default row-major
+	 * placement already lands the first bucket card directly under `This
+	 * build` in column 1 with nothing else here — the row simply ends with
+	 * an honest gap in column 2, which is what a real second column looks
+	 * like when the rail has less to say than the main column. A row with
+	 * an EVEN card count is unaffected either way.
+	 */
 
 	/* THE THREE GLYPH INKS. Every value is one the product already owns: the
 	   mint is the `newest` chip's and `ExposureBar`'s newest segment, so the

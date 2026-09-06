@@ -92,8 +92,25 @@
 		noun = 'rule',
 		/** The record. Rendered inside the panel; in the DOM when closed. */
 		children,
+		/**
+		 * ⭐ REVISIONS-2026-09-06, ITEM 9(b), ADDITIVE — A CUSTOM TRIGGER.
+		 * `undefined` is a no-op: every existing call site (the count-form
+		 * label) renders byte-identical. `/revisions`' own ledger row needed
+		 * this exact `<details>`/floating-panel mechanism for a fact that is
+		 * NOT a countable set of rules — an age, e.g. `Deployed 2m ago · DEV`
+		 * — so the trigger's own words are the caller's, and the chevron
+		 * (this component's own disclosure affordance) still draws in front
+		 * of them.
+		 */
+		trigger = undefined,
 		class: className = ''
-	}: { count: number; noun?: string; children: Snippet; class?: string } = $props();
+	}: {
+		count: number;
+		noun?: string;
+		children: Snippet;
+		trigger?: Snippet;
+		class?: string;
+	} = $props();
 
 	const label = $derived(countLabel(count, noun));
 
@@ -178,7 +195,7 @@
 			class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
 			aria-hidden="true"
 		/>
-		{label}
+		{#if trigger}{@render trigger()}{:else}{label}{/if}
 	</summary>
 	<!-- FLOWBITE'S OWN `popover` THEME SLOTS, verbatim, so this panel and the
 	     gate popover on rollout detail's release-candidate rows are one object

@@ -341,8 +341,16 @@ describe('/revisions — one consistent block per repository', () => {
 		// The only sanctioned visible change for one repository: the head band
 		// now names the repository count, and "revisions" became "builds"
 		// (§4 — the object is a build).
+		//
+		// ⭐ REVISIONS-2026-09-06, ITEM 5 — THE HEAD BAND IS THE VERDICT, NOT A
+		// LIFETIME TALLY. `of N builds deployed` moved to the repository
+		// footer (asserted elsewhere); the head band now names how many
+		// places are not on their own newest build right now, or says none
+		// are.
 		expect(screen.getByText(/·\s*1\s*repository/)).toBeInTheDocument();
-		expect(screen.getByText(/of\s*\d+\s*builds deployed/)).toBeInTheDocument();
+		expect(
+			screen.getByText(/(every place is on its newest build|every other place on its newest build)/)
+		).toBeInTheDocument();
 	});
 
 	test('two repos each get their own hero, lists and rail once both are open', async () => {
@@ -523,7 +531,41 @@ describe('/revisions — a held head reads `held`, never `behind`/`deployed` (co
 		// The retired page-level grammar ("hello-frontend-app is held in
 		// prod.") must not ALSO render — that was two spellings of one fact.
 		expect(screen.queryByText(/^hello-frontend-app is held in/)).toBeNull();
-		expect(screen.queryByText('See what\u2019s blocking it')).toBeNull();
+		expect(screen.queryByText('See what’s blocking it')).toBeNull();
+	});
+
+	/**
+	 * REVISIONS-2026-09-06, ITEM 3 - THE LEDGER'S OWN JOINED CHIP CANNOT
+	 * TELL TWO RELEASES OF ONE SHA APART BY THE SHA ALONE. "1 BEHIND
+	 * eeeeeee" (the running rel-66) and the held rel-67 share one revision
+	 * string, so the ledger row's joined chip prints the RELEASE it is
+	 * actually about (2.66.0-66, the one this exact rank/row is on) -
+	 * never the sibling's - and the value stays a real link to the commit
+	 * page, unchanged.
+	 */
+	test('item 3 renders the RUNNING release as the chip value, never the held siblings', async () => {
+		const fleet = heldHeadFixture();
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+
+		const nameLink = screen.getByText('hello-frontend-app');
+		const line = nameLink.closest('.svc-line');
+		if (!line) throw new Error('hello-frontend-app has no .svc-line ancestor');
+		const row = within(line as HTMLElement);
+
+		// The rank chip's own word is unaffected: this line is one behind.
+		expect(row.getByText('1 behind')).toBeInTheDocument();
+
+		// The joined value is the RUNNING release, 2.66.0-66 - not the
+		// held sibling 2.67.0-67, and not the bare sha either, since the
+		// revision is ambiguous.
+		expect(row.getByText('2.66.0-66')).toBeInTheDocument();
+		expect(row.queryByText('2.67.0-67')).toBeNull();
+
+		// The value is still a real link to the commit page, unchanged.
+		const valueLink = row.getByText('2.66.0-66').closest('a');
+		expect(valueLink).not.toBeNull();
+		expect(valueLink?.getAttribute('href')).toContain('/revisions/');
 	});
 });
 
@@ -829,7 +871,18 @@ describe('/revisions — in-flight on the ledger row (REVISIONS-2026-09-06 item 
 	 * `8 live · 1 deploying` while the ledger row for the SAME service showed
 	 * no sign that its place was mid-canary at all.
 	 */
-	test('a line whose newest deploy is Deploying shows the DEPLOYING state, the deploying env-chip mark, and "Deploying · started" — never "Deployed"', async () => {
+	/**
+	 * ⭐ REVISIONS-2026-09-06, ITEM 4 — SUPERSEDES the round-six assertion
+	 * this test used to make. Measured on a real canary raster: the old
+	 * shape said "this place is deploying" THREE times — a bare
+	 * `spinner + "deploying"` span inserted into the env-chip run (which
+	 * moved every chip after it), a `DEPLOYING` state chip sitting in the
+	 * HELD/PINNED/STUCK slot, and the age text. The rule now is one mark per
+	 * fact: the age keeps its sentence, the place's own env chip carries the
+	 * fact in its title (never as visible row text), and neither the inline
+	 * word nor the state chip render at all.
+	 */
+	test('a line whose newest deploy is Deploying never repeats "deploying" as visible row text, and the chip run gains no extra element', async () => {
 		const fleet = repoFixture('https://github.com/acme/inflight.git', 'if');
 		const deployingWeb = withNewestBakeStatus(fleet.rollouts[0], 'Deploying');
 		stubFetch([deployingWeb, fleet.rollouts[1]], fleet.environments);
@@ -843,12 +896,24 @@ describe('/revisions — in-flight on the ledger row (REVISIONS-2026-09-06 item 
 		if (!webLine) throw new Error('if-web has no .svc-line ancestor');
 		const webRow = within(webLine as HTMLElement);
 
-		// The ledger line's own state chip (`lineState()`'s new branch) reads
-		// the SAME word `bake-status.ts` and `/rollouts` use for this bake —
-		// and it is not the only place the word renders inside this row: the
-		// env chip beside it carries its own copy, so at least two within
-		// `if-web`'s own line.
-		expect(webRow.getAllByText('deploying').length).toBeGreaterThanOrEqual(2);
+		// ⛔ NEITHER THE INLINE WORD NOR THE STATE CHIP RENDER AS VISIBLE TEXT
+		// ANY MORE. The fact still exists — it is the env chip's own `title`
+		// (not matched by `getByText`, which reads rendered text content).
+		expect(webRow.queryByText('deploying')).toBeNull();
+		expect(webRow.queryByText('checking')).toBeNull();
+
+		// THE ENV CHIP ITSELF CARRIES THE FACT, in its title, and the chip
+		// run gains no EXTRA element for it — `.svc-envs`' only children are
+		// one anchor per env slot, exactly as a settled line would render.
+		const envs = webLine.querySelector('.svc-envs');
+		if (!envs) throw new Error('if-web has no .svc-envs');
+		const envAnchors = envs.querySelectorAll(':scope > a');
+		expect(envAnchors.length).toBeGreaterThan(0);
+		expect(envs.children.length).toBe(envAnchors.length);
+		const inFlightChip = Array.from(envAnchors).find((a) =>
+			(a.querySelector('.chip')?.getAttribute('title') ?? '').includes('still going out')
+		);
+		expect(inFlightChip).toBeDefined();
 
 		// The row's age cell must not claim a settled fact mid-canary —
 		// `.svc-age`/`.svc-age-header` both carry the same text (one per

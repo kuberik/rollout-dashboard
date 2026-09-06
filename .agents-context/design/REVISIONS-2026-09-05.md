@@ -345,3 +345,32 @@ is remembered.
    changed in the last minutes) is queued/deploying; STUCK needs eligibility plus stillness.
 10. **Lists sort by the field they show**, and when relative ages collapse to one label the
     compact absolute time is printed.
+
+
+## Round 7 rulings (2026-09-06, after the third operator walk and craft review)
+
+1. **A hero with no shortfall is a row.** When the bar is omitted the hero is its 47 px header —
+   title, coverage rollup, `View commit` — and nothing else. A card body exists only for a drawn
+   bar or a banner. The 24 px sha body was the largest and least informative ink on the page.
+2. **A status sentence about a multi-release commit names the release**, never the bare sha:
+   `hello-frontend-app 2.67.0-67 is held`, not `9f10e49 is held` above `9f10e49 · 6 of 6`. In the
+   ledger, a service with more than one release on the row's revision shows the release label as
+   the joined chip value.
+3. **The blocking banner is never collapsible.** It sits under the ledger footer, outside the
+   `N builds` disclosure, with its rule and its action, whenever the hold exists.
+4. **In flight is one mark per row.** The environment chip takes the treatment inside its own box;
+   the age column says since when; no inserted word, no second chip. The chip run never changes
+   width.
+5. **The head band is the verdict**: the figure is the number of places not on their newest
+   allowed build (held, behind, deploying) and the sentence names them; the lifetime "N of M builds
+   deployed" belongs to repository footers.
+6. **The repository header is the toggle** (`.tap-zone`, chevron at the left, the labelled pill as
+   `.tap-link`), not a 93 px control in a 1199 px header.
+7. **One empty-state treatment**, flush left, and no empty card under a filter.
+8. **A row's measure is capped** (~46rem) so an age never sits half a screen from its id.
+9. **The deepest page carries the fix**: the build page's hold disclosure leads with the blocking
+   cause, drawn once, with who has to ship what and the link; other rules follow, labelled as
+   clearing on their own.
+10. **Facts that only live in `title` are not on the page**: per-environment dates open from the
+    age (button + popover), service names print where they fit.
+11. **The bar is omitted at 0 % as at 100 %.** No second fill hue for in flight; the words carry it.

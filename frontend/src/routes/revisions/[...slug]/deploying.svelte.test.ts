@@ -9,9 +9,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
  * the only way to exercise this page's three round-5 fixes at all before a
  * live canary verifies them:
  *
- *   1. The `Deploying` bucket's own row states the in-flight fact
- *      (`Deploying <sha> · started <t> ago` / `Checking · started <t> ago`),
- *      never the `ahead` bucket's "now on <sha>" sentence.
+ *   1. The `Deploying` bucket's own row states the in-flight fact — never the
+ *      `ahead` bucket's "now on <sha>" sentence. As of the 2026-09-06 round-7
+ *      critique the bake word/sha no longer repeat in the row's own caption
+ *      (the card title already says "Deploying" and the page's own `h1`
+ *      already names the sha): the env chip carries the bake state itself,
+ *      as an icon inside its own box (`BakeStatusIcon`), and the row prints
+ *      only `started <t> ago`.
  *   2. The head band names the place in flight (`N of M places run this
  *      build · 1 deploying`).
  *   3. `Running it now`'s header glyph goes neutral while any place on this
@@ -158,11 +162,12 @@ describe('/revisions/[...slug] — in-flight is a state (REVISIONS-2026-09-06, r
 		const deployingIcon = deployingCard!.querySelector('header svg');
 		expect(deployingIcon?.getAttribute('class') ?? '').toContain('tone-active');
 
-		// The row itself: the in-flight sentence, not the "ahead" bucket's
-		// "Already moved on" wording.
-		expect(deployingCard!.textContent).toContain(`Deploying ${SHORT}`);
+		// The row itself: since-when, not the "ahead" bucket's "now on <sha>"
+		// wording, and — round 7 — not a re-spelling of "Deploying <sha>"
+		// either. The card title and the page's own h1 already say both.
 		expect(deployingCard!.textContent).toMatch(/started .* ago/);
 		expect(deployingCard!.textContent).not.toContain('now on');
+		expect(deployingCard!.textContent).not.toContain(`Deploying ${SHORT}`);
 
 		// The environment chip is still a link into its own rollout (the row's
 		// app-name link shares the same accessible name, hence `getAllByRole`).
@@ -171,6 +176,14 @@ describe('/revisions/[...slug] — in-flight is a state (REVISIONS-2026-09-06, r
 		});
 		const stagingChip = stagingLinks.find((a) => a.classList.contains('rev-env-atom'));
 		expect(stagingChip).toHaveAttribute('href');
+
+		// ⭐ ROUND 7, ITEM 5 — THE BAKE STATE IS ONE MARK, ON THE CHIP ITSELF.
+		// `BakeStatusIcon` renders an animated spinner div inside the chip's
+		// glyph slot, and the chip's own title carries the consequence
+		// (`bakeTitle`) rather than a bare word repeated beside it.
+		const stagingChipBox = stagingChip!.querySelector('.chip');
+		expect(stagingChipBox?.querySelector('.animate-spin')).not.toBeNull();
+		expect(stagingChipBox).toHaveAttribute('title', expect.stringContaining('still going out'));
 	});
 
 	test('item 2: the head band names the place in flight', async () => {
