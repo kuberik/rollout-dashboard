@@ -374,3 +374,26 @@ is remembered.
 10. **Facts that only live in `title` are not on the page**: per-environment dates open from the
     age (button + popover), service names print where they fit.
 11. **The bar is omitted at 0 % as at 100 %.** No second fill hue for in flight; the words carry it.
+
+
+## Round 9 rulings (2026-09-06, convergence round)
+
+1. **The hero names its build and is a build row**: `Newest build 9f10e49 · services`, the header
+   navigates to the build page, `View commit` stays the external link. A held sibling release is
+   said in the rollup (`6 of 6 places · 2.67.0-67 held`). Under a filter, title and counts follow
+   the filter.
+2. **Fold on fit**: the hero title truncates (full names in the title attribute) so title and
+   rollup always share one line; the `N services` fold is only for < 560.
+3. **The ledger age is right-aligned** at the card's content edge, like the header rollup and the
+   footer (supersedes 5.3's "after the chips"); build and environment columns share fixed tracks
+   across repositories; the chevron track is reserved even when nothing can be disclosed.
+4. **State chips live beside the rank chip**, never inside the environment run.
+5. **One rule for the services cell**: filtered count, names where they fit, a tap disclosure
+   below that. No dead labels on touch.
+6. **The search counts builds (commits)**, releases are said separately; a zero-result query keeps
+   the verdict.
+7. **The line caption is gone**; the rows and the banner carry the releases.
+8. **Environment chips are never full-width**; the hold summary names the cause and counts what it
+   draws; a service label equal to the sha is not printed.
+9. **One row grammar per card** on the build page: chips inline in one wrapping run, ages inline
+   beside their chips when they differ.

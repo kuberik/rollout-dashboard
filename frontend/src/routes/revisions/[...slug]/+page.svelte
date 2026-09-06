@@ -259,6 +259,23 @@
 	const prev = $derived(ledger && rowIndex >= 0 ? (ledger.rows[rowIndex + 1] ?? null) : null);
 
 	/**
+	 * ⭐ ITEM 3 (round-8 critique) — "WHAT EACH SERVICE CALLS IT" WHEN
+	 * NOTHING CALLS IT ANYTHING. Measured live on `064b655b5159`: all three
+	 * services print the row's own sha as their `value` chip
+	 * (`NEWEST 064b655` × 3) because none of them has a differing label —
+	 * `svc.labelDiffers` (`revision-ledger.ts`'s own rule, "print the label
+	 * only when it differs from the row's own identifier") was computed but
+	 * never consulted at this call site. Guarding `value`/`valueTitle` on it
+	 * stops the repeat; once nothing differs, the card is no longer
+	 * answering "what does each service call it" — the honest question left
+	 * is "where does this build sit on each service's own ladder", so the
+	 * title and verdict follow this flag rather than staying captioned for
+	 * a fact the card no longer states.
+	 */
+	const allLabelsMatchSha = $derived(!!row && row.services.every((s) => !s.labelDiffers));
+	const serviceLadderLengths = $derived(row ? row.services.map((s) => s.ladderLength).join(' / ') : '');
+
+	/**
 	 * Canonicalise the URL once the revision is known, so an old label link and
 	 * a short-sha link both settle on one address. `replaceState` rather than
 	 * `goto`: this is the same page, and a redirect that pushes history makes
@@ -718,8 +735,63 @@
 			.join(' · ');
 	});
 
+	/**
+	 * ⭐ ITEM 2 (round-8 critique) — THE SUMMARY NAMES THE CAUSE, AND COUNTS
+	 * ONLY WHAT IT DRAWS. Measured live on `9f10e494d560`: CLOSED, the
+	 * banner read `2 rules in prod · 2 in staging · 1 in dev` — five —
+	 * while OPENED the same disclosure draws exactly one cause
+	 * (`primaryHold`, the dependency contract) plus two per-environment
+	 * promotion-order records that only clear once that cause does
+	 * (`secondaryEnvSections`, listed inside, never counted as causes
+	 * themselves). Five was never the right number for a body that draws
+	 * one cause. `Waiting on hello-api-app · 1 rule` says what actually
+	 * opens: the provider that has to ship, and the one real cause — the
+	 * same subject `primaryHold`'s own "Open hello-api-app" action names.
+	 * Falls back to the old per-environment breakdown on the rarer page
+	 * where nothing names a single provider (no dependency-type gate found
+	 * anywhere — every hold is a bare promotion-order/window gate).
+	 */
+	const bannerDisclosureLabel = $derived.by<string>(() => {
+		if (primaryHold) {
+			return `Waiting on ${primaryHold.reason.subject ?? 'a service'} · ${countLabel(1, 'rule')}`;
+		}
+		return ruleCountBreakdown;
+	});
+
+	const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+	function numberWord(n: number): string {
+		return NUMBER_WORDS[n] ?? String(n);
+	}
+
+	/**
+	 * ⭐ ITEM 2 (round-8 critique) — THE BANNER SENTENCE IS AT LEAST THE
+	 * LIST'S. Measured live: the list page's own banner for this identical
+	 * hold says `dev, staging and prod run 2.66.0-66; 2.67.0-67 is held in
+	 * all three.` (`releaseSplitSentence`, `/revisions`' own script) — it
+	 * names BOTH releases and where each one sits. This page's banner said
+	 * only `hello-frontend-app is held in dev, staging and prod.`, which
+	 * drops the running release entirely — less informative than the list
+	 * for the same fact. `releaseSplitLines` is read off the same
+	 * `revision-coverage.ts` evidence the list's own sentence uses, so the
+	 * two can never disagree; this is the identical grammar, reused rather
+	 * than re-derived; `own-view-model duplication is deliberate — this
+	 * route does not own `revision-ledger.ts`/`+page.svelte` on `/revisions`.
+	 */
 	const bannerMessage = $derived.by(() => {
 		if (!coverage || blockedSlots.length === 0) return '';
+		if (releaseSplitLines.length > 0) {
+			const heldEnvs = new Set(releaseSplitLines.flatMap((l) => l.envLabels));
+			return releaseSplitLines
+				.map((l) => {
+					const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
+					const sameSet = l.envLabels.length === heldEnvs.size;
+					const clause = l.held
+						? `${l.aheadLabel} is held in ${sameSet ? `all ${numberWord(heldEnvs.size)}` : envs}`
+						: `${l.aheadLabel} has not reached ${sameSet ? 'them' : envs} yet`;
+					return `${envs} run ${l.behindLabel}; ${clause}.`;
+				})
+				.join(' ');
+		}
 		// ⭐ ITEM 4 (2026-09-06 critique) — `joinClauses`, NOT A BARE `.join(', ')`.
 		// The head band's own release-split line already reads "dev, staging
 		// and prod" (`joinClauses`, imported above); this banner said "dev,
@@ -1863,6 +1935,13 @@
 				keeps its own line and the figure leads the second one, beside its
 				own caption, where `ml-4`'s job is undone by `.rev-head-figure`'s own
 				narrow-width rule.
+
+				⭐ ITEM 2 (round-8 critique) — A RELEASE, NEVER A "BUILD". This sha
+				has exactly one build; what is held is a newer RELEASE of it
+				(`heldReleaseLabel`, e.g. `2.67.0-67` — the same line the banner
+				below reads). "Held from a newer build" claimed a second commit
+				exists somewhere ahead of this one; there is none — the newer
+				release is on THIS commit, so the clause now names it instead.
 			-->
 			<span class="rev-head-break" aria-hidden="true"></span>
 			<span class="t-display text-gray-900 tabular-nums dark:text-white rev-head-figure"
@@ -1874,7 +1953,7 @@
 				>of {coverage.totalCount} places run this build{headBandDeployingCount > 0
 					? ` · ${headBandDeployingCount} deploying`
 					: ''}{headBandHeldCount > 0
-					? ` · ${headBandHeldCount} ${headBandHeldCount === 1 ? 'is' : 'are'} held from a newer build`
+					? ` · ${headBandHeldCount} ${headBandHeldCount === 1 ? 'is' : 'are'} held from a newer release${heldReleaseLabel ? ` (${heldReleaseLabel})` : ''}`
 					: ''}</span
 			>
 		</div>
@@ -1935,7 +2014,21 @@
 							</p>
 							{#each secondaryEnvSections as section (section.envLabel)}
 								<div class="flex min-w-0 flex-col gap-1.5">
-									<Chip role="env" theme={section.theme} label={section.envLabel} wide />
+									<!--
+										⭐ ITEM 1 (round-8 critique) — INTRINSIC WIDTH, NEVER
+										FULL-ROW. Measured live on `9f10e494d560`: STAGING and
+										PROD rendered 696×20 with `justify-content: center` — the
+										chip is `display: inline-flex`, but `.chip` becomes a flex
+										ITEM the moment it sits in a `flex-col` parent (this `div`),
+										and `align-items`'s initial value (`normal`) behaves as
+										`stretch` for a flex container, so it grew to the column's
+										full width regardless of its own `display`. An environment
+										chip is never full-width — `self-start` opts it out of the
+										stretch, same fix `.rev-disclosure-cell` already relies on
+										one component up (`AlertPanel`'s own note on
+										`flex flex-col items-start`).
+									-->
+									<Chip role="env" theme={section.theme} label={section.envLabel} wide class="self-start" />
 									{#if section.classifiedGates.length > 0}
 										<GateRecord gates={section.classifiedGates} tone="banner" />
 									{/if}
@@ -1966,24 +2059,27 @@
 				</div>
 			{/snippet}
 
+			<!--
+				⭐ ITEM 2 (round-8 critique) — ONE `HELD` COUNT, NOT TWO. `extra`'s
+				`3 HELD` chip sat 72px under the head band's own
+				`3 are held from a newer release` — the identical count, said
+				twice on one screen a reader takes in as one glance. The title
+				above already names the number IN WORDS (`bannerTitle`,
+				`heldReleaseLabel`) and the count IS the head band's job; the
+				chip is gone rather than the sentence, because a chip beside a
+				headline and a sentence 72px up are not the same kind of
+				statement — the sentence is the one this page commits to
+				elsewhere (`headBandHeldCount`'s own doc comment).
+			-->
 			<AlertPanel
 				severity="warning"
 				icon={bannerIcon}
 				title={bannerTitle}
 				message={bannerMessage}
 				footnoteBody={bannerRuleCount > 0 ? gateFacts : undefined}
-				footnoteLabel={bannerRuleCount > 0 ? ruleCountBreakdown : undefined}
+				footnoteLabel={bannerRuleCount > 0 ? bannerDisclosureLabel : undefined}
 				class="mt-5"
-			>
-				{#snippet extra()}
-					<Chip
-						role="alarm"
-						label="{blockedSlots.length} held"
-						wide
-						title="{blockedSlots.length} places — a place is one service in one environment — are held by a rule"
-					/>
-				{/snippet}
-			</AlertPanel>
+			/>
 		{/if}
 
 		<!--
@@ -2306,9 +2402,13 @@
 				<div>
 				<Card
 					icon={TagSolid}
-					title="What each service calls it"
-					verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
-					verdictTitle="One commit, one row per service — each service names and ranks it on its own"
+					title={allLabelsMatchSha ? 'Where it sits' : 'What each service calls it'}
+					verdict={allLabelsMatchSha
+						? `of ${serviceLadderLengths} builds`
+						: `${row.services.length} service${row.services.length === 1 ? '' : 's'}`}
+					verdictTitle={allLabelsMatchSha
+						? 'No service names this build anything but its own sha — each figure is that service’s own ladder length, in row order'
+						: 'One commit, one row per service — each service names and ranks it on its own'}
 					padded={false}
 				>
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -2341,8 +2441,8 @@
 												: chip.role === 'newest'
 													? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`
 													: `${chip.label} the newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`}
-										value={svc.label}
-										valueTitle={svc.label}
+										value={svc.labelDiffers ? svc.label : undefined}
+										valueTitle={svc.labelDiffers ? svc.label : undefined}
 										wide
 										class="min-w-0"
 									/>
@@ -2845,7 +2945,7 @@
 													-->
 													<a
 														href={placeHref(s)}
-														class="rev-env-atom hit-32 {sharedAge ? 'rev-env-atom--bare' : ''}"
+														class="rev-env-atom hit-32"
 														aria-label="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
 														title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
 													>
@@ -3114,16 +3214,29 @@
 	}
 
 	/*
-	 * ⛔ SUPERSEDED, ITEM 6 (2026-09-06 round-7 critique). The prior fix
-	 * (item 4) forced the figure onto its OWN line under 560px, still at
-	 * `t-display` (24px) — which orphaned a lone large numeral below its
-	 * caption instead of solving the crowding it was meant to fix. The
-	 * actual defect was never the LINE, it was the SIZE: a 24px figure
-	 * competing with `row.short`'s own 24px mono id is what read as one
-	 * token. Under 560 the figure now matches `t-body` (14px/400) and
-	 * flows INLINE in the sentence — `6 of 6 places run this build` reads
-	 * as one sentence, no numeral break, `.rev-head-break` is inert (no
-	 * rule targets it below 559 any more, so it costs nothing either way).
+	 * ⛔ PARTIALLY SUPERSEDED, ITEM 6 (2026-09-06 round-7 critique); THE
+	 * BREAK IS BACK (ITEM 5, round-8 critique). The round-7 fix forced the
+	 * figure onto its OWN line under 560px, still at `t-display` (24px) —
+	 * which orphaned a lone large numeral below its caption instead of
+	 * solving the crowding it was meant to fix — and shrunk it to `t-body`
+	 * (14px/400) instead, on the theory that a small figure sitting right
+	 * next to the small caption would simply read as one flowing sentence.
+	 *
+	 * Measured live on `9f10e494d560` at 390: it does not. `flex-wrap`
+	 * wraps each ITEM independently — the sha, the (now-inert) break, the
+	 * small figure and the caption are four separate flex children, and a
+	 * 14px "6" is narrow enough to keep fitting on the SHA's own line even
+	 * though the long caption after it has to wrap. The result was
+	 * `9f10e49  6` on line one and `of 6 places run this build · 3 are
+	 * held …` orphaned on line two — the figure detached from the very
+	 * sentence the size change was meant to weld it to.
+	 *
+	 * The fix is the ORIGINAL idea (force a break right after the sha) NOT
+	 * disagreeing with round-7 the size fix (both are needed): under 560,
+	 * `.rev-head-break` forces the figure onto a fresh line — where it now
+	 * sits, at caption size, immediately before the caption text that
+	 * follows it as the next flex child on that same fresh line, so `6` and
+	 * `of 6 places run this build` are read, and wrap, as one sentence.
 	 */
 	.rev-head-figure {
 		margin-left: 1rem;
@@ -3136,6 +3249,10 @@
 			font-weight: 400;
 			line-height: 1.5;
 			letter-spacing: normal;
+		}
+
+		.rev-head-break {
+			flex-basis: 100%;
 		}
 	}
 
@@ -3193,17 +3310,54 @@
 		.rev-buckets {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+
+		/*
+		 * ⭐ ITEM 4 (round-8 critique) — A LONE TRAILING CARD SPANS BOTH
+		 * COLUMNS, RATHER THAN LEAVING ITS ROW HALF EMPTY. Measured live on
+		 * `064b655b5159`: `This build` and `What each service calls it` fill
+		 * row 1, one bucket card (`Running it now`) lands alone under `This
+		 * build` in row 2 — and the round-7 "odd-card full-span rule is
+		 * gone" comment below the `.rev-group-row` block chose to leave that
+		 * second cell an honest, deliberate gap. Measured: 590px wide,
+		 * 692px tall — 32% of the whole block, pure ground. The round-7
+		 * removal was reacting to a DIFFERENT defect (a full-span card's
+		 * OWN trailing fact sitting 745px from its chips) that round-7's
+		 * OWN `.rev-group-row { max-width: 46rem }` fix (below) already
+		 * closes independently of how wide the card itself is — so
+		 * reinstating the span no longer reopens it.
+		 *
+		 * `:last-child:nth-child(odd)` is the standard "orphan grid item"
+		 * selector: it matches only when the LAST child of `.rev-buckets`
+		 * sits at an odd position among ALL of this grid's children — which
+		 * is exactly when 2-column, row-major placement would otherwise
+		 * leave it alone (`This build` + `What each service calls it]` are
+		 * always exactly 2, so the last bucket card is odd iff the bucket
+		 * COUNT itself is odd). An even bucket count fills both columns on
+		 * every row already and this rule does not match at all.
+		 *
+		 * ⚠️ `:global(...)` ON THE CHILD COMBINATOR IS LOAD-BEARING. Every
+		 * bucket card is a `<Card>` — a CHILD COMPONENT — so its root
+		 * element never carries THIS file's scoping hash (the exact
+		 * Svelte 5 gap this file's own note on the glyph inks records,
+		 * two rules below). Scoped as `.rev-buckets.HASH >
+		 * :where(.HASH):last-child`, the rule compiled clean and matched
+		 * nothing — measured live, `gridColumn` stayed `auto` on every
+		 * child. `:global()` drops the scoping requirement from the
+		 * selected element while `.rev-buckets` above it stays scoped.
+		 */
+		.rev-buckets > :global(:last-child:nth-child(odd)) {
+			grid-column: 1 / -1;
+		}
 	}
 
 	/*
 	 * ⭐ OPERATOR-WALK ROUND 4, ITEM 2 — THE ENV+AGE ATOM, AND ITS OWN
 	 * CONTAINER. `.rev-buckets` puts these rows in a 2-column grid at 640px+,
 	 * so a card's own rendered width is narrower than the PAGE at every width
-	 * between 640 and roughly 1200 — keying the "one atom per line" rule off
-	 * `.rev-cq` (the page-level container two rules up) would miss exactly
-	 * the tablet-ish range where a card column is under 560px but the page
-	 * is not. `.rev-place-row` is its own nested container, sized to what
-	 * this row actually renders at, whatever grid track it landed in.
+	 * between 640 and roughly 1200. `.rev-place-row` is its own nested
+	 * container, sized to what this row actually renders at, whatever grid
+	 * track it landed in — `.rev-group-row`'s own `@container (max-width:
+	 * 560px)` stacking rule (below) still measures against it.
 	 */
 	.rev-place-row {
 		container-type: inline-size;
@@ -3212,8 +3366,8 @@
 	/*
 	 * `display: inline-flex` with the container's default `flex-wrap: nowrap`
 	 * — an atom has exactly two children (the chip, and its own age) and they
-	 * may never wrap apart from each other. The OUTER row (`flex flex-wrap`,
-	 * inline above) is what wraps BETWEEN atoms; this rule only stops the
+	 * may never wrap apart from each other. The OUTER row (`.rev-group-chips`,
+	 * `flex flex-wrap`) is what wraps BETWEEN atoms; this rule only stops the
 	 * line break from landing inside one.
 	 */
 	.rev-env-atom {
@@ -3224,30 +3378,35 @@
 	}
 
 	/*
-	 * Below 560px (this row's own rendered width, via `.rev-place-row`
-	 * above), one atom per line, chip first — `flex-basis: 100%` inside a
-	 * `flex-wrap` parent is the standard "one item per row" idiom: each atom
-	 * claims the row's full width, so the next one is pushed to its own line
-	 * without a media query re-deriving the row's own layout.
+	 * ⛔ THE "ONE ATOM PER LINE UNDER 560px" RULE IS GONE (ITEM 4, round-8
+	 * critique). It forced every non-bare atom (one carrying its OWN age,
+	 * printed when a row's places disagree on when they deployed) onto its
+	 * own full-width line whenever `.rev-place-row`'s container measured
+	 * 560px or less — and that container is the CARD COLUMN inside
+	 * `.rev-buckets`' 2-column grid, whose CONTENT box (after the `<li>`'s
+	 * own `px-4` padding) sits at ~558px for nearly the whole 640-1200px
+	 * page-width range this page runs at. Measured live on `064b655b5159`
+	 * at 1440: `hello-multi-app`'s three atoms (ages 2h/6d/6d, genuinely
+	 * different) stacked one-per-line at a MEASURED 559px card width —
+	 * comfortably wide enough to hold all three inline — because the rule
+	 * fired on container WIDTH alone, never on whether the atoms actually
+	 * fit. `hello-world-manifests`, whose three places share one age, was
+	 * exempted by `.rev-env-atom--bare` and rendered inline on the SAME
+	 * card at the SAME width — one card, two row grammars, decided by
+	 * something the reader cannot see (whether the ages happen to agree).
+	 * The same defect held even where an atom carried NO age at all (a
+	 * non-`live` bucket, `age` always null): `sharedAge` is only computed
+	 * for the `live` bucket, so `.rev-env-atom--bare` was never applied
+	 * there either, and `Already moved on` on `c1ecfe553070` stacked nine
+	 * bare chips one per line at 490px for the identical reason.
 	 *
-	 * ⭐ FOLLOW-UP (c), 2026-09-06 coordinator re-check — `:not(.rev-env-atom--bare)`.
-	 * This forced EVERY atom one-per-line under 560px even once item 2's fix
-	 * (`sharedAgeFor`) hoists the age and strips it off each atom — measured
-	 * live on `hello-world-manifests`: three BARE chips (no age text at all)
-	 * still stacked to four lines (DEV / STAGING / PROD / the hoisted age) at
-	 * 390. A chip with nothing beside it is narrow enough to flow at any
-	 * width; forcing it onto its own line was solving a width problem that,
-	 * for this atom, no longer exists. `.rev-env-atom--bare` (set on the
-	 * template when `sharedAge` is truthy) opts a chip-only atom OUT of the
-	 * one-per-line rule; an atom still carrying its own age (`sharedAge` is
-	 * null — the ages disagree) keeps stacking, which is the case the rule
-	 * exists for.
+	 * `.rev-group-chips` (below) is already `display: flex; flex-wrap: wrap`
+	 * — every atom now wraps the ordinary way: as many as fit on a line,
+	 * the rest carried to the next, exactly what "chips always inline in
+	 * one wrapping run" asks for, and identical whether the ages agree,
+	 * disagree, or say nothing at all. `.rev-env-atom--bare` is gone with
+	 * it — nothing reads it any more.
 	 */
-	@container (max-width: 560px) {
-		.rev-env-atom:not(.rev-env-atom--bare) {
-			flex-basis: 100%;
-		}
-	}
 
 	/*
 	 * ⭐ ITEM 3 (2026-09-06 round-7 critique) — `Running it now`/`Already
@@ -3317,19 +3476,25 @@
 	 */
 
 	/*
-	 * ⛔ THE ODD-CARD FULL-SPAN RULE IS GONE (ITEM 3, 2026-09-06 round-7
-	 * critique). It fired on `Running it now` whenever a build's bucket set
-	 * held exactly one non-empty bucket — the ordinary "held" and "moved on"
-	 * shape — stretching a 340-ish px card to the full ~1200px row and
-	 * dragging every `ml-auto` trailer inside it out to the far edge (a
-	 * measured 745px gap between the chips and `now on 064b655` on
-	 * `c1ecfe553070`). `Running it now`/`Already moved on` is about PLACES,
-	 * the same subject as `This build`'s own row, and default row-major
-	 * placement already lands the first bucket card directly under `This
-	 * build` in column 1 with nothing else here — the row simply ends with
-	 * an honest gap in column 2, which is what a real second column looks
-	 * like when the rail has less to say than the main column. A row with
-	 * an EVEN card count is unaffected either way.
+	 * ⛔ THE ODD-CARD FULL-SPAN RULE WAS GONE, AND IT IS BACK (ITEM 3,
+	 * 2026-09-06 round-7 critique; reinstated, ITEM 4, round-8 critique).
+	 * Round-7 removed it because it fired unconditionally on `Running it
+	 * now` whenever a build's bucket set held exactly one non-empty bucket,
+	 * stretching a 340-ish px card to the full ~1200px row and dragging
+	 * every `ml-auto` trailer inside it out to the far edge — a measured
+	 * 745px gap between the chips and `now on 064b655` on `c1ecfe553070`.
+	 * The SAME round-7 pass also gave `.rev-group-row` its own
+	 * `max-width: 46rem` reading-measure cap, which independently closes
+	 * that 745px gap regardless of how wide the card around it is — so the
+	 * full-span removal was solving a defect its sibling fix had already
+	 * solved. What round-7 called "an honest gap" (measured live on
+	 * `064b655b5159`: 590×692px, 32% of the block) is round-8's own
+	 * complaint: a real second column with nothing to say is still 32% of
+	 * dead ground when the thing beside it has plenty to say. `.rev-buckets
+	 * > :last-child:nth-child(odd)` (above, scoped to the same
+	 * `min-width: 640px` container query the 2-column grid itself needs)
+	 * reinstates the span, now safe. A row with an EVEN card count is
+	 * unaffected either way — it never matches.
 	 */
 
 	/* THE THREE GLYPH INKS. Every value is one the product already owns: the

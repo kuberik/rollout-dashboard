@@ -891,7 +891,19 @@ describe('/revisions — in-flight on the ledger row (REVISIONS-2026-09-06 item 
 		// Scope to `if-web`'s own `.svc-line` — the OTHER service on this
 		// repo (`if-api`, still `Succeeded`) must not be touched by this
 		// line's own in-flight treatment (asserted separately, below).
-		const webNameLink = screen.getByText('if-web');
+		//
+		// ⭐ REVISIONS-2026-09-06 ROUND 8, ITEM 7 — SCOPED TO `.svc-ledger`
+		// NOW. `bldSvcNames` (the one shared services-cell rule) puts a
+		// matched row's own service names in the DOM twice more — once in
+		// `.bld-svc-full`, once inside its `RulePopover`'s disclosure — the
+		// moment an older build on this same two-service line shows up in
+		// "Also still running"/"No longer running anywhere", which this
+		// fixture's own history makes true. A bare `screen.getByText`
+		// found those too; the ledger's own name link is the one this test
+		// means.
+		const ledger = document.querySelector('.svc-ledger');
+		if (!ledger) throw new Error('no .svc-ledger rendered');
+		const webNameLink = within(ledger as HTMLElement).getByText('if-web');
 		const webLine = webNameLink.closest('.svc-line');
 		if (!webLine) throw new Error('if-web has no .svc-line ancestor');
 		const webRow = within(webLine as HTMLElement);
@@ -923,7 +935,7 @@ describe('/revisions — in-flight on the ledger row (REVISIONS-2026-09-06 item 
 
 		// The OTHER service on this repo (`if-api`, still `Succeeded`) is
 		// unaffected — the in-flight treatment is per-LINE, not per-repo.
-		const apiNameLink = screen.getByText('if-api');
+		const apiNameLink = within(ledger as HTMLElement).getByText('if-api');
 		const apiLine = apiNameLink.closest('.svc-line');
 		if (!apiLine) throw new Error('if-api has no .svc-line ancestor');
 		const apiRow = within(apiLine as HTMLElement);
