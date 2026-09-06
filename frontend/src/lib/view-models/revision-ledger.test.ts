@@ -882,6 +882,102 @@ describe('lineState — round 3 §3 (state in words, right kind, right hue)', ()
 			title: 'Pinned to 1.2.3 — automatic deploys are paused until the pin is cleared.'
 		});
 	});
+
+	/**
+	 * ⭐ REVISIONS-2026-09-06, ITEM 1 (IN-FLIGHT ON THE LEDGER ROW). Measured
+	 * live during a real canary: the hero correctly read `8 live · 1
+	 * deploying` while the ledger row for the same service showed no sign
+	 * that one place was mid-canary at all — `lineState` never had a branch
+	 * for `Deploying`/`InProgress`, so a line whose newest bake had not
+	 * settled yet fell all the way through to `null` (drawn as steady) or, if
+	 * a pin/hold happened to be set too, printed THAT instead of the more
+	 * urgent, currently-happening fact.
+	 */
+	it('draws DEPLOYING (blue) when the newest bake is actively going out, fresh enough to not be stuck', () => {
+		const r = {
+			status: {
+				history: [
+					{
+						bakeStatus: 'Deploying',
+						version: { tag: 'v2', version: '2.0.0' },
+						timestamp: new Date(now.getTime() - 5 * 60_000).toISOString() // 5m ago
+					}
+				]
+			}
+		};
+		const state = lineState(line([slot(r)]), now);
+		expect(state).toEqual({
+			role: 'deploying',
+			label: 'deploying',
+			title: 'The new version is still going out'
+		});
+	});
+
+	it('draws CHECKING (yellow, the bake-window word) for a fresh InProgress bake', () => {
+		const r = {
+			status: {
+				history: [
+					{
+						bakeStatus: 'InProgress',
+						version: { tag: 'v2', version: '2.0.0' },
+						timestamp: new Date(now.getTime() - 5 * 60_000).toISOString() // 5m ago
+					}
+				]
+			}
+		};
+		const state = lineState(line([slot(r)]), now);
+		expect(state).toEqual({
+			role: 'checking',
+			label: 'checking',
+			title: 'The new version is live and is being watched before the deploy counts as done'
+		});
+	});
+
+	it('DEPLOYING outranks HELD and PINNED — an active bake is the more urgent, more current fact', () => {
+		const heldAndDeploying = {
+			status: {
+				history: [
+					{
+						bakeStatus: 'Deploying',
+						version: { tag: 'v2', version: '2.0.0' },
+						timestamp: new Date(now.getTime() - 5 * 60_000).toISOString()
+					}
+				],
+				releaseCandidates: [{ tag: 'v3', version: '3.0.0' }],
+				gates: [{ name: 'g', passing: true, allowedVersions: [] }]
+			},
+			spec: { wantedVersion: '2.0.0' } // also pinned
+		};
+		expect(lineState(line([slot(heldAndDeploying)]), now)?.role).toBe('deploying');
+	});
+
+	it('FAILING and STUCK still outrank DEPLOYING/CHECKING — those are real problems, an in-flight bake is not', () => {
+		const failingWhileDeploying = {
+			status: {
+				history: [
+					{
+						bakeStatus: 'Failed',
+						version: { tag: 'v2', version: '2.0.0' },
+						timestamp: new Date(now.getTime() - 5 * 60_000).toISOString()
+					}
+				]
+			}
+		};
+		expect(lineState(line([slot(failingWhileDeploying)]), now)?.role).toBe('failing');
+
+		const stuckInProgress = {
+			status: {
+				history: [
+					{
+						bakeStatus: 'InProgress',
+						version: { tag: 'v2', version: '2.0.0' },
+						timestamp: new Date(now.getTime() - 2 * 3600_000).toISOString() // 2h ago — past the 1h threshold
+					}
+				]
+			}
+		};
+		expect(lineState(line([slot(stuckInProgress)]), now)?.role).toBe('alarm');
+	});
 });
 
 /**

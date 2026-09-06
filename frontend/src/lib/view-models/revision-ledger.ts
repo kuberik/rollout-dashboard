@@ -11,6 +11,7 @@ import { buildLadder, divergedFromLine, type BuildLadder } from './build-ladder'
 import { isDeployable, promotionBlock } from './promotion';
 import { rankVerdicts, rankBehindBy, type RankVerdict } from './env-rank';
 import { compareEnvironmentNames } from '$lib/env-order';
+import { bakeWord, bakeTitle } from '$lib/bake-status';
 // TYPE-ONLY — see `repoDeviation`'s own doc comment for why this does not
 // create an import cycle with `revision-coverage.ts` (which itself only
 // type-imports FROM this file).
@@ -1266,11 +1267,30 @@ export function releaseLines(repo: Pick<RepoLedger, 'rows' | 'pending'>): Releas
  *
  * Worst wins across the line's own live slots, in the order a person would
  * want to know about them: a broken deploy outranks a wedged one, which
- * outranks a rule's refusal, which outranks a person's own deliberate pin.
+ * outranks an ACTIVE deploy happening right now, which outranks a rule's
+ * refusal, which outranks a person's own deliberate pin.
+ *
+ * ⭐ REVISIONS-2026-09-06, ITEM 1 (IN-FLIGHT ON THE LEDGER ROW, finishes round
+ * five's own item 2). The live cluster measured a real canary where the hero
+ * correctly read `8 live · 1 deploying` while the ledger row for the same
+ * service printed no sign that one place was mid-canary at all — `held` and
+ * `pinned` are both STATIC facts about a candidate that has not moved;
+ * `Deploying`/`InProgress` is a THIRD, temporal fact about the build this
+ * line is already on, and it outranks both: a place that is actively
+ * finishing its own deploy is not "merely held" or "merely pinned", it is in
+ * the middle of becoming something else right now. Checked after `stuck`
+ * (round-5 ruling 9: a deploy stuck FOR LONG ENOUGH already reads `stuck`,
+ * never a soft `deploying`) and before `held`/`pinned`. The word and hue come
+ * from `bake-status.ts` — never spelled here — so this line can never
+ * disagree with `/rollouts`' own `deploying`/`checking` words for the
+ * identical rollout. `Deploying` wins the tie over `InProgress` when a line
+ * spans two environments in two different in-flight phases at once: the
+ * version is still literally going out somewhere, which is the more urgent
+ * of the two to name.
  */
 export type LineStateChip = {
 	/** Matches `Chip.svelte`'s own `role` prop. */
-	role: 'failing' | 'alarm' | 'held' | 'unranked';
+	role: 'failing' | 'alarm' | 'held' | 'unranked' | 'deploying' | 'checking';
 	label: string;
 	title: string;
 };
@@ -1283,11 +1303,18 @@ export function lineState(
 	let stuck = false;
 	let held = false;
 	let pinnedVersion: string | null = null;
+	let inFlightBake: 'Deploying' | 'InProgress' | null = null;
 	for (const slot of line.slots) {
 		const rollout = slot.cell?.rollout;
 		if (!rollout) continue;
-		if (rollout.status?.history?.[0]?.bakeStatus === 'Failed') failing = true;
+		const bake = rollout.status?.history?.[0]?.bakeStatus;
+		if (bake === 'Failed') failing = true;
 		if (detectStuck(rollout, { now })) stuck = true;
+		// `Deploying` (the build is still going out) is the more urgent of
+		// the two in-flight phases, so it wins over an `InProgress` (bake
+		// window) slot seen earlier in the same line.
+		if (bake === 'Deploying') inFlightBake = 'Deploying';
+		else if (bake === 'InProgress' && inFlightBake === null) inFlightBake = 'InProgress';
 		if (promotionBlock(rollout).blocked) held = true;
 		if (rollout.spec?.wantedVersion && pinnedVersion === null) {
 			pinnedVersion = rollout.spec.wantedVersion;
@@ -1302,6 +1329,13 @@ export function lineState(
 	}
 	if (stuck) {
 		return { role: 'alarm', label: 'stuck', title: 'Stuck — this deploy has not moved.' };
+	}
+	if (inFlightBake) {
+		return {
+			role: inFlightBake === 'Deploying' ? 'deploying' : 'checking',
+			label: bakeWord(inFlightBake),
+			title: bakeTitle(inFlightBake)
+		};
 	}
 	if (held) {
 		return {

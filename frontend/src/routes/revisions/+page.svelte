@@ -30,8 +30,11 @@
 		revisionCoverage,
 		releaseSplit,
 		heldBehind,
+		slotBakeStatus,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
+	import { bakeWord, bakeTitle } from '$lib/bake-status';
+	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import {
 		joinClauses,
 		buildGateContext,
@@ -273,7 +276,28 @@
 			const leadRows = leadRowsFor(repo, lines);
 			const visible = visibleLeadRows(leadRows);
 			const heldPattern = visible.map((row) => !!heldGateReason(revisionCoverage(row, coarse)));
-			return { total: visible.length, heldPattern };
+			// ⭐ REVISIONS-2026-09-06, ITEM 3 — WHICH RELEASE LINES ACTUALLY
+			// PRINT A CAPTION. `lineHeadLabels` now decides per line whether
+			// there is a version worth naming; a line whose every member ships
+			// under its own bare sha (no renaming scheme) prints NOTHING there
+			// any more (see the ledger template's own note), which the
+			// skeleton must reserve as the smaller `.svc-line-gap`, not the
+			// full caption row, or the warm flip grows every such line by the
+			// caption's own height the instant real data lands.
+			const captionPattern = lines.map((line) => lineHeadLabels(repo, line).length > 0);
+			// ⭐ REVISIONS-2026-09-06, ITEM 4 — WAS THE "ALSO STILL RUNNING"
+			// CARD EMPTY? Measured live (`pair-warm.mjs`, 1440): the skeleton
+			// always drew two fake rows for this card, so a repo whose "Also
+			// still running" list is genuinely empty (every place is on a
+			// build the hero above already names) replaced two ~144px rows
+			// with a single centred sentence — real height GREW past the
+			// skeleton's own reserve by +119px, not shrank, because the empty
+			// state's own header + padded paragraph turned out taller than
+			// this pass's first guess at it. `leadHeads` mirrors the real
+			// template's own set exactly (`leadRowsFor`'s revisions).
+			const leadHeads = new Set(leadRows.map((r) => r.revision));
+			const stillRunningEmpty = restRows(repo, leadHeads).length === 0;
+			return { total: visible.length, heldPattern, captionPattern, stillRunningEmpty };
 		})
 	);
 
@@ -373,6 +397,22 @@
 		hadBanner: boolean;
 		heroLines: string;
 		heldLines: string;
+		/**
+		 * ⭐ REVISIONS-2026-09-06, ITEM 3 — WHICH RELEASE LINES PRINT A
+		 * CAPTION. Same bit-string shape as `heldLines`, but indexed against
+		 * `releaseLines(repo)` (every line the ledger draws) rather than the
+		 * hero's own visible cards: a caption's presence now depends on
+		 * whether any member actually renames its builds (`lineHeadLabels`),
+		 * which is not reliably true of the first line either.
+		 */
+		captionLines: string;
+		/**
+		 * ⭐ REVISIONS-2026-09-06, ITEM 4 — WAS THE "ALSO STILL RUNNING" CARD
+		 * EMPTY. Comma-joined `'1'`/`'0'` per repo, same indexing as
+		 * `heroLines`. A boolean, not a count: the skeleton only needs to
+		 * pick between the two-row placeholder and the empty-state one.
+		 */
+		stillRunningEmpty: string;
 	};
 	const shapeHint = recallShape<RevisionsShape>(SHAPE_KEY);
 	// Capped generously — only bounds a next-visit SKELETON's size, never the real page.
@@ -397,31 +437,79 @@
 	function skelHeldAt(sectionIndex: number, li: number): boolean {
 		return skelHeldPatterns[sectionIndex]?.[li] === '1';
 	}
+	// Same shape as `skelHeldPatterns`, for `.svc-line-caption` vs `.svc-line-gap`
+	// (ITEM 3). No hint (a genuine first visit) defaults to `false` — the
+	// smaller placeholder — matching `skelHeldAt`'s own default.
+	const skelCaptionPatterns = (shapeHint?.captionLines ?? '').split(',');
+	function skelCaptionAt(sectionIndex: number, li: number): boolean {
+		return skelCaptionPatterns[sectionIndex]?.[li] === '1';
+	}
+	// ⭐ ITEM 4 — one bit per repo; no hint defaults to `false` (assume
+	// non-empty, the two-row placeholder), matching this page's existing
+	// convention of guessing the LARGER shape until a real visit corrects it.
+	const skelStillRunningEmptyBits = (shapeHint?.stillRunningEmpty ?? '').split(',');
+	function skelStillRunningEmptyAt(sectionIndex: number): boolean {
+		return skelStillRunningEmptyBits[sectionIndex] === '1';
+	}
 
 	/**
 	 * ⭐ WHICH REPOSITORY SECTIONS ARE EXPANDED. (§1 "Default open state")
 	 * `ledgers` is already sorted most-recently-active first, so index 0
-	 * open / the rest closed is the right first-ever-visit default — and
-	 * it is exactly what `skelOpenIndices` already resolves to with no
-	 * remembered hint (`'0'`). Remembered by INDEX, never by repo key.
+	 * open / the rest closed is the right first-ever-visit default.
+	 *
+	 * ⛔ REVISIONS-2026-09-06, ITEM 2 — KEYED BY REPOSITORY NOW, NOT INDEX.
+	 * `orderedLedgers` is `sortByDeviation`'d — it re-sorts LIVE the moment a
+	 * deviation changes (a held gate clears, a deploy starts failing), which
+	 * the SSE stream patches into `rollouts` mid-session. An index-keyed
+	 * `openMap` therefore did not track "the repository the operator opened",
+	 * it tracked "whatever repository next lands at that position" — opening
+	 * `kuberik-testing-second` at position 1 and having a deviation elsewhere
+	 * promote it to position 0 would silently open `kuberik-testing` instead
+	 * and close the one the operator actually expanded.
+	 *
+	 * The SKELETON still needs indices — before data arrives there are no
+	 * repo keys to key by, only a remembered COUNT and POSITION SET
+	 * (`skelOpenIndices`, `skeleton-hints.ts`'s own contract: shape only,
+	 * never fleet data). So the index form survives as the on-disk shape and
+	 * the runtime map translates it to keys exactly ONCE, the first time real
+	 * data resolves (`openMapInitialized` below) — index `i` becomes
+	 * "the repoKey at position `i` in `orderedLedgers` on that first render",
+	 * which for a first-ever visit (no remembered hint, default `{0}`) is
+	 * simply "whichever repository sorts first". After that one translation
+	 * the map is entirely keyed by `repoKey` and reordering cannot move it.
 	 */
-	let openMap = $state<Record<number, boolean>>(
-		Object.fromEntries([...(skelOpenIndices.size ? skelOpenIndices : [0])].map((i) => [i, true]))
-	);
-	function isOpen(i: number): boolean {
-		return !!openMap[i];
+	let openMap = $state<Record<string, boolean>>({});
+	let openMapInitialized = false;
+	$effect(() => {
+		if (openMapInitialized || orderedLedgers.length === 0) return;
+		openMapInitialized = true;
+		const indices = skelOpenIndices.size ? skelOpenIndices : new Set([0]);
+		const next: Record<string, boolean> = {};
+		for (const i of indices) {
+			const repo = orderedLedgers[i];
+			if (repo) next[repo.repoKey] = true;
+		}
+		openMap = next;
+	});
+	function isOpen(repoKey: string): boolean {
+		return !!openMap[repoKey];
 	}
-	function toggleRepo(i: number) {
-		openMap = { ...openMap, [i]: !isOpen(i) };
+	function toggleRepo(repoKey: string) {
+		openMap = { ...openMap, [repoKey]: !isOpen(repoKey) };
 	}
+	/**
+	 * The skeleton hint's own shape is still POSITIONAL (see the doc comment
+	 * above), so this translates the current, repo-keyed `openMap` back to
+	 * index form against `orderedLedgers`' CURRENT order — a faithful
+	 * "what a first-ever visit would see right now" snapshot, not a claim
+	 * about which repository key was open.
+	 */
 	function openIndicesString(): string {
-		return (
-			Object.keys(openMap)
-				.filter((k) => openMap[+k])
-				.map(Number)
-				.sort((a, b) => a - b)
-				.join(',') || '0'
-		);
+		const idx: number[] = [];
+		orderedLedgers.forEach((repo, i) => {
+			if (openMap[repo.repoKey]) idx.push(i);
+		});
+		return idx.length ? idx.sort((a, b) => a - b).join(',') : '0';
 	}
 
 	$effect(() => {
@@ -436,7 +524,11 @@
 			heroLines: heroLineShape.map((h) => h.total).join(','),
 			heldLines: heroLineShape
 				.map((h) => h.heldPattern.map((b) => (b ? '1' : '0')).join(''))
-				.join(',')
+				.join(','),
+			captionLines: heroLineShape
+				.map((h) => h.captionPattern.map((b) => (b ? '1' : '0')).join(''))
+				.join(','),
+			stillRunningEmpty: heroLineShape.map((h) => (h.stillRunningEmpty ? '1' : '0')).join(',')
 		});
 	});
 
@@ -684,15 +776,23 @@
 	function slotAgeInfo(slots: Pick<RevisionSlot, 'cell' | 'envName'>[]): {
 		ms: number;
 		envLabel: string;
+		/**
+		 * ⭐ REVISIONS-2026-09-06, ITEM 1 — THE WINNING SLOT'S OWN BAKE STATUS.
+		 * Carried alongside the timestamp so a caller can tell "just deployed"
+		 * (settled) from "still deploying" (the event that produced this
+		 * timestamp has not finished) without a second walk over `slots`.
+		 */
+		bakeStatus?: string;
 	} | null {
-		let newest: { ms: number; envLabel: string } | null = null;
+		let newest: { ms: number; envLabel: string; bakeStatus?: string } | null = null;
 		for (const slot of slots) {
-			const ts = slot.cell?.rollout?.status?.history?.[0]?.timestamp;
+			const latest = slot.cell?.rollout?.status?.history?.[0];
+			const ts = latest?.timestamp;
 			if (!ts) continue;
 			const t = new Date(ts).getTime();
 			if (!Number.isFinite(t)) continue;
 			const envLabel = shortEnvLabel(slot.cell.theme) || slot.envName;
-			if (!newest || t > newest.ms) newest = { ms: t, envLabel };
+			if (!newest || t > newest.ms) newest = { ms: t, envLabel, bakeStatus: latest?.bakeStatus };
 		}
 		return newest;
 	}
@@ -736,11 +836,25 @@
 		return parts.join(' · ');
 	}
 
+	/**
+	 * ⭐ REVISIONS-2026-09-06, ITEM 1 — "DEPLOYED" IS NOT YET TRUE MID-CANARY.
+	 * The row's own age used to print `Deployed 2s ago` off the newest
+	 * timestamp regardless of whether that deploy had actually finished — on
+	 * the live cluster, the environment DRIVING that timestamp was still
+	 * `Deploying` when the row was captured, so the word claimed a settled
+	 * fact the bake had not reached yet. `slotAgeInfo`'s own `bakeStatus`
+	 * (the WINNING slot's, i.e. the one this timestamp is about) decides the
+	 * verb; the environment/age arithmetic is unchanged either way.
+	 */
 	function lineAge(line: Pick<ServiceLedgerLine, 'slots'>): string {
 		const info = slotAgeInfo(line.slots);
 		if (!info) return '';
 		const envPart = envsAgreeWithinMinute(line.slots) ? '' : ` · ${info.envLabel.toUpperCase()}`;
-		return `Deployed ${formatTimeAgoCompact(new Date(info.ms).toISOString(), $now)} ago${envPart}`;
+		const rel = formatTimeAgoCompact(new Date(info.ms).toISOString(), $now);
+		const inFlight = info.bakeStatus === 'Deploying' || info.bakeStatus === 'InProgress';
+		return inFlight
+			? `Deploying · started ${rel} ago${envPart}`
+			: `Deployed ${rel} ago${envPart}`;
 	}
 
 	function lineAgeTitle(line: Pick<ServiceLedgerLine, 'slots'>): string {
@@ -1210,8 +1324,8 @@
 	});
 
 	/** While searching, every section that might answer it must be open. */
-	function effectiveOpen(i: number): boolean {
-		return isOpen(i) || searchActive;
+	function effectiveOpen(repoKey: string): boolean {
+		return isOpen(repoKey) || searchActive;
 	}
 
 	function lineMatchesSearch(line: { revision: string; short: string }): boolean {
@@ -1487,12 +1601,27 @@
 						(`serviceLineIndex`), which `skeleton-hints.ts` forbids
 						remembering; the aggregate height is shape, and is what the
 						flip test actually measures.
+
+						⭐ REVISIONS-2026-09-06, ITEM 3 — NOT EVERY LINE GETS THE FULL
+						CAPTION ANY MORE. A line whose members all ship under their
+						own bare sha (no renaming scheme) now prints NOTHING here —
+						see the real ledger's own note beside `.svc-line-caption`
+						below — so reserving the full 27px block for every line would
+						over-grow the skeleton the instant such a line's caption came
+						back empty. `skelCaptionAt` (from `captionLines`, ITEM 3's own
+						remembered bit string) picks the full caption block or the
+						smaller `.svc-line-gap` per line, exactly mirroring the real
+						template's own branch below.
 					-->
 					{#if (skelHeroLineCounts[sectionIndex] ?? 1) > 1}
 						{#each Array(skelHeroLineCounts[sectionIndex]) as _, li (li)}
-							<div class="svc-line-caption">
-								<span class="skel-block h-3 w-40"></span>
-							</div>
+							{#if skelCaptionAt(sectionIndex, li)}
+								<div class="svc-line-caption">
+									<span class="skel-block h-3 w-40"></span>
+								</div>
+							{:else}
+								<div class="svc-line-gap" aria-hidden="true"></div>
+							{/if}
 						{/each}
 					{/if}
 					{#each Array(svcCount) as _, r (r)}
@@ -1626,34 +1755,53 @@
 										</div>
 										<span class="skel-block h-3 w-16 shrink-0"></span>
 									</div>
-									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-										{#each Array(2) as _, i (i)}
-											<!--
-												⭐ ROUND 4a, ITEM E — A FOURTH LEFT-COLUMN LINE. Measured
-												live: this row (with its live-percentage bar) renders
-												144px against this skeleton's 112px — the env-chip line
-												`liveEnvSlots` draws under the service names had no
-												placeholder here at all.
-											-->
-											<li class="bld-row">
-												<span class="bld-mark">
-													<span class="skel-block h-4 w-4 rounded-full"></span>
-												</span>
-												<div class="flex min-w-0 flex-col gap-1">
-													<span class="skel-block h-3.5 w-24"></span>
-													<span class="skel-block h-3 w-40"></span>
-													<span class="skel-block h-3 w-20"></span>
-													<span class="skel-block h-[18px] w-12"></span>
-												</div>
-												<div class="bld-roll flex flex-col gap-1.5">
-													<span class="skel-block ml-auto h-3.5 w-32"></span>
-													<span class="skel-block h-1.5 w-full"></span>
-													<span class="skel-block ml-auto h-2.5 w-16"></span>
-												</div>
-												<span class="bld-go"><span class="skel-block h-4 w-4"></span></span>
-											</li>
-										{/each}
-									</ul>
+									<!--
+										⭐ REVISIONS-2026-09-06, ITEM 4 — THE EMPTY STATE IS ITS
+										OWN RESERVE, NOT THE TWO-ROW LIST'S. Measured live
+										(`pair-warm.mjs`, 1440): this card's real height when
+										"Also still running" has nothing to say (`Nothing older
+										is still running — every place is on a build above.`)
+										GREW past the always-two-rows skeleton by +119px, because
+										a single centred sentence over `px-4 py-6` measures more
+										than this pass first assumed. `skelStillRunningEmptyAt`
+										(ITEM 4's own remembered boolean) picks the branch that
+										actually matches what the real card is about to draw.
+									-->
+									{#if skelStillRunningEmptyAt(sectionIndex)}
+										<div class="flex flex-col items-center gap-1.5 px-4 py-6">
+											<span class="skel-block h-3.5 w-full max-w-sm"></span>
+											<span class="skel-block h-3.5 w-56 max-w-full"></span>
+										</div>
+									{:else}
+										<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+											{#each Array(2) as _, i (i)}
+												<!--
+													⭐ ROUND 4a, ITEM E — A FOURTH LEFT-COLUMN LINE. Measured
+													live: this row (with its live-percentage bar) renders
+													144px against this skeleton's 112px — the env-chip line
+													`liveEnvSlots` draws under the service names had no
+													placeholder here at all.
+												-->
+												<li class="bld-row">
+													<span class="bld-mark">
+														<span class="skel-block h-4 w-4 rounded-full"></span>
+													</span>
+													<div class="flex min-w-0 flex-col gap-1">
+														<span class="skel-block h-3.5 w-24"></span>
+														<span class="skel-block h-3 w-40"></span>
+														<span class="skel-block h-3 w-20"></span>
+														<span class="skel-block h-[18px] w-12"></span>
+													</div>
+													<div class="bld-roll flex flex-col gap-1.5">
+														<span class="skel-block ml-auto h-3.5 w-32"></span>
+														<span class="skel-block h-1.5 w-full"></span>
+														<span class="skel-block ml-auto h-2.5 w-16"></span>
+													</div>
+													<span class="bld-go"><span class="skel-block h-4 w-4"></span></span>
+												</li>
+											{/each}
+										</ul>
+									{/if}
 								</div>
 								<div
 									class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
@@ -1871,7 +2019,7 @@
 						: 'Every known build newer than what is running here has already been deployed somewhere.'}
 			{@const historyLimit = repoHistoryLimit(repo)}
 			{@const url = repoUrl(repo.repoKey)}
-			{@const open = effectiveOpen(i)}
+			{@const open = effectiveOpen(repo.repoKey)}
 			{@const liveAll = restRows(repo, leadHeads)}
 			{@const pastAll = pastRows(repo, leadHeads)}
 			{@const liveVisible = liveAll.filter(passesSearch)}
@@ -2070,7 +2218,7 @@
 								aria-expanded={open}
 								aria-controls={`repo-${i}-extra`}
 								aria-label={open ? 'Hide build analysis' : 'Show build analysis'}
-								onclick={() => toggleRepo(i)}
+								onclick={() => toggleRepo(repo.repoKey)}
 							>
 								{searchActive
 									? `${repoKnownMatch} of ${repo.knownRevisions} builds`
@@ -2111,40 +2259,28 @@
 									`064b655` are legibly two different ladders, not
 									one row disagreeing with itself.
 
-									⛔ REVISIONS-2026-09-06, ITEM 7 — THE CAPTION IS A
-									VERSION NOW, NOT A ROSTER. It used to be
-									`lines[li].services.join(' · ')` — the concatenation
-									of the exact names each row below it already prints
-									as its own `.svc-name` link, so the caption stated
-									nothing the rows did not already carry and cost 32px
-									at 390 doing it. `lineHeadLabels` is the one fact the
-									rows do NOT state anywhere: what this line's own
-									head build is actually CALLED (`2.67.0-67`) — the
-									ledger's rank chip prints the SHA as its joined
-									value, never the display version. Falls back to the
-									service roster whenever no member has a label worth
-									printing (`headLabels` empty) — nothing deployed yet,
-									or every member ships this line's head under its own
-									bare sha with no renaming scheme to state. The
-									caption's job is still to tell two ladders apart, and
-									a version-less line has nothing else to say that with.
+									⛔ REVISIONS-2026-09-06, ITEM 3 — ONE GRAMMAR: A
+									VERSION, OR NOTHING. SUPERSEDES ROUND-6 ITEM 7's OWN
+									ROSTER FALLBACK. Line 2 of a live repo has no member
+									that renames its builds (`headLabels` empty), so the
+									old fallback printed the exact roster
+									(`hello-multi-app · hello-world-app ·
+									hello-world-manifests`) — every name the rows below it
+									already carry as their own `.svc-name` link, restated
+									8px above them. The caption's only job left is a fact
+									the rows do NOT state: what this line's head build is
+									actually CALLED. Where there is none, the group's own
+									8px gap (`.svc-line-gap`) and its alignment are what
+									tell two ladders apart — the hero card above already
+									named the services once for the whole page.
 								-->
-								<div
-									class="svc-line-caption t-micro text-gray-500 dark:text-gray-400"
-									title={headLabels.length > 0
-										? undefined
-										: lines[li].services.length > 3
-											? lines[li].services.join(', ')
-											: undefined}
-								>
-									{#if headLabels.length > 0}
+								{#if headLabels.length > 0}
+									<div class="svc-line-caption t-micro text-gray-500 dark:text-gray-400">
 										{headLabels.join(' · ')}
-									{:else if lines[li].services.length <= 3}
-										{lines[li].services.join(' · ')}
-									{:else}
-										{lines[li].services.length} services
-									{/if}
-								</div>
+									</div>
+								{:else}
+									<div class="svc-line-gap" aria-hidden="true"></div>
+								{/if}
 							{/if}
 							{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
 								{@const state = line ? lineState(line, coarse) : null}
@@ -2263,6 +2399,7 @@
 										<span class="svc-envs">
 											{#each line.slots as slot (slot.envName)}
 												{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
+												{@const inFlightBake = slotBakeStatus(slot)}
 												<a
 													class="hit-32 shrink-0"
 													href={placeHref(slot)}
@@ -2276,6 +2413,31 @@
 														title="{group.appName} in {envDisplay.toUpperCase()}"
 													/>
 												</a>
+												<!--
+													⭐ REVISIONS-2026-09-06, ITEM 1 — THE IN-FLIGHT
+													TREATMENT LIVES ON THE PLACE, NOT ONLY ON THE
+													LINE. Measured live during a real canary: the
+													hero correctly read `8 live · 1 deploying`
+													while THIS env chip — the one place actually
+													mid-canary — carried no sign of it at all. The
+													icon/word are `bake-status.ts`'s own
+													(`bakeWord`/`bakeTitle`, the same spelling
+													`/rollouts` uses for `Deploying` and `checking`),
+													never spelled here, and the icon is `decorative`
+													so its own sr-only text is not doubled by the
+													chip's `aria-label` above.
+												-->
+												{#if inFlightBake === 'Deploying' || inFlightBake === 'InProgress'}
+													<span
+														class="inline-flex shrink-0 items-center gap-1"
+														title={bakeTitle(inFlightBake)}
+													>
+														<BakeStatusIcon bakeStatus={inFlightBake} size="small" decorative />
+														<span class="t-micro text-gray-500 dark:text-gray-400"
+															>{bakeWord(inFlightBake)}</span
+														>
+													</span>
+												{/if}
 											{/each}
 											<!--
 												⭐ ROUND 3 §3/ADDENDUM I — STATE IN WORDS, ONLY
@@ -3078,6 +3240,20 @@
 	.svc-line-caption {
 		grid-column: 1 / -1;
 		padding: 10px 0 2px;
+	}
+
+	/*
+	 * ⭐ REVISIONS-2026-09-06, ITEM 3 — THE GROUP BOUNDARY, WITH NO CAPTION TO
+	 * CARRY IT. A line with nothing worth naming (`lineHeadLabels` empty)
+	 * prints no `.svc-line-caption` any more, but a new release line starting
+	 * still needs SOME separation from the line above it — an 8px gap is the
+	 * product's own spacing-scale step (`lib/CLAUDE.md`'s `2/4/6/8/10/12/16/24`)
+	 * and is the whole reservation: no text, no border, alignment alone (the
+	 * next group's own name/sha/env columns) is what says "new line" here.
+	 */
+	.svc-line-gap {
+		grid-column: 1 / -1;
+		height: 8px;
 	}
 
 	/*

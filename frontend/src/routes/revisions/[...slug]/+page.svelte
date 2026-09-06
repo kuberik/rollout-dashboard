@@ -27,9 +27,16 @@
 		revisionCoverage,
 		coverageSwatch,
 		releaseSplit,
+		slotBakeStatus,
 		type CoverageKey,
 		type CoverageSlotVM
 	} from '$lib/view-models/revision-coverage';
+	// ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 2 (IN-FLIGHT DETAIL, blocking) — THE
+	// DEPLOYING ROW'S OWN WORD. `bakeWord` is `bake-status.ts`'s one exported
+	// verb table (`Deploying` → `deploying`, `InProgress` → `checking` — the
+	// file's own header comment records why `baking` was retired from every
+	// user-facing surface in 2026-08-30; this row must not reinvent it).
+	import { bakeWord } from '$lib/bake-status';
 	import {
 		joinClauses,
 		buildGateContext,
@@ -332,9 +339,20 @@
 	 * idea. `true` (frontier, keep green) whenever no service data is
 	 * available yet, so this never flips the header before `coverage`/`row`
 	 * resolve.
+	 *
+	 * ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 3 — AND NOT WHILE ANYTHING IS STILL
+	 * DEPLOYING. `Running it now`'s green check is a claim that this build has
+	 * SETTLED here; a bake in progress elsewhere on this same build is the
+	 * identical "not done yet" fact the rank check above already earns the
+	 * neutral glyph for. Checked first, and independent of rank, so a build
+	 * that IS everyone's newest but still has one place mid-canary does not
+	 * draw a premature green check — the same defect item 2 closed for the
+	 * coverage count, one glyph over.
 	 */
 	const liveIsFrontier = $derived.by<boolean>(() => {
 		if (!coverage || !row) return true;
+		const deploying = coverage.buckets.find((b) => b.key === 'deploying');
+		if (deploying && deploying.slots.length > 0) return false;
 		const live = coverage.buckets.find((b) => b.key === 'live');
 		if (!live || live.slots.length === 0) return true;
 		const runningApps = new Set(live.slots.map((s) => s.appName));
@@ -469,6 +487,18 @@
 	 */
 	const headBandHeldCount = $derived(
 		releaseSplitLines.filter((l) => l.held).reduce((n, l) => n + l.count, 0)
+	);
+
+	/**
+	 * ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 2 — THE HEAD BAND NAMES THE PLACE IN
+	 * FLIGHT TOO. `8 of 9 places run this build` was silent on the ninth during
+	 * a real canary — it is neither `live` (excluded from the numerator, see
+	 * `revision-coverage.ts`'s own `classify()` doc) nor `notYet`, so the count
+	 * alone made it look absent rather than in progress. Read off the same
+	 * `deploying` bucket the bar/card already draw, never a second count.
+	 */
+	const headBandDeployingCount = $derived(
+		coverage?.buckets.find((b) => b.key === 'deploying')?.slots.length ?? 0
 	);
 
 	function releaseSplitSentence(): string {
@@ -874,6 +904,32 @@
 		// spelling, product-wide.
 		const ts = s.slot.cell.rollout?.status?.history?.[0]?.timestamp;
 		return ts ? { ago: formatTimeAgoCompact(ts, $now), iso: ts } : null;
+	}
+
+	/**
+	 * ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 1 (blocking, IN-FLIGHT DETAIL) —
+	 * THE `deploying` ROW STATES THE IN-FLIGHT FACT, NEVER "now on". Measured
+	 * live mid-canary: this bucket's own row fell through to the `ahead`
+	 * bucket's sentence (`now on <sha>` — "these have already moved on to
+	 * something else"), which is false of a place taking this row's own build
+	 * right now. `history[0]` IS the in-flight deploy for an `onIt` slot (the
+	 * same read `slotDeployedAgo` already makes), so the start time is not a
+	 * new fetch — only a new label on a timestamp already read.
+	 *
+	 * The verb is `bake-status.ts`'s own `bakeWord()` — never a re-spelling —
+	 * capitalised for the row's leading position. `Deploying` names the build
+	 * going out, so it carries THIS row's own sha (that build IS what is
+	 * deploying); `InProgress` ("checking") names no build, because the new
+	 * version is already serving and the wait is the health watch, not the
+	 * rollout — the sha would be a stale claim there.
+	 */
+	function deployingCaption(s: CoverageSlotVM, sha: string): string {
+		const bs = slotBakeStatus(s.slot);
+		const word = bakeWord(bs);
+		const verb = bs === 'InProgress' ? word : `${word} ${sha}`;
+		const Verb = verb.charAt(0).toUpperCase() + verb.slice(1);
+		const started = slotDeployedAgo(s);
+		return started ? `${Verb} · started ${started.ago} ago` : Verb;
 	}
 
 	/**
@@ -1753,7 +1809,9 @@
 			<span
 				class="t-body text-gray-500 dark:text-gray-400"
 				title="A place is one service in one environment."
-				>of {coverage.totalCount} places run this build{headBandHeldCount > 0
+				>of {coverage.totalCount} places run this build{headBandDeployingCount > 0
+					? ` · ${headBandDeployingCount} deploying`
+					: ''}{headBandHeldCount > 0
 					? ` · ${headBandHeldCount} ${headBandHeldCount === 1 ? 'is' : 'are'} held from a newer build`
 					: ''}</span
 			>
@@ -2688,6 +2746,18 @@
 																> ago</span
 															>
 														{/if}
+														<!-- ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 1 — THE IN-FLIGHT
+														     CAPTION, PER PLACE. Bake phase is a fact about THIS
+														     slot, not the row (two places sharing a build rarely
+														     started their deploy at the same instant), so it is
+														     read here rather than hoisted to the group like the
+														     `deployed …` age above — the ordinary case (one place
+														     in flight) still prints once. -->
+														{#if bucket.key === 'deploying'}
+															<span class="t-micro text-gray-500 dark:text-gray-400"
+																>{deployingCaption(s, row.short)}</span
+															>
+														{/if}
 													</a>
 												{/each}
 												<!-- ⭐ ITEM 2 (2026-09-06 critique) — THE AGE, HOISTED ONCE.
@@ -2714,8 +2784,11 @@
 													>
 												{/if}
 												<!-- WHAT TOOK ITS PLACE — once per (service, build), not
-												     once per environment. -->
-												{#if bucket.key !== 'live' && bucket.key !== 'failing' && rg.runs}
+												     once per environment. `deploying` is excluded: it is
+												     STILL this row's own build going out, never something
+												     that "took its place" — see `deployingCaption`, drawn
+												     per atom above instead. -->
+												{#if bucket.key !== 'live' && bucket.key !== 'failing' && bucket.key !== 'deploying' && rg.runs}
 													<span class="t-micro ml-auto text-gray-500 dark:text-gray-400"
 														>now on <span class="t-code-sm">{rg.runs}</span></span
 													>

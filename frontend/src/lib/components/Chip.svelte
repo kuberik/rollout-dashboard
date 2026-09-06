@@ -58,7 +58,9 @@
 		| 'failing'
 		| 'blocked'
 		| 'unranked'
-		| 'held';
+		| 'held'
+		| 'deploying'
+		| 'checking';
 
 	let {
 		role = 'rank',
@@ -598,6 +600,20 @@
 	const ADVERSE =
 		'border-gray-200 bg-red-50 text-red-700 dark:border-gray-700 dark:bg-red-950/50 dark:text-red-400';
 
+	// ⭐ REVISIONS-2026-09-06, ITEM 1 — `deploying`/`checking`, SPENDING NO NEW
+	// HUE. `Deploying` (blue) and `InProgress`/checking (yellow) are already
+	// the product's own closed pair for an in-flight bake — `bake-status.ts`'s
+	// `getBakeStatusColor`, `BuildStateMark`'s `tone-active`, the disc
+	// `getStatusCircleClass` paints on `/`/`/rollouts` — and DESIGN.md's own
+	// rule is that they may never share a value with each other or with any
+	// settled state. Same WASH shape as `ADVERSE`/`TRAILING`: neutral hairline,
+	// a `-50`/`-950` tint of the role's own hue, `-700`/`-400` ink — TEXT-only,
+	// so `alarm` keeps the only fill and neither in-flight chip out-shouts it.
+	const DEPLOYING =
+		'border-gray-200 bg-blue-50 text-blue-700 dark:border-gray-700 dark:bg-blue-950/50 dark:text-blue-400';
+	const CHECKING =
+		'border-gray-200 bg-yellow-50 text-yellow-700 dark:border-gray-700 dark:bg-yellow-950/50 dark:text-yellow-400';
+
 	// Only `alarm` carries a FILL — that is the whole reason it reads as the
 	// loudest object on the page without needing a bigger box, a heavier
 	// weight, or a second colour. It used to carry a glyph as well; the human
@@ -1065,7 +1081,10 @@
 		// contributing essentially zero luminance mass and the chip was really
 		// an outline chip with a warm tint.
 		alarm:
-			'border-amber-500 bg-amber-400 text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-200'
+			'border-amber-500 bg-amber-400 text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-200',
+		// See `DEPLOYING`/`CHECKING`'s own note, above `ADVERSE`.
+		deploying: DEPLOYING,
+		checking: CHECKING
 	};
 
 	// THE ROLES THAT STATE A POSITION ON THE RELEASE LINE — i.e. the roles whose

@@ -31,18 +31,40 @@
 
 	let {
 		component: Rendered,
-		props = {}
+		props = {},
+		client: externalClient
 	}: {
 		/** The component under test. Rendered as the provider's only child. */
 		component: Component<Record<string, unknown>>;
 		props?: Record<string, unknown>;
+		/**
+		 * ⭐ REVISIONS-2026-09-06, ITEM 2 — AN ESCAPE HATCH FOR A LIVE CACHE
+		 * PATCH. Most tests never need this: a fresh, inert client per render
+		 * is the right default. A test proving that the UI reacts correctly
+		 * to the SAME mechanism the real app's SSE stream uses
+		 * (`applyChangeEvents` writing straight into the cache via
+		 * `setQueryData`, never a network refetch) needs a HANDLE on the
+		 * client it rendered with, so it can push a second payload after
+		 * mount and assert on the update — `queryClient.setQueryData(key,
+		 * data)` from outside the render call. Optional and additive: every
+		 * existing caller that omits it gets byte-identical behaviour.
+		 */
+		client?: QueryClient;
 	} = $props();
 
-	const client = new QueryClient({
-		defaultOptions: {
-			queries: { retry: false, refetchOnWindowFocus: false, gcTime: 0, staleTime: Infinity }
-		}
-	});
+	// `$derived.by` — the compiler's own idiom for "reads a prop", so the
+	// tests below get a real client with NO svelte-check noise. It still
+	// only evaluates once in practice: `externalClient` is passed once at
+	// mount and never reassigned by anything these tests do.
+	const client = $derived.by(
+		() =>
+			externalClient ??
+			new QueryClient({
+				defaultOptions: {
+					queries: { retry: false, refetchOnWindowFocus: false, gcTime: 0, staleTime: Infinity }
+				}
+			})
+	);
 </script>
 
 <QueryClientProvider {client}>

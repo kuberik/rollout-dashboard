@@ -51,6 +51,8 @@ import { goto } from '$app/navigation';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import Page from './+page.svelte';
 import type { Environment, Rollout } from '../../types';
+import { QueryClient } from '@tanstack/svelte-query';
+import { rolloutsListQueryKey, type RolloutsListResponse } from '$lib/api/rollouts';
 
 /**
  * ONE CONSISTENT BLOCK PER REPOSITORY (second repo, 2026-09-05).
@@ -109,6 +111,24 @@ function rollout(
 			}))
 		}
 	} as unknown as Rollout;
+}
+
+/**
+ * ⭐ REVISIONS-2026-09-06, ITEM 1 — SAME SHAPE AS `rollout()`, BUT THE
+ * NEWEST HISTORY ENTRY IS MID-DEPLOY. Every existing fixture hardcodes
+ * `Succeeded` (`rollout()`'s own history mapper); this overrides only
+ * `history[0].bakeStatus`, leaving `revision-ledger.ts`'s `lineState` and
+ * `revision-coverage.ts`'s `slotBakeStatus`/`classify()` the SAME real
+ * code path a settled deploy takes, on a fixture whose only difference is
+ * the one field the operator-walk measured mattering
+ * (`status.history[0].bakeStatus`).
+ */
+function withNewestBakeStatus(r: Rollout, bakeStatus: string): Rollout {
+	const clone = structuredClone(r) as Rollout;
+	const history = (clone as unknown as { status: { history: { bakeStatus: string }[] } }).status
+		.history;
+	if (history[0]) history[0].bakeStatus = bakeStatus;
+	return clone;
 }
 
 function environment(app: string, ns: string, tier: string): Environment {
@@ -558,9 +578,22 @@ describe('/revisions — round 3 §1 (a repository is not one release line)', ()
 		// `m-jobs`'s own current build is not older than anything on ITS OWN
 		// line; it is only not the repo-wide newest by creation time.
 		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(2);
-		// Printed twice each — the hero's own `Card` verdict AND the ledger's
-		// per-line caption (addendum H) — never a bare repo-wide count.
-		expect(screen.getAllByText('m-web · m-web2').length).toBeGreaterThan(0);
+		// ⛔ REVISIONS-2026-09-06, ITEM 3 — THE LEDGER'S CAPTION NO LONGER
+		// REPEATS THE ROSTER. This used to also assert `m-web · m-web2`
+		// rendered a SECOND time as the ledger's per-line caption
+		// (round-6 item 7's roster fallback) — the exact restatement item 3
+		// deletes: neither fixture rollout ever renames its build away from
+		// its own sha (`rel()` sets no separate display version), so
+		// `lineHeadLabels` is empty for both lines and the ledger prints the
+		// 8px `.svc-line-gap` instead of a caption. The hero's own title is
+		// the one place these names still render, combined with the object
+		// they describe.
+		expect(screen.getByText('Newest build · m-web · m-web2')).toBeInTheDocument();
+		expect(screen.getByText('Newest build · m-jobs')).toBeInTheDocument();
+		// The ledger's own name column still names every service, once each,
+		// as its row's own link — that fact never moved.
+		expect(screen.getAllByText('m-web').length).toBeGreaterThan(0);
+		expect(screen.getAllByText('m-web2').length).toBeGreaterThan(0);
 		expect(screen.getAllByText('m-jobs').length).toBeGreaterThan(0);
 	});
 
@@ -784,5 +817,119 @@ describe('/revisions — the reflow classes named in the spec are present', () =
 		expect(document.querySelectorAll('.bld-row').length).toBeGreaterThan(0);
 		expect(document.querySelector('.rev-shell')).not.toBeNull();
 		expect(document.querySelector('.rev-cols')).not.toBeNull();
+	});
+});
+
+describe('/revisions — in-flight on the ledger row (REVISIONS-2026-09-06 item 1)', () => {
+	/**
+	 * ⭐ THE OPERATOR-WALK FIXTURE. `repoFixture`'s own `web` service has its
+	 * newest history entry (`r1`, 10 minutes ago) reported `Succeeded` — this
+	 * test's only change is that entry's `bakeStatus`, mirroring the live
+	 * canary that motivated the item: the hero correctly read
+	 * `8 live · 1 deploying` while the ledger row for the SAME service showed
+	 * no sign that its place was mid-canary at all.
+	 */
+	test('a line whose newest deploy is Deploying shows the DEPLOYING state, the deploying env-chip mark, and "Deploying · started" — never "Deployed"', async () => {
+		const fleet = repoFixture('https://github.com/acme/inflight.git', 'if');
+		const deployingWeb = withNewestBakeStatus(fleet.rollouts[0], 'Deploying');
+		stubFetch([deployingWeb, fleet.rollouts[1]], fleet.environments);
+		await renderRevisions();
+
+		// Scope to `if-web`'s own `.svc-line` — the OTHER service on this
+		// repo (`if-api`, still `Succeeded`) must not be touched by this
+		// line's own in-flight treatment (asserted separately, below).
+		const webNameLink = screen.getByText('if-web');
+		const webLine = webNameLink.closest('.svc-line');
+		if (!webLine) throw new Error('if-web has no .svc-line ancestor');
+		const webRow = within(webLine as HTMLElement);
+
+		// The ledger line's own state chip (`lineState()`'s new branch) reads
+		// the SAME word `bake-status.ts` and `/rollouts` use for this bake —
+		// and it is not the only place the word renders inside this row: the
+		// env chip beside it carries its own copy, so at least two within
+		// `if-web`'s own line.
+		expect(webRow.getAllByText('deploying').length).toBeGreaterThanOrEqual(2);
+
+		// The row's age cell must not claim a settled fact mid-canary —
+		// `.svc-age`/`.svc-age-header` both carry the same text (one per
+		// container-query breakpoint), so at least one, never "Deployed".
+		expect(webRow.getAllByText(/^Deploying · started .+ ago/).length).toBeGreaterThan(0);
+		expect(webRow.queryByText(/^Deployed .+ ago/)).toBeNull();
+
+		// The OTHER service on this repo (`if-api`, still `Succeeded`) is
+		// unaffected — the in-flight treatment is per-LINE, not per-repo.
+		const apiNameLink = screen.getByText('if-api');
+		const apiLine = apiNameLink.closest('.svc-line');
+		if (!apiLine) throw new Error('if-api has no .svc-line ancestor');
+		const apiRow = within(apiLine as HTMLElement);
+		expect(apiRow.queryByText('deploying')).toBeNull();
+		expect(apiRow.getAllByText(/^Deployed .+ ago/).length).toBeGreaterThan(0);
+	});
+
+	test('a settled line (no in-flight bake) never prints the deploying word', async () => {
+		const fleet = repoFixture('https://github.com/acme/settled.git', 'st');
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		expect(screen.queryByText('deploying')).toBeNull();
+		expect(screen.queryByText(/^Deploying · started/)).toBeNull();
+	});
+});
+
+describe('/revisions — open state keyed by repository, not index (REVISIONS-2026-09-06 item 2)', () => {
+	/**
+	 * ONE SERVICE, ONE ENVIRONMENT, WITH OR WITHOUT A PENDING (never-deployed)
+	 * RELEASE. `repoDeviation`'s severity is 0 for both shapes (nothing
+	 * failing, held or behind), so `sortByDeviation` falls through to its own
+	 * SECOND key — `backlog` (`repo.pending.length`) — which is exactly what
+	 * `hasPending` controls. The minimal lever that reorders two otherwise-
+	 * identical repositories without needing a held gate or a failed deploy.
+	 */
+	function backlogFixture(prefix: string, hasPending: boolean) {
+		const source = `https://github.com/acme/${prefix}.git`;
+		const head = rel(`${prefix}head111`, 100);
+		const releases = hasPending ? [rel(`${prefix}new1111`, 5), head] : [head];
+		const svc = rollout(`${prefix}-app`, 'team', source, releases, [{ r: head, minutesAgo: 100 }]);
+		return {
+			rollouts: [svc],
+			environments: [environment(`${prefix}-app`, 'team', 'prod')]
+		};
+	}
+
+	test('reordering the ledgers after mount keeps the SAME repository open', async () => {
+		const a = backlogFixture('revitem2a', false);
+		const b = backlogFixture('revitem2b', true); // backlog 1 > 0 — sorts first
+
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+		stubFetch([...a.rollouts, ...b.rollouts], [...a.environments, ...b.environments]);
+		render(WithQueryClient, { props: { component: Page as any, client } });
+		await waitFor(() =>
+			expect(screen.getAllByText(/^Newest build ·/).length).toBeGreaterThan(0)
+		);
+
+		// `revitem2b` sorts first (higher backlog) and is the default-open
+		// index-0 section on a first-ever visit (no remembered shape).
+		expect(repoHeaderButton('revitem2b')).toHaveAttribute('aria-expanded', 'true');
+		expect(repoHeaderButton('revitem2a')).toHaveAttribute('aria-expanded', 'false');
+
+		// The deviation flips LIVE — exactly the shape an SSE-patched cache
+		// write produces (`applyChangeEvents`), never a full page reload.
+		// `revitem2a` now carries the backlog and sorts first; `revitem2b` is
+		// steady and sorts second.
+		const flippedA = backlogFixture('revitem2a', true);
+		const flippedB = backlogFixture('revitem2b', false);
+		const patched: RolloutsListResponse = {
+			rollouts: { items: [...flippedA.rollouts, ...flippedB.rollouts] },
+			environments: { items: [...flippedA.environments, ...flippedB.environments] }
+		};
+		client.setQueryData(rolloutsListQueryKey, patched);
+
+		// The repository the operator opened (`revitem2b`) stays open even
+		// though it is no longer at index 0 — an index-keyed `openMap` would
+		// have left index 0 (now `revitem2a`) open instead, which is the
+		// exact defect item 2 closes.
+		await waitFor(() =>
+			expect(repoHeaderButton('revitem2a')).toHaveAttribute('aria-expanded', 'false')
+		);
+		expect(repoHeaderButton('revitem2b')).toHaveAttribute('aria-expanded', 'true');
 	});
 });
