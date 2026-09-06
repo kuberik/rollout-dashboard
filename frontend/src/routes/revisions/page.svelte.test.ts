@@ -70,11 +70,19 @@ import type { Environment, Rollout } from '../../types';
  * a snapshot of the heading (landmark) order.
  */
 
+// ⛔ ONE CLOCK FOR EVERY FIXTURE. `repoFixture('…repo-a')` and
+// `repoFixture('…repo-b')` are built back to back; with a live `Date.now()`
+// per call, any millisecond that ticked between them made repo-b the more
+// recently active repository, `sortByDeviation` put it at index 0, and the
+// two index-0 tests failed only under full-suite load (2026-09-06, 2 of 3
+// runs). A shared instant makes the tie exact, so insertion order decides.
+const FIXTURE_NOW = Date.now();
+
 function rel(sha: string, minutesAgo: number) {
 	return {
 		tag: `main-${sha}`,
 		revision: `${sha}${'0'.repeat(40)}`.slice(0, 40),
-		created: new Date(Date.now() - minutesAgo * 60_000).toISOString()
+		created: new Date(FIXTURE_NOW - minutesAgo * 60_000).toISOString()
 	};
 }
 
@@ -96,7 +104,7 @@ function rollout(
 			availableReleases: [...releases].reverse(),
 			history: history.map((h) => ({
 				version: h.r,
-				timestamp: new Date(Date.now() - h.minutesAgo * 60_000).toISOString(),
+				timestamp: new Date(FIXTURE_NOW - h.minutesAgo * 60_000).toISOString(),
 				bakeStatus: 'Succeeded'
 			}))
 		}
@@ -435,6 +443,70 @@ describe('/revisions — every age names its event (§5)', () => {
 	});
 });
 
+/**
+ * ⭐ COORDINATOR PASS 2 — A HELD HEAD, END TO END. `hello-frontend-app`
+ * carries two releases of one revision (a rollback re-tag): the older is
+ * running, the newer is held by a gate that allows nothing. This is the
+ * live fleet's own shape (`9f10e49`, rel-66/rel-67), miniaturised to one
+ * service, one place.
+ */
+function relVersion(sha: string, version: string, minutesAgo: number) {
+	return {
+		tag: `main-${sha}`,
+		version,
+		revision: `${sha}${'0'.repeat(40)}`.slice(0, 40),
+		created: new Date(FIXTURE_NOW - minutesAgo * 60_000).toISOString()
+	};
+}
+
+function heldHeadFixture() {
+	const source = 'https://github.com/acme/held.git';
+	const older = relVersion('eeeeeee', '2.66.0-66', 120); // running
+	const newer = relVersion('eeeeeee', '2.67.0-67', 10); // held — never deployed
+	const fe = rollout(
+		'hello-frontend-app',
+		'team',
+		source,
+		[newer, older] as unknown as Rel[],
+		[{ r: older as unknown as Rel, minutesAgo: 5 }]
+	);
+	// A gate that refuses every candidate — the live fleet's own
+	// `dependency-hello-frontend-needs-api`, allowing nothing through.
+	(fe.status as { gates?: unknown }).gates = [{ name: 'dependency-x', allowedVersions: [] }];
+	return {
+		rollouts: [fe],
+		environments: [environment('hello-frontend-app', 'team', 'prod')]
+	};
+}
+
+describe('/revisions — a held head reads `held`, never `behind`/`deployed` (coordinator pass 2)', () => {
+	test('item B — the repo header shows `HELD`, not `BEHIND`, and the distance verdict says `held`, not `deployed`', async () => {
+		const fleet = heldHeadFixture();
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		// The repo header's OWN deviation chip — `1 held`, not `1 behind`.
+		// (The LEDGER ROW below it correctly still says `1 behind` for the
+		// RUNNING release's own rank against the held one — that fact is
+		// real and stays; only the repo-wide summary chip must not repeat
+		// it as the headline.)
+		expect(screen.getByText('1 held')).toBeInTheDocument();
+		expect(screen.getByText('Newest build held')).toBeInTheDocument();
+		expect(screen.queryByText('Newest build deployed')).toBeNull();
+	});
+
+	test('item A — one banner for the hold, not two: the page-level "is held in" sentence does not also fire', async () => {
+		const fleet = heldHeadFixture();
+		stubFetch(fleet.rollouts, fleet.environments);
+		await renderRevisions();
+		// The repository's OWN banner (round 4's ruled home for this fact).
+		expect(screen.getByText(/run 2\.66\.0-66; 2\.67\.0-67 is held in/)).toBeInTheDocument();
+		// The retired page-level grammar ("hello-frontend-app is held in
+		// prod.") must not ALSO render — that was two spellings of one fact.
+		expect(screen.queryByText(/^hello-frontend-app is held in/)).toBeNull();
+		expect(screen.queryByText('See what\u2019s blocking it')).toBeNull();
+	});
+});
+
 describe('/revisions — the repo header leads with distance (§6)', () => {
 	test('reads "Newest build deployed" when nothing pending is newer than the head', async () => {
 		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
@@ -595,25 +667,28 @@ describe('/revisions — search finds a build (§7b)', () => {
 		expect(screen.getAllByText(/^Newest build ·/)).toHaveLength(1);
 	});
 
-	test('a repo with no match keeps its repository card and prints the no-match sentence', async () => {
+	/**
+	 * ⭐ ROUND 4a, ITEM D — ONE LINE, NOT TWO. This used to wait for a body
+	 * paragraph ("No build matches …") printed UNDER a header that already
+	 * said `no match` — the same fact stated twice, in two different
+	 * grammars, 47px apart. The header carries it alone now.
+	 */
+	test('a repo with no match keeps its repository card and prints the header word, once', async () => {
 		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
 		const search = await setup(fleet);
 		await fireEvent.input(search, { target: { value: 'zzz-nothing-here' } });
-		await waitFor(() =>
-			expect(screen.getAllByText('No build matches “zzz-nothing-here”.').length).toBeGreaterThan(0)
-		);
-		// The repository card itself — its header and distance rollup — is
-		// still there; only its body collapses to the sentence.
+		await waitFor(() => expect(screen.getByText('no match')).toBeInTheDocument());
+		// The repository card itself — its header — is still there.
 		expect(screen.getByText('repo-a')).toBeInTheDocument();
+		// The old body sentence is gone; the header carries the fact alone.
+		expect(screen.queryByText(/No build matches/)).toBeNull();
 	});
 
 	test('craft review item 5 — a repo-wide miss collapses to ONE sentence, never three empty cards', async () => {
 		const fleet = repoFixture('https://github.com/acme/repo-a.git', 'a');
 		const search = await setup(fleet);
 		await fireEvent.input(search, { target: { value: 'zzz-nothing-here' } });
-		await waitFor(() =>
-			expect(screen.getAllByText('No build matches “zzz-nothing-here”.').length).toBeGreaterThan(0)
-		);
+		await waitFor(() => expect(screen.getByText('no match')).toBeInTheDocument());
 		// The three build-list cards do not render at all in this state —
 		// their headers, and the "0 of N builds" rollup each would have
 		// printed, are gone rather than repeated per card.

@@ -647,8 +647,33 @@ export type BuildState = {
  * own `2.67.0-67` has landed nowhere. `heldBehind()` below is read BEFORE the
  * `done` fallback for exactly this reason.
  */
-function heldBehind(coverage: RevisionCoverage): CoverageSlotVM[] {
-	return coverage.buckets.find((b) => b.key === 'live')?.slots.filter((s) => !s.onOwnRelease) ?? [];
+/**
+ * ⭐ ROUND 4a, ITEM A — AND ALSO BEFORE `notYet`, NOW THAT ROWS SPLIT ONE PER
+ * RELEASE (`revision-ledger.ts`). Once `onIt` is scoped to the exact release
+ * a row is about, a place running the SIBLING release of the same commit is
+ * no longer `live`-but-off-release — it genuinely is not running THIS row's
+ * build, so `classify()` correctly files it under `notYet`. Reading only the
+ * `live` bucket here made this function blind to the very fixture it exists
+ * to name: the row for the held release (`hello-frontend-app` rel-67) reports
+ * `notYet: 3`, not `live: 3`. `heldBehind` now reads both buckets — the
+ * `live`-but-off-release slots survive as a defensive residue (a rank
+ * mismatch between the ladder and `env-rank.ts` could still produce one),
+ * but the common case is entirely in `notYet` now.
+ */
+export function heldBehind(coverage: RevisionCoverage): CoverageSlotVM[] {
+	// ⛔ `slot.onRevision`, NOT EVERY `notYet` SLOT. (round 4a, item A) A
+	// `notYet` slot is either running the SAME commit under a sibling release
+	// (the held/rollback case this function names) or a completely different,
+	// older commit it simply has not been promoted past — ordinary pipeline
+	// lag, which is not "held" in any sense this row can evidence. Only
+	// `onRevision` slots are the first kind; see `RevisionSlot.onRevision`'s
+	// own doc comment.
+	const notYetSameRevision = (
+		coverage.buckets.find((b) => b.key === 'notYet')?.slots ?? []
+	).filter((s) => s.slot.onRevision);
+	const liveOffRelease =
+		coverage.buckets.find((b) => b.key === 'live')?.slots.filter((s) => !s.onOwnRelease) ?? [];
+	return [...liveOffRelease, ...notYetSameRevision];
 }
 
 export function buildState(coverage: RevisionCoverage): BuildState {
@@ -682,6 +707,38 @@ export function buildState(coverage: RevisionCoverage): BuildState {
 	const notYet = n('notYet');
 	const ahead = n('ahead') + n('unplaceable');
 
+	/**
+	 * ⭐ ROUND 4a, ITEM A — CHECKED BEFORE THE GENERIC `notYet` WORD NOW.
+	 * `heldBehind` used to be checked only near `done`, which was safe only
+	 * because the merged-row model made `notYet`/`ahead` structurally zero
+	 * whenever it fired (every place shared the row's revision, so nothing
+	 * was ever `notYet` in the old sense). Split rows break that invariant:
+	 * the row for a held release's places that run the SIBLING release now
+	 * land in `notYet` (see `heldBehind`'s own doc comment), and checking the
+	 * generic branch first would erase the one fact that explains them —
+	 * `3 places still to go` about a build that is not "still arriving" at
+	 * all, it is held. Gated on `behind.length === notYet` (and `ahead ===
+	 * 0`) so it fires only when `heldBehind` accounts for the WHOLE
+	 * deficit — an ordinary row with a genuinely mixed cause (some plain lag,
+	 * some held) keeps the generic wording below rather than a held claim
+	 * that only explains part of it.
+	 */
+	const behind = heldBehind(coverage);
+	if (behind.length > 0 && ahead === 0 && behind.length === notYet) {
+		const held = behind.some((s) => s.blockingGates.length > 0);
+		return held
+			? {
+					key: 'held',
+					word: `held in ${behind.length} place${plural(behind.length)}`,
+					title: `${behind.length} place${plural(behind.length)} run this revision on an older release, and a newer one is held by a rule`
+				}
+			: {
+					key: 'held',
+					word: `${behind.length} place${plural(behind.length)} on an older release of it`,
+					title: `${behind.length} place${plural(behind.length)} run this revision on an older release than the newest one carries`
+				};
+	}
+
 	if (notYet > 0 && (notYet >= ahead || coverage.liveCount === 0))
 		return {
 			key: 'notYet',
@@ -703,11 +760,9 @@ export function buildState(coverage: RevisionCoverage): BuildState {
 			title: 'No service is running this build right now'
 		};
 
-	// ⛔ CHECKED BEFORE `done`, NOT INSTEAD OF IT — see `heldBehind`'s doc
-	// above. `notYet`/`ahead` already covered the places that have not taken
-	// this REVISION at all; this is the narrower remainder: places that HAVE,
-	// just not under the row's own headline release of it.
-	const behind = heldBehind(coverage);
+	// ⛔ STILL CHECKED BEFORE `done`, NOT INSTEAD OF IT — the residual case:
+	// a `live` slot on an older release (`onOwnRelease: false`) with no
+	// `notYet` counterpart, which the guard above does not cover.
 	if (behind.length > 0) {
 		const held = behind.some((s) => s.blockingGates.length > 0);
 		return held
@@ -761,9 +816,10 @@ export type ReleaseSplitLine = {
 };
 
 export function releaseSplit(coverage: RevisionCoverage): ReleaseSplitLine[] {
-	const live = coverage.buckets.find((b) => b.key === 'live');
-	if (!live) return [];
-	const behind = live.slots.filter((s) => !s.onOwnRelease && s.runs);
+	// ⭐ ROUND 4a, ITEM A — `heldBehind`, NOT JUST THE `live` BUCKET. See its
+	// own doc comment: once rows split one per release, the places sharing
+	// this commit under a different release land in `notYet`, not `live`.
+	const behind = heldBehind(coverage).filter((s) => s.runs);
 	if (behind.length === 0) return [];
 	const byKey = new Map<string, CoverageSlotVM[]>();
 	for (const s of behind) {

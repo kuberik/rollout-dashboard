@@ -303,6 +303,29 @@
 		unplaceable: QuestionCircleOutline
 	};
 
+	/**
+	 * ⭐ ROUND-4B REVIEW, ITEM 4 — THE `live` HEADER'S GLYPH IS A VERDICT,
+	 * NOT A STATUS DOT. (2026-09-05, verified live on
+	 * `github.com/littlechimera/kuberik-testing/6f9524e28087`:
+	 * `hello-multi-app`'s DEV ran this exact build, pinned, two releases
+	 * behind its own newest — and `Running it now` still drew a green check
+	 * over `1 place`.) A green check says "this is the frontier"; a `live`
+	 * bucket whose every occupant is BEHIND its own service's newest is the
+	 * opposite fact and the row an operator actually has to look at, so it
+	 * earns the same neutral glyph and ink `ahead` ("Already moved on")
+	 * already uses for "not the frontier" — never a sixth spelling of that
+	 * idea. `true` (frontier, keep green) whenever no service data is
+	 * available yet, so this never flips the header before `coverage`/`row`
+	 * resolve.
+	 */
+	const liveIsFrontier = $derived.by<boolean>(() => {
+		if (!coverage || !row) return true;
+		const live = coverage.buckets.find((b) => b.key === 'live');
+		if (!live || live.slots.length === 0) return true;
+		const runningApps = new Set(live.slots.map((s) => s.appName));
+		return row.services.some((svc) => runningApps.has(svc.appName) && svc.rank === 0);
+	});
+
 	// ── GATE CLEAR TIMES ────────────────────────────────────────────────────
 	//
 	// One GET per blocked rollout, cached by key, never blocking a render. The
@@ -754,6 +777,9 @@
 		return ts ? { ago: formatTimeAgo(ts, $now), iso: ts } : null;
 	}
 
+	/** One pinned place, ready to draw as a `[PINNED][ENV]` chip pair. */
+	type PinnedPlace = { envLabel: string; theme: EnvironmentTheme | null; title: string };
+
 	/**
 	 * ⭐ PER-SERVICE ENV PINS, ON `What each service calls it`. (F13,
 	 * 2026-09-03)
@@ -766,17 +792,36 @@
 	 * is directly relevant to the row it sits under: a reader looking at
 	 * `hello-api-app · NEWEST · of 1` benefits from knowing PROD will not
 	 * move off it even though nothing is holding it, because it is pinned.
+	 *
+	 * ⭐ ROUND-4B REVIEW, ITEM 2 — RETURNS A CHIP-READY RECORD NOW, NOT A
+	 * BARE STRING. The row used to say `Pinned in DEV — automatic updates
+	 * are off there`, a second spelling of the ONE canonical pin sentence
+	 * this file already prints, unabbreviated, in `reasonsFor`'s pin branch
+	 * two hundred pixels below. Prose is gone from this row; the theme and
+	 * the canonical sentence (per place, with THAT place's own pinned tag —
+	 * `displayVersionForTag`, the same lookup `reasonsFor` uses) travel with
+	 * the label so the render side draws chips and puts the full sentence on
+	 * `title` instead of retyping a shorter one.
 	 */
-	function pinnedEnvsOf(svc: RevisionService): string[] {
+	function pinnedEnvsOf(svc: RevisionService): PinnedPlace[] {
 		return svc.slots
 			.filter((s) => s.cell.rollout?.spec?.wantedVersion)
-			// ⭐ ROUND-4 CRAFT REVIEW, ITEM D — THE ENVIRONMENT'S OWN LABEL, NOT
-			// ITS RAW `envName`. `RevisionSlot.envName` is the rollout's own name
-			// (`hello-world-staging`), not the environment tier every chip on
-			// this page prints (`STAGING`) — `shortEnvLabel` off the slot's own
-			// theme is the same lookup `envSlots`/`Chip`'s `label={s.envLabel}`
-			// resolve through elsewhere on this page.
-			.map((s) => (shortEnvLabel(s.cell.theme) || s.envName).toUpperCase());
+			.map((s) => {
+				const pinnedTo = s.cell.rollout!.spec!.wantedVersion!;
+				const display = displayVersionForTag(s.cell.rollout, pinnedTo) || pinnedTo;
+				return {
+					// ⭐ ROUND-4 CRAFT REVIEW, ITEM D — THE ENVIRONMENT'S OWN LABEL,
+					// NOT ITS RAW `envName`. `RevisionSlot.envName` is the rollout's
+					// own name (`hello-world-staging`), not the environment tier
+					// every chip on this page prints (`STAGING`) — `shortEnvLabel`
+					// off the slot's own theme is the same lookup
+					// `envSlots`/`Chip`'s `label={s.envLabel}` resolve through
+					// elsewhere on this page.
+					envLabel: (shortEnvLabel(s.cell.theme) || s.envName).toUpperCase(),
+					theme: s.cell.theme,
+					title: `Pinned to ${display} — automatic deploys are paused until the pin is cleared.`
+				};
+			});
 	}
 
 	/**
@@ -822,8 +867,16 @@
 	 * already the product's one definition of "this array may have been
 	 * truncated") is true once a rollout has deployed at least that many
 	 * times, and past that point the oldest entry is evicted on every new
-	 * deploy. Shown once per service, only when it is actually possible for
-	 * that truncation to be hiding a match — never a blanket disclaimer.
+	 * deploy.
+	 *
+	 * ⭐ ROUND-4B REVIEW, ITEM 3 — PER SERVICE, BUT NO LONGER PRINTED PER
+	 * SERVICE. (2026-09-05, verified live: `6f9524e28087` printed this
+	 * sentence three times, once under each of `hello-multi-app`'s three
+	 * services, byte-identical each time.) The caveat is about the card's
+	 * data source, not about any one service, so it is still computed here —
+	 * `cardHistoryLimitNote` below calls this once per service to find
+	 * whether ANY of them tripped it — but it is drawn once, as the card's
+	 * footer. See that function for the render-side half of this split.
 	 */
 	function historyLimitNote(svc: RevisionService): string | null {
 		const limited = svc.slots.find((s) => !s.onIt && historyAtLimit(s.cell.rollout));
@@ -836,6 +889,25 @@
 		// copied verbatim rather than re-authored — a second wording of the
 		// same caveat is exactly the sprawl the vocabulary passes exist to cut.
 		return `History keeps the last ${limit} deploys per service; a build deployed earlier is not recorded.`;
+	}
+
+	/**
+	 * ⭐ ROUND-4B REVIEW, ITEM 3 — THE CARD'S OWN FOOTER LINE, SAID ONCE.
+	 * `historyLimitNote` is per-service by construction (it reads that
+	 * service's own `spec.versionHistoryLimit`), but the sentence it returns
+	 * names no service — it is a caveat about truncated history in general —
+	 * so printing it once per service that happened to hit the limit was
+	 * pure repetition, not three different facts. This reads every service
+	 * on the row and stops at the first hit: the card draws the sentence
+	 * only when it is true of AT LEAST ONE of them.
+	 */
+	function cardHistoryLimitNote(): string | null {
+		if (!row) return null;
+		for (const svc of row.services) {
+			const note = historyLimitNote(svc);
+			if (note) return note;
+		}
+		return null;
 	}
 
 	/**
@@ -904,6 +976,27 @@
 	/** The one predicate the chip-mark row actually renders. */
 	function isStuck(s: CoverageSlotVM): boolean {
 		return !!stuckFor(s);
+	}
+
+	/**
+	 * ⭐ ROUND-4B REVIEW, ITEM 1 — THE SAME PIN CHIP THE LIST ROW CARRIES,
+	 * HERE TOO. (2026-09-05, verified live on
+	 * `github.com/littlechimera/kuberik-testing/6f9524e28087`:
+	 * `hello-multi-app`'s `Running it now` card printed `[DEV] deployed 1
+	 * day ago` with no sign DEV is pinned to this exact build — the fact
+	 * was stated only in `What each service calls it`, 300px up, and
+	 * `/revisions`' own row already carries a `pinned` chip for the
+	 * identical fact via `lineState`.) Same role and label as that chip
+	 * (`role="unranked"`, `label="pinned"`), rendered as a loose mark inside
+	 * the row's `.chip-mark` group, the same slot `STUCK` already uses. The
+	 * canonical sentence rides on `title` — never a second prose spelling of
+	 * it beside the chip.
+	 */
+	function pinnedChipTitle(s: CoverageSlotVM): string | null {
+		const pinnedTo = s.slot.cell.rollout?.spec?.wantedVersion;
+		if (!pinnedTo) return null;
+		const display = displayVersionForTag(s.slot.cell.rollout, pinnedTo) || pinnedTo;
+		return `Pinned to ${display} — automatic deploys are paused until the pin is cleared.`;
 	}
 
 	/**
@@ -1774,7 +1867,6 @@
 						{@const chip = rankChipFor(svc)}
 						{@const pinned = pinnedEnvsOf(svc)}
 						{@const ranBefore = ranBeforeOf(svc)}
-						{@const historyNote = historyLimitNote(svc)}
 						<!--
 							ONE INK FOR A SERVICE NAME, ON BOTH REVISION PAGES. A service is
 							never the subject of either page — the revision is — so it takes
@@ -1853,16 +1945,26 @@
 								{/if}
 							{/if}
 							{#if pinned.length > 0}
-								<div
-									class="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-								>
-									<LockSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
-									<span
-										>Pinned in {pinned.join(', ')} — automatic updates are off {pinned.length ===
-										1
-											? 'there'
-											: 'in those environments'}</span
-									>
+								<!--
+									⭐ ROUND-4B REVIEW, ITEM 2 — A CHIP PAIR, NOT A SECOND
+									SPELLING OF THE PIN SENTENCE. `Pinned in DEV — automatic
+									updates are off there` and `Pinned to 6f9524e — automatic
+									deploys are paused until the pin is cleared.` (this row's
+									own `reasonsFor` pin branch, when the place also sits in
+									`Not here yet`) said the same fact in two different
+									sentences on one page. The canonical sentence survives —
+									on `title`, per place, with that place's own pinned tag —
+									and this row draws the fact instead of narrating it:
+									`[PINNED][DEV]`, the same loose `.chip-mark` grouping the
+									STUCK mark already uses beside an env chip.
+								-->
+								<div class="mt-1 flex flex-wrap items-center gap-1.5">
+									{#each pinned as p (p.envLabel)}
+										<span class="chip-mark">
+											<Chip role="unranked" label="pinned" title={p.title} />
+											<Chip role="env" theme={p.theme} label={p.envLabel} wide title={p.title} />
+										</span>
+									{/each}
 								</div>
 							{/if}
 							{#if ranBefore.length > 0}
@@ -1886,14 +1988,6 @@
 									</span>
 								</div>
 							{/if}
-							{#if historyNote}
-								<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM 6 — `text-gray-400` MEASURED
-								     2.60:1, THE ONLY CONTRAST FAILURE ON EITHER REVISION PAGE.
-								     `text-gray-500` is this page's own established secondary-ink
-								     step (`ranBefore`'s row two lines up, the `of N` denominator
-								     definitions) and clears the 4.5:1 floor in both themes. -->
-								<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{historyNote}</div>
-							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -1901,6 +1995,26 @@
 				     (2026-09-02.) It is the `title` on `of N` in every row above —
 				     on the term it defines, which is where a definition belongs and
 				     is the only place it is legible without counting rows. -->
+				<!--
+					⭐ ROUND-4B REVIEW, ITEM 3 — A DIFFERENT SENTENCE, AND IT DOES GET
+					A FOOTER. The comment above this one is about the `of N`
+					definition, which lives on the term it defines and stays gone.
+					This caveat names no term on any row — it is a fact about the
+					CARD'S data source, true or false once for the whole list — and
+					printing it under whichever service happened to trip it first
+					was the only reason it looked page-repeated at 3× on
+					`hello-multi-app`. `text-gray-500` matches `ranBefore`'s own
+					secondary ink two rows up (`text-gray-400` measured 2.60:1, the
+					only contrast failure either revision page had).
+				-->
+				{@const cardNote = cardHistoryLimitNote()}
+				{#if cardNote}
+					<div
+						class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
+					>
+						{cardNote}
+					</div>
+				{/if}
 			</Card>
 			</div>
 
@@ -1914,9 +2028,13 @@
 			-->
 			{#each coverage.buckets as bucket (bucket.key)}
 					<Card
-						icon={BUCKET_ICON[bucket.key]}
+						icon={bucket.key === 'live' && !liveIsFrontier
+							? ArrowRightOutline
+							: BUCKET_ICON[bucket.key]}
 						iconClass={bucket.key === 'live'
-							? 'tone-live'
+							? liveIsFrontier
+								? 'tone-live'
+								: 'tone-mute'
 							: bucket.key === 'failing'
 								? 'tone-bad'
 								: 'tone-mute'}
@@ -2186,6 +2304,7 @@
 												>
 												{#each rg.slots as s (s.envName)}
 													{@const age = bucket.key === 'live' ? slotDeployedAgo(s) : null}
+													{@const pinTitle = pinnedChipTitle(s)}
 													<!--
 														`/apps`'s unit, character for character: the
 														environment's badge, and nothing beside it unless the
@@ -2232,6 +2351,13 @@
 																wide
 																title="{s.envLabel.toUpperCase()} — {s.statusWord}"
 															/>
+															{#if pinTitle}
+																<!-- ⭐ ROUND-4B REVIEW, ITEM 1 — SEE
+																     `pinnedChipTitle`'s OWN NOTE. Same mark the
+																     list row's `lineState` already draws for this
+																     fact, loose beside the env chip like `STUCK`. -->
+																<Chip role="unranked" label="pinned" title={pinTitle} />
+															{/if}
 															{#if isStuck(s)}
 																<Chip
 																	role="alarm"

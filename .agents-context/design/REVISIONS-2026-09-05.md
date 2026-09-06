@@ -292,3 +292,29 @@ is remembered.
 - **`newer builds` assumes `createdMs`.** Where `rows[0]` carries none, render `Newest build
   deployed` rather than a guess.
 - **`.rev-cols` moves from a 1024px media query to an 860px container query.** Trade named above.
+
+
+## Round 4 rulings (2026-09-05, after the operator walk and craft review)
+
+1. **A row is about one release.** Two releases can share a commit (`9f10e49` carries `2.66.0-66`,
+   running everywhere, and `2.67.0-67`, held everywhere). A ledger row, hero and coverage count
+   describe ONE release; when a revision has several, one row per release with the sha followed by
+   the version. The head count counts releases. Both rows link to the same detail URL — the detail
+   page already lists every release of a sha and prints `built` per release.
+2. **Peer comparison follows release order, not history containment** (`compareRollouts`,
+   94f35ca). A dev rolled back to a build prod never ran put prod's build in dev's past, and prod
+   read STUCK on the newest release for a day. `availableReleases` (oldest-first) decides who is
+   ahead; history containment only when no list places both versions.
+3. **A list-less passing gate vouches** (`gatesAllow`, 94f35ca). The dialog no longer claims "the
+   rules holding dev do not allow this build" when the only holder is the pin.
+4. **The held state is a filled AlertPanel** at the top of the repository's disclosed block —
+   consequence sentence with named subjects, contract clause, the rule — and the hero drops it.
+5. **Hero title names the release line** (`Newest build · service · service`); the rollup carries
+   the verdict; below 560 the service list folds to `N services`.
+6. **Search tells the truth once.** A card with no matches inside a repository that has one prints
+   nothing; a repository with no matches is one line; every count on screen follows the filter.
+7. **The age names its environment.** One age per row is the laggard's, labelled, with every
+   environment's date in the title.
+8. **Every environment chip is a link** to its own rollout; a pinned place offers Clear pin first.
+9. **`live` is conditional** on the change stream being healthy; otherwise "updated N ago".
+10. **Chip + age is one atom** on the detail page; one per line on phones.

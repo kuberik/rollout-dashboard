@@ -54,8 +54,25 @@ export type RevisionSlot = {
 	appName: string;
 	envName: string;
 	cell: AppCell;
-	/** True when this environment is running the row's revision right now. */
+	/**
+	 * True when this environment is running THE ROW'S OWN RELEASE right now —
+	 * not merely its revision. See `buildRow`'s own doc comment: the two
+	 * questions differ only when a revision resolves to more than one
+	 * release, and this is always the finer one.
+	 */
 	onIt: boolean;
+	/**
+	 * ⭐ ROUND 4a, ITEM A — RUNNING THE SAME COMMIT, UNDER *SOME* RELEASE OF
+	 * IT. Weaker than `onIt` (which additionally requires the EXACT release
+	 * this row is about) and strictly the OLD `onIt` definition before the
+	 * split. This is what tells `revision-coverage.ts`'s `heldBehind()` apart
+	 * a place that has not taken this row's release because it is on the
+	 * SIBLING release of the same revision (the held/running-a-rollback-tag
+	 * case) from a place that simply has not been promoted past a much older,
+	 * unrelated commit yet — both land in the `notYet` bucket, and only the
+	 * first one is "held" in the sense this row can name.
+	 */
+	onRevision: boolean;
 	/**
 	 * Rank, on the SERVICE'S OWN LADDER, of the build this environment is
 	 * currently running. null when the ladder cannot place it — print no
@@ -251,6 +268,25 @@ type ServiceCtx = {
 	 */
 	byKey: Map<string, { rank: number; onReleaseLine: boolean; version: string }>;
 	/**
+	 * ⭐ EVERY RELEASE A REVISION RESOLVES TO, NOT JUST THE BEST-RANKED ONE —
+	 * ROUND 4a, ITEM A. `byKey` above keeps only the first (highest-ranked)
+	 * `ladder.builds` entry for a shared key, which is right for `curPlaced`
+	 * lookups (a place can only be running ONE build) and wrong for `buildRow`
+	 * itself: a rollback re-ships a build already released once before under a
+	 * NEW tag, so ONE service's ladder can hold TWO `Build`s sharing one
+	 * revision (`hello-frontend-app` rel-66/rel-67, one git sha, two OCI
+	 * tags). Collapsing them in `buildRow` pasted the best rank onto whichever
+	 * label happened to be noted, producing one row that read `NEWEST` while
+	 * describing places running the OLDER of the two. This map is how
+	 * `buildRowsForRevision` discovers the ambiguity and builds one row per
+	 * release instead of one row per commit. In rank order (ascending), same
+	 * as `ladder.builds` itself.
+	 */
+	releasesByKey: Map<
+		string,
+		Array<{ rank: number; onReleaseLine: boolean; version: string; createdMs: number }>
+	>;
+	/**
 	 * ⛔ THE ENVIRONMENT LAG IS NOT THE BUILD RANK. (2026-08-31)
 	 *
 	 * This module ranks BUILDS, and for that the ladder is right and stays.
@@ -306,6 +342,10 @@ function tagOf(r: { tag?: string; version?: string; revision?: string }): string
 function contextFor(group: AppGroup): ServiceCtx {
 	const ladder = buildLadder(group.cells);
 	const byKey = new Map<string, { rank: number; onReleaseLine: boolean; version: string }>();
+	const releasesByKey = new Map<
+		string,
+		Array<{ rank: number; onReleaseLine: boolean; version: string; createdMs: number }>
+	>();
 	const keyByVersion = new Map<string, string>();
 	for (const b of ladder.builds) {
 		const key = b.revision ?? b.version;
@@ -316,6 +356,17 @@ function contextFor(group: AppGroup): ServiceCtx {
 		if (!byKey.has(key)) {
 			byKey.set(key, { rank: b.rank, onReleaseLine: b.onReleaseLine, version: b.version });
 		}
+		// ⭐ …AND KEEP THEM ALL — see `releasesByKey`'s own doc comment.
+		// `ladder.builds` is already rank-ascending, so this list is too.
+		const entry = {
+			rank: b.rank,
+			onReleaseLine: b.onReleaseLine,
+			version: b.version,
+			createdMs: b.createdMs
+		};
+		const list = releasesByKey.get(key);
+		if (list) list.push(entry);
+		else releasesByKey.set(key, [entry]);
 	}
 	const tagByKey = new Map<string, string>();
 	const labelByKey = new Map<string, string>();
@@ -341,6 +392,7 @@ function contextFor(group: AppGroup): ServiceCtx {
 		group,
 		ladder,
 		byKey,
+		releasesByKey,
 		tagByKey,
 		labelByKey,
 		tagByVersion,
@@ -373,8 +425,46 @@ function currentKeyOf(cell: AppCell, ctx: ServiceCtx): string | null {
 	return label ? (ctx.keyByVersion.get(label) ?? label) : null;
 }
 
+/**
+ * The exact display version of whatever this environment is running right
+ * now — the finer question `currentKeyOf` cannot answer. Two releases can
+ * share a revision key (a rollback re-ships a build under a new tag), so
+ * "is this place on the row's revision" and "is this place on the row's
+ * RELEASE of it" are different questions once that happens. See `buildRow`'s
+ * own `onIt` computation for where the distinction matters.
+ */
+function currentVersionOf(cell: AppCell): string | null {
+	const v = cell.rollout?.status?.history?.[0]?.version;
+	if (!v) return null;
+	return getDisplayVersion(v as { version?: string; revision?: string; tag: string }) || null;
+}
+
 function buildRow(
 	revision: string,
+	/**
+	 * ⭐ ROUND 4a, ITEM A — WHICH RELEASE THIS ROW IS ABOUT, WHEN THE REVISION
+	 * IS AMBIGUOUS. `null` is the ordinary case (a revision this SERVICE only
+	 * ever saw one release of) and behaves exactly as before: `placed` comes
+	 * from `ctx.byKey`, the best-ranked entry. A non-null value is the
+	 * caller's answer to "which release, of the several this revision
+	 * resolves to" — set by `buildRowsForRevision` only when some service's
+	 * own `releasesByKey` for this revision has more than one entry. A
+	 * service that has no release matching this exact target is skipped for
+	 * THIS row; it gets its own row, keyed by its own version, instead — see
+	 * `buildRowsForRevision`.
+	 */
+	targetVersion: string | null,
+	/**
+	 * ⭐ COORDINATOR PASS 2, ITEM C — TRUE for exactly one row per split
+	 * (the best-ranked / newest version, `versions[0]` in
+	 * `buildRowsForRevision`), always true in the ordinary `targetVersion
+	 * === null` case. Decides where a NON-ambiguous ctx (a service with
+	 * only one release of this revision) attaches: only the primary row,
+	 * never every row the split produced — see this row's own doc
+	 * comment on `buildRowsForRevision` for the double-count that not
+	 * doing this caused.
+	 */
+	isPrimary: boolean,
 	createdMs: number,
 	lastDeployMs: number,
 	serviceCtxs: ServiceCtx[]
@@ -383,68 +473,64 @@ function buildRow(
 	const services: RevisionService[] = [];
 
 	for (const ctx of serviceCtxs) {
-		// ⭐ THE GUARD IS `labelByKey` STILL — "has this service ever seen the
-		// build at all" is a weaker, cheaper question than "which release does
-		// `byKey` resolve", and `label` itself no longer reads this value —
-		// see below.
-		const label0 = ctx.labelByKey.get(revision);
-		if (label0 === undefined) continue; // this service has never seen the build
-		const placed = ctx.byKey.get(revision);
-		/**
-		 * ⛔ THE LABEL NOW COMES FROM `placed` — THE SAME RELEASE `rank`
-		 * NAMES — NEVER FROM `labelByKey` ALONE. (2026-09-02)
-		 *
-		 * Two releases can share one revision: a rollback re-ships a build
-		 * already released once before under a NEW tag. `labelByKey` keeps
-		 * whichever release it noted FIRST (oldest-first `availableReleases`,
-		 * so typically the OLDER one); `byKey` keeps whichever `ladder.builds`
-		 * ranks BEST (rank ascending, so the NEWEST one). Reading `label`
-		 * from one collapse and `rank` from the other pairs two DIFFERENT
-		 * releases on one row.
-		 *
-		 * Measured on the live cluster: `hello-frontend-app` rel-66 and
-		 * rel-67 share revision `9f10e494d560`. `labelByKey` kept rel-66's
-		 * `2.66.0-66` (noted first, from oldest-first `availableReleases`);
-		 * `byKey` kept rel-67's rank 0. The row printed `NEWEST · 2.66.0-66`
-		 * — rel-67's rank glued to rel-66's own label, a claim about neither
-		 * release. `placed.version` is rel-67's OWN display string
-		 * (`Build.version` is `getDisplayVersion` of the exact release
-		 * `placed.rank` describes), so the two can no longer disagree:
-		 * `NEWEST · 2.67.0-67`.
-		 *
-		 * ⛔ NOT "PREFER THE RUNNING RELEASE". That was the first draft, and
-		 * it changes MORE than the label: `rank` is the SAME field
-		 * `revision-coverage.ts`'s `classify()` reads to decide `live` vs
-		 * `notYet`. Pulling `rank` down to the running (older) release would
-		 * make every environment running rel-66 read `live` again for THIS
-		 * row — resurrecting the `6 of 6 · fully rolled out` claim
-		 * `classify()`'s own fix (2026-09-02, same day) exists to kill. The
-		 * label was the only field that was wrong; only it moves.
-		 */
-		const label = placed ? placed.version : label0;
-		// ⭐ THE TAG NOW FOLLOWS `label`, THE PARALLEL FIX. (2026-09-03) Same
-		// reasoning as the label move above: `tagByKey` keeps whichever tag
-		// `note()` saw FIRST for this revision, which can be the OLDER release
-		// when two share a commit. `tagByVersion` is keyed on the exact
-		// release `label` now names, so the two can no longer point at
-		// different releases — `revisionCoverage.ts`'s `candidate` check reads
-		// this `tag` to decide whether the release the row is ABOUT is a real,
-		// gate-checkable candidate.
+		const releases = ctx.releasesByKey.get(revision);
+		if (!releases || releases.length === 0) continue; // this service has never seen the build
+		// THE ROW'S OWN RELEASE OF THIS BUILD, FOR THIS SERVICE.
+		//   · `targetVersion === null` — the ordinary, unsplit case: this
+		//     ctx's best-ranked release, same as `ctx.byKey` always has.
+		//   · this ctx IS ambiguous here (>1 release of the revision) — the
+		//     EXACT release this row is about; it sits out any row that
+		//     is not its own.
+		//   · this ctx is NOT ambiguous here, but SOME OTHER ctx on this
+		//     revision is (the split still happened) — it was never asked
+		//     "which of these releases is yours", so it attaches to the
+		//     PRIMARY row alone with its own single release, never to
+		//     every split row (which would count its live slots once per
+		//     row — see `buildRowsForRevision`'s own doc comment).
+		let placed:
+			| { rank: number; onReleaseLine: boolean; version: string; createdMs: number }
+			| undefined;
+		if (targetVersion === null) {
+			placed = releases[0];
+		} else if (releases.length > 1) {
+			placed = releases.find((r) => r.version === targetVersion);
+		} else if (isPrimary) {
+			placed = releases[0];
+		}
+		if (!placed) continue;
+		const label = placed.version;
+		// `tagByVersion` is keyed on the exact release `label` names, so it
+		// cannot point at a DIFFERENT release the way `tagByKey` (revision-
+		// keyed, first-noted-wins) can when two releases share a revision.
 		const tag = ctx.tagByVersion.get(label) ?? ctx.tagByKey.get(revision) ?? null;
 
 		const slots: RevisionSlot[] = ctx.cells
 			.map((cell) => {
 				const cur = currentKeyOf(cell, ctx);
-				const curPlaced = cur ? ctx.byKey.get(cur) : undefined;
-				const onIt = cur === revision;
+				const sameRevision = cur === revision;
+				/**
+				 * ⛔ "RUNNING THE REVISION" IS NOT "RUNNING THIS RELEASE OF IT".
+				 * (round 4a, item A) When a revision resolves to only one
+				 * release (`releases.length <= 1`, the overwhelming case),
+				 * the two questions are the same and this is byte-identical
+				 * to the old `cur === revision`. When it does not — a
+				 * rollback re-ships a build already released once before,
+				 * under a NEW tag — a place running the OLDER release must
+				 * not read as `onIt` for the NEWER release's own row: that is
+				 * exactly how one row came to claim `held in 3 places` about
+				 * a build that three places were, in fact, running.
+				 */
+				const onIt =
+					sameRevision && (releases.length <= 1 || currentVersionOf(cell) === placed.version);
 				return {
 					appName: ctx.group.appName,
 					envName: envTierOf(cell),
 					cell,
 					onIt,
+					onRevision: sameRevision,
 					// The ENVIRONMENT's lag, from the product's one denominator —
-					// not `curPlaced.rank`, which is the BUILD's position on the
-					// ladder. `diverged` and `unknown` print no number at all.
+					// not the BUILD's position on the ladder. `diverged` and
+					// `unknown` print no number at all.
 					currentRank: currentLagOf(cell, ctx),
 					promoteTag: onIt || !tag || !isDeployable(cell.rollout, tag) ? null : tag,
 					tag
@@ -456,9 +542,9 @@ function buildRow(
 			appName: ctx.group.appName,
 			label,
 			labelDiffers: label !== short && !revision.startsWith(label),
-			rank: placed ? placed.rank : null,
+			rank: placed.rank,
 			ladderLength: ctx.ladder.builds.length,
-			diverged: placed ? divergedFromLine(ctx.ladder, placed.version, lastDeployMs) : false,
+			diverged: divergedFromLine(ctx.ladder, placed.version, lastDeployMs),
 			slots,
 			liveSlots: slots.filter((s) => s.onIt).length
 		});
@@ -614,6 +700,14 @@ export function buildRevisionLedger(
 		const lastDeployMs = new Map<string, number>();
 		const deployed = new Set<string>();
 		const known = new Set<string>();
+		// ⭐ ROUND 4a, ITEM A — THE SAME TWO REGISTRIES, KEYED BY THE EXACT
+		// RELEASE (display version) RATHER THAN BY REVISION. `createdMs`/
+		// `lastDeployMs` above answer "when did this COMMIT last move", which
+		// is right for the ordinary one-release-per-commit row and wrong for
+		// a split one: a held release has never been deployed and must not
+		// borrow the running release's `lastDeployMs`, nor vice versa.
+		const createdMsByVersion = new Map<string, number>();
+		const lastDeployMsByVersion = new Map<string, number>();
 
 		for (const ctx of repo.ctxs) {
 			for (const b of ctx.ladder.builds) {
@@ -622,6 +716,9 @@ export function buildRevisionLedger(
 				known.add(key);
 				const prev = createdMs.get(key) ?? 0;
 				if (b.createdMs > prev) createdMs.set(key, b.createdMs);
+				if (b.createdMs > (createdMsByVersion.get(b.version) ?? 0)) {
+					createdMsByVersion.set(b.version, b.createdMs);
+				}
 			}
 			for (const cell of ctx.cells) {
 				for (const h of cell.rollout.status?.history ?? []) {
@@ -634,6 +731,9 @@ export function buildRevisionLedger(
 					deployed.add(key);
 					const t = h.timestamp ? new Date(h.timestamp).getTime() : NaN;
 					if (Number.isFinite(t) && t > (lastDeployMs.get(key) ?? 0)) lastDeployMs.set(key, t);
+					if (label && Number.isFinite(t) && t > (lastDeployMsByVersion.get(label) ?? 0)) {
+						lastDeployMsByVersion.set(label, t);
+					}
 				}
 			}
 		}
@@ -644,9 +744,74 @@ export function buildRevisionLedger(
 			b.lastDeployMs - a.lastDeployMs ||
 			a.revision.localeCompare(b.revision);
 
+		/**
+		 * ⭐ ONE ROW PER RELEASE — ROUND 4a, ITEM A, completing the half-fix
+		 * `buildRow`'s own 2026-09-02 comment described. A revision splits
+		 * into several rows only when some SERVICE actually carries several
+		 * releases under it (`ServiceCtx.releasesByKey`, length > 1) — the
+		 * ordinary case, several services each with their OWN single label
+		 * for one commit, is not ambiguity at all: `groupServicesByLabel`
+		 * already draws that as several named groups inside ONE row, and
+		 * this must not re-fragment it (see `revision-ledger.test.ts`'s
+		 * `fixture()` — two services, two label schemes, one row per commit,
+		 * unchanged).
+		 *
+		 * ⛔ COORDINATOR PASS 2, ITEM C — THE SPLIT SET IS THE AMBIGUOUS
+		 * SERVICE'S OWN VERSIONS ONLY, NEVER EVERY CTX'S. The first draft
+		 * unioned every ctx's releases at this revision into the version
+		 * set, so `hello-api-app` — which has exactly ONE release of
+		 * `9f10e49`, no ambiguity of its own at all — got a THIRD row keyed
+		 * on its own version string, because that string never equalled
+		 * either of `hello-frontend-app`'s two. One revision produced
+		 * THREE rows for a fixture with exactly one ambiguous service,
+		 * inflating "deployed at least once" by 2 instead of 1 and
+		 * silently dropping `hello-api-app` out of the shared release
+		 * line's own hero (it and `hello-frontend-app` share a
+		 * `releaseLines()` line; the hero is supposed to name both).
+		 *
+		 * The fix: `versions` is built ONLY from ctxs that are themselves
+		 * ambiguous at this revision. A non-ambiguous ctx (`hello-api-app`)
+		 * is not asked "which of these versions is yours" at all — it
+		 * attaches to exactly the PRIMARY row (`isPrimary`, the
+		 * best-ranked / newest of the split, index 0) with its own single
+		 * release, the same row it would have occupied in the un-split
+		 * model. It sits every OTHER split row out — seeing it there too
+		 * would count its live slots once per row it appeared in.
+		 */
+		function buildRowsForRevision(revision: string, forPending: boolean): RevisionRow[] {
+			const rowCreatedMs = createdMs.get(revision) ?? 0;
+			const rowLastDeployMs = forPending ? 0 : (lastDeployMs.get(revision) ?? 0);
+			const ambiguousCtxs = repo.ctxs.filter(
+				(ctx) => (ctx.releasesByKey.get(revision)?.length ?? 0) > 1
+			);
+			if (ambiguousCtxs.length === 0) {
+				const row = buildRow(revision, null, true, rowCreatedMs, rowLastDeployMs, repo.ctxs);
+				return row.services.length > 0 ? [row] : [];
+			}
+			const bestRank = new Map<string, number>();
+			for (const ctx of ambiguousCtxs) {
+				for (const r of ctx.releasesByKey.get(revision) ?? []) {
+					const prev = bestRank.get(r.version);
+					if (prev === undefined || r.rank < prev) bestRank.set(r.version, r.rank);
+				}
+			}
+			const versions = [...bestRank.keys()].sort((a, b) => bestRank.get(a)! - bestRank.get(b)!);
+			return versions
+				.map((version, i) =>
+					buildRow(
+						revision,
+						version,
+						i === 0,
+						createdMsByVersion.get(version) ?? rowCreatedMs,
+						forPending ? 0 : (lastDeployMsByVersion.get(version) ?? 0),
+						repo.ctxs
+					)
+				)
+				.filter((r) => r.services.length > 0);
+		}
+
 		const rows = [...deployed]
-			.map((rev) => buildRow(rev, createdMs.get(rev) ?? 0, lastDeployMs.get(rev) ?? 0, repo.ctxs))
-			.filter((r) => r.services.length > 0)
+			.flatMap((rev) => buildRowsForRevision(rev, false))
 			// Newest first, by BUILD CREATION time — the same ordering the ladder
 			// itself uses. Deploy recency is only the tiebreak, because a promotion
 			// reaches prod after dev, so the latest deploy is routinely of the
@@ -676,8 +841,7 @@ export function buildRevisionLedger(
 		// deployed. They were a number in a subtitle and nothing else.
 		const pending = [...known]
 			.filter((rev) => !deployed.has(rev))
-			.map((rev) => buildRow(rev, createdMs.get(rev) ?? 0, 0, repo.ctxs))
-			.filter((r) => r.services.length > 0)
+			.flatMap((rev) => buildRowsForRevision(rev, true))
 			.sort(byRecency);
 
 		out.push({
@@ -744,6 +908,27 @@ export function resolveRevision(ledger: RepoLedger | null, segment: string): str
 		}
 	}
 	return null;
+}
+
+/**
+ * ⭐ COORDINATOR PASS 2, ITEM C — "DEPLOYED AT LEAST ONCE" IS A COUNT OF
+ * DISTINCT REVISIONS, NEVER OF RAW ROWS. `repo.rows.length` stopped being
+ * 1:1 with "how many commits has this repo deployed" the moment a
+ * revision could split into more than one row (`buildRowsForRevision` —
+ * a rollback re-tags a commit under a second release, still one commit).
+ * Reading `rows.length` directly counted `9f10e49` TWICE on the live
+ * fleet — once for the release still running, once for the held one that
+ * has never landed anywhere — so the head band (`19 of 41` → `21 of 41`)
+ * and the repo footer (`14` → `16`) both grew from one split, with no new
+ * commit actually deployed. THE DEFINITION, so the next reader does not
+ * have to re-derive it from the split: a commit counts once here the
+ * moment ANY of its releases has run anywhere, ever — regardless of how
+ * many releases (rows) that commit resolves to. This is the ONE place
+ * both the head band (`scope`, `+page.svelte`) and the per-repo footer
+ * read it, so they cannot drift apart again.
+ */
+export function deployedRevisionCount(repo: Pick<RepoLedger, 'rows'>): number {
+	return new Set(repo.rows.map((r) => r.revision)).size;
 }
 
 /** A revision's row, deployed or not. The detail page's one lookup. */
@@ -915,8 +1100,20 @@ export function repoDeviation(
 		return { severity: 3, chip: { role: 'failing', label: 'failing', count: failing }, backlog };
 	}
 
-	// HELD — a live slot that is not on its own release (the same predicate
-	// the hero's own "N held" chip uses, see `RevisionLead`'s `heldTotal`).
+	// HELD — a place on an older release of the head's own commit (the same
+	// predicate the hero's own "N held" chip uses, see `RevisionLead`'s
+	// `heldTotal`).
+	//
+	// ⭐ COORDINATOR PASS 2, ITEM B — READS `notYet` TOO NOW, NOT JUST `live`.
+	// Once a revision splits one row per release (`buildRowsForRevision`),
+	// the head row for a HELD release has nobody `live` on it at all — the
+	// places running the sibling release land in `notYet` instead (see
+	// `revision-coverage.ts`'s `heldBehind`, the same union this mirrors
+	// without importing it — this file only TYPE-imports from
+	// `revision-coverage.ts`, see this module's own header comment on why).
+	// Reading only `live` here made `hello-frontend-app`'s held `9f10e49`
+	// read `1 BEHIND` in the collapsed header while its own hero, two
+	// scrolls down, said `held in 3 places` — the same rollout, two verdicts.
 	//
 	// ⭐ ROLE IS `held`, NOT `alarm`. (round-3 addendum B) `held` is not an
 	// alarm — CLAUDE.md's own ruling: "a gate correctly refusing a candidate
@@ -927,16 +1124,22 @@ export function repoDeviation(
 	// louder than the shared spelling. Same role here, so the two pages
 	// agree on what "held" looks like as well as what it means.
 	const live = headCoverage.buckets.find((b) => b.key === 'live')?.slots ?? [];
-	const held = live.filter((s) => !s.onOwnRelease).length;
+	const notYetSlots = headCoverage.buckets.find((b) => b.key === 'notYet')?.slots ?? [];
+	const held =
+		live.filter((s) => !s.onOwnRelease).length +
+		notYetSlots.filter((s) => s.slot.onRevision).length;
 	if (held > 0) {
 		return { severity: 2, chip: { role: 'held', label: `${held} held`, count: held }, backlog };
 	}
 
 	// BEHIND — distinct services with something not yet on the newest build
 	// any of them has reached. Counts SERVICES, not places: five environments
-	// on one lagging service is one fact, not five.
+	// on one lagging service is one fact, not five. Excludes the ones just
+	// counted as `held` above — a place on the SAME commit's sibling release
+	// is not "behind" in the ordinary sense; it is held, and may not be
+	// counted (and coloured) as both.
 	const notYetServices = new Set(
-		(headCoverage.buckets.find((b) => b.key === 'notYet')?.slots ?? []).map((s) => s.appName)
+		notYetSlots.filter((s) => !s.slot.onRevision).map((s) => s.appName)
 	).size;
 	if (notYetServices > 0) {
 		return {
@@ -1010,8 +1213,25 @@ export function releaseLines(repo: Pick<RepoLedger, 'rows' | 'pending'>): Releas
 		}
 	}
 
+	/**
+	 * ⭐ COORDINATOR PASS 2, ITEM D — MAX PER REVISION, NEVER LAST-WRITE-WINS.
+	 * Once a revision can resolve to more than one row (a held sibling
+	 * release), `allRows` can carry TWO rows for one key with DIFFERENT
+	 * `createdMs` — the held release's (newer) and the running release's
+	 * (older). Plain `.set()` per row took whichever was iterated LAST, not
+	 * the true newest, so this line's own "how recently was this created"
+	 * sort key silently used the OLDER of the two: on the live fleet,
+	 * `hello-api-app`/`hello-frontend-app`'s line (head `9f10e49`, held)
+	 * sorted AFTER `hello-multi-app`'s (head `064b655`, not held) even
+	 * though `9f10e49`'s own held release was created more recently — the
+	 * deviating line lost its place at the top of the ledger to a stale
+	 * timestamp this map itself introduced.
+	 */
 	const createdMs = new Map<string, number>();
-	for (const row of allRows) createdMs.set(row.revision, row.createdMs);
+	for (const row of allRows) {
+		const prev = createdMs.get(row.revision) ?? 0;
+		if (row.createdMs > prev) createdMs.set(row.revision, row.createdMs);
+	}
 
 	const byHead = new Map<string, string[]>();
 	for (const appName of allServices) {

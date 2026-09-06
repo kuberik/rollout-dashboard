@@ -2077,7 +2077,23 @@ textarea {
    `@layer components` for the same reason `.chip` does — an unlayered rule
    would silently outrank a call site's own Tailwind override. */
 @layer components {
+	/*
+	 * ⭐ ROUND 4a, ITEM E — `display: inline-block`, NOT THE DEFAULT `inline`
+	 * A `<span class="skel-block h-4 w-28">` — EMPTY, no text — is an
+	 * ordinary inline box until its own layout context blockifies it (a
+	 * flex/grid ITEM is blockified automatically; a plain nested child is
+	 * not). Every existing call site happens to place `.skel-block` as a
+	 * DIRECT child of a flex or grid container, so the width/height
+	 * utilities "worked" by accident of blockification, not because this
+	 * class does its own job. `/revisions`' ledger-row skeleton nests one
+	 * inside `.svc-name` (itself the flex/grid item) for the first time —
+	 * an empty INLINE box with no text collapses to a true 0×0, silently,
+	 * which `w-28 h-4` still reports as its COMPUTED style even though
+	 * neither applies to the rendered box. Declaring `inline-block` here
+	 * makes the class self-sufficient in every context, nested or not.
+	 */
 	.skel-block {
 		@apply animate-pulse rounded bg-gray-200 dark:bg-gray-700;
+		display: inline-block;
 	}
 }

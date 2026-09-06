@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	buildRevisionLedger,
+	deployedRevisionCount,
 	groupServicesByLabel,
 	lineState,
 	orderServiceGroups,
@@ -317,16 +318,18 @@ describe('buildRevisionLedger', () => {
 	});
 
 	/**
-	 * ⛔ THE `NEWEST` BADGE ON THE OLDER TAG. `hello-frontend-app` rel-66 and
-	 * rel-67 share one git revision (a rollback re-ships a build already
-	 * released once before under a new tag). `label` used to come from
-	 * `labelByKey` (first-noted, oldest-first `availableReleases` order) and
-	 * `rank` from `byKey` (best/newest-ranked) — two different collapses that
-	 * can name two different releases. The row printed `NEWEST · 2.66.0-66`:
-	 * rel-67's rank (0) glued to rel-66's own label. Both must now name the
-	 * SAME release.
+	 * ⭐ ROUND 4a, ITEM A — A ROW IS ABOUT ONE RELEASE, COMPLETING THE HALF-FIX.
+	 * `hello-frontend-app` rel-66 and rel-67 share one git revision (a
+	 * rollback re-ships a build already released once before under a new
+	 * tag). The 2026-09-02 pass fixed the label/rank PAIRING (both now name
+	 * rel-67 together) but kept ONE row, which then claimed `NEWEST … held in
+	 * N places` about a build that N places were, in fact, RUNNING (under
+	 * rel-66). `ServiceCtx.releasesByKey` (this service has TWO releases for
+	 * this revision) is what makes `buildRowsForRevision` split it: one row
+	 * per release, same revision, each with its own rank and its own truthful
+	 * `onIt`.
 	 */
-	it('never pairs one release rank with a different release label', () => {
+	it('splits one row per release when a revision resolves to more than one', () => {
 		const older = rel('eeeeeee', '2.66.0-66', 120); // rel-66, running
 		const newer = rel('eeeeeee', '2.67.0-67', 10); // rel-67, newer, held — never deployed
 		const rollouts = [
@@ -334,14 +337,96 @@ describe('buildRevisionLedger', () => {
 		];
 		const environments = [environment('hello-frontend-app', 'hfa-prod', 'prod')];
 		const [repo] = buildRevisionLedger(rollouts, environments);
-		// One row: both releases share the revision.
-		expect(repo.rows).toHaveLength(1);
-		const svc = repo.rows[0].services[0];
-		expect(svc.appName).toBe('hello-frontend-app');
-		// `NEWEST` (rank 0) belongs to rel-67, and now so does the label next
-		// to it — never rel-66's `2.66.0-66` glued to rel-67's rank.
-		expect(svc.rank).toBe(0);
-		expect(svc.label).toBe('2.67.0-67');
+		// TWO rows now — one per release — both about the SAME commit.
+		expect(repo.rows).toHaveLength(2);
+		expect(new Set(repo.rows.map((r) => r.revision)).size).toBe(1);
+
+		const held = repo.rows.find((r) => r.services[0].label === '2.67.0-67');
+		const running = repo.rows.find((r) => r.services[0].label === '2.66.0-66');
+		expect(held).toBeTruthy();
+		expect(running).toBeTruthy();
+
+		// `NEWEST` (rank 0) belongs to rel-67's OWN row, and nobody is
+		// actually on it: `onIt` is false everywhere, never borrowed from the
+		// sibling release sharing this revision.
+		expect(held!.services[0].rank).toBe(0);
+		expect(held!.services[0].slots[0].onIt).toBe(false);
+		expect(held!.liveSlots).toBe(0);
+
+		// rel-66's OWN row correctly reads `1 behind`, and the place running
+		// it reads `onIt`, on ITS row only.
+		expect(running!.services[0].rank).toBe(1);
+		expect(running!.services[0].slots[0].onIt).toBe(true);
+		expect(running!.liveSlots).toBe(1);
+	});
+
+	/**
+	 * ⭐ COORDINATOR PASS 2, ITEM C — A NON-AMBIGUOUS SERVICE SHARING THE
+	 * SPLIT REVISION GETS EXACTLY ONE ROW, NOT A THIRD OF ITS OWN. Live
+	 * regression: `hello-api-app` has ONE release of `9f10e49` (no
+	 * ambiguity of its own) while `hello-frontend-app` has two (this
+	 * fixture's own split). The first draft unioned every service's own
+	 * versions into the split set, so `hello-api-app`'s own version —
+	 * never equal to either of `hello-frontend-app`'s — got a THIRD row,
+	 * inflating "deployed at least once" by 2 instead of 1 and dropping
+	 * `hello-api-app` out of the release line's shared hero. It must
+	 * attach to the PRIMARY (best-ranked / newest) split row alone, with
+	 * its own label and rank intact, and sit the other split row out
+	 * entirely.
+	 */
+	/**
+	 * ⭐ COORDINATOR PASS 2, ITEM C — "DEPLOYED AT LEAST ONCE" DOES NOT GROW
+	 * FROM A ROW SPLIT ALONE. `repo.rows.length` is 2 for this fixture (one
+	 * per release); `deployedRevisionCount` must still read 1 — one commit,
+	 * deployed, however many releases it resolves to.
+	 */
+	it('deployedRevisionCount counts the COMMIT once, even though the split produced two rows', () => {
+		const older = rel('eeeeeee', '2.66.0-66', 120);
+		const newer = rel('eeeeeee', '2.67.0-67', 10);
+		const rollouts = [
+			rollout('hello-frontend-app', 'hfa-prod', [newer, older], [{ r: older, minutesAgo: 5 }])
+		];
+		const environments = [environment('hello-frontend-app', 'hfa-prod', 'prod')];
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		expect(repo.rows).toHaveLength(2);
+		expect(deployedRevisionCount(repo)).toBe(1);
+	});
+
+	it('attaches a non-ambiguous service sharing the split revision to the PRIMARY row only', () => {
+		const older = rel('eeeeeee', '2.66.0-66', 120); // rel-66, hello-frontend-app running
+		const newer = rel('eeeeeee', '2.67.0-67', 10); // rel-67, hello-frontend-app held
+		const apiOwn = rel('eeeeeee', '1.66.0-66', 10); // hello-api-app's OWN, unambiguous release of the same commit
+		const rollouts = [
+			rollout('hello-frontend-app', 'hfa-prod', [newer, older], [{ r: older, minutesAgo: 5 }]),
+			rollout('hello-api-app', 'api-prod', [apiOwn], [{ r: apiOwn, minutesAgo: 5 }])
+		];
+		const environments = [
+			environment('hello-frontend-app', 'hfa-prod', 'prod'),
+			environment('hello-api-app', 'api-prod', 'prod')
+		];
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		// Still exactly TWO rows for the shared revision — the split is
+		// keyed on `hello-frontend-app`'s own two releases only.
+		const sameRevisionRows = repo.rows.filter((r) => r.revision === repo.rows[0].revision);
+		expect(sameRevisionRows).toHaveLength(2);
+
+		const held = sameRevisionRows.find((r) =>
+			r.services.some((s) => s.appName === 'hello-frontend-app' && s.label === '2.67.0-67')
+		)!;
+		const running = sameRevisionRows.find((r) =>
+			r.services.some((s) => s.appName === 'hello-frontend-app' && s.label === '2.66.0-66')
+		)!;
+		expect(held).toBeTruthy();
+		expect(running).toBeTruthy();
+
+		// hello-api-app rides with the PRIMARY (held, rank-0) row only —
+		// live there (it is not held), with its own label untouched.
+		const apiOnHeld = held.services.find((s) => s.appName === 'hello-api-app');
+		expect(apiOnHeld?.label).toBe('1.66.0-66');
+		expect(apiOnHeld?.liveSlots).toBe(1);
+
+		// …and does not appear a second time on the OTHER split row.
+		expect(running.services.some((s) => s.appName === 'hello-api-app')).toBe(false);
 	});
 
 	it('keeps label and rank matched when a revision has only one release', () => {
@@ -435,10 +520,26 @@ describe('serviceLedger', () => {
 });
 
 /** Just enough of `RevisionCoverage`'s shape for `repoDeviation` to read. */
+/**
+ * ⭐ COORDINATOR PASS 2, ITEM B — `slot.onRevision` IS PART OF THE FIXTURE
+ * NOW. `repoDeviation`'s `held` bucket reads `notYet` slots' raw
+ * `RevisionSlot.onRevision` (same commit, sibling release) to tell a hold
+ * apart from ordinary lag — see that function's own doc comment. Defaults
+ * to `false` (ordinary lag, the common case every existing fixture below
+ * means) so only a test that explicitly asks for the sibling-release case
+ * has to say so.
+ */
 function coverage(
-	buckets: { key: string; slots: { appName: string; onOwnRelease?: boolean }[] }[]
+	buckets: {
+		key: string;
+		slots: { appName: string; onOwnRelease?: boolean; onRevision?: boolean }[];
+	}[]
 ): RevisionCoverage {
-	return { liveCount: 0, totalCount: 0, reachable: true, buckets } as unknown as RevisionCoverage;
+	const withSlot = buckets.map((b) => ({
+		...b,
+		slots: b.slots.map((s) => ({ ...s, slot: { onRevision: s.onRevision ?? false } }))
+	}));
+	return { liveCount: 0, totalCount: 0, reachable: true, buckets: withSlot } as unknown as RevisionCoverage;
 }
 
 describe('repoDeviation — craft review item 3 (lead with the deviation)', () => {
@@ -481,6 +582,53 @@ describe('repoDeviation — craft review item 3 (lead with the deviation)', () =
 		expect(repoDeviation({ pending: [] }, cov)).toEqual({
 			severity: 1,
 			chip: { role: 'rank', label: '2 behind', count: 2 },
+			backlog: 0
+		});
+	});
+
+	/**
+	 * ⭐ COORDINATOR PASS 2, ITEM B — A HELD SIBLING RELEASE READS `held`,
+	 * NEVER `behind`, EVEN THOUGH ITS PLACES ARE IN THE `notYet` BUCKET.
+	 * Once a revision splits one row per release, the head row for the
+	 * HELD release has nobody `live` on it — the places running the
+	 * sibling release land in `notYet` with `slot.onRevision: true`. Live
+	 * regression: `hello-frontend-app`'s held `9f10e49` read `1 BEHIND` in
+	 * the collapsed header while its own hero said `held in 3 places` two
+	 * scrolls down — same rollout, two verdicts.
+	 */
+	it('reads `held`, not `behind`, when the notYet places are on the SAME commit’s sibling release', () => {
+		const cov = coverage([
+			{
+				key: 'notYet',
+				slots: [
+					{ appName: 'hello-frontend-app', onRevision: true },
+					{ appName: 'hello-frontend-app', onRevision: true },
+					{ appName: 'hello-frontend-app', onRevision: true }
+				]
+			}
+		]);
+		expect(repoDeviation({ pending: [] }, cov)).toEqual({
+			severity: 2,
+			chip: { role: 'held', label: '3 held', count: 3 },
+			backlog: 0
+		});
+	});
+
+	it('keeps a MIX of held (onRevision) and genuine lag (not onRevision) as two separate counts', () => {
+		const cov = coverage([
+			{
+				key: 'notYet',
+				slots: [
+					{ appName: 'hello-frontend-app', onRevision: true },
+					{ appName: 'hello-multi-app', onRevision: false }
+				]
+			}
+		]);
+		// The held one is `held`; a repo with ANY held places leads with
+		// that severity — `behind` never mixes into the same chip.
+		expect(repoDeviation({ pending: [] }, cov)).toEqual({
+			severity: 2,
+			chip: { role: 'held', label: '1 held', count: 1 },
 			backlog: 0
 		});
 	});
@@ -603,6 +751,31 @@ describe('releaseLines — round 3 §1 (a repository is not one release line)', 
 			pending: []
 		};
 		expect(releaseLines(repo).map((l) => l.headRevision)).toEqual(['newer', 'older']);
+	});
+
+	/**
+	 * ⭐ COORDINATOR PASS 2, ITEM D — MAX createdMs PER REVISION, NOT
+	 * LAST-WRITE-WINS. A split revision (a held sibling release) puts TWO
+	 * rows in `allRows` for the SAME key with different `createdMs`. If the
+	 * OLDER one is iterated after the newer (exactly how `repo.rows`' own
+	 * `byRecency` sort — newest first — lays them out, so the held row
+	 * comes BEFORE the running one), a plain `.set()` per row keeps the
+	 * older timestamp and this line sorts as if it were stale.
+	 */
+	it('uses the MAX createdMs across a split revision’s several rows, not whichever is iterated last', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [
+				// Held row first (byRecency: newest-created first) — createdMs 500.
+				row('9f10e49', 500, [{ appName: 'hello-frontend-app', rank: 0 }]),
+				// Running row second, OLDER createdMs — must not overwrite the 500 above.
+				row('9f10e49', 200, [{ appName: 'hello-frontend-app', rank: 1 }]),
+				row('064b655', 300, [{ appName: 'hello-multi-app', rank: 0 }])
+			],
+			pending: []
+		};
+		// The split revision's line (true head createdMs 500) sorts BEFORE
+		// the other line (300) — a stale 200 would have sorted it after.
+		expect(releaseLines(repo).map((l) => l.headRevision)).toEqual(['9f10e49', '064b655']);
 	});
 
 	it('reads pending (never-deployed) rows too, so an undeployed line head is still found', () => {

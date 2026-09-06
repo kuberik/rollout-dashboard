@@ -192,39 +192,37 @@ describe('revisionCoverage', () => {
 	}
 
 	/**
-	 * ⛔ (2026-09-03, operator-walk BLOCKING item — supersedes the assertion
-	 * this test used to make.) Every place running rel-66 IS running the
-	 * revision — `onIt` is a git-sha match and does not care which release
-	 * tag is on screen. Filing all three under `notYet` was the false claim
-	 * an operator read as "PROD has not gotten this build" about a place
-	 * that had run it for days. `live` now means exactly "running the
-	 * revision", full stop; `onOwnRelease` (below) is the separate, narrower
-	 * fact about whether it is on the row's own headline release of it.
+	 * ⭐ ROUND 4a, ITEM A — split rows, not a merged one. `heldRevisionFixture`
+	 * now produces TWO rows (`revision-ledger.test.ts` has the same fixture's
+	 * own row-level assertions): rel-67's OWN row correctly reports `notYet`
+	 * — nobody actually runs it — instead of the false `live` the old merged
+	 * row borrowed from the sibling release that WAS running. `onRevision`
+	 * (on the raw `RevisionSlot`) is what still lets this row say "these
+	 * three run the same COMMIT, just not this release of it".
 	 */
-	it('counts a place running an OLDER release of the revision as live, not "not here yet"', () => {
+	it('gives the held release its own row: not here yet, never a false `live`', () => {
 		const repo = heldRevisionFixture();
-		// One row: both releases share the revision, so the ledger groups them.
-		expect(repo.rows).toHaveLength(1);
-		const row = repo.rows[0];
-		const cov = revisionCoverage(row, new Date());
-		// All three run the revision — 3 of 3, not 0 of 3.
-		expect(cov.liveCount).toBe(3);
+		expect(repo.rows).toHaveLength(2);
+		const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
+		const cov = revisionCoverage(held, new Date());
+		expect(cov.liveCount).toBe(0);
 		expect(cov.totalCount).toBe(3);
-		const live = cov.buckets.find((b) => b.key === 'live');
-		expect(live?.slots.length).toBe(3);
-		expect(cov.buckets.some((b) => b.key === 'notYet')).toBe(false);
-		// None of them are on the row's OWN release (rel-67, held) — they are
-		// on the older one (rel-66) that shares its revision.
-		expect(live?.slots.every((s) => s.onOwnRelease === false)).toBe(true);
-		expect(live?.slots.every((s) => s.runs === '1.66.0-66')).toBe(true);
-		expect(live?.slots.every((s) => s.label === '1.67.0-67')).toBe(true);
+		expect(cov.buckets.some((b) => b.key === 'live')).toBe(false);
+		const notYet = cov.buckets.find((b) => b.key === 'notYet');
+		expect(notYet?.slots.length).toBe(3);
+		// They ARE running the same commit — just the sibling release.
+		expect(notYet?.slots.every((s) => s.slot.onRevision)).toBe(true);
+		expect(notYet?.slots.every((s) => s.runs === '1.66.0-66')).toBe(true);
+		expect(notYet?.slots.every((s) => s.label === '1.67.0-67')).toBe(true);
 	});
 
-	it('does not mark a place "on its own release" merely for sharing the revision', () => {
+	it('gives the running release its own row: live, and on its own release', () => {
 		const repo = heldRevisionFixture();
-		const cov = revisionCoverage(repo.rows[0], new Date());
+		const running = repo.rows.find((r) => r.services[0].label === '1.66.0-66')!;
+		const cov = revisionCoverage(running, new Date());
+		expect(cov.liveCount).toBe(3);
 		const live = cov.buckets.find((b) => b.key === 'live')!;
-		expect(live.slots.map((s) => s.onOwnRelease)).toEqual([false, false, false]);
+		expect(live.slots.map((s) => s.onOwnRelease)).toEqual([true, true, true]);
 	});
 
 	it('keeps a release "live" when the environment is genuinely on this row\'s own build', () => {
@@ -247,17 +245,30 @@ describe('revisionCoverage', () => {
 	 * reverted to one segment per bucket.
 	 */
 	describe('coverageSegments: a `live` slot held on an older release still draws as plain `live`', () => {
-		it('draws the whole bucket as `live`, even when every place is held', () => {
+		it('never draws a `held` segment on either split row', () => {
 			const repo = heldRevisionFixture();
-			const cov = revisionCoverage(repo.rows[0], new Date());
-			expect(counts(repo.rows[0])).toEqual({ live: 3 });
-			const segs = coverageSegments(cov);
-			expect(segs).toEqual([{ key: 'live', count: 3, title: 'Running it now', reachable: true }]);
+			const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
+			const running = repo.rows.find((r) => r.services[0].label === '1.66.0-66')!;
+			const heldSegs = coverageSegments(revisionCoverage(held, new Date()));
+			const runningSegs = coverageSegments(revisionCoverage(running, new Date()));
+			expect(heldSegs.some((s) => (s.key as string) === 'held')).toBe(false);
+			expect(runningSegs.some((s) => (s.key as string) === 'held')).toBe(false);
+			expect(runningSegs).toEqual([
+				{ key: 'live', count: 3, title: 'Running it now', reachable: true }
+			]);
 		});
 
-		it('never emits a `held` segment, even when the bucket is a partial mix of releases', () => {
-			// One service on its own release, one held behind a gate — the
-			// ordinary partial case, not the all-or-nothing fixture above.
+		/**
+		 * ⭐ ROUND 4a, ITEM A — the "partial mix" this test used to construct
+		 * INSIDE one row's `live` bucket (one service on its own release, one
+		 * held behind a gate) can no longer occur that way: the split puts
+		 * each release in its own row. What used to be one row of 2 `live`
+		 * places is now two rows of 1 `live` + 1 other bucket apiece — prod
+		 * is `live` on rel-67 while dev has not taken it yet (`notYet`); dev
+		 * is `live` on rel-66 while prod has already moved past it (`ahead`).
+		 * Neither draws a `held` segment.
+		 */
+		it('never emits a `held` segment on a partial mix either, split across the two rows it now is', () => {
 			const sha = 'fffffff0000000000000000000000000000000';
 			const older = { tag: 'main-66', version: '1.66.0-66', revision: sha, created: minsAgo(120) };
 			const newer = { tag: 'main-67', version: '1.67.0-67', revision: sha, created: minsAgo(10) };
@@ -270,10 +281,16 @@ describe('revisionCoverage', () => {
 				environment('hello-frontend-app', 'hfa-prod', 'prod')
 			];
 			const repo = buildRevisionLedger(rollouts, environments)[0];
-			const row = repo.rows.find((r) => r.short === sha.slice(0, 7))!;
-			const cov = revisionCoverage(row, new Date());
-			const segs = coverageSegments(cov);
-			expect(segs).toEqual([{ key: 'live', count: 2, title: 'Running it now', reachable: true }]);
+			const rel67 = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
+			const rel66 = repo.rows.find((r) => r.services[0].label === '1.66.0-66')!;
+			expect(coverageSegments(revisionCoverage(rel67, new Date()))).toEqual([
+				{ key: 'live', count: 1, title: 'Running it now', reachable: true },
+				{ key: 'notYet', count: 1, title: 'Not here yet', reachable: true }
+			]);
+			expect(coverageSegments(revisionCoverage(rel66, new Date()))).toEqual([
+				{ key: 'live', count: 1, title: 'Running it now', reachable: true },
+				{ key: 'ahead', count: 1, title: 'Already moved on', reachable: true }
+			]);
 		});
 
 		it('does not appear at all in the ordinary case — byte-identical to before', () => {

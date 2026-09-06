@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
@@ -10,6 +11,7 @@
 	import { revisionPath } from '$lib/version-utils';
 	import {
 		buildRevisionLedger,
+		deployedRevisionCount,
 		lineState,
 		orderServiceGroups,
 		releaseLines,
@@ -27,6 +29,7 @@
 	import {
 		revisionCoverage,
 		releaseSplit,
+		heldBehind,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 	import {
@@ -72,6 +75,7 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
+	import BannerSkeleton from '$lib/components/skeleton/BannerSkeleton.svelte';
 	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 	import { historyAtLimit } from '$lib/history-marks';
 	import { countLabel } from '$lib/disclosure';
@@ -174,8 +178,12 @@
 	function heldGateReason(
 		coverage: RevisionCoverage
 	): { reason: NonNullable<ReturnType<typeof blockReason>>; appHref: string | null } | null {
-		const live = coverage.buckets.find((b) => b.key === 'live');
-		const slot = (live?.slots ?? []).find((s) => !s.onOwnRelease && s.blockingGates.length > 0);
+		// ⭐ ROUND 4a, ITEM A — `heldBehind`, NOT JUST THE `live` BUCKET. Once
+		// rows split one per release, a place sharing this commit under a
+		// different release lands in `notYet` (see that function's own doc
+		// comment), so searching `live` alone went blind the moment the split
+		// landed — the held row's own gate evidence sat in `notYet` instead.
+		const slot = heldBehind(coverage).find((s) => s.blockingGates.length > 0);
 		if (!slot) return null;
 		const story = blockingStory(slot.slot.cell.rollout, gateContext, {
 			subject: slot.appName,
@@ -246,16 +254,47 @@
 	);
 
 	/**
+	 * ⭐ ROUND 4a, ITEM E — THE DISCLOSED BLOCK'S OWN SHAPE, PER REPO. How
+	 * many "Newest build" hero cards this repo's release lines draw, and
+	 * WHICH of them lead with a held banner — the two facts the skeleton
+	 * needs to reserve the right height for an OPEN repo instead of always
+	 * guessing "one hero, never held". `heldPattern` is per-SLOT, not a bare
+	 * count: a held line is not reliably the first one (`releaseLines`
+	 * orders by head creation time, and an OLDER line can still be the one
+	 * that is held), so a count-first guess put the banner-shaped
+	 * placeholder above the WRONG hero on this exact fleet. Computed for
+	 * every repo (same indexing as `services`, below), not only open ones,
+	 * so a repo that gets expanded next visit already has a remembered
+	 * shape waiting.
+	 */
+	const heroLineShape = $derived(
+		orderedLedgers.map((repo) => {
+			const lines = releaseLines(repo);
+			const leadRows = leadRowsFor(repo, lines);
+			const visible = visibleLeadRows(leadRows);
+			const heldPattern = visible.map((row) => !!heldGateReason(revisionCoverage(row, coarse)));
+			return { total: visible.length, heldPattern };
+		})
+	);
+
+	/**
 	 * ⭐ THE PAGE'S ROLLUP. `null` while there is nothing to state — a `0 of
 	 * 0` above a skeleton is a reading of the cluster that has not happened
 	 * yet.
+	 *
+	 * ⭐ COORDINATOR PASS 2, ITEM C — `deployed` COUNTS DISTINCT REVISIONS
+	 * (`deployedRevisionCount`, `revision-ledger.ts`), NOT `repo.rows.length`.
+	 * See that function's own doc comment: a revision that splits into more
+	 * than one row (a held sibling release) is still ONE commit, and this
+	 * band answers "of 41 builds, how many are deployed" — a question about
+	 * COMMITS, not about how many releases they happen to resolve to.
 	 */
 	const scope = $derived.by(() => {
 		if (ledgers.length === 0) return null;
 		let deployed = 0;
 		let known = 0;
 		for (const repo of ledgers) {
-			deployed += repo.rows.length;
+			deployed += deployedRevisionCount(repo);
 			known += repo.knownRevisions;
 		}
 		return known > 0 ? { deployed, known } : null;
@@ -314,7 +353,27 @@
 	 * remembered hint still parses, only what it counts changed.
 	 */
 	const SHAPE_KEY = 'revisions';
-	type RevisionsShape = { repos: number; open: string; services: string };
+	type RevisionsShape = {
+		repos: number;
+		open: string;
+		services: string;
+		/**
+		 * ⭐ ROUND 4a, ITEM E — THE DISCLOSED BLOCK'S OWN SHAPE, REMEMBERED.
+		 * `heroLines` is comma-joined, one entry per repo (same indexing as
+		 * `services`): how many "Newest build" hero cards an OPEN repo draws
+		 * (one per release line). `heldLines` is comma-joined too, but each
+		 * entry is a per-repo BIT STRING (`"01"` = line 0 steady, line 1
+		 * held) rather than a bare count — a held line is not reliably the
+		 * FIRST one (see `heroLineShape`'s own doc comment), so the skeleton
+		 * needs to know WHICH slot to draw a banner above, not just how many.
+		 * `hadBanner` is the page-level "one blocking fact" banner that sits
+		 * ABOVE every repo card. All three are SHAPE — counts, bits and a
+		 * boolean — never fleet data.
+		 */
+		hadBanner: boolean;
+		heroLines: string;
+		heldLines: string;
+	};
 	const shapeHint = recallShape<RevisionsShape>(SHAPE_KEY);
 	// Capped generously — only bounds a next-visit SKELETON's size, never the real page.
 	const skelRepoCount = Math.min(Math.max(shapeHint?.repos ?? 1, 1), 6);
@@ -328,6 +387,16 @@
 			.map((n) => parseInt(n, 10))
 			.filter((n) => Number.isInteger(n) && n >= 0)
 	);
+	const skelHadBanner = shapeHint?.hadBanner ?? false;
+	const skelHeroLineCounts = (shapeHint?.heroLines ?? '').split(',').map((raw) => {
+		const n = parseInt(raw, 10);
+		return Number.isFinite(n) && n > 0 ? Math.min(n, 4) : 1;
+	});
+	// One bit string per repo, e.g. `["01", "0"]` — `skelHeldAt(sectionIndex, li)` below reads it.
+	const skelHeldPatterns = (shapeHint?.heldLines ?? '').split(',');
+	function skelHeldAt(sectionIndex: number, li: number): boolean {
+		return skelHeldPatterns[sectionIndex]?.[li] === '1';
+	}
 
 	/**
 	 * ⭐ WHICH REPOSITORY SECTIONS ARE EXPANDED. (§1 "Default open state")
@@ -362,6 +431,11 @@
 			open: openIndicesString(),
 			services: orderedLedgers
 				.map((r) => serviceLedger(r).reduce((n, g) => n + Math.max(g.lines.length, 1), 0))
+				.join(','),
+			hadBanner: !!blockage,
+			heroLines: heroLineShape.map((h) => h.total).join(','),
+			heldLines: heroLineShape
+				.map((h) => h.heldPattern.map((b) => (b ? '1' : '0')).join(''))
 				.join(',')
 		});
 	});
@@ -397,11 +471,23 @@
 	 * (Craft review item 6: a retired row's `.bld-mark` needs its own last
 	 * build-state glyph, which reads off this same coverage.)
 	 */
+	/**
+	 * ⭐ ROUND 4a, ITEM A RESIDUE — KEYED BY THE ROW OBJECT, NOT ITS
+	 * REVISION STRING. Since a revision can now resolve to more than one
+	 * row (one per release — see `buildRowsForRevision` in
+	 * `revision-ledger.ts`), two rows sharing a `.revision` would collide on
+	 * a string key, and whichever was inserted last would silently answer
+	 * for BOTH — the exact cross-release mixing item A exists to end,
+	 * reintroduced one map over. Row OBJECTS are unique per render pass
+	 * (`buildRevisionLedger` builds them fresh each time), so object
+	 * identity is a safe key and the lookup below never has to guess which
+	 * release a bare sha string meant.
+	 */
 	const coverageByRevision = $derived.by(() => {
-		const m = new Map<string, RevisionCoverage>();
+		const m = new Map<RevisionRow, RevisionCoverage>();
 		for (const repo of ledgers) {
 			for (const row of repo.rows) {
-				m.set(row.revision, revisionCoverage(row, coarse));
+				m.set(row, revisionCoverage(row, coarse));
 			}
 		}
 		return m;
@@ -413,6 +499,40 @@
 	}
 	function pastRows(repo: RepoLedger, headRevisions: Set<string>): RevisionRow[] {
 		return repo.rows.filter((r) => r.liveSlots === 0 && !headRevisions.has(r.revision));
+	}
+
+	/**
+	 * ⭐ ROUND 4a, ITEM F — A SERVICE LIST THAT REPEATS THE LINE'S WHOLE SET
+	 * IS NOISE, NOT A FACT. A repo that has always deployed as one unit
+	 * prints the SAME `hello-multi-app · hello-world-app ·
+	 * hello-world-manifests` on every retired build's row — five rows, one
+	 * name set, read five times. `heroServicesLabel` already names the line
+	 * once, at the top of the section; a row that carries no OTHER services
+	 * has nothing left to distinguish by naming them again. Folds to `N
+	 * services` (the row's own `title` carries the full join, same idiom as
+	 * `.svc-line-caption`'s fold) — but ONLY when the row's own service set
+	 * IS the line's full set, never when it is a proper subset (a service
+	 * missing from a row IS the fact a subset states).
+	 */
+	function lineForRow(row: RevisionRow, lines: ReleaseLine[]): ReleaseLine | null {
+		const rowServices = new Set(row.services.map((s) => s.appName));
+		for (const line of lines) {
+			if (line.services.some((s) => rowServices.has(s))) return line;
+		}
+		return null;
+	}
+
+	function namesFoldToCount(row: RevisionRow, lines: ReleaseLine[]): boolean {
+		const line = lineForRow(row, lines);
+		if (!line || line.services.length <= 1) return false;
+		// ⛔ NEVER FOLD AWAY A DEVIATION. `svc.diverged` is a per-service chip
+		// this row's own list draws; a fold that hid it would be trading a
+		// real fact for the same tidiness this item asks for elsewhere.
+		if (row.services.some((s) => s.diverged)) return false;
+		const rowServices = new Set(row.services.map((s) => s.appName));
+		return (
+			line.services.length === rowServices.size && line.services.every((s) => rowServices.has(s))
+		);
 	}
 
 	/**
@@ -676,20 +796,70 @@
 		return base ? `${base}/commit/${revision}` : null;
 	}
 
-	/** THE HERO'S OWN RELEASE-SPLIT CAPTION — unchanged from the round that shipped it. */
-	function releaseSplitSentence(coverage: RevisionCoverage): string {
-		return releaseSplit(coverage)
-			.map((l) => {
-				const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
-				const clause = l.held
-					? `${l.aheadLabel} is held in ${envs}`
-					: `${l.aheadLabel} has not reached ${envs} yet`;
-				return `${l.count} of them on ${l.behindLabel}; ${clause}.`;
-			})
-			.join(' ');
+	/**
+	 * ⭐ ROUND 4a, ITEM C — THE SENTENCE NAMES ITS OWN SUBJECTS.
+	 *
+	 * `${l.count} of them on ${l.behindLabel}` had no antecedent: "them" named
+	 * nothing printed anywhere on screen, and the reader had already been
+	 * handed the release names, not a headcount, everywhere else on this
+	 * card. The subject is the ENVIRONMENTS actually running the older
+	 * release — `dev, staging and prod run 2.66.0-66` — so the sentence reads
+	 * as a fact about places, not as an unlabelled count.
+	 *
+	 * "in all N" only when this group's environments ARE the entire held set
+	 * (the common case, one gate holding everything back); a genuinely mixed
+	 * repo — one gate holding two of three environments, say — lists them
+	 * instead of overclaiming "all".
+	 */
+	const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+	function numberWord(n: number): string {
+		return NUMBER_WORDS[n] ?? String(n);
 	}
 
-	/* ── THE PAGE'S ONE BLOCKING FACT ─────────────────────────────────────── */
+	function releaseSplitSentence(coverage: RevisionCoverage): string {
+		const lines = releaseSplit(coverage);
+		if (lines.length === 0) return '';
+		const heldEnvs = new Set(lines.flatMap((l) => l.envLabels));
+		const sentences = lines.map((l) => {
+			const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
+			const sameSet = l.envLabels.length === heldEnvs.size;
+			let clause: string;
+			if (l.held) {
+				const where = sameSet ? `all ${numberWord(heldEnvs.size)}` : envs;
+				clause = `${l.aheadLabel} is held in ${where}`;
+			} else {
+				const where = sameSet ? 'them' : envs;
+				clause = `${l.aheadLabel} has not reached ${where} yet`;
+			}
+			return `${envs} run ${l.behindLabel}; ${clause}.`;
+		});
+		return sentences.join(' ');
+	}
+
+	/**
+	 * ⭐ COORDINATOR PASS 2, ITEM A — ONE FACT ONCE. This used to fire the
+	 * moment ANY `notYet` slot on the repo's head row had gate evidence,
+	 * which is also exactly the condition that now makes a repository's own
+	 * hero draw ITS "is held" banner (`heldGateReason`/`heldBehind`, once a
+	 * revision splits one row per release — see `revision-coverage.ts`'s own
+	 * doc comment on `heldBehind`). Both fired for `hello-frontend-app`'s
+	 * held `9f10e49` at once: this page-level banner said `3 HELD` / `3
+	 * rules`, the repository's own said `1 rule` for the identical hold —
+	 * two spellings of one fact, 800px apart.
+	 *
+	 * `s.slot.onRevision` is the exact predicate `heldBehind` uses to decide
+	 * a `notYet` slot is a SIBLING-RELEASE hold rather than ordinary
+	 * pipeline lag. Excluding it here is not a narrower guess at the same
+	 * cause — it is the complement: whatever the repository banner already
+	 * draws (a hold on the SAME commit under a different release) is
+	 * excluded from this one, and this one is left to say the thing the
+	 * repository banner structurally cannot — a place genuinely blocked
+	 * on a DIFFERENT, older commit it has not been promoted past at all
+	 * (`onRevision: false`), which no per-line hero speaks for. On the
+	 * live fleet's current shape that leaves nothing for this banner to
+	 * say, and it renders nothing — which is correct, not a bug to chase:
+	 * see `skelHadBanner` for why the skeleton stays honest about that.
+	 */
 	const blockage = $derived.by(() => {
 		for (const repo of ledgers) {
 			const head = repo.rows[0];
@@ -697,7 +867,7 @@
 			const cov = revisionCoverage(head, coarse);
 			const stuckSlots = cov.buckets
 				.find((b) => b.key === 'notYet')
-				?.slots.filter((s) => s.blockingGates.length > 0);
+				?.slots.filter((s) => s.blockingGates.length > 0 && !s.slot.onRevision);
 			if (!stuckSlots || stuckSlots.length === 0) continue;
 			return {
 				repo,
@@ -772,6 +942,21 @@
 	let expandPending = $state<Record<string, boolean>>({});
 	/** The ledger's own fold — §1: "prints at most 6 service rows". */
 	let expandLedger = $state<Record<string, boolean>>({});
+
+	/**
+	 * ⭐ ROUND 4a, ITEM F — THE RETIRED/NEVER-DEPLOYED FOLD SHRINKS ON A
+	 * PHONE. Six collapsed rows of `.bld-row` (each two lines tall below
+	 * 560px, per that row's own container query) run past the fold before
+	 * a reader has scrolled two screens — "Show N more" behind SIX rows
+	 * defeats its own purpose as a fold. This is a VIEWPORT query, not the
+	 * page's usual `@container` one, because it decides how many array
+	 * ENTRIES get rendered at all, not how a rendered entry lays out —
+	 * `@container` cannot slice a `{#each}`. `MediaQuery` makes the
+	 * viewport width trivial to read reactively in Svelte 5; there is no
+	 * excuse left to defer this.
+	 */
+	const narrowFold = new MediaQuery('max-width: 559px', false);
+	const compactFold = $derived(narrowFold.current ? 3 : FOLD);
 
 	function scopeRecord(n: number): string {
 		const services = `${n} service${n === 1 ? '' : 's'}`;
@@ -888,6 +1073,16 @@
 		return shown === total ? `${total} ${word}` : `${shown} of ${total} ${word}`;
 	}
 
+	/**
+	 * ⭐ ROUND 4a, ITEM B — SUBJECT-VERB AGREEMENT, THE VERB HALF. `1 build
+	 * matches`/`5 builds match`: the verb takes `-es` exactly when the noun
+	 * did NOT take `-s` — the two suffixes move in opposite directions, which
+	 * is why they are two separate words rather than one shared ternary.
+	 */
+	function matchVerb(n: number): string {
+		return n === 1 ? 'matches' : 'match';
+	}
+
 	function rankVerdictFor(rank: number): RankVerdict {
 		return rank === 0 ? { kind: 'newest' } : { kind: 'behind', by: rank };
 	}
@@ -909,7 +1104,17 @@
 			<span class="skel-block h-7 w-8" aria-hidden="true"></span>
 			<span class="skel-block h-3.5 w-56" aria-hidden="true"></span>
 		{:else if scope}
-			<span class="t-display text-gray-900 tabular-nums dark:text-white">{scope.deployed}</span>
+			<!--
+				⭐ ROUND 4a, ITEM B — THE FIGURE FOLLOWS THE SEARCH TOO. This used
+				to print `scope.deployed` (the fleet's unfiltered total)
+				unconditionally, so a search for one build's sha sat a big `19`
+				directly beside a sentence saying `1 build matches "…"` — the
+				same defect §B fixed for the sentence, one node up, still
+				unfixed. Under an active search the figure IS the match count.
+			-->
+			<span class="t-display text-gray-900 tabular-nums dark:text-white"
+				>{searchActive && searchSummary ? searchSummary.matches : scope.deployed}</span
+			>
 		{/if}
 		<!--
 			⭐ THE OBJECT IS A BUILD. (§4) `revisions` never appears on the
@@ -937,7 +1142,16 @@
 				the OTHER repo's numbers.
 			-->
 			{#if searchActive && searchSummary}
-				{searchSummary.matches} build{searchSummary.matches === 1 ? '' : 's'} match “{searchQuery.trim()}”
+				<!--
+					⭐ ROUND 4a, ITEM B — SUBJECT-VERB AGREEMENT. `match` never
+					inflected: `1 build match "…"` is wrong the same way `1 build
+					matches` reads right and `5 builds matches` does not. The noun
+					takes `-s` when plural; the verb takes `-es` when the subject is
+					SINGULAR — the two suffixes move in opposite directions.
+				-->
+				{searchSummary.matches} build{searchSummary.matches === 1 ? '' : 's'} {matchVerb(
+					searchSummary.matches
+				)} “{searchQuery.trim()}”
 				{#if searchSummary.repos > 0}
 					in {searchSummary.repos} repositor{searchSummary.repos === 1 ? 'y' : 'ies'}
 				{/if}
@@ -997,6 +1211,23 @@
 				class="t-body block h-9 w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-gray-400 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-500"
 			/>
 		</div>
+
+		<!--
+			⭐ ROUND 4a, ITEM E — THE PAGE'S ONE BLOCKING FACT GETS ITS OWN
+			PLACEHOLDER. Nothing reserved this slot at all before: the real
+			`AlertPanel` (when `blockage` is truthy) sits between the search
+			field and the first repo card, and a skeleton with no node there
+			shifted every repo-card slot down by one position once the fetch
+			resolved — the same DOM-index misalignment `pair.mjs`'s flip test
+			exists to catch, just one level up from the ledger row it was
+			written for. `skelHadBanner` is the remembered answer to "did last
+			visit have one"; `BannerSkeleton` is the product's own placeholder
+			for this exact `AlertPanel` shape (already used on `/environments`,
+			`/apps`), sized to this page's own measured mobile height.
+		-->
+		{#if skelHadBanner}
+			<BannerSkeleton minHeightMobile={190} class="mt-5" />
+		{/if}
 
 		<!--
 			⭐ ONE SECTION PER REMEMBERED REPO, AND A CARD PER REMEMBERED
@@ -1060,13 +1291,26 @@
 				-->
 				<div class="svc-ledger py-1">
 					{#each Array(svcCount) as _, r (r)}
+						<!--
+							⭐ ROUND 4a, ITEM E — THE AGE HAS TWO SKELETON PLACEHOLDERS
+							NOW, MATCHING THE REAL ROW'S TWO NODES. `.svc-header`'s
+							`.svc-age-header` reserves the <560 form (name's own line);
+							`.svc-age` reserves the desktop trailing column. The SAME
+							`@container` rule hides whichever one the real content
+							would hide, so the skeleton folds exactly like the row it
+							is standing in for — the flip test this item asks for.
+						-->
 						<div class="svc-line">
-							<span class="svc-name"><span class="skel-block h-4 w-28"></span></span>
+							<span class="svc-header">
+								<span class="svc-name"><span class="skel-block h-4 w-28"></span></span>
+								<span class="svc-age-header"><span class="skel-block h-3 w-14"></span></span>
+							</span>
 							<span class="svc-sha"><span class="skel-block h-4 w-24"></span></span>
 							<span class="svc-envs">
 								<span class="skel-block h-[22px] w-14"></span>
 								<span class="skel-block h-[22px] w-14"></span>
 							</span>
+							<span class="svc-age"><span class="skel-block h-3 w-14"></span></span>
 						</div>
 					{/each}
 				</div>
@@ -1092,35 +1336,56 @@
 					-->
 					<div class="border-t border-gray-100 bg-gray-50 p-4 dark:border-gray-700/60 dark:bg-black/20">
 						<!--
-							⭐ THE HERO'S OWN `Card` HEADER, 47px — measured miss:
-							this skeleton left it out entirely, undershooting the
-							real nested block by ~118px. Same header shape every
-							other card skeleton on this page already draws.
+							⭐ ROUND 4a, ITEM E — ONE HERO CARD PER RELEASE LINE, AND A
+							HELD BANNER ABOVE THE ONES THAT HAD ONE. This used to
+							always draw exactly ONE hero with no banner — a repo with
+							two release lines (or a held head) had its disclosed
+							block undersized by a full "Newest build" card (and its
+							banner) per line the remembered shape didn't know about.
+							`skelHeroLineCounts`/`skelHeldAt` are `heroLineShape`'s own
+							remembered counts and per-slot bit pattern (see that
+							derived's doc comment) — a held line is not reliably the
+							first one, so which slot gets the banner is remembered
+							per position, not guessed from a count.
 						-->
-						<div
-							class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-							aria-hidden="true"
-						>
+						{#each Array(skelHeroLineCounts[sectionIndex] ?? 1) as _, li (li)}
+							{#if skelHeldAt(sectionIndex, li)}
+								<BannerSkeleton minHeightMobile={162} class="mb-4" />
+							{/if}
+							<!--
+								⭐ THE HERO'S OWN `Card` HEADER, 47px — measured miss:
+								this skeleton left it out entirely, undershooting the
+								real nested block by ~118px. Same header shape every
+								other card skeleton on this page already draws.
+							-->
 							<div
-								class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+								class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white {li <
+								(skelHeroLineCounts[sectionIndex] ?? 1) - 1
+									? 'mb-4'
+									: ''} dark:border-gray-700 dark:bg-gray-800"
+								aria-hidden="true"
 							>
-								<div class="flex min-w-0 items-center gap-2.5">
-									<span class="skel-block h-4 w-4 shrink-0"></span>
-									<span class="skel-block h-3.5 w-32"></span>
+								<div
+									class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+								>
+									<div class="flex min-w-0 items-center gap-2.5">
+										<span class="skel-block h-4 w-4 shrink-0"></span>
+										<span class="skel-block h-3.5 w-32"></span>
+									</div>
+									<span class="skel-block h-3 w-16 shrink-0"></span>
 								</div>
-								<span class="skel-block h-3 w-16 shrink-0"></span>
-							</div>
-							<div class="flex flex-col gap-2 p-4">
-								<span class="skel-block h-3 w-32"></span>
-								<div class="flex items-baseline justify-between gap-3">
-									<span class="skel-block h-6 w-28"></span>
-									<span class="skel-block h-4 w-16"></span>
+								<div class="flex flex-col gap-2 p-4">
+									<span class="skel-block h-3 w-32"></span>
+									<div class="flex items-baseline justify-between gap-3">
+										<span class="skel-block h-6 w-28"></span>
+										<span class="skel-block h-4 w-16"></span>
+									</div>
+									<span class="skel-block h-1.5 w-full"></span>
+									<span class="skel-block mt-1 h-3.5 w-full"></span>
+									<span class="skel-block h-3.5 w-24"></span>
 								</div>
-								<span class="skel-block h-1.5 w-full"></span>
-								<span class="skel-block mt-1 h-3.5 w-full"></span>
-								<span class="skel-block h-3.5 w-24"></span>
 							</div>
-						</div>
+						{/each}
 
 						<div class="rev-cols mt-4">
 							<div class="flex min-w-0 flex-col gap-4">
@@ -1139,6 +1404,13 @@
 									</div>
 									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 										{#each Array(2) as _, i (i)}
+											<!--
+												⭐ ROUND 4a, ITEM E — A FOURTH LEFT-COLUMN LINE. Measured
+												live: this row (with its live-percentage bar) renders
+												144px against this skeleton's 112px — the env-chip line
+												`liveEnvSlots` draws under the service names had no
+												placeholder here at all.
+											-->
 											<li class="bld-row">
 												<span class="bld-mark">
 													<span class="skel-block h-4 w-4 rounded-full"></span>
@@ -1147,6 +1419,7 @@
 													<span class="skel-block h-3.5 w-24"></span>
 													<span class="skel-block h-3 w-40"></span>
 													<span class="skel-block h-3 w-20"></span>
+													<span class="skel-block h-[18px] w-12"></span>
 												</div>
 												<div class="bld-roll flex flex-col gap-1.5">
 													<span class="skel-block ml-auto h-3.5 w-32"></span>
@@ -1338,16 +1611,40 @@
 				gated on `multiLine`. `N release lines` moves to the meta
 				line below (it already lived there too, doubly stated).
 			-->
+			<!--
+				⭐ COORDINATOR PASS 2, ITEM B — `repo.rows[0]` STAYS THE
+				FRONTIER; "DEPLOYED" IS NO LONGER ASSUMED OF IT. The first
+				draft tried to route around a held head by hunting for the
+				newest row with ANY live slot (`liveSlots > 0`) — but once a
+				non-ambiguous service attaches to the split's primary row
+				(`buildRowsForRevision`'s own fix, item C), that row's
+				`liveSlots` MIXES a genuinely-running service
+				(`hello-api-app`, 3 live slots) with the held one
+				(`hello-frontend-app`, 0) — the row read `liveSlots: 3` and
+				the hunt found it "deployed" anyway, missing the hold
+				entirely. `headCov`/`deviation` are computed here instead
+				(moved up, unchanged from what they were two lines down) and
+				reused — `repoDeviation` already resolved the SAME row's
+				coverage down to a per-service `held` count (item B's own
+				fix), so this asks that answer directly rather than
+				re-deriving a second, buggier one from row-level aggregates.
+			-->
+			{@const headCov = repoHeadCoverage.get(repo.repoKey) ?? null}
+			{@const deviation = repoDeviation(repo, headCov)}
 			{@const headCreated = repo.rows[0]?.createdMs ?? 0}
 			{@const newer = headCreated > 0 ? repo.pending.filter((p) => p.createdMs > headCreated).length : 0}
 			{@const distanceVerdict =
-				newer > 0 ? `${newer} newer build${newer === 1 ? '' : 's'}` : 'Newest build deployed'}
+				deviation.chip?.role === 'held'
+					? 'Newest build held'
+					: newer > 0
+						? `${newer} newer build${newer === 1 ? '' : 's'}`
+						: 'Newest build deployed'}
 			{@const distanceVerdictTitle =
-				newer > 0
-					? 'Builds newer than the newest one any service here is running. None of them has been deployed anywhere.'
-					: 'Every known build newer than what is running here has already been deployed somewhere.'}
-			{@const headCov = repoHeadCoverage.get(repo.repoKey) ?? null}
-			{@const deviation = repoDeviation(repo, headCov)}
+				deviation.chip?.role === 'held'
+					? 'The newest known build is held by a rule and has not been deployed anywhere.'
+					: newer > 0
+						? 'Builds newer than the newest one any service here is running. None of them has been deployed anywhere.'
+						: 'Every known build newer than what is running here has already been deployed somewhere.'}
 			{@const historyLimit = repoHistoryLimit(repo)}
 			{@const url = repoUrl(repo.repoKey)}
 			{@const open = effectiveOpen(i)}
@@ -1358,7 +1655,6 @@
 			{@const pendingVisible = repo.pending.filter(passesSearch)}
 			{@const namedLive = repoNamesBuilds(liveVisible)}
 			{@const namedPast = repoNamesBuilds(pastVisible)}
-			{@const noMatchText = `No build matches “${searchQuery.trim()}”.`}
 			<!--
 				⭐ ROUND 3 §2/ADDENDUM J — A REPOSITORY WITH NO MATCH COLLAPSES TO
 				ONE SENTENCE, not four (the ledger's own miss text, plus one per
@@ -1528,8 +1824,14 @@
 				<!-- ⭐ THE SERVICE LEDGER — §7(a). One group per service, one
 				     line per build that service is actually live on. -->
 				{#if repoNoMatch}
-					<!-- ⭐ ROUND 3 §2/ADDENDUM J — ONE SENTENCE FOR THE WHOLE CARD. -->
-					<p class="t-body px-4 py-6 text-center text-gray-500 dark:text-gray-400">{noMatchText}</p>
+					<!--
+						⭐ ROUND 4a, ITEM D — ONE LINE, NOT TWO. This used to ALSO
+						print a body paragraph (`noMatchText`, "No build matches
+						'…'.") under a header that already said `no match` — the
+						same fact stated twice, 47px apart, at two different
+						grammars ("no match" vs "No build matches…"). The header
+						carries it now; there is nothing left to disclose here.
+					-->
 				{:else}
 					<div class="svc-ledger py-1">
 						{#each shownGroups as group, gi (group.appName)}
@@ -1579,56 +1881,79 @@
 							{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
 								{@const state = line ? lineState(line, coarse) : null}
 								<div class="svc-line">
-									{#if idx === 0}
-										<!--
-											⭐ ROUND 3 §2 — ONE FILTER. The name is a plain
-											link to the app page now, never a second
-											filter control competing with the search field
-											above — `.tap-link` outside any `.tap-zone`
-											picks up `app.css`'s own 32px hit-slop
-											automatically.
-										-->
-										<a
-											href={`/apps/${encodeURIComponent(group.appName)}`}
-											aria-label={group.appName}
-											class="svc-name tap-link t-body text-gray-700 hover:underline dark:text-gray-200"
-										>
+									<!--
+										⭐ ROUND 4a, ITEM E — THE NAME AND THE AGE SHARE ONE
+										LINE AT <560. `.svc-header` is `display: contents`
+										above that width (so `.svc-name`/`.svc-age` place
+										into the desktop grid's columns 1 and 4 exactly as
+										before) and a real flex row below it, so a phone
+										gets "name … age" as line 1 instead of the age
+										getting crammed onto the env-chip line, which is
+										what pushed this row to four lines. `.svc-age-header`
+										is a THIRD copy of the same fact — the same
+										mutually-exclusive-by-`display` idiom
+										`.svc-age`/`.svc-age-inline` already used for two
+										widths, now one width wider.
+									-->
+									<span class="svc-header">
+										{#if idx === 0}
 											<!--
-												⭐ `aria-label` NAMES THE WHOLE WORD. `<wbr>` between
-												`identParts`' pieces is a visual break point only,
-												but the accessible-name algorithm treats sibling
-												text nodes split by an element as needing a joining
-												space — "a-web" was announced (and matched by role
-												queries) as "a- web". The label states the fact the
-												markup's own soft-wrap would otherwise mis-state.
+												⭐ ROUND 3 §2 — ONE FILTER. The name is a plain
+												link to the app page now, never a second
+												filter control competing with the search field
+												above — `.tap-link` outside any `.tap-zone`
+												picks up `app.css`'s own 32px hit-slop
+												automatically.
 											-->
-											{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
-												/>{/if}{/each}
-										</a>
-									{:else}
-										<!--
-											⭐ ROUND 3 ITEM 7/ADDENDUM E — THE CONTINUATION
-											LINE KEEPS ITS NAME AT 390. Always rendered
-											(muted); the `@container` rule below hides it
-											again above 560px, where the sha's own column
-											already lines every line up under line 1's name.
-										-->
-										<!--
-											⭐ ROUND 4, ITEM 8 — SAME INK AS LINE 1, NOT A GHOST
-											COPY. `text-gray-400` measured 2.60:1 against the
-											page ground — a continuation line is still this
-											service's own name, not a lesser fact, so it prints
-											at the identical ink `.svc-name`'s link uses two
-											lines up.
-										-->
-										<span
-											class="svc-name svc-name-continuation t-body text-gray-700 dark:text-gray-200"
-											aria-hidden="true"
-										>
-											{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
-												/>{/if}{/each}
-										</span>
-									{/if}
+											<a
+												href={`/apps/${encodeURIComponent(group.appName)}`}
+												aria-label={group.appName}
+												class="svc-name tap-link t-body text-gray-700 hover:underline dark:text-gray-200"
+											>
+												<!--
+													⭐ `aria-label` NAMES THE WHOLE WORD. `<wbr>` between
+													`identParts`' pieces is a visual break point only,
+													but the accessible-name algorithm treats sibling
+													text nodes split by an element as needing a joining
+													space — "a-web" was announced (and matched by role
+													queries) as "a- web". The label states the fact the
+													markup's own soft-wrap would otherwise mis-state.
+												-->
+												{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
+													/>{/if}{/each}
+											</a>
+										{:else}
+											<!--
+												⭐ ROUND 3 ITEM 7/ADDENDUM E — THE CONTINUATION
+												LINE KEEPS ITS NAME AT 390. Always rendered
+												(muted); the `@container` rule below hides it
+												again above 560px, where the sha's own column
+												already lines every line up under line 1's name.
+											-->
+											<!--
+												⭐ ROUND 4, ITEM 8 — SAME INK AS LINE 1, NOT A GHOST
+												COPY. `text-gray-400` measured 2.60:1 against the
+												page ground — a continuation line is still this
+												service's own name, not a lesser fact, so it prints
+												at the identical ink `.svc-name`'s link uses two
+												lines up.
+											-->
+											<span
+												class="svc-name svc-name-continuation t-body text-gray-700 dark:text-gray-200"
+												aria-hidden="true"
+											>
+												{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
+													/>{/if}{/each}
+											</span>
+										{/if}
+										{#if line && lineAge(line)}
+											<time
+												class="svc-age-header t-micro text-gray-500 dark:text-gray-400"
+												datetime={lineAgeIso(line)}
+												title={lineAgeTitle(line)}>{lineAge(line)}</time
+											>
+										{/if}
+									</span>
 									{#if line}
 										{#if line.rank !== null}
 											{@const verdict = rankVerdictFor(line.rank)}
@@ -1689,31 +2014,6 @@
 											{#if state}
 												<Chip role={state.role} label={state.label} title={state.title} wide />
 											{/if}
-											<!--
-												⭐ ROUND SIX §3 — AT <560 THE AGE JOINS THE CHIPS'
-												OWN LINE, RIGHT-ALIGNED, rather than opening a
-												row of its own. Rendered TWICE, one hidden by
-												CSS at each width — the same idiom
-												`.svc-name-continuation` already uses on this
-												page, so the warm-visit skeleton never has to
-												guess which copy is live.
-											-->
-											{#if lineAge(line)}
-												<!--
-													⭐ ROUND 4, ITEM E — this copy and `.svc-age` below are the
-													SAME fact; `display: none` already excludes whichever one is
-													not showing from the accessibility tree at that width (a real
-													screen reader never sees both). NOT `aria-hidden`, deliberately
-													— at <560 THIS copy is the only one CSS shows, and hiding it
-													too would leave the row with no accessible age at all on a
-													phone.
-												-->
-												<time
-													class="svc-age-inline t-micro text-gray-500 dark:text-gray-400"
-													datetime={lineAgeIso(line)}
-													title={lineAgeTitle(line)}>{lineAge(line)}</time
-												>
-											{/if}
 										</span>
 										<!--
 											⭐ ROUND SIX §3 — THE LEDGER'S DEAD SPACE, NAMED.
@@ -1760,14 +2060,15 @@
 					matching the search has no footer to roll up either.
 				-->
 				{#if !repoNoMatch}
+					{@const deployedRevisions = deployedRevisionCount(repo)}
 					<div
 						class="repo-meta flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 dark:border-gray-700/60"
 					>
 						<span
 							class="repo-meta-text t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
-							title="A place is one service in one environment."
+							title="A place is one service in one environment. 'Deployed at least once' counts distinct commits that have run somewhere, ever — a commit resolving to more than one release (a rollback re-tag) still counts once."
 						>
-							{repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'} · {repo.rows.length} deployed
+							{repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'} · {deployedRevisions} deployed
 							at least once · {repo.slotCount} place{repo.slotCount === 1 ? '' : 's'} to deploy to{multiLine
 								? ` · across ${lines.length} release lines`
 								: ''}
@@ -1972,7 +2273,7 @@
 										{:else}
 											<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 												{#each liveVisible as row (row.revision)}
-													{@const cov = coverageByRevision.get(row.revision)}
+													{@const cov = coverageByRevision.get(row)}
 													{@const envSlots = liveEnvSlots(row)}
 													<!-- ⭐ OPERATOR-WALK ITEM C — the laggard slot for this
 													     row, computed once per row alongside its siblings
@@ -1994,7 +2295,7 @@
 																	title={row.revision}>{row.short}</a
 																>
 															</div>
-															{@render names(row, namedLive)}
+															{@render names(row, namedLive, namesFoldToCount(row, lines))}
 															<!--
 																⭐ CRAFT REVIEW ITEM 7 — CELL 2 CARRIES WHERE
 																TOO, not only who. The env chips this row runs
@@ -2089,8 +2390,8 @@
 												     reads `0 of N`. -->
 											{:else}
 												<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-													{#each expandPast[repo.repoKey] ? pastVisible : pastVisible.slice(0, FOLD) as row (row.revision)}
-														{@const pastCov = coverageByRevision.get(row.revision)}
+													{#each expandPast[repo.repoKey] ? pastVisible : pastVisible.slice(0, compactFold) as row (row.revision)}
+														{@const pastCov = coverageByRevision.get(row)}
 														<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
 															<!--
 																⭐ CRAFT REVIEW ITEM 6 — A RETIRED ROW GETS ITS
@@ -2110,7 +2411,7 @@
 																	href={revisionPath(repo.repoKey, row.revision)}
 																	title={row.revision}>{row.short}</a
 																>
-																{@render names(row, namedPast)}
+																{@render names(row, namedPast, namesFoldToCount(row, lines))}
 															</div>
 															<div class="bld-roll">
 																<time
@@ -2125,11 +2426,11 @@
 														</li>
 													{/each}
 												</ul>
-												{#if pastVisible.length > FOLD}
+												{#if pastVisible.length > compactFold}
 													{@render more(
 														() => (expandPast = { ...expandPast, [repo.repoKey]: !expandPast[repo.repoKey] }),
 														expandPast[repo.repoKey],
-														`${pastVisible.length - FOLD} older build${pastVisible.length - FOLD === 1 ? '' : 's'}`
+														`${pastVisible.length - compactFold} older build${pastVisible.length - compactFold === 1 ? '' : 's'}`
 													)}
 												{/if}
 											{/if}
@@ -2174,7 +2475,7 @@
 											     prints; the rollup already reads `0 of N`. -->
 										{:else}
 											<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-												{#each expandPending[repo.repoKey] ? pendingVisible : pendingVisible.slice(0, FOLD) as row (row.revision)}
+												{#each expandPending[repo.repoKey] ? pendingVisible : pendingVisible.slice(0, compactFold) as row (row.revision)}
 													<li class="bld-row tap-zone hover:bg-gray-50 dark:hover:bg-gray-700/40">
 														<!--
 															⭐ CRAFT REVIEW ITEM 6 — NEVER DEPLOYED GETS THE
@@ -2209,7 +2510,7 @@
 													</li>
 												{/each}
 											</ul>
-											{#if pendingVisible.length > FOLD}
+											{#if pendingVisible.length > compactFold}
 												{@render more(
 													() =>
 														(expandPending = {
@@ -2217,7 +2518,7 @@
 															[repo.repoKey]: !expandPending[repo.repoKey]
 														}),
 													expandPending[repo.repoKey],
-													`${pendingVisible.length - FOLD} more build${pendingVisible.length - FOLD === 1 ? '' : 's'}`
+													`${pendingVisible.length - compactFold} more build${pendingVisible.length - compactFold === 1 ? '' : 's'}`
 												)}
 											{/if}
 										{/if}
@@ -2249,42 +2550,61 @@
 	</button>
 {/snippet}
 
-{#snippet names(row: RevisionRow, named: boolean)}
-	<span class="rev-names {named ? '' : 'rev-names--unnamed'}">
-		{#each row.labelGroups as g (g.label)}
+{#snippet names(row: RevisionRow, named: boolean, foldServices: boolean = false)}
+	{#if foldServices}
+		<!--
+			⭐ ROUND 4a, ITEM F — `namesFoldToCount`'s own doc comment: this row's
+			services ARE the release line's full set, so naming them again is
+			the same three names the section header (or the hero above it)
+			already printed. The `title` keeps the full join reachable, same
+			idiom as `.svc-line-caption`'s own fold.
+		-->
+		<span class="rev-names" title={row.services.map((s) => s.appName).join(' · ')}>
 			<span class="rev-name-row">
-				{#if named && rowNamesBuild(row)}<span
-						class="rev-name t-code-sm text-gray-900 dark:text-white"
-						title={g.isOwnSha
-							? `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision under its own sha`
-							: `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision as ${g.label}`}
-						>{g.label}</span
-					>{/if}
 				<span class="rev-name-svcs">
-					{#each g.services as svc, i (svc.appName)}
-						<span class="rev-svc">
-							<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200"
-								>{#each identParts(svc.appName) as part, pi (pi)}{part}{#if pi < identParts(svc.appName).length - 1}<wbr
-										/>{/if}{/each}</span
-							>
-							{#if svc.diverged}
-								<Chip
-									role="diverged"
-									label={rankLabel({ kind: 'diverged' })}
-									class="shrink-0"
-									title="{svc.appName} lists this build on no environment’s release list"
-								/>
-							{/if}
-							{#if i < g.services.length - 1}<span
-									class="rev-sep t-body text-gray-500 dark:text-gray-400"
-									aria-hidden="true">·</span
-								>{/if}
-						</span>
-					{/each}
+					<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200">
+						{row.services.length} services
+					</span>
 				</span>
 			</span>
-		{/each}
-	</span>
+		</span>
+	{:else}
+		<span class="rev-names {named ? '' : 'rev-names--unnamed'}">
+			{#each row.labelGroups as g (g.label)}
+				<span class="rev-name-row">
+					{#if named && rowNamesBuild(row)}<span
+							class="rev-name t-code-sm text-gray-900 dark:text-white"
+							title={g.isOwnSha
+								? `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision under its own sha`
+								: `${g.services.length} service${g.services.length === 1 ? '' : 's'} ship this revision as ${g.label}`}
+							>{g.label}</span
+						>{/if}
+					<span class="rev-name-svcs">
+						{#each g.services as svc, i (svc.appName)}
+							<span class="rev-svc">
+								<span class="rev-svc-name t-body text-gray-700 dark:text-gray-200"
+									>{#each identParts(svc.appName) as part, pi (pi)}{part}{#if pi < identParts(svc.appName).length - 1}<wbr
+											/>{/if}{/each}</span
+								>
+								{#if svc.diverged}
+									<Chip
+										role="diverged"
+										label={rankLabel({ kind: 'diverged' })}
+										class="shrink-0"
+										title="{svc.appName} lists this build on no environment’s release list"
+									/>
+								{/if}
+								{#if i < g.services.length - 1}<span
+										class="rev-sep t-body text-gray-500 dark:text-gray-400"
+										aria-hidden="true">·</span
+									>{/if}
+							</span>
+						{/each}
+					</span>
+				</span>
+			{/each}
+		</span>
+	{/if}
 {/snippet}
 
 <style>
@@ -2360,6 +2680,17 @@
 		display: contents;
 	}
 
+	/*
+	 * ⭐ ROUND 4a, ITEM E — THE WRAPPER IS TRANSPARENT TO THE DESKTOP GRID.
+	 * `display: contents` here means `.svc-name` and `.svc-age-header`
+	 * (below) place into the top-level `.svc-ledger` grid exactly as if this
+	 * span were not there — columns 1 and (nothing, it stays hidden) at
+	 * this width. Only the <560 query turns it into a real flex row.
+	 */
+	.svc-header {
+		display: contents;
+	}
+
 	.svc-name {
 		grid-column: 1;
 		padding-block: 6px;
@@ -2420,7 +2751,7 @@
 	 * ⭐ ROUND SIX §3 — THE FOURTH COLUMN. Right-aligned, `nowrap` (`Deployed
 	 * 1d ago` is short and this is the one cell in the row that should never
 	 * wrap onto a second line and disturb every sibling line's own height).
-	 * `.svc-age-inline` is the SAME fact, rendered a second time for the
+	 * `.svc-age-header` is the SAME fact, rendered a second time for the
 	 * <560 container query below, hidden here so nothing prints twice.
 	 *
 	 * ⭐ ROUND 4, ITEMS 7/9 — THIS COLUMN NOW TAKES THE SLACK the env track
@@ -2438,17 +2769,18 @@
 	}
 
 	/*
-	 * ⭐ ROUND 4, ITEM E — TWO NODES, ONE FACT, DELIBERATELY NOT MERGED INTO
-	 * ONE. A width-based duplicate-text report reads both `.svc-age` and
-	 * `.svc-age-inline`'s `textContent` regardless of `display`, but a real
-	 * screen reader (and `innerText`) already sees only the one CSS shows —
-	 * `display: none` removes an element from the accessibility tree, so
-	 * there is no ACTUAL duplicate announcement at any one width. Collapsing
-	 * this to a single node would need it to relocate between a dedicated
-	 * grid column and a spot inside `.svc-envs`' own flex-wrap flow, which a
-	 * single DOM position cannot do — see the markup's own note.
+	 * ⭐ ROUND 4a, ITEM E — TWO NODES, ONE FACT, DELIBERATELY NOT MERGED INTO
+	 * ONE (the same idiom `.svc-name`/`.svc-name-continuation` and
+	 * `.svc-age`/its <560 twin already used). A width-based duplicate-text
+	 * report reads both `.svc-age` and `.svc-age-header`'s `textContent`
+	 * regardless of `display`, but a real screen reader (and `innerText`)
+	 * already sees only the one CSS shows — `display: none` removes an
+	 * element from the accessibility tree, so there is no ACTUAL duplicate
+	 * announcement at any one width. Hidden here (desktop); shown at <560
+	 * beside the name instead of crammed onto the env-chip line, which is
+	 * what made that row wrap to a fourth line.
 	 */
-	.svc-age-inline {
+	.svc-age-header {
 		display: none;
 	}
 
@@ -2460,17 +2792,14 @@
 	}
 
 	/*
-	 * ⭐ ROUND 3 ADDENDUM E — THE LEDGER ACTUALLY STACKS BELOW 560px NOW.
-	 * The previous four-column reflow kept the grid four columns wide
-	 * (`16px 115px 64px 90px`) — names still wrapped onto two lines on most
-	 * services and the env chips outdented 18px from the name because
-	 * `.svc-envs`'s `grid-column: 1 / -1` measured from the WRONG column 1
-	 * (the leading 16px mark track, since deleted). THREE full-width rows
-	 * now, one left edge: name (its own row), sha + rank chip side by side
-	 * (the one place two facts still share a row), then env chips — the
-	 * exact stack the addendum asked for, and it is what makes "the
-	 * continuation-line name" (item 7) sit flush under line 1's name
-	 * instead of orphaned under a bare chip.
+	 * ⭐ ROUND 4a, ITEM E — THREE FULL-WIDTH ROWS, THE AGE ON THE FIRST ONE.
+	 * (Supersedes round 3 addendum E's three-row stack, which put the age on
+	 * the THIRD row beside the env chips — measured live, that crowded row
+	 * wrapped to a fourth line the moment a service carried more than one or
+	 * two env chips, which is the common case: `NEWEST 064b655 [DEV]
+	 * [STAGING] [PROD] 1d ago` does not fit 358px of content box.) The stack
+	 * is now: (1) `.svc-header` — name, age right-aligned; (2) rank chip +
+	 * sha; (3) env chips + state chip, nothing else competing for the line.
 	 */
 	@container (max-width: 560px) {
 		.svc-ledger {
@@ -2479,13 +2808,29 @@
 			row-gap: 2px;
 		}
 
-		.svc-name,
-		.svc-name-continuation {
+		/*
+		 * ⭐ ITEM E — THE WRAPPER BECOMES A REAL FLEX ROW, spanning both
+		 * tracks, with the name growing and the age pinned to the right
+		 * edge. `align-items: baseline` keeps the link's text and the
+		 * `<time>`'s smaller `t-micro` sitting on one text baseline rather
+		 * than one looking vertically centred against the other.
+		 */
+		.svc-header {
+			display: flex;
 			grid-column: 1 / -1;
+			align-items: baseline;
+			justify-content: space-between;
+			gap: 8px;
 		}
 
 		.svc-name-continuation {
 			display: block;
+		}
+
+		.svc-age-header {
+			display: inline;
+			flex-shrink: 0;
+			white-space: nowrap;
 		}
 
 		/* ⭐ ROUND 4, ITEM 4 — `.svc-build` folds beside `.svc-sha` here: the
@@ -2503,22 +2848,13 @@
 		}
 
 		/*
-		 * ⭐ ROUND SIX §3 — AT <560 THE AGE JOINS THE CHIPS' OWN LINE. The
-		 * standalone fifth column has nowhere to sit once the grid folds to
-		 * two tracks (it would either open a fourth stacked row or clip
-		 * against the container edge), so it is hidden here and the inline
-		 * copy — always rendered inside `.svc-envs`, invisible above this
-		 * width — takes over. `margin-left: auto` on a `flex-wrap` row
-		 * pushes it to the row's own right edge without a dedicated column.
+		 * ⭐ ROUND 4a, ITEM E — THE STANDALONE FIFTH COLUMN HAS NOWHERE TO
+		 * SIT once the grid folds to two tracks; `.svc-header`'s own
+		 * `.svc-age-header` carries the fact instead now (line 1, not line
+		 * 3 — see this query's own header comment).
 		 */
 		.svc-age {
 			display: none;
-		}
-
-		.svc-age-inline {
-			display: inline;
-			margin-left: auto;
-			padding-left: 8px;
 		}
 
 		/*
