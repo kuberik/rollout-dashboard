@@ -318,3 +318,30 @@ is remembered.
 8. **Every environment chip is a link** to its own rollout; a pinned place offers Clear pin first.
 9. **`live` is conditional** on the change stream being healthy; otherwise "updated N ago".
 10. **Chip + age is one atom** on the detail page; one per line on phones.
+
+
+## Round 5 rulings (2026-09-06, after the second operator walk and craft review)
+
+1. **Coverage counts the revision.** "N of M places" counts places whose running release has
+   this sha; a place on an older release of the same commit is LIVE (`onRevision && !onIt`),
+   never "not here yet". The release split is said once — by the repository banner and the row
+   chips — and by nothing else. (Supersedes the reading of ruling 4.1 that made the hero count a
+   single release; a row is still about one release.)
+2. **In flight is a state.** A place whose bake is Deploying/InProgress is its own bucket,
+   excluded from "live"; "fully rolled out" only when every place is past bake; blue/yellow per
+   DESIGN-INTENT, words from `bake-status.ts`. /revisions showed green for two minutes of canary.
+3. **The row age is the most recent deploy**, named with its environment when environments
+   disagree by more than a minute (supersedes 4.7's laggard). The title keeps every date.
+4. **Environment chips link everywhere**, on the list as on the build page.
+5. **A multi-line repository prints no distance verdict** in its header; the hero cards speak per
+   line. A single-line repository keeps `Newest build deployed` / `N newer builds` / `Newest build held`.
+6. **The filter reaches the header**: chip only if a held build matches, `N of M builds`, no
+   meta line, and no empty list cards.
+7. **The hero is header + View commit when the bar is omitted.** The rollup is always coverage;
+   the body never restates it.
+8. **One cause drawn once** on the build page too: the contract clause appears one time with the
+   environments it bites and the provider link, in the drawn form, not per environment in prose.
+9. **Queued is not stuck.** A place whose generation the controller has not observed yet (or that
+   changed in the last minutes) is queued/deploying; STUCK needs eligibility plus stillness.
+10. **Lists sort by the field they show**, and when relative ages collapse to one label the
+    compact absolute time is printed.

@@ -33,8 +33,10 @@
 		clearPinOutcome,
 		type AutoDeployState
 	} from '$lib/view-models/auto-deploy';
+	import { newestDeployableCandidate, promotionCandidates } from '$lib/view-models/promotion';
 	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
-	import { isFieldManagedByManager, isFieldManagedByOtherManager } from '$lib/utils';
+	import { isFieldManagedByManager, isFieldManagedByOtherManager, formatTimeAgoCompact } from '$lib/utils';
+	import { shortRevision } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
 	import { apiPath } from '$lib/api/urls';
@@ -123,6 +125,67 @@
 	const gateState = $derived(autoDeploy ?? autoDeployState(rollout));
 
 	/**
+	 * ⭐ ITEM 8 (2026-09-06 critique) — WHO PINNED THIS, AND WHEN, ONLY WHEN
+	 * THE API ACTUALLY CARRIES IT. The dialog never said either — additive,
+	 * so a fixture with neither fact (no matching history entry, no
+	 * annotation) renders nothing new and every existing caller/test is
+	 * unaffected.
+	 *
+	 * WHO: `rollout.kuberik.com/deploy-user` — set by the SAME `/pin` /
+	 * `/change-version` handler that sets `spec.wantedVersion`
+	 * (`pkg/kubernetes/client.go`'s `UpdateRolloutVersion`), so while the
+	 * pin is in effect this annotation is, in practice, whoever last touched
+	 * it. Never invented: absent on a service-account-driven pin.
+	 *
+	 * WHEN: the newest `status.history` entry whose `message` is the
+	 * controller's own pin boilerplate (`history-marks.ts`'s closed set:
+	 * `Pinned version` from `/change-version`, `Pinned to version …` from
+	 * `/pin`). A pin applied to the version already running writes no new
+	 * history entry at all — `whenIso` stays null there, and the line
+	 * degrades to naming only who, per "whichever facts exist."
+	 */
+	const PIN_HISTORY_RE = [/^Pinned version$/, /^Pinned to version /];
+	const pinnedByWho = $derived(
+		rollout?.metadata?.annotations?.['rollout.kuberik.com/deploy-user'] || null
+	);
+	const pinnedAtIso = $derived(
+		(rollout?.status?.history ?? []).find((h) => PIN_HISTORY_RE.some((re) => re.test(h.message ?? '')))
+			?.timestamp ?? null
+	);
+	const pinnedByLine = $derived.by(() => {
+		if (!pinnedByWho && !pinnedAtIso) return null;
+		const when = pinnedAtIso ? `${formatTimeAgoCompact(pinnedAtIso)} ago` : null;
+		if (pinnedByWho && when) return `Pinned by ${pinnedByWho} · ${when}`;
+		if (pinnedByWho) return `Pinned by ${pinnedByWho}`;
+		return `Pinned ${when}`;
+	});
+
+	/**
+	 * ⭐ ITEM 8 (2026-09-06 critique) — THE CONCRETE MOVE, WHEN THE NEWEST
+	 * ALLOWED BUILD IS KNOWN. "Automatic promotion resumes" named no build;
+	 * an operator confirming the press could not tell whether the rollout
+	 * was about to sit still or jump twenty releases. `otherReasons` mirrors
+	 * `clearPinOutcome`'s own `rest.reasons` filter exactly (auto-deploy.ts
+	 * is shared with rollout detail's identical dialog, so this reads its
+	 * predicate rather than forking it) — only when nothing ELSE would hold
+	 * the rollout back is a "moves to" claim honest; that branch is left to
+	 * print its own "nothing will move yet" sentence unchanged.
+	 */
+	const otherReasons = $derived(gateState.reasons.filter((r) => r !== 'pin'));
+	const concreteMove = $derived.by(() => {
+		if (!rollout || otherReasons.length > 0) return null;
+		const current = shortRevisionOrNull(rollout.status?.history?.[0]?.version?.revision);
+		const target = shortRevisionOrNull(newestDeployableCandidate(rollout)?.revision);
+		if (!current || !target || current === target) return null;
+		const count = promotionCandidates(rollout).length;
+		return `${envLabel} moves ${current} → ${target}${count > 1 ? ` (${count} newer builds allowed)` : ''}.`;
+	});
+
+	function shortRevisionOrNull(rev: string | null | undefined): string | null {
+		return rev ? shortRevision(rev) : null;
+	}
+
+	/**
 	 * The same guard rollout detail applies: if another controller owns
 	 * `spec.wantedVersion`, clearing it here will be fought over. Said, not
 	 * hidden — the operator can still press it.
@@ -202,9 +265,26 @@
 			     argument names the actual target and how many builds are newer,
 			     computed from the SAME `promotionCandidates`/
 			     `newestDeployableCandidate` the upgrades card reads, so this
-			     sentence cannot name a different build than that card does. -->
-			{clearPinOutcome(gateState, rollout)}
+			     sentence cannot name a different build than that card does.
+			     ⭐ ITEM 8 (2026-09-06 critique) — AND WHEN THE MOVE IS KNOWN,
+			     THE MOVE IS THE SENTENCE. `concreteMove` names the two
+			     revisions directly (`DEV moves 6f9524e → 064b655`) in place of
+			     the generic "Automatic promotion resumes" whenever nothing
+			     else would hold the rollout back; `clearPinOutcome`'s own
+			     sentence is the fallback everywhere it is still the more
+			     honest claim (nothing moves, or the target is unknowable). -->
+			{#if concreteMove}
+				{concreteMove}
+			{:else}
+				{clearPinOutcome(gateState, rollout)}
+			{/if}
 		</p>
+		{#if pinnedByLine}
+			<!-- ⭐ ITEM 8 (2026-09-06 critique) — WHO PINNED THIS, AND WHEN. See
+			     `pinnedByLine`'s own comment: renders only when the API
+			     actually carries at least one of the two facts. -->
+			<p class="text-xs text-gray-500 dark:text-gray-400">{pinnedByLine}</p>
+		{/if}
 		{#if !isDashboardManaging}
 			<p class="text-xs text-amber-600 dark:text-amber-400">
 				The dashboard is not managing the wantedVersion field. Clearing may conflict with other

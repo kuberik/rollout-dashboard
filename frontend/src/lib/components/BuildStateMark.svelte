@@ -45,7 +45,8 @@
 		ExclamationCircleSolid,
 		HourglassOutline,
 		MinusOutline,
-		PauseSolid
+		PauseSolid,
+		RefreshOutline
 	} from 'flowbite-svelte-icons';
 	import { buildState, type RevisionCoverage } from '$lib/view-models/revision-coverage';
 
@@ -85,8 +86,15 @@
 	// TONE stays `tone-mute`, the SAME two-ink discipline the header comment
 	// above states: a gate correctly refusing a candidate is not adverse, so
 	// it takes no third colour here either.
+	// ⭐ `deploying` ADDED 2026-09-06 (ITEM 2, IN-FLIGHT STATE — see
+	// `revision-coverage.ts`'s `buildState`). A place mid-deploy or mid-bake
+	// right now is neither `done` nor adverse nor merely quiet drift; it is
+	// `Deploying`'s own glyph and hue everywhere else in the product
+	// (`BakeStatusIcon`'s `RefreshOutline` + `tone-active`/`blue`), reused
+	// rather than invented.
 	const GLYPH = {
 		failing: ExclamationCircleSolid,
+		deploying: RefreshOutline,
 		notYet: HourglassOutline,
 		ahead: ArrowRightOutline,
 		held: PauseSolid,
@@ -96,6 +104,7 @@
 
 	const TONE = {
 		failing: 'tone-bad',
+		deploying: 'tone-active',
 		notYet: 'tone-mute',
 		ahead: 'tone-mute',
 		held: 'tone-mute',

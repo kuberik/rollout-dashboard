@@ -793,6 +793,20 @@ textarea {
 	.dark .tone-mute {
 		color: var(--color-gray-400);
 	}
+
+	/* ⭐ REVISIONS-2026-09-06, ITEM 2 (IN-FLIGHT STATE) — `tone-active`, the
+	   fourth glyph ink. `BuildStateMark`'s `deploying` state (a place mid-
+	   deploy or mid-bake right now) is neither `done` (green) nor adverse
+	   (red) nor merely quiet drift (`tone-mute`) — it is `Deploying`'s own
+	   hue product-wide (`bake-status.ts`'s `DOT`/`TONE`, `BakeStatusIcon`'s
+	   spinner), reused rather than invented. */
+	.tone-active {
+		color: var(--color-blue-700);
+	}
+
+	.dark .tone-active {
+		color: var(--color-blue-400);
+	}
 }
 
 /* ── The chip. One geometry, no size prop. Every chip in the product is

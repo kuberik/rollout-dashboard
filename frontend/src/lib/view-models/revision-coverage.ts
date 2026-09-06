@@ -39,10 +39,18 @@ import { BAKE_WORD } from '$lib/bake-status';
  * It renders only when it is non-empty, so on data that resolves cleanly the
  * page is the four buckets the concept specifies.
  */
-export type CoverageKey = 'live' | 'failing' | 'ahead' | 'notYet' | 'unplaceable';
+export type CoverageKey = 'live' | 'deploying' | 'failing' | 'ahead' | 'notYet' | 'unplaceable';
 
-/** Bar order, left to right. Concept 07's table order, with the admission last. */
-export const COVERAGE_ORDER: CoverageKey[] = ['live', 'failing', 'ahead', 'notYet', 'unplaceable'];
+/** Bar order, left to right. Concept 07's table order, with the admission last;
+ *  `deploying` sits beside `live` — it is the same place, mid-transition. */
+export const COVERAGE_ORDER: CoverageKey[] = [
+	'live',
+	'deploying',
+	'failing',
+	'ahead',
+	'notYet',
+	'unplaceable'
+];
 
 export type CoverageSlotVM = {
 	key: CoverageKey;
@@ -97,6 +105,16 @@ export type CoverageSlotVM = {
 	 * `releaseSplit()`.
 	 */
 	onOwnRelease: boolean;
+	/**
+	 * ⭐ REVISIONS-2026-09-06, ITEM 2 (IN-FLIGHT STATE, blocking). True when
+	 * this slot's rollout is mid-deploy or mid-bake right now
+	 * (`bakeStatus` `Deploying` or `InProgress` — `bake-status.ts`'s own
+	 * vocabulary, never a new string). Exposed per-slot so `/revisions/[...slug]`
+	 * (a route this file does not own) can draw the identical fact without
+	 * recomputing it. See `classify()`'s own doc comment for why this decides
+	 * a whole bucket (`deploying`) rather than a flag layered on `live`.
+	 */
+	inFlight: boolean;
 	/**
 	 * WHY IT HAS NOT ARRIVED — named ONLY from the field that establishes it.
 	 *
@@ -213,6 +231,7 @@ export type RevisionCoverage = {
  */
 const TITLE: Record<CoverageKey, string> = {
 	live: 'Running it now',
+	deploying: 'Deploying',
 	failing: 'Failing',
 	ahead: 'Already moved on',
 	notYet: 'Not here yet',
@@ -221,6 +240,7 @@ const TITLE: Record<CoverageKey, string> = {
 
 const DESCRIPTION: Record<CoverageKey, string> = {
 	live: 'These are running this build right now.',
+	deploying: 'This build is going out here right now — not settled yet.',
 	failing: 'This build is deployed here, and the deploy is not healthy.',
 	ahead: 'These have already deployed a newer build, so this one is behind them.',
 	notYet: 'This build has not been deployed here yet.',
@@ -295,6 +315,13 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
 	// steps down, still unmistakably the health green, and it is the only
 	// value in this table that differs between ink and fill.
 	live: 'bg-green-700 dark:bg-green-600',
+	// `Deploying`'s own hue product-wide (`bake-status.ts` DOT/`BakeStatusIcon`
+	// spinner) — a bucket merging `Deploying` AND `InProgress` still reads as
+	// "in progress", the STATUS meaning of blue, not the separate reservation
+	// `Chip`'s `rank` role gives blue on a joined badge (a different component,
+	// a different context — see that file's own note on why the two do not
+	// collide).
+	deploying: 'bg-blue-700 dark:bg-blue-400',
 	failing: 'bg-red-700 dark:bg-red-500',
 	ahead: 'bg-gray-300 dark:bg-gray-600',
 	// THE TRACK. Faintest fill in the object, because this is the part of the
@@ -363,6 +390,7 @@ export function coverageSwatch(key: CoverageKey, _reachable = true): string {
  */
 export const COVERAGE_SWATCH: Record<CoverageKey, string> = {
 	live: 'bg-green-700 dark:bg-green-600 border-transparent',
+	deploying: 'bg-blue-700 dark:bg-blue-400 border-transparent',
 	failing: 'bg-red-700 dark:bg-red-500 border-transparent',
 	ahead: 'bg-gray-300 dark:bg-gray-600 border-transparent',
 	// The swatch is the bar's own treatment at 12px, so the two neutral
@@ -430,6 +458,18 @@ function slotState(slot: RevisionSlot, refNow: Date, peers: RevisionSlot[]): Slo
 	return 'ok';
 }
 
+/**
+ * ⭐ REVISIONS-2026-09-06, ITEM 2 — THE RAW BAKE STATUS, FOR A CALLER THAT
+ * ONLY HAS A `RevisionSlot` (the per-service ledger in `/revisions`' own
+ * `+page.svelte`, which renders BEFORE `revisionCoverage()` groups slots into
+ * buckets). Reused rather than re-read at the call site so there is exactly
+ * one place that knows `status.history[0]` is where a deploy's live state
+ * lives.
+ */
+export function slotBakeStatus(slot: RevisionSlot): string | undefined {
+	return slot.cell.rollout?.status?.history?.[0]?.bakeStatus;
+}
+
 /** What this environment is running right now, in display form. */
 export function runningLabel(slot: RevisionSlot): string | null {
 	const v = slot.cell.rollout?.status?.history?.[0]?.version;
@@ -470,13 +510,45 @@ export function runningLabel(slot: RevisionSlot): string | null {
  * "these three are on an older release of it, and the newer one is held"
  * reads `onOwnRelease` and `blockingGates`; it does not need — and must not
  * need — a bucket named `Not here yet` to say something that IS here.
+ *
+ * ⛔ ⭐ REVISIONS-2026-09-06, ITEM 1 (COVERAGE COUNTS THE REVISION, blocking,
+ * A RULING) — SUPERSEDES round 4a's OWN "notYet, not live" ANSWER FOR THIS
+ * EXACT SLOT. Round 4a (above) correctly diagnosed the false positive but
+ * over-corrected: routing an `onRevision`-but-not-`onIt` slot through
+ * `notYet` made a fully-covered commit read `3 of 6` — `hello-frontend-app`'s
+ * `9f10e49` was running EVERYWHERE (three places on `2.66.0-66`, three on
+ * `2.67.0-67`, held), and the hero read `held in 3 places · 3 of 6` with a
+ * half-empty bar. The page's identifier is the SHA, so "N of M places" must
+ * count places whose running release carries this revision — full stop.
+ * A place on an OLDER release of the same commit is `live` (`onRevision &&
+ * !onIt`), never `notYet`; the release split is still sayable, just not
+ * through the coverage count — see `onOwnRelease`, `heldBehind`,
+ * `releaseSplit`, all UNCHANGED, because they already read `onOwnRelease`/
+ * `blockingGates` rather than the bucket a slot landed in.
+ *
+ * ⚠️ THIS IS DELIBERATELY ASYMMETRIC. A place on a NEWER release of the same
+ * commit (the mirror row's own "ahead" case — see `revision-coverage.test.ts`,
+ * "never emits a `held` segment on a partial mix") is UNCHANGED: it has
+ * actually moved past this row's release, which is a real, different fact
+ * from "the commit has not arrived yet". Only the `currentRank >
+ * service.rank` branch (this row's release has not been reached) gets the
+ * `onRevision` escape hatch; the `currentRank < service.rank` branch (`ahead`)
+ * does not consult `onRevision` at all.
  */
 function classify(service: RevisionService, slot: RevisionSlot, state: SlotState): CoverageKey {
+	// A commit mid-deploy or mid-bake here is not settled yet in EITHER
+	// direction — see ITEM 2 (IN-FLIGHT STATE, blocking) below `slotState`.
+	// Checked before `live`/`failing` so an in-flight slot never reads as
+	// either "done" or "unhealthy" while its own bake has not finished.
+	const inFlight = state === 'deploying' || state === 'baking';
 	// THE ONLY QUESTION THIS FUNCTION ANSWERS NOW: is this place running the
 	// REVISION. A rank comparison against `service.rank` no longer gates it —
 	// see the doc above and `onOwnRelease`, computed alongside this in the
 	// caller, for the release-line question that used to live here.
-	if (slot.onIt) return state === 'fail' ? 'failing' : 'live';
+	if (slot.onIt) {
+		if (state === 'fail') return 'failing';
+		return inFlight ? 'deploying' : 'live';
+	}
 	if (service.rank === null || slot.currentRank === null) return 'unplaceable';
 	if (slot.currentRank === service.rank) {
 		// Equal rank but NOT onIt: two ladder entries collapsed to one rank —
@@ -484,6 +556,14 @@ function classify(service: RevisionService, slot: RevisionSlot, state: SlotState
 		return 'unplaceable';
 	}
 	if (slot.currentRank < service.rank) return 'ahead';
+	// slot.currentRank > service.rank: ordinarily `notYet` — UNLESS this place
+	// is already running the SAME commit under a sibling release (item 1,
+	// above). The commit has, in fact, arrived; the release it arrived under
+	// is a separate question `onOwnRelease` answers.
+	if (slot.onRevision) {
+		if (state === 'fail') return 'failing';
+		return inFlight ? 'deploying' : 'live';
+	}
 	return 'notYet';
 }
 
@@ -535,6 +615,7 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
 				dotClass: DOT[state],
 				statusWord: WORD[state],
 				stuck: state === 'stuck',
+				inFlight: state === 'deploying' || state === 'baking',
 				runs: runningLabel(slot),
 				currentRank: slot.currentRank,
 				revRank: service.rank,
@@ -628,7 +709,7 @@ export type CoverageSegment = {
  * merely unfinished, which outranks something being replaced.
  */
 export type BuildState = {
-	key: 'failing' | 'notYet' | 'ahead' | 'held' | 'done' | 'nowhere';
+	key: 'failing' | 'deploying' | 'notYet' | 'ahead' | 'held' | 'done' | 'nowhere';
 	/** The row's word. Lower case: it follows a sha in running text. */
 	word: string;
 	/** The long form, for a `title` — same fact, room to name the unit. */
@@ -648,17 +729,18 @@ export type BuildState = {
  * `done` fallback for exactly this reason.
  */
 /**
- * ⭐ ROUND 4a, ITEM A — AND ALSO BEFORE `notYet`, NOW THAT ROWS SPLIT ONE PER
- * RELEASE (`revision-ledger.ts`). Once `onIt` is scoped to the exact release
- * a row is about, a place running the SIBLING release of the same commit is
- * no longer `live`-but-off-release — it genuinely is not running THIS row's
- * build, so `classify()` correctly files it under `notYet`. Reading only the
- * `live` bucket here made this function blind to the very fixture it exists
- * to name: the row for the held release (`hello-frontend-app` rel-67) reports
- * `notYet: 3`, not `live: 3`. `heldBehind` now reads both buckets — the
- * `live`-but-off-release slots survive as a defensive residue (a rank
- * mismatch between the ladder and `env-rank.ts` could still produce one),
- * but the common case is entirely in `notYet` now.
+ * ⭐ ROUND 4a, ITEM A — SUPERSEDED 2026-09-06, ITEM 1. Round 4a scoped `onIt`
+ * to the exact release a row is about and filed the sibling-release slots
+ * under `notYet` — which is what made `heldBehind` read BOTH buckets in the
+ * first place. Item 1 (`classify()`'s own doc comment) moved those slots back
+ * into `live` (with `onOwnRelease: false`), because "notYet" claimed a commit
+ * that had, in fact, arrived. `heldBehind` still reads both buckets: the
+ * `live`-but-off-release slots are the COMMON case again now, and
+ * `notYetSameRevision` survives only as defensive residue — a slot that is
+ * `onRevision` but still lands in `notYet` should not be reachable through
+ * `classify()` any more, but a rank mismatch between the ladder and
+ * `env-rank.ts` could in principle still produce one, and silently dropping
+ * it would be worse than a redundant filter.
  */
 export function heldBehind(coverage: RevisionCoverage): CoverageSlotVM[] {
 	// ⛔ `slot.onRevision`, NOT EVERY `notYet` SLOT. (round 4a, item A) A
@@ -692,6 +774,26 @@ export function buildState(coverage: RevisionCoverage): BuildState {
 			key: 'failing',
 			word: `failing in ${failing} place${plural(failing)}`,
 			title: `Deployed in ${failing} place${plural(failing)} where the deploy is not healthy`
+		};
+
+	/**
+	 * ⭐ REVISIONS-2026-09-06, ITEM 2 (IN-FLIGHT STATE, blocking). Checked
+	 * before the settled buckets below, right after `failing`: during a pin
+	 * clear the list read `fully rolled out · 9 of 9` for ~2 minutes while one
+	 * place was `bakeStatus: Deploying` at canary stage 3/4 — `classify()` used
+	 * to fold an in-flight `onIt` slot straight into `live`, so nothing on the
+	 * page could tell "done" from "in the middle of becoming done". The word
+	 * names both counts directly (`8 live · 1 deploying`) rather than the
+	 * generic `${n} place${plural}` shape the other branches use, because
+	 * "live" here is doing double duty: it is the SAME number that already
+	 * excludes this bucket (`coverage.liveCount`), stated instead of implied.
+	 */
+	const deploying = n('deploying');
+	if (deploying > 0)
+		return {
+			key: 'deploying',
+			word: `${coverage.liveCount} live · ${deploying} deploying`,
+			title: `${deploying} place${plural(deploying)} ${verb(deploying)} a deploy in progress right now`
 		};
 
 	/*

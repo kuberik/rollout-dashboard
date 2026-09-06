@@ -46,7 +46,7 @@
 	// finding 4).
 	import GateRecord, { gateMark } from '$lib/components/GateRecord.svelte';
 	import { countLabel } from '$lib/disclosure';
-	import { formatTimeAgo, detectStuck, detectStuckBehind } from '$lib/utils';
+	import { formatTimeAgo, formatTimeAgoCompact, detectStuck, detectStuckBehind } from '$lib/utils';
 	// ⭐ THE SAME THREE-STEP STUCK DERIVATION `/apps/<name>` USES (operator-walk
 	// finding 3) — see `stuckFor` below for why `CoverageSlotVM.stuck` alone is
 	// not trustworthy for the badge this page draws.
@@ -75,6 +75,7 @@
 		LockOpenOutline,
 		LockSolid,
 		QuestionCircleOutline,
+		RefreshOutline,
 		RocketOutline,
 		TagOutline,
 		TagSolid,
@@ -87,6 +88,14 @@
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
+	// ⭐ ITEM 3 (2026-09-06 critique) — THE DRAWN CONTRACT CLAUSE, NOT A FOURTH
+	// PROSE SPELLING OF IT. `contractBlockReason` builds the same `provider →
+	// contract → required range` relation `/dependencies` and `/apps` already
+	// draw; `<BlockReason>` is the ONE renderer for it (`reason.subject` at
+	// full ink, `subjectHref` when the provider is reachable, the
+	// `[api|1.66.0] → [^1.67.0]` chip pair) so this page cannot spell the same
+	// fact a fifth way.
+	import BlockReason, { contractBlockReason } from '$lib/components/BlockReason.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import type { Rollout, Environment } from '../../../types';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
@@ -297,6 +306,12 @@
 	 */
 	const BUCKET_ICON: Record<CoverageKey, typeof CheckCircleSolid> = {
 		live: CheckCircleSolid,
+		// ⭐ ITEM 10 (coverage contract, 2026-09-06) — `RefreshOutline` +
+		// `tone-active`, the SAME glyph/hue pair `BuildStateMark.svelte`
+		// (the list lane's own bucket icon) already ships for `deploying` —
+		// blue is `Deploying`'s own colour product-wide, reused rather than
+		// invented for a sixth in-flight spelling.
+		deploying: RefreshOutline,
 		failing: ExclamationCircleSolid,
 		ahead: ArrowRightOutline,
 		notYet: HourglassOutline,
@@ -598,7 +613,12 @@
 
 	const bannerMessage = $derived.by(() => {
 		if (!coverage || blockedSlots.length === 0) return '';
-		const envs = [...new Set(blockedSlots.map((s) => s.envLabel))].join(', ');
+		// ⭐ ITEM 4 (2026-09-06 critique) — `joinClauses`, NOT A BARE `.join(', ')`.
+		// The head band's own release-split line already reads "dev, staging
+		// and prod" (`joinClauses`, imported above); this banner said "dev,
+		// staging, prod" — the same list, one comma short of the rest of the
+		// page's grammar.
+		const envs = joinClauses([...new Set(blockedSlots.map((s) => s.envLabel))].map((e) => e.toLowerCase()));
 		const apps = [...new Set(blockedSlots.map((s) => s.appName))];
 		const who = apps.length === 1 ? apps[0] : `${apps.length} services`;
 		// THE BANNER SAYS THE BLOCK AND ONLY THE BLOCK — the hero directly under
@@ -692,59 +712,134 @@
 	 * `availableReleases` directly rather than asking that module to expose
 	 * the breakdown — the same array `displayVersionForTag` above already
 	 * walks, on the same rollouts this row already carries.
+	 *
+	 * ⭐ ITEM 6 (2026-09-06 critique) — SCANS `coverage`, NOT `row.services`.
+	 * `row.services` is scoped to ONE release-line (round-4's "a row is
+	 * about one release") — measured live, `9f10e494d560`'s `row` was built
+	 * around release `2.67.0-67` (held everywhere), so its `services` never
+	 * included the rollouts actually running the sibling release
+	 * `2.66.0-66` in three places, and their `availableReleases` — the only
+	 * place that release's own `created` timestamp lives — never got
+	 * scanned. `coverage` (`revisionCoverage`, another lane's file but
+	 * already exposed to this page) carries every slot touching this
+	 * revision across EVERY bucket, so flattening it here reaches the
+	 * missing rollouts without this file guessing at `revision-ledger.ts`'s
+	 * own row-per-release grouping.
 	 */
 	const buildReleases = $derived.by<BuildRelease[]>(() => {
-		if (!row) return [];
-		const byTag = new Map<string, BuildRelease>();
-		for (const svc of row.services) {
-			for (const slot of svc.slots) {
-				for (const rel of slot.cell.rollout?.status?.availableReleases ?? []) {
-					if (rel.revision !== row.revision || !rel.created || byTag.has(rel.tag)) continue;
+		if (!row || !coverage) return [];
+		// ⭐ FOLLOW-UP (a), 2026-09-06 coordinator re-check — KEYED BY LABEL,
+		// NOT BY THE RAW TAG. Measured live on `9f10e494d560`: `hello-api-app`
+		// and `hello-frontend-app` are two SEPARATE services built off the
+		// SAME monorepo git tag (`rel-66`) — `hello-api-app`'s release prints
+		// as `1.66.0-66`, `hello-frontend-app`'s as `2.66.0-66`, distinct facts
+		// sharing one tag string. Keying the map on `rel.tag` let whichever
+		// service's `rel-66` was scanned FIRST claim that key, so the second
+		// service's own release of this commit was silently dropped —
+		// `2.66.0-66`, the release actually running in 3 places, never made it
+		// into the list. The label (`getDisplayVersion`) is what a service
+		// actually calls its own release and is what gets printed, so it is
+		// also the right identity to dedupe on.
+		const byLabel = new Map<string, BuildRelease>();
+		for (const bucket of coverage.buckets) {
+			for (const s of bucket.slots) {
+				for (const rel of s.slot.cell.rollout?.status?.availableReleases ?? []) {
+					if (rel.revision !== row.revision || !rel.created) continue;
+					const label = getDisplayVersion(rel);
+					if (byLabel.has(label)) continue;
 					const createdMs = new Date(rel.created).getTime();
 					if (Number.isNaN(createdMs)) continue;
-					byTag.set(rel.tag, { label: getDisplayVersion(rel), createdMs });
+					byLabel.set(label, { label, createdMs });
 				}
 			}
 		}
-		// Two tags can share one label + timestamp — the same release recorded
-		// on two rollouts' own `availableReleases` — so dedupe by the pair
-		// actually printed, not by the generated tag nobody sees.
-		const seen = new Map<string, BuildRelease>();
-		for (const r of byTag.values()) {
-			const key = `${r.label} ${r.createdMs}`;
-			if (!seen.has(key)) seen.set(key, r);
+		// ⭐ ITEM 6 (2026-09-06 critique) — FALL BACK TO `history[].version`
+		// WHEN `availableReleases` HAS AGED THE BUILD OUT. Measured live:
+		// `c1ecfe553070` printed no `built …` line at all — `availableReleases`
+		// is a live, size-bounded OCI catalog (the provider's own image
+		// policy), and on every one of the nine rollouts that once ran this
+		// build it had scrolled the entry off by the time this page asked. The
+		// deploy that happened DID record its own `version.created`, though —
+		// `history[]` is per-rollout and durable up to `versionHistoryLimit`,
+		// not the provider's catalog window — so this is a second, independent
+		// source for the SAME fact, never a guess. Only fills labels
+		// `availableReleases` did not already answer for.
+		for (const bucket of coverage.buckets) {
+			for (const s of bucket.slots) {
+				for (const h of s.slot.cell.rollout?.status?.history ?? []) {
+					const v = h.version;
+					if (!v || v.revision !== row.revision || !v.created) continue;
+					const label = getDisplayVersion(v);
+					if (byLabel.has(label)) continue;
+					const createdMs = new Date(v.created).getTime();
+					if (Number.isNaN(createdMs)) continue;
+					byLabel.set(label, { label, createdMs });
+				}
+			}
 		}
-		return [...seen.values()].sort((a, b) => a.createdMs - b.createdMs);
+		return [...byLabel.values()].sort((a, b) => a.createdMs - b.createdMs);
 	});
 
 	/**
+	 * ⭐ ITEM 6 (2026-09-06 critique) — THE SINGLE-RELEASE `built` LINE'S OWN
+	 * FALLBACK. `row.createdMs` (`revision-ledger.ts`) is computed the SAME
+	 * `availableReleases`-only way `buildReleases` used to be — so on a build
+	 * every rollout's OCI catalog has since aged out, `revision-ledger.ts`
+	 * has nothing to report either and the whole `built …` line vanished
+	 * (`c1ecfe553070`, measured live). `buildReleases[0]` now also carries
+	 * the `history[].version` fallback, so preferring it here reaches the
+	 * same durable evidence rather than asking `revision-ledger.ts` (another
+	 * lane's file) to grow the identical fallback a second time.
+	 */
+	const singleBuiltMs = $derived(buildReleases[0]?.createdMs || row?.createdMs || 0);
+
+	/**
+	 * ⭐ FOLLOW-UP (a), 2026-09-06 coordinator re-check — THE 60s "TOO CLOSE
+	 * TO BOTH TO BOTHER" GUARD WAS THE REAL REASON `c1ecfe553070` PRINTED NO
+	 * `Built …` LINE, NOT A MISSING DATA SOURCE. Measured precisely from the
+	 * live payload: `availableReleases` puts this build's `created` at
+	 * 11:18:30-46Z; the only surviving `history` entry for it deploys at
+	 * 11:19:14Z — a real, 28-44 SECOND gap (a build-then-deploy pipeline),
+	 * not the "pushed and deployed in the same instant" case the old
+	 * `> 60_000` threshold was written for. That threshold was rounding a
+	 * genuine two-step pipeline into "restates the same fact" and hiding a
+	 * fact the API plainly has. Narrowed to `> 1_000`: still skips the true
+	 * same-instant case (both fields sourced from one webhook timestamp,
+	 * sub-second apart or bit-identical), shows everything else.
+	 */
+	const builtDiffersFromDeploy = $derived(
+		!!singleBuiltMs && !!row && Math.abs(singleBuiltMs - row.lastDeployMs) > 1_000
+	);
+
+	/**
 	 * ⭐ F9: HEIGHT-MATCH `This build` / `What each service calls it` ONLY
-	 * WHEN THEY ARE CLOSE — NOT UNCONDITIONALLY. (2026-09-03, fourth re-check)
-	 * `.rev-buckets`' `align-items: stretch` (below) makes every card sharing
-	 * a grid row share that row's height, which is right when a bucket card
-	 * sits beside another bucket card of similar shape but wrong for THIS
-	 * pair: `This build` runs 5-6 fixed rows (bar, commit, repo, service
-	 * count, last deployed, the outbound link) while `What each service
-	 * calls it` is one row per service — on a repo with one or two services
-	 * it measured 52% fill, stretched to match its taller neighbour with
-	 * nothing to say in the other 48%.
+	 * WHEN THEY ARE CLOSE — NOT UNCONDITIONALLY. (2026-09-03, fourth re-check;
+	 * re-grounded 2026-09-06, item 1 — `.rev-buckets` is `align-items: start`
+	 * by default now, not `stretch`.) `This build` runs 5-6 fixed rows (bar,
+	 * commit, repo, service count, last deployed, the outbound link) while
+	 * `What each service calls it` is one row per service — on a repo with
+	 * one or two services stretching it to match measured 52% fill, nothing
+	 * to say in the other 48%. That pairing predates the grid-wide default
+	 * flipping to `start`; this measurement is what still lets the pair OPT
+	 * IN to matching when they are genuinely close, which `start` alone
+	 * would not do.
 	 *
 	 * A grid item's OWN height cannot be read while it is stretched — a
 	 * stretched item's height IS the row's height, not its content's — so
 	 * this measures the wrapper BEFORE opting in: `rev-pair-natural` (below)
-	 * is the default and holds `align-self: start`, which is what lets
-	 * `bind:clientHeight` see each card's true, un-stretched content height.
-	 * Only once BOTH are known and the shorter is within 25% of the taller
-	 * does the wrapper drop that class and fall back to the grid's own
-	 * `stretch` — which, once applied, re-measures as the (now equal) row
-	 * height and the comparison stays true. A large gap never opts in, and
-	 * the pair just sits at its own two different heights, which reads as
-	 * two cards of different KINDS rather than one card mostly empty.
+	 * holds `align-self: start`, which is what lets `bind:clientHeight` see
+	 * each card's true, un-stretched content height. Only once BOTH are
+	 * known and the shorter is within 25% of the taller does the wrapper
+	 * switch to `.rev-pair-match` (`align-self: stretch`) — which, once
+	 * applied, re-measures as the (now equal) row height and the comparison
+	 * stays true. A large gap never opts in, and the pair just sits at its
+	 * own two different heights, which reads as two cards of different KINDS
+	 * rather than one card mostly empty.
 	 *
 	 * Scoped to exactly these two cards (the grid's first two children) —
-	 * the bucket cards after them are unaffected and keep the plain
-	 * `align-items: stretch` this grid has used since the "ONE FLAT GRID"
-	 * fix, because nothing has measured THEM as a mismatched pair.
+	 * the bucket cards after them are unaffected and keep the grid's own
+	 * `align-items: start`, because nothing has measured THEM as a pair that
+	 * should match at all.
 	 */
 	let buildCardHeight = $state(0);
 	let svcCardHeight = $state(0);
@@ -773,8 +868,37 @@
 	 * had it, not just the row's own single `last deployed N ago`.
 	 */
 	function slotDeployedAgo(s: CoverageSlotVM): { ago: string; iso: string } | null {
+		// ⭐ ITEM 5 (2026-09-06 critique) — THE LIST'S OWN GRAMMAR
+		// (`formatTimeAgoCompact`), NOT THE FULL-WORD FORM. This page printed
+		// `deployed 6 days ago`; `/revisions` says `Deployed 6d ago`. One
+		// spelling, product-wide.
 		const ts = s.slot.cell.rollout?.status?.history?.[0]?.timestamp;
-		return ts ? { ago: formatTimeAgo(ts, $now), iso: ts } : null;
+		return ts ? { ago: formatTimeAgoCompact(ts, $now), iso: ts } : null;
+	}
+
+	/**
+	 * ⭐ ITEM 2 (2026-09-06 critique) — ONE AGE PER ROW, WHEN EVERY PLACE
+	 * AGREES. `Running it now` on `064b655` repeated `deployed 6d ago` on
+	 * every one of three atoms in a row — the container query below forces
+	 * one atom per line under 560px, and three atoms each carrying a full
+	 * `[chip][age]` pair do not fit ABOVE 560 either once padding is spent,
+	 * so the row still stacked at a measured 591px container. Removing the
+	 * repeated fact (not widening the breakpoint) is what actually lets the
+	 * chips flow: three bare env chips fit in far less width than three
+	 * chip+age pairs. Returns the shared age only when EVERY slot in the row
+	 * has one and they all agree; a genuine split (one place newer than its
+	 * siblings) keeps each atom's own age, which is the fact worth the extra
+	 * width.
+	 */
+	function sharedAgeFor(
+		bucketKey: string,
+		slots: CoverageSlotVM[]
+	): { ago: string; iso: string } | null {
+		if (bucketKey !== 'live' || slots.length < 2) return null;
+		const ages = slots.map((s) => slotDeployedAgo(s));
+		const first = ages[0];
+		if (!first) return null;
+		return ages.every((a) => a?.ago === first.ago) ? first : null;
 	}
 
 	/** One pinned place, ready to draw as a `[PINNED][ENV]` chip pair. */
@@ -835,16 +959,23 @@
 	 * else on this page, so this cannot name a match the rest of the page
 	 * would disagree with.
 	 *
-	 * Skips a slot's own CURRENT deploy (`onIt`) — that place is not "before,"
-	 * it is now, and already has its own row in `Running it now`.
+	 * ⭐ FOLLOW-UP (b), 2026-09-06 coordinator re-check — SKIPS `onRevision`,
+	 * NOT JUST `onIt`. Measured live: `hello-frontend-app` printed `Ran
+	 * before in DEV · 2d ago` directly under `Held — still running
+	 * 2.66.0-66` — DEV is CURRENTLY running this commit (under the sibling
+	 * release), so "ran before" is a contradiction, not a second fact. Round
+	 * 5's own rule is that coverage counts the REVISION: a place on ANY
+	 * release of it is running it now, not merely "before". `onIt` alone
+	 * (the row's own EXACT release) is too narrow a guard now that `live`
+	 * itself means `onRevision`, not `onIt`.
 	 */
 	function ranBeforeOf(svc: RevisionService): { envLabel: string; timestamp: string }[] {
 		if (!revision) return [];
 		const out: { envLabel: string; timestamp: string }[] = [];
 		for (const s of svc.slots) {
-			if (s.onIt) continue;
+			if (s.onRevision) continue;
 			const history = s.cell.rollout?.status?.history ?? [];
-			// index 0 is the CURRENT deploy, already excluded by `!s.onIt` above
+			// index 0 is the CURRENT deploy, already excluded by `!s.onRevision` above
 			// when it matches — start the search one entry back regardless, so a
 			// stale `onIt` never double-counts the running deploy as "before."
 			const match = history.slice(1).find((h) => h.version?.revision === revision);
@@ -955,8 +1086,37 @@
 		return story.blocked && story.person.length === 0 && story.unknown.length === 0;
 	}
 
+	/**
+	 * ⭐ ITEM 7 (2026-09-06 critique) — TRANSIENT STUCK, WHEN THE CONTROLLER
+	 * HAS NOT ACTED YET. Measured live: one second after Clear pin, the
+	 * place read `2 BEHIND · STUCK · Ready to deploy` — the dashboard's own
+	 * data was still the pre-clear snapshot (the mutation lands, but the
+	 * controller has not reconciled it yet), and every downstream check
+	 * below ran on stale evidence. Round-5 ruling 9: *"a place whose
+	 * generation the controller has not observed yet (or that changed in
+	 * the last minutes) is queued/deploying; STUCK needs eligibility plus
+	 * stillness."*
+	 *
+	 * The precise signal named in that ruling — `metadata.generation !==
+	 * status.observedGeneration` — is NOT on the wire: the dashboard's own
+	 * condensed `KubernetesMetadata` type carries no `generation` field, and
+	 * `RolloutStatus` has no top-level `observedGeneration` (only individual
+	 * `conditions[].observedGeneration`, which is a different question per
+	 * condition, not one comparable number). Falls back, as the ruling
+	 * allows, to the newest history timestamp: a place that changed in the
+	 * last 5 minutes has not held still long enough to call STUCK, whatever
+	 * the three checks below would otherwise say.
+	 */
+	function recentlyChanged(rollout: Rollout | null | undefined): boolean {
+		const ts = rollout?.status?.history?.[0]?.timestamp;
+		if (!ts) return false;
+		const ageMs = $now.getTime() - new Date(ts).getTime();
+		return ageMs >= 0 && ageMs < 5 * 60 * 1000;
+	}
+
 	function stuckFor(s: CoverageSlotVM) {
 		const rollout = s.slot.cell.rollout;
+		if (recentlyChanged(rollout)) return null;
 		const own = detectStuck(rollout, { now: $now });
 		if (own) return own;
 		const promo = detectStuckPromotion(rollout, { now: $now, gateContext });
@@ -1032,6 +1192,30 @@
 		 */
 		record?: string;
 		recordTitle?: string;
+		/**
+		 * ⭐ ITEM 3 (2026-09-06 critique) — SET ONLY FOR A `dependency` GATE
+		 * WHOSE PROVIDER/CONTRACT/HAVE/NEED ARE ALL KNOWN, SO THE ROW CAN BE
+		 * DRAWN INSTEAD OF NARRATED. Measured live: `9f10e49`'s "Not here
+		 * yet" printed *"Waiting for hello-api-app to ship a newer api — it
+		 * is on 1.66.0"* once per environment (dev/staging/prod each carry
+		 * their OWN `RolloutDependency` gate object, so the raw gate id in
+		 * `text`/`gates` differed per place even though the SENTENCE was
+		 * byte-identical) — the exact violation `lib/CLAUDE.md` names: *"ONE
+		 * CAUSE IS DRAWN ONCE, ON THE MOST UPSTREAM EDGE IT BITES."*
+		 * `notYetGroups` below keys a drawn reason on the RELATION
+		 * (`subject`/`contract`/`need`), not on the per-environment gate id,
+		 * so the same upstream cause always folds into one row regardless of
+		 * which generated object published it; `text`/`gates` are left empty
+		 * on a drawn reason; the render side switches on this field.
+		 */
+		drawn?: {
+			subject: string;
+			subjectHref: string;
+			contract: string;
+			have: string | null;
+			need: string | null;
+			gateName: string | null;
+		};
 	};
 
 	function reasonsFor(s: CoverageSlotVM): Reason[] {
@@ -1137,6 +1321,28 @@
 				story?.gates.filter((g) => g.clears !== 'clock' && g.clears !== 'check') ?? [];
 			if (allowListed.length > 0) {
 				for (const g of allowListed) {
+					// ⭐ ITEM 3 (2026-09-06 critique) — DRAW THE CONTRACT, DON'T
+					// NARRATE IT. See `Reason.drawn`'s own comment: a dependency
+					// gate with a full provider/contract/have/need relation is
+					// what `BlockReason`'s `contract` branch already draws
+					// everywhere else on this product.
+					if (g.kind === 'dependency' && g.subject && g.contract && g.have && g.need) {
+						out.push({
+							icon: gateMark(g),
+							tone: 'tone-mute',
+							text: '',
+							gates: [],
+							drawn: {
+								subject: g.subject,
+								subjectHref: `/apps/${encodeURIComponent(g.subject)}`,
+								contract: g.contract,
+								have: g.have,
+								need: g.need,
+								gateName: g.id
+							}
+						});
+						continue;
+					}
 					out.push({ icon: gateMark(g), tone: 'tone-mute', text: g.short, gates: [g.id] });
 				}
 			} else {
@@ -1219,13 +1425,35 @@
 	 */
 	type NotYetGroup = { key: string; appName: string; slots: CoverageSlotVM[]; reasons: Reason[] };
 
+	/**
+	 * ⭐ ITEM 3 (2026-09-06 critique) — A DRAWN REASON GROUPS ON THE RELATION,
+	 * NOT ON THE GATE ID. dev/staging/prod each carry their own
+	 * `RolloutDependency` object for the identical upstream cause, so keying
+	 * on `r.gates` (the raw id) never folded them — three rows, one sentence
+	 * each, byte-identical. Keying on `subject|contract|need` instead means
+	 * every place this exact contract bites folds into one row regardless of
+	 * which generated gate published it, which is what lets the row draw the
+	 * clause once.
+	 *
+	 * ⛔ A NAMED FUNCTION, NOT A TERNARY INLINE INSIDE THE OUTER TEMPLATE
+	 * LITERAL (`lib/CLAUDE.md`: "no nested template literals in a `.ts` fact
+	 * value" — `lib/messages/scan.ts`'s regex reads the fragment up to the
+	 * first line break, so a multi-line ternary nested inside `${…}` came
+	 * back to the census as the unreadable tail `) .join('§')}`). Building
+	 * the part first keeps every template literal here single-line.
+	 */
+	function reasonGroupKey(r: Reason): string {
+		if (r.drawn) return `drawn:${r.drawn.subject}|${r.drawn.contract}|${r.drawn.need}`;
+		return `${r.text}·${r.gates.join(',')}`;
+	}
+
 	function notYetGroups(slots: CoverageSlotVM[]): NotYetGroup[] {
 		const out: NotYetGroup[] = [];
 		for (const s of slots) {
 			const reasons = reasonsFor(s);
 			const key = s.promoteTag
 				? `solo:${s.appName}/${s.envName}`
-				: `${s.appName}|${reasons.map((r) => `${r.text}·${r.gates.join(',')}`).join('§')}`;
+				: `${s.appName}|${reasons.map(reasonGroupKey).join('§')}`;
 			let g = out.find((o) => o.key === key);
 			if (!g) {
 				g = { key, appName: s.appName, slots: [], reasons };
@@ -1429,10 +1657,20 @@
 			<TagOutline class="mb-3 h-8 w-8 text-gray-500 dark:text-gray-400" />
 			{#if !ledger}
 				<h1 class="t-body font-semibold text-gray-900 dark:text-white">Repository not found</h1>
+				<!-- ⭐ ITEM 6 (2026-09-06 critique) — THE REPO AND THE SHA ARE TWO
+				     FACTS, NEVER ONE GLUED STRING. `${repoPath}/${urlKey}` printed
+				     `github.com/littlechimera/nope/064b655b5159 is known` — a sha
+				     stitched onto a repo path reads as if the whole run-on were the
+				     repository's name. `repoPath` is the object that is not known;
+				     `urlKey` is named as the separate thing that was being looked
+				     for inside it. -->
 				<p class="t-body mt-1 max-w-md text-gray-500 dark:text-gray-400">
-					No repository
-					<span class="t-code">{repoPath ? `${repoPath}/${urlKey}` : urlKey}</span> is known to this
-					dashboard.
+					{#if repoPath}
+						No repository <span class="t-code">{repoPath}</span> is known to this dashboard, so it
+						cannot hold the revision <span class="t-code">{urlKey}</span> either.
+					{:else}
+						No repository <span class="t-code">{urlKey}</span> is known to this dashboard.
+					{/if}
 				</p>
 			{:else}
 				<h1 class="t-body font-semibold text-gray-900 dark:text-white">Revision not found</h1>
@@ -1492,19 +1730,31 @@
 				CAPTION, NOT TO THE ID BESIDE IT. The row's `gap-x-2` (8px) put an
 				equal 8px between id→figure and figure→caption, so `064b655` and `8`
 				— both 24px mono/tabular-nums, no visual difference between them but
-				size — read as one token with the caption trailing behind. `ml-4`
+				size — read as one token with the caption trailing behind. `.rev-head-figure`
 				widens id→figure to 24px (8 + 16) while figure→caption stays the
 				row's own 8, so the figure visibly belongs to the sentence it leads,
 				not to the sha it happens to sit next to.
+
+				⭐ ITEM 4 (2026-09-06 critique) — AND AT < 560, THE FIGURE MOVES TO
+				ITS OWN LINE. The fix above only handles 1440: a narrow head band
+				wraps AFTER the caption, not before the figure, because `row.short`
+				and `coverage.liveCount` are both short enough to share the first
+				line — `9f10e49  3` still read as one token at 390. `.rev-head-break`
+				is a zero-height, `flex-basis: 100%` spacer — the standard
+				forced-line-break idiom inside `flex-wrap` — so under 560 the id
+				keeps its own line and the figure leads the second one, beside its
+				own caption, where `ml-4`'s job is undone by `.rev-head-figure`'s own
+				narrow-width rule.
 			-->
-			<span class="t-display text-gray-900 tabular-nums dark:text-white ml-4"
+			<span class="rev-head-break" aria-hidden="true"></span>
+			<span class="t-display text-gray-900 tabular-nums dark:text-white rev-head-figure"
 				>{coverage.liveCount}</span
 			>
 			<span
 				class="t-body text-gray-500 dark:text-gray-400"
 				title="A place is one service in one environment."
-				>of {coverage.totalCount} places run this revision{headBandHeldCount > 0
-					? ` · ${headBandHeldCount} hold${headBandHeldCount === 1 ? 's' : ''} a newer build`
+				>of {coverage.totalCount} places run this build{headBandHeldCount > 0
+					? ` · ${headBandHeldCount} ${headBandHeldCount === 1 ? 'is' : 'are'} held from a newer build`
 					: ''}</span
 			>
 		</div>
@@ -1599,10 +1849,16 @@
 			each with its OWN `align-items: start`, so a rail taller than the
 			buckets (or the reverse) just left a gap. Cards are `flex flex-col`
 			with a `grow` body for exactly this case (see the comment on
-			`Card.svelte`'s `<section>`); `align-items: stretch` plus one grid
-			instead of two makes every card sharing a row share that row's
-			height. `class="self-start"` came off the former rail card — it was
-			opting that one card OUT of the stretch this fix depends on.
+			`Card.svelte`'s `<section>`) — used at the time to STRETCH every
+			card sharing a row to that row's height.
+
+			⛔ THE STRETCH ITSELF IS GONE, ITEM 1 (2026-09-06 critique). It
+			traded ragged bottoms for the opposite defect: `Running it now`
+			ran 417px beside a 161px `Not here yet`, 61% empty. `.rev-buckets`
+			is `align-items: start` now (see its own CSS comment) — each
+			bucket card is its own height, and the ONE pair that still wants
+			to match (`This build` / `What each service calls it`, when
+			`heightsClose`) opts in via `.rev-pair-match`.
 
 			AND `auto-fit` GAVE WAY TO A FIXED 2 COLUMNS, because a THIRD track
 			at 1440 is exactly what stranded the fourth card alone. `What each
@@ -1638,7 +1894,7 @@
 				for what it draws now (a single painted-track fill, not the
 				segmented cell strip this comment used to describe).
 			-->
-			<div bind:clientHeight={buildCardHeight} class={heightsClose ? '' : 'rev-pair-natural'}>
+			<div bind:clientHeight={buildCardHeight} class={heightsClose ? 'rev-pair-match' : 'rev-pair-natural'}>
 			<Card
 				icon={RocketOutline}
 				title="This build"
@@ -1755,9 +2011,12 @@
 						anywhere on it, so the ONE other bare age on the page (each
 						place's own deploy time, in `Running it now`) had nothing to be
 						confused WITH by name, only by omission. Both clocks get their
-						verb now. Omitted when it would restate `lastDeployMs` to the
-						minute — the ordinary case for a build deployed the moment it
-						was pushed.
+						verb now. Omitted only when it would restate `lastDeployMs` to
+						within a second — the one case that is truly the same instant
+						(`builtDiffersFromDeploy`, its own comment) — never merely
+						close: `c1ecfe553070` built at :18:46 and first deployed at
+						:19:14, a real 28s build pipeline, and a `> 60_000` guard here
+						used to read that as "the same moment" and hide it.
 					-->
 					{#if buildReleases.length > 1}
 						<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM E — ONE `built` PER RELEASE. See
@@ -1774,24 +2033,29 @@
 									<span>{i > 0 ? '· ' : ''}<span class="t-code-sm">{rel.label}</span> built <time
 											datetime={new Date(rel.createdMs).toISOString()}
 											title={new Date(rel.createdMs).toLocaleString()}
-											>{formatTimeAgo(new Date(rel.createdMs).toISOString(), $now)}</time
+											>{formatTimeAgoCompact(new Date(rel.createdMs).toISOString(), $now)}</time
 										>
+										ago
 									</span>
 								{/each}
 							</span>
 						</li>
-					{:else if row.createdMs && Math.abs(row.createdMs - row.lastDeployMs) > 60_000}
+					{:else if builtDiffersFromDeploy}
 						<li class="flex items-start gap-2.5">
 							<CalendarMonthSolid
 								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
 								aria-hidden="true"
 							/>
 							<span class="t-body text-gray-700 dark:text-gray-200">
-								built <time
-									datetime={new Date(row.createdMs).toISOString()}
-									title={new Date(row.createdMs).toLocaleString()}
-									>{formatTimeAgo(new Date(row.createdMs).toISOString(), $now)}</time
+								<!-- ⭐ ITEM 5 (2026-09-06 critique) — TITLE CASE: this word
+								     LEADS the line (only an icon precedes it), the same rule
+								     that gives `/revisions` its `Deployed`/`Built`. -->
+								Built <time
+									datetime={new Date(singleBuiltMs).toISOString()}
+									title={new Date(singleBuiltMs).toLocaleString()}
+									>{formatTimeAgoCompact(new Date(singleBuiltMs).toISOString(), $now)}</time
 								>
+								ago
 							</span>
 						</li>
 					{/if}
@@ -1805,8 +2069,9 @@
 								last deployed <time
 									datetime={new Date(row.lastDeployMs).toISOString()}
 									title={new Date(row.lastDeployMs).toLocaleString()}
-									>{formatTimeAgo(new Date(row.lastDeployMs).toISOString(), $now)}</time
+									>{formatTimeAgoCompact(new Date(row.lastDeployMs).toISOString(), $now)}</time
 								>
+								ago
 							{:else}
 								never deployed
 							{/if}
@@ -1852,7 +2117,7 @@
 					restate the buckets: the buckets say WHERE, this says WHAT EACH
 					SERVICE CALLS IT and how far down its own ladder it now sits.
 				-->
-				<div bind:clientHeight={svcCardHeight} class={heightsClose ? '' : 'rev-pair-natural'}>
+				<div bind:clientHeight={svcCardHeight} class={heightsClose ? 'rev-pair-match' : 'rev-pair-natural'}>
 				<Card
 					icon={TagSolid}
 					title="What each service calls it"
@@ -1977,13 +2242,17 @@
 								>
 									<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
 									<span>
+										<!-- ⭐ ITEM 5 (2026-09-06 critique) — `ENV · Nd ago`, THE
+										     LIST'S OWN CHIP+AGE ATOM GRAMMAR, NOT `ENV (N days
+										     ago)`. -->
 										Ran before in
 										{#each ranBefore as rb, i (rb.envLabel)}
-											{rb.envLabel} (<time
+											{rb.envLabel} · <time
 												datetime={rb.timestamp}
 												title={new Date(rb.timestamp).toLocaleString()}
-												>{formatTimeAgo(rb.timestamp, $now)}</time
-											>){i < ranBefore.length - 1 ? ', ' : ''}
+												>{formatTimeAgoCompact(rb.timestamp, $now)}</time
+											>
+											ago{i < ranBefore.length - 1 ? ', ' : ''}
 										{/each}
 									</span>
 								</div>
@@ -2037,7 +2306,9 @@
 								: 'tone-mute'
 							: bucket.key === 'failing'
 								? 'tone-bad'
-								: 'tone-mute'}
+								: bucket.key === 'deploying'
+									? 'tone-active'
+									: 'tone-mute'}
 						title={bucket.title}
 						verdict="{bucket.slots.length} place{bucket.slots.length === 1 ? '' : 's'}"
 						verdictTitle={bucket.description}
@@ -2167,47 +2438,76 @@
 										<!-- CRITERION 3, ON THE ROW THAT STATES THE PROBLEM — and
 										     each reason carries a glyph naming WHAT KIND of gate it
 										     is, plus the clear time when the cluster publishes one. -->
-										<div class="mt-2 flex flex-col gap-1.5">
+										<div class="mt-2 flex flex-col gap-2">
 											{#each g.reasons as r, i (i)}
-												{@const ReasonIcon = r.icon}
-												<div class="flex items-start gap-2">
-													<ReasonIcon class="mt-0.5 h-4 w-4 shrink-0 {r.tone}" aria-hidden="true" />
+												{#if r.drawn}
+													<!-- ⭐ ITEM 3 (2026-09-06 critique) — THE CONTRACT, DRAWN
+													     ONCE. `notYetGroups` already folded every environment
+													     this exact upstream cause bites into `g`, so this
+													     renders exactly once for the whole group — never the
+													     per-environment prose the list banner already replaced
+													     (`lib/CLAUDE.md`: "ONE CAUSE IS DRAWN ONCE"). -->
 													<div class="min-w-0">
-														<!-- THE SENTENCE FIRST, THE OBJECT NAMES UNDER IT.
-														     Inline, the gate name's `whitespace-nowrap` pushed the
-														     break INTO the sentence and orphaned `3h` on its own
-														     line — the clear time, which is the one thing on the
-														     row a reader came for, split in half to keep a
-														     generated identifier whole. The names are evidence, so
-														     they go under the claim they support and wrap among
-														     themselves. -->
-														<div class="t-body text-gray-600 dark:text-gray-300">{r.text}</div>
-														{#if r.gates.length > 0}
-															<div class="mt-0.5 flex flex-wrap gap-x-2">
-																{#each r.gates as gate (gate)}
-																	<span
-																		class="t-code-sm text-gray-500 dark:text-gray-400"
-																		title="Rule {gate}">{gate}</span
-																	>
-																{/each}
-															</div>
-														{:else if r.record}
-															<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM 3 — THE RAW TAG AS A
-															     RECORD ROW, NEVER INLINE PROSE. Same treatment as
-															     `r.gates` above (mono, its own row under the claim),
-															     plus `break-all`: a gate id is short and hyphenated
-															     and wraps on its own; an OCI tag is one 56-character
-															     unbroken run and needs the harder break rule to avoid
-															     the silent `overflow: hidden` clip this replaces. -->
-															<div class="mt-0.5">
-																<span
-																	class="t-code-sm text-gray-500 dark:text-gray-400 break-all"
-																	title={r.recordTitle ?? r.record}>{r.record}</span
-																>
-															</div>
-														{/if}
+														<BlockReason
+															reason={contractBlockReason({
+																provider: r.drawn.subject,
+																contract: r.drawn.contract,
+																requiredVersion: r.drawn.need,
+																providedVersion: r.drawn.have,
+																gateName: r.drawn.gateName
+															})}
+															subjectHref={r.drawn.subjectHref}
+														/>
+														<a
+															class="nav-link mt-1 inline-flex"
+															href={r.drawn.subjectHref}
+															aria-label={`Open ${r.drawn.subject}`}
+														>
+															Open {r.drawn.subject}
+															<ArrowRightOutline class="h-3.5 w-3.5" aria-hidden="true" />
+														</a>
 													</div>
-												</div>
+												{:else}
+													{@const ReasonIcon = r.icon}
+													<div class="flex items-start gap-2">
+														<ReasonIcon class="mt-0.5 h-4 w-4 shrink-0 {r.tone}" aria-hidden="true" />
+														<div class="min-w-0">
+															<!-- THE SENTENCE FIRST, THE OBJECT NAMES UNDER IT.
+															     Inline, the gate name's `whitespace-nowrap` pushed the
+															     break INTO the sentence and orphaned `3h` on its own
+															     line — the clear time, which is the one thing on the
+															     row a reader came for, split in half to keep a
+															     generated identifier whole. The names are evidence, so
+															     they go under the claim they support and wrap among
+															     themselves. -->
+															<div class="t-body text-gray-600 dark:text-gray-300">{r.text}</div>
+															{#if r.gates.length > 0}
+																<div class="mt-0.5 flex flex-wrap gap-x-2">
+																	{#each r.gates as gate (gate)}
+																		<span
+																			class="t-code-sm text-gray-500 dark:text-gray-400"
+																			title="Rule {gate}">{gate}</span
+																		>
+																	{/each}
+																</div>
+															{:else if r.record}
+																<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM 3 — THE RAW TAG AS A
+																     RECORD ROW, NEVER INLINE PROSE. Same treatment as
+																     `r.gates` above (mono, its own row under the claim),
+																     plus `break-all`: a gate id is short and hyphenated
+																     and wraps on its own; an OCI tag is one 56-character
+																     unbroken run and needs the harder break rule to avoid
+																     the silent `overflow: hidden` clip this replaces. -->
+																<div class="mt-0.5">
+																	<span
+																		class="t-code-sm text-gray-500 dark:text-gray-400 break-all"
+																		title={r.recordTitle ?? r.record}>{r.record}</span
+																	>
+																</div>
+															{/if}
+														</div>
+													</div>
+												{/if}
 											{/each}
 										</div>
 
@@ -2291,6 +2591,7 @@
 								{#each groupSlots(bucket.slots) as g (g.appName)}
 									<li class="rev-place-row px-4 py-3">
 										{#each g.runs as rg, gi (rg.runs ?? '—')}
+											{@const sharedAge = sharedAgeFor(bucket.key, rg.slots)}
 											<div class="flex flex-wrap items-center gap-x-4 gap-y-2" class:mt-2={gi > 0}>
 												<a
 													href={placeHref(rg.slots[0])}
@@ -2339,7 +2640,7 @@
 													-->
 													<a
 														href={placeHref(s)}
-														class="rev-env-atom hit-32"
+														class="rev-env-atom hit-32 {sharedAge ? 'rev-env-atom--bare' : ''}"
 														aria-label="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
 														title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
 													>
@@ -2375,16 +2676,43 @@
 														     ⛔ `{age}` PRINTED BARE — the same "4h ago" a `built`
 														     time on `This build` could just as easily be — and an
 														     operator walk read them as the same clock. The verb
-														     is always in front of the number now. -->
-														{#if age}
+														     is always in front of the number now.
+														     ⛔ SUPPRESSED WHEN `sharedAge` IS SET (ITEM 2,
+														     2026-09-06 critique) — every place in this row agrees,
+														     so the row states it once, after the chips, instead
+														     of on every atom. -->
+														{#if age && !sharedAge}
 															<span class="t-micro text-gray-500 dark:text-gray-400"
 																>deployed <time datetime={age.iso} title={new Date(age.iso).toLocaleString()}
 																	>{age.ago}</time
-																></span
+																> ago</span
 															>
 														{/if}
 													</a>
 												{/each}
+												<!-- ⭐ ITEM 2 (2026-09-06 critique) — THE AGE, HOISTED ONCE.
+												     `sharedAgeFor` only returns non-null when EVERY slot in
+												     this row printed the identical `formatTimeAgoCompact`
+												     string, so dropping the per-atom age above and printing
+												     it here once can never disagree with what the atoms
+												     would have said individually. Lowercase — it follows the
+												     chips, it does not lead the line (`lib/CLAUDE.md`'s age
+												     grammar note). -->
+												{#if sharedAge}
+												<!-- ⭐ FOLLOW-UP (d), 2026-09-06 coordinator re-check — NO LEADING
+												     SEPARATOR. `· deployed 7d ago` wrapped to its own line at 390
+												     (three stacked chips left no room beside it), and a leading `·`
+												     with nothing before it on THAT line reads as a stray dot. The
+												     row's own `gap-x-4` already separates this span from the chips
+												     when they share a line; nothing is lost relying on it instead
+												     of a mark that can end up alone. -->
+													<span class="t-micro text-gray-500 dark:text-gray-400"
+														>deployed <time
+															datetime={sharedAge.iso}
+															title={new Date(sharedAge.iso).toLocaleString()}>{sharedAge.ago}</time
+														> ago</span
+													>
+												{/if}
 												<!-- WHAT TOOK ITS PLACE — once per (service, build), not
 												     once per environment. -->
 												{#if bucket.key !== 'live' && bucket.key !== 'failing' && rg.runs}
@@ -2475,12 +2803,16 @@
 	 * 340px in the other, each with its OWN `align-items: start` — so a
 	 * card's height never had anything to answer to but its own content, in
 	 * either grid. ONE flat grid now holds every card on the page (`This
-	 * build`, the service-rank card, the bucket cards) as equal siblings, and
-	 * `align-items: stretch` — CSS Grid's own default, which `start` had been
-	 * overriding — makes every card sharing a ROW share that row's height.
-	 * `Card.svelte`'s `flex flex-col` root and `grow` body exist for exactly
-	 * this (see the comment on its `<section>`); this is the first place on
-	 * this page that asks for it.
+	 * build`, the service-rank card, the bucket cards) as equal siblings.
+	 *
+	 * ⛔ `align-items: stretch` LASTED FOUR DAYS AND WAS REVERSED (ITEM 1,
+	 * 2026-09-06 critique). It made every card sharing a ROW share that
+	 * row's height, and measured live that put `Running it now` at 417px
+	 * beside a 161px `Not here yet` — 61% empty, 85% on the one-place state.
+	 * `Card.svelte`'s `flex flex-col` root and `grow` body still exist for
+	 * the ONE pair that opts back in (`.rev-pair-match`, below); the grid's
+	 * own default is `align-items: start` now, so every OTHER card answers
+	 * to its own content and nothing else.
 	 *
 	 * ⛔ AND `auto-fit` IS GONE TOO — A RESIDUE OF THE FIRST FIX. (2026-09-02,
 	 * design re-check: *"`This build | Running it now | Not here yet` on row
@@ -2519,6 +2851,30 @@
 	}
 
 	/*
+	 * ⭐ ITEM 4 (2026-09-06 critique) — THE HEAD-BAND FIGURE BREAKS ONTO ITS
+	 * OWN LINE UNDER 560px, INSIDE `.rev-cq`'s OWN CONTAINMENT. See the
+	 * markup comment on the head band for the defect (`9f10e49  3` reading
+	 * as one token at 390). `.rev-head-break` is an empty, zero-height flex
+	 * child; `flex-basis: 100%` inside a `flex-wrap` row is the standard
+	 * "everything after this starts a new line" idiom, so it costs no visible
+	 * pixels of its own.
+	 */
+	.rev-head-figure {
+		margin-left: 1rem;
+	}
+
+	@container (max-width: 559px) {
+		.rev-head-break {
+			flex-basis: 100%;
+			height: 0;
+		}
+
+		.rev-head-figure {
+			margin-left: 0;
+		}
+	}
+
+	/*
 	 * ⭐ ROUND-4 CRAFT REVIEW, ITEM 1 — `RevisionLead.svelte`'s
 	 * `.single-bar`/`.single-bar-fill` AND `/revisions`' own
 	 * `.bld-fill-track`/`.bld-fill`, BYTE-IDENTICAL GEOMETRY, THIRD SPELLING.
@@ -2547,11 +2903,24 @@
 		background-color: var(--color-green-600);
 	}
 
+	/*
+	 * ⭐ ITEM 1 (2026-09-06 critique) — REVERSED: `align-items: start`, NOT
+	 * `stretch`. Measured live: `Running it now` ran 417px on `…/9f10e494d560`
+	 * beside a 161px neighbour — 256px of slack, 61% empty — and 85% empty on
+	 * the one-place state. The "ONE FLAT GRID" fix above (2026-09-02) chose
+	 * `stretch` to kill RAGGED bottoms between cards of similar shape; it did
+	 * not anticipate two bucket cards of wildly different content length
+	 * sharing a row, which is the ordinary case once a build has both a
+	 * `live` and a `notYet` bucket. A card's height is its own content's now;
+	 * ragged bottoms are the honest shape of two different amounts of fact.
+	 * `.rev-pair-match` (below) is the opt-in for the ONE pair that still
+	 * wants the old behaviour.
+	 */
 	.rev-buckets {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		gap: 16px;
-		align-items: stretch;
+		align-items: start;
 	}
 
 	@container (min-width: 640px) {
@@ -2594,23 +2963,48 @@
 	 * `flex-wrap` parent is the standard "one item per row" idiom: each atom
 	 * claims the row's full width, so the next one is pushed to its own line
 	 * without a media query re-deriving the row's own layout.
+	 *
+	 * ⭐ FOLLOW-UP (c), 2026-09-06 coordinator re-check — `:not(.rev-env-atom--bare)`.
+	 * This forced EVERY atom one-per-line under 560px even once item 2's fix
+	 * (`sharedAgeFor`) hoists the age and strips it off each atom — measured
+	 * live on `hello-world-manifests`: three BARE chips (no age text at all)
+	 * still stacked to four lines (DEV / STAGING / PROD / the hoisted age) at
+	 * 390. A chip with nothing beside it is narrow enough to flow at any
+	 * width; forcing it onto its own line was solving a width problem that,
+	 * for this atom, no longer exists. `.rev-env-atom--bare` (set on the
+	 * template when `sharedAge` is truthy) opts a chip-only atom OUT of the
+	 * one-per-line rule; an atom still carrying its own age (`sharedAge` is
+	 * null — the ages disagree) keeps stacking, which is the case the rule
+	 * exists for.
 	 */
 	@container (max-width: 560px) {
-		.rev-env-atom {
+		.rev-env-atom:not(.rev-env-atom--bare) {
 			flex-basis: 100%;
 		}
 	}
 
 	/*
-	 * ⭐ F9: THE ONE PAIR THAT MAY OPT OUT OF THE ROW'S SHARED HEIGHT — see the
-	 * `heightsClose` comment in the script block for the full account. The
-	 * wrapper around `This build` and around `What each service calls it` is
-	 * a plain grid item; this class is its DEFAULT (present until the two
-	 * are measured and found close), and dropping it is what falls back to
-	 * `.rev-buckets`' own `align-items: stretch` above.
+	 * ⭐ F9, RE-GROUNDED FOR ITEM 1 — THE GRID'S DEFAULT IS `start` NOW, SO
+	 * THIS CLASS IS A NO-OP LEFT FOR CLARITY AT THE CALL SITE (2026-09-06).
+	 * `heightsClose` (script block) still measures `This build` and `What
+	 * each service calls it` unstretched to compare their content heights;
+	 * this class is what let that measurement happen when the grid itself
+	 * defaulted to `stretch`. `.rev-pair-match` (below) is the new opt-IN —
+	 * the pair only stretches to match when they were already close.
 	 */
 	.rev-pair-natural {
 		align-self: start;
+	}
+
+	/*
+	 * ⭐ ITEM 1's COUNTERPART — THE ONE PAIR THAT STILL WANTS TO MATCH
+	 * HEIGHTS. `heightsClose` (script block) opts `This build` and `What each
+	 * service calls it` INTO this only once both are measured and the
+	 * shorter is within 25% of the taller — everywhere else on the grid
+	 * (the bucket cards after them) keeps its own, honest content height.
+	 */
+	.rev-pair-match {
+		align-self: stretch;
 	}
 
 	/*

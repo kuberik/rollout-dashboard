@@ -192,28 +192,33 @@ describe('revisionCoverage', () => {
 	}
 
 	/**
-	 * ⭐ ROUND 4a, ITEM A — split rows, not a merged one. `heldRevisionFixture`
-	 * now produces TWO rows (`revision-ledger.test.ts` has the same fixture's
-	 * own row-level assertions): rel-67's OWN row correctly reports `notYet`
-	 * — nobody actually runs it — instead of the false `live` the old merged
-	 * row borrowed from the sibling release that WAS running. `onRevision`
-	 * (on the raw `RevisionSlot`) is what still lets this row say "these
-	 * three run the same COMMIT, just not this release of it".
+	 * ⭐ REVISIONS-2026-09-06, ITEM 1 — SUPERSEDES THE ROUND 4a EXPECTATION
+	 * THIS TEST USED TO ASSERT. `heldRevisionFixture` still produces TWO rows
+	 * (`revision-ledger.test.ts` has the same fixture's own row-level
+	 * assertions), but the held release's OWN row now reports `live: 3`, not
+	 * `notYet: 3` — the page's identifier is the SHA, and all three places
+	 * genuinely run this commit (under the sibling release). Reading `notYet`
+	 * here was the exact bug the round-4/5 critique caught live: `held in 3
+	 * places · 3 of 6` while all 6 places ran the revision. `onOwnRelease`
+	 * carries the finer fact ("not on THIS row's exact release") that
+	 * `classify()` no longer folds into the bucket.
 	 */
-	it('gives the held release its own row: not here yet, never a false `live`', () => {
+	it('gives the held release its own row: live, on the commit, but not on its own release', () => {
 		const repo = heldRevisionFixture();
 		expect(repo.rows).toHaveLength(2);
 		const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
 		const cov = revisionCoverage(held, new Date());
-		expect(cov.liveCount).toBe(0);
+		expect(cov.liveCount).toBe(3);
 		expect(cov.totalCount).toBe(3);
-		expect(cov.buckets.some((b) => b.key === 'live')).toBe(false);
-		const notYet = cov.buckets.find((b) => b.key === 'notYet');
-		expect(notYet?.slots.length).toBe(3);
-		// They ARE running the same commit — just the sibling release.
-		expect(notYet?.slots.every((s) => s.slot.onRevision)).toBe(true);
-		expect(notYet?.slots.every((s) => s.runs === '1.66.0-66')).toBe(true);
-		expect(notYet?.slots.every((s) => s.label === '1.67.0-67')).toBe(true);
+		expect(cov.buckets.some((b) => b.key === 'notYet')).toBe(false);
+		const live = cov.buckets.find((b) => b.key === 'live');
+		expect(live?.slots.length).toBe(3);
+		// They ARE running the same commit — just the sibling release, so
+		// `onOwnRelease` is false even though the bucket is `live`.
+		expect(live?.slots.every((s) => s.onOwnRelease)).toBe(false);
+		expect(live?.slots.every((s) => s.slot.onRevision)).toBe(true);
+		expect(live?.slots.every((s) => s.runs === '1.66.0-66')).toBe(true);
+		expect(live?.slots.every((s) => s.label === '1.67.0-67')).toBe(true);
 	});
 
 	it('gives the running release its own row: live, and on its own release', () => {
@@ -259,16 +264,23 @@ describe('revisionCoverage', () => {
 		});
 
 		/**
-		 * ⭐ ROUND 4a, ITEM A — the "partial mix" this test used to construct
-		 * INSIDE one row's `live` bucket (one service on its own release, one
-		 * held behind a gate) can no longer occur that way: the split puts
-		 * each release in its own row. What used to be one row of 2 `live`
-		 * places is now two rows of 1 `live` + 1 other bucket apiece — prod
-		 * is `live` on rel-67 while dev has not taken it yet (`notYet`); dev
-		 * is `live` on rel-66 while prod has already moved past it (`ahead`).
-		 * Neither draws a `held` segment.
+		 * ⭐ REVISIONS-2026-09-06, ITEM 1 — ASYMMETRIC BY DESIGN, so this fixture
+		 * is the one that proves it. `hfa-dev` runs the OLDER release (66) while
+		 * `hfa-prod` runs the NEWER one (67); both share one commit.
+		 *
+		 *   · On rel-67's OWN row, `dev` (on the older release of THIS commit)
+		 *     is now `live`, not `notYet` — item 1's fix. `prod` is `live` via
+		 *     plain `onIt`. Both places run the revision, so the row is `2 of 2`.
+		 *   · On rel-66's OWN row, `prod` (on the NEWER release) is still
+		 *     `ahead` — UNCHANGED. It has genuinely moved past this row's own
+		 *     release, which is a different fact from "hasn't arrived yet", and
+		 *     item 1 only touches the `currentRank > service.rank` (not-yet-
+		 *     arrived) branch, never the `ahead` one. `dev` is `live` via
+		 *     `onIt`.
+		 *
+		 * Neither draws a `held` segment either way.
 		 */
-		it('never emits a `held` segment on a partial mix either, split across the two rows it now is', () => {
+		it('is asymmetric: an older sibling release reads `live`, a newer one still reads `ahead`', () => {
 			const sha = 'fffffff0000000000000000000000000000000';
 			const older = { tag: 'main-66', version: '1.66.0-66', revision: sha, created: minsAgo(120) };
 			const newer = { tag: 'main-67', version: '1.67.0-67', revision: sha, created: minsAgo(10) };
@@ -284,8 +296,7 @@ describe('revisionCoverage', () => {
 			const rel67 = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
 			const rel66 = repo.rows.find((r) => r.services[0].label === '1.66.0-66')!;
 			expect(coverageSegments(revisionCoverage(rel67, new Date()))).toEqual([
-				{ key: 'live', count: 1, title: 'Running it now', reachable: true },
-				{ key: 'notYet', count: 1, title: 'Not here yet', reachable: true }
+				{ key: 'live', count: 2, title: 'Running it now', reachable: true }
 			]);
 			expect(coverageSegments(revisionCoverage(rel66, new Date()))).toEqual([
 				{ key: 'live', count: 1, title: 'Running it now', reachable: true },
@@ -409,6 +420,7 @@ describe('revisionCoverage', () => {
 				dotClass: '',
 				statusWord: 'deploy succeeded',
 				stuck: false,
+				inFlight: false,
 				runs: '1.3.0',
 				currentRank: 0,
 				revRank: 0,
@@ -431,6 +443,135 @@ describe('revisionCoverage', () => {
 			const state = buildState(cov);
 			expect(state.key).toBe('done');
 			expect(state.word).toBe('fully rolled out');
+		});
+	});
+
+	/**
+	 * ⭐ REVISIONS-2026-09-06, ITEM 1 — THE EXACT LIVE-FLEET SHAPE. Two
+	 * services share one commit: `hello-api-app` has only ever released it
+	 * once (`1.66.0-66`), `hello-frontend-app` has released it twice — the
+	 * running `2.66.0-66` and the held `2.67.0-67`. All SIX places run the
+	 * revision. The bug report: the hero for this commit read `held in 3
+	 * places · 3 of 6` with a half-empty bar, though every place was on it.
+	 */
+	describe('the two-service held-commit fleet shape', () => {
+		function twoServiceHeldFixture() {
+			const sha = 'ddddddd0000000000000000000000000000000';
+			const apiRel = {
+				tag: 'main-api-66',
+				version: '1.66.0-66',
+				revision: sha,
+				created: minsAgo(120)
+			};
+			const older = { tag: 'main-66', version: '2.66.0-66', revision: sha, created: minsAgo(120) };
+			const newer = { tag: 'main-67', version: '2.67.0-67', revision: sha, created: minsAgo(10) };
+			const rollouts = [
+				rollout('hello-api-app', 'haa-dev', [apiRel], [{ r: apiRel, minutesAgo: 5 }]),
+				rollout('hello-api-app', 'haa-staging', [apiRel], [{ r: apiRel, minutesAgo: 5 }]),
+				rollout('hello-api-app', 'haa-prod', [apiRel], [{ r: apiRel, minutesAgo: 3 }]),
+				rollout(
+					'hello-frontend-app',
+					'hfa-dev',
+					[newer, older],
+					[{ r: older, minutesAgo: 5 }]
+				),
+				rollout(
+					'hello-frontend-app',
+					'hfa-staging',
+					[newer, older],
+					[{ r: older, minutesAgo: 5 }]
+				),
+				rollout(
+					'hello-frontend-app',
+					'hfa-prod',
+					[newer, older],
+					[{ r: older, minutesAgo: 3 }]
+				)
+			];
+			const environments = [
+				environment('hello-api-app', 'haa-dev', 'dev'),
+				environment('hello-api-app', 'haa-staging', 'staging'),
+				environment('hello-api-app', 'haa-prod', 'prod'),
+				environment('hello-frontend-app', 'hfa-dev', 'dev'),
+				environment('hello-frontend-app', 'hfa-staging', 'staging'),
+				environment('hello-frontend-app', 'hfa-prod', 'prod')
+			];
+			return buildRevisionLedger(rollouts, environments)[0];
+		}
+
+		it('reads 6 of 6, never 3 of 6, on the held release\'s own row', () => {
+			const repo = twoServiceHeldFixture();
+			const held = repo.rows.find((r) => r.services.some((s) => s.label === '2.67.0-67'))!;
+			const cov = revisionCoverage(held, new Date());
+			expect(cov.liveCount).toBe(6);
+			expect(cov.totalCount).toBe(6);
+			expect(cov.buckets.some((b) => b.key === 'notYet')).toBe(false);
+		});
+	});
+
+	/**
+	 * ⭐ REVISIONS-2026-09-06, ITEM 2 (IN-FLIGHT STATE, blocking). During a pin
+	 * clear the list read `fully rolled out · 9 of 9` for ~2 minutes while one
+	 * place was mid-canary (`bakeStatus: Deploying`). A slot whose newest
+	 * history entry is `Deploying` or `InProgress` buckets as `deploying` —
+	 * excluded from `live` — so the page can never again call a build "fully
+	 * rolled out" while a deploy is still going out somewhere.
+	 */
+	describe('the in-flight bucket', () => {
+		function inFlightFixture(bake: string) {
+			const A = [rel('aaaaaaa', '1.3.0', 10), rel('bbbbbbb', '1.2.0', 120)];
+			const rollouts = [
+				rollout('api', 'api-dev', A, [{ r: A[0], minutesAgo: 5 }]),
+				rollout('api', 'api-prod', A, [{ r: A[0], minutesAgo: 1, bake }])
+			];
+			const environments = [
+				environment('api', 'api-dev', 'dev'),
+				environment('api', 'api-prod', 'prod')
+			];
+			return buildRevisionLedger(rollouts, environments)[0];
+		}
+
+		it('buckets a `Deploying` slot as `deploying`, excluded from `live`', () => {
+			const repo = inFlightFixture('Deploying');
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			expect(cov.liveCount).toBe(1);
+			expect(cov.totalCount).toBe(2);
+			const deploying = cov.buckets.find((b) => b.key === 'deploying');
+			expect(deploying?.slots.length).toBe(1);
+			expect(deploying?.slots[0].inFlight).toBe(true);
+			expect(cov.buckets.some((b) => b.key === 'live' && b.slots.length === 2)).toBe(false);
+		});
+
+		it('buckets an `InProgress` (baking) slot as `deploying` too', () => {
+			const repo = inFlightFixture('InProgress');
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const deploying = cov.buckets.find((b) => b.key === 'deploying');
+			expect(deploying?.slots.length).toBe(1);
+			expect(deploying?.slots[0].inFlight).toBe(true);
+		});
+
+		it('never says "fully rolled out" while a place is still deploying', () => {
+			const repo = inFlightFixture('Deploying');
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const state = buildState(cov);
+			expect(state.key).toBe('deploying');
+			expect(state.word).not.toBe('fully rolled out');
+			expect(state.word).toBe('1 live · 1 deploying');
+		});
+
+		it('is `done` once the in-flight place settles — same fixture, no bake override', () => {
+			const A = [rel('aaaaaaa', '1.3.0', 10), rel('bbbbbbb', '1.2.0', 120)];
+			const rollouts = [
+				rollout('api', 'api-dev', A, [{ r: A[0], minutesAgo: 5 }]),
+				rollout('api', 'api-prod', A, [{ r: A[0], minutesAgo: 1 }])
+			];
+			const environments = [
+				environment('api', 'api-dev', 'dev'),
+				environment('api', 'api-prod', 'prod')
+			];
+			const repo = buildRevisionLedger(rollouts, environments)[0];
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			expect(buildState(cov).key).toBe('done');
 		});
 	});
 });

@@ -165,6 +165,17 @@
 			something to say. Same header, same card; the two-line, 218px
 			`.lead-top` this branch replaces is still what the detail page
 			renders (`compact` defaults `false`).
+
+			⛔ REVISIONS-2026-09-06, ITEM 1 — NO FIGURE HERE ANY MORE, AND THE
+			STATE MARK IS CONDITIONAL. The host `Card`'s own header already
+			prints the identical `N of M places` rollup (`+page.svelte`'s
+			`heroVerdict`) — this component's own `lead-compact-figure` was the
+			SAME number a second time, 60px below it, sharing the exact same
+			`state.title`. And a hero whose bar is omitted — `hideBar`, true the
+			moment `liveCount === totalCount` — has nothing left to explain: the
+			header already said "N of N places", so the body is the identifier
+			and (via `children`) `View commit`, nothing else. `BuildStateMark`
+			only draws when there IS a shortfall left to name.
 		-->
 		<div class="lead-compact">
 			<div class="lead-compact-id min-w-0">
@@ -175,11 +186,9 @@
 				{:else}
 					<h1 class="t-display-id text-gray-900 dark:text-white">{short}</h1>
 				{/if}
-				<BuildStateMark {coverage} size="row" />
-			</div>
-			<div class="lead-compact-figure" title={state.title}>
-				<span class="t-dense text-gray-900 dark:text-white">{coverage.liveCount}</span>
-				<span class="t-micro text-gray-500 dark:text-gray-400">of {coverage.totalCount}</span>
+				{#if !hideBar}
+					<BuildStateMark {coverage} size="row" />
+				{/if}
 			</div>
 		</div>
 	{:else}
@@ -437,13 +446,8 @@
 		min-width: 0;
 	}
 
-	.lead-compact-figure {
-		display: flex;
-		align-items: baseline;
-		gap: 4px;
-		flex-shrink: 0;
-		white-space: nowrap;
-	}
+	/* ⛔ `.lead-compact-figure` REMOVED, ITEM 1 — it duplicated the host
+	   `Card`'s own header rollup one row down; see the markup comment above. */
 
 	/*
 	 * ⭐ CRAFT REVIEW ITEM 1 — THE PAINTED TRACK, ONE FILL, EXACT WIDTH.

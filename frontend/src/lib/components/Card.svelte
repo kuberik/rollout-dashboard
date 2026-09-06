@@ -98,6 +98,7 @@
 	let {
 		icon,
 		title,
+		titleTooltip = undefined,
 		titleHref = undefined,
 		verdict = null,
 		verdictTone = 'neutral',
@@ -119,6 +120,17 @@
 		 */
 		icon?: Component;
 		title: string;
+		/**
+		 * ⭐ REVISIONS-2026-09-06, ITEM 10 — A `title` ATTRIBUTE FOR WHEN THE
+		 * CALLER FOLDS ITS OWN HEADING TO A COUNT. `/revisions`' hero folds
+		 * `Newest build · hello-api-app · hello-frontend-app` to `Newest build
+		 * · 2 services` below 560px so the header stops wrapping to a second
+		 * line at 390/640 — but the folded names must stay reachable
+		 * somewhere, the same "fold in text, keep the full set in a `title`"
+		 * idiom the ledger's own `.svc-line-caption` already uses. `undefined`
+		 * is a no-op: every existing call site renders byte-identical.
+		 */
+		titleTooltip?: string;
 		/** Makes the whole header bar go here. See the note above. */
 		titleHref?: string;
 		/** The rolled-up answer, right-aligned. `3/3 healthy`, `2 builds`. */
@@ -214,7 +226,10 @@
 			{#if Icon}
 				<Icon class="h-4 w-4 shrink-0 {iconClass}" />
 			{/if}
-			<h2 class="t-card-title min-w-0 break-words text-gray-900 dark:text-white">
+			<h2
+				class="t-card-title min-w-0 break-words text-gray-900 dark:text-white"
+				title={titleTooltip}
+			>
 				{#if titleHref}
 					<a
 						href={titleHref}

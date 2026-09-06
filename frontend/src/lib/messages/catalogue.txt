@@ -171,6 +171,9 @@ lib/components/ClearPinModal.svelte	code	Cannot clear pin: Dashboard is not mana
 lib/components/ClearPinModal.svelte	code	dashboard is not managing the wantedVersion field
 lib/components/ClearPinModal.svelte	code	Failed to clear pin
 lib/components/ClearPinModal.svelte	code	on the … cluster
+lib/components/ClearPinModal.svelte	code	Pinned …
+lib/components/ClearPinModal.svelte	code	Pinned by …
+lib/components/ClearPinModal.svelte	code	Pinned by … · …
 lib/components/ClearPinModal.svelte	code	Successfully cleared version pin
 lib/components/ClearPinModal.svelte	text	The dashboard is not managing the wantedVersion field. Clearing may conflict with other controllers.
 lib/components/ClearPinModal.svelte	text	This clears the pin currently held in
@@ -691,6 +694,8 @@ lib/view-models/regions.ts	code	repeat(auto-fit, minmax(…px, 1fr))
 lib/view-models/release-delta.ts	code	… … (new)
 lib/view-models/release-delta.ts	code	… … (removed)
 lib/view-models/release-delta.ts	code	Same commit as …. What changed: requires ….
+lib/view-models/revision-coverage.ts	code	… live · … deploying
+lib/view-models/revision-coverage.ts	code	… place… … a deploy in progress right now
 lib/view-models/revision-coverage.ts	code	… place… … already deployed a newer build
 lib/view-models/revision-coverage.ts	code	… place… … not deployed this build yet
 lib/view-models/revision-coverage.ts	code	… place… moved on
@@ -715,6 +720,7 @@ lib/view-models/revision-coverage.ts	code	These follow a different release line,
 lib/view-models/revision-coverage.ts	code	These have already deployed a newer build, so this one is behind them.
 lib/view-models/revision-coverage.ts	code	This build has not been deployed here yet.
 lib/view-models/revision-coverage.ts	code	This build is deployed here, and the deploy is not healthy.
+lib/view-models/revision-coverage.ts	code	This build is going out here right now — not settled yet.
 lib/view-models/revision-ledger.ts	code	… behind
 lib/view-models/revision-ledger.ts	code	… held
 lib/view-models/revision-ledger.ts	code	Deployed here, but the deploy is not healthy.
@@ -1083,7 +1089,7 @@ routes/revisions/[...slug]/+page.svelte	title	… is held
 routes/revisions/[...slug]/+page.svelte	code	… is held in …
 routes/revisions/[...slug]/+page.svelte	title	… is stuck
 routes/revisions/[...slug]/+page.svelte	text	… last deployed
-routes/revisions/[...slug]/+page.svelte	text	… never deployed …
+routes/revisions/[...slug]/+page.svelte	text	… No repository
 routes/revisions/[...slug]/+page.svelte	title	… of … places running …
 routes/revisions/[...slug]/+page.svelte	code	… of them on …; ….
 routes/revisions/[...slug]/+page.svelte	text	… place …
@@ -1093,26 +1099,30 @@ routes/revisions/[...slug]/+page.svelte	code	… services
 routes/revisions/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
 routes/revisions/[...slug]/+page.svelte	title	A newer release of this build exists and no rule lets it through yet
 routes/revisions/[...slug]/+page.svelte	title	A place is one service in one environment.
+routes/revisions/[...slug]/+page.svelte	text	ago … …
+routes/revisions/[...slug]/+page.svelte	text	ago … never deployed …
 routes/revisions/[...slug]/+page.svelte	text	All revisions
 routes/revisions/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
 routes/revisions/[...slug]/+page.svelte	text	Commit message and author need GitHub. …
+routes/revisions/[...slug]/+page.svelte	text	either. … No repository
 routes/revisions/[...slug]/+page.svelte	title	Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest.
 routes/revisions/[...slug]/+page.svelte	text	Held — still running
 routes/revisions/[...slug]/+page.svelte	code	Held by a deploy window
 routes/revisions/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
 routes/revisions/[...slug]/+page.svelte	code	Held for another …
 routes/revisions/[...slug]/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
-routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard.
+routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard, so it cannot hold the revision
+routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard. …
 routes/revisions/[...slug]/+page.svelte	text	knows the revision
 routes/revisions/[...slug]/+page.svelte	text	kuberik | …
-routes/revisions/[...slug]/+page.svelte	text	No repository
 routes/revisions/[...slug]/+page.svelte	text	Nothing in
 routes/revisions/[...slug]/+page.svelte	text	now on
-routes/revisions/[...slug]/+page.svelte	text	of … places run this revision …
+routes/revisions/[...slug]/+page.svelte	text	of … places run this build …
+routes/revisions/[...slug]/+page.svelte	text	Open …
 routes/revisions/[...slug]/+page.svelte	aria-label	Open the … rollout for …
 routes/revisions/[...slug]/+page.svelte	title	Open the … rollout for …
 routes/revisions/[...slug]/+page.svelte	code	Pinned to … — automatic deploys are paused until the pin is cleared.
-routes/revisions/[...slug]/+page.svelte	text	Ran before in … … (
+routes/revisions/[...slug]/+page.svelte	text	Ran before in … … ·
 routes/revisions/[...slug]/+page.svelte	code	Ready to deploy — still on …
 routes/revisions/[...slug]/+page.svelte	code	Ready to deploy here
 routes/revisions/[...slug]/+page.svelte	text	Repository not found
@@ -1127,6 +1137,7 @@ routes/revisions/[...slug]/+page.svelte	text	Tracking build … in …
 routes/revisions/[...slug]/+page.svelte	text	View commit
 routes/revisions/[...slug]/+page.svelte	title	What each service calls it
 routes/revisions/+page.svelte	text	, stream down … …
+routes/revisions/+page.svelte	text	… … … … … … services …
 routes/revisions/+page.svelte	code	… … held in ….
 routes/revisions/+page.svelte	text	… · live … · updated
 routes/revisions/+page.svelte	code	… +… more
@@ -1162,7 +1173,6 @@ routes/revisions/+page.svelte	code	History keeps the last … deploys per servic
 routes/revisions/+page.svelte	code	in … · …
 routes/revisions/+page.svelte	text	kuberik | Revisions
 routes/revisions/+page.svelte	code	Last deployed …
-routes/revisions/+page.svelte	code	max-width: 559px
 routes/revisions/+page.svelte	title	Never deployed
 routes/revisions/+page.svelte	title	No longer running anywhere
 routes/revisions/+page.svelte	text	no match

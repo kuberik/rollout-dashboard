@@ -564,17 +564,21 @@ describe('/revisions — round 3 §1 (a repository is not one release line)', ()
 		expect(screen.getAllByText('m-jobs').length).toBeGreaterThan(0);
 	});
 
-	test('the header states one grammar with everyone else (round 4, item 11); "N release lines" moves to the meta line', async () => {
+	test('a multi-line repo prints NO distance verdict at repo scope (item 6, supersedes round 4 item 11)', async () => {
 		const fleet = twoLineRepoFixture('m');
 		stubFetch(fleet.rollouts, fleet.environments);
 		await renderRevisions();
-		// ⭐ ROUND 4, ITEM 11 — a multi-line repo used to print `N release
-		// lines` where a single-line repo printed a distance verdict (`N
-		// newer builds` / `Newest build deployed`) — one header slot, two
-		// grammars. This fixture has nothing pending on either line, so both
-		// shapes now agree on `Newest build deployed`; the release-line COUNT
-		// survives only on the meta line below.
-		expect(screen.getByText('Newest build deployed')).toBeInTheDocument();
+		// ⛔ REVISIONS-2026-09-06, ITEM 6 — SUPERSEDES round 4 item 11's OWN
+		// EXPECTATION. A multi-line repo used to print a distance verdict at
+		// repo scope just like a single-line one (`Newest build deployed`) —
+		// which is a claim about `repo.rows[0]`, i.e. ONE line's own frontier,
+		// stated as if it were true of the whole repository. On the live
+		// fleet that produced `Newest build held` for a repo whose OTHER line
+		// was fully caught up, `9 of 9`. A repository with more than one
+		// release line now prints NO distance-verdict sentence in the header
+		// at all — the hero cards below speak for each line individually; the
+		// release-line COUNT still lives on the meta line.
+		expect(screen.queryByText('Newest build deployed')).toBeNull();
 		expect(screen.getByText(/·\s*across\s*2\s*release lines/)).toBeInTheDocument();
 	});
 
