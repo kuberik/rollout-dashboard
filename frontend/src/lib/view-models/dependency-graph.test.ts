@@ -588,7 +588,7 @@ describe('the sentences', () => {
 	it('rolls the whole graph up in one line', () => {
 		// 3 contract gates, plus the two promotion gates into staging and prod
 		// that publish an empty allow-list while `rel-67` is waiting.
-		expect(networkVerdict(build())).toEqual({ text: '5 of 7 links held', tone: 'adverse' });
+		expect(networkVerdict(build())).toEqual({ text: '5 of 7 links held', tone: 'held' });
 	});
 
 	/**

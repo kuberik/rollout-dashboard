@@ -1710,6 +1710,7 @@
 									<span
 										class="mx-1 inline-block h-2 w-2 shrink-0 rounded-full sm:mx-2"
 										style="background-color: {podColor}"
+										data-pod={logItem.pod}
 										title={logItem.pod}
 										aria-hidden="true"
 									></span>
@@ -1717,7 +1718,7 @@
 									<!-- Hue tells pods apart; weight was making the one column
 									     that repeats on every row the loudest thing in the pane
 									     while the message that varies sat in gray-300. -->
-									<span class="mx-1 shrink-0 sm:mx-2" style="color: {podColor}" title={logItem.pod}
+									<span class="mx-1 shrink-0 sm:mx-2" style="color: {podColor}" data-pod={logItem.pod} title={logItem.pod}
 										>{logItem.pod}</span
 									>
 								{/if}
