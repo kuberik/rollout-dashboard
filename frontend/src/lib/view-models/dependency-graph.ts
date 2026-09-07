@@ -1067,7 +1067,7 @@ export function edgeSentence(e: GraphEdge, nodes: Map<string, GraphNode>): strin
 /** The whole graph in one line, for a card's right-aligned rollup. */
 export function networkVerdict(graph: RolloutGraph): {
 	text: string;
-	tone: 'neutral' | 'good' | 'adverse';
+	tone: 'neutral' | 'good' | 'adverse' | 'held';
 } {
 	/**
 	 * ⭐ EVERY ROLLUP NAMES ITS NOUN, AND THIS ONE HAD STOPPED TO.
@@ -1082,7 +1082,9 @@ export function networkVerdict(graph: RolloutGraph): {
 	const links = graph.edges.length;
 	if (links === 0) return { text: 'no links', tone: 'neutral' };
 	const blocked = graph.blockedEdges.length;
-	if (blocked > 0) return { text: `${blocked} of ${links} links held`, tone: 'adverse' };
+	// `held`, not `adverse`: a held link needs a person or another deploy, the
+	// product's orange; red beside the amber HELD chips read as failed.
+	if (blocked > 0) return { text: `${blocked} of ${links} links held`, tone: 'held' };
 	const unknown = graph.edges.filter((e) => e.state === 'unknown').length;
 	if (unknown > 0) return { text: `${unknown} of ${links} links not read`, tone: 'neutral' };
 	return { text: `${links} link${links === 1 ? '' : 's'} open`, tone: 'neutral' };
