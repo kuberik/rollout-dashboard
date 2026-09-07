@@ -549,7 +549,7 @@
 			(`HeadBandSkeleton`, `mb-5` — byte-identical to the loaded head row
 			47 lines below), then the SAME two-column split
 			(`min-[1440px]:grid-cols-[minmax(0,1fr)_320px]`) and the SAME card
-			grid (`[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]`,
+			grid (`[grid-template-columns:repeat(auto-fill,minmax(min(21rem,100%),1fr))]`,
 			`gap-2`) the loaded sections use — so the first placeholder card
 			lands at the same 425×95 (1440) / 343×95 (390) box the first real
 			card lands in, measured `pair.mjs`-verified at y=125 both widths.
@@ -574,7 +574,7 @@
 					<section class={i < skelSections.length - 1 ? 'mb-8' : ''}>
 						{@render skelSectionHeader()}
 						<div
-							class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+							class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(21rem,100%),1fr))]"
 						>
 							{#each s.cards as n (n)}
 								{@render skelMiniCard(s.withCause)}
@@ -752,7 +752,7 @@
 				<div
 					class="grid gap-3 {needsYou.length === 1
 						? 'cc-grid-solo'
-						: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
+						: '[grid-template-columns:repeat(auto-fill,minmax(min(21rem,100%),1fr))]'}"
 				>
 					{#each needsYou as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!--
@@ -917,7 +917,7 @@
 				<div
 					class="grid gap-3 {inMotion.length === 1
 						? 'cc-grid-solo'
-						: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
+						: '[grid-template-columns:repeat(auto-fill,minmax(min(21rem,100%),1fr))]'}"
 				>
 					{#each inMotion as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!-- ⛔ A PINNED ROLLOUT PROMOTES NOWHERE, AND A ROLLBACK IS NOT
@@ -1057,7 +1057,7 @@
 				<div
 					class="grid gap-2 {held.length === 1
 						? 'cc-grid-solo'
-						: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
+						: '[grid-template-columns:repeat(auto-fill,minmax(min(21rem,100%),1fr))]'}"
 				>
 					{#each held as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						{@const verdict = cardVerdict(
@@ -1234,7 +1234,7 @@
 				<div
 				class="grid gap-2 {trailing.length === 1
 					? 'cc-grid-solo'
-					: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
+					: '[grid-template-columns:repeat(auto-fill,minmax(min(21rem,100%),1fr))]'}"
 				>
 					{#each trailing as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!-- `{@const}` has to be the immediate child of the `{#each}`, not of
@@ -1447,7 +1447,7 @@
 				<div
 				class="grid gap-2 {steadySectionPreview.length === 1
 					? 'cc-grid-solo'
-					: '[grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]'}"
+					: '[grid-template-columns:repeat(auto-fill,minmax(min(21rem,100%),1fr))]'}"
 				>
 					{#each steadySectionPreview as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
 						<!-- `{@const}` has to be the immediate child of the `{#each}`. -->
