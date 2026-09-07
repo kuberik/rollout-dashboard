@@ -736,24 +736,68 @@
 	});
 
 	/**
-	 * ⭐ ITEM 2 (round-8 critique) — THE SUMMARY NAMES THE CAUSE, AND COUNTS
-	 * ONLY WHAT IT DRAWS. Measured live on `9f10e494d560`: CLOSED, the
-	 * banner read `2 rules in prod · 2 in staging · 1 in dev` — five —
-	 * while OPENED the same disclosure draws exactly one cause
-	 * (`primaryHold`, the dependency contract) plus two per-environment
-	 * promotion-order records that only clear once that cause does
-	 * (`secondaryEnvSections`, listed inside, never counted as causes
-	 * themselves). Five was never the right number for a body that draws
-	 * one cause. `Waiting on hello-api-app · 1 rule` says what actually
-	 * opens: the provider that has to ship, and the one real cause — the
-	 * same subject `primaryHold`'s own "Open hello-api-app" action names.
-	 * Falls back to the old per-environment breakdown on the rarer page
-	 * where nothing names a single provider (no dependency-type gate found
-	 * anywhere — every hold is a bare promotion-order/window gate).
+	 * ⭐ FINDING 1 (operator sweep, 2026-09-07) — THE ORDER, NOT A COUNT THAT
+	 * MISLEADS. `Waiting on hello-api-app · 1 rule` (the round-8 fix) said
+	 * what actually opens the hold — but read from `/revisions` alone, an
+	 * operator concluded shipping `hello-api-app` unblocks prod immediately.
+	 * It does not: `secondaryEnvSections` (below) still carries promotion-
+	 * order gates for staging ("after dev") and prod ("after staging") that
+	 * only clear once dev deploys, then staging — a sequence, not a single
+	 * gate. The `1 rule` count was also the wrong number to begin with, next
+	 * to the Overview's `2 rules for prod` and the Dependencies tab's `1
+	 * contract of 2 rules` for the identical hold — three different figures
+	 * for one fact. `promotionOrderClause` replaces the count with the
+	 * sequence itself, derived from the promotion-order gates' own "after
+	 * <env>" relationships (`ClassifiedGate.kind === 'promotion'`), the
+	 * environments printed in the product's one env-order
+	 * (`compareEnvironmentNames`). No promotion-order gate anywhere → no
+	 * "then …" clause: a bare contract hold with nothing sequenced behind it
+	 * has no order to state. No number is printed at all any more, so the
+	 * "a printed number must equal what the disclosure draws" rule holds by
+	 * construction. Falls back to the old per-environment breakdown on the
+	 * rarer page where nothing names a single provider (no dependency-type
+	 * gate found anywhere — every hold is a bare promotion-order/window
+	 * gate).
 	 */
+	const promotionOrderClause = $derived.by<string>(() => {
+		const hasPromotionGate = bannerEnvSections.some((s) =>
+			s.classifiedGates.some((g) => g.kind === 'promotion')
+		);
+		if (!hasPromotionGate) return '';
+		// `bannerEnvSections` is already sorted by `compareEnvironmentNames`.
+		return `then ${bannerEnvSections.map((s) => s.envLabel).join(' → ')}`;
+	});
+
+	/**
+	 * ⭐ FINDING 1, MOBILE RESIDUE — `AlertPanel`'s OWN disclosure trigger is
+	 * `whitespace-nowrap` ON PURPOSE (its own "F10" doc comment: a two-word
+	 * label that WRAPS mid-word, e.g. `1` / `rule` on separate lines, reads
+	 * as broken — the fix makes the row give way instead). That contract
+	 * assumed a short label. Measured live at 390 on `9f10e494d560`:
+	 * `Waiting on hello-api-app · then dev → staging → prod` (54 characters)
+	 * ran off the card with no ellipsis, no scrollbar, just gone —
+	 * `nowrap` cannot make a genuinely long sentence fit by giving a row
+	 * away, there is no sibling left to give. This is a caller-side fold
+	 * (matching `heroNarrow`'s own idiom on the list page), not a change to
+	 * the shared component: below 560px the order clause drops from the
+	 * TRIGGER and the cause alone (`Waiting on hello-api-app`, always short
+	 * enough to fit) stays — the order itself is not lost, it is exactly
+	 * what the disclosed `STAGING`/`PROD` records name once opened.
+	 */
+	let viewportNarrow = $state(false);
+	$effect(() => {
+		const onResize = () => (viewportNarrow = window.innerWidth < 560);
+		onResize();
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
+
 	const bannerDisclosureLabel = $derived.by<string>(() => {
 		if (primaryHold) {
-			return `Waiting on ${primaryHold.reason.subject ?? 'a service'} · ${countLabel(1, 'rule')}`;
+			// The order clause is the truth an operator on a phone needs most; it wraps, it is never dropped.
+			const order = promotionOrderClause;
+			const waitingOn = `Waiting on ${primaryHold.reason.subject ?? 'a service'}`;
+			return order ? `${waitingOn} · ${order}` : waitingOn;
 		}
 		return ruleCountBreakdown;
 	});
@@ -957,6 +1001,26 @@
 			}
 		}
 		return [...byLabel.values()].sort((a, b) => a.createdMs - b.createdMs);
+	});
+
+	/**
+	 * ⭐ FINDING 2 (operator sweep, 2026-09-07) — `N SERVICES` ALONE
+	 * UNDERCOUNTS THE MOMENT A SHA CARRIES A HELD SIBLING RELEASE. Measured
+	 * live on `9f10e494d560`: `This build` said `2 services` while
+	 * `buildReleases`, three lines down the same card, listed THREE rows —
+	 * `hello-frontend-app` ships this commit as both `2.66.0-66` (running)
+	 * and `2.67.0-67` (held), plus `hello-api-app`'s own release of it. A
+	 * reader who only reads the count line never learns a release split even
+	 * exists. `buildReleases` is already this file's one count of distinct
+	 * releases on the revision (its own doc comment); this only prints the
+	 * clause when it says something `row.services.length` does not — the
+	 * ordinary one-release-per-service commit never grows a `· 1 releases`
+	 * tail nobody asked for.
+	 */
+	const serviceReleaseCountLabel = $derived.by<string>(() => {
+		const services = row?.services.length ?? 0;
+		const base = `${services} service${services === 1 ? '' : 's'}`;
+		return buildReleases.length > services ? `${base} · ${buildReleases.length} releases` : base;
 	});
 
 	/**
@@ -2228,8 +2292,16 @@
 							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
 							aria-hidden="true"
 						/>
+						<!--
+							⭐ FINDING 2 (operator sweep, 2026-09-07) — THE COUNT NAMES
+							BOTH UNITS WHEN THEY DIFFER. See `serviceReleaseCountLabel`'s
+							own comment: `2 services` said nothing untrue on its own, but
+							the list three lines below it (`buildReleases`) went on to
+							print THREE rows for this exact build — a real, sayable fact
+							this line was silently hiding a count for.
+						-->
 						<span class="t-body text-gray-700 dark:text-gray-200"
-							>{row.services.length} service{row.services.length === 1 ? '' : 's'}</span
+							>{serviceReleaseCountLabel}</span
 						>
 					</li>
 					<!--
@@ -2418,6 +2490,20 @@
 						{@const pinned = pinnedEnvsOf(svc)}
 						{@const ranBefore = ranBeforeOf(svc)}
 						<!--
+							⭐ FINDING 2 (operator sweep, 2026-09-07) — THE RUNNING RELEASE
+							LEADS. `chip?.role === 'held'` used to print `HELD 2.67.0-67`
+							alone, with the release actually running (`2.66.0-66`) folded
+							into a small gray line BELOW the row — a reader who stopped at
+							the chip (the loudest thing on the row) came away thinking
+							`2.67.0-67` was live. `runningLabelFor` reads the SAME `live`
+							bucket `heldNewest` already checked, so this can never name a
+							different release than the chip below it. `null` when the
+							places running it disagree on WHAT they run (a genuine split
+							`DESIGN.md` forbids naming half of) — same case that printed
+							nothing before, unchanged.
+						-->
+						{@const runningLabel = chip?.role === 'held' ? runningLabelFor(svc) : null}
+						<!--
 							ONE INK FOR A SERVICE NAME, ON BOTH REVISION PAGES. A service is
 							never the subject of either page — the revision is — so it takes
 							the secondary ink everywhere, and the three places that print it
@@ -2431,21 +2517,44 @@
 							>
 							<span class="rev-svc-build">
 								{#if chip && rank}
-									<Chip
-										role={chip.role}
-										label={chip.label}
-										title={svc.diverged
-											? 'On no environment’s release list — promotion does not arrive at it'
-											: chip.role === 'held'
-												? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy — not running anywhere yet`
-												: chip.role === 'newest'
-													? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`
-													: `${chip.label} the newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`}
-										value={svc.labelDiffers ? svc.label : undefined}
-										valueTitle={svc.labelDiffers ? svc.label : undefined}
-										wide
-										class="min-w-0"
-									/>
+									<!--
+										⭐ FINDING 2, CONTINUED — TWO CHIPS, RUNNING FIRST. A row
+										with a `runningLabel` is the ONE case this file's own
+										"one name, one badge, one denominator" rule (below, on
+										`.rev-svc-row`) grows a second badge: the release actually
+										live, then the release being held from replacing it —
+										`.chip-mark` is the product's existing loose-group idiom
+										for two adjacent, independently-joined boxes (already used
+										two rows down for `[PINNED][DEV]`), so this spends no new
+										geometry.
+									-->
+									<span class="chip-mark min-w-0">
+										{#if runningLabel}
+											<Chip
+												role="unranked"
+												label="running"
+												title="{svc.appName} is running {runningLabel} right now — the newer {svc.label} has not replaced it"
+												value={runningLabel}
+												wide
+												class="min-w-0"
+											/>
+										{/if}
+										<Chip
+											role={chip.role}
+											label={chip.label}
+											title={svc.diverged
+												? 'On no environment’s release list — promotion does not arrive at it'
+												: chip.role === 'held'
+													? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy — not running anywhere yet`
+													: chip.role === 'newest'
+														? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`
+														: `${chip.label} the newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`}
+											value={svc.labelDiffers ? svc.label : undefined}
+											valueTitle={svc.labelDiffers ? svc.label : undefined}
+											wide
+											class="min-w-0"
+										/>
+									</span>
 									<!-- ⭐ THE DENOMINATOR CARRIES ITS OWN DEFINITION.
 									     `newest` means different things in different corners of
 									     this product; here it is rank 0 on THIS service's ladder,
@@ -2474,26 +2583,6 @@
 									/>
 								{/if}
 							</span>
-							<!--
-								⭐ THE ROW'S SECOND FACT, ON THE SAME ROW. (2026-09-03,
-								operator-walk finding 4) `HELD 2.67.0-67` names what this
-								service is being kept FROM; it does not say what is actually
-								running instead, and that answer lived in a different card
-								(`Running it now`) forty pixels down. `runningLabelFor` reads
-								the SAME `live` bucket `heldNewest` above already checked, so
-								this can never name a different release than the chip does.
-							-->
-							{#if chip?.role === 'held'}
-								{@const runningLabel = runningLabelFor(svc)}
-								{#if runningLabel}
-									<div
-										class="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-									>
-										<HourglassOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-										<span>Held — still running <span class="t-code-sm">{runningLabel}</span></span>
-									</div>
-								{/if}
-							{/if}
 							{#if pinned.length > 0}
 								<!--
 									⭐ ROUND-4B REVIEW, ITEM 2 — A CHIP PAIR, NOT A SECOND
@@ -3520,6 +3609,14 @@
 	 * Stacked, the binding is the line break, which is a stronger grouping cue
 	 * than a shared right edge anyway; and every row is one name, one badge and
 	 * one denominator, so the badge has exactly one possible referent.
+	 *
+	 * ⛔ FINDING 2 (operator sweep, 2026-09-07) GROWS ONE EXCEPTION. A `held`
+	 * row now carries TWO badges — the release running, then the release held
+	 * from replacing it (`.chip-mark`, in the template) — because printing
+	 * only the held one is the exact defect this finding names: the loudest
+	 * thing on the row claimed a build that was not actually live anywhere.
+	 * `.rev-svc-build` gains `flex-wrap` so that pair can drop under the name
+	 * at 390 instead of forcing the row wider than its column.
 	 */
 	.rev-svc-row {
 		display: flex;
@@ -3534,6 +3631,7 @@
 	   which would leave the boxes ragged by 12px while claiming to be a column. */
 	.rev-svc-build {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		gap: 6px;
 		min-width: 0;

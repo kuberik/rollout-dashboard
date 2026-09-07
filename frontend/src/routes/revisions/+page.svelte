@@ -43,6 +43,7 @@
 		type GateContext
 	} from '$lib/view-models/blocking-story';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
+	import { compareEnvironmentNames } from '$lib/env-order';
 	// THE RAIL CARD'S TITLE IS THE REPO, NOT THE URL. See `repo-title.ts`.
 	import { repoTitle } from './repo-title';
 	// THE PRODUCT'S ONE RANK VOCABULARY.
@@ -239,6 +240,38 @@
 		const notPassing = [...story.checks, ...story.clock].map((g) => g.id);
 		const reason = blockReason({ awaiting, notPassing });
 		return reason ? { reason, appHref: null, appName: slot.appName } : null;
+	}
+
+	/**
+	 * ⭐ FINDING 1 (operator sweep, 2026-09-07) — THE ORDER, NOT JUST THE
+	 * CAUSE. `heldGateReason` above names WHO has to ship (`hello-api-app`);
+	 * an operator reading only that concludes shipping it unblocks every held
+	 * place at once. It does not: measured live on `9f10e494d560`, staging
+	 * carries its own promotion-order gate (`ghd-9qcnj`, "after dev") and prod
+	 * carries another ("after staging") — dev has to land FIRST, then
+	 * staging, then prod, even once the contract itself is satisfied
+	 * everywhere. This walks every held slot on the coverage (not just the
+	 * first, which `heldGateReason` stops at), and only when at least one of
+	 * them actually carries a promotion-order gate does it name the chain —
+	 * a bare contract hold with no promotion gate anywhere gets no "then …"
+	 * clause, because there is no order to state.
+	 */
+	function heldOrderClause(coverage: RevisionCoverage): string {
+		const slots = heldBehind(coverage).filter((s) => s.blockingGates.length > 0);
+		if (slots.length === 0) return '';
+		const envLabels = new Map<string, string>();
+		let hasPromotionGate = false;
+		for (const s of slots) {
+			envLabels.set(s.envLabel.toLowerCase(), s.envLabel);
+			const story = blockingStory(s.slot.cell.rollout, gateContext, {
+				subject: s.appName,
+				now: coarse
+			});
+			if (story.gates.some((g) => g.kind === 'promotion')) hasPromotionGate = true;
+		}
+		if (!hasPromotionGate) return '';
+		const envs = [...envLabels.values()].sort(compareEnvironmentNames);
+		return `then ${envs.join(' → ')}`;
 	}
 
 	/**
@@ -1415,6 +1448,27 @@
 	 * shows the names and only a genuinely narrow header folds.
 	 */
 	const heroNarrow = $derived(shellWidth < 560);
+
+	/**
+	 * ⭐ FINDING 1, MOBILE RESIDUE — same fold `bannerDisclosureLabel` uses on
+	 * the build page, for the identical reason: `AlertPanel`'s disclosure
+	 * trigger is `whitespace-nowrap` by contract (its own "F10" doc comment),
+	 * which is right for a short label and cannot make a 50+ character
+	 * sentence fit by giving a sibling away — there is no sibling here.
+	 * `shellWidth`/`heroNarrow` above only updates once a repository's own
+	 * `.rev-shell` disclosure has mounted (`use:trackRailWidth` sits on the
+	 * EXPANDED body), so a held banner on a COLLAPSED repository — the exact
+	 * shape this page opens on — would read the stale `Infinity` default
+	 * and never fold. This tracks the viewport directly instead, independent
+	 * of any one repository's open state.
+	 */
+	let viewportNarrow = $state(false);
+	$effect(() => {
+		const onResize = () => (viewportNarrow = window.innerWidth < 560);
+		onResize();
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
 
 	function scopeRecord(n: number): string {
 		const services = `${n} service${n === 1 ? '' : 's'}`;
@@ -2967,6 +3021,30 @@
 						{@const heldSubject = heldAmbiguous
 							? `${heldGate.appName} ${leadRow.services.find((s) => s.appName === heldGate.appName)?.label ?? leadRow.short}`
 							: leadRow.short}
+						<!--
+							⭐ FINDING 1 (operator sweep, 2026-09-07) — THE DISCLOSURE
+							TRIGGER STATES THE CAUSE AND THE ORDER, NOT A BARE COUNT.
+							`1 rule` told an operator nothing they could act on and, read
+							beside the Overview's own `2 rules for prod`, read as a
+							DIFFERENT, smaller number for the identical hold. Only the
+							`contract` branch of `heldGateReason` names a subject
+							(`reason.subject`, the provider) — the pinned/awaiting/
+							notPassing branches never do, and keep the old `N rule(s)`
+							grammar `AlertPanel`'s own `footnoteCount` was built for. No
+							number is printed in the new form at all, so the "count words"
+							rule (a printed number must equal what the disclosure draws)
+							is satisfied by never printing one.
+						-->
+						{@const heldOrder =
+							heldGate.reason.subject ? heldOrderClause(leadCov) : ''}
+						{@const heldWaitingOn = heldGate.reason.subject
+							? `Waiting on ${heldGate.reason.subject}`
+							: null}
+						{@const heldDisclosureLabel = heldWaitingOn
+							? heldOrder
+								? `${heldWaitingOn} · ${heldOrder}`
+								: heldWaitingOn
+							: undefined}
 						{#snippet heldFootnote()}
 							<p class="min-w-0">{heldGate.reason.line}</p>
 							{#if heldGate.appHref}
@@ -3004,7 +3082,8 @@
 								title="{heldSubject} is held"
 								message={releaseSplitSentence(leadCov)}
 								footnoteBody={heldFootnote}
-								footnoteCount={1}
+								footnoteLabel={heldDisclosureLabel}
+								footnoteCount={heldDisclosureLabel ? undefined : 1}
 								footnoteNoun="rule"
 								class=""
 							/>
@@ -3261,11 +3340,31 @@
 												class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
 												aria-hidden="true"
 											/>
+											<!--
+												⭐ FINDING 3 (operator sweep, 2026-09-07) — BELOW 560
+												THE TITLE WRAPS; IT DOES NOT CLIP A SECOND TIME.
+												Measured live at 390 on `9f10e494d560`'s repo card:
+												`Newest build 9f10e49 · 2 servi…` — `scrollWidth 257 /
+												clientWidth 249` — even though `heroTitleTail` had
+												ALREADY folded to `N services` (`heroFolds`, above) and
+												the row itself had already switched to `flex-wrap`
+												(`heroNarrow`, on the outer `.tap-zone`). `truncate` was
+												unconditional on this `<a>`, so a title short enough to
+												need only a second line got single-line-ellipsised
+												before it ever had the chance to wrap onto one. Above
+												560 `truncate` is still exactly right — ITEM 3's own
+												comment above explains why the row must stay one line
+												there — so this only drops it in the band `heroNarrow`
+												already governs.
+											-->
 											<h2
 												class="t-card-title min-w-0 flex-1 text-gray-900 dark:text-white"
 												title={heroTitleTooltip ?? `Newest build · ${heroNames.join(' · ')}`}
 											>
-												<a class="tap-link hover:underline block truncate" href={heroHref}>
+												<a
+													class="tap-link hover:underline block {heroNarrow ? '' : 'truncate'}"
+													href={heroHref}
+												>
 													Newest build <span class="t-code">{leadRow.short}</span> · {heroTitleTail}
 												</a>
 											</h2>
@@ -3281,9 +3380,42 @@
 											`Card` call site, but the identical rollup shape, so it
 											gets the identical class.
 										-->
-										<span class="card-header-rollup flex shrink-0 items-center gap-2">
+										<!--
+											⭐ FINDING 3, RESIDUE (operator sweep, 2026-09-07) — THE
+											ROLLUP OVERFLOWS TOO ONCE IT CARRIES THE HELD CLAUSE.
+											Measured live at 320 on `9f10e494d560`'s repo card:
+											`.card-header-rollup`'s `scrollWidth 316 / clientWidth
+											237` — 79px of real horizontal overflow. `heroVerdictFull`
+											("`6 of 6 places · 2.67.0-67 held`", round-8's own held-
+											sibling addition) is a whole clause longer than the plain
+											`heroVerdict` ("`6 of 6 places`") this row was built for,
+											and `whitespace-nowrap` plus `shrink-0` never let it or
+											`View commit` give an inch — the fold-on-fit fix above the
+											title never reached this sibling span. Same medicine,
+											same `heroNarrow` signal: below 560 the clause wraps
+											instead of forcing the row wider than its card.
+
+											⚠️ `flex-wrap` ALONE DID NOT FIX IT. Adding just
+											`flex-wrap` to a `shrink-0` item left the item's OWN box
+											sized to its unwrapped content (294px) regardless of the
+											237px its row actually had, because `shrink-0` forbids the
+											box itself from narrowing — `flex-wrap` only decides
+											whether ITS children wrap once the box IS narrower than
+											them, and a box that never shrinks never gets narrower.
+											Below `heroNarrow` this drops `shrink-0` for `w-full
+											min-w-0`, the same shape the title's own wrapped span
+											already takes, so the row is what's now free to give the
+											verdict clause and `View commit` their own lines.
+										-->
+										<span
+											class="card-header-rollup flex items-center gap-2 {heroNarrow
+												? 'w-full min-w-0 flex-wrap'
+												: 'shrink-0'}"
+										>
 											<span
-												class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400"
+												class="t-card-rollup text-gray-500 dark:text-gray-400 {heroNarrow
+													? ''
+													: 'whitespace-nowrap'}"
 												title={scopeRecord(heroServices.length)}>{heroVerdictFull}</span
 											>
 											{#if commitUrlFor(repo.repoKey, leadRow.revision)}
