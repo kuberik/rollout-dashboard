@@ -309,7 +309,7 @@
 		     which is the one exception the craft rules grant. -->
 		<a
 			href="#main-content"
-			class="sr-only rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-lg focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[200] dark:bg-gray-800 dark:text-white"
+			class="sr-only rounded bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-lg focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[200] dark:bg-gray-800 dark:text-white"
 		>
 			Skip to main content
 		</a>

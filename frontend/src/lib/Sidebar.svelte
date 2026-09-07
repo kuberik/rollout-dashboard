@@ -80,7 +80,7 @@
 				href={n.href}
 				aria-current={active ? 'page' : undefined}
 				title={collapsed ? n.label : undefined}
-				class="group inline-flex items-center {collapsed ? 'justify-center' : 'gap-2.5'} rounded-md px-2 py-2 text-sm font-medium transition-colors
+				class="group inline-flex items-center {collapsed ? 'justify-center' : 'gap-2.5'} rounded px-2 py-2 text-sm font-medium transition-colors
 					{active
 						? 'bg-gray-100 text-gray-900 dark:bg-gray-700/60 dark:text-white'
 						: 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/40 dark:hover:text-white'}"
@@ -99,7 +99,7 @@
 			aria-controls="sidebar-sections"
 			aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 			title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-			class="inline-flex w-full items-center {collapsed ? 'justify-center' : 'gap-2.5'} rounded-md px-2 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/40 dark:hover:text-gray-300"
+			class="inline-flex w-full items-center {collapsed ? 'justify-center' : 'gap-2.5'} rounded px-2 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/40 dark:hover:text-gray-300"
 		>
 			{#if collapsed}
 				<ChevronDoubleRightOutline class="h-3.5 w-3.5 shrink-0" />
