@@ -865,8 +865,13 @@
 			     A TITLED CARD, not a bordered box: 16px icon + 14px/600 title on
 			     the left, the rolled-up answer hard-right, body below the rule.
 			     Both other regions on this page follow the same header. -->
+			<!-- One deploy is one row (the card below); on a phone the timeline card
+			     was a 145px box restating it. It stays on desktop, where the
+			     Compare namespace toggle is the way to see siblings. -->
 			<div
-				class="mb-5 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+				class="mb-5 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {totalDeploys < 2
+					? 'max-sm:hidden'
+					: ''}"
 			>
 				<div
 					class="flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
