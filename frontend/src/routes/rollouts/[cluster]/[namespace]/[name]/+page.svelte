@@ -1736,9 +1736,9 @@
 							<span class="skel-block h-5 w-72"></span>
 							<span class="skel-block h-3.5 w-48"></span>
 							<div class="flex flex-wrap gap-2 pt-1">
-								<span class="skel-block h-9 w-32 rounded-md"></span>
-								<span class="skel-block h-9 w-32 rounded-md"></span>
-								<span class="skel-block h-9 w-40 rounded-md"></span>
+								<span class="skel-block h-9 w-32 rounded"></span>
+								<span class="skel-block h-9 w-32 rounded"></span>
+								<span class="skel-block h-9 w-40 rounded"></span>
 							</div>
 						</div>
 						<!-- Pipeline card — see `managedResourcesKnown`'s own note
@@ -2957,7 +2957,7 @@
 									onclick={reconcileFluxResources}
 									disabled={isReconciling}
 									aria-label="Refresh the build list"
-									class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+									class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
 								>
 									{#if isReconciling}
 										<StatusSpinner size="4" color="gray" />

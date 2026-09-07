@@ -966,7 +966,7 @@
 			<div class="space-y-3">
 				{#if latestEntry.message}
 					<div
-						class="rounded-md bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
+						class="rounded bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
 					>
 						<p class="text-sm italic text-gray-700 dark:text-gray-300">
 							{latestEntry.message}
@@ -1105,7 +1105,7 @@
 			     something — a failure, a cancellation, a stall. -->
 			{#if latestEntry.bakeStatusMessage && !bakeIsSucceeded}
 				<div
-					class="rounded-md bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
+					class="rounded bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
 				>
 					<p class="text-sm italic text-gray-700 dark:text-gray-300">
 						{latestEntry.bakeStatusMessage}

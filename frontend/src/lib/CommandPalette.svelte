@@ -732,7 +732,7 @@
 			</span>
 		{:else}
 			<span
-				class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400"
+				class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400"
 			>
 				<Icon class="h-3.5 w-3.5" />
 			</span>
@@ -908,7 +908,7 @@
 				{#if scope}
 					{@const ScopeIcon = KIND_ICON[scope]}
 					<span
-						class="inline-flex shrink-0 items-center gap-1 rounded-md bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700/60 dark:text-gray-200"
+						class="inline-flex shrink-0 items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700/60 dark:text-gray-200"
 					>
 						<ScopeIcon class="h-3 w-3" />
 						<span>{KIND_LABEL[scope]}</span>
@@ -956,7 +956,7 @@
 					type="button"
 					aria-label="Close"
 					onclick={() => (open = false)}
-					class="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-gray-200 sm:hidden"
+					class="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-gray-200 sm:hidden"
 				>
 					<span class="text-xl leading-none" aria-hidden="true">×</span>
 				</button>
@@ -1039,7 +1039,7 @@
 									: 'bg-gray-50/50 hover:bg-gray-100 dark:bg-gray-700/30 dark:hover:bg-gray-700/60'}"
 							>
 								<span
-									class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-gray-600 shadow-sm dark:bg-gray-800 dark:text-gray-400"
+									class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-white text-gray-600 shadow-sm dark:bg-gray-800 dark:text-gray-400"
 								>
 									<KIcon class="h-4 w-4" />
 								</span>
