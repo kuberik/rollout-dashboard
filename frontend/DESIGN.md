@@ -3853,6 +3853,42 @@ decision. Left as-is here so the next pass does not "fix" `Deploy` to gray.
 - Pre-existing: `svelte-check` error at rollout `+page.svelte:1082` (`imageRepoScanTime` is not
   on `RolloutResponse`) — on the base commit, not introduced here.
 
+## DESIGN PASS 5 — iteration 3, on `polish/design-pass-3` (2026-09-07)
+
+Third sweep (both agents, 4 combos + 1024/1152/1280/1366) plus a source census. Fixed, one
+commit each, on the branch (not `main`):
+
+- **Shell:** `<main>` takes focus on first paint at `sm+` so PageDown/End work on a fresh load;
+  the phone tab bar is opaque; sidebar items and the skip link are 4px. No `rounded-md` (6px)
+  is left in markup; dialog/log inputs and the log filter dropdowns are 4px.
+- **`/` keeps two columns at 1280** — the card track floor is 21rem (was 24: one 697px column
+  of 190px cards beside the rail).
+- **`/activity`** counts the window, not the 60-row cap ("69 deploys · 21 rollouts · latest 60
+  shown"); rows under a day header print the clock, not "1d".
+- **Held is orange everywhere it is a rollup** (`networkVerdict` has a `held` tone; Card maps
+  it); the held card tooltip says "N newer builds are waiting", never "can still take". The
+  palette lists held above merely-behind. The Overview subtitle is the muted pair (was
+  gray-400, 2.60:1).
+- **Change Version:** the preview is never height-capped while the panes are stacked (390:
+  a 117px cap sliced the "Same commit" line); "Show all repo tags" says what it added.
+- **History:** sentence-case headings; a one-deploy history hides its timeline card below `sm`.
+- **Logs:** a timestamp's full date is its `title`; pod spans carry `data-pod`.
+- The last two rounded-full badges (history "rolled back", schedule Allow/Deny) are chips;
+  `/dependencies` env filters reach 32px.
+
+### Verified, not defects
+The Change Version scrim paints (`:modal`, backdrop `oklab(0.21…/0.5)`) — the sweep's
+before/after diff was wrong. "Deploy to production" red fill is the human's ruling for typed
+production changes.
+
+### Raised, not decided here
+- At `<sm` the rail ("How it's going") lands under everything it summarises on five pages.
+- `/dependencies` at 390 ships a pan/zoom graph (3 of 15 nodes on screen).
+- `/environments` names each environment four times; `/apps/<name>` pipeline rows use
+  47–58% of their body; one `AlertPanel`, three fill ratios; header band 47 vs 65px on `/`'s
+  rail cards; the 11–13px type band and `Envs` vs `Environments` (still open).
+- Cluster: nothing is pinned, so the pinned-state surfaces are unverified by the walks.
+
 ## DESIGN PASS 4 — iteration 2 (2026-09-03, afternoon)
 
 Second sweep (both agents, four combos + 1024/1280) and the human's own reports. Fixed, one
