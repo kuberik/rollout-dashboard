@@ -727,7 +727,7 @@
 						and is the one thing the tab strip does not say. It moves up a
 						type role to lead, and the stat chips to its right are unchanged.
 					-->
-					<h1 class="sr-only">Deployment History</h1>
+					<h1 class="sr-only">Deployment history</h1>
 					<!-- The same display pair the Overview and Dependencies tabs open
 					     with: one object, three tabs, one head. "All deployments for …"
 					     was the only tab-head written as a sentence. -->
@@ -883,7 +883,7 @@
 							class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
 							aria-hidden="true"
 						/>
-						Deployment Timeline
+						Deployment timeline
 					</h3>
 					<div class="flex flex-wrap items-center gap-2">
 						<span class="text-xs text-gray-500 tabular-nums dark:text-gray-400">
