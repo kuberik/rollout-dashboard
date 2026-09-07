@@ -1165,7 +1165,7 @@
 		     panel is louder). -->
 		<div class="flex items-center gap-2">
 			{#if error}
-				<Badge color="red" class="text-xs">Error loading logs</Badge>
+				<Badge color="red" class="rounded text-xs">Error loading logs</Badge>
 			{/if}
 		</div>
 		<!--
@@ -1254,7 +1254,7 @@
 				     the Tests view), so it is named for what it filters, not for the
 				     view it happens to be inside. -->
 				<div class="relative">
-					<Button size="xs" color="light" id={podsDropdownId} class="text-xs">
+					<Button size="xs" color="light" id={podsDropdownId} class="rounded text-xs">
 						Source
 						{#if selectedPods.size > 0}
 							<Badge color="blue" class="ml-1 text-xs">{selectedPods.size}</Badge>
@@ -1387,7 +1387,7 @@
 				</div>
 				<!-- Log level filter dropdown -->
 				<div class="relative">
-					<Button size="xs" color="light" id={logLevelsDropdownId} class="text-xs">
+					<Button size="xs" color="light" id={logLevelsDropdownId} class="rounded text-xs">
 						<span class="hidden sm:inline">Log Levels</span>
 						<span class="sm:hidden">Level</span>
 						{#if selectedLogLevels.size > 0}
@@ -1453,7 +1453,7 @@
 				     wraps onto its own line at 390 like every other filter button
 				     already does, rather than clip a word that had room. -->
 				<div class="relative">
-					<Button size="xs" color="light" id={columnsDropdownId} class="text-xs">
+					<Button size="xs" color="light" id={columnsDropdownId} class="rounded text-xs">
 						Columns
 						{#if hiddenColumnCount > 0}
 							<Badge color="blue" class="ml-1 text-xs">{hiddenColumnCount}</Badge>
