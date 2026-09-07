@@ -1238,7 +1238,7 @@
 						type="text"
 						placeholder="Search versions..."
 						bind:value={searchQuery}
-						class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none max-sm:min-h-11 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+						class="w-full rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none max-sm:min-h-11 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 					/>
 					<div class="flex items-center justify-between">
 						<!-- The `span` was decoration: measured, the checkbox behind this
@@ -1437,7 +1437,7 @@
 					<div bind:this={rightContentEl} class="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
 						<!-- Delta summary -->
 						<div
-							class="flex flex-col gap-2 rounded-lg p-3 {direction === 'rollback'
+							class="flex flex-col gap-2 rounded p-3 {direction === 'rollback'
 								? 'bg-amber-50 dark:bg-amber-900/20'
 								: direction === 'forward'
 									? 'bg-green-50 dark:bg-green-900/20'
@@ -1863,7 +1863,7 @@
 
 						{#if rollout && !hasForceDeployAnnotation(rollout)}
 							<div
-								class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800"
+								class="flex items-center justify-between rounded bg-gray-50 px-3 py-2 dark:bg-gray-800"
 							>
 								<div>
 									<div class="text-sm font-medium text-gray-900 dark:text-white">Pin build</div>
@@ -1918,7 +1918,7 @@
 							placeholder={deployNotePlaceholder}
 							aria-required={deployNoteRequired}
 							rows="2"
-							class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+							class="w-full rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 						></textarea>
 						{#if deployNoteRequired && deployExplanation.trim() === ''}
 							<!-- The reason the confirm is disabled, said where the reader
@@ -1944,7 +1944,7 @@
 									id="cvm-confirm-version"
 									type="text"
 									bind:value={deployConfirmationVersion}
-									class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+									class="w-full rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
 								/>
 							</div>
 						{/if}
