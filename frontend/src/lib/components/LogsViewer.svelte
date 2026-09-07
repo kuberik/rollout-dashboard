@@ -1697,7 +1697,9 @@
 							>
 							{#if visibleColumns.has('timestamp')}
 								<!-- `gray-400`, not 500: on the gray-900 pane 500 measured 3.67:1. -->
-				<span class="shrink-0 text-gray-400">{logItem.formattedTimestamp}</span>
+				<span class="shrink-0 text-gray-400" title={new Date(logItem.timestamp).toLocaleString()}
+					>{logItem.formattedTimestamp}</span
+				>
 							{/if}
 							{#if visibleColumns.has('pod')}
 								{#if singlePodMode}
