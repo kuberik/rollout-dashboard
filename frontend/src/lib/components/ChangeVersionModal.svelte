@@ -564,6 +564,11 @@
 		return [...standardReleases, ...additionalTags];
 	});
 
+	/** Registry tags the release list does not already carry — what "show all" adds. */
+	const extraTagCount = $derived(
+		allRepositoryTags.filter((tag) => !availableReleases.some((ar) => ar.tag === tag)).length
+	);
+
 	const filteredVersionsForDisplay = $derived(
 		allVersionsForDisplay.filter((version) => {
 			const versionTag = typeof version === 'string' ? version : version.tag;
@@ -1273,6 +1278,17 @@
 							}}
 						/>
 					</div>
+					<!-- The toggle answers. (operator walk, 2026-09-07: "toggles → zero
+					     change, no 'no additional tags'.") When every registry tag is
+					     already a release, flipping it changed nothing on screen and
+					     said nothing about why. -->
+					{#if showAllTags && !loadingAllTags}
+						<p class="t-dense text-gray-500 dark:text-gray-400">
+							{extraTagCount === 0
+								? 'No other tags in the registry — every tag is already a release.'
+								: `${extraTagCount} more tag${extraTagCount === 1 ? '' : 's'} from the registry, below.`}
+						</p>
+					{/if}
 				</div>
 
 				<!-- ⛔ ONE TAIL MECHANISM, NOT TWO. (F11, 2026-09-03) This list had
