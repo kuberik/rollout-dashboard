@@ -389,11 +389,21 @@ export function buildRolloutCards(
  * env chip and ONE `[verdict][build]` chip, and that is the whole budget.
  */
 export function cardVerdict(
-	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'>,
+	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held' | 'rank'>>,
 	rankWord: string,
 	rankSentence: string
 ): { label: string; title: string } {
 	const mark = cardStateMark(c);
+	// ⛔ A HELD ROW DOES NOT SAY "CAN STILL TAKE". (operator walk, 2026-09-07)
+	// The rank sentence — "prod can still take 1 newer build" — is the
+	// upgrade path's size, and beside "no rule lets it through yet" it read
+	// as a contradiction. For a held row the number is how many are WAITING.
+	if (mark?.kind === 'held') {
+		const n = rankBehindBy(c.rank);
+		const waiting =
+			n > 0 ? ` ${n} newer build${n === 1 ? ' is' : 's are'} waiting.` : '';
+		return { label: rankWord, title: `${mark.title}${waiting}` };
+	}
 	// ⛔ THE LABEL IS ALWAYS THE RANK. A state never evicts the number; it
 	// moves to the disc (see above) and joins the title here.
 	if (!mark) return { label: rankWord, title: rankSentence };
