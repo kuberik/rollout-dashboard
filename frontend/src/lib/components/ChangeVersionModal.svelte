@@ -308,7 +308,13 @@
 				leftPaneMaxHeight = null;
 				rightPaneMaxHeight = null;
 			} else {
-				const available = leftPaneEl?.getBoundingClientRect().height ?? 0;
+				// ⛔ NO CAP WHEN THE PANES ARE STACKED. (operator walk, 2026-09-07)
+				// Below `md` the picker is `hidden` once a version is picked, so its
+				// rendered height is 0 or a sliver — and "the other column's height"
+				// is not a ceiling at all. Measured live at 390: a 117px cap on a
+				// 240px pane, the "Same commit as the running build" line sliced.
+				const leftShown = !!leftPaneEl && getComputedStyle(leftPaneEl).display !== 'none';
+				const available = leftShown ? (leftPaneEl?.getBoundingClientRect().height ?? 0) : 0;
 				rightPaneMaxHeight = available > 0 && rightNatural < available ? rightNatural : null;
 				leftPaneMaxHeight = null;
 			}
