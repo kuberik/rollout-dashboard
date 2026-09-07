@@ -1069,7 +1069,7 @@
 											     alarm about its health, and it is the same ink as the
 											     header's rollup so the two read as one fact. -->
 											<span
-												class="inline-flex items-center gap-1 rounded-full bg-gray-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
+												class="chip t-chip chip-wide gap-1 border-gray-200 text-gray-900 dark:border-gray-700 dark:text-gray-100"
 												title={act.sentence}
 											>
 												<UndoOutline class="h-3 w-3" aria-hidden="true" />

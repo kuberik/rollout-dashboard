@@ -639,10 +639,9 @@
 								{schedule.metadata.name}
 							</span>
 							<span
-								class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 {schedule
-									.spec.action === 'Deny'
-									? 'bg-red-100 text-red-700 ring-red-300/60 dark:bg-red-500/20 dark:text-red-200 dark:ring-red-700/50'
-									: 'bg-gray-100 text-green-700 ring-gray-200 dark:bg-gray-700 dark:text-green-400 dark:ring-gray-600'}"
+								class="chip t-chip shrink-0 {schedule.spec.action === 'Deny'
+									? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
+									: 'border-gray-200 text-green-700 dark:border-gray-700 dark:text-green-400'}"
 							>
 								{schedule.spec.action}
 							</span>
