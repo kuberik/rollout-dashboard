@@ -240,6 +240,9 @@
 	function cardSeverity(c: RolloutCard): number {
 		if (c.statusKey === 'failed') return 3;
 		if (c.stuck) return 2;
+		// A held rollout needs a person or another deploy; it lists above one
+		// that is merely behind and will catch up on its own.
+		if (c.held) return 1.5;
 		if (rankBehindBy(c.rank) > 0) return 1;
 		return 0;
 	}
