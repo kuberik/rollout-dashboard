@@ -110,7 +110,7 @@
      which is what a bottom tab bar means everywhere else. -->
 <nav
 	bind:this={navEl}
-	class="safe-area-bottom fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95 sm:hidden {dialogOpen
+	class="safe-area-bottom fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 sm:hidden {dialogOpen
 		? 'invisible'
 		: ''}"
 	aria-label="Main navigation"
