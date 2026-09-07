@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, test, expect, vi, afterEach } from 'vitest';
+import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
@@ -29,7 +29,20 @@ import { fleet, respond } from './fleet-fixture';
  * `detectRollback` in agreement.
  */
 
-afterEach(() => vi.unstubAllGlobals());
+// ⛔ THE FIXTURE'S DEPLOYS ARE DATED (2026-08-30/31, `fleet-fixture.ts`) AND
+// /activity GROUPS PER DAY ONLY INSIDE A ROLLING WINDOW. On 2026-09-07 the
+// rollback day aged past that window, the per-day rollup vanished, and this
+// test went red on a green commit with no code change (found by the peer
+// session's gate). Pin the clock next to the fixture; `shouldAdvanceTime`
+// keeps testing-library's `waitFor` polling and the `now` store ticking.
+beforeEach(() => {
+	vi.useFakeTimers({ shouldAdvanceTime: true });
+	vi.setSystemTime(new Date('2026-09-02T12:00:00Z'));
+});
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllGlobals();
+});
 
 function rollbackFleet() {
 	// One rolled-back cell; everything else is an ordinary single-entry
