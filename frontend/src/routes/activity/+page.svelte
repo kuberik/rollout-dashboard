@@ -455,6 +455,13 @@
 	const windowed = $derived(scoped.filter((e) => inRange(e.timestamp)));
 	const feed = $derived(windowed.slice(0, 60));
 
+	/** The row's own time. Rows sit under a DAY header, so "1d" restated the
+	 *  header and made two rollbacks an hour apart byte-identical; the clock
+	 *  is the one thing the header does not say. `title` keeps the full date. */
+	function clockOf(iso: string): string {
+		return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	}
+
 	// ── ONE LANE PER ENVIRONMENT ───────────────────────────────────────────
 	// The chart used to be a single lane labelled `All deploys`, which is a
 	// strip plot of the list directly beneath it. Split by environment it
@@ -945,8 +952,11 @@
 	const failedCount = $derived(feed.filter(isFailed).length);
 	const flyingCount = $derived(feed.filter(isInFlight).length);
 	const rolledBackCount = $derived(feed.filter(isRolledBack).length);
+	// ⛔ COUNTS THE WINDOW, NOT THE 60-ROW CAP. (operator walk, 2026-09-07) The
+	// band said "60 deploys · 16 rollouts" over a chart saying 69 and a home
+	// rail saying 69: `feed` is `windowed.slice(0, 60)`.
 	const appCount = $derived(
-		new Set(feed.map((e) => `${e.rolloutNamespace}/${e.rolloutName}`)).size
+		new Set(windowed.map((e) => `${e.rolloutNamespace}/${e.rolloutName}`)).size
 	);
 
 	/**
@@ -1100,7 +1110,7 @@
 			<HeadBandSkeleton leadWidth="w-8" rollupWidth="w-64" />
 		{:else if !rolloutsQuery.isError}
 			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
-				<span class="t-display text-gray-900 tabular-nums dark:text-white">{feed.length}</span>
+				<span class="t-display text-gray-900 tabular-nums dark:text-white">{windowed.length}</span>
 				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 					<!--
 						⛔ THE ROLLUP NUMBER DID NOT CARRY THE ACTIVE FILTER. (2026-09-03,
@@ -1125,9 +1135,14 @@
 					{#if kindFilter === 'failed'}failed{:else if kindFilter === 'in_flight'}in-flight{:else if kindFilter === 'rolled_back'}rolled-back{/if}{kindFilter !==
 					'all'
 						? ' '
-						: ''}deploy{feed.length === 1 ? '' : 's'} in {rangeLabel}
+						: ''}deploy{windowed.length === 1 ? '' : 's'} in {rangeLabel}
 					{#if appCount > 0}
 						· {appCount} rollout{appCount === 1 ? '' : 's'}
+					{/if}
+					{#if windowed.length > feed.length}
+						<!-- The band counts the WINDOW; the list below is capped. Saying so
+						     is what keeps "60 deploys" from contradicting the chart's 69. -->
+						· latest {feed.length} shown
 					{/if}
 					{#if failedCount > 0 && kindFilter !== 'failed'}
 						· <span class="font-medium text-gray-700 dark:text-gray-200">{failedCount} failed</span>
@@ -1636,7 +1651,7 @@
 									<span
 										class="t-code-sm text-gray-500 tabular-nums dark:text-gray-400"
 										title={formatDate(entry.timestamp)}
-										>{formatTimeAgoCompact(entry.timestamp, $now)}</span
+										>{clockOf(entry.timestamp)}</span
 									>
 
 									<!-- ── THE SUBJECT ─────────────────────────────────
