@@ -391,7 +391,7 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 			// `title`; multi-pod mode prints the name as text. Either way the
 			// pod identity for a row is recoverable from the DOM.
 			const dot = row.querySelector('span[data-pod]');
-			const name = row.querySelector('span[data-pod]');
+			const name = row.querySelector('span.log-pod-name');
 			pods.add(dot?.getAttribute('title') ?? name?.textContent ?? null);
 		}
 		return pods;
@@ -500,7 +500,7 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 		const rows = Array.from(container.querySelectorAll('[data-index]'));
 		expect(rows.length).toBeGreaterThan(0);
 		for (const row of rows) {
-			expect(row.querySelector('span[data-pod]')).toBeNull();
+			expect(row.querySelector('span.log-pod-name')).toBeNull();
 			expect(row.querySelector('span[data-pod]')?.getAttribute('title')).toBe(target);
 		}
 	});
