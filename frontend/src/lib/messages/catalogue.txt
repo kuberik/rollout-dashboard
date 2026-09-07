@@ -484,6 +484,7 @@ lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
+lib/rollout-cards.ts	code	… newer build… waiting.
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
 lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
 lib/rollout-cards.ts	code	Pinned there.
@@ -792,8 +793,9 @@ routes/activity/+page.svelte	code	… · all fine
 routes/activity/+page.svelte	code	… deploy…
 routes/activity/+page.svelte	code	… deploys failed
 routes/activity/+page.svelte	text	… failed
-routes/activity/+page.svelte	text	… failed … in-flight … rolled-back … … deploy … in … … · … rollout … … … ·
+routes/activity/+page.svelte	text	… failed … in-flight … rolled-back … … deploy … in … … · … rollout … … …
 routes/activity/+page.svelte	code	…… failed …, on ….
+routes/activity/+page.svelte	text	· latest … shown … … ·
 routes/activity/+page.svelte	code	A deploy failed
 routes/activity/+page.svelte	code	all time
 routes/activity/+page.svelte	code	at least … deploy…
