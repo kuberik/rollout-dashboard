@@ -1217,10 +1217,11 @@
 							     title is a hard defect. The banner above already states the
 							     block, so the phone loses nothing. -->
 							<span
-								class="hidden text-xs font-medium whitespace-nowrap sm:inline {localVerdict.tone ===
-								'adverse'
-									? 'text-red-700 dark:text-red-400'
-									: 'text-gray-500 dark:text-gray-400'}">{localVerdict.text}</span
+								class="hidden text-xs font-medium whitespace-nowrap sm:inline {localVerdict.tone === 'held'
+									? 'text-orange-800 dark:text-orange-300'
+									: localVerdict.tone === 'adverse'
+										? 'text-red-700 dark:text-red-400'
+										: 'text-gray-500 dark:text-gray-400'}">{localVerdict.text}</span
 							>
 							<a
 								href="/dependencies"

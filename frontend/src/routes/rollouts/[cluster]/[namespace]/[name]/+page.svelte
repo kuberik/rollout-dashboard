@@ -1982,7 +1982,9 @@
 						{@const runningLabel = subtitleRunningLabel()}
 						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
 							{rollout.status.description}{#if runningLabel}
-								<span class="text-gray-400 dark:text-gray-500"
+								<!-- gray-500/gray-400, the muted pair: gray-400 on white is 2.60:1,
+								     the one contrast failure left on the reference page. -->
+								<span class="text-gray-500 dark:text-gray-400"
 									>&nbsp;· running {runningLabel}</span
 								>
 							{/if}
