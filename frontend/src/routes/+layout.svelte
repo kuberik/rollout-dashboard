@@ -53,6 +53,16 @@
 	 */
 	let { children }: { children?: import('svelte').Snippet } = $props();
 	let mainEl: HTMLElement | undefined = $state();
+	// ⭐ KEYBOARD SCROLLING ON A FRESH LOAD. From `sm` up `<main>` is the scroller,
+	// and a scroller only answers PageDown / End / arrows when focus is inside
+	// it. On a fresh load focus is on `<body>` — the document — which no longer
+	// scrolls, so those keys were dead until the first click. `afterNavigate`
+	// already moves focus here on every navigation; this is the first paint.
+	$effect(() => {
+		if (!mainEl || document.activeElement !== document.body) return;
+		if (getComputedStyle(mainEl).overflowY !== 'auto') return;
+		mainEl.focus({ preventScroll: true });
+	});
 
 	// ⭐ THE SHELL SLOT A ROUTE'S SECONDARY NAV RENDERS INTO. See
 	// `shell-chrome.svelte.ts`'s own doc comment for why this exists at all
