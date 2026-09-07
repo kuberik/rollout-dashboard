@@ -75,7 +75,7 @@
 	 * A blocked card states its blocking fact in a BANNER (`AlertPanel`), not
 	 * by staining its own header.
 	 */
-	type VerdictTone = 'neutral' | 'good' | 'adverse' | 'active';
+	type VerdictTone = 'neutral' | 'good' | 'adverse' | 'active' | 'held';
 
 	/**
 	 * ⭐ THE HEADER IS A DESTINATION WHEN THE CARD HAS ONE — `titleHref`.
@@ -153,7 +153,9 @@
 		neutral: 'text-gray-500 dark:text-gray-400',
 		good: 'text-green-700 dark:text-green-400',
 		adverse: 'text-red-700 dark:text-red-400',
-		active: 'text-blue-700 dark:text-blue-400'
+		active: 'text-blue-700 dark:text-blue-400',
+		// held — needs a person or another deploy; the product's orange, not red.
+		held: 'text-orange-800 dark:text-orange-300'
 	};
 
 	const Icon = $derived(icon);
