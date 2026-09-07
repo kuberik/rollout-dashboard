@@ -400,7 +400,7 @@
 						onclick={() => toggleEnv(env)}
 						aria-pressed={sel}
 						aria-label={`Environment ${env}`}
-						class="environment-theme-scope inline-flex items-center rounded transition-opacity
+						class="environment-theme-scope hit-32 inline-flex items-center rounded transition-opacity
 							{sel
 							? 'ring-1 ring-gray-900/30 dark:ring-gray-100/30'
 							: envFilters.length === 0
