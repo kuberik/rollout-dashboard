@@ -58,15 +58,6 @@
 		spread = true,
 		meta,
 		children,
-		// ⭐ ADDITIVE, REVISIONS-2026-09-05 §2, revised per craft-review item 1
-		// — `/revisions` (the list) is the only caller that passes these;
-		// every existing call site (the detail page's own hero) keeps
-		// computing `segments` and rendering `<CoverageBar>` exactly as
-		// before. Kept as opt-in props rather than a rewrite of this
-		// component's default behaviour because this object is shared with
-		// `/revisions/[...slug]`, a route this pass does not own.
-		barPercent = undefined,
-		hideBar = false,
 		showHeldChip = false,
 		compact = false
 	}: {
@@ -91,26 +82,6 @@
 		/** Buttons and any page-specific note, under the spread. */
 		children?: Snippet;
 		/**
-		 * @deprecated ROUND 11, A.2/A.6.2 — "THE BAR COMES BACK, AND IT ALWAYS
-		 * DRAWS." The human's own ruling this round overturns the premise
-		 * this prop existed to serve: the bar is no longer hidden at full
-		 * coverage, and it no longer needs a caller-computed percentage —
-		 * `CoverageBar` itself now draws a literal, comparable shape at every
-		 * count via `coverageBarSegments`. This component ignores the prop
-		 * entirely now; it is kept, unused, so `routes/revisions/+page.svelte`
-		 * (Lane 2, this pass does not own that file) keeps COMPILING until it
-		 * migrates off the prop and deletes this line — see this file's
-		 * report for the exact call site.
-		 */
-		barPercent?: number;
-		/**
-		 * @deprecated ROUND 11, A.2 — see `barPercent`'s own note immediately
-		 * above: "the bar draws on every build, always, including 0% and
-		 * 100%" is the ruling that deletes this prop's whole reason to exist.
-		 * Ignored; kept only so the same still-live call site keeps compiling.
-		 */
-		hideBar?: boolean;
-		/**
 		 * §2: a held build states its count as a chip under the figure instead
 		 * of the inline `· N held on …` clause in the count's caption line.
 		 */
@@ -130,8 +101,8 @@
 	} = $props();
 
 	/**
-	 * ⭐ ROUND 11, A.5 — `coverageBarSegments`, NOT THE DELETED
-	 * `coverageSegments`. Four entries, `WEIGHT_ORDER`, zero counts
+	 * ⭐ ROUND 11, A.5 — `coverageBarSegments`, NOT THE OLD BUCKET-KEYED
+	 * SHIM THIS REPLACED. Four entries, `WEIGHT_ORDER`, zero counts
 	 * included — `CoverageBar` renders these at its new `weightFill`
 	 * palette. See that function's own doc comment.
 	 */
@@ -182,7 +153,7 @@
 			keeps the verdict rollup (`+page.svelte`'s `heroVerdict`) hard-right
 			and this body never restates it — that half of craft review item 7
 			survives unchanged. What changes: the bar is no longer conditional
-			(`hideBar` is deleted from this branch's logic; A.2 draws it at 0%
+			(the old hide-at-full-coverage prop is deleted; A.2 draws it at 0%
 			and at 100% too) and the identifier is GONE from this body —
 			"the hero body does not reprint the sha" (A.6.2) — because the host
 			`Card`'s own title is where it belongs now (a Lane 2 call-site
@@ -303,8 +274,8 @@
 
 	<!--
 		⭐ ROUND 11, A.2/A.6.2 — THE BAR ALWAYS DRAWS NOW, NON-COMPACT TOO.
-		`hideBar`/`barPercent` are deprecated no-ops (see their prop doc
-		comments) — this is the ONE bar render for the NON-compact branch, at
+		The old caller-computed-percentage/hide-at-100% props are gone —
+		this is the ONE bar render for the NON-compact branch, at
 		every coverage from 0% to 100%, via `CoverageBar` and its new
 		weight-keyed segments. Gated on `!compact`: the compact branch draws
 		its OWN copy inline, above (inside `.lead-compact`, at `mt-2` instead
@@ -441,7 +412,8 @@
 	   header rollup one row down; see the markup comments above. */
 
 	/* ⛔ `.single-bar`/`.single-bar-fill` REMOVED, ROUND 11, A.2 — the
-	   painted-track fallback they drew only when a caller passed the now-
-	   deprecated `barPercent`. Every render is `<CoverageBar>` now, both
-	   branches, so this component owns no second bar geometry any more. */
+	   painted-track fallback they drew only when a caller passed a literal
+	   fill percentage, a prop this component no longer accepts. Every
+	   render is `<CoverageBar>` now, both branches, so this component owns
+	   no second bar geometry any more. */
 </style>

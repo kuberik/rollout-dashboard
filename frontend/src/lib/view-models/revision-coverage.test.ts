@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { buildRevisionLedger } from './revision-ledger';
 import {
 	revisionCoverage,
-	coverageSegments,
 	coverageBarSegments,
 	coverageBarLabel,
 	coverageCounts,
@@ -139,7 +138,7 @@ describe('revisionCoverage', () => {
 
 	/**
 	 * ⭐ ROUND 11, A.5 — `coverageBarSegments` REPLACES THE OLD BUCKET-KEYED
-	 * `coverageSegments` THIS TEST USED TO PIN. The bar's segments are now
+	 * SHIM THIS TEST USED TO PIN. The bar's segments are now
 	 * `CoverageWeight`-keyed and ALWAYS four entries, in `WEIGHT_ORDER`,
 	 * never dropping an empty one — see that function's own doc comment for
 	 * why a fixed partition is the point.
@@ -270,7 +269,7 @@ describe('revisionCoverage', () => {
 	 * reverted to one segment per bucket.
 	 */
 	/**
-	 * ⭐ ROUND 11 — RETARGETS THE OLD `coverageSegments` DESCRIBE BLOCK AT
+	 * ⭐ ROUND 11 — RETARGETS THE OLD BUCKET-KEYED DESCRIBE BLOCK AT
 	 * `coverageBarSegments`. The claim survives unchanged ("a live slot held
 	 * on an older release still draws as plain live, never a second colour")
 	 * — only the vocabulary does: there is no `held` KEY to check for any

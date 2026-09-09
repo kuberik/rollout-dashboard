@@ -461,7 +461,8 @@ export function coverageWeight(key: CoverageKey): CoverageWeight {
  * the SAME hue one weight down, `green-300`/`dark:green-800` — the only new
  * colour value this round adds. `notReached` is the pair every painted
  * track on the two revision pages already uses (`.single-bar`/
- * `.bld-fill-track`/`.rev-build-bar`), so the bar converges on one spelling
+ * `.bld-fill-track`/the build page's own head-band track, round 11's
+ * `CoverageBar` swap), so the bar converges on one spelling
  * with them instead of keeping its own. `unplaceable` is unchanged —
  * hollow, the one shape that says "no comparison exists".
  *
@@ -1034,8 +1035,8 @@ export function releaseSplit(coverage: RevisionCoverage): ReleaseSplitLine[] {
 
 /**
  * ⭐ A.5 — THE BAR'S OWN SEGMENTS. Exactly `WEIGHT_ORDER.length` entries every
- * time, zero counts included: unlike the old bucket-based `coverageSegments`
- * (which dropped an empty bucket entirely), the bar's four groups are a
+ * time, zero counts included: unlike the old bucket-keyed forward this
+ * replaced (which dropped an empty bucket entirely), the bar's four groups are a
  * fixed partition of the SAME total every time, so a caller — and
  * `CoverageBar`'s own `{#each}` — can rely on `segments[i].key ===
  * WEIGHT_ORDER[i]` without a find. `Σ count === coverage.totalCount`
@@ -1061,19 +1062,14 @@ export function coverageBarSegments(coverage: RevisionCoverage): CoverageSegment
 }
 
 /**
- * @deprecated A.5 deletes this function outright — `coverageBarSegments` is
- * its replacement, at the new `CoverageWeight` vocabulary `CoverageBar` now
- * renders exclusively. Kept as a one-line forward, on the tech lead's
- * explicit instruction for this round, so Lane 2's and Lane 3's still-live
- * call sites (`routes/revisions/+page.svelte`,
- * `routes/revisions/[...slug]/+page.svelte`) keep COMPILING and keep
- * drawing a correct bar (this forwards to the real, weight-keyed segments,
- * not the old bucket-keyed shape) until each lane migrates its own call
- * site to `coverageBarSegments` directly and deletes this one line.
+ * ⛔ THE OLD BUCKET-KEYED ONE-LINE FORWARD IS DELETED, ROUND 11, LANE 3. It
+ * existed only so Lane 2's and Lane 3's own call sites kept compiling while
+ * they migrated to `coverageBarSegments` directly — both have now
+ * (`routes/revisions/+page.svelte` never drew a bar at all, B.2.5;
+ * `routes/revisions/[...slug]/+page.svelte`'s build-page head band calls
+ * `coverageBarSegments` directly, A.6.3). A grep for the old export name is
+ * the gate that catches a reintroduction.
  */
-export function coverageSegments(coverage: RevisionCoverage): CoverageSegment[] {
-	return coverageBarSegments(coverage);
-}
 
 /**
  * ⭐ A.7 — ONE COUNT PER WEIGHT, PLUS `deploying` SPLIT BACK OUT OF `here`
