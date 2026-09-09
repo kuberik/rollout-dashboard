@@ -53,12 +53,12 @@ lib/CommandPalette.svelte	aria-label	Clear scope
 lib/CommandPalette.svelte	aria-label	Command palette
 lib/CommandPalette.svelte	code	Cross-env matrix
 lib/CommandPalette.svelte	code	Every environment of … is on the newest version it has
-lib/CommandPalette.svelte	code	Everything at a glance
-lib/CommandPalette.svelte	code	Fleet overview
 lib/CommandPalette.svelte	text	Fleet overview
+lib/CommandPalette.svelte	code	Fleet overview — everything at a glance
 lib/CommandPalette.svelte	code	Full inventory list
 lib/CommandPalette.svelte	text	Needs you
 lib/CommandPalette.svelte	text	No matches for
+lib/CommandPalette.svelte	code	One row per commit
 lib/CommandPalette.svelte	text	Or type to search across everything
 lib/CommandPalette.svelte	code	Recent deployments
 lib/CommandPalette.svelte	title	Stopped moving
@@ -93,6 +93,19 @@ lib/components/BlockReason.svelte	code	The check passes or the window reopens
 lib/components/BlockReason.svelte	code	version pin
 lib/components/BlockReason.svelte	code	Waiting on a check or a time window
 lib/components/BlockReason.svelte	code	Whatever maintains this rule's allow-list changes it
+lib/components/BuildLists.svelte	text	… Nothing older is still running — every place is on a build above. … Nothing this repo has deployed is still running. Every place has moved on. …
+lib/components/BuildLists.svelte	code	Built …
+lib/components/BuildLists.svelte	code	Deployed …
+lib/components/BuildLists.svelte	text	Every build your services can deploy has run somewhere.
+lib/components/BuildLists.svelte	text	Hide … …
+lib/components/BuildLists.svelte	code	History keeps the last … deploys per service, so a build with no deploy on record may simply predate that window — it is not necessarily one nobody has ever run.
+lib/components/BuildLists.svelte	code	Last deployed …
+lib/components/BuildLists.svelte	code	Never deployed
+lib/components/BuildLists.svelte	code	No deploy on record
+lib/components/BuildLists.svelte	title	No longer running anywhere
+lib/components/BuildLists.svelte	text	Running in … of …
+lib/components/BuildLists.svelte	aria-label	running in … of … places
+lib/components/BuildLists.svelte	text	Show … …
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…
 lib/components/ChangeList.svelte	code	${githubAbsenceSentence(null, { unreachable: true })} (…)
@@ -300,6 +313,9 @@ lib/components/HealthChecksCard.svelte	text	… failing … … · … passing
 lib/components/HealthChecksCard.svelte	text	… passing · … recovered
 lib/components/HealthChecksCard.svelte	text	… pending … · … passing
 lib/components/HealthChecksCard.svelte	title	Health checks
+lib/components/HeldBanner.svelte	title	… is held
+lib/components/HeldBanner.svelte	code	No newer build satisfying this exists anywhere yet — this is not a matter of waiting, it is held indefinitely until someone ships one.
+lib/components/HeldBanner.svelte	text	Open …
 lib/components/HomeRail.svelte	text	… deploy …
 lib/components/HomeRail.svelte	title	Recent activity
 lib/components/HomeRail.svelte	aria-label	View all activity
@@ -386,6 +402,22 @@ lib/components/RecoveryModeWarningModal.svelte	code	Recovery deploy
 lib/components/RecoveryModeWarningModal.svelte	text	The deployment will sit waiting for health checks to recover.
 lib/components/RecoveryModeWarningModal.svelte	code	The previous deployment failed. Continuing will start a new deployment in recovery mode.
 lib/components/RecoveryModeWarningModal.svelte	text	Version …
+lib/components/RepoLedgerCard.svelte	code	… behind
+lib/components/RepoLedgerCard.svelte	text	… build … · … deployed at least once · … place … to deploy to …
+lib/components/RepoLedgerCard.svelte	code	… held
+lib/components/RepoLedgerCard.svelte	title	… in …
+lib/components/RepoLedgerCard.svelte	title	… in … — …
+lib/components/RepoLedgerCard.svelte	code	… newer build…
+lib/components/RepoLedgerCard.svelte	text	… of … build …
+lib/components/RepoLedgerCard.svelte	title	A place is one service in one environment. 'Deployed at least once' counts distinct commits that have run somewhere, ever.
+lib/components/RepoLedgerCard.svelte	code	Deployed … ago
+lib/components/RepoLedgerCard.svelte	code	Everything on its newest build
+lib/components/RepoLedgerCard.svelte	text	Hide … more service … …
+lib/components/RepoLedgerCard.svelte	text	No build matches “ … ”.
+lib/components/RepoLedgerCard.svelte	text	no match
+lib/components/RepoLedgerCard.svelte	text	Not deployed
+lib/components/RepoLedgerCard.svelte	text	Show … more service … …
+lib/components/RepoLedgerCard.svelte	text	View repository
 lib/components/ResourceCard.svelte	text	Error …
 lib/components/ResourcesCard.svelte	title	… — Deployment
 lib/components/ResourcesCard.svelte	text	… … … ready resource …
@@ -405,11 +437,13 @@ lib/components/RetryTestsModal.svelte	text	Re-run tests. Pipeline stays paused u
 lib/components/RetryTestsModal.svelte	text	Retry Tests
 lib/components/RetryTestsModal.svelte	text	Skip Tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
-lib/components/RevisionLead.svelte	code	… of … places running … ·
 lib/components/RevisionLead.svelte	title	… place… run this on an older release, and a newer one is held by a rule
-lib/components/RevisionLead.svelte	text	&nbsp;· … held on …
+lib/components/RevisionLead.svelte	text	&nbsp;· …
 lib/components/RevisionLead.svelte	title	A place is one service in one environment.
 lib/components/RevisionLead.svelte	text	running it …
+lib/components/RevisionSearch.svelte	aria-label	Clear the search
+lib/components/RevisionSearch.svelte	code	Find a build by sha or a service by name
+lib/components/RevisionSearch.svelte	code	Find a build or service
 lib/components/RolloutStepper.svelte	text	… / … stages done
 lib/components/RolloutStepper.svelte	code	… failing
 lib/components/RolloutStepper.svelte	code	… rolling out
@@ -695,7 +729,14 @@ lib/view-models/regions.ts	code	repeat(auto-fit, minmax(…px, 1fr))
 lib/view-models/release-delta.ts	code	… … (new)
 lib/view-models/release-delta.ts	code	… … (removed)
 lib/view-models/release-delta.ts	code	Same commit as …. What changed: requires ….
+lib/view-models/revision-coverage.ts	code	… · has not reached … yet
+lib/view-models/revision-coverage.ts	code	… · held in …
+lib/view-models/revision-coverage.ts	code	… deploying it
+lib/view-models/revision-coverage.ts	code	… have moved past it
+lib/view-models/revision-coverage.ts	code	… is this same build under a newer label
 lib/view-models/revision-coverage.ts	code	… live · … deploying
+lib/view-models/revision-coverage.ts	code	… not reached yet
+lib/view-models/revision-coverage.ts	code	… place…
 lib/view-models/revision-coverage.ts	code	… place… … a deploy in progress right now
 lib/view-models/revision-coverage.ts	code	… place… … already deployed a newer build
 lib/view-models/revision-coverage.ts	code	… place… … not deployed this build yet
@@ -704,18 +745,28 @@ lib/view-models/revision-coverage.ts	code	… place… on an older release of it
 lib/view-models/revision-coverage.ts	code	… place… run this revision on an older release than the newest one carries
 lib/view-models/revision-coverage.ts	code	… place… run this revision on an older release, and a newer one is held by a rule
 lib/view-models/revision-coverage.ts	code	… place… still to go
+lib/view-models/revision-coverage.ts	code	… running …
+lib/view-models/revision-coverage.ts	code	…, … on a different release line.
+lib/view-models/revision-coverage.ts	code	a newer release
+lib/view-models/revision-coverage.ts	code	Across …: ….
+lib/view-models/revision-coverage.ts	code	Across …: none is running … yet.
 lib/view-models/revision-coverage.ts	code	Already moved on
 lib/view-models/revision-coverage.ts	code	Deployed in … place… where the deploy is not healthy
 lib/view-models/revision-coverage.ts	code	Every place that can run this build is running it
 lib/view-models/revision-coverage.ts	code	failing in … place…
 lib/view-models/revision-coverage.ts	code	fully rolled out
+lib/view-models/revision-coverage.ts	code	Have moved past this build
 lib/view-models/revision-coverage.ts	code	held in … place…
 lib/view-models/revision-coverage.ts	code	never deployed
 lib/view-models/revision-coverage.ts	code	No service is running this build right now
 lib/view-models/revision-coverage.ts	code	Not here yet
+lib/view-models/revision-coverage.ts	code	Not reached yet
 lib/view-models/revision-coverage.ts	code	not running anywhere
 lib/view-models/revision-coverage.ts	code	On a different line
+lib/view-models/revision-coverage.ts	code	On a different release line
 lib/view-models/revision-coverage.ts	code	Running it now
+lib/view-models/revision-coverage.ts	code	Running this build
+lib/view-models/revision-coverage.ts	code	the … … … to
 lib/view-models/revision-coverage.ts	code	These are running this build right now.
 lib/view-models/revision-coverage.ts	code	These follow a different release line, so this build has no position against what they run.
 lib/view-models/revision-coverage.ts	code	These have already deployed a newer build, so this one is behind them.
@@ -1144,72 +1195,16 @@ routes/revisions/[...slug]/+page.svelte	text	Tracking build … in …
 routes/revisions/[...slug]/+page.svelte	text	View commit
 routes/revisions/[...slug]/+page.svelte	code	Waiting on …
 routes/revisions/+page.svelte	text	, stream down … …
-routes/revisions/+page.svelte	code	… … held in ….
-routes/revisions/+page.svelte	text	… … service … …
-routes/revisions/+page.svelte	text	… · … &nbsp;repositor …
-routes/revisions/+page.svelte	text	… · … release … … … in … repositor … …
+routes/revisions/+page.svelte	text	… … build … … “ … ” … in … repositor … … … … … · … &nbsp;repositor … … … · live … · updated
 routes/revisions/+page.svelte	code	… · every other place on its newest build
-routes/revisions/+page.svelte	text	… · live … · updated
-routes/revisions/+page.svelte	code	… +… more
-routes/revisions/+page.svelte	code	… behind
-routes/revisions/+page.svelte	text	… build … … “ … ”
-routes/revisions/+page.svelte	text	… build … · … deployed at least once · … place … to deploy to …
-routes/revisions/+page.svelte	text	… Deployed … ago … … … …
-routes/revisions/+page.svelte	code	… deploying
-routes/revisions/+page.svelte	code	… has not reached … yet
-routes/revisions/+page.svelte	code	… held
-routes/revisions/+page.svelte	title	… in …
-routes/revisions/+page.svelte	title	… in … — …
-routes/revisions/+page.svelte	title	… is held
-routes/revisions/+page.svelte	code	… is held in …
-routes/revisions/+page.svelte	title	… lists this build on no environment’s release list
-routes/revisions/+page.svelte	code	… of … …
-routes/revisions/+page.svelte	title	… places — a place is one service in one environment — are held by a rule
-routes/revisions/+page.svelte	code	… run …; ….
-routes/revisions/+page.svelte	code	… service…
-routes/revisions/+page.svelte	code	… services
 routes/revisions/+page.svelte	text	A commit shows up here as soon as one of your services can deploy it.
-routes/revisions/+page.svelte	title	A place is one service in one environment. 'Deployed at least once' counts distinct commits that have run somewhere, ever — a commit resolving to more than one release (a rollback re-tag) still counts once.
-routes/revisions/+page.svelte	code	another service
-routes/revisions/+page.svelte	code	Built …
-routes/revisions/+page.svelte	code	built …, …–…
 routes/revisions/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
-routes/revisions/+page.svelte	aria-label	Clear the search
-routes/revisions/+page.svelte	code	Deployed …
-routes/revisions/+page.svelte	code	Deployed … ago…
-routes/revisions/+page.svelte	code	Deploying · started … ago…
-routes/revisions/+page.svelte	text	Every build your services can deploy has run somewhere.
 routes/revisions/+page.svelte	code	every place is on its newest build
-routes/revisions/+page.svelte	code	Everything below is counted across the … that have a release for this commit. Each service ships this commit as its own release, with its own rules.
-routes/revisions/+page.svelte	aria-label	Find a build by sha or a service by name
 routes/revisions/+page.svelte	placeholder	Find a build or service
-routes/revisions/+page.svelte	text	Hide … …
-routes/revisions/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
-routes/revisions/+page.svelte	code	in … · …
 routes/revisions/+page.svelte	text	kuberik | Revisions
-routes/revisions/+page.svelte	code	Last deployed …
-routes/revisions/+page.svelte	title	Never deployed
-routes/revisions/+page.svelte	text	Newest build
-routes/revisions/+page.svelte	title	No longer running anywhere
-routes/revisions/+page.svelte	text	no match
-routes/revisions/+page.svelte	text	Not deployed
-routes/revisions/+page.svelte	code	Not passing
 routes/revisions/+page.svelte	text	Nothing built yet
-routes/revisions/+page.svelte	text	Nothing older is still running — every place is on a build above.
-routes/revisions/+page.svelte	text	Nothing this repo has deployed is still running. Every place has moved on.
 routes/revisions/+page.svelte	title	One commit, one build. Here is every build your services can deploy, and how far each one has got.
-routes/revisions/+page.svelte	text	Open …
 routes/revisions/+page.svelte	text	Open build …
-routes/revisions/+page.svelte	title	Running in …
-routes/revisions/+page.svelte	text	Running in … of …
-routes/revisions/+page.svelte	aria-label	running in … of … places
-routes/revisions/+page.svelte	title	running in … of … places
-routes/revisions/+page.svelte	text	See what’s blocking it
-routes/revisions/+page.svelte	text	Show … …
-routes/revisions/+page.svelte	code	then …
-routes/revisions/+page.svelte	text	View commit
-routes/revisions/+page.svelte	text	View repository
-routes/revisions/+page.svelte	code	Your services can deploy these commits. None of them has yet.
 routes/rollouts/[cluster]/[namespace]/[name]/+layout.svelte	aria-label	Rollout sections
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … newer · held by the pin … … … …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.

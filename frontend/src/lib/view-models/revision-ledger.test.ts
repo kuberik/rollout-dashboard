@@ -3,16 +3,22 @@ import {
 	buildRevisionLedger,
 	deployedRevisionCount,
 	groupServicesByLabel,
+	leadRowsFor,
 	lineState,
+	matchesRevisionText,
 	orderServiceGroups,
+	pastRows,
 	rankSentence,
 	releaseLines,
 	repoDeviation,
 	resolveRevision,
+	restRows,
+	revisionLookup,
 	rowNamesBuild,
 	serviceLedger,
 	sortByDeviation,
 	type RepoLedger,
+	type ReleaseLine,
 	type RevisionRow,
 	type RevisionSlot,
 	type ServiceLedgerGroup,
@@ -1054,5 +1060,143 @@ describe('orderServiceGroups — round 3 addendum C, extracted (round six §6)',
 			lineIndexOf: (appName) => (appName === 'zzz-app' ? 0 : 1)
 		});
 		expect(ordered.map((g) => g.appName)).toEqual(['zzz-app', 'aaa-app']);
+	});
+});
+
+/**
+ * ⭐ OPERATOR-WALK FINDING 1 (2026-09-09, BLOCKING) — `/revisions?q=2.67.0-67`
+ * said "1 build matches" in the head band (which filters `RevisionRow`s,
+ * checking `labelGroups`) while every repository card said "no match" (the
+ * per-service ledger filtered its `ServiceLedgerLine`s with a narrower
+ * predicate that never checked the label). `matchesRevisionText` is the one
+ * predicate both a row and a line now go through — a line via
+ * `revisionLookup`, which resolves it back to the row that carries the
+ * labels a bare `ServiceLedgerLine` does not.
+ */
+describe('matchesRevisionText / revisionLookup — finding 1 (label search must reach the ledger)', () => {
+	function labelledRow(
+		revision: string,
+		short: string,
+		labels: string[]
+	): RevisionRow {
+		return {
+			revision,
+			short,
+			labelGroups: labels.map((label) => ({ label, isOwnSha: false, services: [] }))
+		} as unknown as RevisionRow;
+	}
+
+	it('matches a bare sha prefix', () => {
+		const row = labelledRow('9f10e494d5601111', '9f10e49', []);
+		expect(matchesRevisionText(row, '9f10e49')).toBe(true);
+		expect(matchesRevisionText(row, '9f10e4')).toBe(true);
+		expect(matchesRevisionText(row, 'zzzzzzz')).toBe(false);
+	});
+
+	it('matches a release LABEL the sha alone does not contain', () => {
+		const row = labelledRow('9f10e494d5601111', '9f10e49', ['2.67.0-67']);
+		expect(matchesRevisionText(row, '2.67.0-67')).toBe(true);
+		expect(matchesRevisionText(row, '2.67.0')).toBe(true);
+	});
+
+	it('empty query matches everything', () => {
+		const row = labelledRow('9f10e494d5601111', '9f10e49', []);
+		expect(matchesRevisionText(row, '')).toBe(true);
+		expect(matchesRevisionText(row, '   ')).toBe(true);
+	});
+
+	it('revisionLookup resolves a ServiceLedgerLine (no labelGroups of its own) back to its row, so the SAME query matches both', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [labelledRow('9f10e494d5601111', '9f10e49', ['2.67.0-67'])],
+			pending: []
+		};
+		const lookup = revisionLookup(repo);
+		const line = { revision: '9f10e494d5601111', short: '9f10e49' } as unknown as ServiceLedgerLine;
+
+		// The defect this regression test pins: the OLD `lineMatchesSearch`
+		// checked only `revision`/`short` — exactly what a bare line offers,
+		// with no label — and that is why it missed a label-only query.
+		const oldLineOnlyPredicate = (q: string) =>
+			line.revision.toLowerCase().startsWith(q.toLowerCase()) ||
+			line.short.toLowerCase().includes(q.toLowerCase());
+		expect(oldLineOnlyPredicate('2.67.0-67')).toBe(false);
+
+		// The fix: resolve the line's revision back to the row(s) that carry
+		// the label, then check THOSE with the one shared predicate.
+		const resolved = lookup.get(line.revision);
+		expect(resolved).toBeDefined();
+		expect(resolved!.some((row) => matchesRevisionText(row, '2.67.0-67'))).toBe(true);
+	});
+
+	/**
+	 * ⭐ THE BLOCKING DEFECT, ONE LAYER DOWN. Reproduced live against the
+	 * dev cluster (2026-09-09): searching `2.67.0` still said "no match" on
+	 * `kuberik-testing`'s own card even after the first fix landed, because
+	 * `9f10e49` resolves to TWO rows here (the running `1.66.0-66` release
+	 * and the held `2.67.0-67` sibling) — a `Map<string, RevisionRow>`
+	 * keyed by the bare revision string can hold only one of them, and
+	 * whichever lost the slot had its own label silently unreachable. This
+	 * is why `revisionLookup` returns an ARRAY per revision.
+	 */
+	it('a revision split into two rows (a held sibling release) — the lookup keeps BOTH, and either one’s label matches', () => {
+		const repo: Pick<RepoLedger, 'rows' | 'pending'> = {
+			rows: [
+				labelledRow('9f10e494d5601111', '9f10e49', ['1.66.0-66']),
+				labelledRow('9f10e494d5601111', '9f10e49', ['2.67.0-67'])
+			],
+			pending: []
+		};
+		const lookup = revisionLookup(repo);
+		const rows = lookup.get('9f10e494d5601111');
+		expect(rows).toHaveLength(2);
+		expect(rows!.some((r) => matchesRevisionText(r, '2.67.0-67'))).toBe(true);
+		expect(rows!.some((r) => matchesRevisionText(r, '1.66.0-66'))).toBe(true);
+	});
+});
+
+describe('leadRowsFor / restRows / pastRows — ported from the route (round 11, lane 2)', () => {
+	function row(
+		revision: string,
+		createdMs: number,
+		lastDeployMs: number,
+		liveSlots: number,
+		services: { appName: string; rank: number | null }[]
+	): RevisionRow {
+		return { revision, createdMs, lastDeployMs, liveSlots, services } as unknown as RevisionRow;
+	}
+
+	it('leadRowsFor picks each line’s own newest DEPLOYED row, not its absolute ladder head', () => {
+		const repo: Pick<RepoLedger, 'rows'> = {
+			rows: [
+				row('newest', 200, 200, 1, [{ appName: 'api', rank: 0 }]),
+				row('deployed-head', 100, 100, 1, [{ appName: 'api', rank: 1 }])
+			]
+		};
+		const lines: ReleaseLine[] = [{ headRevision: 'newest', services: ['api'] }];
+		// `newest` is deployed (rows[0]) and is on this line, so it leads.
+		expect(leadRowsFor(repo, lines).map((r) => r.revision)).toEqual(['newest']);
+	});
+
+	it('restRows/pastRows exclude the lines’ own head revisions and split on liveSlots', () => {
+		const repo: Pick<RepoLedger, 'rows'> = {
+			rows: [
+				row('head', 300, 300, 1, [{ appName: 'api', rank: 0 }]),
+				row('still-live', 200, 250, 1, [{ appName: 'api', rank: 1 }]),
+				row('retired', 100, 150, 0, [{ appName: 'api', rank: 2 }])
+			]
+		};
+		const heads = new Set(['head']);
+		expect(restRows(repo, heads).map((r) => r.revision)).toEqual(['still-live']);
+		expect(pastRows(repo, heads).map((r) => r.revision)).toEqual(['retired']);
+	});
+
+	it('pastRows sorts by lastDeployMs, newest first — not by creation time', () => {
+		const repo: Pick<RepoLedger, 'rows'> = {
+			rows: [
+				row('a', 500, 100, 0, [{ appName: 'api', rank: 1 }]),
+				row('b', 100, 500, 0, [{ appName: 'api', rank: 2 }])
+			]
+		};
+		expect(pastRows(repo, new Set()).map((r) => r.revision)).toEqual(['b', 'a']);
 	});
 });

@@ -1353,3 +1353,113 @@ export function lineState(
 	}
 	return null;
 }
+
+/**
+ * ⭐ ROUND 11, LANE 2 — ONE MATCH PREDICATE, ROW-SHAPED AND LINE-SHAPED
+ * TARGETS BOTH.
+ *
+ * OPERATOR-WALK FINDING 1 (2026-09-09, BLOCKING): `/revisions?q=2.67.0-67`
+ * said "1 build matches" in the head band (which filters `RevisionRow`s —
+ * `revision`/`short`/`labelGroups` all checked) while every repository card
+ * said "no match" — the per-service ledger filtered its own
+ * `ServiceLedgerLine`s with a NARROWER predicate that checked only
+ * `revision`/`short`, never the label. A query that matches a release LABEL
+ * has to match the row carrying that label, wherever that row is rendered.
+ *
+ * `target` is `Pick<RevisionRow, 'revision' | 'short' | 'labelGroups'>` —
+ * satisfied by a `RevisionRow` directly, or by looking one up (see
+ * `revisionLookup`, below) for a `ServiceLedgerLine`, which does not carry
+ * its own labels.
+ */
+export function matchesRevisionText(
+	target: Pick<RevisionRow, 'revision' | 'short' | 'labelGroups'>,
+	query: string
+): boolean {
+	const q = query.trim().toLowerCase();
+	if (!q) return true;
+	return (
+		target.revision.toLowerCase().startsWith(q) ||
+		target.short.toLowerCase().includes(q) ||
+		target.labelGroups.some((g) => g.label.toLowerCase().includes(q))
+	);
+}
+
+/**
+ * Every revision this repo knows about (deployed or pending), keyed for a
+ * quick label lookup — what `matchesRevisionText` needs to check a
+ * `ServiceLedgerLine` (which has a `revision` but no `labelGroups` of its
+ * own) against the SAME predicate a `RevisionRow` is checked against.
+ *
+ * ⛔ THE VALUE IS AN ARRAY, NOT A SINGLE ROW — AND THAT IS NOT INCIDENTAL.
+ * `buildRowsForRevision` splits ONE revision into SEVERAL `RevisionRow`s
+ * the moment some service carries several releases of it (a held sibling
+ * release, e.g. `9f10e49` resolving to both a running `1.66.0-66` row and a
+ * held `2.67.0-67` row) — the exact live-cluster shape finding 1 was
+ * reported against. A `Map<string, RevisionRow>` can hold only ONE of
+ * them per revision, so whichever row lost the map slot had its OWN
+ * `labelGroups` (and so its own label) silently unreachable from a
+ * `ServiceLedgerLine` search — reproducing the blocking defect one layer
+ * down from where it was first fixed. Callers check EVERY row sharing the
+ * revision (`.some(...)`), never just the first.
+ */
+export function revisionLookup(
+	repo: Pick<RepoLedger, 'rows' | 'pending'>
+): Map<string, RevisionRow[]> {
+	const m = new Map<string, RevisionRow[]>();
+	for (const row of [...repo.rows, ...repo.pending]) {
+		const list = m.get(row.revision);
+		if (list) list.push(row);
+		else m.set(row.revision, [row]);
+	}
+	return m;
+}
+
+/**
+ * ⭐ ROUND 3 §1 — A REPOSITORY IS NOT ONE RELEASE LINE. Ported from
+ * `/revisions`' own template (round six) so the repository page (lane 3)
+ * and the index card (lane 2) compute the SAME lead row per release line
+ * rather than two independent opinions about which row is "the head".
+ *
+ * One hero/verdict-worthy row PER LINE whose own head has actually been
+ * DEPLOYED — a line whose newest known build has never been deployed
+ * anywhere has nothing to lead with (it belongs to the "Never deployed"
+ * list instead, per `releaseLines`' own `headRevision` doc comment).
+ */
+export function leadRowsFor(repo: Pick<RepoLedger, 'rows'>, lines: ReleaseLine[]): RevisionRow[] {
+	const out: RevisionRow[] = [];
+	for (const line of lines) {
+		// ⚠️ NOT `line.headRevision` — see this function's own callers: the
+		// hero states what is DEPLOYED, so it is this line's own newest row
+		// within `repo.rows` (already sorted newest-first), not the line's
+		// absolute ladder head, which can itself be undeployed.
+		const deployed = repo.rows.find((r) =>
+			r.services.some((s) => line.services.includes(s.appName))
+		);
+		if (deployed) out.push(deployed);
+	}
+	return out;
+}
+
+/** The two halves of the ledger, split on the page's FIRST criterion. */
+export function liveRows(repo: Pick<RepoLedger, 'rows'>): RevisionRow[] {
+	return repo.rows.filter((r) => r.liveSlots > 0);
+}
+
+/** Everything still running that is NOT one of the lines' own heads. */
+export function restRows(repo: Pick<RepoLedger, 'rows'>, headRevisions: Set<string>): RevisionRow[] {
+	return liveRows(repo).filter((r) => !headRevisions.has(r.revision));
+}
+
+/**
+ * ⭐ REVISIONS-2026-09-06, ITEM 8 — SORTED BY THE DATE IT DISPLAYS. `rows` is
+ * ordered by BUILD CREATION time (`buildRevisionLedger`'s own contract) —
+ * filtering it for "No longer running anywhere" without re-sorting leaves
+ * the row order following creation time while every row's own printed fact
+ * is `Last deployed N ago`. Newest `lastDeployMs` first, matching the age
+ * this list actually prints.
+ */
+export function pastRows(repo: Pick<RepoLedger, 'rows'>, headRevisions: Set<string>): RevisionRow[] {
+	return repo.rows
+		.filter((r) => r.liveSlots === 0 && !headRevisions.has(r.revision))
+		.sort((a, b) => b.lastDeployMs - a.lastDeployMs);
+}
