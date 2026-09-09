@@ -861,3 +861,42 @@ replacing `.rev-build-bar`).
   nothing.
 - Skeleton flip test at 1440 and 390.
 - `pnpm test` green.
+
+## Round 11 outcomes (2026-09-09, after three critic passes and eight lanes)
+
+Rulings that landed differently from the section above, each measured live:
+
+- **Bar cells are capped**, not stretched: ≈36px per cell with a 2px gutter, so a 3-place bar
+  is visibly shorter than a 9-place one (6 places ≈ 226px at 1440). A `width: fit-content`
+  attempt collapsed to 40px in Chromium (nested-flex intrinsic sizing); the width is computed.
+- **`movedOn` is a greyed green, not a fresh mint** (light `oklch(82% 0.07 154)`, dark
+  `green-100`): the "No longer running anywhere" wall of tint read healthier than "running".
+  Measured: light dE00 here/movedOn 29.7, movedOn/ground 23.2; dark ΔL here/movedOn 0.33,
+  movedOn/ground 0.68; deuteranopia sim movedOn/notReached 13.3.
+- **Cells are addressable**: `CoverageBar` takes `cells` (`coverageCells()`: dev → staging →
+  prod, then service) with a title per place; the held chip sits on the count line, never
+  alone under the bar. The hero header rollup carries the held fact only; the count is said
+  once, directly above the bar.
+- **Below `sm` the held banner precedes the ledger card** (container-query reorder), so the
+  blocking fact is first on a phone. The banner shares the cards' edges at every width.
+- **One ledger**: `RepoLedgerCard` on both pages (standard Card, 8px, 47px header);
+  `filterable` on the repository page turns names into toggles (plain at rest, bordered on
+  hover, filled when pressed). Grid: name `minmax(170px, max-content)`, chips
+  `minmax(200px, max-content)`, envs, a `1fr` spacer, age; 16px insets; sibling cards share one
+  chip x; stacked fallback under a 768px container so a 1024 laptop keeps the grid.
+- **Rows say what runs first**: `1 BEHIND│2.66.0-66` then `HELD│2.67.0-67`; a held label whose
+  revision is the row's own says "this same build under a newer label".
+- **The banner's constraint is the gate's** (`api ^1.67.0`, from `blocking-story.ts`), said
+  once with the order; rule names on a muted `t-micro` line; "rolled back to" where dev did;
+  no "waiting" when no candidate can pass.
+- **`?q=` recounts**: index head band, card rollups and rows share one matcher (service name,
+  label, sha); every number on a filtered repository page is computed on the matching services.
+- **"Never deployed" is claimed only when history was checked** (`historyLimit.checked`);
+  otherwise "No deploy on record" with the window footnote.
+- **The palette finds builds** by sha prefix or label and pages by name; a rolled-back commit's
+  two ledger rows carry distinct keys.
+- Copy: "Open on GitHub ↗" for the external link; "Repositories and their builds" in ⌘K.
+
+Deferred, product-wide or standing rules: inner-scrolling `<main>` at `sm+`; `t-dense` 12.5px /
+`t-code-sm` 11.5px roles; amber `1 BEHIND`; `bannerTitle` dead code; env-column budget
+(145px each) on the build page re-measure for a 4+ environment fleet.

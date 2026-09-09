@@ -5762,3 +5762,29 @@ claim, and descriptive text on this page has been rejected by name.
 
 `cell.sourceURL` is the **dashboard** a rollout was read from, not its repository. The
 source card reads `rollout.status.source`.
+
+## DESIGN PASS 6 — Revisions round 11, on `polish/revisions-pass-6` (2026-09-09)
+
+The human asked for two things: the bar back ("how many places the version is active /
+passed by") and one page per repository. Spec: `REVISIONS-2026-09-05.md` "Round 11 rulings"
+and "Round 11 outcomes". Nine commits, three critic passes (craft twice, operator walk twice),
+eight fix lanes by file ownership; gate 77 files / 1461 tests green, svelte-check at its five
+pre-existing errors.
+
+- **The bar** draws always, cellular, one hue at two depths: solid = running here, greyed tint =
+  moved past, track = not reached; cells capped ≈36px, titled per place, ordered dev → staging →
+  prod. Held and failing stay in chips. This is a judgement between "no split bars" and
+  "active / passed by" — flag it if the human reads the tint as a second quantity.
+- **Three levels**: `/revisions` index (one `RepoLedgerCard` per repository, header is the
+  link), `/revisions/<repo>` (breadcrumb, head band with the name on its own line, search,
+  ledger with toggles, held banner, one hero per release line, three build lists with 8px row
+  bars), `/revisions/<repo>/<build>` (head-band bar, `This build` + `What each service calls
+  it` at one height, `Running it now` on aligned environment columns).
+- **Truth under `?q=`** at all three levels; the palette resolves sha, label and page names.
+
+### Raised, not decided here
+- The `movedOn` tint is applied to a never-deployed build's places too (every place runs a
+  newer build), which is consistent with "passed by" but not with "ran here before"; deploy
+  history only reaches five entries per service, so a literal "ran here" bar is a data ask.
+- Build-page environment columns are a fixed 145px each; a fleet with more than three
+  environments needs the budget re-measured.
