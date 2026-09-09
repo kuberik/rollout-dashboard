@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dedupedClauses, orderClause, heldConsequence, heldExplanation } from './HeldBanner.svelte';
+import { dedupedClauses, dedupedCauses, orderClause, heldConsequence, heldExplanation } from './HeldBanner.svelte';
 import type { BlockingStory, ClassifiedGate } from '$lib/view-models/blocking-story';
 
 const NOTHING_TO_DRAW = {
@@ -11,9 +11,9 @@ const NOTHING_TO_DRAW = {
 	need: null
 } as const;
 
-function dependencyGate(clause: string): ClassifiedGate {
+function dependencyGate(clause: string, id: string = 'dependency-hello-frontend-needs-api'): ClassifiedGate {
 	return {
-		id: 'dependency-hello-frontend-needs-api',
+		id,
 		kind: 'dependency',
 		clears: 'upstream',
 		label: 'depends on hello-api-app',
@@ -111,6 +111,29 @@ describe('dedupedClauses — round 11 revisions-pass-6, item 1', () => {
 	});
 });
 
+/**
+ * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — `heldConsequence` names the
+ * GATE, not just its sentence: an operator reading "hello-api-app ships api
+ * ^1.67.0" in a banner has no way to `kubectl get rolloutgate` for the rule
+ * that says so without this.
+ */
+describe('dedupedCauses — the clause AND the gate id it came from', () => {
+	it('pairs each deduped clause with the gate id that produced it', () => {
+		expect(dedupedCauses([story([dependencyGate(DEP_CLAUSE)])])).toEqual([
+			{ clause: DEP_CLAUSE, id: 'dependency-hello-frontend-needs-api' }
+		]);
+	});
+
+	it('two distinct causes keep two distinct ids, same order as the clauses', () => {
+		const other = dependencyGate('hello-cache-app ships a newer cache than 2.0.0', 'ghd-5b2wn');
+		const out = dedupedCauses([story([dependencyGate(DEP_CLAUSE)]), story([other])]);
+		expect(out).toEqual([
+			{ clause: DEP_CLAUSE, id: 'dependency-hello-frontend-needs-api' },
+			{ clause: 'hello-cache-app ships a newer cache than 2.0.0', id: 'ghd-5b2wn' }
+		]);
+	});
+});
+
 describe('orderClause — the sequence, named once', () => {
 	it('chains the held places in pipeline order when a promotion gate is present', () => {
 		expect(orderClause(threeEnvStories(), ['DEV', 'STAGING', 'PROD'])).toBe('then dev → staging → prod');
@@ -129,13 +152,20 @@ describe('orderClause — the sequence, named once', () => {
 describe('heldConsequence — one paragraph, the cause once and the order once', () => {
 	it('joins the deduped cause and the order into one sentence', () => {
 		expect(heldConsequence(threeEnvStories(), ['DEV', 'STAGING', 'PROD'])).toBe(
-			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod.'
+			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod (dependency-hello-frontend-needs-api).'
 		);
 	});
 
 	it('drops the order clause when there is nothing to sequence', () => {
 		expect(heldConsequence([story([dependencyGate(DEP_CLAUSE)])], ['DEV'])).toBe(
-			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0.'
+			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 (dependency-hello-frontend-needs-api).'
+		);
+	});
+
+	it('names two distinct gates, comma-joined, when two distinct causes hold', () => {
+		const other = dependencyGate('hello-cache-app ships a newer cache than 2.0.0', 'ghd-5b2wn');
+		expect(heldConsequence([story([dependencyGate(DEP_CLAUSE)]), story([other])], [])).toBe(
+			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 and hello-cache-app ships a newer cache than 2.0.0 (dependency-hello-frontend-needs-api, ghd-5b2wn).'
 		);
 	});
 
@@ -148,7 +178,7 @@ describe('heldExplanation — the lead clause, and indefinite vs waiting', () =>
 	it('leads with the candidate count once, not per environment', () => {
 		const out = heldExplanation(threeEnvStories(), ['DEV', 'STAGING', 'PROD'], false);
 		expect(out).toBe(
-			'1 newer build is waiting. Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod.'
+			'1 newer build is waiting. Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod (dependency-hello-frontend-needs-api).'
 		);
 		// The old defect: the same consequence, once per environment.
 		expect(out.match(/hello-api-app ships a newer api/g)?.length).toBe(1);

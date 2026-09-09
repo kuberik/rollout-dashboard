@@ -75,11 +75,22 @@ beforeEach(() => {
 });
 
 describe('BuildLists', () => {
-	test('a genuinely empty "Also still running" prints a one-line note, not a card — finding 7', () => {
+	test('a genuinely empty "Also still running" renders as a titled Card, not a bare note — revisions-pass-6, item 5', () => {
 		// Only `web`'s own head is deployed and it IS this repo's one lead
 		// row, so nothing else is still running anywhere — the "every place
 		// is on a build above" phrasing, since there is a lead row to point
 		// at.
+		//
+		// ⛔ SUPERSEDES finding 7 (2026-09-09), which had this render as a
+		// bare, unbordered `<p>` on the theory that an empty headered `Card`
+		// "outranks a full one by sheer position and chrome". Measured
+		// against the RAIL's own empty state ("Never deployed") two hundred
+		// pixels away — a full titled `Card` with an icon and a `0 builds`
+		// rollup — that produced the opposite defect: this section's own
+		// landmark ("Also still running") vanished from the page's heading
+		// structure whenever there was nothing to show, and the two empty
+		// states in the same component read as two different KINDS of fact.
+		// It is a `Card` again, always, so the section survives being empty.
 		const r1 = rel('b111111', 10);
 		const web = rollout('web', 'team', [r1], [{ r: r1, minutesAgo: 10 }]);
 		const [repo] = buildRevisionLedger([web], [environment('web', 'team', 'prod')]);
@@ -87,8 +98,15 @@ describe('BuildLists', () => {
 		expect(
 			screen.getByText(/Nothing older is still running — every place is on a build above\./)
 		).toBeInTheDocument();
-		// No bordered `Card` for an empty section — a note, not a card.
-		expect(container.querySelector('.card-cq')?.textContent ?? '').not.toContain('still running');
+		// The landmark and its rollup are back, inside a real `Card`. Scoped
+		// to THIS card specifically — the rail's own empty state ("Never
+		// deployed") also reads "0 builds" on this fixture, so a page-wide
+		// text query would match twice.
+		const title = screen.getByText('Also still running');
+		expect(title).toBeInTheDocument();
+		const card = title.closest('.card-cq');
+		expect(card?.textContent ?? '').toContain('0 builds');
+		expect(card?.textContent ?? '').toContain('still running');
 	});
 
 	test('a non-empty "Also still running" renders as a real card with its rows', () => {

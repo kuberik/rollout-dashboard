@@ -199,7 +199,7 @@ describe('/revisions — the index (round 11, B.2/B.6)', () => {
 		expect(screen.getByText('Everything on its newest build')).toBeInTheDocument();
 	});
 
-	test('the card header is ONE <a> to the repository page; "View repository" is a separate <a> in the footer; no nested anchors', async () => {
+	test('the card header is ONE <a> to the repository page; "Open on GitHub" is a separate <a> in the footer; no nested anchors', async () => {
 		const { rollouts, environments } = repoFixture('a', 'https://github.com/acme/repo-a.git');
 		stubFetch(rollouts, environments);
 		const { container } = await (async () => {

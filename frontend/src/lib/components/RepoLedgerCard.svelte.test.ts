@@ -102,7 +102,7 @@ describe('RepoLedgerCard', () => {
 	test('the footer names the lifetime counts and links out to the repository, hover-capable via .nav-link', () => {
 		const repo = fixture();
 		render(RepoLedgerCard, { repo, now: new Date(), repoUrl: 'https://github.com/acme/monorepo' });
-		const link = screen.getByRole('link', { name: /View repository/ });
+		const link = screen.getByRole('link', { name: /Open on GitHub/ });
 		expect(link).toHaveClass('nav-link');
 		expect(link.getAttribute('href')).toBe('https://github.com/acme/monorepo');
 	});

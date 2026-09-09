@@ -44,6 +44,7 @@
 	import {
 		coverageBarSegments,
 		coverageBarLabel,
+		coverageCells,
 		buildState,
 		releaseSplit,
 		releaseHeldClause,
@@ -107,6 +108,14 @@
 	 * palette. See that function's own doc comment.
 	 */
 	const segments = $derived(coverageBarSegments(coverage));
+	/**
+	 * ⭐ REVISIONS-PASS-6, ITEM 3 — PER-CELL IDENTITY, SO "WHICH 3" IS
+	 * ANSWERABLE. `CoverageBar`'s new optional `cells` prop; see that
+	 * component's own doc comment and `coverageCells()`'s. Passed to BOTH
+	 * the compact and non-compact bar renders below — both are hero-scale
+	 * bars, and a hero is exactly where "which specific place" matters most.
+	 */
+	const cells = $derived(coverageCells(coverage));
 	const state = $derived(buildState(coverage));
 
 	/**
@@ -148,45 +157,53 @@
 <div class="lead">
 	{#if compact}
 		<!--
-			⭐ ROUND 11, A.6.2 — THE COMPACT LEAD BODY, REWRITTEN FOR "THE BAR
-			COMES BACK, AND IT ALWAYS DRAWS". The host `Card`'s own header
-			keeps the verdict rollup (`+page.svelte`'s `heroVerdict`) hard-right
-			and this body never restates it — that half of craft review item 7
-			survives unchanged. What changes: the bar is no longer conditional
-			(the old hide-at-full-coverage prop is deleted; A.2 draws it at 0%
-			and at 100% too) and the identifier is GONE from this body —
-			"the hero body does not reprint the sha" (A.6.2) — because the host
-			`Card`'s own title is where it belongs now (a Lane 2 call-site
-			change; see this file's report). At full coverage the body is
-			nothing but the bar, which is the point: a `BuildStateMark` only
-			when there is a shortfall left to name (`state.key !== 'done'`),
-			then the bar, full width, always.
+			⭐ ROUND 11, A.6.2 — THE COMPACT LEAD BODY. The host `Card`'s own
+			header keeps the verdict rollup (`+page.svelte`'s `heroVerdict`)
+			hard-right and this body never restates THAT fact — that half of
+			craft review item 7 survives unchanged. The identifier is GONE from
+			this body — "the hero body does not reprint the sha" (A.6.2) —
+			because the host `Card`'s own title is where it belongs now.
+
+			⭐ REVISIONS-PASS-6, ITEM 4 — THE COUNT NOW ALWAYS SITS ABOVE THE
+			BAR, EVEN AT `state.key === 'done'`. It used to print NOTHING at
+			full coverage (a `BuildStateMark` only fires on a shortfall, and
+			`held`'s own count line was the one exception) — so hero 2 on a
+			fully-covered build showed a bare bar with no count touching it at
+			all, while hero 1 (the non-compact branch below) always shows one.
+			§2's rule is "the count sits directly above the bar", not "only
+			when there is bad news" — both heroes are this rule now, byte for
+			byte the same count line. `BuildStateMark` still draws BELOW the
+			count line, and still only when there is a shortfall to name; a
+			`held` build gets no `BuildStateMark` (the caption would contradict
+			a bar that is fully solid — see the tombstone this replaces) but
+			DOES keep the count line, same as every other state.
 		-->
 		<div class="lead-compact">
-			<!--
-				⭐ ROUND 11 REVISIONS-PASS-6, ITEM 8 — `held` DOES NOT CORRELATE
-				WITH THE BAR, SO IT MAY NOT BE THE BAR'S ONLY CAPTION. Every OTHER
-				`buildState()` key (`failing`/`deploying`/`notYet`/`ahead`) names a
-				SHORTFALL the bar's own cells are drawn from — the caption narrates
-				the shape directly above it. `held` is different: it fires from
-				`heldBehind`, a RELEASE-LABEL split the coverage bar cannot see (by
-				A.2's own rule, "held stays in chips and words and never enters the
-				bar") — so a build at 100% coverage (bar fully solid) rendered
-				`held in 3 places` as the one line touching it, reading as a
-				contradiction nothing on the bar explains. The count that DOES
-				match what the bar is drawn from — `{live} of {total} places` —
-				takes this slot instead; `held` moves to the chip below the bar
-				(`showHeldChip`), where a distinct control can carry a fact the
-				bar's own shape does not.
-			-->
-			{#if state.key === 'held'}
-				<div class="t-dense text-gray-700 dark:text-gray-200">
-					{coverage.liveCount} of {coverage.totalCount} place{coverage.totalCount === 1 ? '' : 's'}
-				</div>
-			{:else if state.key !== 'done'}
+			<div class="lead-compact-count t-dense text-gray-700 dark:text-gray-200">
+				<span>{coverage.liveCount} of {coverage.totalCount} place{coverage.totalCount === 1 ? '' : 's'}</span>
+				<!--
+					⭐ REVISIONS-PASS-6, ITEM 3 — THE HELD CHIP MOVES TO THE COUNT
+					LINE. It used to be its own full-width row between the count and
+					the bar (see the tombstone below `.lead-actions`'s sibling
+					block) — "floating alone" with nothing to anchor it to. It is a
+					fact ABOUT the count (how many of these `liveCount` places are on
+					an older release), so it sits beside the count that fact
+					qualifies, never on a row of its own.
+				-->
+				{#if showHeldChip && heldTotal > 0}
+					<Chip
+						role="alarm"
+						label="{heldTotal} held"
+						title="{heldTotal} place{heldTotal === 1
+							? ''
+							: 's'} run this on an older release, and a newer one is held by a rule"
+					/>
+				{/if}
+			</div>
+			{#if state.key !== 'done' && state.key !== 'held'}
 				<BuildStateMark {coverage} size="row" />
 			{/if}
-			<CoverageBar {segments} label={barLabel} />
+			<CoverageBar {segments} {cells} label={barLabel} />
 		</div>
 	{:else}
 		<div class="lead-top">
@@ -217,6 +234,22 @@
 			<div class="lead-count" title={state.title}>
 				<span class="t-display text-gray-900 dark:text-white">{coverage.liveCount}</span>
 				<span class="t-body text-gray-500 dark:text-gray-400">of {coverage.totalCount}</span>
+				<!--
+					⭐ REVISIONS-PASS-6, ITEM 3 — THE HELD CHIP IS BESIDE THE COUNT,
+					NEVER ON ITS OWN ROW. See the identical comment in the compact
+					branch above; this is the same fact in the same place, the other
+					layout. `.lead-count`'s own `flex-wrap` puts it right after the
+					figure and before the `t-label` line wraps beneath both.
+				-->
+				{#if showHeldChip && heldTotal > 0}
+					<Chip
+						role="alarm"
+						label="{heldTotal} held"
+						title="{heldTotal} place{heldTotal === 1
+							? ''
+							: 's'} run this on an older release, and a newer one is held by a rule"
+					/>
+				{/if}
 				<!--
 					⭐ THE DEFINITION IS ON THE TERM, NOT UNDER IT. (2026-09-02, from the
 					human: three lines of caption prose on this card, of which this was
@@ -270,27 +303,13 @@
 		</div>
 	{/if}
 
-	<!--
-		⭐ §2's "3 HELD" CHIP, UNDER THE FIGURE — SHARED BY BOTH LAYOUTS NOW.
-		(REVISIONS-2026-09-05, craft review) The list page hides the bar
-		entirely at full coverage, so the held fact can no longer ride the
-		caption line above a segment that visibly proves it — a bare
-		"running it" with no bar and no mark reads as "done". `alarm` is the
-		product's held-and-needs-a-look chip; the release-split sentence
-		below still names WHICH release and WHERE.
-	-->
-	{#if showHeldChip && heldTotal > 0}
-		<div class="mt-1 flex w-full justify-end">
-			<Chip
-				role="alarm"
-				label="{heldTotal} held"
-				wide
-				title="{heldTotal} place{heldTotal === 1
-					? ''
-					: 's'} run this on an older release, and a newer one is held by a rule"
-			/>
-		</div>
-	{/if}
+	<!-- ⛔ THE STANDALONE "3 HELD" ROW BETWEEN THE FIGURE AND THE BAR IS GONE.
+	     (REVISIONS-PASS-6, ITEM 3) It used to be a full-width `mt-1` row
+	     shared by both layouts, floating with nothing to anchor it to — a
+	     "3 HELD" chip 1329px right of anything naming which 3. It is now
+	     rendered INLINE, beside the count it is a fact about, in each
+	     layout's own count line (`.lead-compact-count` above / `.lead-count`
+	     above the state sentence) — see those two blocks' own comments. -->
 
 	<!--
 		⭐ ROUND 11, A.2/A.6.2 — THE BAR ALWAYS DRAWS NOW, NON-COMPACT TOO.
@@ -303,7 +322,7 @@
 		render drew the bar TWICE, caught mounting the component directly.
 	-->
 	{#if !compact}
-		<CoverageBar {segments} label={barLabel} class="mt-3" />
+		<CoverageBar {segments} {cells} label={barLabel} class="mt-3" />
 	{/if}
 
 	<!-- ⛔ THE TWO-SWATCH LEGEND IS GONE. (2026-09-03, direct from the human,
@@ -415,15 +434,26 @@
 
 	/*
 	 * ⭐ ROUND 11, A.6.2 — THE COMPACT LEAD BODY. No id row any more (see the
-	 * markup comment above); a column of at most two things — the state
-	 * mark, only when there is a shortfall, then the bar. `gap` rather than
-	 * a margin on the bar itself so a body with no mark (`state.key ===
-	 * 'done'`) costs nothing extra above it.
+	 * markup comment above); a column of at most three things now —
+	 * REVISIONS-PASS-6, ITEM 4 added the always-drawn count line — the
+	 * count, then the state mark only when there is a shortfall, then the
+	 * bar. `gap` rather than a margin on the bar itself so a body with no
+	 * mark (`state.key === 'done'` or `'held'`) costs nothing extra between
+	 * the count and the bar.
 	 */
 	.lead-compact {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+	}
+
+	/* The count line + its held chip, item 3/4. `flex-wrap` so a held chip
+	   never forces the number to wrap mid-figure on a narrow card. */
+	.lead-compact-count {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
 	}
 
 	/* ⛔ `.lead-compact-id`/`.lead-compact-figure` REMOVED, ROUND 11/ITEM 1 —

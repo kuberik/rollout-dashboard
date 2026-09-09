@@ -280,7 +280,7 @@ describe('classifyGate', () => {
 		expect(g.clause).toBe('its upstream environment deploys this build');
 	});
 
-	it('a dependency gate names the service that has to ship, and its version', () => {
+	it('a dependency gate names the service that has to ship, and the RANGE the gate evaluates — not just "newer than what it has now"', () => {
 		const g = classifyGate(
 			{ name: 'dependency-hello-frontend-needs-api', passing: true, allowedVersions: ['rel-66'] },
 			'hello-dep-prod',
@@ -288,7 +288,16 @@ describe('classifyGate', () => {
 		);
 		expect(g.kind).toBe('dependency');
 		expect(g.clears).toBe('upstream');
-		expect(g.clause).toBe('hello-api-app ships a newer api than 1.66.0');
+		// ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — `dep.requiredVersion` is
+		// `^1.67.0` in this fixture; the gate compares candidates against
+		// THAT range, not against `providedVersion` (`1.66.0`, what
+		// `hello-api-app` merely happens to serve today). `clause` states
+		// the range — the same fact `/apps/hello-api-app` states as "They
+		// need it to ship api ^1.67.0" — never "a newer api than 1.66.0",
+		// which is true today and would still be true of a candidate the
+		// gate would go on to reject.
+		expect(g.clause).toBe('hello-api-app ships api ^1.67.0');
+		expect(g.short).toBe('Waiting for hello-api-app to ship api ^1.67.0 — it is on 1.66.0');
 	});
 
 	it('a not-passing gate with a schedule join is a CLOCK, with its real name and time', () => {
@@ -1014,7 +1023,11 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 			now: NOW
 		});
 		expect(s.headline).toBe('PROD is waiting for hello-api-app to ship api ^1.67.0');
-		expect(s.consequence).toContain('hello-api-app ships a newer api than 1.66.0');
+		// ⭐ SECOND OPERATOR WALK, ITEM 3 — THE CONSEQUENCE STATES THE SAME
+		// RANGE THE HEADLINE AND `/apps/hello-api-app` DO, NOT "a newer api
+		// than 1.66.0" (true today, silent about what the gate actually
+		// wants).
+		expect(s.consequence).toContain('hello-api-app ships api ^1.67.0');
 		// ⛔ NOT "the deploy in front of it lands" — this gate is a CONTRACT
 		// (RolloutDependency), not a promotion order, and nothing is "in front
 		// of it". The verdict names who has to ship what. See `upstreamVerdict`.

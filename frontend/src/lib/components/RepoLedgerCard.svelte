@@ -10,7 +10,7 @@
 	 * header (icon, name, verdict, chevron — the WHOLE bar is the one link
 	 * to the repository page), the per-service ledger (§7a's grammar,
 	 * capped at 6 rows unless this is the fleet's only repository), and a
-	 * footer (the three lifetime counts, `View repository` external).
+	 * footer (the three lifetime counts, `Open on GitHub` external).
 	 *
 	 * ⛔ NO TOGGLE. Round 7.6 ("the repository header is the toggle") is
 	 * overruled by this round's own B.2: there is nothing on the index to
@@ -236,14 +236,28 @@
 	here (that in-flight glyph is the rank chip's own icon slot elsewhere on
 	this row).
 -->
-{#snippet secondaryChip(state: LineStateChip | null)}
+<!--
+	⭐ SECOND OPERATOR WALK, ITEM 9 — SAY THE SHA RELATIONSHIP ONCE, ON THE
+	ROW. Adjacent rows read `1 BEHIND 9f10e49` and `NEWEST 9f10e49` — the
+	SAME sha, twice, with nothing on either row explaining why one is
+	"behind" a build it shares a commit with — and the `HELD` chip's own
+	value (`2.67.0-67`) is that identical commit under a newer release
+	label, which is not obvious from a bare version string either. When the
+	held candidate's sha (`state.holdOf.short`) equals THIS row's own
+	(`lineShort`), the chip's title states the relation directly instead of
+	the generic "a newer build exists" sentence.
+-->
+{#snippet secondaryChip(state: LineStateChip | null, lineShort?: string)}
 	{#if state?.role === 'held'}
+		{@const sameCommit = !!lineShort && state.holdOf?.short === lineShort}
 		<Chip
 			role="alarm"
 			label="HELD"
 			value={state.holdOf?.label ?? state.holdOf?.short}
 			valueTitle={state.holdOf?.label ? state.holdOf.short : undefined}
-			title={state.title}
+			title={sameCommit
+				? `${state.holdOf?.label} is this same build (${lineShort}) under a newer label.`
+				: state.title}
 			wide
 		/>
 	{:else if state && state.role !== 'deploying' && state.role !== 'checking'}
@@ -351,7 +365,7 @@
 											valueTitle={line.revision}
 										/>
 									</span>
-									{@render secondaryChip(state)}
+									{@render secondaryChip(state, line.short)}
 								</span>
 							{:else}
 								<span class="svc-build">
@@ -360,7 +374,7 @@
 										href={revisionPath(repo.repoKey, line.revision)}
 										title={line.revision}>{line.short}</a
 									>
-									{@render secondaryChip(state)}
+									{@render secondaryChip(state, line.short)}
 								</span>
 							{/if}
 							<span class="svc-envs">
@@ -468,7 +482,7 @@
 					rel="noopener noreferrer"
 					title={repoLabelOf(repo.repoKey)}
 				>
-					View repository
+					Open on GitHub
 					<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 				</a>
 			{/if}
@@ -636,10 +650,10 @@
 		/*
 		 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 11 — THE META LINE NEVER
 		 * ELLIPSISES A COUNT. `.repo-meta-text`'s `truncate` (markup) is
-		 * right at `sm`+, where the row has `View repository` to its right
+		 * right at `sm`+, where the row has `Open on GitHub` to its right
 		 * and not enough of the card's own width to wrap into — but below
 		 * 560px the two stacked and the SAME class clipped `36 builds · 12
-		 * deployed at le…`, mid-count, with `View repository` sharing the
+		 * deployed at le…`, mid-count, with `Open on GitHub` sharing the
 		 * line it had already run out of room for. Unlayered, this
 		 * Svelte-scoped rule outranks `truncate`'s own utility layer
 		 * (`lib/CLAUDE.md`'s note) — no markup change needed. `flex-col` +

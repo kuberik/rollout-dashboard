@@ -387,6 +387,10 @@ describe('the story and the row cannot disagree, because the row is the story sp
 		expect(g.contract).toBe('api');
 		expect(g.have).toBe('1.66.0');
 		expect(g.need).toBe('^1.67.0');
-		expect(`${g.subject} ${g.predicate}`).toBe('hello-api-app ships a newer api');
+		// ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — the reassembly states the
+		// RANGE the gate evaluates (`^1.67.0`), not "a newer api" (true of any
+		// candidate, including one the gate would still reject).
+		expect(`${g.subject} ${g.predicate}`).toBe('hello-api-app ships api ^1.67.0');
+		expect(g.clause).toBe(`${g.subject} ${g.predicate}`);
 	});
 });

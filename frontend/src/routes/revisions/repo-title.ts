@@ -27,7 +27,7 @@
  * qualified label and rides as a `title` where the element can take one — the
  * detail page's hero meta. The rail CARD's title cannot (`Card` owns its own
  * `<h2>` and this pass does not own `Card`), so there the full label is on
- * the `View repository` link in the same card's body, which is the one
+ * the `Open on GitHub` link in the same card's body, which is the one
  * control that resolves to it. `repoSlug()` still puts the host and the owner
  * in every `/versions/<repo>/<rev>` URL. What changes is which of the three
  * segments is DRAWN.

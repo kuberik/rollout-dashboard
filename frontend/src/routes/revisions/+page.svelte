@@ -220,9 +220,19 @@
 			<span class="skel-block h-7 w-8" aria-hidden="true"></span>
 			<span class="skel-block h-3.5 w-56" aria-hidden="true"></span>
 		{:else if !query.isError && ledgers.length > 0}
-			<span class="t-display text-gray-900 tabular-nums dark:text-white"
-				>{searchActive && searchSummary ? searchSummary.matches : attention.total}</span
-			>
+			<!--
+				⭐ SECOND OPERATOR WALK, ITEM 6 — RULES 2-4 CARRY NO NUMERAL.
+				A search always shows its own match count, including a real
+				zero ("0 builds match…" is a fact worth a figure). The
+				UNFILTERED fleet verdict is the one that must not print a bare
+				`0` for "everything is on its newest build" — the same rule
+				`RepoLedgerCard`'s own per-repo rollup already follows.
+			-->
+			{#if (searchActive && searchSummary) || attention.total > 0}
+				<span class="t-display text-gray-900 tabular-nums dark:text-white"
+					>{searchActive && searchSummary ? searchSummary.matches : attention.total}</span
+				>
+			{/if}
 			<p
 				class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400"
 				title="One commit, one build. Here is every build your services can deploy, and how far each one has got."

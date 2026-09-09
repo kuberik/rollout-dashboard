@@ -1423,13 +1423,25 @@ export function lineState(
  * `revision`/`short`, never the label. A query that matches a release LABEL
  * has to match the row carrying that label, wherever that row is rendered.
  *
- * `target` is `Pick<RevisionRow, 'revision' | 'short' | 'labelGroups'>` —
- * satisfied by a `RevisionRow` directly, or by looking one up (see
- * `revisionLookup`, below) for a `ServiceLedgerLine`, which does not carry
- * its own labels.
+ * ⭐ ROUND 11, SECOND OPERATOR WALK, ITEM 1 (BLOCKING, part 2) — AND THE
+ * SERVICE NAME, THE FIELD THE SEARCH FIELD'S OWN PLACEHOLDER PROMISES
+ * ("Find a build or service"). `/revisions?q=hello-world` printed "0 builds
+ * match" in the head band and "0 of 36 builds" on the `kuberik-testing`
+ * card's own header while that card's body drew TWO matching rows
+ * (`hello-world-app`, `hello-world-manifests`) — `RepoLedgerCard`'s row
+ * filter (`visibleGroupsOf`) checked `appName` directly and this predicate
+ * did not, so the same contradiction Finding 1 already closed for LABELS
+ * reopened for the other field the placeholder advertises. Checking
+ * `services[].appName` here closes it for every caller at once, the same
+ * way adding the label check did.
+ *
+ * `target` is `Pick<RevisionRow, 'revision' | 'short' | 'labelGroups' |
+ * 'services'>` — satisfied by a `RevisionRow` directly, or by looking one
+ * up (see `revisionLookup`, below) for a `ServiceLedgerLine`, which does not
+ * carry its own labels or sibling services.
  */
 export function matchesRevisionText(
-	target: Pick<RevisionRow, 'revision' | 'short' | 'labelGroups'>,
+	target: Pick<RevisionRow, 'revision' | 'short' | 'labelGroups' | 'services'>,
 	query: string
 ): boolean {
 	const q = query.trim().toLowerCase();
@@ -1437,7 +1449,8 @@ export function matchesRevisionText(
 	return (
 		target.revision.toLowerCase().startsWith(q) ||
 		target.short.toLowerCase().includes(q) ||
-		target.labelGroups.some((g) => g.label.toLowerCase().includes(q))
+		target.labelGroups.some((g) => g.label.toLowerCase().includes(q)) ||
+		(target.services ?? []).some((s) => s.appName.toLowerCase().includes(q))
 	);
 }
 

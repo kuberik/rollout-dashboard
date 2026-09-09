@@ -185,16 +185,30 @@
 	 * the SAME reason rather than a second, disagreeing one.
 	 */
 	const historyLimit = $derived.by(() => {
+		let checked = false;
 		for (const row of [...repo.rows, ...repo.pending]) {
 			for (const s of row.services) {
 				for (const slot of s.slots) {
+					checked = true;
 					if (historyAtLimit(slot.cell.rollout)) {
 						return { atLimit: true, limit: slot.cell.rollout?.spec?.versionHistoryLimit ?? 10 };
 					}
 				}
 			}
 		}
-		return { atLimit: false, limit: 10 };
+		/**
+		 * ⭐ REVISIONS-PASS-6, ITEM 8 — NO SLOT CHECKED IS NOT A CLEAN BILL.
+		 * `atLimit: false` is the claim "every service's own retention has
+		 * room to spare, verified" — but that verification needs at least
+		 * ONE real rollout to look at. A repo whose rows/pending carry no
+		 * slot at all (a small or newly-added repository, live at
+		 * `kuberik-testing-second`) fell through this loop having checked
+		 * nothing and got the CONFIDENT grammar ("Never deployed") by
+		 * default — a guess wearing certainty. The honest default when there
+		 * is no evidence either way is the CAUTIOUS grammar, the same one a
+		 * genuinely truncated history gets: `atLimit: !checked`.
+		 */
+		return { atLimit: !checked, limit: 10 };
 	});
 
 	const pendingTitle = $derived(historyLimit.atLimit ? 'No deploy on record' : 'Never deployed');
@@ -230,21 +244,28 @@
 <!--
 	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 11 (+ THE UNDERLYING A.6.1 GAP THIS
 	FIXES) — EVERY `.bld-row` DRAWS ITS BAR NOW, NOT JUST "ALSO STILL
-	RUNNING"'S. The spec (`REVISIONS-2026-09-05.md`, A.6.1) asks for THREE
-	lines on every row in all three lists — the rollup sentence, an 8px
-	`CoverageBar`, then the age — and only "Also still running" had drawn
-	anything beyond the age: a hand-rolled two-tone `.bld-fill-track`, gated
-	on `liveCount < totalCount` (so a 100%-live row drew no bar at all,
-	the exact "the bar is a conditional that is false on every row" defect
-	A.2 replaced on the hero and the head band). "No longer running
-	anywhere" and "Never deployed" drew NO bar whatsoever — confirmed live
-	at 390, where neither list showed anything between the sha and the age.
-	`coverageRoll` is the ONE row-scale rollup, shared by all three:
-	`coverageBarSegments`/`coverageBarLabel`/`coverageCounts` are the same
-	round-11 functions the hero and the head band already draw from, so a
-	never-deployed row's bar reads all-track ("nowhere yet, and it is
-	still a candidate") and a no-longer-running row's reads all-tint
+	RUNNING"'S. `coverageRoll` is the ONE row-scale rollup, shared by all
+	three lists: `coverageBarSegments`/`coverageBarLabel`/`coverageCounts`
+	are the same round-11 functions the hero and the head band already draw
+	from, so a never-deployed row's bar reads all-track ("nowhere yet, and
+	it is still a candidate") and a no-longer-running row's reads all-tint
 	("every place is already past it") — never a hand-rolled percentage.
+
+	⭐ REVISIONS-PASS-6, ITEM 7 — AND THE SENTENCE STOPPED RESTATING THE BAR
+	IT SITS BESIDE. A.6.1 asked for THREE lines (a rollup sentence, the bar,
+	the age); once the bar actually draws (item 11, above), the sentence's
+	`{here} of {total} running · {movedOn} moved on` says in words exactly
+	what the cells already say in shape and colour — verbatim, on every row
+	of "No longer running anywhere" ("0 of 9 running · 9 moved on", nine
+	times down one card). `here`/`movedOn`/`notReached` are struck from this
+	line; ONLY `deploying` survives, because A.2/A.3 deliberately fold a
+	`deploying` place into the bar's `here` weight ("blue never enters the
+	bar … the word carries it") — the one count on this line the bar's own
+	shape genuinely cannot say. What is left is what the bar cannot say:
+	`N deploying` (an in-flight fact) and, below it, the age (an event in
+	time) — the release itself is already named in the `identity` cell this
+	snippet sits beside (`names()`'s per-service label run), so it is not
+	repeated here a second time.
 -->
 {#snippet coverageRoll(
 	row: RevisionRow,
@@ -252,11 +273,9 @@
 	kind: 'live' | 'past' | 'pending'
 )}
 	{@const c = coverageCounts(cov)}
-	<span class="t-dense text-gray-700 dark:text-gray-200">
-		{c.here} of {c.total} running{c.deploying > 0
-			? ` · ${c.deploying} deploying`
-			: ''}{c.movedOn > 0 ? ` · ${c.movedOn} moved on` : ''}
-	</span>
+	{#if c.deploying > 0}
+		<span class="t-dense text-gray-700 dark:text-gray-200">{c.deploying} deploying</span>
+	{/if}
 	<CoverageBar
 		compact
 		segments={coverageBarSegments(cov)}
@@ -291,76 +310,81 @@
 	<div class="flex min-w-0 flex-col gap-4">
 		<!-- CARD 1 — THE QUIET PATH. -->
 		{#if !(active && liveVisible.length === 0)}
-			{#if liveAll.length === 0}
-				<!--
-					⭐ FINDING 7 (operator sweep, 2026-09-09) — AN EMPTY LIST IS A
-					NOTE, NOT A CARD. A bordered, headered `Card` reading "Also
-					still running · 0 builds" sat ABOVE "No longer running
-					anywhere"'s own 10 real rows — the empty object outranked the
-					full one by sheer position and chrome. A one-line, unbordered
-					note carries the same fact at a fraction of the ink.
-				-->
-				{#if !active}
-					<p class="t-body text-gray-500 dark:text-gray-400">
+			<!--
+				⭐ REVISIONS-PASS-6, ITEM 5 — THE EMPTY STATE IS A `Card` AGAIN,
+				MATCHING THE RAIL'S "Never deployed". Finding 7 (2026-09-09) had
+				dropped this to a bare, unbordered `<p>` on the theory that an
+				empty headered card "outranks a full one by sheer position and
+				chrome" — measured against the RAIL two hundred pixels away,
+				that produced the opposite defect: the rail's own empty state
+				("Never deployed", `repo.pending.length === 0` below) is a full
+				titled `Card` with an icon and a `0 builds` rollup, and this
+				section's landmark (`Also still running` / `Still running`)
+				disappeared from the page's heading structure entirely whenever
+				there was nothing to show. One `Card`, always, so the section
+				NAME survives being empty and both empty states in this
+				component read as the same kind of fact.
+			-->
+			<Card
+				icon={CheckCircleSolid}
+				title={hasLeadRow ? 'Also still running' : 'Still running'}
+				verdict={liveAll.length === 0
+					? '0 builds'
+					: liveVisible.length === liveAll.length
+						? `${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`
+						: `${liveVisible.length} of ${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`}
+				verdictTitle="Older builds that some service is still running"
+				padded={false}
+			>
+				{#if liveAll.length === 0}
+					<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
 						{#if hasLeadRow}
 							Nothing older is still running — every place is on a build above.
 						{:else}
 							Nothing this repo has deployed is still running. Every place has moved on.
 						{/if}
 					</p>
+				{:else if liveVisible.length > 0}
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each liveVisible as row (row.revision)}
+							{@const cov = coverageOf(row)}
+							{@const envSlots = liveEnvSlots(row)}
+							<BuildRow>
+								{#snippet mark()}
+									<BuildStateMark coverage={cov} showWord={false} />
+								{/snippet}
+								{#snippet identity()}
+									<div class="min-w-0">
+										<a
+											class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
+											href={revisionPath(repo.repoKey, row.revision)}
+											title={row.revision}>{row.short}</a
+										>
+										{@render names(row, namedLive)}
+										{#if envSlots.length > 0}
+											<div class="bld-envs flex flex-wrap gap-1.5 pt-1">
+												{#each envSlots as slot (slot.envName)}
+													{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
+													<a
+														class="hit-32 shrink-0"
+														href={placeHref(slot)}
+														aria-label={`Open the ${envDisplay.toUpperCase()} rollout for ${slot.appName}`}
+													>
+														<Chip role="env" theme={slot.cell.theme} label={envDisplay} wide />
+													</a>
+												{/each}
+											</div>
+										{/if}
+									</div>
+								{/snippet}
+								{#snippet roll()}
+									{@render coverageRoll(row, cov, 'live')}
+								{/snippet}
+							</BuildRow>
+						{/each}
+					</ul>
 				{/if}
-			{:else}
-				<Card
-					icon={CheckCircleSolid}
-					title={hasLeadRow ? 'Also still running' : 'Still running'}
-					verdict={liveVisible.length === liveAll.length
-						? `${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`
-						: `${liveVisible.length} of ${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`}
-					verdictTitle="Older builds that some service is still running"
-					padded={false}
-				>
-					{#if liveVisible.length > 0}
-						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#each liveVisible as row (row.revision)}
-								{@const cov = coverageOf(row)}
-								{@const envSlots = liveEnvSlots(row)}
-								<BuildRow>
-									{#snippet mark()}
-										<BuildStateMark coverage={cov} showWord={false} />
-									{/snippet}
-									{#snippet identity()}
-										<div class="min-w-0">
-											<a
-												class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
-												href={revisionPath(repo.repoKey, row.revision)}
-												title={row.revision}>{row.short}</a
-											>
-											{@render names(row, namedLive)}
-											{#if envSlots.length > 0}
-												<div class="bld-envs flex flex-wrap gap-1.5 pt-1">
-													{#each envSlots as slot (slot.envName)}
-														{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
-														<a
-															class="hit-32 shrink-0"
-															href={placeHref(slot)}
-															aria-label={`Open the ${envDisplay.toUpperCase()} rollout for ${slot.appName}`}
-														>
-															<Chip role="env" theme={slot.cell.theme} label={envDisplay} wide />
-														</a>
-													{/each}
-												</div>
-											{/if}
-										</div>
-									{/snippet}
-									{#snippet roll()}
-										{@render coverageRoll(row, cov, 'live')}
-									{/snippet}
-								</BuildRow>
-							{/each}
-						</ul>
-					{/if}
-				</Card>
-			{/if}
+			</Card>
 		{/if}
 
 		<!-- CARD 2 — HISTORY. -->
@@ -412,22 +436,47 @@
 	<div class="flex min-w-0 flex-col gap-4">
 		<!-- THE RAIL — builds nobody has taken. -->
 		{#if !(active && pendingVisible.length === 0 && repo.pending.length > 0)}
+			<!--
+				⭐ REVISIONS-PASS-6, ITEM 5 (second half) — THE HEADER STAYS ONE
+				LINE. The verdict used to carry `· newest first` beside the
+				count, and at ≥1280 that made `Card`'s header wrap to 65px
+				against every other header's 47 — a `justify-between` row with
+				a long right-hand rollup has nowhere left to go but a second
+				line. The count alone always fits one line; "newest first" is
+				not a COUNT, it is a fact about the body below it, so it moves
+				there — the body's first line, alongside the retention
+				footnote when one applies, rather than a second first line.
+			-->
 			<Card
 				icon={HourglassOutline}
 				title={pendingTitle}
 				verdict={pendingVisible.length === repo.pending.length
-					? `${repo.pending.length} build${repo.pending.length === 1 ? '' : 's'} · newest first`
+					? `${repo.pending.length} build${repo.pending.length === 1 ? '' : 's'}`
 					: `${pendingVisible.length} of ${repo.pending.length} build${repo.pending.length === 1 ? '' : 's'}`}
 				padded={false}
 			>
-				{#if historyLimit.atLimit}
+				{#if repo.pending.length > 0}
 					<p class="t-micro border-b border-gray-100 px-4 py-2 text-gray-500 dark:border-gray-700/60 dark:text-gray-400">
-						{PENDING_FOOTNOTE(historyLimit.limit)}
+						{historyLimit.atLimit
+							? `Newest first. ${PENDING_FOOTNOTE(historyLimit.limit)}`
+							: 'Newest first.'}
 					</p>
 				{/if}
 				{#if repo.pending.length === 0}
+					<!--
+						⭐ REVISIONS-PASS-6, ITEM 8 (second half) — THE SENTENCE MATCHES
+						THE TITLE'S OWN CONFIDENCE. "Has run somewhere" is the
+						confident claim `pendingTitle`'s "Never deployed" branch makes;
+						under the cautious branch ("No deploy on record") the body
+						says the same hedge, not a sentence one confidence level
+						louder than the header above it.
+					-->
 					<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
-						Every build your services can deploy has run somewhere.
+						{#if historyLimit.atLimit}
+							No deploy is on record for any build your services can run — retained history may not go back far enough to be sure none of them ever has.
+						{:else}
+							Every build your services can deploy has run somewhere.
+						{/if}
 					</p>
 				{:else if pendingVisible.length > 0}
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">

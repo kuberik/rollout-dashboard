@@ -47,6 +47,7 @@
 		heldBehind,
 		coverageBarSegments,
 		coverageBarLabel,
+		coverageCells,
 		coverageCounts,
 		releaseHeldClause,
 		type CoverageKey,
@@ -727,6 +728,97 @@
 	}
 
 	/**
+	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — THE BANNER MUST NOT FLATTEN
+	 * A ROLLBACK. `releaseSplitSentenceFor`/`bannerMessage` both used to
+	 * build their "these places run the older release" clause from
+	 * `releaseSplit(coverage)`'s bare `envLabels: string[]` — every place
+	 * sharing a behind label read as having simply never left it. Measured
+	 * live: `dev` had been rolled BACK to `2.66.0-66` (it had already moved
+	 * on to `2.67.0-67` and come back) while `staging` and `prod` had never
+	 * left `2.66.0-66` at all — two different histories, one flattened
+	 * sentence ("dev, staging and prod run 2.66.0-66"). `releaseSplit`
+	 * (`revision-coverage.ts`, another lane's file) does not carry the raw
+	 * slot needed to ask `detectRollback`, so this reads `heldBehind(cov)`
+	 * directly — the SAME evidence `releaseSplit` itself groups, one lane
+	 * lower — and partitions each behind-group's places into "rolled back
+	 * to it" and "run it", the split the example finding gave verbatim:
+	 * "dev rolled back to 2.66.0-66; staging and prod run it".
+	 */
+	type RollbackAwareSplit = {
+		behindLabel: string;
+		aheadLabel: string;
+		held: boolean;
+		rolledBackEnvLabels: string[];
+		plainEnvLabels: string[];
+	};
+	function releaseSplitGroups(cov: RevisionCoverage): RollbackAwareSplit[] {
+		const behind = heldBehind(cov).filter((s) => s.runs);
+		const byKey = new Map<string, CoverageSlotVM[]>();
+		for (const s of behind) {
+			const key = `${s.runs} ${s.label}`;
+			const list = byKey.get(key) ?? [];
+			list.push(s);
+			byKey.set(key, list);
+		}
+		return [...byKey.values()].map((slots) => ({
+			behindLabel: slots[0].runs!,
+			aheadLabel: slots[0].label,
+			held: slots.every((s) => s.blockingGates.length > 0),
+			rolledBackEnvLabels: slots.filter((s) => rollbackFor(s)).map((s) => s.envLabel),
+			plainEnvLabels: slots.filter((s) => !rollbackFor(s)).map((s) => s.envLabel)
+		}));
+	}
+	/** One sentence per held release line — the SAME grammar the repository page's own banner uses. */
+	function releaseSplitSentence(cov: RevisionCoverage): string {
+		const groups = releaseSplitGroups(cov);
+		if (groups.length === 0) return '';
+		const heldEnvs = new Set(
+			groups.flatMap((g) => [...g.rolledBackEnvLabels, ...g.plainEnvLabels])
+		);
+		return groups
+			.map((g) => {
+				const allEnvLabels = [...g.rolledBackEnvLabels, ...g.plainEnvLabels];
+				const envs = joinClauses(allEnvLabels.map((e) => e.toLowerCase()));
+				const sameSet = allEnvLabels.length === heldEnvs.size;
+				const clause = g.held
+					? `${g.aheadLabel} is held in ${sameSet ? `all ${numberWord(heldEnvs.size)}` : envs}`
+					: `${g.aheadLabel} has not reached ${sameSet ? 'them' : envs} yet`;
+				let runClause: string;
+				if (g.rolledBackEnvLabels.length > 0 && g.plainEnvLabels.length > 0) {
+					const rb = joinClauses(g.rolledBackEnvLabels.map((e) => e.toLowerCase()));
+					const plain = joinClauses(g.plainEnvLabels.map((e) => e.toLowerCase()));
+					runClause = `${rb} rolled back to ${g.behindLabel}; ${plain} run it`;
+				} else if (g.rolledBackEnvLabels.length > 0) {
+					const rb = joinClauses(g.rolledBackEnvLabels.map((e) => e.toLowerCase()));
+					runClause = `${rb} rolled back to ${g.behindLabel}`;
+				} else {
+					const plain = joinClauses(g.plainEnvLabels.map((e) => e.toLowerCase()));
+					runClause = `${plain} run ${g.behindLabel}`;
+				}
+				return `${runClause}; ${clause}.`;
+			})
+			.join(' ');
+	}
+
+	/**
+	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — `HeldBanner`'s own
+	 * `indefinite` prop existed (`heldExplanation`'s doc comment, above) but
+	 * neither call site on this page ever PASSED it, so both banners kept
+	 * defaulting to `false` and printing "N newer builds are waiting" for a
+	 * hold no candidate can actually clear. A `dependency` gate with a known
+	 * `have`/`need` pair IS that case by construction: the gate is blocking
+	 * RIGHT NOW precisely because the provider's served version does not
+	 * satisfy the required range, so there is nothing to "wait" for until
+	 * someone ships one — the same fact `/apps/<provider>` and this banner's
+	 * own `clause` (just fixed to state the range) already carry. One
+	 * function, both call sites, so the repository and build pages cannot
+	 * disagree about when a hold has no ETA.
+	 */
+	function storiesAreIndefinite(stories: BlockingStory[]): boolean {
+		return stories.some((s) => s.upstream.some((g) => g.kind === 'dependency' && g.have && g.need));
+	}
+
+	/**
 	 * ⭐ ITEM 2 (round-8 critique) — THE BANNER SENTENCE IS AT LEAST THE
 	 * LIST'S. Measured live: the list page's own banner for this identical
 	 * hold says `dev, staging and prod run 2.66.0-66; 2.67.0-67 is held in
@@ -742,18 +834,14 @@
 	 */
 	const bannerMessage = $derived.by(() => {
 		if (!coverage || blockedSlots.length === 0) return '';
+		// ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — `releaseSplitSentence`
+		// (below `numberWord`), not this inline `.map` over `releaseSplitLines`
+		// — the inline form flattened a rollback (see that function's own doc
+		// comment). Reads `coverage` directly rather than the already-derived
+		// `releaseSplitLines`, because it needs the raw slot each line's
+		// `envLabels` had already discarded.
 		if (releaseSplitLines.length > 0) {
-			const heldEnvs = new Set(releaseSplitLines.flatMap((l) => l.envLabels));
-			return releaseSplitLines
-				.map((l) => {
-					const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
-					const sameSet = l.envLabels.length === heldEnvs.size;
-					const clause = l.held
-						? `${l.aheadLabel} is held in ${sameSet ? `all ${numberWord(heldEnvs.size)}` : envs}`
-						: `${l.aheadLabel} has not reached ${sameSet ? 'them' : envs} yet`;
-					return `${envs} run ${l.behindLabel}; ${clause}.`;
-				})
-				.join(' ');
+			return releaseSplitSentence(coverage);
 		}
 		// ⭐ ITEM 4 (2026-09-06 critique) — `joinClauses`, NOT A BARE `.join(', ')`.
 		// The head band's own release-split line already reads "dev, staging
@@ -1842,6 +1930,18 @@
 	const repoLedgerNoMatch = $derived(
 		(repoSearchActive || selectedApps.length > 0) && repoGroupsOrdered.length === 0
 	);
+	/**
+	 * ⭐ SECOND OPERATOR WALK, ITEM 2 — THE LEDGER'S OWN ROLLUP RECOUNTS TOO.
+	 * `repoGroupsRaw.length` (every service this repo has, ever) printed
+	 * `5 services` over a ledger body drawing exactly one row under
+	 * `?q=hello-api` — the header claimed a roster the filter had already
+	 * narrowed away. `?q=` or a row toggle selection both count as "filtered"
+	 * here, matching `repoLedgerNoMatch`'s own condition.
+	 */
+	const repoLedgerFilterActive = $derived(repoSearchActive || selectedApps.length > 0);
+	const repoLedgerServiceCount = $derived(
+		repoLedgerFilterActive ? repoGroupsOrdered.length : repoGroupsRaw.length
+	);
 
 	/** Byte-identical age grammar to `RepoLedgerCard`'s own ledger row. */
 	function repoLineAgeMs(line: Pick<ServiceLedgerLine, 'slots'>): number | null {
@@ -1909,6 +2009,40 @@
 		if (names.length <= 3) return names.join(' · ');
 		return `${names.slice(0, 3).join(' · ')} +${names.length - 3} more`;
 	}
+
+	/**
+	 * ⭐ SECOND OPERATOR WALK, ITEM 2 (BLOCKING) — RECOUNT, NOT DIM.
+	 * `?q=hello-api` on `kuberik-testing` used to compute the hero's coverage
+	 * bar, count and `HELD` chip from `revisionCoverage(leadRow, coarse)` —
+	 * every service on the release line, `hello-frontend-app` included —
+	 * while the hero's own TITLE already narrowed to the matching service
+	 * alone (`repoHeroMatchedServices`). That printed `hello-api-app`'s own
+	 * hero as `6 of 6 places · … held`, a fact about a service the query
+	 * never named. THE DECISION: a filtered view recounts on the matching
+	 * services — coverage, the held banner and the head band all read this
+	 * one function rather than the unfiltered row, so a query narrows every
+	 * number on the page in lockstep, not just the rows a reader can see.
+	 * `repoHeroMatchedServices` already falls back to every service when the
+	 * query matched the BUILD itself (sha/label) rather than a service name,
+	 * so the "whole build matched" case still gets full, honest coverage.
+	 */
+	function repoHeroCoverage(row: RevisionRow): RevisionCoverage {
+		const services = repoHeroMatchedServices(row);
+		if (services === row.services) return revisionCoverage(row, coarse);
+		// ⚠️ `revisionCoverage`'s own `totalCount` reads `row.totalSlots`
+		// DIRECTLY, not a sum over `row.services` — it is a field computed
+		// once in `buildRow` (`revision-ledger.ts`) across every service on
+		// the line, so swapping in a narrower `services` array alone left
+		// `totalCount` (and therefore the bar's own cell count) still
+		// counting the UNFILTERED line while `liveCount` — derived from the
+		// bucket lengths, which DO walk the array just passed — correctly
+		// shrank to 3. That printed "3 of 6 places" on a hero whose title
+		// already said the "6" was never true of the one service on screen.
+		// Recomputed here the same way `buildRow` itself does.
+		const totalSlots = services.reduce((n, s) => n + s.slots.length, 0);
+		const liveSlots = services.reduce((n, s) => n + s.liveSlots, 0);
+		return revisionCoverage({ ...row, services, totalSlots, liveSlots }, coarse);
+	}
 	function repoCommitUrlFor(revision: string): string | null {
 		if (!repoPageLedger || !repoPageLedger.repoKey.startsWith('repo:')) return null;
 		const body = repoBody(repoPageLedger.repoKey);
@@ -1919,7 +2053,7 @@
 	const repoHeldSlots = $derived.by<CoverageSlotVM[]>(() => {
 		const out: CoverageSlotVM[] = [];
 		for (const row of repoVisibleLeadRows) {
-			const cov = revisionCoverage(row, coarse);
+			const cov = repoHeroCoverage(row);
 			out.push(...heldBehind(cov).filter((s) => s.blockingGates.length > 0));
 		}
 		return out;
@@ -1948,28 +2082,18 @@
 		}
 		return null;
 	});
-	/** One sentence per held release line — the same grammar the build page's own banner uses. */
-	function releaseSplitSentenceFor(cov: RevisionCoverage): string {
-		const lines = releaseSplit(cov);
-		if (lines.length === 0) return '';
-		const heldEnvs = new Set(lines.flatMap((l) => l.envLabels));
-		return lines
-			.map((l) => {
-				const envs = joinClauses(l.envLabels.map((e) => e.toLowerCase()));
-				const sameSet = l.envLabels.length === heldEnvs.size;
-				const clause = l.held
-					? `${l.aheadLabel} is held in ${sameSet ? `all ${numberWord(heldEnvs.size)}` : envs}`
-					: `${l.aheadLabel} has not reached ${sameSet ? 'them' : envs} yet`;
-				return `${envs} run ${l.behindLabel}; ${clause}.`;
-			})
-			.join(' ');
-	}
+	/**
+	 * One sentence per held release line — `releaseSplitSentence` (defined
+	 * beside `numberWord`, above), the SAME rollback-aware grammar the build
+	 * page's own banner uses. This repo-page wrapper only adds the
+	 * per-lead-row loop `releaseSplitSentence` itself does not know about.
+	 */
 	const repoHeldMessage = $derived.by<string>(() => {
 		const parts: string[] = [];
 		for (const row of repoVisibleLeadRows) {
-			const cov = revisionCoverage(row, coarse);
+			const cov = repoHeroCoverage(row);
 			if (heldBehind(cov).filter((s) => s.blockingGates.length > 0).length === 0) continue;
-			const sentence = releaseSplitSentenceFor(cov);
+			const sentence = releaseSplitSentence(cov);
 			if (sentence) parts.push(sentence);
 		}
 		return parts.join(' ');
@@ -1978,13 +2102,24 @@
 	/** ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 — the places `repoHeldStories` covers, for `HeldBanner`'s own `orderClause`. */
 	const repoHeldEnvLabels = $derived([...new Set(repoHeldSlots.map((s) => s.envLabel))]);
 
-	/* ── THE HEAD BAND — B.4 item 2, the index's own clause set with the repository count dropped ── */
+	/**
+	 * ⭐ SECOND OPERATOR WALK, ITEM 2 (BLOCKING) — RECOUNTS ON `?q=` TOO.
+	 * This used to walk `repoLeadRows` (every release line, unfiltered) and
+	 * `revisionCoverage(row, coarse)` (every service on it) regardless of
+	 * `?q=`, so `/revisions/…/kuberik-testing?q=hello-api` kept printing
+	 * "3 held" — the SAME figure the unfiltered page shows — while the
+	 * ledger three lines below it drew one row. Now reads `repoVisibleLeadRows`
+	 * (lines `?q=` excludes entirely are not counted) and `repoHeroCoverage`
+	 * (a line `?q=` narrows to one service is counted on that service alone),
+	 * the identical two functions the hero and the held banner already use —
+	 * one recount, three consumers, so they cannot disagree again.
+	 */
 	const repoAttention = $derived.by(() => {
 		let held = 0;
 		let deploying = 0;
 		let behind = 0;
-		for (const row of repoLeadRows) {
-			const cov = revisionCoverage(row, coarse);
+		for (const row of repoVisibleLeadRows) {
+			const cov = repoHeroCoverage(row);
 			deploying += cov.buckets.find((b) => b.key === 'deploying')?.slots.length ?? 0;
 			held += heldBehind(cov).filter((s) => s.blockingGates.length > 0).length;
 			const notYet = cov.buckets.find((b) => b.key === 'notYet')?.slots ?? [];
@@ -2059,14 +2194,24 @@
 	`held` state names the blocked CANDIDATE (`state.holdOf`), never this
 	row's own running sha under an alarm fill.
 -->
-{#snippet secondaryRevChip(state: LineStateChip | null)}
+{#snippet secondaryRevChip(state: LineStateChip | null, lineShort?: string)}
 	{#if state?.role === 'held'}
+		<!--
+			⭐ SECOND OPERATOR WALK, ITEM 9 — SEE `RepoLedgerCard.svelte`'s
+			IDENTICAL comment: when the held candidate shares THIS row's own
+			sha, the title says so instead of the generic sentence — the two
+			adjacent rows (`1 BEHIND 9f10e49`, `NEWEST 9f10e49`) are the same
+			commit and nothing on either said that until now.
+		-->
+		{@const sameCommit = !!lineShort && state.holdOf?.short === lineShort}
 		<Chip
 			role="alarm"
 			label="HELD"
 			value={state.holdOf?.label ?? state.holdOf?.short}
 			valueTitle={state.holdOf?.label ? state.holdOf.short : undefined}
-			title={state.title}
+			title={sameCommit
+				? `${state.holdOf?.label} is this same build (${lineShort}) under a newer label.`
+				: state.title}
 			wide
 		/>
 	{:else if state && state.role !== 'deploying' && state.role !== 'checking'}
@@ -2260,11 +2405,37 @@
 				{repoTitle(repoPageLedger.repoLabel)}
 			</h1>
 			<div class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-				<span class="t-display text-gray-900 tabular-nums dark:text-white"
-					>{repoAttention.total}</span
-				>
-				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-					{repoAttentionSentence(repoAttention)}
+				<!--
+					⭐ SECOND OPERATOR WALK, ITEM 6 — RULES 2-4 CARRY NO NUMERAL.
+					A bare `0` printed here every time this repository's head
+					was already on its newest build everywhere — the SAME rule
+					`RepoLedgerCard`'s own verdict rollup already follows (a
+					chip only when `held`, otherwise words with no leading
+					digit). The figure draws only when it is actually counting
+					something.
+				-->
+				{#if repoSearchActive && repoLedgerNoMatch}
+					<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+						No build matches “{repoSearchQuery.trim()}”.
+					</p>
+				{:else}
+					{#if repoAttention.total > 0}
+						<span class="t-display text-gray-900 tabular-nums dark:text-white"
+							>{repoAttention.total}</span
+						>
+					{/if}
+					<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+						<!--
+							⭐ SECOND OPERATOR WALK, ITEM 2 — THE HEAD BAND NAMES THE
+							FILTER IT IS RECOUNTING ON. Without this prefix, a
+							recounted "held · every other place on its newest
+							build" reads exactly like the UNFILTERED sentence — the
+							reader has no way to tell the page is not describing the
+							whole repository any more.
+						-->
+						{repoSearchActive ? `matching “${repoSearchQuery.trim()}”: ` : ''}{repoAttentionSentence(
+							repoAttention
+						)}
 					{#if repoStreamHealthy}
 						· live
 					{:else if query.dataUpdatedAt}
@@ -2280,7 +2451,8 @@
 							})}</time
 						>, stream down
 					{/if}
-				</p>
+					</p>
+				{/if}
 			</div>
 		</div>
 
@@ -2307,7 +2479,7 @@
 		<Card
 			icon={CodeBranchOutline}
 			title="What each service runs"
-			verdict="{repoGroupsRaw.length} service{repoGroupsRaw.length === 1 ? '' : 's'}"
+			verdict="{repoLedgerServiceCount} service{repoLedgerServiceCount === 1 ? '' : 's'}"
 			padded={false}
 			class="mt-5"
 		>
@@ -2373,7 +2545,7 @@
 													valueTitle={line.revision}
 												/>
 											</span>
-											{@render secondaryRevChip(state)}
+											{@render secondaryRevChip(state, line.short)}
 										</span>
 									{:else}
 										<span class="svc-build">
@@ -2382,7 +2554,7 @@
 												href={revisionPath(repoPageLedger.repoKey, line.revision)}
 												title={line.revision}>{line.short}</a
 											>
-											{@render secondaryRevChip(state)}
+											{@render secondaryRevChip(state, line.short)}
 										</span>
 									{/if}
 									<span class="svc-envs">
@@ -2436,7 +2608,18 @@
 					{/each}
 				</div>
 			{/if}
-			{#if !repoLedgerNoMatch}
+			<!--
+				⭐ SECOND OPERATOR WALK, ITEM 2 — THE FOOTER'S LIFETIME COUNTS ARE
+				REPO-WIDE AND MAY NOT SURVIVE A FILTER UNCHANGED. `36 builds · 12
+				deployed at least once · 15 places` stayed the repo's TOTAL under
+				`?q=hello-api`, sitting under a ledger body that had just recounted
+				to one service — the same contradiction `RepoLedgerCard` already
+				refuses to print (`{#if !noMatch && !active}` hides its own footer
+				the same way). One rule, both cards: the lifetime counts describe
+				the WHOLE repository, so they draw only when nothing is filtering
+				the view of it.
+			-->
+			{#if !repoLedgerNoMatch && !repoLedgerFilterActive}
 				{@const deployedRevisions = deployedRevisionCount(repoPageLedger)}
 				<div
 					class="repo-meta flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 dark:border-gray-700/60"
@@ -2460,7 +2643,7 @@
 							rel="noopener noreferrer"
 							title={repoPageLedger.repoLabel}
 						>
-							View repository
+							Open on GitHub
 							<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 						</a>
 					{/if}
@@ -2486,6 +2669,7 @@
 					primaryHref={repoHeldPrimary?.appHref ?? null}
 					primaryLabel={repoHeldPrimary?.appName ?? null}
 					hasSchedule={repoHasSchedule}
+					indefinite={storiesAreIndefinite(repoHeldStories)}
 				/>
 			</div>
 		{/if}
@@ -2498,7 +2682,7 @@
 			all, the same rule the held banner above already follows.
 		-->
 		{#each repoVisibleLeadRows as leadRow, li (leadRow.revision)}
-			{@const cov = revisionCoverage(leadRow, coarse)}
+			{@const cov = repoHeroCoverage(leadRow)}
 			{@const heroServices = repoHeroMatchedServices(leadRow)}
 			{@const heroNames = heroServices.map((s) => s.appName)}
 			{@const heroTitleTail = repoHeroServicesLabel(heroNames)}
@@ -2708,8 +2892,15 @@
 			under the figure line, full width — the same object the list's own
 			hero draws, at the same scale.
 		-->
+		<!--
+			⭐ LANE 6B ADDITION — `cells`, so each cell in this bar carries its
+			own "dev · hello-api-app · running this build" title the same way
+			`RevisionLead`'s hero bar already does; without it this bar was
+			the one `CoverageBar` caller left titling the GROUP only.
+		-->
 		<CoverageBar
 			segments={coverageBarSegments(coverage)}
+			cells={coverageCells(coverage)}
 			label={coverageBarLabel(coverage, row.short)}
 			class="mt-3 w-full"
 		/>
@@ -2757,6 +2948,7 @@
 				primaryHref={primaryHold?.appHref ?? null}
 				primaryLabel={primaryHold?.reason.subject ?? null}
 				hasSchedule={buildHasSchedule}
+				indefinite={storiesAreIndefinite(distinctBuildStories)}
 			/>
 		{/if}
 
@@ -2823,11 +3015,22 @@
 				neither is ragged beside the other.
 			-->
 			<div class="rev-card-pair">
+			<!--
+				⭐ SECOND OPERATOR WALK, ITEM 10 — `This build`'s ROLLUP MUST NOT
+				RESTATE ITS NEIGHBOUR'S. `{n} services` here and `{n} services`
+				on `What each service calls it`, 380px to the right, printed the
+				IDENTICAL rollup for two different cards on the same row — a
+				reader scanning right-aligned figures sees one fact twice. This
+				card's own body already counts RELEASES, not services
+				(`serviceReleaseCountLabel`, the `LayersOutline` row below); the
+				rollup states that count instead, which is also the number
+				`buildReleases` (3 lines down) actually lists.
+			-->
 			<Card
 				icon={RocketOutline}
 				title="This build"
-				verdict="{row.services.length} service{row.services.length === 1 ? '' : 's'}"
-				verdictTitle="Every service that ships this commit as its own release"
+				verdict="{buildReleases.length} release{buildReleases.length === 1 ? '' : 's'}"
+				verdictTitle="Every release of this commit any service has ever shipped"
 			>
 				<ul class="space-y-3">
 					<!--
@@ -3240,6 +3443,28 @@
 											ago{i < ranBefore.length - 1 ? ', ' : ''}
 										{/each}
 									</span>
+								</div>
+							{:else if !historyLimitNote(svc)}
+								<!--
+									⭐ SECOND OPERATOR WALK, ITEM 10 — NEVER-RAN AND OUTSIDE-THE-
+									WINDOW MUST NOT LOOK THE SAME. Both used to render NOTHING
+									here — `hello-world-manifests` on `991829b` and a service
+									whose retained history simply does not reach far enough
+									back were both silent, and a silent line answers "did this
+									ever run before" with nothing at all. `historyLimitNote(svc)`
+									already knows whether THIS service's history could be
+									truncated (the card's own footer caveat, drawn once); when
+									it is `null` — every slot's history is provably complete —
+									the absence of a match is itself the answer, so it is said
+									rather than left blank. When the note IS non-null, this
+									stays silent: the footer already carries the uncertainty,
+									and a per-slot guess here would contradict it.
+								-->
+								<div
+									class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+								>
+									<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+									<span>No earlier deploy on record.</span>
 								</div>
 							{/if}
 						</li>
@@ -4098,7 +4323,7 @@
 		/*
 		 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 11 — SEE `RepoLedgerCard.svelte`'S
 		 * IDENTICAL COMMENT. The meta line wraps in full below 560px, never
-		 * ellipsising a count; `View repository` drops to its own line,
+		 * ellipsising a count; `Open on GitHub` drops to its own line,
 		 * right-aligned.
 		 */
 		.repo-meta {

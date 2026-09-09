@@ -416,7 +416,7 @@
 			{ title: 'Rollouts', subtitle: 'Full inventory list', href: '/rollouts' },
 			{ title: 'Apps', subtitle: 'Apps across environments', href: '/apps' },
 			{ title: 'Environments', subtitle: 'Cross-env matrix', href: '/environments' },
-			{ title: 'Revisions', subtitle: 'One row per commit', href: '/revisions' },
+			{ title: 'Revisions', subtitle: 'Repositories and their builds', href: '/revisions' },
 			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' }
 		];
 		for (const a of actions) {

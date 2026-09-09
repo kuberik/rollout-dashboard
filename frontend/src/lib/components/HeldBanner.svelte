@@ -32,24 +32,38 @@
 	 * trade for not threading a second clock through this component; a
 	 * contract hold (this fix's whole reason for existing) never carries one.
 	 */
-	export function dedupedClauses(stories: BlockingStory[]): string[] {
+	/**
+	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — THE GATE, NOT JUST ITS
+	 * SENTENCE. Two rollouts can print the identical clause text for two
+	 * DIFFERENT rules (a coincidence, not a guarantee), so the cause and its
+	 * generated name are captured together, once, right here — never
+	 * recovered by re-walking `stories` a second time the way a naive
+	 * "look up the id for this clause" helper would have to.
+	 */
+	export type DedupedCause = { clause: string; id: string };
+
+	export function dedupedCauses(stories: BlockingStory[]): DedupedCause[] {
 		const seen = new Set<string>();
-		const out: string[] = [];
-		const push = (clause: string) => {
+		const out: DedupedCause[] = [];
+		const push = (clause: string, id: string) => {
 			if (!clause || seen.has(clause)) return;
 			seen.add(clause);
-			out.push(clause);
+			out.push({ clause, id });
 		};
 		for (const s of stories) {
-			for (const g of s.person) push(g.clause);
-			for (const g of s.unknown) push(g.clause);
+			for (const g of s.person) push(g.clause, g.id);
+			for (const g of s.unknown) push(g.clause, g.id);
 			for (const g of s.upstream) {
-				if (g.kind === 'dependency') push(g.clause);
+				if (g.kind === 'dependency') push(g.clause, g.id);
 			}
-			for (const g of s.checks) push(g.clause);
-			for (const g of s.clock) push(g.clause);
+			for (const g of s.checks) push(g.clause, g.id);
+			for (const g of s.clock) push(g.clause, g.id);
 		}
 		return out;
+	}
+
+	export function dedupedClauses(stories: BlockingStory[]): string[] {
+		return dedupedCauses(stories).map((c) => c.clause);
 	}
 
 	/**
@@ -72,16 +86,25 @@
 
 	/**
 	 * ONE CONSEQUENCE SENTENCE: the causes, once each, then the order, once.
-	 * `Nothing promotes itself until hello-api-app ships a newer api than
-	 * 1.66.0 · then dev → staging → prod.` — never the old three-times-with-
-	 * three-tails paragraph.
+	 * `Nothing promotes itself until hello-api-app ships api ^1.67.0 · then
+	 * dev → staging → prod. (dependency-hello-frontend-needs-api)` — never
+	 * the old three-times-with-three-tails paragraph.
+	 *
+	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — THE GATES ARE NAMED, NOT
+	 * JUST THEIR SENTENCE. The banner used to state a cause ("hello-api-app
+	 * ships a newer api…") with no way to tell WHICH rule that was — an
+	 * operator who wants to `kubectl get rolloutgate` or search a runbook
+	 * for it had nothing to search for. The generated id(s) close the
+	 * parenthetical, same order as the clauses they belong to.
 	 */
 	export function heldConsequence(stories: BlockingStory[], heldEnvLabels: string[]): string {
-		const clauses = dedupedClauses(stories);
-		if (clauses.length === 0) return '';
+		const causes = dedupedCauses(stories);
+		if (causes.length === 0) return '';
 		const order = orderClause(stories, heldEnvLabels);
-		const body = order ? `${joinClauses(clauses)} · ${order}` : joinClauses(clauses);
-		return `Nothing promotes itself until ${body}.`;
+		const clauseBody = joinClauses(causes.map((c) => c.clause));
+		const body = order ? `${clauseBody} · ${order}` : clauseBody;
+		const ids = causes.map((c) => c.id).join(', ');
+		return `Nothing promotes itself until ${body} (${ids}).`;
 	}
 
 	/**

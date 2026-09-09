@@ -456,15 +456,43 @@ export function coverageWeight(key: CoverageKey): CoverageWeight {
 }
 
 /**
- * ⭐ THE FILL TABLE — A.3. ONE HUE, THREE WEIGHTS. `here` is
- * `COVERAGE_FILL.live`'s exact pair — zero new values there. `movedOn` is
- * the SAME hue one weight down, `green-300`/`dark:green-800` — the only new
- * colour value this round adds. `notReached` is the pair every painted
- * track on the two revision pages already uses (`.single-bar`/
- * `.bld-fill-track`/the build page's own head-band track, round 11's
- * `CoverageBar` swap), so the bar converges on one spelling
- * with them instead of keeping its own. `unplaceable` is unchanged —
- * hollow, the one shape that says "no comparison exists".
+ * ⭐ THE FILL TABLE — A.3, RE-STEPPED BY REVISIONS-PASS-6, ITEM 2. ONE HUE,
+ * THREE WEIGHTS. `here` is `COVERAGE_FILL.live`'s exact pair, still zero new
+ * values. `notReached` is unchanged — the pair every painted track on the
+ * two revision pages already uses. `unplaceable` is unchanged — hollow, the
+ * one shape that says "no comparison exists". `movedOn` is the one weight
+ * this pass re-values, in BOTH themes, because the shipped pair measured as
+ * two separate defects (canvas/`getComputedStyle`, `Card`'s own ground):
+ *
+ *   · DARK HALVED THE DEPTH SPLIT. `green-600`(here, L 0.627) vs
+ *     `green-800`(movedOn, L 0.448) was ΔL 0.179 — barely more than
+ *     `green-800` vs the card's dark ground `gray-800`(L 0.278), ΔL 0.170.
+ *     Two gaps that close cannot both be satisfied by a value BETWEEN `here`
+ *     and the ground: the whole span `here`→ground is only 0.349 OKLCH-L,
+ *     short of the 0.30 + 0.15 the two floors need summed. So `movedOn`
+ *     steps OUTSIDE that span instead — lighter than `here` itself, not
+ *     between it and the ground. `green-100` (L 0.962, still the `here` hue
+ *     family, h 156.7 vs `here`'s 149.2) measures ΔL(here, movedOn) 0.335 and
+ *     ΔL(movedOn, ground) 0.684 — both comfortably past the floors, dE00 32.4
+ *     from `here`. A "spent" cell reading as the BAR'S lightest mark in dark
+ *     is the trade for a depth split a reader can actually see; the group's
+ *     own tooltip and the row's `moved on` clause still say what it means.
+ *   · LIGHT'S `green-300` READ HEALTHIER THAN DARK'S SOLID `here`. A wall of
+ *     mint on "No longer running anywhere" (0 of 9 running) reads as good
+ *     news about a build every place has left behind. The fix is chroma, not
+ *     lightness: `oklch(82% 0.07 154)` keeps `green-300`'s hue family and a
+ *     similar L (0.871 → 0.82) but roughly halves the chroma (0.15 → 0.07) —
+ *     a greyed, spent green rather than a fresh one. dE00 from `here`
+ *     (`green-700`) is 29.7, from `notReached` (`gray-200`) is 22.0, and
+ *     under a deuteranopia simulation (Machado/Oliveira/Fernandes 2009, 100%
+ *     severity) `movedOn` vs `notReached` is still 13.3 — all three floors
+ *     (≥3 dE00) cleared with wide margin; see the tech lead's report for the
+ *     measuring script, since nothing in this codebase's runtime ships a
+ *     CIEDE2000 implementation to import here.
+ *   · `movedOn` is no longer a plain Tailwind step in either theme — light
+ *     is an arbitrary OKLCH value (`bg-[oklch(82%_0.07_154)]`) because no
+ *     named step on the green ramp is both this light AND this low-chroma;
+ *     dark is a real step, `green-100`, just a much lighter one than before.
  *
  * ⛔ RED NEVER ENTERS THE BAR (a `failing` place is running this build, so
  * it takes `here`; `Chip role="adverse"` beside the count carries the
@@ -475,7 +503,7 @@ export function coverageWeight(key: CoverageKey): CoverageWeight {
  */
 export const WEIGHT_FILL: Record<CoverageWeight, string> = {
 	here: 'bg-green-700 dark:bg-green-600',
-	movedOn: 'bg-green-300 dark:bg-green-800',
+	movedOn: 'bg-[oklch(82%_0.07_154)] dark:bg-green-100',
 	notReached: 'bg-gray-200 dark:bg-gray-700',
 	unplaceable: 'bg-transparent border border-gray-400 dark:border-gray-500'
 };
@@ -1058,6 +1086,73 @@ export function coverageBarSegments(coverage: RevisionCoverage): CoverageSegment
 		count: counts[weight],
 		title: WEIGHT_TITLE[weight],
 		reachable: coverage.reachable
+	}));
+}
+
+/** One cell's identity — see `coverageCells()`. */
+export type CoverageCell = {
+	key: CoverageWeight;
+	/** `"dev · hello-api-app · running this build"` — env, service, weight, in
+	 *  that order, all three lowercase. `CoverageBar` renders it as the
+	 *  cell's own `title`. */
+	title: string;
+};
+
+/**
+ * ⭐ REVISIONS-PASS-6, ITEM 3 — "WHICH 3 OF THE 6 ARE HELD" WAS UNANSWERABLE.
+ * A hero's cells carried a WEIGHT (via `weightFill`) but no IDENTITY, so a
+ * reader could see "3 of 6 have moved past" and never learn which three
+ * places that was — the closest the page came was a "3 HELD" chip with
+ * nothing to point at. This is the per-cell answer: one entry per SLOT (not
+ * per bucket), so `CoverageBar` can title each cell it draws.
+ *
+ * ORDER IS ENVIRONMENT THEN SERVICE (dev, staging, prod, then anything this
+ * fleet's own environment names don't match, then alphabetical) — never
+ * bucket order. `CoverageBar` still draws cells GROUPED by weight (that
+ * grouping is what makes the bar one continuous shape per A.2); grouping by
+ * weight first and filtering this array by `key` preserves the env/service
+ * order WITHIN each group, because a stable filter over an already-sorted
+ * array cannot reorder what it keeps. Nothing here assumes the two orders
+ * ever have to agree — they don't need to.
+ */
+const ENV_SORT: { pattern: RegExp; rank: number }[] = [
+	{ pattern: /dev/i, rank: 0 },
+	{ pattern: /stag/i, rank: 1 },
+	{ pattern: /prod/i, rank: 2 }
+];
+
+function envSortRank(envLabel: string): number {
+	for (const { pattern, rank } of ENV_SORT) {
+		if (pattern.test(envLabel)) return rank;
+	}
+	return 3;
+}
+
+/** The per-cell phrase, matching the design brief's own examples verbatim
+ *  ("running this build" / "moved past") — shorter than `WEIGHT_TITLE`'s
+ *  per-GROUP phrasing ("Have moved past this build"), which carries a count
+ *  the per-cell phrase does not need. */
+const CELL_PHRASE: Record<CoverageWeight, string> = {
+	here: 'running this build',
+	movedOn: 'moved past',
+	notReached: 'not reached yet',
+	unplaceable: 'on a different release line'
+};
+
+export function coverageCells(coverage: RevisionCoverage): CoverageCell[] {
+	const all = coverage.buckets.flatMap((bucket) =>
+		bucket.slots.map((slot) => ({ slot, weight: coverageWeight(bucket.key) }))
+	);
+	all.sort((a, b) => {
+		const ra = envSortRank(a.slot.envLabel);
+		const rb = envSortRank(b.slot.envLabel);
+		if (ra !== rb) return ra - rb;
+		if (a.slot.envLabel !== b.slot.envLabel) return a.slot.envLabel.localeCompare(b.slot.envLabel);
+		return a.slot.appName.localeCompare(b.slot.appName);
+	});
+	return all.map(({ slot, weight }) => ({
+		key: weight,
+		title: `${slot.envLabel} · ${slot.appName} · ${CELL_PHRASE[weight]}`
 	}));
 }
 

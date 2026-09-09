@@ -591,17 +591,61 @@ export function classifyGate(
 
 	const dep = ctx.dependency.get(k);
 	if (dep) {
+		/**
+		 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — THE CONSTRAINT THE GATE
+		 * ACTUALLY EVALUATES, NOT "A NEWER ONE THAN WHAT IT HAS NOW".
+		 * `RolloutDependency.status.blockedReleases[].requiredVersion` is the
+		 * range the gate compares candidates against (`^1.67.0`, say) — a
+		 * DIFFERENT fact from `providedVersion` (`1.66.0`, what the provider
+		 * happens to serve right now). This branch used to build its sentence
+		 * from `providedVersion` alone ("ships a newer api than 1.66.0"),
+		 * which is true today and tells the reader nothing about what would
+		 * actually satisfy the gate — `/apps/<provider>` states the same hold
+		 * as "They need it to ship api ^1.67.0", a different fact from the
+		 * SAME `dep.requiredVersion` this object already carries (`need`,
+		 * below). Every surface that reads THIS `clause`/`short` — the
+		 * repository page's and the build page's held banners, both — now
+		 * gets the range when `ctx.dependency`'s own join resolved exactly
+		 * one (`requiredVersion` is `null` on an ambiguous or absent join;
+		 * see that field's own comment), and falls back to the honest vaguer
+		 * form only then.
+		 */
+		// `wantClause` is set ONLY when the join resolved exactly one required
+		// version — the range the gate actually evaluates (named apart from
+		// the object's own `need` FIELD below, which is the bare version
+		// string `BlockReason`'s drawn chip reads; this is the fuller
+		// "<contract> <range>" clause fragment). `null` (an ambiguous or
+		// absent join) falls all the way back to the ORIGINAL "a newer
+		// X"/"a newer X than Y" phrasing, byte-identical to before this fix —
+		// this branch's job is to state the range when it is KNOWN, not to
+		// invent a new default for when it is not.
+		const wantClause = dep.requiredVersion ? `${dep.contract} ${dep.requiredVersion}` : null;
+		// ⚠️ NO NESTED TEMPLATE LITERALS IN A `.ts` FACT VALUE (`lib/CLAUDE.md`'s
+		// own rule) — `lib/messages/scan.ts`'s census regex cannot parse one
+		// template literal inside another and comes back with a garbled
+		// fragment nobody can read (`Waiting for … to ship …${ dep.providedVersion
+		// ?`, verified live against `truth.test.ts`). The aside is built as its
+		// own plain string FIRST, so `short`'s own template stays flat.
+		const haveAside = dep.providedVersion ? ' — it is on ' + dep.providedVersion : '';
 		return {
 			id,
 			kind: 'dependency',
 			clears: 'upstream',
 			label: `depends on ${dep.provider}`,
-			clause: dep.providedVersion
-				? `${dep.provider} ships a newer ${dep.contract} than ${dep.providedVersion}`
-				: `${dep.provider} ships a newer ${dep.contract}`,
-			short: dep.providedVersion
-				? `Waiting for ${dep.provider} to ship a newer ${dep.contract} — it is on ${dep.providedVersion}`
-				: `Waiting for ${dep.provider} to ship a newer ${dep.contract}`,
+			// ⚠️ NOT the "— it is on X" aside in `clause` — it is the terse
+			// form `joinClauses` strings several gates' worth of together
+			// into one sentence (the consequence line); the aside stays in
+			// `short`, the one-gate-at-a-time form, same as before this fix.
+			clause: wantClause
+				? `${dep.provider} ships ${wantClause}`
+				: dep.providedVersion
+					? `${dep.provider} ships a newer ${dep.contract} than ${dep.providedVersion}`
+					: `${dep.provider} ships a newer ${dep.contract}`,
+			short: wantClause
+				? `Waiting for ${dep.provider} to ship ${wantClause}${haveAside}`
+				: dep.providedVersion
+					? `Waiting for ${dep.provider} to ship a newer ${dep.contract} — it is on ${dep.providedVersion}`
+					: `Waiting for ${dep.provider} to ship a newer ${dep.contract}`,
 			clearsAt: null,
 			timezone: null,
 			...NOTHING_TO_DRAW,
@@ -611,7 +655,7 @@ export function classifyGate(
 			// room, and for a dependency whose two versions are not both known.
 			subject: dep.provider,
 			subjectKind: 'service',
-			predicate: `ships a newer ${dep.contract}`,
+			predicate: wantClause ? `ships ${wantClause}` : `ships a newer ${dep.contract}`,
 			contract: dep.contract,
 			have: dep.providedVersion,
 			need: dep.requiredVersion

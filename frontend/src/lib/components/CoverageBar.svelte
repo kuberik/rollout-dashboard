@@ -94,12 +94,18 @@
 	 * already exactly what A.4 specifies, so this is the ONE number this
 	 * round changes in this file.
 	 */
-	import { weightFill, type CoverageSegment } from '$lib/view-models/revision-coverage';
+	import {
+		weightFill,
+		type CoverageSegment,
+		type CoverageCell,
+		type CoverageWeight
+	} from '$lib/view-models/revision-coverage';
 
 	let {
 		segments,
 		compact = false,
 		label,
+		cells,
 		class: className = ''
 	}: {
 		segments: CoverageSegment[];
@@ -107,6 +113,16 @@
 		compact?: boolean;
 		/** Accessible name. The bar is a graphic; the words live here and in the cards. */
 		label: string;
+		/**
+		 * ⭐ REVISIONS-PASS-6, ITEM 3 — OPTIONAL PER-CELL IDENTITY. One entry per
+		 * PLACE (`coverageCells()`'s own order, env then service), so each
+		 * rendered cell can carry its own `title` instead of only the group's.
+		 * Omitted entirely, every cell keeps the old behaviour — no per-cell
+		 * `title`, nothing else changes — so every existing segment-only call
+		 * (every `.bld-row` in `BuildLists`) renders byte-identical to before
+		 * this prop existed.
+		 */
+		cells?: CoverageCell[];
 		class?: string;
 	} = $props();
 
@@ -128,14 +144,53 @@
 	const CELL_MIN = $derived(compact ? 3 : 5);
 	const CELL_GAP = $derived(compact ? 1 : 2);
 
-	/** `[0..n-1]` — `{#each}` wants a real iterable, not an array-like. */
-	function cells(n: number): number[] {
+	/**
+	 * ⭐ REVISIONS-PASS-6, ITEM 1 — THE DEFAULT SCALE STOPPED FLEX-GROWING TO
+	 * FILL ITS ROW. Six cells at 2px gutter inside a 1216px hero read as two
+	 * slabs with scratches, not six tiles — `flex-grow` filled whatever width
+	 * the card gave it regardless of `total`, so a 3-place bar and a 9-place
+	 * bar drew the SAME width and "how far this build reached" stopped being
+	 * legible from the shape at all. `CELL_CAP` is the per-cell ceiling
+	 * (≈32–40px, this round's own number, 36) that this fix uses ONLY at the
+	 * default scale — the compact 8px row bar was already measured cellular
+	 * at its typical ~21px/cell and stays on the untouched `flex-grow` path.
+	 * `newCellular` gates both the per-cell fixed basis below and the `.cov`
+	 * `width: fit-content` that lets the bar's own width shrink to its
+	 * content instead of stretching — see the CSS block for the other half.
+	 */
+	const CELL_CAP = 36;
+	const newCellular = $derived(cellular && !compact);
+
+	/** `[0..n-1]` — `{#each}` wants a real iterable, not an array-like. Named
+	 *  apart from the `cells` PROP above; the two are unrelated arrays. */
+	function cellRange(n: number): number[] {
 		return Array.from({ length: n }, (_, i) => i);
 	}
 
 	function groupMin(count: number): number {
 		if (!cellular) return compact ? 4 : 6;
 		return count * CELL_MIN + (count - 1) * CELL_GAP;
+	}
+
+	/** The GROUP's own flex rule. `newCellular` groups no longer grow past
+	 *  `CELL_CAP` per cell — see the comment above `CELL_CAP`; every other
+	 *  case (compact, or the >32-place fallback at any scale) keeps the
+	 *  original `flex-grow` fill unchanged. */
+	function groupStyle(count: number): string {
+		const min = groupMin(count);
+		if (newCellular) {
+			const preferred = count * CELL_CAP + (count - 1) * CELL_GAP;
+			return `flex:0 1 ${preferred}px;min-width:${min}px`;
+		}
+		return `flex-grow:${count};min-width:${min}px`;
+	}
+
+	/** Per-cell identity for one weight, in the SAME relative order `cells`
+	 *  arrived in (a stable filter cannot reorder what it keeps) — see
+	 *  `coverageCells()`'s own doc comment for why that is exactly the
+	 *  env-then-service order this bar needs within one weight's run. */
+	function cellsForWeight(key: CoverageWeight): CoverageCell[] {
+		return (cells ?? []).filter((c) => c.key === key);
 	}
 </script>
 
@@ -145,7 +200,7 @@
 	bar on the list.
 -->
 <div
-	class="prop-bar cov {compact ? 'cov--compact' : ''} {className}"
+	class="prop-bar cov {compact ? 'cov--compact' : ''} {newCellular ? 'cov--capped' : ''} {className}"
 	role="img"
 	aria-label={label}
 	title={label}
@@ -166,17 +221,19 @@
 	{:else}
 		{#each segments as seg (seg.key)}
 			{#if seg.count > 0}
-				<span
-					class="cov-seg"
-					style="flex-grow:{seg.count};min-width:{groupMin(seg.count)}px"
-					title="{seg.count} {seg.title.toLowerCase()}"
-				>
+				{@const segCells = cellsForWeight(seg.key)}
+				<span class="cov-seg" style={groupStyle(seg.count)} title="{seg.count} {seg.title.toLowerCase()}">
 					{#if cellular}
 						<!-- ONE CELL PER PLACE, keyed by index: the cells are identical by
-						     construction. The GROUP is the unit of meaning; the CELL is the
-						     unit of counting. -->
-						{#each cells(seg.count) as i (i)}
-							<span class="cov-cell {weightFill(seg.key)}"></span>
+						     construction unless `cells` names each one — the GROUP is still
+						     the unit of MEANING (its own `title` above), the CELL is the unit
+						     of counting, and now optionally of IDENTITY too. -->
+						{#each cellRange(seg.count) as i (i)}
+							<span
+								class="cov-cell {weightFill(seg.key)}"
+								style={newCellular ? `flex:0 1 ${CELL_CAP}px` : undefined}
+								title={segCells[i]?.title}
+							></span>
 						{/each}
 					{:else}
 						<span class="cov-cell {weightFill(seg.key)}"></span>
@@ -213,6 +270,27 @@
 		height: 8px;
 		gap: 1px;
 		border-radius: 4px;
+	}
+
+	/*
+	 * ⭐ REVISIONS-PASS-6, ITEM 1 — LEFT-ALIGN THE RUN INSTEAD OF STRETCHING IT.
+	 * `.prop-bar` (`app.css`) sets `width: 100%` for every user of this shared
+	 * base, `ExposureBar` included — correct there, wrong here once cells stop
+	 * flex-growing (see `CELL_CAP`'s own comment). `fit-content` makes THIS
+	 * bar's own box shrink-to-fit its now-capped children: at 6 places it
+	 * settles at the six cells' own preferred width (~226px of a 1216px hero,
+	 * left-aligned, not stretched into 193px slabs); at 9 it is visibly wider
+	 * than at 6, which is the whole point item 1 asks for. `max-width: 100%`
+	 * is the other half — on a narrow card the browser's own shrink-to-fit
+	 * algorithm squeezes the (now flex-shrinkable) cells down toward their
+	 * `min-width` legibility floor instead of overflowing. Scoped to
+	 * `newCellular` bars only (a Svelte class, applied only when this specific
+	 * render needs it) — the compact row bar and the rare >32-place fallback
+	 * both keep the old full-width fill untouched.
+	 */
+	.cov--capped {
+		width: fit-content;
+		max-width: 100%;
 	}
 
 	/*

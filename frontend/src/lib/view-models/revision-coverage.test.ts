@@ -5,6 +5,7 @@ import {
 	coverageBarSegments,
 	coverageBarLabel,
 	coverageCounts,
+	coverageCells,
 	coverageWeight,
 	releaseHeldClause,
 	WEIGHT_ORDER,
@@ -843,5 +844,50 @@ describe('revisionCoverage', () => {
 			const cov = revisionCoverage(repo.rows[0], new Date());
 			expect(buildState(cov).key).toBe('done');
 		});
+	});
+});
+
+/**
+ * ⭐ REVISIONS-PASS-6, ITEM 3 — `coverageCells()`. One entry per PLACE
+ * (never per bucket), ordered by environment then service, so `CoverageBar`
+ * can title each cell it draws — "which 3 of the 6" is answerable now.
+ */
+describe('coverageCells', () => {
+	it('emits one cell per place, ordered by environment then service', () => {
+		const repo = fixture();
+		const head = repo.rows[0]; // api-dev, api-prod, web-dev live; web-prod notYet.
+		const cells = coverageCells(revisionCoverage(head, new Date()));
+		expect(cells).toHaveLength(4);
+		// dev before prod; api before web within each environment.
+		expect(cells.map((c) => c.title)).toEqual([
+			'dev · api · running this build',
+			'dev · web · running this build',
+			'prod · api · running this build',
+			'prod · web · not reached yet'
+		]);
+		expect(cells.map((c) => c.key)).toEqual(['here', 'here', 'here', 'notReached']);
+	});
+
+	it('sums to the same total as coverageBarSegments, for every fixture', () => {
+		const repo = fixture();
+		for (const row of repo.rows) {
+			const cov = revisionCoverage(row, new Date());
+			expect(coverageCells(cov)).toHaveLength(cov.totalCount);
+			expect(coverageCells(cov).length).toBe(
+				coverageBarSegments(cov).reduce((n, s) => n + s.count, 0)
+			);
+		}
+	});
+
+	it('an all-`ahead` build (everyone moved past it) is four "moved past" cells, no "running"', () => {
+		const repo = fixture();
+		const old = repo.rows[2]; // ccccccc: only web-prod still runs it; the rest moved on.
+		const cov = revisionCoverage(old, new Date());
+		const cells = coverageCells(cov);
+		expect(cells.filter((c) => c.key === 'movedOn')).toHaveLength(3);
+		expect(cells.filter((c) => c.key === 'here')).toHaveLength(1);
+		for (const c of cells.filter((c) => c.key === 'movedOn')) {
+			expect(c.title).toMatch(/ · moved past$/);
+		}
 	});
 });
