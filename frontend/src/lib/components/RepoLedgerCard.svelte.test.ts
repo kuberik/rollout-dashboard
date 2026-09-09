@@ -170,24 +170,37 @@ describe('RepoLedgerCard', () => {
 	test('filterable: row names are toggle buttons, not /apps/<name> links', () => {
 		const repo = twoServiceFixture();
 		render(RepoLedgerCard, { repo, now: new Date(), filterable: true });
-		const button = screen.getByRole('button', { name: 'Show only api' });
+		// The button's accessible name is its own visible text (the service
+		// name) — no `aria-label` overriding it. `title` carries the
+		// "Show only …" hint as a native tooltip instead (r11d).
+		const button = screen.getByRole('button', { name: 'api' });
 		expect(button).toHaveAttribute('aria-pressed', 'false');
+		expect(button).toHaveAttribute('title', 'Show only api');
 		expect(screen.queryByRole('link', { name: 'api' })).toBeNull();
 	});
 
 	/**
-	 * ⭐ ITEM 1 (r11c) — A VISIBLE CONTROL AT REST, NOT AN INVISIBLE ONE. The
-	 * route's own `.svc-name-btn` had no border and no fill unselected,
-	 * indistinguishable from plain text; the toggle now carries a real 1px
-	 * border at rest in both themes, and the pressed state is the product's
-	 * one standing gray-900/gray-100 toggle fill.
+	 * ⭐ REVISIONS-PASS-6, ITEM 2 (r11d) — PLAIN TEXT AT REST, NOT A BORDERED
+	 * BUTTON. Round 11c's `.svc-name-toggle` drew a 1px border AND a fill on
+	 * every row at rest, so the repository page's ledger read as a form —
+	 * every service name a button, none of them plain. Rest now matches the
+	 * INDEX's own plain name exactly (no border, no fill); a border appears
+	 * only on hover/focus-visible, and the pressed state keeps Lane 7's
+	 * standing gray-900/white toggle fill unchanged.
 	 */
-	test('filterable: the toggle has a visible border unselected, and the standing toggle fill once pressed', async () => {
+	test('filterable: the toggle is plain text at rest and keeps the standing toggle fill once pressed', async () => {
 		const repo = twoServiceFixture();
 		render(RepoLedgerCard, { repo, now: new Date(), filterable: true });
-		const button = screen.getByRole('button', { name: 'Show only api' });
-		expect(button.className).toContain('border-gray-300');
+		const button = screen.getByRole('button', { name: 'api' });
+		// No border colour and no fill at rest — `border-transparent` (the
+		// border WIDTH stays reserved via `.svc-name-toggle` so hovering
+		// never shifts layout, only its colour changes).
+		expect(button.className).toContain('border-transparent');
 		expect(button.className).not.toContain('bg-gray-900');
+		expect(button.className).not.toContain('bg-white');
+		// A border colour is reserved for hover/focus-visible only.
+		expect(button.className).toContain('hover:border-gray-300');
+		expect(button.className).toContain('focus-visible:border-gray-300');
 		await fireEvent.click(button);
 		expect(button).toHaveAttribute('aria-pressed', 'true');
 		expect(button.className).toContain('bg-gray-900');
@@ -198,7 +211,7 @@ describe('RepoLedgerCard', () => {
 		const repo = twoServiceFixture();
 		render(RepoLedgerCard, { repo, now: new Date(), filterable: true });
 		expect(screen.getByText('web')).toBeInTheDocument();
-		await fireEvent.click(screen.getByRole('button', { name: 'Show only api' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'api' }));
 		expect(screen.queryByText('web')).toBeNull();
 		expect(screen.getByText('1 service')).toBeInTheDocument();
 	});

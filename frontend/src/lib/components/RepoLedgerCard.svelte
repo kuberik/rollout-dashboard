@@ -395,24 +395,26 @@
 							{#if idx === 0}
 								{#if filterable}
 									<!--
-										⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — A VISIBLE
-										CONTROL, NOT AN INVISIBLE ONE. The route's own
-										`.svc-name-btn` had no border and no fill at rest —
-										indistinguishable from the plain, non-interactive
-										label beside it, which is exactly why it read as
-										invisible. `.svc-name-toggle` adds a 1px border and a
-										chip-like inline shape at rest in BOTH themes; the
-										pressed fill (`gray-900`/`gray-100`) is the product's
-										one standing toggle rule, unchanged.
+										⛔ SUPERSEDED (r11d) — round 11c's `.svc-name-toggle` drew
+										a 1px border AND a fill at rest on every row, so the
+										repository page's whole ledger read as a form (a bordered
+										button beside every plain name). Rest is plain text now —
+										byte-identical to the index's own non-filterable name —
+										and the button only picks up a border on hover/focus-visible;
+										the pressed gray-900/white fill (Lane 7's standing toggle
+										rule) is unchanged. `border-transparent` at rest (not "no
+										border utility at all") matters: `.svc-name-toggle`'s own
+										`border-width: 1px` never changes, so gaining a colour on
+										hover never shifts layout.
 									-->
 									<button
 										type="button"
 										onclick={() => toggleAppSelected(group.appName)}
 										aria-pressed={selected}
-										aria-label={`Show only ${group.appName}`}
+										title={`Show only ${group.appName}`}
 										class="svc-name svc-name-toggle hit-32 t-body min-w-0 text-left transition-colors {selected
 											? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
-											: 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/60'}"
+											: 'border-transparent text-gray-700 hover:border-gray-300 focus-visible:border-gray-300 dark:text-gray-200 dark:hover:border-gray-600 dark:focus-visible:border-gray-600'}"
 									>
 										{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
 												/>{/if}{/each}
@@ -504,18 +506,37 @@
 								{/each}
 							</span>
 							<!--
-								⭐ THE GRID'S LAST CELL, AND WHY IT MAY NOT BE OMITTED.
-								`.svc-ledger` is ONE grid container shared by every
-								`.svc-line` (`display: contents`, so each line's own
-								children are auto-placed directly into it). CSS grid
-								auto-flow fills a row's remaining tracks with the NEXT
-								item when a row is short one, so a line emitting only 3
-								cells (name/build/envs, no age) let the FOLLOWING line's
-								name cell slide into THIS row's last column instead of
-								starting its own row — exactly what a live screenshot at
-								1440 showed: two services sharing one visual row. Every
-								deployed line emits exactly 4 cells now, always.
+								⭐ THE GRID'S LAST TWO CELLS, AND WHY NEITHER MAY BE
+								OMITTED. `.svc-ledger` is ONE grid container shared by
+								every `.svc-line` (`display: contents`, so each line's
+								own children are auto-placed directly into it). CSS
+								grid auto-flow fills a row's remaining tracks with the
+								NEXT item when a row is short one, so a line emitting
+								too few cells lets the FOLLOWING line's own cells slide
+								into THIS row's remaining columns instead of starting
+								their own row — exactly what a live screenshot at 1440
+								once showed: two services sharing one visual row. Every
+								deployed line emits exactly 5 cells now, always:
+								name / build / envs / this bare spacer / age.
+								⛔ THE SPACER IS A REAL ELEMENT, NOT `.svc-age` GIVEN
+								`grid-column: -1`. That was tried (r11d, first cut) and
+								measured broken: with `display: contents` flattening
+								every line into ONE flat item list, CSS Grid places
+								EVERY explicitly-positioned item first, in document
+								order, before any auto-placed item is placed at all —
+								so every row's `.svc-age` (present on nearly every
+								row) claimed the grid's last column, row after row,
+								BEFORE any row's own name/build/envs got a chance to
+								auto-place, scrambling which row's chips sat beside
+								which row's name. An explicit position is only safe
+								here on an element that appears RARELY (`.svc-empty`,
+								below, already relies on this and is unaffected — it
+								renders for at most a few "not deployed" lines per
+								repo). A bare spacer with no explicit placement lets
+								ordinary DOM-order auto-flow put it in column 4 and
+								age in column 5, on every row, with no scrambling.
 							-->
+							<span class="svc-fill" aria-hidden="true"></span>
 							<span class="svc-age t-micro text-gray-500 dark:text-gray-400">
 								{#if lineAge(line)}
 									<time datetime={lineAgeIso(line)} title={lineAgeTitle(line)}>{lineAge(line)}</time>
@@ -606,30 +627,72 @@
 		column-gap: 12px;
 		row-gap: 6px;
 		/*
-		 * ⭐ ITEM 2 — THE NAME COLUMN TAKES THE SLACK; CHIPS ARE `max-content`;
-		 * AGE IS `min-content` AND NEVER CLIPPED. Measured live at 1440:
-		 * column 1 was a rigid `180px` (wrapped `hello-world-manifests`)
-		 * while column 4 was `minmax(0, 1fr)` and grew to 497px around a
-		 * 92px-wide age string — the FLEXIBLE track was on the wrong column.
-		 * `minmax(150px, 1fr)` on the name column moves the growth there
-		 * instead: with only one flexible track in the row, it absorbs
-		 * exactly the space the other three tracks do not need, which is
-		 * also what pins the age column flush to the row's own right inset
-		 * — the same mechanism that used to belong to column 4, now serving
-		 * the column the slack was supposed to help. `max-content` (chips,
-		 * envs) never grows past its own content; `min-content` (age) is,
-		 * with `.svc-age`'s own `white-space: nowrap`, exactly that column's
-		 * full un-wrapped text width — never smaller, so never clipped.
-		 * Below ~1140px this NARROWS the name column toward its 150px floor
-		 * before it touches the chip column's own floor (below), which is
-		 * the fix for "column 4 collapses to 57–81px and clips" — nothing
-		 * downstream of the name column is flexible any more, so nothing
-		 * downstream can be squeezed by a neighbour's growth.
+		 * ⭐ REVISIONS-PASS-6, ITEM 1 (r11d) — THE CHIPS SIT RIGHT AFTER THE
+		 * NAME, LIKE A TABLE. The previous spelling (`minmax(150px, 1fr)` on
+		 * the name column) put the ONLY flexible track on column 1, so the
+		 * name swallowed every pixel of slack the other three tracks did not
+		 * need — measured live at 1440, column 2 (the build+held chip pair)
+		 * landed at x≈845 on one card and x≈968 on its sibling, because each
+		 * card's own grid sizes its own `max-content` name column from its
+		 * own longest name and nothing forces the two to agree.
+		 *
+		 * FIVE TRACKS NOW: name / chips / envs / a spacer / age.
+		 *   1. `minmax(170px, max-content)` (170: above this fleet's longest name column, 163px, so sibling cards on the index share one chip x) — the name. No longer flexible;
+		 *      it grows only as far as its own longest visible name needs,
+		 *      and never past that to soak up leftover row width.
+		 *      ⚠️ COORDINATOR CORRECTION (r11d, second pass) — an EARLIER cut
+		 *      of this rule raised this floor to 220px so a 22–23 char name
+		 *      never wraps (Chromium's own quirk: `<wbr/>`, the identifier's
+		 *      hyphen-boundary break points from `identParts`, makes its
+		 *      `max-content` GROWTH LIMIT resolve to the width of the
+		 *      longest un-wrapped SEGMENT, not the full single-line width —
+		 *      `hello-world-manifests` measured its column at 163px and
+		 *      STILL wrapped there). That 220px floor, combined with the
+		 *      chip column's own 270px floor, pushed this grid's true
+		 *      minimum width to ~840px — WIDER than a 1024px-viewport
+		 *      laptop's own card (measured 783px), so raising the
+		 *      `@container` fallback to clear it made a 1024 laptop render
+		 *      the PHONE-STACKED ledger, which is the wrong trade: the
+		 *      single-line grid holding at 1024/1140 outranks any one name
+		 *      never wrapping. 150px is back; a 24-character name MAY wrap
+		 *      at 1024 now, and that is an accepted, deliberate trade —
+		 *      verified live, not a regression nobody noticed.
+		 *   2. `minmax(200px, max-content)` — the build chip + the optional
+		 *      `HELD` chip beside it. Measured live (floor temporarily
+		 *      dropped to 50px to read the TRUE unclamped width): the widest
+		 *      pair on the live fleet — `1 BEHIND 9f10e49` + `HELD
+		 *      2.67.0-67` — renders at 266px. `max-content` — not the
+		 *      200px floor — is what actually sizes this column for that
+		 *      row (a `minmax()` floor is a MINIMUM, never a cap; content
+		 *      wider than the floor still grows the track to fit it, so
+		 *      266px still renders in full with no clip). The floor only
+		 *      governs the OTHER direction — a card whose own widest chip
+		 *      pair is narrower than 200px still gets a 200px column,
+		 *      which is what keeps most sibling cards' chip columns
+		 *      starting at the same x without forcing every grid on the
+		 *      page wider than this fleet's content actually needs.
+		 *   3. `max-content` — the environment chips.
+		 *   4. `minmax(0, 1fr)` — the ONE flexible track, a bare spacer. It
+		 *      absorbs whatever the first three columns do not need, so nothing
+		 *      upstream of it can be pulled wide by leftover space.
+		 *   5. `min-content` — the age column, pinned flush to the row's own
+		 *      16px right inset. A bare `.svc-fill` element (template) fills
+		 *      column 4 so ordinary DOM-order auto-placement lands age in
+		 *      column 5 on every row — see that element's own comment for why
+		 *      this is a real element and not `.svc-age` given an explicit
+		 *      `grid-column`. `min-content` with `.svc-age`'s own
+		 *      `white-space: nowrap` is exactly that column's full
+		 *      un-wrapped text width — never smaller, so never clipped.
+		 * Below ~1140px the name and chip columns narrow toward their own
+		 * floors before anything clips — nothing downstream of column 1 is
+		 * flexible, so nothing downstream can be squeezed by a neighbour's
+		 * growth.
 		 */
 		grid-template-columns:
-			minmax(150px, 1fr)
-			minmax(150px, max-content)
+			minmax(170px, max-content)
+			minmax(200px, max-content)
 			max-content
+			minmax(0, 1fr)
 			min-content;
 	}
 
@@ -726,6 +789,28 @@
 		grid-column: 2 / -1;
 	}
 
+	/*
+	 * ⭐ ITEM 1 (r11d) — A REAL, EMPTY GRID ITEM, NOT AN EXPLICIT PLACEMENT.
+	 * The desktop grid is 5 columns now (name / chips / envs / spacer /
+	 * age). The first cut gave `.svc-age` an explicit `grid-column: -1`
+	 * instead of rendering this element, reasoning that a 4-cell row would
+	 * auto-place into columns 1–4 and the explicit rule would relocate age
+	 * to 5. Measured broken: `.svc-line` is `display: contents`, so every
+	 * line's children are ONE flat item list for CSS Grid's own placement
+	 * algorithm, and the spec places EVERY explicitly-positioned item
+	 * first, in document order, before ANY auto-placed item — so every
+	 * row's `.svc-age` (nearly every row has one) claimed column 5 in turn
+	 * BEFORE any row's own name/build/envs got a chance to auto-place,
+	 * scrambling which row's chips sat beside which row's name. Rendering
+	 * an actual (empty, `aria-hidden`) element in column 4 needs no
+	 * explicit placement at all — ordinary DOM-order auto-flow puts it
+	 * there and age after it, on every row, with no scrambling. Hidden on
+	 * the mobile flex layout below, where it has no job.
+	 */
+	.svc-fill {
+		display: block;
+	}
+
 	.svc-age {
 		text-align: right;
 		white-space: nowrap;
@@ -745,8 +830,30 @@
 	 * BEFORE it, so `svc-header`/`svc-age` (before it, order 1/2) share the
 	 * line above and `svc-build`/`svc-envs` (order 3/4) share the line
 	 * below.
+	 *
+	 * ⭐ ITEM 1 (r11d, SECOND PASS) — 720px, NOT 840, NOT 560. A first cut of
+	 * this fix raised the floor to 220px (name) / 270px (chips) so a 22–23
+	 * char name never wrapped, then had to raise THIS threshold to 840px to
+	 * stop that wider grid from clipping its own age column. Coordinator
+	 * correction: an 840px threshold means a 1024px-viewport laptop (card
+	 * measured 783px) got the PHONE-STACKED ledger, not the table — the
+	 * single-line grid holding at 1024 and 1140 outranks any one name never
+	 * wrapping. The floors above are back to 150px (name) / 200px (chips),
+	 * which drops this grid's true minimum width back down: 16px padding +
+	 * 150 name + 200 chips + 149 envs (this fleet's real 3-chip width) + a
+	 * 0px spacer + ~95px age + 4×12px gaps + 16px padding ≈ 730px — but the chips column is max-content, 266px for the BEHIND+HELD pair, and the name floor is 170, so the TRUE minimum is ≈ 760px; the fallback is 768px
+	 * sits just under that, so a 1024 laptop's 783px card (783 > 720) and
+	 * 1140's 899px card both render the grid; verified live — see the
+	 * measurement notes on the grid's own `grid-template-columns` above for
+	 * why 150/200 no longer guarantee zero wrap the way 220/270 did, and why
+	 * that trade is the accepted one now.
+	 * ⚠️ Still a COMMON-CASE number: a repository with more than 3
+	 * environments per service needs a wider `envs` column than this
+	 * fleet's 149px and could push the true minimum back past 720px,
+	 * reopening a clip right at the boundary. Re-measure before trusting it
+	 * for a much wider fleet.
 	 */
-	@container (max-width: 560px) {
+	@container (max-width: 768px) {
 		.svc-ledger {
 			grid-template-columns: minmax(0, 1fr);
 			padding: 0;
@@ -806,6 +913,12 @@
 			order: 3;
 			flex-basis: 100%;
 			padding: 0;
+		}
+		/* ⭐ ITEM 1 (r11d) — the desktop grid's bare spacer has no job in the
+		   mobile flex layout (`.svc-age`'s own `margin-left: auto` does that
+		   layout's version of "push right" instead). */
+		.svc-fill {
+			display: none;
 		}
 
 		/*
