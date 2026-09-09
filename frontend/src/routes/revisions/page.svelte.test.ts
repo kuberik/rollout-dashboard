@@ -199,17 +199,27 @@ describe('/revisions — the index (round 11, B.2/B.6)', () => {
 		expect(screen.getByText('Everything on its newest build')).toBeInTheDocument();
 	});
 
-	test('the card header is ONE <a> to the repository page; "Open on GitHub" is a separate <a> in the footer; no nested anchors', async () => {
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — THE INDEX CARD IS `Card`
+	 * NOW (`RepoLedgerCard`'s own shell, consolidated with the repository
+	 * page's copy). `Card`'s own titleHref pattern is `<header class=
+	 * "tap-zone">` wrapping `<h2><a class="tap-link">` — one real link, the
+	 * rest of the header raised above its own overlay; "Open on GitHub" is
+	 * still a separate `<a>` in the footer, and no `<a>` nests inside another.
+	 */
+	test('the card header is one region to the repository page; "Open on GitHub" is a separate <a> in the footer; no nested anchors', async () => {
 		const { rollouts, environments } = repoFixture('a', 'https://github.com/acme/repo-a.git');
 		stubFetch(rollouts, environments);
 		const { container } = await (async () => {
 			await renderRevisions();
 			return { container: document.body };
 		})();
-		const headerLink = container.querySelector('a.tap-zone');
+		const zone = container.querySelector('header.tap-zone');
+		expect(zone).not.toBeNull();
+		const headerLink = zone!.querySelector('a.tap-link');
 		expect(headerLink).not.toBeNull();
 		expect(headerLink!.getAttribute('href')).toBe(`/revisions/${repoSlug('repo:github.com/acme/repo-a')}`);
-		expect(headerLink!.querySelector('a')).toBeNull();
+		expect(container.querySelectorAll('a a').length).toBe(0);
 		expect(container.querySelectorAll('a').length).toBeGreaterThan(1);
 	});
 

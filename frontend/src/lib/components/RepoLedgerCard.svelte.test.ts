@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, fireEvent } from '@testing-library/svelte';
 import RepoLedgerCard from './RepoLedgerCard.svelte';
 import { buildRevisionLedger } from '$lib/view-models/revision-ledger';
 import { repoSlug } from '$lib/version-utils';
@@ -61,14 +61,24 @@ function fixture() {
 }
 
 describe('RepoLedgerCard', () => {
-	test('the whole header is ONE link to the repository page, with no nested anchor', () => {
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — THE SHELL IS `Card` NOW,
+	 * NOT A HAND-ROLLED `<a class="tap-zone">` HEADER. `Card`'s own titleHref
+	 * pattern is `<header class="tap-zone">` wrapping `<h2><a class=
+	 * "tap-link">` — the region-is-a-destination contract still holds (one
+	 * real link, the rest of the header raised above its own overlay), it is
+	 * just the PRODUCT'S one implementation of it instead of a second one.
+	 */
+	test('the whole header is one region to the repository page, via Card\'s own tap-zone/tap-link pattern', () => {
 		const repo = fixture();
 		const { container } = render(RepoLedgerCard, { repo, now: new Date() });
-		const headerLink = container.querySelector('a.tap-zone');
-		expect(headerLink).not.toBeNull();
-		expect(headerLink!.getAttribute('href')).toBe(`/revisions/${repoSlug(repo.repoKey)}`);
-		// No `<a>` nested inside the header's own `<a>`.
-		expect(headerLink!.querySelector('a')).toBeNull();
+		const zone = container.querySelector('header.tap-zone');
+		expect(zone).not.toBeNull();
+		const link = zone!.querySelector('a.tap-link');
+		expect(link).not.toBeNull();
+		expect(link!.getAttribute('href')).toBe(`/revisions/${repoSlug(repo.repoKey)}`);
+		// No `<a>` nested inside another `<a>` anywhere in the header.
+		expect(zone!.querySelectorAll('a a').length).toBe(0);
 	});
 
 	test('the ledger renders the service and its build', () => {
@@ -128,5 +138,68 @@ describe('RepoLedgerCard', () => {
 		const [repo] = buildRevisionLedger(rollouts, environments);
 		render(RepoLedgerCard, { repo, now: new Date() });
 		expect(screen.getByText('Show 2 more services')).toBeInTheDocument();
+	});
+
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — `filterable`, THE
+	 * REPOSITORY PAGE'S MODE. B.4 item 4: the header is plain (no link — the
+	 * page already names the repository), the title reads "What each service
+	 * runs" with a bare "N services" rollup, and row names become
+	 * `aria-pressed` toggle buttons instead of `/apps/<name>` links.
+	 */
+	function twoServiceFixture() {
+		const build = rel('aaaaaaa', undefined, 5);
+		const rollouts = [
+			rollout('api', 'api-dev', [build], [{ r: build, minutesAgo: 1 }]),
+			rollout('web', 'web-dev', [build], [{ r: build, minutesAgo: 1 }])
+		];
+		const environments = [environment('api', 'api-dev', 'dev'), environment('web', 'web-dev', 'dev')];
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		return repo;
+	}
+
+	test('filterable: the header names "What each service runs" and a bare service count, no link', () => {
+		const repo = twoServiceFixture();
+		const { container } = render(RepoLedgerCard, { repo, now: new Date(), filterable: true });
+		expect(screen.getByText('What each service runs')).toBeInTheDocument();
+		expect(screen.getByText('2 services')).toBeInTheDocument();
+		// No header link at all in this mode — the page already IS the repository.
+		expect(container.querySelector('header a')).toBeNull();
+	});
+
+	test('filterable: row names are toggle buttons, not /apps/<name> links', () => {
+		const repo = twoServiceFixture();
+		render(RepoLedgerCard, { repo, now: new Date(), filterable: true });
+		const button = screen.getByRole('button', { name: 'Show only api' });
+		expect(button).toHaveAttribute('aria-pressed', 'false');
+		expect(screen.queryByRole('link', { name: 'api' })).toBeNull();
+	});
+
+	/**
+	 * ⭐ ITEM 1 (r11c) — A VISIBLE CONTROL AT REST, NOT AN INVISIBLE ONE. The
+	 * route's own `.svc-name-btn` had no border and no fill unselected,
+	 * indistinguishable from plain text; the toggle now carries a real 1px
+	 * border at rest in both themes, and the pressed state is the product's
+	 * one standing gray-900/gray-100 toggle fill.
+	 */
+	test('filterable: the toggle has a visible border unselected, and the standing toggle fill once pressed', async () => {
+		const repo = twoServiceFixture();
+		render(RepoLedgerCard, { repo, now: new Date(), filterable: true });
+		const button = screen.getByRole('button', { name: 'Show only api' });
+		expect(button.className).toContain('border-gray-300');
+		expect(button.className).not.toContain('bg-gray-900');
+		await fireEvent.click(button);
+		expect(button).toHaveAttribute('aria-pressed', 'true');
+		expect(button.className).toContain('bg-gray-900');
+		expect(button.className).toContain('dark:bg-white');
+	});
+
+	test('filterable: selecting one service narrows the ledger and recounts the header rollup', async () => {
+		const repo = twoServiceFixture();
+		render(RepoLedgerCard, { repo, now: new Date(), filterable: true });
+		expect(screen.getByText('web')).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Show only api' }));
+		expect(screen.queryByText('web')).toBeNull();
+		expect(screen.getByText('1 service')).toBeInTheDocument();
 	});
 });

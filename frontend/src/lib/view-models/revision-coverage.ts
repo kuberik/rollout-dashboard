@@ -4,6 +4,7 @@ import { promotionBlock, promotionCandidates } from './promotion';
 import { shortEnvLabel } from '$lib/environment-theme';
 import { BAKE_WORD } from '$lib/bake-status';
 import { joinClauses } from './blocking-story';
+import { detectRollback } from '$lib/rollout-cards';
 
 /**
  * RELEASE COVERAGE — the one question the revision pages exist to answer.
@@ -1255,4 +1256,133 @@ export function releaseHeldClause(line: ReleaseSplitLine): string {
 		: 'a newer release';
 	const subject = `${line.aheadLabel} is this same build under a newer label`;
 	return line.held ? `${subject} · held in ${where}` : `${subject} · has not reached ${where} yet`;
+}
+
+/**
+ * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 5 (HOIST) — `repoHeroCoverage`, MOVED
+ * FROM `routes/revisions/[...slug]/+page.svelte`. The route defined this
+ * twice in spirit — once for the build page's own hero (implicitly, via
+ * plain `revisionCoverage(row, now)`) and once for the repository page's
+ * hero, narrowed to whichever services `?q=` still matches — and lane 7's
+ * brief was to stop that duplication from spreading into a third copy the
+ * next lane needs. The narrowing logic itself has nothing route-specific in
+ * it, so it lives here now; the route keeps only the QUERY-MATCHING part
+ * (`repoHeroMatchedServices`, which reads `repoSearchNeedle` — page state
+ * this module must not know about) and passes the resolved subset in.
+ *
+ * ⚠️ `revisionCoverage`'s own `totalCount`/`liveCount` read `row.totalSlots`/
+ * `row.liveSlots` DIRECTLY, not a sum over `row.services` — both are fields
+ * `buildRow` (`revision-ledger.ts`) computes once across every service on
+ * the line. Passing a narrower `services` array alone would leave those two
+ * fields still counting the UNFILTERED line, so both are recomputed here
+ * the same way `buildRow` itself does whenever `services` is a genuine
+ * subset of `row.services`. When it is not (the common case — no filter
+ * active, or the filter matched the whole build rather than one service),
+ * this skips the recomputation and returns `revisionCoverage(row, now)`
+ * unchanged, byte for byte.
+ */
+export function repoHeroCoverage(
+	row: RevisionRow,
+	services: RevisionService[],
+	now: Date
+): RevisionCoverage {
+	if (services === row.services || services.length === row.services.length) {
+		return revisionCoverage(row, now);
+	}
+	const totalSlots = services.reduce((n, s) => n + s.slots.length, 0);
+	const liveSlots = services.reduce((n, s) => n + s.liveSlots, 0);
+	return revisionCoverage({ ...row, services, totalSlots, liveSlots }, now);
+}
+
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+
+/** `3` → `"three"`, falling back to the digit past ten. Exported for the
+ *  route's own `repoAttentionSentence`/`attentionSentence`, which count
+ *  places rather than release-line groups and so cannot reuse
+ *  `releaseSplitSentence` directly but should not spell a second word list. */
+export function numberWord(n: number): string {
+	return NUMBER_WORDS[n] ?? String(n);
+}
+
+/**
+ * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 5 (HOIST) — `releaseSplitSentence`,
+ * MOVED FROM `routes/revisions/[...slug]/+page.svelte`. See the SECOND
+ * OPERATOR WALK, ITEM 3 note this function carried at the route: it must
+ * not flatten a rollback (a place that left this release and came BACK) into
+ * the same clause as a place that simply never left — `dev rolled back to
+ * 2.66.0-66; staging and prod run it`, not `dev, staging and prod run
+ * 2.66.0-66`. This is the SAME grammar the repository page's held banner and
+ * the build page's held banner both read, one function, so the two pages
+ * cannot drift on the identical fact — which is the whole reason lane 7 was
+ * asked to hoist it rather than let the repository page grow its own copy.
+ */
+type RollbackAwareSplit = {
+	behindLabel: string;
+	aheadLabel: string;
+	held: boolean;
+	rolledBackEnvLabels: string[];
+	plainEnvLabels: string[];
+};
+
+/**
+ * ⭐ ROUND 11 OPERATOR-WALK, FINDING 2 — A HELD PLACE WHOSE HISTORY SHOWS
+ * THIS BUILD DEPLOYED THERE AND ROLLED BACK MUST READ "ROLLED BACK", NOT
+ * JUST "HELD". Ported verbatim from the route: `detectRollback`
+ * (`rollout-cards.ts`, the same predicate `/apps` reads to print `DEV
+ * ROLLED BACK 2.67.0-67 → 2.66.0-66`) sees `history[0]` land at an OLDER
+ * position in `availableReleases` than `history[1]` and flags a genuine
+ * backward move — `null` on any place with fewer than two history entries
+ * or no real rollback.
+ */
+function rolledBack(s: CoverageSlotVM): boolean {
+	return !!detectRollback(s.slot.cell.rollout);
+}
+
+function releaseSplitGroups(cov: RevisionCoverage): RollbackAwareSplit[] {
+	const behind = heldBehind(cov).filter((s) => s.runs);
+	const byKey = new Map<string, CoverageSlotVM[]>();
+	for (const s of behind) {
+		const key = `${s.runs} ${s.label}`;
+		const list = byKey.get(key) ?? [];
+		list.push(s);
+		byKey.set(key, list);
+	}
+	return [...byKey.values()].map((slots) => ({
+		behindLabel: slots[0].runs!,
+		aheadLabel: slots[0].label,
+		held: slots.every((s) => s.blockingGates.length > 0),
+		rolledBackEnvLabels: slots.filter(rolledBack).map((s) => s.envLabel),
+		plainEnvLabels: slots.filter((s) => !rolledBack(s)).map((s) => s.envLabel)
+	}));
+}
+
+/** One sentence per held release line — the SAME grammar the repository
+ *  page's and the build page's own held banners both read. */
+export function releaseSplitSentence(cov: RevisionCoverage): string {
+	const groups = releaseSplitGroups(cov);
+	if (groups.length === 0) return '';
+	const heldEnvs = new Set(groups.flatMap((g) => [...g.rolledBackEnvLabels, ...g.plainEnvLabels]));
+	return groups
+		.map((g) => {
+			const allEnvLabels = [...g.rolledBackEnvLabels, ...g.plainEnvLabels];
+			const envs = joinClauses(allEnvLabels.map((e) => e.toLowerCase()));
+			const sameSet = allEnvLabels.length === heldEnvs.size;
+			const clause = g.held
+				? `${g.aheadLabel} is held in ${sameSet ? `all ${numberWord(heldEnvs.size)}` : envs}`
+				: `${g.aheadLabel} has not reached ${sameSet ? 'them' : envs} yet`;
+			let runClause: string;
+			if (g.rolledBackEnvLabels.length > 0 && g.plainEnvLabels.length > 0) {
+				const rb = joinClauses(g.rolledBackEnvLabels.map((e) => e.toLowerCase()));
+				const plain = joinClauses(g.plainEnvLabels.map((e) => e.toLowerCase()));
+				runClause = `${rb} rolled back to ${g.behindLabel}; ${plain} run it`;
+			} else if (g.rolledBackEnvLabels.length > 0) {
+				const rb = joinClauses(g.rolledBackEnvLabels.map((e) => e.toLowerCase()));
+				runClause = `${rb} rolled back to ${g.behindLabel}`;
+			} else {
+				const plain = joinClauses(g.plainEnvLabels.map((e) => e.toLowerCase()));
+				runClause = `${plain} run ${g.behindLabel}`;
+			}
+			return `${runClause}; ${clause}.`;
+		})
+		.join(' ');
 }

@@ -149,23 +149,30 @@ describe('orderClause — the sequence, named once', () => {
 	});
 });
 
+/**
+ * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 (r11c) — THE GATE ID IS NO LONGER
+ * PART OF THIS SENTENCE. `lib/CLAUDE.md`'s "ids belong in the disclosed
+ * tier" rule: it used to close a parenthetical on `heldConsequence`'s own
+ * return value; it now lives on `HeldBanner`'s own muted `Gates: …` line
+ * (see `dedupedCauses`, still exported, which is what that line reads).
+ */
 describe('heldConsequence — one paragraph, the cause once and the order once', () => {
 	it('joins the deduped cause and the order into one sentence', () => {
 		expect(heldConsequence(threeEnvStories(), ['DEV', 'STAGING', 'PROD'])).toBe(
-			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod (dependency-hello-frontend-needs-api).'
+			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod.'
 		);
 	});
 
 	it('drops the order clause when there is nothing to sequence', () => {
 		expect(heldConsequence([story([dependencyGate(DEP_CLAUSE)])], ['DEV'])).toBe(
-			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 (dependency-hello-frontend-needs-api).'
+			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0.'
 		);
 	});
 
-	it('names two distinct gates, comma-joined, when two distinct causes hold', () => {
+	it('names two distinct gates, and-joined, when two distinct causes hold', () => {
 		const other = dependencyGate('hello-cache-app ships a newer cache than 2.0.0', 'ghd-5b2wn');
 		expect(heldConsequence([story([dependencyGate(DEP_CLAUSE)]), story([other])], [])).toBe(
-			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 and hello-cache-app ships a newer cache than 2.0.0 (dependency-hello-frontend-needs-api, ghd-5b2wn).'
+			'Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 and hello-cache-app ships a newer cache than 2.0.0.'
 		);
 	});
 
@@ -178,7 +185,7 @@ describe('heldExplanation — the lead clause, and indefinite vs waiting', () =>
 	it('leads with the candidate count once, not per environment', () => {
 		const out = heldExplanation(threeEnvStories(), ['DEV', 'STAGING', 'PROD'], false);
 		expect(out).toBe(
-			'1 newer build is waiting. Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod (dependency-hello-frontend-needs-api).'
+			'1 newer build is waiting. Nothing promotes itself until hello-api-app ships a newer api than 1.66.0 · then dev → staging → prod.'
 		);
 		// The old defect: the same consequence, once per environment.
 		expect(out.match(/hello-api-app ships a newer api/g)?.length).toBe(1);

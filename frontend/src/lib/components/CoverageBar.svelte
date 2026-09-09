@@ -161,6 +161,41 @@
 	const CELL_CAP = 36;
 	const newCellular = $derived(cellular && !compact);
 
+	/**
+	 * ⭐ REVISIONS-PASS-6 FOLLOW-UP (round 11, r11c finding 7) — AN EXPLICIT
+	 * PIXEL WIDTH, NOT `width: fit-content`. Measured live at 1440: a
+	 * 6-place hero bar rendered 40px wide (its OWN `min-width` floor) instead
+	 * of the ~226px `flex: 0 1 226px` basis set on its one segment below.
+	 * `fit-content`'s intrinsic-size pass has to ask "what is this flex
+	 * container's own max-content width", which here means asking a NESTED
+	 * flex container (`.cov-seg`, itself `display: flex` over `.cov-cell`
+	 * children) for ITS max-content contribution — and measured directly
+	 * (forcing `width: max-content` in devtools reproduced the identical 40px),
+	 * two levels of flex intrinsic sizing does not propagate a child's
+	 * definite `flex-basis` the way a single level does. `fit-content(500px)`
+	 * with an explicit argument measured 226px correctly, confirming the
+	 * bug is specifically the ARGUMENT-LESS keyword's own intrinsic pass, not
+	 * the flex-basis values themselves.
+	 *
+	 * The fix computes the total exactly, the same arithmetic `groupStyle`
+	 * already runs per segment, summed with the same 2/1px inter-group gap
+	 * `.cov`'s own `gap` CSS declares — and sets it as a definite `width` on
+	 * the root, which sidesteps intrinsic sizing entirely: a definite
+	 * container width lets the ordinary (non-intrinsic) flex layout pass
+	 * grow/shrink `.cov-seg` against it correctly, which is the pass that
+	 * was already working (the `226px` / `fit-content(500px)` forced tests
+	 * above both measured right). `max-width: 100%` in the CSS still clamps
+	 * it on a narrow card, same as before.
+	 */
+	const capTotalWidth = $derived.by<number | null>(() => {
+		if (!newCellular) return null;
+		const visible = segments.filter((s) => s.count > 0);
+		if (visible.length === 0) return null;
+		const segWidths = visible.map((s) => s.count * CELL_CAP + (s.count - 1) * CELL_GAP);
+		const interGroupGap = (visible.length - 1) * CELL_GAP;
+		return segWidths.reduce((a, b) => a + b, 0) + interGroupGap;
+	});
+
 	/** `[0..n-1]` — `{#each}` wants a real iterable, not an array-like. Named
 	 *  apart from the `cells` PROP above; the two are unrelated arrays. */
 	function cellRange(n: number): number[] {
@@ -201,6 +236,7 @@
 -->
 <div
 	class="prop-bar cov {compact ? 'cov--compact' : ''} {newCellular ? 'cov--capped' : ''} {className}"
+	style={capTotalWidth !== null ? `width:${capTotalWidth}px` : undefined}
 	role="img"
 	aria-label={label}
 	title={label}
@@ -288,8 +324,14 @@
 	 * render needs it) — the compact row bar and the rare >32-place fallback
 	 * both keep the old full-width fill untouched.
 	 */
+	/*
+	 * ⛔ `width: fit-content` IS GONE (r11c finding 7) — see `capTotalWidth`'s
+	 * own doc comment in the script above for why the argument-less keyword
+	 * measured 40px instead of ~226px here. The width is now a definite
+	 * inline `style`; `max-width: 100%` stays so a narrow card still clamps
+	 * and lets the segments flex-shrink toward their own `min-width` floor.
+	 */
 	.cov--capped {
-		width: fit-content;
 		max-width: 100%;
 	}
 

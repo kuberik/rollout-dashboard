@@ -87,15 +87,28 @@
 	/**
 	 * ONE CONSEQUENCE SENTENCE: the causes, once each, then the order, once.
 	 * `Nothing promotes itself until hello-api-app ships api ^1.67.0 · then
-	 * dev → staging → prod. (dependency-hello-frontend-needs-api)` — never
-	 * the old three-times-with-three-tails paragraph.
+	 * dev → staging → prod.` — never the old three-times-with-three-tails
+	 * paragraph.
 	 *
 	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — THE GATES ARE NAMED, NOT
 	 * JUST THEIR SENTENCE. The banner used to state a cause ("hello-api-app
 	 * ships a newer api…") with no way to tell WHICH rule that was — an
 	 * operator who wants to `kubectl get rolloutgate` or search a runbook
-	 * for it had nothing to search for. The generated id(s) close the
-	 * parenthetical, same order as the clauses they belong to.
+	 * for it had nothing to search for. The generated id(s) used to close a
+	 * parenthetical on this SAME sentence; round 11 (r11c, item 6) moved
+	 * them to their own muted line instead — see the note above
+	 * `heldConsequence` and the template's own `Gates:` line, below.
+	 */
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 (r11c) — THE GATE ID STAYS OUT OF
+	 * THE SENTENCE. `lib/CLAUDE.md`'s own "ids belong in the disclosed tier"
+	 * rule: a raw generated id like `dependency-hello-frontend-needs-api` in
+	 * the middle of prose reads as noise to the reader who does not need it
+	 * and is unfindable-by-eye for the one who does (an operator scanning for
+	 * `ghd-5b2wn` in a runbook). The parenthetical used to append every id
+	 * inline — `heldConsequence` no longer does; `HeldBanner`'s own template
+	 * renders the SAME `dedupedCauses(stories)` list as a separate, muted
+	 * `t-micro` line under the sentence instead (`Gates: <id> · <id>`).
 	 */
 	export function heldConsequence(stories: BlockingStory[], heldEnvLabels: string[]): string {
 		const causes = dedupedCauses(stories);
@@ -103,8 +116,7 @@
 		const order = orderClause(stories, heldEnvLabels);
 		const clauseBody = joinClauses(causes.map((c) => c.clause));
 		const body = order ? `${clauseBody} · ${order}` : clauseBody;
-		const ids = causes.map((c) => c.id).join(', ');
-		return `Nothing promotes itself until ${body} (${ids}).`;
+		return `Nothing promotes itself until ${body}.`;
 	}
 
 	/**
@@ -196,6 +208,14 @@
 	const explanation = $derived(heldExplanation(stories, heldEnvLabels, indefinite));
 	const message = $derived(explanation ? `${releaseSplitMessage} ${explanation}` : releaseSplitMessage);
 	const HeldIcon: Component = $derived(hasSchedule ? CalendarMonthSolid : UserCircleSolid);
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 (r11c) — THE GATE IDS, FOR THE
+	 * MUTED LINE UNDER THE SENTENCE. Same `dedupedCauses(stories)` list
+	 * `heldConsequence` already dedupes internally — recomputed here (a
+	 * pure, cheap function of `stories`) rather than threading a second
+	 * return value through `heldExplanation`'s string result.
+	 */
+	const gateIds = $derived(dedupedCauses(stories).map((c) => c.id));
 </script>
 
 {#snippet openAction()}
@@ -205,7 +225,45 @@
 	</a>
 {/snippet}
 
-<div class="held-banner mx-4 my-4 overflow-hidden rounded-lg">
+<!--
+	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 (r11c) — `messageBody`, NOT `message`.
+	`lib/CLAUDE.md`'s "ids belong in the disclosed tier" rule: a raw gate id
+	in the middle of the consequence sentence is unfindable-by-eye and reads
+	as noise. Switching to the snippet form lets this component draw the
+	sentence and a SEPARATE, muted `t-micro` line under it
+	(`Gates: dependency-hello-frontend-needs-api · ghd-5b2wn`) — still always
+	visible (never a disclosure — `AlertPanel`'s own `footnoteBody` is for
+	that, and this fact is neither a set nor a record), one line, wraps at
+	390. `opacity-70` dims it relative to the sentence above while inheriting
+	`palette.message`'s own severity ink for contrast, rather than hard-coding
+	a second colour this component would have to keep in sync with
+	`AlertPanel`'s palette.
+-->
+{#snippet heldMessageBody()}
+	<p class="break-words">{message}</p>
+	{#if gateIds.length > 0}
+		<!--
+			⭐ "Rules:", NOT "Gates:" — `lib/messages/vocabulary.test.ts`'s
+			retired-spelling census bans `gate`/`gates` from user-facing text
+			product-wide (CLAUDE.md (b): "the generic noun is `rule`, the kind
+			is named where it matters"). Same noun `GateRecord`'s own `Kind`
+			row and every disclosure count on this product already use.
+		-->
+		<p class="t-micro mt-1 break-words opacity-70">Rules: {gateIds.join(' · ')}</p>
+	{/if}
+{/snippet}
+
+<!--
+	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 3 (r11c) — NO `mx-4` HERE. Both call
+	sites (the repository page, the build page) render this directly inside
+	the page's own `.rev-cq` container, which already supplies the page's
+	one horizontal inset (`px-4 sm:px-6` — 16px at 390, the same edge every
+	`Card` on the page sits flush against). `mx-4` added a SECOND 16px on
+	top of that, measured live as 32px at 390 and 216px at 1440 against the
+	cards' 200 — the banner was the one element on the page not sharing
+	their left/right edge.
+-->
+<div class="held-banner my-4 overflow-hidden rounded-lg">
 	<!--
 		⚠️ `actions` PASSED CONDITIONALLY, NOT A SNIPPET WHOSE BODY IS
 		CONDITIONAL. `lib/CLAUDE.md`'s own note: a snippet reference is
@@ -217,7 +275,7 @@
 		severity="warning"
 		icon={HeldIcon}
 		title="{subject} is held"
-		{message}
+		messageBody={heldMessageBody}
 		actions={primaryHref ? openAction : undefined}
 	/>
 </div>

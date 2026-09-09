@@ -24,20 +24,13 @@
 		leadRowsFor,
 		releaseLines,
 		serviceLedger,
-		orderServiceGroups,
-		lineState,
-		type LineStateChip,
-		revisionLookup,
 		matchesRevisionText,
-		deployedRevisionCount,
 		restRows,
 		pastRows,
 		type RepoLedger,
 		type RevisionRow,
 		type RevisionService,
-		type RevisionSlot,
-		type ServiceLedgerGroup,
-		type ServiceLedgerLine
+		type RevisionSlot
 	} from '$lib/view-models/revision-ledger';
 	import {
 		revisionCoverage,
@@ -50,6 +43,8 @@
 		coverageCells,
 		coverageCounts,
 		releaseHeldClause,
+		repoHeroCoverage as coverageForServices,
+		releaseSplitSentence,
 		type CoverageKey,
 		type CoverageSlotVM,
 		type RevisionCoverage
@@ -58,6 +53,7 @@
 	import RevisionSearch from '$lib/components/RevisionSearch.svelte';
 	import BuildLists from '$lib/components/BuildLists.svelte';
 	import HeldBanner from '$lib/components/HeldBanner.svelte';
+	import RepoLedgerCard from '$lib/components/RepoLedgerCard.svelte';
 	import { rememberShape, recallShape } from '$lib/skeleton-hints';
 	// ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 2 (IN-FLIGHT DETAIL, blocking) — THE
 	// DEPLOYING ROW'S OWN WORD. `bakeWord` is `bake-status.ts`'s one exported
@@ -102,6 +98,7 @@
 	import { isEventStreamHealthy } from '$lib/api/events';
 	import { now } from '$lib/stores/time';
 	import { shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
+	import { sortEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
@@ -722,83 +719,14 @@
 	/** ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 — the places `distinctBuildStories` covers, for `HeldBanner`'s own `orderClause`. */
 	const buildHeldEnvLabels = $derived([...new Set(blockedSlots.map((s) => s.envLabel))]);
 
-	const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
-	function numberWord(n: number): string {
-		return NUMBER_WORDS[n] ?? String(n);
-	}
-
 	/**
-	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — THE BANNER MUST NOT FLATTEN
-	 * A ROLLBACK. `releaseSplitSentenceFor`/`bannerMessage` both used to
-	 * build their "these places run the older release" clause from
-	 * `releaseSplit(coverage)`'s bare `envLabels: string[]` — every place
-	 * sharing a behind label read as having simply never left it. Measured
-	 * live: `dev` had been rolled BACK to `2.66.0-66` (it had already moved
-	 * on to `2.67.0-67` and come back) while `staging` and `prod` had never
-	 * left `2.66.0-66` at all — two different histories, one flattened
-	 * sentence ("dev, staging and prod run 2.66.0-66"). `releaseSplit`
-	 * (`revision-coverage.ts`, another lane's file) does not carry the raw
-	 * slot needed to ask `detectRollback`, so this reads `heldBehind(cov)`
-	 * directly — the SAME evidence `releaseSplit` itself groups, one lane
-	 * lower — and partitions each behind-group's places into "rolled back
-	 * to it" and "run it", the split the example finding gave verbatim:
-	 * "dev rolled back to 2.66.0-66; staging and prod run it".
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 5 (HOIST) — `numberWord` and
+	 * `releaseSplitSentence` moved into `revision-coverage.ts` (imported
+	 * above), so the repository page's own held banner can read the exact
+	 * same rollback-aware grammar without this route growing a second copy.
+	 * See that module's own doc comment for the rollback-flattening defect
+	 * this function exists to avoid.
 	 */
-	type RollbackAwareSplit = {
-		behindLabel: string;
-		aheadLabel: string;
-		held: boolean;
-		rolledBackEnvLabels: string[];
-		plainEnvLabels: string[];
-	};
-	function releaseSplitGroups(cov: RevisionCoverage): RollbackAwareSplit[] {
-		const behind = heldBehind(cov).filter((s) => s.runs);
-		const byKey = new Map<string, CoverageSlotVM[]>();
-		for (const s of behind) {
-			const key = `${s.runs} ${s.label}`;
-			const list = byKey.get(key) ?? [];
-			list.push(s);
-			byKey.set(key, list);
-		}
-		return [...byKey.values()].map((slots) => ({
-			behindLabel: slots[0].runs!,
-			aheadLabel: slots[0].label,
-			held: slots.every((s) => s.blockingGates.length > 0),
-			rolledBackEnvLabels: slots.filter((s) => rollbackFor(s)).map((s) => s.envLabel),
-			plainEnvLabels: slots.filter((s) => !rollbackFor(s)).map((s) => s.envLabel)
-		}));
-	}
-	/** One sentence per held release line — the SAME grammar the repository page's own banner uses. */
-	function releaseSplitSentence(cov: RevisionCoverage): string {
-		const groups = releaseSplitGroups(cov);
-		if (groups.length === 0) return '';
-		const heldEnvs = new Set(
-			groups.flatMap((g) => [...g.rolledBackEnvLabels, ...g.plainEnvLabels])
-		);
-		return groups
-			.map((g) => {
-				const allEnvLabels = [...g.rolledBackEnvLabels, ...g.plainEnvLabels];
-				const envs = joinClauses(allEnvLabels.map((e) => e.toLowerCase()));
-				const sameSet = allEnvLabels.length === heldEnvs.size;
-				const clause = g.held
-					? `${g.aheadLabel} is held in ${sameSet ? `all ${numberWord(heldEnvs.size)}` : envs}`
-					: `${g.aheadLabel} has not reached ${sameSet ? 'them' : envs} yet`;
-				let runClause: string;
-				if (g.rolledBackEnvLabels.length > 0 && g.plainEnvLabels.length > 0) {
-					const rb = joinClauses(g.rolledBackEnvLabels.map((e) => e.toLowerCase()));
-					const plain = joinClauses(g.plainEnvLabels.map((e) => e.toLowerCase()));
-					runClause = `${rb} rolled back to ${g.behindLabel}; ${plain} run it`;
-				} else if (g.rolledBackEnvLabels.length > 0) {
-					const rb = joinClauses(g.rolledBackEnvLabels.map((e) => e.toLowerCase()));
-					runClause = `${rb} rolled back to ${g.behindLabel}`;
-				} else {
-					const plain = joinClauses(g.plainEnvLabels.map((e) => e.toLowerCase()));
-					runClause = `${plain} run ${g.behindLabel}`;
-				}
-				return `${runClause}; ${clause}.`;
-			})
-			.join(' ');
-	}
 
 	/**
 	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — `HeldBanner`'s own
@@ -835,9 +763,10 @@
 	const bannerMessage = $derived.by(() => {
 		if (!coverage || blockedSlots.length === 0) return '';
 		// ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — `releaseSplitSentence`
-		// (below `numberWord`), not this inline `.map` over `releaseSplitLines`
-		// — the inline form flattened a rollback (see that function's own doc
-		// comment). Reads `coverage` directly rather than the already-derived
+		// (`revision-coverage.ts`, hoisted there round 11 item 5), not this
+		// inline `.map` over `releaseSplitLines` — the inline form flattened
+		// a rollback (see that function's own doc comment). Reads `coverage`
+		// directly rather than the already-derived
 		// `releaseSplitLines`, because it needs the raw slot each line's
 		// `envLabels` had already discarded.
 		if (releaseSplitLines.length > 0) {
@@ -1778,6 +1707,75 @@
 	}
 
 	/**
+	 * ⭐ ROUND 11 r11c ITEM 4 — ONE GRID COLUMN PER ENVIRONMENT, SHARED BY
+	 * EVERY ROW IN THE BUCKET. Measured live at 1024: `STAGING` sat at x=443
+	 * on `hello-api-app`'s row and x=641 on `hello-frontend-app`'s — each
+	 * `.rev-group-row` was an independent `flex-wrap` packing its own atoms
+	 * left to right, so the SAME environment landed wherever the PRECEDING
+	 * atom's own width (which differs row to row — a rolled-back place's
+	 * atom carries an extra badge and its own age, an ordinary one does not)
+	 * happened to end. `envColumnsFor` is the bucket-wide environment
+	 * universe, sorted dev → staging → prod (`sortEnvironmentNames`, the
+	 * product's one pipeline order); every row's OWN grid (`.rev-place-row`,
+	 * below) shares the SAME `grid-template-columns` built from it, and
+	 * every atom is placed by environment IDENTITY (`envColumnLine`), not by
+	 * DOM position — a row missing an environment simply leaves that column
+	 * empty rather than shifting everything after it.
+	 *
+	 * ⛔ `CSS subgrid` WAS THE FIRST DRAFT AND MEASURED BROKEN. The intent
+	 * was `.rev-place-row` adopting the `<ul>`'s own tracks so every column
+	 * sizes to the widest content any row puts in it, coordinated across
+	 * rows for free — clean in theory, but the live Chromium build behind
+	 * this dev server resolved the PARENT's own `max-content` columns to
+	 * `0px` (nothing propagated up through the subgrid boundary) while each
+	 * `<li>` independently resolved a DIFFERENT, unrelated width for the
+	 * "same" column (140px on one row, 127px on the sibling) — measured via
+	 * `getComputedStyle` on both the `<ul>` and each `<li>`, not a guess.
+	 * FIXED-length columns sidestep the whole negotiation: every row's own
+	 * grid, given the identical literal template string, resolves
+	 * IDENTICALLY with no cross-row coordination required at all.
+	 */
+	function envColumnsFor(slots: CoverageSlotVM[]): string[] {
+		return sortEnvironmentNames([...new Set(slots.map((s) => s.envLabel))]);
+	}
+
+	/**
+	 * `160px` (name) then one FIXED-width track per environment, then the
+	 * trailing fact's own flexible track. `145px` holds an ordinary env chip
+	 * (`PROD`, ~40px) on one line; a chip carrying its own age suffix
+	 * (`STAGING deployed 11d ago`, ~166px measured) or the rare compound
+	 * case (a rolled-back place's badge plus its own age, ~235px measured)
+	 * wraps onto a second line within its own cell instead of overflowing
+	 * into the next column — see `.rev-env-atom`'s own `flex-wrap: wrap`.
+	 *
+	 * ⛔ MEASURED, NOT GUESSED, AND NARROWER THAN THE FIRST DRAFT (`170px`).
+	 * At 170px/env, three environments plus the 160px name column and four
+	 * 12px gaps already consumed 718 of a 751px content width at 1024 (the
+	 * odd-card full-span rule does not fire here — this bucket card shares
+	 * `.rev-buckets`' row with none other, but the row itself is still
+	 * `.rev-buckets`' own single track at this width), leaving the trailing
+	 * `minmax(0, 1fr)` column 33px — not enough for `on 2.66.0-66 [HELD]`
+	 * (129px on one line, measured), and it visibly overlapped the PROD
+	 * atom's own age text. `minmax(90px, 1fr)` on the trail column (below)
+	 * gives it a real floor — `held`/`on 2.66.0-66` each fit that alone, and
+	 * the trail's own `flex-wrap` (unchanged) still lets the two share a
+	 * line when there is room.
+	 */
+	function envGridTemplate(envCols: string[]): string {
+		return `160px ${envCols.map(() => '145px').join(' ')} minmax(90px, 1fr)`;
+	}
+
+	/** 1-based grid line for this environment's OWN column — line 1 is the
+	 *  name column, so environment index 0 starts at line 2. Falls back to
+	 *  the trailing column if somehow asked for an environment the bucket
+	 *  itself never named (defensive; every slot's `envLabel` comes from the
+	 *  same set `envColumnsFor` built). */
+	function envColumnLine(envCols: string[], envLabel: string): number {
+		const idx = envCols.indexOf(envLabel);
+		return idx >= 0 ? idx + 2 : envCols.length + 2;
+	}
+
+	/**
 	 * ⛔ `NEWEST` ON A RELEASE DEPLOYED NOWHERE IS THE SAME LIE AS `NEWEST` ON
 	 * ONE DEPLOYED EVERYWHERE. (2026-09-03, operator-walk BLOCKING item)
 	 * `svc.rank === 0` is true of the row's own headline release whether or
@@ -1873,112 +1871,17 @@
 	}
 
 	/**
-	 * ⭐ B.4 ITEM 4 — THE LEDGER ROWS ARE THE MULTI-SELECT FILTER HERE, NOT
-	 * A SEPARATE CHIP STRIP. §7(a)'s own `aria-pressed` row grammar, moved
-	 * from the index to this page (B.2's closing rule: "both move to the
-	 * repository page"). View state only — never remembered across a visit.
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — THE LEDGER ITSELF IS
+	 * `RepoLedgerCard` NOW (`filterable`), NOT A SECOND COPY OF ITS GRAMMAR.
+	 * This route used to carry its own `.svc-name-btn` toggles and its own
+	 * `.svc-ledger` grid, byte-similar to but drifting from the index's copy
+	 * (item 2's grid-inset defects existed in one and not the other). The
+	 * multi-select filter (B.4 item 4) is `RepoLedgerCard`'s own internal
+	 * state now; `repoLines`/`repoMultiLine` survive here because the HERO
+	 * cards below still need them.
 	 */
-	let selectedApps = $state<string[]>([]);
-	function isAppSelected(appName: string): boolean {
-		return selectedApps.includes(appName);
-	}
-	function toggleAppSelected(appName: string) {
-		selectedApps = selectedApps.includes(appName)
-			? selectedApps.filter((a) => a !== appName)
-			: [...selectedApps, appName];
-	}
-
 	const repoLines = $derived(repoPageLedger ? releaseLines(repoPageLedger) : []);
 	const repoMultiLine = $derived(repoLines.length > 1);
-	const repoServiceLineIndex = $derived(
-		new Map(repoLines.flatMap((l, li) => l.services.map((s) => [s, li] as const)))
-	);
-	const repoLookup = $derived(
-		repoPageLedger ? revisionLookup(repoPageLedger) : new Map<string, RevisionRow[]>()
-	);
-
-	function repoLineMatches(line: Pick<ServiceLedgerLine, 'revision' | 'short'>): boolean {
-		if (!repoSearchActive) return true;
-		const rows = repoLookup.get(line.revision);
-		if (rows && rows.length > 0) return rows.some((row) => matchesRevisionText(row, repoSearchNeedle));
-		return matchesRevisionText(line as never, repoSearchNeedle);
-	}
-
-	function repoVisibleGroups(groups: ServiceLedgerGroup[]): ServiceLedgerGroup[] {
-		let out = groups;
-		if (selectedApps.length > 0) out = out.filter((g) => selectedApps.includes(g.appName));
-		if (!repoSearchActive) return out;
-		const filtered: ServiceLedgerGroup[] = [];
-		for (const g of out) {
-			if (g.appName.toLowerCase().includes(repoSearchNeedle)) {
-				filtered.push(g);
-				continue;
-			}
-			const matchedLines = g.lines.filter(repoLineMatches);
-			if (matchedLines.length > 0) filtered.push({ appName: g.appName, lines: matchedLines });
-		}
-		return filtered;
-	}
-
-	const repoGroupsRaw = $derived(repoPageLedger ? serviceLedger(repoPageLedger) : []);
-	const repoGroupsOrdered = $derived(
-		orderServiceGroups(repoVisibleGroups(repoGroupsRaw), {
-			lineIndexOf: repoMultiLine ? (appName: string) => repoServiceLineIndex.get(appName) ?? 0 : undefined,
-			now: coarse
-		})
-	);
-	const repoLedgerNoMatch = $derived(
-		(repoSearchActive || selectedApps.length > 0) && repoGroupsOrdered.length === 0
-	);
-	/**
-	 * ⭐ SECOND OPERATOR WALK, ITEM 2 — THE LEDGER'S OWN ROLLUP RECOUNTS TOO.
-	 * `repoGroupsRaw.length` (every service this repo has, ever) printed
-	 * `5 services` over a ledger body drawing exactly one row under
-	 * `?q=hello-api` — the header claimed a roster the filter had already
-	 * narrowed away. `?q=` or a row toggle selection both count as "filtered"
-	 * here, matching `repoLedgerNoMatch`'s own condition.
-	 */
-	const repoLedgerFilterActive = $derived(repoSearchActive || selectedApps.length > 0);
-	const repoLedgerServiceCount = $derived(
-		repoLedgerFilterActive ? repoGroupsOrdered.length : repoGroupsRaw.length
-	);
-
-	/** Byte-identical age grammar to `RepoLedgerCard`'s own ledger row. */
-	function repoLineAgeMs(line: Pick<ServiceLedgerLine, 'slots'>): number | null {
-		let latest = 0;
-		for (const slot of line.slots) {
-			const t = slot.cell.rollout.status?.history?.[0]?.timestamp;
-			if (!t) continue;
-			const ms = new Date(t).getTime();
-			if (Number.isFinite(ms) && ms > latest) latest = ms;
-		}
-		return latest > 0 ? latest : null;
-	}
-	function repoLineAge(line: Pick<ServiceLedgerLine, 'slots'>): string | null {
-		const ms = repoLineAgeMs(line);
-		return ms ? `Deployed ${formatTimeAgoCompact(new Date(ms).toISOString(), coarse)} ago` : null;
-	}
-	function repoLineAgeIso(line: Pick<ServiceLedgerLine, 'slots'>): string | undefined {
-		const ms = repoLineAgeMs(line);
-		return ms ? new Date(ms).toISOString() : undefined;
-	}
-	function repoLineAgeTitle(line: Pick<ServiceLedgerLine, 'slots'>): string {
-		const ms = repoLineAgeMs(line);
-		return ms ? formatDate(new Date(ms).toISOString()) : '';
-	}
-	function repoIdentParts(name: string): string[] {
-		return name.split(/(?<=-)/);
-	}
-	function repoPlaceHref(slot: Pick<RevisionSlot, 'cell'>): string {
-		return rolloutPath(
-			slot.cell.sourceCluster,
-			slot.cell.rollout.metadata?.namespace ?? '',
-			slot.cell.rollout.metadata?.name ?? ''
-		);
-	}
-	function repoRankVerdictFor(rank: number): { kind: 'newest' } | { kind: 'behind'; by: number } {
-		return rank === 0 ? { kind: 'newest' } : { kind: 'behind', by: rank };
-	}
 
 	/* ── THE HERO CARDS — one per release line (B.4 item 6, A.6.2's body) ── */
 	const repoLeadRows = $derived(repoPageLedger ? leadRowsFor(repoPageLedger, repoLines) : []);
@@ -2027,21 +1930,12 @@
 	 * so the "whole build matched" case still gets full, honest coverage.
 	 */
 	function repoHeroCoverage(row: RevisionRow): RevisionCoverage {
-		const services = repoHeroMatchedServices(row);
-		if (services === row.services) return revisionCoverage(row, coarse);
-		// ⚠️ `revisionCoverage`'s own `totalCount` reads `row.totalSlots`
-		// DIRECTLY, not a sum over `row.services` — it is a field computed
-		// once in `buildRow` (`revision-ledger.ts`) across every service on
-		// the line, so swapping in a narrower `services` array alone left
-		// `totalCount` (and therefore the bar's own cell count) still
-		// counting the UNFILTERED line while `liveCount` — derived from the
-		// bucket lengths, which DO walk the array just passed — correctly
-		// shrank to 3. That printed "3 of 6 places" on a hero whose title
-		// already said the "6" was never true of the one service on screen.
-		// Recomputed here the same way `buildRow` itself does.
-		const totalSlots = services.reduce((n, s) => n + s.slots.length, 0);
-		const liveSlots = services.reduce((n, s) => n + s.liveSlots, 0);
-		return revisionCoverage({ ...row, services, totalSlots, liveSlots }, coarse);
+		// ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 5 (HOIST) — the narrowing
+		// arithmetic itself now lives in `revision-coverage.ts` as
+		// `repoHeroCoverage` (imported here as `coverageForServices` to keep
+		// this route's own, query-aware wrapper name); this only supplies
+		// the services `?q=` actually matched and the page's clock.
+		return coverageForServices(row, repoHeroMatchedServices(row), coarse);
 	}
 	function repoCommitUrlFor(revision: string): string | null {
 		if (!repoPageLedger || !repoPageLedger.repoKey.startsWith('repo:')) return null;
@@ -2083,10 +1977,11 @@
 		return null;
 	});
 	/**
-	 * One sentence per held release line — `releaseSplitSentence` (defined
-	 * beside `numberWord`, above), the SAME rollback-aware grammar the build
-	 * page's own banner uses. This repo-page wrapper only adds the
-	 * per-lead-row loop `releaseSplitSentence` itself does not know about.
+	 * One sentence per held release line — `releaseSplitSentence`
+	 * (`revision-coverage.ts`, imported above), the SAME rollback-aware
+	 * grammar the build page's own banner uses. This repo-page wrapper only
+	 * adds the per-lead-row loop `releaseSplitSentence` itself does not
+	 * know about.
 	 */
 	const repoHeldMessage = $derived.by<string>(() => {
 		const parts: string[] = [];
@@ -2127,6 +2022,19 @@
 		}
 		return { held, deploying, behind, total: held + deploying + behind };
 	});
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — THE HEAD BAND'S OWN
+	 * "no match" GUARD, DECOUPLED FROM THE LEDGER CARD. This used to read
+	 * the ledger's own `repoLedgerNoMatch` (which also folded in the
+	 * ledger's row-toggle SELECTION, not just `?q=`) — now that the ledger
+	 * lives in its own component, the head band asks the same question a
+	 * different way: did an ACTIVE search leave nothing for the hero rows
+	 * to show. Without this guard, a search matching nothing would fall
+	 * through to `repoAttention.total === 0`'s "Everything on its newest
+	 * build" — a false convergence claim for a repo the search excluded
+	 * entirely, not one that has actually converged.
+	 */
+	const repoSearchNoMatch = $derived(repoSearchActive && repoVisibleLeadRows.length === 0);
 	function repoAttentionSentence(a: {
 		held: number;
 		deploying: number;
@@ -2165,7 +2073,7 @@
 		if (query.isLoading || query.isError || !repoPageLedger) return;
 		const headRevisions = new Set(repoLeadRows.map((r) => r.revision));
 		rememberShape(REPO_SHAPE_KEY, {
-			services: Math.min(repoGroupsRaw.length, 5),
+			services: Math.min(serviceLedger(repoPageLedger).length, 5),
 			heroes: Math.min(repoLeadRows.length, 5),
 			heldBanner: repoHeldSlots.length > 0,
 			running: Math.min(restRows(repoPageLedger, headRevisions).length, 5),
@@ -2184,40 +2092,6 @@
 				: urlKey}</title
 	>
 </svelte:head>
-
-<!--
-	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — THE LEDGER ROW'S SECOND CHIP.
-	Byte-for-byte the same rule `RepoLedgerCard.svelte`'s own `secondaryChip`
-	snippet draws (duplicated here rather than imported — this file's own
-	ledger row is a multi-select TOGGLE button, not a link, per B.4's own
-	"duplicated rather than imported" note above `.svc-ledger`'s CSS). A
-	`held` state names the blocked CANDIDATE (`state.holdOf`), never this
-	row's own running sha under an alarm fill.
--->
-{#snippet secondaryRevChip(state: LineStateChip | null, lineShort?: string)}
-	{#if state?.role === 'held'}
-		<!--
-			⭐ SECOND OPERATOR WALK, ITEM 9 — SEE `RepoLedgerCard.svelte`'s
-			IDENTICAL comment: when the held candidate shares THIS row's own
-			sha, the title says so instead of the generic sentence — the two
-			adjacent rows (`1 BEHIND 9f10e49`, `NEWEST 9f10e49`) are the same
-			commit and nothing on either said that until now.
-		-->
-		{@const sameCommit = !!lineShort && state.holdOf?.short === lineShort}
-		<Chip
-			role="alarm"
-			label="HELD"
-			value={state.holdOf?.label ?? state.holdOf?.short}
-			valueTitle={state.holdOf?.label ? state.holdOf.short : undefined}
-			title={sameCommit
-				? `${state.holdOf?.label} is this same build (${lineShort}) under a newer label.`
-				: state.title}
-			wide
-		/>
-	{:else if state && state.role !== 'deploying' && state.role !== 'checking'}
-		<Chip role={state.role} label={state.label} title={state.title} wide />
-	{/if}
-{/snippet}
 
 <div class="rev-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!--
@@ -2414,7 +2288,7 @@
 					digit). The figure draws only when it is actually counting
 					something.
 				-->
-				{#if repoSearchActive && repoLedgerNoMatch}
+				{#if repoSearchNoMatch}
 					<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 						No build matches “{repoSearchQuery.trim()}”.
 					</p>
@@ -2476,180 +2350,25 @@
 		-->
 		<div class="rev-repo-top">
 		<div class="rev-repo-ledger">
-		<Card
-			icon={CodeBranchOutline}
-			title="What each service runs"
-			verdict="{repoLedgerServiceCount} service{repoLedgerServiceCount === 1 ? '' : 's'}"
-			padded={false}
+		<!--
+			⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — ONE LEDGER. This used
+			to be a second, hand-rolled copy of `RepoLedgerCard`'s own grammar
+			(`.svc-name-btn` toggles, its own `.svc-ledger` grid) — now the
+			SAME component the index renders, with `filterable` turning row
+			names into the multi-select toggle B.4 item 4 asks for and the
+			header into the plain "What each service runs" / "N services"
+			shape instead of the index's link-out header.
+		-->
+		<RepoLedgerCard
+			repo={repoPageLedger}
+			now={coarse}
+			query={repoSearchQuery}
+			filterable
+			repoUrl={repoPageLedger.repoKey.startsWith('repo:') && repoBody(repoPageLedger.repoKey).includes('/')
+				? `https://${repoBody(repoPageLedger.repoKey)}`
+				: null}
 			class="mt-5"
-		>
-			{#if repoLedgerNoMatch}
-				<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
-					No build matches “{repoSearchQuery.trim()}”.
-				</p>
-			{:else}
-				<div class="svc-ledger py-1">
-					{#each repoGroupsOrdered as group, gi (group.appName)}
-						{@const li = repoServiceLineIndex.get(group.appName) ?? 0}
-						{@const prevLi = gi > 0 ? (repoServiceLineIndex.get(repoGroupsOrdered[gi - 1].appName) ?? 0) : null}
-						{#if repoMultiLine && li !== prevLi}
-							<div class="svc-line-gap" aria-hidden="true"></div>
-						{/if}
-						{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
-							{@const state = line ? lineState(line, coarse) : null}
-							{@const selected = isAppSelected(group.appName)}
-							<div class="svc-line">
-								<span class="svc-header">
-									{#if idx === 0}
-										<button
-											type="button"
-											onclick={() => toggleAppSelected(group.appName)}
-											aria-pressed={selected}
-											aria-label={`Show only ${group.appName}`}
-											class="svc-name svc-name-btn hit-32 t-body min-w-0 rounded text-left transition-colors {selected
-												? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-												: 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700/60'}"
-										>
-											{#each repoIdentParts(group.appName) as part, pi (pi)}{part}{#if pi < repoIdentParts(group.appName).length - 1}<wbr
-												/>{/if}{/each}
-										</button>
-									{:else}
-										<span
-											class="svc-name svc-name-continuation t-body text-gray-700 dark:text-gray-200"
-											aria-hidden="true"
-										>
-											{#each repoIdentParts(group.appName) as part, pi (pi)}{part}{#if pi < repoIdentParts(group.appName).length - 1}<wbr
-												/>{/if}{/each}
-										</span>
-									{/if}
-								</span>
-								{#if line}
-									{#if line.rank !== null}
-										{@const verdict2 = repoRankVerdictFor(line.rank)}
-										<!--
-											⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — SEE
-											`RepoLedgerCard.svelte`'s IDENTICAL comment: the row is
-											about what RUNS, so the rank chip naming the running
-											release draws FIRST even when it is `held` from
-											advancing; `secondaryRevChip` names the blocked
-											CANDIDATE (`state.holdOf`) rather than repeating this
-											row's own running sha under an alarm fill.
-										-->
-										<span class="svc-build">
-											<span class="svc-build-id">
-												<Chip
-													role={rankRole(verdict2)}
-													label={rankLabel(verdict2)}
-													value={line.short}
-													valueHref={revisionPath(repoPageLedger.repoKey, line.revision)}
-													valueTitle={line.revision}
-												/>
-											</span>
-											{@render secondaryRevChip(state, line.short)}
-										</span>
-									{:else}
-										<span class="svc-build">
-											<a
-												class="svc-sha rev-sha ident tap-link t-code text-gray-900 hover:underline dark:text-white"
-												href={revisionPath(repoPageLedger.repoKey, line.revision)}
-												title={line.revision}>{line.short}</a
-											>
-											{@render secondaryRevChip(state, line.short)}
-										</span>
-									{/if}
-									<span class="svc-envs">
-										{#each line.slots as slot (slot.envName)}
-											{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
-											{@const inFlightBake = slotBakeStatus(slot)}
-											{@const inFlight = inFlightBake === 'Deploying' || inFlightBake === 'InProgress'}
-											<a
-												class="hit-32 shrink-0"
-												href={repoPlaceHref(slot)}
-												aria-label={`Open the ${envDisplay.toUpperCase()} rollout for ${group.appName}${inFlight ? ` — ${bakeWord(inFlightBake)}` : ''}`}
-											>
-												{#if inFlight}
-													{#snippet inFlightGlyph()}
-														<span class="mr-[3px] inline-flex shrink-0 items-center">
-															<BakeStatusIcon bakeStatus={inFlightBake} size="small" decorative />
-														</span>
-													{/snippet}
-													<Chip
-														role="env"
-														theme={slot.cell.theme}
-														label={envDisplay}
-														wide
-														icon={inFlightGlyph}
-														title="{group.appName} in {envDisplay.toUpperCase()} — {bakeTitle(inFlightBake)}"
-													/>
-												{:else}
-													<Chip
-														role="env"
-														theme={slot.cell.theme}
-														label={envDisplay}
-														wide
-														title="{group.appName} in {envDisplay.toUpperCase()}"
-													/>
-												{/if}
-											</a>
-										{/each}
-									</span>
-									<span class="svc-age t-micro text-gray-500 dark:text-gray-400">
-										{#if repoLineAge(line)}
-											<time datetime={repoLineAgeIso(line)} title={repoLineAgeTitle(line)}
-												>{repoLineAge(line)}</time
-											>
-										{/if}
-									</span>
-								{:else}
-									<span class="svc-empty t-micro text-gray-500 dark:text-gray-400">Not deployed</span>
-								{/if}
-							</div>
-						{/each}
-					{/each}
-				</div>
-			{/if}
-			<!--
-				⭐ SECOND OPERATOR WALK, ITEM 2 — THE FOOTER'S LIFETIME COUNTS ARE
-				REPO-WIDE AND MAY NOT SURVIVE A FILTER UNCHANGED. `36 builds · 12
-				deployed at least once · 15 places` stayed the repo's TOTAL under
-				`?q=hello-api`, sitting under a ledger body that had just recounted
-				to one service — the same contradiction `RepoLedgerCard` already
-				refuses to print (`{#if !noMatch && !active}` hides its own footer
-				the same way). One rule, both cards: the lifetime counts describe
-				the WHOLE repository, so they draw only when nothing is filtering
-				the view of it.
-			-->
-			{#if !repoLedgerNoMatch && !repoLedgerFilterActive}
-				{@const deployedRevisions = deployedRevisionCount(repoPageLedger)}
-				<div
-					class="repo-meta flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 dark:border-gray-700/60"
-				>
-					<span
-						class="repo-meta-text t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
-						title="A place is one service in one environment. 'Deployed at least once' counts distinct commits that have run somewhere, ever."
-					>
-						{repoPageLedger.knownRevisions} build{repoPageLedger.knownRevisions === 1
-							? ''
-							: 's'} · {deployedRevisions} deployed at least once · {repoPageLedger.slotCount} place{repoPageLedger.slotCount ===
-						1
-							? ''
-							: 's'} to deploy to{repoMultiLine ? ` · across ${repoLines.length} release lines` : ''}
-					</span>
-					{#if repoPageLedger.repoKey.startsWith('repo:') && repoBody(repoPageLedger.repoKey).includes('/')}
-						<a
-							class="nav-link shrink-0"
-							href={`https://${repoBody(repoPageLedger.repoKey)}`}
-							target="_blank"
-							rel="noopener noreferrer"
-							title={repoPageLedger.repoLabel}
-						>
-							Open on GitHub
-							<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-						</a>
-					{/if}
-				</div>
-			{/if}
-		</Card>
+		/>
 		</div>
 
 		<!--
@@ -2692,7 +2411,20 @@
 					? leadRow.services.find((s) => heldSlotsForRow.some((hs) => hs.appName === s.appName))
 							?.label ?? leadRow.short
 					: null}
-			{@const heroVerdict = `${cov.liveCount} of ${cov.totalCount} place${cov.totalCount === 1 ? '' : 's'}${heldLabel ? ` · ${heldLabel} held` : ''}`}
+			<!--
+				⭐ ROUND 11 r11c FINDING 8 — THE HEADER ROLLUP NAMES ONLY THE
+				HELD/OTHER FACT, NEVER THE COUNT. `heroVerdict` used to open
+				with `${cov.liveCount} of ${cov.totalCount} places` — the exact
+				sentence `RevisionLead`'s own `.lead-compact-count` already
+				prints 48px below it (`compact`'s count line, above the bar).
+				One header saying the identical figure twice with 48px of
+				vertical distance between them is the repetition this file's
+				own `heroVerdict` note elsewhere warns against. `null` when
+				there is no held/other fact to add — `Card`'s own `{:else if
+				verdict}` guard hides the rollup slot entirely rather than
+				printing an empty one.
+			-->
+			{@const heroVerdict = heldLabel ? `${heldLabel} held` : null}
 			<Card
 				icon={RocketOutline}
 				title="Newest build {leadRow.short} · {heroTitleTail}"
@@ -3288,6 +3020,9 @@
 						{@const chip = rankChipFor(svc)}
 						{@const pinned = pinnedEnvsOf(svc)}
 						{@const ranBefore = ranBeforeOf(svc)}
+						<!-- ⭐ ROUND 11 r11c FINDING 9 — see the comment beside this
+						     row's "No earlier deploy on record." branch, below. -->
+						{@const elsewhere = svc.slots.some((s) => !s.onRevision)}
 						<!--
 							⭐ FINDING 2 (operator sweep, 2026-09-07) — THE RUNNING RELEASE
 							LEADS. `chip?.role === 'held'` used to print `HELD 2.67.0-67`
@@ -3420,52 +3155,69 @@
 									{/each}
 								</div>
 							{/if}
-							{#if ranBefore.length > 0}
-								<!-- ⭐ "WHERE DID THIS BUILD RUN BEFORE?" (operator-walk finding 2)
-								     `status.history[i > 0]` on this exact place, matched by the same
-								     revision key `onIt`/`resolveRevision` use everywhere else on this
-								     page — never a second opinion about identity. -->
-								<div
-									class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-								>
-									<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-									<span>
-										<!-- ⭐ ITEM 5 (2026-09-06 critique) — `ENV · Nd ago`, THE
-										     LIST'S OWN CHIP+AGE ATOM GRAMMAR, NOT `ENV (N days
-										     ago)`. -->
-										Ran before in
-										{#each ranBefore as rb, i (rb.envLabel)}
-											{rb.envLabel} · <time
-												datetime={rb.timestamp}
-												title={new Date(rb.timestamp).toLocaleString()}
-												>{formatTimeAgoCompact(rb.timestamp, $now)}</time
-											>
-											ago{i < ranBefore.length - 1 ? ', ' : ''}
-										{/each}
-									</span>
-								</div>
-							{:else if !historyLimitNote(svc)}
-								<!--
-									⭐ SECOND OPERATOR WALK, ITEM 10 — NEVER-RAN AND OUTSIDE-THE-
-									WINDOW MUST NOT LOOK THE SAME. Both used to render NOTHING
-									here — `hello-world-manifests` on `991829b` and a service
-									whose retained history simply does not reach far enough
-									back were both silent, and a silent line answers "did this
-									ever run before" with nothing at all. `historyLimitNote(svc)`
-									already knows whether THIS service's history could be
-									truncated (the card's own footer caveat, drawn once); when
-									it is `null` — every slot's history is provably complete —
-									the absence of a match is itself the answer, so it is said
-									rather than left blank. When the note IS non-null, this
-									stays silent: the footer already carries the uncertainty,
-									and a per-slot guess here would contradict it.
-								-->
-								<div
-									class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-								>
-									<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-									<span>No earlier deploy on record.</span>
-								</div>
+							<!--
+								⭐ ROUND 11 r11c FINDING 9 — "NO EARLIER DEPLOY ON RECORD" IS
+								ONLY A QUESTION WHERE THE BUILD IS NOT LIVE EVERYWHERE FOR
+								THIS SERVICE. Measured live: `hello-api-app` NEWEST
+								everywhere still printed "No earlier deploy on record." —
+								`ranBeforeOf` only ever searches slots that are NOT
+								currently on this revision (`!s.onRevision`), so a service
+								running it on every one of its own slots has nothing left to
+								search and `ranBefore.length === 0` by construction, not
+								because history was checked and came up empty. `elsewhere`
+								(declared with the row's other `{@const}`s, above — a
+								`{@const}` may only be an immediate child of the `{#each}`)
+								is true only when at least one slot is on a DIFFERENT build —
+								the case this sentence (either branch) is actually about.
+							-->
+							{#if elsewhere}
+								{#if ranBefore.length > 0}
+									<!-- ⭐ "WHERE DID THIS BUILD RUN BEFORE?" (operator-walk finding 2)
+									     `status.history[i > 0]` on this exact place, matched by the same
+									     revision key `onIt`/`resolveRevision` use everywhere else on this
+									     page — never a second opinion about identity. -->
+									<div
+										class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+									>
+										<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+										<span>
+											<!-- ⭐ ITEM 5 (2026-09-06 critique) — `ENV · Nd ago`, THE
+											     LIST'S OWN CHIP+AGE ATOM GRAMMAR, NOT `ENV (N days
+											     ago)`. -->
+											Ran before in
+											{#each ranBefore as rb, i (rb.envLabel)}
+												{rb.envLabel} · <time
+													datetime={rb.timestamp}
+													title={new Date(rb.timestamp).toLocaleString()}
+													>{formatTimeAgoCompact(rb.timestamp, $now)}</time
+												>
+												ago{i < ranBefore.length - 1 ? ', ' : ''}
+											{/each}
+										</span>
+									</div>
+								{:else if !historyLimitNote(svc)}
+									<!--
+										⭐ SECOND OPERATOR WALK, ITEM 10 — NEVER-RAN AND OUTSIDE-THE-
+										WINDOW MUST NOT LOOK THE SAME. Both used to render NOTHING
+										here — `hello-world-manifests` on `991829b` and a service
+										whose retained history simply does not reach far enough
+										back were both silent, and a silent line answers "did this
+										ever run before" with nothing at all. `historyLimitNote(svc)`
+										already knows whether THIS service's history could be
+										truncated (the card's own footer caveat, drawn once); when
+										it is `null` — every slot's history is provably complete —
+										the absence of a match is itself the answer, so it is said
+										rather than left blank. When the note IS non-null, this
+										stays silent: the footer already carries the uncertainty,
+										and a per-slot guess here would contradict it.
+									-->
+									<div
+										class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+									>
+										<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+										<span>No earlier deploy on record.</span>
+									</div>
+								{/if}
 							{/if}
 						</li>
 					{/each}
@@ -3797,6 +3549,18 @@
 								{/each}
 							</ul>
 						{:else}
+							{@const envCols = envColumnsFor(bucket.slots)}
+							{@const envTemplate = envGridTemplate(envCols)}
+							<!--
+								⭐ ROUND 11 r11c ITEM 4 — EVERY ROW'S OWN GRID, BUILT FROM
+								THE SAME `envGridTemplate` STRING. `envColumnsFor` computes
+								the bucket-wide environment universe once; every `<li>`
+								below gets the IDENTICAL literal `grid-template-columns`
+								(fixed-length env tracks — see that function's own doc
+								comment for why fixed, not `subgrid`), which is what makes
+								`DEV`/`STAGING`/`PROD` share one x per column across every
+								app in this card without any cross-row coordination.
+							-->
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each groupSlots(bucket.slots) as g (g.appName)}
 									<!--
@@ -3811,7 +3575,7 @@
 										— at desktop width the two cards sit close enough that
 										restating it there would be the opposite defect.
 									-->
-									<li class="rev-place-row px-4 py-3">
+									<li class="rev-place-row px-4 py-3" style="--env-grid: {envTemplate}">
 										{#each g.runs as rg, gi (rg.runs ?? '—')}
 											{@const sharedAge = sharedAgeFor(bucket.key, rg.slots)}
 											<!--
@@ -3851,10 +3615,11 @@
 												row, before the odd-card full-span rule above was
 												also removed).
 											-->
-											<div class="rev-group-row" class:mt-2={gi > 0}>
+											<div class="rev-group-row">
 												<a
 													href={placeHref(rg.slots[0])}
 													class="rev-group-name t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
+													style="--rg-row: {gi + 1}"
 													aria-label="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 													title="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
 													><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
@@ -3865,11 +3630,12 @@
 												{#if groupLabel}
 													<span
 														class="rev-group-label t-code-sm text-gray-500 dark:text-gray-400"
+														style="--rg-row: {gi + 1}"
 														title="{g.appName} calls this {groupLabel}"
 														>{groupLabel}</span
 													>
 												{/if}
-												<div class="rev-group-chips">
+												<div class="rev-group-chips" style="--rg-row: {gi + 1}">
 												{#each rg.slots as s (s.envName)}
 													{@const age = bucket.key === 'live' ? slotDeployedAgo(s) : null}
 													{@const pinTitle = pinnedChipTitle(s)}
@@ -3908,6 +3674,7 @@
 													<a
 														href={placeHref(s)}
 														class="rev-env-atom hit-32"
+														style="--env-col: {envColumnLine(envCols, s.envLabel)}; --rg-row: {gi + 1}"
 														aria-label="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
 														title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
 													>
@@ -4031,7 +3798,7 @@
 												     `.rev-group-row`'s own `max-width: 46rem` and anchored
 												     to column 3, it now sits at a fixed, close distance
 												     from the chips it is about. -->
-												<div class="rev-group-trail">
+												<div class="rev-group-trail" style="--rg-row: {gi + 1}">
 												<!-- ⭐ ITEM 2 (2026-09-06 critique) — THE AGE, HOISTED ONCE.
 												     `sharedAgeFor` only returns non-null when EVERY slot in
 												     this row printed the identical `formatTimeAgoCompact`
@@ -4079,7 +3846,7 @@
 														as before.
 													-->
 													<span
-														class="t-micro flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+														class="t-micro flex flex-wrap items-center gap-1.5 text-gray-500 dark:text-gray-400"
 													>
 														on <span class="t-code-sm">{rg.runs}</span>
 														{#if rg.slots.some((s) => s.blockingGates.length > 0)}
@@ -4177,168 +3944,12 @@
 	}
 
 	/*
-	 * ⭐ ROUND 11, B.4 ITEM 4 — THE REPOSITORY-PAGE LEDGER GRID, byte-for-byte
-	 * `RepoLedgerCard.svelte`'s own `.svc-ledger` geometry (Lane 2's file;
-	 * duplicated here rather than imported because this card's row is a
-	 * TOGGLE button, not a link, and is otherwise the identical grammar).
-	 * See that component's own comment for why the status-chip column is
-	 * `minmax(150px, max-content)` rather than a fixed track.
+	 * ⛔ THE REPOSITORY-PAGE LEDGER'S OWN `.svc-*` GRID IS GONE (ROUND 11
+	 * REVISIONS-PASS-6, ITEM 1, r11c). It was a second, hand-rolled copy of
+	 * `RepoLedgerCard.svelte`'s own geometry — this route renders that
+	 * component directly now (`filterable`), so its CSS lives in exactly
+	 * one place.
 	 */
-	.svc-ledger {
-		display: grid;
-		grid-template-columns: 180px minmax(150px, max-content) 220px minmax(0, 1fr);
-		align-items: center;
-		column-gap: 12px;
-		row-gap: 6px;
-	}
-
-	.svc-line {
-		display: contents;
-	}
-
-	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 7 — SEE `RepoLedgerCard.svelte`'S
-	 * IDENTICAL COMMENT. A centred hairline draws the release-line group
-	 * separation the blank row was already reserving space for.
-	 */
-	.svc-line-gap {
-		grid-column: 1 / -1;
-		height: 8px;
-		display: flex;
-		align-items: center;
-	}
-
-	.svc-line-gap::after {
-		content: '';
-		display: block;
-		width: 100%;
-		height: 1px;
-		margin: 0 16px;
-		background-color: var(--color-gray-100);
-	}
-
-	:global(.dark) .svc-line-gap::after {
-		background-color: color-mix(in oklab, var(--color-gray-700) 60%, transparent);
-	}
-
-	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 7 — SEE `RepoLedgerCard.svelte`'S
-	 * IDENTICAL COMMENT. `display: block` makes the wrapped line start at
-	 * the box's own content edge, same as the first line — an inline box's
-	 * left padding otherwise applies only before its FIRST line.
-	 */
-	.svc-name,
-	.svc-name-continuation {
-		display: block;
-		padding: 6px 16px 6px 16px;
-		overflow-wrap: break-word;
-	}
-
-	/*
-	 * ⛔ NO `background` HERE, EVEN AT ZERO SPECIFICITY (verified live —
-	 * this exact bug, `aria-pressed="true"` painting fully transparent).
-	 * `app.css`'s layering note: a Svelte-scoped rule is UNLAYERED, and an
-	 * unlayered rule beats a LAYERED one (Tailwind's own utilities layer)
-	 * regardless of specificity — `background: none` here pinned the
-	 * button transparent through `bg-gray-900`/`dark:bg-white` no matter
-	 * which one the markup added for the pressed state. Declaring nothing
-	 * lets the conditional utility classes be the only thing that ever
-	 * sets it; the browser's own button reset (`@layer base`) already
-	 * gives the UNPRESSED state a transparent background for free.
-	 */
-	.svc-name-btn {
-		border: none;
-	}
-
-	.svc-build {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-wrap: wrap;
-		padding: 6px 0;
-	}
-
-	.svc-build-id {
-		display: inline-flex;
-	}
-
-	.svc-envs {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		padding: 6px 0;
-	}
-
-	.svc-empty {
-		padding: 6px 16px;
-		grid-column: 2 / -1;
-	}
-
-	.svc-age {
-		text-align: right;
-		white-space: nowrap;
-		padding: 6px 0;
-	}
-
-	@container (max-width: 560px) {
-		.svc-ledger {
-			grid-template-columns: minmax(0, 1fr);
-		}
-		.svc-line {
-			display: flex;
-			flex-wrap: wrap;
-			align-items: baseline;
-			column-gap: 8px;
-			row-gap: 4px;
-			padding: 8px 16px;
-			border-bottom: 1px solid var(--color-gray-100);
-		}
-		:global(.dark) .svc-line {
-			border-bottom-color: color-mix(in oklab, var(--color-gray-700) 60%, transparent);
-		}
-		.svc-header {
-			order: 1;
-			min-width: 0;
-		}
-		.svc-age {
-			order: 2;
-			margin-left: auto;
-			padding: 0;
-		}
-		.svc-build {
-			order: 3;
-			flex-basis: 100%;
-			padding: 0;
-		}
-		.svc-envs {
-			order: 4;
-			padding: 0;
-		}
-		.svc-empty {
-			order: 3;
-			flex-basis: 100%;
-			padding: 0;
-		}
-
-		/*
-		 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 11 — SEE `RepoLedgerCard.svelte`'S
-		 * IDENTICAL COMMENT. The meta line wraps in full below 560px, never
-		 * ellipsising a count; `Open on GitHub` drops to its own line,
-		 * right-aligned.
-		 */
-		.repo-meta {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-		.repo-meta-text {
-			white-space: normal;
-			overflow: visible;
-			text-overflow: unset;
-		}
-		.repo-meta > .nav-link {
-			align-self: flex-end;
-		}
-	}
 
 	/*
 	 * ⛔ THE FIXED-WIDTH RAIL IS GONE, AND SO IS THE SECOND GRID LEVEL.
@@ -4575,105 +4186,105 @@
 	}
 
 	/*
-	 * ⭐ OPERATOR-WALK ROUND 4, ITEM 2 — THE ENV+AGE ATOM, AND ITS OWN
-	 * CONTAINER. `.rev-buckets` puts these rows in a 2-column grid at 640px+,
-	 * so a card's own rendered width is narrower than the PAGE at every width
-	 * between 640 and roughly 1200. `.rev-place-row` is its own nested
-	 * container, sized to what this row actually renders at, whatever grid
-	 * track it landed in — `.rev-group-row`'s own `@container (max-width:
-	 * 560px)` stacking rule (below) still measures against it.
+	 * ⭐ ROUND 11 r11c ITEM 4 — ONE COLUMN PER ENVIRONMENT, EVERY ROW'S OWN
+	 * GRID BUILT FROM THE IDENTICAL TEMPLATE STRING. Measured live at 1024:
+	 * `STAGING` sat at x=443 on one app's row and x=641 on another's —
+	 * `.rev-group-row` was an independent `flex-wrap` per row, so identical
+	 * environments landed wherever THAT row's own preceding atom happened
+	 * to end (a rolled-back place's atom is wider than an ordinary one).
+	 *
+	 * ⛔ `subgrid` WAS THE FIRST DRAFT (`envColumnsFor`'s own doc comment has
+	 * the measured failure) — this uses `grid-template-columns` set INLINE
+	 * per `<li>` instead (`envGridTemplate`, script-side; identical fixed-
+	 * length string for every row in the bucket), which needs no
+	 * cross-row negotiation: two independent grids given the same literal
+	 * template always agree, where two independent `max-content` grids
+	 * (or, it turns out, a subgrid asked to size `max-content` through a
+	 * parent) do not.
+	 *
+	 * `container-type: inline-size` stays for the mobile container query
+	 * below, which measures this element's own rendered width inside
+	 * `.rev-buckets`' 2-column layout.
+	 *
+	 * ⚠️ `--env-grid` (A CUSTOM PROPERTY), NOT `grid-template-columns`
+	 * DIRECTLY, IN THE INLINE `style`. An inline style always wins over a
+	 * stylesheet rule regardless of specificity or source order — if the
+	 * per-row template were set as a literal inline `grid-template-columns`,
+	 * the mobile `@container` override below could never replace it with
+	 * `minmax(0, 1fr)`. Routing it through a custom property lets the
+	 * MOBILE rule set the real property directly (which always beats a
+	 * `var()` reference at equal specificity), the same fix this file's
+	 * `CoverageBar`-adjacent width bug and the ledger toggle's pressed state
+	 * both needed for the identical reason.
 	 */
 	.rev-place-row {
 		container-type: inline-size;
-	}
-
-	/*
-	 * `display: inline-flex` with the container's default `flex-wrap: nowrap`
-	 * — an atom has exactly two children (the chip, and its own age) and they
-	 * may never wrap apart from each other. The OUTER row (`.rev-group-chips`,
-	 * `flex flex-wrap`) is what wraps BETWEEN atoms; this rule only stops the
-	 * line break from landing inside one.
-	 */
-	.rev-env-atom {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-	}
-
-	/*
-	 * ⛔ THE "ONE ATOM PER LINE UNDER 560px" RULE IS GONE (ITEM 4, round-8
-	 * critique). It forced every non-bare atom (one carrying its OWN age,
-	 * printed when a row's places disagree on when they deployed) onto its
-	 * own full-width line whenever `.rev-place-row`'s container measured
-	 * 560px or less — and that container is the CARD COLUMN inside
-	 * `.rev-buckets`' 2-column grid, whose CONTENT box (after the `<li>`'s
-	 * own `px-4` padding) sits at ~558px for nearly the whole 640-1200px
-	 * page-width range this page runs at. Measured live on `064b655b5159`
-	 * at 1440: `hello-multi-app`'s three atoms (ages 2h/6d/6d, genuinely
-	 * different) stacked one-per-line at a MEASURED 559px card width —
-	 * comfortably wide enough to hold all three inline — because the rule
-	 * fired on container WIDTH alone, never on whether the atoms actually
-	 * fit. `hello-world-manifests`, whose three places share one age, was
-	 * exempted by `.rev-env-atom--bare` and rendered inline on the SAME
-	 * card at the SAME width — one card, two row grammars, decided by
-	 * something the reader cannot see (whether the ages happen to agree).
-	 * The same defect held even where an atom carried NO age at all (a
-	 * non-`live` bucket, `age` always null): `sharedAge` is only computed
-	 * for the `live` bucket, so `.rev-env-atom--bare` was never applied
-	 * there either, and `Already moved on` on `c1ecfe553070` stacked nine
-	 * bare chips one per line at 490px for the identical reason.
-	 *
-	 * `.rev-group-chips` (below) is already `display: flex; flex-wrap: wrap`
-	 * — every atom now wraps the ordinary way: as many as fit on a line,
-	 * the rest carried to the next, exactly what "chips always inline in
-	 * one wrapping run" asks for, and identical whether the ages agree,
-	 * disagree, or say nothing at all. `.rev-env-atom--bare` is gone with
-	 * it — nothing reads it any more.
-	 */
-
-	/*
-	 * ⭐ ITEM 3 (2026-09-06 round-7 critique) — `Running it now`/`Already
-	 * moved on`'s OWN ROW GETS THE LEDGER'S TRACKS: a fixed name column, a
-	 * chips column that starts at the same x on every row regardless of the
-	 * app name's length, and a trail column for the row's one trailing fact
-	 * (`now on <sha>`, the shared age, or the release clause). See the
-	 * markup comment at the call site for the 45px/745px measurements this
-	 * replaces.
-	 *
-	 * ⛔ ROUND 11 CRAFT FINDING 7 — `max-width: 46rem` (736px) COMBINED WITH
-	 * A `1fr` CHIPS COLUMN FORCED A 2-ROW WRAP ON A CARD THAT HAD 589–725px
-	 * TO SPARE. Measured live: the lone `Running it now` bucket card spans
-	 * the FULL `.rev-buckets` row (the odd-card span rule, above) — 900 to
-	 * 1600px depending on viewport — but this row's own box was still
-	 * capped at 736px by the OLD `max-width`, so a set of chips that would
-	 * have fit on one line at the card's real width wrapped to two instead,
-	 * while thirty-plus percent of the card sat empty to the right. The cap
-	 * existed to solve a DIFFERENT defect (the trail column landing 745px
-	 * from the chips when the chips column was `1fr` and grew to fill
-	 * whatever the row's own width happened to be) — fixed here at its
-	 * actual source instead: `minmax(0, max-content)` sizes the chips
-	 * column to what its content needs (wrapping only when the ROW
-	 * genuinely runs out of room, never because an arbitrary cap said so),
-	 * so the trail (column 3) sits right after it regardless of how wide
-	 * the card is. `max-width` is gone — nothing stretches column 2 past
-	 * its content any more, so there is nothing left for it to guard
-	 * against.
-	 */
-	.rev-group-row {
 		display: grid;
-		grid-template-columns: 160px minmax(0, max-content) auto;
+		grid-template-columns: var(--env-grid);
 		column-gap: 12px;
-		row-gap: 4px;
+		row-gap: 8px;
 		align-items: baseline;
 	}
 
+	/*
+	 * ⭐ ITEM 4 — `.rev-group-row`/`.rev-group-chips` ARE `display: contents`
+	 * AT DESKTOP: their own boxes disappear so their CHILDREN (the name
+	 * link, the optional label, each environment atom, the trail) become
+	 * direct items of `.rev-place-row`'s subgrid — which is what lets each
+	 * atom be placed by ENVIRONMENT IDENTITY (`--env-col`, set inline per
+	 * atom from `envColumnLine`) instead of by flex-wrap's left-to-right
+	 * packing order. `--rg-row` (also set inline, from the `{#each g.runs as
+	 * rg, gi}` index) keeps a service with TWO release-runs — one held
+	 * environment on an older label, the rest on the row's own — on two
+	 * separate grid rows instead of letting auto-placement interleave their
+	 * cells wherever a column happens to be free.
+	 *
+	 * ⛔ BELOW 560px BOTH REVERT (see the `@container` block) — the mobile
+	 * layout is unchanged from before this round: one column, name then
+	 * chips (still a real `flex-wrap` box there, so short atoms keep
+	 * sharing a line) then trail, each its own line.
+	 */
+	.rev-group-row,
 	.rev-group-chips {
-		display: flex;
+		display: contents;
+	}
+
+	.rev-group-name {
+		grid-column: 1;
+		grid-row: var(--rg-row, auto);
+	}
+
+	.rev-group-label {
+		grid-row: var(--rg-row, auto);
+	}
+
+	/*
+	 * `display: inline-flex`, its own `--env-col`/`--rg-row` placing it in
+	 * its row's fixed-width env column at desktop (the rule two above this
+	 * one makes its immediate parent, `.rev-group-chips`, transparent to
+	 * layout there).
+	 *
+	 * ⛔ `flex-wrap: nowrap` IS GONE (r11c item 4). It existed so the chip
+	 * and its own age could never split across a LINE BREAK BETWEEN atoms
+	 * in the old free-flowing `flex-wrap` row; now each atom has its own
+	 * FIXED-width cell (170px, `envGridTemplate`) and the rare compound
+	 * content (a rolled-back place's badge plus its own age, ~235px
+	 * measured) needs to wrap onto a second line WITHIN that cell instead
+	 * of overflowing into the next column — `wrap` is what lets it.
+	 */
+	.rev-env-atom {
+		display: inline-flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 8px 16px;
+		gap: 6px;
 		min-width: 0;
+		grid-column: var(--env-col, auto);
+		grid-row: var(--rg-row, auto);
+	}
+
+	.rev-group-trail {
+		grid-column: -2;
+		grid-row: var(--rg-row, auto);
 	}
 
 	.rev-group-trail {
@@ -4687,29 +4298,49 @@
 	}
 
 	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 9 — HIDDEN ABOVE 560px, A GRID ROW
-	 * OF ITS OWN BELOW IT. `display: none` here means the label item is
-	 * ALSO removed from `.rev-group-row`'s grid at desktop widths — a
-	 * hidden grid item still consumes a track otherwise, which would shift
-	 * `.rev-group-chips` into column 2 and strand `.rev-group-trail` on an
-	 * implicit new row. Un-hidden inside the `@container` block below,
-	 * where `.rev-group-row` has already collapsed to one column, so it
-	 * simply becomes its own line between the name and the chips.
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 9 — HIDDEN ABOVE 560px. `display:
+	 * none` removes it from layout entirely at desktop, so it costs the
+	 * subgrid no track. Un-hidden inside the `@container` block below.
 	 */
 	.rev-group-label {
 		display: none;
 	}
 
 	/*
-	 * Below 560px (the row's own rendered width — `.rev-place-row`, the
-	 * `<li>` two levels up, is the container this measures) the fixed
-	 * name column is what the phone ledger form already rejects (`lib/CLAUDE.md`'s
-	 * "the service ledger" note): one column, name first, chips beneath,
-	 * trail beneath that, each full width.
+	 * ⭐ ROUND 11 r11c ITEM 4 — BELOW 560px, THE SUBGRID STANDS DOWN. One
+	 * column (name, chips, trail each their own full-width line — the phone
+	 * ledger form `lib/CLAUDE.md`'s "the service ledger" note already
+	 * asks for), and the two elements that went `display: contents` for the
+	 * desktop subgrid (`.rev-group-row`, `.rev-group-chips`) become real
+	 * boxes again: `.rev-group-chips` reverts to the ORIGINAL `flex-wrap`
+	 * row so its own atoms keep sharing a line the ordinary way (this was
+	 * never broken at mobile — the misalignment item 4 fixes is a desktop-
+	 * width, multi-row-per-card defect; `.rev-place-row`'s own container
+	 * query already only fires when THIS row itself is narrow). `grid-row:
+	 * auto` on every element that carried an explicit `--rg-row` lets two
+	 * release-runs stack in DOM order instead of overlapping in the single
+	 * remaining column — an explicit row number front the desktop subgrid
+	 * would otherwise still apply.
 	 */
 	@container (max-width: 560px) {
-		.rev-group-row {
+		.rev-place-row {
 			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.rev-group-chips {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 8px 16px;
+			min-width: 0;
+			grid-row: auto;
+		}
+
+		.rev-group-name,
+		.rev-group-label,
+		.rev-env-atom,
+		.rev-group-trail {
+			grid-row: auto;
 		}
 
 		.rev-group-label {

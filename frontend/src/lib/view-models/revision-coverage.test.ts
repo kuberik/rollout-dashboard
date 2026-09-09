@@ -8,6 +8,9 @@ import {
 	coverageCells,
 	coverageWeight,
 	releaseHeldClause,
+	repoHeroCoverage,
+	releaseSplitSentence,
+	numberWord,
 	WEIGHT_ORDER,
 	WEIGHT_FILL,
 	COVERAGE_ORDER,
@@ -619,6 +622,45 @@ describe('revisionCoverage', () => {
 	}
 
 	/**
+	 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — SAME SHAPE AS
+	 * `heldRevisionFixture`, except `dev` has a genuine rollback: its
+	 * history reads `1.66.0-66` (now) then `1.67.0-67` (before it) —
+	 * `detectRollback` sees the current release sit EARLIER in
+	 * `availableReleases` than the one it replaced. `staging`/`prod` never
+	 * left `1.66.0-66` at all — a single-entry history, same as
+	 * `heldRevisionFixture`'s.
+	 */
+	function heldRevisionFixtureWithRollback() {
+		const sha = 'eeeeeee0000000000000000000000000000000';
+		const older = { tag: 'main-66', version: '1.66.0-66', revision: sha, created: minsAgo(120) };
+		const newer = { tag: 'main-67', version: '1.67.0-67', revision: sha, created: minsAgo(10) };
+		const rollouts = [
+			rollout(
+				'hello-frontend-app',
+				'hfa-dev',
+				[newer, older],
+				[
+					{ r: older, minutesAgo: 5 },
+					{ r: newer, minutesAgo: 50 }
+				]
+			),
+			rollout(
+				'hello-frontend-app',
+				'hfa-staging',
+				[newer, older],
+				[{ r: older, minutesAgo: 5 }]
+			),
+			rollout('hello-frontend-app', 'hfa-prod', [newer, older], [{ r: older, minutesAgo: 3 }])
+		];
+		const environments = [
+			environment('hello-frontend-app', 'hfa-dev', 'dev'),
+			environment('hello-frontend-app', 'hfa-staging', 'staging'),
+			environment('hello-frontend-app', 'hfa-prod', 'prod')
+		];
+		return buildRevisionLedger(rollouts, environments)[0];
+	}
+
+	/**
 	 * ⭐ THE RELEASE-LINE CLAUSE — the fact `classify()` folds into `live`
 	 * without saying which release. (2026-09-03, operator-walk BLOCKING item)
 	 */
@@ -845,6 +887,86 @@ describe('revisionCoverage', () => {
 			expect(buildState(cov).key).toBe('done');
 		});
 	});
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 5 (HOIST) — `repoHeroCoverage` and
+	 * `releaseSplitSentence` used to live in `routes/revisions/[...slug]/
+	 * +page.svelte`, unreachable by a unit test. Moved here so the narrowing
+	 * arithmetic and the rollback-aware grammar are pinned the same way every
+	 * other `revision-coverage.ts` export already is.
+	 */
+	describe('repoHeroCoverage', () => {
+		it("returns the row's own coverage, unchanged, when every service is passed back", () => {
+			const repo = fixture();
+			const row = repo.rows[0];
+			const full = revisionCoverage(row, new Date());
+			const same = repoHeroCoverage(row, row.services, new Date());
+			expect(same).toEqual(full);
+		});
+
+		it('recomputes totalCount/liveCount off the narrowed services, not the row‘s own totals', () => {
+			const repo = fixture();
+			const row = repo.rows[0]; // api-dev, api-prod, web-dev live; web-prod notYet — 4 places, 2 services.
+			expect(row.services).toHaveLength(2);
+			const oneService = [row.services[0]];
+			const narrowed = repoHeroCoverage(row, oneService, new Date());
+			const expectedTotal = oneService.reduce((n, s) => n + s.slots.length, 0);
+			expect(narrowed.totalCount).toBe(expectedTotal);
+			expect(narrowed.totalCount).toBeLessThan(row.totalSlots);
+			expect(narrowed.buckets.reduce((n, b) => n + b.slots.length, 0)).toBe(expectedTotal);
+		});
+	});
+
+	describe('numberWord', () => {
+		it('spells zero through ten, and falls back to the digit past it', () => {
+			expect(numberWord(0)).toBe('zero');
+			expect(numberWord(3)).toBe('three');
+			expect(numberWord(10)).toBe('ten');
+			expect(numberWord(11)).toBe('11');
+		});
+	});
+
+	describe('releaseSplitSentence', () => {
+		it('is empty when nothing is behind', () => {
+			const repo = fixture();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			expect(releaseSplitSentence(cov)).toBe('');
+		});
+
+		it('names the running release, the places, and the held release with no gate evidence', () => {
+			const repo = heldRevisionFixture();
+			const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
+			const cov = revisionCoverage(held, new Date());
+			const sentence = releaseSplitSentence(cov);
+			expect(sentence).toBe(
+				'dev, staging and prod run 1.66.0-66; 1.67.0-67 has not reached them yet.'
+			);
+		});
+
+		it('says `is held` once every one of the places has real gate evidence', () => {
+			const repo = heldRevisionFixtureWithGate();
+			const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
+			const cov = revisionCoverage(held, new Date());
+			const sentence = releaseSplitSentence(cov);
+			expect(sentence).toBe('dev, staging and prod run 1.66.0-66; 1.67.0-67 is held in all three.');
+		});
+
+		/**
+		 * ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — THE ROLLBACK MUST NOT
+		 * FLATTEN INTO "RUN IT". `dev` left `1.66.0-66` for `1.67.0-67` and came
+		 * BACK; `staging`/`prod` never left `1.66.0-66` at all — two different
+		 * histories sharing one behind-label, and the sentence has to say so
+		 * separately or a real rollback reads as if it never happened.
+		 */
+		it('names a rolled-back place separately from places that simply never left', () => {
+			const repo = heldRevisionFixtureWithRollback();
+			const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
+			const cov = revisionCoverage(held, new Date());
+			const sentence = releaseSplitSentence(cov);
+			expect(sentence).toBe(
+				'dev rolled back to 1.66.0-66; staging and prod run it; 1.67.0-67 has not reached them yet.'
+			);
+		});
+	});
 });
 
 /**
@@ -891,3 +1013,4 @@ describe('coverageCells', () => {
 		}
 	});
 });
+

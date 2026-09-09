@@ -2,21 +2,44 @@
 
 <script lang="ts">
 	/**
-	 * THE INDEX CARD — one per repository on `/revisions`, extracted from
-	 * that route (round 11, lane 2 — `.agents-context/design/
-	 * REVISIONS-2026-09-05.md`, "B.2 — The index card").
+	 * THE SERVICE LEDGER CARD — one per repository. Round 11, lane 2
+	 * extracted this from `/revisions` for the index (B.2); ROUND 11
+	 * REVISIONS-PASS-6 ITEM 1 (r11c) finishes the consolidation the extraction
+	 * left half-done: the repository page (`routes/revisions/[...slug]/
+	 * +page.svelte`) had grown its OWN second copy of this exact grammar
+	 * (`.svc-name-btn` toggles, its own `.svc-ledger` grid) instead of
+	 * importing this component, so the two pages could — and did — drift
+	 * (item 2's grid-inset defects existed in one copy and not the other).
+	 * ONE LEDGER now: both pages render this component, and the two former
+	 * copies converge on `filterable` — the one axis they actually differ on.
 	 *
-	 * Answers "is anything held or behind here" without opening the card:
-	 * header (icon, name, verdict, chevron — the WHOLE bar is the one link
-	 * to the repository page), the per-service ledger (§7a's grammar,
-	 * capped at 6 rows unless this is the fleet's only repository), and a
-	 * footer (the three lifetime counts, `Open on GitHub` external).
+	 * ⭐ THE SHELL IS `Card`, THE PRODUCT'S ONE TITLED PANEL — not a hand-rolled
+	 * `rounded-xl` div with its own header markup (which is what this file
+	 * used to be, and what the route's second copy still was: `radius 8, a
+	 * 47px <header> with icon, title and the rollup` is `Card`'s own
+	 * geometry, re-derived a second time instead of reused). The two modes:
 	 *
-	 * ⛔ NO TOGGLE. Round 7.6 ("the repository header is the toggle") is
-	 * overruled by this round's own B.2: there is nothing on the index to
-	 * disclose — the hero, the build lists and the held banner all moved to
-	 * the repository page (lane 3). The chevron means "open the repository
-	 * page", nothing else.
+	 *   `filterable={false}` (the INDEX, B.2) — the WHOLE header is a link to
+	 *   the repository page (`Card`'s own `titleHref`), title is
+	 *   `repoTitle(repo.repoLabel)`, the rollup is the held/behind verdict (a
+	 *   `Chip` or plain words) plus a trailing chevron — no toggle, nothing to
+	 *   disclose here; opening the card is the only affordance.
+	 *
+	 *   `filterable={true}` (the REPOSITORY PAGE, B.4 item 4) — the header is
+	 *   plain (no link — the page IS this object already), title is `What
+	 *   each service runs`, the rollup is a bare `N services` count that
+	 *   recounts under the ledger's OWN multi-select filter. Row names become
+	 *   `aria-pressed` toggle buttons (gray-900/gray-100 pressed fill, per
+	 *   `lib/CLAUDE.md`'s standing toggle rule) instead of links — B.2's own
+	 *   closing rule ("the ledger rows are NOT filter toggles on the index")
+	 *   means this behaviour never reaches the index, because the index never
+	 *   passes `filterable`.
+	 *
+	 * ⛔ NO TOGGLE ON THE INDEX. Round 7.6 ("the repository header is the
+	 * toggle") stays overruled by B.2: there is nothing on the index to
+	 * disclose — the hero, the build lists and the held banner all live on
+	 * the repository page. The chevron means "open the repository page",
+	 * nothing else.
 	 *
 	 * ⭐ FINDING 1 (operator sweep, 2026-09-09, BLOCKING) — a query that
 	 * matches a release LABEL (`2.67.0-67`) must match the ledger LINE
@@ -55,6 +78,7 @@
 		ChevronDownOutline,
 		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
+	import Card from './Card.svelte';
 	import Chip from './Chip.svelte';
 	import BakeStatusIcon from './BakeStatusIcon.svelte';
 
@@ -65,7 +89,9 @@
 		now,
 		query = '',
 		uncapped = false,
-		repoUrl = null
+		repoUrl = null,
+		filterable = false,
+		class: className = ''
 	}: {
 		repo: RepoLedger;
 		now: Date;
@@ -74,6 +100,19 @@
 		/** B.7 — the fleet's only repository draws every ledger row. */
 		uncapped?: boolean;
 		repoUrl?: string | null;
+		/**
+		 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — THE ONE AXIS THE TWO
+		 * PAGES DIFFER ON. `false` (default) is the index (B.2): the header
+		 * links out, row names are `/apps/<name>` links, nothing here filters
+		 * anything. `true` is the repository page (B.4 item 4): the header
+		 * is plain (this page already names the repository), row names
+		 * become a multi-select toggle, and the header rollup recounts under
+		 * it — the SAME `?q=` + selection recount the repository page's own
+		 * `repoLedgerServiceCount` used to compute by hand.
+		 */
+		filterable?: boolean;
+		/** LAYOUT ONLY — margin. Passed straight to `Card`. */
+		class?: string;
 	} = $props();
 
 	const active = $derived(query.trim().length > 0);
@@ -82,6 +121,24 @@
 	const href = $derived(`/revisions/${repoSlug(repo.repoKey)}${active ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
 
 	let expanded = $state(false);
+
+	/**
+	 * ⭐ THE MULTI-SELECT FILTER — `filterable` mode only. Self-contained:
+	 * nothing else on the repository page reads which services are selected
+	 * (the hero cards, the held banner and the build lists all filter on
+	 * `?q=` alone), so this needs no prop to lift it to the route — the same
+	 * shape the route's own `selectedApps` state had before this component
+	 * absorbed it.
+	 */
+	let selectedApps = $state<string[]>([]);
+	function isAppSelected(appName: string): boolean {
+		return selectedApps.includes(appName);
+	}
+	function toggleAppSelected(appName: string) {
+		selectedApps = selectedApps.includes(appName)
+			? selectedApps.filter((a) => a !== appName)
+			: [...selectedApps, appName];
+	}
 
 	const lines = $derived(releaseLines(repo));
 	const multiLine = $derived(lines.length > 1);
@@ -105,17 +162,21 @@
 	}
 
 	function visibleGroupsOf(groups: ServiceLedgerGroup[]): ServiceLedgerGroup[] {
-		if (!active) return groups;
-		const out: ServiceLedgerGroup[] = [];
-		for (const g of groups) {
+		let out = groups;
+		if (filterable && selectedApps.length > 0) {
+			out = out.filter((g) => selectedApps.includes(g.appName));
+		}
+		if (!active) return out;
+		const filtered: ServiceLedgerGroup[] = [];
+		for (const g of out) {
 			if (g.appName.toLowerCase().includes(needle)) {
-				out.push(g);
+				filtered.push(g);
 				continue;
 			}
 			const matchedLines = g.lines.filter(lineMatches);
-			if (matchedLines.length > 0) out.push({ appName: g.appName, lines: matchedLines });
+			if (matchedLines.length > 0) filtered.push({ appName: g.appName, lines: matchedLines });
 		}
-		return out;
+		return filtered;
 	}
 
 	const groups = $derived(serviceLedger(repo));
@@ -131,7 +192,8 @@
 	 * `repoKnownMatchCount` — how many DISTINCT revisions (deployed or
 	 * pending) this repo's own known set matches, deduped the same way
 	 * `deployedRevisionCount` dedupes a held commit's split rows. Used only
-	 * under an active search; B.5's `{n} of {m} builds` rollup.
+	 * under an active search; B.5's `{n} of {m} builds` rollup — the INDEX's
+	 * own header rollup shape.
 	 */
 	const matchCount = $derived.by(() => {
 		if (!active) return 0;
@@ -142,14 +204,25 @@
 		return matched.size;
 	});
 
-	const noMatch = $derived(active && ordered.length === 0);
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — ONE "IS THIS VIEW
+	 * FILTERED" PREDICATE, BOTH MODES. On the index `filterable` is false
+	 * and `selectedApps` never grows past `[]` (nothing renders a toggle to
+	 * populate it), so this reduces to the old `active`-only rule byte for
+	 * byte. On the repository page a selection alone (no search text) also
+	 * counts — the same condition the route's own `repoLedgerFilterActive`
+	 * used, ported here so the footer/rollup recount rules stay one
+	 * function instead of two copies that could disagree.
+	 */
+	const filterActive = $derived(active || (filterable && selectedApps.length > 0));
+	const noMatch = $derived(filterActive && ordered.length === 0);
 
 	/**
 	 * ⭐ B.2's VERDICT ROLLUP — "held" and "behind" here are PLACE counts (one
 	 * service in one environment), across every release line's own lead
 	 * (deployed) row — the same shape the old fleet-wide head band summed
 	 * per repo, scoped to just this one now that the head band no longer
-	 * carries it.
+	 * carries it. INDEX mode only.
 	 */
 	const verdict = $derived.by(() => {
 		let held = 0;
@@ -177,6 +250,13 @@
 		return { chip: null, text: 'Everything on its newest build' };
 	});
 
+	/**
+	 * ⭐ THE REPOSITORY PAGE'S OWN ROLLUP — a bare service count that
+	 * recounts under `filterActive`, ported from the route's
+	 * `repoLedgerServiceCount`.
+	 */
+	const serviceCount = $derived(filterActive ? ordered.length : groups.length);
+
 	function rankVerdictFor(rank: number): RankVerdict {
 		return rank === 0 ? { kind: 'newest' } : { kind: 'behind', by: rank };
 	}
@@ -196,7 +276,7 @@
 	/**
 	 * ⭐ ROUND SIX §3 — THE LEDGER'S OWN AGE COLUMN, ported from the route.
 	 * The newest deploy timestamp across this line's own live slots. Also
-	 * what keeps the ledger grid's 4th cell occupied on every deployed line
+	 * what keeps the ledger grid's last cell occupied on every deployed line
 	 * — see the template's own comment beside `.svc-age`.
 	 */
 	function lineAgeMs(line: Pick<ServiceLedgerLine, 'slots'>): number | null {
@@ -265,47 +345,36 @@
 	{/if}
 {/snippet}
 
-<!--
-	⭐ THE WHOLE HEADER IS THE ONE `<a>` — `lib/CLAUDE.md`'s own rule: "a
-	region that reads as a destination must BE one." The chevron is
-	decorative; the header itself is the tap target.
--->
-<div
-	class="repo-ledger-card flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
->
-	<a
-		{href}
-		class="tap-zone flex min-h-[47px] w-full flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-4 py-3 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/60 dark:hover:bg-gray-700/50"
-	>
-		<span class="flex min-w-0 items-center gap-2.5">
-			<CodeBranchOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-			<h2 class="t-card-title min-w-0 break-words text-gray-900 dark:text-white">
-				{repoTitle(repo.repoLabel)}
-			</h2>
+{#snippet indexRollup()}
+	{#if noMatch}
+		<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">no match</span>
+	{:else if active}
+		<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">
+			{matchCount} of {repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'}
 		</span>
-		<span class="flex shrink-0 items-center gap-2">
-			{#if noMatch}
-				<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">no match</span>
-			{:else if active}
-				<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">
-					{matchCount} of {repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'}
-				</span>
-			{:else if verdict.chip}
-				<!--
-					⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — CHIP OR WORDS, NEVER BOTH.
-					`3 HELD · 3 places held ›` said the identical fact twice — the
-					chip already carries the count (`3 held`) and the full sentence
-					lives in its own `title`. The chevron stays; the words go.
-				-->
-				<Chip role={verdict.chip.role} label={verdict.chip.label} wide title={verdict.text} />
-			{:else}
-				<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">{verdict.text}</span
-				>
-			{/if}
-			<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
-		</span>
-	</a>
+	{:else if verdict.chip}
+		<!--
+			⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — CHIP OR WORDS, NEVER BOTH.
+			`3 HELD · 3 places held ›` said the identical fact twice — the
+			chip already carries the count (`3 held`) and the full sentence
+			lives in its own `title`. The chevron stays; the words go.
+		-->
+		<Chip role={verdict.chip.role} label={verdict.chip.label} wide title={verdict.text} />
+	{:else}
+		<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">{verdict.text}</span>
+	{/if}
+	<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+{/snippet}
 
+<Card
+	icon={CodeBranchOutline}
+	title={filterable ? 'What each service runs' : repoTitle(repo.repoLabel)}
+	titleHref={filterable ? undefined : href}
+	verdict={filterable ? `${serviceCount} service${serviceCount === 1 ? '' : 's'}` : undefined}
+	rollup={filterable ? undefined : indexRollup}
+	padded={false}
+	class={className}
+>
 	{#if noMatch}
 		<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
 			No build matches “{query.trim()}”.
@@ -320,17 +389,44 @@
 				{/if}
 				{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
 					{@const state = line ? lineState(line, now) : null}
+					{@const selected = filterable && isAppSelected(group.appName)}
 					<div class="svc-line">
 						<span class="svc-header">
 							{#if idx === 0}
-								<a
-									href={`/apps/${encodeURIComponent(group.appName)}`}
-									aria-label={group.appName}
-									class="svc-name tap-link t-body text-gray-700 hover:underline dark:text-gray-200"
-								>
-									{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
-											/>{/if}{/each}
-								</a>
+								{#if filterable}
+									<!--
+										⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — A VISIBLE
+										CONTROL, NOT AN INVISIBLE ONE. The route's own
+										`.svc-name-btn` had no border and no fill at rest —
+										indistinguishable from the plain, non-interactive
+										label beside it, which is exactly why it read as
+										invisible. `.svc-name-toggle` adds a 1px border and a
+										chip-like inline shape at rest in BOTH themes; the
+										pressed fill (`gray-900`/`gray-100`) is the product's
+										one standing toggle rule, unchanged.
+									-->
+									<button
+										type="button"
+										onclick={() => toggleAppSelected(group.appName)}
+										aria-pressed={selected}
+										aria-label={`Show only ${group.appName}`}
+										class="svc-name svc-name-toggle hit-32 t-body min-w-0 text-left transition-colors {selected
+											? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+											: 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/60'}"
+									>
+										{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
+												/>{/if}{/each}
+									</button>
+								{:else}
+									<a
+										href={`/apps/${encodeURIComponent(group.appName)}`}
+										aria-label={group.appName}
+										class="svc-name tap-link t-body text-gray-700 hover:underline dark:text-gray-200"
+									>
+										{#each identParts(group.appName) as part, pi (pi)}{part}{#if pi < identParts(group.appName).length - 1}<wbr
+												/>{/if}{/each}
+									</a>
+								{/if}
 							{:else}
 								<span
 									class="svc-name svc-name-continuation t-body text-gray-700 dark:text-gray-200"
@@ -408,14 +504,14 @@
 								{/each}
 							</span>
 							<!--
-								⭐ THE GRID'S 4TH CELL, AND WHY IT MAY NOT BE OMITTED.
+								⭐ THE GRID'S LAST CELL, AND WHY IT MAY NOT BE OMITTED.
 								`.svc-ledger` is ONE grid container shared by every
 								`.svc-line` (`display: contents`, so each line's own
 								children are auto-placed directly into it). CSS grid
 								auto-flow fills a row's remaining tracks with the NEXT
 								item when a row is short one, so a line emitting only 3
 								cells (name/build/envs, no age) let the FOLLOWING line's
-								name cell slide into THIS row's 4th column instead of
+								name cell slide into THIS row's last column instead of
 								starting its own row — exactly what a live screenshot at
 								1440 showed: two services sharing one visual row. Every
 								deployed line emits exactly 4 cells now, always.
@@ -460,7 +556,7 @@
 		{/if}
 	{/if}
 
-	{#if !noMatch && !active}
+	{#if !noMatch && !filterActive}
 		{@const deployedRevisions = deployedRevisionCount(repo)}
 		<div
 			class="repo-meta flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 dark:border-gray-700/60"
@@ -488,28 +584,53 @@
 			{/if}
 		</div>
 	{/if}
-</div>
+</Card>
 
 <style>
-	.repo-ledger-card {
-		container-type: inline-size;
-	}
-
 	/*
-	 * ⭐ CRAFT REVIEW (a) — THE STATUS-CHIP COLUMN IS MIN-CONTENT, NOT A FIXED
-	 * 190px. Measured on today's page: `[1 BEHIND][2.66.0-66]` wrapped
-	 * `[HELD]` to a second line at 1024–1680 while 800–940px of the card
-	 * stood empty — a fixed track sized for the wrong content. `minmax(150px,
-	 * max-content)` lets the joined chip and any state chip beside it sit on
-	 * one line, and never lets the track collapse below the joined chip's
-	 * own floor.
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 2 (r11c) — 16px INSETS, BOTH SIDES,
+	 * AT EVERY WIDTH. Measured live: the LEFT edge was already close (17px,
+	 * one column's own `.svc-name` padding away from the card border) but
+	 * the RIGHT edge measured 1px — `.svc-age`'s track (`minmax(0, 1fr)`)
+	 * ran flush to the grid's own right edge, which WAS the card's inner
+	 * edge, because nothing on this container supplied a right inset at
+	 * all. `padding: 0 16px` on the grid container is the ONE inset now;
+	 * `.svc-name`'s own horizontal padding (below) drops to 0 so the two
+	 * mechanisms cannot double up the left side the way they used to (17px
+	 * measured = 16px container + 1px rounding, alone).
 	 */
 	.svc-ledger {
 		display: grid;
-		grid-template-columns: 180px minmax(150px, max-content) 220px minmax(0, 1fr);
+		padding: 0 16px;
 		align-items: center;
 		column-gap: 12px;
 		row-gap: 6px;
+		/*
+		 * ⭐ ITEM 2 — THE NAME COLUMN TAKES THE SLACK; CHIPS ARE `max-content`;
+		 * AGE IS `min-content` AND NEVER CLIPPED. Measured live at 1440:
+		 * column 1 was a rigid `180px` (wrapped `hello-world-manifests`)
+		 * while column 4 was `minmax(0, 1fr)` and grew to 497px around a
+		 * 92px-wide age string — the FLEXIBLE track was on the wrong column.
+		 * `minmax(150px, 1fr)` on the name column moves the growth there
+		 * instead: with only one flexible track in the row, it absorbs
+		 * exactly the space the other three tracks do not need, which is
+		 * also what pins the age column flush to the row's own right inset
+		 * — the same mechanism that used to belong to column 4, now serving
+		 * the column the slack was supposed to help. `max-content` (chips,
+		 * envs) never grows past its own content; `min-content` (age) is,
+		 * with `.svc-age`'s own `white-space: nowrap`, exactly that column's
+		 * full un-wrapped text width — never smaller, so never clipped.
+		 * Below ~1140px this NARROWS the name column toward its 150px floor
+		 * before it touches the chip column's own floor (below), which is
+		 * the fix for "column 4 collapses to 57–81px and clips" — nothing
+		 * downstream of the name column is flexible any more, so nothing
+		 * downstream can be squeezed by a neighbour's growth.
+		 */
+		grid-template-columns:
+			minmax(150px, 1fr)
+			minmax(150px, max-content)
+			max-content
+			min-content;
 	}
 
 	.svc-line {
@@ -517,32 +638,28 @@
 	}
 
 	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 7 — THE GAP BETWEEN RELEASE-LINE
-	 * GROUPS READS AS A GLITCH WITHOUT A MARK. 8px of bare ground between
-	 * `hello-api-app` and `hello-multi-app` (this repo's two release lines)
-	 * looked identical to a rendering bug — nothing on the row said "new
-	 * group starts here". A centred hairline draws the separation the
-	 * blank row was already reserving space for; the rhythm otherwise stays
-	 * exactly what it was (same 8px, same column span).
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 2 (r11c) — THE GROUP BOUNDARY MUST
+	 * OUTRANK THE PER-ROW HAIRLINE, AT EVERY WIDTH. Measured live: at ≥1024
+	 * this drew as an 8px BLANK band (its own `::after` hairline existed but
+	 * read as "an empty row", not as a boundary, next to rows that have no
+	 * hairline of their own at that width); at 390 every row already carries
+	 * its own 1px `border-bottom` (`.svc-line`'s mobile rule, below) at the
+	 * SAME weight, so the group's own hairline was indistinguishable from an
+	 * ordinary row separator. `border-top` + extra vertical padding (instead
+	 * of a bare `::after` line) makes the boundary read as "a hairline PLUS
+	 * space", heavier than any row separator can be by construction; the
+	 * mobile `@container` block below also lightens the ORDINARY per-row
+	 * hairline so the two are never the same weight in the same screenshot.
 	 */
 	.svc-line-gap {
 		grid-column: 1 / -1;
-		height: 8px;
-		display: flex;
-		align-items: center;
-	}
-
-	.svc-line-gap::after {
-		content: '';
-		display: block;
-		width: 100%;
 		height: 1px;
-		margin: 0 16px;
-		background-color: var(--color-gray-100);
+		margin: 7px 0;
+		background-color: var(--color-gray-200);
 	}
 
-	:global(.dark) .svc-line-gap::after {
-		background-color: color-mix(in oklab, var(--color-gray-700) 60%, transparent);
+	:global(.dark) .svc-line-gap {
+		background-color: color-mix(in oklab, var(--color-gray-600) 70%, transparent);
 	}
 
 	/*
@@ -551,16 +668,38 @@
 	 * continuation">` are inline by default, and CSS's own rule for inline
 	 * padding is that LEFT padding applies only before the FIRST line box —
 	 * a second, wrapped line starts at the box's outer edge with none of
-	 * it, which reads as a negative indent (measured live: the wrapped
-	 * line landed 17px left of the column edge the first line started at).
-	 * `display: block` makes the padding apply to the BOX, so every
-	 * wrapped line starts at the same content edge as the first.
+	 * it, which reads as a negative indent. `display: block` makes the
+	 * padding apply to the BOX, so every wrapped line starts at the same
+	 * content edge as the first.
+	 *
+	 * ⛔ ITEM 2 (r11c) — NO HORIZONTAL PADDING HERE ANY MORE. It used to be
+	 * `16px` a side, which is where the LEFT inset actually lived (the
+	 * container itself had none) — doubling it once the container gained
+	 * its own `padding: 0 16px` (above) would have made the left edge 32px.
+	 * Vertical padding is unchanged; the inset is the container's job now,
+	 * uniformly, for every column, not just this one.
 	 */
 	.svc-name,
 	.svc-name-continuation {
 		display: block;
-		padding: 6px 16px 6px 16px;
+		padding: 6px 0;
 		overflow-wrap: break-word;
+	}
+
+	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — THE TOGGLE'S OWN CHIP
+	 * SHAPE. Applied AFTER `.svc-name` in this stylesheet so its padding
+	 * wins the tie (same specificity, later rule) without needing `!important`
+	 * — a real border needs room to sit inside the row without crowding the
+	 * text, which `.svc-name`'s bare vertical padding does not give it.
+	 * `border-radius` matches `Chip`'s own 4px so a toggle sitting beside a
+	 * rank chip on the next column reads as the same family of control.
+	 */
+	.svc-name-toggle {
+		padding: 4px 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-radius: 4px;
 	}
 
 	.svc-build {
@@ -583,7 +722,7 @@
 	}
 
 	.svc-empty {
-		padding: 6px 16px;
+		padding: 6px 0;
 		grid-column: 2 / -1;
 	}
 
@@ -610,6 +749,19 @@
 	@container (max-width: 560px) {
 		.svc-ledger {
 			grid-template-columns: minmax(0, 1fr);
+			padding: 0;
+		}
+		/*
+		 * ⭐ ITEM 2 (r11c) — THE GROUP BOUNDARY KEEPS ITS OWN 16px INSET HERE.
+		 * The container's own `padding` is 0 at this width (`.svc-line`
+		 * below supplies each ROW's inset instead), so the divider needs an
+		 * explicit horizontal margin or it would render edge to edge —
+		 * unlike every other cell here, it is not itself a grid ITEM with a
+		 * per-row padding to fall back on.
+		 */
+		.svc-line-gap {
+			margin-left: 16px;
+			margin-right: 16px;
 		}
 		.svc-line {
 			display: flex;
@@ -618,10 +770,19 @@
 			column-gap: 8px;
 			row-gap: 4px;
 			padding: 8px 16px;
+			/*
+			 * ⭐ ITEM 2 (r11c) — LIGHTER THAN THE GROUP BOUNDARY, ON PURPOSE.
+			 * At 390 every row already carries this hairline, which is
+			 * exactly why the group boundary above needed its OWN, heavier
+			 * mark (a hairline plus 8px of clear space) rather than another
+			 * line at this same weight. `gray-100`/a lower dark alpha keeps
+			 * it present (rows are still separated) but visibly quieter than
+			 * `.svc-line-gap`'s `gray-200`/heavier dark mix.
+			 */
 			border-bottom: 1px solid var(--color-gray-100);
 		}
 		:global(.dark) .svc-line {
-			border-bottom-color: color-mix(in oklab, var(--color-gray-700) 60%, transparent);
+			border-bottom-color: color-mix(in oklab, var(--color-gray-700) 45%, transparent);
 		}
 		.svc-header {
 			order: 1;
